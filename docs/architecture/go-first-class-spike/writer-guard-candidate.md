@@ -116,3 +116,24 @@ bindings, non-FK races and actual poison callback ordering against platform main
 application connections, real Redis/broker side effects, full common lock order,
 Rust owner transactions, native registration or runtime acceptance. The earlier
 two diagnosed fixture failures remain retained alongside the successful result.
+
+## Next Rust transaction candidate
+
+The separate Rust owner foundation at d3fcb82a4 passed its locked offline checks
+and two identity-encoding tests in run38073223134. That run executed no database
+transaction. The next candidate builds a private observation probe before starting
+the application test stack, retains its exact binary hash, then runs19 actual-schema
+Rust observation and lock/custody cases after the51 guard cases. Each repository
+`test.sh` command resets its own test database; guard installation is never applied
+twice to one database. The unchanged accepted Go workload is not rebuilt or launched
+by this observation lane.
+
+PostgreSQL16 requires UPDATE privilege on a column even for SELECT row locking.
+The fixture therefore grants UPDATE(id) on Solution/deployment only, paired with
+a NOLOGIN-custodian-owned trigger rejecting all coordinator source updates.
+Incumbent source writes remain legal. Exact custody, lock-versus-write negatives
+and incumbent positives are included; no operational principal or application DSN
+changes. [PostgreSQL locking privilege requirement](https://www.postgresql.org/docs/16/sql-select.html).
+This exercises the released source/attempt/NOWAIT secondary/session prefix of the
+common order. Start/admission/grant/receipt races, live custody and lifecycle writes
+remain outstanding. A successful observation grants no authority to spawn.

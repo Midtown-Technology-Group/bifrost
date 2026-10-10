@@ -21,3 +21,21 @@ query parameter. Wrong login, stale claim/incarnation, missing association and
 secondary contention reject; transaction drop rolls back. A failed commit
 observation is explicitly uncertain and cannot trigger automatic authority retry.
 No synthetic store or Go-specific public lifecycle state is introduced.
+
+The lockfile is now committed from hosted run38073041614; its sole formatting
+failure is retained. Corrected source d3fcb82a4 passed run38073223134 with Rustfmt,
+locked offline Clippy and two identity-encoding tests. No database transaction
+was executed by that run. Further builds fail if the lockfile is missing and
+compare it and source/declarations after the build.
+
+The private `session_observation` example receives only synthetic fixture identity
+on bounded stdin and a dedicated fixture DSN in its sanitized environment. It
+connects with one pool connection, disabled prepared statement cache and finite
+limits, then emits a small credential-free outcome. It does not receive or issue
+SDK credentials. Its integration candidate checks each identity mismatch, actual
+backend login, retained closure, source fence contention and an execution-first
+incumbent versus attempt-first Rust/NOWAIT-root interlock. Test output cannot be
+used as a launch permit. The guard fixture grants UPDATE(id) only for PostgreSQL
+source-row lock authorization; a custodian-owned trigger rejects every coordinator
+source UPDATE while preserving incumbent source writes. These new paths require
+fresh hosted database evidence and are not covered by the earlier build proof.

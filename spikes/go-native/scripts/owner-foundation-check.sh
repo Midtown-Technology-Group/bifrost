@@ -38,18 +38,20 @@ rust() {
     CARGO_HOME=/cargo CARGO_TARGET_DIR=/target "$@"
 }
 rust none rustc --version > "$evidence_dir/owner-toolchain.txt"
-if [[ ! -f "$scratch/source/Cargo.lock" ]]; then
-  rust bridge cargo generate-lockfile > "$evidence_dir/owner-lock-bootstrap.txt" 2>&1
-fi
+test -f "$scratch/source/Cargo.lock"
 cp "$scratch/source/Cargo.lock" "$evidence_dir/owner-Cargo.lock"
 rust bridge cargo fetch --locked > "$evidence_dir/owner-fetch.txt" 2>&1
 rust none cargo fmt --all -- --check > "$evidence_dir/owner-fmt.txt" 2>&1
 rust none cargo clippy --locked --offline --all-targets -- -D warnings > "$evidence_dir/owner-clippy.txt" 2>&1
-rust none cargo test --locked --offline > "$evidence_dir/owner-tests.txt" 2>&1
+rust none cargo test --locked --offline --all-targets > "$evidence_dir/owner-tests.txt" 2>&1
+rust none cargo build --locked --offline --example session_observation > "$evidence_dir/owner-build.txt" 2>&1
+cp "$scratch/target/debug/examples/session_observation" "$evidence_dir/runtime-owner-observation"
 rust none cargo metadata --locked --offline --format-version 1 > "$evidence_dir/owner-dependency-graph.json"
 # Dependency bootstrap may create a lockfile, never modify source/declarations.
 cmp "$spike_root/owner-rs/Cargo.toml" "$scratch/source/Cargo.toml"
 cmp "$spike_root/owner-rs/src/lib.rs" "$scratch/source/src/lib.rs"
+cmp "$spike_root/owner-rs/examples/session_observation.rs" "$scratch/source/examples/session_observation.rs"
+cmp "$spike_root/owner-rs/Cargo.lock" "$scratch/source/Cargo.lock"
 sha256sum "$spike_root/owner-rs/Cargo.toml" "$spike_root/owner-rs/src/lib.rs" \
   "$evidence_dir/owner-Cargo.lock" > "$evidence_dir/owner-source-hashes.txt"
 printf '%s\n' 'Rust owner observation foundation only: locked offline checks; no PostgreSQL transaction, lifecycle writer, workload launch or runtime acceptance proved.' \

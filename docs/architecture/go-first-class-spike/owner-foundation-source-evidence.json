@@ -33,5 +33,38 @@
     "Actual Rust PostgreSQL transactions and full common lock races",
     "Admission, issuer/ingress, Start/cancel/Result and guardian/process custody",
     "Native registration and unchanged artifact authenticated API end-to-end proof"
-  ]
+  ],
+  "latest_verified": {
+    "source_sha": "d3fcb82a4358b86335b3e6cfcf1ff73d944b586a",
+    "source_tree": "b6e016c13df347ffdd978844860c15ee98a0b6b8",
+    "run": 38073223134,
+    "job": 114274756498,
+    "url": "https://github.com/Midtown-Technology-Group/bifrost/actions/runs/38073223134",
+    "conclusion": "success",
+    "checks": [
+      "Rustfmt",
+      "Locked offline clippy all targets with warnings denied",
+      "Locked offline Rust tests:2 passed,0 failed/ignored",
+      "Locked offline metadata dependency graph"
+    ],
+    "postgres_transactions_executed": false,
+    "lifecycle_writer_accepted": false,
+    "artifact_directory": "/home/thomas/src/bifrost-go-spike-artifacts/d3fcb82a4358b86335b3e6cfcf1ff73d944b586a/runtime-owner-foundation-d3fcb82a4358b86335b3e6cfcf1ff73d944b586a",
+    "artifact_file_sha256": {
+      "owner-Cargo.lock": "9830f97843122532a6e13649f4ecbf42e39662a1b150f54c143eba649517b25d",
+      "owner-clippy.txt": "95125583eac7b17a0e985ae650865a7d087d38e06049b6f8a2b72edfc6e0a7af",
+      "owner-dependency-graph.json": "60c62a5e6d7da0fb986fd10449ebbb58d20ee4abf4433aa2c1adf5c633dc0a35",
+      "owner-fetch.txt": "56767e7d1f653f348e409ad20509a8968b8d606336c559e337103e217d14826f",
+      "owner-fmt.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "owner-image-cleanup.txt": "2e1dd925b66e576d35a87f2dbda9a887c9fb9744e00c4681b68b98013b586d03",
+      "owner-scope.txt": "bfcbb5ed6ebcd104bb6929c2b7c444251740e370cdd6f62ff29fbbbe39c087d8",
+      "owner-source-hashes.txt": "ef0ef3412e37dd0c824fdfc7716857634d8eec8e625b92111c0a5ce657ee0cfe",
+      "owner-tests.txt": "d709af83e3da967c19bbff24816103b7d96c944007d71d4b2a27daf22f3b5fe6",
+      "owner-toolchain.txt": "2073de5abf149185c2f4d7473dc833bc921b99135560d24ae7b2293f33a9c376",
+      "owner-tools-build.txt": "ae9a6384c2775ecc421674cad9a91933f4ed4325aee5f757a840879bdf8445f7",
+      "owner-tools-image.txt": "3b1ac164d9c17f96ba55d7bef55c7c4c0a3ddaa3f9dc687771ae42193232492c",
+      "source.txt": "56a4b15a5e0d09aa774a65bd4ee20f64af1cf105259ccf5815a467c2825fbbe8"
+    },
+    "job_log_sha256": "d07a266b5a8cdcdcc9c857aab221ae01c931603b99a4800b16aaf273c3876143"
+  }
 }

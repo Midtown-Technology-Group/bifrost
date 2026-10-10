@@ -171,3 +171,23 @@ GRANT USAGE ON SEQUENCE execution_logs_id_seq, ai_usage_id_seq TO wex_incumbent,
 GRANT DELETE ON event_sources TO wex_incumbent;
 ALTER TABLE ai_usage ADD CONSTRAINT ck_isolated_usage_parent
     CHECK (isolated_owner <> 'coordinator' OR execution_id IS NOT NULL);
+
+-- PostgreSQL row locks require UPDATE privilege on at least one source column.
+-- Permit only the privilege needed to lock; every coordinator UPDATE is rejected
+-- by a trigger owned by the existing NOLOGIN custodian. Incumbent source writes
+-- remain unchanged. This is isolated fixture DDL, not an operational role grant.
+CREATE FUNCTION public.isolated_source_lock_guard() RETURNS trigger
+LANGUAGE plpgsql SET search_path = pg_catalog, public AS $guard$
+BEGIN
+    IF session_user = 'wex_core' THEN
+        RAISE EXCEPTION 'isolated coordinator source writes forbidden' USING ERRCODE = '42501';
+    END IF;
+    RETURN NEW;
+END $guard$;
+ALTER FUNCTION public.isolated_source_lock_guard() OWNER TO isolated_writer_guard;
+REVOKE ALL ON FUNCTION public.isolated_source_lock_guard() FROM PUBLIC;
+CREATE TRIGGER isolated_source_lock_only BEFORE UPDATE ON public.solutions
+    FOR EACH ROW EXECUTE FUNCTION public.isolated_source_lock_guard();
+CREATE TRIGGER isolated_source_lock_only BEFORE UPDATE ON public.solution_deployments
+    FOR EACH ROW EXECUTE FUNCTION public.isolated_source_lock_guard();
+GRANT UPDATE (id) ON public.solutions, public.solution_deployments TO wex_core;

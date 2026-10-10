@@ -4,6 +4,9 @@ on:
     branches: [spike/go-first-class-g0]
     paths:
       - api/tests/e2e/platform/test_runtime_writer_guards.py
+      - api/tests/e2e/platform/test_runtime_rust_owner_observation.py
+      - spikes/go-native/owner-rs/**
+      - spikes/go-native/scripts/owner-foundation-check.sh
       - api/tests/e2e/platform/fixtures/runtime_writer_guards.sql
       - docker-compose.runtime-writer-guards.yml
       - scripts/ci/writer-guards/**
@@ -32,7 +35,14 @@ jobs:
           guard_project="$(compute_project_name .)"
           git rev-parse HEAD > "$RUNNER_TEMP/writer-guard-source.txt"
           git rev-parse HEAD^{tree} >> "$RUNNER_TEMP/writer-guard-source.txt"
-          sha256sum api/tests/e2e/platform/fixtures/runtime_writer_guards.sql \
+          sha256sum spikes/go-native/owner-rs/Cargo.toml \
+            spikes/go-native/owner-rs/Cargo.lock \
+            spikes/go-native/owner-rs/src/lib.rs \
+            spikes/go-native/owner-rs/examples/session_observation.rs \
+            spikes/go-native/scripts/owner-foundation-check.sh \
+            spikes/go-native/peers/rust-execution/Dockerfile \
+            api/tests/e2e/platform/test_runtime_rust_owner_observation.py \
+            api/tests/e2e/platform/fixtures/runtime_writer_guards.sql \
             api/tests/e2e/platform/test_runtime_writer_guards.py \
             docker-compose.runtime-writer-guards.yml \
             scripts/ci/writer-guards/pgbouncer.ini \
@@ -68,6 +78,10 @@ jobs:
             exit "$guard_original"
           }
           trap cleanup_guard_stack EXIT
+          mkdir -p "$RUNNER_TEMP/owner-evidence"
+          bash spikes/go-native/scripts/owner-foundation-check.sh "$RUNNER_TEMP/owner-evidence"
+          cp "$RUNNER_TEMP/owner-evidence/runtime-owner-observation" api/scripts/runtime-owner-observation
+          sha256sum api/scripts/runtime-owner-observation > "$RUNNER_TEMP/writer-guard-owner-binary.txt"
           bash test.sh stack up > "$RUNNER_TEMP/writer-guard-stack.log" 2>&1
           docker compose -p "$guard_project" -f "$COMPOSE_FILE" up -d --wait --wait-timeout 60 writer-guard-pool
           docker compose -p "$guard_project" -f "$COMPOSE_FILE" images > "$RUNNER_TEMP/writer-guard-images.txt"
@@ -82,6 +96,9 @@ jobs:
           bash test.sh tests/e2e/platform/test_runtime_writer_guards.py --durations=0 \
             > "$RUNNER_TEMP/writer-guard-tests.log" 2>&1
           cp /tmp/bifrost-*/test-results.xml "$RUNNER_TEMP/writer-guard-results.xml"
+          bash test.sh tests/e2e/platform/test_runtime_rust_owner_observation.py --durations=0 \
+            > "$RUNNER_TEMP/writer-guard-rust-observation.log" 2>&1
+          cp /tmp/bifrost-*/test-results.xml "$RUNNER_TEMP/writer-guard-rust-observation.xml"
           bash test.sh quality api > "$RUNNER_TEMP/writer-guard-quality.log" 2>&1
       - name: Retain exact source and guard evidence
         if: always()
@@ -92,5 +109,6 @@ jobs:
             ${{ runner.temp }}/writer-guard-*.txt
             ${{ runner.temp }}/writer-guard-*.xml
             ${{ runner.temp }}/writer-guard-*.log
+            ${{ runner.temp }}/owner-evidence
           if-no-files-found: error
           retention-days: 14
