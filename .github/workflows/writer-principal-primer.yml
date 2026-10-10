@@ -1,0 +1,33 @@
+name: Isolated owner pool identity primer
+on:
+  push:
+    branches: [spike/go-first-class-g0]
+    paths:
+      - docker-compose.writer-primer.yml
+      - scripts/ci/writer-primer.sh
+      - scripts/ci/writer-primer/**
+      - .github/workflows/writer-principal-primer.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  primer:
+    if: github.repository == 'Midtown-Technology-Group/bifrost'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Restricted authenticated identity primer
+        run: bash scripts/ci/writer-primer.sh
+      - name: Literal pre-PR after primer disposal
+        run: ./test.sh pre-pr
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: writer-principal-primer
+          path: ${{ env.WRITER_PRIMER_RESULTS }}
+          if-no-files-found: error
+          retention-days: 14

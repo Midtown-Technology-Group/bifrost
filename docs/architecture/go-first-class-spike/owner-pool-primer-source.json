@@ -1,0 +1,51 @@
+{
+  "status": "isolated-select-only-pool-prerequisite-candidate-not-lifecycle-writer",
+  "reference": "f1b71de8a8186c57e32c2c98b977d396c7fa765c",
+  "reference_pr": 1042,
+  "schema_candidate": "e02337989c931143b848f143f7801af947691388",
+  "migration_head": "20261010_runtime_fences",
+  "changes": [
+    "Existing conductor/probe revision expectations reconciled with current Alembic head.",
+    "Existing workflow branch/path trigger selects this isolated spike; literal pre-pr retained."
+  ],
+  "unchanged": "SELECT-only grants, synthetic principals/passwords, pinned images/configuration, probe/classifiers, timeouts, disposal/private-output rules and source custody.",
+  "static_checks": "Bash syntax, Python AST, YAML/shell step syntax and repository-locked Ruff0.15.12 lint/format at Python3.14 passed. Host Ruff0.16.8 diagnostic flags are a different policy/version; no code suppression or failure-handling mutation was introduced.",
+  "paths": {
+    "docker-compose.writer-primer.yml": {
+      "reference_sha256": "8ed7bfcb28c6d28e94dc4ab984db588c6902a6baaa8626d80d4d542529005eae",
+      "candidate_sha256": "8ed7bfcb28c6d28e94dc4ab984db588c6902a6baaa8626d80d4d542529005eae",
+      "byte_identical": true
+    },
+    "scripts/ci/writer-primer.sh": {
+      "reference_sha256": "b7399348e99dd5d228438cdda070097daac18d18eb7bf978352da710bf302559",
+      "candidate_sha256": "7ba4dd5c5d8f0956db5f9e4549870eb59429058436f211dd594287109c9eb5e2",
+      "byte_identical": false
+    },
+    "scripts/ci/writer-primer/pgbouncer.ini": {
+      "reference_sha256": "eba0a079a7cc193ace3f0e45884fd174b4f8f1dc1382689ca99bb987b862d382",
+      "candidate_sha256": "eba0a079a7cc193ace3f0e45884fd174b4f8f1dc1382689ca99bb987b862d382",
+      "byte_identical": true
+    },
+    "scripts/ci/writer-primer/userlist.txt": {
+      "reference_sha256": "d5ec468729879dfc4648656d3635cee587be529d1b8e5921645e013695a76619",
+      "candidate_sha256": "d5ec468729879dfc4648656d3635cee587be529d1b8e5921645e013695a76619",
+      "byte_identical": true
+    },
+    "scripts/ci/writer-primer/provision.sql": {
+      "reference_sha256": "e1362c8d991f6a85b9c60e11096afaf780cff95e4333914e31c7a65e67f5432c",
+      "candidate_sha256": "e1362c8d991f6a85b9c60e11096afaf780cff95e4333914e31c7a65e67f5432c",
+      "byte_identical": true
+    },
+    "scripts/ci/writer-primer/probe.py": {
+      "reference_sha256": "44e73b20d501924ddcf9768e1fdf94a4ea42652fa0d79a2d65a1360a43eacef9",
+      "candidate_sha256": "afe9bff393a05bc3c7335f343eead41ceaee3c785a9e17706b5fa96133e50594",
+      "byte_identical": false
+    },
+    ".github/workflows/writer-principal-primer.yml": {
+      "reference_sha256": "2f13b49826beabf8399f223a35a4352ca4c0b1c0c6141ee09b97ab55ab54e2c6",
+      "candidate_sha256": "43222d6922bfae071ab04ee2c81e3de3b7b17c777ff8571045bbbc9ec842eae1",
+      "byte_identical": false
+    }
+  },
+  "scope": "No application DSN, lifecycle DML, role owner, guard, runtime dispatch, production or credential-authority change."
+}
