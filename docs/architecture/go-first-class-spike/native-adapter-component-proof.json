@@ -1,0 +1,83 @@
+{
+  "status": "verified component proof, not runtime acceptance",
+  "sdk_version": "0.0.0-spike.2",
+  "source_commit": "a812177af94f70eb12d367704bbd89ca7a635a6c",
+  "platform_main": "968ac4693c99cc52f156f5aacb63a40a8fcd9437",
+  "authorization_commit": "b8b44cbc01b1fb6be86f4fba050e93eb0da55924",
+  "workflow_run": 38082139911,
+  "proof_job": 114301070050,
+  "ownership_job": 114301070023,
+  "provider_conclusion": "success",
+  "artifact_name": "go-native-spike-a812177af94f70eb12d367704bbd89ca7a635a6c",
+  "source_input_count_verified": 84,
+  "artifact_sha256": "160917deeb94275f31ca9ddee2dacae00fb079fdf54cb60e206c8def261f9c34",
+  "artifact_size_bytes": 9920235,
+  "validation": {
+    "go_test": "pass",
+    "go_vet": "pass",
+    "gofmt": "pass",
+    "govulncheck": "pass",
+    "individual_tests_passed": 442
+  },
+  "adapter_tests_passed": 28,
+  "adapter_test_names": [
+    "TestOnePrivateDelivery",
+    "TestMalformedPrivateDelivery/wrong-origin",
+    "TestMalformedPrivateDelivery/invalid-unicode",
+    "TestMalformedPrivateDelivery/unknown-sdk-field",
+    "TestMalformedPrivateDelivery/trailing-json",
+    "TestMalformedPrivateDelivery/absent",
+    "TestMalformedPrivateDelivery/nested-duplicate",
+    "TestMalformedPrivateDelivery/unknown-field",
+    "TestMalformedPrivateDelivery/wrong-scope",
+    "TestMalformedPrivateDelivery/truncated",
+    "TestMalformedPrivateDelivery/escaped-duplicate",
+    "TestMalformedPrivateDelivery/invalid-utf8",
+    "TestMalformedPrivateDelivery/short-prefix",
+    "TestMalformedPrivateDelivery/oversized",
+    "TestMalformedPrivateDelivery/empty",
+    "TestMalformedPrivateDelivery/second-delivery",
+    "TestMalformedPrivateDelivery/duplicate",
+    "TestMalformedPrivateDelivery/noncanonical-key",
+    "TestMalformedPrivateDelivery",
+    "TestExpiredOrMismatchingProvision/expired",
+    "TestExpiredOrMismatchingProvision/different-message",
+    "TestExpiredOrMismatchingProvision",
+    "TestStrictPrivateJSON",
+    "TestDeliveryRequiresClosedWriter",
+    "TestInheritedReadOnlyPipe",
+    "TestInheritedRejectsRegularFile",
+    "TestInheritedRejectsWriter",
+    "TestInheritedTimeoutClosesDescriptor"
+  ],
+  "timings_ms": {
+    "module_download": 123.667683,
+    "cold_compile_warm_modules": 10962.300002,
+    "independent_cold_compile": 10364.077263,
+    "warm_source_edit_compile": 257.376894,
+    "restored_warm_compile": 264.439493,
+    "edit_to_artifact": 476.587978
+  },
+  "evidence_sha256": {
+    "descriptor.json": "706293f7f8435df3ab85d826915c64bd584584fa772405250954fe2948c920f8",
+    "tests.jsonl": "9c123f95978a9876836e1b2dc67d2a8db4b1c5dbee37daee916e2dff29e185ae",
+    "artifact.sha256": "f9fb2a0e7be8caea848fe3f2b1e988acf4d8a962d3a490750355689b0dd65800",
+    "govulncheck.jsonl": "756f1d4c9420a2f3a85ae43f97278cece0ed10ef2fe20f27657755d5f512920b",
+    "execution.json": "75cc1743e16173c7d33bb0372862d5f18f2f6c767dd70d98d66f6c93b32e20ce",
+    "module-graph.txt": "6c65761e33efdb93797e9a45ec4ddd5601273fc2423ae4af13c06db91dc9538c"
+  },
+  "proves": [
+    "closed one-delivery parsing against common Provision",
+    "synthetic inherited read-only pipe, deadline and descriptor closure",
+    "ordinary Go validation and unchanged workflow binary digest"
+  ],
+  "does_not_prove": [
+    "newer sealed executable implementation or its execution fixture",
+    "accepted native bundle and neutral registration",
+    "real Rust Admit/Start/release or actual live guardian custody",
+    "real restricted SDK issuer/ingress",
+    "process/descendant/source cleanup and uncertain launch recovery",
+    "complete Rust/Go vertical slice or runtime acceptance"
+  ],
+  "runtime_acceptance": false
+}
