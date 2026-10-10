@@ -1,6 +1,7 @@
 //! Private synthetic test probe. This is not a workload API or admission path.
 use bifrost_isolated_owner_spike::{
-    ObserveError, SessionFence, SessionObservation, observe_session,
+    CancelDecision, ObserveError, SessionFence, SessionObservation, observe_session,
+    request_running_cancel,
 };
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
 use std::{
@@ -43,6 +44,11 @@ async fn run() -> &'static str {
     let Ok(fence) = read_fence(io::stdin().lock()) else {
         return "rejected";
     };
+    let operation = std::env::var("BIFROST_OWNER_TEST_ACTION")
+        .unwrap_or_else(|_| "observe".to_owned());
+    if !matches!(operation.as_str(), "observe" | "request-running-cancel") {
+        return "rejected";
+    }
     let Ok(url) = std::env::var("BIFROST_OWNER_TEST_DATABASE_URL") else {
         return "rejected";
     };
@@ -51,19 +57,46 @@ async fn run() -> &'static str {
     };
     // Independent backend sessions through the admitted transaction pool. No
     // prepared-statement or ambient connection/credential fallback is required.
-    let Ok(pool) = PgPoolOptions::new()
+    let options = options.statement_cache_capacity(0);
+    let options = if std::env::var("BIFROST_OWNER_TEST_DEFAULT_FLOAT_DIGITS").as_deref() == Ok("1") {
+        // Regression control: the exact SQLx default rejected by this pool.
+        options
+    } else {
+        options.extra_float_digits(None)
+    };
+    let pool = match PgPoolOptions::new()
         .max_connections(1)
         .acquire_timeout(Duration::from_secs(5))
-        .connect_with(options.statement_cache_capacity(0))
+        .connect_with(options)
         .await
-    else {
-        return "database_failure";
+    {
+        Ok(pool) => pool,
+        Err(sqlx::Error::Database(error))
+            if error.message().contains("startup parameter")
+                && error.message().contains("extra_float_digits") =>
+        {
+            // Static classification only; no free-form error, DSN or secret.
+            return "startup_parameter_rejected";
+        }
+        Err(_) => return "database_failure",
     };
-    let result = tokio::time::timeout(Duration::from_secs(5), observe_session(&pool, &fence)).await;
+    let result = tokio::time::timeout(Duration::from_secs(5), async {
+        if operation == "request-running-cancel" {
+            match request_running_cancel(&pool, &fence).await? {
+                CancelDecision::Committed => Ok("cancel_committed"),
+                CancelDecision::AlreadyCommitted => Ok("cancel_already_committed"),
+            }
+        } else {
+            match observe_session(&pool, &fence).await? {
+                SessionObservation::Open => Ok("open"),
+                SessionObservation::Closed => Ok("closed"),
+            }
+        }
+    })
+    .await;
     pool.close().await;
     match result {
-        Ok(Ok(SessionObservation::Open)) => "open",
-        Ok(Ok(SessionObservation::Closed)) => "closed",
+        Ok(Ok(outcome)) => outcome,
         Ok(Err(ObserveError::InvalidFence | ObserveError::Rejected)) => "rejected",
         Ok(Err(ObserveError::UncertainCommit)) => "uncertain_commit",
         Ok(Err(ObserveError::Database(sqlx::Error::Database(error))))
@@ -71,6 +104,7 @@ async fn run() -> &'static str {
         {
             "lock_contention"
         }
+        Err(_) if operation == "request-running-cancel" => "uncertain_commit",
         Ok(Err(ObserveError::Database(_))) | Err(_) => "database_failure",
     }
 }

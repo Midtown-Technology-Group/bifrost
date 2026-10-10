@@ -169,5 +169,97 @@
     },
     "job_log_sha256": "65ccbc784119d9ed1d29c2b5122f0e4e2b376d6de9a23cf53c331473f9d814b0",
     "new_source_run_required": true
+  },
+  "observation_failure": {
+    "source_sha": "8306826292d7f12047926e092dbcadbb1ac8b769",
+    "source_tree": "a4cd9adab562ec5cce8ced75bc51eeb17e10c11f",
+    "run": 38074807470,
+    "job": 114279455089,
+    "url": "https://github.com/Midtown-Technology-Group/bifrost/actions/runs/38074807470",
+    "conclusion": "failure",
+    "suites": {
+      "writer-guard-baseline.xml": [
+        {
+          "name": "pytest",
+          "errors": "0",
+          "failures": "0",
+          "skipped": "0",
+          "tests": "109",
+          "time": "8.843",
+          "timestamp": "2026-10-10T18:23:39.135080+00:00",
+          "hostname": "831214f2e4d6"
+        }
+      ],
+      "writer-guard-last-results.xml": [
+        {
+          "name": "pytest",
+          "errors": "0",
+          "failures": "14",
+          "skipped": "0",
+          "tests": "70",
+          "time": "10.115",
+          "timestamp": "2026-10-10T18:24:18.574141+00:00",
+          "hostname": "8d189fd6a017"
+        }
+      ],
+      "writer-guard-unit.xml": [
+        {
+          "name": "pytest",
+          "errors": "0",
+          "failures": "0",
+          "skipped": "0",
+          "tests": "13722",
+          "time": "297.803",
+          "timestamp": "2026-10-10T18:17:41.608642+00:00",
+          "hostname": "fd510db75b48"
+        }
+      ]
+    },
+    "classification": "14 real Rust cases returned database_failure before intended identity/lock observations;56 cases passed,0 setup errors.",
+    "diagnosis_evidence": "Checksum-verified SQLx0.9.0 registry source defaults to extra_float_digits=2 and sends it in Startup. The unchanged pinned pool has no ignore_startup_parameters and rejects unsupported parameters. Original probe suppressed free-form errors, so there is no retained exact pool error message. Fresh negative default-startup and corrected connection cases must verify this diagnosis.",
+    "correction": "Omit SQLx extra_float_digits startup option; leave pool policy, authenticated identities, statement cache, timeouts and assertions intact. Add explicit default-option rejection regression control.",
+    "registry_source": {
+      "url": "https://static.crates.io/crates/sqlx-postgres/sqlx-postgres-0.9.0.crate",
+      "sha256": "87a2bdd6e83f6b3ea525ca9fee568030508b58355a43d0b2c1674d5f79dcd65e",
+      "checksum_verified_against_committed_lock": true,
+      "reviewed_paths": [
+        "src/options/mod.rs",
+        "src/connection/establish.rs"
+      ]
+    },
+    "pool_reference": "https://www.pgbouncer.org/config.html#ignore_startup_parameters",
+    "api_quality": "unrun after test failure",
+    "cleanup": "verified empty task container/volume/network inventories",
+    "artifact_directory": "/home/thomas/src/bifrost-go-spike-artifacts/8306826292d7f12047926e092dbcadbb1ac8b769/runtime-writer-guards-8306826292d7f12047926e092dbcadbb1ac8b769",
+    "artifact_file_sha256": {
+      "owner-evidence/owner-Cargo.lock": "9830f97843122532a6e13649f4ecbf42e39662a1b150f54c143eba649517b25d",
+      "owner-evidence/owner-build.txt": "2c54618db4f84c8afbd064edba67e83344746d92d54a0bec82f9433e3066ede5",
+      "owner-evidence/owner-clippy.txt": "8c63a5f4fa20a96ed9fedc3352758de13e7c71d6cad679c62d639412f2fe52a1",
+      "owner-evidence/owner-dependency-graph.json": "94d281d3f3565a0a3a7a3640d978e5e74d0e746ec1dd6c68004782c8bc598d51",
+      "owner-evidence/owner-fetch.txt": "2d41c5c27a798cc4df0d6e331688a27aeabdc9d495f089582be660b9684d09bf",
+      "owner-evidence/owner-fmt.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "owner-evidence/owner-image-cleanup.txt": "7b8d8567c12d9e48812c4bf5a2934e4da0ad34cba409d00b5d34e1a929889768",
+      "owner-evidence/owner-scope.txt": "bfcbb5ed6ebcd104bb6929c2b7c444251740e370cdd6f62ff29fbbbe39c087d8",
+      "owner-evidence/owner-source-hashes.txt": "ef0ef3412e37dd0c824fdfc7716857634d8eec8e625b92111c0a5ce657ee0cfe",
+      "owner-evidence/owner-tests.txt": "461ecc71f8c48e95aecb275eba55e7c6e4a7b2dae3b5ccf85c4c1949d19a43a4",
+      "owner-evidence/owner-toolchain.txt": "2073de5abf149185c2f4d7473dc833bc921b99135560d24ae7b2293f33a9c376",
+      "owner-evidence/owner-tools-build.txt": "3c6c246650498c2923e01a4a0ec9b4e193871c1aa6282998daa8fecd6cdf0d8a",
+      "owner-evidence/owner-tools-image.txt": "8247a76b4d66197e4e4993b98a71b8151c14de6a0a208dbd67bf85a2c1fea28e",
+      "owner-evidence/runtime-owner-observation": "c831c10a8ffad0c50303f3b25958d7af703e5ef6969b848d9dc4b2a889a35a49",
+      "writer-guard-baseline.xml": "0097d5d893d3978ea419c61fd391a3cab73e4eed6f45ebd935966b1ca5188989",
+      "writer-guard-cleanup.log": "4e0160548c408df36629c82d4889e5db53690f9059373295df51f168307e9b46",
+      "writer-guard-images.txt": "482cf3064d9154671d716e0119c21d548f59be8a33c5b49d1c2b7be8fb5b9b2e",
+      "writer-guard-last-results.xml": "63fac16309e1d988cbd0b337230bd028eff5fa21ae5012b0b3ee7209c317c7b2",
+      "writer-guard-owner-binary.txt": "b838ce38415692adbb0af3391d0afe0dddc67c703ae06c9dcc6f55f54fe696e8",
+      "writer-guard-source-hashes.txt": "54c61f17a3db81ce663a4b5167f67761765a5622635a4dfc6f43c69f901c4777",
+      "writer-guard-source.txt": "465831a5654ae9e7e11b3621802d6ba2beff220d649aa097481c57d79bb76401",
+      "writer-guard-stack.log": "854728f4897cb545a8378fe7f3c246e9c7a98bf1d2fac4e1c9681cf9a6613171",
+      "writer-guard-storage-baseline.log": "8f864efc9f7417b88f43920d8552676bd956080866cda3b7d7774a3747b4da03",
+      "writer-guard-tests.log": "0c1e90a14320dd70c917e2f26392c114aa8598cfe052be072891b4dac8e06a1e",
+      "writer-guard-unit.log": "e33fc02956122864b1aefb1933a2ebd77925500ed69c88dad6a604100698433e",
+      "writer-guard-unit.xml": "b28abed6e67087d3a4f3d4e474ab6fd1c289d977aea7e533b5d1b6144ee77ae3"
+    },
+    "job_log_sha256": "96abd72b93a70fff5026f8688608421e1bbd9324175ae57bd9b2a2c8a2d2dc86",
+    "new_source_run_required": true
   }
 }

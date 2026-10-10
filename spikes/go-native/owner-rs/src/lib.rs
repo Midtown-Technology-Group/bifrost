@@ -1,6 +1,6 @@
 //! Isolated owner foundation. Observation is not admission or launch authority.
-//! No production dispatch, grant issuance, lifecycle write or process spawning.
-use sqlx::{PgPool, Row};
+//! No production dispatch, grant issuance, admission or process spawning.
+use sqlx::{PgPool, Postgres, Row, Transaction};
 
 /// Exact retained identity supplied by the trusted coordinator, never a tenant.
 #[derive(Debug, Clone)]
@@ -80,10 +80,17 @@ pub enum SessionObservation {
 /// All mismatches and secondary contention roll back before any write/effect.
 /// Full manifest/dependency eligibility and live process custody remain separate
 /// prerequisites; matching retained strings never proves a live channel.
-pub async fn observe_session(
-    pool: &PgPool,
+struct LockedSession<'a> {
+    tx: Transaction<'a, Postgres>,
+    closed: bool,
+    close_reason: Option<String>,
+    execution_status: String,
+}
+
+async fn lock_session<'a>(
+    pool: &'a PgPool,
     fence: &SessionFence,
-) -> Result<SessionObservation, ObserveError> {
+) -> Result<LockedSession<'a>, ObserveError> {
     if !fence.valid() {
         return Err(ObserveError::InvalidFence);
     }
@@ -135,7 +142,7 @@ pub async fn observe_session(
     let deployment: String = owner.try_get("deployment")?;
     let artifact: String = owner.try_get("artifact_id")?;
     let execution = sqlx::query(
-        "SELECT id FROM executions WHERE id=$1::text::uuid \
+        "SELECT status::text AS status FROM executions WHERE id=$1::text::uuid \
          AND workflow_id=$2::text::uuid AND solution_deployment_id=$3::text::uuid \
          AND runtime_mode='deployment-v1' FOR UPDATE NOWAIT",
     )
@@ -144,9 +151,9 @@ pub async fn observe_session(
     .bind(&deployment)
     .fetch_optional(&mut *tx)
     .await?;
-    if execution.is_none() {
-        return Err(ObserveError::Rejected);
-    }
+    let execution_status: String = execution
+        .ok_or(ObserveError::Rejected)?
+        .try_get("status")?;
     let source = sqlx::query(
         "SELECT solution_id::text AS solution FROM solution_deployments \
          WHERE id=$1::text::uuid FOR UPDATE NOWAIT",
@@ -179,7 +186,7 @@ pub async fn observe_session(
         return Err(ObserveError::Rejected);
     }
     let session = sqlx::query(
-        "SELECT closed_at IS NOT NULL AS closed FROM runtime_sessions \
+        "SELECT closed_at IS NOT NULL AS closed, close_reason FROM runtime_sessions \
          WHERE id=$1::text::uuid AND execution_id=$2::text::uuid \
          AND owner_incarnation_id=$3::text::uuid AND workflow_attempt_id=$4::text::uuid \
          AND claim_token=$5::text::uuid AND worker_incarnation_id=$6::text::uuid \
@@ -199,8 +206,24 @@ pub async fn observe_session(
     .fetch_optional(&mut *tx)
     .await?
     .ok_or(ObserveError::Rejected)?;
-    let closed: bool = session.try_get("closed")?;
-    tx.commit()
+    Ok(LockedSession {
+        tx,
+        closed: session.try_get("closed")?,
+        close_reason: session.try_get("close_reason")?,
+        execution_status,
+    })
+}
+
+/// Observation only: this return value never authorizes admission or spawn.
+pub async fn observe_session(
+    pool: &PgPool,
+    fence: &SessionFence,
+) -> Result<SessionObservation, ObserveError> {
+    let locked = lock_session(pool, fence).await?;
+    let closed = locked.closed;
+    locked
+        .tx
+        .commit()
         .await
         .map_err(|_| ObserveError::UncertainCommit)?;
     Ok(if closed {
@@ -208,6 +231,115 @@ pub async fn observe_session(
     } else {
         SessionObservation::Open
     })
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum CancelDecision {
+    Committed,
+    AlreadyCommitted,
+}
+
+/// Internal isolated owner operation, not an SDK/public cancellation endpoint.
+/// Its caller must be the trusted coordinator. It cannot authorize admission,
+/// spawn, replay, or finalization; actual process/source settlement remains due.
+/// The running→Cancelling projection matches the incumbent public domain. Every
+/// error before observed commit rolls back; commit ambiguity never means retry.
+pub async fn request_running_cancel(
+    pool: &PgPool,
+    fence: &SessionFence,
+) -> Result<CancelDecision, ObserveError> {
+    let mut locked = lock_session(pool, fence).await?;
+    // Complete the common tail after session serialization. Immutable operation
+    // rows need no independent mutation lock; issuance also must hold this session.
+    let start = sqlx::query(
+        "SELECT id FROM runtime_starts WHERE session_id=$1::text::uuid \
+         AND execution_id=$2::text::uuid AND owner_incarnation_id=$3::text::uuid \
+         AND workflow_attempt_id=$4::text::uuid FOR UPDATE",
+    )
+    .bind(&fence.session_id)
+    .bind(&fence.execution_id)
+    .bind(&fence.owner_incarnation_id)
+    .bind(&fence.attempt_id)
+    .fetch_optional(&mut *locked.tx)
+    .await?;
+    if start.is_none() {
+        return Err(ObserveError::Rejected);
+    }
+    sqlx::query(
+        "SELECT id FROM runtime_admissions WHERE session_id=$1::text::uuid \
+         ORDER BY purpose,id FOR UPDATE",
+    )
+    .bind(&fence.session_id)
+    .fetch_all(&mut *locked.tx)
+    .await?;
+    sqlx::query(
+        "SELECT id FROM workflow_runtime_sdk_grants WHERE runtime_session_id=$1::text::uuid \
+         ORDER BY id FOR UPDATE",
+    )
+    .bind(&fence.session_id)
+    .fetch_all(&mut *locked.tx)
+    .await?;
+    let receipts = sqlx::query(
+        "SELECT result_message_id,disposition,winner FROM runtime_report_receipts \
+         WHERE session_id=$1::text::uuid ORDER BY result_message_id FOR UPDATE",
+    )
+    .bind(&fence.session_id)
+    .fetch_all(&mut *locked.tx)
+    .await?;
+    for receipt in receipts {
+        if !locked.closed
+            || receipt.try_get::<String, _>("disposition")? != "retained"
+            || receipt.try_get::<String, _>("winner")? != "cancel"
+        {
+            // A winning Result or inconsistent projection cannot be overwritten.
+            return Err(ObserveError::Rejected);
+        }
+    }
+    let decision = if locked.closed {
+        if locked.execution_status != "Cancelling"
+            || locked.close_reason.as_deref() != Some("cancel_requested")
+        {
+            return Err(ObserveError::Rejected);
+        }
+        CancelDecision::AlreadyCommitted
+    } else {
+        if locked.execution_status != "Running" {
+            return Err(ObserveError::Rejected);
+        }
+        let updated = sqlx::query(
+            "UPDATE executions SET status='Cancelling' WHERE id=$1::text::uuid AND status='Running'",
+        )
+        .bind(&fence.execution_id)
+        .execute(&mut *locked.tx)
+        .await?;
+        if updated.rows_affected() != 1 {
+            return Err(ObserveError::Rejected);
+        }
+        let closed = sqlx::query(
+            "UPDATE runtime_sessions SET closed_at=clock_timestamp(), close_reason='cancel_requested' \
+             WHERE id=$1::text::uuid AND closed_at IS NULL",
+        )
+        .bind(&fence.session_id)
+        .execute(&mut *locked.tx)
+        .await?;
+        if closed.rows_affected() != 1 {
+            return Err(ObserveError::Rejected);
+        }
+        CancelDecision::Committed
+    };
+    sqlx::query(
+        "UPDATE workflow_runtime_sdk_grants SET revoked_at=clock_timestamp(), \
+         revocation_reason='session_closed' WHERE runtime_session_id=$1::text::uuid AND revoked_at IS NULL",
+    )
+    .bind(&fence.session_id)
+    .execute(&mut *locked.tx)
+    .await?;
+    locked
+        .tx
+        .commit()
+        .await
+        .map_err(|_| ObserveError::UncertainCommit)?;
+    Ok(decision)
 }
 
 #[cfg(test)]

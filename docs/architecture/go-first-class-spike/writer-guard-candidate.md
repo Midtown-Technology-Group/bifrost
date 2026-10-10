@@ -145,3 +145,34 @@ teardown inventories were empty. The failed XML/logs and exact hashes are retain
 in the owner foundation evidence. All70 cases now share one module/install and one
 normal repository test command. No role is silently reused or recredentialed; all
 original assertions remain and fresh source proof is required.
+
+Run38074807470 at830682629 collected all70 cases under one installation.56
+passed and14 real Rust cases failed with `database_failure`; there were no setup
+errors or skips. The original probe did not retain free-form database errors.
+Checksum-verified SQLx0.9.0 source shows its default Startup packet includes
+`extra_float_digits=2`, which the unchanged pinned pool does not admit. The next
+candidate omits that client option and adds a red-capable control using the exact
+rejected default; this diagnosis still needs the fresh runtime result. Pool policy,
+roles, deadlines and assertions remain unchanged. Original logs/XML/source hashes
+and empty teardown inventories are retained in the owner foundation evidence.
+
+## Provisional Rust cancellation write
+
+The next isolated implementation uses the same common prefix and locks retained
+Start, ordered admissions, grants and receipts after session serialization. It
+requires a matching active attempt, retained Start and Running execution before
+committing existing Cancelling status, permanent session close and same-session
+grant revocation together. A repeated matching request preserves clocks and
+returns the existing decision; an accepted/inconsistent Result receipt rejects.
+There is no pending/scheduled cancellation shortcut, early Cancelled projection,
+process stop, finalization, admission, grant signing or production endpoint.
+
+Actual-schema cases cover stale identities, incumbent rejection, missing Start,
+late-tail contention, preserved terminal success, inconsistent winning receipt,
+duplicate cancellation and an actual PostgreSQL revoke-trigger failure that must
+roll back the preceding root/session writes. Fixture Start/grant/receipt metadata
+remain synthetic storage facts, not accepted admission, signed credentials,
+validated wire Result or live process evidence. No new lifecycle writer is accepted
+by adding this code or by its conformance tests. The full schema/identity/immutability,
+mechanical writer exclusion and common source/attempt/secondary/session/Start/
+admission/grant/receipt graph remain subject to the released acceptance gates.

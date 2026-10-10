@@ -1,8 +1,10 @@
 # Isolated common owner foundation
 
-This first Rust transaction observes actual retained owner/session identity under
-Thomas's released common lock order. It does not write lifecycle state, admit a
-workload, issue credentials or spawn processes. Production dispatch is absent.
+The observation transaction reads actual retained owner/session identity under
+Thomas's released common lock order. The provisional cancellation operation writes
+existing Cancelling status, session close and grant revocation together. Neither
+operation admits a workload, issues credentials, spawns processes or finalizes an
+outcome. Production dispatch is absent.
 Matching database custody digests are observations, never proof of a live channel.
 The SQL returns no portable launch authority.
 
@@ -39,3 +41,19 @@ used as a launch permit. The guard fixture grants UPDATE(id) only for PostgreSQL
 source-row lock authorization; a custodian-owned trigger rejects every coordinator
 source UPDATE while preserving incumbent source writes. These new paths require
 fresh hosted database evidence and are not covered by the earlier build proof.
+
+
+`request_running_cancel` completes the common lock tail after the session and
+requires retained Start plus current Running state. It preserves a prior terminal
+outcome, rejects inconsistent/winning receipts and reports commit ambiguity without
+automatic authority retry. No process termination or source drain is implied by
+its return. Its caller is the trusted coordinator; this is no public/SDK endpoint
+or substitute for admission authorization and actual channel/process custody.
+The private probe classifies mutating-operation timeout as uncertain commit.
+
+The observed connection failures at830682629 remain blocking. The correction
+omits SQLx's default extra_float_digits Startup parameter and leaves the pool's
+admitted configuration intact. A separate negative connection control must prove
+the old option is rejected before the corrected path is accepted. The cancellation
+fixture uses the existing synthetic storage grant definition without token signing
+or source eligibility; this cannot qualify credentials or a runtime writer.

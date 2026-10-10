@@ -714,7 +714,9 @@ async def session_fence(rows):
     ]
 
 
-async def probe(fence, role="wex_core"):
+async def probe(
+    fence, role="wex_core", operation="observe", default_float_digits=False
+):
     assert PROBE.is_file(), "Required source-bound Rust build artifact is missing"
     process = await asyncio.create_subprocess_exec(
         str(PROBE),
@@ -723,6 +725,10 @@ async def probe(fence, role="wex_core"):
         stderr=asyncio.subprocess.PIPE,
         env={
             "BIFROST_ISOLATED_OWNER_TEST": "1",
+            "BIFROST_OWNER_TEST_ACTION": operation,
+            "BIFROST_OWNER_TEST_DEFAULT_FLOAT_DIGITS": "1"
+            if default_float_digits
+            else "0",
             "BIFROST_OWNER_TEST_DATABASE_URL": (
                 f"postgresql://{role}:{PASSWORDS[role]}@writer-guard-pool/bifrost_test"
             ),
@@ -877,3 +883,254 @@ async def test_existing_incumbent_source_write_path_is_unchanged(
         == target
     )
     await db_session.commit()
+
+
+@pytest.fixture
+async def running_cancel_facts(rows, session_fence):
+    """Synthetic retained Start/grant metadata, not admission or token issuance."""
+    import re
+    from datetime import timedelta
+    from hashlib import sha256
+
+    from tests.e2e.platform.test_runtime_deployment_artifacts import GRANT_INSERT
+
+    start, message, grant = [uuid4() for _ in range(3)]
+    facts = {
+        **rows["association"],
+        "execution": UUID(session_fence[0]),
+        "owner": UUID(session_fence[1]),
+        "attempt": UUID(session_fence[2]),
+        "claim": UUID(session_fence[3]),
+        "worker": UUID(session_fence[4]),
+        "session": UUID(session_fence[5]),
+        "supervisor": UUID(session_fence[6]),
+        "start": start,
+        "start_message": message,
+        "grant": grant,
+        "number": 1,
+        "caller_digest": rows["association"]["source"],
+        "manifest_digest": "sha256:" + "b" * 64,
+        "resolution_digest": "sha256:" + "c" * 64,
+        "claim_digest": sha256(
+            b"16:cred-p1/claim/v1,36:" + session_fence[3].encode("ascii") + b","
+        ).hexdigest(),
+    }
+    async with connection("wex_core") as conn:
+        async with conn.transaction():
+            facts["org"] = await conn.fetchval(
+                "SELECT organization_id FROM solutions WHERE id=$1", facts["solution"]
+            )
+            facts["started"] = await conn.fetchval(
+                "INSERT INTO runtime_starts "
+                "(id,session_id,execution_id,owner_incarnation_id,workflow_attempt_id,"
+                "start_message_id,input_sha256,context_sha256,started_at) "
+                "VALUES ($1,$2,$3,$4,$5,$6,$7,$7,clock_timestamp()) RETURNING started_at",
+                start,
+                facts["session"],
+                facts["execution"],
+                facts["owner"],
+                facts["attempt"],
+                message,
+                facts["source"],
+            )
+            facts["issued"] = facts["started"] + timedelta(milliseconds=1)
+            facts["expires"] = facts["started"] + timedelta(seconds=10)
+            # Reuse the canonical storage fixture INSERT, adapting only its named
+            # binds to this separately authenticated asyncpg connection.
+            keys = list(dict.fromkeys(re.findall(r"(?<!:):(\w+)", GRANT_INSERT.text)))
+            prepared = re.sub(
+                r"(?<!:):(\w+)",
+                lambda match: "$" + str(keys.index(match[1]) + 1),
+                GRANT_INSERT.text,
+            )
+            await conn.execute(prepared, *(facts[key] for key in keys))
+            await conn.execute(
+                "UPDATE executions SET status='Running',started_at=$2 WHERE id=$1",
+                facts["execution"],
+                facts["started"],
+            )
+            await conn.execute(
+                "UPDATE workflow_execution_attempts SET status='running',phase='execution',"
+                "started_at=$2,heartbeat_at=$2 WHERE id=$1",
+                facts["attempt"],
+                facts["started"],
+            )
+    return facts
+
+
+async def cancel_snapshot(facts):
+    async with connection("wex_core") as conn:
+        return await conn.fetchrow(
+            "SELECT e.status::text AS status,e.result::text AS result,"
+            "a.status AS attempt_status,a.completed_at,s.closed_at,s.close_reason,"
+            "g.revoked_at,g.revocation_reason FROM executions e "
+            "JOIN workflow_execution_attempts a ON a.execution_id=e.id "
+            "JOIN runtime_sessions s ON s.workflow_attempt_id=a.id "
+            "JOIN workflow_runtime_sdk_grants g ON g.runtime_session_id=s.id "
+            "WHERE e.id=$1 AND a.id=$2 AND s.id=$3 AND g.id=$4",
+            facts["execution"],
+            facts["attempt"],
+            facts["session"],
+            facts["grant"],
+        )
+
+
+async def test_rust_running_cancel_commits_projection_close_and_revoke_once(
+    running_cancel_facts, session_fence
+):
+    assert (
+        await probe(session_fence, operation="request-running-cancel")
+        == "cancel_committed"
+    )
+    first = await cancel_snapshot(running_cancel_facts)
+    assert first["status"] == "Cancelling"
+    assert first["attempt_status"] == "running"
+    assert first["completed_at"] is None
+    assert first["closed_at"] is not None
+    assert first["close_reason"] == "cancel_requested"
+    assert first["revoked_at"] is not None
+    assert first["revocation_reason"] == "session_closed"
+    assert (
+        await probe(session_fence, operation="request-running-cancel")
+        == "cancel_already_committed"
+    )
+    assert await cancel_snapshot(running_cancel_facts) == first
+    # A database cancellation decision is not process stop or final outcome.
+    assert first["status"] != "Cancelled"
+
+
+@pytest.mark.parametrize("field", range(10))
+async def test_rust_cancel_rejects_each_stale_identity_without_writes(
+    running_cancel_facts, session_fence, field
+):
+    before = await cancel_snapshot(running_cancel_facts)
+    stale = list(session_fence)
+    stale[field] = str(uuid4()) if field < 8 else "e" * 64
+    assert await probe(stale, operation="request-running-cancel") == "rejected"
+    assert await cancel_snapshot(running_cancel_facts) == before
+
+
+async def test_rust_cancel_rejects_incumbent_without_writes(
+    running_cancel_facts, session_fence
+):
+    before = await cancel_snapshot(running_cancel_facts)
+    assert (
+        await probe(session_fence, "wex_incumbent", "request-running-cancel")
+        == "rejected"
+    )
+    assert await cancel_snapshot(running_cancel_facts) == before
+
+
+async def test_rust_cancel_without_retained_start_has_no_projection(session_fence):
+    assert await probe(session_fence, operation="request-running-cancel") == "rejected"
+    async with connection("wex_core") as conn:
+        row = await conn.fetchrow(
+            "SELECT e.status::text,s.closed_at FROM executions e JOIN runtime_sessions s "
+            "ON s.execution_id=e.id WHERE s.id=$1",
+            UUID(session_fence[5]),
+        )
+        assert tuple(row) == ("Pending", None)
+
+
+async def test_rust_cancel_tail_contention_aborts_before_any_projection(
+    running_cancel_facts, session_fence
+):
+    before = await cancel_snapshot(running_cancel_facts)
+    async with connection("wex_core") as competing:
+        async with competing.transaction():
+            await competing.execute(
+                "SELECT id FROM workflow_runtime_sdk_grants WHERE id=$1 FOR UPDATE",
+                running_cancel_facts["grant"],
+            )
+            assert (
+                await probe(session_fence, operation="request-running-cancel")
+                == "lock_contention"
+            )
+    assert await cancel_snapshot(running_cancel_facts) == before
+
+
+async def test_rust_cancel_late_revoke_failure_rolls_back_all_projection(
+    db_session, running_cancel_facts, session_fence
+):
+    from sqlalchemy import text
+
+    # Actual PostgreSQL rejection after the Rust root/session updates, not an
+    # injected commit oracle. The custodian/test fixture owns this temporary DDL.
+    await db_session.execute(
+        text("""
+        CREATE FUNCTION isolated_cancel_revoke_fault() RETURNS trigger LANGUAGE plpgsql AS $body$
+        BEGIN RAISE EXCEPTION 'synthetic revoke fault' USING ERRCODE='42501'; END $body$
+    """)
+    )
+    await db_session.execute(
+        text("""
+        CREATE TRIGGER isolated_cancel_revoke_fault BEFORE UPDATE ON workflow_runtime_sdk_grants
+        FOR EACH ROW EXECUTE FUNCTION isolated_cancel_revoke_fault()
+    """)
+    )
+    await db_session.commit()
+    try:
+        before = await cancel_snapshot(running_cancel_facts)
+        assert (
+            await probe(session_fence, operation="request-running-cancel")
+            == "database_failure"
+        )
+        assert await cancel_snapshot(running_cancel_facts) == before
+    finally:
+        await db_session.execute(
+            text(
+                "DROP TRIGGER isolated_cancel_revoke_fault ON workflow_runtime_sdk_grants"
+            )
+        )
+        await db_session.execute(text("DROP FUNCTION isolated_cancel_revoke_fault()"))
+        await db_session.commit()
+
+
+async def test_rust_cancel_preserves_committed_success(
+    running_cancel_facts, session_fence
+):
+    async with connection("wex_core") as conn:
+        async with conn.transaction():
+            await conn.execute(
+                "UPDATE executions SET status='Success',result='{}',completed_at=clock_timestamp() WHERE id=$1",
+                running_cancel_facts["execution"],
+            )
+            await conn.execute(
+                "UPDATE workflow_execution_attempts SET status='succeeded',phase='terminal',"
+                "completed_at=clock_timestamp() WHERE id=$1",
+                running_cancel_facts["attempt"],
+            )
+    before = await cancel_snapshot(running_cancel_facts)
+    assert await probe(session_fence, operation="request-running-cancel") == "rejected"
+    assert await cancel_snapshot(running_cancel_facts) == before
+
+
+async def test_rust_cancel_rejects_inconsistent_winning_receipt(
+    running_cancel_facts, session_fence
+):
+    async with connection("wex_core") as conn:
+        await conn.execute(
+            "INSERT INTO runtime_report_receipts "
+            "(session_id,result_message_id,committed_start_id,start_message_id,"
+            "raw_result_payload,result_sha256,decision_id,disposition,winner) "
+            "VALUES ($1,$2,$3,$4,$5,encode(sha256($5),'hex'),$6,'accepted','result')",
+            running_cancel_facts["session"],
+            uuid4(),
+            running_cancel_facts["start"],
+            running_cancel_facts["start_message"],
+            b"{}",
+            uuid4(),
+        )
+    before = await cancel_snapshot(running_cancel_facts)
+    assert await probe(session_fence, operation="request-running-cancel") == "rejected"
+    assert await cancel_snapshot(running_cancel_facts) == before
+
+
+async def test_sqlx_default_startup_option_is_rejected_without_pool_policy_bypass(
+    session_fence,
+):
+    assert (
+        await probe(session_fence, default_float_digits=True)
+        == "startup_parameter_rejected"
+    )
+    assert await probe(session_fence) == "open"
