@@ -21,6 +21,8 @@ def mutation_context(monkeypatch):
     ctx = MagicMock()
     ctx.user.email = "admin@example.com"
     ctx.user.user_id = UUID("33333333-3333-3333-3333-333333333333")
+    ctx.user.is_engine_token = False
+    ctx.user.engine_solution_id = None
 
     monkeypatch.setattr(files, "_resolve_effective_scope", lambda *_args: str(SOLUTION_ID))
     monkeypatch.setattr(files, "_ctx_solution_id", lambda *_args: SOLUTION_ID)
@@ -91,3 +93,32 @@ async def test_cloud_delete_commits_metadata_before_publishing(monkeypatch, muta
     )
 
     assert events == ["delete", "metadata", "commit", "publish"]
+
+
+@pytest.mark.asyncio
+async def test_write_rejects_changed_version_before_write(monkeypatch, mutation_context):
+    from types import SimpleNamespace
+    from fastapi import HTTPException
+    backend = MagicMock(write=AsyncMock())
+    monkeypatch.setattr(files, "get_backend", lambda *_args: backend)
+    monkeypatch.setattr(files, "_get_file_stat", AsyncMock(return_value=SimpleNamespace(
+        exists=True, version="v2", last_modified=None, updated_by="another-writer")))
+    with pytest.raises(HTTPException) as exc:
+        await files.write_file(files.FileWriteRequest(path="a.txt", content="hi",
+            location="reports", expected_version="v1"), mutation_context, MagicMock(), AsyncMock())
+    assert exc.value.status_code == 409
+    assert exc.value.detail["reason"] == "version_conflict"
+    backend.write.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_delete_missing_file_maps_to_404(monkeypatch, mutation_context):
+    from fastapi import HTTPException
+    backend = MagicMock(delete=AsyncMock(side_effect=FileNotFoundError("File not found: a.txt")))
+    monkeypatch.setattr(files, "get_backend", lambda *_args: backend)
+    db = AsyncMock()
+    with pytest.raises(HTTPException) as exc:
+        await files.delete_file(files.FileDeleteRequest(path="a.txt", location="reports"),
+            mutation_context, MagicMock(), db)
+    assert exc.value.status_code == 404
+    db.commit.assert_not_awaited()

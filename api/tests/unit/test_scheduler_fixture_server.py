@@ -6,7 +6,6 @@ from urllib.request import Request, urlopen
 
 from openai.types.chat import ChatCompletion
 from openai.types.chat.chat_completion_chunk import ChatCompletionChunk
-
 from scripts.scheduler_fixture_server import (
     FixtureHandler,
     chat_completion_payload,
@@ -117,3 +116,35 @@ def test_chat_completion_stream_contract_is_openai_compatible_sse() -> None:
         "completion_tokens": 1,
         "total_tokens": 2,
     }
+
+
+def test_fixture_http_json_and_sse_escape_reflected_html_without_changing_values() -> None:
+    server = ThreadingHTTPServer(("127.0.0.1", 0), FixtureHandler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    model = "<script>alert(1)</script>&fixture"
+    try:
+        for streaming in (False, True):
+            request = Request(
+                f"http://127.0.0.1:{server.server_port}/v1/chat/completions",
+                data=json.dumps({"model": model, "stream": streaming}).encode(),
+                headers={"Content-Type": "application/json"}, method="POST",
+            )
+            with urlopen(request, timeout=5) as response:
+                body = response.read().decode()
+                assert response.headers["X-Content-Type-Options"] == "nosniff"
+                assert "<script>" not in body
+                assert "&fixture" not in body
+                if streaming:
+                    assert response.headers["Content-Type"] == "text/event-stream"
+                    frames = [frame for frame in body.split("\n\n") if frame]
+                    assert frames[-1] == "data: [DONE]"
+                    values = [json.loads(frame.removeprefix("data: ")) for frame in frames[:-1]]
+                    assert all(value["model"] == model for value in values)
+                else:
+                    assert response.headers["Content-Type"] == "application/json"
+                    assert json.loads(body)["model"] == model
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)

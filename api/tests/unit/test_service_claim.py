@@ -6,7 +6,11 @@ ready drain, stop mirror, token rotation), completion mapping, fencing,
 capacity, the org gate, and shutdown handover.
 """
 
+import asyncio
+import time
+import json
 from contextlib import asynccontextmanager
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
@@ -169,6 +173,32 @@ def _loop(pool, **overrides):
     return ServiceClaimLoop(**args)
 
 
+async def _tick_until_routed(loop, pool, definition, timeout=30.0):
+    """Tick until this loop's own claim reaches the route mock.
+
+    The shared test stack runs a real worker whose claim loop polls the
+    same database every few seconds. If it claims our service first, our
+    tick finds nothing eligible and routes nothing; the worker's attempt
+    then fails fast (the test workflow file does not exist) and the
+    service becomes eligible again after ~1s backoff. Wait for OUR route
+    call, matched on our service id, instead of assuming the first tick
+    wins the claim race.
+    """
+    deadline = time.monotonic() + timeout
+    while True:
+        await loop.tick()
+        for call in pool.route_service.await_args_list:
+            kwargs = call.kwargs
+            if kwargs.get("service_id") == str(definition.id):
+                return kwargs
+        if time.monotonic() >= deadline:
+            raise AssertionError(
+                f"in-process loop never routed service {definition.id} "
+                f"within {timeout}s"
+            )
+        await asyncio.sleep(0.2)
+
+
 async def test_tick_claims_and_routes_with_service_context(
     db_session, redis_holder
 ):
@@ -177,10 +207,9 @@ async def test_tick_claims_and_routes_with_service_context(
     pool = StubPool()
     loop = _loop(pool)
 
-    await loop.tick()
+    kwargs = await _tick_until_routed(loop, pool, definition)
 
     pool.route_service.assert_awaited_once()
-    kwargs = pool.route_service.await_args.kwargs
     assert kwargs["service_id"] == str(definition.id)
     context = kwargs["context"]
     assert context["function_name"] == wf.function_name
@@ -211,7 +240,9 @@ async def test_tick_skips_when_pool_full(db_session):
 
     pool.route_service.assert_not_awaited()
     live = await service_lifecycle.get_live_attempt(db_session, definition.id)
-    assert live is None
+    # A live row owned by the stack worker (which polls the same DB) still
+    # proves our full pool claimed nothing: our worker id never owns it.
+    assert live is None or live.worker_id != "worker-1"
 
 
 async def test_beat_renews_lease_and_rotates_token(db_session, redis_holder):
@@ -221,8 +252,8 @@ async def test_beat_renews_lease_and_rotates_token(db_session, redis_holder):
     await db_session.commit()
     pool = StubPool()
     loop = _loop(pool)
-    await loop.tick()
-    attempt_id = pool.route_service.await_args.kwargs["attempt_id"]
+    kwargs = await _tick_until_routed(loop, pool, definition)
+    attempt_id = kwargs["attempt_id"]
     before = (
         await db_session.get(ServiceAttempt, attempt_id)
     ).lease_expires_at
@@ -237,13 +268,49 @@ async def test_beat_renews_lease_and_rotates_token(db_session, redis_holder):
     assert after > before
 
 
+async def test_solution_service_rotation_keeps_current_workspace_scope(redis_holder):
+    from src.core.security import decode_token
+    from src.models.orm.solutions import Solution
+
+    service_id = uuid4()
+    attempt_id = uuid4()
+    solution_id = uuid4()
+    definition = SimpleNamespace(organization_id=uuid4(), solution_id=solution_id)
+    solution = SimpleNamespace(status="active", allow_outbound_access=True)
+    db = AsyncMock()
+    db.get.return_value = solution
+    owned = OwnedAttempt(
+        attempt_id=attempt_id, service_id=service_id, lease_token="lease"
+    )
+    loop = _loop(StubPool())
+
+    await loop._rotate_token(db, owned, definition)
+    token = json.loads(
+        redis_holder["redis"].values[service_token_key(str(attempt_id))]
+    )["token"]
+    claims = decode_token(token, expected_type="access")
+    assert claims["engine_solution_id"] == str(solution_id)
+    assert claims["engine_global_repo_access"] is True
+    db.get.assert_awaited_with(Solution, solution_id)
+
+    solution.allow_outbound_access = False
+    await loop._rotate_token(db, owned, definition)
+    token = json.loads(
+        redis_holder["redis"].values[service_token_key(str(attempt_id))]
+    )["token"]
+    assert (
+        decode_token(token, expected_type="access")["engine_global_repo_access"]
+        is False
+    )
+
+
 async def test_ready_drain_marks_attempt_running(db_session, redis_holder):
-    await _ensure_service(db_session)
+    definition, _, _ = await _ensure_service(db_session)
     await db_session.commit()
     pool = StubPool()
     loop = _loop(pool)
-    await loop.tick()
-    attempt_id = pool.route_service.await_args.kwargs["attempt_id"]
+    kwargs = await _tick_until_routed(loop, pool, definition)
+    attempt_id = kwargs["attempt_id"]
     redis_holder["redis"].values[service_ready_key(attempt_id)] = "1"
 
     loop._last_beat = 0
@@ -261,8 +328,8 @@ async def test_stop_mirror_notifies_child_once(db_session, redis_holder):
     await db_session.commit()
     pool = StubPool()
     loop = _loop(pool)
-    await loop.tick()
-    attempt_id = pool.route_service.await_args.kwargs["attempt_id"]
+    kwargs = await _tick_until_routed(loop, pool, definition)
+    attempt_id = kwargs["attempt_id"]
 
     await service_lifecycle.stop_service(db_session, definition)
     await db_session.commit()
@@ -280,8 +347,7 @@ async def test_success_completes_clean_return(db_session):
     await db_session.commit()
     pool = StubPool()
     loop = _loop(pool)
-    await loop.tick()
-    kwargs = pool.route_service.await_args.kwargs
+    kwargs = await _tick_until_routed(loop, pool, definition)
 
     await loop.handle_service_result({
         "success": True,
@@ -309,8 +375,7 @@ async def test_stop_requested_completes_without_failure_accounting(db_session):
     await db_session.commit()
     pool = StubPool()
     loop = _loop(pool)
-    await loop.tick()
-    kwargs = pool.route_service.await_args.kwargs
+    kwargs = await _tick_until_routed(loop, pool, definition)
 
     await service_lifecycle.stop_service(db_session, definition)
     await db_session.commit()
@@ -332,12 +397,11 @@ async def test_stop_requested_completes_without_failure_accounting(db_session):
 
 
 async def test_stale_child_result_is_dropped(db_session):
-    await _ensure_service(db_session)
+    definition, _, _ = await _ensure_service(db_session)
     await db_session.commit()
     pool = StubPool()
     loop = _loop(pool)
-    await loop.tick()
-    kwargs = pool.route_service.await_args.kwargs
+    kwargs = await _tick_until_routed(loop, pool, definition)
 
     await loop.handle_service_result({
         "success": False,
@@ -361,8 +425,7 @@ async def test_recycled_completion_restarts_without_failure(db_session):
     await db_session.commit()
     pool = StubPool()
     loop = _loop(pool)
-    await loop.tick()
-    kwargs = pool.route_service.await_args.kwargs
+    kwargs = await _tick_until_routed(loop, pool, definition)
 
     await loop.handle_service_result({
         "success": False,
@@ -403,7 +466,7 @@ async def test_instant_child_outcome_completes_claimed_attempt(db_session):
     """A fast result must observe the committed claim (commit-before-fork)."""
     from src.models.orm.services import ServiceAttempt
 
-    await _ensure_service(db_session)
+    definition, _, _ = await _ensure_service(db_session)
     await db_session.commit()
     pool = StubPool()
     loop = _loop(pool)
@@ -422,15 +485,15 @@ async def test_instant_child_outcome_completes_claimed_attempt(db_session):
         })
 
     pool.route_service.side_effect = _instant_route
-    await loop.tick()
+    kwargs = await _tick_until_routed(loop, pool, definition)
 
-    # Find the claimed attempt through a fresh read.
-    from sqlalchemy import select as sa_select
-
-    rows = (await db_session.execute(sa_select(ServiceAttempt))).scalars().all()
-    assert len(rows) == 1
-    assert rows[0].state == "failed"
-    assert rows[0].error == "boom"
+    # Read back our own attempt: the stack worker may have left a terminal
+    # row for this service on a lost claim race, so never count all rows.
+    attempt = await db_session.get(ServiceAttempt, kwargs["attempt_id"])
+    assert attempt is not None
+    assert attempt.service_id == definition.id
+    assert attempt.state == "failed"
+    assert attempt.error == "boom"
 
 
 async def test_route_failure_completes_without_accounting(db_session):
@@ -442,14 +505,15 @@ async def test_route_failure_completes_without_accounting(db_session):
     pool = StubPool()
     pool.route_service.side_effect = RuntimeError("no fork today")
     loop = _loop(pool)
-    await loop.tick()
+    kwargs = await _tick_until_routed(loop, pool, definition)
 
-    from sqlalchemy import select as sa_select
-
-    rows = (await db_session.execute(sa_select(ServiceAttempt))).scalars().all()
-    assert len(rows) == 1
-    assert rows[0].state == "stopped"
-    assert rows[0].exit_reason == "route_failed"
+    # Read back our own attempt: the stack worker may have left a terminal
+    # row for this service on a lost claim race, so never count all rows.
+    attempt = await db_session.get(ServiceAttempt, kwargs["attempt_id"])
+    assert attempt is not None
+    assert attempt.service_id == definition.id
+    assert attempt.state == "stopped"
+    assert attempt.exit_reason == "route_failed"
     await db_session.refresh(definition)
     assert definition.blocked_reason is None
 
@@ -465,8 +529,8 @@ async def test_startup_grace_breach_fails_unready_attempt(db_session):
     await db_session.commit()
     pool = StubPool()
     loop = _loop(pool)
-    await loop.tick()
-    attempt_id = pool.route_service.await_args.kwargs["attempt_id"]
+    kwargs = await _tick_until_routed(loop, pool, definition)
+    attempt_id = kwargs["attempt_id"]
 
     # Age the attempt past its grace without a ready report.
     attempt = await db_session.get(ServiceAttempt, attempt_id)

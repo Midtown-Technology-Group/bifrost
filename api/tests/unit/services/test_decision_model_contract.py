@@ -6,7 +6,7 @@ no customer data). The next child building the BiFrost integration should
 read this file as the tested contract; live TypeSafe checks remain opt-in
 and are NOT covered here (no ``TYPESAFE_API_KEY`` in CI).
 
-Verified against ``pydantic-ai-slim[typesafe]==2.51.0`` (``DecisionModel`` /
+Verified against ``pydantic-ai-slim[typesafe]==2.53.0`` (``DecisionModel`` /
 ``TypeSafeModel`` shipped in 2.45.0; ``typesafe`` extra pulls
 ``typesafe-sdk>=0.6.0``).
 """

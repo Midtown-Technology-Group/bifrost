@@ -53,25 +53,18 @@ def _assert_compatible_replay(
     request: WorkspaceSourceReleaseDeclareRequest,
     paths: dict[str, str | None],
 ) -> None:
-    existing_solution_obligations = [
-        solution_deploy_obligation_declaration(item).model_dump(
-            mode="json", exclude_none=True
-        )
-        for item in record.solution_deploy_obligations
-    ]
-    requested_solution_obligations = [
-        item.model_dump(mode="json", exclude_none=True)
-        for item in (request.solution_deploy_obligations or [])
-    ]
+    # Operational status can change and return to its original value. Only a
+    # retained digest binds the original reason and Solution obligations.
+    digest = record.declaration_digest or record.producer_declaration_digest
     if (
-        record.source_tree_sha != request.source_tree_sha
+        digest is None
+        or digest != source_release_declaration_digest(request)
+        or record.source_tree_sha != request.source_tree_sha
         or dict(record.paths or {}) != paths
         or record.declared_disposition != request.disposition
-        or record.reason != request.reason
-        or existing_solution_obligations != requested_solution_obligations
     ):
         raise WorkspaceSourceReleaseConflict(
-            "source commit already has different release accountability evidence"
+            "source commit has different or unproven release accountability evidence"
         )
 
 
@@ -197,6 +190,9 @@ class WorkspaceSourceReleaseService:
         )
         if existing is not None:
             _assert_compatible_replay(existing, request, paths)
+            if await self._reconcile_solution_delivery(existing.id):
+                await self.db.refresh(existing)
+                await self.db.refresh(existing, attribute_names=["solution_deploy_obligations"])
             return source_release_response(existing)
 
         now = _utc_now()
@@ -226,6 +222,7 @@ class WorkspaceSourceReleaseService:
             producer_declaration_digest=(
                 producer.declaration_digest if producer is not None else None
             ),
+            declaration_digest=source_release_declaration_digest(request),
             producer_actor=(producer.actor if producer is not None else None),
             producer_actor_id=(producer.actor_id if producer is not None else None),
             disposition=disposition,
@@ -262,9 +259,29 @@ class WorkspaceSourceReleaseService:
             if existing is None:
                 raise
             _assert_compatible_replay(existing, request, paths)
+            if await self._reconcile_solution_delivery(existing.id):
+                await self.db.refresh(existing)
+                await self.db.refresh(existing, attribute_names=["solution_deploy_obligations"])
             return source_release_response(existing)
+        await self._reconcile_solution_delivery(record.id)
+        # A bounded accounting fence may roll back and expire the caller's
+        # committed declaration. Reload scalars before synchronous DTO access.
+        await self.db.refresh(record)
         await self.db.refresh(record, attribute_names=["solution_deploy_obligations"])
         return source_release_response(record, now=now)
+
+    async def _reconcile_solution_delivery(self, source_release_id: UUID) -> bool:
+        from src.config import get_settings
+        settings = get_settings()
+        if (settings.solution_git_delivery_policy is None
+                and getattr(settings, "solution_package_git_delivery_policy", None) is None):
+            return False
+        from src.services.solution_source_accountability import reconcile_solution_owned_source
+        from src.services.solutions.native_authored_accounting import reconcile_native_solution_deploy_obligations
+        await reconcile_native_solution_deploy_obligations(self.db, source_release_id=source_release_id)
+        await reconcile_solution_owned_source(self.db, source_release_id=source_release_id)
+        await self.db.commit()
+        return True
 
     async def set_manual_disposition(
         self,
@@ -274,6 +291,12 @@ class WorkspaceSourceReleaseService:
         reason: str,
         supersession_evidence: WorkspaceSourceSupersessionEvidence | None = None,
     ) -> WorkspaceSourceReleaseResponse:
+        if disposition == "superseded":
+            # Supersession inspects Solution pointers after its source row.
+            # Serialize with the aggregate accounting fence before either row
+            # set, preventing Source -> Solution / Solution -> Source deadlock.
+            from src.services.workspace_release_projection import acquire_workspace_release_lock
+            await acquire_workspace_release_lock(self.db, None)
         record = await self._get(record_id, for_update=True)
         if record is None:
             raise KeyError(record_id)
@@ -337,6 +360,8 @@ class WorkspaceSourceReleaseService:
                     not in {
                         "bifrost.workspace-live-handoff/v1",
                         "bifrost.solution-source-revision/v1",
+                        "bifrost.repo-workflow-adoption/v1",
+                        "bifrost.solution-workflow-revision/v1",
                     }
                 ):
                     raise WorkspaceSourceReleaseConflict(
@@ -702,6 +727,10 @@ async def sweep_overdue_workspace_releases(
 ) -> dict[str, list[str]]:
     """Turn missed source and history deadlines into durable attention state."""
     now = now or _utc_now()
+    from src.services.solution_source_accountability import reconcile_solution_owned_source
+    from src.services.solutions.native_authored_accounting import reconcile_native_solution_deploy_obligations
+    await reconcile_native_solution_deploy_obligations(db)
+    await reconcile_solution_owned_source(db)
     # Projection takes the Live release row before source-accountability rows.
     # Keep the scheduler in the same order so the two transactions cannot
     # deadlock while a history lock completes at the attention deadline.

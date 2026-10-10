@@ -4,14 +4,16 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
+from bifrost.solution_delivery_review import ReviewedWorkflowRecipe, require_shared_table_bindings
+from bifrost.root_file_bindings import RootFileBinding, require_root_file_bindings
 from pydantic import BaseModel, ConfigDict, Field, model_validator
-from bifrost.solution_delivery_review import ReviewedWorkflowRecipe
 
 from src.services.solutions.deployment_manifest import (
     CompiledDeploymentManifest,
     DeploymentResolutionMap,
     SharedRootTableBinding,
 )
+from src.models.contracts.platform_jobs import PlatformJobPublic
 
 
 class SolutionDeploymentCreate(BaseModel):
@@ -43,7 +45,17 @@ class SolutionGitSourceDeliveryRequest(BaseModel):
     artifact_digest: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
 
 
+class SolutionPackageRecoveryResponse(BaseModel):
+    """An object envelope even when there is no older intent to reconcile."""
+
+    model_config = ConfigDict(extra="forbid")
+    schema_version: Literal["bifrost.solution-package-recovery/v1"] = "bifrost.solution-package-recovery/v1"
+    job: PlatformJobPublic | None
+
+
 class SolutionGitSourceDeliveryResponse(BaseModel):
+    # Runtime activation is distinct from complete authored Source delivery.
+    authored_source_state: Literal["unmapped", "verified", "attention_required"] = "unmapped"
     state: Literal["active", "already_active"]
     solution_id: UUID
     deployment_id: UUID
@@ -121,13 +133,14 @@ class WorkspaceLiveHandoffPreflightRequest(BaseModel):
     expected_active_deployment_id: UUID | None
     workflow_ids: list[UUID] = Field(min_length=1, max_length=100)
     shared_tables: dict[str, SharedRootTableBinding] = Field(default_factory=dict, max_length=50)
+    root_file_bindings: dict[str, RootFileBinding] = Field(default_factory=dict, max_length=100)
 
     @model_validator(mode="after")
     def unique_workflows(self):
+        require_root_file_bindings(self.root_file_bindings)
         if len(self.workflow_ids) != len(set(self.workflow_ids)):
             raise ValueError("workflow IDs must be unique")
-        if len({item.table_id for item in self.shared_tables.values()}) != len(self.shared_tables):
-            raise ValueError("shared table IDs must be unique")
+        require_shared_table_bindings(self.shared_tables)
         return self
 
 
@@ -146,6 +159,7 @@ class WorkspaceLiveHandoffPreflightResponse(BaseModel):
     workflow_ids: list[UUID]
     verified_source_paths: list[str]
     verified_shared_tables: dict[str, SharedRootTableBinding] = Field(default_factory=dict)
+    verified_root_file_bindings: dict[str, RootFileBinding] = Field(default_factory=dict)
     expected_active_deployment_id: UUID | None
     evidence_id: str
 
@@ -220,3 +234,43 @@ class SolutionWorkflowRevisionInspectRequest(SolutionSourceRevisionInspectReques
 
 class SolutionWorkflowRevisionCommitRequest(SolutionSourceRevisionCommitRequest):
     reviewed_recipe: ReviewedWorkflowRecipe
+
+
+class InitialWorkflowInstallRequest(BaseModel):
+    """Reviewed source closure for the first immutable workflow install."""
+
+    model_config = ConfigDict(extra="forbid")
+    source_commit_sha: str = Field(pattern=r"^[0-9a-f]{40}$")
+    reviewed_recipe: ReviewedWorkflowRecipe
+    files: list[SolutionSourceFile] = Field(min_length=1, max_length=256)
+    resources: list[SolutionSourceFile] = Field(default_factory=list, max_length=256)
+
+
+class InitialWorkflowInstallInspectRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    reviewed_recipe: ReviewedWorkflowRecipe
+
+
+class InitialWorkflowInstallCommitRequest(InitialWorkflowInstallInspectRequest):
+    expected_evidence_id: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+
+
+class InitialWorkflowInstallInspectResponse(BaseModel):
+    solution_id: UUID
+    deployment_id: UUID
+    organization_id: UUID | None
+    source_commit_sha: str
+    workflow_ids: list[UUID]
+    source_hashes: dict[str, str]
+    evidence_id: str
+    state: str
+
+
+class RepoWorkflowAdoptionInspectResponse(InitialWorkflowInstallInspectResponse):
+    """Independent mutable baseline and accepted work for legacy adoption."""
+
+    legacy_source_hashes: dict[str, str]
+    installed_control_digest: str
+    retained_inactive_workflow_ids: list[UUID]
+    accepted_execution_ids: list[UUID]
+    accepted_work_exceeds_limit: bool

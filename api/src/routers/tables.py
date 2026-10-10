@@ -20,6 +20,7 @@ from sqlalchemy import String, bindparam, cast, false, func, literal_column, sel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import ColumnElement
 
+from src.services.operation_catalog import operation_route
 from shared.claims.preresolve import preresolve_for_policies
 from shared.claims.registry import referenced_claim_names
 from shared.policies.probe import (
@@ -706,7 +707,9 @@ async def get_table_or_404(
         SharedTableBindingError, resolve_execution_shared_table,
     )
     try:
-        bound = await resolve_execution_shared_table(ctx, name_or_id)
+        bound = await resolve_execution_shared_table(
+            ctx, name_or_id, organization_id=target_org_id, explicit_scope=scope is not None,
+        )
     except SharedTableBindingError as exc:
         raise HTTPException(status_code=404, detail=f"Table '{name_or_id}' not found") from exc
     if bound is not None:
@@ -841,6 +844,7 @@ async def _assert_explicit_scope_targets_table(
     response_model=TablePublic,
     status_code=status.HTTP_201_CREATED,
     summary="Create a table",
+    **operation_route("tables.create"),
 )
 async def create_table(
     data: TableCreate,
@@ -888,6 +892,7 @@ async def create_table(
     "",
     response_model=TableListResponse,
     summary="List tables",
+    **operation_route("tables.list"),
 )
 async def list_tables(
     ctx: Context,
@@ -1091,6 +1096,7 @@ async def validate_policies(
     "/{table_id}",
     response_model=TablePublic,
     summary="Get table metadata",
+    **operation_route("tables.get"),
 )
 async def get_table(
     table_id: UUID,
@@ -1112,6 +1118,7 @@ async def get_table(
     "/{table_id}",
     response_model=TablePublic,
     summary="Update table",
+    **operation_route("tables.update"),
 )
 async def update_table(
     table_id: UUID,
@@ -1176,6 +1183,7 @@ async def update_table(
     "/{table_id}",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Delete table",
+    **operation_route("tables.delete"),
 )
 async def delete_table(
     table_id: UUID,
@@ -1474,6 +1482,7 @@ async def update_document(
     response_model=DocumentPublic,
     summary="Update a document only at the reviewed revision",
     responses={409: {"model": DocumentConflictResponse, "description": "Document changed; read back before retrying"}},
+    **operation_route("tables.update_document_conditional"),
 )
 async def update_document_conditional(
     table_id: str,

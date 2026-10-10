@@ -171,9 +171,9 @@ annotated-types==0.7.0 \
     --hash=sha256:1f02e8b43a8fbbc3f3e0d4f0f4bfc8131bcb4eebe8849b8e5c773f3a1c582a53 \
     --hash=sha256:aff07c09a53a08bc8cfccb9c85b05f1aa9a2a6f23728d790723543408344ce89
     # via pydantic
-anthropic==1.9.0 \
-    --hash=sha256:a7fe05a9e4b72113b934501698df5d56484ac89f05677f0f793f8bfddb15cfff \
-    --hash=sha256:da5191a0af0b853a797fc0c6b09fc5b05cb5d9da063ba80fdd03c736abe81b6c
+anthropic==1.13.0 \
+    --hash=sha256:157bd74dbf6a595cf9e5fcac557c791fd297924dc48261f57470c2ed6f4e6671 \
+    --hash=sha256:ad11d9bb9adafdfea26113943bcde9973e2a439ebeeda6c89ff3e3d85bb2f5c1
     # via pydantic-ai-slim
 anyio==4.14.2 \
     --hash=sha256:9f505dda5ac9f0c8309b5e8bd445a8c2bf7246f3ce950121e45ea15bc41d1494 \
@@ -1070,9 +1070,9 @@ frozenlist==1.8.0 \
     # via
     #   aiohttp
     #   aiosignal
-genai-prices==0.1.9 \
-    --hash=sha256:20ec774d32ec5d345510877fac415f2560bbfeb081bc4cd4e7ebce57a5503e8d \
-    --hash=sha256:3da8faa0a126e4df7be36696b90abe2be1fea8826bfcf45d39d91bc397fa9d1d
+genai-prices==0.1.10 \
+    --hash=sha256:1f0eb9ff0b02f3a40b3aa590098fbc3bfc9e08ef124fa0bd132e9d899a6fec88 \
+    --hash=sha256:889ba486497f8a85e9dd0e9228a27f2e135e31a850e96924b880f22c132092ac
     # via
     #   pydantic-ai-harness
     #   pydantic-ai-slim
@@ -1088,9 +1088,9 @@ google-auth[requests]==2.56.3 \
     --hash=sha256:40e229fc901f0a305b553050e5fce562d509bee0435be053abfa91582b51b90c \
     --hash=sha256:8ec438808f813ad034535000261eed1067475d229d05bbf4216e78c3f2362e53
     # via google-genai
-google-genai==2.25.0 \
-    --hash=sha256:2e8f3a5f76ed00d5ffc3153f6089bc7d3511054eed53ad9cfc6095a7dc59b028 \
-    --hash=sha256:ab603baa5eee0205926ad0f8d7f93e0400df6d67650e99c33e01ab228ea16ad6
+google-genai==2.29.0 \
+    --hash=sha256:124d3eef9ff6b9e4ea548f95ff5b7721683e7990c0a936b006d9e2ab61ea897d \
+    --hash=sha256:7adda55cb6746fb46d38ad3202c3372840b96eede964b5fb3df1469cd4998570
     # via pydantic-ai-slim
 googleapis-common-protos==1.75.1 \
     --hash=sha256:28a1934bcd33b9c9da66ac301a0a4227e3367f095a17d0375cb98f0a09d93b79 \
@@ -1561,9 +1561,9 @@ joserfc==1.7.4 \
     #   authlib
     #   bifrost-api (pyproject.toml)
     #   fastmcp-slim
-json-repair==0.63.5 \
-    --hash=sha256:0e39b3066f7829b4bd7fc614e463cfd4ff7a4c46f82f5b65431fc11e29a74c81 \
-    --hash=sha256:75a6a1a4ea954935dd3fb69b6e49ac0e3e3d69b4290127a0c8d37af93b709f3a
+json-repair==0.64.0 \
+    --hash=sha256:2890be942a7ef20626e4eda4bd91b37485bc5271ac122efe7bb924232fef60ea \
+    --hash=sha256:3bf14cf14d8ae96f7bc467e6964d8accd52aaad084f973e38ebe4e43f9d051e4
     # via pydantic-ai-harness
 jsonref==1.1.0 \
     --hash=sha256:32fe8e1d85af0fdefbebce950af85590b22b60f9e95443176adbde4e1ecea552 \
@@ -2168,9 +2168,9 @@ numpy==2.4.4 \
     --hash=sha256:fbc356aae7adf9e6336d336b9c8111d390a05df88f1805573ebb0807bd06fd1d \
     --hash=sha256:fcfe2045fd2e8f3cb0ce9d4ba6dba6333b8fa05bb8a4939c908cd43322d14c7e
     # via pgvector
-openai==3.20.0 \
-    --hash=sha256:5e5dc0a3c0a9362e69cd35a65d04580a73a66eb39d5abeb78881b6190ca5d98c \
-    --hash=sha256:fb1b109e3423ed51c6ade96bbb0fffddae39c8e64bb9b6e501659bcbaa5ad30c
+openai==3.28.0 \
+    --hash=sha256:1ea40a084ffe2f9f16fd3bea6e870f757853b536b18d8e737c518ef849a2920c \
+    --hash=sha256:cf0509d32d7bd8eb6a3db02417957cb455212b6629d071826b9ea1f61659e2a4
     # via pydantic-ai-slim
 openapi-pydantic==0.5.1 \
     --hash=sha256:a3a09ef4586f5bd760a8df7f43028b60cafb6d9f61de2acba9574766255ab146 \
@@ -2221,6 +2221,7 @@ packaging==26.2 \
     #   bifrost-api (pyproject.toml)
     #   fastmcp-slim
     #   pytest
+    #   typesafe-sdk
 pamqp==3.3.0 \
     --hash=sha256:40b8795bd4efcf2b0f8821c1de83d12ca16d5760f4507836267fd7a02b06763b \
     --hash=sha256:c901a684794157ae39b52cbf700db8c9aae7a470f13528b9d7b4e5f7202f8eb0
@@ -2549,9 +2550,9 @@ pydantic-ai-harness==0.36.0 \
     --hash=sha256:1b89e033bd02346276ec4c2562fa00be1316f0406005a60829172a279e218f86 \
     --hash=sha256:242df9da8d229cadaffe93a7444ecf6ab1a52567ffb977e0efb40bac5c047663
     # via bifrost-api (pyproject.toml)
-pydantic-ai-slim[anthropic,google,openai,retries,typesafe]==2.51.0 \
-    --hash=sha256:3d88112514a75d84ec85414a3001317d3ed53d4cc2f9d9f39f6096178f98b00e \
-    --hash=sha256:e2adf6adec72326fab7088640f27c749a969738bfd5b5b068bc4de21b965af00
+pydantic-ai-slim[anthropic,google,openai,retries,typesafe]==2.53.0 \
+    --hash=sha256:37539693ff944dca2ee1ad30ad3c2b5c8adfdb9f54808767098dbc5410130a9b \
+    --hash=sha256:979fb5553cc32baf9f3aaeff7a83c19d6ce6d19c0284f5cd54087bc9870b2522
     # via
     #   bifrost-api (pyproject.toml)
     #   pydantic-ai-harness
@@ -2679,9 +2680,9 @@ pydantic-core==2.46.3 \
     # via
     #   pydantic
     #   typesafe-sdk
-pydantic-graph==2.51.0 \
-    --hash=sha256:38ccf69d931e1bf7a719cb380224af1d66064bac050219eee83287cec4b0309f \
-    --hash=sha256:5208f8a91e71c6c81b932a255495e56253fb86e154c16fa3c0ea3885441a271f
+pydantic-graph==2.53.0 \
+    --hash=sha256:28f05d5f66f5f6b11ef8f1c263f93781271b3af77ef3b313cc51b88a2e33445a \
+    --hash=sha256:48d70fd7affe15f33773a74b9657ab9442569725d9e67263ac3a3b95de89f714
     # via pydantic-ai-slim
 pydantic-settings==2.14.0 \
     --hash=sha256:24285fd4b0e0c06507dd9fdfd331ee23794305352aaec8fc4eb92d4047aeb67d \
@@ -3365,6 +3366,7 @@ truststore==0.10.4 \
     # via
     #   httpcore2
     #   httpx2
+    #   typesafe-sdk
 types-aiobotocore[s3]==3.5.0 \
     --hash=sha256:7c75ff73c10098d1d885e5b061f05945afdc4e9d0d5b573274292c329abe8a62 \
     --hash=sha256:8636c9e5a9837d41e45264570349d98c0cdad51fe7961ee19664a11094bb2262
@@ -3377,9 +3379,9 @@ types-awscrt==0.31.3 \
     --hash=sha256:09d3eaf00231e0f47e101bd9867e430873bc57040050e2a3bd8305cb4fc30865 \
     --hash=sha256:e5ce65a00a2ab4f35eacc1e3d700d792338d56e4823ee7b4dbe017f94cfc4458
     # via botocore-stubs
-typesafe-sdk==0.7.2 \
-    --hash=sha256:0a961148187d52e18276ed7f2d02617cfac48e3b97673cb631a8749397d43d1e \
-    --hash=sha256:2434f4af5cdfc45d6ab5ff27048e8b257207f786b60456e69995e345b32e77e1
+typesafe-sdk==0.7.4 \
+    --hash=sha256:61cf3f2fe9da20b68c3d3fe2fb76bbb2f35f8c4a9a65a6b81c43a535d2a53210 \
+    --hash=sha256:a20dca217a746db1ac5534ac502de16e1f86a400b4ec09f8594e6221c2bc9558
     # via pydantic-ai-slim
 typing-extensions==4.15.0 \
     --hash=sha256:0cea48d173cc12fa28ecabc3b837ea3cf6f38c6d1136f85cbaaf598984861466 \

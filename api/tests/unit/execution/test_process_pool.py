@@ -246,6 +246,19 @@ class TestProcessPoolManagerInit:
         assert pool.on_result is callback
 
 
+def test_reported_process_highwater_survives_lower_parent_sample():
+    pool = ProcessPoolManager()
+    handle = MagicMock()
+    handle.cpu_sampler.peak_cpu_cores = 0.8
+    handle.cpu_sampler.peak_process_rss_bytes = 80 * 1024 * 1024
+    result = {"metrics": {"peak_process_rss_bytes": 120 * 1024 * 1024}}
+
+    pool._attach_resource_peaks(handle, result)
+
+    assert result["metrics"]["peak_process_rss_bytes"] == 120 * 1024 * 1024
+    assert result["metrics"]["peak_cpu_cores"] == 0.8
+
+
 class TestProcessPoolManagerStart:
     """Tests for pool startup."""
 
@@ -300,6 +313,12 @@ class TestProcessPoolManagerStart:
                 except asyncio.CancelledError:
                     # Expected — we just cancelled the task during cleanup
                     pass
+
+        # start() also boots the worker-local SDK socket server; stop it so
+        # the socket and its temporary directory do not leak across tests.
+        if pool._sdk_http is not None:
+            await pool._sdk_http.stop()
+            pool._sdk_http = None
 
     @pytest.mark.asyncio
     async def test_recycle_installs_before_template_restart(self):
@@ -381,8 +400,11 @@ class TestProcessPoolManagerRouting:
         assert h.state == ProcessState.BUSY
         assert h.current_execution is not None
         assert h.current_execution.execution_id == "exec-123"
-        h.work_queue.put_nowait.assert_called_once_with(
-            ("exec-123", {"timeout_seconds": 300})
+        queued_id, queued_context = h.work_queue.put_nowait.call_args.args[0]
+        assert queued_id == "exec-123"
+        assert queued_context["timeout_seconds"] == 300
+        assert datetime.fromisoformat(queued_context["workflow_deadline"]) == (
+            h.current_execution.started_at + timedelta(seconds=300)
         )
 
     @pytest.mark.asyncio
@@ -1020,22 +1042,28 @@ class TestProcessPoolManagerResultHandling:
 
         shutdown_task = asyncio.create_task(pool._report_shutdown(handle))
         await callback_started.wait()
-        assert handle.result_reported is True
+        assert handle.result_reported is False
 
-        await pool._handle_result(
-            handle,
-            {
-                "type": "result",
-                "execution_id": "exec-123",
-                "success": True,
-                "result": {"data": "late"},
-            },
+        result_task = asyncio.create_task(
+            pool._handle_result(
+                handle,
+                {
+                    "type": "result",
+                    "execution_id": "exec-123",
+                    "success": True,
+                    "result": {"data": "late"},
+                },
+            )
         )
+        await asyncio.sleep(0)
+        assert not result_task.done()
 
         release_callback.set()
         assert await shutdown_task is None
+        assert await result_task is None
 
         assert len(results) == 1
+        assert handle.result_reported is True
         assert results[0]["error_type"] == "WorkerShutdown"
         assert handle.id not in pool.processes
         assert handle.current_execution is None
@@ -1162,8 +1190,11 @@ class TestProcessPoolManagerIntegration:
 
         handle = pool.processes["process-1"]
         assert handle.state == ProcessState.BUSY
-        mock_work_queue.put_nowait.assert_called_once_with(
-            ("exec-123", {"timeout_seconds": 300})
+        queued_id, queued_context = mock_work_queue.put_nowait.call_args.args[0]
+        assert queued_id == "exec-123"
+        assert queued_context["timeout_seconds"] == 300
+        assert datetime.fromisoformat(queued_context["workflow_deadline"]) == (
+            handle.current_execution.started_at + timedelta(seconds=300)
         )
 
         result_data = {
@@ -2252,3 +2283,46 @@ class TestProcessPoolCoverageBranches:
             pool.processes[handle.id].current_execution.attempt_token
             == "attempt-token"
         )
+# ---------------------------------------------------------------------------
+# Worker-local engine SDK socket injection (Gate A)
+# ---------------------------------------------------------------------------
+
+
+def _fork_reply(pid: int) -> tuple:
+    return (
+        pid,
+        MagicMock(),
+        MagicMock(),
+    )
+
+
+def test_fork_process_injects_worker_socket_path():
+    pool = ProcessPoolManager(max_workers=1)
+    template = MagicMock()
+    template.is_alive.return_value = True
+    template.fork.return_value = _fork_reply(4242)
+    pool._template = template
+    server = MagicMock()
+    server.socket_path = "/tmp/bifrost-engine.sock"
+    pool._sdk_http = server
+
+    handle = pool._fork_process()
+
+    assert handle.pid == 4242
+    assert template.fork.call_args.kwargs["sdk_socket_path"] == (
+        "/tmp/bifrost-engine.sock"
+    )
+
+
+def test_fork_process_without_socket_passes_none():
+    pool = ProcessPoolManager(max_workers=1)
+    template = MagicMock()
+    template.is_alive.return_value = True
+    template.fork.return_value = _fork_reply(4243)
+    pool._template = template
+    assert pool._sdk_http is None
+
+    handle = pool._fork_process()
+
+    assert handle.pid == 4243
+    assert template.fork.call_args.kwargs["sdk_socket_path"] is None

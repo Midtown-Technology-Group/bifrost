@@ -3,6 +3,13 @@ import { pathToFileURL } from "node:url";
 
 const repository = "Midtown-Technology-Group/bifrost";
 
+export function githubRequestUrl(path) {
+  if (path !== "/graphql" && !/^\/repos\/Midtown-Technology-Group\/bifrost\/collaborators\/[A-Za-z0-9-]{1,39}\/permission$/.test(path)) {
+    throw new Error("Unexpected merge queue API path");
+  }
+  return new URL(encodeURI(path), "https://api.github.com");
+}
+
 export async function authorizeMergeQueue({ eventName, event, sha, repo, request }) {
   if (repo !== repository) throw new Error("Unexpected repository");
   // GitHub requires the same check before admission and on the merge group.
@@ -44,6 +51,12 @@ export async function authorizeMergeQueue({ eventName, event, sha, repo, request
   if (entry.pullRequest.baseRefName !== "main" || entry.enqueuer?.__typename !== "User") {
     throw new Error("An MTG administrator must enqueue this main PR");
   }
+  if (!/^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/.test(entry.enqueuer.login)
+      || !Number.isSafeInteger(entry.enqueuer.databaseId) || entry.enqueuer.databaseId <= 0
+      || !Number.isSafeInteger(entry.pullRequest.number) || entry.pullRequest.number <= 0
+      || !/^[0-9a-f]{40}$/.test(sha)) {
+    throw new Error("Invalid merge queue actor, PR or commit identity");
+  }
   const permission = await request(
     `/repos/${repository}/collaborators/${encodeURIComponent(entry.enqueuer.login)}/permission`,
   );
@@ -56,7 +69,7 @@ export async function authorizeMergeQueue({ eventName, event, sha, repo, request
 async function main() {
   const event = JSON.parse(await readFile(process.env.GITHUB_EVENT_PATH, "utf8"));
   const request = async (path, body) => {
-    const response = await fetch(`https://api.github.com${path}`, {
+    const response = await fetch(githubRequestUrl(path), {
       method: body ? "POST" : "GET",
       headers: {
         Authorization: `Bearer ${process.env.GH_TOKEN}`,
@@ -70,18 +83,19 @@ async function main() {
     if (!response.ok) throw new Error(`GitHub API returned HTTP ${response.status}`);
     return response.json();
   };
-  console.log(await authorizeMergeQueue({
+  await authorizeMergeQueue({
     eventName: process.env.GITHUB_EVENT_NAME,
     event,
     sha: process.env.GITHUB_SHA,
     repo: process.env.GITHUB_REPOSITORY,
     request,
-  }));
+  });
+  console.log("Merge queue authorization passed.");
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  main().catch((error) => {
-    console.error(error.message);
+  main().catch(() => {
+    console.error("Merge queue authorization failed; inspect the exact event and live queue state.");
     process.exitCode = 1;
   });
 }

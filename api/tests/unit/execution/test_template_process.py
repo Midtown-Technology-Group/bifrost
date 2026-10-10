@@ -5,6 +5,7 @@ Tests the template process lifecycle: startup, fork requests, shutdown.
 Uses real multiprocessing (not mocks) since fork behavior can't be mocked.
 """
 
+import errno
 import logging
 import os
 import signal
@@ -63,7 +64,8 @@ def _wait_for_pid_to_disappear(pid: int, timeout: float = 5.0) -> None:
         try:
             with open(f"/proc/{pid}/stat") as stat_file:
                 last_state = stat_file.read().split()[2]
-        except FileNotFoundError:
+        except (FileNotFoundError, ProcessLookupError):
+            # Reaping can remove the child after open() but before read().
             return
         time.sleep(0.05)
 
@@ -78,6 +80,82 @@ def _fd_count() -> int:
         return len(os.listdir("/proc/self/fd"))
     except FileNotFoundError:
         return pytest.skip("/proc is required for fd cleanup assertions")
+
+
+class TestWaitForPidToDisappear:
+    """The process-table assertion must tolerate disappearance, not other errors."""
+
+    @pytest.mark.parametrize("stage", ["open", "read"])
+    @pytest.mark.parametrize("error_type", [FileNotFoundError, ProcessLookupError])
+    def test_accepts_process_disappearance(self, stage, error_type):
+        with patch(f"{__name__}.open", create=True) as open_stat:
+            operation = (
+                open_stat
+                if stage == "open"
+                else open_stat.return_value.__enter__.return_value.read
+            )
+            operation.side_effect = error_type()
+            _wait_for_pid_to_disappear(123)
+
+    @pytest.mark.parametrize("stage", ["open", "read"])
+    @pytest.mark.parametrize(
+        "error",
+        [PermissionError(errno.EACCES, "denied"), OSError(errno.EIO, "I/O error")],
+    )
+    def test_propagates_other_errors(self, stage, error):
+        with patch(f"{__name__}.open", create=True) as open_stat:
+            operation = (
+                open_stat
+                if stage == "open"
+                else open_stat.return_value.__enter__.return_value.read
+            )
+            operation.side_effect = error
+            with pytest.raises(type(error)) as caught:
+                _wait_for_pid_to_disappear(123)
+            assert caught.value is error
+
+    @pytest.mark.parametrize("state", ["R", "Z"])
+    def test_fails_if_live_or_zombie_process_remains(self, state):
+        with (
+            patch(f"{__name__}.open", create=True) as open_stat,
+            patch(f"{__name__}.time") as clock,
+        ):
+            open_stat.return_value.__enter__.return_value.read.return_value = (
+                f"123 (python) {state} 1"
+            )
+            clock.monotonic.side_effect = [0.0, 0.0, 6.0]
+            with pytest.raises(
+                pytest.fail.Exception,
+                match=f"PID 123 remained in the process table with state {state}",
+            ):
+                _wait_for_pid_to_disappear(123)
+            clock.sleep.assert_called_once_with(0.05)
+
+    def test_accepts_exit_after_stat_open_before_read(self):
+        """Exercise the real kernel ESRCH path with explicitly ordered lifecycle."""
+        child = subprocess.Popen(
+            [sys.executable, "-c", "import sys; sys.stdin.buffer.read()"],
+            stdin=subprocess.PIPE,
+        )
+        try:
+            path = f"/proc/{child.pid}/stat"
+            with open(path) as stat_file:
+                assert child.stdin is not None
+                child.stdin.close()
+                assert child.wait(timeout=5) == 0
+                # The existing descriptor belongs to the reaped child; reading
+                # it now raises ProcessLookupError on Linux, rather than ENOENT.
+                with patch(
+                    f"{__name__}.open", return_value=stat_file, create=True
+                ) as open_stat:
+                    _wait_for_pid_to_disappear(child.pid)
+                    open_stat.assert_called_once_with(path)
+        finally:
+            if child.poll() is None:
+                child.kill()
+            child.wait(timeout=5)
+            if child.stdin is not None:
+                child.stdin.close()
 
 
 class TestTemplateProcessLifecycle:

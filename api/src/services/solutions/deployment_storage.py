@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from contextlib import AbstractAsyncContextManager
 from typing import Any
@@ -12,6 +13,7 @@ from src.config import Settings, get_settings
 SOURCE_ARTIFACTS_ROOT = "_solution_artifacts"
 SOLUTION_MANIFESTS_ROOT = "_solution_manifests"
 SOLUTIONS_ROOT = "_solutions"
+MAX_AUTHORED_ARCHIVE_BYTES = 12 * 1024 * 1024
 
 
 class DeploymentArtifactIntegrityError(RuntimeError):
@@ -155,6 +157,40 @@ class SolutionDeploymentStorage(CreateOnlyArtifactStorage):
     async def read_source_artifact(self) -> bytes:
         return await self._read(self.source_artifact_key)
 
+    def authored_artifact_key(self, source_content_id: str) -> str:
+        """Authored metadata successors may share one immutable runtime."""
+        if re.fullmatch(r"sha256:[0-9a-f]{64}", source_content_id) is None:
+            raise ValueError("Invalid authored source content identity")
+        digest = source_content_id.removeprefix("sha256:")
+        return f"{SOURCE_ARTIFACTS_ROOT}/{self.solution_id}/{self.deployment_id}/authored/{digest}.zip"
+
+    async def write_authored_artifact(
+        self, source_content_id: str, content: bytes, *, idempotent: bool = False,
+    ) -> str:
+        key = self.authored_artifact_key(source_content_id)
+        if len(content) > MAX_AUTHORED_ARCHIVE_BYTES:
+            raise DeploymentArtifactIntegrityError("Authored archive exceeds its byte bound")
+        try:
+            await self._create(key, content, "application/zip")
+        except DeploymentArtifactIntegrityError:
+            # The generic idempotent writer reads without a byte bound. Keep
+            # authored retries on this bounded archive read as well.
+            if not idempotent or await self.read_authored_artifact(source_content_id) != content:
+                raise
+        return key
+
+    async def read_authored_artifact(self, source_content_id: str) -> bytes:
+        key = self.authored_artifact_key(source_content_id)
+        limit = MAX_AUTHORED_ARCHIVE_BYTES
+        async with self._client_factory() as client:
+            response = await client.get_object(Bucket=self._bucket, Key=key, Range=f"bytes=0-{limit}")
+            body = response["Body"]
+            async with body:
+                content = await self._read_bounded(body, limit + 1)
+            if len(content) > limit:
+                raise DeploymentArtifactIntegrityError("Authored archive exceeds its byte bound")
+            return content
+
     async def write_compiled_manifest(
         self, content: bytes, *, idempotent: bool = False
     ) -> str:
@@ -180,18 +216,56 @@ class SolutionDeploymentStorage(CreateOnlyArtifactStorage):
         )
         return key
 
-    async def read_runtime_file(self, path: str) -> bytes:
+    async def read_runtime_file(self, path: str, *, max_bytes: int | None = None) -> bytes:
         normalized = path.replace("\\", "/").lstrip("/")
         if not normalized or any(
             part in {"", ".", ".."} for part in normalized.split("/")
         ):
             raise ValueError(f"Invalid deployment runtime path: {path!r}")
-        return await self._read(f"{self.runtime_prefix}{normalized}")
+        key = f"{self.runtime_prefix}{normalized}"
+        if max_bytes is None:
+            return await self._read(key)
+        if max_bytes < 0:
+            raise DeploymentArtifactIntegrityError("Immutable source exceeds its total byte bound")
+        async with self._client_factory() as client:
+            try:
+                response = await client.get_object(Bucket=self._bucket, Key=key, Range=f"bytes=0-{max_bytes}")
+            except Exception as exc:
+                provider_response = getattr(exc, "response", None)
+                status = (
+                    provider_response.get("ResponseMetadata", {}).get("HTTPStatusCode")
+                    if isinstance(provider_response, dict)
+                    else getattr(exc, "status_code", None)
+                )
+                if status != 416:
+                    raise
+                # Empty objects have no satisfiable byte range. Prove the exact
+                # key is empty without issuing an unbounded download; hash
+                # verification at the caller still certifies the sealed bytes.
+                metadata = await client.head_object(Bucket=self._bucket, Key=key)
+                size = (
+                    metadata.get("ContentLength")
+                    if isinstance(metadata, dict)
+                    else getattr(metadata, "content_length", None)
+                )
+                if type(size) is not int or size != 0:
+                    raise DeploymentArtifactIntegrityError(
+                        "Immutable source range failed without a verified empty object"
+                    ) from exc
+                return b""
+            body = response["Body"]
+            async with body:
+                content = await self._read_bounded(body, max_bytes + 1)
+            if len(content) > max_bytes:
+                raise DeploymentArtifactIntegrityError("Immutable source exceeds its total byte bound")
+            return content
 
     async def read_resource(self, path: str, size_bytes: int) -> bytes:
         """Read one pinned resource with a transport bound before buffering bytes."""
         from src.core.solution_delivery_policy import delivery_path
-        from src.services.solutions.deployment_manifest import MAX_DEPLOYMENT_RESOURCE_BYTES
+        from src.services.solutions.deployment_manifest import (
+            MAX_DEPLOYMENT_RESOURCE_BYTES,
+        )
 
         delivery_path(path)
         if type(size_bytes) is not int or not 1 <= size_bytes <= MAX_DEPLOYMENT_RESOURCE_BYTES:
@@ -217,13 +291,18 @@ class SolutionDeploymentStorage(CreateOnlyArtifactStorage):
         return self.resources_artifact_key
 
     async def read_resources_artifact(self) -> bytes:
-        from src.services.solutions.deployment_manifest import MAX_DEPLOYMENT_RESOURCES_BYTES
+        from src.services.solutions.deployment_manifest import (
+            MAX_DEPLOYMENT_RESOURCES_BYTES,
+        )
 
         limit = MAX_DEPLOYMENT_RESOURCES_BYTES + 2 * 1024 * 1024
         async with self._client_factory() as client:
             response = await client.get_object(Bucket=self._bucket, Key=self.resources_artifact_key,
                 Range=f"bytes=0-{limit}")
-            async with response["Body"] as body:
+            # aiobotocore enters the underlying aiohttp response, whose read()
+            # is unbounded. Keep the size-aware StreamingBody for our reads.
+            body = response["Body"]
+            async with body:
                 content = await self._read_bounded(body, limit + 1)
                 if len(content) > limit:
                     raise DeploymentArtifactIntegrityError("Resource archive exceeds its byte bound")

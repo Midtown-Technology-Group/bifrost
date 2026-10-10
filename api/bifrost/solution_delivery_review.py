@@ -12,8 +12,14 @@ import hashlib
 import re
 from dataclasses import asdict, dataclass
 from typing import Any, Literal
-from uuid import UUID
+from uuid import UUID, uuid5
 
+from bifrost.workflow_removal_evidence import (
+    WorkflowRemovalEvidence, WorkflowRemovalReviewContext, removal_binding,
+    verify_workflow_removal_evidence,
+)
+
+from bifrost.root_file_bindings import RootFileBinding, require_root_file_bindings
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from bifrost.workspace_effects import normalize_workflow_bounds, normalize_workflow_effects
@@ -21,7 +27,7 @@ from bifrost.contracts.workflows import ExecutionRetryPolicy
 from bifrost.workflow_parameters import WorkflowParameterCompiler
 
 WORKFLOW_PARAMETERS_SCHEMA_CONTRACT = "bifrost.workflow-parameters-schema/v1"
-DELIVERY_REVIEW_CONTRACT = "bifrost.solution-delivery-review/v1"
+DELIVERY_REVIEW_CONTRACT = "bifrost.solution-delivery-review/v2"
 MAX_DEPLOYMENT_RESOURCE_BYTES = 2 * 1024 * 1024
 MAX_DEPLOYMENT_RESOURCES_BYTES = 10 * 1024 * 1024
 PROTECTED_REGISTRATION_FIELDS = (
@@ -38,13 +44,52 @@ def delivery_path(value: str) -> str:
     return value
 
 
-class SharedRootTableBinding(BaseModel):
+
+
+class SharedRootTableGrant(BaseModel):
     """Reviewed access to an existing Root table without adopting its data."""
     model_config = ConfigDict(frozen=True, extra="forbid")
     table_id: UUID
     metadata_hash: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
     access: Literal["read", "read-write"] = "read"
     organization_id: UUID | None = Field(default=None, exclude_if=lambda value: value is None)
+
+
+class SharedRootTableBinding(SharedRootTableGrant):
+    """Exact reviewed scopes for one alias, preserving legacy single-table bytes."""
+    additional_scopes: tuple[SharedRootTableGrant, ...] | None = Field(
+        default=None, max_length=99, exclude_if=lambda value: not value,
+    )
+
+    def grants(self) -> tuple[SharedRootTableGrant, ...]:
+        return (self, *(self.additional_scopes or ()))
+
+    def with_scope(self, grant: SharedRootTableGrant) -> SharedRootTableBinding:
+        """Append an exact grant through the same canonical scope validation."""
+        return SharedRootTableBinding(
+            **self.model_dump(exclude={"additional_scopes"}),
+            additional_scopes=(*(self.additional_scopes or ()), grant),
+        )
+
+    @model_validator(mode="after")
+    def unique_scopes(self) -> SharedRootTableBinding:
+        grants = self.grants()
+        if len({grant.organization_id for grant in grants}) != len(grants):
+            raise ValueError("Shared table organization scopes must be unique")
+        if len({grant.table_id for grant in grants}) != len(grants):
+            raise ValueError("Shared table IDs must be unique")
+        return self
+
+
+def require_shared_table_bindings(bindings: dict[str, SharedRootTableBinding]) -> None:
+    """Bound every exact grant and reject duplicate identities across aliases."""
+    grants = [grant for binding in bindings.values() for grant in binding.grants()]
+    if len(grants) > 100:
+        raise ValueError("Shared table grants exceed the install limit")
+    if len({grant.table_id for grant in grants}) != len(grants):
+        raise ValueError("Shared table IDs must be unique")
+    if any(re.fullmatch(r"[a-z][a-z0-9_-]{0,254}", name) is None for name in bindings):
+        raise ValueError("Shared table names must be canonical")
 
 
 @dataclass(frozen=True)
@@ -126,9 +171,11 @@ class ReviewedWorkflowRecipe(BaseModel):
     workflows: list[ReviewedWorkflowRegistration] = Field(min_length=1, max_length=256)
     shared_tables: dict[str, SharedRootTableBinding] = Field(default_factory=dict, max_length=100)
     resources: dict[str, str] = Field(default_factory=dict, max_length=256, exclude_if=lambda value: not value)
+    root_file_bindings: dict[str, RootFileBinding] = Field(default_factory=dict, max_length=100, exclude_if=lambda value: not value)
 
     @model_validator(mode="after")
     def unique_install(self) -> ReviewedWorkflowRecipe:
+        require_root_file_bindings(self.root_file_bindings)
         if len({item.id for item in self.workflows}) != len(self.workflows):
             raise ValueError("Workflow identities must be unique")
         if len({(item.path, item.function_name) for item in self.workflows}) != len(self.workflows):
@@ -149,14 +196,11 @@ class ReviewedWorkflowRecipe(BaseModel):
                         or any(part.startswith(".") for part in path.split("/"))
                         or path.rsplit("/", 1)[-1].lower() == "storage-state.json"):
                     raise ValueError("Resources require reviewed JSON or PowerShell source, without auth or hidden state paths")
-        if len({item.table_id for item in self.shared_tables.values()}) != len(self.shared_tables):
-            raise ValueError("Shared table identities must be unique")
-        if any(re.fullmatch(r"[a-z][a-z0-9_-]{0,254}", name) is None for name in self.shared_tables):
-            raise ValueError("Shared table names must be canonical")
+        require_shared_table_bindings(self.shared_tables)
         if any(binding.organization_id is not None
-               and any(item.organization_id != binding.organization_id for item in self.workflows)
-               for binding in self.shared_tables.values()):
-            raise ValueError("Organization Root table bindings require every workflow in that organization")
+               and any(item.organization_id not in {None, binding.organization_id} for item in self.workflows)
+               for group in self.shared_tables.values() for binding in group.grants()):
+            raise ValueError("Organization Root table bindings require every workflow to be global or in that organization")
         return self
 
 
@@ -205,6 +249,69 @@ def _parameter_default(default: ast.expr, tree: ast.Module,
     if not isinstance(value, str | int | float | bool | type(None)):
         raise WorkflowRecipeError("Parameter default constant must be a literal scalar")
     return value
+
+
+def _entrypoint_parameters(source: bytes, tree: ast.Module,
+                          node: ast.FunctionDef | ast.AsyncFunctionDef,
+                          indexer: WorkflowParameterCompiler, path: str) -> dict[str, Any]:
+    if node.args.posonlyargs or node.args.vararg:
+        raise WorkflowRecipeError("Positional-only and variadic positional entrypoints are unsupported")
+    positional_defaults = [None] * (len(node.args.args) - len(node.args.defaults)) + list(node.args.defaults)
+    defaults = {arg.arg: _parameter_default(default, tree, node)
+        for arg, default in [*zip(node.args.args, positional_defaults),
+                             *zip(node.args.kwonlyargs, node.args.kw_defaults)] if default is not None}
+    parameters = indexer.extract_parameters_from_source(source, node.name, path=path)
+    if parameters is None:
+        raise WorkflowRecipeError("Workflow parameter schema cannot be inferred")
+    for parameter_name, value in defaults.items():
+        if parameter_name in parameters["properties"]:
+            parameters["properties"][parameter_name]["default"] = value
+    return parameters
+
+
+def compile_workflow_parameters(source: bytes, function_name: str, *, path: str,
+                                indexer: WorkflowParameterCompiler | None = None) -> dict[str, Any]:
+    """Resolve the same bounded literal defaults for legacy and reviewed source.
+
+    Legacy decorators need not already be literal recipe declarations. Source
+    is parsed only; importing or executing it is never part of this comparison.
+    """
+    try:
+        tree = ast.parse(source.decode("utf-8"), filename=path)
+    except (SyntaxError, UnicodeError) as exc:
+        raise WorkflowRecipeError("Workflow source is missing or invalid UTF-8 Python") from exc
+    matches = [node for node in tree.body if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
+               and node.name == function_name]
+    if len(matches) != 1:
+        raise WorkflowRecipeError("Workflow entrypoint is missing or ambiguous")
+    return _entrypoint_parameters(source, tree, matches[0], indexer or WorkflowParameterCompiler(), path)
+
+
+def require_adoption_parameters(old: dict[str, Any], new: dict[str, Any], *,
+                                attested_legacy_list: bool) -> None:
+    """Preserve every old caller contract; permit reviewed optional additions.
+
+    The legacy list stays sealed in the immutable entity rather than being
+    rewritten in place. Complete modern registry schemas still require exact
+    equality; adoption cannot silently project a different registration row.
+    """
+    def encoded(value: Any) -> str:
+        # Python considers False == 0 and True == 1; parameter defaults must
+        # retain their JSON type as well as their value.
+        return json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False)
+
+    if encoded(old) == encoded(new):
+        return
+    old_properties, new_properties = old.get("properties"), new.get("properties")
+    if (attested_legacy_list and isinstance(old_properties, dict) and isinstance(new_properties, dict)
+            and set(old_properties) < set(new_properties)
+            and encoded({key: value for key, value in old.items() if key != "properties"})
+                == encoded({key: value for key, value in new.items() if key != "properties"})
+            and all(encoded(new_properties[key]) == encoded(value) for key, value in old_properties.items())
+            and all(isinstance(new_properties[key], dict) and "default" in new_properties[key]
+                    for key in set(new_properties) - set(old_properties))):
+        return
+    raise WorkflowRecipeError("adoption cannot change the installed source parameter contract")
 
 
 def require_executable_bindings(tree: ast.Module) -> tuple[dict[str, str], set[str]]:
@@ -307,16 +414,17 @@ def compile_workflow_registrations(
         if len(matches) != 1:
             raise WorkflowRecipeError("Workflow entrypoint is missing or ambiguous")
         node = matches[0]
-        if node.args.posonlyargs or node.args.vararg:
-            raise WorkflowRecipeError("Positional-only and variadic positional entrypoints are unsupported")
-        positional_defaults = [None] * (len(node.args.args) - len(node.args.defaults)) + list(node.args.defaults)
-        defaults = {arg.arg: _parameter_default(default, tree, node)
-            for arg, default in [*zip(node.args.args, positional_defaults),
-                                 *zip(node.args.kwonlyargs, node.args.kw_defaults)] if default is not None}
+        parameters = _entrypoint_parameters(files[item.path], tree, node, indexer, item.path)
         kind, declarations = _decorator(tree, node)
         if "id" in declarations:
             try:
-                if not isinstance(declarations["id"], str) or UUID(declarations["id"]) != item.id:
+                if not isinstance(declarations["id"], str):
+                    raise ValueError("source identity must be a UUID string")
+                declared_id = UUID(declarations["id"])
+                # Captured bundles retain author-time UUIDs. Normal Solution
+                # installation resolves them in this install's namespace;
+                # reviewed delivery must preserve that same installed row.
+                if item.id not in {declared_id, uuid5(recipe.solution_id, str(declared_id))}:
                     raise WorkflowRecipeError("Legacy source identity differs from the reviewed registration UUID")
             except ValueError as exc:
                 raise WorkflowRecipeError("Legacy source identity differs from the reviewed registration UUID") from exc
@@ -344,12 +452,6 @@ def compile_workflow_registrations(
                 for key, limit in asdict(declaration).items():
                     if limit is not None and (key not in bounds or bounds[key] > limit):
                         raise WorkflowRecipeError("Reviewed runtime bounds exceed a source declaration")
-        parameters = indexer.extract_parameters_from_source(files[item.path], item.function_name, path=item.path)
-        if parameters is None:
-            raise WorkflowRecipeError("Workflow parameter schema cannot be inferred")
-        for parameter_name, value in defaults.items():
-            if parameter_name in parameters["properties"]:
-                parameters["properties"][parameter_name]["default"] = value
         controls = item.controls.model_dump(mode="json")
         controls["role_ids"] = sorted(controls["role_ids"])
         controls["allowed_methods"] = sorted(controls["allowed_methods"])
@@ -470,13 +572,25 @@ def _without_presentation(value: Any) -> Any:
     return value
 
 
+def _accepts_previous_parameter_schema(old: dict, new: dict) -> bool:
+    previous, desired = _without_presentation(old), _without_presentation(new)
+    if previous == desired:
+        return True
+    # Adding null preserves every previously accepted value. Keep the original
+    # branch exact and reject other schema changes or outer constraints; this
+    # is deliberately narrower than general JSON Schema subsumption.
+    return (isinstance(desired, dict) and set(desired) == {"anyOf"}
+        and isinstance(desired["anyOf"], list) and len(desired["anyOf"]) == 2
+        and previous in desired["anyOf"] and {"type": "null"} in desired["anyOf"])
+
+
 def require_compatible_parameters(old: dict, new: dict) -> None:
     """Existing callers keep their accepted keyword set and type constraints."""
     old_properties, new_properties = old.get("properties", {}), new.get("properties", {})
     if (not set(old_properties).issubset(new_properties)
             or not set(new.get("required", [])).issubset(old.get("required", []))
             or old.get("additionalProperties") is True and new.get("additionalProperties") is not True
-            or any(_without_presentation(schema) != _without_presentation(new_properties[name])
+            or any(not _accepts_previous_parameter_schema(schema, new_properties[name])
                    for name, schema in old_properties.items())):
         raise WorkflowRecipeError("Breaking parameter changes require verified live caller reconciliation")
 
@@ -485,28 +599,58 @@ def require_compatible_parameters(old: dict, new: dict) -> None:
 def review_workflow_recipe(recipe_value: dict, files: dict[str, bytes], resources: dict[str, bytes], *,
                            previous_recipe_value: dict | None = None,
                            previous_files: dict[str, bytes] | None = None,
-                           previous_resources: dict[str, bytes] | None = None) -> dict[str, Any]:
+                           previous_resources: dict[str, bytes] | None = None,
+                           owned_table_ids: tuple[UUID, ...] = (),
+                           workflow_removal_evidence: dict[str, Any] | WorkflowRemovalEvidence | None = None,
+                           workflow_removal_context: WorkflowRemovalReviewContext | None = None) -> dict[str, Any]:
     """Offline deterministic checks only; live ownership/callers remain unproved."""
     from bifrost.solution_source_closure import source_closure
+
+    try:
+        owned_ids = tuple(UUID(str(identity)) for identity in owned_table_ids)
+    except (TypeError, ValueError) as exc:
+        raise WorkflowRecipeError("Owned-table review context requires exact table UUIDs") from exc
+    if len(set(owned_ids)) != len(owned_ids):
+        raise WorkflowRecipeError("Owned-table review context contains duplicate UUIDs")
 
     def compile_complete(value, sources, resource_files):
         recipe = ReviewedWorkflowRecipe.model_validate(value)
         validate_resource_files(recipe, resource_files, sources)
         closure = source_closure(sources, {item.path for item in recipe.workflows},
-            has_table_bindings=bool(recipe.shared_tables), has_resource_bindings=bool(recipe.resources))
+            has_table_bindings=bool(recipe.shared_tables) or bool(owned_ids), has_resource_bindings=bool(recipe.resources),
+            has_root_file_bindings=bool(recipe.root_file_bindings))
         if set(closure) != set(sources):
             raise WorkflowRecipeError("Recipe differs from the complete dependency closure")
         return recipe, compile_workflow_registrations(recipe, sources)
 
     recipe, desired = compile_complete(recipe_value, files, resources)
+    removed_ids: set[str] = set()
+    evidence_digest = None
     if previous_recipe_value is not None:
         previous, old = compile_complete(previous_recipe_value, previous_files or {}, previous_resources or {})
         if previous.solution_id != recipe.solution_id:
             raise WorkflowRecipeError("An installed recipe cannot change its Solution identity")
         old_by_id = {item.resolved_id: item for item in old.values()}
         new_by_id = {item.resolved_id: item for item in desired.values()}
-        if not set(old_by_id).issubset(new_by_id):
-            raise WorkflowRecipeError("Workflow removal requires verified live caller and trigger reconciliation")
+        removed_ids = {str(identity) for identity in old_by_id.keys() - new_by_id.keys()}
+        if removed_ids:
+            if workflow_removal_evidence is None:
+                raise WorkflowRecipeError("Workflow removal requires verified live caller and trigger reconciliation")
+            try:
+                if workflow_removal_context is None:
+                    raise ValueError("Workflow removal requires independent review context")
+                context = WorkflowRemovalReviewContext.model_validate(workflow_removal_context.model_dump(mode="json"))
+                if context.solution_id != str(recipe.solution_id):
+                    raise ValueError("Workflow removal context Solution identity mismatch")
+                binding = removal_binding(solution_id=context.solution_id,
+                    instance_origin=context.instance_origin, recipe_path=context.recipe_path,
+                    base_sha=context.base_sha, base_recipe=previous_recipe_value, candidate_recipe=recipe_value,
+                    base_files=previous_files or {}, candidate_files=files,
+                    base_resources=previous_resources or {}, candidate_resources=resources)
+                evidence_digest = verify_workflow_removal_evidence(workflow_removal_evidence,
+                    context=context, expected_binding=binding, removed_ids=removed_ids)
+            except (ValueError, TypeError, AttributeError) as exc:
+                raise WorkflowRecipeError(f"Workflow removal evidence rejected: {exc}") from exc
         for identity, item in new_by_id.items():
             definition = item.definition
             if identity in old_by_id:
@@ -517,9 +661,14 @@ def review_workflow_recipe(recipe_value: dict, files: dict[str, bytes], resource
             elif (definition["endpoint_enabled"] or definition["public_endpoint"]
                     or definition["access_level"] != "role_based"):
                 raise WorkflowRecipeError("New workflows require role-based access and disabled endpoints")
+    if workflow_removal_evidence is not None and not removed_ids:
+        raise WorkflowRecipeError("Workflow removal evidence requires an exact removal baseline")
     return {"schema_version": DELIVERY_REVIEW_CONTRACT, "solution_id": str(recipe.solution_id),
+        "workflow_removal_evidence_verified": evidence_digest is not None,
+        "removed_workflow_ids": sorted(removed_ids), "workflow_removal_evidence_digest": evidence_digest,
         "source_paths": sorted(files), "resource_paths": sorted(resources),
         "workflow_ids": sorted(str(item.resolved_id) for item in desired.values()),
+        **({"owned_table_review_ids": sorted(str(identity) for identity in owned_ids)} if owned_ids else {}),
         "previous_recipe_checked": previous_recipe_value is not None,
         "live_state_verified": False, "runtime_verified": False}
 
@@ -527,7 +676,10 @@ def review_workflow_recipe(recipe_value: dict, files: dict[str, bytes], resource
 def review_solution_recipe(recipe_value: dict, files: dict[str, bytes], resources: dict[str, bytes], *,
                            previous_recipe_value: dict | None = None,
                            previous_files: dict[str, bytes] | None = None,
-                           previous_resources: dict[str, bytes] | None = None) -> dict[str, Any]:
+                           previous_resources: dict[str, bytes] | None = None,
+                           owned_table_ids: tuple[UUID, ...] = (),
+                           workflow_removal_evidence: dict[str, Any] | WorkflowRemovalEvidence | None = None,
+                           workflow_removal_context: WorkflowRemovalReviewContext | None = None) -> dict[str, Any]:
     """Review workflow delivery or the legacy body-only source adapter offline."""
     from bifrost.solution_source_closure import source_closure
     if previous_recipe_value is not None and recipe_value.get("schema_version") != previous_recipe_value.get("schema_version"):
@@ -535,7 +687,12 @@ def review_solution_recipe(recipe_value: dict, files: dict[str, bytes], resource
     if recipe_value.get("schema_version") == WORKFLOW_RECIPE_SCHEMA:
         return review_workflow_recipe(recipe_value, files, resources,
             previous_recipe_value=previous_recipe_value, previous_files=previous_files,
-            previous_resources=previous_resources)
+            previous_resources=previous_resources, owned_table_ids=owned_table_ids,
+            workflow_removal_evidence=workflow_removal_evidence, workflow_removal_context=workflow_removal_context)
+    if workflow_removal_evidence is not None or workflow_removal_context is not None:
+        raise WorkflowRecipeError("Workflow removal evidence requires the reviewed workflow adapter")
+    if owned_table_ids:
+        raise WorkflowRecipeError("Owned-table review context requires the reviewed workflow adapter")
 
     def signatures(value, sources, resource_files):
         if (set(value) != {"schema_version", "solution_id", "files"}
@@ -566,7 +723,8 @@ def review_solution_recipe(recipe_value: dict, files: dict[str, bytes], resource
                     raise WorkflowRecipeError("Legacy source entrypoint is ambiguous")
                 result[ref] = (ast.dump(node.args, include_attributes=False),
                     tuple(ast.dump(item, include_attributes=False) for item in node.decorator_list),
-                    isinstance(node, ast.AsyncFunctionDef))
+                    isinstance(node, ast.AsyncFunctionDef),
+                    compile_workflow_parameters(raw, node.name, path=path))
         if not result:
             raise WorkflowRecipeError("Legacy source recipe has no explicit workflow entrypoints")
         # The legacy recipe does not describe its installed table grants.
@@ -583,6 +741,8 @@ def review_solution_recipe(recipe_value: dict, files: dict[str, bytes], resource
         if current != signatures(previous_recipe_value, previous_files or {}, previous_resources or {}):
             raise WorkflowRecipeError("Legacy source delivery cannot revise workflow registration or signatures")
     return {"schema_version": DELIVERY_REVIEW_CONTRACT, "solution_id": recipe_value["solution_id"],
+        "workflow_removal_evidence_verified": False,
+        "removed_workflow_ids": [], "workflow_removal_evidence_digest": None,
         "source_paths": sorted(files), "resource_paths": [], "entrypoints": sorted(current),
         "previous_recipe_checked": previous_recipe_value is not None,
         "live_state_verified": False, "runtime_verified": False}

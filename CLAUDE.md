@@ -100,6 +100,8 @@ Start the development stack (per-worktree isolated):
 ./debug.sh logs api    # Follow logs for one service
 ```
 
+Follow [debug environment ownership and cleanup](docs/dev/agent-platform-rules.md#debug-environment-ownership-and-cleanup): clean up disposable task-created resources before final issue/PR handoff; preserve pre-existing resources and report verified teardown or an explicit retained owner/reason.
+
 `./debug.sh` derives its Compose project name from the worktree path, so multiple worktrees can run debug stacks in parallel. URL and login are printed at the end of `up`. Port mode uses `dev@gobifrost.com` / `password`; Netbird mode uses the same email with a strong generated per-worktree password. MFA is off.
 
 The default mode allocates a free local port for the client (deterministic per worktree, in 30000-39999). If `NETBIRD_SETUP_KEY` is set in `~/.config/bifrost/debug.env`, the stack boots with a NetBird sidecar that provides both private mesh access and an ephemeral public HTTPS proxy through `netbird expose` — no host ports, durable Admin proxy mapping, or NetBird API key.
@@ -298,9 +300,10 @@ export async function getDataProviders() {
     -   **A known failure must receive a durable disposition.** If a broader local or CI run finds a failure outside the scoped set, determine whether it is a regression, product race, leaked state, harness defect, overcomplicated test, or obsolete coverage. Fix the cause, simplify the test, or delete genuinely redundant coverage with a documented replacement. "Unrelated" or "flaky" alone is not a disposition.
     -   **Never rerun until green or mask instability.** Do not add retries, longer timeouts, `skip`, or `xfail`. Reproduce the exposing condition, fix the hypothesized cause, then use repetition only to validate the fix. See `.claude/skills/bifrost-testing/SKILL.md` for the full protocol.
     -   **Prefer simple, durable tests.** Keep one observable contract per test, minimal fixtures, deterministic state, explicit cleanup, and only one useful end-to-end happy path. Move edge cases down to unit/component tests; complexity is not evidence of rigor.
+    -   **Expensive backend E2E tests:** Before adding a deploy, install, publish, build, sync, or worker job to a test, follow `.claude/skills/bifrost-testing/authoring-rules.md` → “Expensive backend E2E tests.” Count the jobs and identify the unique cross-process contract each one proves.
     -   **IMPORTANT**: Always use `./test.sh` — it manages the Dockerized test stack (PostgreSQL, Redis, RabbitMQ, SeaweedFS, API, worker). Running pytest directly on the host will FAIL for anything touching DB/queue/cache.
     -   **Stack lifecycle is separate from test execution.** Boot once per worktree, run tests many times. See the Commands section below.
-    -   **Test results**: `./test.sh` writes JUnit XML to `/tmp/bifrost/test-results.xml` — parse this for pass/fail details instead of grepping stdout.
+    -   **Test results**: `./test.sh` writes JUnit XML to `/tmp/bifrost-<project>/test-results.xml` on the host (the project name is printed by `./test.sh stack status`) — parse this for pass/fail details instead of grepping stdout.
     -   **Logs**: Container logs are exported to `/tmp/bifrost-<project>/*.log` after test runs (per-worktree, so parallel worktrees don't clobber each other).
 -   **Type Checking**: Must pass `pyright` (API) and `npm run tsc` (client)
 -   **Linting**: Must pass `ruff check` (API) and `npm run lint` (client)

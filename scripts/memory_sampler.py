@@ -41,12 +41,13 @@ from __future__ import annotations
 import argparse
 import csv
 import hashlib
+import re
 import signal
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
-
 
 # Inline script we pass to python3 inside the container. It prints a single
 # CSV row to stdout per invocation, with ALL fields. We call this via
@@ -138,8 +139,8 @@ def _parse_args() -> argparse.Namespace:
     )
     p.add_argument(
         "--out",
-        default="/tmp/bifrost/memory-trace.csv",
-        help="CSV output path (default: /tmp/bifrost/memory-trace.csv)",
+        default=None,
+        help="CSV output path (default: a private temporary result directory)",
     )
     p.add_argument(
         "--interval",
@@ -186,7 +187,14 @@ def _detect_container() -> str:
 def main() -> int:
     args = _parse_args()
     container = args.container or _detect_container()
-    out_path = Path(args.out)
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,255}", container):
+        raise ValueError("Container must be a Docker name or ID, never an option")
+    out_path = Path(args.out) if args.out else Path(tempfile.mkdtemp(prefix="bifrost-memory-")) / "trace.csv"
+    if ".." in out_path.parts or out_path.is_symlink():
+        raise ValueError("Trace output cannot traverse or name a symlink")
+    out_path = out_path.resolve()
+    if not any(out_path.is_relative_to(root) for root in (Path.cwd().resolve(), Path(tempfile.gettempdir()).resolve())):
+        raise ValueError("Trace output must stay in the checkout or temporary results")
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
     print(f"Sampling container: {container}", file=sys.stderr)
@@ -238,6 +246,7 @@ def main() -> int:
                     capture_output=True,
                     text=True,
                     timeout=5,
+                    check=False,
                 )
             except subprocess.TimeoutExpired:
                 # Container unresponsive — record the gap but keep going.

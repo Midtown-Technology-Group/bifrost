@@ -39,10 +39,7 @@
 #   ./test.sh pre-pr                    Required local PR checks; --full is exhaustive.
 #   ./test.sh ci                        Full isolated run: up, all tests, down.
 #
-# Global flags (apply to most subcommands):
-#   --no-reset    Skip state reset before running tests.
-#   --coverage    Enable coverage reporting (backend only).
-#   --wait        On failure, pause before cleanup.
+# Pytest flags follow a test selector (for example, `./test.sh tests/unit/test_foo.py -v`).
 
 set -euo pipefail
 
@@ -58,7 +55,7 @@ fi
 # shellcheck source=scripts/lib/test_helpers.sh
 source "$SCRIPT_DIR/scripts/lib/test_helpers.sh"
 
-COMPOSE_FILE="docker-compose.test.yml"
+export COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.test.yml}"
 export COMPOSE_PROJECT_NAME
 COMPOSE_PROJECT_NAME="$(compute_project_name .)"
 
@@ -327,7 +324,19 @@ stack_status() {
 # =============================================================================
 
 run_pytest() {
-    local runner_lock_fd runner_name runner_status
+    local runner_lock_fd runner_name runner_status target unit_only running_services
+    local stopped_services=()
+
+    unit_only="${BIFROST_TEST_UNIT_ONLY:-0}"
+    if [[ "${1:-}" == tests/unit/* ]]; then
+        unit_only=1
+        for target in "$@"; do
+            if [[ "$target" == tests/e2e/* ]]; then
+                unit_only=0
+                break
+            fi
+        done
+    fi
 
     # One worktree owns one mutable Docker test stack.  A second pytest process
     # against that stack can reset the database underneath the first process and
@@ -352,6 +361,10 @@ run_pytest() {
 
     cleanup_pytest_runner() {
         docker rm -f "$runner_name" > /dev/null 2>&1 || true
+        if [ "${#stopped_services[@]}" -gt 0 ]; then
+            docker compose -f "$COMPOSE_FILE" start "${stopped_services[@]}" > /dev/null
+            stopped_services=()
+        fi
     }
     trap cleanup_pytest_runner INT TERM
 
@@ -361,6 +374,20 @@ run_pytest() {
     # changed migrations they should run `./test.sh stack reset` once.
     require_stack_up
     prepare_test_state
+    if [[ "$unit_only" == "1" ]]; then
+        # Unit tests create committed service rows while exercising claim
+        # logic. A live scheduler/worker can claim those rows before the test
+        # loop does, making the result depend on an unrelated process tick.
+        running_services="$(docker compose -f "$COMPOSE_FILE" ps --status running --services)"
+        for target in worker scheduler; do
+            if grep -Fxq "$target" <<< "$running_services"; then
+                stopped_services+=("$target")
+            fi
+        done
+        if [ "${#stopped_services[@]}" -gt 0 ]; then
+            docker compose -f "$COMPOSE_FILE" stop "${stopped_services[@]}" > /dev/null
+        fi
+    fi
     # LOG_DIR is mkdir'd on the host as the runner/host user, then bind-mounted
     # into the test-runner container at /tmp/bifrost. The container runs as
     # uid 1000 (non-root, hardened), so it cannot write pytest's --junitxml file
@@ -368,15 +395,20 @@ run_pytest() {
     # the whole session is reported as ERROR even though every test ran. Make the
     # mount dir world-writable so the uid-1000 container can write results into it.
     chmod 777 "$LOG_DIR" 2>/dev/null || true
+    # The runner entrypoint chowns mounted results to uid 1000. Replace the
+    # previous log so a different host uid can open tee on the next invocation.
+    rm -f "$LOG_DIR/test-runner.log"
     local build_args=("--build")
     if [ "${BIFROST_SKIP_BUILD:-0}" = "1" ]; then
         build_args=()
         echo "BIFROST_SKIP_BUILD=1 — using pre-built test-runner image from local docker."
     fi
 
+    set +e
     docker compose -f "$COMPOSE_FILE" --profile test run "${build_args[@]}" --rm test-runner \
         pytest "$@" --durations=25 --junitxml="/tmp/bifrost/test-results.xml" 2>&1 | tee "$LOG_DIR/test-runner.log"
     runner_status="${PIPESTATUS[0]}"
+    set -e
     trap - INT TERM
     cleanup_pytest_runner
     exec {runner_lock_fd}>&-
@@ -388,9 +420,9 @@ run_pytest() {
 # not the ms a unit test should cost). Those still run in `all` and nightly, so
 # no coverage is dropped — just moved off the per-PR critical path. A caller can
 # re-include them ad hoc with `./test.sh unit -m slow` or `-m ""`.
-cmd_unit() { run_pytest tests/ --ignore=tests/e2e/ -m "not slow" -v "$@"; }
-cmd_unit_targets() { run_pytest "$@" -m "not slow" -v; }
-cmd_unit_all() { run_pytest tests/ --ignore=tests/e2e/ -v "$@"; }
+cmd_unit() { BIFROST_TEST_UNIT_ONLY=1 run_pytest tests/ --ignore=tests/e2e/ -m "not slow" -v "$@"; }
+cmd_unit_targets() { BIFROST_TEST_UNIT_ONLY=1 run_pytest "$@" -m "not slow" -v; }
+cmd_unit_all() { BIFROST_TEST_UNIT_ONLY=1 run_pytest tests/ --ignore=tests/e2e/ -v "$@"; }
 cmd_e2e()  { run_pytest tests/e2e/ -v "$@"; }
 cmd_e2e_targets() { run_pytest "$@" -v; }
 cmd_all()  { run_pytest tests/ -v "$@"; }
@@ -490,6 +522,10 @@ cmd_mcp() {
 
 mcp_conformance() {
     require_stack_up
+    # Browser lanes use localhost for callbacks. Reconcile the backend
+    # authority before the adapter sends its canonical Host and audience.
+    local -x BIFROST_TEST_PUBLIC_URL=http://api:8000
+    reset_state
 
     local results_dir="$LOG_DIR/mcp-conformance"
     local blocking_results="$results_dir/blocking"
@@ -630,6 +666,20 @@ client_unit_targets() {
         client-check-runner npm test -- "$@"
 }
 
+candidate_action_pin_checks() {
+    local diff_status=0
+    git diff --quiet origin/main HEAD -- .github/workflows .github/actions \
+        api/scripts/check_github_action_pins.py || diff_status=$?
+    case "$diff_status" in
+        0)
+            echo "Action inputs unchanged: checking full SHA pins locally; CI verifies version comments."
+            python3 api/scripts/check_github_action_pins.py
+            ;;
+        1) python3 api/scripts/check_github_action_pins.py --verify-versions ;;
+        *) echo "ERROR: cannot establish Action input changes." >&2; return "$diff_status" ;;
+    esac
+}
+
 repository_ci_checks() {
     bash scripts/lib/test_stack_lock_test.sh
     python3 scripts/lib/pre_pr_stage_evidence_test.py
@@ -637,14 +687,15 @@ repository_ci_checks() {
     node --test .github/scripts/authorize-merge-queue.test.mjs
     python3 -m unittest scripts.test_codeql_changed_lines
     echo "Checking GitHub Action pins..."
-    python3 api/scripts/check_github_action_pins.py --verify-versions
+    candidate_action_pin_checks
 
     echo "Checking generated Codex skill mirrors..."
     # scripts/check_skill_mirrors.py encapsulates the previous host gate:
     # scripts/sync-codex-skills.sh, then
-    # git diff --quiet -- plugins/bifrost/skills .codex/skills.
+    # git diff --quiet -- plugins/bifrost/skills .agents/skills.
     # It also enforces the public plugin skill-name namespace contract.
     python3 scripts/check_skill_mirrors.py
+    python3 -m unittest scripts.test_skill_mirrors
 }
 
 generated_api_checks() {
@@ -928,6 +979,30 @@ run_scoped_pre_pr() {
     fi
 }
 
+prepare_full_pre_pr_stack() {
+    # Every backend service and test runner uses this shared dev image. Build
+    # explicitly even when stack_up finds an already-running stack.
+    docker compose -f "$COMPOSE_FILE" build api
+    local -x BIFROST_SKIP_BUILD=1
+    stack_up
+}
+
+run_full_pre_pr() {
+    run_pre_pr_stage client client_ci_checks
+    run_pre_pr_stage stack prepare_full_pre_pr_stack
+    # Stack preparation just built this candidate's images. Rebuilding between snapshots
+    # changes attestation-bearing image IDs even when every layer is cached.
+    # Freeze the built images for the backend lanes; browser startup still
+    # builds and reconciles its own images before taking browser evidence.
+    local -x BIFROST_SKIP_BUILD=1
+    run_pre_pr_stage quality quality_api
+    run_pre_pr_stage generated generated_api_checks
+    run_pre_pr_stage unit cmd_unit
+    run_pre_pr_stage e2e cmd_e2e
+    run_pre_pr_stage browser client_e2e
+    run_pre_pr_stage image build_local_api_candidate
+}
+
 cmd_pre_pr() {
     local head_sha stack_was_up full_run=0
 
@@ -984,14 +1059,7 @@ PY
     echo "Pre-PR candidate: $head_sha"
     run_pre_pr_stage repository repository_ci_checks
     if [ "$full_run" = "1" ]; then
-        run_pre_pr_stage client client_ci_checks
-        run_pre_pr_stage stack stack_up
-        run_pre_pr_stage quality quality_api
-        run_pre_pr_stage generated generated_api_checks
-        run_pre_pr_stage unit cmd_unit
-        run_pre_pr_stage e2e cmd_e2e
-        run_pre_pr_stage browser client_e2e
-        run_pre_pr_stage image build_local_api_candidate
+        run_full_pre_pr
     else
         run_scoped_pre_pr
 

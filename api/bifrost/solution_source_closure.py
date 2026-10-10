@@ -18,11 +18,14 @@ MAX_ARCHIVE_BYTES = 64 * 1024 * 1024
 
 
 def _require_resource_free_source(path: str, raw: bytes, *, has_table_bindings: bool,
-                                  has_resource_bindings: bool = False) -> None:
+                                  has_resource_bindings: bool = False, has_root_file_bindings: bool = False) -> None:
     """Empty workflow installs cannot resolve shared tables or file locations."""
     tree = ast.parse(raw, filename=path)
-    unsupported_modules = [["bifrost", "files"]]
-    unsupported_names = {"files", "*"}
+    unsupported_modules = []
+    unsupported_names = {"*"}
+    if not has_root_file_bindings:
+        unsupported_modules.append(["bifrost", "files"])
+        unsupported_names.add("files")
     if not has_resource_bindings:
         unsupported_modules.append(["bifrost", "resources"])
         unsupported_names.add("resources")
@@ -57,7 +60,7 @@ def _require_resource_free_source(path: str, raw: bytes, *, has_table_bindings: 
 
 def source_closure(
     source_bytes: dict[str, bytes], entry_paths: set[str], *, has_table_bindings: bool = False,
-    has_resource_bindings: bool = False
+    has_resource_bindings: bool = False, has_root_file_bindings: bool = False
 ) -> dict[str, bytes]:
     """Reject any import edge that cannot be proven inside the Live snapshot."""
     try:
@@ -85,7 +88,7 @@ def source_closure(
             )
         if path.endswith(".py"):
             _require_resource_free_source(path, source_bytes[path], has_table_bindings=has_table_bindings,
-                has_resource_bindings=has_resource_bindings)
+                has_resource_bindings=has_resource_bindings, has_root_file_bindings=has_root_file_bindings)
     return {path: source_bytes[path] for path in sorted(paths)}
 
 

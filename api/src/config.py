@@ -15,6 +15,8 @@ from pydantic import Field, SecretStr, computed_field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from src.core.solution_delivery_policy import SolutionGitDeliveryPolicy
+from src.core.application_delivery_policy import InlineAppGitDeliveryPolicy
+from src.core.solution_package_delivery_policy import SolutionPackageGitDeliveryPolicy
 
 
 def default_temp_location() -> str:
@@ -44,6 +46,14 @@ class Settings(BaseSettings):
             "Explicit protected-Git deployment trust policy. Separate from source "
             "declaration OIDC; absent disables automated Solution delivery."
         ),
+    )
+    inline_app_git_delivery_policy: InlineAppGitDeliveryPolicy | None = Field(
+        default=None,
+        description="Reviewed existing inline App publication enrollment; absent disables Git delivery.",
+    )
+    solution_package_git_delivery_policy: SolutionPackageGitDeliveryPolicy | None = Field(
+        default=None,
+        description="Reviewed complete Solution package enrollment; absent disables package delivery.",
     )
 
     model_config = SettingsConfigDict(
@@ -114,6 +124,21 @@ class Settings(BaseSettings):
             "same backend; drain and verify the old backend before changing it."
         ),
     )
+
+    external_worker_scaling_enabled: bool = False
+    external_worker_app_resource_id: str = ""
+    external_worker_max_replicas: int = Field(default=2, ge=1, le=10)
+    external_worker_queue_account: str = ""
+    external_worker_queue_name: str = ""
+    external_worker_tenant_id: str = ""
+    external_worker_client_id: str = ""
+    external_worker_principal_id: str = ""
+    external_worker_enrollment_audience: str = ""
+    external_worker_defined_network_id: str = ""
+    external_worker_defined_role_id: str = ""
+    external_worker_idle_seconds: int = Field(default=120, ge=120, le=3600)
+    worker_workflow_queue_scope: Literal["canary", "production"] = "canary"
+    service_claim_enabled: bool = True
 
     # ==========================================================================
     # Workflow Execution

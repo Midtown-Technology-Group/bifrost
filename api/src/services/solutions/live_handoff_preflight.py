@@ -33,6 +33,7 @@ from src.models.orm.tables import Table
 from src.models.orm.workflows import Workflow
 from src.repositories.solution_deployments import SolutionDeploymentRepository
 from src.services.solutions.deployment_manifest import (
+    CompiledDeploymentManifest,
     DeploymentResolutionMap,
     sha256_digest,
     validate_runtime_closure,
@@ -66,6 +67,40 @@ class WorkspaceLiveHandoffPreflightError(ValueError):
 
 class WorkspaceLiveHandoffPreflightConflict(WorkspaceLiveHandoffPreflightError):
     """The release or Solution pointer differs from the reviewed expectation."""
+
+
+def handoff_preflight_evidence_id(
+    release: WorkspaceReleaseDescriptor,
+    manifest: CompiledDeploymentManifest,
+    resolution: DeploymentResolutionMap,
+    *,
+    workflow_ids: list[UUID],
+    expected_active_deployment_id: UUID | None = None,
+) -> str:
+    """The retained receipt binds the original immutable closure to Live."""
+    return canonical_digest({
+        "schema_version": "bifrost.workspace-live-handoff-preflight/v1",
+        "release_row_id": str(release.release_row_id),
+        "release_id": release.release_id,
+        "artifact_id": str(release.artifact_id),
+        "governed_manifest_id": release.governed_manifest_id,
+        "registration_state_fingerprint": release.registration_state_fingerprint,
+        "solution_id": str(manifest.solution_id),
+        "deployment_id": str(manifest.deployment_id),
+        "compiled_manifest_hash": manifest.content_hash(),
+        "resolution_map_hash": manifest.resolution_map_hash,
+        "expected_active_deployment_id": (
+            str(expected_active_deployment_id) if expected_active_deployment_id else None
+        ),
+        "workflow_ids": sorted(str(item) for item in workflow_ids),
+        "shared_tables": {
+            name: binding.model_dump(mode="json")
+            for name, binding in manifest.shared_tables.items()
+        },
+        "source_hashes": {
+            path: release.source_hashes[path] for path in sorted(resolution.sources)
+        },
+    })
 
 
 async def _require_empty_solution_install(
@@ -289,7 +324,8 @@ class WorkspaceLiveHandoffPreflightService:
                 "candidate deployment closure is invalid"
             ) from exc
         if (
-            manifest.shared_tables != request.shared_tables
+            manifest.root_file_bindings != request.root_file_bindings
+            or manifest.shared_tables != request.shared_tables
             or manifest.tables or manifest.file_locations
             or manifest.agents or manifest.forms or manifest.events
             or manifest.applications or manifest.dependencies
@@ -369,7 +405,8 @@ class WorkspaceLiveHandoffPreflightService:
             )
         try:
             source_bytes = source_closure(
-                live_bytes, entry_paths, has_table_bindings=bool(manifest.shared_tables)
+                live_bytes, entry_paths, has_table_bindings=bool(manifest.shared_tables),
+                has_root_file_bindings=bool(manifest.root_file_bindings)
             )
         except LiveHandoffSourceError as exc:
             raise WorkspaceLiveHandoffPreflightError(str(exc)) from exc
@@ -396,34 +433,16 @@ class WorkspaceLiveHandoffPreflightService:
                 )
 
         await asyncio.gather(*(verify_runtime(path) for path in source_paths))
+        from src.services.solutions.root_file_bindings import (
+            RootFileBindingError, require_root_workspace_files,
+        )
+        try:
+            await require_root_workspace_files(self.db, manifest.root_file_bindings)
+        except RootFileBindingError as exc:
+            raise WorkspaceLiveHandoffPreflightError(str(exc)) from exc
         _verify_source_archive(await storage.read_source_artifact(), source_bytes)
         _require_live_identity(await active_workspace_release(self.db, None), request)
         workflow_ids = sorted(request.workflow_ids, key=str)
-        evidence = {
-            "schema_version": "bifrost.workspace-live-handoff-preflight/v1",
-            "release_row_id": str(release.release_row_id),
-            "release_id": release.release_id,
-            "artifact_id": str(release.artifact_id),
-            "governed_manifest_id": release.governed_manifest_id,
-            "registration_state_fingerprint": release.registration_state_fingerprint,
-            "solution_id": str(solution_id),
-            "deployment_id": str(deployment_id),
-            "compiled_manifest_hash": deployment.compiled_manifest_hash,
-            "resolution_map_hash": deployment.resolution_map_hash,
-            "expected_active_deployment_id": (
-                str(request.expected_active_deployment_id)
-                if request.expected_active_deployment_id
-                else None
-            ),
-            "workflow_ids": [str(item) for item in workflow_ids],
-            "shared_tables": {
-                name: binding.model_dump(mode="json")
-                for name, binding in manifest.shared_tables.items()
-            },
-            "source_hashes": {
-                path: release.source_hashes[path] for path in source_paths
-            },
-        }
         return WorkspaceLiveHandoffPreflightResponse(
             solution_id=solution_id,
             deployment_id=deployment_id,
@@ -434,6 +453,11 @@ class WorkspaceLiveHandoffPreflightService:
             workflow_ids=workflow_ids,
             verified_source_paths=source_paths,
             verified_shared_tables=manifest.shared_tables,
+            verified_root_file_bindings=manifest.root_file_bindings,
             expected_active_deployment_id=request.expected_active_deployment_id,
-            evidence_id=canonical_digest(evidence),
+            evidence_id=handoff_preflight_evidence_id(
+                release, manifest, resolution,
+                workflow_ids=workflow_ids,
+                expected_active_deployment_id=request.expected_active_deployment_id,
+            ),
         )

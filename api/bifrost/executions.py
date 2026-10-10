@@ -1,12 +1,19 @@
 """
-bifrost/executions.py - Execution history SDK (API-only)
+bifrost/executions.py - Execution history SDK
 
 Provides Python API for execution history operations (list, get, get_current_logs).
-All operations go through HTTP API endpoints.
+
+``list`` and ``get`` send the ordinary HTTP request through the shared
+``BifrostClient``: over the worker's private Unix socket when the engine
+injected one, and over the network API otherwise. The worker parent owns the
+pooled database; an engine child holds neither, and a local attempt never
+falls back to the network API. ``get_current_logs`` reads the execution's
+Redis stream directly — it is not an API call.
 """
 
 from __future__ import annotations
 
+from .admin_models import ExecutionRedactionResult
 from .client import get_client, raise_for_status_with_detail
 from .models import ExecutionLog, WorkflowExecution
 
@@ -33,6 +40,27 @@ class Executions:
 
     All methods are async - await is required.
     """
+
+    @staticmethod
+    async def redact_sensitive_fields(
+        execution_id: str, *, scope: str | None = None
+    ) -> ExecutionRedactionResult:
+        """Sanitize stored payloads of one terminal execution (platform admin only).
+
+        The server resolves the target organization without returning its payload.
+        An optional organization UUID or ``global`` must match the target.
+        Missing/wrong-scope targets return 404; active executions return 409.
+        Repeated calls succeed.
+        Logs and related records are outside this payload sanitation operation.
+        """
+        from uuid import UUID
+
+        response = await get_client().post(
+            f"/api/executions/{UUID(execution_id)}/redact-sensitive-fields",
+            json={"scope": scope} if scope is not None else {},
+        )
+        raise_for_status_with_detail(response)
+        return ExecutionRedactionResult.model_validate(response.json())
 
     @staticmethod
     async def list(
@@ -112,7 +140,7 @@ class Executions:
             params["continuation_token"] = continuation_token
         params["limit"] = min(limit, 1000)
 
-        response = await client.get("/api/executions", params=params)
+        response = await client.engine_request("GET", "/api/executions", params=params)
         raise_for_status_with_detail(response)
         data = response.json()
         # API returns ExecutionsListResponse with executions array
@@ -151,7 +179,9 @@ class Executions:
             >>> print(exec_details.result)
         """
         client = get_client()
-        response = await client.get(f"/api/executions/{execution_id}")
+        response = await client.engine_request(
+            "GET", f"/api/executions/{execution_id}"
+        )
         if response.status_code == 404:
             raise ValueError(f"Execution not found: {execution_id}")
         elif response.status_code == 403:
@@ -164,7 +194,7 @@ class Executions:
         execution_id: str | None = None,
         start: str = "0",
         count: int = 100,
-    ) -> "list[ExecutionLog]":
+    ) -> list[ExecutionLog]:
         """
         Get logs accumulated so far for the current (or specified) execution.
 
@@ -204,6 +234,7 @@ class Executions:
         # If no execution_id provided, get from current context
         if execution_id is None:
             from ._context import get_execution_context
+
             ctx = get_execution_context()
             execution_id = ctx.execution_id
 

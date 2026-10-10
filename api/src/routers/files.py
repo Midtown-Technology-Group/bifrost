@@ -18,11 +18,12 @@ from typing import Literal, TypeVar, cast
 from urllib.parse import unquote
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.services.operation_catalog import operation_route
 from src.core.auth import Context, CurrentActiveUser, CurrentSuperuser
 from src.core.org_filter import resolve_target_org
 from src.core.principal import UserPrincipal
@@ -65,9 +66,41 @@ WATCH_SESSION_TTL_SECONDS = 120
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/files", tags=["Files"])
+async def _require_signed_file_context(ctx: Context, request: Request) -> None:
+    """Dropping SDK context must not select Root with a Solution engine token."""
+    from src.services.solution_scope import parse_ctx_solution_id
+
+    # Generic editor calls already operate on Root and do not send SDK file
+    # context. Their authorization is a separate existing contract.
+    if request.url.path.startswith("/api/files/editor"):
+        return
+    if ctx.user is None:
+        raise HTTPException(status_code=403, detail="File access requires an authenticated user")
+    if (
+        ctx.user.is_engine_token and ctx.user.engine_solution_id is not None
+        and parse_ctx_solution_id(ctx) is None
+    ):
+        raise HTTPException(status_code=403, detail="Solution engines require their signed file context")
+
+
+router = APIRouter(
+    prefix="/api/files", tags=["Files"], dependencies=[Depends(_require_signed_file_context)],
+)
 _USE_CONTEXT_SOLUTION_ID = object()
 _T = TypeVar("_T")
+
+
+async def _reviewed_root_access(ctx, request, operation):
+    from src.services.solutions.root_file_bindings import (
+        RootFileBindingError, resolve_execution_root_file,
+    )
+    try:
+        return await resolve_execution_root_file(
+            ctx, location=request.location, path=request.path, operation=operation,
+            scope=request.scope, mode=getattr(request, "mode", "cloud"),
+        )
+    except RootFileBindingError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
 
 
 # =============================================================================
@@ -685,7 +718,7 @@ async def _test_principal(
 # =============================================================================
 
 
-@router.get("/policies", response_model=FilePolicyListResponse)
+@router.get("/policies", response_model=FilePolicyListResponse, **operation_route("files.policies.list"))
 async def list_file_policies(
     ctx: Context,
     user: CurrentSuperuser,
@@ -723,7 +756,7 @@ async def list_file_policies(
     return FilePolicyListResponse(policies=[_policy_public(row) for row in rows])
 
 
-@router.post("/policies/test", response_model=FilePolicyAccessTestResponse)
+@router.post("/policies/test", response_model=FilePolicyAccessTestResponse, **operation_route("files.policies.test"))
 async def test_file_policy_access(
     request: FilePolicyAccessTestRequest,
     ctx: Context,
@@ -782,7 +815,7 @@ async def test_file_policy_access(
     )
 
 
-@router.post("/structure", response_model=FileStructureResponse)
+@router.post("/structure", response_model=FileStructureResponse, **operation_route("files.structure.list"))
 async def list_file_structure(
     request: FileStructureRequest,
     ctx: Context,
@@ -814,7 +847,7 @@ async def list_file_structure(
     return FileStructureResponse(entries=[e.model_dump() for e in entries])
 
 
-@router.get("/policies/{policy_path:path}", response_model=FilePolicyPublic)
+@router.get("/policies/{policy_path:path}", response_model=FilePolicyPublic, **operation_route("files.policies.get"))
 async def get_file_policy(
     policy_path: str,
     ctx: Context,
@@ -854,7 +887,7 @@ async def get_file_policy(
     return _policy_public(row)
 
 
-@router.put("/policies/{policy_path:path}", response_model=FilePolicyPublic)
+@router.put("/policies/{policy_path:path}", response_model=FilePolicyPublic, **operation_route("files.policies.set"))
 async def set_file_policy(
     policy_path: str,
     request: FilePolicySetRequest,
@@ -911,7 +944,7 @@ async def set_file_policy(
     return _policy_public(row)
 
 
-@router.delete("/policies/{policy_path:path}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/policies/{policy_path:path}", status_code=status.HTTP_204_NO_CONTENT, **operation_route("files.policies.delete"))
 async def delete_file_policy(
     policy_path: str,
     ctx: Context,
@@ -961,6 +994,13 @@ async def _build_signed_url(
     """Policy-check and generate a single presigned URL."""
     from shared.file_paths import resolve_s3_key
 
+    root_access = None
+    if request.method == "GET":
+        root_access = await _reviewed_root_access(ctx, request, "signed_get")
+        if root_access is not None:
+            if request.expires_in > root_access.binding.max_url_ttl_seconds:
+                raise HTTPException(status_code=422, detail="Root download TTL exceeds the reviewed bound")
+            ctx = root_access.context
     solution_id = _ctx_solution_id(ctx, request.location)
     shared_workspace = request.location == "workspace" and solution_id is None
     if request.method == "GET":
@@ -1024,7 +1064,7 @@ async def _build_signed_url(
         except ValueError as e:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
 
-        if shared_workspace:
+        if shared_workspace and root_access is None:
             from src.services.workspace_release_files import (
                 governed_workspace_release_file_view,
             )
@@ -1075,6 +1115,14 @@ async def _build_signed_url(
                 },
             )
 
+    if root_access is not None:
+        from src.services.solutions.root_file_bindings import read_reviewed_root_bytes
+        try:
+            await read_reviewed_root_bytes(root_access, request.path, retain_bytes=False)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail="Root download object not found") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
     file_storage = FileStorageService(db)
 
     if request.method == "PUT":
@@ -1093,6 +1141,8 @@ async def _build_signed_url(
             expires_in=request.expires_in,
         )
 
+    if root_access is not None:
+        root_access.audit(request.path, "signed_get")
     return SignedUrlResponse(
         url=url,
         path=s3_path,
@@ -1177,7 +1227,7 @@ async def _record_completed_signed_upload(
 # =============================================================================
 
 
-@router.post("/read", response_model=FileReadResponse)
+@router.post("/read", response_model=FileReadResponse, **operation_route("workspace.files.read"))
 async def read_file(
     request: FileReadRequest,
     ctx: Context,
@@ -1186,6 +1236,9 @@ async def read_file(
 ) -> FileReadResponse:
     """Read a file from a managed or custom location."""
     try:
+        root_access = await _reviewed_root_access(ctx, request, "read")
+        if root_access is not None:
+            ctx = root_access.context
         _require_local_mode_superuser(request.mode, ctx.user)
         from src.services.solution_scope import file_read_tiers
 
@@ -1218,7 +1271,7 @@ async def read_file(
         for tier in tiers:
             if not await _authorize_file_policy(
                 ctx,
-                action="exists",
+                action="read" if root_access is not None else "exists",
                 location=request.location,
                 scope=tier.scope,
                 path=request.path,
@@ -1228,6 +1281,11 @@ async def read_file(
                 continue
             had_allowed_tier = True
             try:
+                if root_access is not None:
+                    from src.services.solutions.root_file_bindings import read_reviewed_root_bytes
+                    content = await read_reviewed_root_bytes(root_access, request.path)
+                    root_access.audit(request.path, "read")
+                    break
                 content = (
                     await release_view.read(request.path)
                     if release_view is not None
@@ -1277,6 +1335,7 @@ async def read_file(
 @router.post(
     "/impact",
     summary="Preview a Workspace Python file's dependency impact",
+    **operation_route("files.preview_workspace_file_impact"),
 )
 async def preview_workspace_file_impact(
     request: WorkspaceFileImpactRequest,
@@ -1373,7 +1432,7 @@ async def preview_workspace_file_impact(
         ) from exc
 
 
-@router.post("/write", status_code=status.HTTP_204_NO_CONTENT)
+@router.post("/write", status_code=status.HTTP_204_NO_CONTENT, **operation_route("workspace.files.write"))
 async def write_file(
     request: FileWriteRequest,
     ctx: Context,
@@ -1382,6 +1441,16 @@ async def write_file(
 ) -> None:
     """Write a file to a managed or custom location."""
     try:
+        root_access = await _reviewed_root_access(ctx, request, "create")
+        if root_access is not None:
+            ctx = root_access.context
+            if request.expected_version is not None or request.impact_candidate_id is not None:
+                raise HTTPException(status_code=422, detail="Root backups allow create-only data writes")
+            if len(request.content) > root_access.binding.max_bytes * 4 // 3 + 4:
+                raise HTTPException(status_code=422, detail="Root backup exceeds the reviewed byte bound")
+            content = base64.b64decode(request.content, validate=True) if request.binary else request.content.encode("utf-8")
+            root_access.validate_bytes(content, create=True)
+            request = request.model_copy(update={"create_only": True})
         _require_local_mode_superuser(request.mode, ctx.user)
         effective_scope = _resolve_effective_scope(ctx, request.location, request.scope)
         solution_id = _ctx_solution_id(ctx, request.location)
@@ -1586,6 +1655,8 @@ async def write_file(
                 action="write",
             )
 
+        if root_access is not None:
+            root_access.audit(request.path, "create")
         logger.info(f"Wrote file: {log_safe(request.path)} ({len(content)} bytes, mode={log_safe(request.mode)}, location={log_safe(request.location)})")
 
     except ValueError as e:
@@ -1595,7 +1666,7 @@ async def write_file(
         )
 
 
-@router.post("/delete", status_code=status.HTTP_204_NO_CONTENT)
+@router.post("/delete", status_code=status.HTTP_204_NO_CONTENT, **operation_route("workspace.files.delete"))
 async def delete_file(
     request: FileDeleteRequest,
     ctx: Context,
@@ -1800,7 +1871,7 @@ async def _get_file_stat(
     )
 
 
-@router.post("/list", response_model=FileListResponse)
+@router.post("/list", response_model=FileListResponse, **operation_route("workspace.files.list"))
 async def list_files_simple(
     request: FileListRequest,
     ctx: Context,
@@ -2017,7 +2088,7 @@ async def list_files_simple(
         )
 
 
-@router.post("/exists", response_model=FileExistsResponse)
+@router.post("/exists", response_model=FileExistsResponse, **operation_route("workspace.files.exists"))
 async def file_exists(
     request: FileExistsRequest,
     ctx: Context,
@@ -2026,6 +2097,9 @@ async def file_exists(
 ) -> FileExistsResponse:
     """Check if a file exists."""
     try:
+        root_access = await _reviewed_root_access(ctx, request, "exists")
+        if root_access is not None:
+            ctx = root_access.context
         _require_local_mode_superuser(request.mode, ctx.user)
         from src.services.solution_scope import file_read_tiers
 
@@ -2065,6 +2139,11 @@ async def file_exists(
             )
             if not allowed:
                 continue
+            if root_access is not None:
+                from src.services.solutions.root_file_bindings import read_reviewed_root_bytes
+                await read_reviewed_root_bytes(root_access, request.path, retain_bytes=False)
+                root_access.audit(request.path, "exists")
+                return FileExistsResponse(exists=True)
             if release_view is not None:
                 await release_view.read(request.path)
                 return FileExistsResponse(
@@ -2081,6 +2160,8 @@ async def file_exists(
                 return FileExistsResponse(exists=True)
         return FileExistsResponse(exists=False)
 
+    except FileNotFoundError:
+        return FileExistsResponse(exists=False)
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -2088,7 +2169,7 @@ async def file_exists(
         )
 
 
-@router.post("/stat", response_model=FileStatResponse)
+@router.post("/stat", response_model=FileStatResponse, **operation_route("workspace.files.stat"))
 async def file_stat(
     request: FileReadRequest,
     ctx: Context,
@@ -2228,7 +2309,7 @@ async def get_signed_urls(
 # =============================================================================
 
 
-@router.post("/pull", response_model=FilePullResponse)
+@router.post("/pull", response_model=FilePullResponse, **operation_route("workspace.files.pull"))
 async def pull_files(
     request: FilePullRequest,
     ctx: Context,
@@ -2271,7 +2352,7 @@ async def pull_files(
     )
 
 
-@router.get("/manifest")
+@router.get("/manifest", **operation_route("workspace.files.manifest"))
 async def get_manifest(
     ctx: Context,
     user: CurrentSuperuser,
@@ -2290,7 +2371,7 @@ async def get_manifest(
 # =============================================================================
 
 
-@router.post("/watch")
+@router.post("/watch", **operation_route("workspace.files.watch"))
 async def manage_watch_session(
     request: WatchSessionRequest,
     user: CurrentSuperuser,
@@ -2331,7 +2412,7 @@ async def manage_watch_session(
     return {"ok": True}
 
 
-@router.get("/watchers")
+@router.get("/watchers", **operation_route("workspace.files.watchers"))
 async def list_active_watchers(user: CurrentSuperuser) -> dict:
     """List active CLI watch sessions."""
     from src.core.cache.redis_client import get_shared_redis
@@ -2358,6 +2439,7 @@ async def list_active_watchers(user: CurrentSuperuser) -> dict:
     "/editor",
     response_model=list[FileMetadata],
     summary="List directory contents (editor)",
+    **operation_route("workspace.files.editor.list"),
 )
 async def list_files_editor(
     ctx: Context,
@@ -2469,6 +2551,7 @@ async def list_files_editor(
     "/editor/content",
     response_model=FileContentResponse,
     summary="Read file content (editor)",
+    **operation_route("workspace.files.editor.read"),
 )
 async def get_file_content_editor(
     ctx: Context,
@@ -2525,6 +2608,7 @@ async def get_file_content_editor(
     response_model=FileContentResponse,
     summary="Write file content (editor)",
     responses={409: {"model": FileConflictResponse, "description": "File conflict"}},
+    **operation_route("workspace.files.editor.write"),
 )
 async def put_file_content_editor(
     request: FileContentRequest,
@@ -2691,6 +2775,7 @@ async def put_file_content_editor(
     response_model=FileMetadata,
     status_code=status.HTTP_201_CREATED,
     summary="Create folder (editor)",
+    **operation_route("workspace.files.editor.folder.create"),
 )
 async def create_folder_editor(
     ctx: Context,
@@ -2726,6 +2811,7 @@ async def create_folder_editor(
     "/editor",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Delete file or folder (editor)",
+    **operation_route("workspace.files.editor.delete"),
 )
 async def delete_file_editor(
     ctx: Context,
@@ -2789,6 +2875,7 @@ async def delete_file_editor(
     "/editor/rename",
     response_model=FileMetadata,
     summary="Rename or move file/folder (editor)",
+    **operation_route("workspace.files.editor.rename"),
 )
 async def rename_file_editor(
     ctx: Context,
@@ -2839,6 +2926,7 @@ async def rename_file_editor(
     "/search",
     response_model=SearchResponse,
     summary="Search file contents",
+    **operation_route("workspace.files.search"),
 )
 async def search_file_contents(
     request: SearchRequest,

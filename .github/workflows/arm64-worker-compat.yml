@@ -10,7 +10,14 @@ on:
       - api/src/services/execution/**
   workflow_dispatch:
 
-permissions: read-all
+permissions:
+  contents: read
+  packages: read
+
+# Superseded PR snapshots can release their runners; other events must finish.
+concurrency:
+  group: arm64-worker-${{ github.event_name }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   worker:

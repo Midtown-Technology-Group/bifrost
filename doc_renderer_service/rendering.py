@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import re
 import subprocess
+from typing import Any
 from urllib.parse import unquote, urlsplit
 from urllib.request import url2pathname
 
@@ -78,22 +79,36 @@ def _wrap_html_document(*, html_body: str, title: str | None, theme_path: Path) 
 """
 
 
-def restricted_url_fetcher(url: str, timeout: int = 10, ssl_context=None):
-    """Fetch only embedded content or an exact bundled theme stylesheet."""
-    from weasyprint import default_url_fetcher  # pyright: ignore[reportMissingImports]
-
+def validate_resource_url(url: str) -> None:
+    """Allow only embedded content or an exact bundled theme stylesheet."""
     parsed = urlsplit(url)
     if parsed.scheme == "data":
-        return default_url_fetcher(url, timeout=timeout, ssl_context=ssl_context)
+        return
 
     if parsed.scheme == "file" and not parsed.netloc:
         local_path = Path(url2pathname(unquote(parsed.path)))
         if os.name == "nt" and str(local_path).startswith("\\"):
             local_path = Path(str(local_path).lstrip("\\"))
         if local_path.resolve() in ALLOWED_LOCAL_RESOURCES:
-            return default_url_fetcher(url, timeout=timeout, ssl_context=ssl_context)
+            return
 
     raise ValueError("External document resources are not allowed")
+
+
+def make_restricted_url_fetcher() -> Any:
+    """Build the class-based fetcher required by WeasyPrint 70 and later."""
+    from weasyprint.urls import URLFetcher  # pyright: ignore[reportMissingImports]
+
+    class RestrictedURLFetcher(URLFetcher):
+        def fetch(self, url: str, headers: dict[str, str] | None = None) -> Any:
+            validate_resource_url(url)
+            return super().fetch(url, headers)
+
+    return RestrictedURLFetcher(
+        timeout=10,
+        allowed_protocols=("data", "file"),
+        allow_redirects=False,
+    )
 
 
 def markdown_to_html(markdown: str, *, title: str | None = None) -> str:
@@ -142,7 +157,7 @@ def render_pdf_from_html(
         pdf_bytes = HTML(
             string=rendered_html,
             base_url=str(THEMES_DIR),
-            url_fetcher=restricted_url_fetcher,
+            url_fetcher=make_restricted_url_fetcher(),
         ).write_pdf()
     except Exception as exc:  # pragma: no cover - WeasyPrint internals
         raise RenderError(f"WeasyPrint failed to render PDF: {exc}") from exc

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import re
 from collections.abc import Mapping
 from typing import Any, Literal
 from uuid import UUID
@@ -12,10 +11,12 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 
 from src.core.solution_delivery_policy import delivery_path
+from bifrost.root_file_bindings import RootFileBinding, require_root_file_bindings
 
 from bifrost.solution_delivery_review import (
     WORKFLOW_PARAMETERS_SCHEMA_CONTRACT as WORKFLOW_PARAMETERS_SCHEMA_CONTRACT,
     SharedRootTableBinding as SharedRootTableBinding,
+    require_shared_table_bindings,
     MAX_DEPLOYMENT_RESOURCE_BYTES as MAX_DEPLOYMENT_RESOURCE_BYTES,
     MAX_DEPLOYMENT_RESOURCES_BYTES as MAX_DEPLOYMENT_RESOURCES_BYTES,
 )
@@ -90,6 +91,11 @@ class RuntimeEntityDefinition(ImmutableContract):
     source_ref: str | None = None
     source_hash: str | None = None
     dependency_solution_id: UUID | None = None
+    # Reviewed adoption can retain the original list-shaped registry schema.
+    # The executable definition still carries the complete source-derived schema.
+    legacy_parameters_schema_hash: str | None = Field(
+        default=None, pattern=r"^sha256:[0-9a-f]{64}$",
+    )
 
 
 class RuntimeSourceResolution(ImmutableContract):
@@ -137,11 +143,15 @@ class CompiledDeploymentManifest(ImmutableContract):
     resources: dict[str, RuntimeResourceResolution] = Field(
         default_factory=dict, max_length=256, exclude_if=lambda value: not value
     )
+    root_file_bindings: dict[str, RootFileBinding] = Field(default_factory=dict, max_length=100, exclude_if=lambda value: not value)
     file_locations: dict[str, dict[str, Any]] = Field(default_factory=dict)
     connections: dict[str, dict[str, Any]] = Field(default_factory=dict)
     config_requirements: dict[str, dict[str, Any]] = Field(default_factory=dict)
     dependencies: dict[str, DependencyResolution] = Field(default_factory=dict)
     git: DeploymentGitProvenance = Field(default_factory=DeploymentGitProvenance)
+    # Complete authored package and retained control evidence. Absent on older
+    # workflow-only deployments, preserving their canonical bytes and hashes.
+    package_evidence: dict[str, JsonValue] | None = None
 
     def canonical_bytes(self) -> bytes:
         return canonical_json(self)
@@ -167,6 +177,8 @@ class DeploymentResolutionMap(ImmutableContract):
     resources: dict[str, RuntimeResourceResolution] = Field(
         default_factory=dict, max_length=256, exclude_if=lambda value: not value
     )
+
+    root_file_bindings: dict[str, RootFileBinding] = Field(default_factory=dict, max_length=100, exclude_if=lambda value: not value)
 
     def resolve_workflow(self, portable_ref: str) -> RuntimeEntityDefinition:
         return self.workflows[portable_ref]
@@ -247,12 +259,18 @@ def _validate_manifest_resolution_agreement(
             raise ValueError(f"manifest/resolution mismatch for {kind}")
     if manifest.dependencies != resolution.dependencies:
         raise ValueError("manifest/resolution dependency mismatch")
+    require_root_file_bindings(manifest.root_file_bindings)
+    if manifest.root_file_bindings != resolution.root_file_bindings:
+        raise ValueError("Root file binding contracts differ")
     if manifest.shared_tables != resolution.shared_tables:
         raise ValueError("manifest/resolution shared table mismatch")
     if manifest.resources != resolution.resources:
         raise ValueError("manifest/resolution resource mismatch")
     if set(resolution.resources) & set(resolution.sources):
         raise ValueError("resource path conflicts with executable source")
+    if ({item.object_key for item in resolution.resources.values()}
+            & {item.object_key for item in resolution.sources.values()}):
+        raise ValueError("source object conflicts with immutable resource storage")
     if sum(item.size_bytes for item in resolution.resources.values()) > MAX_DEPLOYMENT_RESOURCES_BYTES:
         raise ValueError("deployment resources exceed their total byte bound")
     if resolution.resources:
@@ -265,11 +283,13 @@ def _validate_manifest_resolution_agreement(
                 raise ValueError("invalid immutable resource path")
             if resource.object_key != f"{expected_prefix}_resources/{path}":
                 raise ValueError("resource object is outside its immutable deployment")
-    if len({item.table_id for item in manifest.shared_tables.values()}) != len(manifest.shared_tables):
-        raise ValueError("shared table IDs must be unique")
-    if any(re.fullmatch(r"[a-z][a-z0-9_-]{0,254}", name) is None for name in manifest.shared_tables):
-        raise ValueError("shared table binding name is invalid")
-    if set(manifest.shared_tables) & set(manifest.tables):
+    require_shared_table_bindings(manifest.shared_tables)
+    owned_table_names = set(manifest.tables)
+    for entity in manifest.tables.values():
+        name = entity.definition.get("name")
+        if isinstance(name, str):
+            owned_table_names.add(name)
+    if set(manifest.shared_tables) & owned_table_names:
         raise ValueError("shared table binding conflicts with an owned table")
 
 

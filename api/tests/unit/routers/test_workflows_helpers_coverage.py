@@ -282,7 +282,7 @@ async def test_insert_scheduled_execution_persists_expected_execution_fields():
     org_id = uuid4()
     executed_by = uuid4()
     form_id = uuid4()
-    db = _Db()
+    db = _Db(None)  # Shared runtime admission fence before pin selection.
     scheduled_at = datetime.now(UTC)
 
     with (

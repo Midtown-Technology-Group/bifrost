@@ -10,11 +10,13 @@ from src.services.execution import engine, virtual_import, worker, workspace_mod
 
 @pytest.mark.asyncio
 async def test_service_rejects_changed_source_before_execution(monkeypatch):
-    monkeypatch.setattr(
-        workspace_modules,
-        "clear_workspace_modules",
-        lambda: SimpleNamespace(generation="current-generation"),
-    )
+    credential_installs = []
+
+    def clear_modules():
+        assert credential_installs == ["token"]
+        return SimpleNamespace(generation="current-generation")
+
+    monkeypatch.setattr(workspace_modules, "clear_workspace_modules", clear_modules)
     monkeypatch.setattr(virtual_import, "get_virtual_finder", lambda: None)
     monkeypatch.setattr(virtual_import, "install_virtual_import_hook", lambda: None)
     removed = []
@@ -29,7 +31,7 @@ async def test_service_rejects_changed_source_before_execution(monkeypatch):
 
     monkeypatch.setattr(worker, "_load_workspace_workflow", load_source)
     monkeypatch.setattr(
-        "bifrost._service_runtime.install_service_credentials", lambda _token: None
+        "bifrost._service_runtime.install_service_credentials", credential_installs.append
     )
     execute = AsyncMock()
     monkeypatch.setattr(engine, "execute", execute)
@@ -55,3 +57,13 @@ async def test_service_rejects_changed_source_before_execution(monkeypatch):
     assert "source integrity mismatch" in result["error_message"]
     execute.assert_not_awaited()
     assert removed == [True]
+
+
+def test_early_credential_handoff_uses_service_token(monkeypatch):
+    installed = []
+    monkeypatch.setattr(
+        "bifrost._service_runtime.install_service_credentials",
+        lambda token: installed.append(token) or True,
+    )
+    assert worker._set_process_engine_credentials({"service": {"token": "service-token"}})
+    assert installed == ["service-token"]

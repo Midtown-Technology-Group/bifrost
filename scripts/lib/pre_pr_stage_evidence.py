@@ -14,8 +14,14 @@ from pathlib import Path
 
 
 def run(command: list[str], cwd: Path) -> str:
+    if not command or command[0] not in {"git", "docker", "node"}:
+        raise ValueError("Stage evidence only inspects Git, Docker and Node")
     try:
-        return subprocess.check_output(command, cwd=cwd, text=True, stderr=subprocess.DEVNULL).strip()
+        environment = os.environ.copy()
+        if command[0] == "git":
+            environment = {key: value for key, value in environment.items() if not key.startswith("GIT_")}
+        return subprocess.check_output(command, cwd=cwd, text=True,
+                                       stderr=subprocess.DEVNULL, env=environment).strip()
     except (OSError, subprocess.CalledProcessError):
         return "unavailable"
 
@@ -33,7 +39,7 @@ def digest(path: Path) -> str:
 def snapshot(repo: Path, compose_file: str, env_file: str, stage: str | None = None) -> dict[str, object]:
     status = run(["git", "status", "--porcelain", "--untracked-files=all"], repo)
     head = run(["git", "rev-parse", "HEAD"], repo)
-    command = ["docker", "compose", "-f", compose_file]
+    command = ["docker", "compose", "-f", str(bounded_path(Path(compose_file), repo))]
     profile = {"client": "client-check", "client-unit": "client-check", "browser": "client", "mcp": "test"}.get(stage)
     if profile:
         command += ["--profile", profile]
@@ -43,14 +49,14 @@ def snapshot(repo: Path, compose_file: str, env_file: str, stage: str | None = N
         names += f"\nbifrost-local-api-candidate:{head[:12]}"
     # Resolve configured tags, not just running containers: another checkout can
     # rebuild a shared test-image tag between two local gate invocations.
-    images = run(["docker", "image", "inspect", "--format", "{{.Id}}", *names.splitlines()], repo) if names and names != "unavailable" else "unavailable"
+    images = run(["docker", "image", "inspect", "--format", "{{.Id}}", "--", *names.splitlines()], repo) if names and names != "unavailable" else "unavailable"
     return {
         "head": head,
         "status": status,
         "compose_sha256": hashlib.sha256(compose.encode()).hexdigest(),
         "compose_available": compose != "unavailable",
         "compose_images": sorted(set(images.splitlines())) if images != "unavailable" else [],
-        "env_sha256": digest(repo / env_file),
+        "env_sha256": digest(environment_path(repo / env_file, repo)),
         "docker_version": run(["docker", "version", "--format", "{{.Server.Version}}"], repo),
         "compose_version": run(["docker", "compose", "version", "--short"], repo),
         "python_version": sys.version.split()[0],
@@ -75,7 +81,38 @@ def invariant_signature(value: dict[str, object], stage: str) -> dict[str, objec
     return result
 
 
+def bounded_path(path: Path, repo: Path | None = None) -> Path:
+    root = (repo or Path.cwd()).resolve()
+    if ".." in path.parts or path.is_symlink():
+        raise ValueError("Stage evidence paths cannot traverse or name symlinks")
+    candidate = path if path.is_absolute() else root / path
+    resolved = candidate.resolve()
+    roots = [root, Path(tempfile.gettempdir()).resolve()]
+    # Linked worktrees keep their stage ledger in Git's worktree-specific
+    # metadata directory, which can be outside the source checkout.
+    metadata = run(["git", "rev-parse", "--path-format=absolute", "--git-path", "bifrost-test-locks"], root)
+    if metadata != "unavailable" and Path(metadata).is_absolute():
+        roots.append(Path(metadata).resolve())
+    if not any(resolved.is_relative_to(base) for base in roots):
+        raise ValueError("Stage evidence must stay in checkout, Git ledger or temporary results")
+    return resolved
+
+
+def environment_path(path: Path, repo: Path) -> Path:
+    if ".." in path.parts or path.is_symlink():
+        raise ValueError("Environment evidence cannot traverse or name a symlink")
+    # test.sh supports the primary checkout's existing .env.test in a linked
+    # worktree. Permit only that exact Git-derived file for reading its digest.
+    common = run(["git", "rev-parse", "--path-format=absolute", "--git-common-dir"], repo)
+    if common != "unavailable" and Path(common).is_absolute():
+        primary = Path(common).resolve().parent / ".env.test"
+        if path.resolve() == primary:
+            return primary
+    return bounded_path(path, repo)
+
+
 def read_state(path: Path) -> dict[str, object]:
+    path = bounded_path(path)
     try:
         return json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
@@ -83,6 +120,7 @@ def read_state(path: Path) -> dict[str, object]:
 
 
 def atomic_write(path: Path, value: dict[str, object]) -> None:
+    path = bounded_path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, temporary = tempfile.mkstemp(prefix=path.name + ".", dir=path.parent)
     try:
@@ -105,6 +143,9 @@ def main() -> int:
     parser.add_argument("--compose-file", default="docker-compose.test.yml")
     parser.add_argument("--env-file", default=".env.test")
     args = parser.parse_args()
+    if args.repo.resolve() != Path.cwd().resolve():
+        parser.error("--repo must name the current checkout")
+    args.state = bounded_path(args.state, args.repo)
     current = snapshot(args.repo, args.compose_file, args.env_file, args.stage)
 
     if args.action == "snapshot":

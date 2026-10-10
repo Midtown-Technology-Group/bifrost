@@ -12,38 +12,70 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import insert, select, update
-
-from bifrost.workspace_release import canonical_digest
 from bifrost.solution_delivery_review import (
     PROTECTED_REGISTRATION_FIELDS,
+    compile_workflow_parameters,
+)
+from bifrost.solution_delivery_review import (
     require_compatible_parameters as _require_compatible_parameters,
 )
+from bifrost.workspace_release import canonical_digest
+from sqlalchemy import insert, select, update
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from src.models.contracts.solution_deployments import (
-    SolutionDeploymentCreate, SolutionSourceRevisionCommitRequest,
-    SolutionSourceRevisionInspectRequest, SolutionSourceRevisionInspectResponse,
+    SolutionDeploymentCreate,
+    SolutionSourceRevisionCommitRequest,
+    SolutionSourceRevisionInspectRequest,
+    SolutionSourceRevisionInspectResponse,
 )
-from src.models.orm.workflows import Workflow
 from src.models.orm.users import Role
 from src.models.orm.workflow_roles import WorkflowRole
+from src.models.orm.workflows import Workflow
 from src.services.file_storage.indexers.workflow import WorkflowIndexer
 from src.services.solutions.deployment_api import SolutionDeploymentAPIService
 from src.services.solutions.deployment_manifest import (
-    CompiledDeploymentManifest, DeploymentGitProvenance, DeploymentResolutionMap,
-    DeploymentSource, RuntimeSourceResolution, RuntimeResourceResolution,
-    canonical_json, sha256_digest, validate_runtime_closure,
+    CompiledDeploymentManifest,
+    DeploymentGitProvenance,
+    DeploymentResolutionMap,
+    DeploymentSource,
+    RuntimeEntityDefinition,
+    RuntimeResourceResolution,
+    RuntimeSourceResolution,
+    canonical_json,
+    sha256_digest,
+    validate_runtime_closure,
 )
 from src.services.solutions.deployment_storage import SolutionDeploymentStorage
-from src.services.solutions.live_handoff_source import LiveHandoffSourceError, source_archive, source_closure
-from src.services.solutions.shared_table_bindings import SharedTableBindingError, require_shared_tables
+from src.services.solutions.live_handoff_source import (
+    LiveHandoffSourceError,
+    source_archive,
+    source_closure,
+)
+from src.services.solutions.resource_delivery import (
+    read_deployment_resources,
+    validate_resource_files,
+)
+from src.services.solutions.shared_table_bindings import (
+    SharedTableBindingError,
+    require_shared_tables,
+)
 from src.services.solutions.source_revision import (
-    SolutionSourceRevisionConflict, SolutionSourceRevisionError, SolutionSourceRevisionService,
-    _archive_files, _workflow_snapshot,
+    SolutionSourceRevisionConflict,
+    SolutionSourceRevisionError,
+    SolutionSourceRevisionService,
+    _archive_files,
+    _workflow_snapshot,
+    legacy_descriptor_evidence,
+    registration_runtime_timeout,
+    retain_legacy_registration_names,
 )
 from src.services.solutions.workflow_revision_recipe import (
-    WORKFLOW_REVISION_MARKER, ReviewedWorkflowRecipe, WorkflowRecipeError, compile_workflow_registrations,
+    WORKFLOW_REVISION_MARKER,
+    ReviewedWorkflowRecipe,
+    WorkflowRecipeError,
+    compile_workflow_registrations,
 )
-from src.services.solutions.resource_delivery import read_deployment_resources, validate_resource_files
 
 
 def require_compatible_parameters(old: dict, new: dict) -> None:
@@ -51,6 +83,84 @@ def require_compatible_parameters(old: dict, new: dict) -> None:
         _require_compatible_parameters(old, new)
     except WorkflowRecipeError as exc:
         raise SolutionSourceRevisionError(str(exc)) from exc
+
+
+def retain_legacy_descriptors(
+    entities: dict[str, RuntimeEntityDefinition], previous: dict[str, RuntimeEntityDefinition],
+) -> dict[str, RuntimeEntityDefinition]:
+    previous_by_id = {item.resolved_id: item for item in previous.values()}
+    result = dict(entities)
+    for ref, item in entities.items():
+        old = previous_by_id.get(item.resolved_id)
+        if old is not None and "legacy_descriptor_evidence" in old.definition:
+            payload = item.model_dump(mode="json")
+            payload["definition"]["legacy_descriptor_evidence"] = json.loads(
+                canonical_json(old.definition["legacy_descriptor_evidence"]))
+            result[ref] = RuntimeEntityDefinition.model_validate(payload)
+    return result
+
+
+def retain_installed_timeouts(
+    entities: dict[str, RuntimeEntityDefinition], rows: list[Workflow],
+) -> dict[str, RuntimeEntityDefinition]:
+    """Keep the runtime limit compatible with retained registry controls."""
+    by_id = {row.id: row for row in rows}
+    result = dict(entities)
+    for ref, item in entities.items():
+        row = by_id.get(item.resolved_id)
+        if row is not None:
+            payload = item.model_dump(mode="json")
+            timeout = registration_runtime_timeout(row, payload["definition"])
+            if payload["definition"]["timeout_seconds"] < timeout:
+                raise SolutionSourceRevisionError(
+                    "Recipe timeout conflicts with retained registry controls and Source runtime bounds")
+            payload["definition"]["timeout_seconds"] = timeout
+            result[ref] = RuntimeEntityDefinition.model_validate(payload)
+    return result
+
+
+async def project_workflow_registrations(
+    db: AsyncSession, solution_id: UUID, entities: dict[str, RuntimeEntityDefinition],
+    current_ids: set[UUID],
+) -> None:
+    """Apply the reviewed workflow projection used by revision and initial install."""
+    for entity in entities.values():
+        definition: dict[str, Any] = json.loads(canonical_json(entity.definition))
+        roles = [UUID(value) for value in definition.pop("role_ids")]
+        for key in ("runtime_bounds", "effects", "source_enforced_bounds", "source_requested_bounds",
+                    "parameters_schema_contract"):
+            definition.pop(key)
+        definition.pop("legacy_registration_name_evidence", None)
+        legacy = definition.pop("legacy_descriptor_evidence", None)
+        if legacy is not None:
+            if not isinstance(legacy, dict) or not isinstance(legacy.get("fields"), dict):
+                raise SolutionSourceRevisionError("Legacy descriptor projection evidence is invalid")
+            try:
+                expected = legacy_descriptor_evidence(legacy["fields"],
+                    extended=legacy.get("schema_version") == "bifrost.solution-legacy-descriptors/v2")
+            except (KeyError, TypeError) as exc:
+                raise SolutionSourceRevisionError("Legacy descriptor projection evidence is invalid") from exc
+            if legacy != expected:
+                raise SolutionSourceRevisionError("Legacy descriptor projection evidence changed")
+            definition.update(legacy["fields"])
+        if entity.resolved_id in current_ids:
+            # Runtime bounds stay in the immutable definition. Existing registry
+            # timeouts are controls, not the compiler's effective runtime limit.
+            definition.pop("timeout_seconds")
+        values = {**definition, "is_active": True, "is_orphaned": False,
+            "updated_at": datetime.now(UTC)}
+        values["organization_id"] = UUID(values["organization_id"]) if values["organization_id"] else None
+        if entity.resolved_id in current_ids:
+            result = await db.execute(update(Workflow).where(Workflow.id == entity.resolved_id,
+                Workflow.solution_id == solution_id, Workflow.is_active.is_(True)).values(**values))
+            if result.rowcount != 1:
+                raise SolutionSourceRevisionConflict("Workflow registration changed")
+        else:
+            await db.execute(insert(Workflow).values(id=entity.resolved_id, solution_id=solution_id, **values))
+            if roles:
+                await db.execute(insert(WorkflowRole), [
+                    {"workflow_id": entity.resolved_id, "role_id": role} for role in roles
+                ])
 
 
 class SolutionWorkflowRevisionService(SolutionSourceRevisionService):
@@ -66,9 +176,13 @@ class SolutionWorkflowRevisionService(SolutionSourceRevisionService):
         indexer = WorkflowIndexer(self.db)
         try:
             validate_resource_files(recipe, resources, files)
-            desired = compile_workflow_registrations(recipe, files, indexer)
+            desired = retain_installed_timeouts(retain_legacy_descriptors(retain_legacy_registration_names(
+                compile_workflow_registrations(recipe, files, indexer), dict(previous.workflows)),
+                dict(previous.workflows)), rows)
             closure = source_closure(files, {item.path for item in recipe.workflows},
-                has_table_bindings=bool(recipe.shared_tables), has_resource_bindings=bool(recipe.resources))
+                has_table_bindings=bool(recipe.shared_tables) or await self._has_owned_tables(solution_id),
+                has_resource_bindings=bool(recipe.resources),
+                has_root_file_bindings=bool(recipe.root_file_bindings))
         except (WorkflowRecipeError, LiveHandoffSourceError) as exc:
             raise SolutionSourceRevisionError(str(exc)) from exc
         if set(closure) != set(files):
@@ -87,9 +201,11 @@ class SolutionWorkflowRevisionService(SolutionSourceRevisionService):
             # exposes them as unsupported instead of silently projecting them.
             if any(definition.get(key) != snapshot[key] for key in PROTECTED_REGISTRATION_FIELDS):
                 raise SolutionSourceRevisionError("Rename, scope, type, access, endpoint, mode, cache or retry changes require a reviewed caller/control-plane adapter")
-            old_schema = indexer.extract_parameters_from_source(base_files[snapshot["path"]], row.function_name, path=row.path)
-            if old_schema is None:
-                raise SolutionSourceRevisionError("Installed parameter contract cannot be inferred")
+            try:
+                old_schema = compile_workflow_parameters(base_files[snapshot["path"]], row.function_name,
+                    path=row.path, indexer=indexer)
+            except WorkflowRecipeError as exc:
+                raise SolutionSourceRevisionError(str(exc)) from exc
             require_compatible_parameters(old_schema, definition["parameters_schema"])
         # Global UUID lookup is intentional in this deploy writer: a recipe must
         # never claim an existing Root registration or another Solution's UUID.
@@ -125,7 +241,7 @@ class SolutionWorkflowRevisionService(SolutionSourceRevisionService):
         resource_map = {path: RuntimeResourceResolution(object_key=f"{storage.runtime_prefix}_resources/{path}",
             content_hash=sha256_digest(content), size_bytes=len(content)) for path, content in resources.items()}
         hashes = {path: item.content_hash for path, item in {**sources, **resource_map}.items()}
-        resolution = DeploymentResolutionMap(workflows=entities, sources=sources, shared_tables=recipe.shared_tables,
+        resolution = DeploymentResolutionMap(workflows=entities, sources=sources, shared_tables=recipe.shared_tables, root_file_bindings=recipe.root_file_bindings,
             resources=resource_map)
         manifest = CompiledDeploymentManifest(solution_id=solution_id, deployment_id=deployment_id,
             bundle_hash=sha256_digest(canonical_json({"base_manifest_hash": base.compiled_manifest_hash,
@@ -133,7 +249,7 @@ class SolutionWorkflowRevisionService(SolutionSourceRevisionService):
                 "source_hashes": hashes})),
             resolution_map_hash=sha256_digest(canonical_json(resolution)),
             source=DeploymentSource(artifact_key=storage.source_artifact_key, runtime_prefix=storage.runtime_prefix),
-            workflows=entities, shared_tables=recipe.shared_tables, resources=resource_map,
+            workflows=entities, shared_tables=recipe.shared_tables, root_file_bindings=recipe.root_file_bindings, resources=resource_map,
             git=DeploymentGitProvenance(commit_sha=commit_sha))
         await storage.write_source_artifact(source_archive(files), idempotent=True)
         slots = asyncio.Semaphore(16)
@@ -179,7 +295,8 @@ class SolutionWorkflowRevisionService(SolutionSourceRevisionService):
         files = _archive_files(await storage.read_source_artifact(), set(resolution.sources))
         resources = await read_deployment_resources(solution_id, deployment_id, resolution)
         _solution, base, rows, desired = await self._desired(solution_id, expected, recipe, files, resources, lock=lock)
-        if desired != resolution.workflows or recipe.shared_tables != resolution.shared_tables:
+        if (desired != resolution.workflows or recipe.shared_tables != resolution.shared_tables
+                or recipe.root_file_bindings != resolution.root_file_bindings):
             raise SolutionSourceRevisionError("Workflow candidate differs from its reviewed recipe")
         slots = asyncio.Semaphore(16)
         async def verify(path: str, content: bytes) -> None:
@@ -190,6 +307,13 @@ class SolutionWorkflowRevisionService(SolutionSourceRevisionService):
                 if await storage.read_runtime_file(path) != content:
                     raise SolutionSourceRevisionError("Workflow candidate runtime bytes changed")
         await asyncio.gather(*(verify(path, content) for path, content in files.items()))
+        from src.services.solutions.root_file_bindings import (
+            RootFileBindingError, require_root_workspace_files,
+        )
+        try:
+            await require_root_workspace_files(self.db, manifest.root_file_bindings)
+        except RootFileBindingError as exc:
+            raise SolutionSourceRevisionError(str(exc)) from exc
         subscriptions, active = await self._subscriptions([row.id for row in rows])
         hashes = {path: source.content_hash for path, source in {**resolution.sources, **resolution.resources}.items()}
         evidence = {"schema_version": WORKFLOW_REVISION_MARKER, "solution_id": str(solution_id),
@@ -218,26 +342,11 @@ class SolutionWorkflowRevisionService(SolutionSourceRevisionService):
         assert candidate is not None
         rows = (await self.db.scalars(select(Workflow).where(Workflow.solution_id == solution_id))).all()
         current_ids = {row.id for row in rows}
-        for entity in DeploymentResolutionMap.model_validate(candidate.resolution_map).workflows.values():
-            definition: dict[str, Any] = json.loads(canonical_json(entity.definition))
-            roles = [UUID(value) for value in definition.pop("role_ids")]
-            for key in ("runtime_bounds", "effects", "source_enforced_bounds", "source_requested_bounds",
-                        "parameters_schema_contract"):
-                definition.pop(key)
-            # Immutable nested tuples must become ordinary JSON lists/dicts for
-            # the SQL JSONB serializer, matching the canonical contract.
-            values = {**definition, "is_active": True,
-                "is_orphaned": False, "updated_at": datetime.now(UTC)}
-            values["organization_id"] = UUID(values["organization_id"]) if values["organization_id"] else None
-            if entity.resolved_id in current_ids:
-                result = await self.db.execute(update(Workflow).where(Workflow.id == entity.resolved_id,
-                    Workflow.solution_id == solution_id, Workflow.is_active.is_(True)).values(**values))
-                if result.rowcount != 1:
-                    raise SolutionSourceRevisionConflict("Workflow registration changed")
-            else:
-                await self.db.execute(insert(Workflow).values(id=entity.resolved_id, solution_id=solution_id, **values))
-                if roles:
-                    await self.db.execute(insert(WorkflowRole), [{"workflow_id": entity.resolved_id, "role_id": role} for role in roles])
+        await project_workflow_registrations(
+            self.db, solution_id,
+            DeploymentResolutionMap.model_validate(candidate.resolution_map).workflows,
+            current_ids,
+        )
         marker = {"schema_version": WORKFLOW_REVISION_MARKER, "preflight_evidence_id": inspected.evidence_id,
             "workflow_ids": [str(value) for value in inspected.workflow_ids], "source_hashes": inspected.source_hashes}
         await self.repository.transition(deployment_id, solution.organization_id,
@@ -254,7 +363,7 @@ class SolutionWorkflowRevisionService(SolutionSourceRevisionService):
     async def verify_current_workflows(self, solution_id: UUID, request: SolutionSourceRevisionInspectRequest,
                                         recipe: ReviewedWorkflowRecipe) -> None:
         _solution, base, resolution = await self._base(solution_id, request, allow_resources=True)
-        await self._registrations(solution_id, resolution, lock=False)
+        rows = await self._registrations(solution_id, resolution, lock=False)
         files = await self._base_files(solution_id, base.id, resolution)
         resources = await read_deployment_resources(solution_id, base.id, resolution)
         storage = SolutionDeploymentStorage(solution_id, base.id)
@@ -265,6 +374,9 @@ class SolutionWorkflowRevisionService(SolutionSourceRevisionService):
                     raise SolutionSourceRevisionError("Current workflow runtime bytes differ from immutable source")
         await asyncio.gather(*(verify(path, content) for path, content in files.items()))
         validate_resource_files(recipe, resources, files)
-        desired = compile_workflow_registrations(recipe, files, WorkflowIndexer(self.db))
-        if desired != resolution.workflows or recipe.shared_tables != resolution.shared_tables:
+        desired = retain_installed_timeouts(retain_legacy_descriptors(retain_legacy_registration_names(
+            compile_workflow_registrations(recipe, files, WorkflowIndexer(self.db)), dict(resolution.workflows)),
+            dict(resolution.workflows)), rows)
+        if (desired != resolution.workflows or recipe.shared_tables != resolution.shared_tables
+                or recipe.root_file_bindings != resolution.root_file_bindings):
             raise SolutionSourceRevisionConflict("Current registrations or table bindings differ from reviewed Git")
