@@ -1,0 +1,69 @@
+{
+  "schema": "bifrost.spike.writer-guard-source/v1",
+  "status": "hosted-execution-pending-not-runtime-acceptance",
+  "candidate_sha": "d690e378e2a86bbb4eee76ccf37353125cc67bb0",
+  "candidate_tree": "93dbbdd1b33aac0882e2a4bf8b1cc3895316b92f",
+  "platform_main": "968ac4693c99cc52f156f5aacb63a40a8fcd9437",
+  "run": 38069000716,
+  "job": 114262390937,
+  "url": "https://github.com/Midtown-Technology-Group/bifrost/actions/runs/38069000716",
+  "recorded_at_utc": "2026-10-10T16:49:33.855762+00:00",
+  "source_sha256": {
+    "api/tests/e2e/platform/fixtures/runtime_writer_guards.sql": "7cf058462dbab9803636e9df277a41994edd5f7808dc438ab611d9f89e869f8b",
+    "api/tests/e2e/platform/test_runtime_writer_guards.py": "69f1558e5869752839d8a47da654bc8365a4a4862992c80ac0bcab7395dfb520",
+    "docker-compose.runtime-writer-guards.yml": "c625fadd856b3ee14e0a828ae84106fdb1eb5e5dd5172e4d24634ffae7fac018",
+    "scripts/ci/writer-guards/pgbouncer.ini": "0ff442bc1a08cc507145bbd32b3a4d6aa33346fc9a5b8abdc930e9bbe0ec42ad",
+    "scripts/ci/writer-primer/userlist.txt": "d5ec468729879dfc4648656d3635cee587be529d1b8e5921645e013695a76619",
+    ".github/workflows/runtime-writer-guard-spike.yml": "7b9793d8b705b4924df455cce69addd314845be5fd69739dd7c1e25a79467a8b"
+  },
+  "static_checks": [
+    "repository-locked Ruff0.15.12 lint/format at Python3.14",
+    "Python AST",
+    "Compose/workflow YAML parsing",
+    "workflow Bash syntax",
+    "git diff --check"
+  ],
+  "execution_checks": {
+    "state": "queued; job has no runner or executed steps at last provider readback",
+    "unit": "pending",
+    "storage_and_incumbent_baseline": "pending",
+    "actual_schema_guard_cases": "pending",
+    "api_quality": "pending",
+    "cleanup": "pending"
+  },
+  "superseded_runs": [
+    {
+      "run": 38068612875,
+      "candidate": "ebe12873a0254002219ef8f5a690e407157af632",
+      "conclusion": "cancelled",
+      "executed_steps": 0,
+      "reason": "Client startup options corrected before execution; same finite limits retained as role defaults, statement cache disabled."
+    },
+    {
+      "run": 38068697598,
+      "candidate": "6fa983aab824fd5f18b03f1e7eb0b708108d9a3f",
+      "conclusion": "cancelled",
+      "executed_steps": 0,
+      "reason": "Superseded before execution by closed actor mapping, immutable coordinator facts and actual Python poison cases."
+    }
+  ],
+  "sdk_version": "0.0.0-spike.2",
+  "mtg_package_version": "2026-10-09.1",
+  "workflow_artifact": {
+    "sha256": "160917deeb94275f31ca9ddee2dacae00fb079fdf54cb60e206c8def261f9c34",
+    "bytes": 9920235,
+    "producer_source": "ae9b76c18d2b097e53c0799391377e8149fdbe8c",
+    "producer_run": 38001923981,
+    "rehash_verified": true,
+    "go_source_unchanged": true
+  },
+  "runtime_acceptance": false,
+  "unproved": [
+    "Production/application principal qualification and mechanically excluded external effects",
+    "Complete common source/attempt/secondary/session/Start/grant/receipt transaction races",
+    "Actual Rust owner and finite restricted issuer/ingress",
+    "Unchanged-artifact launch/cancel/durable Result/Receipt/authenticated Execution API readback",
+    "Crash and uncertain commit/spawn/lost ACK settlement without replay or owner reassignment",
+    "Actual process/descendant/source cleanup"
+  ]
+}
