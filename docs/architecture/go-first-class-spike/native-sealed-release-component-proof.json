@@ -539,5 +539,19 @@
     },
     "runtime_acceptance": false,
     "limits": "Synthetic source/custody. Does not qualify later admission or actual Go/HTTP/guardian/recovery/cleanup."
+  },
+  "admission_unit_failure_disposition": {
+    "source_commit": "a111114f00e0d708afaf1ff90aa24be6a0ab1ef8",
+    "workflow_run": 38091875364,
+    "conclusion": "failure",
+    "classification": "Incorrect expected byte length in the caller-domain unit vector; actual netstring correctly reports 17 UTF-8 bytes. Eight other library tests passed. Database tests had not started.",
+    "fix": "Correct the expected caller-domain length to 17; preserve frozen CRED-P1 domain and implementation. No waiver, retry, skip, timeout or resource expansion.",
+    "evidence_sha256": {
+      "owner-tests.txt": "a6c9309d5dcc3c4009e097bf1b8625d369c03d8d92f880c4d10b8de4297bb045",
+      "owner-clippy.txt": "7f04908e805bff637e75a2a389374fbd22b847a87be7f95d9ad3cf72c9e693ed",
+      "owner-fmt.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "runtime_acceptance": false,
+    "validation": "Fresh exact-source complete hosted gates required."
   }
 }

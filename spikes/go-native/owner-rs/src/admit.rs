@@ -260,6 +260,6 @@ mod tests {
     fn caller_preimage_uses_utf8_byte_lengths() {
         assert_eq!(netstring("é"), "2:é,");
         assert_eq!(netstring(""), "0:,");
-        assert_eq!(netstring("cred-p1/caller/v1"), "16:cred-p1/caller/v1,");
+        assert_eq!(netstring("cred-p1/caller/v1"), "17:cred-p1/caller/v1,");
     }
 }
