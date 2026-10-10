@@ -122,5 +122,77 @@
     "combined_candidate": "00fe7727de63ddd3560f26f19c98df669aaa0d83",
     "recovery": "local main reconciliation and fresh normal workflows; stale candidate not rerun",
     "read_only_recovery_and_new_base_validation": "pending fresh source-bound evidence"
+  },
+  "verified_read_only_release_recovery_component": {
+    "source_commit": "00fe7727de63ddd3560f26f19c98df669aaa0d83",
+    "workflow_run": 38084590026,
+    "job": 114308358912,
+    "source_inputs_verified": 27,
+    "suites": {
+      "writer-guard-unit.xml": {
+        "cases": 13722,
+        "failures": 0,
+        "errors": 0,
+        "skips": 0
+      },
+      "writer-guard-baseline.xml": {
+        "cases": 109,
+        "failures": 0,
+        "errors": 0,
+        "skips": 0
+      },
+      "writer-guard-results.xml": {
+        "cases": 159,
+        "failures": 0,
+        "errors": 0,
+        "skips": 0
+      }
+    },
+    "api_quality": "Pyright 0 errors/warnings/informations; Ruff passed",
+    "actual_owned_cleanup": "container, volume and network inventories empty",
+    "evidence_sha256": {
+      "writer-guard-source-hashes.txt": "79a143ae4167324ff75bbb4c6b503a8e7d6519e16258423c9dbb28045e610865",
+      "writer-guard-source.txt": "5565381e521572f11d29fddb73a226e29105f51953a1814ddd4d83a82cb2bba4",
+      "writer-guard-unit.xml": "ba8926b9090de1ee2d14b776bc1a7b90e7245eeb1a726a8317a6d8f995af568d",
+      "writer-guard-baseline.xml": "c7f7ef454e1503cb448c93007b742bc83cff9db508234572e5bff66799498b82",
+      "writer-guard-results.xml": "2ce2e43775aa1235e6ab5e0cbd42463c81c7b352540e35ce0e06c20366d62359",
+      "writer-guard-quality.log": "0f1bd18aeaf38bbadd9b0183b5d86515170ab018b443022f5bf96c3852aa7d7f",
+      "writer-guard-cleanup.log": "9a54bf3c121e0a072388e50ebfe081655c2126b73724160531ecd96726c0876e"
+    },
+    "proves": "Actual Rust release commit, postcommit exit73 without reply, read-only observation of original release with no admission write, observation after cancellation; existing Result/Receipt and authenticated API tests remain included.",
+    "does_not_prove": "This source still directly inserts synthetic release prerequisites in Result tests. No live guardian, issuer, native admission, Go-produced Result or process/source recovery is proved."
+  },
+  "verified_inert_prepare_component": {
+    "source_commit": "1fbd9dade456a5144c3d6dbdf1c749adc114b41b",
+    "workflow_run": 38085242105,
+    "source_inputs_verified": 93,
+    "go_test_cases_passed": 475,
+    "failed_test_cases": 0,
+    "skipped_test_cases": 0,
+    "command_packages_without_tests": 5,
+    "artifact_sha256": "160917deeb94275f31ca9ddee2dacae00fb079fdf54cb60e206c8def261f9c34",
+    "timings_ms": {
+      "module_download": 204.611395,
+      "cold_compile_warm_modules": 12355.700817,
+      "independent_cold_compile": 12193.544945,
+      "warm_source_edit_compile": 301.862654,
+      "restored_warm_compile": 280.758444,
+      "edit_to_artifact": 673.451228
+    },
+    "sealed_native_fixture": {
+      "evidence": "sealed-execution.json",
+      "evidence_sha256": "5191dfef8d16809c9dfabc18bb2d4c9d3eaf0c174555e10f2ec9d8ca7a883053",
+      "artifact_sha256": "160917deeb94275f31ca9ddee2dacae00fb079fdf54cb60e206c8def261f9c34",
+      "materialization_ms": 10.288851,
+      "execution_median_ms": 4.144669,
+      "cancellation_ms": 0.538188,
+      "runtime_acceptance": false
+    },
+    "evidence_sha256": {
+      "descriptor.json": "a3dadf6db8000656015a07140859424d0050759c3f9a0feaa99bc33d79918260",
+      "tests.jsonl": "596e828118dae3891ae3d8f333cfbd0f4f89e1f5c53aff2c37a3e6cb03d1cd37",
+      "sealed-execution.json": "5191dfef8d16809c9dfabc18bb2d4c9d3eaf0c174555e10f2ec9d8ca7a883053"
+    },
+    "does_not_prove": "Later frontier/ELF-loader/transport changes require their own checks. Preparation tests use inert synthetic ELF, not accepted bundle provenance or live Rust admission."
   }
 }
