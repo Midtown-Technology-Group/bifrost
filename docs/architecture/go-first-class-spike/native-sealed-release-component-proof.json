@@ -194,5 +194,43 @@
       "sealed-execution.json": "5191dfef8d16809c9dfabc18bb2d4c9d3eaf0c174555e10f2ec9d8ca7a883053"
     },
     "does_not_prove": "Later frontier/ELF-loader/transport changes require their own checks. Preparation tests use inert synthetic ELF, not accepted bundle provenance or live Rust admission."
+  },
+  "release_result_composition_failure_disposition": {
+    "source_commit": "6bf5882d1ac5d194a1eec54659f307ce3503823a",
+    "workflow_run": 38085765686,
+    "provider_conclusion": "failure",
+    "suites": {
+      "writer-guard-unit.xml": {
+        "cases": 13722,
+        "failures": 0,
+        "errors": 0,
+        "skips": 0
+      },
+      "writer-guard-baseline.xml": {
+        "cases": 109,
+        "failures": 0,
+        "errors": 0,
+        "skips": 0
+      },
+      "writer-guard-last-results.xml": {
+        "cases": 160,
+        "failures": 0,
+        "errors": 1,
+        "skips": 0
+      }
+    },
+    "failure": "test_rust_result_expired_grant_has_no_projection[20] setup: real release correctly rejects an already-expired grant",
+    "classification": "fixture composition error; not infrastructure and not a waived test",
+    "correction_commit": "670382349b54fdf742cd5fb5f6e92385747f688b",
+    "correction": "Commit a valid real release, wait for that same immutable finite grant to expire, then require Result rejection and unchanged projection. No deadline rewriting, extra retries, skip or timeout expansion.",
+    "required_new_run": 38087038173,
+    "actual_owned_cleanup": "container, volume and network inventories empty",
+    "evidence_sha256": {
+      "writer-guard-unit.xml": "4864cdb5ee110eb2d4fe5f8cf43c282fca77c3f39e9abb545e787e81e16d0804",
+      "writer-guard-baseline.xml": "c311c3ae2910bbc4ee9ff49cedcd8d86a13fcbf260bb8ed9a2ed5f442cccfcdc",
+      "writer-guard-last-results.xml": "a5793d2b6b38c11273f6fca8648e502f4fb70db81c5f28342bdba4339923a0a6",
+      "writer-guard-cleanup.log": "10f3a9ebb378e1d250d3621851be75c9de3283342106ed02283221659e8135a3"
+    },
+    "runtime_acceptance": false
   }
 }
