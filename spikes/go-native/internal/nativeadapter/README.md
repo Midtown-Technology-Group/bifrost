@@ -147,3 +147,21 @@ fallback is 100ms; negotiated Cancel grace and enclosing guardian drain still
 need integration. The command has a finite 30s outer limit for this isolated
 readiness slice. Logs, actual Rust dispatch, issuer/ingress, accepted registration,
 cleanup/recovery and full non-Rust supervisor execution remain to be proved.
+
+`cmd/protocolprobe` now provides an executable non-Rust local supervisor candidate.
+It imports the published common codec, not this adapter package or Rust code, and
+uses the structural Prepare vector as its independent fixture. The hosted build
+lane runs it against the actual compiled adapter and the pinned unchanged child
+in the existing no-network, read-only, nonroot 128MiB runtime container. Five
+distinct execution/attempt/session/runtime identities cover success, same-binary
+re-execution, the missing-key branch, cancellation before private material and
+cancellation during a held synthetic TLS SDK call. No compilation occurs there.
+
+The retained `common-protocol-execution.json` records public outbound frames,
+exact Result payload hashes, SDK call counts, cancellation observation and elapsed
+time. It excludes private delivery and bearer bytes. Failure records preserve the
+failing case and its observed frames while keeping the CI gate red. The local
+fixture creates synthetic Start/receipt decisions and a fixture-local artifact
+identity; it does not issue CRED-P1 credentials, accept registration, commit
+lifecycle state or qualify crash/descendant/source cleanup. Real Rust owner and
+issuer integration remain required even if all five local scenarios pass.

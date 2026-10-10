@@ -104,9 +104,10 @@ docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-
   --workdir /src "$toolchain_image" env -i PATH=/usr/local/go/bin:/usr/bin:/bin \
   HOME=/tmp GOTOOLCHAIN=local GOWORK=off CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
   GOMODCACHE=/modules GOCACHE=/compiler GOPROXY=off GOSUMDB=off GOFLAGS=-mod=readonly \
-  sh -c 'go build -trimpath -buildvcs=false -o /out/adapter ./cmd/adapter; go build -trimpath -buildvcs=false -o /out/probe ./cmd/probe; go build -trimpath -buildvcs=false -o /out/controlcheck ./cmd/controlcheck; go build -trimpath -buildvcs=false -o /out/schema ./cmd/schema; /out/schema /src/internal/readiness/readiness.go Input > /out/generated-input.json; /out/schema /src/internal/readiness/readiness.go Output > /out/generated-output.json'
+  sh -c 'go build -trimpath -buildvcs=false -o /out/adapter ./cmd/adapter; go build -trimpath -buildvcs=false -o /out/protocolprobe ./cmd/protocolprobe; go build -trimpath -buildvcs=false -o /out/probe ./cmd/probe; go build -trimpath -buildvcs=false -o /out/controlcheck ./cmd/controlcheck; go build -trimpath -buildvcs=false -o /out/schema ./cmd/schema; /out/schema /src/internal/readiness/readiness.go Input > /out/generated-input.json; /out/schema /src/internal/readiness/readiness.go Output > /out/generated-output.json'
 cp "$scratch/out/generated-input.json" "$scratch/out/generated-output.json" "$evidence_dir/"
 cp "$scratch/out/adapter" "$evidence_dir/adapter"
+cp "$scratch/out/protocolprobe" "$evidence_dir/protocolprobe"
 cp "$scratch/out/probe" "$evidence_dir/probe"
 cp "$scratch/out/controlcheck" "$evidence_dir/controlcheck"
 
@@ -155,6 +156,32 @@ docker run --rm --read-only --cap-drop ALL --security-opt no-new-privileges \
   /opt/tools/govulncheck -json ./... > "$evidence_dir/govulncheck.jsonl"
 
 python3 "$spike_root/scripts/describe.py" "$spike_root" "$evidence_dir" "$toolchain_image"
+
+# Independent local supervisor uses the published contract with the actual
+# compiled adapter and unchanged child. All Start/receipt decisions here are
+# synthetic: this does not count as Rust admission, issuance or durability.
+common_probe_status=0
+docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges \
+  --user "$task_uid:$task_gid" --pids-limit 64 --memory 128m --cpus 2 \
+  --tmpfs /tmp:rw,nosuid,nodev,size=16m \
+  --mount "type=bind,src=$scratch/out/protocolprobe,dst=/protocolprobe,readonly" \
+  --mount "type=bind,src=$scratch/out/adapter,dst=/adapter,readonly" \
+  --mount "type=bind,src=$evidence_dir/workflow,dst=/workflow,readonly" \
+  --mount "type=bind,src=$evidence_dir/descriptor.json,dst=/fixtures/build-evidence.json,readonly" \
+  --mount "type=bind,src=$evidence_dir/module-graph.txt,dst=/fixtures/module-graph.txt,readonly" \
+  --mount "type=bind,src=$spike_root/schemas/input.json,dst=/fixtures/input-schema.json,readonly" \
+  --mount "type=bind,src=$spike_root/schemas/output.json,dst=/fixtures/output-schema.json,readonly" \
+  --mount "type=bind,src=$spike_root/executionprofile/testdata/structural-vectors.json,dst=/fixtures/vectors.json,readonly" \
+  --mount "type=bind,src=$scratch/results,dst=/out" \
+  --entrypoint /protocolprobe bifrost-go-spike-runtime \
+  --adapter /adapter --workflow /workflow --evidence /fixtures/build-evidence.json \
+  --graph /fixtures/module-graph.txt --input-schema /fixtures/input-schema.json \
+  --output-schema /fixtures/output-schema.json --vectors /fixtures/vectors.json \
+  --output /out/common-protocol-execution.json || common_probe_status=$?
+if [ -f "$scratch/results/common-protocol-execution.json" ]; then
+  cp "$scratch/results/common-protocol-execution.json" "$evidence_dir/common-protocol-execution.json"
+fi
+test "$common_probe_status" -eq 0
 
 # Experimental attestation keys exist only in this trusted verifier's temporary
 # directory, created after all source/test/runtime containers have exited. They
