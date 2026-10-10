@@ -69,11 +69,13 @@ class _Db:
 
 
 def _user(**overrides):
+    """Build a test principal with explicit identity and authorization flags."""
     values = {
         "email": "admin@example.test",
         "user_id": uuid4(),
         "organization_id": uuid4(),
         "is_superuser": True,
+        "is_provider_org": False,
         "is_external": False,
     }
     values.update(overrides)

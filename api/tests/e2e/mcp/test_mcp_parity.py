@@ -457,45 +457,58 @@ class TestMcpParityConfigs:
 
 
 # =============================================================================
-# Organizations (update + delete only; list/get/create already existed)
+# Organizations (thin REST wrappers for create/read/update/delete)
 # =============================================================================
 
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
 class TestMcpParityOrganizations:
-    async def test_organization_update_and_delete(
+    async def test_organization_crud_uses_rest_contract(
         self, admin_context, e2e_client, platform_admin
     ) -> None:
+        """Exercise MCP organization CRUD through the REST bridge and clean up the created organization."""
         from src.services.mcp_server.tools.organizations import (
+            create_organization,
             delete_organization,
+            get_organization,
+            list_organizations,
             update_organization,
         )
 
-        # Create an org via REST (create_organization is the existing ORM tool;
-        # the parity surface only adds update + delete).
         name = f"mcp-parity-org-{uuid4().hex[:8]}"
-        create_resp = e2e_client.post(
-            "/api/organizations",
-            headers=platform_admin.headers,
-            json={"name": name, "domain": f"{uuid4().hex[:8]}.mcp-parity.test"},
-        )
-        assert create_resp.status_code == 201
-        org_id = create_resp.json()["id"]
+        domain = f"{uuid4().hex[:8]}.mcp-parity.test"
+        created = await create_organization(admin_context, name=name, domain=domain)
+        org = created.structured_content or {}
+        assert org.get("success"), org
+        org_id = org["id"]
+        try:
+            listed = await list_organizations(admin_context)
+            assert org_id in {row["id"] for row in listed.structured_content["organizations"]}
+            found = await get_organization(admin_context, domain=domain)
+            assert found.structured_content["id"] == org_id
+            rest = e2e_client.get(f"/api/organizations/{org_id}", headers=platform_admin.headers)
+            assert rest.status_code == 200, rest.text
+            assert rest.json()["name"] == name
 
-        renamed = f"mcp-parity-org-renamed-{uuid4().hex[:8]}"
-        update_result = await update_organization(
-            admin_context, organization_ref=org_id, name=renamed
-        )
-        updated = update_result.structured_content or {}
-        assert "error" not in updated, updated
-        assert updated.get("name") == renamed
+            renamed = f"mcp-parity-org-renamed-{uuid4().hex[:8]}"
+            update_result = await update_organization(
+                admin_context, organization_ref=org_id, name=renamed
+            )
+            updated = update_result.structured_content or {}
+            assert "error" not in updated, updated
+            assert updated.get("name") == renamed
 
-        delete_result = await delete_organization(
-            admin_context, organization_ref=org_id
-        )
-        assert delete_result.structured_content is not None
-        assert delete_result.structured_content.get("deleted") == org_id
+            delete_result = await delete_organization(
+                admin_context, organization_ref=org_id
+            )
+            assert delete_result.structured_content is not None
+            assert delete_result.structured_content.get("deleted") == org_id
+        finally:
+            cleanup = e2e_client.delete(
+                f"/api/organizations/{org_id}", headers=platform_admin.headers,
+            )
+            assert cleanup.status_code in (200, 204, 404), cleanup.text
 
 
 # =============================================================================

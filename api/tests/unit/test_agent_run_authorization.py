@@ -22,6 +22,7 @@ from src.models.orm.organizations import Organization
 from src.models.orm.users import Role, User, UserRole
 from src.routers.agent_runs import execute_agent_run, list_agent_runs, rerun_agent_run
 from src.routers.websocket import websocket_connect
+from src.services.agent_run_access import load_agent_run_for_user
 
 
 pytestmark = pytest.mark.asyncio
@@ -122,7 +123,10 @@ async def _make_authenticated_agent(db: AsyncSession, org: Organization) -> Agen
     return agent
 
 
-async def _make_run(db: AsyncSession, agent: Agent, org: Organization) -> AgentRun:
+async def _make_run(
+    db: AsyncSession, agent: Agent, org: Organization, *, caller_user_id=None
+) -> AgentRun:
+    """Persist a completed run with caller attribution and sensitive summary fields for visibility tests."""
     run = AgentRun(
         id=uuid4(),
         agent_id=agent.id,
@@ -130,6 +134,7 @@ async def _make_run(db: AsyncSession, agent: Agent, org: Organization) -> AgentR
         input={},
         status="completed",
         org_id=org.id,
+        caller_user_id=str(caller_user_id) if caller_user_id is not None else None,
         iterations_used=1,
         tokens_used=100,
         asked="Sensitive customer question",
@@ -162,10 +167,11 @@ async def _list_runs_for_user(db: AsyncSession, user: UserPrincipal):
 async def test_list_agent_runs_hides_same_org_role_based_agent_without_role(
     db_session: AsyncSession,
 ):
+    """Hide runs on role-based agents from same-organization callers without the required role."""
     org = await _make_org(db_session, "OrgA")
     user = await _make_user(db_session, org)
     agent, _role = await _make_role_based_agent(db_session, org)
-    await _make_run(db_session, agent, org)
+    await _make_run(db_session, agent, org, caller_user_id=user.id)
 
     response = await _list_runs_for_user(db_session, _principal(user.id, org.id))
 
@@ -248,11 +254,12 @@ async def test_execute_agent_run_blocks_cross_org_authenticated_agent(
     assert exc_info.value.status_code == 404
 
 
-async def test_user_with_agent_role_can_list_agent_run(db_session: AsyncSession):
+async def test_user_with_agent_role_can_list_own_agent_run(db_session: AsyncSession):
+    """Allow a caller with the agent role to list their own run."""
     org = await _make_org(db_session, "OrgA")
     user = await _make_user(db_session, org)
     agent, role = await _make_role_based_agent(db_session, org)
-    run = await _make_run(db_session, agent, org)
+    run = await _make_run(db_session, agent, org, caller_user_id=user.id)
     db_session.add(
         UserRole(user_id=user.id, role_id=role.id, assigned_by="test@example.com")
     )
@@ -262,6 +269,31 @@ async def test_user_with_agent_role_can_list_agent_run(db_session: AsyncSession)
 
     assert response.total == 1
     assert response.items[0].id == run.id
+
+
+async def test_delegated_runs_require_the_callers_parent(db_session: AsyncSession):
+    """Expose delegated runs only when their parent belongs to the requesting caller."""
+    org = await _make_org(db_session, "DelegationOrg")
+    caller = await _make_user(db_session, org)
+    other = await _make_user(db_session, org)
+    agent = await _make_authenticated_agent(db_session, org)
+    own_parent = await _make_run(db_session, agent, org, caller_user_id=caller.id)
+    other_parent = await _make_run(db_session, agent, org, caller_user_id=other.id)
+    own_child = await _make_run(db_session, agent, org, caller_user_id=other.id)
+    own_child.trigger_type = "delegation"
+    own_child.parent_run_id = own_parent.id
+    other_child = await _make_run(db_session, agent, org, caller_user_id=other.id)
+    other_child.trigger_type = "delegation"
+    other_child.parent_run_id = other_parent.id
+    await db_session.flush()
+
+    principal = _principal(caller.id, org.id)
+    visible = await load_agent_run_for_user(db_session, own_child.id, principal)
+    assert visible is not None and visible.id == own_child.id
+    assert await load_agent_run_for_user(db_session, other_child.id, principal) is None
+    response = await _list_runs_for_user(db_session, principal)
+    # Global history remains root-only; child reads use their parent's caller.
+    assert {item.id for item in response.items} == {own_parent.id}
 
 
 async def test_platform_admin_list_agent_runs_includes_foreign_org_runs(
@@ -340,7 +372,8 @@ async def test_publish_agent_run_update_uses_scoped_list_channels(
     assert "agent-runs" not in channels
 
 
-async def test_websocket_agent_runs_alias_subscribes_to_user_org_channel():
+async def test_websocket_agent_runs_alias_denied_for_regular_user():
+    """Deny the generic agent-run list alias to regular WebSocket users."""
     org_id = uuid4()
     user_id = uuid4()
     websocket = SimpleNamespace(state=SimpleNamespace())
@@ -359,7 +392,7 @@ async def test_websocket_agent_runs_alias_subscribes_to_user_org_channel():
 
     assert connect.await_args is not None
     subscribed_channels = connect.await_args.args[1]
-    assert f"agent-runs:org:{org_id}" in subscribed_channels
+    assert f"agent-runs:org:{org_id}" not in subscribed_channels
     assert "agent-runs" not in subscribed_channels
 
 
