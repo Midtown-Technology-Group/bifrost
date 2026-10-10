@@ -1,6 +1,6 @@
 {
   "schema": "bifrost.spike.writer-guard-source/v1",
-  "status": "diagnosed-fixture-failure-not-runtime-acceptance",
+  "status": "isolated-actual-schema-guard-proof-not-runtime-acceptance",
   "candidate_sha": "d690e378e2a86bbb4eee76ccf37353125cc67bb0",
   "candidate_tree": "93dbbdd1b33aac0882e2a4bf8b1cc3895316b92f",
   "platform_main": "968ac4693c99cc52f156f5aacb63a40a8fcd9437",
@@ -188,5 +188,78 @@
     "source_sha256": "6746fe4111f9c01079fe27acb34e5a418b1116146e96b233b0ec398111e17d3d",
     "workflow_binary_bytes": 9920235,
     "finding": "The unchanged executable cannot be registered as an ordinary deployment resource. The approved dedicated native-artifact association must verify actual staged bytes/build evidence while existing resource limits remain unchanged; no registration or owner admission is proved."
+  },
+  "latest_verified": {
+    "candidate_sha": "9e2d247676eec16444ea8855ba210bc10b303f1b",
+    "candidate_tree": "65fa7199248c6dfd5eac2b8c794cc1402ee5d69b",
+    "platform_main": "968ac4693c99cc52f156f5aacb63a40a8fcd9437",
+    "run": 38071353079,
+    "job": 114269231745,
+    "url": "https://github.com/Midtown-Technology-Group/bifrost/actions/runs/38071353079",
+    "state": "completed: success",
+    "started_at_utc": "2026-10-10T17:24:31Z",
+    "completed_at_utc": "2026-10-10T17:40:31Z",
+    "source_sha256": {
+      "api/tests/e2e/platform/fixtures/runtime_writer_guards.sql": "7cf058462dbab9803636e9df277a41994edd5f7808dc438ab611d9f89e869f8b",
+      "api/tests/e2e/platform/test_runtime_writer_guards.py": "feeefee1696557039ed45006c20a4429245909e2d63915fc16aef014e56aead3",
+      "docker-compose.runtime-writer-guards.yml": "c625fadd856b3ee14e0a828ae84106fdb1eb5e5dd5172e4d24634ffae7fac018",
+      "scripts/ci/writer-guards/pgbouncer.ini": "0ff442bc1a08cc507145bbd32b3a4d6aa33346fc9a5b8abdc930e9bbe0ec42ad",
+      "scripts/ci/writer-primer/userlist.txt": "d5ec468729879dfc4648656d3635cee587be529d1b8e5921645e013695a76619",
+      ".github/workflows/runtime-writer-guard-spike.yml": "d0f8585b8e684eb2601d5415a18f889bc8360d8b28912930420f943d42198529"
+    },
+    "suites": {
+      "writer-guard-unit.xml": {
+        "name": "pytest",
+        "errors": "0",
+        "failures": "0",
+        "skipped": "0",
+        "tests": "13722",
+        "time": "410.207",
+        "timestamp": "2026-10-10T17:28:40.476620+00:00",
+        "hostname": "1ee8f7c00cf6"
+      },
+      "writer-guard-baseline.xml": {
+        "name": "pytest",
+        "errors": "0",
+        "failures": "0",
+        "skipped": "0",
+        "tests": "109",
+        "time": "14.224",
+        "timestamp": "2026-10-10T17:36:37.668070+00:00",
+        "hostname": "2af1d48c8dd6"
+      },
+      "writer-guard-results.xml": {
+        "name": "pytest",
+        "errors": "0",
+        "failures": "0",
+        "skipped": "0",
+        "tests": "51",
+        "time": "14.368",
+        "timestamp": "2026-10-10T17:37:30.697575+00:00",
+        "hostname": "797b07541aa6"
+      }
+    },
+    "guard_case_bodies_executed": true,
+    "api_quality": "Pyright 0 errors/warnings/informations; Ruff all checks passed",
+    "cleanup": "verified empty task container/volume/network inventories",
+    "artifact_directory": "/home/thomas/src/bifrost-go-spike-artifacts/9e2d247676eec16444ea8855ba210bc10b303f1b/runtime-writer-guards-9e2d247676eec16444ea8855ba210bc10b303f1b",
+    "artifact_file_sha256": {
+      "writer-guard-baseline.xml": "db6b4c0adb26994135dcb100d8c08bb5f06616be7152bd171812dfac60f18513",
+      "writer-guard-cleanup.log": "dbf8d209a0315b8145ee116327d57dfaecf607c6e1d875d44391b16abf88be5f",
+      "writer-guard-images.txt": "1a2bdb9255410aeb96df9c65668645175827550eeecae9f8c5e4fff9faada23d",
+      "writer-guard-last-results.xml": "605c4b9f1e6b40c2a5ebf895858d39ffcd39885775f8c23a25b4cfa5035ff1c5",
+      "writer-guard-quality.log": "2f20734cd0dc8acc74367e20449a49421240afc52e7396efae69224f4f9c11c9",
+      "writer-guard-results.xml": "605c4b9f1e6b40c2a5ebf895858d39ffcd39885775f8c23a25b4cfa5035ff1c5",
+      "writer-guard-source-hashes.txt": "7dce54f1abb0b6ab5519d5af3510bfafd92c54b8f76957275bed0ac15ee6dcc4",
+      "writer-guard-source.txt": "e6328a7fe1744c1b6fa0e8e310fdc8a1861962c86598720b6b34b582466c84ed",
+      "writer-guard-stack.log": "fb46208c9b3a5d7654797d2dcd96bd912bb5cc740a8bdd597e0635bf1cba211f",
+      "writer-guard-storage-baseline.log": "fa75c23a9fc36966257a87a61b5f0f87bda49a8ea346225051d10754e62c75c7",
+      "writer-guard-tests.log": "aa7016da976bd2c508d7f83661ce222b68a4d3ce48d011014983e6562b54e281",
+      "writer-guard-unit.log": "0f1697c8c3ab97498498be508705696501232ff0d5ef7a51c8cd470102658918",
+      "writer-guard-unit.xml": "f596dcc137d72d8a1ecc100e5580180e6edf09a35d5888ce22f5691bbc2a82b3"
+    },
+    "job_log_sha256": "5d7b86bf41e7513d6ad04d8cd8c7c8daf536a5116a359d35612664aa3e14ec20",
+    "scope": "Actual current-schema guard fixture with synthetic authenticated principals; no accepted lifecycle writer or operational application DSN qualification",
+    "duration_review": "Longest guard duration is 5.75s one-time schema installer setup. No case call exceeds 2s; these cases launch no deployment/build jobs."
   }
 }

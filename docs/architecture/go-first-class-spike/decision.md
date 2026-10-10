@@ -103,6 +103,23 @@ execution. Workspace main was refreshed to
 `b06ccee81c0d104717c9d3aa19292e03e3b55cab`; the selected readiness source and
 workspace checkout remain unchanged. The full lifecycle goal remains active.
 
+Actual-schema writer guard candidate `9e2d247676eec16444ea8855ba210bc10b303f1b`
+now has hosted evidence at run38071353079 against main968ac4693:13,722 backend
+unit,109 existing storage/attempt/history, and51 guard cases passed with zero
+skips/errors/failures, plus API quality and empty task-resource inventories.
+[Source-bound proof and prior diagnosed fixture failures](writer-guard-source-evidence.json)
+retain exact source/tree, all six input hashes and raw artifact hashes. The
+synthetic authenticated pool principals prove the tested SQL writer exclusion,
+parent retention, immutable facts, non-FK races and actual poison callback order.
+They do not qualify production/application principals or prove real external
+effects, full common lock races, Rust owner transactions or runtime acceptance.
+
+The unchanged9,920,235-byte Go executable exceeds the ordinary2MiB deployment
+resource limit. The dedicated accepted native-artifact association must verify
+actual staged bytes and build/adapter/schema/source evidence; existing resource
+limits remain intact. Native registration and the full Rust-owned slice are
+still required. SDK remains0.0.0-spike.2 and the lifecycle goal remains active.
+
 The sections below are the initial G0 design and historical observations, not
 current test counts, source heads or unresolved-contract status. The completion
 audit and current proof retain the later executable evidence and actual gaps.

@@ -99,3 +99,20 @@ constraint correctly rejected it before case bodies. The fixture now supplies
 those timestamps; no constraint was relaxed. Failed JUnit is retained and
 teardown again proves empty inventories. API quality was unrun. Source-bound
 logs/XML and corrections remain in the evidence JSON; fresh proof is required.
+
+
+The corrected candidate `9e2d247676eec16444ea8855ba210bc10b303f1b` passed
+hosted run38071353079:13,722 backend unit tests (410.207s),109 existing
+storage/attempt/history tests (14.224s), and all51 actual-schema guard cases
+(14.368s), with zero errors/failures/skips. API Pyright/Ruff passed. Retained
+source/tree and all six source hashes match Git, and final failed/success JUnit
+capture agrees. Independent final inventories contain no task containers, volumes
+or networks. The longest guard duration is one-time schema installation setup
+(5.75s); no case call exceeds two seconds or launches a deployment/build job.
+
+This proves the synthetic principal fixture's tested SQL exclusion, immutable
+bindings, non-FK races and actual poison callback ordering against platform main
+968ac4693c99cc52f156f5aacb63a40a8fcd9437. It does not qualify existing privileged
+application connections, real Redis/broker side effects, full common lock order,
+Rust owner transactions, native registration or runtime acceptance. The earlier
+two diagnosed fixture failures remain retained alongside the successful result.
