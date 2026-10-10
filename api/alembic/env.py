@@ -20,9 +20,6 @@ from src.core.database import Base
 
 # Import all models so they're registered with Base.metadata
 from src.models import (  # noqa: F401
-    ServiceDefinition,
-    ServiceAttempt,
-    ServiceLog,
     # Applications (App Builder)
     Application,
     AppRole,
@@ -39,12 +36,20 @@ from src.models import (  # noqa: F401
     OAuthToken,
     Organization,
     Role,
+    ServiceAttempt,
+    ServiceDefinition,
+    ServiceLog,
     TrustedDevice,
     User,
     UserMFAMethod,
     UserOAuthAccount,
     UserRole,
     Workflow,
+)
+from src.models.orm.runtime_execution import (  # noqa: F401 - internal Alembic metadata
+    RuntimeDeploymentArtifact,
+    RuntimeExecutionOwner,
+    RuntimeSession,
 )
 
 # Alembic Config object

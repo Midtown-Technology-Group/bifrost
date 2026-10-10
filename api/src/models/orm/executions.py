@@ -6,7 +6,7 @@ Represents workflow executions and their logs.
 # ruff: noqa: F821
 # pyright: reportUndefinedVariable=false
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 from sqlalchemy import (
@@ -14,7 +14,6 @@ from sqlalchemy import (
     Boolean,
     CheckConstraint,
     DateTime,
-    Enum as SQLAlchemyEnum,
     Float,
     ForeignKey,
     Index,
@@ -26,12 +25,14 @@ from sqlalchemy import (
     func,
     text,
 )
+from sqlalchemy import (
+    Enum as SQLAlchemyEnum,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.models.enums import ExecutionStatus
 from src.models.orm.base import Base
-
 
 
 # Identity entity — execution telemetry, not resolved by name with cascade.
@@ -128,7 +129,7 @@ class Execution(Base):
         ForeignKey("cli_sessions.id", ondelete="SET NULL"), default=None
     )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), server_default=text("NOW()")
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), server_default=text("NOW()")
     )
     scheduled_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), default=None, nullable=True
@@ -157,6 +158,9 @@ class Execution(Base):
     )
 
     __table_args__ = (
+        UniqueConstraint(
+            "id", "workflow_id", "solution_deployment_id", name="uq_execution_runtime_source"
+        ),
         Index("ix_executions_org_status", "organization_id", "status"),
         Index(
             "ix_executions_history_timeline",
@@ -215,13 +219,17 @@ class WorkflowExecutionAttempt(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
-        default=lambda: datetime.now(timezone.utc),
+        default=lambda: datetime.now(UTC),
         server_default=text("NOW()"),
     )
 
     execution: Mapped["Execution"] = relationship(back_populates="attempts")
 
     __table_args__ = (
+        UniqueConstraint(
+            "id", "execution_id", "claim_token", "worker_incarnation_id",
+            name="uq_workflow_attempt_runtime_fence",
+        ),
         UniqueConstraint(
             "execution_id", "attempt_number", name="uq_workflow_execution_attempt_number"
         ),
@@ -290,7 +298,7 @@ class ExecutionLog(Base):
     message: Mapped[str] = mapped_column(Text)
     log_metadata: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     timestamp: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), server_default=text("NOW()")
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), server_default=text("NOW()")
     )
     sequence: Mapped[int] = mapped_column(Integer, default=0)
 

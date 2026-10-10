@@ -9,12 +9,17 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
-from sqlalchemy import text
+from sqlalchemy import inspect, text
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.core.constants import PROVIDER_ORG_ID
 from src.models.enums import ExecutionStatus
 from src.models.orm.executions import Execution, WorkflowExecutionAttempt
+from src.models.orm.runtime_execution import (
+    RuntimeDeploymentArtifact,
+    RuntimeExecutionOwner,
+    RuntimeSession,
+)
 from src.models.orm.solution_deployments import SolutionDeployment
 from src.models.orm.solutions import Solution
 from src.models.orm.workflows import Workflow
@@ -348,3 +353,58 @@ async def test_duplicate_session_cannot_create_a_second_launch_identity(
                 SESSION_INSERT, {**owner_session, "session": uuid4()}
             )
     assert getattr(caught.value.orig, "sqlstate", None) == "23505"
+
+
+@pytest.mark.parametrize(
+    "table_name",
+    [
+        "runtime_deployment_artifacts",
+        "runtime_execution_owners",
+        "runtime_sessions",
+    ],
+)
+async def test_alembic_runtime_tables_remain_registered_in_platform_metadata(
+    db_session, table_name
+):
+    """Prevent a later autogenerate pass from dropping retained custody tables."""
+    metadata = {
+        model.__table__.name: model.__table__
+        for model in (
+            RuntimeDeploymentArtifact,
+            RuntimeExecutionOwner,
+            RuntimeSession,
+        )
+    }[table_name]
+    connection = await db_session.connection()
+    columns, foreign_keys, uniques = await connection.run_sync(
+        lambda sync: (
+            inspect(sync).get_columns(table_name),
+            inspect(sync).get_foreign_keys(table_name),
+            inspect(sync).get_unique_constraints(table_name),
+        )
+    )
+    assert {col["name"]: col["nullable"] for col in columns} == {
+        col.name: col.nullable for col in metadata.columns
+    }
+    assert {
+        (
+            tuple(key["constrained_columns"]),
+            key["referred_table"],
+            tuple(key["referred_columns"]),
+            key["options"].get("ondelete"),
+        )
+        for key in foreign_keys
+    } == {
+        (
+            tuple(col.name for col in key.columns),
+            key.referred_table.name,
+            tuple(element.column.name for element in key.elements),
+            key.ondelete,
+        )
+        for key in metadata.foreign_key_constraints
+    }
+    from sqlalchemy import UniqueConstraint
+
+    assert {key["name"] for key in uniques} == {
+        key.name for key in metadata.constraints if isinstance(key, UniqueConstraint)
+    }

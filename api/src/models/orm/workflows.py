@@ -6,7 +6,7 @@ discovered from Python files. Data providers were consolidated into this
 table in migration 20260103_000000.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 from sqlalchemy import (
@@ -19,6 +19,7 @@ from sqlalchemy import (
     Numeric,
     String,
     Text,
+    UniqueConstraint,
     text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
@@ -144,13 +145,13 @@ class Workflow(Base):
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), server_default=text("NOW()")
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), server_default=text("NOW()")
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
-        default=lambda: datetime.now(timezone.utc),
+        default=lambda: datetime.now(UTC),
         server_default=text("NOW()"),
-        onupdate=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(UTC),
     )
 
     # Relationships
@@ -173,6 +174,7 @@ class Workflow(Base):
     )
 
     __table_args__ = (
+        UniqueConstraint("id", "solution_id", name="uq_workflow_id_solution"),
         CheckConstraint(
             "retirement_evidence IS NULL OR "
             "(is_active IS FALSE AND solution_id IS NULL AND "
