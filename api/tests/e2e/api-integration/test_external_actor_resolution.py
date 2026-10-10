@@ -3,6 +3,7 @@
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from types import SimpleNamespace
+from typing import Any, AsyncIterator
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
@@ -125,26 +126,32 @@ async def test_authenticated_agent_dispatch_releases_single_pool_connection(
             ),
         )
 
-        @asynccontextmanager
-        async def constrained_db_context():
-            async with sessions() as db:
-                try:
-                    yield db
-                    await db.commit()
-                except Exception:
-                    await db.rollback()
-                    raise
-
-        with (
-            patch("src.core.database.get_db_context", constrained_db_context),
-            patch(
-                "src.services.execution.agent_run_service.enqueue_agent_run",
-                new=AsyncMock(return_value=str(uuid4())),
-            ),
-        ):
-            async with sessions() as publisher:
-                await EventProcessor(publisher)._queue_agent_run(delivery, event)
+        async with sessions() as publisher:
+            @asynccontextmanager
+            async def constrained_db_context() -> AsyncIterator[AsyncSession]:
+                """Open nested storage only after the publisher releases its transaction."""
                 assert not publisher.in_transaction()
+                async with sessions() as db:
+                    try:
+                        yield db
+                        await db.commit()
+                    except Exception:
+                        await db.rollback()
+                        raise
+
+            async def enqueue_after_release(**_kwargs: Any) -> str:
+                """Model enqueue acquisition after the publisher releases its transaction."""
+                assert not publisher.in_transaction()
+                return str(uuid4())
+
+            with (
+                patch("src.core.database.get_db_context", constrained_db_context),
+                patch(
+                    "src.services.execution.agent_run_service.enqueue_agent_run",
+                    new=AsyncMock(side_effect=enqueue_after_release),
+                ),
+            ):
+                await EventProcessor(publisher)._queue_agent_run(delivery, event)
     finally:
         async with sessions() as cleanup:
             await cleanup.execute(
