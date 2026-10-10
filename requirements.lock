@@ -1296,6 +1296,7 @@ httpx2==2.12.0 \
     #   mcp
     #   openai
     #   pydantic-ai-slim
+    #   typesafe-sdk
 hypothesis==6.165.10 \
     --hash=sha256:00de0abdcf8c05c9d0eab735a3c49a276376b55151e6fcb903c2b39a90e5e5c3 \
     --hash=sha256:057d0232f1224dcd0b7698902551a4341a7399f90670b036db6c4376715fe889 \
@@ -1560,6 +1561,10 @@ joserfc==1.7.4 \
     #   authlib
     #   bifrost-api (pyproject.toml)
     #   fastmcp-slim
+json-repair==0.64.0 \
+    --hash=sha256:2890be942a7ef20626e4eda4bd91b37485bc5271ac122efe7bb924232fef60ea \
+    --hash=sha256:3bf14cf14d8ae96f7bc467e6964d8accd52aaad084f973e38ebe4e43f9d051e4
+    # via pydantic-ai-harness
 jsonref==1.1.0 \
     --hash=sha256:32fe8e1d85af0fdefbebce950af85590b22b60f9e95443176adbde4e1ecea552 \
     --hash=sha256:590dc7773df6c21cbf948b5dac07a72a251db28b0238ceecce0a2abfa8ec30a9
@@ -2216,6 +2221,7 @@ packaging==26.2 \
     #   bifrost-api (pyproject.toml)
     #   fastmcp-slim
     #   pytest
+    #   typesafe-sdk
 pamqp==3.3.0 \
     --hash=sha256:40b8795bd4efcf2b0f8821c1de83d12ca16d5760f4507836267fd7a02b06763b \
     --hash=sha256:c901a684794157ae39b52cbf700db8c9aae7a470f13528b9d7b4e5f7202f8eb0
@@ -2539,11 +2545,12 @@ pydantic[email]==2.13.3 \
     #   pydantic-ai-slim
     #   pydantic-graph
     #   pydantic-settings
-pydantic-ai-harness==0.27.0 \
-    --hash=sha256:3bd4d44c26a50b15be37ddb341a8e8ed6466d979e5bab114054bbdc885f54555 \
-    --hash=sha256:c3ed6cd4adef9530e325477079b3d761d6d859e9113cf041e7702a2d2b4162a5
+    #   typesafe-sdk
+pydantic-ai-harness==0.36.0 \
+    --hash=sha256:1b89e033bd02346276ec4c2562fa00be1316f0406005a60829172a279e218f86 \
+    --hash=sha256:242df9da8d229cadaffe93a7444ecf6ab1a52567ffb977e0efb40bac5c047663
     # via bifrost-api (pyproject.toml)
-pydantic-ai-slim[anthropic,google,openai,retries]==2.53.0 \
+pydantic-ai-slim[anthropic,google,openai,retries,typesafe]==2.53.0 \
     --hash=sha256:37539693ff944dca2ee1ad30ad3c2b5c8adfdb9f54808767098dbc5410130a9b \
     --hash=sha256:979fb5553cc32baf9f3aaeff7a83c19d6ce6d19c0284f5cd54087bc9870b2522
     # via
@@ -2670,7 +2677,9 @@ pydantic-core==2.46.3 \
     --hash=sha256:fd35aa21299def8db7ef4fe5c4ff862941a9a158ca7b63d61e66fe67d30416b4 \
     --hash=sha256:ff5e7783bcc5476e1db448bf268f11cb257b1c276d3e89f00b5727be86dd0127 \
     --hash=sha256:ffe0883b56cfc05798bf994164d2b2ff03efe2d22022a2bb080f3b626176dd56
-    # via pydantic
+    # via
+    #   pydantic
+    #   typesafe-sdk
 pydantic-graph==2.53.0 \
     --hash=sha256:28f05d5f66f5f6b11ef8f1c263f93781271b3af77ef3b313cc51b88a2e33445a \
     --hash=sha256:48d70fd7affe15f33773a74b9657ab9442569725d9e67263ac3a3b95de89f714
@@ -3277,6 +3286,7 @@ tenacity==9.1.4 \
     # via
     #   google-genai
     #   pydantic-ai-slim
+    #   typesafe-sdk
 textual==8.2.4 \
     --hash=sha256:a83bd3f0cc7125ca203845af753f9d6b6be030025ecd1b05cc75ebe645b9c4ba \
     --hash=sha256:d4e2b2ddd7157191d00b228592b7c739ea080b7d792fd410f23ca75f05ea76c4
@@ -3356,6 +3366,7 @@ truststore==0.10.4 \
     # via
     #   httpcore2
     #   httpx2
+    #   typesafe-sdk
 types-aiobotocore[s3]==3.5.0 \
     --hash=sha256:7c75ff73c10098d1d885e5b061f05945afdc4e9d0d5b573274292c329abe8a62 \
     --hash=sha256:8636c9e5a9837d41e45264570349d98c0cdad51fe7961ee19664a11094bb2262
@@ -3368,6 +3379,10 @@ types-awscrt==0.31.3 \
     --hash=sha256:09d3eaf00231e0f47e101bd9867e430873bc57040050e2a3bd8305cb4fc30865 \
     --hash=sha256:e5ce65a00a2ab4f35eacc1e3d700d792338d56e4823ee7b4dbe017f94cfc4458
     # via botocore-stubs
+typesafe-sdk==0.7.4 \
+    --hash=sha256:61cf3f2fe9da20b68c3d3fe2fb76bbb2f35f8c4a9a65a6b81c43a535d2a53210 \
+    --hash=sha256:a20dca217a746db1ac5534ac502de16e1f86a400b4ec09f8594e6221c2bc9558
+    # via pydantic-ai-slim
 typing-extensions==4.15.0 \
     --hash=sha256:0cea48d173cc12fa28ecabc3b837ea3cf6f38c6d1136f85cbaaf598984861466 \
     --hash=sha256:f0fa19c6845758ab08074a0cfa8b7aecb71c999ca73d62883bc25cc018c4e548
@@ -3395,6 +3410,7 @@ typing-extensions==4.15.0 \
     #   python-docx
     #   sqlalchemy
     #   textual
+    #   typesafe-sdk
     #   typing-inspection
 typing-inspection==0.4.2 \
     --hash=sha256:4ed1cacbdc298c220f1bd249ed5287caa16f34d44ef4e9c3d0cbad5b521545e7 \
