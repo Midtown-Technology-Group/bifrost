@@ -277,7 +277,8 @@ async def test_get_app_workflow_ids_resolves_file_dependencies_to_active_workflo
 
 
 @pytest.mark.asyncio
-async def test_insert_scheduled_execution_persists_expected_execution_fields():
+@pytest.mark.parametrize("commit", [True, False])
+async def test_insert_scheduled_execution_persists_expected_execution_fields(commit):
     workflow_id = uuid4()
     org_id = uuid4()
     executed_by = uuid4()
@@ -306,10 +307,11 @@ async def test_insert_scheduled_execution_persists_expected_execution_fields():
             executed_by_name="Ada",
             form_id=form_id,
             is_platform_admin=True,
+            **({} if commit else {"commit": False}),
         )
 
     assert isinstance(execution_id, UUID)
-    assert db.committed is True
+    assert db.committed is commit
     assert len(db.added) == 2
     execution = next(row for row in db.added if hasattr(row, "workflow_name"))
     attempt = next(row for row in db.added if hasattr(row, "attempt_number"))

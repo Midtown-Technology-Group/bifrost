@@ -768,11 +768,13 @@ async def _insert_scheduled_execution(
     is_provider_org: bool = False,
     is_external: bool = False,
     execution_id: UUID | None = None,
+    commit: bool = True,
 ) -> UUID:
     """Insert a SCHEDULED execution row.
 
     Skips Redis/RabbitMQ — the deferred_execution_promoter job will publish
-    the row when scheduled_at matures.
+    the row when scheduled_at matures. Callers may defer commit until their
+    admission prerequisites succeed.
     """
     from uuid import uuid4
 
@@ -837,7 +839,8 @@ async def _insert_scheduled_execution(
     from src.services.execution.attempts import ensure_dispatch_attempt
 
     await ensure_dispatch_attempt(db, execution)
-    await db.commit()
+    if commit:
+        await db.commit()
     return exec_id
 
 
@@ -1137,11 +1140,13 @@ async def execute_workflow(
             is_provider_org=exec_is_provider_org,
             is_external=exec_is_external,
             execution_id=execution_request_id,
+            commit=not user.embed,
         )
         if user.embed:
             from src.core.embed_middleware import register_embed_execution
 
             await register_embed_execution(user.jti, str(exec_id))
+            await db.commit()
         return WorkflowExecutionResponse(
             execution_id=str(exec_id),
             workflow_id=str(workflow.id),
@@ -1229,6 +1234,10 @@ async def execute_workflow(
             # but honor the caller's transient flag: dropdown-options pass
             # transient=True for the fast path, the manual Execute page passes
             # transient=False and expects a tracked execution row.
+            if user.embed and not request.transient:
+                from src.core.embed_middleware import register_embed_execution
+
+                await register_embed_execution(user.jti, shared_ctx.execution_id)
             result = await run_workflow(
                 context=shared_ctx,
                 workflow_id=str(workflow.id),
@@ -1238,10 +1247,6 @@ async def execute_workflow(
                 dispatch_metadata=dispatch_metadata,
                 org_id_override=request.org_id,
             )
-            if user.embed and not request.transient and result.execution_id:
-                from src.core.embed_middleware import register_embed_execution
-
-                await register_embed_execution(user.jti, result.execution_id)
             return WorkflowExecutionResponse(
                 execution_id=result.execution_id,
                 workflow_id=str(workflow.id),
@@ -1259,6 +1264,10 @@ async def execute_workflow(
             # The dispatch metadata query above reacquires the request
             # connection, so release it immediately before enqueue.
             await db.commit()
+            if user.embed and not request.transient:
+                from src.core.embed_middleware import register_embed_execution
+
+                await register_embed_execution(user.jti, shared_ctx.execution_id)
             result = await run_workflow(
                 context=shared_ctx,
                 workflow_id=str(workflow.id),
@@ -1276,7 +1285,7 @@ async def execute_workflow(
                 detail="Either workflow_id or code must be provided",
             )
 
-        if user.embed and not request.transient and result.execution_id:
+        if request.code and user.embed and not request.transient and result.execution_id:
             from src.core.embed_middleware import register_embed_execution
 
             await register_embed_execution(user.jti, result.execution_id)

@@ -1243,8 +1243,9 @@ async def test_embed_session_is_linked_to_each_persisted_dispatch(workflow_type,
     with (
         patch("src.repositories.WorkflowRepository", return_value=_WorkflowRepo(workflow=workflow)),
         patch("src.services.execution.service.get_workflow_for_execution", AsyncMock(return_value=_dispatch_metadata(workflow))),
-        patch("src.services.execution.service.run_workflow", AsyncMock(return_value=service_result)),
-        patch.object(workflows, "_insert_scheduled_execution", AsyncMock(return_value=execution_id)),
+        patch("src.services.execution.service.run_workflow", AsyncMock(return_value=service_result)) as dispatch,
+        patch.object(workflows, "uuid4", return_value=execution_id),
+        patch.object(workflows, "_insert_scheduled_execution", AsyncMock(return_value=execution_id)) as schedule,
         patch("src.core.embed_middleware.register_embed_execution", AsyncMock()) as register,
     ):
         result = await workflows.execute_workflow(
@@ -1253,6 +1254,10 @@ async def test_embed_session_is_linked_to_each_persisted_dispatch(workflow_type,
         )
     assert result.execution_id == str(execution_id)
     register.assert_awaited_once_with("owner-session", str(execution_id))
+    if delay_seconds:
+        assert schedule.await_args.kwargs["commit"] is False
+    else:
+        assert dispatch.await_args.kwargs["context"].execution_id == str(execution_id)
 
 
 @pytest.mark.asyncio
@@ -1297,3 +1302,35 @@ async def test_embed_retry_requires_initiating_session_capability(owned) -> None
             assert exc.value.status_code == status.HTTP_403_FORBIDDEN
     redis.exists.assert_awaited_once_with(embed_execution_key("retry-session", str(execution_id)))
     dispatch.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("workflow_type,delay_seconds", [("workflow", None), ("data_provider", None), ("workflow", 60)])
+async def test_embed_capability_failure_prevents_durable_dispatch(workflow_type, delay_seconds) -> None:
+    """Redis failure must not dispatch work or commit a scheduled execution."""
+    user = _exec_user(embed=True, jti="owner-session")
+    workflow = _workflow(type=workflow_type)
+    db = _Db()
+    with (
+        patch("src.repositories.WorkflowRepository", return_value=_WorkflowRepo(workflow=workflow)),
+        patch("src.services.execution.service.get_workflow_for_execution", AsyncMock(return_value=_dispatch_metadata(workflow))),
+        patch("src.services.execution.service.run_workflow", AsyncMock()) as dispatch,
+        patch("src.core.embed_middleware.register_embed_execution", AsyncMock(side_effect=RuntimeError("capability store unavailable"))),
+        patch("src.services.workspace_release_projection.acquire_runtime_admission_lock", AsyncMock()),
+        patch("src.services.solutions.deployment_runtime.pin_workflow_runtime", AsyncMock(return_value=None)),
+        patch("src.services.workspace_release_runtime.pin_workspace_runtime", AsyncMock(return_value=None)),
+        patch("src.services.execution.retry_policy.workflow_retry_policy_snapshot", AsyncMock(return_value={})),
+        patch("src.services.execution.attempts.ensure_dispatch_attempt", AsyncMock()),
+    ):
+        expected_error = RuntimeError if delay_seconds else HTTPException
+        with pytest.raises(expected_error) as exc:
+            await workflows.execute_workflow(
+                WorkflowExecutionRequest(workflow_id=str(workflow.id), delay_seconds=delay_seconds),
+                _ctx(user), db, user,
+            )
+    dispatch.assert_not_awaited()
+    if delay_seconds:
+        assert db.flushed is True
+        assert db.committed is False
+    else:
+        assert exc.value.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
