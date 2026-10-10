@@ -588,5 +588,87 @@
       "owner-build.txt": "98853f8d505c505b0afedea77e5dae5d0ce09c85542794f7382ffe02c8eb6ee2",
       "runtime-owner-admit": "71ec74d1644190b95715aff1d78839a6f2429f420fb9bafa9bb6239fd06e0638"
     }
-  }
+  },
+  "admission_fixture_transition_failures": [
+    {
+      "source_commit": "65ae53fb5d50c8ea258fd21e127130ae7b67b2d8",
+      "workflow_run": 38092281983,
+      "conclusion": "failure",
+      "source_inputs_verified": 39,
+      "suites": {
+        "writer-guard-unit.xml": {
+          "cases": 13827,
+          "failures": 0,
+          "errors": 0,
+          "skips": 0
+        },
+        "writer-guard-baseline.xml": {
+          "cases": 109,
+          "failures": 0,
+          "errors": 0,
+          "skips": 0
+        },
+        "writer-guard-last-results.xml": {
+          "cases": 231,
+          "failures": 0,
+          "errors": 10,
+          "skips": 0
+        }
+      },
+      "diagnosis": "Ten admission fixtures failed before Rust admission: draft -> active violates existing migrated SolutionDeployment transition guard. Prior 221 guards passed; no admission transaction acceptance.",
+      "fix": "Construct synthetic active fixture by each existing legal state transition with expected-state and RETURNING assertions. No trigger bypass, accepted source/activation claim, retry, skip or expanded timeout.",
+      "quality": "Not reached after actual-schema failure. Full fresh quality gate remains required.",
+      "teardown": "Verified empty container/volume/network inventories.",
+      "evidence_sha256": {
+        "writer-guard-source.txt": "79017d4625f5b8a12f3cdd25084f4238e4d5e4f324ae00e5381470923db5edd1",
+        "writer-guard-source-hashes.txt": "c512d3b9609bfa0c87c3fc7143a9393501f7bf51c329786af6807bbc4251860c",
+        "writer-guard-tests.log": "99bd5b8793b6957a553d0bb40d55fe104ea45d6b1c6b56b4688ddb111cdff4d9",
+        "writer-guard-unit.xml": "ecdf6ee38105cf7fe5ec1c870c48dff3cf5adb5d4a21799376aac1471cd42a8e",
+        "writer-guard-baseline.xml": "1f0e04c951d0065f456831df225886901c2046e88203dcadd9e3829172eec49a",
+        "writer-guard-last-results.xml": "df07ba5efcc4bc31fa3ec0501399a3ec99d9ec9491497da278c9555002b34b17",
+        "writer-guard-cleanup.log": "6b5dc151d21b442dbc0df7bd02a85295ebd445e3ede6536de020e47b48605fab"
+      },
+      "runtime_acceptance": false
+    },
+    {
+      "source_commit": "5f1f764569d133c4cce5282bf58915826ca64006",
+      "workflow_run": 38092446232,
+      "conclusion": "failure",
+      "source_inputs_verified": 39,
+      "suites": {
+        "writer-guard-unit.xml": {
+          "cases": 13854,
+          "failures": 0,
+          "errors": 0,
+          "skips": 0
+        },
+        "writer-guard-baseline.xml": {
+          "cases": 109,
+          "failures": 0,
+          "errors": 0,
+          "skips": 0
+        },
+        "writer-guard-last-results.xml": {
+          "cases": 231,
+          "failures": 0,
+          "errors": 10,
+          "skips": 0
+        }
+      },
+      "diagnosis": "Ten admission fixtures failed before Rust admission: draft -> active violates existing migrated SolutionDeployment transition guard. Prior 221 guards passed; no admission transaction acceptance.",
+      "fix": "Construct synthetic active fixture by each existing legal state transition with expected-state and RETURNING assertions. No trigger bypass, accepted source/activation claim, retry, skip or expanded timeout.",
+      "quality": "Not reached after actual-schema failure. Full fresh quality gate remains required.",
+      "teardown": "Verified empty container/volume/network inventories.",
+      "evidence_sha256": {
+        "writer-guard-source.txt": "1062d21aaae37176379ca68a488b2a66d57b279353927eb927e9a7996090914d",
+        "writer-guard-source-hashes.txt": "41a424027eec9a62078238c908709bbaf74e4d85453824fe63626b52d8066fe0",
+        "writer-guard-tests.log": "e1f70b7e94a5ff546cd425ab4d68c8564110f78703875ed010c51c10c44397c1",
+        "writer-guard-unit.xml": "e0398a59d0efb4371af10c20203495ca49cfb8d59d113faad0ddd2978c6a8d33",
+        "writer-guard-baseline.xml": "0c78eca2d913811fbf8f2ad4c0fb6f1bfa43e7a6bba8a3b5dcda6d23c72ecfa0",
+        "writer-guard-last-results.xml": "3e6ca818ece214a358d682f1355edc62dfac7d2d3a00ea6d1b084a417c564e73",
+        "writer-guard-cleanup.log": "fde06ba3c440cc2571d2859f5551fd4b71802ca350c42ae9388b156ca549d67a"
+      },
+      "runtime_acceptance": false
+    }
+  ]
 }

@@ -988,10 +988,23 @@ async def prepared_start_facts(db_session, association, request):
     if case == "admit":
         # Synthetic source acceptance only. No archive/binary custody or runtime
         # acceptance is claimed by selecting an active fixture deployment.
-        await db_session.execute(
-            text("UPDATE solution_deployments SET state='active' WHERE id=:deployment"),
-            association,
-        )
+        # Follow the actual migrated deployment transition guard. Never bypass
+        # it or claim synthetic source fixtures performed build/activation work.
+        previous = "draft"
+        for state in ("building", "validated", "ready", "activating", "active"):
+            retained = await db_session.scalar(
+                text(
+                    "UPDATE solution_deployments SET state=:state "
+                    "WHERE id=:deployment AND state=:previous RETURNING state"
+                ),
+                {
+                    "deployment": association["deployment"],
+                    "state": state,
+                    "previous": previous,
+                },
+            )
+            assert retained == state
+            previous = state
         await db_session.execute(
             text(
                 "UPDATE solutions SET active_deployment_id=:deployment,execution_runtime_mode='deployment-v1' WHERE id=:solution"
