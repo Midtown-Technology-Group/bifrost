@@ -52,7 +52,9 @@ def fuzz_webhook_request(data: bytes) -> None:
 
     json_body = request.json_body
     if json_body is not None:
-        assert isinstance(json_body, dict)
+        # The parser exposes any JSON value, not just object-shaped payloads.
+        # Provider-specific shape validation belongs to the adapter.
+        assert isinstance(json_body, (dict, list, str, int, float, bool))
         assert request.json_body is json_body
 
     text_body = request.text_body
