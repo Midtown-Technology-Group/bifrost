@@ -4,6 +4,24 @@ use bifrost_execution_wire_spike::Codec;
 use serde_json::Value;
 use sqlx::{PgPool, Row};
 
+// Shared static predicate; all request values remain bind parameters.
+macro_rules! eligibility_sql { () => { r#"SELECT w.name,a.artifact::text AS artifact,a.input_schema::text AS input_schema,
+ jsonb_build_object('caller_user_id',u.id::text,'caller_organization_id',u.organization_id::text,
+ 'effective_organization_id',u.organization_id::text,'caller_email',u.email,'caller_name',COALESCE(u.name,''),
+ 'caller_admin',u.is_superuser,'caller_provider',org.is_provider,
+ 'caller_external',u.is_external AND NOT (u.is_superuser OR org.is_provider),
+ 'roles',COALESCE((SELECT jsonb_agg(role_name ORDER BY role_name COLLATE "C") FROM
+ (SELECT DISTINCT r.name AS role_name FROM user_roles ur JOIN roles r ON r.id=ur.role_id WHERE ur.user_id=u.id) names),'[]'::jsonb)) AS caller
+ FROM workflows w JOIN users u ON u.id=$2::text::uuid
+ JOIN organizations org ON org.id=u.organization_id
+ JOIN runtime_deployment_artifacts a ON a.workflow_id=w.id AND a.deployment_id=$5::text::uuid
+ WHERE w.id=$1::text::uuid AND w.solution_id=$3::text::uuid AND w.organization_id=$4::text::uuid
+ AND u.organization_id=$4::text::uuid AND u.is_active AND w.is_active AND w.type='workflow'
+ AND a.runtime_protocol='bifrost.runtime/v1' AND a.artifact->>'kind'='native-executable/v1'
+ AND (u.is_superuser OR org.is_provider OR w.access_level='everyone'
+ OR (w.access_level='authenticated' AND NOT u.is_external)
+ OR EXISTS (SELECT 1 FROM workflow_roles wr JOIN user_roles ur ON ur.role_id=wr.role_id WHERE wr.workflow_id=w.id AND ur.user_id=u.id))"# }; }
+
 pub struct AdmitRequest {
     pub workflow_id: String,
     /// Authenticated platform caller, supplied by trusted ingress, not input.
@@ -130,10 +148,7 @@ pub async fn record_admit_candidate(
     if install.is_none() {
         return Err(ObserveError::Rejected);
     }
-    let eligibility_sql = format!(
-        "SELECT name,artifact,input_schema,caller::text AS caller FROM ({ELIGIBILITY}) eligible"
-    );
-    let eligibility = sqlx::query(&eligibility_sql)
+    let eligibility = sqlx::query(SELECT_ELIGIBILITY)
         .bind(&request.workflow_id)
         .bind(&request.caller_id)
         .bind(solution)
@@ -191,10 +206,22 @@ pub async fn record_admit_candidate(
             .await?;
     // Re-read current authorization at the root INSERT. Caller/roles drift
     // between initial selection and birth denies, before any owner is assigned.
-    let root=sqlx::query(&"WITH eligible AS (ELIGIBILITY_SQL) INSERT INTO executions (id,workflow_id,solution_deployment_id,workflow_name,status,parameters,time_saved,value,executed_by,executed_by_name,organization_id,runtime_mode,attempt_tracking_version,isolated_owner) SELECT $6::text::uuid,$1::text::uuid,$5::text::uuid,name,'Pending',$7::jsonb,0,0,$2::text::uuid,caller->>'caller_name',$4::text::uuid,'deployment-v1','v1','coordinator' FROM eligible WHERE caller=$8::jsonb AND clock_timestamp()<$9::text::timestamptz RETURNING id".replace("ELIGIBILITY_SQL",ELIGIBILITY))
-        .bind(&request.workflow_id).bind(&request.caller_id).bind(solution).bind(org).bind(deployment)
-        .bind(&fence.execution_id).bind(p["body"]["workload"]["input"].to_string()).bind(caller.to_string()).bind(p["body"]["workload"]["deadline_utc"].as_str().ok_or(ObserveError::Rejected)?)
-        .fetch_optional(&mut *tx).await?;
+    let root = sqlx::query(INSERT_ROOT)
+        .bind(&request.workflow_id)
+        .bind(&request.caller_id)
+        .bind(solution)
+        .bind(org)
+        .bind(deployment)
+        .bind(&fence.execution_id)
+        .bind(p["body"]["workload"]["input"].to_string())
+        .bind(caller.to_string())
+        .bind(
+            p["body"]["workload"]["deadline_utc"]
+                .as_str()
+                .ok_or(ObserveError::Rejected)?,
+        )
+        .fetch_optional(&mut *tx)
+        .await?;
     if root.is_none() {
         return Err(ObserveError::Rejected);
     }
@@ -215,22 +242,16 @@ pub async fn record_admit_candidate(
     Ok(AdmitDecision::NewlyCommitted)
 }
 
-const ELIGIBILITY: &str = r#"SELECT w.name,a.artifact::text AS artifact,a.input_schema::text AS input_schema,
- jsonb_build_object('caller_user_id',u.id::text,'caller_organization_id',u.organization_id::text,
- 'effective_organization_id',u.organization_id::text,'caller_email',u.email,'caller_name',COALESCE(u.name,''),
- 'caller_admin',u.is_superuser,'caller_provider',org.is_provider,
- 'caller_external',u.is_external AND NOT (u.is_superuser OR org.is_provider),
- 'roles',COALESCE((SELECT jsonb_agg(role_name ORDER BY role_name COLLATE "C") FROM
- (SELECT DISTINCT r.name AS role_name FROM user_roles ur JOIN roles r ON r.id=ur.role_id WHERE ur.user_id=u.id) names),'[]'::jsonb)) AS caller
- FROM workflows w JOIN users u ON u.id=$2::text::uuid
- JOIN organizations org ON org.id=u.organization_id
- JOIN runtime_deployment_artifacts a ON a.workflow_id=w.id AND a.deployment_id=$5::text::uuid
- WHERE w.id=$1::text::uuid AND w.solution_id=$3::text::uuid AND w.organization_id=$4::text::uuid
- AND u.organization_id=$4::text::uuid AND u.is_active AND w.is_active AND w.type='workflow'
- AND a.runtime_protocol='bifrost.runtime/v1' AND a.artifact->>'kind'='native-executable/v1'
- AND (u.is_superuser OR org.is_provider OR w.access_level='everyone'
- OR (w.access_level='authenticated' AND NOT u.is_external)
- OR EXISTS (SELECT 1 FROM workflow_roles wr JOIN user_roles ur ON ur.role_id=wr.role_id WHERE wr.workflow_id=w.id AND ur.user_id=u.id))"#;
+const SELECT_ELIGIBILITY: &str = concat!(
+    "SELECT name,artifact,input_schema,caller::text AS caller FROM (",
+    eligibility_sql!(),
+    ") eligible"
+);
+const INSERT_ROOT: &str = concat!(
+    "WITH eligible AS (",
+    eligibility_sql!(),
+    ") INSERT INTO executions (id,workflow_id,solution_deployment_id,workflow_name,status,parameters,time_saved,value,executed_by,executed_by_name,organization_id,runtime_mode,attempt_tracking_version,isolated_owner) SELECT $6::text::uuid,$1::text::uuid,$5::text::uuid,name,'Pending',$7::jsonb,0,0,$2::text::uuid,caller->>'caller_name',$4::text::uuid,'deployment-v1','v1','coordinator' FROM eligible WHERE caller=$8::jsonb AND clock_timestamp()<$9::text::timestamptz RETURNING id"
+);
 
 #[cfg(test)]
 mod tests {

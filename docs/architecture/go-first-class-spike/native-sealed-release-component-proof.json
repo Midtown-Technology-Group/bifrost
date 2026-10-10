@@ -471,5 +471,73 @@
     },
     "runtime_acceptance": false,
     "limits": "Actual Rust Start/release/SDK authorization with synthetic unsigned grant/source/custody. Does not qualify the later finite signer/provision/admission candidates or live Go/HTTP/guardian/recovery/cleanup."
+  },
+  "admission_compiler_failure_disposition": {
+    "source_commit": "8f9438edb38dfdb49f18d10b59c1344607df0d5e",
+    "workflow_run": 38091508137,
+    "conclusion": "failure",
+    "classification": "Code error; SQLx 0.9 rejects dynamically assembled SQL via SqlSafeStr. No infrastructure attribution or waiver.",
+    "fix": "Shared compile-time literal predicate and concat-generated static SQL; all request values remain bound. No AssertSqlSafe bypass, retry, timeout/resource expansion or skip.",
+    "evidence_sha256": {
+      "source.txt": "19cb2e7fa3fcdeff8cb2c0f991338f103cff276e414bb9544509302d25bc1bf8",
+      "owner-Cargo.lock": "9cbbcb055599e79437e3032297fafc8f050b978c4035fd4cb331c7d03436d247",
+      "owner-clippy.txt": "d3fc8ca38b1f909f1dca97cb40d16204e3bb876423fd96945e7f388ae25acda1"
+    },
+    "runtime_acceptance": false,
+    "validation": "Fresh exact-source complete hosted gates required."
+  },
+  "verified_finite_signer_actual_schema": {
+    "source_commit": "dbcd8f9c006397c3d85316e7236cc208f4546c54",
+    "workflow_run": 38090353828,
+    "conclusion": "success",
+    "source_inputs_verified": 35,
+    "test_counts": {
+      "writer-guard-results.xml": 201,
+      "writer-guard-unit.xml": 13827,
+      "writer-guard-baseline.xml": 109
+    },
+    "failures": 0,
+    "errors": 0,
+    "skips": 0,
+    "api_quality": "Pyright zero errors/warnings/informations; Ruff pass",
+    "teardown": "container, volume and network inventories empty",
+    "evidence_sha256": {
+      "writer-guard-source.txt": "39e534ae55987ade95193bcc3965f561c7f2f7386808b637c450de503935e484",
+      "writer-guard-source-hashes.txt": "346eba83bff7f364e0b5dd323878916bf491e9cf4ef2e196193a71afc341f124",
+      "writer-guard-results.xml": "8e4ec90c33188e95901416140631a63dadf311da10ac7e15229b40aa45953b60",
+      "writer-guard-unit.xml": "e8e126d53591a1c7423373326cc3116bd367c84cb1b2379c39888ead73cbf1f0",
+      "writer-guard-baseline.xml": "14a6d69020d87d93975f4999dce55b924ba20f685b49d99b4a85f9b5c7f9add3",
+      "writer-guard-quality.log": "46d2b6b6d0b4adaa8d5473a659a04c3b8c38f445dde88f39474631213f8212ec",
+      "writer-guard-cleanup.log": "f4a9575a1fd2a2b9990090529c383a80134f47eeff9f76cd9b554e2e738676c3"
+    },
+    "runtime_acceptance": false,
+    "limits": "Synthetic source/custody. Does not qualify later admission or actual Go/HTTP/guardian/recovery/cleanup."
+  },
+  "verified_provision_actual_schema": {
+    "source_commit": "a06e1aac71f2e76f46b27178fae726ca1608aea2",
+    "workflow_run": 38090721774,
+    "conclusion": "success",
+    "source_inputs_verified": 37,
+    "test_counts": {
+      "writer-guard-results.xml": 221,
+      "writer-guard-unit.xml": 13827,
+      "writer-guard-baseline.xml": 109
+    },
+    "failures": 0,
+    "errors": 0,
+    "skips": 0,
+    "api_quality": "Pyright zero errors/warnings/informations; Ruff pass",
+    "teardown": "container, volume and network inventories empty",
+    "evidence_sha256": {
+      "writer-guard-source.txt": "91a5981d02518f8722b4725ea26b47b39abba45b4e2d88097f1fc87efcbdd9e7",
+      "writer-guard-source-hashes.txt": "919add236bb6d6e1c7c922b42a3c07b82910b5a88ffb6baf443e4b5f35b3da04",
+      "writer-guard-results.xml": "b2a9a8b24c792e55f84fa376ca28114d39bd64cc2f3b76f5e4cc8581b5bc3664",
+      "writer-guard-unit.xml": "1291da9de04cb3c542a116df490e64b4a106c40d3c657ae8664bb92c88029d4a",
+      "writer-guard-baseline.xml": "895d93108e201f6d42d171fb7ff8ff8b803269e5f99e23e5189b941500b0df9d",
+      "writer-guard-quality.log": "735ceeca5b4babddb70e86ea2ac6a973b69b187cf6ce5effd0f9548799b30693",
+      "writer-guard-cleanup.log": "de91fb32c4a83a387cf9490fef251e76d900f275982dee2e95de7d94ad1f3152"
+    },
+    "runtime_acceptance": false,
+    "limits": "Synthetic source/custody. Does not qualify later admission or actual Go/HTTP/guardian/recovery/cleanup."
   }
 }
