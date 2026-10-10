@@ -50,6 +50,7 @@ from src.models.orm import Artifact, Agent, Conversation, Message, MessageAttach
 from src.services.agent_executor import AgentExecutor
 from src.services.ai_model_service import AIModelService
 from src.services.chat_attachments import (
+    MAX_FILE_SIZE_BYTES,
     MAX_FILES_PER_MESSAGE,
     ChatAttachmentError,
     ChatAttachmentService,
@@ -512,12 +513,17 @@ async def upload_attachments(
     stored: list[MessageAttachment] = []
     try:
         for upload in files:
+            content = await upload.read(MAX_FILE_SIZE_BYTES + 1)
+            if len(content) > MAX_FILE_SIZE_BYTES:
+                raise ChatAttachmentError(
+                    f"{upload.filename or 'Attachment'} is too large (maximum 25 MB)."
+                )
             stored.append(
                 await service.store(
                     conversation_id=conversation_id,
                     filename=upload.filename or "attachment",
                     content_type=upload.content_type or "application/octet-stream",
-                    content=await upload.read(),
+                    content=content,
                 )
             )
     except ChatAttachmentError as exc:
