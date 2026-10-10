@@ -9,6 +9,15 @@ on:
   merge_group:
     types: [checks_requested]
   workflow_dispatch:
+    inputs:
+      inspect_sonar:
+        description: Read selected Sonar project metadata alongside normal CI validation
+        type: boolean
+        default: false
+      reviewed_workflow_sha:
+        description: Exact signed workflow commit reviewed for the optional Sonar diagnostic
+        type: string
+        default: ""
 
 permissions: read-all
 
@@ -29,10 +38,35 @@ env:
   CI_TEST_IMAGE_TAG: ${{ format('sha-{0}', github.sha) }}
 
 jobs:
+  # Optional operator-reviewed inspection; no repository code runs with this token.
+  # Normal CI still runs, retaining the real required checks for this exact head.
+  sonar-readonly-diagnostic:
+    if: github.event_name == 'workflow_dispatch' && inputs.inspect_sonar
+    permissions: {}
+    uses: ./.github/workflows/sonar-readonly-diagnostic.yml
+    with:
+      reviewed_workflow_sha: ${{ inputs.reviewed_workflow_sha }}
+      allow_visible_metadata: ${{ inputs.inspect_sonar }}
+    secrets:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+  # Separate exact-head coverage collection. Report-only until the reviewed
+  # Sonar migration is activated; existing checks and approvals stay intact.
+  sonar-coverage:
+    needs: [lint, publish-ci-test-images]
+    if: ${{ !cancelled() && (needs.lint.result == 'success' || (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.lint.result == 'skipped')) && (needs.publish-ci-test-images.result == 'success' || needs.publish-ci-test-images.result == 'skipped') }}
+    uses: ./.github/workflows/sonar-coverage.yml
+    with:
+      head_sha: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+      base_sha: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event_name == 'merge_group' && github.event.merge_group.base_sha || github.event.before || '' }}
+    secrets:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
   # Manual branch runs provide the exact clean-candidate gate when no local
   # Docker test VM is available. Tags cannot enter this preparation-only job.
   pre-pr-candidate:
-    if: github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/heads/')
+    needs: lint
+    if: ${{ !cancelled() && needs.lint.result == 'success' && github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/heads/') }}
     runs-on: ubuntu-latest
     name: Pre-PR Candidate
     permissions:
@@ -79,6 +113,7 @@ jobs:
     name: Plan Affected Tests
     permissions:
       contents: read
+      actions: read # occupancy report reads this repository's run/job intervals
     outputs:
       scope: ${{ steps.plan.outputs.scope }}
       api_quality_mode: ${{ steps.plan.outputs.api_quality_mode }}
@@ -132,6 +167,25 @@ jobs:
         with:
           name: affected-test-plan
           path: ${{ runner.temp }}/affected-test-plan.json
+          if-no-files-found: error
+          retention-days: 14
+
+      # Occupancy is sampled inside the existing plan job so the report adds no
+      # runner to the test wave: the org caps concurrent runners at 20 and every
+      # slot spent here is a slot not spent on tests. Cross-repository sampling
+      # needs an org-scoped token; without one the report is repository-scoped
+      # and says so instead of silently implying org-wide coverage.
+      - name: Record CI occupancy report
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OCCUPANCY_WINDOW_HOURS: "6"
+        run: python3 scripts/ci/occupancy_report.py --window-hours "$OCCUPANCY_WINDOW_HOURS" --out "$RUNNER_TEMP/ci-occupancy.json"
+
+      - name: Upload CI occupancy report
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ci-occupancy-report
+          path: ${{ runner.temp }}/ci-occupancy.json
           if-no-files-found: error
           retention-days: 14
 
@@ -388,9 +442,10 @@ jobs:
   # =============================================================================
   lint:
     needs: affected-test-plan
+    # Failed planning must remain red; cancelled snapshots need no diagnostics.
     # Skip the redundant push:main rerun; the merge queue already produced this
     # required check for the exact reviewed commit.
-    if: always() && (github.event_name != 'push' || github.ref != 'refs/heads/main')
+    if: ${{ !cancelled() && (github.event_name != 'push' || github.ref != 'refs/heads/main') }}
     runs-on: ubuntu-latest
     name: Lint & Type Check
     permissions:
@@ -428,6 +483,15 @@ jobs:
           python3 scripts/lib/pre_pr_stage_evidence_test.py
           bash scripts/lib/pre_pr_lanes_test.sh
 
+      # Occupancy accounting and the enforcement-boundary audit stay green while
+      # P0 is pending: enforce_closure runs in report mode (advisory) until
+      # CODEOWNERS has owners, per the proposal's rollout order.
+      - name: CI slice regression checks
+        run: |
+          python3 scripts/ci/test_occupancy_report.py
+          python3 scripts/ci/test_enforce_closure.py
+          python3 scripts/ci/enforce_closure.py --mode report
+
       - name: Set up Python
         if: needs.affected-test-plan.outputs.api_quality_mode != 'skip'
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -451,6 +515,13 @@ jobs:
           python -m venv .venv
           ./.venv/bin/pip install --require-hashes -r requirements.lock
           ./.venv/bin/pip install --require-hashes -r requirements-pyright.lock
+
+      - name: Language-neutral runtime document contracts
+        if: needs.affected-test-plan.outputs.api_quality_mode != 'skip'
+        run: |
+          ./.venv/bin/python contracts/runtime/v1/language-neutral/check.py
+          ./.venv/bin/python contracts/runtime/v1/language-neutral/test_check.py
+          ./.venv/bin/ruff check contracts/runtime/v1/language-neutral/check.py contracts/runtime/v1/language-neutral/test_check.py
 
       - name: Ruff
         if: needs.affected-test-plan.outputs.api_quality_mode != 'skip'
@@ -528,7 +599,7 @@ jobs:
     needs: affected-test-plan
     # Skip the redundant push:main rerun; the merge queue already produced this
     # required check for the exact reviewed commit.
-    if: always() && (github.event_name != 'push' || github.ref != 'refs/heads/main')
+    if: ${{ !cancelled() && (github.event_name != 'push' || github.ref != 'refs/heads/main') }}
     runs-on: ubuntu-latest
     name: Client Unit Tests
     steps:
@@ -737,7 +808,12 @@ jobs:
   # =============================================================================
   test-e2e:
     needs: [affected-test-plan, lint, publish-ci-test-images]
-    if: ${{ !cancelled() && needs.lint.result == 'success' && (needs.publish-ci-test-images.result == 'success' || needs.publish-ci-test-images.result == 'skipped') && (github.event_name != 'push' || github.ref != 'refs/heads/main') }}
+    # The zero-shard sentinel ({shard:0,total:0}) marks a lane outside the
+    # affected closure. The shard job must not allocate a runner for it: skip the
+    # whole job instead of executing every step skipped. The required "E2E Tests"
+    # gate accepts this skipped result only when the plan itself succeeded and
+    # marked the lane 'skip', so a failed or cancelled shard still blocks merge.
+    if: ${{ !cancelled() && needs.lint.result == 'success' && (needs.publish-ci-test-images.result == 'success' || needs.publish-ci-test-images.result == 'skipped') && fromJSON(needs.affected-test-plan.outputs.api_e2e_matrix || '{"include":[{"shard":0,"total":0}]}').include[0].total != 0 && (github.event_name != 'push' || github.ref != 'refs/heads/main') }}
     runs-on: ubuntu-latest
     name: E2E Tests (shard ${{ matrix.shard }}/${{ matrix.total }})
     permissions:
@@ -782,6 +858,19 @@ jobs:
         run: |
           chmod +x test.sh
           ./test.sh stack up
+          # Retain the served schema from this exact candidate's running API.
+          source scripts/lib/test_helpers.sh
+          export COMPOSE_PROJECT_NAME="$(compute_project_name .)"
+          contract_dir="/tmp/bifrost-$COMPOSE_PROJECT_NAME"
+          docker compose -f docker-compose.test.yml exec -T api python -c \
+            'import sys, urllib.request; sys.stdout.buffer.write(urllib.request.urlopen("http://127.0.0.1:8000/openapi.json", timeout=30).read())' \
+            > "$contract_dir/openapi-current.json"
+          python3 - "$contract_dir/openapi-current.json" <<'PYSCHEMA'
+          import json
+          import sys
+          schema = json.load(open(sys.argv[1], encoding="utf-8"))
+          assert schema.get("openapi") and schema.get("paths"), "API schema is incomplete"
+          PYSCHEMA
           if [ "$TEST_MODE" = "comprehensive" ]; then
             mapfile -t shard_files < <(python3 scripts/e2e_shard.py --shard-id "$SHARD_ID" --total "$SHARD_TOTAL")
           else
@@ -848,7 +937,9 @@ jobs:
   # =============================================================================
   test-client-e2e:
     needs: [affected-test-plan, lint, publish-ci-test-images]
-    if: ${{ !cancelled() && needs.lint.result == 'success' && (needs.publish-ci-test-images.result == 'success' || needs.publish-ci-test-images.result == 'skipped') && (github.event_name != 'push' || github.ref != 'refs/heads/main') }}
+    # Same zero-shard sentinel rule as test-e2e: no runner for an out-of-scope
+    # browser lane; the gate decides whether skipped is acceptable.
+    if: ${{ !cancelled() && needs.lint.result == 'success' && (needs.publish-ci-test-images.result == 'success' || needs.publish-ci-test-images.result == 'skipped') && fromJSON(needs.affected-test-plan.outputs.client_e2e_matrix || '{"include":[{"shard":0,"total":0}]}').include[0].total != 0 && (github.event_name != 'push' || github.ref != 'refs/heads/main') }}
     runs-on: ubuntu-latest
     name: Client E2E Tests (shard ${{ matrix.shard }}/${{ matrix.total }})
     strategy:
@@ -950,7 +1041,7 @@ jobs:
   # (if: always()) so branch protection always sees a conclusive result.
   test-e2e-gate:
     if: always() && (github.event_name != 'push' || github.ref != 'refs/heads/main')
-    needs: [affected-test-plan, lint, test-e2e, test-client-e2e, test-client-unit, mcp-conformance]
+    needs: [affected-test-plan, lint, publish-ci-test-images, test-e2e, test-client-e2e, test-client-unit, mcp-conformance]
     runs-on: ubuntu-latest
     name: E2E Tests
     steps:
@@ -964,13 +1055,30 @@ jobs:
             echo "Affected test planning failed or was cancelled (result: ${{ needs.affected-test-plan.result }})"
             exit 1
           fi
-          if [ "${{ needs.test-e2e.result }}" != "success" ]; then
-            echo "One or more e2e shards failed or were cancelled (result: ${{ needs.test-e2e.result }})"
+          if [ "${{ needs.publish-ci-test-images.result }}" != "success" ] && [ "${{ needs.publish-ci-test-images.result }}" != "skipped" ]; then
+            echo "CI test image publication failed or was cancelled (result: ${{ needs.publish-ci-test-images.result }})"
             exit 1
           fi
+          # Zero-shard sentinel: a lane outside the affected closure reports a
+          # {shard:0,total:0} matrix and its shard jobs no longer allocate a
+          # runner, so they report skipped. Skipped is accepted ONLY when the plan
+          # succeeded and marked that lane 'skip' - a failed, cancelled or
+          # unexpectedly-skipped shard still blocks the merge.
+          if [ "${{ needs.test-e2e.result }}" != "success" ]; then
+            if [ "${{ needs.test-e2e.result }}" = "skipped" ] && [ "${{ needs.affected-test-plan.outputs.api_e2e_mode }}" = "skip" ]; then
+              echo "API e2e is outside the affected closure; shard jobs allocated no runner (zero-shard sentinel)."
+            else
+              echo "One or more e2e shards failed or were cancelled (result: ${{ needs.test-e2e.result }}, api_e2e_mode: ${{ needs.affected-test-plan.outputs.api_e2e_mode }})"
+              exit 1
+            fi
+          fi
           if [ "${{ needs.test-client-e2e.result }}" != "success" ]; then
-            echo "Client e2e tests failed or were cancelled (result: ${{ needs.test-client-e2e.result }})"
-            exit 1
+            if [ "${{ needs.test-client-e2e.result }}" = "skipped" ] && [ "${{ needs.affected-test-plan.outputs.client_e2e_mode }}" = "skip" ]; then
+              echo "Browser e2e is outside the affected closure; shard jobs allocated no runner (zero-shard sentinel)."
+            else
+              echo "Client e2e tests failed or were cancelled (result: ${{ needs.test-client-e2e.result }}, client_e2e_mode: ${{ needs.affected-test-plan.outputs.client_e2e_mode }})"
+              exit 1
+            fi
           fi
           if [ "${{ needs.test-client-unit.result }}" != "success" ]; then
             echo "Client unit tests failed or were cancelled (result: ${{ needs.test-client-unit.result }})"
@@ -1935,6 +2043,7 @@ jobs:
           python3 scripts/release/package-notes.py "$VERSION" >> release/package-notes.md
 
       - name: Create release
+        id: release
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
           tag_name: ${{ steps.get_version.outputs.version }}
@@ -1960,19 +2069,26 @@ jobs:
 
       - name: Publish release
         env:
+          RELEASE_ID: ${{ steps.release.outputs.id }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ steps.get_version.outputs.version }}
           PRERELEASE: ${{ steps.get_version.outputs.prerelease }}
         run: |
           set -euo pipefail
-          args=(--draft=false)
+          [[ "$RELEASE_ID" =~ ^[1-9][0-9]*$ ]]
+          endpoint="repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID"
+          args=(-F draft=false)
           if [ "$PRERELEASE" = "true" ]; then
-            args+=(--prerelease)
+            args+=(-F prerelease=true)
           else
-            args+=(--latest)
+            args+=(-f make_latest=true)
           fi
           # Do not publish until every required source asset is uploaded.
-          release="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$VERSION")"
+          # Tag lookup exposes published releases only. Use the draft's returned
+          # identity, then bind it to the expected tag before any publication.
+          release="$(gh api "$endpoint")"
+          printf '%s' "$release" | jq -e --arg tag "$VERSION" --argjson id "$RELEASE_ID" '
+            .id == $id and .tag_name == $tag and .draft == true' > /dev/null
           printf '%s' "$release" | jq -e --arg name "bifrost-$VERSION-source.tar.gz" '
             [.assets[] | select(.state == "uploaded" and .size > 0) | .name] as $assets |
             [$name, ($name + ".sha256"), ($name + ".sigstore")] |
@@ -1985,6 +2101,7 @@ jobs:
               ["release-manifest.json", "release-manifest.json.sha256", "release-manifest.json.sigstore.json"] |
               all(. as $required | $assets | index($required) != null)' > /dev/null
           fi
-          gh release edit "$VERSION" "${args[@]}"
-          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$VERSION" --jq '.draft == false and .immutable == true' | grep -Fxq true
+          gh api --method PATCH "$endpoint" "${args[@]}" > /dev/null
+          gh api "$endpoint" --jq '.draft == false and .immutable == true' | grep -Fxq true
+
 

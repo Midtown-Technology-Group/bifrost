@@ -4,6 +4,7 @@ Single source of truth for all code execution (workflows, scripts, data provider
 """
 
 import asyncio
+import dis
 import inspect
 import json
 import logging
@@ -134,6 +135,7 @@ class ExecutionRequest:
 
     # Execution settings
     timeout_seconds: int = 1800          # Default 30 minutes
+    workflow_deadline: datetime | None = None
     cache_ttl_seconds: int = 300         # For data providers
 
     # Parameters
@@ -362,6 +364,8 @@ async def execute(request: ExecutionRequest) -> ExecutionResult:
         is_external=request.is_external,
         is_function_key=False,  # Engine executions are not function key based
         execution_id=request.execution_id,
+        workflow_deadline=request.workflow_deadline,
+        workflow_timeout_seconds=request.timeout_seconds,
         workflow_name=request.name or "",  # Workflow/script name for context
         public_url=get_settings().public_url,
         startup=request.startup,  # Launch workflow results (from form execution)
@@ -1425,15 +1429,23 @@ async def _execute_workflow_with_trace(
 
     exception_to_raise = None
 
-    # Set up trace function to capture variables on return or exception
+    # A coroutine emits a trace "return" whenever an await suspends it, and
+    # normal await completion can emit a StopIteration "exception". Capturing
+    # locals at either point repeatedly serializes large SDK request values.
+    # The outer exception handler captures locals from the traceback on real
+    # failures, so this trace only needs the final return instruction.
     def trace_func(frame, event, arg):
         # Trace the workflow function OR script's main() function
         # Scripts wrap their code in an async main() function
         if frame.f_code.co_name not in (func_name, 'main'):
             return None
 
-        # Capture variables when returning or raising exception
-        if event in ('return', 'exception'):
+        if (
+            event == 'return'
+            and frame.f_lasti >= 0
+            and dis.opname[frame.f_code.co_code[frame.f_lasti]]
+            in ('RETURN_VALUE', 'RETURN_CONST')
+        ):
             capture_variables_from_locals(frame.f_locals)
 
         return trace_func

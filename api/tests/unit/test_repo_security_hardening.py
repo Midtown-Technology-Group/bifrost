@@ -57,6 +57,7 @@ def test_required_e2e_gate_includes_playwright_and_mcp_conformance() -> None:
     assert set(jobs["test-e2e-gate"]["needs"]) == {
         "affected-test-plan",
         "lint",
+        "publish-ci-test-images",
         "test-e2e",
         "test-client-e2e",
         "test-client-unit",
@@ -178,10 +179,12 @@ def test_release_assets_upload_before_immutable_release_publication() -> None:
         "${{ steps.source_tarball.outputs.tarball }}.sigstore" in create_with["files"]
     )
     assert publish_index > create_index
-    assert "--draft=false" in publish_run
-    assert "args+=(--prerelease)" in publish_run
-    assert "args+=(--latest)" in publish_run
-    assert 'gh release edit "$VERSION" "${args[@]}"' in publish_run
+    assert "args=(-F draft=false)" in publish_run
+    assert "args+=(-F prerelease=true)" in publish_run
+    assert "args+=(-f make_latest=true)" in publish_run
+    assert 'gh api --method PATCH "$endpoint" "${args[@]}"' in publish_run
+    assert steps[publish_index]["env"]["RELEASE_ID"] == "${{ steps.release.outputs.id }}"
+    assert '.draft == false and .immutable == true' in publish_run
 
 
 def test_dependabot_lock_validation_does_not_commit_to_pr_branch() -> None:

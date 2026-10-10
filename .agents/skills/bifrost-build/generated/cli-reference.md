@@ -2220,6 +2220,7 @@ Commands:
   plan              Validate a Solution workspace without changing local...
   pull              Pull captured entities into the local .bifrost/...
   pull-manifests    Pull captured entities into the local .bifrost/...
+  review-package    Review a complete Solution package at an exact local...
   scaffold-app      Scaffold a standalone_v2 React app (package.json,...
   sdk               Manage the app's vendored Bifrost SDK.
   start             Run the app's dev server + local workflows on one...
@@ -2557,6 +2558,20 @@ Options:
                                   scope. Omit = your org. (--organization /
                                   --scope are synonyms.)
   --help                          Show this message and exit.
+```
+
+### `solution review-package`
+
+```
+Usage: solution review-package [OPTIONS] RECIPE
+
+  Review a complete Solution package at an exact local Git commit; no
+  deployment.
+
+Options:
+  --source-commit TEXT         Exact 40-character Git commit SHA.  [required]
+  --repository-root DIRECTORY  [required]
+  --help                       Show this message and exit.
 ```
 
 ### `solution scaffold-app`

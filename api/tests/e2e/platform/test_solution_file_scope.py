@@ -126,6 +126,39 @@ async def test_solution_write_then_read_isolated(e2e_client, platform_admin, db_
     assert read_a.status_code == 200, f"solution A read failed: {read_a.text}"
     assert read_a.json()["content"] == "hello from A"
 
+    stat_a = e2e_client.post(
+        f"/api/files/stat?solution={sid_a}", headers=headers,
+        json={"location": "solutions", "path": test_path, "mode": "cloud"},
+    )
+    assert stat_a.status_code == 200
+    original_version = stat_a.json()["version"]
+    # A second, changed-content write must update the existing metadata row.
+    # Creation alone misses the session-wide Solution guard regression.
+    update_a = e2e_client.post(
+        f"/api/files/write?solution={sid_a}",
+        headers=headers,
+        json={
+            "location": "solutions", "path": test_path, "content": "updated from A",
+            "mode": "cloud", "expected_version": original_version,
+        },
+    )
+    assert update_a.status_code == 204, f"solution A update failed: {update_a.status_code} {update_a.text}"
+    updated_read = e2e_client.post(
+        f"/api/files/read?solution={sid_a}",
+        headers=headers,
+        json={"location": "solutions", "path": test_path, "mode": "cloud"},
+    )
+    assert updated_read.status_code == 200
+    assert updated_read.json()["content"] == "updated from A"
+    stale_write = e2e_client.post(
+        f"/api/files/write?solution={sid_a}", headers=headers,
+        json={
+            "location": "solutions", "path": test_path, "content": "stale overwrite",
+            "mode": "cloud", "expected_version": original_version,
+        },
+    )
+    assert stale_write.status_code == 409
+
     # Solution B CANNOT read solution A's file at the same logical path —
     # their scopes are different install UUIDs, so they target different S3 keys.
     # Expect 403 (policy denied) or 404 (different scope → different S3 key).

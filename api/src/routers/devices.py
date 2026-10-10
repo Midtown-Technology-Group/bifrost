@@ -13,6 +13,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Header, Query, status
 from starlette.responses import JSONResponse
 
+from src.services.operation_catalog import operation_route
 from src.core.auth import Context, CurrentUser, get_current_user_optional
 from src.core.db_deps import DbSession
 from src.core.principal import UserPrincipal
@@ -83,6 +84,7 @@ def _unknown_device() -> JSONResponse:
     response_model=DeviceCreateResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Create a device and mint a one-time enrollment token",
+    **operation_route("devices.create_device_route"),
 )
 async def create_device_route(
     body: DeviceCreate,
@@ -105,6 +107,7 @@ async def create_device_route(
     "/enroll",
     response_model=DeviceEnrollResponse,
     summary="Enroll with a single-use token and receive the device key once",
+    **operation_route("devices.enroll_device_route"),
 )
 async def enroll_device_route(
     body: DeviceEnrollRequest,
@@ -129,6 +132,7 @@ async def enroll_device_route(
     "",
     response_model=list[DevicePublic],
     summary="List devices in the caller's organization",
+    **operation_route("devices.list_devices_route"),
 )
 async def list_devices_route(
     ctx: Context,
@@ -148,6 +152,7 @@ async def list_devices_route(
     "/{device_id}",
     response_model=DevicePublic | DeviceFreshness,
     summary="Get one device (user: full view; control key: freshness only)",
+    **operation_route("devices.get_device_route"),
 )
 async def get_device_route(
     device_id: UUID,
@@ -193,6 +198,7 @@ async def get_device_route(
     "/{device_id}/rotate-key",
     response_model=DeviceKeyResponse,
     summary="Rotate the device key (raw returned once)",
+    **operation_route("devices.rotate_device_key_endpoint"),
 )
 async def rotate_device_key_endpoint(
     device_id: UUID,
@@ -211,6 +217,7 @@ async def rotate_device_key_endpoint(
     "/{device_id}/disable",
     response_model=DevicePublic,
     summary="Disable a device",
+    **operation_route("devices.disable_device_route"),
 )
 async def disable_device_route(
     device_id: UUID,
@@ -224,6 +231,7 @@ async def disable_device_route(
     "/{device_id}/enable",
     response_model=DevicePublic,
     summary="Re-enable a disabled device",
+    **operation_route("devices.enable_device_route"),
 )
 async def enable_device_route(
     device_id: UUID,
@@ -322,6 +330,7 @@ async def _create_job(
     response_model=DeviceJobPublic,
     status_code=status.HTTP_201_CREATED,
     summary="Create a device job (user permission or device-scoped control key)",
+    **operation_route("devices.create_job_route"),
 )
 async def create_job_route(
     device_id: UUID,
@@ -382,6 +391,7 @@ async def _authorize_job_read(
     "/{device_id}/jobs",
     response_model=list[DeviceJobPublic],
     summary="List job history for a device (create-level read authz)",
+    **operation_route("devices.list_jobs_route"),
 )
 async def list_jobs_route(
     device_id: UUID,
@@ -414,6 +424,7 @@ async def list_jobs_route(
     "/{device_id}/jobs/{job_id}",
     response_model=DeviceJobDetail,
     summary="Get one job (script body readable at create-level authz)",
+    **operation_route("devices.get_job_route"),
 )
 async def get_job_route(
     device_id: UUID,
@@ -437,6 +448,7 @@ async def get_job_route(
     "/{device_id}/jobs/{job_id}/logs",
     response_model=list[DeviceJobLogPublic],
     summary="Read job logs (create-level authz; never device-readable)",
+    **operation_route("devices.get_job_logs_route"),
 )
 async def get_job_logs_route(
     device_id: UUID,
@@ -463,6 +475,7 @@ async def get_job_logs_route(
     "/{device_id}/jobs/{job_id}/cancel",
     response_model=DeviceJobPublic,
     summary="Cooperative cancel (user JWT only; no kill guarantee)",
+    **operation_route("devices.cancel_job_route"),
 )
 async def cancel_job_route(
     device_id: UUID,

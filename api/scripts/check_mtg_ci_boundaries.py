@@ -51,6 +51,30 @@ EXPENSIVE_TEST_IF = (
     "|| needs.publish-ci-test-images.result == 'skipped') "
     "&& (github.event_name != 'push' || github.ref != 'refs/heads/main') }}"
 )
+
+# Lanes whose runner count comes from a plan-produced shard matrix. They carry
+# the same admission guard as EXPENSIVE_TEST_IF plus the zero-shard sentinel
+# guard: when the plan marks the lane out of scope it emits
+# {"shard":0,"total":0}, and the shard job must skip the whole job rather than
+# allocate a runner to a run where every step is skipped (the org caps
+# concurrent runners at 20). The push-guard suffix stays last, unchanged.
+MATRIX_LANE_TEST_IF_OUTPUT = {
+    "test-e2e": "api_e2e_matrix",
+    "test-client-e2e": "client_e2e_matrix",
+}
+ZERO_SHARD_SENTINEL = "'{\"include\":[{\"shard\":0,\"total\":0}]}'"
+
+
+def matrix_lane_test_if(matrix_output: str) -> str:
+    """Admission guard for a sharded expensive lane (sentinel-aware)."""
+    return (
+        "${{ !cancelled() && needs.lint.result == 'success' "
+        "&& (needs.publish-ci-test-images.result == 'success' "
+        "|| needs.publish-ci-test-images.result == 'skipped') "
+        f"&& fromJSON(needs.affected-test-plan.outputs.{matrix_output} || "
+        f"{ZERO_SHARD_SENTINEL}).include[0].total != 0 "
+        "&& (github.event_name != 'push' || github.ref != 'refs/heads/main') }}"
+    )
 EXPECTED_PR_CANCELLATION = "cancel-in-progress: ${{ github.event_name == 'pull_request' }}"
 
 ALLOWED_CODEOWNERS = (
@@ -151,15 +175,24 @@ def check_ci_workflow(path: Path) -> list[str]:
                 ]
 
     expected_skip = (
-        "always() && (github.event_name != 'push' || github.ref != 'refs/heads/main')"
+        "${{ !cancelled() && (github.event_name != 'push' || github.ref != 'refs/heads/main') }}"
     )
     for job in QUEUE_SKIPPED_ON_MAIN:
         parsed = _job_block(lines, job)
-        expected_if = (
-            EXPENSIVE_TEST_IF if job in ACTION_FREE_REQUIRED_TEST_JOBS else expected_skip
-        )
+        if job in MATRIX_LANE_TEST_IF_OUTPUT:
+            expected_if = matrix_lane_test_if(MATRIX_LANE_TEST_IF_OUTPUT[job])
+        elif job in ACTION_FREE_REQUIRED_TEST_JOBS:
+            expected_if = EXPENSIVE_TEST_IF
+        else:
+            expected_if = expected_skip
+        if job == "test-e2e-gate":
+            expected_if = "always() && (github.event_name != 'push' || github.ref != 'refs/heads/main')"
         if parsed is None or _parse_if_line(parsed[1]) != expected_if:
-            return [f"{path}: {job!r} must skip the redundant main-push rerun after queue validation."]
+            return [
+                f"{path}: {job!r} admission guard changed; it must skip the redundant "
+                "main-push rerun after queue validation and must not allocate a runner "
+                "for the zero-shard sentinel."
+            ]
 
     deploy_dry_run = _job_block(lines, "deploy-dry-run")
     if deploy_dry_run is None:

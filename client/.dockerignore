@@ -22,6 +22,7 @@ lerna-debug.log*
 # Build outputs (will be generated during build)
 dist/
 dist-ssr/
+*.tsbuildinfo
 *.local
 
 # IDE

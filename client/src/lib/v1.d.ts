@@ -83,7 +83,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** Enroll */
-        post: operations["enroll_api_platform_external_workers_enroll_post"];
+        post: operations["externalworkers.enroll"];
         delete?: never;
         options?: never;
         head?: never;
@@ -98,7 +98,7 @@ export interface paths {
             cookie?: never;
         };
         /** Status */
-        get: operations["status_api_platform_external_workers_get"];
+        get: operations["externalworkers.status"];
         put?: never;
         post?: never;
         delete?: never;
@@ -628,7 +628,7 @@ export interface paths {
          *     user's browser. Browser login and MFA remain handled by normal Bifrost
          *     session cookies.
          */
-        post: operations["start_cli_native_auth_auth_cli_start_post"];
+        post: operations["auth.start_cli_native_auth"];
         delete?: never;
         options?: never;
         head?: never;
@@ -649,7 +649,7 @@ export interface paths {
          *     Unauthenticated browser users are sent through the normal login page and
          *     returned here after password/MFA/passkey auth completes.
          */
-        get: operations["authorize_cli_native_auth_auth_cli_authorize_get"];
+        get: operations["auth.authorize_cli_native_auth"];
         put?: never;
         post?: never;
         delete?: never;
@@ -671,7 +671,7 @@ export interface paths {
          * Exchange Cli Native Auth Token
          * @description Exchange a native CLI OAuth callback code plus PKCE verifier for tokens.
          */
-        post: operations["exchange_cli_native_auth_token_auth_cli_token_post"];
+        post: operations["auth.exchange_cli_native_auth_token"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1448,13 +1448,13 @@ export interface paths {
          * List organizations
          * @description Get active organizations, optionally including inactive ones (Platform admin only)
          */
-        get: operations["list_organizations_api_organizations_get"];
+        get: operations["organizations.list"];
         put?: never;
         /**
          * Create a new organization
          * @description Create a new client organization (Platform admin only)
          */
-        post: operations["create_organization_api_organizations_post"];
+        post: operations["organizations.create"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1472,21 +1472,21 @@ export interface paths {
          * Get organization by ID
          * @description Get a specific organization by ID (Platform admin only)
          */
-        get: operations["get_organization_api_organizations__org_id__get"];
+        get: operations["organizations.get"];
         put?: never;
         post?: never;
         /**
          * Delete an organization
          * @description Soft delete an organization (sets is_active=False, Platform admin only)
          */
-        delete: operations["delete_organization_api_organizations__org_id__delete"];
+        delete: operations["organizations.delete"];
         options?: never;
         head?: never;
         /**
          * Update an organization
          * @description Update an existing organization (Platform admin only)
          */
-        patch: operations["update_organization_api_organizations__org_id__patch"];
+        patch: operations["organizations.update"];
         trace?: never;
     };
     "/api/users/{user_id}/external-identities": {
@@ -1497,10 +1497,10 @@ export interface paths {
             cookie?: never;
         };
         /** List External Identities */
-        get: operations["list_external_identities_api_users__user_id__external_identities_get"];
+        get: operations["users.list_external_identities"];
         put?: never;
         /** Create External Identity */
-        post: operations["create_external_identity_api_users__user_id__external_identities_post"];
+        post: operations["users.create_external_identity"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1518,7 +1518,7 @@ export interface paths {
         put?: never;
         post?: never;
         /** Delete External Identity */
-        delete: operations["delete_external_identity_api_users__user_id__external_identities__identity_id__delete"];
+        delete: operations["users.delete_external_identity"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1535,13 +1535,13 @@ export interface paths {
          * List users
          * @description List all users with optional filtering by type and organization
          */
-        get: operations["list_users_api_users_get"];
+        get: operations["users.list"];
         put?: never;
         /**
          * Create user
          * @description Create a new user proactively (Platform admin only)
          */
-        post: operations["create_user_api_users_post"];
+        post: operations["users.create"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1565,7 +1565,7 @@ export interface paths {
          * Bulk user operation
          * @description Apply one operation (move_org, replace_roles, set_active) to a batch of users in a single transaction. Returns per-user pass/fail.
          */
-        patch: operations["bulk_update_users_api_users_bulk_patch"];
+        patch: operations["users.bulk_update"];
         trace?: never;
     };
     "/api/users/{user_id}/invite/resend": {
@@ -1581,7 +1581,7 @@ export interface paths {
          * Resend invite
          * @description Generate a fresh invite token and email it to the user.
          */
-        post: operations["resend_invite_api_users__user_id__invite_resend_post"];
+        post: operations["users.invites.resend"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1601,7 +1601,7 @@ export interface paths {
          * Send invite
          * @description Emit invite automation for an existing registration link without rotating the token.
          */
-        post: operations["send_invite_api_users__user_id__invite_send_post"];
+        post: operations["users.invites.send"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1621,7 +1621,7 @@ export interface paths {
          * Regenerate invite link
          * @description Generate a fresh invite token without sending an email; returns the URL.
          */
-        post: operations["regenerate_invite_api_users__user_id__invite_regenerate_post"];
+        post: operations["users.invites.regenerate"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1642,7 +1642,7 @@ export interface paths {
          * Revoke invite
          * @description Revoke any active invite for the user.
          */
-        delete: operations["revoke_invite_api_users__user_id__invite_delete"];
+        delete: operations["users.invites.revoke"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1659,21 +1659,21 @@ export interface paths {
          * Get user details
          * @description Get a specific user's details (Platform admin only)
          */
-        get: operations["get_user_api_users__user_id__get"];
+        get: operations["users.get"];
         put?: never;
         post?: never;
         /**
          * Delete user
          * @description Delete a user from the system
          */
-        delete: operations["delete_user_api_users__user_id__delete"];
+        delete: operations["users.delete"];
         options?: never;
         head?: never;
         /**
          * Update user
          * @description Update user properties including role transitions
          */
-        patch: operations["update_user_api_users__user_id__patch"];
+        patch: operations["users.update"];
         trace?: never;
     };
     "/api/users/{user_id}/roles": {
@@ -1687,7 +1687,7 @@ export interface paths {
          * Get user roles
          * @description Get all roles assigned to a user
          */
-        get: operations["get_user_roles_api_users__user_id__roles_get"];
+        get: operations["users.roles.list"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1707,7 +1707,7 @@ export interface paths {
          * Get user forms
          * @description Get all forms a user can access based on their roles
          */
-        get: operations["get_user_forms_api_users__user_id__forms_get"];
+        get: operations["users.forms.list"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1724,7 +1724,7 @@ export interface paths {
             cookie?: never;
         };
         /** List Approvals */
-        get: operations["list_approvals_api_agent_action_approvals_get"];
+        get: operations["agentactionapprovals.list_approvals"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1743,7 +1743,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** Deny Approval */
-        post: operations["deny_approval_api_agent_action_approvals__approval_id__deny_post"];
+        post: operations["agentactionapprovals.deny_approval"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1760,7 +1760,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** Approve Approval */
-        post: operations["approve_approval_api_agent_action_approvals__approval_id__approve_post"];
+        post: operations["agentactionapprovals.approve_approval"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1778,13 +1778,13 @@ export interface paths {
          * List all roles
          * @description Get all roles (Platform admin only)
          */
-        get: operations["list_roles_api_roles_get"];
+        get: operations["roles.list"];
         put?: never;
         /**
          * Create a role
          * @description Create a new role (Platform admin only)
          */
-        post: operations["create_role_api_roles_post"];
+        post: operations["roles.create"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1802,21 +1802,21 @@ export interface paths {
          * Get a role
          * @description Get a role by ID (Platform admin only)
          */
-        get: operations["get_role_api_roles__role_id__get"];
+        get: operations["roles.get"];
         put?: never;
         post?: never;
         /**
          * Delete a role
          * @description Delete a role (Platform admin only). CASCADE removes all role assignments.
          */
-        delete: operations["delete_role_api_roles__role_id__delete"];
+        delete: operations["roles.delete"];
         options?: never;
         head?: never;
         /**
          * Update a role
          * @description Update a role (Platform admin only)
          */
-        patch: operations["update_role_api_roles__role_id__patch"];
+        patch: operations["roles.update"];
         trace?: never;
     };
     "/api/roles/{role_id}/users": {
@@ -1830,18 +1830,18 @@ export interface paths {
          * Get role users
          * @description Get all users assigned to a role
          */
-        get: operations["get_role_users_api_roles__role_id__users_get"];
+        get: operations["roles.users.list"];
         put?: never;
         /**
          * Assign users to role
          * @description Assign users to a role (batch operation)
          */
-        post: operations["assign_users_to_role_api_roles__role_id__users_post"];
+        post: operations["roles.users.assign"];
         /**
          * Bulk unassign users from role
          * @description Bulk unassign N users from a role in one call. Pass the user UUIDs in the request body as {user_ids: [...]}. Unknown ids are silently skipped.
          */
-        delete: operations["bulk_unassign_users_api_roles__role_id__users_delete"];
+        delete: operations["roles.users.bulk_remove"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1861,7 +1861,7 @@ export interface paths {
          * Remove user from role
          * @description Remove a user from a role
          */
-        delete: operations["remove_user_from_role_api_roles__role_id__users__user_id__delete"];
+        delete: operations["roles.users.remove"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1878,18 +1878,18 @@ export interface paths {
          * Get role forms
          * @description Get all forms assigned to a role
          */
-        get: operations["get_role_forms_api_roles__role_id__forms_get"];
+        get: operations["roles.forms.list"];
         put?: never;
         /**
          * Assign forms to role
          * @description Assign forms to a role (batch operation)
          */
-        post: operations["assign_forms_to_role_api_roles__role_id__forms_post"];
+        post: operations["roles.forms.assign"];
         /**
          * Bulk unassign forms from role
          * @description Remove multiple forms from a role in one statement.
          */
-        delete: operations["bulk_unassign_forms_api_roles__role_id__forms_delete"];
+        delete: operations["roles.forms.bulk_remove"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1909,7 +1909,7 @@ export interface paths {
          * Remove form from role
          * @description Remove a form from a role
          */
-        delete: operations["remove_form_from_role_api_roles__role_id__forms__form_id__delete"];
+        delete: operations["roles.forms.remove"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1926,18 +1926,18 @@ export interface paths {
          * Get role agents
          * @description Get all agents assigned to a role
          */
-        get: operations["get_role_agents_api_roles__role_id__agents_get"];
+        get: operations["roles.agents.list"];
         put?: never;
         /**
          * Assign agents to role
          * @description Assign agents to a role (batch operation)
          */
-        post: operations["assign_agents_to_role_api_roles__role_id__agents_post"];
+        post: operations["roles.agents.assign"];
         /**
          * Bulk unassign agents from role
          * @description Remove multiple agents from a role in one statement.
          */
-        delete: operations["bulk_unassign_agents_api_roles__role_id__agents_delete"];
+        delete: operations["roles.agents.bulk_remove"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1957,7 +1957,7 @@ export interface paths {
          * Remove agent from role
          * @description Remove an agent from a role
          */
-        delete: operations["remove_agent_from_role_api_roles__role_id__agents__agent_id__delete"];
+        delete: operations["roles.agents.remove"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1971,12 +1971,12 @@ export interface paths {
             cookie?: never;
         };
         /** Get role apps */
-        get: operations["get_role_apps_api_roles__role_id__apps_get"];
+        get: operations["roles.apps.list"];
         put?: never;
         /** Assign apps to role */
-        post: operations["assign_apps_to_role_api_roles__role_id__apps_post"];
+        post: operations["roles.apps.assign"];
         /** Bulk unassign apps from role */
-        delete: operations["bulk_unassign_apps_api_roles__role_id__apps_delete"];
+        delete: operations["roles.apps.bulk_remove"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1990,12 +1990,12 @@ export interface paths {
             cookie?: never;
         };
         /** Get role workflows */
-        get: operations["get_role_workflows_api_roles__role_id__workflows_get"];
+        get: operations["roles.workflows.list"];
         put?: never;
         /** Assign workflows to role */
-        post: operations["assign_workflows_to_role_api_roles__role_id__workflows_post"];
+        post: operations["roles.workflows.assign"];
         /** Bulk unassign workflows from role */
-        delete: operations["bulk_unassign_workflows_api_roles__role_id__workflows_delete"];
+        delete: operations["roles.workflows.bulk_remove"];
         options?: never;
         head?: never;
         patch?: never;
@@ -2009,12 +2009,12 @@ export interface paths {
             cookie?: never;
         };
         /** Get role knowledge-namespace assignments */
-        get: operations["get_role_knowledge_api_roles__role_id__knowledge_get"];
+        get: operations["roles.knowledge.list"];
         put?: never;
         /** Assign knowledge namespaces to role */
-        post: operations["assign_knowledge_to_role_api_roles__role_id__knowledge_post"];
+        post: operations["roles.knowledge.assign"];
         /** Bulk unassign knowledge namespaces from role */
-        delete: operations["bulk_unassign_knowledge_api_roles__role_id__knowledge_delete"];
+        delete: operations["roles.knowledge.bulk_remove"];
         options?: never;
         head?: never;
         patch?: never;
@@ -2031,7 +2031,7 @@ export interface paths {
          * List workflow executions
          * @description List workflow executions with filtering and pagination
          */
-        get: operations["list_executions_api_executions_get"];
+        get: operations["executions.list"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2071,7 +2071,7 @@ export interface paths {
          * Get execution details
          * @description Get detailed information about a specific execution
          */
-        get: operations["get_execution_api_executions__execution_id__get"];
+        get: operations["executions.get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2231,7 +2231,7 @@ export interface paths {
          * List all workflows
          * @description Returns metadata for all registered workflows in the system
          */
-        get: operations["list_workflows_api_workflows_get"];
+        get: operations["workflows.list"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2273,7 +2273,7 @@ export interface paths {
          * Execute a workflow, data provider, or script
          * @description Execute a workflow or data provider by ID. For data providers, returns options list in result field. Requires platform admin, API key, or access via form/app/integration.
          */
-        post: operations["execute_workflow_api_workflows_execute_post"];
+        post: operations["workflows.execute"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2313,7 +2313,7 @@ export interface paths {
          * Validate a workflow file
          * @description Validate a workflow file for syntax errors and decorator issues
          */
-        post: operations["validate_workflow_api_workflows_validate_post"];
+        post: operations["workflows.validate"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2333,7 +2333,7 @@ export interface paths {
          * Register a workflow function
          * @description Register a decorated function from an existing .py file as a workflow.
          */
-        post: operations["register_workflow_api_workflows_register_post"];
+        post: operations["workflows.register"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2354,14 +2354,14 @@ export interface paths {
          * Delete a workflow
          * @description Delete a workflow by removing its function from the source file. Returns 409 with deactivation details if the workflow has history or dependencies.
          */
-        delete: operations["delete_workflow_api_workflows__workflow_id__delete"];
+        delete: operations["workflows.delete"];
         options?: never;
         head?: never;
         /**
          * Update a workflow
          * @description Update editable workflow properties like organization scope (Platform admin only)
          */
-        patch: operations["update_workflow_api_workflows__workflow_id__patch"];
+        patch: operations["workflows.update"];
         trace?: never;
     };
     "/api/workflows/orphaned": {
@@ -2501,7 +2501,7 @@ export interface paths {
          * Assign roles to workflow
          * @description Assign roles to a workflow (batch operation, Platform admin only)
          */
-        post: operations["assign_roles_to_workflow_api_workflows__workflow_id__roles_post"];
+        post: operations["workflows.roles.grant"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2522,7 +2522,7 @@ export interface paths {
          * Remove role from workflow
          * @description Remove a role from a workflow (Platform admin only)
          */
-        delete: operations["remove_role_from_workflow_api_workflows__workflow_id__roles__role_id__delete"];
+        delete: operations["workflows.roles.revoke"];
         options?: never;
         head?: never;
         patch?: never;
@@ -2539,13 +2539,13 @@ export interface paths {
          * List forms
          * @description List all forms visible to the user based on their permissions
          */
-        get: operations["list_forms_api_forms_get"];
+        get: operations["forms.list"];
         put?: never;
         /**
          * Create a new form
          * @description Create a new form (Platform admin only)
          */
-        post: operations["create_form_api_forms_post"];
+        post: operations["forms.create"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2650,21 +2650,21 @@ export interface paths {
          * Get form by ID
          * @description Get a specific form by ID. User must have access to the form.
          */
-        get: operations["get_form_api_forms__form_id__get"];
+        get: operations["forms.get"];
         put?: never;
         post?: never;
         /**
          * Delete a form
          * @description Delete a form. Use ?purge=true to permanently remove it from the database (Platform admin only)
          */
-        delete: operations["delete_form_api_forms__form_id__delete"];
+        delete: operations["forms.delete"];
         options?: never;
         head?: never;
         /**
          * Update a form
          * @description Update an existing form (Platform admin only)
          */
-        patch: operations["update_form_api_forms__form_id__patch"];
+        patch: operations["forms.update"];
         trace?: never;
     };
     "/api/forms/{form_id}/logo": {
@@ -2777,13 +2777,13 @@ export interface paths {
          * Get configuration values
          * @description Get configuration values for current scope (includes global configs)
          */
-        get: operations["get_config_api_config_get"];
+        get: operations["configs.list"];
         put?: never;
         /**
          * Set configuration value
          * @description Set a configuration value in the current scope
          */
-        post: operations["set_config_api_config_post"];
+        post: operations["configs.create"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2802,13 +2802,13 @@ export interface paths {
          * Update configuration value by ID
          * @description Update an existing configuration value, including its organization scope
          */
-        put: operations["update_config_api_config__config_id__put"];
+        put: operations["configs.update"];
         post?: never;
         /**
          * Delete configuration value
          * @description Delete a configuration value by ID
          */
-        delete: operations["delete_config_api_config__config_id__delete"];
+        delete: operations["configs.delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -2822,10 +2822,10 @@ export interface paths {
             cookie?: never;
         };
         /** List Gateway Keys */
-        get: operations["list_codex_gateway_keys"];
+        get: operations["codexgateway.list_gateway_keys"];
         put?: never;
         /** Create Gateway Key */
-        post: operations["create_codex_gateway_key"];
+        post: operations["codexgateway.create_gateway_key"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2843,7 +2843,7 @@ export interface paths {
         put?: never;
         post?: never;
         /** Revoke Gateway Key */
-        delete: operations["revoke_codex_gateway_key"];
+        delete: operations["codexgateway.revoke_gateway_key"];
         options?: never;
         head?: never;
         patch?: never;
@@ -2857,7 +2857,7 @@ export interface paths {
             cookie?: never;
         };
         /** Get Oauth Status */
-        get: operations["get_codex_gateway_oauth_status"];
+        get: operations["codexgateway.get_oauth_status"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2876,7 +2876,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** Start Oauth Connect */
-        post: operations["start_codex_gateway_oauth_connect"];
+        post: operations["codexgateway.start_oauth_connect"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2893,7 +2893,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** Import Oauth Auth Cache */
-        post: operations["import_codex_gateway_oauth_auth_cache"];
+        post: operations["codexgateway.import_oauth_auth_cache"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2911,7 +2911,7 @@ export interface paths {
         put?: never;
         post?: never;
         /** Disconnect Oauth Account */
-        delete: operations["disconnect_codex_gateway_oauth"];
+        delete: operations["codexgateway.disconnect_oauth_account"];
         options?: never;
         head?: never;
         patch?: never;
@@ -2927,7 +2927,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** Create Response */
-        post: operations["create_codex_gateway_response"];
+        post: operations["codexgateway.create_response"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2944,7 +2944,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** Create Response */
-        post: operations["create_codex_gateway_response_api"];
+        post: operations["codexgateway.create_response.post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3061,7 +3061,7 @@ export interface paths {
          *     ``solution`` (an install UUID) lists that install's deploy-owned solution
          *     tier — admins may SEE these; edits stay blocked (deploy-owned).
          */
-        get: operations["list_file_policies_api_files_policies_get"];
+        get: operations["files.policies.list"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3083,7 +3083,7 @@ export interface paths {
          * Test File Policy Access
          * @description Evaluate effective access for a path using the real file policy service.
          */
-        post: operations["test_file_policy_access_api_files_policies_test_post"];
+        post: operations["files.policies.test"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3105,7 +3105,7 @@ export interface paths {
          *     in a scope, so the explorer tree never orphans a file. Excludes reserved
          *     workspace/temp; flags uploads read-only. Omit `location` to discover shares.
          */
-        post: operations["list_file_structure_api_files_structure_post"];
+        post: operations["files.structure.list"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3125,14 +3125,14 @@ export interface paths {
          *
          *     ``solution`` reads the install's deploy-owned solution tier (read-only).
          */
-        get: operations["get_file_policy_api_files_policies__policy_path__get"];
+        get: operations["files.policies.get"];
         /**
          * Set File Policy
          * @description Create or replace the file policy for a location/path prefix.
          *
          *     Solution-tier rows (``solution`` set) are deploy-owned and refused (409).
          */
-        put: operations["set_file_policy_api_files_policies__policy_path__put"];
+        put: operations["files.policies.set"];
         post?: never;
         /**
          * Delete File Policy
@@ -3140,7 +3140,7 @@ export interface paths {
          *
          *     Solution-tier rows (``solution`` set) are deploy-owned and refused (409).
          */
-        delete: operations["delete_file_policy_api_files_policies__policy_path__delete"];
+        delete: operations["files.policies.delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -3159,7 +3159,7 @@ export interface paths {
          * Read File
          * @description Read a file from a managed or custom location.
          */
-        post: operations["read_file_api_files_read_post"];
+        post: operations["workspace.files.read"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3184,7 +3184,7 @@ export interface paths {
          *     recomputes the same graph under the Python-source writer barrier before it
          *     accepts the write.
          */
-        post: operations["preview_workspace_file_impact_api_files_impact_post"];
+        post: operations["files.preview_workspace_file_impact"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3204,7 +3204,7 @@ export interface paths {
          * Write File
          * @description Write a file to a managed or custom location.
          */
-        post: operations["write_file_api_files_write_post"];
+        post: operations["workspace.files.write"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3224,7 +3224,7 @@ export interface paths {
          * Delete File
          * @description Delete a file from a managed or custom location.
          */
-        post: operations["delete_file_api_files_delete_post"];
+        post: operations["workspace.files.delete"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3244,7 +3244,7 @@ export interface paths {
          * List Files Simple
          * @description List files in a directory (simple SDK-focused endpoint).
          */
-        post: operations["list_files_simple_api_files_list_post"];
+        post: operations["workspace.files.list"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3264,7 +3264,7 @@ export interface paths {
          * File Exists
          * @description Check if a file exists.
          */
-        post: operations["file_exists_api_files_exists_post"];
+        post: operations["workspace.files.exists"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3284,7 +3284,7 @@ export interface paths {
          * File Stat
          * @description Return file metadata for guarded CLI workflows.
          */
-        post: operations["file_stat_api_files_stat_post"];
+        post: operations["workspace.files.stat"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3371,7 +3371,7 @@ export interface paths {
          *     Only returns regenerated .bifrost/*.yaml from DB state.
          *     Code file reconciliation is handled by git, not by this endpoint.
          */
-        post: operations["pull_files_api_files_pull_post"];
+        post: operations["workspace.files.pull"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3389,7 +3389,7 @@ export interface paths {
          * Get Manifest
          * @description Return regenerated manifest files from DB state.
          */
-        get: operations["get_manifest_api_files_manifest_get"];
+        get: operations["workspace.files.manifest"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3411,7 +3411,7 @@ export interface paths {
          * Manage Watch Session
          * @description Register, heartbeat, or deregister a CLI watch session.
          */
-        post: operations["manage_watch_session_api_files_watch_post"];
+        post: operations["workspace.files.watch"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3429,7 +3429,7 @@ export interface paths {
          * List Active Watchers
          * @description List active CLI watch sessions.
          */
-        get: operations["list_active_watchers_api_files_watchers_get"];
+        get: operations["workspace.files.watchers"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3452,7 +3452,7 @@ export interface paths {
          *     Cloud mode only - used by browser editor.
          *     Lists directly from S3 via RepoStorage (source of truth).
          */
-        get: operations["list_files_editor_api_files_editor_get"];
+        get: operations["workspace.files.editor.list"];
         put?: never;
         post?: never;
         /**
@@ -3462,7 +3462,7 @@ export interface paths {
          *     Cloud mode only - used by browser editor.
          *     Uses S3 prefix listing to detect folders (no file_index markers needed).
          */
-        delete: operations["delete_file_editor_api_files_editor_delete"];
+        delete: operations["workspace.files.editor.delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -3481,14 +3481,14 @@ export interface paths {
          *
          *     Cloud mode only - used by browser editor.
          */
-        get: operations["get_file_content_editor_api_files_editor_content_get"];
+        get: operations["workspace.files.editor.read"];
         /**
          * Write file content (editor)
          * @description Write file content with conflict detection.
          *
          *     Cloud mode only - used by browser editor.
          */
-        put: operations["put_file_content_editor_api_files_editor_content_put"];
+        put: operations["workspace.files.editor.write"];
         post?: never;
         delete?: never;
         options?: never;
@@ -3511,7 +3511,7 @@ export interface paths {
          *
          *     Cloud mode only - used by browser editor.
          */
-        post: operations["create_folder_editor_api_files_editor_folder_post"];
+        post: operations["workspace.files.editor.folder.create"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3538,7 +3538,7 @@ export interface paths {
          *
          *     Cloud mode only - used by browser editor.
          */
-        post: operations["rename_file_editor_api_files_editor_rename_post"];
+        post: operations["workspace.files.editor.rename"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3561,7 +3561,7 @@ export interface paths {
          *     Immutable Live Workspace source overlays the mutable file index. Other
          *     non-release files continue to come from the database projection.
          */
-        post: operations["search_file_contents_api_files_search_post"];
+        post: operations["workspace.files.search"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3576,7 +3576,7 @@ export interface paths {
             cookie?: never;
         };
         /** Workspace Repo State */
-        get: operations["workspace_repo_state_api_workspace_repo_changesets_state_get"];
+        get: operations["workspacerepochangesets.workspace_repo_state"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3595,7 +3595,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** Begin Workspace Repo Changeset */
-        post: operations["begin_workspace_repo_changeset_api_workspace_repo_changesets_post"];
+        post: operations["workspacerepochangesets.begin_workspace_repo_changeset"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3610,7 +3610,7 @@ export interface paths {
             cookie?: never;
         };
         /** List Recoverable Workspace Repo Git Closures */
-        get: operations["list_recoverable_workspace_repo_git_closures_api_workspace_repo_changesets_recoverable_git_closures_get"];
+        get: operations["workspacerepochangesets.list_recoverable_workspace_repo_git_closures"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3629,7 +3629,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** Preview Workspace Repo Git Convergence */
-        post: operations["preview_workspace_repo_git_convergence_api_workspace_repo_changesets_git_convergence_preview_post"];
+        post: operations["workspacerepochangesets.preview_workspace_repo_git_convergence"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3646,7 +3646,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** Apply Workspace Repo Git Convergence */
-        post: operations["apply_workspace_repo_git_convergence_api_workspace_repo_changesets_git_convergence_apply_post"];
+        post: operations["workspacerepochangesets.apply_workspace_repo_git_convergence"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3661,7 +3661,7 @@ export interface paths {
             cookie?: never;
         };
         /** Show Workspace Repo Changeset */
-        get: operations["show_workspace_repo_changeset_api_workspace_repo_changesets__changeset_id__get"];
+        get: operations["workspacerepochangesets.show_workspace_repo_changeset"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3680,7 +3680,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** Stage Workspace Repo File */
-        post: operations["stage_workspace_repo_file_api_workspace_repo_changesets__changeset_id__files_post"];
+        post: operations["workspacerepochangesets.stage_workspace_repo_file"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3695,7 +3695,7 @@ export interface paths {
             cookie?: never;
         };
         /** Workspace Repo Changeset Diff */
-        get: operations["workspace_repo_changeset_diff_api_workspace_repo_changesets__changeset_id__diff_get"];
+        get: operations["workspacerepochangesets.workspace_repo_changeset_diff"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3714,7 +3714,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** Validate Workspace Repo Changeset */
-        post: operations["validate_workspace_repo_changeset_api_workspace_repo_changesets__changeset_id__validate_post"];
+        post: operations["workspacerepochangesets.validate_workspace_repo_changeset"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3731,7 +3731,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** Activate Workspace Repo Changeset */
-        post: operations["activate_workspace_repo_changeset_api_workspace_repo_changesets__changeset_id__activate_post"];
+        post: operations["workspacerepochangesets.activate_workspace_repo_changeset"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3748,7 +3748,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** Retry Workspace Repo Git Closure */
-        post: operations["retry_workspace_repo_git_closure_api_workspace_repo_changesets__changeset_id__retry_git_closure_post"];
+        post: operations["workspacerepochangesets.retry_workspace_repo_git_closure"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3765,7 +3765,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** Abort Workspace Repo Changeset */
-        post: operations["abort_workspace_repo_changeset_api_workspace_repo_changesets__changeset_id__abort_post"];
+        post: operations["workspacerepochangesets.abort_workspace_repo_changeset"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3782,7 +3782,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** Preview Workspace Promotion */
-        post: operations["preview_workspace_promotion_api_workspace_promotions_preview_post"];
+        post: operations["workspacepromotions.preview_workspace_promotion"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3799,7 +3799,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** Enqueue Workspace Promotion Preview */
-        post: operations["enqueue_workspace_promotion_preview_api_workspace_promotions_preview_jobs_post"];
+        post: operations["workspacepromotions.enqueue_workspace_promotion_preview"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3816,7 +3816,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** Upload Workspace Promotion Draft */
-        post: operations["upload_workspace_promotion_draft_api_workspace_promotions_drafts_post"];
+        post: operations["workspacepromotions.upload_workspace_promotion_draft"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3831,7 +3831,7 @@ export interface paths {
             cookie?: never;
         };
         /** Get Workspace Promotion Artifact */
-        get: operations["get_workspace_promotion_artifact_api_workspace_promotions_artifacts__artifact_id__get"];
+        get: operations["workspacepromotions.get_workspace_promotion_artifact"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3850,7 +3850,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** Execute Workspace Promotion Canary */
-        post: operations["execute_workspace_promotion_canary_api_workspace_promotions_artifacts__artifact_id__canary_post"];
+        post: operations["workspacepromotions.execute_workspace_promotion_canary"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3867,7 +3867,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** Prepare Workspace Release */
-        post: operations["prepare_workspace_release_api_workspace_promotions_artifacts__artifact_id__prepare_post"];
+        post: operations["workspacepromotions.prepare_workspace_release"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3884,7 +3884,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** Activate Workspace Release */
-        post: operations["activate_workspace_release_api_workspace_promotions_releases__release_id__activate_post"];
+        post: operations["workspacepromotions.activate_workspace_release"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3901,7 +3901,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** Retry Workspace Release History Lock */
-        post: operations["retry_workspace_release_history_lock_api_workspace_promotions_releases__release_id__retry_history_lock_post"];
+        post: operations["workspacepromotions.retry_workspace_release_history_lock"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3919,7 +3919,7 @@ export interface paths {
          * Inspect Workspace Release Retirement
          * @description Inventory the guard's complete Root cohort, including inactive audit rows.
          */
-        get: operations["inspect_workspace_release_retirement_api_workspace_promotions_live_retirement_inventory_get"];
+        get: operations["workspacepromotions.inspect_workspace_release_retirement"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3938,7 +3938,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** Retire Workspace Release */
-        post: operations["retire_workspace_release_api_workspace_promotions_live_retire_post"];
+        post: operations["workspacepromotions.retire_workspace_release"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3953,7 +3953,7 @@ export interface paths {
             cookie?: never;
         };
         /** Get Live Workspace Release */
-        get: operations["get_live_workspace_release_api_workspace_promotions_live_get"];
+        get: operations["workspacepromotions.get_live_workspace_release"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3970,7 +3970,7 @@ export interface paths {
             cookie?: never;
         };
         /** Get Workspace Release Status */
-        get: operations["get_workspace_release_status_api_workspace_promotions_releases__release_id__get"];
+        get: operations["workspacepromotions.get_workspace_release_status"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3990,13 +3990,13 @@ export interface paths {
          * List Workspace Source Releases
          * @description List pending, completed, and attention-required source releases.
          */
-        get: operations["list_workspace_source_releases_api_workspace_promotions_source_releases_get"];
+        get: operations["workspacepromotions.list_workspace_source_releases"];
         put?: never;
         /**
          * Declare Workspace Source Release
          * @description Record the release disposition owed by one protected source commit.
          */
-        post: operations["declare_workspace_source_release_api_workspace_promotions_source_releases_post"];
+        post: operations["workspacepromotions.declare_workspace_source_release"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4016,7 +4016,7 @@ export interface paths {
          * Declare Workspace Source Release From Github
          * @description Record one protected-main push using a narrowly pinned Actions identity.
          */
-        post: operations["declare_workspace_source_release_from_github_api_workspace_promotions_source_releases_github_post"];
+        post: operations["workspacepromotions.declare_workspace_source_release_from_github"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4034,7 +4034,7 @@ export interface paths {
          * List Solution Deploy Obligations
          * @description List reviewed Solution source that requires an explicit deployment.
          */
-        get: operations["list_solution_deploy_obligations_api_workspace_promotions_solution_deploy_obligations_get"];
+        get: operations["workspacepromotions.list_solution_deploy_obligations"];
         put?: never;
         post?: never;
         delete?: never;
@@ -4051,7 +4051,7 @@ export interface paths {
             cookie?: never;
         };
         /** Get Solution Deploy Obligation */
-        get: operations["get_solution_deploy_obligation_api_workspace_promotions_solution_deploy_obligations__obligation_id__get"];
+        get: operations["workspacepromotions.get_solution_deploy_obligation"];
         put?: never;
         post?: never;
         delete?: never;
@@ -4068,7 +4068,7 @@ export interface paths {
             cookie?: never;
         };
         /** Get Workspace Source Release */
-        get: operations["get_workspace_source_release_api_workspace_promotions_source_releases__source_release_id__get"];
+        get: operations["workspacepromotions.get_workspace_source_release"];
         put?: never;
         post?: never;
         delete?: never;
@@ -4090,7 +4090,7 @@ export interface paths {
          * Set Workspace Source Release Disposition
          * @description Record a deferred, non-production, or evidenced superseded decision.
          */
-        post: operations["set_workspace_source_release_disposition_api_workspace_promotions_source_releases__source_release_id__disposition_post"];
+        post: operations["workspacepromotions.set_workspace_source_release_disposition"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4392,7 +4392,7 @@ export interface paths {
          * Get package recycle progress
          * @description Read fleet-wide completion for a package install or uninstall.
          */
-        get: operations["get_package_installation_progress_api_packages_installations__run_id__get"];
+        get: operations["packages.get_package_installation_progress"];
         put?: never;
         post?: never;
         delete?: never;
@@ -4846,7 +4846,7 @@ export interface paths {
             cookie?: never;
         };
         /** Get durable platform-job status */
-        get: operations["get_platform_job_status_api_platform_jobs__job_id__get"];
+        get: operations["platform.jobs.get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -4914,10 +4914,10 @@ export interface paths {
             cookie?: never;
         };
         /** List devices in the caller's organization */
-        get: operations["list_devices_route_api_devices_get"];
+        get: operations["devices.list_devices_route"];
         put?: never;
         /** Create a device and mint a one-time enrollment token */
-        post: operations["create_device_route_api_devices_post"];
+        post: operations["devices.create_device_route"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4934,7 +4934,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** Enroll with a single-use token and receive the device key once */
-        post: operations["enroll_device_route_api_devices_enroll_post"];
+        post: operations["devices.enroll_device_route"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4949,7 +4949,7 @@ export interface paths {
             cookie?: never;
         };
         /** Get one device (user: full view; control key: freshness only) */
-        get: operations["get_device_route_api_devices__device_id__get"];
+        get: operations["devices.get_device_route"];
         put?: never;
         post?: never;
         delete?: never;
@@ -4968,7 +4968,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** Rotate the device key (raw returned once) */
-        post: operations["rotate_device_key_endpoint_api_devices__device_id__rotate_key_post"];
+        post: operations["devices.rotate_device_key_endpoint"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4985,7 +4985,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** Disable a device */
-        post: operations["disable_device_route_api_devices__device_id__disable_post"];
+        post: operations["devices.disable_device_route"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5002,7 +5002,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** Re-enable a disabled device */
-        post: operations["enable_device_route_api_devices__device_id__enable_post"];
+        post: operations["devices.enable_device_route"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5017,10 +5017,10 @@ export interface paths {
             cookie?: never;
         };
         /** List job history for a device (create-level read authz) */
-        get: operations["list_jobs_route_api_devices__device_id__jobs_get"];
+        get: operations["devices.list_jobs_route"];
         put?: never;
         /** Create a device job (user permission or device-scoped control key) */
-        post: operations["create_job_route_api_devices__device_id__jobs_post"];
+        post: operations["devices.create_job_route"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5035,7 +5035,7 @@ export interface paths {
             cookie?: never;
         };
         /** Get one job (script body readable at create-level authz) */
-        get: operations["get_job_route_api_devices__device_id__jobs__job_id__get"];
+        get: operations["devices.get_job_route"];
         put?: never;
         post?: never;
         delete?: never;
@@ -5052,7 +5052,7 @@ export interface paths {
             cookie?: never;
         };
         /** Read job logs (create-level authz; never device-readable) */
-        get: operations["get_job_logs_route_api_devices__device_id__jobs__job_id__logs_get"];
+        get: operations["devices.get_job_logs_route"];
         put?: never;
         post?: never;
         delete?: never;
@@ -5071,7 +5071,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** Cooperative cancel (user JWT only; no kill guarantee) */
-        post: operations["cancel_job_route_api_devices__device_id__jobs__job_id__cancel_post"];
+        post: operations["devices.cancel_job_route"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5123,10 +5123,10 @@ export interface paths {
             cookie?: never;
         };
         /** List control keys in the caller's organization */
-        get: operations["list_control_keys_route_api_device_control_keys_get"];
+        get: operations["devicecontrolkeys.list_control_keys_route"];
         put?: never;
         /** Create a device-scoped control key (raw returned once) */
-        post: operations["create_control_key_route_api_device_control_keys_post"];
+        post: operations["devicecontrolkeys.create_control_key_route"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5141,7 +5141,7 @@ export interface paths {
             cookie?: never;
         };
         /** Get one control key */
-        get: operations["get_control_key_route_api_device_control_keys__key_id__get"];
+        get: operations["devicecontrolkeys.get_control_key_route"];
         put?: never;
         post?: never;
         delete?: never;
@@ -5160,7 +5160,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** Rotate the control key (raw returned once, same row id) */
-        post: operations["rotate_control_key_endpoint_api_device_control_keys__key_id__rotate_post"];
+        post: operations["devicecontrolkeys.rotate_control_key_endpoint"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5177,7 +5177,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** Revoke a control key (idempotent) */
-        post: operations["revoke_control_key_endpoint_api_device_control_keys__key_id__revoke_post"];
+        post: operations["devicecontrolkeys.revoke_control_key_endpoint"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5194,7 +5194,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** Device heartbeat: renew activity and receive the poll hint */
-        post: operations["heartbeat_route_api_device_heartbeat_post"];
+        post: operations["deviceprotocol.heartbeat_route"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5211,7 +5211,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** Claim the next job for this device (204 when idle) */
-        post: operations["claim_route_api_device_jobs_claim_post"];
+        post: operations["deviceprotocol.claim_route"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5233,7 +5233,7 @@ export interface paths {
          *     after cmd.Start() succeeded, which is what makes pre-spawn reclaim safe
          *     and post-spawn ambiguity `lost` (M0 job lifecycle).
          */
-        post: operations["running_route_api_device_jobs__job_id__running_post"];
+        post: operations["deviceprotocol.running_route"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5250,7 +5250,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** Fenced, idempotent log batch */
-        post: operations["logs_route_api_device_jobs__job_id__logs_post"];
+        post: operations["deviceprotocol.logs_route"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5267,7 +5267,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** Fenced terminal result */
-        post: operations["result_route_api_device_jobs__job_id__result_post"];
+        post: operations["deviceprotocol.result_route"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5470,7 +5470,7 @@ export interface paths {
             cookie?: never;
         };
         /** Inspect Oauth */
-        get: operations["inspect_oauth_api_oauth_connections__connection_name__diagnostics_get"];
+        get: operations["workspaceadmin.inspect_oauth"];
         put?: never;
         post?: never;
         delete?: never;
@@ -5489,7 +5489,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** Recover Oauth */
-        post: operations["recover_oauth_api_oauth_connections__connection_name__recover_post"];
+        post: operations["workspaceadmin.recover_oauth"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5506,7 +5506,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** Reconcile Oauth */
-        post: operations["reconcile_oauth_api_oauth_connections__connection_name__reconcile_post"];
+        post: operations["workspaceadmin.reconcile_oauth"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5523,7 +5523,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** Redact Execution */
-        post: operations["redact_execution_api_executions__execution_id__redact_sensitive_fields_post"];
+        post: operations["workspaceadmin.redact_execution"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5681,7 +5681,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** Sdk Integration Request Slot Acquire */
-        post: operations["sdk_integration_request_slot_acquire_api_sdk_integrations_request_slot_acquire_post"];
+        post: operations["cli.sdk_integration_request_slot_acquire"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5698,7 +5698,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** Sdk Integration Request Slot Release */
-        post: operations["sdk_integration_request_slot_release_api_sdk_integrations_request_slot_release_post"];
+        post: operations["cli.sdk_integration_request_slot_release"];
         delete?: never;
         options?: never;
         head?: never;
@@ -6174,6 +6174,10 @@ export interface paths {
         /**
          * Generate AI completion
          * @description Generate an AI completion using platform-configured LLM.
+         *
+         *     Thin HTTP adapter over the shared operation
+         *     (``shared.sdk_ai.complete_sdk_ai``), which the engine-local
+         *     dispatcher calls for the same inputs.
          */
         post: operations["cli_ai_complete_api_sdk_ai_complete_post"];
         delete?: never;
@@ -6194,6 +6198,15 @@ export interface paths {
         /**
          * Stream AI completion
          * @description Generate a streaming AI completion using SSE.
+         *
+         *     Thin HTTP adapter over the shared operation
+         *     (``shared.sdk_ai.stream_sdk_ai``), which the engine-local
+         *     dispatcher calls for the same inputs. Scope is resolved here —
+         *     before headers are sent — so authorization failures stay HTTP
+         *     status errors; everything after the stream starts surfaces as SSE
+         *     error events. Each shared payload dict is serialized to one
+         *     ``data:`` line, with the terminal ``[DONE]`` appended after the
+         *     done payload.
          */
         post: operations["cli_ai_stream_api_sdk_ai_stream_post"];
         delete?: never;
@@ -6212,6 +6225,10 @@ export interface paths {
         /**
          * Get AI model information
          * @description Get information about the configured LLM.
+         *
+         *     Thin HTTP adapter over the shared operation
+         *     (``shared.sdk_ai.get_sdk_model_info``), which the engine-local
+         *     dispatcher calls for the same inputs.
          */
         get: operations["cli_ai_info_api_sdk_ai_info_get"];
         put?: never;
@@ -6862,7 +6879,7 @@ export interface paths {
          *     - Platform admins see all agents
          *     - Users see AUTHENTICATED agents + ROLE_BASED agents assigned to their roles
          */
-        get: operations["list_agents_api_agents_get"];
+        get: operations["agents.list"];
         put?: never;
         /**
          * Create Agent
@@ -6871,7 +6888,7 @@ export interface paths {
          *     Platform admins can create any agent type.
          *     Regular users can only create private agents with tools they have access to.
          */
-        post: operations["create_agent_api_agents_post"];
+        post: operations["agents.create"];
         delete?: never;
         options?: never;
         head?: never;
@@ -6953,12 +6970,12 @@ export interface paths {
          * Get Agent
          * @description Get agent by ID.
          */
-        get: operations["get_agent_api_agents__agent_id__get"];
+        get: operations["agents.get"];
         /**
          * Update Agent
          * @description Update an agent. Admins can update any agent. Users can update their own private agents.
          */
-        put: operations["update_agent_api_agents__agent_id__put"];
+        put: operations["agents.update"];
         post?: never;
         /**
          * Delete Agent
@@ -6967,7 +6984,7 @@ export interface paths {
          *     System agents can be deleted - they will be recreated on next startup
          *     if they are still defined in the system agent definitions.
          */
-        delete: operations["delete_agent_api_agents__agent_id__delete"];
+        delete: operations["agents.delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -7560,7 +7577,7 @@ export interface paths {
          * Submit Teams Event
          * @description Submit a verified Teams event as its linked Bifrost user.
          */
-        post: operations["submit_teams_event_api_chat_teams_events_post"];
+        post: operations["chat.submit_teams_event"];
         delete?: never;
         options?: never;
         head?: never;
@@ -8175,13 +8192,13 @@ export interface paths {
          * List integrations
          * @description List all integrations (Platform admin only)
          */
-        get: operations["list_integrations_api_integrations_get"];
+        get: operations["integrations.list"];
         put?: never;
         /**
          * Create integration
          * @description Create a new integration (Platform admin only)
          */
-        post: operations["create_integration_api_integrations_post"];
+        post: operations["integrations.create"];
         delete?: never;
         options?: never;
         head?: never;
@@ -8199,18 +8216,18 @@ export interface paths {
          * Get integration by ID
          * @description Get a specific integration by ID with mappings and OAuth config (Platform admin only)
          */
-        get: operations["get_integration_api_integrations__integration_id__get"];
+        get: operations["integrations.get"];
         /**
          * Update integration
          * @description Update an existing integration (Platform admin only)
          */
-        put: operations["update_integration_api_integrations__integration_id__put"];
+        put: operations["integrations.update"];
         post?: never;
         /**
          * Delete integration
          * @description Soft delete an integration (Platform admin only)
          */
-        delete: operations["delete_integration_api_integrations__integration_id__delete"];
+        delete: operations["integrations.delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -8269,12 +8286,12 @@ export interface paths {
          * Get integration default config
          * @description Get default config values for an integration (Platform admin only)
          */
-        get: operations["get_integration_config_api_integrations__integration_id__config_get"];
+        get: operations["integrations.config.get"];
         /**
          * Update integration default config
          * @description Set default config values for an integration (Platform admin only)
          */
-        put: operations["update_integration_config_api_integrations__integration_id__config_put"];
+        put: operations["integrations.config.update"];
         post?: never;
         delete?: never;
         options?: never;
@@ -8293,13 +8310,13 @@ export interface paths {
          * List mappings for integration
          * @description List all mappings for a specific integration (Platform admin only)
          */
-        get: operations["list_mappings_api_integrations__integration_id__mappings_get"];
+        get: operations["integrations.mappings.list"];
         put?: never;
         /**
          * Create integration mapping
          * @description Create a new mapping between an integration and organization (Platform admin only)
          */
-        post: operations["create_mapping_api_integrations__integration_id__mappings_post"];
+        post: operations["integrations.mappings.create"];
         delete?: never;
         options?: never;
         head?: never;
@@ -8317,18 +8334,18 @@ export interface paths {
          * Get integration mapping
          * @description Get a specific mapping by ID (Platform admin only)
          */
-        get: operations["get_mapping_api_integrations__integration_id__mappings__mapping_id__get"];
+        get: operations["integrations.mappings.get"];
         /**
          * Update integration mapping
          * @description Update an existing mapping (Platform admin only)
          */
-        put: operations["update_mapping_api_integrations__integration_id__mappings__mapping_id__put"];
+        put: operations["integrations.mappings.update"];
         post?: never;
         /**
          * Delete integration mapping
          * @description Delete an integration mapping (Platform admin only)
          */
-        delete: operations["delete_mapping_api_integrations__integration_id__mappings__mapping_id__delete"];
+        delete: operations["integrations.mappings.delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -8345,7 +8362,7 @@ export interface paths {
          * Get mapping by organization
          * @description Get the mapping for an integration in a specific organization (Platform admin only)
          */
-        get: operations["get_mapping_by_org_api_integrations__integration_id__mappings_by_org__org_id__get"];
+        get: operations["integrations.mappings.get_by_org"];
         put?: never;
         post?: never;
         delete?: never;
@@ -8367,7 +8384,7 @@ export interface paths {
          * Batch upsert integration mappings
          * @description Create or update multiple mappings in a single request (Platform admin only)
          */
-        post: operations["batch_upsert_mappings_api_integrations__integration_id__mappings_batch_post"];
+        post: operations["integrations.mappings.batch"];
         delete?: never;
         options?: never;
         head?: never;
@@ -8387,7 +8404,7 @@ export interface paths {
          * Begin OAuth authorize flow for a mapping
          * @description Returns the authorization URL with a signed state token carrying mapping_id (Platform admin only)
          */
-        post: operations["authorize_mapping_api_integrations__integration_id__mappings__mapping_id__oauth_authorize_post"];
+        post: operations["integrations.mappings.authorize"];
         delete?: never;
         options?: never;
         head?: never;
@@ -8407,7 +8424,7 @@ export interface paths {
          * Disconnect a mapping's per-row OAuth connection
          * @description Deletes the mapping's OAuth token and clears oauth_token_id. Fallback to integration-level token resumes (Platform admin only).
          */
-        post: operations["disconnect_mapping_api_integrations__integration_id__mappings__mapping_id__oauth_disconnect_post"];
+        post: operations["integrations.mappings.disconnect"];
         delete?: never;
         options?: never;
         head?: never;
@@ -8427,7 +8444,7 @@ export interface paths {
          * Refresh a mapping's per-row OAuth token
          * @description Proactively refresh the OAuth access token linked to this mapping. Uses the stored refresh token (authorization_code) or re-mints with client credentials (client_credentials). Updates token.status and token.last_refresh_at; provider.status is NOT touched (per-mapping tokens don't poison the integration-level fallback's health). Platform admin only.
          */
-        post: operations["refresh_mapping_oauth_api_integrations__integration_id__mappings__mapping_id__oauth_refresh_post"];
+        post: operations["integrations.mappings.refresh"];
         delete?: never;
         options?: never;
         head?: never;
@@ -8445,7 +8462,7 @@ export interface paths {
          * Get OAuth provider config
          * @description Get the OAuth provider configuration for this integration (Platform admin only)
          */
-        get: operations["get_oauth_config_api_integrations__integration_id__oauth_get"];
+        get: operations["integrations.oauth.get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -8465,7 +8482,7 @@ export interface paths {
          * Get OAuth authorization URL
          * @description Get the authorization URL for this integration's OAuth flow (Platform admin only)
          */
-        get: operations["get_oauth_authorization_url_api_integrations__integration_id__oauth_authorize_get"];
+        get: operations["integrations.oauth.authorize"];
         put?: never;
         post?: never;
         delete?: never;
@@ -8488,14 +8505,14 @@ export interface paths {
          * Clear entity_id_source on the integration's OAuth provider
          * @description Resets the provider's entity_id_source to NULL. Picker will reappear on next OAuth connect so the admin can pick a different source. When clear_mappings=true, also clears entity_id on every mapping under this integration so they re-capture on reconnect. Platform admin only.
          */
-        delete: operations["clear_entity_id_source_api_integrations__integration_id__oauth_entity_id_source_delete"];
+        delete: operations["integrations.oauth.entity_id_source.delete"];
         options?: never;
         head?: never;
         /**
          * Set entity_id_source on the integration's OAuth provider
          * @description Persists the admin's picker selection. Optionally backfills a specific mapping's entity_id (used when the picker fires inside the OAuth popup of a per-mapping connect). Platform admin only.
          */
-        patch: operations["set_entity_id_source_api_integrations__integration_id__oauth_entity_id_source_patch"];
+        patch: operations["integrations.oauth.entity_id_source.update"];
         trace?: never;
     };
     "/api/integrations/{integration_id}/test": {
@@ -8511,7 +8528,7 @@ export interface paths {
          * Test integration connection
          * @description Test connectivity to an integration by making a GET request to the specified endpoint (Platform admin only)
          */
-        post: operations["test_integration_connection_api_integrations__integration_id__test_post"];
+        post: operations["integrations.test"];
         delete?: never;
         options?: never;
         head?: never;
@@ -8531,7 +8548,7 @@ export interface paths {
          * Generate SDK from OpenAPI spec
          * @description Generate a Python SDK module from an OpenAPI specification (Platform admin only)
          */
-        post: operations["generate_sdk_api_integrations__integration_id__generate_sdk_post"];
+        post: operations["integrations.generate_sdk"];
         delete?: never;
         options?: never;
         head?: never;
@@ -8838,6 +8855,26 @@ export interface paths {
          * @description Get AI usage report for a date range. Platform admin only.
          */
         get: operations["get_usage_report_api_reports_usage_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/reports/workflow-resources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get workflow resource report
+         * @description Get per-execution workflow resource usage for a time window. Platform admin only.
+         */
+        get: operations["get_workflow_resource_report_api_reports_workflow_resources_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -9163,7 +9200,7 @@ export interface paths {
          *     audit history by a one-way fingerprint so the audit row cannot become a
          *     second store for incident details or customer data.
          */
-        post: operations["resolve_gateway_operation_receipt_api_mcp_operation_receipts__receipt_id__resolve_post"];
+        post: operations["mcp.resolve_gateway_operation_receipt"];
         delete?: never;
         options?: never;
         head?: never;
@@ -9308,7 +9345,7 @@ export interface paths {
          * List available webhook adapters
          * @description List all available webhook adapters and their configuration schemas (Platform admin only).
          */
-        get: operations["list_adapters_api_events_adapters_get"];
+        get: operations["events.webhook_adapters.list"];
         put?: never;
         post?: never;
         delete?: never;
@@ -9348,13 +9385,13 @@ export interface paths {
          * List event sources
          * @description List all event sources (Platform admin only).
          */
-        get: operations["list_sources_api_events_sources_get"];
+        get: operations["events.sources.list"];
         put?: never;
         /**
          * Create event source
          * @description Create a new event source (Platform admin only).
          */
-        post: operations["create_source_api_events_sources_post"];
+        post: operations["events.sources.create"];
         delete?: never;
         options?: never;
         head?: never;
@@ -9372,21 +9409,21 @@ export interface paths {
          * Get event source
          * @description Get a specific event source by ID (Platform admin only).
          */
-        get: operations["get_source_api_events_sources__source_id__get"];
+        get: operations["events.sources.get"];
         put?: never;
         post?: never;
         /**
          * Delete event source
          * @description Permanently delete an event source and all its subscriptions, events, and deliveries (Platform admin only).
          */
-        delete: operations["delete_source_api_events_sources__source_id__delete"];
+        delete: operations["events.sources.delete"];
         options?: never;
         head?: never;
         /**
          * Update event source
          * @description Update an event source (Platform admin only).
          */
-        patch: operations["update_source_api_events_sources__source_id__patch"];
+        patch: operations["events.sources.update"];
         trace?: never;
     };
     "/api/events/sources/{source_id}/resubscribe": {
@@ -9420,13 +9457,13 @@ export interface paths {
          * List subscriptions
          * @description List subscriptions for an event source (Platform admin only).
          */
-        get: operations["list_subscriptions_api_events_sources__source_id__subscriptions_get"];
+        get: operations["events.subscriptions.list"];
         put?: never;
         /**
          * Create subscription
          * @description Create a subscription to an event source (Platform admin only).
          */
-        post: operations["create_subscription_api_events_sources__source_id__subscriptions_post"];
+        post: operations["events.subscriptions.create"];
         delete?: never;
         options?: never;
         head?: never;
@@ -9447,14 +9484,14 @@ export interface paths {
          * Delete subscription
          * @description Permanently delete an event subscription (Platform admin only).
          */
-        delete: operations["delete_subscription_api_events_sources__source_id__subscriptions__subscription_id__delete"];
+        delete: operations["events.subscriptions.delete"];
         options?: never;
         head?: never;
         /**
          * Update subscription
          * @description Update an event subscription (Platform admin only).
          */
-        patch: operations["update_subscription_api_events_sources__source_id__subscriptions__subscription_id__patch"];
+        patch: operations["events.subscriptions.update"];
         trace?: never;
     };
     "/api/events/sources/{source_id}/events": {
@@ -9800,13 +9837,13 @@ export interface paths {
          * List tables
          * @description List all tables in the current scope (platform admin only).
          */
-        get: operations["list_tables_api_tables_get"];
+        get: operations["tables.list"];
         put?: never;
         /**
          * Create a table
          * @description Create a new table for storing documents (platform admin only).
          */
-        post: operations["create_table_api_tables_post"];
+        post: operations["tables.create"];
         delete?: never;
         options?: never;
         head?: never;
@@ -9844,14 +9881,14 @@ export interface paths {
          * Get table metadata
          * @description Get table metadata by UUID (platform admin only).
          */
-        get: operations["get_table_api_tables__table_id__get"];
+        get: operations["tables.get"];
         put?: never;
         post?: never;
         /**
          * Delete table
          * @description Delete a table and all its documents by ID (platform admin only).
          */
-        delete: operations["delete_table_api_tables__table_id__delete"];
+        delete: operations["tables.delete"];
         options?: never;
         head?: never;
         /**
@@ -9861,7 +9898,7 @@ export interface paths {
          *     Solution-managed tables are read-only here: deploy owns schema + policies.
          *     Row DATA (documents) stays editable — that's runtime state (criterion 7).
          */
-        patch: operations["update_table_api_tables__table_id__patch"];
+        patch: operations["tables.update"];
         trace?: never;
     };
     "/api/tables/{table_id}/documents": {
@@ -9992,7 +10029,7 @@ export interface paths {
          * Update a document only at the reviewed revision
          * @description Fail closed on older servers and use the same scope/ownership/policy checks.
          */
-        patch: operations["update_document_conditional_api_tables__table_id__documents__doc_id__conditional_patch"];
+        patch: operations["tables.update_document_conditional"];
         trace?: never;
     };
     "/api/tables/{table_id}/documents/query": {
@@ -10075,10 +10112,10 @@ export interface paths {
          *     organization column lets them filter in the UI. Non-superusers don't
          *     reach this endpoint (gated by ``CurrentSuperuser``).
          */
-        get: operations["list_claims_api_claims_get"];
+        get: operations["claims.list"];
         put?: never;
         /** Create a custom claim (admin only) */
-        post: operations["create_claim_api_claims_post"];
+        post: operations["claims.create"];
         delete?: never;
         options?: never;
         head?: never;
@@ -10093,15 +10130,15 @@ export interface paths {
             cookie?: never;
         };
         /** Get a custom claim by name */
-        get: operations["get_claim_api_claims__name__get"];
+        get: operations["claims.get"];
         put?: never;
         post?: never;
         /** Delete a custom claim (admin only) */
-        delete: operations["delete_claim_api_claims__name__delete"];
+        delete: operations["claims.delete"];
         options?: never;
         head?: never;
         /** Update a custom claim (admin only) */
-        patch: operations["update_claim_api_claims__name__patch"];
+        patch: operations["claims.update"];
         trace?: never;
     };
     "/api/solutions/import-workspace/preview": {
@@ -10179,10 +10216,10 @@ export interface paths {
             cookie?: never;
         };
         /** List Solution installs (admin only) */
-        get: operations["list_solutions_api_solutions_get"];
+        get: operations["solutions.list"];
         put?: never;
         /** Create a Solution install (admin only) */
-        post: operations["create_solution_api_solutions_post"];
+        post: operations["solutions.create"];
         delete?: never;
         options?: never;
         head?: never;
@@ -10248,7 +10285,7 @@ export interface paths {
             cookie?: never;
         };
         /** Get a Solution install (admin only) */
-        get: operations["get_solution_api_solutions__solution_id__get"];
+        get: operations["solutions.get"];
         put?: never;
         post?: never;
         /**
@@ -10270,7 +10307,7 @@ export interface paths {
          *     To uninstall non-destructively (freeze data, flip status only), use:
          *     ``POST /{id}/uninstall``.
          */
-        delete: operations["delete_solution_api_solutions__solution_id__delete"];
+        delete: operations["solutions.delete"];
         options?: never;
         head?: never;
         /**
@@ -10289,7 +10326,7 @@ export interface paths {
          *     operator re-enters the values in the new scope. (The 5 entity tables above
          *     ARE re-homed because they carry ``solution_id`` and are owned by the bundle.)
          */
-        patch: operations["update_solution_api_solutions__solution_id__patch"];
+        patch: operations["solutions.update"];
         trace?: never;
     };
     "/api/solutions/{solution_id}/logo": {
@@ -10393,7 +10430,7 @@ export interface paths {
          *     ``include_data`` controls table row data. A password is required whenever a
          *     backup payload is requested.
          */
-        post: operations["export_solution_api_solutions__solution_id__export_post"];
+        post: operations["solutions.export"];
         delete?: never;
         options?: never;
         head?: never;
@@ -10583,7 +10620,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** Enqueue a deploy to an install (async, full replace, admin only) */
-        post: operations["deploy_solution_api_solutions__solution_id__deploy_post"];
+        post: operations["solutions.deploy"];
         delete?: never;
         options?: never;
         head?: never;
@@ -10624,7 +10661,7 @@ export interface paths {
          *     clusters into a Solution. It stamps compatible loose entities with
          *     ``solution_id`` and stores an export zip containing the captured definitions.
          */
-        post: operations["capture_solution_entities_api_solutions__solution_id__capture_post"];
+        post: operations["solutions.capture"];
         delete?: never;
         options?: never;
         head?: never;
@@ -10673,7 +10710,7 @@ export interface paths {
          *     deploys and SDK updates. The git-sync handler retains the service-level
          *     write lock, which also protects non-platform writers.
          */
-        post: operations["sync_solution_api_solutions__solution_id__sync_post"];
+        post: operations["solutions.sync"];
         delete?: never;
         options?: never;
         head?: never;
@@ -10795,7 +10832,7 @@ export interface paths {
          *     pass ``?reactivate=true`` or delete the install first — so it must refuse on
          *     the request itself, before a job row exists.
          */
-        post: operations["install_solution_api_solutions_install_post"];
+        post: operations["solutions.install"];
         delete?: never;
         options?: never;
         head?: never;
@@ -10812,7 +10849,70 @@ export interface paths {
         get?: never;
         put?: never;
         /** Reconcile a successful Solution deployment's accountability (admin only) */
-        post: operations["reconcile_solution_deployment_api_solutions__solution_id__deploy_jobs__deploy_job_id__reconcile_post"];
+        post: operations["solutions.reconcile_solution_deployment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/solutions/{solution_id}/deployments/github-package": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Deliver Github Package
+         * @description Capture protected complete source, then use the shared durable publisher.
+         */
+        post: operations["solutiondeployments.deliver_github_package"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/solutions/{solution_id}/deployments/github-package/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Inspect Github Package
+         * @description Same source-scoped identity, independently verified original-job result.
+         */
+        post: operations["solutiondeployments.inspect_github_package"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/solutions/{solution_id}/deployments/github-package/recover": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Recover Github Package
+         * @description Current Main may request readback of the target's original uncertain job.
+         *
+         *     A returned older job does not certify this request's newer source. There is
+         *     no fresh source capture or publication in this operation.
+         */
+        post: operations["solutiondeployments.recover_github_package"];
         delete?: never;
         options?: never;
         head?: never;
@@ -10832,7 +10932,7 @@ export interface paths {
          * Deliver Github Source
          * @description A source-scoped producer can deliver only the configured protected recipe.
          */
-        post: operations["deliver_github_source_api_solutions__solution_id__deployments_github_source_post"];
+        post: operations["solutiondeployments.deliver_github_source"];
         delete?: never;
         options?: never;
         head?: never;
@@ -10847,7 +10947,7 @@ export interface paths {
             cookie?: never;
         };
         /** Deployment Capabilities */
-        get: operations["deployment_capabilities_api_solutions__solution_id__deployments_capabilities_get"];
+        get: operations["solutiondeployments.deployment_capabilities"];
         put?: never;
         post?: never;
         delete?: never;
@@ -10869,7 +10969,7 @@ export interface paths {
          * Preview Shared Table Bindings
          * @description Read exact existing Root contracts; document data and ownership stay unchanged.
          */
-        post: operations["preview_shared_table_bindings_api_solutions__solution_id__deployments_shared_tables_preview_post"];
+        post: operations["solutiondeployments.preview_shared_table_bindings"];
         delete?: never;
         options?: never;
         head?: never;
@@ -10887,7 +10987,7 @@ export interface paths {
          * Inspect Active Deployment
          * @description Read the committed pointer independently of an activation response.
          */
-        get: operations["inspect_active_deployment_api_solutions__solution_id__deployments_active_get"];
+        get: operations["solutiondeployments.inspect_active_deployment"];
         put?: never;
         post?: never;
         delete?: never;
@@ -10906,7 +11006,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** Create Deployment */
-        post: operations["create_deployment_api_solutions__solution_id__deployments_post"];
+        post: operations["solutiondeployments.create_deployment"];
         delete?: never;
         options?: never;
         head?: never;
@@ -10921,7 +11021,7 @@ export interface paths {
             cookie?: never;
         };
         /** Inspect Deployment */
-        get: operations["inspect_deployment_api_solutions__solution_id__deployments__deployment_id__get"];
+        get: operations["solutiondeployments.inspect_deployment"];
         put?: never;
         post?: never;
         delete?: never;
@@ -10943,7 +11043,7 @@ export interface paths {
          * Preflight Live Handoff
          * @description Inspect a staged candidate without changing ownership or execution.
          */
-        post: operations["preflight_live_handoff_api_solutions__solution_id__deployments__deployment_id__live_handoff_preflight_post"];
+        post: operations["solutiondeployments.preflight_live_handoff"];
         delete?: never;
         options?: never;
         head?: never;
@@ -10963,7 +11063,7 @@ export interface paths {
          * Build Live Handoff Candidate
          * @description Copy verified Live bytes into a new immutable Solution candidate.
          */
-        post: operations["build_live_handoff_candidate_api_solutions__solution_id__deployments__deployment_id__live_handoff_candidate_post"];
+        post: operations["solutiondeployments.build_live_handoff_candidate"];
         delete?: never;
         options?: never;
         head?: never;
@@ -10980,7 +11080,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** Activate Live Handoff */
-        post: operations["activate_live_handoff_api_solutions__solution_id__deployments__deployment_id__live_handoff_activate_post"];
+        post: operations["solutiondeployments.activate_live_handoff"];
         delete?: never;
         options?: never;
         head?: never;
@@ -10997,7 +11097,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** Rollback Live Handoff */
-        post: operations["rollback_live_handoff_api_solutions__solution_id__deployments__deployment_id__live_handoff_rollback_post"];
+        post: operations["solutiondeployments.rollback_live_handoff"];
         delete?: never;
         options?: never;
         head?: never;
@@ -11017,7 +11117,7 @@ export interface paths {
          * Stage Source Revision
          * @description Stage exact source bytes while the current immutable pointer stays live.
          */
-        post: operations["stage_source_revision_api_solutions__solution_id__deployments__deployment_id__source_revision_candidate_post"];
+        post: operations["solutiondeployments.stage_source_revision"];
         delete?: never;
         options?: never;
         head?: never;
@@ -11034,7 +11134,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** Inspect Source Revision */
-        post: operations["inspect_source_revision_api_solutions__solution_id__deployments__deployment_id__source_revision_preflight_post"];
+        post: operations["solutiondeployments.inspect_source_revision"];
         delete?: never;
         options?: never;
         head?: never;
@@ -11051,7 +11151,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** Activate Source Revision */
-        post: operations["activate_source_revision_api_solutions__solution_id__deployments__deployment_id__source_revision_activate_post"];
+        post: operations["solutiondeployments.activate_source_revision"];
         delete?: never;
         options?: never;
         head?: never;
@@ -11071,7 +11171,7 @@ export interface paths {
          * Stage Initial Workflow Install
          * @description Stage the first immutable workflow-only closure for a disconnected Solution.
          */
-        post: operations["stage_initial_workflow_install_api_solutions__solution_id__deployments__deployment_id__initial_workflow_candidate_post"];
+        post: operations["solutiondeployments.stage_initial_workflow_install"];
         delete?: never;
         options?: never;
         head?: never;
@@ -11088,7 +11188,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** Inspect Initial Workflow Install */
-        post: operations["inspect_initial_workflow_install_api_solutions__solution_id__deployments__deployment_id__initial_workflow_preflight_post"];
+        post: operations["solutiondeployments.inspect_initial_workflow_install"];
         delete?: never;
         options?: never;
         head?: never;
@@ -11105,7 +11205,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** Activate Initial Workflow Install */
-        post: operations["activate_initial_workflow_install_api_solutions__solution_id__deployments__deployment_id__initial_workflow_activate_post"];
+        post: operations["solutiondeployments.activate_initial_workflow_install"];
         delete?: never;
         options?: never;
         head?: never;
@@ -11125,7 +11225,7 @@ export interface paths {
          * Stage Repo Workflow Adoption
          * @description Stage reviewed source for a populated legacy install, preserving entities.
          */
-        post: operations["stage_repo_workflow_adoption_api_solutions__solution_id__deployments__deployment_id__repo_workflow_adoption_candidate_post"];
+        post: operations["solutiondeployments.stage_repo_workflow_adoption"];
         delete?: never;
         options?: never;
         head?: never;
@@ -11142,7 +11242,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** Inspect Repo Workflow Adoption */
-        post: operations["inspect_repo_workflow_adoption_api_solutions__solution_id__deployments__deployment_id__repo_workflow_adoption_preflight_post"];
+        post: operations["solutiondeployments.inspect_repo_workflow_adoption"];
         delete?: never;
         options?: never;
         head?: never;
@@ -11159,7 +11259,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** Activate Repo Workflow Adoption */
-        post: operations["activate_repo_workflow_adoption_api_solutions__solution_id__deployments__deployment_id__repo_workflow_adoption_activate_post"];
+        post: operations["solutiondeployments.activate_repo_workflow_adoption"];
         delete?: never;
         options?: never;
         head?: never;
@@ -11179,7 +11279,7 @@ export interface paths {
          * Stage Workflow Revision
          * @description Stage a reviewed complete successor without changing registrations or pointer.
          */
-        post: operations["stage_workflow_revision_api_solutions__solution_id__deployments__deployment_id__workflow_revision_candidate_post"];
+        post: operations["solutiondeployments.stage_workflow_revision"];
         delete?: never;
         options?: never;
         head?: never;
@@ -11199,7 +11299,7 @@ export interface paths {
          * Inspect Workflow Revision
          * @description Read immutable bytes, registrations, triggers and the exact reviewed recipe.
          */
-        post: operations["inspect_workflow_revision_api_solutions__solution_id__deployments__deployment_id__workflow_revision_preflight_post"];
+        post: operations["solutiondeployments.inspect_workflow_revision"];
         delete?: never;
         options?: never;
         head?: never;
@@ -11219,7 +11319,7 @@ export interface paths {
          * Activate Workflow Revision
          * @description Atomically activate the exact preflight evidence and compatible registrations.
          */
-        post: operations["activate_workflow_revision_api_solutions__solution_id__deployments__deployment_id__workflow_revision_activate_post"];
+        post: operations["solutiondeployments.activate_workflow_revision"];
         delete?: never;
         options?: never;
         head?: never;
@@ -11236,7 +11336,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** Activate Deployment */
-        post: operations["activate_deployment_api_solutions__solution_id__deployments__deployment_id__activate_post"];
+        post: operations["solutiondeployments.activate_deployment"];
         delete?: never;
         options?: never;
         head?: never;
@@ -11253,7 +11353,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** Rollback Deployment */
-        post: operations["rollback_deployment_api_solutions__solution_id__deployments__deployment_id__rollback_post"];
+        post: operations["solutiondeployments.rollback_deployment"];
         delete?: never;
         options?: never;
         head?: never;
@@ -11271,7 +11371,7 @@ export interface paths {
          * List Namespaces
          * @description List knowledge namespaces derived from knowledge_store.
          */
-        get: operations["list_namespaces_api_knowledge_sources_get"];
+        get: operations["knowledge.namespaces.list"];
         put?: never;
         post?: never;
         delete?: never;
@@ -11340,7 +11440,7 @@ export interface paths {
          *     - "global": show only global documents (organization_id IS NULL)
          *     - UUID string: show only that org's documents (no global fallback)
          */
-        get: operations["list_all_documents_api_knowledge_sources_documents_get"];
+        get: operations["knowledge.documents.list"];
         put?: never;
         post?: never;
         delete?: never;
@@ -11389,7 +11489,7 @@ export interface paths {
          * Create Document
          * @description Create a document in a namespace with embedding.
          */
-        post: operations["create_document_api_knowledge_sources__namespace__documents_post"];
+        post: operations["knowledge.documents.create"];
         delete?: never;
         options?: never;
         head?: never;
@@ -11407,7 +11507,7 @@ export interface paths {
          * Get Document
          * @description Get a document by UUID.
          */
-        get: operations["get_document_api_knowledge_sources__namespace__documents__doc_id__get"];
+        get: operations["knowledge.documents.get"];
         /**
          * Update Document
          * @description Update a document and re-embed. Optionally change scope.
@@ -11426,13 +11526,13 @@ export interface paths {
          *     document already holding the same identity in the target scope 409s
          *     unless ``replace=true``.
          */
-        put: operations["update_document_api_knowledge_sources__namespace__documents__doc_id__put"];
+        put: operations["knowledge.documents.update"];
         post?: never;
         /**
          * Delete Document
          * @description Delete a document — every chunk row of it, not just the addressed row.
          */
-        delete: operations["delete_document_api_knowledge_sources__namespace__documents__doc_id__delete"];
+        delete: operations["knowledge.documents.delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -11505,13 +11605,13 @@ export interface paths {
          * List applications
          * @description List all applications in the current scope.
          */
-        get: operations["list_applications_api_applications_get"];
+        get: operations["apps.list"];
         put?: never;
         /**
          * Create an application
          * @description Create a new application.
          */
-        post: operations["create_application_api_applications_post"];
+        post: operations["apps.create"];
         delete?: never;
         options?: never;
         head?: never;
@@ -11546,7 +11646,7 @@ export interface paths {
          * Get application metadata
          * @description Get application metadata by slug (globally unique).
          */
-        get: operations["get_application_api_applications__slug__get"];
+        get: operations["apps.get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -11569,14 +11669,14 @@ export interface paths {
          * Delete application
          * @description Delete an application by ID.
          */
-        delete: operations["delete_application_api_applications__app_id__delete"];
+        delete: operations["apps.delete"];
         options?: never;
         head?: never;
         /**
          * Update application metadata
          * @description Update application metadata and access control by ID.
          */
-        patch: operations["update_application_api_applications__app_id__patch"];
+        patch: operations["apps.update"];
         trace?: never;
     };
     "/api/applications/{app_id}/draft": {
@@ -11665,6 +11765,49 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/applications/{app_id}/github-source": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Publish Github App Source
+         * @description Enqueue a source-scoped App publication; a reused job proves only its original source.
+         */
+        post: operations["applications.publish_github_app_source"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/applications/{app_id}/github-source/{job_id}/inspect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Inspect Github App Publication
+         * @description Scoped original-job readback, including a lost accepted/terminal response.
+         *
+         *     A newer request may observe an older deduplicated job; its original source
+         *     identity is retained. This route never enqueues, resumes or publishes work.
+         */
+        post: operations["applications.inspect_github_app_publication"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/applications/{app_id}/publish": {
         parameters: {
             query?: never;
@@ -11683,9 +11826,11 @@ export interface paths {
          *     ``/api/platform-jobs/{id}`` or subscribe to the caller's notification
          *     WebSocket channel for progress. A repeated
          *     request while the same app is queued or running returns the existing
-         *     operation instead of launching a conflicting publish.
+         *     operation instead of launching a conflicting publish. If that operation
+         *     retained uncertain publication evidence, the same requester resumes exact
+         *     readback on the original job. It never builds or republishes that intent.
          */
-        post: operations["publish_application_api_applications__app_id__publish_post"];
+        post: operations["apps.publish"];
         delete?: never;
         options?: never;
         head?: never;
@@ -11708,7 +11853,7 @@ export interface paths {
          *     Validates that the new path is unique, non-nested with other apps, and has
          *     source files under it. ``force: true`` bypasses all three checks.
          */
-        post: operations["replace_application_endpoint_api_applications__app_id__replace_post"];
+        post: operations["apps.replace"];
         delete?: never;
         options?: never;
         head?: never;
@@ -11756,7 +11901,7 @@ export interface paths {
          *     Checks for: unknown components, workflow ID format/existence,
          *     bad imports, forbidden patterns, required file structure.
          */
-        post: operations["validate_application_api_applications__app_id__validate_post"];
+        post: operations["apps.validate"];
         delete?: never;
         options?: never;
         head?: never;
@@ -12005,14 +12150,14 @@ export interface paths {
          * Get app dependencies
          * @description Return the app's npm dependencies.
          */
-        get: operations["get_dependencies_api_applications__app_id__dependencies_get"];
+        get: operations["apps.dependencies.get"];
         /**
          * Update app dependencies
          * @description Replace the app's npm dependencies.
          *
          *     Validates every package name and version, enforces the max-dependency limit.
          */
-        put: operations["put_dependencies_api_applications__app_id__dependencies_put"];
+        put: operations["apps.dependencies.update"];
         post?: never;
         delete?: never;
         options?: never;
@@ -12522,7 +12667,7 @@ export interface paths {
             cookie?: never;
         };
         /** List audited worker controls */
-        get: operations["list_worker_control_commands_api_platform_workers_commands_history_get"];
+        get: operations["workers.list_worker_control_commands"];
         put?: never;
         post?: never;
         delete?: never;
@@ -12539,7 +12684,7 @@ export interface paths {
             cookie?: never;
         };
         /** Get runtime maintenance and drain state */
-        get: operations["runtime_maintenance_status_api_platform_runtime_maintenance_get"];
+        get: operations["runtimemaintenance.runtime_maintenance_status"];
         put?: never;
         post?: never;
         delete?: never;
@@ -12558,7 +12703,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** Close admissions and begin a bounded drain */
-        post: operations["enter_maintenance_api_platform_runtime_maintenance_enter_post"];
+        post: operations["runtimemaintenance.enter_maintenance"];
         delete?: never;
         options?: never;
         head?: never;
@@ -12575,7 +12720,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** Seal claims after accepted work drains */
-        post: operations["seal_maintenance_api_platform_runtime_maintenance__generation__seal_post"];
+        post: operations["runtimemaintenance.seal_maintenance"];
         delete?: never;
         options?: never;
         head?: never;
@@ -12592,7 +12737,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** Exit one owned maintenance generation */
-        post: operations["exit_maintenance_api_platform_runtime_maintenance__generation__exit_post"];
+        post: operations["runtimemaintenance.exit_maintenance"];
         delete?: never;
         options?: never;
         head?: never;
@@ -12647,7 +12792,7 @@ export interface paths {
             cookie?: never;
         };
         /** Get Azure App Service plan metrics */
-        get: operations["app_service_metrics_api_platform_app_service_metrics_get"];
+        get: operations["appservice.app_service_metrics"];
         put?: never;
         post?: never;
         delete?: never;
@@ -12934,7 +13079,7 @@ export interface paths {
          * Read Deployment Resource
          * @description Read only the reviewed resource in this active execution's pinned deployment.
          */
-        get: operations["read_deployment_resource_api_sdk_resources__path__get"];
+        get: operations["sdkmodules.read_deployment_resource"];
         put?: never;
         post?: never;
         delete?: never;
@@ -13013,10 +13158,7 @@ export interface paths {
         };
         /**
          * Fetch Requirements
-         * @description Fetch requirements.txt content.
-         *
-         *     Returns JSON: {"content": "...", "hash": "..."} or 404 if none exists.
-         *     Used by the child's install_requirements() when Redis is cold.
+         * @description Return the existing requirements.txt HTTP contract for external callers.
          */
         get: operations["fetch_requirements_api_sdk_requirements_get"];
         put?: never;
@@ -13038,13 +13180,13 @@ export interface paths {
          * List policy rules
          * @description List policy rules visible to the caller's scope.
          */
-        get: operations["list_policy_rules_api_policy_rules_get"];
+        get: operations["policy.rules.list"];
         put?: never;
         /**
          * Create a named policy rule
          * @description Create a new (name, domain) policy rule in the caller's org (or global when no org).
          */
-        post: operations["create_policy_rule_api_policy_rules_post"];
+        post: operations["policy.rules.create"];
         delete?: never;
         options?: never;
         head?: never;
@@ -13063,13 +13205,13 @@ export interface paths {
          * Update a named policy rule
          * @description Update an existing policy rule.
          */
-        put: operations["update_policy_rule_api_policy_rules__domain___name__put"];
+        put: operations["policy.rules.update"];
         post?: never;
         /**
          * Delete a named policy rule
          * @description Delete a policy rule. Fails with 409 if the rule is in use or read-only.
          */
-        delete: operations["delete_policy_rule_api_policy_rules__domain___name__delete"];
+        delete: operations["policy.rules.delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -13086,7 +13228,7 @@ export interface paths {
          * Get usages of a named policy rule
          * @description Return all file-policies and tables that reference this rule.
          */
-        get: operations["get_policy_rule_usages_api_policy_rules__domain___name__usages_get"];
+        get: operations["policy.rules.list_usages"];
         put?: never;
         post?: never;
         delete?: never;
@@ -13466,7 +13608,7 @@ export interface components {
              * Provider
              * @enum {string}
              */
-            provider: "openai" | "anthropic" | "google" | "openrouter" | "openai_compatible";
+            provider: "openai" | "anthropic" | "google" | "openrouter" | "openai_compatible" | "opencode_go";
             /** Models */
             models: components["schemas"]["LLMModelInfo"][];
         };
@@ -13478,7 +13620,7 @@ export interface components {
              * Provider
              * @enum {string}
              */
-            provider: "openai" | "anthropic" | "google" | "openrouter" | "openai_compatible";
+            provider: "openai" | "anthropic" | "google" | "openrouter" | "openai_compatible" | "opencode_go";
             /** Api Key */
             api_key: string;
             /** Endpoint */
@@ -13497,7 +13639,7 @@ export interface components {
              * Provider
              * @enum {string}
              */
-            provider: "openai" | "anthropic" | "google" | "openrouter" | "openai_compatible";
+            provider: "openai" | "anthropic" | "google" | "openrouter" | "openai_compatible" | "opencode_go";
             /** Endpoint */
             endpoint?: string | null;
             /** Api Key Set */
@@ -13533,7 +13675,7 @@ export interface components {
              * Provider
              * @enum {string}
              */
-            provider: "openai" | "anthropic" | "google" | "openrouter" | "openai_compatible";
+            provider: "openai" | "anthropic" | "google" | "openrouter" | "openai_compatible" | "opencode_go";
             /** Endpoint */
             endpoint?: string | null;
             /** Anthropic Prompt Cache Supported */
@@ -13544,7 +13686,7 @@ export interface components {
             /** Name */
             name?: string | null;
             /** Provider */
-            provider?: ("openai" | "anthropic" | "google" | "openrouter" | "openai_compatible") | null;
+            provider?: ("openai" | "anthropic" | "google" | "openrouter" | "openai_compatible" | "opencode_go") | null;
             /** Api Key */
             api_key?: string | null;
             /** Endpoint */
@@ -14790,6 +14932,20 @@ export interface components {
             };
         };
         /**
+         * ApplicationGitSourcePublicationRequest
+         * @description Exact protected source identity; no uploaded bytes or App control edits.
+         */
+        ApplicationGitSourcePublicationRequest: {
+            /** Source Commit Sha */
+            source_commit_sha: string;
+            /** Ci Run Id */
+            ci_run_id: number;
+            /** Ci Run Attempt */
+            ci_run_attempt: number;
+            /** Artifact Digest */
+            artifact_digest: string;
+        };
+        /**
          * ApplicationListResponse
          * @description Response for listing applications.
          */
@@ -15350,6 +15506,11 @@ export interface components {
              * @description Event source: 'http', 'sso_sync', 'scheduler', 'cli', ...
              */
             source: string;
+            /**
+             * Execution Id
+             * @description Workflow execution that produced the event, when supported
+             */
+            execution_id?: string | null;
             /** @description Who performed the action */
             actor: components["schemas"]["AuditLogActor"];
             /** Ip Address */
@@ -15549,19 +15710,6 @@ export interface components {
             /** Source */
             source: string;
         };
-        /** Body_deploy_solution_api_solutions__solution_id__deploy_post */
-        Body_deploy_solution_api_solutions__solution_id__deploy_post: {
-            /**
-             * File
-             * @description Solution workspace zip
-             */
-            file: string;
-        };
-        /** Body_export_solution_api_solutions__solution_id__export_post */
-        Body_export_solution_api_solutions__solution_id__export_post: {
-            /** Password */
-            password?: string | null;
-        };
         /** Body_import_all_api_export_import_import_all_post */
         Body_import_all_api_export_import_import_all_post: {
             /** File */
@@ -15637,33 +15785,6 @@ export interface components {
             file: string;
             /** Organization Id */
             organization_id?: string | null;
-        };
-        /** Body_install_solution_api_solutions_install_post */
-        Body_install_solution_api_solutions_install_post: {
-            /**
-             * File
-             * @description Solution workspace zip
-             */
-            file: string;
-            /** Organization Id */
-            organization_id?: string | null;
-            /**
-             * Config Values
-             * @default {}
-             */
-            config_values: string;
-            /** Password */
-            password?: string | null;
-            /**
-             * Replace Secrets
-             * @default false
-             */
-            replace_secrets: boolean;
-            /**
-             * Replace Data
-             * @default false
-             */
-            replace_data: boolean;
         };
         /** Body_login_auth_login_post */
         Body_login_auth_login_post: {
@@ -17286,6 +17407,10 @@ export interface components {
                 [key: string]: components["schemas"]["DependencyResolution"];
             };
             git?: components["schemas"]["DeploymentGitProvenance"];
+            /** Package Evidence */
+            package_evidence?: {
+                [key: string]: components["schemas"]["JsonValue"];
+            } | null;
         };
         /**
          * ConditionalDocumentUpdate
@@ -18671,6 +18796,18 @@ export interface components {
             } | null;
             /** Result */
             result?: string | null;
+            /**
+             * Cancel State
+             * @description Derived from `status` + `cancel_requested_at` (never stored).
+             *
+             *     - ``none``: no cancel was requested.
+             *     - ``requested``: cooperative cancel recorded; a running job
+             *       converges when the agent observes it via heartbeat (≤ ~60 s)
+             *       and posts its terminal result.
+             *     - ``converged``: the job reached terminal ``cancelled``.
+             * @enum {string}
+             */
+            readonly cancel_state: "none" | "requested" | "converged";
         };
         /** DeviceJobLogPublic */
         DeviceJobLogPublic: {
@@ -18740,6 +18877,18 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+            /**
+             * Cancel State
+             * @description Derived from `status` + `cancel_requested_at` (never stored).
+             *
+             *     - ``none``: no cancel was requested.
+             *     - ``requested``: cooperative cancel recorded; a running job
+             *       converges when the agent observes it via heartbeat (≤ ~60 s)
+             *       and posts its terminal result.
+             *     - ``converged``: the job reached terminal ``cancelled``.
+             * @enum {string}
+             */
+            readonly cancel_state: "none" | "requested" | "converged";
         };
         /**
          * DeviceKeyResponse
@@ -31330,6 +31479,19 @@ export interface components {
             readme?: string | null;
         };
         /**
+         * SolutionPackageRecoveryResponse
+         * @description An object envelope even when there is no older intent to reconcile.
+         */
+        SolutionPackageRecoveryResponse: {
+            /**
+             * Schema Version
+             * @default bifrost.solution-package-recovery/v1
+             * @constant
+             */
+            schema_version: "bifrost.solution-package-recovery/v1";
+            job: components["schemas"]["PlatformJobPublic"] | null;
+        };
+        /**
          * SolutionReadme
          * @description GET/PUT response shape for an install's README markdown.
          */
@@ -33844,6 +34006,143 @@ export interface components {
              */
             disable_global_key: boolean;
         };
+        /**
+         * WorkflowResourceReport
+         * @description Response for the workflow resource report endpoint.
+         */
+        WorkflowResourceReport: {
+            summary: components["schemas"]["WorkflowResourceSummary"];
+            /** Runs */
+            runs?: components["schemas"]["WorkflowResourceRun"][];
+            /** Workflows */
+            workflows?: components["schemas"]["WorkflowResourceWorkflow"][];
+            /**
+             * Total
+             * @default 0
+             */
+            total: number;
+            /**
+             * Page
+             * @default 1
+             */
+            page: number;
+            /**
+             * Page Size
+             * @default 25
+             */
+            page_size: number;
+        };
+        /**
+         * WorkflowResourceRun
+         * @description One execution row in the workflow resource report.
+         */
+        WorkflowResourceRun: {
+            /** Execution Id */
+            execution_id: string;
+            /** Workflow Id */
+            workflow_id?: string | null;
+            /** Workflow Name */
+            workflow_name: string;
+            /** Organization Name */
+            organization_name?: string | null;
+            /** Status */
+            status: string;
+            /** Started At */
+            started_at?: string | null;
+            /** Duration Ms */
+            duration_ms?: number | null;
+            /** Cpu Total Seconds */
+            cpu_total_seconds?: number | null;
+            /** Avg Cpu Cores */
+            avg_cpu_cores?: number | null;
+            /** Peak Cpu Cores */
+            peak_cpu_cores?: number | null;
+            /** Peak Process Rss Bytes */
+            peak_process_rss_bytes?: number | null;
+            /** Ai Cost */
+            ai_cost?: string;
+            /**
+             * Ai Calls
+             * @default 0
+             */
+            ai_calls: number;
+            /**
+             * Ai Tokens
+             * @default 0
+             */
+            ai_tokens: number;
+        };
+        /**
+         * WorkflowResourceSummary
+         * @description Summary totals for the workflow resource report.
+         */
+        WorkflowResourceSummary: {
+            /**
+             * Run Count
+             * @description Number of executions in the window
+             * @default 0
+             */
+            run_count: number;
+            /**
+             * Total Cpu Seconds
+             * @description Sum of CPU time in seconds
+             * @default 0
+             */
+            total_cpu_seconds: number;
+            /**
+             * Total Duration Ms
+             * @description Sum of execution durations in milliseconds
+             * @default 0
+             */
+            total_duration_ms: number;
+            /**
+             * Total Ai Cost
+             * @description Sum of AI cost in USD
+             */
+            total_ai_cost?: string;
+            /**
+             * Total Ai Calls
+             * @description Total number of AI calls
+             * @default 0
+             */
+            total_ai_calls: number;
+        };
+        /**
+         * WorkflowResourceWorkflow
+         * @description One workflow-aggregated row in the workflow resource report.
+         */
+        WorkflowResourceWorkflow: {
+            /** Workflow Id */
+            workflow_id?: string | null;
+            /** Workflow Name */
+            workflow_name: string;
+            /**
+             * Run Count
+             * @default 0
+             */
+            run_count: number;
+            /**
+             * Failed Count
+             * @default 0
+             */
+            failed_count: number;
+            /**
+             * Total Cpu Seconds
+             * @default 0
+             */
+            total_cpu_seconds: number;
+            /**
+             * Total Duration Ms
+             * @default 0
+             */
+            total_duration_ms: number;
+            /** Max Peak Cpu Cores */
+            max_peak_cpu_cores?: number | null;
+            /** Max Peak Process Rss Bytes */
+            max_peak_process_rss_bytes?: number | null;
+            /** Total Ai Cost */
+            total_ai_cost?: string;
+        };
         /** WorkflowRetirementConsumerInventory */
         WorkflowRetirementConsumerInventory: {
             /**
@@ -35755,6 +36054,46 @@ export interface components {
             /** Retry On */
             retry_on?: components["schemas"]["bifrost__contracts__workflows__ExecutionRetryFailure"][];
         };
+        /** Body_solutions.deploy */
+        deploy: {
+            /**
+             * File
+             * @description Solution workspace zip
+             */
+            file: string;
+        };
+        /** Body_solutions.export */
+        export: {
+            /** Password */
+            password?: string | null;
+        };
+        /** Body_solutions.install */
+        install: {
+            /**
+             * File
+             * @description Solution workspace zip
+             */
+            file: string;
+            /** Organization Id */
+            organization_id?: string | null;
+            /**
+             * Config Values
+             * @default {}
+             */
+            config_values: string;
+            /** Password */
+            password?: string | null;
+            /**
+             * Replace Secrets
+             * @default false
+             */
+            replace_secrets: boolean;
+            /**
+             * Replace Data
+             * @default false
+             */
+            replace_data: boolean;
+        };
         /**
          * OAuthProviderInfo
          * @description OAuth provider information for login page
@@ -36154,7 +36493,7 @@ export interface operations {
             };
         };
     };
-    enroll_api_platform_external_workers_enroll_post: {
+    "externalworkers.enroll": {
         parameters: {
             query?: never;
             header?: {
@@ -36191,7 +36530,7 @@ export interface operations {
             };
         };
     };
-    status_api_platform_external_workers_get: {
+    "externalworkers.status": {
         parameters: {
             query?: never;
             header?: never;
@@ -36624,7 +36963,7 @@ export interface operations {
             };
         };
     };
-    start_cli_native_auth_auth_cli_start_post: {
+    "auth.start_cli_native_auth": {
         parameters: {
             query?: never;
             header?: never;
@@ -36657,7 +36996,7 @@ export interface operations {
             };
         };
     };
-    authorize_cli_native_auth_auth_cli_authorize_get: {
+    "auth.authorize_cli_native_auth": {
         parameters: {
             query: {
                 transaction_id: string;
@@ -36688,7 +37027,7 @@ export interface operations {
             };
         };
     };
-    exchange_cli_native_auth_token_auth_cli_token_post: {
+    "auth.exchange_cli_native_auth_token": {
         parameters: {
             query?: never;
             header?: never;
@@ -37531,7 +37870,7 @@ export interface operations {
             };
         };
     };
-    list_organizations_api_organizations_get: {
+    "organizations.list": {
         parameters: {
             query?: {
                 /** @description Include inactive (disabled) organizations */
@@ -37563,7 +37902,7 @@ export interface operations {
             };
         };
     };
-    create_organization_api_organizations_post: {
+    "organizations.create": {
         parameters: {
             query?: never;
             header?: never;
@@ -37596,7 +37935,7 @@ export interface operations {
             };
         };
     };
-    get_organization_api_organizations__org_id__get: {
+    "organizations.get": {
         parameters: {
             query?: never;
             header?: never;
@@ -37627,7 +37966,7 @@ export interface operations {
             };
         };
     };
-    delete_organization_api_organizations__org_id__delete: {
+    "organizations.delete": {
         parameters: {
             query?: never;
             header?: never;
@@ -37656,7 +37995,7 @@ export interface operations {
             };
         };
     };
-    update_organization_api_organizations__org_id__patch: {
+    "organizations.update": {
         parameters: {
             query?: never;
             header?: never;
@@ -37691,7 +38030,7 @@ export interface operations {
             };
         };
     };
-    list_external_identities_api_users__user_id__external_identities_get: {
+    "users.list_external_identities": {
         parameters: {
             query?: never;
             header?: never;
@@ -37722,7 +38061,7 @@ export interface operations {
             };
         };
     };
-    create_external_identity_api_users__user_id__external_identities_post: {
+    "users.create_external_identity": {
         parameters: {
             query?: never;
             header?: never;
@@ -37757,7 +38096,7 @@ export interface operations {
             };
         };
     };
-    delete_external_identity_api_users__user_id__external_identities__identity_id__delete: {
+    "users.delete_external_identity": {
         parameters: {
             query?: never;
             header?: never;
@@ -37787,7 +38126,7 @@ export interface operations {
             };
         };
     };
-    list_users_api_users_get: {
+    "users.list": {
         parameters: {
             query?: {
                 /** @description Filter by user type: 'platform' or 'org' */
@@ -37832,7 +38171,7 @@ export interface operations {
             };
         };
     };
-    create_user_api_users_post: {
+    "users.create": {
         parameters: {
             query?: never;
             header?: never;
@@ -37865,7 +38204,7 @@ export interface operations {
             };
         };
     };
-    bulk_update_users_api_users_bulk_patch: {
+    "users.bulk_update": {
         parameters: {
             query?: never;
             header?: never;
@@ -37898,7 +38237,7 @@ export interface operations {
             };
         };
     };
-    resend_invite_api_users__user_id__invite_resend_post: {
+    "users.invites.resend": {
         parameters: {
             query?: never;
             header?: never;
@@ -37943,7 +38282,7 @@ export interface operations {
             };
         };
     };
-    send_invite_api_users__user_id__invite_send_post: {
+    "users.invites.send": {
         parameters: {
             query?: never;
             header?: never;
@@ -37978,7 +38317,7 @@ export interface operations {
             };
         };
     };
-    regenerate_invite_api_users__user_id__invite_regenerate_post: {
+    "users.invites.regenerate": {
         parameters: {
             query?: never;
             header?: never;
@@ -38023,7 +38362,7 @@ export interface operations {
             };
         };
     };
-    revoke_invite_api_users__user_id__invite_delete: {
+    "users.invites.revoke": {
         parameters: {
             query?: never;
             header?: never;
@@ -38052,7 +38391,7 @@ export interface operations {
             };
         };
     };
-    get_user_api_users__user_id__get: {
+    "users.get": {
         parameters: {
             query?: never;
             header?: never;
@@ -38083,7 +38422,7 @@ export interface operations {
             };
         };
     };
-    delete_user_api_users__user_id__delete: {
+    "users.delete": {
         parameters: {
             query?: never;
             header?: never;
@@ -38112,7 +38451,7 @@ export interface operations {
             };
         };
     };
-    update_user_api_users__user_id__patch: {
+    "users.update": {
         parameters: {
             query?: never;
             header?: never;
@@ -38147,7 +38486,7 @@ export interface operations {
             };
         };
     };
-    get_user_roles_api_users__user_id__roles_get: {
+    "users.roles.list": {
         parameters: {
             query?: never;
             header?: never;
@@ -38178,7 +38517,7 @@ export interface operations {
             };
         };
     };
-    get_user_forms_api_users__user_id__forms_get: {
+    "users.forms.list": {
         parameters: {
             query?: never;
             header?: never;
@@ -38209,7 +38548,7 @@ export interface operations {
             };
         };
     };
-    list_approvals_api_agent_action_approvals_get: {
+    "agentactionapprovals.list_approvals": {
         parameters: {
             query?: {
                 status?: string;
@@ -38240,7 +38579,7 @@ export interface operations {
             };
         };
     };
-    deny_approval_api_agent_action_approvals__approval_id__deny_post: {
+    "agentactionapprovals.deny_approval": {
         parameters: {
             query?: never;
             header?: never;
@@ -38271,7 +38610,7 @@ export interface operations {
             };
         };
     };
-    approve_approval_api_agent_action_approvals__approval_id__approve_post: {
+    "agentactionapprovals.approve_approval": {
         parameters: {
             query?: never;
             header?: never;
@@ -38302,7 +38641,7 @@ export interface operations {
             };
         };
     };
-    list_roles_api_roles_get: {
+    "roles.list": {
         parameters: {
             query?: {
                 /** @description Search role name or description */
@@ -38340,7 +38679,7 @@ export interface operations {
             };
         };
     };
-    create_role_api_roles_post: {
+    "roles.create": {
         parameters: {
             query?: never;
             header?: never;
@@ -38373,7 +38712,7 @@ export interface operations {
             };
         };
     };
-    get_role_api_roles__role_id__get: {
+    "roles.get": {
         parameters: {
             query?: never;
             header?: never;
@@ -38404,7 +38743,7 @@ export interface operations {
             };
         };
     };
-    delete_role_api_roles__role_id__delete: {
+    "roles.delete": {
         parameters: {
             query?: never;
             header?: never;
@@ -38433,7 +38772,7 @@ export interface operations {
             };
         };
     };
-    update_role_api_roles__role_id__patch: {
+    "roles.update": {
         parameters: {
             query?: never;
             header?: never;
@@ -38468,7 +38807,7 @@ export interface operations {
             };
         };
     };
-    get_role_users_api_roles__role_id__users_get: {
+    "roles.users.list": {
         parameters: {
             query?: {
                 /** @description Search assigned user name or email */
@@ -38506,7 +38845,7 @@ export interface operations {
             };
         };
     };
-    assign_users_to_role_api_roles__role_id__users_post: {
+    "roles.users.assign": {
         parameters: {
             query?: never;
             header?: never;
@@ -38539,7 +38878,7 @@ export interface operations {
             };
         };
     };
-    bulk_unassign_users_api_roles__role_id__users_delete: {
+    "roles.users.bulk_remove": {
         parameters: {
             query?: never;
             header?: never;
@@ -38572,7 +38911,7 @@ export interface operations {
             };
         };
     };
-    remove_user_from_role_api_roles__role_id__users__user_id__delete: {
+    "roles.users.remove": {
         parameters: {
             query?: never;
             header?: never;
@@ -38602,7 +38941,7 @@ export interface operations {
             };
         };
     };
-    get_role_forms_api_roles__role_id__forms_get: {
+    "roles.forms.list": {
         parameters: {
             query?: never;
             header?: never;
@@ -38633,7 +38972,7 @@ export interface operations {
             };
         };
     };
-    assign_forms_to_role_api_roles__role_id__forms_post: {
+    "roles.forms.assign": {
         parameters: {
             query?: never;
             header?: never;
@@ -38666,7 +39005,7 @@ export interface operations {
             };
         };
     };
-    bulk_unassign_forms_api_roles__role_id__forms_delete: {
+    "roles.forms.bulk_remove": {
         parameters: {
             query?: never;
             header?: never;
@@ -38699,7 +39038,7 @@ export interface operations {
             };
         };
     };
-    remove_form_from_role_api_roles__role_id__forms__form_id__delete: {
+    "roles.forms.remove": {
         parameters: {
             query?: never;
             header?: never;
@@ -38729,7 +39068,7 @@ export interface operations {
             };
         };
     };
-    get_role_agents_api_roles__role_id__agents_get: {
+    "roles.agents.list": {
         parameters: {
             query?: never;
             header?: never;
@@ -38760,7 +39099,7 @@ export interface operations {
             };
         };
     };
-    assign_agents_to_role_api_roles__role_id__agents_post: {
+    "roles.agents.assign": {
         parameters: {
             query?: never;
             header?: never;
@@ -38793,7 +39132,7 @@ export interface operations {
             };
         };
     };
-    bulk_unassign_agents_api_roles__role_id__agents_delete: {
+    "roles.agents.bulk_remove": {
         parameters: {
             query?: never;
             header?: never;
@@ -38826,7 +39165,7 @@ export interface operations {
             };
         };
     };
-    remove_agent_from_role_api_roles__role_id__agents__agent_id__delete: {
+    "roles.agents.remove": {
         parameters: {
             query?: never;
             header?: never;
@@ -38856,7 +39195,7 @@ export interface operations {
             };
         };
     };
-    get_role_apps_api_roles__role_id__apps_get: {
+    "roles.apps.list": {
         parameters: {
             query?: never;
             header?: never;
@@ -38887,7 +39226,7 @@ export interface operations {
             };
         };
     };
-    assign_apps_to_role_api_roles__role_id__apps_post: {
+    "roles.apps.assign": {
         parameters: {
             query?: never;
             header?: never;
@@ -38920,7 +39259,7 @@ export interface operations {
             };
         };
     };
-    bulk_unassign_apps_api_roles__role_id__apps_delete: {
+    "roles.apps.bulk_remove": {
         parameters: {
             query?: never;
             header?: never;
@@ -38953,7 +39292,7 @@ export interface operations {
             };
         };
     };
-    get_role_workflows_api_roles__role_id__workflows_get: {
+    "roles.workflows.list": {
         parameters: {
             query?: never;
             header?: never;
@@ -38984,7 +39323,7 @@ export interface operations {
             };
         };
     };
-    assign_workflows_to_role_api_roles__role_id__workflows_post: {
+    "roles.workflows.assign": {
         parameters: {
             query?: never;
             header?: never;
@@ -39017,7 +39356,7 @@ export interface operations {
             };
         };
     };
-    bulk_unassign_workflows_api_roles__role_id__workflows_delete: {
+    "roles.workflows.bulk_remove": {
         parameters: {
             query?: never;
             header?: never;
@@ -39050,7 +39389,7 @@ export interface operations {
             };
         };
     };
-    get_role_knowledge_api_roles__role_id__knowledge_get: {
+    "roles.knowledge.list": {
         parameters: {
             query?: never;
             header?: never;
@@ -39081,7 +39420,7 @@ export interface operations {
             };
         };
     };
-    assign_knowledge_to_role_api_roles__role_id__knowledge_post: {
+    "roles.knowledge.assign": {
         parameters: {
             query?: never;
             header?: never;
@@ -39114,7 +39453,7 @@ export interface operations {
             };
         };
     };
-    bulk_unassign_knowledge_api_roles__role_id__knowledge_delete: {
+    "roles.knowledge.bulk_remove": {
         parameters: {
             query?: never;
             header?: never;
@@ -39147,7 +39486,7 @@ export interface operations {
             };
         };
     };
-    list_executions_api_executions_get: {
+    "executions.list": {
         parameters: {
             query?: {
                 /** @description Filter scope: omit for all (superusers), 'global' for global only, or org UUID for specific org + global. */
@@ -39245,7 +39584,7 @@ export interface operations {
             };
         };
     };
-    get_execution_api_executions__execution_id__get: {
+    "executions.get": {
         parameters: {
             query?: never;
             header?: never;
@@ -39502,7 +39841,7 @@ export interface operations {
             };
         };
     };
-    list_workflows_api_workflows_get: {
+    "workflows.list": {
         parameters: {
             query?: {
                 type?: string | null;
@@ -39574,7 +39913,7 @@ export interface operations {
             };
         };
     };
-    execute_workflow_api_workflows_execute_post: {
+    "workflows.execute": {
         parameters: {
             query?: never;
             header?: {
@@ -39642,7 +39981,7 @@ export interface operations {
             };
         };
     };
-    validate_workflow_api_workflows_validate_post: {
+    "workflows.validate": {
         parameters: {
             query?: never;
             header?: never;
@@ -39675,7 +40014,7 @@ export interface operations {
             };
         };
     };
-    register_workflow_api_workflows_register_post: {
+    "workflows.register": {
         parameters: {
             query?: never;
             header?: never;
@@ -39708,7 +40047,7 @@ export interface operations {
             };
         };
     };
-    delete_workflow_api_workflows__workflow_id__delete: {
+    "workflows.delete": {
         parameters: {
             query?: never;
             header?: never;
@@ -39757,7 +40096,7 @@ export interface operations {
             };
         };
     };
-    update_workflow_api_workflows__workflow_id__patch: {
+    "workflows.update": {
         parameters: {
             query?: never;
             header?: never;
@@ -40006,7 +40345,7 @@ export interface operations {
             };
         };
     };
-    assign_roles_to_workflow_api_workflows__workflow_id__roles_post: {
+    "workflows.roles.grant": {
         parameters: {
             query?: never;
             header?: never;
@@ -40039,7 +40378,7 @@ export interface operations {
             };
         };
     };
-    remove_role_from_workflow_api_workflows__workflow_id__roles__role_id__delete: {
+    "workflows.roles.revoke": {
         parameters: {
             query?: never;
             header?: never;
@@ -40069,7 +40408,7 @@ export interface operations {
             };
         };
     };
-    list_forms_api_forms_get: {
+    "forms.list": {
         parameters: {
             query?: {
                 /** @description Filter scope: omit for all (superusers), 'global' for global only, or org UUID for specific org + global. */
@@ -40101,7 +40440,7 @@ export interface operations {
             };
         };
     };
-    create_form_api_forms_post: {
+    "forms.create": {
         parameters: {
             query?: never;
             header?: never;
@@ -40353,7 +40692,7 @@ export interface operations {
             };
         };
     };
-    get_form_api_forms__form_id__get: {
+    "forms.get": {
         parameters: {
             query?: never;
             header?: never;
@@ -40384,7 +40723,7 @@ export interface operations {
             };
         };
     };
-    delete_form_api_forms__form_id__delete: {
+    "forms.delete": {
         parameters: {
             query?: {
                 /** @description Permanently remove the form from the database instead of soft-deleting */
@@ -40416,7 +40755,7 @@ export interface operations {
             };
         };
     };
-    update_form_api_forms__form_id__patch: {
+    "forms.update": {
         parameters: {
             query?: never;
             header?: never;
@@ -40702,7 +41041,7 @@ export interface operations {
             };
         };
     };
-    get_config_api_config_get: {
+    "configs.list": {
         parameters: {
             query?: {
                 /** @description Filter scope: omit for all (superusers), 'global' for global only, or org UUID for specific org. */
@@ -40736,7 +41075,7 @@ export interface operations {
             };
         };
     };
-    set_config_api_config_post: {
+    "configs.create": {
         parameters: {
             query?: never;
             header?: never;
@@ -40769,7 +41108,7 @@ export interface operations {
             };
         };
     };
-    update_config_api_config__config_id__put: {
+    "configs.update": {
         parameters: {
             query?: never;
             header?: never;
@@ -40804,7 +41143,7 @@ export interface operations {
             };
         };
     };
-    delete_config_api_config__config_id__delete: {
+    "configs.delete": {
         parameters: {
             query?: never;
             header?: never;
@@ -40833,7 +41172,7 @@ export interface operations {
             };
         };
     };
-    list_codex_gateway_keys: {
+    "codexgateway.list_gateway_keys": {
         parameters: {
             query?: never;
             header?: never;
@@ -40853,7 +41192,7 @@ export interface operations {
             };
         };
     };
-    create_codex_gateway_key: {
+    "codexgateway.create_gateway_key": {
         parameters: {
             query?: never;
             header?: never;
@@ -40886,7 +41225,7 @@ export interface operations {
             };
         };
     };
-    revoke_codex_gateway_key: {
+    "codexgateway.revoke_gateway_key": {
         parameters: {
             query?: never;
             header?: never;
@@ -40917,7 +41256,7 @@ export interface operations {
             };
         };
     };
-    get_codex_gateway_oauth_status: {
+    "codexgateway.get_oauth_status": {
         parameters: {
             query?: never;
             header?: never;
@@ -40937,7 +41276,7 @@ export interface operations {
             };
         };
     };
-    start_codex_gateway_oauth_connect: {
+    "codexgateway.start_oauth_connect": {
         parameters: {
             query?: never;
             header?: never;
@@ -40957,7 +41296,7 @@ export interface operations {
             };
         };
     };
-    import_codex_gateway_oauth_auth_cache: {
+    "codexgateway.import_oauth_auth_cache": {
         parameters: {
             query?: never;
             header?: never;
@@ -40990,7 +41329,7 @@ export interface operations {
             };
         };
     };
-    disconnect_codex_gateway_oauth: {
+    "codexgateway.disconnect_oauth_account": {
         parameters: {
             query?: never;
             header?: never;
@@ -41010,7 +41349,7 @@ export interface operations {
             };
         };
     };
-    create_codex_gateway_response: {
+    "codexgateway.create_response": {
         parameters: {
             query?: never;
             header?: {
@@ -41046,7 +41385,7 @@ export interface operations {
             };
         };
     };
-    create_codex_gateway_response_api: {
+    "codexgateway.create_response.post": {
         parameters: {
             query?: never;
             header?: {
@@ -41302,7 +41641,7 @@ export interface operations {
             };
         };
     };
-    list_file_policies_api_files_policies_get: {
+    "files.policies.list": {
         parameters: {
             query?: {
                 location?: string | null;
@@ -41336,7 +41675,7 @@ export interface operations {
             };
         };
     };
-    test_file_policy_access_api_files_policies_test_post: {
+    "files.policies.test": {
         parameters: {
             query?: never;
             header?: never;
@@ -41369,7 +41708,7 @@ export interface operations {
             };
         };
     };
-    list_file_structure_api_files_structure_post: {
+    "files.structure.list": {
         parameters: {
             query?: never;
             header?: never;
@@ -41402,7 +41741,7 @@ export interface operations {
             };
         };
     };
-    get_file_policy_api_files_policies__policy_path__get: {
+    "files.policies.get": {
         parameters: {
             query?: {
                 location?: string;
@@ -41437,7 +41776,7 @@ export interface operations {
             };
         };
     };
-    set_file_policy_api_files_policies__policy_path__put: {
+    "files.policies.set": {
         parameters: {
             query?: {
                 location?: string;
@@ -41476,7 +41815,7 @@ export interface operations {
             };
         };
     };
-    delete_file_policy_api_files_policies__policy_path__delete: {
+    "files.policies.delete": {
         parameters: {
             query?: {
                 location?: string;
@@ -41509,7 +41848,7 @@ export interface operations {
             };
         };
     };
-    read_file_api_files_read_post: {
+    "workspace.files.read": {
         parameters: {
             query?: never;
             header?: never;
@@ -41542,7 +41881,7 @@ export interface operations {
             };
         };
     };
-    preview_workspace_file_impact_api_files_impact_post: {
+    "files.preview_workspace_file_impact": {
         parameters: {
             query?: never;
             header?: never;
@@ -41575,7 +41914,7 @@ export interface operations {
             };
         };
     };
-    write_file_api_files_write_post: {
+    "workspace.files.write": {
         parameters: {
             query?: never;
             header?: never;
@@ -41606,7 +41945,7 @@ export interface operations {
             };
         };
     };
-    delete_file_api_files_delete_post: {
+    "workspace.files.delete": {
         parameters: {
             query?: never;
             header?: never;
@@ -41637,7 +41976,7 @@ export interface operations {
             };
         };
     };
-    list_files_simple_api_files_list_post: {
+    "workspace.files.list": {
         parameters: {
             query?: never;
             header?: never;
@@ -41670,7 +42009,7 @@ export interface operations {
             };
         };
     };
-    file_exists_api_files_exists_post: {
+    "workspace.files.exists": {
         parameters: {
             query?: never;
             header?: never;
@@ -41703,7 +42042,7 @@ export interface operations {
             };
         };
     };
-    file_stat_api_files_stat_post: {
+    "workspace.files.stat": {
         parameters: {
             query?: never;
             header?: never;
@@ -41833,7 +42172,7 @@ export interface operations {
             };
         };
     };
-    pull_files_api_files_pull_post: {
+    "workspace.files.pull": {
         parameters: {
             query?: never;
             header?: never;
@@ -41866,7 +42205,7 @@ export interface operations {
             };
         };
     };
-    get_manifest_api_files_manifest_get: {
+    "workspace.files.manifest": {
         parameters: {
             query?: never;
             header?: never;
@@ -41888,7 +42227,7 @@ export interface operations {
             };
         };
     };
-    manage_watch_session_api_files_watch_post: {
+    "workspace.files.watch": {
         parameters: {
             query?: never;
             header?: never;
@@ -41923,7 +42262,7 @@ export interface operations {
             };
         };
     };
-    list_active_watchers_api_files_watchers_get: {
+    "workspace.files.watchers": {
         parameters: {
             query?: never;
             header?: never;
@@ -41945,7 +42284,7 @@ export interface operations {
             };
         };
     };
-    list_files_editor_api_files_editor_get: {
+    "workspace.files.editor.list": {
         parameters: {
             query: {
                 /** @description Directory path relative to workspace root */
@@ -41979,7 +42318,7 @@ export interface operations {
             };
         };
     };
-    delete_file_editor_api_files_editor_delete: {
+    "workspace.files.editor.delete": {
         parameters: {
             query: {
                 /** @description File or folder path */
@@ -42009,7 +42348,7 @@ export interface operations {
             };
         };
     };
-    get_file_content_editor_api_files_editor_content_get: {
+    "workspace.files.editor.read": {
         parameters: {
             query: {
                 /** @description File path relative to workspace root */
@@ -42041,7 +42380,7 @@ export interface operations {
             };
         };
     };
-    put_file_content_editor_api_files_editor_content_put: {
+    "workspace.files.editor.write": {
         parameters: {
             query?: never;
             header?: never;
@@ -42083,7 +42422,7 @@ export interface operations {
             };
         };
     };
-    create_folder_editor_api_files_editor_folder_post: {
+    "workspace.files.editor.folder.create": {
         parameters: {
             query: {
                 /** @description Folder path relative to workspace root */
@@ -42115,7 +42454,7 @@ export interface operations {
             };
         };
     };
-    rename_file_editor_api_files_editor_rename_post: {
+    "workspace.files.editor.rename": {
         parameters: {
             query: {
                 /** @description Current path */
@@ -42149,7 +42488,7 @@ export interface operations {
             };
         };
     };
-    search_file_contents_api_files_search_post: {
+    "workspace.files.search": {
         parameters: {
             query?: never;
             header?: never;
@@ -42182,7 +42521,7 @@ export interface operations {
             };
         };
     };
-    workspace_repo_state_api_workspace_repo_changesets_state_get: {
+    "workspacerepochangesets.workspace_repo_state": {
         parameters: {
             query: {
                 scope: string;
@@ -42215,7 +42554,7 @@ export interface operations {
             };
         };
     };
-    begin_workspace_repo_changeset_api_workspace_repo_changesets_post: {
+    "workspacerepochangesets.begin_workspace_repo_changeset": {
         parameters: {
             query?: never;
             header?: never;
@@ -42248,7 +42587,7 @@ export interface operations {
             };
         };
     };
-    list_recoverable_workspace_repo_git_closures_api_workspace_repo_changesets_recoverable_git_closures_get: {
+    "workspacerepochangesets.list_recoverable_workspace_repo_git_closures": {
         parameters: {
             query?: {
                 scope?: string | null;
@@ -42279,7 +42618,7 @@ export interface operations {
             };
         };
     };
-    preview_workspace_repo_git_convergence_api_workspace_repo_changesets_git_convergence_preview_post: {
+    "workspacerepochangesets.preview_workspace_repo_git_convergence": {
         parameters: {
             query?: never;
             header?: never;
@@ -42312,7 +42651,7 @@ export interface operations {
             };
         };
     };
-    apply_workspace_repo_git_convergence_api_workspace_repo_changesets_git_convergence_apply_post: {
+    "workspacerepochangesets.apply_workspace_repo_git_convergence": {
         parameters: {
             query?: never;
             header?: never;
@@ -42345,7 +42684,7 @@ export interface operations {
             };
         };
     };
-    show_workspace_repo_changeset_api_workspace_repo_changesets__changeset_id__get: {
+    "workspacerepochangesets.show_workspace_repo_changeset": {
         parameters: {
             query?: never;
             header?: never;
@@ -42376,7 +42715,7 @@ export interface operations {
             };
         };
     };
-    stage_workspace_repo_file_api_workspace_repo_changesets__changeset_id__files_post: {
+    "workspacerepochangesets.stage_workspace_repo_file": {
         parameters: {
             query?: never;
             header?: never;
@@ -42411,7 +42750,7 @@ export interface operations {
             };
         };
     };
-    workspace_repo_changeset_diff_api_workspace_repo_changesets__changeset_id__diff_get: {
+    "workspacerepochangesets.workspace_repo_changeset_diff": {
         parameters: {
             query?: never;
             header?: never;
@@ -42442,7 +42781,7 @@ export interface operations {
             };
         };
     };
-    validate_workspace_repo_changeset_api_workspace_repo_changesets__changeset_id__validate_post: {
+    "workspacerepochangesets.validate_workspace_repo_changeset": {
         parameters: {
             query?: never;
             header?: never;
@@ -42473,7 +42812,7 @@ export interface operations {
             };
         };
     };
-    activate_workspace_repo_changeset_api_workspace_repo_changesets__changeset_id__activate_post: {
+    "workspacerepochangesets.activate_workspace_repo_changeset": {
         parameters: {
             query?: never;
             header?: never;
@@ -42508,7 +42847,7 @@ export interface operations {
             };
         };
     };
-    retry_workspace_repo_git_closure_api_workspace_repo_changesets__changeset_id__retry_git_closure_post: {
+    "workspacerepochangesets.retry_workspace_repo_git_closure": {
         parameters: {
             query?: never;
             header?: never;
@@ -42543,7 +42882,7 @@ export interface operations {
             };
         };
     };
-    abort_workspace_repo_changeset_api_workspace_repo_changesets__changeset_id__abort_post: {
+    "workspacerepochangesets.abort_workspace_repo_changeset": {
         parameters: {
             query?: never;
             header?: never;
@@ -42574,7 +42913,7 @@ export interface operations {
             };
         };
     };
-    preview_workspace_promotion_api_workspace_promotions_preview_post: {
+    "workspacepromotions.preview_workspace_promotion": {
         parameters: {
             query?: never;
             header?: never;
@@ -42607,7 +42946,7 @@ export interface operations {
             };
         };
     };
-    enqueue_workspace_promotion_preview_api_workspace_promotions_preview_jobs_post: {
+    "workspacepromotions.enqueue_workspace_promotion_preview": {
         parameters: {
             query?: never;
             header?: never;
@@ -42640,7 +42979,7 @@ export interface operations {
             };
         };
     };
-    upload_workspace_promotion_draft_api_workspace_promotions_drafts_post: {
+    "workspacepromotions.upload_workspace_promotion_draft": {
         parameters: {
             query?: never;
             header?: never;
@@ -42673,7 +43012,7 @@ export interface operations {
             };
         };
     };
-    get_workspace_promotion_artifact_api_workspace_promotions_artifacts__artifact_id__get: {
+    "workspacepromotions.get_workspace_promotion_artifact": {
         parameters: {
             query?: never;
             header?: never;
@@ -42704,7 +43043,7 @@ export interface operations {
             };
         };
     };
-    execute_workspace_promotion_canary_api_workspace_promotions_artifacts__artifact_id__canary_post: {
+    "workspacepromotions.execute_workspace_promotion_canary": {
         parameters: {
             query?: never;
             header?: never;
@@ -42739,7 +43078,7 @@ export interface operations {
             };
         };
     };
-    prepare_workspace_release_api_workspace_promotions_artifacts__artifact_id__prepare_post: {
+    "workspacepromotions.prepare_workspace_release": {
         parameters: {
             query?: never;
             header?: never;
@@ -42774,7 +43113,7 @@ export interface operations {
             };
         };
     };
-    activate_workspace_release_api_workspace_promotions_releases__release_id__activate_post: {
+    "workspacepromotions.activate_workspace_release": {
         parameters: {
             query?: never;
             header?: never;
@@ -42809,7 +43148,7 @@ export interface operations {
             };
         };
     };
-    retry_workspace_release_history_lock_api_workspace_promotions_releases__release_id__retry_history_lock_post: {
+    "workspacepromotions.retry_workspace_release_history_lock": {
         parameters: {
             query?: never;
             header?: never;
@@ -42844,7 +43183,7 @@ export interface operations {
             };
         };
     };
-    inspect_workspace_release_retirement_api_workspace_promotions_live_retirement_inventory_get: {
+    "workspacepromotions.inspect_workspace_release_retirement": {
         parameters: {
             query?: never;
             header?: never;
@@ -42864,7 +43203,7 @@ export interface operations {
             };
         };
     };
-    retire_workspace_release_api_workspace_promotions_live_retire_post: {
+    "workspacepromotions.retire_workspace_release": {
         parameters: {
             query?: never;
             header?: never;
@@ -42897,7 +43236,7 @@ export interface operations {
             };
         };
     };
-    get_live_workspace_release_api_workspace_promotions_live_get: {
+    "workspacepromotions.get_live_workspace_release": {
         parameters: {
             query?: never;
             header?: never;
@@ -42917,7 +43256,7 @@ export interface operations {
             };
         };
     };
-    get_workspace_release_status_api_workspace_promotions_releases__release_id__get: {
+    "workspacepromotions.get_workspace_release_status": {
         parameters: {
             query?: never;
             header?: never;
@@ -42948,7 +43287,7 @@ export interface operations {
             };
         };
     };
-    list_workspace_source_releases_api_workspace_promotions_source_releases_get: {
+    "workspacepromotions.list_workspace_source_releases": {
         parameters: {
             query?: {
                 limit?: number;
@@ -42979,7 +43318,7 @@ export interface operations {
             };
         };
     };
-    declare_workspace_source_release_api_workspace_promotions_source_releases_post: {
+    "workspacepromotions.declare_workspace_source_release": {
         parameters: {
             query?: never;
             header?: never;
@@ -43012,7 +43351,7 @@ export interface operations {
             };
         };
     };
-    declare_workspace_source_release_from_github_api_workspace_promotions_source_releases_github_post: {
+    "workspacepromotions.declare_workspace_source_release_from_github": {
         parameters: {
             query?: never;
             header?: never;
@@ -43045,7 +43384,7 @@ export interface operations {
             };
         };
     };
-    list_solution_deploy_obligations_api_workspace_promotions_solution_deploy_obligations_get: {
+    "workspacepromotions.list_solution_deploy_obligations": {
         parameters: {
             query?: {
                 limit?: number;
@@ -43076,7 +43415,7 @@ export interface operations {
             };
         };
     };
-    get_solution_deploy_obligation_api_workspace_promotions_solution_deploy_obligations__obligation_id__get: {
+    "workspacepromotions.get_solution_deploy_obligation": {
         parameters: {
             query?: never;
             header?: never;
@@ -43107,7 +43446,7 @@ export interface operations {
             };
         };
     };
-    get_workspace_source_release_api_workspace_promotions_source_releases__source_release_id__get: {
+    "workspacepromotions.get_workspace_source_release": {
         parameters: {
             query?: never;
             header?: never;
@@ -43138,7 +43477,7 @@ export interface operations {
             };
         };
     };
-    set_workspace_source_release_disposition_api_workspace_promotions_source_releases__source_release_id__disposition_post: {
+    "workspacepromotions.set_workspace_source_release_disposition": {
         parameters: {
             query?: never;
             header?: never;
@@ -43310,6 +43649,8 @@ export interface operations {
                 outcome?: string | null;
                 /** @description Filter by acting user ID */
                 user_id?: string | null;
+                /** @description Filter by workflow execution ID */
+                execution_id?: string | null;
                 /** @description Start of time range (inclusive) */
                 start_date?: string | null;
                 /** @description End of time range (inclusive) */
@@ -43631,7 +43972,7 @@ export interface operations {
             };
         };
     };
-    get_package_installation_progress_api_packages_installations__run_id__get: {
+    "packages.get_package_installation_progress": {
         parameters: {
             query?: never;
             header?: never;
@@ -44325,7 +44666,7 @@ export interface operations {
             };
         };
     };
-    get_platform_job_status_api_platform_jobs__job_id__get: {
+    "platform.jobs.get": {
         parameters: {
             query?: never;
             header?: never;
@@ -44440,7 +44781,7 @@ export interface operations {
             };
         };
     };
-    list_devices_route_api_devices_get: {
+    "devices.list_devices_route": {
         parameters: {
             query?: {
                 scope?: string | null;
@@ -44471,7 +44812,7 @@ export interface operations {
             };
         };
     };
-    create_device_route_api_devices_post: {
+    "devices.create_device_route": {
         parameters: {
             query?: never;
             header?: never;
@@ -44504,7 +44845,7 @@ export interface operations {
             };
         };
     };
-    enroll_device_route_api_devices_enroll_post: {
+    "devices.enroll_device_route": {
         parameters: {
             query?: never;
             header?: never;
@@ -44537,7 +44878,7 @@ export interface operations {
             };
         };
     };
-    get_device_route_api_devices__device_id__get: {
+    "devices.get_device_route": {
         parameters: {
             query?: never;
             header?: {
@@ -44570,7 +44911,7 @@ export interface operations {
             };
         };
     };
-    rotate_device_key_endpoint_api_devices__device_id__rotate_key_post: {
+    "devices.rotate_device_key_endpoint": {
         parameters: {
             query?: never;
             header?: never;
@@ -44601,7 +44942,7 @@ export interface operations {
             };
         };
     };
-    disable_device_route_api_devices__device_id__disable_post: {
+    "devices.disable_device_route": {
         parameters: {
             query?: never;
             header?: never;
@@ -44632,7 +44973,7 @@ export interface operations {
             };
         };
     };
-    enable_device_route_api_devices__device_id__enable_post: {
+    "devices.enable_device_route": {
         parameters: {
             query?: never;
             header?: never;
@@ -44663,7 +45004,7 @@ export interface operations {
             };
         };
     };
-    list_jobs_route_api_devices__device_id__jobs_get: {
+    "devices.list_jobs_route": {
         parameters: {
             query?: {
                 offset?: number;
@@ -44699,7 +45040,7 @@ export interface operations {
             };
         };
     };
-    create_job_route_api_devices__device_id__jobs_post: {
+    "devices.create_job_route": {
         parameters: {
             query?: never;
             header?: {
@@ -44736,7 +45077,7 @@ export interface operations {
             };
         };
     };
-    get_job_route_api_devices__device_id__jobs__job_id__get: {
+    "devices.get_job_route": {
         parameters: {
             query?: never;
             header?: {
@@ -44770,7 +45111,7 @@ export interface operations {
             };
         };
     };
-    get_job_logs_route_api_devices__device_id__jobs__job_id__logs_get: {
+    "devices.get_job_logs_route": {
         parameters: {
             query?: {
                 after_seq?: number;
@@ -44807,7 +45148,7 @@ export interface operations {
             };
         };
     };
-    cancel_job_route_api_devices__device_id__jobs__job_id__cancel_post: {
+    "devices.cancel_job_route": {
         parameters: {
             query?: never;
             header?: {
@@ -44908,7 +45249,7 @@ export interface operations {
             };
         };
     };
-    list_control_keys_route_api_device_control_keys_get: {
+    "devicecontrolkeys.list_control_keys_route": {
         parameters: {
             query?: {
                 scope?: string | null;
@@ -44939,7 +45280,7 @@ export interface operations {
             };
         };
     };
-    create_control_key_route_api_device_control_keys_post: {
+    "devicecontrolkeys.create_control_key_route": {
         parameters: {
             query?: never;
             header?: never;
@@ -44972,7 +45313,7 @@ export interface operations {
             };
         };
     };
-    get_control_key_route_api_device_control_keys__key_id__get: {
+    "devicecontrolkeys.get_control_key_route": {
         parameters: {
             query?: never;
             header?: never;
@@ -45003,7 +45344,7 @@ export interface operations {
             };
         };
     };
-    rotate_control_key_endpoint_api_device_control_keys__key_id__rotate_post: {
+    "devicecontrolkeys.rotate_control_key_endpoint": {
         parameters: {
             query?: never;
             header?: never;
@@ -45034,7 +45375,7 @@ export interface operations {
             };
         };
     };
-    revoke_control_key_endpoint_api_device_control_keys__key_id__revoke_post: {
+    "devicecontrolkeys.revoke_control_key_endpoint": {
         parameters: {
             query?: never;
             header?: never;
@@ -45065,7 +45406,7 @@ export interface operations {
             };
         };
     };
-    heartbeat_route_api_device_heartbeat_post: {
+    "deviceprotocol.heartbeat_route": {
         parameters: {
             query?: never;
             header: {
@@ -45100,7 +45441,7 @@ export interface operations {
             };
         };
     };
-    claim_route_api_device_jobs_claim_post: {
+    "deviceprotocol.claim_route": {
         parameters: {
             query?: never;
             header: {
@@ -45135,7 +45476,7 @@ export interface operations {
             };
         };
     };
-    running_route_api_device_jobs__job_id__running_post: {
+    "deviceprotocol.running_route": {
         parameters: {
             query?: never;
             header: {
@@ -45172,7 +45513,7 @@ export interface operations {
             };
         };
     };
-    logs_route_api_device_jobs__job_id__logs_post: {
+    "deviceprotocol.logs_route": {
         parameters: {
             query?: never;
             header: {
@@ -45207,7 +45548,7 @@ export interface operations {
             };
         };
     };
-    result_route_api_device_jobs__job_id__result_post: {
+    "deviceprotocol.result_route": {
         parameters: {
             query?: never;
             header: {
@@ -45574,7 +45915,7 @@ export interface operations {
             };
         };
     };
-    inspect_oauth_api_oauth_connections__connection_name__diagnostics_get: {
+    "workspaceadmin.inspect_oauth": {
         parameters: {
             query: {
                 scope: "global" | string;
@@ -45607,7 +45948,7 @@ export interface operations {
             };
         };
     };
-    recover_oauth_api_oauth_connections__connection_name__recover_post: {
+    "workspaceadmin.recover_oauth": {
         parameters: {
             query?: never;
             header?: never;
@@ -45642,7 +45983,7 @@ export interface operations {
             };
         };
     };
-    reconcile_oauth_api_oauth_connections__connection_name__reconcile_post: {
+    "workspaceadmin.reconcile_oauth": {
         parameters: {
             query?: never;
             header?: never;
@@ -45677,7 +46018,7 @@ export interface operations {
             };
         };
     };
-    redact_execution_api_executions__execution_id__redact_sensitive_fields_post: {
+    "workspaceadmin.redact_execution": {
         parameters: {
             query?: never;
             header?: never;
@@ -46040,7 +46381,7 @@ export interface operations {
             };
         };
     };
-    sdk_integration_request_slot_acquire_api_sdk_integrations_request_slot_acquire_post: {
+    "cli.sdk_integration_request_slot_acquire": {
         parameters: {
             query?: never;
             header?: never;
@@ -46073,7 +46414,7 @@ export interface operations {
             };
         };
     };
-    sdk_integration_request_slot_release_api_sdk_integrations_request_slot_release_post: {
+    "cli.sdk_integration_request_slot_release": {
         parameters: {
             query?: never;
             header?: never;
@@ -48100,7 +48441,7 @@ export interface operations {
             };
         };
     };
-    list_agents_api_agents_get: {
+    "agents.list": {
         parameters: {
             query?: {
                 /** @description Filter scope: omit for all (superusers), 'global' for global only, or org UUID for specific org. */
@@ -48138,7 +48479,7 @@ export interface operations {
             };
         };
     };
-    create_agent_api_agents_post: {
+    "agents.create": {
         parameters: {
             query?: never;
             header?: never;
@@ -48242,7 +48583,7 @@ export interface operations {
             };
         };
     };
-    get_agent_api_agents__agent_id__get: {
+    "agents.get": {
         parameters: {
             query?: never;
             header?: never;
@@ -48273,7 +48614,7 @@ export interface operations {
             };
         };
     };
-    update_agent_api_agents__agent_id__put: {
+    "agents.update": {
         parameters: {
             query?: never;
             header?: never;
@@ -48308,7 +48649,7 @@ export interface operations {
             };
         };
     };
-    delete_agent_api_agents__agent_id__delete: {
+    "agents.delete": {
         parameters: {
             query?: never;
             header?: never;
@@ -49314,7 +49655,7 @@ export interface operations {
             };
         };
     };
-    submit_teams_event_api_chat_teams_events_post: {
+    "chat.submit_teams_event": {
         parameters: {
             query?: never;
             header?: never;
@@ -50544,7 +50885,7 @@ export interface operations {
             };
         };
     };
-    list_integrations_api_integrations_get: {
+    "integrations.list": {
         parameters: {
             query?: never;
             header?: never;
@@ -50564,7 +50905,7 @@ export interface operations {
             };
         };
     };
-    create_integration_api_integrations_post: {
+    "integrations.create": {
         parameters: {
             query?: never;
             header?: never;
@@ -50597,7 +50938,7 @@ export interface operations {
             };
         };
     };
-    get_integration_api_integrations__integration_id__get: {
+    "integrations.get": {
         parameters: {
             query?: never;
             header?: never;
@@ -50628,7 +50969,7 @@ export interface operations {
             };
         };
     };
-    update_integration_api_integrations__integration_id__put: {
+    "integrations.update": {
         parameters: {
             query?: never;
             header?: never;
@@ -50663,7 +51004,7 @@ export interface operations {
             };
         };
     };
-    delete_integration_api_integrations__integration_id__delete: {
+    "integrations.delete": {
         parameters: {
             query?: never;
             header?: never;
@@ -50831,7 +51172,7 @@ export interface operations {
             };
         };
     };
-    get_integration_config_api_integrations__integration_id__config_get: {
+    "integrations.config.get": {
         parameters: {
             query?: never;
             header?: never;
@@ -50862,7 +51203,7 @@ export interface operations {
             };
         };
     };
-    update_integration_config_api_integrations__integration_id__config_put: {
+    "integrations.config.update": {
         parameters: {
             query?: never;
             header?: never;
@@ -50897,7 +51238,7 @@ export interface operations {
             };
         };
     };
-    list_mappings_api_integrations__integration_id__mappings_get: {
+    "integrations.mappings.list": {
         parameters: {
             query?: never;
             header?: never;
@@ -50928,7 +51269,7 @@ export interface operations {
             };
         };
     };
-    create_mapping_api_integrations__integration_id__mappings_post: {
+    "integrations.mappings.create": {
         parameters: {
             query?: never;
             header?: never;
@@ -50963,7 +51304,7 @@ export interface operations {
             };
         };
     };
-    get_mapping_api_integrations__integration_id__mappings__mapping_id__get: {
+    "integrations.mappings.get": {
         parameters: {
             query?: never;
             header?: never;
@@ -50995,7 +51336,7 @@ export interface operations {
             };
         };
     };
-    update_mapping_api_integrations__integration_id__mappings__mapping_id__put: {
+    "integrations.mappings.update": {
         parameters: {
             query?: never;
             header?: never;
@@ -51031,7 +51372,7 @@ export interface operations {
             };
         };
     };
-    delete_mapping_api_integrations__integration_id__mappings__mapping_id__delete: {
+    "integrations.mappings.delete": {
         parameters: {
             query?: never;
             header?: never;
@@ -51061,7 +51402,7 @@ export interface operations {
             };
         };
     };
-    get_mapping_by_org_api_integrations__integration_id__mappings_by_org__org_id__get: {
+    "integrations.mappings.get_by_org": {
         parameters: {
             query?: never;
             header?: never;
@@ -51093,7 +51434,7 @@ export interface operations {
             };
         };
     };
-    batch_upsert_mappings_api_integrations__integration_id__mappings_batch_post: {
+    "integrations.mappings.batch": {
         parameters: {
             query?: never;
             header?: never;
@@ -51128,7 +51469,7 @@ export interface operations {
             };
         };
     };
-    authorize_mapping_api_integrations__integration_id__mappings__mapping_id__oauth_authorize_post: {
+    "integrations.mappings.authorize": {
         parameters: {
             query?: never;
             header?: never;
@@ -51164,7 +51505,7 @@ export interface operations {
             };
         };
     };
-    disconnect_mapping_api_integrations__integration_id__mappings__mapping_id__oauth_disconnect_post: {
+    "integrations.mappings.disconnect": {
         parameters: {
             query?: never;
             header?: never;
@@ -51194,7 +51535,7 @@ export interface operations {
             };
         };
     };
-    refresh_mapping_oauth_api_integrations__integration_id__mappings__mapping_id__oauth_refresh_post: {
+    "integrations.mappings.refresh": {
         parameters: {
             query?: never;
             header?: never;
@@ -51226,7 +51567,7 @@ export interface operations {
             };
         };
     };
-    get_oauth_config_api_integrations__integration_id__oauth_get: {
+    "integrations.oauth.get": {
         parameters: {
             query?: never;
             header?: never;
@@ -51257,7 +51598,7 @@ export interface operations {
             };
         };
     };
-    get_oauth_authorization_url_api_integrations__integration_id__oauth_authorize_get: {
+    "integrations.oauth.authorize": {
         parameters: {
             query: {
                 /** @description Frontend callback URL for OAuth redirect */
@@ -51291,7 +51632,7 @@ export interface operations {
             };
         };
     };
-    clear_entity_id_source_api_integrations__integration_id__oauth_entity_id_source_delete: {
+    "integrations.oauth.entity_id_source.delete": {
         parameters: {
             query?: {
                 /** @description When true, also clear entity_id on every mapping for this integration */
@@ -51327,7 +51668,7 @@ export interface operations {
             };
         };
     };
-    set_entity_id_source_api_integrations__integration_id__oauth_entity_id_source_patch: {
+    "integrations.oauth.entity_id_source.update": {
         parameters: {
             query?: never;
             header?: never;
@@ -51364,7 +51705,7 @@ export interface operations {
             };
         };
     };
-    test_integration_connection_api_integrations__integration_id__test_post: {
+    "integrations.test": {
         parameters: {
             query?: never;
             header?: never;
@@ -51399,7 +51740,7 @@ export interface operations {
             };
         };
     };
-    generate_sdk_api_integrations__integration_id__generate_sdk_post: {
+    "integrations.generate_sdk": {
         parameters: {
             query?: never;
             header?: never;
@@ -51918,6 +52259,56 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UsageReportResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_workflow_resource_report_api_reports_workflow_resources_get: {
+        parameters: {
+            query: {
+                /** @description Start of window (timezone-aware ISO) */
+                started_after: string;
+                /** @description End of window (timezone-aware ISO) */
+                started_before: string;
+                /** @description Aggregate by run or workflow */
+                view?: "runs" | "workflows";
+                /** @description Sort runs by column */
+                sort?: "cpu" | "elapsed" | "memory" | "ai" | "started";
+                /** @description 1-based page number */
+                page?: number;
+                /** @description Items per page (max 100) */
+                page_size?: number;
+                /** @description Filter by organization ID */
+                org_id?: string | null;
+                /** @description Filter by workflow ID */
+                workflow_id?: string | null;
+                /** @description Partial workflow name filter */
+                workflow?: string | null;
+                /** @description Filter by execution status */
+                status?: components["schemas"]["ExecutionStatus"] | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowResourceReport"];
                 };
             };
             /** @description Validation Error */
@@ -52455,7 +52846,7 @@ export interface operations {
             };
         };
     };
-    resolve_gateway_operation_receipt_api_mcp_operation_receipts__receipt_id__resolve_post: {
+    "mcp.resolve_gateway_operation_receipt": {
         parameters: {
             query?: never;
             header?: never;
@@ -52648,7 +53039,7 @@ export interface operations {
             };
         };
     };
-    list_adapters_api_events_adapters_get: {
+    "events.webhook_adapters.list": {
         parameters: {
             query?: never;
             header?: never;
@@ -52703,7 +53094,7 @@ export interface operations {
             };
         };
     };
-    list_sources_api_events_sources_get: {
+    "events.sources.list": {
         parameters: {
             query?: {
                 /** @description Filter by source type */
@@ -52743,7 +53134,7 @@ export interface operations {
             };
         };
     };
-    create_source_api_events_sources_post: {
+    "events.sources.create": {
         parameters: {
             query?: never;
             header?: never;
@@ -52776,7 +53167,7 @@ export interface operations {
             };
         };
     };
-    get_source_api_events_sources__source_id__get: {
+    "events.sources.get": {
         parameters: {
             query?: never;
             header?: never;
@@ -52807,7 +53198,7 @@ export interface operations {
             };
         };
     };
-    delete_source_api_events_sources__source_id__delete: {
+    "events.sources.delete": {
         parameters: {
             query?: never;
             header?: never;
@@ -52836,7 +53227,7 @@ export interface operations {
             };
         };
     };
-    update_source_api_events_sources__source_id__patch: {
+    "events.sources.update": {
         parameters: {
             query?: never;
             header?: never;
@@ -52902,7 +53293,7 @@ export interface operations {
             };
         };
     };
-    list_subscriptions_api_events_sources__source_id__subscriptions_get: {
+    "events.subscriptions.list": {
         parameters: {
             query?: {
                 /** @description Max results */
@@ -52938,7 +53329,7 @@ export interface operations {
             };
         };
     };
-    create_subscription_api_events_sources__source_id__subscriptions_post: {
+    "events.subscriptions.create": {
         parameters: {
             query?: never;
             header?: never;
@@ -52973,7 +53364,7 @@ export interface operations {
             };
         };
     };
-    delete_subscription_api_events_sources__source_id__subscriptions__subscription_id__delete: {
+    "events.subscriptions.delete": {
         parameters: {
             query?: never;
             header?: never;
@@ -53003,7 +53394,7 @@ export interface operations {
             };
         };
     };
-    update_subscription_api_events_sources__source_id__subscriptions__subscription_id__patch: {
+    "events.subscriptions.update": {
         parameters: {
             query?: never;
             header?: never;
@@ -53625,7 +54016,7 @@ export interface operations {
             };
         };
     };
-    list_tables_api_tables_get: {
+    "tables.list": {
         parameters: {
             query?: {
                 /** @description Filter scope: 'global' for global only, org UUID for specific org. */
@@ -53657,7 +54048,7 @@ export interface operations {
             };
         };
     };
-    create_table_api_tables_post: {
+    "tables.create": {
         parameters: {
             query?: {
                 /** @description Target scope: 'global' or org UUID. Defaults to current org. */
@@ -53726,7 +54117,7 @@ export interface operations {
             };
         };
     };
-    get_table_api_tables__table_id__get: {
+    "tables.get": {
         parameters: {
             query?: never;
             header?: never;
@@ -53757,7 +54148,7 @@ export interface operations {
             };
         };
     };
-    delete_table_api_tables__table_id__delete: {
+    "tables.delete": {
         parameters: {
             query?: never;
             header?: never;
@@ -53786,7 +54177,7 @@ export interface operations {
             };
         };
     };
-    update_table_api_tables__table_id__patch: {
+    "tables.update": {
         parameters: {
             query?: never;
             header?: never;
@@ -54047,7 +54438,7 @@ export interface operations {
             };
         };
     };
-    update_document_conditional_api_tables__table_id__documents__doc_id__conditional_patch: {
+    "tables.update_document_conditional": {
         parameters: {
             query?: {
                 scope?: string | null;
@@ -54208,7 +54599,7 @@ export interface operations {
             };
         };
     };
-    list_claims_api_claims_get: {
+    "claims.list": {
         parameters: {
             query?: {
                 /** @description Filter scope: omit to list across all orgs (superuser default), or pass an org UUID. */
@@ -54240,7 +54631,7 @@ export interface operations {
             };
         };
     };
-    create_claim_api_claims_post: {
+    "claims.create": {
         parameters: {
             query?: {
                 /** @description Target organization scope (org UUID). Defaults to caller's home org. */
@@ -54276,7 +54667,7 @@ export interface operations {
             };
         };
     };
-    get_claim_api_claims__name__get: {
+    "claims.get": {
         parameters: {
             query?: {
                 /** @description Target organization scope (org UUID). Defaults to caller's home org. */
@@ -54310,7 +54701,7 @@ export interface operations {
             };
         };
     };
-    delete_claim_api_claims__name__delete: {
+    "claims.delete": {
         parameters: {
             query?: {
                 /** @description Target organization scope (org UUID). Defaults to caller's home org. */
@@ -54342,7 +54733,7 @@ export interface operations {
             };
         };
     };
-    update_claim_api_claims__name__patch: {
+    "claims.update": {
         parameters: {
             query?: {
                 /** @description Target organization scope (org UUID). Defaults to caller's home org. */
@@ -54479,7 +54870,7 @@ export interface operations {
             };
         };
     };
-    list_solutions_api_solutions_get: {
+    "solutions.list": {
         parameters: {
             query?: never;
             header?: never;
@@ -54499,7 +54890,7 @@ export interface operations {
             };
         };
     };
-    create_solution_api_solutions_post: {
+    "solutions.create": {
         parameters: {
             query?: never;
             header?: never;
@@ -54627,7 +55018,7 @@ export interface operations {
             };
         };
     };
-    get_solution_api_solutions__solution_id__get: {
+    "solutions.get": {
         parameters: {
             query?: never;
             header?: never;
@@ -54658,7 +55049,7 @@ export interface operations {
             };
         };
     };
-    delete_solution_api_solutions__solution_id__delete: {
+    "solutions.delete": {
         parameters: {
             query?: {
                 confirm?: string;
@@ -54691,7 +55082,7 @@ export interface operations {
             };
         };
     };
-    update_solution_api_solutions__solution_id__patch: {
+    "solutions.update": {
         parameters: {
             query?: never;
             header?: never;
@@ -54865,7 +55256,7 @@ export interface operations {
             };
         };
     };
-    export_solution_api_solutions__solution_id__export_post: {
+    "solutions.export": {
         parameters: {
             query?: {
                 mode?: string;
@@ -54881,7 +55272,7 @@ export interface operations {
         };
         requestBody?: {
             content: {
-                "application/json": components["schemas"]["Body_export_solution_api_solutions__solution_id__export_post"];
+                "application/json": components["schemas"]["export"];
             };
         };
         responses: {
@@ -55215,7 +55606,7 @@ export interface operations {
             };
         };
     };
-    deploy_solution_api_solutions__solution_id__deploy_post: {
+    "solutions.deploy": {
         parameters: {
             query?: {
                 force?: boolean;
@@ -55229,7 +55620,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "multipart/form-data": components["schemas"]["Body_deploy_solution_api_solutions__solution_id__deploy_post"];
+                "multipart/form-data": components["schemas"]["deploy"];
             };
         };
         responses: {
@@ -55284,7 +55675,7 @@ export interface operations {
             };
         };
     };
-    capture_solution_entities_api_solutions__solution_id__capture_post: {
+    "solutions.capture": {
         parameters: {
             query?: never;
             header?: never;
@@ -55354,7 +55745,7 @@ export interface operations {
             };
         };
     };
-    sync_solution_api_solutions__solution_id__sync_post: {
+    "solutions.sync": {
         parameters: {
             query?: never;
             header?: never;
@@ -55484,7 +55875,7 @@ export interface operations {
             };
         };
     };
-    install_solution_api_solutions_install_post: {
+    "solutions.install": {
         parameters: {
             query?: {
                 force?: boolean;
@@ -55496,7 +55887,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "multipart/form-data": components["schemas"]["Body_install_solution_api_solutions_install_post"];
+                "multipart/form-data": components["schemas"]["install"];
             };
         };
         responses: {
@@ -55520,7 +55911,7 @@ export interface operations {
             };
         };
     };
-    reconcile_solution_deployment_api_solutions__solution_id__deploy_jobs__deploy_job_id__reconcile_post: {
+    "solutions.reconcile_solution_deployment": {
         parameters: {
             query?: never;
             header?: never;
@@ -55552,7 +55943,116 @@ export interface operations {
             };
         };
     };
-    deliver_github_source_api_solutions__solution_id__deployments_github_source_post: {
+    "solutiondeployments.deliver_github_package": {
+        parameters: {
+            query?: never;
+            header: {
+                "X-GitHub-Job-Token": string;
+            };
+            path: {
+                solution_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SolutionGitSourceDeliveryRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlatformJobPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    "solutiondeployments.inspect_github_package": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                solution_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SolutionGitSourceDeliveryRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlatformJobPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    "solutiondeployments.recover_github_package": {
+        parameters: {
+            query?: never;
+            header: {
+                "X-GitHub-Job-Token": string;
+            };
+            path: {
+                solution_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SolutionGitSourceDeliveryRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SolutionPackageRecoveryResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    "solutiondeployments.deliver_github_source": {
         parameters: {
             query?: never;
             header: {
@@ -55589,7 +56089,7 @@ export interface operations {
             };
         };
     };
-    deployment_capabilities_api_solutions__solution_id__deployments_capabilities_get: {
+    "solutiondeployments.deployment_capabilities": {
         parameters: {
             query?: never;
             header?: never;
@@ -55627,7 +56127,7 @@ export interface operations {
             };
         };
     };
-    preview_shared_table_bindings_api_solutions__solution_id__deployments_shared_tables_preview_post: {
+    "solutiondeployments.preview_shared_table_bindings": {
         parameters: {
             query?: never;
             header?: never;
@@ -55664,7 +56164,7 @@ export interface operations {
             };
         };
     };
-    inspect_active_deployment_api_solutions__solution_id__deployments_active_get: {
+    "solutiondeployments.inspect_active_deployment": {
         parameters: {
             query?: never;
             header?: never;
@@ -55702,7 +56202,7 @@ export interface operations {
             };
         };
     };
-    create_deployment_api_solutions__solution_id__deployments_post: {
+    "solutiondeployments.create_deployment": {
         parameters: {
             query?: never;
             header?: never;
@@ -55749,7 +56249,7 @@ export interface operations {
             };
         };
     };
-    inspect_deployment_api_solutions__solution_id__deployments__deployment_id__get: {
+    "solutiondeployments.inspect_deployment": {
         parameters: {
             query?: never;
             header?: never;
@@ -55788,7 +56288,7 @@ export interface operations {
             };
         };
     };
-    preflight_live_handoff_api_solutions__solution_id__deployments__deployment_id__live_handoff_preflight_post: {
+    "solutiondeployments.preflight_live_handoff": {
         parameters: {
             query?: never;
             header?: never;
@@ -55836,7 +56336,7 @@ export interface operations {
             };
         };
     };
-    build_live_handoff_candidate_api_solutions__solution_id__deployments__deployment_id__live_handoff_candidate_post: {
+    "solutiondeployments.build_live_handoff_candidate": {
         parameters: {
             query?: never;
             header?: never;
@@ -55884,7 +56384,7 @@ export interface operations {
             };
         };
     };
-    activate_live_handoff_api_solutions__solution_id__deployments__deployment_id__live_handoff_activate_post: {
+    "solutiondeployments.activate_live_handoff": {
         parameters: {
             query?: never;
             header?: never;
@@ -55932,7 +56432,7 @@ export interface operations {
             };
         };
     };
-    rollback_live_handoff_api_solutions__solution_id__deployments__deployment_id__live_handoff_rollback_post: {
+    "solutiondeployments.rollback_live_handoff": {
         parameters: {
             query?: never;
             header?: never;
@@ -55980,7 +56480,7 @@ export interface operations {
             };
         };
     };
-    stage_source_revision_api_solutions__solution_id__deployments__deployment_id__source_revision_candidate_post: {
+    "solutiondeployments.stage_source_revision": {
         parameters: {
             query?: never;
             header?: never;
@@ -56016,7 +56516,7 @@ export interface operations {
             };
         };
     };
-    inspect_source_revision_api_solutions__solution_id__deployments__deployment_id__source_revision_preflight_post: {
+    "solutiondeployments.inspect_source_revision": {
         parameters: {
             query?: never;
             header?: never;
@@ -56052,7 +56552,7 @@ export interface operations {
             };
         };
     };
-    activate_source_revision_api_solutions__solution_id__deployments__deployment_id__source_revision_activate_post: {
+    "solutiondeployments.activate_source_revision": {
         parameters: {
             query?: never;
             header?: never;
@@ -56088,7 +56588,7 @@ export interface operations {
             };
         };
     };
-    stage_initial_workflow_install_api_solutions__solution_id__deployments__deployment_id__initial_workflow_candidate_post: {
+    "solutiondeployments.stage_initial_workflow_install": {
         parameters: {
             query?: never;
             header?: never;
@@ -56124,7 +56624,7 @@ export interface operations {
             };
         };
     };
-    inspect_initial_workflow_install_api_solutions__solution_id__deployments__deployment_id__initial_workflow_preflight_post: {
+    "solutiondeployments.inspect_initial_workflow_install": {
         parameters: {
             query?: never;
             header?: never;
@@ -56160,7 +56660,7 @@ export interface operations {
             };
         };
     };
-    activate_initial_workflow_install_api_solutions__solution_id__deployments__deployment_id__initial_workflow_activate_post: {
+    "solutiondeployments.activate_initial_workflow_install": {
         parameters: {
             query?: never;
             header?: never;
@@ -56196,7 +56696,7 @@ export interface operations {
             };
         };
     };
-    stage_repo_workflow_adoption_api_solutions__solution_id__deployments__deployment_id__repo_workflow_adoption_candidate_post: {
+    "solutiondeployments.stage_repo_workflow_adoption": {
         parameters: {
             query?: never;
             header?: never;
@@ -56232,7 +56732,7 @@ export interface operations {
             };
         };
     };
-    inspect_repo_workflow_adoption_api_solutions__solution_id__deployments__deployment_id__repo_workflow_adoption_preflight_post: {
+    "solutiondeployments.inspect_repo_workflow_adoption": {
         parameters: {
             query?: never;
             header?: never;
@@ -56268,7 +56768,7 @@ export interface operations {
             };
         };
     };
-    activate_repo_workflow_adoption_api_solutions__solution_id__deployments__deployment_id__repo_workflow_adoption_activate_post: {
+    "solutiondeployments.activate_repo_workflow_adoption": {
         parameters: {
             query?: never;
             header?: never;
@@ -56304,7 +56804,7 @@ export interface operations {
             };
         };
     };
-    stage_workflow_revision_api_solutions__solution_id__deployments__deployment_id__workflow_revision_candidate_post: {
+    "solutiondeployments.stage_workflow_revision": {
         parameters: {
             query?: never;
             header?: never;
@@ -56340,7 +56840,7 @@ export interface operations {
             };
         };
     };
-    inspect_workflow_revision_api_solutions__solution_id__deployments__deployment_id__workflow_revision_preflight_post: {
+    "solutiondeployments.inspect_workflow_revision": {
         parameters: {
             query?: never;
             header?: never;
@@ -56376,7 +56876,7 @@ export interface operations {
             };
         };
     };
-    activate_workflow_revision_api_solutions__solution_id__deployments__deployment_id__workflow_revision_activate_post: {
+    "solutiondeployments.activate_workflow_revision": {
         parameters: {
             query?: never;
             header?: never;
@@ -56412,7 +56912,7 @@ export interface operations {
             };
         };
     };
-    activate_deployment_api_solutions__solution_id__deployments__deployment_id__activate_post: {
+    "solutiondeployments.activate_deployment": {
         parameters: {
             query?: never;
             header?: never;
@@ -56467,7 +56967,7 @@ export interface operations {
             };
         };
     };
-    rollback_deployment_api_solutions__solution_id__deployments__deployment_id__rollback_post: {
+    "solutiondeployments.rollback_deployment": {
         parameters: {
             query?: never;
             header?: never;
@@ -56522,7 +57022,7 @@ export interface operations {
             };
         };
     };
-    list_namespaces_api_knowledge_sources_get: {
+    "knowledge.namespaces.list": {
         parameters: {
             query?: {
                 scope?: string | null;
@@ -56635,7 +57135,7 @@ export interface operations {
             };
         };
     };
-    list_all_documents_api_knowledge_sources_documents_get: {
+    "knowledge.documents.list": {
         parameters: {
             query?: {
                 scope?: string | null;
@@ -56741,7 +57241,7 @@ export interface operations {
             };
         };
     };
-    create_document_api_knowledge_sources__namespace__documents_post: {
+    "knowledge.documents.create": {
         parameters: {
             query?: {
                 scope?: string | null;
@@ -56778,7 +57278,7 @@ export interface operations {
             };
         };
     };
-    get_document_api_knowledge_sources__namespace__documents__doc_id__get: {
+    "knowledge.documents.get": {
         parameters: {
             query?: never;
             header?: never;
@@ -56810,7 +57310,7 @@ export interface operations {
             };
         };
     };
-    update_document_api_knowledge_sources__namespace__documents__doc_id__put: {
+    "knowledge.documents.update": {
         parameters: {
             query?: {
                 scope?: string | null;
@@ -56849,7 +57349,7 @@ export interface operations {
             };
         };
     };
-    delete_document_api_knowledge_sources__namespace__documents__doc_id__delete: {
+    "knowledge.documents.delete": {
         parameters: {
             query?: never;
             header?: never;
@@ -57042,7 +57542,7 @@ export interface operations {
             };
         };
     };
-    list_applications_api_applications_get: {
+    "apps.list": {
         parameters: {
             query?: {
                 /** @description Filter scope: 'global' for global only, org UUID for specific org. */
@@ -57074,7 +57574,7 @@ export interface operations {
             };
         };
     };
-    create_application_api_applications_post: {
+    "apps.create": {
         parameters: {
             query?: never;
             header?: never;
@@ -57140,7 +57640,7 @@ export interface operations {
             };
         };
     };
-    get_application_api_applications__slug__get: {
+    "apps.get": {
         parameters: {
             query?: never;
             header?: never;
@@ -57171,7 +57671,7 @@ export interface operations {
             };
         };
     };
-    delete_application_api_applications__app_id__delete: {
+    "apps.delete": {
         parameters: {
             query?: never;
             header?: never;
@@ -57200,7 +57700,7 @@ export interface operations {
             };
         };
     };
-    update_application_api_applications__app_id__patch: {
+    "apps.update": {
         parameters: {
             query?: never;
             header?: never;
@@ -57412,7 +57912,80 @@ export interface operations {
             };
         };
     };
-    publish_application_api_applications__app_id__publish_post: {
+    "applications.publish_github_app_source": {
+        parameters: {
+            query?: never;
+            header: {
+                "X-GitHub-Job-Token": string;
+            };
+            path: {
+                app_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApplicationGitSourcePublicationRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlatformJobAccepted"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    "applications.inspect_github_app_publication": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                app_id: string;
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApplicationGitSourcePublicationRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlatformJobPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    "apps.publish": {
         parameters: {
             query?: never;
             header?: never;
@@ -57447,7 +58020,7 @@ export interface operations {
             };
         };
     };
-    replace_application_endpoint_api_applications__app_id__replace_post: {
+    "apps.replace": {
         parameters: {
             query?: never;
             header?: never;
@@ -57515,7 +58088,7 @@ export interface operations {
             };
         };
     };
-    validate_application_api_applications__app_id__validate_post: {
+    "apps.validate": {
         parameters: {
             query?: never;
             header?: never;
@@ -58003,7 +58576,7 @@ export interface operations {
             };
         };
     };
-    get_dependencies_api_applications__app_id__dependencies_get: {
+    "apps.dependencies.get": {
         parameters: {
             query?: never;
             header?: never;
@@ -58037,7 +58610,7 @@ export interface operations {
             };
         };
     };
-    put_dependencies_api_applications__app_id__dependencies_put: {
+    "apps.dependencies.update": {
         parameters: {
             query?: never;
             header?: never;
@@ -58896,7 +59469,7 @@ export interface operations {
             };
         };
     };
-    list_worker_control_commands_api_platform_workers_commands_history_get: {
+    "workers.list_worker_control_commands": {
         parameters: {
             query?: {
                 limit?: number;
@@ -58927,7 +59500,7 @@ export interface operations {
             };
         };
     };
-    runtime_maintenance_status_api_platform_runtime_maintenance_get: {
+    "runtimemaintenance.runtime_maintenance_status": {
         parameters: {
             query?: never;
             header?: never;
@@ -58949,7 +59522,7 @@ export interface operations {
             };
         };
     };
-    enter_maintenance_api_platform_runtime_maintenance_enter_post: {
+    "runtimemaintenance.enter_maintenance": {
         parameters: {
             query?: never;
             header?: never;
@@ -58984,7 +59557,7 @@ export interface operations {
             };
         };
     };
-    seal_maintenance_api_platform_runtime_maintenance__generation__seal_post: {
+    "runtimemaintenance.seal_maintenance": {
         parameters: {
             query?: never;
             header?: never;
@@ -59017,7 +59590,7 @@ export interface operations {
             };
         };
     };
-    exit_maintenance_api_platform_runtime_maintenance__generation__exit_post: {
+    "runtimemaintenance.exit_maintenance": {
         parameters: {
             query?: never;
             header?: never;
@@ -59116,7 +59689,7 @@ export interface operations {
             };
         };
     };
-    app_service_metrics_api_platform_app_service_metrics_get: {
+    "appservice.app_service_metrics": {
         parameters: {
             query?: {
                 /** @description Time range: 1h, 6h, 24h, 7d */
@@ -59685,7 +60258,7 @@ export interface operations {
             };
         };
     };
-    read_deployment_resource_api_sdk_resources__path__get: {
+    "sdkmodules.read_deployment_resource": {
         parameters: {
             query?: never;
             header?: never;
@@ -59798,7 +60371,7 @@ export interface operations {
             };
         };
     };
-    list_policy_rules_api_policy_rules_get: {
+    "policy.rules.list": {
         parameters: {
             query?: {
                 /** @description Filter by domain ('file' or 'table') */
@@ -59832,7 +60405,7 @@ export interface operations {
             };
         };
     };
-    create_policy_rule_api_policy_rules_post: {
+    "policy.rules.create": {
         parameters: {
             query?: never;
             header?: never;
@@ -59865,7 +60438,7 @@ export interface operations {
             };
         };
     };
-    update_policy_rule_api_policy_rules__domain___name__put: {
+    "policy.rules.update": {
         parameters: {
             query?: {
                 organization_id?: string | null;
@@ -59903,7 +60476,7 @@ export interface operations {
             };
         };
     };
-    delete_policy_rule_api_policy_rules__domain___name__delete: {
+    "policy.rules.delete": {
         parameters: {
             query?: {
                 organization_id?: string | null;
@@ -59935,7 +60508,7 @@ export interface operations {
             };
         };
     };
-    get_policy_rule_usages_api_policy_rules__domain___name__usages_get: {
+    "policy.rules.list_usages": {
         parameters: {
             query?: {
                 organization_id?: string | null;

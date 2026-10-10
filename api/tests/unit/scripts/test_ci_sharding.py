@@ -137,6 +137,29 @@ def test_browser_jobs_keep_isolated_stacks_diagnostics_and_required_aggregate():
     assert "needs.test-client-e2e.result" in gate["steps"][0]["run"]
 
 
+class _GHObject(dict):
+    """Dict with attribute access, mimicking GitHub expression objects."""
+
+    def __getattr__(self, name):
+        try:
+            return _wrap(self[name])
+        except KeyError as error:
+            raise AttributeError(name) from error
+
+
+def _wrap(value):
+    if isinstance(value, dict):
+        return _GHObject(value)
+    if isinstance(value, list):
+        return [_wrap(item) for item in value]
+    return value
+
+
+def _from_json(text):
+    """GitHub's fromJSON: JSON value with expression-style object access."""
+    return _wrap(json.loads(text))
+
+
 def _admitted(
     expression,
     *,
@@ -146,11 +169,27 @@ def _admitted(
     ref="refs/pull/1/merge",
     cancelled=False,
     same_repo=True,
+    planner="success",
+    shard_total=4,
 ):
     """Evaluate the small boolean admission language used by these CI jobs."""
+    if shard_total:
+        matrix = {
+            "include": [
+                {"shard": number, "total": shard_total}
+                for number in range(1, shard_total + 1)
+            ]
+        }
+    else:
+        # The plan's zero-shard sentinel: lane is outside the affected closure.
+        matrix = {"include": [{"shard": 0, "total": 0}]}
+    matrix_json = json.dumps(matrix, separators=(",", ":"))
     values = {
         "needs.lint.result": lint,
+        "needs.affected-test-plan.result": planner,
         "needs.publish-ci-test-images.result": publisher,
+        "needs.affected-test-plan.outputs.api_e2e_matrix": matrix_json,
+        "needs.affected-test-plan.outputs.client_e2e_matrix": matrix_json,
         "github.event_name": event,
         "github.ref": ref,
         "github.repository": "Midtown-Technology-Group/bifrost",
@@ -162,9 +201,67 @@ def _admitted(
     for key, value in sorted(values.items(), key=lambda pair: -len(pair[0])):
         expression = expression.replace(key, repr(value))
     expression = expression.replace("cancelled()", repr(cancelled))
+    expression = expression.replace("always()", "True")
+    expression = expression.replace("startsWith(", "starts_with(")
     expression = expression.replace("&&", " and ").replace("||", " or ")
     expression = re.sub(r"!(?!=)", "not ", expression)
-    return eval(f"({expression})", {"__builtins__": {}}, {})
+    return eval(
+        f"({expression})",
+        {
+            "__builtins__": {},
+            "starts_with": str.startswith,
+            "fromJSON": _from_json,
+        },
+        {},
+    )
+
+
+@pytest.mark.parametrize("planner", ["success", "failure", "cancelled", "skipped"])
+def test_required_diagnostics_respect_cancellation_without_hiding_failed_plans(planner):
+    jobs = yaml.safe_load(_repo_file(".github/workflows/ci.yml").read_text())["jobs"]
+    for name in ("lint", "test-client-unit"):
+        args = {"lint": "failure", "planner": planner}
+        assert _admitted(jobs[name]["if"], **args)
+        assert not _admitted(jobs[name]["if"], **args, cancelled=True)
+
+
+def test_required_aggregates_still_reject_incomplete_cancelled_candidates():
+    jobs = yaml.safe_load(_repo_file(".github/workflows/ci.yml").read_text())["jobs"]
+    for name in ("candidate-images", "test-e2e-gate"):
+        assert _admitted(jobs[name]["if"], lint="cancelled", cancelled=True)
+
+
+@pytest.mark.parametrize("name", ["lint", "test-client-unit"])
+def test_uncancelled_failed_plan_keeps_required_checks_red(name):
+    job = yaml.safe_load(_repo_file(".github/workflows/ci.yml").read_text())["jobs"][name]
+    step = next(s for s in job["steps"] if s["name"] == "Require a valid affected test plan")
+    assert step["if"] == "needs.affected-test-plan.result != 'success'"
+    result = subprocess.run(
+        ["bash", "-c", step["run"]], capture_output=True, text=True, check=False
+    )
+    assert result.returncode == 1
+
+
+@pytest.mark.parametrize("lint", ["success", "failure", "cancelled", "skipped"])
+@pytest.mark.parametrize(
+    "event,ref",
+    [
+        ("workflow_dispatch", "refs/heads/codex/test"),
+        ("workflow_dispatch", "refs/tags/v1.0.0"),
+        ("pull_request", "refs/pull/1/merge"),
+        ("merge_group", "refs/heads/gh-readonly-queue/main/pr-1"),
+        ("push", "refs/heads/main"),
+    ],
+)
+def test_manual_pre_pr_gate_requires_quality_and_an_uncancelled_branch_run(lint, event, ref):
+    job = yaml.safe_load(_repo_file(".github/workflows/ci.yml").read_text())["jobs"][
+        "pre-pr-candidate"
+    ]
+    assert "lint" in job["needs"]
+    args = {"lint": lint, "event": event, "ref": ref}
+    expected = lint == "success" and event == "workflow_dispatch" and ref.startswith("refs/heads/")
+    assert _admitted(job["if"], **args) == expected
+    assert not _admitted(job["if"], **args, cancelled=True)
 
 
 @pytest.mark.parametrize("lint", ["failure", "cancelled", "skipped"])
@@ -210,6 +307,21 @@ def test_successful_quality_preserves_supported_test_events(
             assert not _admitted(
                 jobs[name]["if"], **{**args, "publisher": failed_publisher}
             )
+
+
+@pytest.mark.parametrize("name", ["test-e2e", "test-client-e2e"])
+def test_zero_shard_sentinel_lane_is_not_admitted(name):
+    """A lane outside the affected closure must not allocate a shard runner.
+
+    The plan emits {shard:0,total:0} for such lanes; admission must reject it
+    so the job-level condition skips the job entirely instead of running every
+    step skipped while still consuming a runner.
+    """
+    jobs = yaml.safe_load(_repo_file(".github/workflows/ci.yml").read_text())["jobs"]
+    args = {"lint": "success"}
+
+    assert _admitted(jobs[name]["if"], **args)
+    assert not _admitted(jobs[name]["if"], **args, shard_total=0)
 
 
 def test_main_publication_does_not_depend_on_redundant_quality_rerun():

@@ -786,7 +786,9 @@ async def test_service_malformed_policy_json_denies(db_session, caplog) -> None:
 async def test_require_file_policy_denial_emits_audit(monkeypatch, db_session) -> None:
     """The live enforcement path (_require_file_policy → 403) records the
     denial. This audit used to live in FilePolicyService.check_allowed, which
-    had no callers; it now fires from the router helper on every real denial."""
+    had no callers; it now fires from the shared helper on every real denial
+    (shared.file_access raises transport-neutral FileServiceError; the HTTP
+    router maps it to 403)."""
     from fastapi import HTTPException
 
     from src.routers import files as files_module

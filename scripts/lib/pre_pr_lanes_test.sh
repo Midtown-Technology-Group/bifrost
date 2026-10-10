@@ -60,6 +60,7 @@ set +e
 authority=$(BIFROST_TEST_PUBLIC_URL=http://localhost:3000 bash -Eeuo pipefail -c '
     source ./test.sh help >/dev/null
     require_stack_up() { :; }
+    prepare_mcp_conformance_image() { :; }
     reset_state() { echo "$BIFROST_TEST_PUBLIC_URL"; return 91; }
     mcp_conformance
 ' ./test.sh)
@@ -94,3 +95,46 @@ echo 'PASS: MCP conformance reconciles backend authority after browser lanes'
     if candidate_action_pin_checks; then exit 1; fi
 )
 echo 'PASS: Action pin checks retain full SHAs, verify changed versions and fail closed'
+
+
+# Fresh runners have no conformance image. Prepare it before the stage snapshot;
+# preparation failure must prevent starting the stage, not produce stale proof.
+(
+    stages=()
+    pre_pr_plan_lane() {
+        case "$1" in mcp_conformance) echo affected ;; *) echo skip ;; esac
+    }
+    run_pre_pr_stage() { stages+=("stage:$*"); }
+    require_stack_up() { :; }
+    docker() { stages+=("build:$*"); }
+    run_scoped_pre_pr
+    [[ "${stages[*]}" == "stage:stack stack_up build:compose -f $COMPOSE_FILE --profile test build mcp-conformance stage:mcp run_mcp_conformance" ]]
+)
+echo 'PASS: MCP image preparation precedes the immutable conformance stage'
+
+set +e
+failure=$(bash -Eeuo pipefail -c '
+    source ./test.sh help >/dev/null
+    pre_pr_plan_lane() {
+        case "$1" in mcp_conformance) echo affected ;; *) echo skip ;; esac
+    }
+    run_pre_pr_stage() { [[ "$1" != mcp ]] || echo unexpected-mcp-stage; }
+    prepare_mcp_conformance_image() { return 73; }
+    run_scoped_pre_pr
+' ./test.sh)
+status=$?
+set -e
+[[ "$status" == 73 && "$failure" != *unexpected-mcp-stage* ]]
+echo 'PASS: failed MCP preparation blocks conformance evidence'
+
+# Runner options must survive the public wrapper without splitting or globbing.
+(
+    prepared=false
+    prepare_mcp_conformance_image() { prepared=true; }
+    run_mcp_conformance() {
+        [[ "$prepared" == true ]]
+        [[ "$#" == 3 && "$1" == --filter && "$2" == "tools list" && "$3" == "*.json" ]]
+    }
+    mcp_conformance --filter "tools list" "*.json"
+)
+echo 'PASS: MCP wrapper preserves caller argument boundaries and preparation order'

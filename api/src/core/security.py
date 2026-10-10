@@ -453,6 +453,42 @@ it to the child over Redis (see docs/plans/2026-09-20-services-credential-design
 Short enough to bound a fenced child's residual API access; long enough that
 a missed heartbeat never strands a healthy child."""
 
+ENGINE_SDK_ACTOR_EMAIL = "engine@bifrost.internal"
+"""Effective SDK actor for workflow executions.
+
+HTTP workflow SDK requests authenticate with ``mint_engine_token()`` (this
+address); worker-local engine SDK calls must attribute ``Config.updated_by``
+to the same value — never to the initiating user's ``caller.email``.
+"""
+
+
+def service_sdk_actor_email(service_id: str) -> str:
+    """Effective SDK actor email for one supervised service.
+
+    Single helper shared by security token minting (``mint_service_token``,
+    the ``service_claim`` dispatch context) and the execution-context
+    validator (``shared.execution_context``), so HTTP and worker-local
+    ``Config.updated_by`` attribution agree by construction. ``service_id``
+    must be a UUID; anything else raises ``ValueError`` so the caller fails
+    closed instead of attributing a write to a forged or blank value.
+    """
+    from uuid import UUID as _UUID
+
+    if not isinstance(service_id, str) or not service_id.strip():
+        raise ValueError(
+            f"service identity {service_id!r} is not a valid service id; "
+            "refusing to derive a service actor email"
+        )
+    try:
+        _UUID(service_id)
+    except ValueError:
+        raise ValueError(
+            f"service identity {service_id!r} is not a valid UUID; "
+            "refusing to derive a service actor email"
+        ) from None
+    short_id = service_id.replace("-", "")[:12]
+    return f"service-{short_id}@bifrost.internal"
+
 
 def mint_service_token(
     *,
@@ -492,7 +528,7 @@ def mint_service_token(
     short_id = service_id.replace("-", "")[:12]
     token_data = {
         "sub": SYSTEM_USER_ID,
-        "email": f"service-{short_id}@bifrost.internal",
+        "email": service_sdk_actor_email(service_id),
         "name": f"service-{short_id}",
         "is_superuser": False,
         "org_id": organization_id,
@@ -524,6 +560,10 @@ def mint_engine_token(
     delegated_is_superuser: bool = False,
     delegated_is_provider_org: bool = False,
     delegated_is_external: bool = False,
+    caller_user_id: str | None = None,
+    caller_organization_id: str | None = None,
+    caller_email: str | None = None,
+    caller_name: str | None = None,
 ) -> tuple[str, str]:
     """
     Mint a short-lived, execution-scoped engine token parent-side.
@@ -540,12 +580,17 @@ def mint_engine_token(
     minutes for startup and completion flushing; a workflow with no timeout
     (timeout_seconds=0) gets a renewable ten-minute token.
 
+    The optional ``caller_*`` arguments are emitted as ``engine_caller_*``
+    claims (omitted when ``None``). They are **audit attribution only**: they
+    never change ``sub``, ``is_superuser``, or any authorization decision,
+    and are read only by the audit actor builder.
+
     Returns:
         (token, expires_at_iso): JWT string and ISO-8601 expiry timestamp.
     """
     token_data = {
         "sub": ENGINE_USER_ID,
-        "email": "engine@bifrost.internal",
+        "email": ENGINE_SDK_ACTOR_EMAIL,
         "name": "Bifrost Engine",
         "is_superuser": True,
         "engine": True,
@@ -568,6 +613,16 @@ def mint_engine_token(
                 "delegated_is_external": delegated_is_external,
             }
         )
+
+    caller_claims = {
+        "engine_caller_user_id": caller_user_id,
+        "engine_caller_org_id": caller_organization_id,
+        "engine_caller_email": caller_email,
+        "engine_caller_name": caller_name,
+    }
+    token_data.update(
+        {key: value for key, value in caller_claims.items() if value is not None}
+    )
 
     # timeout_seconds == 0 means "no timeout" everywhere else in the engine
     # (process_pool and execution_cleanup). The active-attempt refresh path
@@ -602,7 +657,7 @@ def authenticate_engine() -> None:
     # is_superuser=True with no org_id = system account with global access
     token_data = {
         "sub": ENGINE_USER_ID,
-        "email": "engine@bifrost.internal",
+        "email": ENGINE_SDK_ACTOR_EMAIL,
         "name": "Bifrost Engine",
         "is_superuser": True,
         "engine": True,

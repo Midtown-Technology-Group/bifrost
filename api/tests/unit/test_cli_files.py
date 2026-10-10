@@ -30,19 +30,34 @@ def _make_mock_client(
     captured: dict,
     body_by_path: dict[str, dict | httpx.Response],
 ) -> mock.AsyncMock:
-    """Return a mock BifrostClient that records calls and replies per path."""
+    """Return a mock BifrostClient that records calls and replies per path.
 
-    async def capturing_post(path, json=None, **kwargs):  # type: ignore[no-untyped-def]
+    File commands reach the API two ways: ``files.*`` SDK methods go through
+    ``client.engine_request(method, path, json=...)`` while the stat/write/
+    delete verbs post directly. Both are recorded identically so the
+    assertions cover whichever transport the command uses.
+    """
+
+    def _record(path: str, body: dict | None) -> httpx.Response:
+        captured.setdefault("calls", []).append({"path": path, "body": body})
+        reply = body_by_path.get(path, {})
+        if isinstance(reply, httpx.Response):
+            return reply
+        return _fake_response(reply)
+
+    async def capturing_post(path, json=None, **kwargs):
         captured.setdefault("calls", []).append(
             {"path": path, "body": json, "kwargs": kwargs}
         )
         body = body_by_path.get(path, {})
-        if isinstance(body, httpx.Response):
-            return body
-        return _fake_response(body)
+        return body if isinstance(body, httpx.Response) else _fake_response(body)
+
+    async def capturing_engine_request(method, path, **kwargs):
+        return await capturing_post(path, **kwargs)
 
     client = mock.AsyncMock()
     client.post = capturing_post
+    client.engine_request = capturing_engine_request
     return client
 
 

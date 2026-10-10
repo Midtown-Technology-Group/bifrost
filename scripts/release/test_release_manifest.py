@@ -24,6 +24,10 @@ class ReleaseManifestTests(unittest.TestCase):
         self.addCleanup(os.chdir, previous)
         os.chdir(self.directory.name)
         manifest.git("init", "-q")
+        # Commits must not leave detached Git maintenance writing into a
+        # temporary fixture while unittest removes it.
+        manifest.git("config", "gc.auto", "0")
+        manifest.git("config", "maintenance.auto", "false")
         manifest.git("config", "user.name", "Release fixture")
         manifest.git("config", "user.email", "release@example.invalid")
         manifest.git("config", "commit.gpgsign", "false")
@@ -290,5 +294,130 @@ class ReleaseManifestTests(unittest.TestCase):
         subprocess.run(["bash", "-n"], input=acceptance.CLIENT_PROBE, text=True, check=True)
 
 
+class ReleasePublicationTests(unittest.TestCase):
+    """Exercise the workflow's real shell against a draft-aware GitHub fixture."""
+
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+        self.root = Path(self.directory.name)
+        self.tag = "v3.0.0"
+        self.source_assets = [
+            f"bifrost-{self.tag}-source.tar.gz" + suffix
+            for suffix in ("", ".sha256", ".sigstore")
+        ]
+        self.manifest_assets = [
+            "release-manifest.json" + suffix
+            for suffix in ("", ".sha256", ".sigstore.json")
+        ]
+        self.release = {
+            "id": 42,
+            "tag_name": self.tag,
+            "draft": True,
+            "immutable": False,
+            "assets": [
+                {"name": name, "state": "uploaded", "size": 1}
+                for name in self.source_assets + self.manifest_assets
+            ],
+        }
+        workflow = Path(__file__).resolve().parents[2] / ".github/workflows/ci.yml"
+        publication = workflow.read_text().split("      - name: Publish release\n", 1)[1]
+        block = publication.split("        run: |\n", 1)[1]
+        self.script = "\n".join(
+            line[10:] for line in block.splitlines() if line.startswith("          ")
+        )
+        fake_gh = self.root / "gh"
+        fake_gh.write_text("""#!/usr/bin/env python3
+import json, os, pathlib, sys
+root = pathlib.Path(os.environ['FIXTURE_ROOT'])
+args = sys.argv[1:]
+with (root / 'calls.jsonl').open('a') as f:
+    f.write(json.dumps(args) + '\\n')
+path = root / 'release.json'
+release = json.loads(path.read_text())
+endpoint = 'repos/Midtown-Technology-Group/bifrost/releases/42'
+if args[:3] == ['api', '--method', 'PATCH'] and args[3] == endpoint:
+    assert '-F' in args and 'draft=false' in args
+    release['draft'] = False
+    release['immutable'] = os.environ.get('FIXTURE_IMMUTABLE', 'true') == 'true'
+    path.write_text(json.dumps(release))
+elif args[:2] == ['api', endpoint]:
+    pass
+else:
+    # GitHub's tag endpoint exposes published releases only. Never let this
+    # fixture mask the original 404 by treating a draft as a published tag.
+    print('gh: Not Found (HTTP 404)', file=sys.stderr)
+    sys.exit(1)
+if '--jq' in args:
+    print(str(not release['draft'] and release['immutable']).lower())
+else:
+    print(json.dumps(release))
+""")
+        fake_gh.chmod(0o755)
+
+    def publish(self, *, release_id="42", prerelease="false", immutable="true"):
+        (self.root / "release.json").write_text(json.dumps(self.release))
+        calls = self.root / "calls.jsonl"
+        calls.unlink(missing_ok=True)
+        result = subprocess.run(
+            ["bash", "-e", "-c", self.script],
+            env={**os.environ, "PATH": str(self.root) + os.pathsep + os.environ["PATH"],
+                 "FIXTURE_ROOT": str(self.root), "FIXTURE_IMMUTABLE": immutable,
+                 "GITHUB_REPOSITORY": manifest.REPOSITORY, "VERSION": self.tag,
+                 "RELEASE_ID": release_id, "PRERELEASE": prerelease},
+            text=True, capture_output=True, check=False,
+        )
+        commands = [json.loads(line) for line in calls.read_text().splitlines()] if calls.exists() else []
+        return result, commands
+
+    def assert_not_published(self, **kwargs):
+        result, calls = self.publish(**kwargs)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse(any("PATCH" in call for call in calls), calls)
+
+    def test_draft_is_published_by_returned_id_and_immutable_readback(self):
+        result, calls = self.publish()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        endpoint = f"repos/{manifest.REPOSITORY}/releases/42"
+        self.assertEqual(calls, [
+            ["api", endpoint],
+            ["api", "--method", "PATCH", endpoint, "-F", "draft=false", "-f", "make_latest=true"],
+            ["api", endpoint, "--jq", ".draft == false and .immutable == true"],
+        ])
+
+    def test_wrong_draft_identity_or_invalid_id_fails_before_publish(self):
+        for field, value in (("id", 43), ("tag_name", "v9.0.0"), ("draft", False)):
+            with self.subTest(field=field):
+                previous = self.release[field]
+                self.release[field] = value
+                self.assert_not_published()
+                self.release[field] = previous
+        for release_id in ("", "0", "-1", "42/path", "abc"):
+            with self.subTest(release_id=release_id):
+                self.assert_not_published(release_id=release_id)
+
+    def test_every_required_asset_must_be_uploaded_and_nonempty(self):
+        for index in range(len(self.release["assets"])):
+            original = self.release["assets"][index]
+            for change in ({"name": "wrong"}, {"size": 0}, {"state": "starter"}):
+                with self.subTest(asset=original["name"], change=change):
+                    self.release["assets"][index] = {**original, **change}
+                    self.assert_not_published()
+            self.release["assets"][index] = original
+
+    def test_nonimmutable_publication_readback_fails(self):
+        result, calls = self.publish(immutable="false")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(sum("PATCH" in call for call in calls), 1)
+
+    def test_prerelease_keeps_source_gate_without_marking_latest(self):
+        self.release["assets"] = self.release["assets"][:3]
+        result, calls = self.publish(prerelease="true")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("prerelease=true", calls[1])
+        self.assertNotIn("make_latest=true", calls[1])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+

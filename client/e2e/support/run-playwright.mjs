@@ -8,6 +8,8 @@ import {
 	defaultMonacoAssetRoot,
 } from "./monaco-assets.mjs";
 
+import { connectionHeaders } from "./connection-headers.mjs";
+
 const target = { host: process.env.TEST_CLIENT_HOST || "client", port: 80 };
 const localOrigins = [3000, 3001, 3002];
 
@@ -27,12 +29,12 @@ function createLocalOrigin(port) {
 				...target,
 				method: request.method,
 				path: request.url,
-				headers: request.headers,
+				headers: connectionHeaders(request.headers),
 			},
 			(upstreamResponse) => {
 				response.writeHead(
 					upstreamResponse.statusCode ?? 502,
-					upstreamResponse.headers,
+					connectionHeaders(upstreamResponse.headers),
 				);
 				upstreamResponse.pipe(response);
 			},
@@ -69,7 +71,11 @@ function createLocalOrigin(port) {
 		upstream.on("error", () => socket.destroy());
 		socket.on("error", () => upstream.destroy());
 	});
-	server.on("clientError", (_error, socket) => socket.destroy());
+	server.on("clientError", (error, socket) => {
+		// Never log rawPacket: it can contain session cookies or request bodies.
+		console.error("Local browser proxy rejected HTTP input:", error.code);
+		socket.destroy();
+	});
 
 	return new Promise((resolve, reject) => {
 		server.once("error", reject);
@@ -85,6 +91,7 @@ const harnessChecks = spawnSync(
 		"--test",
 		"e2e/support/acceptance-report.test.mjs",
 		"e2e/support/monaco-assets.test.mjs",
+		"e2e/support/connection-headers.test.mjs",
 	],
 	{ stdio: "inherit" },
 );
