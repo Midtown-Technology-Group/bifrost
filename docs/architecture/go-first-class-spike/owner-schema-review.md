@@ -68,3 +68,25 @@ or Stopped alone does not prove that settlement.
 No Rust owner transaction, restricted token or runtime endpoint is enabled by
 this candidate. The real unchanged-artifact SDK/cancel/Result/Receipt/API/recovery
 slice remains the next required outcome, not a claim inferred from this review.
+
+## Authenticated pool prerequisite readback (2026-10-10)
+
+[Source-bound hosted proof](owner-pool-primer-proof.json) at `a92d07d2e` now proves
+separate backend `session_user` identities through the dedicated transaction pool,
+SELECT-only non-owner/non-superuser/non-BYPASSRLS principals with no membership,
+12 privilege escape denials, six connection denials and actual task cleanup.
+All133 public relations, including the eight runtime relations, remain owned by
+the unchanged bootstrap owner. The API image is identical before and after.
+The application's existing shared/privileged login is not replaced or qualified
+by this experiment. No lifecycle DML or new writer privilege was granted.
+
+The concrete guard audit must explicitly include non-FK associations:
+`api/src/models/orm/events.py` declares `event_deliveries.execution_id` without a
+foreign key, and generic attempts/lifecycle events also retain logical job links.
+Guarding only typed attempts and declared FK children would leave those paths
+uncovered. OLD and NEW references and ancestor effects remain required. Existing
+poison uses an execution-first lock and commits before Redis cleanup; existing
+workflow-consumer cancellation/failure paths publish updates and mutate Redis.
+Their actual entry/commit/effect order must be exercised alongside SQL guards;
+a rejected database mutation alone is not evidence that external effects were
+excluded. This review does not accept a guard or change Python behavior.

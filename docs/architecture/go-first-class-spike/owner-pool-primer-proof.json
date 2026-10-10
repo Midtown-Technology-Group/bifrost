@@ -1,0 +1,106 @@
+{
+  "schema": "bifrost.spike.owner-pool-proof/v1",
+  "status": "verified-select-only-prerequisite-not-writer-acceptance",
+  "sdk_version": "0.0.0-spike.2",
+  "mtg_package_version": "2026-10-09.1",
+  "candidate_sha": "a92d07d2e514e4d016a603608429dfc6ec710d16",
+  "candidate_tree": "467f4d23c6a3d003f326fc63711edd6a38f63439",
+  "platform_main": "0a4db3d55388db9a2297e1a3c195a8628884ed3c",
+  "run": 38066565371,
+  "url": "https://github.com/Midtown-Technology-Group/bifrost/actions/runs/38066565371",
+  "job": 114255298011,
+  "artifact_id": 11675605015,
+  "migration_head": "20261010_runtime_fences",
+  "evidence_directory": "/home/thomas/src/bifrost-go-spike-artifacts/a92d07d2e514e4d016a603608429dfc6ec710d16/writer-principal-primer",
+  "receipt": {
+    "api_image": "sha256:59abc5ce1fb128345980f1a7306dfe75df80c7b1bfb3863b3c90caada3c2d373",
+    "candidate_sha": "a92d07d2e514e4d016a603608429dfc6ec710d16",
+    "candidate_tree": "467f4d23c6a3d003f326fc63711edd6a38f63439",
+    "migration_head": "20261010_runtime_fences",
+    "pg_image": "sha256:f1447071e6c8449dcf4056aa0994c81d3566ce5ee232de36b04dc25696a116dd linux/amd64 [\"pgvector/pgvector@sha256:7b822b0aac60967beb1ea5e576b8602c94c300a157d187f385ae3e0da199b90a\"]",
+    "pool_image": "sha256:639fbce3a4582e1def96a5bbf4dc5d23e14e901507fc32f4aa7cf6bbec3613a1 linux/amd64 [\"edoburu/pgbouncer@sha256:9c78945868a6a142c7fc40ccd843bbe5a606df163c7ffce4de70e0d628d696a2\"] [\"/entrypoint.sh\"] [\"/usr/bin/pgbouncer\",\"/etc/pgbouncer/pgbouncer.ini\"] postgres",
+    "probe_sha256": "5d15e694438329d6f940d29c963d009e32e9ac943753a3880e896765d8331a00",
+    "requested_pg_reference": "pgvector/pgvector@sha256:7b822b0aac60967beb1ea5e576b8602c94c300a157d187f385ae3e0da199b90a",
+    "requested_platform": "linux/amd64",
+    "requested_pool_reference": "edoburu/pgbouncer@sha256:9c78945868a6a142c7fc40ccd843bbe5a606df163c7ffce4de70e0d628d696a2",
+    "schema": "bifrost.test.writer-primer-custody/v1",
+    "source_sha256": {
+      ".github/workflows/writer-principal-primer.yml": "43222d6922bfae071ab04ee2c81e3de3b7b17c777ff8571045bbbc9ec842eae1",
+      "docker-compose.writer-primer.yml": "8ed7bfcb28c6d28e94dc4ab984db588c6902a6baaa8626d80d4d542529005eae",
+      "scripts/ci/writer-primer.sh": "7ba4dd5c5d8f0956db5f9e4549870eb59429058436f211dd594287109c9eb5e2",
+      "scripts/ci/writer-primer/pgbouncer.ini": "eba0a079a7cc193ace3f0e45884fd174b4f8f1dc1382689ca99bb987b862d382",
+      "scripts/ci/writer-primer/probe.py": "afe9bff393a05bc3c7335f343eead41ceaee3c785a9e17706b5fa96133e50594",
+      "scripts/ci/writer-primer/provision.sql": "e1362c8d991f6a85b9c60e11096afaf780cff95e4333914e31c7a65e67f5432c",
+      "scripts/ci/writer-primer/userlist.txt": "d5ec468729879dfc4648656d3635cee587be529d1b8e5921645e013695a76619"
+    }
+  },
+  "verified": {
+    "identity_samples": 44,
+    "full_catalog_snapshots": 8,
+    "coverage": {
+      "postgres/wex_incumbent": 10,
+      "postgres/wex_core": 10,
+      "pool/wex_incumbent": 12,
+      "pool/wex_core": 12
+    },
+    "catalog_digests": [
+      "b63814d66ad2faa4198187cd56ab60616ddd4f51af70c79a5d6e93c9063edccc"
+    ],
+    "public_relations": 133,
+    "runtime_relations": [
+      "runtime_admissions",
+      "runtime_deployment_artifacts",
+      "runtime_execution_owners",
+      "runtime_report_receipts",
+      "runtime_sessions",
+      "runtime_starts",
+      "workflow_runtime_sdk_grant_operations",
+      "workflow_runtime_sdk_grants"
+    ],
+    "privilege_escape_denials": 12,
+    "connection_rejections": 6,
+    "classifier_controls": 111,
+    "positive_classifier_controls": 10,
+    "negative_classifier_controls": 101,
+    "api_image_unchanged": true,
+    "private_output_permissions": true,
+    "admission_disposed": true,
+    "empty_task_resource_inventories": true
+  },
+  "pre_pr": {
+    "literal_command": "./test.sh pre-pr",
+    "conclusion": "pass",
+    "negative_test_diagnostic": "The empty client_unit_targets ERROR is deliberately asserted by scripts/lib/pre_pr_lanes_test.sh; no fallback occurred.",
+    "scope": "Scoped quality/generated checks and gate policy tests; comprehensive backend/client/MCP suites deferred to required CI, not a new full-suite result."
+  },
+  "limitations": [
+    "SELECT-only synthetic roles in a dedicated database, not application DSN identity or accepted owner privileges.",
+    "No lifecycle DML/guard/race, real Rust owner, credential issuer, process custody, API durable result or recovery is proved.",
+    "Failure-receipt disposal branch was not exercised by this successful run.",
+    "Earlier e023 full-unit/scoped storage proof remains tied to e023; it is not repinned to this candidate."
+  ],
+  "artifact_file_sha256": {
+    "admission-disposal.txt": "5235f9027c13f7a8a19d701222fcacafec229bd7dd48dd4699b58b3596ee83d2",
+    "api-image-after.txt": "abbbb900c2b41a79f9672609f7d91ad6c6036a5b699632a8ff5ac37a095ac91a",
+    "api-image-before.txt": "abbbb900c2b41a79f9672609f7d91ad6c6036a5b699632a8ff5ac37a095ac91a",
+    "exit-status.txt": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "pg-image.txt": "fcf93263eab545ed24afc3ff8b59b00e61d544e8b77de0a3889b031117ae8c30",
+    "pool-admission.txt": "b7205c24d02f00501fdc372c2c43b0aa58b9f642009833cfd81f8674be4761b0",
+    "pool-config-admission.txt": "3675ae990e76580bba43c158d51ba7a6e137eb45d9b5f7bd5eefe182e40cae8e",
+    "pool-image.txt": "38e81f4874ac152df0dd95bd1a1f1c377dc45bb5162a4038e5329319c5a5dfa1",
+    "private-output-permissions.txt": "1dbdde6ee95b50475852450adb2092628eb813098dfa2fc9b09245bd5649f78a",
+    "probe.json": "5d15e694438329d6f940d29c963d009e32e9ac943753a3880e896765d8331a00",
+    "project-resources.txt": "a4b0c7abe831001d1a7e48cb521fcebf5522cae14d7026201eca8d69e7cf3a02",
+    "receipt.json": "2dce885abb17b9830618a476f248000c53fdf252fd1b92e10f1d1294094a23ba",
+    "source-hashes.txt": "4ac1a253490639ac7519e839078599842ce313d134f5942d243d0053c7e59623",
+    "source.txt": "93725057e438ff8c401497024f2982a86f62e368d86afba68cf20487b78ea84e",
+    "stage.json": "8a506ad0047a34b8bd1cb24e47c42c7329139846b9cbb937bc0e788a1603cc87"
+  },
+  "job_log_sha256": "3472caa9f7b301256d337e6bd47b33005a23f3c2938dc844176eab1719bac994",
+  "workspace_readback": {
+    "head": "01a5137fa52767e6bd82f7a3703ea936d84c3c54",
+    "main": "b06ccee81c0d104717c9d3aa19292e03e3b55cab",
+    "checkout_unchanged": true,
+    "selected_readiness_source_unchanged_since": "9d12733e23482a691d65d23dc4b168f7244ffe9e"
+  }
+}

@@ -1,6 +1,6 @@
 # First-class Go: bounded spike decision and G0 design
 
-Decision: **CONTINUE SPIKE**. Current checkpoint: 2026-10-09.
+Decision: **CONTINUE SPIKE**. Current checkpoint: 2026-10-10.
 The initial G0 design below is retained for its decisions and exact historical
 source pins. [Runnable G1/G2 results](results.md) now record actual artifacts, tests,
 SDK execution, cancellation and cold/warm timings. First-class acceptance and
@@ -80,6 +80,28 @@ Earlier failures and their source fixes are retained in the proof; no waiver or
 unchanged retry supplied this result. The unchanged Go child was rehashed without
 execution. Current workspace main is9d12733e23482a691d65d23dc4b168f7244ffe9e;
 the selected readiness source is unchanged and its checkout was not edited.
+
+The separate SELECT-only pool prerequisite now has executed evidence at
+`a92d07d2e514e4d016a603608429dfc6ec710d16`, incorporating platform main
+`0a4db3d55388db9a2297e1a3c195a8628884ed3c`. Hosted run38066565371 passed
+44 direct/transaction-pool identity samples, eight retained full catalog snapshots
+covering133 public relations (including all eight runtime relations),12 privilege
+escape denials, six actual connection rejections and111 classifier controls.
+[Exact pool/source/disposal proof](owner-pool-primer-proof.json) records actual
+backend login separation, non-owner/non-superuser/non-BYPASSRLS principals,
+SELECT-only privileges, unchanged API image, private output modes and empty task
+resource inventories. The literal `./test.sh pre-pr` passed its scoped checks;
+comprehensive suites were deferred, not silently repinned from e023. Its empty
+client-target ERROR is an intentionally asserted negative gate test. The earlier
+candidate failed its current-main ancestry check before Docker/provisioning;
+source reconciliation, not an unchanged retry or policy waiver, recovered it.
+
+This removes the uncertainty about separate authenticated logins through the
+isolated pool. It does not change the application's DSNs or install writer guards,
+accept a lifecycle writer, issue runtime credentials, or prove Rust-owned durable
+execution. Workspace main was refreshed to
+`b06ccee81c0d104717c9d3aa19292e03e3b55cab`; the selected readiness source and
+workspace checkout remain unchanged. The full lifecycle goal remains active.
 
 The sections below are the initial G0 design and historical observations, not
 current test counts, source heads or unresolved-contract status. The completion
