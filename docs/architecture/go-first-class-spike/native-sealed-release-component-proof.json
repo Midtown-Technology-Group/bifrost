@@ -292,5 +292,38 @@
     "workflow_run": 38088285313,
     "observed_status": "queued",
     "runtime_acceptance": false
+  },
+  "verified_start_and_release_result_database_component": {
+    "source_commit": "670382349b54fdf742cd5fb5f6e92385747f688b",
+    "workflow_run": 38087038173,
+    "conclusion": "success",
+    "source_inputs_verified": 29,
+    "guard_cases_passed": 180,
+    "baseline_cases_passed": 109,
+    "unit_cases_passed": 13722,
+    "failures": 0,
+    "errors": 0,
+    "skips": 0,
+    "api_quality": "Pyright 0 errors/warnings/informations; Ruff all checks passed",
+    "teardown": "container, volume and network inventories empty",
+    "evidence_sha256": {
+      "writer-guard-source.txt": "0860443dffc5157053c6877a78d478e183eb0983124fb68a5704802a0e3efa87",
+      "writer-guard-source-hashes.txt": "aa2e8497f93c6420ba15f50f9a375442c9195072653135dd315bb662685a0ea5",
+      "writer-guard-results.xml": "2b1c465d97393a97a8f711012b48fe5a999029f4bbfb4c256988de90423b2fbc",
+      "writer-guard-unit.xml": "0c885e3e43a3099c144bc15f613aaa4acd8a49c4dae8075beffab93f88a76215",
+      "writer-guard-baseline.xml": "fa83435dee478043983b9e7bb763994274b1a54741d596970a83bd9f2d5ce6d2",
+      "writer-guard-quality.log": "540614a0c1cb451301729b1ac91ffa018cc56d58ba9ff3b593232d4269a264f7",
+      "writer-guard-cleanup.log": "981da2031f254c57cbabb4d5a7de1e2ebcf45391da69f7ed89cb9f13405e6889"
+    },
+    "proves": "Actual-schema Start commits/root-attempt clock parity, duplicate/stale/racing writers, post-commit lost reply readback, invalid retained input/context/caller/deadline and late-fault rollback; release-to-Result/Receipt composition and authenticated existing Execution API readback. Natural same-grant expiry test passes without mutation or gate weakening.",
+    "runtime_acceptance": false,
+    "limits": "Synthetic source association, Start/grant/provision prerequisites in component fixtures; no live accepted Go bundle, Rust Admit/issuer/guardian or actual process/descendant/source cleanup connection."
+  },
+  "native_adapter_executable_candidate": {
+    "source_commit": "3c9facaa0601ada6b3c358f7acd90b680197607a",
+    "workflow_run": 38088790385,
+    "observed_status": "queued",
+    "runtime_acceptance": false,
+    "limits": "Candidate common protocol bridge; physical execution, Rust launch custody and full contract/recovery/cleanup remain unverified."
   }
 }
