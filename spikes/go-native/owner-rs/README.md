@@ -88,3 +88,20 @@ only after coherent retained projection is verified; conflicts fail. A committed
 cancellation remains Cancelling with a retained cancel-winner receipt until actual
 process/source settlement, without premature Cancelled projection. No send/publication
 occurs inside the database transaction. Fresh source-bound CI is required.
+
+Recovery source53a9080bd passed run38078012760 with13,722 backend unit,109
+baseline and103 guard/Rust cases, all zero failures/errors/skips, API quality and
+empty cleanup inventories. This proves the post-commit/pre-reply cancellation
+process-loss window and read-only reconciliation; it does not prove uncertain
+database commit, spawn recovery or terminal cancellation settlement.
+
+Success Result values are checked against the retained immutable deployment
+output_schema. The separate private validator supports a bounded JSON Schema
+2020-12 subset: object/array/string/boolean/null/integer/number, type unions,
+properties, required, Boolean additionalProperties and items, with depth64.
+It rejects unknown keywords, malformed/unsupported types and unsupported dialects
+even inside optional absent properties; it is not a general schema implementation.
+Nullable arrays emitted by the static Go extractor are checked as unions, rather
+than passed through the wire codec's fixed-document interpreter. The published
+wire schema/codec source remains unchanged. Wider schema support must be qualified
+before admitting artifacts requiring it. Fresh CI is required for these changes.

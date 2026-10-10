@@ -223,3 +223,19 @@ Start/grant/release metadata remain synthetic; accepted registration, output-sch
 validation, live channel/frontier legality, restricted issuer, physical workload,
 process/source cleanup and full crash/uncertain commit/spawn acceptance remain due.
 No new writer is accepted from this candidate or component conformance alone.
+
+Run38078012760 at53a9080bd passed13,722 backend unit (426.582s),109 baseline
+(15.326s) and103 guard/Rust cases (26.437s), all zero errors/failures/skips,
+API quality and empty cleanup inventories. It proves the bounded post-commit/pre-
+reply cancellation process-loss window and nonmutating same-fence readback.
+Exact source/input/artifact hashes are retained; full runtime acceptance is false.
+
+Success Result validation also consumes the immutable association output_schema.
+A separate bounded language-neutral JSON Schema subset handles type unions and
+nullable arrays, required/properties/closed objects and items. The fixed wire
+interpreter is deliberately not exposed as a general schema validator: its
+fixed-document assumptions would be unsuitable for the Go extractor's type arrays.
+Unknown constraints/dialects/types reject even in unvisited optional properties.
+Source-specific tests exercise wrong types/items, missing/extra fields and declared
+null arrays without changing the shared codec or authored Go. General schema
+support remains an explicit admission limitation; no runtime acceptance is inferred.
