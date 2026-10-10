@@ -602,8 +602,48 @@ async def e2e_public_form_submit(
             },
         )
         assert own_upload.status_code == 200, own_upload.text
-        own_path = own_upload.json()["blob_uri"]
+        own_upload_data = own_upload.json()
+        own_path = own_upload_data["blob_uri"]
         assert own_path.startswith(f"{form_id}/{first_jti}/")
+
+        stored = e2e_client.put(
+            own_upload_data["upload_url"],
+            headers=own_upload_data["upload_headers"],
+            content=b"x" * 100,
+        )
+        assert stored.status_code == 204, stored.text
+
+        oversized_upload = e2e_client.post(
+            f"/api/forms/{form_id}/upload",
+            headers=first_headers,
+            json={
+                "field_name": "attachment",
+                "file_name": "oversized.pdf",
+                "content_type": "application/pdf",
+                "file_size": 1,
+            },
+        )
+        assert oversized_upload.status_code == 200, oversized_upload.text
+        oversized_data = oversized_upload.json()
+        rejected = e2e_client.put(
+            oversized_data["upload_url"],
+            headers=oversized_data["upload_headers"],
+            content=b"xx",
+        )
+        assert rejected.status_code == 413, rejected.text
+
+        forged_oversized = e2e_client.post(
+            f"/api/forms/{form_id}/submissions",
+            headers=first_headers,
+            json={
+                "form_data": {
+                    "email": "visitor@example.com",
+                    "attachment": oversized_data["blob_uri"],
+                },
+                "submission_nonce": "nonce-000000000006",
+            },
+        )
+        assert forged_oversized.status_code == 422, forged_oversized.text
 
         accepted = e2e_client.post(
             f"/api/forms/{form_id}/submissions",

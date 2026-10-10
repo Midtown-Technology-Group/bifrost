@@ -190,6 +190,65 @@ async def test_generate_upload_url_validates_field_constraints_and_returns_metad
 
 
 @pytest.mark.asyncio
+async def test_generate_embed_upload_uses_server_bounded_capability():
+    form_id = uuid4()
+    org_id = uuid4()
+    form = SimpleNamespace(
+        id=form_id,
+        is_active=True,
+        fields=[
+            SimpleNamespace(
+                name="attachment",
+                type="file",
+                allowed_types=["application/pdf"],
+                max_size_mb=1,
+            )
+        ],
+    )
+    db = AsyncMock()
+    db.execute = AsyncMock(return_value=_Result(form))
+    ctx = SimpleNamespace(
+        org_id=org_id,
+        user=SimpleNamespace(
+            embed=True,
+            embed_kind="form",
+            form_id=str(form_id),
+            jti=str(uuid4()),
+            token_exp=2_000_000_000,
+            user_id=uuid4(),
+            is_superuser=False,
+            is_external=True,
+        ),
+    )
+    storage = MagicMock()
+    storage.generate_presigned_upload_url = AsyncMock(return_value="https://storage")
+
+    with (
+        patch.object(forms, "_authorize_form_runtime", AsyncMock()),
+        patch.object(forms, "_limit_embed_action", AsyncMock()),
+        patch("src.services.file_storage.FileStorageService", return_value=storage),
+    ):
+        response = await forms.generate_upload_url(
+            form_id,
+            SimpleNamespace(),
+            FileUploadRequest(
+                file_name="report.pdf",
+                content_type="application/pdf",
+                file_size=1024,
+                field_name="attachment",
+            ),
+            ctx,
+            ctx.user,
+            db,
+        )
+
+    assert response.upload_url == f"/api/forms/{form_id}/upload"
+    assert response.upload_headers["Content-Type"] == "application/pdf"
+    assert response.upload_headers["Authorization"].startswith("Bearer ")
+    storage.generate_presigned_upload_url.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_generate_upload_url_rejects_disallowed_type_and_oversize():
     form_id = uuid4()
     form = SimpleNamespace(
