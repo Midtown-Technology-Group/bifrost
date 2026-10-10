@@ -114,12 +114,14 @@ func workloadNumber(value any) (*big.Rat, bool) {
 }
 
 func schemaNonnegativeInteger(value any) (int64, bool) {
-	r, ok := workloadNumber(value)
-	if !ok || !r.IsInt() || !r.Num().IsInt64() {
+	n, ok := value.(json.Number)
+	if !ok {
 		return 0, false
 	}
-	result := r.Num().Int64()
-	return result, result >= 0
+	// Schema bounds use canonical integral JSON numbers, matching the current
+	// neutral build metadata and the Rust owner's as_u64 representation.
+	result, err := n.Int64()
+	return result, err == nil && result >= 0
 }
 
 func workloadKind(kind string, value any) bool {

@@ -20,7 +20,13 @@ fn supported(schema: &Value, depth: usize) -> bool {
     if object.keys().any(|key| {
         !matches!(
             key.as_str(),
-            "$schema" | "type" | "properties" | "required" | "additionalProperties" | "items"
+            "$schema"
+                | "type"
+                | "properties"
+                | "required"
+                | "additionalProperties"
+                | "items"
+                | "minLength"
         )
     }) {
         return false;
@@ -73,6 +79,11 @@ fn supported(schema: &Value, depth: usize) -> bool {
     {
         return false;
     }
+    if let Some(minimum) = schema.get("minLength")
+        && !minimum.as_u64().is_some_and(|value| value <= 65_536)
+    {
+        return false;
+    }
     schema
         .get("items")
         .is_none_or(|items| supported(items, depth + 1))
@@ -103,6 +114,12 @@ fn check(schema: &Value, value: &Value) -> bool {
         if !accepted {
             return false;
         }
+    }
+    if let Some(text) = value.as_str()
+        && let Some(minimum) = schema.get("minLength").and_then(Value::as_u64)
+        && (text.chars().count() as u64) < minimum
+    {
+        return false;
     }
     if let Some(fields) = value.as_object() {
         if schema
@@ -168,5 +185,22 @@ mod tests {
         assert!(!matches(&schema, &json!({})));
         assert!(!matches(&schema, &json!({"ready":true,"extra":0})));
         assert!(!matches(&schema, &json!({"ready":"true"})));
+    }
+
+    #[test]
+    fn minimum_length_counts_unicode_scalars_and_rejects_invalid_constraints() {
+        let schema = json!({"type":"string","minLength":1});
+        assert!(matches(&schema, &json!("é")));
+        assert!(!matches(&schema, &json!("")));
+        assert!(!matches(
+            &json!({"type":"string","minLength":2}),
+            &json!("é")
+        ));
+        for minimum in [json!(-1), json!(0.5), json!(65_537), json!("1")] {
+            assert!(!matches(
+                &json!({"type":"string","minLength":minimum}),
+                &json!("fixture")
+            ));
+        }
     }
 }

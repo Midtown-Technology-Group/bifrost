@@ -65,7 +65,10 @@ material retains its independent depth-16 limit. Numeric validation preserves
 exact decimals and bounds exponent expansion to +/-65536 before allocation.
 This is an explicit subset, not a general JSON Schema implementation. The Rust
 input validator still needs matching minLength and exact numeric semantics
-before input admission can be accepted across implementations.
+before input admission can be accepted across implementations. minLength uses
+canonical nonnegative integral JSON numbers (not decimal/exponent spelling),
+matching the current build metadata. Rust minLength support is now implemented;
+its existing floating numeric-data handling still needs an exact-number review.
 
 Preparation tests use the published independent Prepare vector and the test
 executable as inert synthetic ELF bytes. They test identity/schema/deadline and

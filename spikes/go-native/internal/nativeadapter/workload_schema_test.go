@@ -32,7 +32,7 @@ func TestWorkloadSchemaExactTypesAndNullability(t *testing.T) {
 }
 
 func TestWorkloadSchemaRejectsUnsupportedOptionalFields(t *testing.T) {
-	for _, raw := range []string{`{"type":"object","properties":{"absent":{"type":"string","pattern":".*"}}}`, `{"type":"future"}`, `{"type":["string","string"]}`, `{"minLength":-1}`, `{"minLength":0.5}`} {
+	for _, raw := range []string{`{"type":"object","properties":{"absent":{"type":"string","pattern":".*"}}}`, `{"type":"future"}`, `{"type":["string","string"]}`, `{"minLength":-1}`, `{"minLength":0.5}`, `{"minLength":1.0}`, `{"minLength":1e0}`} {
 		if workloadMatches(schemaJSON(t, raw), schemaJSON(t, `{}`)) {
 			t.Fatal("unsupported schema accepted")
 		}
