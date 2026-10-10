@@ -33,6 +33,11 @@ def main() -> None:
     source_digest, files = closure(root)
     modules = "\n".join((root / f).read_text() for f in ("go.mod", "go.sum"))
     runtime = json.loads((out / "execution.json").read_text())
+    sealed_runtime = json.loads((out / "sealed-execution.json").read_text())
+    assert sealed_runtime["sealed_executable_sha256"] == digest(out / "workflow")
+    assert sealed_runtime["sealed_executable_sha256"] == "160917deeb94275f31ca9ddee2dacae00fb079fdf54cb60e206c8def261f9c34"
+    assert sealed_runtime["missing_keys_observation"] == ["alpha", "zeta"]
+    assert len(sealed_runtime["samples"]) == 20 and sealed_runtime["same_artifact_runs"] == 22
     warm_runtime = json.loads((out / "warm-execution.json").read_text())
     assert runtime["missing_keys_observation"] == ["alpha", "zeta"]
     assert warm_runtime["missing_keys_observation"] == ["zeta", "alpha"]
@@ -87,6 +92,11 @@ def main() -> None:
                        "restored_warm_compile": timing(out / "restored-warm.txt", "compile_ns"),
                        "edit_to_artifact": timing(out / "edit-loop.txt", "edit_to_artifact_ns")},
         "execution_summary": metrics, "first_execution_ms": samples[0]["execution_ms"], "cancellation_ms": runtime["cancellation_ms"],
+        "sealed_native_fixture": {"evidence": "sealed-execution.json", "evidence_sha256": digest(out / "sealed-execution.json"),
+                                  "artifact_sha256": sealed_runtime["sealed_executable_sha256"],
+                                  "materialization_ms": sealed_runtime["sealed_materialization_ms"],
+                                  "execution_median_ms": statistics.median(s["execution_ms"] for s in sealed_runtime["samples"]),
+                                  "cancellation_ms": sealed_runtime["cancellation_ms"], "runtime_acceptance": False},
         "caveats": ["synthetic HTTPS capability endpoint; no real restricted-grant issuer or ingress",
                     "module dependency go-cmp is test-only; runtime uses standard library",
                     "one cold and one edited build sample; runtime sample count 20 per artifact",

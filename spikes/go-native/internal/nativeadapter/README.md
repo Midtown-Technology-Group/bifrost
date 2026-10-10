@@ -41,3 +41,10 @@ handle rather than re-opening the source path. Empty, oversized, modified or
 unsealable bytes fail closed. This addresses byte replacement between validation
 and exec; it does not verify deployment acceptance, grant permission, guarantee
 descendant cleanup or execute the binary. No Rust type or tenant import is used.
+
+The build-plane `cmd/probe --sealed-artifact-sha256 <accepted-digest>` fixture
+exercises actual exec of that sealed handle, 20 successful SDK runs, a changed
+control-flow branch and a cancelled SDK wait. `measure.sh` pins the original child
+digest and retains `sealed-execution.json` separately from the unchanged baseline
+measurement path. Its synthetic SDK server has no real restricted issuer and its
+launch is local authoring only, never evidence of Rust admission or release.

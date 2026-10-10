@@ -10,6 +10,7 @@ import (
 	"flag"
 	"fmt"
 	bifrost "github.com/midtown-technology-group/bifrost-go"
+	"github.com/midtown-technology-group/bifrost-go/internal/nativeadapter"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -61,7 +62,26 @@ func launch(binary, endpoint, ca, input string) (*exec.Cmd, *bytes.Buffer, *byte
 	return cmd, out, diagnostics, nil
 }
 
-func probe(binary, output string, descending bool) error {
+func probe(binary, output string, descending bool, sealedDigest string) error {
+	var materializationMS float64
+	if sealedDigest != "" {
+		started := time.Now()
+		source, err := os.Open(binary)
+		if err != nil {
+			return errors.New("sealed artifact source unavailable")
+		}
+		sealed, err := nativeadapter.SealExecutable(source, sealedDigest)
+		closeErr := source.Close()
+		if err != nil {
+			return err
+		}
+		defer sealed.Close()
+		if closeErr != nil {
+			return errors.New("sealed artifact source close failed")
+		}
+		binary = sealed.Path()
+		materializationMS = ms(time.Since(started))
+	}
 	var first atomic.Int64
 	var hold atomic.Bool
 	entered := make(chan struct{}, 1)
@@ -155,7 +175,11 @@ func probe(binary, output string, descending bool) error {
 		return errors.New("cooperative cancellation exceeded local deadline")
 	}
 	cancelMS := ms(time.Since(started))
-	data := map[string]any{"profile": "local-authoring-only", "sdk_version": bifrost.SDKVersion, "samples": samples, "cancellation_ms": cancelMS, "same_artifact_runs": 21, "missing_keys_observation": branchResult.Missing, "runtime_compiler_available": false, "rust_admission": false, "durable_projection": false}
+	data := map[string]any{"profile": "local-authoring-only", "sdk_version": bifrost.SDKVersion, "samples": samples, "cancellation_ms": cancelMS, "same_artifact_runs": 22, "missing_keys_observation": branchResult.Missing, "runtime_compiler_available": false, "rust_admission": false, "durable_projection": false}
+	if sealedDigest != "" {
+		data["sealed_executable_sha256"] = sealedDigest
+		data["sealed_materialization_ms"] = materializationMS
+	}
 	b, err := json.MarshalIndent(data, "", "  ")
 	if err != nil {
 		return err
@@ -166,12 +190,13 @@ func main() {
 	binary := flag.String("artifact", "", "already built absolute artifact path")
 	output := flag.String("output", "", "measurement JSON path")
 	descending := flag.Bool("descending", false, "expect the behavior-changing warm source edit")
+	sealedDigest := flag.String("sealed-artifact-sha256", "", "verify and execute sealed bytes using the supplied accepted binary digest; local fixture only")
 	flag.Parse()
 	if !filepath.IsAbs(*binary) || *output == "" {
 		fmt.Fprintln(os.Stderr, "artifact and output are required")
 		os.Exit(1)
 	}
-	if err := probe(*binary, *output, *descending); err != nil {
+	if err := probe(*binary, *output, *descending, *sealedDigest); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}

@@ -120,6 +120,18 @@ docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-
   --mount "type=bind,src=$scratch/results,dst=/out" \
   --entrypoint /probe bifrost-go-spike-runtime --artifact /workflow --output /out/execution.json
 cp "$scratch/results/execution.json" "$evidence_dir/execution.json"
+# Retain the original measurement path above. Independently exercise sealed
+# materialization/exec/cancellation with the exact original accepted child bytes.
+# This is a local synthetic capability fixture, never owner release authority.
+docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges \
+  --user "$task_uid:$task_gid" --pids-limit 64 --memory 128m --cpus 2 \
+  --tmpfs /tmp:rw,nosuid,nodev,size=16m \
+  --mount "type=bind,src=$scratch/out/probe,dst=/probe,readonly" \
+  --mount "type=bind,src=$evidence_dir/workflow,dst=/workflow,readonly" \
+  --mount "type=bind,src=$scratch/results,dst=/out" \
+  --entrypoint /probe bifrost-go-spike-runtime --artifact /workflow --output /out/sealed-execution.json \
+  --sealed-artifact-sha256 160917deeb94275f31ca9ddee2dacae00fb079fdf54cb60e206c8def261f9c34
+cp "$scratch/results/sealed-execution.json" "$evidence_dir/sealed-execution.json"
 docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges \
   --user "$task_uid:$task_gid" --pids-limit 64 --memory 128m --cpus 2 \
   --tmpfs /tmp:rw,nosuid,nodev,size=16m \
