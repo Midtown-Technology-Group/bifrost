@@ -36,15 +36,12 @@ pub async fn observe_start_candidate(
     .bind(&fence.session_id)
     .fetch_optional(&mut *locked.tx)
     .await?;
-    for (table, column, order) in [
-        ("runtime_admissions", "session_id", "purpose,id"),
-        ("workflow_runtime_sdk_grants", "runtime_session_id", "id"),
-        ("runtime_report_receipts", "session_id", "result_message_id"),
+    for query in [
+        "SELECT 1 FROM runtime_admissions WHERE session_id=$1::text::uuid ORDER BY purpose,id FOR UPDATE",
+        "SELECT 1 FROM workflow_runtime_sdk_grants WHERE runtime_session_id=$1::text::uuid ORDER BY id FOR UPDATE",
+        "SELECT 1 FROM runtime_report_receipts WHERE session_id=$1::text::uuid ORDER BY result_message_id FOR UPDATE",
     ] {
-        let query = format!(
-            "SELECT 1 FROM {table} WHERE {column}=$1::text::uuid ORDER BY {order} FOR UPDATE"
-        );
-        let rows = sqlx::query(&query)
+        let rows = sqlx::query(query)
             .bind(&fence.session_id)
             .fetch_all(&mut *locked.tx)
             .await?;
@@ -196,16 +193,13 @@ pub async fn record_start_candidate(
     }
     // Follow the shared session -> Start -> admission -> grant -> receipt order,
     // including rejection of any earlier Start/material/report on this session.
-    for (table, column, order) in [
-        ("runtime_starts", "session_id", "id"),
-        ("runtime_admissions", "session_id", "purpose,id"),
-        ("workflow_runtime_sdk_grants", "runtime_session_id", "id"),
-        ("runtime_report_receipts", "session_id", "result_message_id"),
+    for query in [
+        "SELECT 1 FROM runtime_starts WHERE session_id=$1::text::uuid ORDER BY id FOR UPDATE",
+        "SELECT 1 FROM runtime_admissions WHERE session_id=$1::text::uuid ORDER BY purpose,id FOR UPDATE",
+        "SELECT 1 FROM workflow_runtime_sdk_grants WHERE runtime_session_id=$1::text::uuid ORDER BY id FOR UPDATE",
+        "SELECT 1 FROM runtime_report_receipts WHERE session_id=$1::text::uuid ORDER BY result_message_id FOR UPDATE",
     ] {
-        let query = format!(
-            "SELECT 1 FROM {table} WHERE {column}=$1::text::uuid ORDER BY {order} FOR UPDATE"
-        );
-        if !sqlx::query(&query)
+        if !sqlx::query(query)
             .bind(&fence.session_id)
             .fetch_all(&mut *locked.tx)
             .await?
