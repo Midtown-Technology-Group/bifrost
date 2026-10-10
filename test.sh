@@ -520,7 +520,18 @@ cmd_mcp() {
     esac
 }
 
+prepare_mcp_conformance_image() {
+    require_stack_up
+    # The runner has a separate JavaScript graph from the Python API image.
+    docker compose -f "$COMPOSE_FILE" --profile test build mcp-conformance
+}
+
 mcp_conformance() {
+    prepare_mcp_conformance_image
+    run_mcp_conformance "$@"
+}
+
+run_mcp_conformance() {
     require_stack_up
     # Browser lanes use localhost for callbacks. Reconcile the backend
     # authority before the adapter sends its canonical Host and audience.
@@ -570,10 +581,6 @@ mcp_conformance() {
         sed 's/^/  /' "$resource_metadata_file" >&2
         exit 1
     fi
-
-    # This image is deliberately separate from the API image: the official
-    # JavaScript runner must not alter Bifrost's Python MCP dependency graph.
-    docker compose -f "$COMPOSE_FILE" --profile test build mcp-conformance
 
     # Force a new adapter process for every command so its two-hour test JWT is
     # freshly minted. The service has no host port and forwards to the real API.
@@ -965,7 +972,10 @@ run_scoped_pre_pr() {
         run_pre_pr_stage e2e cmd_e2e_targets "${e2e_targets[@]}"
     fi
     if [ "$(pre_pr_plan_lane mcp_conformance)" = "affected" ]; then
-        run_pre_pr_stage mcp mcp_conformance
+        # Build before freezing the stage's exact image identities. Conformance
+        # itself must not create or replace an image during the evidence window.
+        prepare_mcp_conformance_image
+        run_pre_pr_stage mcp run_mcp_conformance
     fi
     if [ "$(pre_pr_plan_lane client_unit)" = "affected" ]; then
         mapfile -t client_unit_targets < <(pre_pr_plan_targets unit_tests client)
