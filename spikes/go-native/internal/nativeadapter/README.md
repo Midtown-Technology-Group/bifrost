@@ -63,9 +63,7 @@ Unknown keywords fail even on absent optional properties. Schema bytes are
 bounded to 64KiB with strict duplicate/Unicode checks and depth 64; private
 material retains its independent depth-16 limit. Numeric validation preserves
 exact decimals and bounds exponent expansion to +/-65536 before allocation.
-This is an explicit subset, not a general JSON Schema implementation. The Rust
-input validator still needs matching minLength and exact numeric semantics
-before input admission can be accepted across implementations. minLength uses
+This is an explicit subset, not a general JSON Schema implementation. minLength uses
 canonical nonnegative integral JSON numbers (not decimal/exponent spelling),
 matching the current build metadata. Rust minLength support is now implemented;
 its existing floating numeric-data handling still needs an exact-number review.
@@ -91,3 +89,12 @@ The initial ELF target also requires little-endian amd64 and rejects PT_INTERP:
 the CGO-disabled workflow must not depend on an ambient dynamic loader. Negative
 tests mutate actual synthetic ELF headers and update both byte digests, ensuring
 format validation rejects them independently of the digest check.
+
+`PrepareTransport` performs the actual length-prefixed common negotiation and
+preparation exchange on supplied streams. It offers only the supported native
+class, checks Select/Prepare correlation, session, unique message IDs and parent
+sequence, and emits Prepared only after inert preparation succeeds. A failed
+Prepared write closes the sealed handle and returns no runnable preparation.
+Caller-owned transport deadlines/cancellation, custody and subsequent guardian
+launch remain required. Its stream tests use contract frames and synthetic ELF;
+no fake durable store or lifecycle authority is added.
