@@ -76,3 +76,16 @@ Run38068697598 at6fa983aab remained queued with no runner or executed steps whil
 that review completed. It was cancelled as superseded before publishing the
 closed-actor/immutable-facts/real-poison follow-up. Neither queued cancellation
 counts as passed runtime evidence or a diagnosed test failure.
+
+
+Executed source d690e378e (run38069000716) passed13,722 full backend unit tests
+and109 storage/attempt/history tests, all with zero skips/errors/failures, then
+failed all51 guard cases at setup. The module-scoped async installer requested
+pytest-asyncio's default function-scoped runner; no guard SQL or assertions were
+executed. Explicit module loop scope repairs that mismatch without changing the
+repository default. Original failure logs and exact suite XML are retained in
+[the source evidence](writer-guard-source-evidence.json); cleanup proved empty
+container/volume/network inventories. API quality was unrun after failure. The
+old workflow copied guard XML only on success; cleanup now independently retains
+the final JUnit on failures. This is a source correction requiring fresh hosted
+proof, not an accepted writer or an unchanged rerun.

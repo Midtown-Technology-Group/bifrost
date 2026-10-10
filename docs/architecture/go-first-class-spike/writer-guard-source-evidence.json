@@ -1,6 +1,6 @@
 {
   "schema": "bifrost.spike.writer-guard-source/v1",
-  "status": "hosted-execution-pending-not-runtime-acceptance",
+  "status": "diagnosed-fixture-failure-not-runtime-acceptance",
   "candidate_sha": "d690e378e2a86bbb4eee76ccf37353125cc67bb0",
   "candidate_tree": "93dbbdd1b33aac0882e2a4bf8b1cc3895316b92f",
   "platform_main": "968ac4693c99cc52f156f5aacb63a40a8fcd9437",
@@ -24,12 +24,30 @@
     "git diff --check"
   ],
   "execution_checks": {
-    "state": "queued; job has no runner or executed steps at last provider readback",
-    "unit": "pending",
-    "storage_and_incumbent_baseline": "pending",
-    "actual_schema_guard_cases": "pending",
-    "api_quality": "pending",
-    "cleanup": "pending"
+    "state": "completed; failure",
+    "unit": {
+      "name": "pytest",
+      "errors": "0",
+      "failures": "0",
+      "skipped": "0",
+      "tests": "13722",
+      "time": "293.719",
+      "timestamp": "2026-10-10T16:53:11.383584+00:00",
+      "hostname": "c3d7a15fac23"
+    },
+    "storage_and_incumbent_baseline": {
+      "name": "pytest",
+      "errors": "0",
+      "failures": "0",
+      "skipped": "0",
+      "tests": "109",
+      "time": "8.649",
+      "timestamp": "2026-10-10T16:59:03.506140+00:00",
+      "hostname": "09e384a86f8d"
+    },
+    "actual_schema_guard_cases": "51 setup errors: module-scoped async fixture requested function-scoped runner; guard installation and cases unexecuted",
+    "api_quality": "unrun after setup failure",
+    "cleanup": "verified empty container/volume/network inventories"
   },
   "superseded_runs": [
     {
@@ -65,5 +83,25 @@
     "Unchanged-artifact launch/cancel/durable Result/Receipt/authenticated Execution API readback",
     "Crash and uncertain commit/spawn/lost ACK settlement without replay or owner reassignment",
     "Actual process/descendant/source cleanup"
-  ]
+  ],
+  "failure": {
+    "classification": "repository async-fixture loop-scope mismatch",
+    "correction": "Explicit pytest_asyncio.fixture(scope=module, loop_scope=module); test limits and assertions unchanged. Retain final JUnit during trap cleanup on failures too.",
+    "missing_evidence": "Failed guard JUnit was not copied by the old success-only copy; original failure log is retained, and the corrected cleanup captures the last JUnit independently of command success.",
+    "artifact_directory": "/home/thomas/src/bifrost-go-spike-artifacts/d690e378e2a86bbb4eee76ccf37353125cc67bb0/runtime-writer-guards-d690e378e2a86bbb4eee76ccf37353125cc67bb0",
+    "artifact_file_sha256": {
+      "writer-guard-baseline.xml": "53179858f2e08b61b404e80b91fdc6ba71c42004d8ebf7c0412913c69a373cb7",
+      "writer-guard-cleanup.log": "a38ade600efe563adc862364cc9640bc74616f98c8249db724f89264f2661237",
+      "writer-guard-images.txt": "410a8e7d7d6e73779f8f2424d874e8d6a3470937469bc51f8116a0e3483ba564",
+      "writer-guard-source-hashes.txt": "3cc7c652e78b470621053e26943baa2ec90f53fc3586d086072733346d7f2952",
+      "writer-guard-source.txt": "27c8b7f6df32facb5c2ae20f980090f541001996b8bcd49f9beb23f5ba1c7c79",
+      "writer-guard-stack.log": "de0854ef7e313a6cecf6ab7a8795d317ee359e7ec409d062dc438aa506312593",
+      "writer-guard-storage-baseline.log": "755eaa23173791ef5dd1d4880f4be18a6d8f2f569bb64f33f7410df000c9e72e",
+      "writer-guard-tests.log": "35c79732689f6b185a82625144e87c67d29adf0046affda32966d9fc6d59e6f4",
+      "writer-guard-unit.log": "5d6584e425417a373ff8b5f9eaa948cabcf45569e4023801ad9c2276e7c4682e",
+      "writer-guard-unit.xml": "f4a1a76ab85dd6b783675c601383db9b2451f9f11e960b2e7bde9fce4d6aaf5f"
+    },
+    "job_log_sha256": "672a999bcb7c8308bd7bab76e7e40272c0b1d5718a05a8fbf6ff5b19c47ec62b",
+    "new_source_run_required": true
+  }
 }

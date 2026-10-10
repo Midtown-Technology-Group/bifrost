@@ -12,6 +12,7 @@ from unittest.mock import AsyncMock
 
 import asyncpg
 import pytest
+import pytest_asyncio
 from sqlalchemy import URL
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
@@ -66,7 +67,7 @@ async def connection(role):
         await conn.close(timeout=5)
 
 
-@pytest.fixture(scope="module", autouse=True)
+@pytest_asyncio.fixture(scope="module", loop_scope="module", autouse=True)
 async def installed_guards():
     admin = await asyncpg.connect(
         host="postgres",
