@@ -9,14 +9,14 @@ content is no longer stored as per-UUID YAML — it lives in the manifest and is
 not part of the editor search surface.
 """
 
+import asyncio
 import re
 import time
 import logging
-import importlib
-from typing import Any, List
+from typing import List
 
 import regex as bounded_regex
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.contracts.editor import SearchRequest, SearchResponse, SearchResult
@@ -28,118 +28,21 @@ logger = logging.getLogger(__name__)
 MAX_RESULTS_PER_TYPE = 500
 MAX_REGEX_PATTERN_LENGTH = 512
 REGEX_SEARCH_TIMEOUT_SECONDS = 0.05
-_REGEX_PARSER = importlib.import_module("re._parser")
-_REPEAT_OPS = {"MAX_REPEAT", "MIN_REPEAT", "POSSESSIVE_REPEAT"}
-
-
-def _op_name(op: object) -> str:
-    """Return a stable name for a regex parser opcode."""
-    return str(getattr(op, "name", op))
-
-
-def _repeat_child(arg: Any) -> list[Any]:
-    return list(arg[2])
-
-
-def _repeat_is_optional(arg: Any) -> bool:
-    return arg[0] == 0 and arg[1] == 1
-
-
-def _subpattern_child(arg: Any) -> list[Any]:
-    return list(arg[-1])
-
-
-def _branch_children(arg: Any) -> list[list[Any]]:
-    return [list(branch) for branch in arg[1]]
-
-
-def _unwrap_subpatterns(tokens: list[Any]) -> list[Any]:
-    while len(tokens) == 1 and _op_name(tokens[0][0]) == "SUBPATTERN":
-        tokens = _subpattern_child(tokens[0][1])
-    return tokens
-
-
-def _regex_tokens_are_single_repeat(tokens: list[Any]) -> bool:
-    tokens = _unwrap_subpatterns(tokens)
-    return len(tokens) == 1 and _op_name(tokens[0][0]) in _REPEAT_OPS
-
-
-def _token_prefix_signature(tokens: list[Any]) -> object:
-    tokens = _unwrap_subpatterns(tokens)
-    if not tokens:
-        return ("EMPTY",)
-    op, arg = tokens[0]
-    op_name = _op_name(op)
-    if op_name == "LITERAL":
-        return ("LITERAL", arg)
-    if op_name == "IN":
-        return ("IN", tuple(arg))
-    if op_name in _REPEAT_OPS:
-        return ("REPEAT", _token_prefix_signature(_repeat_child(arg)))
-    return (op_name,)
-
-
-def _branch_has_overlapping_alternatives(branches: list[list[Any]]) -> bool:
-    seen: set[object] = set()
-    for branch in branches:
-        signature = _token_prefix_signature(branch)
-        if signature in seen:
-            return True
-        seen.add(signature)
-    return False
-
-
-def _regex_tokens_have_overlapping_branch(tokens: list[Any]) -> bool:
-    for op, arg in tokens:
-        op_name = _op_name(op)
-        if op_name == "BRANCH" and _branch_has_overlapping_alternatives(
-            _branch_children(arg)
-        ):
-            return True
-        if op_name == "SUBPATTERN" and _regex_tokens_have_overlapping_branch(
-            _subpattern_child(arg)
-        ):
-            return True
-        if op_name in _REPEAT_OPS and _regex_tokens_have_overlapping_branch(
-            _repeat_child(arg)
-        ):
-            return True
-    return False
-
-
-def _regex_tokens_have_risky_repeat(tokens: list[Any]) -> bool:
-    for op, arg in tokens:
-        op_name = _op_name(op)
-        if op_name in _REPEAT_OPS:
-            child = _repeat_child(arg)
-            if (
-                (_regex_tokens_are_single_repeat(child) and not _repeat_is_optional(arg))
-                or _regex_tokens_have_overlapping_branch(child)
-            ):
-                return True
-            if _regex_tokens_have_risky_repeat(child):
-                return True
-        elif op_name == "SUBPATTERN" and _regex_tokens_have_risky_repeat(
-            _subpattern_child(arg)
-        ):
-            return True
-        elif op_name == "BRANCH" and any(
-            _regex_tokens_have_risky_repeat(branch)
-            for branch in _branch_children(arg)
-        ):
-            return True
-    return False
+MAX_SEARCH_SECONDS = 1.0
+MAX_LITERAL_QUERY_LENGTH = 4096
+MAX_OVERLAY_FILES = 10_000
+MAX_FILE_CHARACTERS = 1_000_000
+MAX_REQUEST_CHARACTERS = 8_000_000
+MAX_OUTPUT_CHARACTERS = 2_000_000
 
 
 def _validate_regex_pattern(pattern: str) -> None:
-    """Reject regex patterns that are too large or likely to cause backtracking."""
+    """Bound compilation and preserve the supported stdlib regex syntax."""
     if len(pattern) > MAX_REGEX_PATTERN_LENGTH:
         raise ValueError(
             f"Regex pattern exceeds {MAX_REGEX_PATTERN_LENGTH} characters"
         )
-    tokens = list(_REGEX_PARSER.parse(pattern))
-    if _regex_tokens_have_risky_repeat(tokens):
-        raise ValueError("Regex pattern uses nested quantifiers")
+    re.compile(pattern)
 
 
 def _search_content(
@@ -148,6 +51,11 @@ def _search_content(
     query: str,
     case_sensitive: bool,
     is_regex: bool,
+    *,
+    deadline: float | None = None,
+    max_results: int = 10_001,
+    max_output_characters: int = MAX_OUTPUT_CHARACTERS,
+    compiled_pattern=None,
 ) -> List[SearchResult]:
     """
     Search content string for matches.
@@ -163,6 +71,13 @@ def _search_content(
         List of SearchResult objects
     """
     results: List[SearchResult] = []
+    if not is_regex and len(query) > MAX_LITERAL_QUERY_LENGTH:
+        raise ValueError("Search query exceeds the character budget")
+    if len(content) > MAX_FILE_CHARACTERS:
+        raise ValueError("Search file exceeds the character budget")
+    if deadline is None:
+        deadline = time.monotonic() + MAX_SEARCH_SECONDS
+    output_characters = 0
 
     try:
         # Build regex pattern
@@ -177,30 +92,37 @@ def _search_content(
         # stdlib engine with re.escape(); explicit regex mode uses a
         # timeout-capable engine to bound user-provided pattern execution.
         flags = 0 if case_sensitive else re.IGNORECASE
-        if is_regex:
-            regex = bounded_regex.compile(pattern, flags)
-        else:
-            regex = re.compile(pattern, flags)
+        regex = compiled_pattern
+        if regex is None:
+            regex = bounded_regex.compile(pattern, flags) if is_regex else re.compile(pattern, flags)
 
         # Split into lines
         lines = content.split('\n')
 
         # Search each line
         for line_num, line in enumerate(lines, start=1):
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise ValueError("Search exceeded the request time budget")
             # Find all matches in this line
             if is_regex:
                 matches = regex.finditer(
                     line,
-                    timeout=REGEX_SEARCH_TIMEOUT_SECONDS,
+                    timeout=min(REGEX_SEARCH_TIMEOUT_SECONDS, remaining),
                 )
             else:
                 matches = regex.finditer(line)
 
             for match in matches:
+                if time.monotonic() >= deadline:
+                    raise ValueError("Search exceeded the request time budget")
                 # Get context lines (previous and next)
                 context_before = lines[line_num - 2] if line_num > 1 else None
                 context_after = lines[line_num] if line_num < len(lines) else None
 
+                output_characters += len(line) + len(context_before or "") + len(context_after or "")
+                if output_characters > max_output_characters:
+                    raise ValueError("Search exceeded the output character budget")
                 results.append(SearchResult(
                     file_path=path,
                     line=line_num,
@@ -209,6 +131,8 @@ def _search_content(
                     context_before=context_before,
                     context_after=context_after
                 ))
+                if len(results) >= max_results:
+                    return results
 
     except TimeoutError as e:
         logger.warning(f"Regex search timed out in {path}: {e}")
@@ -225,6 +149,7 @@ async def search_files_db(
     *,
     immutable_overlay: dict[str, bytes] | None = None,
     workspace_release_id: str | None = None,
+    deadline: float | None = None,
 ) -> SearchResponse:
     """
     Search files for content matching the query using database queries.
@@ -243,7 +168,12 @@ async def search_files_db(
     Raises:
         ValueError: If query is invalid regex
     """
-    start_time = time.time()
+    start_time = time.monotonic()
+    if deadline is None:
+        deadline = start_time + MAX_SEARCH_SECONDS
+
+    if not request.is_regex and len(request.query) > MAX_LITERAL_QUERY_LENGTH:
+        raise ValueError("Search query exceeds the character budget")
 
     # Validate regex if enabled
     if request.is_regex:
@@ -258,6 +188,38 @@ async def search_files_db(
 
     all_results: List[SearchResult] = []
     files_searched = 0
+    input_characters = 0
+    output_characters = 0
+    incomplete = False
+    input_exhausted = False
+    flags = 0 if request.case_sensitive else re.IGNORECASE
+    pattern = request.query if request.is_regex else re.escape(request.query)
+    compiled_pattern = (bounded_regex.compile(pattern, flags) if request.is_regex
+                        else re.compile(pattern, flags))
+
+    def search_content(content: str, path: str) -> bool:
+        nonlocal files_searched, input_characters, output_characters, incomplete, input_exhausted
+        if input_characters + len(content) > MAX_REQUEST_CHARACTERS:
+            incomplete = True
+            input_exhausted = True
+            return False
+        input_characters += len(content)
+        files_searched += 1
+        if len(content) > MAX_FILE_CHARACTERS:
+            # A large unrelated file must not prevent searching smaller files.
+            # Its bounded database sentinel still counts toward the request cap.
+            incomplete = True
+            return True
+        results = _search_content(
+            content, path, request.query, request.case_sensitive, request.is_regex,
+            deadline=deadline, max_results=request.max_results + 1 - len(all_results),
+            max_output_characters=MAX_OUTPUT_CHARACTERS - output_characters,
+            compiled_pattern=compiled_pattern,
+        )
+        output_characters += sum(len(r.match_text) + len(r.context_before or "") +
+                                 len(r.context_after or "") for r in results)
+        all_results.extend(results)
+        return True
 
     # Build file pattern filter if specified
     like_pattern = None
@@ -271,6 +233,8 @@ async def search_files_db(
         FileIndex.content.isnot(None),
     ]
     overlay = immutable_overlay or {}
+    if len(overlay) > MAX_OVERLAY_FILES:
+        raise ValueError("Search overlay exceeds the file budget")
     if overlay:
         fi_conditions.append(FileIndex.path.not_in(sorted(overlay)))
     if root_path:
@@ -278,55 +242,62 @@ async def search_files_db(
     if like_pattern:
         fi_conditions.append(FileIndex.path.like(like_pattern))
     code_stmt = (
-        select(FileIndex.path, FileIndex.content)
+        # Bound a single row before it crosses the database connection; the extra
+        # character identifies an oversized file without transferring it in full.
+        select(FileIndex.path, func.left(FileIndex.content, MAX_FILE_CHARACTERS + 1).label("content"))
         .where(*fi_conditions)
         .limit(MAX_RESULTS_PER_TYPE)
     )
     for path, raw in sorted(overlay.items()):
+        if time.monotonic() >= deadline:
+            raise ValueError("Search exceeded the request time budget")
         if root_path and not path.startswith(root_path):
             continue
         if like_pattern:
             sql_pattern = re.escape(like_pattern).replace("%", ".*")
             if re.fullmatch(sql_pattern, path) is None:
                 continue
+        if len(raw) > MAX_FILE_CHARACTERS * 4:
+            incomplete = True
+            files_searched += 1
+            if files_searched >= MAX_RESULTS_PER_TYPE:
+                break
+            continue
         try:
             content = raw.decode("utf-8")
         except UnicodeDecodeError:
             continue
-        files_searched += 1
-        all_results.extend(
-            _search_content(
-                content,
-                path,
-                request.query,
-                request.case_sensitive,
-                request.is_regex,
-            )
-        )
-        if len(all_results) >= request.max_results:
+        if not search_content(content, path):
+            break
+        if len(all_results) > request.max_results or files_searched >= MAX_RESULTS_PER_TYPE:
             break
 
-    code_result = await db.execute(code_stmt)
-    for row in code_result:
-        files_searched += 1
-        if row.content:
-            results = _search_content(
-                row.content,
-                row.path,
-                request.query,
-                request.case_sensitive,
-                request.is_regex,
-            )
-            all_results.extend(results)
-            if len(all_results) >= request.max_results:
-                break
+    if (not input_exhausted and
+            len(all_results) <= request.max_results and files_searched < MAX_RESULTS_PER_TYPE):
+        # Fetch one content row at a time; eager fetching can materialize hundreds
+        # of large files before the request budget is checked.
+        try:
+            async with asyncio.timeout(max(0.0, deadline - time.monotonic())):
+                code_result = await db.stream(code_stmt.execution_options(yield_per=1))
+                try:
+                    async for row in code_result:
+                        if row.content:
+                            if not search_content(row.content, row.path):
+                                break
+                        if len(all_results) > request.max_results or files_searched >= MAX_RESULTS_PER_TYPE:
+                            break
+                finally:
+                    await code_result.close()
+        except TimeoutError as exc:
+            raise ValueError("Search exceeded the request time budget") from exc
 
     # Truncate results if needed
-    truncated = len(all_results) > request.max_results
+    truncated = (incomplete or len(all_results) > request.max_results or
+                 files_searched >= MAX_RESULTS_PER_TYPE)
     results = all_results[:request.max_results]
 
     # Calculate search time
-    search_time_ms = int((time.time() - start_time) * 1000)
+    search_time_ms = int((time.monotonic() - start_time) * 1000)
 
     return SearchResponse(
         query=request.query,

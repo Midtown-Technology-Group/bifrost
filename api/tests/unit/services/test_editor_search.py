@@ -213,18 +213,21 @@ class TestRegexSearch:
 
         assert results == []
 
-    def test_nested_quantifier_regex_rejected_before_search(self):
-        content = "a" * 1000
-        risky_pattern = "".join(["(", "a", "+", ")", "+", "$"])
-        with pytest.raises(ValueError, match="nested quantifiers"):
-            _validate_regex_pattern(risky_pattern)
-        with pytest.raises(ValueError, match="nested quantifiers"):
-            _search_content(content, "test.py", risky_pattern, case_sensitive=False, is_regex=True)
+    def test_nested_quantifier_uses_bounded_engine(self):
+        pattern = "(a+)+$"
+        _validate_regex_pattern(pattern)
+        assert _search_content("a" * 1000, "test.py", pattern, False, True)
 
-    def test_ambiguous_quantified_alternation_rejected_before_search(self):
-        risky_pattern = "".join(["(", "a", "|", "a", ")", "+"])
-        with pytest.raises(ValueError, match="nested quantifiers"):
-            _validate_regex_pattern(risky_pattern)
+    def test_ambiguous_alternation_uses_bounded_engine(self):
+        _validate_regex_pattern("(a|a)+")
+
+    @pytest.mark.parametrize("pattern", ["(a+)+$", "(a|aa)+$", "(a*)*$"])
+    def test_adversarial_nonmatch_is_bounded(self, pattern):
+        import time
+
+        started = time.monotonic()
+        assert _search_content("a" * 100_000 + "!", "test.py", pattern, False, True) == []
+        assert time.monotonic() - started < 0.5
 
     @pytest.mark.parametrize(
         "pattern",
@@ -326,3 +329,111 @@ class TestContextLines:
         assert len(results) == 1
         assert results[0].context_before is None
         assert results[0].context_after is None
+
+
+class TestSearchResourceBounds:
+    def test_match_limit_bounds_zero_width_results(self):
+        results = _search_content("a" * 100_000, "test.py", "", False, True, max_results=3)
+        assert [result.column for result in results] == [0, 1, 2]
+
+    def test_deadline_is_shared_across_lines(self, monkeypatch):
+        ticks = iter([0.0, 0.2, 0.6, 1.1])
+        monkeypatch.setattr(editor_search.time, "monotonic", lambda: next(ticks))
+        with pytest.raises(ValueError, match="request time budget"):
+            _search_content("one\ntwo\nthree\nfour", "test.py", "absent", False, True, deadline=1.0)
+
+    def test_file_character_limit(self):
+        with pytest.raises(ValueError, match="file exceeds"):
+            _search_content("a" * (editor_search.MAX_FILE_CHARACTERS + 1), "test.py", "a", False, False)
+
+    def test_output_character_limit_includes_context(self):
+        with pytest.raises(ValueError, match="output character budget"):
+            _search_content("hello\nworld", "test.py", "hello", False, False, max_output_characters=9)
+
+    @pytest.mark.asyncio
+    async def test_request_stops_fetching_after_match_limit_and_closes_cursor(self):
+        from types import SimpleNamespace
+        from unittest.mock import AsyncMock
+        from src.models.contracts.editor import SearchRequest
+
+        class Rows:
+            close = AsyncMock()
+
+            def __aiter__(self):
+                return self
+
+            async def __anext__(self):
+                if getattr(self, "read", False):
+                    pytest.fail("request fetched another row after collecting its sentinel")
+                self.read = True
+                return SimpleNamespace(path="test.py", content="a" * 1000)
+
+        rows = Rows()
+        db = SimpleNamespace(stream=AsyncMock(return_value=rows))
+        response = await editor_search.search_files_db(db, SearchRequest(query="a", max_results=2))
+        assert response.total_matches == 2
+        assert response.truncated is True
+        assert response.files_searched == 1
+        rows.close.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_oversized_overlay_preserves_small_file_results(self, monkeypatch):
+        from types import SimpleNamespace
+        from unittest.mock import AsyncMock
+        from src.models.contracts.editor import SearchRequest
+
+        monkeypatch.setattr(editor_search, "MAX_FILE_CHARACTERS", 4)
+        db = SimpleNamespace(stream=AsyncMock())
+        response = await editor_search.search_files_db(
+            db, SearchRequest(query="a", max_results=1),
+            immutable_overlay={"a-large.py": b"b" * 20, "b-note.py": b"aaa"},
+        )
+        assert response.truncated is True
+        assert response.results[0].file_path == "b-note.py"
+        db.stream.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_overlay_exhaustion_does_not_query_database(self):
+        from types import SimpleNamespace
+        from unittest.mock import AsyncMock
+        from src.models.contracts.editor import SearchRequest
+
+        db = SimpleNamespace(stream=AsyncMock())
+        response = await editor_search.search_files_db(
+            db, SearchRequest(query="a", max_results=2), immutable_overlay={"test.py": b"aaaa"},
+        )
+        assert response.truncated is True
+        db.stream.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_request_input_budget_spans_files(self, monkeypatch):
+        from types import SimpleNamespace
+        from unittest.mock import AsyncMock
+        from src.models.contracts.editor import SearchRequest
+
+        monkeypatch.setattr(editor_search, "MAX_REQUEST_CHARACTERS", 5)
+        db = SimpleNamespace(stream=AsyncMock())
+        response = await editor_search.search_files_db(
+            db, SearchRequest(query="a"), immutable_overlay={"a.py": b"aaa", "b.py": b"bbb"},
+        )
+        assert response.truncated is True
+        assert response.total_matches == 3
+        assert response.files_searched == 1
+        db.stream.assert_not_awaited()
+
+
+    @pytest.mark.asyncio
+    async def test_database_wait_uses_remaining_request_budget(self, monkeypatch):
+        import asyncio
+        from types import SimpleNamespace
+        from src.models.contracts.editor import SearchRequest
+
+        monkeypatch.setattr(editor_search, "MAX_SEARCH_SECONDS", 0.0)
+
+        async def stalled_stream(_statement):
+            await asyncio.Future()
+
+        with pytest.raises(ValueError, match="request time budget"):
+            await editor_search.search_files_db(
+                SimpleNamespace(stream=stalled_stream), SearchRequest(query="missing"),
+            )

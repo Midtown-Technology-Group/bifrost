@@ -13,13 +13,17 @@ def fuzz_editor_search(data: bytes) -> None:
     query = text[:pivot] or "x"
     content = text[pivot:]
 
-    _search_content(content, "fuzz.txt", query, case_sensitive=False, is_regex=False)
-
-    pattern = query[:80]
     try:
+        _search_content(content, "fuzz.txt", query, case_sensitive=False, is_regex=False)
+        pattern = query[:80]
         _search_content(content, "fuzz.txt", pattern, case_sensitive=False, is_regex=True)
     except ValueError as exc:
-        if "nested quantifiers" not in str(exc) and "exceeds" not in str(exc):
+        # Resource rejection is part of the search contract, not a fuzzer crash.
+        budget_errors = {
+            "Search exceeded the output character budget",
+            "Search exceeded the request time budget",
+        }
+        if str(exc) not in budget_errors and "nested quantifiers" not in str(exc) and "exceeds" not in str(exc):
             raise
 
 
