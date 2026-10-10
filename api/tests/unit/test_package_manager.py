@@ -2,7 +2,6 @@
 Unit tests for WorkspacePackageManager
 """
 
-import json
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -83,36 +82,10 @@ class TestWorkspacePackageManager:
                 await pkg_manager.get_package_info("nonexistent")
 
     @pytest.mark.asyncio
-    async def test_list_installed_packages(self, pkg_manager):
-        """Test listing installed packages"""
-        mock_process = AsyncMock()
-        mock_process.returncode = 0
-        mock_process.communicate = AsyncMock(return_value=(
-            json.dumps([
-                {"name": "requests", "version": "2.31.0"},
-                {"name": "pandas", "version": "2.0.3"}
-            ]).encode(),
-            b""
-        ))
-
-        with patch('asyncio.create_subprocess_exec', return_value=mock_process):
-            packages = await pkg_manager.list_installed_packages()
-
-            assert len(packages) == 2
-            assert packages[0]["name"] == "requests"
-            assert packages[0]["version"] == "2.31.0"
-            assert packages[1]["name"] == "pandas"
-            assert packages[1]["version"] == "2.0.3"
-
-    @pytest.mark.asyncio
-    async def test_list_installed_packages_returns_empty_on_pip_failure(self, pkg_manager):
-        """Failed pip list should be treated as an empty package list."""
-        mock_process = AsyncMock()
-        mock_process.returncode = 1
-        mock_process.communicate = AsyncMock(return_value=(b"", b"pip failed"))
-
-        with patch("asyncio.create_subprocess_exec", return_value=mock_process):
-            assert await pkg_manager.list_installed_packages() == []
+    async def test_list_installed_packages_reads_current_interpreter(self, pkg_manager):
+        inventory = [{"name": "requests", "version": "2.31.0"}]
+        with patch("src.services.package_manager.get_installed_packages", return_value=inventory):
+            assert await pkg_manager.list_installed_packages() == inventory
 
     @pytest.mark.asyncio
     async def test_check_for_updates_reports_version_mismatches(self, pkg_manager):

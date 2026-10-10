@@ -1,5 +1,4 @@
 import asyncio
-import json
 from pathlib import Path
 
 import pytest
@@ -108,31 +107,11 @@ async def test_get_package_info_raises_for_404(monkeypatch, tmp_path: Path):
 
 
 @pytest.mark.asyncio
-async def test_list_installed_packages_parses_pip_json(monkeypatch, tmp_path: Path):
+async def test_list_installed_packages_reads_current_interpreter(monkeypatch, tmp_path: Path):
     manager = WorkspacePackageManager(tmp_path)
     payload = [{"name": "fastapi", "version": "1.0"}]
-
-    async def fake_exec(*args, **kwargs):
-        assert args[-2:] == ("--format", "json")
-        return _FakeProcess(stdout=json.dumps(payload).encode())
-
-    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_exec)
-
+    monkeypatch.setattr("src.services.package_manager.get_installed_packages", lambda: payload)
     assert await manager.list_installed_packages() == payload
-
-
-@pytest.mark.asyncio
-async def test_list_installed_packages_returns_empty_on_pip_failure(
-    monkeypatch, tmp_path: Path
-):
-    manager = WorkspacePackageManager(tmp_path)
-
-    async def fake_exec(*_args, **_kwargs):
-        return _FakeProcess(returncode=1, stderr=b"broken")
-
-    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_exec)
-
-    assert await manager.list_installed_packages() == []
 
 
 @pytest.mark.asyncio
