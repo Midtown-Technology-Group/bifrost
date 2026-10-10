@@ -110,3 +110,30 @@ caller entitlement, the full CRED-P1 signature/claim/digest verification, truste
 ingress custody and real restricted SDK HTTP behavior remain mandatory gates.
 Its tests use real Rust Start/release with an explicitly unsigned synthetic grant;
 they cannot qualify the issuer, ingress or whole runtime by passing.
+
+## Finite grant/provision writer candidate
+
+`record_provision_candidate` follows the same shared source fence, attempt and
+NOWAIT owner/root/deployment/Solution locks, session, Start, ordered admissions,
+ordered grants and ordered receipts. An absent grant is serialized by that same
+session row: cancellation closes it before any later birth can be accepted.
+The existing composite keys, one grant per attempt/session, immutable operation
+rows, one provision per session/purpose and permanent tombstone remain intact.
+No new schema, role, Python-owned writer or production dispatcher is introduced.
+
+The closed private snapshot has the unchanged 32 CRED-P1 fields; owner and Start
+identity are derived from locked parents. The candidate checks actual parent
+identity, caller literals, deployment manifest/resolution, finite Start deadline,
+claim/attempt clock and freshly usable expiry. It recomputes the ordered grant,
+source and single integration-get operation preimages independently in SQL.
+Grant, ordinal-zero operation and provision are one transaction. A late admission
+failure rolls back all three; an uncertain commit is never retried as a birth.
+There is no conflict update, renewal or delivery/spawn permission in its return.
+
+The trusted issuer still must establish current authorization, complete accepted
+source/dependency/operation selection and live custody before entering this
+private transaction. Retained owner/caller digests do not establish those facts.
+The tests retain synthetic source and channel prerequisites while using real Rust
+Start and grant/provision/release transactions, finite signing, application-token
+rejection and Rust SDK admission. Full hosted checks and the actual unchanged Go
+artifact/HTTP/guardian/recovery/cleanup connection remain acceptance requirements.

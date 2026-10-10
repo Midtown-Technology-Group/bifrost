@@ -1,12 +1,15 @@
 //! Isolated owner foundation. Observation is not admission or launch authority.
-//! No production dispatch, grant issuance, execution admission or process spawning.
+//! No production dispatch, token signing, execution admission or process spawning.
+//! Finite grant/provision writes remain an isolated candidate, not runtime acceptance.
 //! Release records retain synthetic prerequisites until live guardian acceptance.
 use sqlx::{PgPool, Postgres, Row, Transaction};
+mod provision;
 mod release;
 mod result;
 mod schema;
 mod sdk;
 mod start;
+pub use provision::{ProvisionDecision, ProvisionRequest, record_provision_candidate};
 pub use release::{
     ReleaseCommitObservation, ReleaseRequest, observe_release_candidate, record_release_candidate,
 };

@@ -994,6 +994,26 @@ async def prepared_start_facts(db_session, association, request):
             "caller_organization_id": str(org),
             "effective_organization_id": str(org),
         }
+        caller_hash = association["source"]
+        if case == "provision":
+            from src.core.runtime_sdk_credentials import (
+                AuthorizedCallerSnapshot,
+                caller_digest,
+            )
+
+            literal_caller = AuthorizedCallerSnapshot(
+                caller_user_id=association["reviewer"],
+                caller_organization_id=org,
+                effective_organization_id=org,
+                caller_email="schema@example.test",
+                caller_name="Synthetic schema",
+                caller_admin=True,
+                caller_provider=False,
+                caller_external=False,
+                roles=(),
+            )
+            caller = literal_caller.model_dump(mode="json")
+            caller_hash = caller_digest(literal_caller)
         binding = {
             "kind": "execution-binding/v1",
             "execution_kind": "workflow",
@@ -1092,7 +1112,7 @@ async def prepared_start_facts(db_session, association, request):
                 association["deployment"],
                 association["artifact_id"],
                 json.dumps(caller),
-                association["source"],
+                caller_hash,
             )
             await conn.execute(
                 "INSERT INTO workflow_execution_attempts (id,execution_id,attempt_number,status,phase,claim_token,worker_incarnation_id,published_at,claimed_at,runtime_mode,isolated_owner) "
@@ -2632,3 +2652,317 @@ async def test_rust_result_retained_output_schema_allows_declared_nullable_array
     receipt = await result_probe(session_fence, payload)
     assert isinstance(receipt, dict) and receipt["disposition"] == "accepted"
     assert json.loads(await result_snapshot(facts))["execution"]["result"] == value
+
+
+@pytest.fixture
+async def provision_facts(prepared_start_facts):
+    """Real Rust Start and canonical private preimages; synthetic source/custody."""
+    from src.core.runtime_sdk_credentials import (
+        AcceptedManifestIdentity,
+        AuthorizedCallerSnapshot,
+        GrantSnapshot,
+        SDKOperation,
+        SelectedSDKPolicy,
+        caller_digest,
+        grant_digest,
+        operations_digest,
+        source_digest,
+    )
+
+    facts = dict(prepared_start_facts)
+    assert isinstance(await start_probe(facts), dict)
+    async with connection("wex_core") as conn:
+        row = await conn.fetchrow(
+            "SELECT o.workflow_id,o.deployment_id,o.caller_snapshot::text AS caller,"
+            "d.solution_id,d.compiled_manifest_hash,d.resolution_map_hash,"
+            "s.claim_token_digest,s.worker_incarnation_id,s.supervisor_incarnation_id,"
+            "st.started_at,st.deadline_utc,clock_timestamp() AS issued "
+            "FROM runtime_sessions s JOIN runtime_starts st ON st.session_id=s.id "
+            "JOIN runtime_execution_owners o ON o.execution_id=s.execution_id "
+            "JOIN solution_deployments d ON d.id=o.deployment_id WHERE s.id=$1",
+            facts["session"],
+        )
+    assert row is not None
+    caller = AuthorizedCallerSnapshot.model_validate_json(row["caller"])
+    source = AcceptedManifestIdentity(
+        source_id=row["deployment_id"],
+        solution_install_id=row["solution_id"],
+        source_manifest_digest=row["compiled_manifest_hash"],
+        source_resolution_digest=row["resolution_map_hash"],
+        source_global_permission=False,
+    )
+    policy = SelectedSDKPolicy(
+        operations=(
+            SDKOperation(
+                operation="integration-get",
+                integration_name="Fixture",
+                scope_kind="organization",
+                scope_organization_id=caller.effective_organization_id,
+                resolved_organization_id=caller.effective_organization_id,
+                solution_install_id=row["solution_id"],
+            ),
+        )
+    )
+    snapshot = GrantSnapshot(
+        id=uuid4(),
+        schema_version="cred-p1/v1",
+        workflow_attempt_id=facts["attempt"],
+        execution_id=facts["execution"],
+        attempt_number=1,
+        claim_token_digest=row["claim_token_digest"],
+        worker_incarnation_id=row["worker_incarnation_id"],
+        supervisor_incarnation_id=row["supervisor_incarnation_id"],
+        runtime_session_id=facts["session"],
+        started_at=row["started_at"],
+        issued_at=row["issued"],
+        timeout_seconds=10,
+        credential_deadline=row["deadline_utc"],
+        initial_access_expires_at=row["deadline_utc"],
+        caller_user_id=caller.caller_user_id,
+        caller_organization_id=caller.caller_organization_id,
+        effective_organization_id=caller.effective_organization_id,
+        caller_email=caller.caller_email,
+        caller_name=caller.caller_name,
+        caller_admin=int(caller.caller_admin),
+        caller_provider=int(caller.caller_provider),
+        caller_external=int(caller.caller_external),
+        caller_snapshot_digest=caller_digest(caller),
+        workflow_id=row["workflow_id"],
+        solution_install_id=row["solution_id"],
+        source_kind="solution-deployment",
+        source_id=row["deployment_id"],
+        source_manifest_digest=row["compiled_manifest_hash"],
+        source_resolution_digest=row["resolution_map_hash"],
+        source_global_permission=0,
+        source_digest=source_digest(source),
+        operations_digest=operations_digest(policy),
+    )
+    facts["issuer_inputs"] = (snapshot, caller, source, policy)
+    facts["provision_request"] = {
+        "snapshot": snapshot.model_dump(mode="json"),
+        "grant_digest": grant_digest(snapshot),
+        "integration_name": "Fixture",
+        "provision_id": str(uuid4()),
+        "delivery_id": str(uuid4()),
+        "frontier_sha256": "a" * 64,
+    }
+    return facts
+
+
+async def provision_probe(facts, role="wex_core", fence=None, request=None):
+    executable = Path("/app/scripts/runtime-owner-provision")
+    assert executable.is_file(), (
+        "Required source-bound Rust provision artifact is missing"
+    )
+    process = await asyncio.create_subprocess_exec(
+        str(executable),
+        stdin=asyncio.subprocess.PIPE,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+        env={
+            "BIFROST_ISOLATED_OWNER_TEST": "1",
+            "BIFROST_OWNER_TEST_DATABASE_URL": f"postgresql://{role}:{PASSWORDS[role]}@writer-guard-pool/bifrost_test",
+        },
+    )
+    try:
+        payload = ("\n".join(fence or facts["fence"]) + "\n").encode()
+        payload += json.dumps(request or facts["provision_request"]).encode()
+        out, err = await asyncio.wait_for(process.communicate(payload), timeout=8)
+        assert process.returncode == 0 and err == b"" and len(out) <= 32
+        return out.decode().strip()
+    finally:
+        if process.returncode is None:
+            process.kill()
+            await process.wait()
+
+
+async def provision_snapshot(facts):
+    async with connection("wex_core") as conn:
+        values = []
+        for table, field in (
+            ("workflow_runtime_sdk_grants", "runtime_session_id"),
+            ("runtime_admissions", "session_id"),
+        ):
+            values.append(
+                await conn.fetchval(
+                    f"SELECT COALESCE(jsonb_agg(to_jsonb(t) ORDER BY id),'[]'::jsonb)::text FROM {table} t WHERE {field}=$1",
+                    facts["session"],
+                )
+            )
+        values.append(
+            await conn.fetchval(
+                "SELECT COALESCE(jsonb_agg(to_jsonb(op) ORDER BY ordinal),'[]'::jsonb)::text "
+                "FROM workflow_runtime_sdk_grant_operations op JOIN workflow_runtime_sdk_grants g ON g.id=op.grant_id WHERE g.runtime_session_id=$1",
+                facts["session"],
+            )
+        )
+    return (await start_snapshot(facts), values)
+
+
+@pytest.mark.parametrize("prepared_start_facts", ["provision"], indirect=True)
+async def test_rust_provision_commits_canonical_grant_operation_and_admission(
+    provision_facts,
+):
+    facts = provision_facts
+    assert await provision_probe(facts) == "newly_committed"
+    before = await provision_snapshot(facts)
+    assert await provision_probe(facts) == "rejected"
+    assert await provision_snapshot(facts) == before
+    request = facts["provision_request"]
+    async with connection("wex_core") as conn:
+        row = await conn.fetchrow(
+            "SELECT g.grant_digest,g.operations_digest,op.integration_name,a.delivery_id::text AS delivery "
+            "FROM workflow_runtime_sdk_grants g JOIN workflow_runtime_sdk_grant_operations op ON op.grant_id=g.id "
+            "JOIN runtime_admissions a ON a.grant_id=g.id WHERE g.runtime_session_id=$1",
+            facts["session"],
+        )
+    assert row is not None
+    assert dict(row) == {
+        "grant_digest": request["grant_digest"],
+        "operations_digest": request["snapshot"]["operations_digest"],
+        "integration_name": "Fixture",
+        "delivery": request["delivery_id"],
+    }
+    from src.core.runtime_sdk_credentials import (
+        GrantReference,
+        decode_runtime_sdk_access,
+    )
+    from src.core.security import decode_token
+    from src.services.isolated_runtime_sdk_tokens import sign_finite_runtime_sdk_access
+
+    snapshot, caller, source, policy = facts["issuer_inputs"]
+    credential = sign_finite_runtime_sdk_access(
+        snapshot,
+        caller,
+        source,
+        policy,
+        GrantReference(grant_id=snapshot.id, grant_digest=request["grant_digest"]),
+        now=datetime.now(UTC),
+    )
+    claims = decode_runtime_sdk_access(credential.access_token)
+    assert (
+        claims.sub == str(snapshot.id)
+        and claims.grant_digest == request["grant_digest"]
+    )
+    assert decode_token(credential.access_token, expected_type="access") is None
+    assert decode_token(credential.access_token, expected_type="refresh") is None
+    facts.update(
+        grant=snapshot.id,
+        provision=UUID(request["provision_id"]),
+        delivery=UUID(request["delivery_id"]),
+        release=uuid4(),
+        source=snapshot.operations_digest,
+    )
+    assert await release_probe(facts["fence"], facts) == "newly_committed"
+    assert (
+        await sdk_admission_probe(
+            facts,
+            request=[
+                claims.sub,
+                claims.grant_digest,
+                "Fixture",
+                str(snapshot.effective_organization_id),
+                str(snapshot.solution_install_id),
+            ],
+        )
+        == "sdk_admitted"
+    )
+
+
+@pytest.mark.parametrize("prepared_start_facts", ["provision"], indirect=True)
+@pytest.mark.parametrize("field", range(10))
+async def test_rust_provision_stale_fence_cannot_create_absent_grant(
+    provision_facts, field
+):
+    facts = provision_facts
+    before = await provision_snapshot(facts)
+    fence = list(facts["fence"])
+    fence[field] = str(uuid4()) if field < 8 else "0" * 64
+    assert await provision_probe(facts, fence=fence) == "rejected"
+    assert await provision_snapshot(facts) == before
+
+
+@pytest.mark.parametrize("prepared_start_facts", ["provision"], indirect=True)
+@pytest.mark.parametrize(
+    "change",
+    ["grant-digest", "name", "source", "operation", "caller", "expanded-field"],
+)
+async def test_rust_provision_invalid_preimages_roll_back_all_birth(
+    provision_facts, change
+):
+    facts = provision_facts
+    before = await provision_snapshot(facts)
+    request = json.loads(json.dumps(facts["provision_request"]))
+    if change == "grant-digest":
+        request["grant_digest"] = "0" * 64
+    elif change == "name":
+        request["integration_name"] = "Different"
+    else:
+        field = {
+            "source": "source_digest",
+            "operation": "operations_digest",
+            "caller": "caller_snapshot_digest",
+            "expanded-field": "owner_incarnation_id",
+        }[change]
+        request["snapshot"][field] = "0" * 64
+    if change in {"source", "operation", "caller"}:
+        from src.core.runtime_sdk_credentials import GrantSnapshot, grant_digest
+
+        # A correctly rehashed malicious snapshot still cannot change admitted
+        # source, operation or immutable owner evidence.
+        mutated = GrantSnapshot.model_validate_json(json.dumps(request["snapshot"]))
+        request["grant_digest"] = grant_digest(mutated)
+    assert await provision_probe(facts, request=request) == "rejected"
+    assert await provision_snapshot(facts) == before
+
+
+@pytest.mark.parametrize("prepared_start_facts", ["provision"], indirect=True)
+async def test_rust_provision_noncore_login_cannot_create_grant(provision_facts):
+    facts = provision_facts
+    before = await provision_snapshot(facts)
+    assert await provision_probe(facts, role="wex_incumbent") == "rejected"
+    assert await provision_snapshot(facts) == before
+
+
+@pytest.mark.parametrize("prepared_start_facts", ["provision"], indirect=True)
+async def test_rust_cancel_before_grant_birth_blocks_provision(provision_facts):
+    facts = provision_facts
+    assert (
+        await probe(facts["fence"], operation="request-running-cancel")
+        == "cancel_committed"
+    )
+    before = await provision_snapshot(facts)
+    assert await provision_probe(facts) == "rejected"
+    assert await provision_snapshot(facts) == before
+
+
+@pytest.mark.parametrize("prepared_start_facts", ["provision"], indirect=True)
+async def test_rust_provision_late_failure_rolls_back_grant_and_operation(
+    provision_facts, db_session
+):
+    from sqlalchemy import text
+
+    facts = provision_facts
+    await db_session.execute(
+        text("""
+        CREATE FUNCTION isolated_provision_fault() RETURNS trigger LANGUAGE plpgsql AS $body$
+        BEGIN RAISE EXCEPTION 'synthetic provision fault' USING ERRCODE='42501'; END $body$
+        """)
+    )
+    await db_session.execute(
+        text("""
+        CREATE TRIGGER isolated_provision_fault BEFORE INSERT ON runtime_admissions
+        FOR EACH ROW EXECUTE FUNCTION isolated_provision_fault()
+        """)
+    )
+    await db_session.commit()
+    try:
+        before = await provision_snapshot(facts)
+        assert await provision_probe(facts) == "database_failure"
+        assert await provision_snapshot(facts) == before
+    finally:
+        await db_session.execute(
+            text("DROP TRIGGER isolated_provision_fault ON runtime_admissions")
+        )
+        await db_session.execute(text("DROP FUNCTION isolated_provision_fault()"))
+        await db_session.commit()

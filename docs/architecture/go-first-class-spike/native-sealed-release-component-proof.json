@@ -381,5 +381,68 @@
     },
     "runtime_acceptance": false,
     "limits": "Compiler/unit checks only. Actual-schema SDK admission tests, complete JWT issuer/ingress and actual Go SDK connection remain required."
+  },
+  "verified_independent_common_protocol_execution": {
+    "source_commit": "59709d0739c281dd7ebedbedea24b79d9d5c00da",
+    "workflow_run": 38089840556,
+    "conclusion": "success",
+    "source_inputs_verified": 112,
+    "go_tests_passed": 533,
+    "sdk_version": "0.0.0-spike.2",
+    "workflow_sha256": "160917deeb94275f31ca9ddee2dacae00fb079fdf54cb60e206c8def261f9c34",
+    "adapter_sha256": "bff6472be89abaf77f2fe1170c1c56005ab80dac7391b71d6b91be01448292a0",
+    "observations": [
+      {
+        "case": "success",
+        "sdk_calls": 1,
+        "sdk_cancelled": false,
+        "elapsed_ms": 71.069743,
+        "result_payload_sha256": "a71df706aa2138c9fc219ccf9073fad6f1e76b582fd188eb69e1100992b47f38"
+      },
+      {
+        "case": "success-again",
+        "sdk_calls": 1,
+        "sdk_cancelled": false,
+        "elapsed_ms": 84.882181,
+        "result_payload_sha256": "8dc80e337e7da636d0d0bd349ee33e10c79824527e7fdc9764d0b1b281261a0b"
+      },
+      {
+        "case": "missing",
+        "sdk_calls": 1,
+        "sdk_cancelled": false,
+        "elapsed_ms": 70.442024,
+        "result_payload_sha256": "1e22e24ead80baca5ecf0199391308e8df7a3a8978683d8bf0173a1b64a4c418"
+      },
+      {
+        "case": "cancel-before-material",
+        "sdk_calls": 0,
+        "sdk_cancelled": false,
+        "elapsed_ms": 60.616493
+      },
+      {
+        "case": "cancel-running",
+        "sdk_calls": 1,
+        "sdk_cancelled": true,
+        "elapsed_ms": 1064.651347
+      }
+    ],
+    "build_timings_ms": {
+      "module_download": 179.097998,
+      "cold_compile_warm_modules": 16306.637819,
+      "independent_cold_compile": 15947.753701,
+      "warm_source_edit_compile": 374.547521,
+      "restored_warm_compile": 343.616168,
+      "edit_to_artifact": 560.085504
+    },
+    "evidence_sha256": {
+      "descriptor.json": "d293f19b6ef75c2595a9ecb32db87ce51b902ac7c392d5e9211ecfee3a5b129c",
+      "tests.jsonl": "1c1b36ac1f594a1b30d4ea9ca06d131196629ba4911e61a29b228b86ec0b9553",
+      "common-protocol-execution.json": "f703de6304477ea3ed9c239453756591335d17155fd331eae3b7a752f1469427",
+      "workflow": "160917deeb94275f31ca9ddee2dacae00fb079fdf54cb60e206c8def261f9c34",
+      "adapter": "bff6472be89abaf77f2fe1170c1c56005ab80dac7391b71d6b91be01448292a0"
+    },
+    "proves": "Same unchanged workload binary executes under independently implemented published common frames: repeated success, SDK operation, sorted missing keys, no-material cancellation and held-request cancellation with valid Heartbeat. Complete Go checks/security/build/measurements and independent Go/Python/Rust interchange gate passed.",
+    "runtime_acceptance": false,
+    "limits": "Synthetic SDK endpoint, credentials, Start and receipt; no Rust owner/issuer/guardian or durable projection. Common-loop elapsed values include staging/TLS setup and intentional held-request time; not Rust execution overhead. No process/descendant/source cleanup acceptance."
   }
 }
