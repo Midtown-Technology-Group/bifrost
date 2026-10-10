@@ -2269,12 +2269,17 @@ async def test_rust_result_without_release_has_no_projection(
     assert await result_snapshot(facts) == before
 
 
-@pytest.mark.parametrize("running_cancel_facts", [20], indirect=True)
+@pytest.mark.parametrize("running_cancel_facts", [0], indirect=True)
 async def test_rust_result_expired_grant_has_no_projection(
     released_result_facts, session_fence
 ):
     facts = released_result_facts
     before = await result_snapshot(facts)
+    # Release was valid at its own commit. Let that same immutable finite grant
+    # expire before Result; never rewrite its deadline or bypass release checks.
+    await asyncio.sleep(
+        max(0, (facts["expires"] - datetime.now(UTC)).total_seconds()) + 0.01
+    )
     assert facts["expires"] < datetime.now(UTC)
     assert await result_probe(session_fence, result_payload(facts)) == "rejected"
     assert await result_snapshot(facts) == before
