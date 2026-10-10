@@ -101,11 +101,12 @@ def embed_can_access_form(principal: UserPrincipal, form: FormORM) -> bool:
     """Whether an EMBED principal is bound to THIS form (EXT-1 NEW-I).
 
     An embed token is HMAC-pre-authorized for exactly ONE resource.
-    Binding rule (the token must be bound to the form being touched):
+    Binding rules (the token must be bound to the form being touched):
     - form-embed token (``form_id`` claim set): must match the form
       exactly — ``principal.form_id == str(form.id)``.
-    - app-embed tokens (``app_id`` set) are never form-bound: an app embed
-      session has no reason to touch a form, so it is always denied here.
+    - app-embed token (``app_id`` set, no ``form_id``): never form-bound.
+      Applications and forms are independent resources and there is no
+      persisted app-to-form capability grant.
     - a token with neither claim is never form-bound.
     """
     if principal.form_id is not None:

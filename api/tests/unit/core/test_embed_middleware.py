@@ -84,7 +84,7 @@ def test_app_embed_retains_legacy_app_and_execution_surfaces():
     )
 
 
-def test_app_embed_is_denied_every_form_runtime_surface():
+def test_app_embed_cannot_use_any_form_runtime_surface():
     claims = _app_claims()
     denied = (
         ("GET", f"/api/forms/{FORM_ID}/runtime"),
@@ -95,8 +95,6 @@ def test_app_embed_is_denied_every_form_runtime_surface():
     )
     for method, path in denied:
         assert not embed_request_allowed(method, path, claims), (method, path)
-    assert embed_request_allowed("GET", "/api/applications/app-slug/render", claims)
-    assert embed_request_allowed("POST", "/api/workflows/execute", claims)
 
 
 def _form_token() -> str:
