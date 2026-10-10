@@ -457,6 +457,7 @@ services:
                                       # tests/unit/test_platform_api_docs.py reads
                                       # bifrost-build/platform-api.md to enforce docs
                                       # cover every PLATFORM_EXPORT_NAMES entry.
+      - ./.agents/skills:/.agents/skills:ro  # Actual second CLI skill mirror; no credentials.
       # Host-mounted for test results (junitxml) — per-worktree, driven by
       # LOG_DIR (set by test.sh to /tmp/bifrost-$COMPOSE_PROJECT_NAME) so two
       # worktrees running in parallel don't clobber each other's results.

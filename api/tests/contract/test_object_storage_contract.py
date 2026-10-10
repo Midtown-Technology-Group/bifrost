@@ -9,12 +9,11 @@ from __future__ import annotations
 
 import asyncio
 import os
-from datetime import UTC, datetime, timedelta
-from importlib.util import find_spec
 from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
-from typing import Any
-from typing import Protocol
+from datetime import UTC, datetime, timedelta
+from importlib.util import find_spec
+from typing import Any, Protocol
 from urllib.parse import ParseResult, urlparse
 from uuid import uuid4
 
@@ -826,12 +825,11 @@ async def test_copy_and_signed_url_capabilities(
     )
 
 
-@pytest.mark.asyncio
-async def test_signed_url_http_round_trip(
+async def assert_signed_url_http_round_trip(
     object_storage: ObjectStorageContract,
 ) -> None:
-    if _is_reference_fake(object_storage):
-        pytest.skip("reference fake does not expose an HTTP endpoint")
+    """Transport contract for real adapters, exercised in the live-service lane."""
+    assert not _is_reference_fake(object_storage), "HTTP contract needs a real endpoint"
 
     key = "uploads/form-1/direct-client.txt"
     body = b"direct client upload via signed URL"

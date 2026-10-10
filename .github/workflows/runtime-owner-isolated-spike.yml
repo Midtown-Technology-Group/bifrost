@@ -11,6 +11,10 @@ on:
       - api/src/models/orm/executions.py
       - api/src/models/orm/workflows.py
       - api/alembic/env.py
+      - docker-compose.test.yml
+      - api/tests/unit/test_issue_skill_shell_safety.py
+      - api/tests/contract/test_object_storage_contract.py
+      - api/tests/e2e/platform/test_object_storage_signed_url_transport.py
       - .github/workflows/runtime-owner-isolated-spike.yml
   workflow_dispatch:
 permissions:
@@ -32,6 +36,7 @@ jobs:
           bash test.sh unit --durations=0 > "$RUNNER_TEMP/runtime-schema-unit-tests.log" 2>&1
           cp /tmp/bifrost-*/test-results.xml "$RUNNER_TEMP/runtime-schema-unit-results.xml"
           bash test.sh tests/e2e/platform/test_runtime_deployment_artifacts.py \
+            tests/e2e/platform/test_object_storage_signed_url_transport.py \
             tests/e2e/platform/test_execution_history_pagination.py \
             tests/unit/models/test_execution_attempts_contract.py \
             tests/unit/services/execution/test_attempts.py --durations=0 \
