@@ -366,5 +366,20 @@
     },
     "validation": "Fresh source-bound complete hosted gate required. No retry, timeout expansion, resource increase, skip or protocol widening.",
     "runtime_acceptance": false
+  },
+  "verified_sdk_admission_compiler_component": {
+    "source_commit": "59709d0739c281dd7ebedbedea24b79d9d5c00da",
+    "workflow_run": 38089840561,
+    "conclusion": "success",
+    "source_inputs_verified": 23,
+    "rust_tests_passed": 12,
+    "evidence_sha256": {
+      "owner-source-hashes.txt": "ef8fc753b4732f959cae3718154eb03c039abf8ef0fb731b6b71eeb389136adb",
+      "owner-tests.txt": "31f3451a84048c11a69926948ad68296b60e023786fb16cc65fc0a297b9b8da0",
+      "owner-clippy.txt": "488208d04036f7e0ee2a3ca09512443631d6bc97396c51a0612e41d9a5b556d7",
+      "runtime-owner-sdk-admission": "b2a3983c6ef108b1d63556010dfc3e97d1873ae49f3d0fdfac08042a9ffa73f2"
+    },
+    "runtime_acceptance": false,
+    "limits": "Compiler/unit checks only. Actual-schema SDK admission tests, complete JWT issuer/ingress and actual Go SDK connection remain required."
   }
 }
