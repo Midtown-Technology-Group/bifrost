@@ -11,7 +11,7 @@
     "workflow_run": 38082618559,
     "proof_job": 114302478784,
     "proof_job_conclusion": "success",
-    "whole_workflow_conclusion_at_observation": "pending ownership job",
+    "whole_workflow_conclusion_at_observation": "success",
     "source_inputs_verified": 87,
     "go_tests_passed": 450,
     "same_binary_launches": 22,
@@ -65,13 +65,62 @@
     "database_proof": false,
     "does_not_prove": "SQL transaction behavior or real guardian release. Source 26a88ed7d has newer comment-only source and its own required CI; this compiler proof remains bound to 8d2848794."
   },
-  "pending_database_component": {
+  "verified_release_database_component": {
     "source_commit": "8d284879437025868e9218db77edbb822377acb9",
     "workflow_run": 38083514464,
     "job": 114305122625,
     "new_release_cases": 21,
     "expected_total_guard_cases": 157,
-    "status_at_observation": "in progress",
-    "retained_prerequisites": "synthetic Start, unsigned grant and provision; not authenticated issuer/material/live custody"
+    "status_at_observation": "completed successfully",
+    "retained_prerequisites": "synthetic Start, unsigned grant and provision; not authenticated issuer/material/live custody",
+    "provider_conclusion": "success",
+    "source_inputs_verified": 27,
+    "suites": {
+      "writer-guard-unit.xml": {
+        "cases": 13722,
+        "seconds": 265.775,
+        "failures": 0,
+        "errors": 0,
+        "skips": 0
+      },
+      "writer-guard-baseline.xml": {
+        "cases": 109,
+        "seconds": 7.9910000000000005,
+        "failures": 0,
+        "errors": 0,
+        "skips": 0
+      },
+      "writer-guard-results.xml": {
+        "cases": 157,
+        "seconds": 20.736,
+        "failures": 0,
+        "errors": 0,
+        "skips": 0
+      }
+    },
+    "api_quality": "Pyright 0 errors/warnings/informations; Ruff passed",
+    "actual_owned_cleanup": "container, volume and network inventories empty",
+    "evidence_sha256": {
+      "writer-guard-source.txt": "1688e5e630e144f22fb4c2999c915c1c50bdeb94b316f539ae4f3770092708c7",
+      "writer-guard-source-hashes.txt": "a5e20e5e6891d5bcd4592ae3643bcc5a8de170bfba3af74e5e5643a290c8cb32",
+      "writer-guard-unit.xml": "ce5f83bc68fb092c3c9f5c9d2e5977b7e15edc427c95337cfede0f8f253627ce",
+      "writer-guard-baseline.xml": "705faba2961f0635ac0d17711e5e319cb9272ed69c7acf1b7616e4f163518a17",
+      "writer-guard-results.xml": "ff64e66d9135adfcf9fb588e9405f91becd2c65d4bb576f01b1d93481039c924",
+      "writer-guard-quality.log": "0ab6de13f019664c854c38d983e3029a0b3981c3c6f634ee8536f56b1d4e6bec",
+      "writer-guard-cleanup.log": "c12f5e6f52fd4107d5f8eb8008929f026cf05815061500b209e1590553c4e100"
+    },
+    "read_only_release_recovery_proven": false
+  },
+  "recovery_candidate_failure": {
+    "source_commit": "5a0029dcf649e9134e3619e6ae9126a3f4f3500e",
+    "foundation_run": 38084278360,
+    "guard_run": 38084278406,
+    "classification": "current origin/main ancestry gate rejected stale candidate before builder/database body",
+    "artifact_available": false,
+    "reviewed_new_main": "1a96b79bae327be41934ef9331ab5471e075f792",
+    "change": "#1144 test isolation: scope config reconciliation assertion to the fixture integration",
+    "combined_candidate": "00fe7727de63ddd3560f26f19c98df669aaa0d83",
+    "recovery": "local main reconciliation and fresh normal workflows; stale candidate not rerun",
+    "read_only_recovery_and_new_base_validation": "pending fresh source-bound evidence"
   }
 }
