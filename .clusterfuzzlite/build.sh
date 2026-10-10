@@ -3,18 +3,10 @@
 cd "$SRC/bifrost"
 
 pip3 install --require-hashes --target "$OUT/deps" -r .clusterfuzzlite/requirements.lock
-cp -R api "$OUT/api"
+export PYTHONPATH="$OUT/deps:$SRC/bifrost/api"
 
 for fuzzer in api/fuzz/atheris_targets/*_fuzzer.py; do
-  fuzzer_basename=$(basename -s .py "$fuzzer")
-
-  cat > "$OUT/$fuzzer_basename" <<EOF
-#!/bin/sh
-# LLVMFuzzerTestOneInput for ClusterFuzzLite target detection.
-this_dir=\$(dirname "\$0")
-PYTHONPATH="\$this_dir/deps:\$this_dir/api" python3 "\$this_dir/api/fuzz/cfl_entrypoint.py" "$fuzzer_basename" "\$@"
-EOF
-  chmod +x "$OUT/$fuzzer_basename"
+  compile_python_fuzzer "$fuzzer" --paths "$OUT/deps" --paths "$SRC/bifrost/api"
 done
 
 python3 - <<'PY'

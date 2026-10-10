@@ -29,3 +29,8 @@ def test_clusterfuzzlite_targets_expose_atheris_entrypoint():
         }
 
         assert {"TestOneInput", "main"} <= function_names
+        main = next(node for node in module.body if isinstance(node, ast.FunctionDef) and node.name == "main")
+        calls = [node.func.attr for node in ast.walk(main)
+                 if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                 and isinstance(node.func.value, ast.Name) and node.func.value.id == "atheris"]
+        assert calls == ["Setup", "Fuzz"]
