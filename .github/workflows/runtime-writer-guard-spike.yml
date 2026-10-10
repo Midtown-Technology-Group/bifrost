@@ -6,6 +6,8 @@ on:
       - api/tests/e2e/platform/test_runtime_writer_guards.py
       - spikes/go-native/owner-rs/**
       - spikes/go-native/scripts/owner-foundation-check.sh
+      - spikes/go-native/peers/rust-execution/**
+      - spikes/go-native/executionprofile/schemas/**
       - api/tests/e2e/platform/fixtures/runtime_writer_guards.sql
       - docker-compose.runtime-writer-guards.yml
       - scripts/ci/writer-guards/**
@@ -37,9 +39,14 @@ jobs:
           sha256sum spikes/go-native/owner-rs/Cargo.toml \
             spikes/go-native/owner-rs/Cargo.lock \
             spikes/go-native/owner-rs/src/lib.rs \
+            spikes/go-native/owner-rs/src/result.rs \
             spikes/go-native/owner-rs/examples/session_observation.rs \
+            spikes/go-native/owner-rs/examples/result_report.rs \
             spikes/go-native/scripts/owner-foundation-check.sh \
             spikes/go-native/peers/rust-execution/Dockerfile \
+            spikes/go-native/peers/rust-execution/Cargo.toml \
+            spikes/go-native/peers/rust-execution/src/*.rs \
+            spikes/go-native/executionprofile/schemas/*.json \
             api/tests/e2e/platform/fixtures/runtime_writer_guards.sql \
             api/tests/e2e/platform/test_runtime_writer_guards.py \
             docker-compose.runtime-writer-guards.yml \
@@ -79,7 +86,8 @@ jobs:
           mkdir -p "$RUNNER_TEMP/owner-evidence"
           bash spikes/go-native/scripts/owner-foundation-check.sh "$RUNNER_TEMP/owner-evidence"
           cp "$RUNNER_TEMP/owner-evidence/runtime-owner-observation" api/scripts/runtime-owner-observation
-          sha256sum api/scripts/runtime-owner-observation > "$RUNNER_TEMP/writer-guard-owner-binary.txt"
+          cp "$RUNNER_TEMP/owner-evidence/runtime-owner-result" api/scripts/runtime-owner-result
+          sha256sum api/scripts/runtime-owner-observation api/scripts/runtime-owner-result > "$RUNNER_TEMP/writer-guard-owner-binary.txt"
           bash test.sh stack up > "$RUNNER_TEMP/writer-guard-stack.log" 2>&1
           docker compose -p "$guard_project" -f "$COMPOSE_FILE" up -d --wait --wait-timeout 60 writer-guard-pool
           docker compose -p "$guard_project" -f "$COMPOSE_FILE" images > "$RUNNER_TEMP/writer-guard-images.txt"

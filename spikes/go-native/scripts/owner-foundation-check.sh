@@ -16,8 +16,13 @@ cleanup() {
   exit "$original"
 }
 trap cleanup EXIT
-mkdir -p "$scratch/context" "$scratch/cargo" "$scratch/target" "$scratch/source"
-cp -R "$spike_root/owner-rs/." "$scratch/source/"
+mkdir -p "$scratch/context" "$scratch/cargo" "$scratch/target" \
+  "$scratch/source/owner-rs" "$scratch/source/peers/rust-execution" \
+  "$scratch/source/executionprofile"
+cp -R "$spike_root/owner-rs/." "$scratch/source/owner-rs/"
+cp "$spike_root/peers/rust-execution/Cargo.toml" "$scratch/source/peers/rust-execution/"
+cp -R "$spike_root/peers/rust-execution/src" "$scratch/source/peers/rust-execution/"
+cp -R "$spike_root/executionprofile/schemas" "$scratch/source/executionprofile/"
 docker build --iidfile "$scratch/image-id" -f "$spike_root/peers/rust-execution/Dockerfile" \
   "$scratch/context" > "$evidence_dir/owner-tools-build.txt" 2>&1
 image=$(cat "$scratch/image-id")
@@ -30,29 +35,34 @@ rust() {
   docker run --rm --network "$network" --read-only --cap-drop ALL --security-opt no-new-privileges \
     --user "$task_uid:$task_gid" --pids-limit 256 --memory 3g --cpus 2 \
     --tmpfs /tmp:rw,exec,nosuid,nodev,size=1g \
-    --mount "type=bind,src=$scratch/source,dst=/src" \
+    --mount "type=bind,src=$scratch/source,dst=/spike" \
     --mount "type=bind,src=$scratch/cargo,dst=/cargo" \
     --mount "type=bind,src=$scratch/target,dst=/target" \
-    --workdir /src "$image" env -i PATH=/usr/local/cargo/bin:/usr/bin:/bin \
+    --workdir /spike/owner-rs "$image" env -i PATH=/usr/local/cargo/bin:/usr/bin:/bin \
     HOME=/tmp RUSTUP_HOME=/usr/local/rustup RUSTUP_TOOLCHAIN=1.98.1-x86_64-unknown-linux-gnu \
     CARGO_HOME=/cargo CARGO_TARGET_DIR=/target "$@"
 }
 rust none rustc --version > "$evidence_dir/owner-toolchain.txt"
-test -f "$scratch/source/Cargo.lock"
-cp "$scratch/source/Cargo.lock" "$evidence_dir/owner-Cargo.lock"
+test -f "$scratch/source/owner-rs/Cargo.lock"
+cp "$scratch/source/owner-rs/Cargo.lock" "$evidence_dir/owner-Cargo.lock"
 rust bridge cargo fetch --locked > "$evidence_dir/owner-fetch.txt" 2>&1
 rust none cargo fmt --all -- --check > "$evidence_dir/owner-fmt.txt" 2>&1
 rust none cargo clippy --locked --offline --all-targets -- -D warnings > "$evidence_dir/owner-clippy.txt" 2>&1
 rust none cargo test --locked --offline --all-targets > "$evidence_dir/owner-tests.txt" 2>&1
-rust none cargo build --locked --offline --example session_observation > "$evidence_dir/owner-build.txt" 2>&1
+rust none cargo build --locked --offline --examples > "$evidence_dir/owner-build.txt" 2>&1
 cp "$scratch/target/debug/examples/session_observation" "$evidence_dir/runtime-owner-observation"
+cp "$scratch/target/debug/examples/result_report" "$evidence_dir/runtime-owner-result"
 rust none cargo metadata --locked --offline --format-version 1 > "$evidence_dir/owner-dependency-graph.json"
 # Dependency bootstrap may create a lockfile, never modify source/declarations.
-cmp "$spike_root/owner-rs/Cargo.toml" "$scratch/source/Cargo.toml"
-cmp "$spike_root/owner-rs/src/lib.rs" "$scratch/source/src/lib.rs"
-cmp "$spike_root/owner-rs/examples/session_observation.rs" "$scratch/source/examples/session_observation.rs"
-cmp "$spike_root/owner-rs/Cargo.lock" "$scratch/source/Cargo.lock"
-sha256sum "$spike_root/owner-rs/Cargo.toml" "$spike_root/owner-rs/src/lib.rs" \
-  "$evidence_dir/owner-Cargo.lock" > "$evidence_dir/owner-source-hashes.txt"
+for input in owner-rs/Cargo.toml owner-rs/Cargo.lock owner-rs/src/*.rs \
+  owner-rs/examples/*.rs peers/rust-execution/Cargo.toml peers/rust-execution/src/*.rs \
+  executionprofile/schemas/*.json; do
+  # Expand relative inputs from the trusted spike root, never application metadata.
+  for source in "$spike_root"/$input; do
+    relative=${source#"$spike_root"/}
+    cmp "$source" "$scratch/source/$relative"
+    sha256sum "$source" >> "$evidence_dir/owner-source-hashes.txt"
+  done
+done
 printf '%s\n' 'Rust owner observation foundation only: locked offline checks; no PostgreSQL transaction, lifecycle writer, workload launch or runtime acceptance proved.' \
   > "$evidence_dir/owner-scope.txt"

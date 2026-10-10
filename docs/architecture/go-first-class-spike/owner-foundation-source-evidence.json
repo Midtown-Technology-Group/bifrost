@@ -416,5 +416,39 @@
       "writer-guard-unit.xml": "4e19be9720723568a01ddfea707c254dafacd53810bad32c8507bae7ab7a4b49"
     },
     "job_log_sha256": "469ef020cbbfdc60a395a67dd355de0251484a8460a29ffcb81e8f39805c2319"
+  },
+  "codec_lock_proposal": {
+    "source_sha": "bc3f068f4d0439121af4a8a22f7f456e6f3ac1b5",
+    "source_tree": "cd3d5aceeb75ab6e83dbdf361aa3fa96a136fe49",
+    "run": 38078308074,
+    "url": "https://github.com/Midtown-Technology-Group/bifrost/actions/runs/38078308074",
+    "conclusion": "success",
+    "review": "Added existing first-party strict codec path dependency and pinned serde_json1.0.151 matching its independently tested manifest/lock. All other registry package records and checksums unchanged; no nonregistry dependency except two first-party crates. Resolution executed no application/build script. Proposed manifest/lock adopted only after this comparison; fresh locked offline compile/tests still required.",
+    "artifact_directory": "/home/thomas/src/bifrost-go-spike-artifacts/bc3f068f4d0439121af4a8a22f7f456e6f3ac1b5/codec-lock-proposal-38078308074",
+    "artifact_file_sha256": {
+      "owner-Cargo.lock": "9830f97843122532a6e13649f4ecbf42e39662a1b150f54c143eba649517b25d",
+      "owner-build.txt": "5e2fb7e23d4f9942313fc8aa0ec9a5cf8d98d4efbee08d28f5a06667a78380c5",
+      "owner-clippy.txt": "b3e873e81a0a129f2f57524444a7c5eb040a8b1032048a501a0777729d4716d5",
+      "owner-codec-Cargo.lock": "9cbbcb055599e79437e3032297fafc8f050b978c4035fd4cb331c7d03436d247",
+      "owner-codec-Cargo.toml": "9cdcff809401a64cfb4d9d9d230d3b7ce84eced93bace921ab2a84721da7d654",
+      "owner-codec-image-cleanup.txt": "66f3888d3a439ce734a8054d4680c44c0902a45b9bdb8bd7c014bc3c9acc190b",
+      "owner-codec-input-hashes.txt": "d1b6fbe18745bc7daccb010a0599f45d470dae6dc48eb06d7ef8b6e4e0456ee7",
+      "owner-codec-resolution.txt": "9e01935d96e4b0b35cfcbb5d874272c3cc9d78d87739100bc9da812eae03326c",
+      "owner-codec-scope.txt": "dfaa1699526cd5d8486e62cff3a534198ed762b5f3aae4f862f099c037a0552e",
+      "owner-codec-tools-build.txt": "13683f103022bcb2f4ace789d640f66a92cd7b06183e9ea6768bb70b349bda8c",
+      "owner-dependency-graph.json": "94d281d3f3565a0a3a7a3640d978e5e74d0e746ec1dd6c68004782c8bc598d51",
+      "owner-fetch.txt": "c1ca5498e9d220ded530c210dc966a8c4efaa94c3a85d814a2fa42563827d19b",
+      "owner-fmt.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "owner-image-cleanup.txt": "66f3888d3a439ce734a8054d4680c44c0902a45b9bdb8bd7c014bc3c9acc190b",
+      "owner-scope.txt": "bfcbb5ed6ebcd104bb6929c2b7c444251740e370cdd6f62ff29fbbbe39c087d8",
+      "owner-source-hashes.txt": "0ce52f94924b9b97a0602389151c002e9361a086d007555e144923014f7ba61b",
+      "owner-tests.txt": "5fc26ae41766d3b2c664b55f1bac6ab9c0fb2b3e04b630ee0337e0ee96fd494b",
+      "owner-toolchain.txt": "2073de5abf149185c2f4d7473dc833bc921b99135560d24ae7b2293f33a9c376",
+      "owner-tools-build.txt": "9271b118db51ae331b8646836fc7b81e0b710615b1f5a092625e57479190f778",
+      "owner-tools-image.txt": "711c80c4762ced59bfaaa7db82975669537f78b62d8b2f6e4928e30c8f6f2794",
+      "runtime-owner-observation": "d0a34e8f34aaef9e26b4a2751f62f2cf9cfcf39b2ddf74d7400b4e8ed5462a03",
+      "source.txt": "a3e46546b926d373ac2850b7890c4e3ff31a7e9881fd6f662f67341a84e848c1"
+    },
+    "runtime_acceptance": false
   }
 }

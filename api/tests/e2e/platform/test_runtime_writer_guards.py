@@ -896,7 +896,7 @@ async def test_existing_incumbent_source_write_path_is_unchanged(
 
 
 @pytest.fixture
-async def running_cancel_facts(rows, session_fence):
+async def running_cancel_facts(rows, session_fence, request):
     """Synthetic retained Start/grant metadata, not admission or token issuance."""
     import re
     from datetime import timedelta
@@ -934,7 +934,8 @@ async def running_cancel_facts(rows, session_fence):
                 "INSERT INTO runtime_starts "
                 "(id,session_id,execution_id,owner_incarnation_id,workflow_attempt_id,"
                 "start_message_id,input_sha256,context_sha256,started_at) "
-                "VALUES ($1,$2,$3,$4,$5,$6,$7,$7,clock_timestamp()) RETURNING started_at",
+                "VALUES ($1,$2,$3,$4,$5,$6,$7,$7,"
+                "clock_timestamp()-($8::int * interval '1 second')) RETURNING started_at",
                 start,
                 facts["session"],
                 facts["execution"],
@@ -942,6 +943,7 @@ async def running_cancel_facts(rows, session_fence):
                 facts["attempt"],
                 message,
                 facts["source"],
+                getattr(request, "param", 0),
             )
             facts["issued"] = facts["started"] + timedelta(milliseconds=1)
             facts["expires"] = facts["started"] + timedelta(seconds=10)
@@ -1248,3 +1250,376 @@ async def test_rust_cancel_readback_tail_contention_has_no_effects(
                 == "lock_contention"
             )
     assert await cancel_snapshot(running_cancel_facts) == before
+
+
+@pytest.fixture
+async def released_result_facts(running_cancel_facts):
+    """Synthetic immutable provision/release facts; no physical launch claim."""
+    facts = {**running_cancel_facts, "provision": uuid4(), "delivery": uuid4()}
+    async with connection("wex_core") as conn:
+        async with conn.transaction():
+            for purpose in ("provision", "release"):
+                await conn.execute(
+                    "INSERT INTO runtime_admissions "
+                    "(id,purpose,session_id,committed_start_id,start_message_id,grant_id,"
+                    "delivery_id,operations_digest,expires_at,provision_admission_id,"
+                    "provision_purpose,frontier_sha256,admitted_at) "
+                    "VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$8,$12)",
+                    facts["provision"] if purpose == "provision" else uuid4(),
+                    purpose,
+                    facts["session"],
+                    facts["start"],
+                    facts["start_message"],
+                    facts["grant"],
+                    facts["delivery"],
+                    facts["source"],
+                    facts["expires"],
+                    None if purpose == "provision" else facts["provision"],
+                    None if purpose == "provision" else "provision",
+                    facts["issued"],
+                )
+    return facts
+
+
+def result_payload(facts, **changes):
+    frame = {
+        "protocol": "bifrost.runtime/v1",
+        "type": "Result",
+        "session_id": str(facts["session"]),
+        "message_id": str(uuid4()),
+        "sequence": 1,
+        "correlation_id": str(facts["start_message"]),
+        "body": {
+            "start_message_id": str(facts["start_message"]),
+            "outcome": "success",
+            "value": {"ready": True, "missing_keys": []},
+        },
+        **changes,
+    }
+    # Intentional whitespace: receipt must retain these exact bytes.
+    return json.dumps(frame, indent=2).encode()
+
+
+async def result_probe(
+    fence, payload, role="wex_core", decision=None, exit_after_commit=False
+):
+    executable = Path("/app/scripts/runtime-owner-result")
+    assert executable.is_file(), "Required source-bound Rust Result artifact is missing"
+    process = await asyncio.create_subprocess_exec(
+        str(executable),
+        stdin=asyncio.subprocess.PIPE,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+        env={
+            "BIFROST_ISOLATED_OWNER_TEST": "1",
+            "BIFROST_OWNER_TEST_DATABASE_URL": (
+                f"postgresql://{role}:{PASSWORDS[role]}@writer-guard-pool/bifrost_test"
+            ),
+            "BIFROST_OWNER_TEST_EXIT_AFTER_RESULT_COMMIT": "1"
+            if exit_after_commit
+            else "0",
+        },
+    )
+    try:
+        request = ("\n".join([*fence, str(decision or uuid4())]) + "\n").encode()
+        out, err = await asyncio.wait_for(
+            process.communicate(request + payload), timeout=8
+        )
+        assert process.returncode == (73 if exit_after_commit else 0)
+        assert err == b"" and len(out) <= 1024
+        if exit_after_commit:
+            assert out == b""
+            return "reply_lost"
+        response = out.decode().strip()
+        return json.loads(response) if response.startswith("{") else response
+    finally:
+        if process.returncode is None:
+            process.kill()
+            await process.wait()
+
+
+async def result_snapshot(facts):
+    async with connection("wex_core") as conn:
+        return await conn.fetchval(
+            "SELECT jsonb_build_object('execution',to_jsonb(e),'attempt',to_jsonb(a),"
+            "'session',to_jsonb(s),'grant',to_jsonb(g),'receipts',"
+            "(SELECT jsonb_agg(to_jsonb(r) ORDER BY r.result_message_id) "
+            "FROM runtime_report_receipts r WHERE r.session_id=s.id))::text "
+            "FROM executions e JOIN workflow_execution_attempts a ON a.execution_id=e.id "
+            "JOIN runtime_sessions s ON s.workflow_attempt_id=a.id "
+            "JOIN workflow_runtime_sdk_grants g ON g.runtime_session_id=s.id "
+            "WHERE e.id=$1 AND a.id=$2 AND s.id=$3 AND g.id=$4",
+            facts["execution"],
+            facts["attempt"],
+            facts["session"],
+            facts["grant"],
+        )
+
+
+async def test_rust_result_commits_exact_receipt_and_existing_projection_once(
+    released_result_facts, session_fence, e2e_client, platform_admin
+):
+    from hashlib import sha256
+
+    facts = released_result_facts
+    payload = result_payload(facts)
+    receipt = await result_probe(session_fence, payload)
+    assert receipt["disposition"] == "accepted" and receipt["winner"] == "result"
+    assert receipt["result_sha256"] == sha256(payload).hexdigest()
+    committed = await result_snapshot(facts)
+    retained = json.loads(committed)
+    assert retained["execution"]["status"] == "Success"
+    assert retained["execution"]["result"] == {"ready": True, "missing_keys": []}
+    assert retained["attempt"]["status"] == "succeeded"
+    assert retained["attempt"]["phase"] == "terminal"
+    assert retained["session"]["close_reason"] == "result_committed"
+    assert retained["grant"]["revocation_reason"] == "session_closed"
+    assert len(retained["receipts"]) == 1
+    async with connection("wex_core") as conn:
+        assert (
+            await conn.fetchval(
+                "SELECT raw_result_payload FROM runtime_report_receipts WHERE session_id=$1",
+                facts["session"],
+            )
+            == payload
+        )
+    assert await result_probe(session_fence, payload) == receipt
+    assert await result_snapshot(facts) == committed
+    # Existing real authenticated HTTP read, no route or dependency override.
+    response = e2e_client.get(
+        f"/api/executions/{facts['execution']}", headers=platform_admin.headers
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "Success"
+    assert body["result"] == {"ready": True, "missing_keys": []}
+    assert await result_snapshot(facts) == committed
+
+
+async def test_rust_result_lost_receipt_reads_same_decision_without_projection_replay(
+    released_result_facts, session_fence
+):
+    facts = released_result_facts
+    payload, decision = result_payload(facts), uuid4()
+    assert (
+        await result_probe(
+            session_fence, payload, decision=decision, exit_after_commit=True
+        )
+        == "reply_lost"
+    )
+    committed = await result_snapshot(facts)
+    receipt = await result_probe(session_fence, payload)
+    assert receipt["decision_id"] == str(decision)
+    assert receipt["disposition"] == "accepted"
+    assert await result_snapshot(facts) == committed
+
+
+@pytest.mark.parametrize("conflict", ("bytes", "message"))
+async def test_rust_result_conflicting_duplicate_has_no_effects(
+    released_result_facts, session_fence, conflict
+):
+    facts = released_result_facts
+    payload = result_payload(facts)
+    assert (await result_probe(session_fence, payload))["disposition"] == "accepted"
+    committed = await result_snapshot(facts)
+    frame = json.loads(payload)
+    if conflict == "message":
+        frame["message_id"] = str(uuid4())
+    conflicting = json.dumps(frame, separators=(",", ":")).encode()
+    assert await result_probe(session_fence, conflicting) == "rejected"
+    assert await result_snapshot(facts) == committed
+
+
+async def test_rust_result_error_projects_common_error_without_rust_wire_variants(
+    released_result_facts, session_fence
+):
+    facts = released_result_facts
+    error = {
+        "code": "IntegrationUnavailable",
+        "message": "Synthetic unavailable",
+        "details": None,
+    }
+    payload = result_payload(
+        facts,
+        body={
+            "start_message_id": str(facts["start_message"]),
+            "outcome": "error",
+            "error": error,
+        },
+    )
+    assert (await result_probe(session_fence, payload))["disposition"] == "accepted"
+    state = json.loads(await result_snapshot(facts))
+    assert state["execution"]["status"] == "Failed"
+    assert state["execution"]["result"] == {"error": error}
+    assert state["execution"]["error_message"] == error["message"]
+    assert state["attempt"]["status"] == "failed"
+    assert state["attempt"]["failure_phase"] == "result"
+
+
+async def test_rust_result_preserves_cancel_winner_without_early_terminalization(
+    released_result_facts, session_fence
+):
+    facts = released_result_facts
+    assert (
+        await probe(session_fence, operation="request-running-cancel")
+        == "cancel_committed"
+    )
+    projection = await cancel_snapshot(facts)
+    payload = result_payload(facts)
+    receipt = await result_probe(session_fence, payload)
+    assert receipt["winner"] == "cancel" and receipt["disposition"] == "retained"
+    assert await cancel_snapshot(facts) == projection
+    assert projection["status"] == "Cancelling" and projection["completed_at"] is None
+    committed = await result_snapshot(facts)
+    assert await result_probe(session_fence, payload) == receipt
+    assert await result_snapshot(facts) == committed
+
+
+async def test_rust_result_winner_cannot_be_overwritten_by_cancel(
+    released_result_facts, session_fence
+):
+    facts = released_result_facts
+    assert (await result_probe(session_fence, result_payload(facts)))[
+        "winner"
+    ] == "result"
+    committed = await result_snapshot(facts)
+    assert await probe(session_fence, operation="request-running-cancel") == "rejected"
+    assert await result_snapshot(facts) == committed
+
+
+async def test_rust_result_cancel_concurrent_transactions_have_one_winner(
+    released_result_facts, session_fence
+):
+    facts = released_result_facts
+    receipt, cancel = await asyncio.gather(
+        result_probe(session_fence, result_payload(facts)),
+        probe(session_fence, operation="request-running-cancel"),
+    )
+    assert isinstance(receipt, dict)
+    state = json.loads(await result_snapshot(facts))
+    assert len(state["receipts"]) == 1
+    if receipt["winner"] == "result":
+        assert cancel == "rejected" and state["execution"]["status"] == "Success"
+    else:
+        assert receipt["winner"] == "cancel" and cancel == "cancel_committed"
+        assert state["execution"]["status"] == "Cancelling"
+
+
+@pytest.mark.parametrize("field", range(10))
+async def test_rust_result_rejects_stale_identity_without_writes(
+    released_result_facts, session_fence, field
+):
+    facts = released_result_facts
+    before = await result_snapshot(facts)
+    stale = list(session_fence)
+    stale[field] = str(uuid4()) if field < 8 else "e" * 64
+    assert await result_probe(stale, result_payload(facts)) == "rejected"
+    assert await result_snapshot(facts) == before
+
+
+async def test_rust_result_rejects_incumbent_backend_without_writes(
+    released_result_facts, session_fence
+):
+    facts = released_result_facts
+    before = await result_snapshot(facts)
+    assert (
+        await result_probe(session_fence, result_payload(facts), role="wex_incumbent")
+        == "rejected"
+    )
+    assert await result_snapshot(facts) == before
+
+
+async def test_rust_result_without_release_has_no_projection(
+    running_cancel_facts, session_fence
+):
+    facts = running_cancel_facts
+    before = await result_snapshot(facts)
+    assert await result_probe(session_fence, result_payload(facts)) == "rejected"
+    assert await result_snapshot(facts) == before
+
+
+@pytest.mark.parametrize("running_cancel_facts", [20], indirect=True)
+async def test_rust_result_expired_grant_has_no_projection(
+    released_result_facts, session_fence
+):
+    facts = released_result_facts
+    before = await result_snapshot(facts)
+    assert facts["expires"] < datetime.now(UTC)
+    assert await result_probe(session_fence, result_payload(facts)) == "rejected"
+    assert await result_snapshot(facts) == before
+
+
+@pytest.mark.parametrize(
+    "invalid", ("duplicate-key", "session", "correlation", "unknown-field")
+)
+async def test_rust_result_strict_wire_validation_precedes_projection(
+    released_result_facts, session_fence, invalid
+):
+    facts = released_result_facts
+    before = await result_snapshot(facts)
+    payload = result_payload(facts)
+    if invalid == "duplicate-key":
+        payload = payload.replace(
+            b'"type": "Result"', b'"type": "Result", "type": "Result"'
+        )
+    else:
+        frame = json.loads(payload)
+        if invalid == "session":
+            frame["session_id"] = str(uuid4())
+        elif invalid == "correlation":
+            frame["correlation_id"] = str(uuid4())
+        else:
+            frame["body"]["unknown"] = True
+        payload = json.dumps(frame).encode()
+    assert await result_probe(session_fence, payload) == "rejected"
+    assert await result_snapshot(facts) == before
+
+
+async def test_rust_result_late_receipt_failure_rolls_back_all_projection(
+    db_session, released_result_facts, session_fence
+):
+    from sqlalchemy import text
+
+    facts = released_result_facts
+    await db_session.execute(
+        text("""
+        CREATE FUNCTION isolated_result_receipt_fault() RETURNS trigger LANGUAGE plpgsql AS $body$
+        BEGIN RAISE EXCEPTION 'synthetic receipt fault' USING ERRCODE='42501'; END $body$
+    """)
+    )
+    await db_session.execute(
+        text("""
+        CREATE TRIGGER isolated_result_receipt_fault BEFORE INSERT ON runtime_report_receipts
+        FOR EACH ROW EXECUTE FUNCTION isolated_result_receipt_fault()
+    """)
+    )
+    await db_session.commit()
+    try:
+        before = await result_snapshot(facts)
+        assert (
+            await result_probe(session_fence, result_payload(facts))
+            == "database_failure"
+        )
+        assert await result_snapshot(facts) == before
+    finally:
+        await db_session.execute(
+            text(
+                "DROP TRIGGER isolated_result_receipt_fault ON runtime_report_receipts"
+            )
+        )
+        await db_session.execute(text("DROP FUNCTION isolated_result_receipt_fault()"))
+        await db_session.commit()
+
+
+async def test_rust_result_transport_closed_session_cannot_restore_authority(
+    released_result_facts, session_fence
+):
+    facts = released_result_facts
+    async with connection("wex_core") as conn:
+        await conn.execute(
+            "UPDATE runtime_sessions SET closed_at=clock_timestamp(),close_reason='transport_loss' WHERE id=$1",
+            facts["session"],
+        )
+    before = await result_snapshot(facts)
+    assert await result_probe(session_fence, result_payload(facts)) == "rejected"
+    assert await result_snapshot(facts) == before

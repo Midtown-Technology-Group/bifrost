@@ -1,6 +1,8 @@
 //! Isolated owner foundation. Observation is not admission or launch authority.
 //! No production dispatch, grant issuance, admission or process spawning.
 use sqlx::{PgPool, Postgres, Row, Transaction};
+mod result;
+pub use result::{ResultDecision, accept_result};
 
 /// Exact retained identity supplied by the trusted coordinator, never a tenant.
 #[derive(Debug, Clone)]
@@ -85,11 +87,21 @@ struct LockedSession<'a> {
     closed: bool,
     close_reason: Option<String>,
     execution_status: String,
+    attempt_status: String,
+    attempt_completed: bool,
 }
 
 async fn lock_session<'a>(
     pool: &'a PgPool,
     fence: &SessionFence,
+) -> Result<LockedSession<'a>, ObserveError> {
+    lock_session_state(pool, fence, false).await
+}
+
+async fn lock_session_state<'a>(
+    pool: &'a PgPool,
+    fence: &SessionFence,
+    allow_terminal: bool,
 ) -> Result<LockedSession<'a>, ObserveError> {
     if !fence.valid() {
         return Err(ObserveError::InvalidFence);
@@ -114,20 +126,19 @@ async fn lock_session<'a>(
         .execute(&mut *tx)
         .await?;
     let attempt = sqlx::query(
-        "SELECT id FROM workflow_execution_attempts \
+        "SELECT status,completed_at IS NOT NULL AS completed FROM workflow_execution_attempts \
          WHERE id=$1::text::uuid AND execution_id=$2::text::uuid \
          AND claim_token=$3::text::uuid AND worker_incarnation_id=$4::text::uuid \
-         AND completed_at IS NULL AND status IN ('claimed','running') FOR UPDATE",
+         AND ($5 OR (completed_at IS NULL AND status IN ('claimed','running'))) FOR UPDATE",
     )
     .bind(&fence.attempt_id)
     .bind(&fence.execution_id)
     .bind(&fence.claim_token)
     .bind(&fence.worker_incarnation_id)
+    .bind(allow_terminal)
     .fetch_optional(&mut *tx)
     .await?;
-    if attempt.is_none() {
-        return Err(ObserveError::Rejected);
-    }
+    let attempt = attempt.ok_or(ObserveError::Rejected)?;
     let owner = sqlx::query(
         "SELECT workflow_id::text AS workflow, deployment_id::text AS deployment, artifact_id \
          FROM runtime_execution_owners WHERE execution_id=$1::text::uuid \
@@ -209,6 +220,8 @@ async fn lock_session<'a>(
         closed: session.try_get("closed")?,
         close_reason: session.try_get("close_reason")?,
         execution_status,
+        attempt_status: attempt.try_get("status")?,
+        attempt_completed: attempt.try_get("completed")?,
     })
 }
 

@@ -3,8 +3,9 @@
 The observation transaction reads actual retained owner/session identity under
 Thomas's released common lock order. The provisional cancellation operation writes
 existing Cancelling status, session close and grant revocation together. Neither
-operation admits a workload, issues credentials, spawns processes or finalizes an
-outcome. Production dispatch is absent.
+operation admits a workload, issues credentials or spawns processes. The new
+provisional Result transaction conditionally projects the existing terminal
+outcome with an exact-byte durable receipt; this is not an accepted runtime. Production dispatch is absent.
 Matching database custody digests are observations, never proof of a live channel.
 The SQL returns no portable launch authority.
 
@@ -72,3 +73,18 @@ a reply; a fresh Rust process must reconcile the same retained identities withou
 repeating the write. This is a post-commit/pre-reply crash window, not proof of
 uncertain database commit, physical spawn recovery or terminal result settlement.
 These new paths need fresh source-bound CI evidence.
+
+`accept_result` imports the independently tested shared codec as a private owner
+dependency. No authored Go source or public SDK imports Rust. Its new lock was
+resolved in isolated run38078308074, retaining all other registry package records.
+The caller still owes authenticated channel/frontier legality, accepted artifact
+registration and schema/source admission. Test Start/grant/provision/release facts
+are synthetic immutable storage metadata, not physical launch or SDK authority.
+A new Result requires retained release, open Running state, exact identity/Start
+and current finite grant/deadline under the common locks. It atomically writes
+existing execution/attempt outcome, closes/revokes, and retains exact raw Result
+bytes with its decision. Duplicate identical bytes return the original receipt
+only after coherent retained projection is verified; conflicts fail. A committed
+cancellation remains Cancelling with a retained cancel-winner receipt until actual
+process/source settlement, without premature Cancelled projection. No send/publication
+occurs inside the database transaction. Fresh source-bound CI is required.

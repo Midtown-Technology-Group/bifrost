@@ -196,3 +196,30 @@ reads the retained same-session decision. Cases cover unchanged pre-commit state
 post-commit state, identity/backend denial, inconsistent partial close and tail
 contention. This deliberately bounded crash window does not prove commit transport
 ambiguity, spawn/lost-launch-ACK recovery, source drain or terminal finalization.
+
+## Provisional exact-byte Result transaction
+
+The next owner candidate uses the unchanged independently tested strict Rust codec
+against the language-neutral profile. The private implementation dependency stays
+out of authored Go and the SDK. Isolated dependency proposal38078308074 adds the
+codec path crate and pins serde_json1.0.151, leaving every other registry package
+record unchanged. Its returned lock and manifest were compared before adoption.
+
+The Result write validates the received raw frame, session and Start correlation;
+then locks the same source/attempt/NOWAIT-secondary/session/Start/admission/grant/
+receipt graph. A fresh Result requires Running, retained release and current
+finite grant/deadline. Receipt bytes and existing execution/attempt projection
+commit together with session closure and revocation. Identical duplicate bytes
+return the retained decision without rewriting; conflicting bytes/message IDs
+reject. A prior committed cancellation wins and stays Cancelling until actual
+process/source settlement; a transport-closed session cannot recover authority.
+
+Actual-schema tests include success/error, exact retained bytes, both ordered and
+concurrent Cancel/Result transactions, identity/backend denial, absent release,
+expiry, strict wire negatives, post-commit/pre-reply exit, and a late receipt INSERT
+fault that must roll back all earlier projections. An existing authenticated
+Execution API read is included without route/dependency overrides. Fixture
+Start/grant/release metadata remain synthetic; accepted registration, output-schema
+validation, live channel/frontier legality, restricted issuer, physical workload,
+process/source cleanup and full crash/uncertain commit/spawn acceptance remain due.
+No new writer is accepted from this candidate or component conformance alone.
