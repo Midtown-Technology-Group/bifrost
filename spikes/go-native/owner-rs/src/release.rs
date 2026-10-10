@@ -1,5 +1,5 @@
 //! Isolated common release transaction. A retained row is not spawn authority.
-use crate::{ObserveError, SessionFence, canonical_uuid, digest, lock_session};
+use crate::{ObserveError, SessionFence, canonical_uuid, digest, lock_session_state};
 use sqlx::{PgPool, Row};
 
 pub struct ReleaseRequest {
@@ -16,6 +16,7 @@ pub struct ReleaseRequest {
 pub enum ReleaseCommitObservation {
     NewlyCommitted,
     AlreadyRetained,
+    NotRetained,
 }
 
 /// The trusted guardian must independently establish accepted bytes/source,
@@ -27,6 +28,25 @@ pub async fn record_release_candidate(
     pool: &PgPool,
     fence: &SessionFence,
     request: &ReleaseRequest,
+) -> Result<ReleaseCommitObservation, ObserveError> {
+    release_transaction(pool, fence, request, false).await
+}
+
+/// Read-only reconciliation after an uncertain commit or lost reply. Absence
+/// does not establish no effects and is never permission to replay or reassign.
+pub async fn observe_release_candidate(
+    pool: &PgPool,
+    fence: &SessionFence,
+    request: &ReleaseRequest,
+) -> Result<ReleaseCommitObservation, ObserveError> {
+    release_transaction(pool, fence, request, true).await
+}
+
+async fn release_transaction(
+    pool: &PgPool,
+    fence: &SessionFence,
+    request: &ReleaseRequest,
+    observe_only: bool,
 ) -> Result<ReleaseCommitObservation, ObserveError> {
     if ![
         &request.release_id,
@@ -41,11 +61,12 @@ pub async fn record_release_candidate(
     {
         return Err(ObserveError::InvalidFence);
     }
-    let mut locked = lock_session(pool, fence).await?;
-    if locked.closed
-        || locked.execution_status != "Running"
-        || locked.attempt_status != "running"
-        || locked.attempt_completed
+    let mut locked = lock_session_state(pool, fence, observe_only).await?;
+    if !observe_only
+        && (locked.closed
+            || locked.execution_status != "Running"
+            || locked.attempt_status != "running"
+            || locked.attempt_completed)
     {
         return Err(ObserveError::Rejected);
     }
@@ -89,12 +110,12 @@ pub async fn record_release_candidate(
     .bind(&fence.session_id)
     .fetch_all(&mut *locked.tx)
     .await?;
-    if grants.len() != 1 || !receipts.is_empty() {
+    if grants.len() != 1 || (!observe_only && !receipts.is_empty()) {
         return Err(ObserveError::Rejected);
     }
     let grant = &grants[0];
     if grant.try_get::<String, _>("id")? != request.grant_id
-        || grant.try_get::<bool, _>("revoked")?
+        || (!observe_only && grant.try_get::<bool, _>("revoked")?)
         || grant.try_get::<String, _>("start")? != start_id
         || grant.try_get::<String, _>("message")? != start_message
         || grant.try_get::<String, _>("operations_digest")? != request.operations_sha256
@@ -142,6 +163,14 @@ pub async fn record_release_candidate(
             .await
             .map_err(|_| ObserveError::UncertainCommit)?;
         return Ok(ReleaseCommitObservation::AlreadyRetained);
+    }
+    if observe_only {
+        locked
+            .tx
+            .commit()
+            .await
+            .map_err(|_| ObserveError::UncertainCommit)?;
+        return Ok(ReleaseCommitObservation::NotRetained);
     }
     // Evaluate expiry after all locks, at the actual INSERT clock. Any deadline
     // or grant expiry that passes during contention rejects without a release.

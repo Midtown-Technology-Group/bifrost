@@ -1,6 +1,7 @@
 //! Private synthetic release probe, never a live launch guardian.
 use bifrost_isolated_owner_spike::{
-    ObserveError, ReleaseCommitObservation, ReleaseRequest, SessionFence, record_release_candidate,
+    ObserveError, ReleaseCommitObservation, ReleaseRequest, SessionFence,
+    observe_release_candidate, record_release_candidate,
 };
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
 use std::{
@@ -49,6 +50,11 @@ async fn run() -> &'static str {
     let Ok((fence, request)) = read_request(io::stdin().lock()) else {
         return "rejected";
     };
+    let operation =
+        std::env::var("BIFROST_OWNER_TEST_RELEASE_ACTION").unwrap_or_else(|_| "record".into());
+    if !matches!(operation.as_str(), "record" | "observe") {
+        return "rejected";
+    }
     let Ok(url) = std::env::var("BIFROST_OWNER_TEST_DATABASE_URL") else {
         return "rejected";
     };
@@ -64,10 +70,13 @@ async fn run() -> &'static str {
         Ok(pool) => pool,
         Err(_) => return "database_failure",
     };
-    let result = tokio::time::timeout(
-        Duration::from_secs(5),
-        record_release_candidate(&pool, &fence, &request),
-    )
+    let result = tokio::time::timeout(Duration::from_secs(5), async {
+        if operation == "observe" {
+            observe_release_candidate(&pool, &fence, &request).await
+        } else {
+            record_release_candidate(&pool, &fence, &request).await
+        }
+    })
     .await;
     if matches!(&result, Ok(Ok(ReleaseCommitObservation::NewlyCommitted)))
         && std::env::var("BIFROST_OWNER_TEST_EXIT_AFTER_RELEASE_COMMIT").as_deref() == Ok("1")
@@ -78,6 +87,7 @@ async fn run() -> &'static str {
     match result {
         Ok(Ok(ReleaseCommitObservation::NewlyCommitted)) => "newly_committed",
         Ok(Ok(ReleaseCommitObservation::AlreadyRetained)) => "already_retained",
+        Ok(Ok(ReleaseCommitObservation::NotRetained)) => "release_not_retained",
         Ok(Err(ObserveError::InvalidFence | ObserveError::Rejected)) => "rejected",
         Ok(Err(ObserveError::UncertainCommit)) | Err(_) => "uncertain_commit",
         Ok(Err(ObserveError::Database(sqlx::Error::Database(error))))

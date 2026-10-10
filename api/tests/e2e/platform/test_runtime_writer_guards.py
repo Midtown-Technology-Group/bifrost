@@ -1301,7 +1301,9 @@ async def provisioned_release_facts(running_cancel_facts):
     return facts
 
 
-async def release_probe(fence, facts, role="wex_core", exit_after_commit=False):
+async def release_probe(
+    fence, facts, role="wex_core", exit_after_commit=False, operation="record"
+):
     executable = Path("/app/scripts/runtime-owner-release")
     assert executable.is_file(), (
         "Required source-bound Rust release artifact is missing"
@@ -1313,6 +1315,7 @@ async def release_probe(fence, facts, role="wex_core", exit_after_commit=False):
         stderr=asyncio.subprocess.PIPE,
         env={
             "BIFROST_ISOLATED_OWNER_TEST": "1",
+            "BIFROST_OWNER_TEST_RELEASE_ACTION": operation,
             "BIFROST_OWNER_TEST_DATABASE_URL": (
                 f"postgresql://{role}:{PASSWORDS[role]}@writer-guard-pool/bifrost_test"
             ),
@@ -1389,7 +1392,41 @@ async def test_rust_release_commit_reply_loss_retains_same_release(
         == "reply_lost"
     )
     before = await release_snapshot(facts)
-    assert await release_probe(session_fence, facts) == "already_retained"
+    assert (
+        await release_probe(session_fence, facts, operation="observe")
+        == "already_retained"
+    )
+    assert await release_snapshot(facts) == before
+
+
+async def test_rust_release_read_only_absence_never_creates_admission(
+    provisioned_release_facts,
+    session_fence,
+):
+    facts = provisioned_release_facts
+    before = await release_snapshot(facts)
+    assert (
+        await release_probe(session_fence, facts, operation="observe")
+        == "release_not_retained"
+    )
+    assert await release_snapshot(facts) == before
+
+
+async def test_rust_release_read_only_after_cancel_keeps_retained_identity(
+    provisioned_release_facts,
+    session_fence,
+):
+    facts = provisioned_release_facts
+    assert await release_probe(session_fence, facts) == "newly_committed"
+    assert (
+        await probe(session_fence, operation="request-running-cancel")
+        == "cancel_committed"
+    )
+    before = await release_snapshot(facts)
+    assert (
+        await release_probe(session_fence, facts, operation="observe")
+        == "already_retained"
+    )
     assert await release_snapshot(facts) == before
 
 

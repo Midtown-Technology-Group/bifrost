@@ -18,6 +18,13 @@ without another write or delivery. Conflicts, closure and commit ambiguity deny
 fresh authorization. The private probe can exit73 after commit/before reply;
 recovery must observe that same row without treating it as a new launch.
 
+`observe_release_candidate` uses the same lock graph but never inserts a release.
+It distinguishes an absent release from the exact retained identity, including
+after cancellation, without replay, repair or ownership reassignment. The lost
+reply test uses this read-only operation rather than calling the writer again.
+Absence remains observation only: it does not prove no physical effects or permit
+another launch. New read-only recovery cases require their own source-bound proof.
+
 This is transaction evidence only, not an accepted release-to-spawn path. The
 synthetic fixtures still supply Start, unsigned grant and provision. Full accepted
 bundle/source/input checks, actual observed wire frontier, authenticated issuer

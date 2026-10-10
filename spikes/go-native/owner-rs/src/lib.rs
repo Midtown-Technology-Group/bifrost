@@ -5,7 +5,9 @@ use sqlx::{PgPool, Postgres, Row, Transaction};
 mod release;
 mod result;
 mod schema;
-pub use release::{ReleaseCommitObservation, ReleaseRequest, record_release_candidate};
+pub use release::{
+    ReleaseCommitObservation, ReleaseRequest, observe_release_candidate, record_release_candidate,
+};
 pub use result::{ResultDecision, accept_result};
 
 /// Exact retained identity supplied by the trusted coordinator, never a tenant.
