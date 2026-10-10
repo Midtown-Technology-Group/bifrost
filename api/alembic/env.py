@@ -49,7 +49,9 @@ from src.models import (  # noqa: F401
 from src.models.orm.runtime_execution import (  # noqa: F401 - internal Alembic metadata
     RuntimeDeploymentArtifact,
     RuntimeExecutionOwner,
+    RuntimeReportReceipt,
     RuntimeSession,
+    RuntimeStart,
 )
 
 # Alembic Config object

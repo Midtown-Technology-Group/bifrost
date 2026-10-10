@@ -6,6 +6,7 @@ no lifecycle owner is installed, and no workflow execution is dispatched here.
 
 import json
 from datetime import UTC, datetime
+from hashlib import sha256
 from uuid import uuid4
 
 import pytest
@@ -18,7 +19,9 @@ from src.models.orm.executions import Execution, WorkflowExecutionAttempt
 from src.models.orm.runtime_execution import (
     RuntimeDeploymentArtifact,
     RuntimeExecutionOwner,
+    RuntimeReportReceipt,
     RuntimeSession,
+    RuntimeStart,
 )
 from src.models.orm.solution_deployments import SolutionDeployment
 from src.models.orm.solutions import Solution
@@ -361,6 +364,8 @@ async def test_duplicate_session_cannot_create_a_second_launch_identity(
         "runtime_deployment_artifacts",
         "runtime_execution_owners",
         "runtime_sessions",
+        "runtime_starts",
+        "runtime_report_receipts",
     ],
 )
 async def test_alembic_runtime_tables_remain_registered_in_platform_metadata(
@@ -373,6 +378,8 @@ async def test_alembic_runtime_tables_remain_registered_in_platform_metadata(
             RuntimeDeploymentArtifact,
             RuntimeExecutionOwner,
             RuntimeSession,
+            RuntimeStart,
+            RuntimeReportReceipt,
         )
     }[table_name]
     connection = await db_session.connection()
@@ -408,3 +415,121 @@ async def test_alembic_runtime_tables_remain_registered_in_platform_metadata(
     assert {key["name"] for key in uniques} == {
         key.name for key in metadata.constraints if isinstance(key, UniqueConstraint)
     }
+
+
+START_INSERT = text("""
+    INSERT INTO runtime_starts
+        (id, session_id, execution_id, owner_incarnation_id, workflow_attempt_id,
+         start_message_id, input_sha256, context_sha256, started_at)
+    VALUES (:start, :session, :execution, :owner, :attempt, :start_message,
+            :source, :source, clock_timestamp())
+""")
+RECEIPT_INSERT = text("""
+    INSERT INTO runtime_report_receipts
+        (session_id, result_message_id, committed_start_id, start_message_id,
+         raw_result_payload, result_sha256, decision_id, disposition, winner)
+    VALUES (:session, :result_message, :start, :start_message, :payload, :digest,
+            :decision, 'accepted', 'result')
+""")
+
+
+@pytest.fixture
+async def report_storage(db_session, owner_session):
+    """Storage facts only; payload is not an admitted runtime protocol Result."""
+    facts = {
+        **owner_session,
+        **{
+            key: uuid4()
+            for key in (
+                "start",
+                "start_message",
+                "result_message",
+                "decision",
+            )
+        },
+    }
+    facts["payload"] = b'{ "schema_fixture": true }'
+    facts["digest"] = sha256(facts["payload"]).hexdigest()
+    await db_session.execute(SESSION_INSERT, facts)
+    await db_session.execute(START_INSERT, facts)
+    return facts
+
+
+async def test_receipt_storage_retains_exact_unreencoded_payload(
+    db_session, report_storage
+):
+    await db_session.execute(RECEIPT_INSERT, report_storage)
+    row = (
+        await db_session.execute(
+            text("""
+        SELECT raw_result_payload, result_sha256, committed_start_id
+        FROM runtime_report_receipts WHERE session_id = :session
+    """),
+            report_storage,
+        )
+    ).one()
+    assert tuple(row) == (
+        report_storage["payload"],
+        report_storage["digest"],
+        report_storage["start"],
+    )
+
+
+@pytest.mark.parametrize(
+    "field,value,code",
+    [
+        ("digest", "0" * 64, "23514"),
+        ("payload", b'{"schema_fixture":true}', "23514"),
+        ("start", uuid4(), "23503"),
+        ("start_message", uuid4(), "23503"),
+        ("session", uuid4(), "23503"),
+    ],
+)
+async def test_receipt_rejects_byte_drift_or_wrong_start_identity(
+    db_session, report_storage, field, value, code
+):
+    with pytest.raises(DBAPIError) as caught:
+        async with db_session.begin_nested():
+            await db_session.execute(RECEIPT_INSERT, {**report_storage, field: value})
+    assert getattr(caught.value.orig, "sqlstate", None) == code
+    assert (
+        await db_session.execute(
+            text(
+                "SELECT count(*) FROM runtime_report_receipts WHERE committed_start_id = :start"
+            ),
+            report_storage,
+        )
+    ).scalar_one() == 0
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "UPDATE runtime_starts SET input_sha256 = repeat('d', 64) WHERE id = :start",
+        "DELETE FROM runtime_starts WHERE id = :start",
+        "UPDATE runtime_report_receipts SET decision_id = gen_random_uuid() WHERE session_id = :session",
+        "DELETE FROM runtime_report_receipts WHERE session_id = :session",
+        """INSERT INTO runtime_report_receipts
+        SELECT session_id, result_message_id, committed_start_id, start_message_id,
+               raw_result_payload, result_sha256, gen_random_uuid(), disposition, winner, created_at
+        FROM runtime_report_receipts WHERE session_id = :session
+        ON CONFLICT (session_id, result_message_id) DO UPDATE SET decision_id = EXCLUDED.decision_id""",
+    ],
+)
+async def test_start_and_receipt_custody_rejects_mutation_delete_and_conflict_update(
+    db_session, report_storage, mutation
+):
+    await db_session.execute(RECEIPT_INSERT, report_storage)
+    with pytest.raises(DBAPIError) as caught:
+        async with db_session.begin_nested():
+            await db_session.execute(text(mutation), report_storage)
+    assert getattr(caught.value.orig, "sqlstate", None) == "23514"
+
+
+async def test_a_session_cannot_receive_a_second_committed_start(
+    db_session, report_storage
+):
+    with pytest.raises(DBAPIError) as caught:
+        async with db_session.begin_nested():
+            await db_session.execute(START_INSERT, {**report_storage, "start": uuid4()})
+    assert getattr(caught.value.orig, "sqlstate", None) == "23505"

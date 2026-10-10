@@ -188,3 +188,97 @@ class RuntimeSession(Base):
             name="ck_runtime_session_close_shape",
         ),
     )
+
+
+class RuntimeStart(Base):
+    __table__ = sa.Table(
+        "runtime_starts",
+        Base.metadata,
+        sa.Column("id", postgresql.UUID(), primary_key=True),
+        sa.Column("session_id", postgresql.UUID(), nullable=False),
+        sa.Column("execution_id", postgresql.UUID(), nullable=False),
+        sa.Column("owner_incarnation_id", postgresql.UUID(), nullable=False),
+        sa.Column("workflow_attempt_id", postgresql.UUID(), nullable=False),
+        sa.Column("start_message_id", postgresql.UUID(), nullable=False),
+        sa.Column("input_sha256", sa.String(64), nullable=False),
+        sa.Column("context_sha256", sa.String(64), nullable=False),
+        sa.Column("started_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("deadline_utc", sa.DateTime(timezone=True)),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.text("NOW()"),
+        ),
+        sa.UniqueConstraint("session_id", name="uq_runtime_start_session"),
+        sa.UniqueConstraint(
+            "id",
+            "session_id",
+            "start_message_id",
+            name="uq_runtime_start_message_identity",
+        ),
+        sa.ForeignKeyConstraint(
+            [
+                "session_id",
+                "execution_id",
+                "owner_incarnation_id",
+                "workflow_attempt_id",
+            ],
+            [
+                "runtime_sessions.id",
+                "runtime_sessions.execution_id",
+                "runtime_sessions.owner_incarnation_id",
+                "runtime_sessions.workflow_attempt_id",
+            ],
+            name="fk_runtime_start_session_identity",
+            ondelete="RESTRICT",
+        ),
+        sa.CheckConstraint(
+            "input_sha256 ~ '^[0-9a-f]{64}$' AND context_sha256 ~ '^[0-9a-f]{64}$'",
+            name="ck_runtime_start_input_context_digests",
+        ),
+        sa.CheckConstraint(
+            "deadline_utc IS NULL OR deadline_utc > started_at",
+            name="ck_runtime_start_deadline",
+        ),
+    )
+
+
+class RuntimeReportReceipt(Base):
+    __table__ = sa.Table(
+        "runtime_report_receipts",
+        Base.metadata,
+        sa.Column("session_id", postgresql.UUID(), primary_key=True),
+        sa.Column("result_message_id", postgresql.UUID(), primary_key=True),
+        sa.Column("committed_start_id", postgresql.UUID(), nullable=False),
+        sa.Column("start_message_id", postgresql.UUID(), nullable=False),
+        sa.Column("raw_result_payload", sa.LargeBinary(), nullable=False),
+        sa.Column("result_sha256", sa.String(64), nullable=False),
+        sa.Column("decision_id", postgresql.UUID(), nullable=False),
+        sa.Column("disposition", sa.String(16), nullable=False),
+        sa.Column("winner", sa.String(16), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.text("NOW()"),
+        ),
+        sa.ForeignKeyConstraint(
+            ["committed_start_id", "session_id", "start_message_id"],
+            [
+                "runtime_starts.id",
+                "runtime_starts.session_id",
+                "runtime_starts.start_message_id",
+            ],
+            name="fk_runtime_receipt_start_message",
+            ondelete="RESTRICT",
+        ),
+        sa.CheckConstraint(
+            "octet_length(raw_result_payload) BETWEEN 1 AND 16777216 AND result_sha256 = encode(sha256(raw_result_payload), 'hex')",
+            name="ck_runtime_receipt_exact_bytes",
+        ),
+        sa.CheckConstraint(
+            "(disposition = 'accepted' AND winner = 'result') OR (disposition = 'retained' AND winner IN ('cancel','failure'))",
+            name="ck_runtime_receipt_disposition",
+        ),
+    )
