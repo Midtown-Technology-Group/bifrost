@@ -188,6 +188,7 @@ def assemble(root: pathlib.Path, output: pathlib.Path) -> dict:
     for name, path in paths.items():
         if (
             path.is_symlink()
+            or path.resolve(strict=True) != path.absolute()
             or not path.is_file()
             or not 0 < path.stat().st_size <= LIMITS[name]
         ):

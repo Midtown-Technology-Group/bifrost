@@ -553,5 +553,40 @@
     },
     "runtime_acceptance": false,
     "validation": "Fresh exact-source complete hosted gates required."
+  },
+  "native_archive_clippy_failure_disposition": {
+    "source_commit": "f6f1ec232becb0d4824725a3dbd67099210a3846",
+    "workflow_run": 38093087269,
+    "conclusion": "failure",
+    "classification": "Code-style gate failure: an octal-looking NUL escape in the USTAR magic/version literal. No infrastructure attribution.",
+    "fix": "Use an explicit hexadecimal NUL escape, preserving the exact eight header bytes. Close ancestor-symlink input gap and retain consumer diagnostics on failed hosted checks. No lint waiver, retry, timeout/resource expansion or test skip.",
+    "evidence_sha256": {
+      "source.txt": "aa86656311ac4f7a3fc4fbb1dd2dc6f238871f07b5e165b7e44df4e7ca6e2e30",
+      "owner-Cargo.lock": "886d65f4b698dffe4e6c889787db593a09bfee113497c297099e8a50879f2d98",
+      "owner-clippy.txt": "1fe9b0be23bf4041b3ce1dd3f295f66e23b3970b5860c39d5edfb5cd979ec069",
+      "owner-fmt.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "runtime_acceptance": false,
+    "validation": "Fresh exact-source full hosted checks and cross-language native bundle verification required."
+  },
+  "verified_admission_compiler_component": {
+    "source_commit": "65ae53fb5d50c8ea258fd21e127130ae7b67b2d8",
+    "workflow_run": 38092281968,
+    "conclusion": "success",
+    "source_inputs_verified": 27,
+    "rust_tests_passed": 16,
+    "offline_locked_fmt_clippy_example_build": "pass",
+    "runtime_acceptance": false,
+    "limits": "Compiler/unit proof only. No actual admission transaction, live guardian, HTTP capability, cancellation/recovery/cleanup acceptance. New API verifier source 5f1f764 requires its own hosted evidence.",
+    "evidence_sha256": {
+      "source.txt": "79017d4625f5b8a12f3cdd25084f4238e4d5e4f324ae00e5381470923db5edd1",
+      "owner-source-hashes.txt": "da9c339218b7a4fbe11ede4537ae952409a5ba49e23353d65ae55ee4eb011178",
+      "owner-Cargo.lock": "9cbbcb055599e79437e3032297fafc8f050b978c4035fd4cb331c7d03436d247",
+      "owner-fmt.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "owner-clippy.txt": "15e2e406de0c271b3945b1d547f58d00e9b3630a1d8a9e8d6c2656fe3cf93db5",
+      "owner-tests.txt": "8cc7551ff9961dc9fc175cc7c45c885ce90cffc659e572d4f01eadf2203d7adc",
+      "owner-build.txt": "98853f8d505c505b0afedea77e5dae5d0ce09c85542794f7382ffe02c8eb6ee2",
+      "runtime-owner-admit": "71ec74d1644190b95715aff1d78839a6f2429f420fb9bafa9bb6239fd06e0638"
+    }
   }
 }

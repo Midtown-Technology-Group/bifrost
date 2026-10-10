@@ -41,7 +41,7 @@ fn header(name: &str, size: usize) -> [u8; 512] {
     raw[136..148].copy_from_slice(b"00000000000\0");
     raw[148..156].copy_from_slice(b"        ");
     raw[156] = b'0';
-    raw[257..265].copy_from_slice(b"ustar\000");
+    raw[257..265].copy_from_slice(b"ustar\x0000");
     let checksum: usize = raw.iter().map(|b| usize::from(*b)).sum();
     raw[148..156].copy_from_slice(format!("{checksum:06o}\0 ").as_bytes());
     raw

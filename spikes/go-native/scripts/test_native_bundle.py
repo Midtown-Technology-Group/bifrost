@@ -182,6 +182,27 @@ class BundleRecipeTests(unittest.TestCase):
             with self.assertRaises(Rejected):
                 assemble(source, output)
 
+    def test_source_parent_symlink_is_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = pathlib.Path(directory)
+            source, output, schemas = base / "source", base / "output", base / "schemas"
+            source.mkdir()
+            output.mkdir()
+            schemas.mkdir()
+            (source / "schemas").symlink_to(schemas, target_is_directory=True)
+            for name, raw in fixture().items():
+                path = (
+                    schemas / name.replace("-schema", "")
+                    if name.endswith("-schema.json")
+                    else output / name
+                )
+                if name == "build-evidence.json":
+                    path = output / "descriptor.json"
+                path.write_bytes(raw)
+            with self.assertRaises(Rejected):
+                assemble(source, output)
+            self.assertFalse((output / "native-bundle.tar").exists())
+
 
 if __name__ == "__main__":
     unittest.main()
