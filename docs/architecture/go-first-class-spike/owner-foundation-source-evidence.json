@@ -581,5 +581,107 @@
       "runtime-owner-result": "b5b7a56ec2d5a0ffcca6755228b0def472f60e3e9dab0b88fbd19188aaff55f6",
       "source.txt": "0882da7ad835533b14482ad78911f78daa35fc7ddd7f54621ae86f6446e67ec5"
     }
+  },
+  "result_database_proof": {
+    "source_sha": "66343ec8d776d6473ad74c56441150c2f2bbcc3e",
+    "source_tree": "b3ebda02222db72aaeedaaa94e32b204e1e4d9b2",
+    "run": 38079126692,
+    "job": 114292215698,
+    "url": "https://github.com/Midtown-Technology-Group/bifrost/actions/runs/38079126692",
+    "conclusion": "success",
+    "suites": {
+      "writer-guard-baseline.xml": [
+        {
+          "name": "pytest",
+          "errors": "0",
+          "failures": "0",
+          "skipped": "0",
+          "tests": "109",
+          "time": "12.069",
+          "timestamp": "2026-10-10T19:29:27.424922+00:00",
+          "hostname": "cb4a1c5b88dc"
+        }
+      ],
+      "writer-guard-last-results.xml": [
+        {
+          "name": "pytest",
+          "errors": "0",
+          "failures": "0",
+          "skipped": "0",
+          "tests": "130",
+          "time": "26.049",
+          "timestamp": "2026-10-10T19:30:10.070377+00:00",
+          "hostname": "96d0cf72d0cd"
+        }
+      ],
+      "writer-guard-results.xml": [
+        {
+          "name": "pytest",
+          "errors": "0",
+          "failures": "0",
+          "skipped": "0",
+          "tests": "130",
+          "time": "26.049",
+          "timestamp": "2026-10-10T19:30:10.070377+00:00",
+          "hostname": "96d0cf72d0cd"
+        }
+      ],
+      "writer-guard-unit.xml": [
+        {
+          "name": "pytest",
+          "errors": "0",
+          "failures": "0",
+          "skipped": "0",
+          "tests": "13722",
+          "time": "371.815",
+          "timestamp": "2026-10-10T19:22:15.689623+00:00",
+          "hostname": "0b4a81fd7c26"
+        }
+      ]
+    },
+    "api_quality": "Pyright 0 errors/warnings/informations; Ruff passed",
+    "cleanup": "Verified empty task container/volume/network inventories",
+    "source_inputs_verified_against_exact_git_objects": true,
+    "scope": "Actual Rust Result transaction on migrated platform schema: exact validated raw payload retained, receipt/root/attempt/close/revoke atomicity, identical/conflicting duplicates, both ordered and concurrent Cancel/Result decisions, post-commit/pre-reply process exit, late INSERT fault rollback, existing authenticated Execution API read without route overrides.",
+    "synthetic_prerequisites": [
+      "Retained Start",
+      "Unsigned grant metadata",
+      "Provision/release metadata",
+      "Artifact descriptor/association"
+    ],
+    "output_schema_validator_included": false,
+    "runtime_acceptance": false,
+    "artifact_directory": "/home/thomas/src/bifrost-go-spike-artifacts/66343ec8d776d6473ad74c56441150c2f2bbcc3e/runtime-writer-guards-66343ec8d776d6473ad74c56441150c2f2bbcc3e",
+    "artifact_file_sha256": {
+      "owner-evidence/owner-Cargo.lock": "9cbbcb055599e79437e3032297fafc8f050b978c4035fd4cb331c7d03436d247",
+      "owner-evidence/owner-build.txt": "4086e03058d87e15ad1d07ed3b57f701c3fa9b6b330aaf6ca367cd2a42b652a6",
+      "owner-evidence/owner-clippy.txt": "9245a3cb38d5be9fd958b44e710406614ce940b10dcdad84e4278f920244d600",
+      "owner-evidence/owner-dependency-graph.json": "d23f827d5f254d4a741e8b5c151109e23d1eb9bd13350df844c36e29a5c55558",
+      "owner-evidence/owner-fetch.txt": "dc967a49fac57a4cc7f9e84a70bdd6fac91c2f4a820fb1e2e29e21a2c0fd5ace",
+      "owner-evidence/owner-fmt.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "owner-evidence/owner-image-cleanup.txt": "6c7d823c8d822cf0d03c9735033385b421e0256a9f4ad0231df34c154e7a94b0",
+      "owner-evidence/owner-scope.txt": "bfcbb5ed6ebcd104bb6929c2b7c444251740e370cdd6f62ff29fbbbe39c087d8",
+      "owner-evidence/owner-source-hashes.txt": "82c09e4ba7b6d7ac0419451ede851c85a06edc10a1b252ad64cf935513cb8787",
+      "owner-evidence/owner-tests.txt": "a911e4a074bdfcb3c26cb29f7d1eb2e202074093b4f027b9f3f12a9774a9fdd2",
+      "owner-evidence/owner-toolchain.txt": "2073de5abf149185c2f4d7473dc833bc921b99135560d24ae7b2293f33a9c376",
+      "owner-evidence/owner-tools-build.txt": "3ed967ee36a46bc4dfa0ab373245626b8debd42c8685af7f17bb5746e88e9924",
+      "owner-evidence/owner-tools-image.txt": "c193fd0c6dccd9f2206ff73ea1f16b561d8157923a78372a729f8bbfb39e189e",
+      "owner-evidence/runtime-owner-observation": "45cc6ca00874eb17a74a8b82d283df457d4d8df310bfcefdc07a8d3dbfcc0faf",
+      "owner-evidence/runtime-owner-result": "b5b7a56ec2d5a0ffcca6755228b0def472f60e3e9dab0b88fbd19188aaff55f6",
+      "writer-guard-baseline.xml": "b0b61a19e7285670cf99c9f98ef8067160de35a7bcba74b2edf149674d5191ce",
+      "writer-guard-cleanup.log": "8ab708ebac5a94282b3f1adb01bc5bd27f569f97e1dd7116f6c88ced5e451f3e",
+      "writer-guard-images.txt": "e68e36a60b8f50dd3b5b6713e9ec0c161053d13a011adef181e5fa3d4847892d",
+      "writer-guard-last-results.xml": "733f056395a941039ff63e73b73e244364a7b010c12ba8b74b33a326d2d18b8c",
+      "writer-guard-owner-binary.txt": "c9a40864111567dff5dc160703738968cbf6837737bf9bdf721a7b72bbf9aae1",
+      "writer-guard-quality.log": "d884eb3558620d09283717d772e2bf232ca3e43696bb697d7a53a4fa0174046f",
+      "writer-guard-results.xml": "733f056395a941039ff63e73b73e244364a7b010c12ba8b74b33a326d2d18b8c",
+      "writer-guard-source-hashes.txt": "b5487e3a0ba051ebc734356137920172939cc2807b19edaa1f7cb1b974df4b94",
+      "writer-guard-source.txt": "0882da7ad835533b14482ad78911f78daa35fc7ddd7f54621ae86f6446e67ec5",
+      "writer-guard-stack.log": "0e40c7c792c612e40d6f91bbfd304bc80f4b99e91e4497e82fa0c5aad6b675da",
+      "writer-guard-storage-baseline.log": "504994bf7852776fee34be4e347bf37fbe70b2fa1cba9184045eadd64be79fcb",
+      "writer-guard-tests.log": "ae2f688237f0db9c0f46b5c52cfc6cd0c5f0491fda6945febd7e9a73ec0961cd",
+      "writer-guard-unit.log": "897e59585e716d248307eca9597c105359f63bf94f4f5b1e08711999cf492901",
+      "writer-guard-unit.xml": "86bce0be2625d6e53d61b785e749ce76f5202f4154b8e48b208f472ca3c38cc4"
+    }
   }
 }
