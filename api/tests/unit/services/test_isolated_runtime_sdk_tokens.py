@@ -136,3 +136,157 @@ def test_finite_signing_denies_scope_time_and_policy_expansion(change):
         )
     assert caught.value.__suppress_context__
     assert "DifferentIntegration" not in str(caught.value)
+
+
+def ingress_inputs():
+    import json
+
+    from src.services.isolated_runtime_sdk_tokens import verify_finite_integration_get
+
+    snapshot, caller, source, policy, reference, now = inputs()
+    credential = sign_finite_runtime_sdk_access(
+        snapshot, caller, source, policy, reference, now=now
+    )
+    operation = policy.operations[0]
+    request = {
+        "name": operation.integration_name,
+        "scope": str(operation.scope_organization_id),
+        "solution": str(operation.solution_install_id),
+        "oauth_scope": None,
+    }
+    return (
+        verify_finite_integration_get,
+        credential.access_token,
+        json.dumps(request).encode(),
+        snapshot,
+        caller,
+        source,
+        policy,
+        now,
+    )
+
+
+def test_finite_sdk_ingress_preserves_exact_policy_without_returning_bearer():
+    verify, token, body, snapshot, caller, source, policy, now = ingress_inputs()
+    intent = verify(token, body, snapshot, caller, source, policy, now=now)
+    assert intent.grant_id == snapshot.id
+    assert intent.grant_digest == grant_digest(snapshot)
+    assert intent.integration_name == policy.operations[0].integration_name
+    assert intent.organization_id == snapshot.effective_organization_id
+    assert intent.solution_id == snapshot.solution_install_id
+    assert token not in repr(intent)
+    assert "access_token" not in type(intent).model_fields
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        "empty",
+        "oversize",
+        "invalid-utf8",
+        "non-object",
+        "duplicate",
+        "unknown",
+        "wrong-name",
+        "global",
+        "default-scope",
+        "other-org",
+        "other-install",
+        "alias-solution-id",
+        "oauth-override",
+        "oauth-false",
+        "nested",
+        "missing-scope",
+        "noncanonical-uuid",
+        "array-name",
+    ],
+)
+def test_finite_sdk_ingress_rejects_scope_aliases_and_ambiguous_requests(change):
+    import json
+
+    verify, token, body, snapshot, caller, source, policy, now = ingress_inputs()
+    request = json.loads(body)
+    if change == "empty":
+        body = b""
+    elif change == "oversize":
+        body = b" " * 8193
+    elif change == "invalid-utf8":
+        body = b"\xff"
+    elif change == "non-object":
+        body = b"null"
+    elif change == "duplicate":
+        body = b'{"name":"bad",' + body[1:]
+    else:
+        if change == "unknown":
+            request["execution_id"] = str(snapshot.execution_id)
+        elif change == "wrong-name":
+            request["name"] = "Other"
+        elif change == "global":
+            request["scope"] = "global"
+        elif change == "default-scope":
+            request["scope"] = None
+        elif change == "other-org":
+            request["scope"] = str(uuid4())
+        elif change == "other-install":
+            request["solution"] = str(uuid4())
+        elif change == "alias-solution-id":
+            request["solution_id"] = request.pop("solution")
+        elif change == "oauth-override":
+            request["oauth_scope"] = "vendor.write"
+        elif change == "oauth-false":
+            request["oauth_scope"] = False
+        elif change == "nested":
+            request["scope"] = {"scope": request["scope"]}
+        elif change == "missing-scope":
+            del request["scope"]
+        elif change == "noncanonical-uuid":
+            request["scope"] = request["scope"].replace("-", "")
+        elif change == "array-name":
+            request["name"] = [request["name"]]
+        body = json.dumps(request).encode()
+    with pytest.raises(RuntimeSDKDenied, match="finite runtime SDK request denied"):
+        verify(token, body, snapshot, caller, source, policy, now=now)
+
+
+@pytest.mark.parametrize("change", ["caller", "source", "policy", "grant", "clock"])
+def test_finite_sdk_ingress_rechecks_parent_preimages_and_finite_time(change):
+    verify, token, body, snapshot, caller, source, policy, now = ingress_inputs()
+    if change == "caller":
+        caller = caller.model_copy(update={"roles": ("Other",)})
+    elif change == "source":
+        source = source.model_copy(
+            update={"source_manifest_digest": "sha256:" + "f" * 64}
+        )
+    elif change == "policy":
+        policy = SelectedSDKPolicy(operations=())
+    elif change == "grant":
+        snapshot = snapshot.model_copy(update={"execution_id": uuid4()})
+    else:
+        now = snapshot.initial_access_expires_at
+    with pytest.raises(RuntimeSDKDenied):
+        verify(token, body, snapshot, caller, source, policy, now=now)
+
+
+@pytest.mark.parametrize("change", ["expiry", "issue-time"])
+def test_finite_sdk_ingress_rejects_valid_signed_token_with_changed_clock(change):
+    from src.core.runtime_sdk_credentials import sign_runtime_sdk_token
+
+    verify, _, body, snapshot, caller, source, policy, now = ingress_inputs()
+    extended = sign_runtime_sdk_token(
+        GrantReference(grant_id=snapshot.id, grant_digest=grant_digest(snapshot)),
+        issued_at=snapshot.issued_at
+        - (timedelta(seconds=1) if change == "issue-time" else timedelta()),
+        expires_at=snapshot.initial_access_expires_at
+        + (timedelta(seconds=1) if change == "expiry" else timedelta()),
+    )
+    with pytest.raises(RuntimeSDKDenied):
+        verify(extended.access_token, body, snapshot, caller, source, policy, now=now)
+
+
+def test_finite_sdk_ingress_rejects_invalid_signature_without_leaking_token():
+    verify, token, body, snapshot, caller, source, policy, now = ingress_inputs()
+    invalid = "invalid-signature"
+    with pytest.raises(RuntimeSDKDenied) as caught:
+        verify(invalid, body, snapshot, caller, source, policy, now=now)
+    assert invalid not in str(caught.value) and token not in str(caught.value)
+    assert caught.value.__suppress_context__

@@ -2845,7 +2845,10 @@ async def test_rust_provision_commits_canonical_grant_operation_and_admission(
         decode_runtime_sdk_access,
     )
     from src.core.security import decode_token
-    from src.services.isolated_runtime_sdk_tokens import sign_finite_runtime_sdk_access
+    from src.services.isolated_runtime_sdk_tokens import (
+        sign_finite_runtime_sdk_access,
+        verify_finite_integration_get,
+    )
 
     snapshot, caller, source, policy = facts["issuer_inputs"]
     credential = sign_finite_runtime_sdk_access(
@@ -2871,15 +2874,32 @@ async def test_rust_provision_commits_canonical_grant_operation_and_admission(
         source=snapshot.operations_digest,
     )
     assert await release_probe(facts["fence"], facts) == "newly_committed"
+    # Existing SDK request shape, independently verified before private Rust
+    # admission. Authority/custody/source remain synthetic in this component.
+    intent = verify_finite_integration_get(
+        credential.access_token,
+        json.dumps(
+            {
+                "name": "Fixture",
+                "scope": str(snapshot.effective_organization_id),
+                "solution": str(snapshot.solution_install_id),
+            }
+        ).encode(),
+        snapshot,
+        caller,
+        source,
+        policy,
+        now=datetime.now(UTC),
+    )
     assert (
         await sdk_admission_probe(
             facts,
             request=[
-                claims.sub,
-                claims.grant_digest,
-                "Fixture",
-                str(snapshot.effective_organization_id),
-                str(snapshot.solution_install_id),
+                str(intent.grant_id),
+                intent.grant_digest,
+                intent.integration_name,
+                str(intent.organization_id),
+                str(intent.solution_id),
             ],
         )
         == "sdk_admitted"

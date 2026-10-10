@@ -32,3 +32,29 @@ teardown. Trigger/source inventory additions cover these new files; selectors,
 roles, resource limits, timeouts and acceptance conditions are unchanged.
 Static Ruff and diff checks passed locally. Hosted checks and live issuer/SDK
 integration are pending; this candidate is not runtime acceptance evidence.
+
+## Dedicated finite SDK request boundary
+
+`verify_finite_integration_get` verifies the dedicated CRED-P1 JWT without
+expired-token mode, rechecks all parent-loaded immutable preimages, and requires
+JWT issue/expiry seconds to match the committed grant's initial finite interval.
+The request uses the existing SDK fields `name`, `scope`, `solution` and optional
+null `oauth_scope`. It is bounded to 8 KiB of strict UTF-8 JSON; duplicate fields,
+unknown fields, default/global scope, noncanonical selectors, extra authority
+context and OAuth overrides are rejected. The returned immutable intent contains
+no credential and is explicitly not admission or custody evidence.
+
+The actual-schema provision test now passes the verified intent into the real
+Rust SDK-admission transaction after committed release. This remains a component
+test with synthetic source/custody; no HTTP listener or capability fetch has been
+enabled. A trusted parent still must load authoritative rows, derive the fence,
+prove live guardian custody/current source and caller entitlement, obtain Rust
+admission, and invoke the stable integration API without vendor effects. Those
+requirements remain gates on the end-to-end slice.
+
+The new negative tests cover request ambiguity and scope expansion, changed
+caller/source/policy/grant preimages, invalid signatures, expired finite time and
+a correctly signed token whose expiry exceeds the retained grant. The ordinary
+application access/refresh rejection tests remain. Full hosted API tests and
+actual-schema checks are required for this revision; local checks are formatting,
+lint and source inspection only.
