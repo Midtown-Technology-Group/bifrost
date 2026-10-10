@@ -2063,6 +2063,7 @@ async def generate_upload_url(
     "/{form_id}/upload",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Upload bounded public form content",
+    include_in_schema=False,
 )
 async def upload_embed_form_content(
     form_id: UUID,
