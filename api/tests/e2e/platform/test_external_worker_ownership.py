@@ -118,7 +118,9 @@ async def test_expired_or_paused_owner_cannot_be_replaced_or_use_legacy_enrollme
         token = (await acquire(db, azure, replica, secrets.token_hex(32)))["token"]
         state = await row(db, host_key(replica))
         value = dict(state.value_json)
-        value["vojeto_owner"] = {**value["vojeto_owner"], "expires": 0}
+        owner = value["vojeto_owner"]
+        assert isinstance(owner, dict)
+        value["vojeto_owner"] = {**owner, "expires": 0}
         state.value_json = value
         await db.commit()
     async with async_session_factory() as db:
@@ -201,7 +203,9 @@ async def test_late_provider_response_does_not_revive_owner(async_session_factor
         result = await real_enroll(db, azure, replica, boot, owner_token=owner_token)
         state = await row(db, host_key(replica))
         value = dict(state.value_json)
-        value["vojeto_owner"] = {**value["vojeto_owner"], "expires": 0}
+        owner = value["vojeto_owner"]
+        assert isinstance(owner, dict)
+        value["vojeto_owner"] = {**owner, "expires": 0}
         state.value_json = value
         await db.commit()
         return result
