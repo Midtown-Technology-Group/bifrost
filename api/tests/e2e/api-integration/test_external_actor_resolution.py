@@ -1,16 +1,23 @@
 """Resolve a verified actor against real tenant, user, and role rows."""
 
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
 import pytest
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import delete
+from sqlalchemy.ext.asyncio import (
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 
-from src.models.orm.external_identities import ExternalIdentity
-from src.models.orm.agents import Agent
 from src.models.enums import AgentAccessLevel
+from src.models.orm.agents import Agent
+from src.models.orm.audit import AuditLog
+from src.models.orm.external_identities import ExternalIdentity
 from src.models.orm.integrations import Integration, IntegrationMapping
 from src.models.orm.organizations import Organization
 from src.models.orm.users import Role, User, UserRole
@@ -21,6 +28,148 @@ from src.services.events.external_actors import (
 )
 from src.services.events.processor import EventProcessor
 from src.services.webhooks.protocol import AuthenticatedExternalActor
+
+
+@pytest.mark.asyncio
+async def test_authenticated_agent_dispatch_releases_single_pool_connection(
+    async_engine,
+):
+    """Authorization must release its connection before nested audit storage."""
+    engine = create_async_engine(
+        async_engine.url,
+        pool_size=1,
+        max_overflow=0,
+        pool_timeout=0.2,
+    )
+    sessions = async_sessionmaker(engine, expire_on_commit=False)
+    org_id = uuid4()
+    integration_id = uuid4()
+    user_id = uuid4()
+    role_id = uuid4()
+    identity_id = uuid4()
+    agent_id = uuid4()
+    tenant_id = str(uuid4())
+    sender_id = str(uuid4())
+
+    try:
+        async with sessions() as setup:
+            setup.add_all(
+                [
+                    Organization(
+                        id=org_id,
+                        name=f"Customer {uuid4()}",
+                        created_by="test",
+                    ),
+                    Integration(id=integration_id, name=f"Teams Bot {uuid4()}"),
+                    User(
+                        id=user_id,
+                        email=f"jane-{uuid4()}@example.com",
+                        name="Jane",
+                        organization_id=org_id,
+                    ),
+                    Role(id=role_id, name=f"Tier 2 {uuid4()}", created_by="test"),
+                ]
+            )
+            await setup.flush()
+            setup.add_all(
+                [
+                    IntegrationMapping(
+                        integration_id=integration_id,
+                        organization_id=org_id,
+                        entity_id=tenant_id,
+                    ),
+                    ExternalIdentity(
+                        id=identity_id,
+                        provider="microsoft_teams",
+                        external_scope_id=tenant_id,
+                        external_user_id=sender_id,
+                        user_id=user_id,
+                    ),
+                    UserRole(user_id=user_id, role_id=role_id, assigned_by="test"),
+                    Agent(
+                        id=agent_id,
+                        name=f"Endpoint {uuid4()}",
+                        system_prompt="Investigate devices",
+                        organization_id=org_id,
+                        access_level=AgentAccessLevel.AUTHENTICATED,
+                        created_by="test",
+                        is_active=True,
+                    ),
+                ]
+            )
+            await setup.commit()
+
+        actor = AuthenticatedExternalActor(
+            provider="microsoft_teams",
+            external_scope_id=tenant_id,
+            external_user_id=sender_id,
+            integration_id=integration_id,
+            external_event_id="activity-pool",
+        )
+        event = SimpleNamespace(
+            id=uuid4(),
+            event_type="microsoft_teams.message",
+            data={"activity": {"text": "Investigate PC123"}},
+            headers={},
+            received_at=datetime.now(UTC),
+            source_ip=None,
+            organization_id=org_id,
+            external_identity_id=identity_id,
+            authenticated_actor=actor_record(actor),
+        )
+        delivery = SimpleNamespace(
+            id=uuid4(),
+            subscription=SimpleNamespace(
+                agent=SimpleNamespace(id=agent_id, organization_id=org_id),
+                input_mapping=None,
+            ),
+        )
+
+        @asynccontextmanager
+        async def constrained_db_context():
+            async with sessions() as db:
+                try:
+                    yield db
+                    await db.commit()
+                except Exception:
+                    await db.rollback()
+                    raise
+
+        with (
+            patch("src.core.database.get_db_context", constrained_db_context),
+            patch(
+                "src.services.execution.agent_run_service.enqueue_agent_run",
+                new=AsyncMock(return_value=str(uuid4())),
+            ),
+        ):
+            async with sessions() as publisher:
+                await EventProcessor(publisher)._queue_agent_run(delivery, event)
+                assert not publisher.in_transaction()
+    finally:
+        async with sessions() as cleanup:
+            await cleanup.execute(
+                delete(AuditLog).where(AuditLog.organization_id == org_id)
+            )
+            await cleanup.execute(delete(UserRole).where(UserRole.user_id == user_id))
+            await cleanup.execute(
+                delete(ExternalIdentity).where(ExternalIdentity.id == identity_id)
+            )
+            await cleanup.execute(delete(Agent).where(Agent.id == agent_id))
+            await cleanup.execute(
+                delete(IntegrationMapping).where(
+                    IntegrationMapping.integration_id == integration_id
+                )
+            )
+            await cleanup.execute(delete(User).where(User.id == user_id))
+            await cleanup.execute(delete(Role).where(Role.id == role_id))
+            await cleanup.execute(
+                delete(Integration).where(Integration.id == integration_id)
+            )
+            await cleanup.execute(
+                delete(Organization).where(Organization.id == org_id)
+            )
+            await cleanup.commit()
+        await engine.dispose()
 
 
 @pytest.mark.asyncio
