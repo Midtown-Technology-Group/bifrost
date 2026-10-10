@@ -128,3 +128,21 @@ Nullable arrays emitted by the static Go extractor are checked as unions, rather
 than passed through the wire codec's fixed-document interpreter. The published
 wire schema/codec source remains unchanged. Wider schema support must be qualified
 before admitting artifacts requiring it. Fresh CI is required for these changes.
+
+`record_start_candidate` is the next isolated common transaction. It validates
+actual Prepare/Prepared raw payloads, matching artifact/session/parent evidence,
+immutable retained Prepare identity/hash, deployment/Solution/artifact/attempt,
+original/effective organization caller snapshot, context and stored execution
+input/schema. It requires Pending/claimed/open and an empty Start/admission/grant/
+receipt tail under the same ordered locks. A fresh finite database clock gates
+Start insertion; existing execution/attempt Running transitions use that exact
+clock in the same transaction. The returned common Start body follows observed
+commit only. Unknown commit cannot be retried or treated as permission to launch.
+
+This candidate has no production caller or process operation. Live channel,
+accepted staged bytes/build/source closure, native registration and admission
+remain external prerequisites for the trusted coordinator. Compiler/unit proof
+is insufficient: actual SQL, rejection/rollback/race and read-only uncertain-Start
+recovery evidence are still required before this path can support runtime
+acceptance. Its input/context digests are internal owner bookkeeping, not wire
+receipt preimages; exact raw Prepare and Result hashes remain separately retained.
