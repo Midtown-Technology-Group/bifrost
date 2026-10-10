@@ -13,6 +13,7 @@ import base64
 import hashlib
 import json
 import logging
+import time
 from datetime import datetime, timezone
 from typing import Literal, TypeVar, cast
 from urllib.parse import unquote
@@ -56,7 +57,7 @@ from src.models import (
     WorkflowIdConflict,
 )
 from src.services.audit import emit_file_policy_deny
-from src.services.editor.search import search_files_db
+from src.services.editor.search import MAX_OVERLAY_FILES, MAX_SEARCH_SECONDS, search_files_db
 from src.services.file_backend import get_backend
 from src.services.file_storage import FileStorageService
 from shared.role_cache import get_user_roles
@@ -2945,21 +2946,28 @@ async def search_file_contents(
             active_workspace_release_file_view,
         )
 
-        release_view = await active_workspace_release_file_view(db, ctx.org_id)
-        immutable_overlay = None
-        release_id = None
-        if release_view is not None:
-            paths = await release_view.list()
-            immutable_overlay = await release_view.read_many(paths)
-            release_id = release_view.release.release_id
-        results = await search_files_db(
-            db,
-            request,
-            root_path="",
-            immutable_overlay=immutable_overlay,
-            workspace_release_id=release_id,
-        )
-        return results
+        deadline = time.monotonic() + MAX_SEARCH_SECONDS
+        async with asyncio.timeout(MAX_SEARCH_SECONDS):
+            release_view = await active_workspace_release_file_view(db, ctx.org_id)
+            immutable_overlay = None
+            release_id = None
+            if release_view is not None:
+                paths = await release_view.list()
+                if len(paths) > MAX_OVERLAY_FILES:
+                    raise ValueError("Search overlay exceeds the file budget")
+                immutable_overlay = await release_view.read_many(paths)
+                release_id = release_view.release.release_id
+            results = await search_files_db(
+                db,
+                request,
+                root_path="",
+                immutable_overlay=immutable_overlay,
+                workspace_release_id=release_id,
+                deadline=deadline,
+            )
+            return results
 
+    except TimeoutError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Search exceeded the request time budget") from e
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
