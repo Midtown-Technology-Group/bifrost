@@ -62,3 +62,17 @@ the pinned pool's admitted configuration. The correction retains the same finite
 limits as synthetic server-role defaults and uses the primer's disabled client
 statement cache. No runtime failure was waived and no timeout/retry was enlarged.
 A fresh source run is required; the cancelled candidate is not test evidence.
+
+The reviewed follow-up closes the actor mapping to the two synthetic principals
+and the existing incumbent bootstrap login; unknown identities receive no owner
+class. Coordinator birth requires common `deployment-v1` source identity, and
+caller/source/input/retry facts remain immutable after birth. Added cases also
+exercise the actual Python poison-finalization entry point over the incumbent
+pool login: foreign SQL rollback must precede cleanup/publication callbacks, while
+an incumbent-owned poison still terminalizes. The callback spies test invocation
+ordering, not real Redis/broker behavior; those acceptance proofs remain required.
+
+Run38068697598 at6fa983aab remained queued with no runner or executed steps while
+that review completed. It was cancelled as superseded before publishing the
+closed-actor/immutable-facts/real-poison follow-up. Neither queued cancellation
+counts as passed runtime evidence or a diagnosed test failure.

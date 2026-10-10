@@ -20,6 +20,10 @@ GRANT SELECT ON ALL TABLES IN SCHEMA public TO wex_incumbent, wex_core;
 
 ALTER TABLE executions ADD COLUMN isolated_owner text NOT NULL DEFAULT 'incumbent'
     CHECK (isolated_owner IN ('incumbent', 'coordinator'));
+ALTER TABLE executions ADD CONSTRAINT ck_isolated_coordinator_source CHECK (
+    isolated_owner <> 'coordinator' OR
+    (runtime_mode = 'deployment-v1' AND workflow_id IS NOT NULL AND solution_deployment_id IS NOT NULL)
+);
 ALTER TABLE executions ADD CONSTRAINT uq_isolated_execution_owner UNIQUE (id, isolated_owner);
 ALTER TABLE executions ADD COLUMN isolated_coordinator_id uuid GENERATED ALWAYS AS
     (CASE WHEN isolated_owner = 'coordinator' THEN id END) STORED;
@@ -67,7 +71,8 @@ CREATE FUNCTION public.isolated_writer_guard() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $guard$
 DECLARE previous jsonb; proposed jsonb; facts jsonb; actor text; parent uuid; parent_owner text;
 BEGIN
-    actor := CASE WHEN session_user = 'wex_core' THEN 'coordinator' ELSE 'incumbent' END;
+    actor := CASE session_user WHEN 'wex_core' THEN 'coordinator'
+        WHEN 'wex_incumbent' THEN 'incumbent' WHEN 'bifrost' THEN 'incumbent' END;
     IF TG_OP <> 'INSERT' THEN previous := to_jsonb(OLD); END IF;
     IF TG_OP <> 'DELETE' THEN proposed := to_jsonb(NEW); END IF;
     IF TG_OP = 'UPDATE' AND (
@@ -79,6 +84,24 @@ BEGIN
         proposed->'attempt_id' IS DISTINCT FROM previous->'attempt_id'
     ) THEN
         RAISE EXCEPTION 'isolated immutable writer binding' USING ERRCODE = '42501';
+    END IF;
+    IF TG_TABLE_NAME = 'executions' AND TG_OP = 'UPDATE'
+        AND previous->>'isolated_owner' = 'coordinator' AND (
+        proposed->'workflow_id' IS DISTINCT FROM previous->'workflow_id' OR
+        proposed->'solution_deployment_id' IS DISTINCT FROM previous->'solution_deployment_id' OR
+        proposed->'executed_by' IS DISTINCT FROM previous->'executed_by' OR
+        proposed->'executed_by_name' IS DISTINCT FROM previous->'executed_by_name' OR
+        proposed->'organization_id' IS DISTINCT FROM previous->'organization_id' OR
+        proposed->'runtime_mode' IS DISTINCT FROM previous->'runtime_mode' OR
+        proposed->'parameters' IS DISTINCT FROM previous->'parameters' OR
+        proposed->'execution_context' IS DISTINCT FROM previous->'execution_context' OR
+        proposed->'runtime_evidence' IS DISTINCT FROM previous->'runtime_evidence' OR
+        proposed->'runtime_evidence_hash' IS DISTINCT FROM previous->'runtime_evidence_hash' OR
+        proposed->'dispatch_evidence' IS DISTINCT FROM previous->'dispatch_evidence' OR
+        proposed->'dispatch_evidence_hash' IS DISTINCT FROM previous->'dispatch_evidence_hash' OR
+        proposed->'retry_policy' IS DISTINCT FROM previous->'retry_policy'
+    ) THEN
+        RAISE EXCEPTION 'isolated immutable execution facts' USING ERRCODE = '42501';
     END IF;
     FOREACH facts IN ARRAY ARRAY[previous, proposed] LOOP
         IF facts IS NULL THEN CONTINUE; END IF;

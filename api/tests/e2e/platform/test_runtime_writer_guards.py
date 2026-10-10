@@ -8,9 +8,15 @@ import json
 from contextlib import asynccontextmanager
 from pathlib import Path
 from uuid import uuid4
+from unittest.mock import AsyncMock
 
 import asyncpg
 import pytest
+from sqlalchemy import URL
+from sqlalchemy.exc import DBAPIError
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.pool import NullPool
+from src.services.execution import poison
 from src.models.enums import ExecutionStatus
 from src.models.orm.ai_usage import AIUsage
 from src.models.orm.events import Event, EventDelivery, EventSource, EventSubscription
@@ -215,7 +221,11 @@ async def rows(db_session, association):
                 conn,
                 "executions",
                 execution,
-                {"id": coordinator["executions"], "isolated_owner": "coordinator"},
+                {
+                    "id": coordinator["executions"],
+                    "isolated_owner": "coordinator",
+                    "runtime_mode": "deployment-v1",
+                },
             )
             await conn.execute(
                 "INSERT INTO runtime_execution_owners (execution_id, owner_incarnation_id, workflow_id, deployment_id, "
@@ -237,6 +247,7 @@ async def rows(db_session, association):
                     changes["execution_id"] = coordinator["executions"]
                 if table == "workflow_execution_attempts":
                     changes["claim_token"] = uuid4()
+                    changes["runtime_mode"] = "deployment-v1"
                 await clone(conn, table, incumbent[table], changes)
     return {
         "incumbent": incumbent,
@@ -338,7 +349,11 @@ async def test_birth_without_retained_owner_rolls_back(rows):
                     conn,
                     "executions",
                     rows["incumbent"]["executions"],
-                    {"id": identity, "isolated_owner": "coordinator"},
+                    {
+                        "id": identity,
+                        "isolated_owner": "coordinator",
+                        "runtime_mode": "deployment-v1",
+                    },
                 )
         assert (
             await conn.fetchval("SELECT count(*) FROM executions WHERE id=$1", identity)
@@ -363,7 +378,11 @@ async def test_incumbent_non_fk_preexecution_link_prevents_takeover(rows):
                 conn,
                 "executions",
                 rows["incumbent"]["executions"],
-                {"id": identity, "isolated_owner": "coordinator"},
+                {
+                    "id": identity,
+                    "isolated_owner": "coordinator",
+                    "runtime_mode": "deployment-v1",
+                },
             )
 
 
@@ -452,7 +471,11 @@ async def test_incumbent_non_fk_link_race_is_observed_and_aborts_new_owner(rows)
                     owner,
                     "executions",
                     rows["incumbent"]["executions"],
-                    {"id": identity, "isolated_owner": "coordinator"},
+                    {
+                        "id": identity,
+                        "isolated_owner": "coordinator",
+                        "runtime_mode": "deployment-v1",
+                    },
                 )
         assert (
             await owner.fetchval(
@@ -535,3 +558,101 @@ async def test_actual_pool_principals_and_guard_custody_are_nonprivileged(rows):
                 "SELECT count(*) FROM pg_trigger WHERE tgname='isolated_writer_owner' AND tgenabled='O' AND NOT tgisinternal"
             )
             assert count == len(TABLES)
+
+
+async def test_real_incumbent_poison_is_excluded_before_external_effects(
+    rows, monkeypatch
+):
+    engine = create_async_engine(
+        URL.create(
+            "postgresql+asyncpg",
+            username="wex_incumbent",
+            password=PASSWORDS["wex_incumbent"],
+            host="writer-guard-pool",
+            database="bifrost_test",
+        ),
+        poolclass=NullPool,
+        connect_args={
+            "prepared_statement_cache_size": 0,
+            "statement_cache_size": 0,
+            "timeout": 5,
+            "command_timeout": 5,
+        },
+    )
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+
+    @asynccontextmanager
+    async def context():
+        async with factory() as session:
+            yield session
+
+    cleanup = AsyncMock(return_value=True)
+    publish = AsyncMock()
+    monkeypatch.setattr(poison, "get_db_context", context)
+    monkeypatch.setattr(poison, "_cleanup_transient_poison_state", cleanup)
+    monkeypatch.setattr(poison, "_publish_poison_update", publish)
+    arguments = dict(
+        queue="workflow-execution",
+        reason="isolated guard proof",
+        retry_count=1,
+        replay_count=0,
+        message_id=None,
+        sync=False,
+    )
+    try:
+        async with connection("wex_incumbent") as reader:
+            native = rows["coordinator"]["executions"]
+            before = await reader.fetchval(
+                "SELECT to_jsonb(t)::text FROM executions t WHERE id=$1", native
+            )
+            with pytest.raises(DBAPIError, match="foreign lifecycle owner"):
+                await poison.finalize_poisoned_execution(
+                    execution_id=str(native), **arguments
+                )
+            cleanup.assert_not_awaited()
+            publish.assert_not_awaited()
+            assert (
+                await reader.fetchval(
+                    "SELECT to_jsonb(t)::text FROM executions t WHERE id=$1", native
+                )
+                == before
+            )
+            outcome = await poison.finalize_poisoned_execution(
+                execution_id=str(rows["incumbent"]["executions"]), **arguments
+            )
+            assert outcome.disposition == "terminalized" and outcome.status == "Failed"
+            cleanup.assert_awaited_once()
+            publish.assert_awaited_once()
+            assert (
+                await reader.fetchval(
+                    "SELECT status::text FROM executions WHERE id=$1",
+                    rows["incumbent"]["executions"],
+                )
+                == "Failed"
+            )
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.parametrize(
+    "assignment",
+    (
+        "executed_by_name='forged'",
+        "organization_id='11111111-1111-4111-8111-111111111111'",
+        "runtime_mode='legacy'",
+        "parameters=jsonb_build_object('forged',true)",
+        "retry_policy=jsonb_build_object('forged',true)",
+        "runtime_evidence_hash='sha256:' || repeat('d',64)",
+    ),
+)
+async def test_coordinator_caller_source_and_input_facts_are_immutable(
+    rows, assignment
+):
+    async with connection("wex_core") as conn:
+        with pytest.raises(
+            asyncpg.InsufficientPrivilegeError, match="immutable execution facts"
+        ):
+            await conn.execute(
+                f"UPDATE executions SET {assignment} WHERE id=$1",
+                rows["coordinator"]["executions"],
+            )
