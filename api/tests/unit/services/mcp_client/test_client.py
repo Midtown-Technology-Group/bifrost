@@ -176,6 +176,10 @@ async def test_open_client_uses_auto_mode_and_logs_negotiated_path(
     )
     constructed: dict[str, Any] = {}
 
+    class FakeTransport:
+        def __init__(self, url: str, *, auth: str) -> None:
+            constructed.update(url=url, auth=auth)
+
     class FakeClient:
         initialize_result = None
         protocol_version = "2026-07-28"
@@ -190,15 +194,21 @@ async def test_open_client_uses_auto_mode_and_logs_negotiated_path(
             return None
 
     monkeypatch.setattr("fastmcp.Client", FakeClient)
+    monkeypatch.setattr(
+        "fastmcp.client.transports.StreamableHttpTransport",
+        FakeTransport,
+    )
 
     with caplog.at_level(logging.INFO):
         async with mcp_client.open_client(connection, "secret-token") as opened:
             assert isinstance(opened, FakeClient)
 
     assert constructed == {
-        "transport": "https://peer.example/mcp",
+        "url": "https://peer.example/mcp",
         "auth": "secret-token",
+        "transport": constructed["transport"],
         "mode": "auto",
     }
+    assert isinstance(constructed["transport"], FakeTransport)
     assert "protocol_version=2026-07-28 path=modern_discover" in caplog.text
     assert "secret-token" not in caplog.text
