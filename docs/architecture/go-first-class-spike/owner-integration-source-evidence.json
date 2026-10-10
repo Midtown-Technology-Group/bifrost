@@ -105,5 +105,21 @@
     }
   },
   "current_implementation_main": "b8e3e5a4fac0a0a7c70cd6b2a3b9394e0cbbac01",
-  "implementation_source_note": "Original inventory hashes and PR heads above retain their captured source/time; later storage implementation proof is in owner-session-schema-proof.json. Current main reconciliation is local commit 5d4a4e48ce81cb6cf700f6973e26a95e6d33c157."
+  "implementation_source_note": "Original inventory hashes and PR heads above retain their captured source/time; later storage implementation proof is in owner-session-schema-proof.json. Current main reconciliation is local commit 5d4a4e48ce81cb6cf700f6973e26a95e6d33c157.",
+  "implementation_readback_2026_10_10": {
+    "platform_main": "b8e3e5a4fac0a0a7c70cd6b2a3b9394e0cbbac01",
+    "workspace_main": "9d12733e23482a691d65d23dc4b168f7244ffe9e",
+    "workspace_checkout_head": "01a5137fa52767e6bd82f7a3703ea936d84c3c54",
+    "workspace_delta": "Three commits: server disk history, client-review reports and guarded server reboots. Selected utilities/check_integration_readiness.py unchanged from e666a60; checkout untouched.",
+    "architecture_1011": "93ec9421b23b0b4a1493ab45f15f55ded3377d2e",
+    "profile_1132": "35daf020d5e1286f82bdfed6bb3fc537bf3d78f6",
+    "private_sdk_1024": "6419069da195b053c885ab349f431ff4fae62098",
+    "candidate": "e02337989c931143b848f143f7801af947691388",
+    "candidate_run": 38020522305,
+    "native_child_sha256": "160917deeb94275f31ca9ddee2dacae00fb079fdf54cb60e206c8def261f9c34",
+    "native_child_bytes": 9920235,
+    "go_source_delta_from_ae9": "No changes under spikes/go-native; retained child rehashed without execution.",
+    "scope": "Read-only source reconciliation and isolated storage candidate; no writer/runtime acceptance.",
+    "candidate_result": "success: 13657 unit + 110 scoped tests, zero skips/errors/failures, API quality, independent empty cleanup inventories"
+  }
 }

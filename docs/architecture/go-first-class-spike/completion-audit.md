@@ -3,7 +3,19 @@
 Decision remains **CONTINUE SPIKE**. This audit preserves the complete requested
 end state; passing the independent prototype does not complete the goal.
 
-Current executable evidence is hosted CI
+Current checkpoint (2026-10-10): Thomas's isolated interface release is effective;
+the former human-release blocker is resolved. Candidate
+`e02337989c931143b848f143f7801af947691388` adds common grant, provision/release
+and identity-fence storage; run38020522305 passed13,657 unit and110 scoped
+tests with zero skips/errors/failures, API quality and independently verified
+empty task-resource inventories. Retained prior failures
+and source repairs are in [storage proof](owner-session-schema-proof.json).
+No lifecycle writer or runtime acceptance is claimed. The accepted native child
+is unchanged at `160917deeb94275f31ca9ddee2dacae00fb079fdf54cb60e206c8def261f9c34`.
+The initial evidence and dated audits below remain historical where later
+checkpoints supersede their counts, source heads or approval status.
+
+Initial executable evidence was hosted CI
 [36962353236](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/36962353236),
 exact source `8dbb5169bc3e90dd6d9f32d8c62d7fc350ca4ace`, SDK **0.0.0-spike.2**.
 The compiled workflow is 9,920,235 bytes with SHA256
@@ -17,18 +29,18 @@ without physical-host workload execution. Downloaded evidence is retained at
 | Requirement | Evidence and actual disposition |
 | --- | --- |
 | 1. Normal Go authoring | Proven for the representative application: ordinary typed Run, context, consumer-owned interface, loops/errors and `bifrost.Workflow(Run)` with inferred generic arguments. |
-| 2. Ordinary go test | Proven: 177 named test/subtest passes, vet/gofmt, normal go-cmp module. Tests execute in isolated hosted CI. |
+| 2. Ordinary go test | Proven for the representative source. Latest native producer38001923981 at ae9b76c passed414 Go tests across authoring/SDK/control/profile packages plus build/static/security checks. Ordinary go-cmp module and normal tools remain useful. |
 | 3. Isolated source build | Proven for this recipe: read-only source/modules, separate test scratch, no network during tenant tests/compile, no production or signing credentials. Hostile multi-tenant sandbox acceptance remains open. |
 | 4. Identified dependencies/toolchain | Proven: pinned Go1.27.1 Linux/amd64 toolchain image, CGO0, readonly modules/checksums/graph and recorded inputs. |
 | 5. Security/static checks | Proven for selected source/symbol scan and recipe: govulncheck1.8.0, vet and gofmt pass. Broader production/repository release gates are not claimed. |
 | 6. Immutable native artifact | Proven for the identified native binary: independent cold-cache/restored warm byte equality and trusted post-test experimental signature. No production trust/admission anchor. |
 | 7. Language-neutral registration metadata | Explicit JSON manifest and schemas exist and bind into descriptor evidence. Canonical BiFrost entity/deployment registration is unimplemented; manifest explicitly says not-registration. |
-| 8. Pin to accepted deployment | Missing. No accepted BiFrost Solution deployment/registry entry references this artifact. `reviewed_deployment` remains false. |
+| 8. Pin to accepted deployment | Actual migrated association/identity storage exists and is tested. Accepted descriptor/source admission and artifact launch from a real Solution deployment remain missing; schema fixtures are not deployment acceptance. |
 | 9. Rust admission authority | Missing. W0 and P0 are foundations, not an execution admission/Start transaction. A fixture SQL login named Rust is not a Rust coordinator. |
-| 10. Published runtime data only | Partial proof: Go consumes the published P0 schema/vectors independently. The application itself still consumes explicitly local typed IO, not complete runtime/v1. |
+| 10. Published runtime data only | Independent Go/Python/Rust codecs now implement the full candidate13-message profile and preserve P0. The application still consumes explicitly local typed IO; trusted adapter/runtime integration remains missing. |
 | 11. No Rust linkage/access | Proven for compiled workload and SDK. Go control codec also imports no Rust implementation. Rust reference crate is only an independent CI peer validator. |
 | 12. Bounded SDK use | Actual HTTPS roundtrip with exact fixture name/org and no redirects is proven. Dedicated grant issuer/purpose/finite/live-session enforcement at real BiFrost ingress is missing. |
-| 13. Common logs/Result | Missing. P0 rejects Result/LogBatch; local stdout JSON is not a common Result report. No production secret-registration/log-scrubbing acceptance. |
+| 13. Common logs/Result | Full candidate codecs support LogBatch/Result and exact-byte receipt identity. Actual adapter logs/reports remain missing; local stdout JSON and synthetic schema-test receipts are not runtime observations. |
 | 14. Rust durable finalization | Missing. Fixture PostgreSQL commits/readback and measurement files do not prove BiFrost finalization or receipt custody. Existing Execution API has not observed this workflow. |
 | 15. Common cancellation/resources | Partial: published Cancel/frontier vectors pass; real local SIGTERM→context cancellation→child reap and Docker limits are exercised. Common adapter cancellation, OOM/descendants/outage/recovery and cancel/Result races are unproved. |
 | 16. Re-execute without rebuilding | Proven locally: 20 measured runs plus a changed-branch case per immutable original/edited binary; no compiler in execution container. |
@@ -120,7 +132,7 @@ contract is independently implementable. Another **full conforming** supervisor
 executing this same application bundle remains an unproved acceptance requirement,
 not a yes inferred from the local harness or codec interchange.
 
-## Third consecutive goal-turn blocker audit
+## Historical third consecutive goal-turn blocker audit
 
 Fresh readback on 2026-10-02 confirms platform/workspace main and P0 have not
 changed. Architecture #1011 advanced from930b610 to17fc6d5 through documentation

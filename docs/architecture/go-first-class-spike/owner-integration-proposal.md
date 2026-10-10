@@ -52,7 +52,9 @@ No fabricated digest or Python wrapper registration is accepted.
 Names below are proposed internal records, not public wire fields or installed
 production DDL. Isolated storage candidates now exist in the current Alembic
 history: `20261009_runtime_artifacts`, `20261010_runtime_sessions` and
-`20261010_runtime_receipts`. [Retained storage proof](owner-session-schema-proof.json)
+`20261010_runtime_receipts`, with grant/admission/fence candidates following them.
+[Concrete schema and common lock review](owner-schema-review.md) records their
+mechanical constraints and the remaining writer gate. [Retained storage proof](owner-session-schema-proof.json)
 does not accept a lifecycle writer, live process/session custody or finalization.
 Use the existing Alembic history after reconciling the private grant branch;
 its `20261001_runtime_sdk_grants` revision is absent from current main. Do not

@@ -174,5 +174,77 @@
     "recovery": "New source candidate with explicit close/idempotent-close/claim-digest regression and original negatives retained; no unchanged retry or waiver.",
     "quality": "Not reached after scoped test failure.",
     "cleanup": "Original Compose down log retained; independent empty-inventory verification added to later workflow."
+  },
+  "identity_metadata_failure": {
+    "source": "67400b53fae80667df4b33b666974699f885bf4f",
+    "workflow_run": 38020339451,
+    "conclusion": "failure",
+    "stage": "Alembic metadata import before migration/test execution",
+    "classification": "Foreign key referenced owner_incarnation_id before its local Column declaration in the SQLAlchemy Table argument order.",
+    "correction_source": "e02337989c931143b848f143f7801af947691388",
+    "correction": "All grant identity columns precede constraints; static AST check verifies every direct runtime metadata FK/unique references previously declared columns.",
+    "fresh_candidate_run": 38020522305,
+    "cleanup": "Compose down plus successful independent empty container/network/volume inventories.",
+    "retained_files": {
+      "home/runner/work/_temp/runtime-schema-cleanup.log": "75d95dd0fb837ee44092fe54976c7bbe27ddd432757deb47ca7132e78afd3503",
+      "home/runner/work/_temp/runtime-schema-source.txt": "3bda0f5ba816b7eca45491d29a6d774f1b6838e34d6983773676e022f19e1acc",
+      "home/runner/work/_temp/runtime-schema-stack.log": "2d9619761709f508ef7ec96e14d42d23a934f6ec5cdc92c8b1264998aa2b8285"
+    },
+    "tests_and_quality": "Not reached; no result transferred to corrected candidate."
+  },
+  "grant_admission_identity_storage": {
+    "source": "e02337989c931143b848f143f7801af947691388",
+    "platform_main": "b8e3e5a4fac0a0a7c70cd6b2a3b9394e0cbbac01",
+    "workflow_run": 38020522305,
+    "conclusion": "success",
+    "unit_tests": {
+      "name": "pytest",
+      "errors": "0",
+      "failures": "0",
+      "skipped": "0",
+      "tests": "13657",
+      "time": "405.104",
+      "timestamp": "2026-10-10T03:32:10.068273+00:00",
+      "hostname": "f5de72d61288"
+    },
+    "scoped_tests": {
+      "name": "pytest",
+      "errors": "0",
+      "failures": "0",
+      "skipped": "0",
+      "tests": "110",
+      "time": "14.591",
+      "timestamp": "2026-10-10T03:40:00.986120+00:00",
+      "hostname": "3b1933c1ddd6"
+    },
+    "migration_head": "20261010_runtime_fences",
+    "retained_files": {
+      "home/runner/work/_temp/runtime-schema-cleanup.log": "1895ec4c7ac9b64ab677d05b371603e3154f0166e3a777e73717d4a1a38731ee",
+      "home/runner/work/_temp/runtime-schema-quality.log": "ec39d81a4ced3c8ab8ca3aae6c5a9b6eed3300a0a89e52b797f8ebdf5cf841a7",
+      "home/runner/work/_temp/runtime-schema-source.txt": "58650433d1011931aeab26441386a10068c3a10b66f31f58cf918f71ab5cf181",
+      "home/runner/work/_temp/runtime-schema-stack.log": "b1c21907d3189819dc08e25dd1a17d1408a7a079ff97babbe095e15e3da1fbfd",
+      "home/runner/work/_temp/runtime-schema-tests.log": "41e6b8e3a1fc3522d10dc4569e3caac29d0f2ddd843e1dfe5cbcf2bf9d18b66c",
+      "home/runner/work/_temp/runtime-schema-unit-results.xml": "96a3b5f261db1c5ca2c69875e0ced65660dd550a70072c9cc26d351940ebb417",
+      "home/runner/work/_temp/runtime-schema-unit-tests.log": "e2ec690d96f0fdd4403a7a56b2a5671ccc572d82263f592b8cde81f23c60d407",
+      "tmp/bifrost-bifrost-test-0b7397c6/test-results.xml": "a3a0c0020072591c7ad359855424c1fe06d8bb4edf6a3bfd42b20bb7dfc81e57"
+    },
+    "proved": [
+      "Eight actual runtime tables retain matching migrated Alembic metadata.",
+      "Finite grant evidence binds actual owner/caller, attempt ordinal, generated claim digest, worker/supervisor and exact Start clock/source/installation.",
+      "One-way revocation and immutable closed operation rows prevent metadata upgrade or erasure.",
+      "Provision/release identity, exact grant expiry, exact delivery and preceding provision are mechanically constrained; mutation/conflict update/rollback and duplicate rejection tested.",
+      "Legal session close and repeated identical close preserve computed claim digest; original identity and tombstone negatives retained.",
+      "Full backend unit tests, incumbent attempt/history consumers and real local signed-URL HTTP transport pass with zero skips."
+    ],
+    "quality": "API Pyright 0 errors/warnings/informations; Ruff all checks passed.",
+    "cleanup": "Compose teardown followed by successful empty container/network/volume inventory queries for the task project.",
+    "not_proved": [
+      "Actual restricted SDK token issuance/ingress, live session/process custody or fresh release eligibility.",
+      "Authenticated distinct non-owner backend roles through the pool and mechanical incumbent writer exclusion.",
+      "Rust admission/Start/cancellation/durable Result/Receipt/domain projection/API readback or crash/uncertain-commit/no-replay/process/source settlement."
+    ],
+    "unchanged_child_sha256": "160917deeb94275f31ca9ddee2dacae00fb079fdf54cb60e206c8def261f9c34",
+    "sdk_version": "0.0.0-spike.2",
+    "mtg_package_version": "2026-10-09.1"
   }
 }
