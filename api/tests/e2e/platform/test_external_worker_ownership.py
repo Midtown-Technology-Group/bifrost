@@ -222,3 +222,35 @@ async def test_late_provider_response_does_not_revive_owner(async_session_factor
         await db.rollback()
         with pytest.raises(ValueError):
             await acquire(db, azure, replica, secrets.token_hex(32))
+
+
+@pytest.mark.parametrize("phase,removed", [("acquired", True), ("begun", True), ("grant-started", False)])
+async def test_unused_allocation_cleanup_requires_verified_absence(async_session_factory, owner_fixture, phase, removed):
+    from datetime import UTC, datetime
+    from sqlalchemy import select
+    from src.services.external_worker_scaling import reconcile_hosts
+
+    azure, replica, calls, _ = owner_fixture
+    async with async_session_factory() as db:
+        await acquire(db, azure, replica, secrets.token_hex(32))
+        state = await row(db, host_key(replica))
+        value = dict(state.value_json)
+        owner = value["vojeto_owner"]
+        assert isinstance(owner, dict)
+        value["vojeto_owner"] = {**owner, "phase": phase}
+        state.value_json = value
+        await db.commit()
+        await reconcile_hosts(db, azure, set())
+        await db.commit()
+        assert await db.scalar(select(SystemConfig.id).where(SystemConfig.key == host_key(replica))) is not None
+        state = await row(db, host_key(replica))
+        value = dict(state.value_json)
+        value.update(absent_since=datetime.now(UTC).timestamp() - 121,
+                     absence_observed_at=datetime.now(UTC).timestamp())
+        state.value_json = value
+        await db.commit()
+        await reconcile_hosts(db, azure, set())
+        await db.commit()
+        exists = await db.scalar(select(SystemConfig.id).where(SystemConfig.key == host_key(replica))) is not None
+        assert exists is not removed
+        assert not calls

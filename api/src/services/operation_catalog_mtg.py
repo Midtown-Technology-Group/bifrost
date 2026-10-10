@@ -225,6 +225,10 @@ MTG_REST_OPERATIONS: tuple[OperationDefinition, ...] = (
         OperationTargetKind.PLATFORM, "src.routers.platform.external_workers.status",
     ),
     _rest_only(
+        "externalworkers.identity", "POST", "/api/platform/external-workers/identity",
+        OperationTargetKind.PLATFORM, "src.routers.platform.external_workers.identity_operation",
+    ),
+    _rest_only(
         "files.preview_workspace_file_impact", "POST", "/api/files/impact",
         OperationTargetKind.COLLECTION, "src.routers.files.preview_workspace_file_impact",
     ),
