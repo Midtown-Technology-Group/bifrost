@@ -75,6 +75,40 @@ class TestSpikeSolutionRef:
         assert await resolve_trustworthy_caller(db_session, ctx) is None
         assert await check_inbound_allowed(db_session, sol.id, None) is False
 
+    async def test_authorized_app_header_remains_trusted_caller(self, db_session):
+        """An in-scope app that grants access still establishes its install."""
+        org = await _org(db_session)
+        sol = await _sol(db_session, org.id, "authorized")
+        app = Application(
+            id=uuid4(),
+            name="Authorized app",
+            slug=f"authorized-{uuid4().hex[:8]}",
+            repo_path=f"apps/{uuid4().hex}",
+            organization_id=org.id,
+            solution_id=sol.id,
+            app_model="standalone_v2",
+            access_level="authenticated",
+        )
+        db_session.add(app)
+        await db_session.flush()
+
+        user = UserPrincipal(
+            user_id=uuid4(),
+            email="member@example.test",
+            organization_id=org.id,
+        )
+        request = SimpleNamespace(
+            headers={"X-Bifrost-App": str(app.id)},
+            query_params={},
+            url=SimpleNamespace(path="/api/tables"),
+        )
+
+        ctx = await get_execution_context(request, user, db_session)
+
+        assert ctx.app_id == str(app.id)
+        assert ctx.solution_id == str(sol.id)
+        assert await resolve_trustworthy_caller(db_session, ctx) == sol.id
+
     async def test_slug_resolves_in_scope(self, db_session):
         org = (await _org(db_session)).id
         sol = await _sol(db_session, org, "acme-crm")

@@ -24,6 +24,7 @@ from src.core.security import (
     decode_renewable_engine_token,
     decode_token,
 )
+from src.models.orm.applications import Application
 from src.models.orm.executions import WorkflowExecutionAttempt
 from shared.role_cache import get_user_roles
 
@@ -413,6 +414,28 @@ async def get_current_engine_or_bypass_user(
 RequirePlatformAdmin = Depends(get_current_superuser)
 
 
+async def _authorized_app_for_principal(
+    db: AsyncSession,
+    user: UserPrincipal,
+    app_id: UUID,
+) -> Application | None:
+    """Resolve an app header only when it is bound to this principal."""
+    from src.repositories.applications import ApplicationRepository
+
+    if user.embed:
+        if user.embed_kind != "app" or user.app_id != str(app_id):
+            return None
+        return await db.get(Application, app_id)
+
+    return await ApplicationRepository(
+        session=db,
+        org_id=user.organization_id,
+        user_id=user.user_id,
+        is_superuser=user.is_platform_admin,
+        is_external=user.is_external,
+    ).get(id=app_id)
+
+
 async def get_execution_context(
     request: Request,
     user: Annotated[UserPrincipal, Depends(get_current_active_user)],
@@ -491,22 +514,25 @@ async def get_execution_context(
                 )
             await _refuse_if_solution_inactive(solution_row)
 
-    # Gate: v2 SDK apps send X-Bifrost-App: <app_id>.  If that app belongs to a
-    # solution, the solution must be active — otherwise the app is down along
-    # with its install.  Fail closed only when the app DOES resolve to a known
-    # inactive solution; a missing/unknown app_id leaves existing behaviour
-    # unchanged (no 500 on a bad header value).
+    # Gate: v2 SDK apps send X-Bifrost-App: <app_id>. The header is only a
+    # routing hint, not caller attestation: bind it to the canonical application
+    # access decision for the authenticated principal before it can establish
+    # app or Solution identity. Embed sessions are already cryptographically
+    # bound to one app by their signed app_id claim.
     app_id_header = request.headers.get("X-Bifrost-App")
+    authorized_app_id: str | None = None
     app_solution_id: UUID | None = None
     if app_id_header is not None:
-        from src.models.orm.applications import Application as ApplicationORM
         from src.models.orm.solutions import Solution as SolutionORM
+
         try:
             app_uuid = UUID(app_id_header)
         except ValueError:
             app_uuid = None
         if app_uuid is not None:
-            app_row = await db.get(ApplicationORM, app_uuid)
+            app_row = await _authorized_app_for_principal(db, user, app_uuid)
+            if app_row is not None:
+                authorized_app_id = str(app_uuid)
             if app_row is not None and app_row.solution_id is not None:
                 app_solution_id = app_row.solution_id
                 sol_row = await db.get(SolutionORM, app_row.solution_id)
@@ -542,8 +568,8 @@ async def get_execution_context(
         user=user,
         org_id=user.organization_id,
         db=db,
-        # Set by the v2 SDK provider for Solution apps; harmless/None otherwise.
-        app_id=app_id_header,
+        # Only an app authorized above may establish app/Solution identity.
+        app_id=authorized_app_id,
         solution_id=effective_solution_id,
         caller_solution_id=caller_solution_id,
     )
