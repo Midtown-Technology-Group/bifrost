@@ -1,5 +1,6 @@
 //! Isolated owner foundation. Observation is not admission or launch authority.
-//! No production dispatch, grant issuance, admission or process spawning.
+//! No production dispatch, grant issuance, execution admission or process spawning.
+//! Release records retain synthetic prerequisites until live guardian acceptance.
 use sqlx::{PgPool, Postgres, Row, Transaction};
 mod release;
 mod result;
