@@ -9,6 +9,9 @@ from uuid import UUID, uuid4
 
 import pytest
 
+from tests.e2e.platform.test_runtime_deployment_artifacts import (
+    association as association,
+)
 from tests.e2e.platform.test_runtime_writer_guards import (
     PASSWORDS,
     connection,

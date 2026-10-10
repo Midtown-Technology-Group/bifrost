@@ -66,5 +66,13 @@
       "source.txt": "56a4b15a5e0d09aa774a65bd4ee20f64af1cf105259ccf5815a467c2825fbbe8"
     },
     "job_log_sha256": "d07a266b5a8cdcdcc9c857aab221ae01c931603b99a4800b16aaf273c3876143"
-  }
+  },
+  "superseded_database_candidates": [
+    {
+      "source_sha": "f77243aefef74c51f83d78e6ac0ab79a769daace",
+      "run": 38073657387,
+      "executed_steps": 0,
+      "reason": "Review found imported rows fixture also requires explicit registration of its association dependency in the independently selected test module. Corrected before any runner step executed; no database result waived."
+    }
+  ]
 }
