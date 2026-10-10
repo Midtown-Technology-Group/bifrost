@@ -40,6 +40,7 @@ from src.models.contracts.external_mcp import (
     MCPConnectionPublic,
     MCPConnectionSummary,
     MCPConnectionToolPublic,
+    StreamableHttpUrl,
     UserMCPCredentialPublic,
 )
 from src.models.orm.external_mcp import MCPConnection, UserMCPCredential
@@ -85,7 +86,9 @@ class MCPConnectionCreateRequest(BaseModel):
     organization_id: UUID = Field(...)
     client_id: str = Field(..., min_length=1, max_length=512)
     client_secret: str = Field(..., min_length=1)
-    server_url_override: str | None = Field(default=None, max_length=2048)
+    server_url_override: StreamableHttpUrl | None = Field(
+        default=None, max_length=2048
+    )
     available_in_chat: bool = Field(default=False)
     available_to_autonomous: bool = Field(default=False)
 
@@ -95,7 +98,9 @@ class MCPConnectionUpdateRequest(BaseModel):
 
     client_id: str | None = Field(default=None, min_length=1, max_length=512)
     client_secret: str | None = Field(default=None, min_length=1)
-    server_url_override: str | None = Field(default=None, max_length=2048)
+    server_url_override: StreamableHttpUrl | None = Field(
+        default=None, max_length=2048
+    )
     available_in_chat: bool | None = Field(default=None)
     available_to_autonomous: bool | None = Field(default=None)
     service_oauth_token_id: UUID | None = Field(default=None)

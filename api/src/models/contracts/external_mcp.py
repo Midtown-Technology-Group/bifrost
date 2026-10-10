@@ -12,10 +12,29 @@ be returned by the API without leaking secrets.
 """
 
 from datetime import datetime
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
+from urllib.parse import urlsplit
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field
+
+
+def validate_streamable_http_url(value: str) -> str:
+    """Require an absolute HTTP(S) endpoint without changing its wire form."""
+    if not isinstance(value, str) or value != value.strip():
+        raise ValueError("MCP server URL must use HTTP or HTTPS")
+    try:
+        parsed = urlsplit(value)
+        hostname = parsed.hostname
+        parsed.port
+    except ValueError as exc:
+        raise ValueError("MCP server URL must use HTTP or HTTPS") from exc
+    if parsed.scheme.lower() not in {"http", "https"} or not hostname:
+        raise ValueError("MCP server URL must use HTTP or HTTPS")
+    return value
+
+
+StreamableHttpUrl = Annotated[str, BeforeValidator(validate_streamable_http_url)]
 
 
 # ==================== MCP SERVER ====================
@@ -62,7 +81,7 @@ class MCPServerCreate(BaseModel):
         max_length=255,
         description="Unique server name (e.g. 'Microsoft 365 Copilot', 'halopsa-mcp')",
     )
-    server_url: str = Field(
+    server_url: StreamableHttpUrl = Field(
         ...,
         min_length=1,
         max_length=2048,
@@ -100,7 +119,9 @@ class MCPServerUpdate(BaseModel):
     """Request model for updating an MCP server template."""
 
     name: str | None = Field(default=None, min_length=1, max_length=255)
-    server_url: str | None = Field(default=None, min_length=1, max_length=2048)
+    server_url: StreamableHttpUrl | None = Field(
+        default=None, min_length=1, max_length=2048
+    )
     oauth_provider_id: UUID | None = Field(default=None)
     redirect_url: str | None = Field(default=None, max_length=2048)
     discovery_metadata: dict[str, Any] | None = Field(default=None)
@@ -170,7 +191,7 @@ class MCPConnectionCreate(BaseModel):
         min_length=1,
         description="Encrypted OAuth client_secret (envelope-encrypted at rest)",
     )
-    server_url_override: str | None = Field(
+    server_url_override: StreamableHttpUrl | None = Field(
         default=None, max_length=2048,
         description="Optional server URL override for regional/sovereign deployments",
     )
@@ -198,7 +219,9 @@ class MCPConnectionUpdate(BaseModel):
 
     client_id: str | None = Field(default=None, min_length=1, max_length=512)
     encrypted_client_secret: str | None = Field(default=None, min_length=1)
-    server_url_override: str | None = Field(default=None, max_length=2048)
+    server_url_override: StreamableHttpUrl | None = Field(
+        default=None, max_length=2048
+    )
     available_in_chat: bool | None = Field(default=None)
     available_to_autonomous: bool | None = Field(default=None)
     service_oauth_token_id: UUID | None = Field(default=None)
