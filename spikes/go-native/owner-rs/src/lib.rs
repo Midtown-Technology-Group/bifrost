@@ -5,11 +5,15 @@ use sqlx::{PgPool, Postgres, Row, Transaction};
 mod release;
 mod result;
 mod schema;
+mod sdk;
 mod start;
 pub use release::{
     ReleaseCommitObservation, ReleaseRequest, observe_release_candidate, record_release_candidate,
 };
 pub use result::{ResultDecision, accept_result};
+pub use sdk::{
+    IntegrationGetAdmission, IntegrationGetRequest, authorize_integration_get_candidate,
+};
 pub use start::{StartCommit, StartObservation, observe_start_candidate, record_start_candidate};
 
 /// Exact retained identity supplied by the trusted coordinator, never a tenant.

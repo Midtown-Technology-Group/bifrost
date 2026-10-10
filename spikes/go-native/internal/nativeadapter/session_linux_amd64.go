@@ -238,7 +238,7 @@ func RunInheritedSession(ctx context.Context, transport SessionTransport, accept
 				<-done
 				return err
 			}
-			frame := executionprofile.Frame{"protocol": executionprofile.Protocol, "type": "Heartbeat", "session_id": prepared.sessionID, "message_id": id, "sequence": sequence, "correlation_id": frontier.start.Frame["message_id"], "body": map[string]any{"start_message_id": frontier.start.Frame["message_id"], "state": "executing", "monotonic_elapsed_ms": time.Since(started).Milliseconds()}}
+			frame := executionprofile.Frame{"protocol": executionprofile.Protocol, "type": "Heartbeat", "session_id": prepared.sessionID, "message_id": id, "sequence": sequence, "correlation_id": nil, "body": map[string]any{"start_message_id": frontier.start.Frame["message_id"], "state": "executing", "monotonic_elapsed_ms": time.Since(started).Milliseconds()}}
 			sequence++
 			if executionprofile.Write(transport.Runtime, frame) != nil {
 				stopChild()

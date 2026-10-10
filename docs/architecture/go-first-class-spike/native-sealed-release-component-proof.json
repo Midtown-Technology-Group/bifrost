@@ -333,7 +333,7 @@
   "independent_local_supervisor_candidate": {
     "source_commit": "8c747c6a08c5722e381606a3ce6cc795ac68081b",
     "workflow_run": 38089134638,
-    "observed_status": "queued",
+    "observed_status": "completed",
     "runtime_acceptance": false,
     "cases": [
       "success",
@@ -343,6 +343,28 @@
       "cancel-running"
     ],
     "workflow_sha256": "160917deeb94275f31ca9ddee2dacae00fb079fdf54cb60e206c8def261f9c34",
-    "limits": "Published executable and complete hosted gate only; no runtime pass yet. Start/receipt and TLS SDK credentials are synthetic local fixtures, never Rust authority or durable projection."
+    "limits": "Published executable and complete hosted gate only; no runtime pass yet. Start/receipt and TLS SDK credentials are synthetic local fixtures, never Rust authority or durable projection.",
+    "conclusion": "failure"
+  },
+  "common_protocol_failure_disposition": {
+    "source_commit": "8c747c6a08c5722e381606a3ce6cc795ac68081b",
+    "workflow_run": 38089134638,
+    "classification": "Code/fixture contract violation; not infrastructure and not waived",
+    "source_inputs_verified": 109,
+    "go_unit_cases_passed": 532,
+    "failed_case": "success",
+    "observed_frames": [
+      "Offer"
+    ],
+    "sdk_calls": 0,
+    "cause": "Fixture generated RFC3339 nanosecond timestamps, while published Prepare/Provision schema permits at most six fractional digits; current source truncates UTC to microseconds and adds a specification regression test. Exact original Prepare bytes were not retained, so the failed transcript alone does not prove the offending field.",
+    "additional_static_defect_fixed": "Heartbeat correlation must be null. Corrected adapter emission and held-SDK fixture now requires an actual valid Heartbeat before Cancel.",
+    "evidence_sha256": {
+      "descriptor.json": "f7e220e3bdd8d0ca023f1bcc74cca228ed0780c1807552eb7d0070485bea0e3b",
+      "tests.jsonl": "f5e5ffcdc66ebd8dcd6d16456f71637802f09d8851410d988b1d4aaad16803fe",
+      "common-protocol-execution.json": "556ce67e75b74c89843c2baf8845143a352439df96923b1f0630d84aba779276"
+    },
+    "validation": "Fresh source-bound complete hosted gate required. No retry, timeout expansion, resource increase, skip or protocol widening.",
+    "runtime_acceptance": false
   }
 }

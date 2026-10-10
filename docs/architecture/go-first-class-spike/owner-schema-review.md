@@ -90,3 +90,23 @@ workflow-consumer cancellation/failure paths publish updates and mutate Redis.
 Their actual entry/commit/effect order must be exercised alongside SQL guards;
 a rejected database mutation alone is not evidence that external effects were
 excluded. This review does not accept a guard or change Python behavior.
+
+## Restricted integration admission candidate
+
+The isolated Rust `authorize_integration_get_candidate` now uses the same shared
+workspace-release → attempt → NOWAIT owner/root/deployment/Solution → session →
+Start → ordered admissions → ordered grants prefix. After confirming the request
+references this session's single grant, it locks that grant's immutable operations
+in ordinal order, then the session's ordered receipts. An issuer/ingress using
+operation rows must keep this order; it must not lock an unrelated request-supplied
+grant or reverse the receipt/operation tail. No existing writer is changed.
+
+This candidate requires Running/open state, matching Start, retained provision
+and release, the exact grant digest and one organization-scoped integration-get
+for the requested name and installation. It checks the grant and non-null Start
+deadlines using the actual clock after the locks and denies uncertain read commit.
+It performs no lifecycle writes, signing, renewal or integration fetch. Source/
+caller entitlement, the full CRED-P1 signature/claim/digest verification, trusted
+ingress custody and real restricted SDK HTTP behavior remain mandatory gates.
+Its tests use real Rust Start/release with an explicitly unsigned synthetic grant;
+they cannot qualify the issuer, ingress or whole runtime by passing.

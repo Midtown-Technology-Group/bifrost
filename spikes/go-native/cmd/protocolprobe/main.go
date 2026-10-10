@@ -45,6 +45,11 @@ func fileDigest(path string) (string, error) {
 func encode(value any) ([]byte, error) { return json.Marshal(value) }
 func fixtureID(n int) string           { return fmt.Sprintf("00000000-0000-0000-0000-%012x", n) }
 
+// utcText obeys the published six-digit UTC limit without widening deadlines.
+func utcText(value time.Time) string {
+	return value.UTC().Truncate(time.Microsecond).Format(time.RFC3339Nano)
+}
+
 type fixture struct{ adapter, workflow, evidence, graph, inputSchema, outputSchema, vectors string }
 type observation struct {
 	Case                string                   `json:"case"`
@@ -142,7 +147,7 @@ func runCase(f fixture, mode string) (observation, error) {
 	workload := body["workload"].(map[string]any)
 	workload["input_schema_digest"] = "sha256:" + digest(contents["input-schema.json"])
 	workload["output_schema_digest"] = "sha256:" + digest(contents["output-schema.json"])
-	workload["deadline_utc"] = time.Now().Add(10 * time.Second).UTC().Format(time.RFC3339Nano)
+	workload["deadline_utc"] = utcText(time.Now().Add(10 * time.Second))
 	keys := []string{"credential", "enabled"}
 	if mode == "missing" {
 		keys = []string{"zeta", "alpha", "credential"}
@@ -235,7 +240,7 @@ func runCase(f fixture, mode string) (observation, error) {
 		return result, rejected
 	}
 	start := frame("Start", 104, 3, prepare["message_id"], map[string]any{"prepare_message_id": prepare["message_id"], "committed_start_id": id(20), "remaining_run_ms": 9000})
-	provision := frame("Provision", 105, 4, prepare["message_id"], map[string]any{"prepare_message_id": prepare["message_id"], "committed_start_id": id(20), "binding": binding, "grant_id": id(21), "delivery_id": id(22), "expires_at": time.Now().Add(9 * time.Second).UTC().Format(time.RFC3339Nano), "operations_digest": "sha256:" + digest([]byte("synthetic integration-get Fixture organization policy")), "capabilities": []string{"integration-get"}})
+	provision := frame("Provision", 105, 4, prepare["message_id"], map[string]any{"prepare_message_id": prepare["message_id"], "committed_start_id": id(20), "binding": binding, "grant_id": id(21), "delivery_id": id(22), "expires_at": utcText(time.Now().Add(9 * time.Second)), "operations_digest": "sha256:" + digest([]byte("synthetic integration-get Fixture organization policy")), "capabilities": []string{"integration-get"}})
 	if executionprofile.Write(parent, start) != nil || executionprofile.Write(parent, provision) != nil {
 		return result, rejected
 	}
@@ -257,6 +262,10 @@ func runCase(f fixture, mode string) (observation, error) {
 			select {
 			case <-entered:
 			case <-ctx.Done():
+				return result, rejected
+			}
+			heartbeat, err := read()
+			if err != nil || heartbeat.Frame["type"] != "Heartbeat" || heartbeat.Frame["correlation_id"] != nil || heartbeat.Frame["body"].(map[string]any)["start_message_id"] != start["message_id"] {
 				return result, rejected
 			}
 			if executionprofile.Write(parent, cancelFrame) != nil {

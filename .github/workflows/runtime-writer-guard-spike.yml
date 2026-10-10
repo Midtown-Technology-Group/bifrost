@@ -87,7 +87,8 @@ jobs:
           cp "$RUNNER_TEMP/owner-evidence/runtime-owner-result" api/scripts/runtime-owner-result
           cp "$RUNNER_TEMP/owner-evidence/runtime-owner-release" api/scripts/runtime-owner-release
           cp "$RUNNER_TEMP/owner-evidence/runtime-owner-start" api/scripts/runtime-owner-start
-          sha256sum api/scripts/runtime-owner-observation api/scripts/runtime-owner-result api/scripts/runtime-owner-release api/scripts/runtime-owner-start > "$RUNNER_TEMP/writer-guard-owner-binary.txt"
+          cp "$RUNNER_TEMP/owner-evidence/runtime-owner-sdk-admission" api/scripts/runtime-owner-sdk-admission
+          sha256sum api/scripts/runtime-owner-observation api/scripts/runtime-owner-result api/scripts/runtime-owner-release api/scripts/runtime-owner-start api/scripts/runtime-owner-sdk-admission > "$RUNNER_TEMP/writer-guard-owner-binary.txt"
           bash test.sh stack up > "$RUNNER_TEMP/writer-guard-stack.log" 2>&1
           docker compose -p "$guard_project" -f "$COMPOSE_FILE" up -d --wait --wait-timeout 60 writer-guard-pool
           docker compose -p "$guard_project" -f "$COMPOSE_FILE" images > "$RUNNER_TEMP/writer-guard-images.txt"

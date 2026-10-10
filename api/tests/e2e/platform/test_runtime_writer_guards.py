@@ -1763,6 +1763,234 @@ async def release_snapshot(facts):
     return (await result_snapshot(facts), admissions)
 
 
+@pytest.fixture
+async def sdk_admission_facts(prepared_start_facts):
+    """Real Rust Start/release, synthetic unsigned grant and operation policy."""
+    from hashlib import sha256
+    import re
+
+    from tests.e2e.platform.test_runtime_deployment_artifacts import GRANT_INSERT
+
+    facts = dict(prepared_start_facts)
+    assert isinstance(await start_probe(facts), dict)
+    async with connection("wex_core") as conn:
+        row = await conn.fetchrow(
+            "SELECT o.owner_incarnation_id AS owner,o.workflow_id AS workflow,"
+            "o.deployment_id AS deployment,(o.caller_snapshot->>'caller_user_id')::uuid AS reviewer,"
+            "d.solution_id AS solution,sol.organization_id AS org,"
+            "d.compiled_manifest_hash AS manifest_digest,d.resolution_map_hash AS resolution_digest,"
+            "ra.source_sha256 AS source,s.claim_token_digest AS claim_digest,"
+            "s.worker_incarnation_id AS worker,s.supervisor_incarnation_id AS supervisor,"
+            "st.started_at AS started,st.deadline_utc AS expires,clock_timestamp() AS issued "
+            "FROM runtime_sessions s JOIN runtime_execution_owners o ON o.execution_id=s.execution_id "
+            "JOIN runtime_starts st ON st.session_id=s.id "
+            "JOIN solution_deployments d ON d.id=o.deployment_id "
+            "JOIN solutions sol ON sol.id=d.solution_id "
+            "JOIN runtime_deployment_artifacts ra ON ra.deployment_id=o.deployment_id AND ra.workflow_id=o.workflow_id "
+            "WHERE s.id=$1",
+            facts["session"],
+        )
+        assert row is not None
+        facts.update(dict(row))
+        facts.update(
+            grant=uuid4(),
+            provision=uuid4(),
+            delivery=uuid4(),
+            release=uuid4(),
+            number=1,
+            caller_digest=facts["source"],
+            start_message=facts["message"],
+        )
+        assert (
+            facts["claim_digest"]
+            == sha256(
+                b"16:cred-p1/claim/v1,36:" + facts["fence"][3].encode() + b","
+            ).hexdigest()
+        )
+        keys = list(dict.fromkeys(re.findall(r"(?<!:):(\w+)", GRANT_INSERT.text)))
+        statement = re.sub(
+            r"(?<!:):(\w+)",
+            lambda match: "$" + str(keys.index(match[1]) + 1),
+            GRANT_INSERT.text,
+        )
+        async with conn.transaction():
+            await conn.execute(statement, *(facts[key] for key in keys))
+            await conn.execute(
+                "INSERT INTO workflow_runtime_sdk_grant_operations "
+                "(grant_id,ordinal,operation,integration_name,scope_kind,scope_organization_id,resolved_organization_id,solution_install_id) "
+                "VALUES ($1,0,'integration-get','Fixture','organization',$2,$2,$3)",
+                facts["grant"],
+                facts["org"],
+                facts["solution"],
+            )
+            await conn.execute(
+                "INSERT INTO runtime_admissions "
+                "(id,purpose,session_id,committed_start_id,start_message_id,grant_id,delivery_id,operations_digest,expires_at,frontier_sha256,admitted_at) "
+                "VALUES ($1,'provision',$2,$3,$4,$5,$6,$7,$8,$7,$9)",
+                facts["provision"],
+                facts["session"],
+                facts["start"],
+                facts["message"],
+                facts["grant"],
+                facts["delivery"],
+                facts["source"],
+                facts["expires"],
+                facts["issued"],
+            )
+    assert await release_probe(facts["fence"], facts) == "newly_committed"
+    return facts
+
+
+async def sdk_admission_probe(facts, fence=None, request=None, role="wex_core"):
+    executable = Path("/app/scripts/runtime-owner-sdk-admission")
+    assert executable.is_file(), (
+        "Required source-bound Rust SDK admission artifact is missing"
+    )
+    fields = request or [
+        str(facts["grant"]),
+        facts["source"],
+        "Fixture",
+        str(facts["org"]),
+        str(facts["solution"]),
+    ]
+    process = await asyncio.create_subprocess_exec(
+        str(executable),
+        stdin=asyncio.subprocess.PIPE,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+        env={
+            "BIFROST_ISOLATED_OWNER_TEST": "1",
+            "BIFROST_OWNER_TEST_DATABASE_URL": f"postgresql://{role}:{PASSWORDS[role]}@writer-guard-pool/bifrost_test",
+        },
+    )
+    try:
+        out, err = await asyncio.wait_for(
+            process.communicate(
+                ("\n".join([*(fence or facts["fence"]), *fields]) + "\n").encode()
+            ),
+            timeout=8,
+        )
+        assert process.returncode == 0 and err == b"" and len(out) <= 32
+        return out.decode().strip()
+    finally:
+        if process.returncode is None:
+            process.kill()
+            await process.wait()
+
+
+async def sdk_admission_snapshot(facts):
+    async with connection("wex_core") as conn:
+        sdk = await conn.fetchval(
+            "SELECT jsonb_build_object('grant',to_jsonb(g),'operations',"
+            "(SELECT jsonb_agg(to_jsonb(op) ORDER BY ordinal) FROM workflow_runtime_sdk_grant_operations op WHERE op.grant_id=g.id),"
+            "'admissions',(SELECT jsonb_agg(to_jsonb(a) ORDER BY purpose,id) FROM runtime_admissions a WHERE a.session_id=g.runtime_session_id))::text "
+            "FROM workflow_runtime_sdk_grants g WHERE g.id=$1",
+            facts["grant"],
+        )
+    return (await start_snapshot(facts), sdk)
+
+
+async def test_rust_sdk_admission_is_bounded_and_read_only(sdk_admission_facts):
+    facts = sdk_admission_facts
+    before = await sdk_admission_snapshot(facts)
+    assert await sdk_admission_probe(facts) == "sdk_admitted"
+    assert await sdk_admission_snapshot(facts) == before
+
+
+@pytest.mark.parametrize("field", range(5))
+async def test_rust_sdk_admission_denies_each_credential_or_operation_drift(
+    sdk_admission_facts, field
+):
+    facts = sdk_admission_facts
+    before = await sdk_admission_snapshot(facts)
+    request = [
+        str(facts["grant"]),
+        facts["source"],
+        "Fixture",
+        str(facts["org"]),
+        str(facts["solution"]),
+    ]
+    request[field] = (
+        "f" * 64
+        if field == 1
+        else "DifferentIntegration"
+        if field == 2
+        else str(uuid4())
+    )
+    assert await sdk_admission_probe(facts, request=request) == "rejected"
+    assert await sdk_admission_snapshot(facts) == before
+
+
+@pytest.mark.parametrize("field", range(10))
+async def test_rust_sdk_admission_denies_each_stale_session_fence(
+    sdk_admission_facts, field
+):
+    facts = sdk_admission_facts
+    before = await sdk_admission_snapshot(facts)
+    fence = list(facts["fence"])
+    fence[field] = str(uuid4()) if field < 8 else "e" * 64
+    assert await sdk_admission_probe(facts, fence=fence) == "rejected"
+    assert await sdk_admission_snapshot(facts) == before
+
+
+async def test_rust_sdk_admission_denies_noncore_pool_identity(sdk_admission_facts):
+    facts = sdk_admission_facts
+    before = await sdk_admission_snapshot(facts)
+    assert await sdk_admission_probe(facts, role="wex_incumbent") == "rejected"
+    assert await sdk_admission_snapshot(facts) == before
+
+
+async def test_rust_cancel_tombstone_blocks_later_sdk_admission(sdk_admission_facts):
+    facts = sdk_admission_facts
+    assert (
+        await probe(facts["fence"], operation="request-running-cancel")
+        == "cancel_committed"
+    )
+    before = await sdk_admission_snapshot(facts)
+    assert await sdk_admission_probe(facts) == "rejected"
+    assert await sdk_admission_snapshot(facts) == before
+
+
+async def test_rust_sdk_admission_rejects_additional_operation(sdk_admission_facts):
+    facts = sdk_admission_facts
+    async with connection("wex_core") as conn:
+        await conn.execute(
+            "INSERT INTO workflow_runtime_sdk_grant_operations "
+            "(grant_id,ordinal,operation,integration_name,scope_kind,scope_organization_id,resolved_organization_id) "
+            "VALUES ($1,1,'mapping-get','Fixture','organization',$2,$2)",
+            facts["grant"],
+            facts["org"],
+        )
+    before = await sdk_admission_snapshot(facts)
+    assert await sdk_admission_probe(facts) == "rejected"
+    assert await sdk_admission_snapshot(facts) == before
+
+
+async def test_rust_sdk_admission_denies_explicitly_revoked_open_session(
+    sdk_admission_facts,
+):
+    facts = sdk_admission_facts
+    async with connection("wex_core") as conn:
+        await conn.execute(
+            "UPDATE workflow_runtime_sdk_grants SET revoked_at=clock_timestamp(),revocation_reason='explicit_revoke' WHERE id=$1",
+            facts["grant"],
+        )
+    before = await sdk_admission_snapshot(facts)
+    assert await sdk_admission_probe(facts) == "rejected"
+    assert await sdk_admission_snapshot(facts) == before
+
+
+async def test_rust_sdk_admission_denies_naturally_expired_grant(sdk_admission_facts):
+    facts = sdk_admission_facts
+    before = await sdk_admission_snapshot(facts)
+    await asyncio.sleep(
+        max(0, (facts["expires"] - datetime.now(UTC)).total_seconds()) + 0.01
+    )
+    assert facts["expires"] < datetime.now(UTC)
+    assert await sdk_admission_probe(facts) == "rejected"
+    assert await sdk_admission_snapshot(facts) == before
+
+
 async def test_rust_release_observed_commit_and_no_replay(
     provisioned_release_facts,
     session_fence,
