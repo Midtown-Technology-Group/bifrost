@@ -544,5 +544,42 @@
       "writer-guard-unit.xml": "4b01de943e15d842b40a91b32df07b049b78fdecc4265012891df0b16d40abd4"
     },
     "runtime_acceptance": false
+  },
+  "result_compiler_proof": {
+    "source_sha": "66343ec8d776d6473ad74c56441150c2f2bbcc3e",
+    "source_tree": "b3ebda02222db72aaeedaaa94e32b204e1e4d9b2",
+    "run": 38079126735,
+    "job": 114292215737,
+    "url": "https://github.com/Midtown-Technology-Group/bifrost/actions/runs/38079126735",
+    "conclusion": "success",
+    "checks": [
+      "Rustfmt",
+      "Locked offline Clippy all targets, warnings denied",
+      "Locked offline tests:4 passed,0 failures/ignored",
+      "Locked offline observation and Result probe builds",
+      "All first-party codec/schema/owner inputs compared unchanged after build"
+    ],
+    "database_behavior_verified": false,
+    "output_schema_validator_included": false,
+    "runtime_acceptance": false,
+    "artifact_directory": "/home/thomas/src/bifrost-go-spike-artifacts/66343ec8d776d6473ad74c56441150c2f2bbcc3e/runtime-owner-foundation-66343ec8d776d6473ad74c56441150c2f2bbcc3e",
+    "artifact_file_sha256": {
+      "owner-Cargo.lock": "9cbbcb055599e79437e3032297fafc8f050b978c4035fd4cb331c7d03436d247",
+      "owner-build.txt": "2eaf8764a660d84ffdf1aaf9ceddfd85fbc9a476ccd0cca1d50742bc99b55fe5",
+      "owner-clippy.txt": "667996b018ebd568136611e8e325bae985a23e036d1cff935c4326f2ecbbcd62",
+      "owner-dependency-graph.json": "d23f827d5f254d4a741e8b5c151109e23d1eb9bd13350df844c36e29a5c55558",
+      "owner-fetch.txt": "0cf91059873bcb2a97e0e607326659f7e3805724661587539d7f605e6235194e",
+      "owner-fmt.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "owner-image-cleanup.txt": "c996a9551bfb4f78bbb3f15145ffdffd31598cb81eb76fab4dfdadfe8c806649",
+      "owner-scope.txt": "bfcbb5ed6ebcd104bb6929c2b7c444251740e370cdd6f62ff29fbbbe39c087d8",
+      "owner-source-hashes.txt": "82c09e4ba7b6d7ac0419451ede851c85a06edc10a1b252ad64cf935513cb8787",
+      "owner-tests.txt": "4c45fe537c7e5d4e30907da7e6d3b898fdae2798a65a1a9752bb36a758795f47",
+      "owner-toolchain.txt": "2073de5abf149185c2f4d7473dc833bc921b99135560d24ae7b2293f33a9c376",
+      "owner-tools-build.txt": "e9e6fb5959768ccb448da609a6122dc283d3d3ce3e7075830dc16096f35b51f0",
+      "owner-tools-image.txt": "ac4dd5b62e2f802f4a6a66b1c1c71853866eb7b90f86d5c77acbcf68752af091",
+      "runtime-owner-observation": "45cc6ca00874eb17a74a8b82d283df457d4d8df310bfcefdc07a8d3dbfcc0faf",
+      "runtime-owner-result": "b5b7a56ec2d5a0ffcca6755228b0def472f60e3e9dab0b88fbd19188aaff55f6",
+      "source.txt": "0882da7ad835533b14482ad78911f78daa35fc7ddd7f54621ae86f6446e67ec5"
+    }
   }
 }
