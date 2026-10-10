@@ -603,9 +603,9 @@ GRANT_INSERT = text("""
          solution_install_id, source_kind, source_id, source_manifest_digest, source_resolution_digest,
          source_global_permission, source_digest, operations_digest, grant_digest,
          owner_incarnation_id, committed_start_id, start_message_id)
-    VALUES (:grant, 'cred-p1/v1', :attempt, :execution, 1, :claim_digest, :worker, :supervisor, :session,
+    VALUES (:grant, 'cred-p1/v1', :attempt, :execution, :number, :claim_digest, :worker, :supervisor, :session,
             :started, :issued, 10, :expires, :expires, :reviewer, :org, :org, 'schema@example.test',
-            'Synthetic schema', 1, 0, 0, :source, :workflow, :solution, 'solution-deployment', :deployment,
+            'Synthetic schema', 1, 0, 0, :caller_digest, :workflow, :solution, 'solution-deployment', :deployment,
             :manifest_digest, :resolution_digest, 0, :source, :source, :source, :owner, :start, :start_message)
 """)
 
@@ -622,6 +622,8 @@ async def grant_storage(db_session, report_storage):
         )
     ).scalar_one()
     facts.update(
+        number=1,
+        caller_digest=report_storage["source"],
         started=started,
         issued=started + timedelta(milliseconds=1),
         expires=started + timedelta(seconds=10),
@@ -935,3 +937,30 @@ async def test_generated_claim_fence_survives_close_and_idempotent_tombstone(
         grant_storage["issued"],
         "schema-test-close",
     )
+
+
+@pytest.mark.parametrize("field,value", [("number", 2), ("caller_digest", "e" * 64)])
+async def test_grant_cannot_change_attempt_ordinal_or_owner_caller(
+    db_session, grant_storage, field, value
+):
+    with pytest.raises(DBAPIError) as caught:
+        async with db_session.begin_nested():
+            await db_session.execute(GRANT_INSERT, {**grant_storage, field: value})
+    assert getattr(caught.value.orig, "sqlstate", None) == "23503"
+
+
+async def test_grant_cannot_substitute_a_different_start_clock(
+    db_session, grant_storage
+):
+    from datetime import timedelta
+
+    with pytest.raises(DBAPIError) as caught:
+        async with db_session.begin_nested():
+            await db_session.execute(
+                GRANT_INSERT,
+                {
+                    **grant_storage,
+                    "started": grant_storage["started"] - timedelta(seconds=1),
+                },
+            )
+    assert getattr(caught.value.orig, "sqlstate", None) == "23503"

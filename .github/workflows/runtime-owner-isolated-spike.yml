@@ -8,6 +8,7 @@ on:
       - api/alembic/versions/20261010_runtime_starts_receipts.py
       - api/alembic/versions/20261010_runtime_sdk_grants.py
       - api/alembic/versions/20261010_runtime_admissions.py
+      - api/alembic/versions/20261010_runtime_identity_fences.py
       - api/tests/e2e/platform/test_runtime_deployment_artifacts.py
       - api/src/models/orm/runtime_execution.py
       - api/src/models/orm/executions.py

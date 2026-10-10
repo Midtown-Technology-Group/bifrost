@@ -227,6 +227,9 @@ class WorkflowExecutionAttempt(Base):
 
     __table_args__ = (
         UniqueConstraint(
+            "id", "execution_id", "attempt_number", name="uq_workflow_attempt_runtime_number"
+        ),
+        UniqueConstraint(
             "id", "execution_id", "claim_token", "worker_incarnation_id",
             name="uq_workflow_attempt_runtime_fence",
         ),

@@ -93,6 +93,12 @@ class RuntimeExecutionOwner(Base):
             server_default=sa.text("NOW()"),
         ),
         sa.UniqueConstraint(
+            "execution_id",
+            "owner_incarnation_id",
+            "caller_sha256",
+            name="uq_runtime_owner_caller",
+        ),
+        sa.UniqueConstraint(
             "execution_id", "owner_incarnation_id", name="uq_runtime_owner_identity"
         ),
         sa.ForeignKeyConstraint(
@@ -226,6 +232,13 @@ class RuntimeStart(Base):
             nullable=False,
             server_default=sa.text("NOW()"),
         ),
+        sa.UniqueConstraint(
+            "id",
+            "session_id",
+            "start_message_id",
+            "started_at",
+            name="uq_runtime_start_clock",
+        ),
         sa.UniqueConstraint("session_id", name="uq_runtime_start_session"),
         sa.UniqueConstraint(
             "id",
@@ -341,6 +354,42 @@ class WorkflowRuntimeSDKGrant(Base):
         sa.Column("grant_digest", sa.String(64), nullable=False),
         sa.Column("revoked_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("revocation_reason", sa.String(32), nullable=True),
+        sa.ForeignKeyConstraint(
+            ["execution_id", "owner_incarnation_id", "caller_snapshot_digest"],
+            [
+                "runtime_execution_owners.execution_id",
+                "runtime_execution_owners.owner_incarnation_id",
+                "runtime_execution_owners.caller_sha256",
+            ],
+            name="fk_runtime_sdk_owner_caller",
+            ondelete="RESTRICT",
+        ),
+        sa.ForeignKeyConstraint(
+            [
+                "committed_start_id",
+                "runtime_session_id",
+                "start_message_id",
+                "started_at",
+            ],
+            [
+                "runtime_starts.id",
+                "runtime_starts.session_id",
+                "runtime_starts.start_message_id",
+                "runtime_starts.started_at",
+            ],
+            name="fk_runtime_sdk_start_clock",
+            ondelete="RESTRICT",
+        ),
+        sa.ForeignKeyConstraint(
+            ["workflow_attempt_id", "execution_id", "attempt_number"],
+            [
+                "workflow_execution_attempts.id",
+                "workflow_execution_attempts.execution_id",
+                "workflow_execution_attempts.attempt_number",
+            ],
+            name="fk_runtime_sdk_attempt_number",
+            ondelete="RESTRICT",
+        ),
         sa.UniqueConstraint(
             "id",
             "runtime_session_id",
