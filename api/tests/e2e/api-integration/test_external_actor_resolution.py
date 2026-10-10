@@ -59,7 +59,7 @@ async def test_authenticated_agent_dispatch_releases_single_pool_connection(
                     Organization(
                         id=org_id,
                         name=f"Customer {uuid4()}",
-                        created_by="test",
+                        created_by="agent-delivery-pool-test",
                     ),
                     Integration(id=integration_id, name=f"Teams Bot {uuid4()}"),
                     User(
