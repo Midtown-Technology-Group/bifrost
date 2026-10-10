@@ -1,5 +1,5 @@
 {
-  "status": "proposed-interfaces-not-authority-release",
+  "status": "historical-source-inventory-for-released-b8-proposal",
   "sources": {
     "platform_main": {
       "sha": "b031b9ca3a4fc50d6eb04dbfdf578fe8f009913d",
@@ -53,7 +53,7 @@
   "verified_conformance_source": "ae9b76c18d2b097e53c0799391377e8149fdbe8c",
   "diagnostic_run": 38001923899,
   "native_run": 38001923981,
-  "release_status": "No human architecture release supplied in this thread; published architecture requirements remain unchanged.",
+  "release_status": "Thomas explicitly released interfaces at b8b44cbc01b1fb6be86f4fba050e93eb0da55924 for isolated implementation; runtime acceptance and all other gates remain outstanding.",
   "current_pr_heads": {
     "1011": {
       "baseRefName": "main",
@@ -103,5 +103,7 @@
       "state": "OPEN",
       "updatedAt": "2026-10-09T21:07:38Z"
     }
-  }
+  },
+  "current_implementation_main": "b8e3e5a4fac0a0a7c70cd6b2a3b9394e0cbbac01",
+  "implementation_source_note": "Original inventory hashes and PR heads above retain their captured source/time; later storage implementation proof is in owner-session-schema-proof.json. Current main reconciliation is local commit 5d4a4e48ce81cb6cf700f6973e26a95e6d33c157."
 }

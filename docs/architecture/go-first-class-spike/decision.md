@@ -42,13 +42,25 @@ narrow and actual deployment registration is absent.
 Thomas has explicitly released the [common owner integration interfaces](owner-integration-proposal.md)
 at `b8b44cbc0` for isolated implementation. [Exact approval](isolated-implementation-authorization.json)
 retains all security/race, schema/lock-order and uncertain-commit/recovery gates.
-The worktree now reconciles platform main `f11c6966d7b8553e4662cb6ab3414a0f8da3a2f2`
-through local merge `a48f8df0964000cd86d8ac95741f0e968b17b9ff`; no PR was merged.
+The worktree now reconciles platform main `b8e3e5a4fac0a0a7c70cd6b2a3b9394e0cbbac01`
+through local merge `5d4a4e48ce81cb6cf700f6973e26a95e6d33c157`; no PR was merged.
 Runtime acceptance is not supplied by the interface release. Real native
 registration/trusted adapter custody,
 finite provision/live-session admission, Rust Start/cancel/durable Result and
 existing Execution API readback, actual-schema writer exclusion and cleanup all
 remain mandatory. No Go-specific owner or synthetic durable store is proposed.
+
+Isolated implementation has started with real additive Alembic storage for
+native artifact association, immutable owner/session identity, retained session
+close tombstones, one Start per session and exact-byte Result/Receipt evidence.
+[Owner/session proof](owner-session-schema-proof.json) records 50 passing platform
+and incumbent tests, followed by 53 passing tests with metadata introspection;
+both sources passed API quality and removed their disposable stacks. A third
+candidate passed 67 tests including Start/Receipt storage, metadata, byte-drift
+and conflict-update rejection, with API quality and verified teardown. These are
+storage proofs, not Rust owner admission or durable execution acceptance. Fresh
+checks remain required after source or dependency changes. The configured test
+pool still forces a shared backend login; it cannot qualify writer exclusion.
 
 The sections below are the initial G0 design and historical observations, not
 current test counts, source heads or unresolved-contract status. The completion

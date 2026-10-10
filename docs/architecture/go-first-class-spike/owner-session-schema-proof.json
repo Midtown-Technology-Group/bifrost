@@ -1,0 +1,101 @@
+{
+  "status": "actual-platform-owner-session-storage-proof-not-writer-or-runtime-acceptance",
+  "source": "461b033acac01575b4d1d8860eb1097fa1b4d7ae",
+  "platform_main": "f11c6966d7b8553e4662cb6ab3414a0f8da3a2f2",
+  "approval_proposal_commit": "b8b44cbc01b1fb6be86f4fba050e93eb0da55924",
+  "workflow_run": 38014634974,
+  "conclusion": "success",
+  "tests": {
+    "name": "pytest",
+    "errors": "0",
+    "failures": "0",
+    "skipped": "0",
+    "tests": "50",
+    "time": "9.784",
+    "timestamp": "2026-10-10T01:53:19.229169+00:00",
+    "hostname": "6ac02878039b"
+  },
+  "test_groups": {
+    "tests.e2e.platform.test_runtime_deployment_artifacts": 24,
+    "tests.e2e.platform.test_execution_history_pagination": 1,
+    "tests.unit.models.test_execution_attempts_contract": 2,
+    "tests.unit.services.execution.test_attempts": 23
+  },
+  "migration_head": "20261010_runtime_sessions",
+  "migration_parent": "20261009_runtime_artifacts",
+  "retained_files": {
+    "home/runner/work/_temp/runtime-schema-cleanup.log": "fd8cc708aa66994184feafe6928a3bb16e8398c07add5bb670d522514f83789e",
+    "home/runner/work/_temp/runtime-schema-quality.log": "900fdbd6f31082cf16322a13921bd513e5e6adc07eb39f189c5d51467dda9284",
+    "home/runner/work/_temp/runtime-schema-source.txt": "2c04f8eacb1ce33ceccea63ebf86815237fc0a977fb415a83c50e0d11153c7bf",
+    "home/runner/work/_temp/runtime-schema-tests.log": "1be2a17e42ccdbe45b27b062cc79c1a0293d3e4bc66db476c42573b46f0f2813",
+    "tmp/bifrost-bifrost-test-0b7397c6/test-results.xml": "5b2f80e7f863dd70b1985527aa542813d0ac092fc3b1b45df23bfb2537bcb91d"
+  },
+  "quality": "API Pyright: 0 errors, 0 warnings, 0 informations; Ruff: all checks passed.",
+  "cleanup": "All task-created stack containers, volumes and network removed.",
+  "proved": [
+    "Actual workflow/deployment/artifact association identity and immutability.",
+    "Actual execution/owner/session/attempt/claim/worker composite identity and retained close tombstone.",
+    "Parent source/claim drift, cross-identity insertion and duplicate-session rejection.",
+    "Existing execution-history and attempt contract/service tests remain green."
+  ],
+  "not_proved": [
+    "Distinct non-owner backend roles through the actual pool and all incumbent writer negatives.",
+    "Caller/source admission, real channel/process custody or credential issuance/ingress.",
+    "Rust Start, cancellation, durable Result/projection/API readback or crash/no-replay recovery."
+  ],
+  "unchanged_workflow_artifact_sha256": "160917deeb94275f31ca9ddee2dacae00fb079fdf54cb60e206c8def261f9c34",
+  "sdk_version": "0.0.0-spike.2",
+  "mtg_package_version": "2026-10-09.1",
+  "metadata_alignment": {
+    "source": "5e37c9f65962b27ebd06d919e688ea504aa9c066",
+    "workflow_run": 38015117341,
+    "conclusion": "success",
+    "tests": {
+      "name": "pytest",
+      "errors": "0",
+      "failures": "0",
+      "skipped": "0",
+      "tests": "53",
+      "time": "10.096",
+      "timestamp": "2026-10-10T02:00:48.067263+00:00",
+      "hostname": "4fb359724144"
+    },
+    "retained_files": {
+      "home/runner/work/_temp/runtime-schema-cleanup.log": "02f13d3bd7fd2866b50ccda618990346af6b2c93f5856cd92f7d6d870ae4a29e",
+      "home/runner/work/_temp/runtime-schema-quality.log": "1e7449341d7c0db4e2b3e3180fb5a8297400eea84c20a2d967fb2d0d7e1908a4",
+      "home/runner/work/_temp/runtime-schema-source.txt": "387d18ce8d4735d8677327117fdf4fd43588ced0f770cc9faeff4580e3c9c45c",
+      "home/runner/work/_temp/runtime-schema-tests.log": "70f3e0bd35eabda4788f33d2acd84b62f9dce255f96216b50b0b8f2aa1ace9e7",
+      "tmp/bifrost-bifrost-test-0b7397c6/test-results.xml": "c64e03e6f9f48f4e9965514a8bebfa0cb3d4e8bb0c4e329b50463eb8822026cc"
+    },
+    "scope": "Three actual migrated runtime tables retain matching platform Alembic metadata; no new lifecycle writer enabled."
+  },
+  "start_receipt_storage": {
+    "source": "935a5b6b8901323332da2c119d062d6e093d06d1",
+    "workflow_run": 38015613629,
+    "conclusion": "success",
+    "tests": {
+      "name": "pytest",
+      "errors": "0",
+      "failures": "0",
+      "skipped": "0",
+      "tests": "67",
+      "time": "7.154",
+      "timestamp": "2026-10-10T02:08:57.561044+00:00",
+      "hostname": "d2c689b7f377"
+    },
+    "retained_files": {
+      "home/runner/work/_temp/runtime-schema-cleanup.log": "76b6474d60dfe9ca28f349245778aa4a56082dfc6dbc4c87e8206f5eed1d4813",
+      "home/runner/work/_temp/runtime-schema-quality.log": "854e1ee856a5669688ab140f5e38a4f8fdc1a2d24efdf73c2dfd15765439a4ed",
+      "home/runner/work/_temp/runtime-schema-source.txt": "470d88f19aa4de30478d5488340d989b769b3f7cbd3830367243f03baf63c0ae",
+      "home/runner/work/_temp/runtime-schema-tests.log": "1263f63a5bcd76666566d63b2965a00b8af13e085b82a8dc3c0871470105078c",
+      "tmp/bifrost-bifrost-test-0b7397c6/test-results.xml": "63a36c5a417e062c1a54e37ee9673aabeb41659684db649131d0d1f747141bc8"
+    },
+    "scope": [
+      "Five actual runtime tables retain matching Alembic metadata.",
+      "One Start per session; exact session/Start/message identity.",
+      "Raw Result storage checks SHA256 over exact bytes, rejecting JSON whitespace drift.",
+      "Immutable evidence rejects update, delete and ON CONFLICT mutation."
+    ],
+    "not_proved": "No Rust transaction, accepted Start, actual protocol Result or durable execution projection occurs in these synthetic storage fixtures."
+  }
+}

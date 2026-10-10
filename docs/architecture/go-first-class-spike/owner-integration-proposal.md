@@ -50,7 +50,11 @@ No fabricated digest or Python wrapper registration is accepted.
 ## Common owner operations and storage candidates
 
 Names below are proposed internal records, not public wire fields or installed
-DDL. Use the existing Alembic history after reconciling the private grant branch;
+production DDL. Isolated storage candidates now exist in the current Alembic
+history: `20261009_runtime_artifacts`, `20261010_runtime_sessions` and
+`20261010_runtime_receipts`. [Retained storage proof](owner-session-schema-proof.json)
+does not accept a lifecycle writer, live process/session custody or finalization.
+Use the existing Alembic history after reconciling the private grant branch;
 its `20261001_runtime_sdk_grants` revision is absent from current main. Do not
 create an independent migration root or install that branch by copying one file.
 
