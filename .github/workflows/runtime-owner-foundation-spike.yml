@@ -5,8 +5,14 @@ on:
     paths:
       - spikes/go-native/owner-rs/**
       - spikes/go-native/scripts/owner-foundation-check.sh
+      - spikes/go-native/scripts/owner-codec-lock.sh
       - .github/workflows/runtime-owner-foundation-spike.yml
   workflow_dispatch:
+    inputs:
+      codec_lock:
+        description: Generate a reviewable owner lock proposal with the existing strict wire codec
+        type: boolean
+        default: false
 permissions:
   contents: read
 jobs:
@@ -29,6 +35,9 @@ jobs:
           git rev-parse HEAD > "$RUNNER_TEMP/owner-evidence/source.txt"
           git rev-parse HEAD^{tree} >> "$RUNNER_TEMP/owner-evidence/source.txt"
           bash spikes/go-native/scripts/owner-foundation-check.sh "$RUNNER_TEMP/owner-evidence"
+      - name: Resolve proposed codec integration lock without executing application code
+        if: github.event_name == 'workflow_dispatch' && inputs.codec_lock
+        run: bash spikes/go-native/scripts/owner-codec-lock.sh "$RUNNER_TEMP/owner-evidence"
       - name: Retain source and dependency evidence, including failures
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
