@@ -29,6 +29,14 @@ def upgrade() -> None:
             nullable=False,
         ),
     )
+    # Stored generated fields are computed after BEFORE triggers. Keep the whole
+    # row immutability comparison, but run it after generation; a violation still
+    # rolls back the statement/transaction. Never exempt the derived claim fence.
+    op.execute("DROP TRIGGER runtime_session_tombstone ON runtime_sessions")
+    op.execute("""
+        CREATE TRIGGER runtime_session_tombstone AFTER UPDATE OR DELETE
+        ON runtime_sessions FOR EACH ROW EXECUTE FUNCTION enforce_runtime_session_tombstone()
+    """)
     op.create_unique_constraint(
         "uq_runtime_session_sdk_fence",
         "runtime_sessions",
@@ -302,3 +310,8 @@ def downgrade() -> None:
         "uq_runtime_session_sdk_fence", "runtime_sessions", type_="unique"
     )
     op.drop_column("runtime_sessions", "claim_token_digest")
+    op.execute("DROP TRIGGER runtime_session_tombstone ON runtime_sessions")
+    op.execute("""
+        CREATE TRIGGER runtime_session_tombstone BEFORE UPDATE OR DELETE
+        ON runtime_sessions FOR EACH ROW EXECUTE FUNCTION enforce_runtime_session_tombstone()
+    """)

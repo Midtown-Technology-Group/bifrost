@@ -910,3 +910,28 @@ async def test_conflict_update_cannot_rebind_retained_delivery(
             provision_storage,
         )
     ).scalar_one() == provision_storage["delivery"]
+
+
+async def test_generated_claim_fence_survives_close_and_idempotent_tombstone(
+    db_session, grant_storage
+):
+    statement = text("""
+        UPDATE runtime_sessions SET closed_at = :issued, close_reason = 'schema-test-close'
+        WHERE id = :session
+    """)
+    await db_session.execute(statement, grant_storage)
+    await db_session.execute(statement, grant_storage)
+    row = (
+        await db_session.execute(
+            text("""
+        SELECT claim_token_digest, closed_at, close_reason
+        FROM runtime_sessions WHERE id = :session
+    """),
+            grant_storage,
+        )
+    ).one()
+    assert tuple(row) == (
+        grant_storage["claim_digest"],
+        grant_storage["issued"],
+        "schema-test-close",
+    )
