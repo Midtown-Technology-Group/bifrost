@@ -787,5 +787,21 @@
     },
     "runtime_acceptance": false,
     "limits": "Carrier compiled, kernel FIFO guards tested and scratch image bytes exported/verified. Carrier has not yet been launched under real Rust custody; HTTP/Go/lifecycle chain and physical descendant/source recovery remain unproved."
+  },
+  "verified_rust_material_transport_frontier": {
+    "source_commit": "f2f3a405fd70b51c53da33a81bc791e02920de9c",
+    "platform_main": "c7d3d0b5713da4e8b683212145c2d0f12f03ca95",
+    "workspace_main": "61c0b2d6a83ad073def7d425a9a845130caaf7de",
+    "workspace_representative_blob": "6dbd6bcc18716f8bc807e8fc2411c180f44f425c",
+    "workspace_representative_unchanged_since_prior_refresh": true,
+    "workspace_edits": false,
+    "rust_proof": "material-transport-component-proof.json",
+    "go_bundle_proof": "material-build-component-proof.json",
+    "actual_schema_proof": "material-database-component-proof.json",
+    "retained_failures": "material-transport-recovery.json",
+    "runtime_acceptance": false,
+    "next_required_implementation": "Actual Rust container/channel custody, restricted authenticated SDK HTTP ingress and original-binary durable Result/Receipt/Execution API chain; cancellation, crash/uncertain recovery and descendant/source cleanup still required.",
+    "production_dispatch": false,
+    "merge_authority": false
   }
 }

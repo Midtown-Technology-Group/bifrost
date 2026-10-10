@@ -1,0 +1,38 @@
+{
+  "source_commit": "f2f3a405fd70b51c53da33a81bc791e02920de9c",
+  "workflow_run": 38095836602,
+  "source_inputs_verified": 42,
+  "suites": {
+    "writer-guard-unit.xml": {
+      "tests": 13858,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "writer-guard-baseline.xml": {
+      "tests": 109,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "writer-guard-results.xml": {
+      "tests": 231,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  },
+  "api_quality": "Pyright zero errors/warnings/informations; Ruff pass",
+  "fixture_cleanup": "task-created container, volume and network inventories empty",
+  "runtime_acceptance": false,
+  "does_not_prove": "Live Go artifact with real Rust guardian, HTTP capability, durable Result/Receipt/API chain or actual crash/descendant/source recovery",
+  "evidence_sha256": {
+    "writer-guard-source.txt": "f34abcca6c9b89c28f75590716987dea6d01d73f4aa1ebeaf6833daeb0668e78",
+    "writer-guard-source-hashes.txt": "d479aac77e26a6fe88fca40746f9922a59ff0df4d5584647a82b7239fa235824",
+    "writer-guard-unit.xml": "c7d4eb829bf63161a178a217d8f96aa7e102162b4e87a056982de514cc193302",
+    "writer-guard-baseline.xml": "61402963751fdd62d462e2f2d5f40a4005ee38b8d447dedf69e25bc684046ab1",
+    "writer-guard-results.xml": "5b5b1c196eb77a97aa931a3da2b50442dcf22d166fd870fb3daf0d04f805929e",
+    "writer-guard-quality.log": "58b685772d84f019579349b0435172eeabe354af7d3fe89eecd87bce8273efff",
+    "writer-guard-cleanup.log": "64e213959641770165b6e03d5d1b2313f246e16db06be68d9bbf8458639da9fb"
+  }
+}

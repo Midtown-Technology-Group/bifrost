@@ -3,15 +3,35 @@
   "runtime_acceptance": false,
   "failed_candidate": "6611449dc9187561ff2889199eaa04d6735e90f0",
   "platform_main": "5e0d89ef842c4bd9c3b136700bc6d8920c935ae8",
-  "source_commit": "8d5e32294",
+  "source_commit": "8d5e32294044124b110cbc6803dfd72b2e4e3f57",
   "runs": [
-    {"run_id": 38095614742, "workflow": "Isolated Rust common owner foundation", "conclusion": "failure", "failed_gate": "cargo clippy --locked --offline --all-targets -- -D warnings"},
-    {"run_id": 38095614759, "workflow": "Isolated actual-schema writer guard candidate", "conclusion": "failure", "failed_gate": "same Rust prerequisite; database tests not reached"}
+    {
+      "run_id": 38095614742,
+      "workflow": "Isolated Rust common owner foundation",
+      "conclusion": "failure",
+      "failed_gate": "cargo clippy --locked --offline --all-targets -- -D warnings"
+    },
+    {
+      "run_id": 38095614759,
+      "workflow": "Isolated actual-schema writer guard candidate",
+      "conclusion": "failure",
+      "failed_gate": "same Rust prerequisite; database tests not reached"
+    },
+    {
+      "run_id": 38095614741,
+      "workflow": "Go native bounded spike",
+      "conclusion": "failure",
+      "failed_gate": "independent Rust consumer bootstrap; same E0369 assertions, interop not reached"
+    }
   ],
   "failure_classification": "code: two test assertions compare Result<usize, std::io::Error>, but std::io::Error does not implement PartialEq (E0369)",
   "repair": "Match the exact successful EOF result Ok(0); errors and nonzero reads still fail. No transport behavior or acceptance gate changes.",
   "retained_failure_artifact_root": "/home/thomas/src/bifrost-go-spike-artifacts/6611449dc9187561ff2889199eaa04d6735e90f0",
-  "fresh_evidence_required": ["locked offline Rust checks", "actual-schema security/race and existing API baseline", "Go build, bundle interop and common codec interchange"],
+  "fresh_evidence_required": [
+    "locked offline Rust checks",
+    "actual-schema security/race and existing API baseline",
+    "Go build, bundle interop and common codec interchange"
+  ],
   "retained_success_transfers_to_new_candidate": false,
   "subsequent_base_reconciliation": {
     "candidate": "6305f7b384334a4df71a629b3f1f2a67ebd0ae4e",
@@ -21,8 +41,22 @@
     "reviewed_platform_main": "c7d3d0b5713da4e8b683212145c2d0f12f03ca95",
     "change": "#1149 isolates app embeds from form capabilities; no owner/runtime files changed",
     "retained_logs": "/home/thomas/src/bifrost-go-spike-artifacts/6305f7b384334a4df71a629b3f1f2a67ebd0ae4e",
-    "recovery": "Signed main reconciliation; fresh unchanged-gate validation of combined source. No retry of stale candidate or acceptance waiver."
+    "recovery": "Signed main reconciliation; fresh unchanged-gate validation of combined source. No retry of stale candidate or acceptance waiver.",
+    "go_run": {
+      "run_id": 38095728771,
+      "conclusion": "success",
+      "runtime_acceptance": false,
+      "transfer_to_reconciled_candidate": false,
+      "artifact_retained": true
+    }
   },
   "production_dispatch": false,
-  "merge_authority": false
+  "merge_authority": false,
+  "failure_evidence_sha256": {
+    "rust_compiler": "5084824ed14af621490be0eeff08f2a31b06041c1b66e19b2fe3f892bb535ad6",
+    "guard_prerequisite": "979d2a4f79cc76a03343f8c9dd6ca877400d2348d30d23c6e12b6bbe281423da",
+    "go_consumer_prerequisite": "5e5ea2161269ff6dbc7654fd91dedb6986553329c9c7a6057ee3e36dd40476dc",
+    "rust_ancestry": "e980e85c5065b9345f25478826268ced7b1d1ccdebcda99ea2ae11bb222121e0",
+    "guard_ancestry": "a698403758d2eab50658602fe373b9edb6d66e47f1aab45153e32b5bbfeac3e6"
+  }
 }

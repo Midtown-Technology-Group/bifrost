@@ -40,6 +40,12 @@ wait or retry and may deny a large otherwise-valid envelope when the FIFO cannot
 accept it immediately. The guardian must authenticate current live custody,
 source, issuer and newly committed release before calling it. The transport
 does not parse credentials or manufacture a release permit.
+Even a successful write proves only local transport progress, not peer receipt
+or tenant initialization. The keeper has its own read endpoint, so it cannot
+turn a disappearing peer into a reliable delivery acknowledgment. Guardian death,
+peer death or a lost acknowledgment retains possible effects and forbids replay;
+physical custody, common protocol observations and durable owner evidence must
+resolve that uncertainty together.
 
 Explicit retirement checks the original FIFO device/inode and removes only that
 pathname and the now-empty session directory. A replacement file is retained and

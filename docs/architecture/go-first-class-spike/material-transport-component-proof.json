@@ -1,0 +1,20 @@
+{
+  "source_commit": "f2f3a405fd70b51c53da33a81bc791e02920de9c",
+  "workflow_run": 38095834634,
+  "runtime_acceptance": false,
+  "source_inputs_verified": 30,
+  "rust_tests_passed": 23,
+  "new_live_fifo_tests_passed": 6,
+  "locked_offline_fmt_clippy_tests_examples": "pass",
+  "does_not_prove": "Live container/session custody, authenticated issuance, SDK HTTP, durable Go result/API chain, crash recovery or descendant/source cleanup.",
+  "evidence_sha256": {
+    "source.txt": "f34abcca6c9b89c28f75590716987dea6d01d73f4aa1ebeaf6833daeb0668e78",
+    "owner-source-hashes.txt": "37b1ceb48d7e6d1ef0c5a97b9c46faebc86773c91cfffe0a5859f6f33c070817",
+    "owner-Cargo.lock": "422b919a7ee0233fa3427af2f8cab11f4178ca3a2d7776be125c862fb0d3b086",
+    "owner-toolchain.txt": "2073de5abf149185c2f4d7473dc833bc921b99135560d24ae7b2293f33a9c376",
+    "owner-fmt.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "owner-clippy.txt": "3d7ac1820a1234a8a074ac49c7484de1a1121a26f9bf1141684dbe3609c71299",
+    "owner-tests.txt": "63626893632f8534f8604215b41acc3faddfaa450326cdca34bc2dad671229ac",
+    "owner-build.txt": "e9370cc664dea272d511ec97ea84d6933fa02e95f9422c7855a13381e126069d"
+  }
+}

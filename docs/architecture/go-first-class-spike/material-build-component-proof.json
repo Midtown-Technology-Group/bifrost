@@ -1,0 +1,53 @@
+{
+  "source_commit": "f2f3a405fd70b51c53da33a81bc791e02920de9c",
+  "workflow_run": 38095838414,
+  "source_inputs_verified": 124,
+  "go_tests_passed": 536,
+  "recipe_tests_passed": 8,
+  "unchanged_workflow_sha256": "160917deeb94275f31ca9ddee2dacae00fb079fdf54cb60e206c8def261f9c34",
+  "artifact_id": "sha256:012e6064b10e6512325a90c04f9d464989af1b65c4e3b10d47cda856411d09d7",
+  "archive_size_bytes": 17018880,
+  "timings_ms": {
+    "module_download": 192.85803,
+    "cold_compile_warm_modules": 16431.661568,
+    "independent_cold_compile": 16193.002222,
+    "warm_source_edit_compile": 368.982583,
+    "restored_warm_compile": 343.525532,
+    "edit_to_artifact": 576.014846
+  },
+  "synthetic_execution_summary": {
+    "startup_to_sdk_ms": {
+      "median": 4.199008,
+      "p95": 4.803031,
+      "n": 20
+    },
+    "execution_ms": {
+      "median": 4.7620755,
+      "p95": 5.416323,
+      "n": 20
+    },
+    "max_rss_kib": {
+      "median": 11592.0,
+      "p95": 11592,
+      "n": 20
+    }
+  },
+  "carrier": {
+    "kind": "isolated-docker-init/v1",
+    "launcher_sha256": "6ea8196281757bdccf4e336f8b102f6be72c15ed8044603938e8b5a0eeacc107",
+    "image_id": "sha256:bafcd49ed4172a9d2c35900ed05d57d945d358ac561b6de89611ba97533a83de",
+    "image_archive_sha256": "049f8db9545bb65ba48bf6740323cf39b5cec86d322867497c85df71f12c3ca2",
+    "status": "trusted launch carrier candidate; actual Rust guardian custody, restricted ingress and cleanup acceptance pending"
+  },
+  "rust_bundle_interchange": "pass, six pins and exact archive verified",
+  "runtime_acceptance": false,
+  "does_not_prove": "Rust-owned live SDK/durable result/API chain or kernel descendant/source recovery",
+  "evidence_sha256": {
+    "descriptor.json": "af13026ac8f277fcc689e0fa433268ff33f82655f35255a85f7df429397b2d1d",
+    "tests.jsonl": "6d11eb4d006f9cd7bfb01926a95637e1ff39632ef5fc29181fe2363f3ce66d24",
+    "native-bundle-descriptor.json": "19d01ba785895a8f8b65d37b03989bfd9a4bcae4858b314d022fb0ec777baabf",
+    "native-bundle-rust-verification.json": "75a14df596c4890f3ec4ce48d631045d99e9904d6e9c48acfca24b31b5d5c43d",
+    "native-bundle-tests.txt": "d1737db24da81b3c3a0b18702ce65bfadfb6524254e681f8bc84ee0e82703fbb",
+    "carrier-image-cleanup.txt": "b9aff75a38f63dfed622e140d1e51bfadee277a77933a98b47aa5159c259fbd5"
+  }
+}
