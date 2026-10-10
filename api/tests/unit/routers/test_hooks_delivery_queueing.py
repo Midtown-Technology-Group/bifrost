@@ -134,9 +134,11 @@ async def test_teams_direct_failure_falls_back_to_legacy_queue():
 
 
 @pytest.mark.asyncio
-async def test_duplicate_teams_event_resumes_direct_run_after_receipt_crash():
+@pytest.mark.parametrize("has_canonical_handle", [True, False])
+async def test_duplicate_teams_event_only_resumes_the_canonical_run(has_canonical_handle):
     source_id = uuid4()
     event_id = uuid4()
+    canonical_id = uuid4()
     event_source = SimpleNamespace(id=source_id, is_active=True)
     webhook_source = SimpleNamespace(
         adapter_name="microsoft_bot_framework", rate_limit_enabled=False,
@@ -157,6 +159,8 @@ async def test_duplicate_teams_event_resumes_direct_run_after_receipt_crash():
         patch("src.routers.hooks.EventProcessor") as processor_class,
         patch("src.routers.hooks.validate_teams_chat_event", new_callable=AsyncMock),
         patch("src.routers.hooks.send_fast_teams_receipt", new_callable=AsyncMock, return_value="duplicate"),
+        patch("src.routers.hooks.resolve_canonical_teams_event_id", new_callable=AsyncMock,
+              return_value=canonical_id if has_canonical_handle else event_id),
         patch("src.routers.hooks.submit_teams_chat_event", new_callable=AsyncMock) as submit,
     ):
         processor = processor_class.return_value
@@ -165,10 +169,12 @@ async def test_duplicate_teams_event_resumes_direct_run_after_receipt_crash():
         response = await receive_webhook(str(source_id), request, db)
 
     assert response.status_code == 202
-    # The first delivery may have committed its receipt and marker, then died
-    # before creating an AgentRun. Retrying must call the bridge again; its
-    # canonical event UUID and enqueue_agent_run_once fence make one run.
-    submit.assert_awaited_once_with(db, event_id)
+    if has_canonical_handle:
+        # The owner may have committed its handle, then died before enqueue.
+        submit.assert_awaited_once_with(db, canonical_id)
+    else:
+        # Never use this retry's new Event UUID as a run idempotency key.
+        submit.assert_not_awaited()
     processor.queue_event_deliveries.assert_not_awaited()
     assert event.data.get("teams_direct_enqueued") is None
 
