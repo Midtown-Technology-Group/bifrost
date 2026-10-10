@@ -8,7 +8,19 @@ mkdir -p "$evidence_dir"
 toolchain_image=golang:1.27.1-bookworm@sha256:966278043a40889499db9b0cd196fc789c37c385d41bd9a10cb1e7764af60cdc
 scratch=$(mktemp -d)
 chmod 755 "$scratch"
-cleanup() { chmod -R u+w "$scratch"; rm -rf "$scratch"; }
+carrier_tag=''
+cleanup() {
+  original=$?
+  trap - EXIT
+  if [[ -n "$carrier_tag" ]]; then
+    if ! docker image rm "$carrier_tag" > "$evidence_dir/carrier-image-cleanup.txt" 2>&1; then
+      original=1
+    fi
+  fi
+  chmod -R u+w "$scratch"
+  rm -rf "$scratch"
+  exit "$original"
+}
 trap cleanup EXIT
 mkdir -p "$scratch/modules" "$scratch/compiler" "$scratch/tests" "$scratch/out" "$scratch/results" "$scratch/warm-source"
 mkdir -p "$scratch/independent-compiler"
@@ -104,8 +116,24 @@ docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-
   --workdir /src "$toolchain_image" env -i PATH=/usr/local/go/bin:/usr/bin:/bin \
   HOME=/tmp GOTOOLCHAIN=local GOWORK=off CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
   GOMODCACHE=/modules GOCACHE=/compiler GOPROXY=off GOSUMDB=off GOFLAGS=-mod=readonly \
-  sh -c 'go build -trimpath -buildvcs=false -o /out/adapter ./cmd/adapter; go build -trimpath -buildvcs=false -o /out/protocolprobe ./cmd/protocolprobe; go build -trimpath -buildvcs=false -o /out/probe ./cmd/probe; go build -trimpath -buildvcs=false -o /out/controlcheck ./cmd/controlcheck; go build -trimpath -buildvcs=false -o /out/schema ./cmd/schema; /out/schema /src/internal/readiness/readiness.go Input > /out/generated-input.json; /out/schema /src/internal/readiness/readiness.go Output > /out/generated-output.json'
+  sh -c 'go build -trimpath -buildvcs=false -o /out/launcher ./cmd/launcher; go build -trimpath -buildvcs=false -o /out/adapter ./cmd/adapter; go build -trimpath -buildvcs=false -o /out/protocolprobe ./cmd/protocolprobe; go build -trimpath -buildvcs=false -o /out/probe ./cmd/probe; go build -trimpath -buildvcs=false -o /out/controlcheck ./cmd/controlcheck; go build -trimpath -buildvcs=false -o /out/schema ./cmd/schema; /out/schema /src/internal/readiness/readiness.go Input > /out/generated-input.json; /out/schema /src/internal/readiness/readiness.go Output > /out/generated-output.json'
 cp "$scratch/out/generated-input.json" "$scratch/out/generated-output.json" "$evidence_dir/"
+cp "$scratch/out/launcher" "$evidence_dir/launcher"
+# First-party guardian carrier, distinct from the accepted workload archive.
+# No SDK credential, application source, compiler, DB access or shell in its root.
+mkdir -p "$scratch/carrier-context"
+cp "$scratch/out/launcher" "$scratch/carrier-context/launcher"
+carrier_candidate="bifrost-go-native-carrier:${GITHUB_RUN_ID:-local}-${GITHUB_RUN_ATTEMPT:-1}"
+if docker image inspect "$carrier_candidate" >/dev/null 2>&1; then
+  echo 'Task carrier tag already exists; refusing ownership reassignment.' >&2
+  exit 2
+fi
+carrier_tag=$carrier_candidate
+docker build --file "$spike_root/launcher.Dockerfile" --tag "$carrier_tag" \
+  --iidfile "$evidence_dir/carrier-image-id.txt" "$scratch/carrier-context" \
+  > "$evidence_dir/carrier-image-build.txt" 2>&1
+docker image inspect "$carrier_tag" > "$evidence_dir/carrier-image-inspect.json"
+docker image save --output "$evidence_dir/carrier-image.tar" "$carrier_tag"
 cp "$scratch/out/adapter" "$evidence_dir/adapter"
 cp "$scratch/out/protocolprobe" "$evidence_dir/protocolprobe"
 cp "$scratch/out/probe" "$evidence_dir/probe"
