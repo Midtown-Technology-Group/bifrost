@@ -43,6 +43,7 @@ name = "bifrost-isolated-owner-spike"
 version = "0.0.0"
 dependencies = [
  "bifrost-execution-wire-spike",
+ "libc",
  "serde_json",
  "sha2 0.10.9",
  "sqlx",

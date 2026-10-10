@@ -22,6 +22,35 @@ retransmission, matching UUID, persisted release row or launcher exit can replac
 those gates. The carrier makes no lifecycle decision and writes no durable state.
 The adapter retains its existing single-delivery and Start/provision validation.
 
+The Rust guardian's `material::MaterialPipe` now owns the private writer. It
+requires an absolute canonical guardian staging parent with exact nonroot owner
+and mode `0700`, exclusively creates a session directory and mode `0600` FIFO,
+then opens an owner-checked nonblocking/no-follow read-write keeper. Only that
+session directory is eligible for the carrier mount; the guardian parent remains
+outside tenant mounts. The keeper prevents premature EOF during inert preparation.
+The fixed first-party `mkfifo` utility receives no inherited environment or shell.
+Its invocation does not execute authored code or grant lifecycle authority.
+
+Delivery consumes the writer before validation or I/O. It writes the existing
+four-byte length prefix and bounded (at most 65,536-byte) private envelope, then
+closes to produce EOF. Positive short writes advance only to unsent bytes. Any
+zero/error/interruption/backpressure is uncertain: close, drain and observe;
+never resend or create a replacement session. This deliberately has no blocking
+wait or retry and may deny a large otherwise-valid envelope when the FIFO cannot
+accept it immediately. The guardian must authenticate current live custody,
+source, issuer and newly committed release before calling it. The transport
+does not parse credentials or manufacture a release permit.
+
+Explicit retirement checks the original FIFO device/inode and removes only that
+pathname and the now-empty session directory. A replacement file is retained and
+reported for inspection. Drop only closes the descriptor; it does not silently
+claim teardown. Retirement requires independent container/descendant drain and
+mount release first and does not itself prove kernel or source-consumer cleanup.
+The nonroot isolated Rust lane exercises actual FIFO EOF, exclusive session
+creation, cancellation before delivery, oversized/empty delivery consumption,
+kernel backpressure without replay, staging/symlink/UID/mode rejection, and
+replacement-safe cleanup. These remain component checks pending verification.
+
 The existing build plane compiles the launcher with the pinned Go toolchain,
 CGO disabled and readonly modules, then builds/exports a task-owned scratch image.
 The build evidence binds launcher bytes, Docker image config identity and exported
