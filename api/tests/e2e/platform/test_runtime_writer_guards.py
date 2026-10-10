@@ -985,6 +985,20 @@ async def prepared_start_facts(db_session, association, request):
         )
     )
     await db_session.commit()
+    if case == "admit":
+        # Synthetic source acceptance only. No archive/binary custody or runtime
+        # acceptance is claimed by selecting an active fixture deployment.
+        await db_session.execute(
+            text("UPDATE solution_deployments SET state='active' WHERE id=:deployment"),
+            association,
+        )
+        await db_session.execute(
+            text(
+                "UPDATE solutions SET active_deployment_id=:deployment,execution_runtime_mode='deployment-v1' WHERE id=:solution"
+            ),
+            association,
+        )
+        await db_session.commit()
     async with connection("wex_core") as conn:
         org = await conn.fetchval(
             "SELECT organization_id FROM solutions WHERE id=$1", association["solution"]
@@ -1093,51 +1107,52 @@ async def prepared_start_facts(db_session, association, request):
         binding_hash = sha256(
             json.dumps(binding, separators=(",", ":")).encode()
         ).hexdigest()
-        async with conn.transaction():
-            await clone(
-                conn,
-                "executions",
-                template,
-                {
-                    "id": execution,
-                    "isolated_owner": "coordinator",
-                    "runtime_mode": "deployment-v1",
-                },
-            )
-            await conn.execute(
-                "INSERT INTO runtime_execution_owners (execution_id,owner_incarnation_id,workflow_id,deployment_id,artifact_id,caller_snapshot,caller_sha256) VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7)",
-                execution,
-                owner,
-                association["workflow"],
-                association["deployment"],
-                association["artifact_id"],
-                json.dumps(caller),
-                caller_hash,
-            )
-            await conn.execute(
-                "INSERT INTO workflow_execution_attempts (id,execution_id,attempt_number,status,phase,claim_token,worker_incarnation_id,published_at,claimed_at,runtime_mode,isolated_owner) "
-                "VALUES ($1,$2,1,'claimed','admission',$3,$4,clock_timestamp(),clock_timestamp(),'deployment-v1','coordinator')",
-                attempt,
-                execution,
-                claim,
-                worker,
-            )
-            await conn.execute(
-                "INSERT INTO runtime_sessions (id,execution_id,owner_incarnation_id,workflow_attempt_id,claim_token,worker_incarnation_id,supervisor_incarnation_id,runtime_incarnation_id,channel_custody_sha256,binding_sha256,prepare_id,prepare_sha256) "
-                "VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)",
-                session,
-                execution,
-                owner,
-                attempt,
-                claim,
-                worker,
-                supervisor,
-                runtime,
-                "c" * 64,
-                binding_hash,
-                prepare_id,
-                sha256(payload).hexdigest(),
-            )
+        if case != "admit":
+            async with conn.transaction():
+                await clone(
+                    conn,
+                    "executions",
+                    template,
+                    {
+                        "id": execution,
+                        "isolated_owner": "coordinator",
+                        "runtime_mode": "deployment-v1",
+                    },
+                )
+                await conn.execute(
+                    "INSERT INTO runtime_execution_owners (execution_id,owner_incarnation_id,workflow_id,deployment_id,artifact_id,caller_snapshot,caller_sha256) VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7)",
+                    execution,
+                    owner,
+                    association["workflow"],
+                    association["deployment"],
+                    association["artifact_id"],
+                    json.dumps(caller),
+                    caller_hash,
+                )
+                await conn.execute(
+                    "INSERT INTO workflow_execution_attempts (id,execution_id,attempt_number,status,phase,claim_token,worker_incarnation_id,published_at,claimed_at,runtime_mode,isolated_owner) "
+                    "VALUES ($1,$2,1,'claimed','admission',$3,$4,clock_timestamp(),clock_timestamp(),'deployment-v1','coordinator')",
+                    attempt,
+                    execution,
+                    claim,
+                    worker,
+                )
+                await conn.execute(
+                    "INSERT INTO runtime_sessions (id,execution_id,owner_incarnation_id,workflow_attempt_id,claim_token,worker_incarnation_id,supervisor_incarnation_id,runtime_incarnation_id,channel_custody_sha256,binding_sha256,prepare_id,prepare_sha256) "
+                    "VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)",
+                    session,
+                    execution,
+                    owner,
+                    attempt,
+                    claim,
+                    worker,
+                    supervisor,
+                    runtime,
+                    "c" * 64,
+                    binding_hash,
+                    prepare_id,
+                    sha256(payload).hexdigest(),
+                )
     return {
         "fence": [
             str(execution),
@@ -1156,6 +1171,8 @@ async def prepared_start_facts(db_session, association, request):
         "session": session,
         "start": start,
         "message": message,
+        "workflow": association["workflow"],
+        "caller": association["reviewer"],
         "prepare": payload,
         "prepared": json.dumps(prepared).encode(),
     }
@@ -2966,3 +2983,164 @@ async def test_rust_provision_late_failure_rolls_back_grant_and_operation(
         )
         await db_session.execute(text("DROP FUNCTION isolated_provision_fault()"))
         await db_session.commit()
+
+
+async def admit_probe(facts, role="wex_core", payload=None):
+    executable = Path("/app/scripts/runtime-owner-admit")
+    assert executable.is_file(), (
+        "Required source-bound Rust admission artifact is missing"
+    )
+    process = await asyncio.create_subprocess_exec(
+        str(executable),
+        stdin=asyncio.subprocess.PIPE,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+        env={
+            "BIFROST_ISOLATED_OWNER_TEST": "1",
+            "BIFROST_OWNER_TEST_DATABASE_URL": f"postgresql://{role}:{PASSWORDS[role]}@writer-guard-pool/bifrost_test",
+        },
+    )
+    try:
+        header = (
+            "\n".join([*facts["fence"], str(facts["workflow"]), str(facts["caller"])])
+            + "\n"
+        ).encode()
+        data = json.dumps([(payload or facts["prepare"]).decode()]).encode()
+        out, err = await asyncio.wait_for(process.communicate(header + data), timeout=8)
+        assert process.returncode == 0 and err == b"" and len(out) <= 32
+        return out.decode().strip()
+    finally:
+        if process.returncode is None:
+            process.kill()
+            await process.wait()
+
+
+async def admit_snapshot(facts):
+    async with connection("wex_core") as conn:
+        return [
+            await conn.fetchval(
+                f"SELECT COALESCE(jsonb_agg(to_jsonb(t)),'[]'::jsonb)::text FROM {table} t WHERE {field}=$1",
+                identity,
+            )
+            for table, field, identity in (
+                ("executions", "id", facts["execution"]),
+                ("runtime_execution_owners", "execution_id", facts["execution"]),
+                ("workflow_execution_attempts", "id", facts["attempt"]),
+                ("runtime_sessions", "id", facts["session"]),
+            )
+        ]
+
+
+@pytest.mark.parametrize("prepared_start_facts", ["admit"], indirect=True)
+async def test_rust_admit_creates_existing_domain_owner_attempt_and_session_together(
+    prepared_start_facts,
+):
+    facts = prepared_start_facts
+    assert await admit_snapshot(facts) == ["[]"] * 4
+    assert await admit_probe(facts) == "newly_committed"
+    before = await admit_snapshot(facts)
+    assert all(len(json.loads(row)) == 1 for row in before)
+    assert json.loads(before[0])[0]["status"] == "Pending"
+    assert json.loads(before[1])[0]["owner_incarnation_id"] == facts["fence"][1]
+    assert json.loads(before[2])[0]["status"] == "claimed"
+    assert await admit_probe(facts) == "rejected"
+    assert await admit_snapshot(facts) == before
+    assert isinstance(await start_probe(facts), dict)
+    assert json.loads(await start_snapshot(facts))["execution"]["status"] == "Running"
+
+
+@pytest.mark.parametrize("prepared_start_facts", ["admit"], indirect=True)
+@pytest.mark.parametrize(
+    "change", ["caller", "input", "artifact", "expired", "session"]
+)
+async def test_rust_admit_invalid_preparation_has_no_partial_birth(
+    prepared_start_facts, change
+):
+    from datetime import timedelta
+
+    facts = prepared_start_facts
+    frame = json.loads(facts["prepare"])
+    if change == "caller":
+        frame["body"]["binding"]["original_caller"]["caller_id"] = str(uuid4())
+    elif change == "input":
+        frame["body"]["workload"]["input"] = {"integration_name": ""}
+    elif change == "artifact":
+        frame["body"]["artifact"]["executable_sha256"] = "0" * 64
+    elif change == "expired":
+        frame["body"]["workload"]["deadline_utc"] = (
+            (datetime.now(UTC) - timedelta(seconds=1))
+            .isoformat(timespec="microseconds")
+            .replace("+00:00", "Z")
+        )
+    else:
+        frame["session_id"] = str(uuid4())
+    assert await admit_probe(facts, payload=json.dumps(frame).encode()) == "rejected"
+    assert await admit_snapshot(facts) == ["[]"] * 4
+
+
+@pytest.mark.parametrize("prepared_start_facts", ["admit"], indirect=True)
+async def test_rust_admit_incumbent_pool_cannot_birth_coordinator_owner(
+    prepared_start_facts,
+):
+    facts = prepared_start_facts
+    assert await admit_probe(facts, role="wex_incumbent") == "rejected"
+    assert await admit_snapshot(facts) == ["[]"] * 4
+
+
+@pytest.mark.parametrize("prepared_start_facts", ["admit"], indirect=True)
+async def test_rust_admit_inactive_workflow_is_not_accepted(
+    prepared_start_facts, db_session
+):
+    from sqlalchemy import text
+
+    facts = prepared_start_facts
+    await db_session.execute(
+        text("UPDATE workflows SET is_active=false WHERE id=:id"),
+        {"id": facts["workflow"]},
+    )
+    await db_session.commit()
+    assert await admit_probe(facts) == "rejected"
+    assert await admit_snapshot(facts) == ["[]"] * 4
+
+
+@pytest.mark.parametrize("prepared_start_facts", ["admit"], indirect=True)
+async def test_rust_admit_late_session_failure_rolls_back_whole_birth(
+    prepared_start_facts, db_session
+):
+    from sqlalchemy import text
+
+    facts = prepared_start_facts
+    await db_session.execute(
+        text("""
+        CREATE FUNCTION isolated_admit_fault() RETURNS trigger LANGUAGE plpgsql AS $body$
+        BEGIN RAISE EXCEPTION 'synthetic session birth fault' USING ERRCODE='42501'; END $body$
+    """)
+    )
+    await db_session.execute(
+        text("""
+        CREATE TRIGGER isolated_admit_fault BEFORE INSERT ON runtime_sessions
+        FOR EACH ROW EXECUTE FUNCTION isolated_admit_fault()
+    """)
+    )
+    await db_session.commit()
+    try:
+        assert await admit_probe(facts) == "database_failure"
+        assert await admit_snapshot(facts) == ["[]"] * 4
+    finally:
+        await db_session.execute(
+            text("DROP TRIGGER isolated_admit_fault ON runtime_sessions")
+        )
+        await db_session.execute(text("DROP FUNCTION isolated_admit_fault()"))
+        await db_session.commit()
+
+
+@pytest.mark.parametrize("prepared_start_facts", ["admit"], indirect=True)
+async def test_rust_competing_births_retain_one_owner_and_attempt(prepared_start_facts):
+    facts = prepared_start_facts
+    decisions = await asyncio.gather(admit_probe(facts), admit_probe(facts))
+    assert decisions.count("newly_committed") == 1
+    assert all(
+        value in {"newly_committed", "rejected", "lock_contention", "database_failure"}
+        for value in decisions
+    )
+    assert all(len(json.loads(row)) == 1 for row in await admit_snapshot(facts))

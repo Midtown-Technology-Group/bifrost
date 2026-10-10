@@ -444,5 +444,32 @@
     "proves": "Same unchanged workload binary executes under independently implemented published common frames: repeated success, SDK operation, sorted missing keys, no-material cancellation and held-request cancellation with valid Heartbeat. Complete Go checks/security/build/measurements and independent Go/Python/Rust interchange gate passed.",
     "runtime_acceptance": false,
     "limits": "Synthetic SDK endpoint, credentials, Start and receipt; no Rust owner/issuer/guardian or durable projection. Common-loop elapsed values include staging/TLS setup and intentional held-request time; not Rust execution overhead. No process/descendant/source cleanup acceptance."
+  },
+  "verified_sdk_admission_actual_schema": {
+    "source_commit": "59709d0739c281dd7ebedbedea24b79d9d5c00da",
+    "workflow_run": 38089840558,
+    "conclusion": "success",
+    "source_inputs_verified": 31,
+    "test_counts": {
+      "writer-guard-results.xml": 201,
+      "writer-guard-unit.xml": 13722,
+      "writer-guard-baseline.xml": 109
+    },
+    "failures": 0,
+    "errors": 0,
+    "skips": 0,
+    "api_quality": "Pyright zero errors/warnings/informations; Ruff pass",
+    "teardown": "container, volume and network inventories empty",
+    "evidence_sha256": {
+      "writer-guard-source.txt": "f3708da8be2cd75a9b232788fa8c20b8e2e4ef79b1b8db63de4b52c867162fd5",
+      "writer-guard-source-hashes.txt": "55166d329749878319aabd2508c78e9c2934c5e43405286f23f9f605b6eb5e1e",
+      "writer-guard-results.xml": "0609ca51d86a97051060089c517f31a70f7532dd51171b72988a38da05e1d6c3",
+      "writer-guard-unit.xml": "3cb5b611232d08e84407b3dcb9db4f8a9c20f0c6478da1f8b14433606db6d528",
+      "writer-guard-baseline.xml": "84c9ae5c91cc5d8cbaaea76abd18c0143e76fe097f8a8cf6cff089ea225c6bea",
+      "writer-guard-quality.log": "1f47f798a25eb4d230cb54d53f21d5132fa54689f04db384b0488ff86ce68362",
+      "writer-guard-cleanup.log": "c862520366c1657bad2fdc5db98c5b65caa64b23e23f4e687130375d68465be8"
+    },
+    "runtime_acceptance": false,
+    "limits": "Actual Rust Start/release/SDK authorization with synthetic unsigned grant/source/custody. Does not qualify the later finite signer/provision/admission candidates or live Go/HTTP/guardian/recovery/cleanup."
   }
 }

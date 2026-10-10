@@ -137,3 +137,33 @@ The tests retain synthetic source and channel prerequisites while using real Rus
 Start and grant/provision/release transactions, finite signing, application-token
 rejection and Rust SDK admission. Full hosted checks and the actual unchanged Go
 artifact/HTTP/guardian/recovery/cleanup connection remain acceptance requirements.
+
+## Existing-domain admission birth candidate
+
+The private `record_admit_candidate` creates an existing execution root, common
+owner, first typed workflow attempt and session in one transaction. It allocates
+no alternate logical job or Go lifecycle state. Existing rows are rejected; no
+clone, takeover, conflict update or uncertain-commit retry is provided. The
+isolated owner-class/deferred owner FK and parent composite identities apply.
+
+Birth takes the exact shared workspace-release fence, checks absent attempt and
+owner/root identities, then locks deployment and Solution NOWAIT. Its source
+selection requires the currently active org-scoped deployment, active Solution
+and workflow, and the immutable native artifact association. It reads actual
+active user, organization and roles, derives the external claim with existing
+admin/provider semantics, and enforces workflow access-level/role entitlement.
+This isolated slice accepts an authenticated caller in the same organization as
+its effective scope; cross-org/provider expansion remains outside approval.
+It reads authorization again at root insertion and requires the identical caller
+snapshot. The unchanged CRED-P1 caller digest uses byte-length netstrings and
+ordered role names. Input must match the retained schema, the common Prepare
+binding/context must match, and its finite deadline must remain usable at birth.
+
+A new identity has no attempt row to lock. Competing births cannot both win:
+source NOWAIT locking and root/attempt/session uniqueness retain the original
+identity, with whole-transaction rollback on a conflicting insertion. The trusted
+caller must still prove accepted build/artifact/source closure and actual channel
+custody before invoking the primitive; strings and active fixture rows are not
+that proof. Source retention uses existing deployment FK/immutable association;
+physical descendant settlement and source drain remain unresolved acceptance
+requirements. No production route, dispatcher, credential or role grant changes.

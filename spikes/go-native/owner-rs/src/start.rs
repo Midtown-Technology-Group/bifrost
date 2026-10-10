@@ -263,7 +263,7 @@ pub async fn record_start_candidate(
     })
 }
 
-fn context_matches_binding(context: &Value, binding: &Value) -> bool {
+pub(crate) fn context_matches_binding(context: &Value, binding: &Value) -> bool {
     [
         "execution_kind",
         "execution_id",
