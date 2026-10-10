@@ -103,5 +103,34 @@
     },
     "job_log_sha256": "672a999bcb7c8308bd7bab76e7e40272c0b1d5718a05a8fbf6ff5b19c47ec62b",
     "new_source_run_required": true
+  },
+  "followup": {
+    "candidate_sha": "a04bfb973b3423e4299d99742f366d8178fbfb16",
+    "candidate_tree": "3d658b94c23eb1314bdca6fecb635784b2052b05",
+    "run": 38070069167,
+    "job": 114265486759,
+    "state": "in_progress at provider readback; source/schema/test step executing, results not available",
+    "url": "https://github.com/Midtown-Technology-Group/bifrost/actions/runs/38070069167",
+    "changes": [
+      "Explicit module event-loop scope for module installer",
+      "Final JUnit captured by cleanup even on failed test command"
+    ],
+    "source_sha256": {
+      "api/tests/e2e/platform/fixtures/runtime_writer_guards.sql": "7cf058462dbab9803636e9df277a41994edd5f7808dc438ab611d9f89e869f8b",
+      "api/tests/e2e/platform/test_runtime_writer_guards.py": "8036d0731102064894b5da97c74ca05171c7a51452de74e447cb71036a4cd549",
+      "docker-compose.runtime-writer-guards.yml": "c625fadd856b3ee14e0a828ae84106fdb1eb5e5dd5172e4d24634ffae7fac018",
+      "scripts/ci/writer-guards/pgbouncer.ini": "0ff442bc1a08cc507145bbd32b3a4d6aa33346fc9a5b8abdc930e9bbe0ec42ad",
+      "scripts/ci/writer-primer/userlist.txt": "d5ec468729879dfc4648656d3635cee587be529d1b8e5921645e013695a76619",
+      ".github/workflows/runtime-writer-guard-spike.yml": "d0f8585b8e684eb2601d5415a18f889bc8360d8b28912930420f943d42198529"
+    }
+  },
+  "native_registration_audit": {
+    "platform_main": "968ac4693c99cc52f156f5aacb63a40a8fcd9437",
+    "deployment_resource_bytes_per_object": 2097152,
+    "deployment_resources_bytes_total": 10485760,
+    "source_path": "api/bifrost/solution_delivery_review.py",
+    "source_sha256": "6746fe4111f9c01079fe27acb34e5a418b1116146e96b233b0ec398111e17d3d",
+    "workflow_binary_bytes": 9920235,
+    "finding": "The unchanged executable cannot be registered as an ordinary deployment resource. The approved dedicated native-artifact association must verify actual staged bytes/build evidence while existing resource limits remain unchanged; no registration or owner admission is proved."
   }
 }
