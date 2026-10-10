@@ -1244,7 +1244,7 @@ async def test_embed_session_is_linked_to_each_persisted_dispatch(workflow_type,
         patch("src.repositories.WorkflowRepository", return_value=_WorkflowRepo(workflow=workflow)),
         patch("src.services.execution.service.get_workflow_for_execution", AsyncMock(return_value=_dispatch_metadata(workflow))),
         patch("src.services.execution.service.run_workflow", AsyncMock(return_value=service_result)) as dispatch,
-        patch.object(workflows, "uuid4", return_value=execution_id),
+        patch("uuid.uuid4", return_value=execution_id),
         patch.object(workflows, "_insert_scheduled_execution", AsyncMock(return_value=execution_id)) as schedule,
         patch("src.core.embed_middleware.register_embed_execution", AsyncMock()) as register,
     ):
