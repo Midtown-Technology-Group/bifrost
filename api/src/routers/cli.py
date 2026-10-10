@@ -2321,6 +2321,7 @@ async def sdk_store_artifact(
         organization_id=current_user.organization_id,
         workspace_id=workspace_id,
         logical_path=filename,
+        bypass=current_user.is_platform_admin,
     )
     await db.commit()
     return artifact_ref(artifact)
@@ -2338,8 +2339,7 @@ async def sdk_list_artifacts(
     stored = await ArtifactService(db).list_workspace(
         workspace_id,
         user_id=current_user.user_id,
-        organization_id=current_user.organization_id,
-        is_platform_admin=current_user.is_platform_admin,
+        bypass=current_user.is_platform_admin,
     )
     return [artifact_ref(item) for item in stored]
 
@@ -2369,8 +2369,7 @@ async def sdk_render_document_artifact(
                 workspace_id,
                 image.path,
                 user_id=current_user.user_id,
-                organization_id=current_user.organization_id,
-                is_platform_admin=current_user.is_platform_admin,
+                bypass=current_user.is_platform_admin,
             )
             if not stored_image.content_type.startswith("image/"):
                 raise HTTPException(
@@ -2391,6 +2390,7 @@ async def sdk_render_document_artifact(
         organization_id=current_user.organization_id,
         workspace_id=workspace_id,
         logical_path=generated.filename,
+        bypass=current_user.is_platform_admin,
     )
     await db.commit()
     return artifact_ref(artifact)
@@ -2417,6 +2417,7 @@ async def sdk_render_spreadsheet_artifact(
         organization_id=current_user.organization_id,
         workspace_id=workspace_id,
         logical_path=generated.filename,
+        bypass=current_user.is_platform_admin,
     )
     await db.commit()
     return artifact_ref(artifact)
@@ -2443,6 +2444,7 @@ async def sdk_render_text_artifact(
         organization_id=current_user.organization_id,
         workspace_id=workspace_id,
         logical_path=generated.filename,
+        bypass=current_user.is_platform_admin,
     )
     await db.commit()
     return artifact_ref(artifact)
@@ -2474,6 +2476,7 @@ async def sdk_generate_image_artifact(
         organization_id=current_user.organization_id,
         workspace_id=workspace_id,
         logical_path=generated.filename,
+        bypass=current_user.is_platform_admin,
     )
     await record_media_usage(
         db,
@@ -2568,8 +2571,7 @@ async def sdk_read_artifact(
         artifact = await service.get_authorized(
             artifact_id,
             user_id=current_user.user_id,
-            organization_id=current_user.organization_id,
-            is_platform_admin=current_user.is_platform_admin,
+            bypass=current_user.is_platform_admin,
         )
     except ArtifactAccessError as exc:
         raise HTTPException(
@@ -2619,8 +2621,7 @@ async def sdk_artifact_download_url(
         artifact = await service.get_authorized(
             artifact_id,
             user_id=current_user.user_id,
-            organization_id=current_user.organization_id,
-            is_platform_admin=current_user.is_platform_admin,
+            bypass=current_user.is_platform_admin,
         )
     except ArtifactAccessError as exc:
         raise HTTPException(

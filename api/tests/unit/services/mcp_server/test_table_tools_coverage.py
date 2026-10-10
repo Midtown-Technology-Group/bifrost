@@ -101,21 +101,22 @@ def _table(**overrides):
 
 @pytest.mark.asyncio
 async def test_table_schema_and_id_validation():
+    """Reject malformed table identifiers and schema definitions."""
     with patch(
         "src.services.mcp_server.schema_utils.models_to_markdown",
         return_value="# Generated tables\n",
     ) as models_to_markdown:
-        schema = await tables.get_table_schema(_context())
+        schema = await tables.get_table_schema(_context(admin=True))
 
     assert "Table Schema Documentation" in models_to_markdown.call_args.args[1]
     assert "Column Types" in schema.structured_content["schema"]
 
-    missing = await tables.get_table(_context(), table_id=None)
-    bad = await tables.get_table(_context(), table_id="not-a-uuid")
-    update_missing = await tables.update_table(_context(), table_id="")
-    update_bad = await tables.update_table(_context(), table_id="not-a-uuid")
-    delete_missing = await tables.delete_table(_context(), table_id="")
-    delete_bad = await tables.delete_table(_context(), table_id="not-a-uuid")
+    missing = await tables.get_table(_context(admin=True), table_id=None)
+    bad = await tables.get_table(_context(admin=True), table_id="not-a-uuid")
+    update_missing = await tables.update_table(_context(admin=True), table_id="")
+    update_bad = await tables.update_table(_context(admin=True), table_id="not-a-uuid")
+    delete_missing = await tables.delete_table(_context(admin=True), table_id="")
+    delete_bad = await tables.delete_table(_context(admin=True), table_id="not-a-uuid")
 
     assert missing.structured_content["error"] == "table_id is required"
     assert "Invalid table_id format" in bad.structured_content["error"]
@@ -127,6 +128,7 @@ async def test_table_schema_and_id_validation():
 
 @pytest.mark.asyncio
 async def test_list_and_get_tables_format_rows_and_report_errors():
+    """Format table metadata responses and preserve lookup failures."""
     table_id = uuid4()
     table = _table(id=table_id, organization_id=None, name="Global")
     db = _Db([_RowsResult([table]), _ScalarResult(table), _ScalarResult(3)])
@@ -141,7 +143,7 @@ async def test_list_and_get_tables_format_rows_and_report_errors():
     assert fetched.structured_content["columns"] == table.schema["columns"]
 
     with patch.object(tables, "get_tool_db", _tool_db(_RaisingDb())):
-        failed = await tables.list_tables(_context())
+        failed = await tables.list_tables(_context(admin=True))
 
     assert "Error listing tables" in failed.structured_content["error"]
     assert "database unavailable" in failed.structured_content["error"]
@@ -149,11 +151,12 @@ async def test_list_and_get_tables_format_rows_and_report_errors():
 
 @pytest.mark.asyncio
 async def test_create_table_validates_scope_and_org_before_db_access():
+    """Validate table creation authority and organization scope before database access."""
     org_id = uuid4()
     ctx = _context(admin=False, org_id=org_id)
 
-    missing_name = await tables.create_table(ctx, name="")
-    missing_org = await tables.create_table(_context_without_org(), name="Tickets")
+    missing_name = await tables.create_table(_context(admin=True), name="")
+    missing_org = await tables.create_table(_context_without_org(admin=True), name="Tickets")
     global_nonadmin = await tables.create_table(ctx, name="Global", scope="global")
     bad_org = await tables.create_table(
         _context(admin=True),
@@ -170,17 +173,18 @@ async def test_create_table_validates_scope_and_org_before_db_access():
     assert "organization_id is required" in missing_org.structured_content["error"]
     assert "Only platform admins" in global_nonadmin.structured_content["error"]
     assert "Invalid organization_id format" in bad_org.structured_content["error"]
-    assert "other organizations" in other_org.structured_content["error"]
+    assert "Only platform admins" in other_org.structured_content["error"]
 
 
 @pytest.mark.asyncio
 async def test_create_table_reports_duplicates_and_persists_new_table():
+    """Reject duplicate table names and persist a valid new table."""
     org_id = uuid4()
     duplicate_db = _Db([_ScalarResult(_table(name="Tickets", organization_id=org_id))])
 
     with patch.object(tables, "get_tool_db", _tool_db(duplicate_db)):
         duplicate = await tables.create_table(
-            _context(org_id=org_id),
+            _context(admin=True, org_id=org_id),
             name="Tickets",
             organization_id=str(org_id),
         )
@@ -188,7 +192,7 @@ async def test_create_table_reports_duplicates_and_persists_new_table():
     create_db = _Db([_ScalarResult(None)])
     with patch.object(tables, "get_tool_db", _tool_db(create_db)):
         created = await tables.create_table(
-            _context(org_id=org_id),
+            _context(admin=True, org_id=org_id),
             name="Tickets",
             description="Ticket cache",
             organization_id=str(org_id),
@@ -207,10 +211,11 @@ async def test_create_table_reports_duplicates_and_persists_new_table():
 
 @pytest.mark.asyncio
 async def test_update_table_reports_missing_noop_and_applies_changes():
+    """Distinguish missing tables and empty updates from successful metadata changes."""
     table_id = uuid4()
     missing_db = _Db([_ScalarResult(None)])
     with patch.object(tables, "get_tool_db", _tool_db(missing_db)):
-        missing = await tables.update_table(_context(), str(table_id), name="New")
+        missing = await tables.update_table(_context(admin=True), str(table_id), name="New")
 
     noop_table = _table(id=table_id)
     noop_db = _Db([_ScalarResult(noop_table)])
@@ -218,7 +223,7 @@ async def test_update_table_reports_missing_noop_and_applies_changes():
         patch.object(tables, "get_tool_db", _tool_db(noop_db)),
         patch("src.services.solutions.guard.is_solution_managed", return_value=False),
     ):
-        noop = await tables.update_table(_context(), str(table_id))
+        noop = await tables.update_table(_context(admin=True), str(table_id))
 
     update_table = _table(id=table_id, schema=None)
     update_db = _Db([_ScalarResult(update_table)])
@@ -283,3 +288,19 @@ async def test_update_and_delete_table_guard_permissions_and_delete_rows():
     assert db.committed is True
     assert deleted.structured_content["success"] is True
     assert deleted.structured_content["name"] == "Delete Me"
+
+
+@pytest.mark.asyncio
+async def test_table_metadata_denies_regular_users_before_db_access():
+    """Deny regular callers table metadata administration before database access."""
+    ctx = _context(admin=False)
+    with patch.object(tables, "get_tool_db") as db:
+        results = [
+            await tables.list_tables(ctx),
+            await tables.get_table(ctx, table_id=str(uuid4())),
+            await tables.create_table(ctx, name="Tickets"),
+            await tables.update_table(ctx, table_id=str(uuid4()), name="Changed"),
+            await tables.delete_table(ctx, table_id=str(uuid4())),
+        ]
+    assert all("Only platform admins" in r.structured_content["error"] for r in results)
+    db.assert_not_called()
