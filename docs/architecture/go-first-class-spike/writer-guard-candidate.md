@@ -176,3 +176,23 @@ validated wire Result or live process evidence. No new lifecycle writer is accep
 by adding this code or by its conformance tests. The full schema/identity/immutability,
 mechanical writer exclusion and common source/attempt/secondary/session/Start/
 admission/grant/receipt graph remain subject to the released acceptance gates.
+
+## Verified cancellation boundary and next recovery candidate
+
+Run38076305806 at164e6b64d passed13,722 backend unit tests (418.169s),109
+baseline cases (14.767s) and88 guard/Rust cases (22.064s), all zero errors,
+failures and skips. API Pyright/Ruff passed; actual cleanup inventories were empty.
+The unchanged pool rejected SQLx default Startup options in the negative control
+and admitted the corrected client. Actual Rust cancellation atomically projected
+Cancelling, closed the session and revoked grants, preserving duplicate clocks
+and rolling back preceding writes on a late PostgreSQL revoke failure.
+Source objects and retained files are hashed in owner-foundation-source-evidence.json.
+No runtime writer or full vertical slice is accepted by this evidence.
+
+The next candidate reads back a cancellation decision under the same complete
+lock graph without lifecycle writes, repair, replay or reassignment. Its probe
+fault exits after actual database commit and before replying; a fresh process
+reads the retained same-session decision. Cases cover unchanged pre-commit state,
+post-commit state, identity/backend denial, inconsistent partial close and tail
+contention. This deliberately bounded crash window does not prove commit transport
+ambiguity, spawn/lost-launch-ACK recovery, source drain or terminal finalization.

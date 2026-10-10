@@ -715,7 +715,11 @@ async def session_fence(rows):
 
 
 async def probe(
-    fence, role="wex_core", operation="observe", default_float_digits=False
+    fence,
+    role="wex_core",
+    operation="observe",
+    default_float_digits=False,
+    exit_after_cancel_commit=False,
 ):
     assert PROBE.is_file(), "Required source-bound Rust build artifact is missing"
     process = await asyncio.create_subprocess_exec(
@@ -726,6 +730,9 @@ async def probe(
         env={
             "BIFROST_ISOLATED_OWNER_TEST": "1",
             "BIFROST_OWNER_TEST_ACTION": operation,
+            "BIFROST_OWNER_TEST_EXIT_AFTER_CANCEL_COMMIT": "1"
+            if exit_after_cancel_commit
+            else "0",
             "BIFROST_OWNER_TEST_DEFAULT_FLOAT_DIGITS": "1"
             if default_float_digits
             else "0",
@@ -738,9 +745,12 @@ async def probe(
         out, err = await asyncio.wait_for(
             process.communicate(("\n".join(fence) + "\n").encode()), timeout=8
         )
-        assert process.returncode == 0
+        assert process.returncode == (73 if exit_after_cancel_commit else 0)
         assert err == b""
         assert len(out) <= 32
+        if exit_after_cancel_commit:
+            assert out == b""
+            return "reply_lost"
         return out.decode().strip()
     finally:
         if process.returncode is None:
@@ -1134,3 +1144,107 @@ async def test_sqlx_default_startup_option_is_rejected_without_pool_policy_bypas
         == "startup_parameter_rejected"
     )
     assert await probe(session_fence) == "open"
+
+
+async def test_rust_cancel_readback_is_read_only_before_and_after_commit(
+    running_cancel_facts, session_fence
+):
+    before = await cancel_snapshot(running_cancel_facts)
+    assert (
+        await probe(session_fence, operation="observe-cancel-decision")
+        == "cancel_not_committed"
+    )
+    assert await cancel_snapshot(running_cancel_facts) == before
+    assert (
+        await probe(session_fence, operation="request-running-cancel")
+        == "cancel_committed"
+    )
+    committed = await cancel_snapshot(running_cancel_facts)
+    assert (
+        await probe(session_fence, operation="observe-cancel-decision")
+        == "cancel_observed_committed"
+    )
+    assert await cancel_snapshot(running_cancel_facts) == committed
+
+
+async def test_rust_cancel_process_exit_before_reply_reconciles_without_replay(
+    running_cancel_facts, session_fence
+):
+    assert (
+        await probe(
+            session_fence,
+            operation="request-running-cancel",
+            exit_after_cancel_commit=True,
+        )
+        == "reply_lost"
+    )
+    committed = await cancel_snapshot(running_cancel_facts)
+    assert committed["status"] == "Cancelling"
+    assert committed["closed_at"] is not None
+    assert committed["revoked_at"] is not None
+    # A fresh Rust process reads the retained same-session decision; no write
+    # request is repeated and no owner/attempt/session identity is replaced.
+    assert (
+        await probe(session_fence, operation="observe-cancel-decision")
+        == "cancel_observed_committed"
+    )
+    assert await cancel_snapshot(running_cancel_facts) == committed
+
+
+@pytest.mark.parametrize("field", range(10))
+async def test_rust_cancel_readback_rejects_stale_identity_without_writes(
+    running_cancel_facts, session_fence, field
+):
+    before = await cancel_snapshot(running_cancel_facts)
+    stale = list(session_fence)
+    stale[field] = str(uuid4()) if field < 8 else "e" * 64
+    assert await probe(stale, operation="observe-cancel-decision") == "rejected"
+    assert await cancel_snapshot(running_cancel_facts) == before
+
+
+async def test_rust_cancel_readback_rejects_incumbent_without_writes(
+    running_cancel_facts, session_fence
+):
+    before = await cancel_snapshot(running_cancel_facts)
+    assert (
+        await probe(session_fence, "wex_incumbent", "observe-cancel-decision")
+        == "rejected"
+    )
+    assert await cancel_snapshot(running_cancel_facts) == before
+
+
+async def test_rust_cancel_readback_rejects_partial_close_without_repair(
+    running_cancel_facts, session_fence
+):
+    async with connection("wex_core") as conn:
+        async with conn.transaction():
+            await conn.execute(
+                "UPDATE executions SET status='Cancelling' WHERE id=$1",
+                running_cancel_facts["execution"],
+            )
+            await conn.execute(
+                "UPDATE runtime_sessions SET closed_at=clock_timestamp(),"
+                "close_reason='cancel_requested' WHERE id=$1",
+                running_cancel_facts["session"],
+            )
+    before = await cancel_snapshot(running_cancel_facts)
+    assert before["revoked_at"] is None
+    assert await probe(session_fence, operation="observe-cancel-decision") == "rejected"
+    assert await cancel_snapshot(running_cancel_facts) == before
+
+
+async def test_rust_cancel_readback_tail_contention_has_no_effects(
+    running_cancel_facts, session_fence
+):
+    before = await cancel_snapshot(running_cancel_facts)
+    async with connection("wex_core") as competing:
+        async with competing.transaction():
+            await competing.execute(
+                "SELECT id FROM workflow_runtime_sdk_grants WHERE id=$1 FOR UPDATE",
+                running_cancel_facts["grant"],
+            )
+            assert (
+                await probe(session_fence, operation="observe-cancel-decision")
+                == "lock_contention"
+            )
+    assert await cancel_snapshot(running_cancel_facts) == before

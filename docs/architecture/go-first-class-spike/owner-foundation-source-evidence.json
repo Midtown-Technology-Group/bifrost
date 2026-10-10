@@ -30,9 +30,10 @@
     "job_log_sha256": "632d815941aae59b35ad18128f9a1ba05472a3cee5101b2d160a1c740ea5d0fb"
   },
   "unproved": [
-    "Actual Rust PostgreSQL transactions and full common lock races",
-    "Admission, issuer/ingress, Start/cancel/Result and guardian/process custody",
-    "Native registration and unchanged artifact authenticated API end-to-end proof"
+    "Full common owner admission, Start and Result/Receipt transactions and complete lock races",
+    "Restricted issuer/ingress, live channel and guardian/process custody",
+    "Native registration and unchanged artifact authenticated Execution API end-to-end proof",
+    "Crash recovery and uncertain commit/spawn/lost-ACK handling without replay or ownership reassignment"
   ],
   "latest_verified": {
     "source_sha": "d3fcb82a4358b86335b3e6cfcf1ff73d944b586a",
@@ -284,5 +285,136 @@
     "job_log_sha256": "b17da4877572e3704cf1e8c7a216e38e75612faf51ee9351100276a656965ccb",
     "cleanup": "verified empty task container/volume/network inventories",
     "new_source_run_required": true
+  },
+  "cancellation_compiler_proof": {
+    "source_sha": "164e6b64dba33339e1b7f3eaafe7e0fccf0f6bb6",
+    "source_tree": "adb3dcd10b6745ff0251c84fdaa7c6ab6802349a",
+    "run": 38076305953,
+    "url": "https://github.com/Midtown-Technology-Group/bifrost/actions/runs/38076305953",
+    "conclusion": "success",
+    "checks": [
+      "Rustfmt",
+      "Locked offline clippy all targets with warnings denied",
+      "Locked offline tests:3 passed,0 failed/ignored",
+      "Locked offline private probe build and dependency graph"
+    ],
+    "database_behavior_verified": false,
+    "runtime_writer_accepted": false,
+    "artifact_directory": "/home/thomas/src/bifrost-go-spike-artifacts/164e6b64dba33339e1b7f3eaafe7e0fccf0f6bb6/runtime-owner-foundation-164e6b64dba33339e1b7f3eaafe7e0fccf0f6bb6",
+    "artifact_file_sha256": {
+      "owner-Cargo.lock": "9830f97843122532a6e13649f4ecbf42e39662a1b150f54c143eba649517b25d",
+      "owner-build.txt": "5a88c8eb192f9afab6f0aab2d9629454fa612f19eb6c31f89b7b6f3f71fee18e",
+      "owner-clippy.txt": "e969cc4f8f45ee620a08daca32ae0146ded2dbd97d4d6c822773acbe1cf9a9bc",
+      "owner-dependency-graph.json": "94d281d3f3565a0a3a7a3640d978e5e74d0e746ec1dd6c68004782c8bc598d51",
+      "owner-fetch.txt": "b8c1fa1cd26d685c2d37cafe9d7e810ac521f18cd0e805616cd15896934ea153",
+      "owner-fmt.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "owner-image-cleanup.txt": "a99d44163183f41c2236e27381a3241a732099531aae095013ff4eb61c9fb9c7",
+      "owner-scope.txt": "bfcbb5ed6ebcd104bb6929c2b7c444251740e370cdd6f62ff29fbbbe39c087d8",
+      "owner-source-hashes.txt": "309a99da064670e921709fb36bcdc4d8bc03e4f06667fd06d9932273edf0b921",
+      "owner-tests.txt": "84e5d847f47f13761eae94f18f191be51493920d92a60a791662dec17aa31b80",
+      "owner-toolchain.txt": "2073de5abf149185c2f4d7473dc833bc921b99135560d24ae7b2293f33a9c376",
+      "owner-tools-build.txt": "79a4aecb34b84d26f4f666896dfe6dd1e7411a300f41e7a429ab3a2ffb4f6062",
+      "owner-tools-image.txt": "804a55698b5f3f058e24d3baf016913b7dd0088974eac582398c9a7d71104fe9",
+      "runtime-owner-observation": "0127c736556ea86454d045afe45a7e5f8fbaf1ed16d002a6cbc97a26d48ec355",
+      "source.txt": "bb7d8337aa000e1e6ed4a54df8ed1d15b4f36d62a9b779199315e16a139c953c"
+    },
+    "probe_sha256": "0127c736556ea86454d045afe45a7e5f8fbaf1ed16d002a6cbc97a26d48ec355"
+  },
+  "cancellation_database_proof": {
+    "source_sha": "164e6b64dba33339e1b7f3eaafe7e0fccf0f6bb6",
+    "source_tree": "adb3dcd10b6745ff0251c84fdaa7c6ab6802349a",
+    "run": 38076305806,
+    "job": 114283849238,
+    "url": "https://github.com/Midtown-Technology-Group/bifrost/actions/runs/38076305806",
+    "conclusion": "success",
+    "suites": {
+      "writer-guard-baseline.xml": [
+        {
+          "name": "pytest",
+          "errors": "0",
+          "failures": "0",
+          "skipped": "0",
+          "tests": "109",
+          "time": "14.767",
+          "timestamp": "2026-10-10T18:47:59.446924+00:00",
+          "hostname": "7e4ea15e3938"
+        }
+      ],
+      "writer-guard-last-results.xml": [
+        {
+          "name": "pytest",
+          "errors": "0",
+          "failures": "0",
+          "skipped": "0",
+          "tests": "88",
+          "time": "22.064",
+          "timestamp": "2026-10-10T18:48:53.875671+00:00",
+          "hostname": "bdd909d3b4fc"
+        }
+      ],
+      "writer-guard-results.xml": [
+        {
+          "name": "pytest",
+          "errors": "0",
+          "failures": "0",
+          "skipped": "0",
+          "tests": "88",
+          "time": "22.064",
+          "timestamp": "2026-10-10T18:48:53.875671+00:00",
+          "hostname": "bdd909d3b4fc"
+        }
+      ],
+      "writer-guard-unit.xml": [
+        {
+          "name": "pytest",
+          "errors": "0",
+          "failures": "0",
+          "skipped": "0",
+          "tests": "13722",
+          "time": "418.169",
+          "timestamp": "2026-10-10T18:39:53.626745+00:00",
+          "hostname": "9f4df847191d"
+        }
+      ]
+    },
+    "api_quality": "Pyright 0 errors/warnings/informations; Ruff all checks passed",
+    "cleanup": "Verified empty task container/volume/network inventories",
+    "source_inputs_verified_against_exact_git_objects": true,
+    "postgres_transactions_executed": true,
+    "runtime_writer_accepted": false,
+    "startup_diagnosis_verified": "Default SQLx startup option was rejected by unchanged pool; corrected client succeeded in same case.",
+    "scope": "Real Rust retained-session observations and provisional Running cancellation transaction, stale identity/backend exclusion, common lock contention and late revoke rollback. Synthetic Start/grant metadata, no actual admission, signed SDK credential, live channel, process launch or finalization.",
+    "artifact_directory": "/home/thomas/src/bifrost-go-spike-artifacts/164e6b64dba33339e1b7f3eaafe7e0fccf0f6bb6/runtime-writer-guards-164e6b64dba33339e1b7f3eaafe7e0fccf0f6bb6",
+    "artifact_file_sha256": {
+      "owner-evidence/owner-Cargo.lock": "9830f97843122532a6e13649f4ecbf42e39662a1b150f54c143eba649517b25d",
+      "owner-evidence/owner-build.txt": "aa2151b93d89a41619957f110773d38ccbdbaf466929c7f5e2900cc713304a38",
+      "owner-evidence/owner-clippy.txt": "e254ee6cc944ff334f1d6f4a1b8202a6861b0ac8a2243d306b101d75c2b2440f",
+      "owner-evidence/owner-dependency-graph.json": "94d281d3f3565a0a3a7a3640d978e5e74d0e746ec1dd6c68004782c8bc598d51",
+      "owner-evidence/owner-fetch.txt": "0bce9581387ec815f47ef40f33e5e1959b29db65b100f147fc49a3d1dffbf3f6",
+      "owner-evidence/owner-fmt.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "owner-evidence/owner-image-cleanup.txt": "2ef9d7cfc6ce1679ba2d6a62fae17243d5ed86f068601d41187381492a02f5cc",
+      "owner-evidence/owner-scope.txt": "bfcbb5ed6ebcd104bb6929c2b7c444251740e370cdd6f62ff29fbbbe39c087d8",
+      "owner-evidence/owner-source-hashes.txt": "309a99da064670e921709fb36bcdc4d8bc03e4f06667fd06d9932273edf0b921",
+      "owner-evidence/owner-tests.txt": "61861d6e95b671100fcc025b779be3d63ac4121d9bab30cec0974d8843048b0d",
+      "owner-evidence/owner-toolchain.txt": "2073de5abf149185c2f4d7473dc833bc921b99135560d24ae7b2293f33a9c376",
+      "owner-evidence/owner-tools-build.txt": "f232ebdeefa2a4f4277550e321d2bb9a3b125c94b05720183a6498975b84f316",
+      "owner-evidence/owner-tools-image.txt": "b25b645e6c0cf98bdfa816ae17cd364cdbbd0672d42e1095f5b0521771a4da2b",
+      "owner-evidence/runtime-owner-observation": "0127c736556ea86454d045afe45a7e5f8fbaf1ed16d002a6cbc97a26d48ec355",
+      "writer-guard-baseline.xml": "03a1c9d3a5c437cfeb167ea3dc945e1a5fc481051a161947233d5077e13e4661",
+      "writer-guard-cleanup.log": "74b01c362b51b8a60e42b3a7207d3402fede15dde0acd24bc98dde6b8c674b51",
+      "writer-guard-images.txt": "baeac5e23b3537d156c08d9db5c3f257473e6fe84b0c7b8968f20d787c05077c",
+      "writer-guard-last-results.xml": "04ceb112065df1b75888dce50ea06c7307b95942da3c54796e9c54d5e69d02b1",
+      "writer-guard-owner-binary.txt": "285ca1acfc16cecdeccbc6ae94ea2c35aa7812500352465086ff0f714913711e",
+      "writer-guard-quality.log": "f4db42068b0e8cb55e50d21b1e3ac64f5f7ab7d672a51d1c4a4969c48c8e4e46",
+      "writer-guard-results.xml": "04ceb112065df1b75888dce50ea06c7307b95942da3c54796e9c54d5e69d02b1",
+      "writer-guard-source-hashes.txt": "74bc0c6136e5d14ee38b6f219e30f37fb4a49c139531834be52a07d0b05fcd27",
+      "writer-guard-source.txt": "bb7d8337aa000e1e6ed4a54df8ed1d15b4f36d62a9b779199315e16a139c953c",
+      "writer-guard-stack.log": "cd55480a69224168223b738db53240df5d42bca12f60b799633ced22ecd72c6a",
+      "writer-guard-storage-baseline.log": "8c3ca1c799a4fbfe18d331c8b3c7ec2666aebf0830ff4d1b665c4c335bf6f2e6",
+      "writer-guard-tests.log": "6ba275027c7ad02ee9c4847fa9128c5a6257687e040de71d3c72ed88de8bc4b2",
+      "writer-guard-unit.log": "c37dbb63de7869b02c22ebfac7a2ec0ef36fa74030a2c8befae4ba7005e7d3ff",
+      "writer-guard-unit.xml": "4e19be9720723568a01ddfea707c254dafacd53810bad32c8507bae7ab7a4b49"
+    },
+    "job_log_sha256": "469ef020cbbfdc60a395a67dd355de0251484a8460a29ffcb81e8f39805c2319"
   }
 }

@@ -237,6 +237,105 @@ pub enum CancelDecision {
     AlreadyCommitted,
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub enum CancelObservation {
+    NotCommitted,
+    Committed,
+}
+
+/// Reconcile an unknown cancellation reply without repeating its write. This is
+/// retained-decision evidence only: it cannot reopen, reassign or launch work,
+/// and does not prove process stop. Partial/inconsistent projections fail closed.
+pub async fn observe_cancel_decision(
+    pool: &PgPool,
+    fence: &SessionFence,
+) -> Result<CancelObservation, ObserveError> {
+    let mut locked = lock_session(pool, fence).await?;
+    let start = sqlx::query(
+        "SELECT id FROM runtime_starts WHERE session_id=$1::text::uuid \
+         AND execution_id=$2::text::uuid AND owner_incarnation_id=$3::text::uuid \
+         AND workflow_attempt_id=$4::text::uuid FOR UPDATE",
+    )
+    .bind(&fence.session_id)
+    .bind(&fence.execution_id)
+    .bind(&fence.owner_incarnation_id)
+    .bind(&fence.attempt_id)
+    .fetch_optional(&mut *locked.tx)
+    .await?;
+    if start.is_none() {
+        return Err(ObserveError::Rejected);
+    }
+    sqlx::query(
+        "SELECT id FROM runtime_admissions WHERE session_id=$1::text::uuid \
+         ORDER BY purpose,id FOR UPDATE",
+    )
+    .bind(&fence.session_id)
+    .fetch_all(&mut *locked.tx)
+    .await?;
+    let grants = sqlx::query(
+        "SELECT revoked_at IS NOT NULL AS revoked,revocation_reason \
+         FROM workflow_runtime_sdk_grants WHERE runtime_session_id=$1::text::uuid \
+         ORDER BY id FOR UPDATE",
+    )
+    .bind(&fence.session_id)
+    .fetch_all(&mut *locked.tx)
+    .await?;
+    let receipts = sqlx::query(
+        "SELECT disposition,winner FROM runtime_report_receipts \
+         WHERE session_id=$1::text::uuid ORDER BY result_message_id FOR UPDATE",
+    )
+    .bind(&fence.session_id)
+    .fetch_all(&mut *locked.tx)
+    .await?;
+    let decision = if locked.closed {
+        if locked.execution_status != "Cancelling"
+            || locked.close_reason.as_deref() != Some("cancel_requested")
+        {
+            return Err(ObserveError::Rejected);
+        }
+        for grant in grants {
+            if !grant.try_get::<bool, _>("revoked")?
+                || grant
+                    .try_get::<Option<String>, _>("revocation_reason")?
+                    .as_deref()
+                    != Some("session_closed")
+            {
+                return Err(ObserveError::Rejected);
+            }
+        }
+        for receipt in receipts {
+            if receipt.try_get::<String, _>("disposition")? != "retained"
+                || receipt.try_get::<String, _>("winner")? != "cancel"
+            {
+                return Err(ObserveError::Rejected);
+            }
+        }
+        CancelObservation::Committed
+    } else {
+        if locked.execution_status != "Running" || !receipts.is_empty() {
+            return Err(ObserveError::Rejected);
+        }
+        // A session-close revocation without its session/root projection is
+        // inconsistent; other independent grant revocations are not cancellation.
+        for grant in grants {
+            if grant
+                .try_get::<Option<String>, _>("revocation_reason")?
+                .as_deref()
+                == Some("session_closed")
+            {
+                return Err(ObserveError::Rejected);
+            }
+        }
+        CancelObservation::NotCommitted
+    };
+    locked
+        .tx
+        .commit()
+        .await
+        .map_err(|_| ObserveError::UncertainCommit)?;
+    Ok(decision)
+}
+
 /// Internal isolated owner operation, not an SDK/public cancellation endpoint.
 /// Its caller must be the trusted coordinator. It cannot authorize admission,
 /// spawn, replay, or finalization; actual process/source settlement remains due.

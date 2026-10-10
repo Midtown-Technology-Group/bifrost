@@ -1,7 +1,7 @@
 //! Private synthetic test probe. This is not a workload API or admission path.
 use bifrost_isolated_owner_spike::{
-    CancelDecision, ObserveError, SessionFence, SessionObservation, observe_session,
-    request_running_cancel,
+    CancelDecision, CancelObservation, ObserveError, SessionFence, SessionObservation,
+    observe_cancel_decision, observe_session, request_running_cancel,
 };
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
 use std::{
@@ -46,7 +46,10 @@ async fn run() -> &'static str {
     };
     let operation =
         std::env::var("BIFROST_OWNER_TEST_ACTION").unwrap_or_else(|_| "observe".to_owned());
-    if !matches!(operation.as_str(), "observe" | "request-running-cancel") {
+    if !matches!(
+        operation.as_str(),
+        "observe" | "request-running-cancel" | "observe-cancel-decision"
+    ) {
         return "rejected";
     }
     let Ok(url) = std::env::var("BIFROST_OWNER_TEST_DATABASE_URL") else {
@@ -84,8 +87,22 @@ async fn run() -> &'static str {
     let result = tokio::time::timeout(Duration::from_secs(5), async {
         if operation == "request-running-cancel" {
             match request_running_cancel(&pool, &fence).await? {
-                CancelDecision::Committed => Ok("cancel_committed"),
+                CancelDecision::Committed => {
+                    if std::env::var("BIFROST_OWNER_TEST_EXIT_AFTER_CANCEL_COMMIT").as_deref()
+                        == Ok("1")
+                    {
+                        // Synthetic crash after actual observed database commit,
+                        // before any reply. No recovery/retry runs in this process.
+                        std::process::exit(73);
+                    }
+                    Ok("cancel_committed")
+                }
                 CancelDecision::AlreadyCommitted => Ok("cancel_already_committed"),
+            }
+        } else if operation == "observe-cancel-decision" {
+            match observe_cancel_decision(&pool, &fence).await? {
+                CancelObservation::NotCommitted => Ok("cancel_not_committed"),
+                CancelObservation::Committed => Ok("cancel_observed_committed"),
             }
         } else {
             match observe_session(&pool, &fence).await? {

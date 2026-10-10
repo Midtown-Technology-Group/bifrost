@@ -51,9 +51,24 @@ its return. Its caller is the trusted coordinator; this is no public/SDK endpoin
 or substitute for admission authorization and actual channel/process custody.
 The private probe classifies mutating-operation timeout as uncertain commit.
 
-The observed connection failures at830682629 remain blocking. The correction
-omits SQLx's default extra_float_digits Startup parameter and leaves the pool's
-admitted configuration intact. A separate negative connection control must prove
-the old option is rejected before the corrected path is accepted. The cancellation
+The observed connection failures at830682629 were diagnosed with checksum-verified
+SQLx source. The correction omits SQLx's default extra_float_digits Startup parameter and leaves the pool's
+admitted configuration intact. Run38076305806 at164e6b64d passed the negative default-option rejection control
+and the corrected connection path with the unchanged pool policy. The cancellation
 fixture uses the existing synthetic storage grant definition without token signing
 or source eligibility; this cannot qualify credentials or a runtime writer.
+
+Run38076305806 passed13,722 backend unit,109 baseline and88 guard/Rust cases
+with no failures/errors/skips, API quality and empty owned cleanup inventories.
+It proves actual Rust observation and provisional cancellation transactions;
+synthetic Start/grant facts do not qualify admission, signed credentials or live
+process custody. Exact evidence is retained in owner-foundation-source-evidence.json.
+
+The next candidate adds read-only `observe_cancel_decision` under the full common
+lock graph. It distinguishes unchanged Running/open from coherently committed
+Cancelling/closed/revoked state and rejects partial projections without repair.
+An isolated-only probe fault exits73 immediately after actual commit and before
+a reply; a fresh Rust process must reconcile the same retained identities without
+repeating the write. This is a post-commit/pre-reply crash window, not proof of
+uncertain database commit, physical spawn recovery or terminal result settlement.
+These new paths need fresh source-bound CI evidence.
