@@ -156,11 +156,15 @@ func PrepareNative(received executionprofile.Decoded, accepted PreparationInputs
 		}
 	}()
 	format, err := elf.NewFile(executable.file)
-	if err != nil || format.Class != elf.ELFCLASS64 || format.Machine != elf.EM_X86_64 || (format.Type != elf.ET_EXEC && format.Type != elf.ET_DYN) {
+	if err != nil || format.Class != elf.ELFCLASS64 || format.Data != elf.ELFDATA2LSB || format.Machine != elf.EM_X86_64 || (format.Type != elf.ET_EXEC && format.Type != elf.ET_DYN) {
 		return nil, PreparationRejected
 	}
 	executableSegment := false
 	for _, segment := range format.Progs {
+		// The initial CGO-disabled bundle requires no ambient dynamic loader.
+		if segment.Type == elf.PT_INTERP {
+			return nil, PreparationRejected
+		}
 		if segment.Type == elf.PT_LOAD && segment.Flags&elf.PF_X != 0 && format.Entry >= segment.Vaddr && format.Entry-segment.Vaddr < segment.Memsz {
 			executableSegment = true
 		}

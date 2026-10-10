@@ -86,3 +86,8 @@ These are runtime-side observations only. They do not observe a database commit,
 authenticate material, permit physical spawn or finalize cancellation. The live
 protocol loop must serialize calls; live guardian/issuer integration remains
 required before this state can participate in an accepted launch.
+
+The initial ELF target also requires little-endian amd64 and rejects PT_INTERP:
+the CGO-disabled workflow must not depend on an ambient dynamic loader. Negative
+tests mutate actual synthetic ELF headers and update both byte digests, ensuring
+format validation rejects them independently of the digest check.

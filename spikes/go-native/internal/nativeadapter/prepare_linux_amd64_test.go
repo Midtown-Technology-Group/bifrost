@@ -4,7 +4,9 @@ package nativeadapter
 
 import (
 	"bytes"
+	"encoding/binary"
 	"encoding/json"
+	"io"
 	"os"
 	"reflect"
 	"strings"
@@ -93,7 +95,7 @@ func TestPreparationIsInertAndDetached(t *testing.T) {
 }
 
 func TestPreparationRejectsDriftBeforeLaunch(t *testing.T) {
-	for _, name := range []string{"binding", "accepted-artifact", "session", "caller", "context", "deadline", "no-deadline", "input-schema", "output-schema", "unsupported-schema", "duplicate-schema", "input", "child-digest", "adapter-digest", "non-elf", "platform", "sdk", "missing-child", "mutable-frame"} {
+	for _, name := range []string{"binding", "accepted-artifact", "session", "caller", "context", "deadline", "no-deadline", "input-schema", "output-schema", "unsupported-schema", "duplicate-schema", "input", "child-digest", "adapter-digest", "non-elf", "elf-machine", "elf-endian", "elf-loader", "platform", "sdk", "missing-child", "mutable-frame"} {
 		t.Run(name, func(t *testing.T) {
 			decoded, accepted, now := preparationFixture(t)
 			body := decoded.Frame["body"].(map[string]any)
@@ -132,6 +134,28 @@ func TestPreparationRejectsDriftBeforeLaunch(t *testing.T) {
 				accepted.Adapter = strings.NewReader("altered")
 			case "non-elf":
 				child := []byte("not executable")
+				artifact["executable_sha256"] = bytesDigest(child)
+				accepted.Artifact = cloneProtocolValue(artifact).(map[string]any)
+				accepted.Child = bytes.NewReader(child)
+			case "elf-machine", "elf-endian", "elf-loader":
+				child, err := io.ReadAll(accepted.Child)
+				if err != nil || len(child) < 64 {
+					t.Fatal("invalid synthetic test ELF")
+				}
+				switch name {
+				case "elf-machine":
+					binary.LittleEndian.PutUint16(child[18:20], 183) // ARM64.
+				case "elf-endian":
+					child[5] = 2
+				case "elf-loader":
+					offset := binary.LittleEndian.Uint64(child[32:40])
+					if offset > uint64(len(child)-4) {
+						t.Fatal("invalid test program header")
+					}
+					binary.LittleEndian.PutUint32(child[offset:offset+4], 3) // PT_INTERP.
+				}
+				// Update both synthetic references so ELF validation, not digest
+				// mismatch, has to reject the unsupported executable shape.
 				artifact["executable_sha256"] = bytesDigest(child)
 				accepted.Artifact = cloneProtocolValue(artifact).(map[string]any)
 				accepted.Child = bytes.NewReader(child)
