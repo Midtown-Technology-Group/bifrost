@@ -33,11 +33,14 @@ type PreparationInputs struct {
 // PreparedNative owns inert sealed child bytes. It contains no SDK material and
 // exposes no launch method. Preparation never evaluates tenant code.
 type PreparedNative struct {
-	executable *SealedExecutable
-	prepareID  string
-	artifact   map[string]any
-	input      []byte
-	deadline   time.Time
+	executable     *SealedExecutable
+	prepareID      string
+	artifact       map[string]any
+	input          []byte
+	deadline       time.Time
+	binding        map[string]any
+	sessionID      string
+	parentSequence int64
 }
 
 func (p *PreparedNative) Close() error { return p.executable.Close() }
@@ -165,6 +168,10 @@ func PrepareNative(received executionprofile.Decoded, accepted PreparationInputs
 	if !executableSegment {
 		return nil, PreparationRejected
 	}
+	sequence, err := validated.Frame["sequence"].(json.Number).Int64()
+	if err != nil {
+		return nil, PreparationRejected
+	}
 	keep = true
-	return &PreparedNative{executable: executable, prepareID: validated.Frame["message_id"].(string), artifact: artifact, input: input, deadline: deadline}, nil
+	return &PreparedNative{executable: executable, prepareID: validated.Frame["message_id"].(string), artifact: artifact, input: input, deadline: deadline, binding: binding, sessionID: validated.Frame["session_id"].(string), parentSequence: sequence}, nil
 }

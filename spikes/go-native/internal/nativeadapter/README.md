@@ -75,3 +75,14 @@ executable as inert synthetic ELF bytes. They test identity/schema/deadline and
 byte drift plus detached retained state; they do not launch it or establish
 accepted bundle provenance. Full adapter dispatch and Rust guardian integration
 remain unfinished.
+
+`NativeFrontier` checks parent Start/Provision observations after Prepared in
+both contract-permitted delivery orders. It retains detached frames, rejects
+identity/correlation/start mismatches, duplicate IDs, stale parent sequences,
+expired grants and unbounded budgets, and narrows the read deadline to the
+minimum of absolute deadline, observed remaining budget and grant expiry.
+Cancel or transport closure permanently prevents subsequent material access.
+These are runtime-side observations only. They do not observe a database commit,
+authenticate material, permit physical spawn or finalize cancellation. The live
+protocol loop must serialize calls; live guardian/issuer integration remains
+required before this state can participate in an accepted launch.
