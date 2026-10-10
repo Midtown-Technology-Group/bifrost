@@ -4,6 +4,7 @@
 //! Release records retain synthetic prerequisites until live guardian acceptance.
 use sqlx::{PgPool, Postgres, Row, Transaction};
 mod admit;
+pub mod archive;
 mod provision;
 mod release;
 mod result;

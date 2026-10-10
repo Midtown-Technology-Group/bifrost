@@ -71,3 +71,4 @@ for input in owner-rs/Cargo.toml owner-rs/Cargo.lock owner-rs/src/*.rs \
 done
 printf '%s\n' 'Rust owner observation foundation only: locked offline checks; no PostgreSQL transaction, lifecycle writer, workload launch or runtime acceptance proved.' \
   > "$evidence_dir/owner-scope.txt"
+cp "$scratch/target/debug/examples/bundle_verify" "$evidence_dir/runtime-native-bundle-verify"

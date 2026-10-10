@@ -193,3 +193,15 @@ openssl pkeyutl -sign -rawin -inkey "$scratch/attestation.key" \
 openssl pkeyutl -verify -rawin -pubin -inkey "$evidence_dir/attestation-public.pem" \
   -in "$evidence_dir/descriptor.json" -sigfile "$evidence_dir/descriptor.sig" \
   > "$evidence_dir/attestation-verification.txt"
+
+# Trusted build-plane packaging, after tenant containers and producer attestation.
+# Never called by runtime admission. Disable Python bytecode so inputs stay fixed.
+python3 -B -m unittest discover -s "$spike_root/scripts" -p 'test_native_bundle.py' \
+  > "$evidence_dir/native-bundle-tests.txt" 2>&1
+python3 -B "$spike_root/scripts/native_bundle.py" "$spike_root" "$evidence_dir" \
+  > "$evidence_dir/native-bundle-assembly.json"
+openssl pkeyutl -sign -rawin -inkey "$scratch/attestation.key" \
+  -in "$evidence_dir/native-bundle-descriptor.json" -out "$evidence_dir/native-bundle-descriptor.sig"
+openssl pkeyutl -verify -rawin -pubin -inkey "$evidence_dir/attestation-public.pem" \
+  -in "$evidence_dir/native-bundle-descriptor.json" -sigfile "$evidence_dir/native-bundle-descriptor.sig" \
+  > "$evidence_dir/native-bundle-attestation-verification.txt"

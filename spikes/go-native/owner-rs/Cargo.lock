@@ -44,6 +44,7 @@ version = "0.0.0"
 dependencies = [
  "bifrost-execution-wire-spike",
  "serde_json",
+ "sha2 0.10.9",
  "sqlx",
  "tokio",
 ]

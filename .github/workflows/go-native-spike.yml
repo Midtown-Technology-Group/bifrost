@@ -50,6 +50,21 @@ jobs:
           persist-credentials: false
       - name: Isolated tests, build, local execution and measurements
         run: bash spikes/go-native/scripts/measure.sh "$RUNNER_TEMP/go-spike-evidence"
+      - name: Independent Rust consumer of the immutable unchanged native bundle
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/native-bundle-owner" "$RUNNER_TEMP/go-spike-evidence/native-bundle-owner"
+          bash spikes/go-native/scripts/owner-foundation-check.sh "$RUNNER_TEMP/native-bundle-owner"
+          "$RUNNER_TEMP/native-bundle-owner/runtime-native-bundle-verify" \
+            "$RUNNER_TEMP/go-spike-evidence/native-bundle.tar" \
+            "$RUNNER_TEMP/go-spike-evidence/native-bundle-descriptor.json" \
+            > "$RUNNER_TEMP/go-spike-evidence/native-bundle-rust-verification.json"
+          sha256sum "$RUNNER_TEMP/native-bundle-owner/runtime-native-bundle-verify" \
+            > "$RUNNER_TEMP/go-spike-evidence/native-bundle-rust-verifier.sha256"
+          cp "$RUNNER_TEMP/native-bundle-owner"/*.txt \
+            "$RUNNER_TEMP/native-bundle-owner/owner-Cargo.lock" \
+            "$RUNNER_TEMP/native-bundle-owner/owner-dependency-graph.json" \
+            "$RUNNER_TEMP/go-spike-evidence/native-bundle-owner/"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: Midtown-Technology-Group/bifrost
