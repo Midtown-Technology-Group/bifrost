@@ -24,10 +24,10 @@ from datetime import datetime, timedelta, timezone
 from uuid import UUID, uuid4
 
 from fastapi import status
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import load_only, selectinload
 
 from src.core.org_filter import org_filter_clause, resolve_org_filter
 from src.core.principal import UserPrincipal
@@ -64,6 +64,10 @@ logger = logging.getLogger(__name__)
 LOG_ENTRY_MAX_CHARS = 65536
 LOG_BATCH_MAX_ENTRIES = 512
 LOG_BATCH_MAX_CHARS = 1024 * 1024
+
+# The singleton scheduler runs this sweep every 30 seconds. Keep each lock set
+# and ORM identity-map addition bounded so a backlog cannot exhaust the leader.
+DEVICE_JOB_WATCHDOG_BATCH_SIZE = 100
 
 
 def _busy(active: DeviceJob | None) -> DeviceOperationError:
@@ -413,14 +417,48 @@ async def sweep_device_jobs(
     in-flight claim is never touched here.
     """
     current = now if now is not None else datetime.now(timezone.utc)
+    silence_cutoff = current - timedelta(seconds=RUNNING_LOST_SECONDS)
+    deadline_anchor = func.coalesce(DeviceJob.started_at, DeviceJob.claimed_at)
+    past_deadline = and_(
+        deadline_anchor.is_not(None),
+        func.extract("epoch", current - deadline_anchor)
+        > DeviceJob.timeout_seconds + TIMEOUT_BACKSTOP_GRACE_SECONDS,
+    )
     result = await db.execute(
         select(DeviceJob)
-        .where(DeviceJob.status == JOB_STATUS_RUNNING)
+        # Filter before locking/limiting. Otherwise a large set of healthy
+        # running rows can starve stale rows from the bounded batch.
+        .where(
+            DeviceJob.status == JOB_STATUS_RUNNING,
+            or_(
+                DeviceJob.last_agent_activity_at.is_(None),
+                DeviceJob.last_agent_activity_at < silence_cutoff,
+                past_deadline,
+            ),
+        )
+        # DeviceJob carries tenant-controlled 256 KiB scripts and large result
+        # fields. The watchdog only needs identity/timing fields and writes
+        # status/error, so defer every payload column.
+        .options(
+            load_only(
+                DeviceJob.id,
+                DeviceJob.status,
+                DeviceJob.claimed_at,
+                DeviceJob.started_at,
+                DeviceJob.last_agent_activity_at,
+                DeviceJob.timeout_seconds,
+            )
+        )
+        .order_by(
+            DeviceJob.last_agent_activity_at.asc().nulls_first(),
+            deadline_anchor.asc().nulls_first(),
+            DeviceJob.id,
+        )
         .with_for_update(skip_locked=True)
+        .limit(DEVICE_JOB_WATCHDOG_BATCH_SIZE)
     )
     running_rows = result.scalars().all()
 
-    silence_cutoff = current - timedelta(seconds=RUNNING_LOST_SECONDS)
     lost_silence = 0
     lost_backstop = 0
     for job in running_rows:
