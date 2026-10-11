@@ -1,7 +1,7 @@
 //! Private Linux guardian custody. No lifecycle/SDK authority or production dispatch.
 //! The initial live lane permits only a dormant, network-none carrier. A retained
 //! intent permits stop-only recovery, never another start or tenant initialization.
-use crate::{archive::sha256, canonical_uuid, digest};
+use crate::{SessionFence, archive::sha256, canonical_uuid, digest};
 use bifrost_execution_wire_spike::{Codec, MAX_FRAME};
 use serde_json::{Value, json};
 use std::{
@@ -131,6 +131,8 @@ mod tests {
             may_start: false,
             attachment: None,
             kernel: None,
+            custody_sha256: None,
+            offered_runtime_id: None,
         };
         assert_eq!(guardian.attach_dormant(), Err(GuardianError::Rejected));
         assert_eq!(guardian.verify_live(), Err(GuardianError::Rejected));
@@ -467,6 +469,8 @@ pub struct Guardian {
     may_start: bool,
     attachment: Option<Attachment>,
     kernel: Option<KernelObservation>,
+    custody_sha256: Option<String>,
+    offered_runtime_id: Option<String>,
 }
 
 #[derive(Clone)]
@@ -709,6 +713,8 @@ impl Guardian {
             may_start: true,
             attachment: None,
             kernel: None,
+            custody_sha256: None,
+            offered_runtime_id: None,
         })
     }
 
@@ -762,6 +768,8 @@ impl Guardian {
             may_start: false,
             attachment: None,
             kernel,
+            custody_sha256: None,
+            offered_runtime_id: None,
         })
     }
 
@@ -891,7 +899,62 @@ impl Guardian {
             "mounts":snapshot["Mounts"], "network":"none"});
         self.kernel = Some(kernel);
         let raw = serde_json::to_vec(&evidence).map_err(|_| GuardianError::Rejected)?;
-        Ok(json!({"observation":evidence,"channel_custody_sha256":sha256(&raw)}))
+        let custody_sha256 = sha256(&raw);
+        self.custody_sha256 = Some(custody_sha256.clone());
+        self.offered_runtime_id = offer.frame["body"]["runtime_incarnation_id"]
+            .as_str()
+            .map(str::to_owned);
+        Ok(json!({"observation":evidence,"channel_custody_sha256":custody_sha256}))
+    }
+
+    /// Private coordinator/SDK ingress precondition. The fence must name this
+    /// original observed process/channel and the pinned neutral bundle binding.
+    /// A recovery object cannot manufacture fresh custody from its journal.
+    pub fn verify_session(&mut self, fence: &SessionFence) -> Result<Value, GuardianError> {
+        if !fence.valid()
+            || fence.session_id != self.spec.session_id
+            || self.custody_sha256.as_deref() != Some(fence.channel_custody_sha256.as_str())
+            || self.offered_runtime_id.as_deref() != Some(fence.runtime_incarnation_id.as_str())
+        {
+            return Err(GuardianError::Rejected);
+        }
+        self.verify_live()?;
+        let file = OpenOptions::new()
+            .read(true)
+            .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC)
+            .open(self.spec.bundle.join("session-bundle.json"))
+            .map_err(|_| GuardianError::Rejected)?;
+        let metadata = file.metadata().map_err(|_| GuardianError::Rejected)?;
+        if !metadata.is_file()
+            || metadata.uid() != self.spec.uid
+            || metadata.mode() & 0o777 != 0o400
+        {
+            return Err(GuardianError::Rejected);
+        }
+        let mut raw = Vec::new();
+        file.take(65537)
+            .read_to_end(&mut raw)
+            .map_err(|_| GuardianError::Rejected)?;
+        if raw.len() > 65536 || sha256(&raw) != self.spec.index_sha256 {
+            return Err(GuardianError::Rejected);
+        }
+        let index: Value = serde_json::from_slice(&raw).map_err(|_| GuardianError::Rejected)?;
+        let binding = &index["binding"];
+        for (field, expected) in [
+            ("execution_id", &fence.execution_id),
+            ("attempt_id", &fence.attempt_id),
+            ("session_id", &fence.session_id),
+            (
+                "supervisor_incarnation_id",
+                &fence.supervisor_incarnation_id,
+            ),
+            ("runtime_incarnation_id", &fence.runtime_incarnation_id),
+        ] {
+            if binding[field] != *expected {
+                return Err(GuardianError::Rejected);
+            }
+        }
+        Ok(binding.clone())
     }
 
     /// Recheck this owned channel and original kernel incarnation immediately

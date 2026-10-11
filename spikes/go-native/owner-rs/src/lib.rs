@@ -14,6 +14,8 @@ mod release;
 mod result;
 mod schema;
 mod sdk;
+#[cfg(target_os = "linux")]
+pub mod sdk_gate;
 mod start;
 pub use admit::{AdmitDecision, AdmitRequest, record_admit_candidate};
 pub use provision::{ProvisionDecision, ProvisionRequest, record_provision_candidate};

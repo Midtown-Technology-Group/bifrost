@@ -6,8 +6,10 @@ on:
       - api/tests/e2e/platform/test_runtime_writer_guards.py
       - api/src/core/runtime_sdk_credentials.py
       - api/src/services/isolated_runtime_sdk_tokens.py
+      - api/src/services/isolated_runtime_sdk_bridge.py
       - api/tests/unit/core/test_runtime_sdk_credentials.py
       - api/tests/unit/services/test_isolated_runtime_sdk_tokens.py
+      - api/tests/unit/services/test_isolated_runtime_sdk_bridge.py
       - spikes/go-native/owner-rs/**
       - spikes/go-native/scripts/owner-foundation-check.sh
       - spikes/go-native/peers/rust-execution/**
@@ -53,8 +55,10 @@ jobs:
             api/tests/e2e/platform/test_runtime_writer_guards.py \
             api/src/core/runtime_sdk_credentials.py \
             api/src/services/isolated_runtime_sdk_tokens.py \
+            api/src/services/isolated_runtime_sdk_bridge.py \
             api/tests/unit/core/test_runtime_sdk_credentials.py \
             api/tests/unit/services/test_isolated_runtime_sdk_tokens.py \
+            api/tests/unit/services/test_isolated_runtime_sdk_bridge.py \
             docker-compose.runtime-writer-guards.yml \
             scripts/ci/writer-guards/pgbouncer.ini \
             scripts/ci/writer-primer/userlist.txt \

@@ -1,15 +1,18 @@
 //! Live hosted custody probe. No admission, Start, SDK or lifecycle finalization.
 use bifrost_isolated_owner_spike::{
+    SessionFence,
     archive::{ArchivePins, MAX_ARCHIVE, NAMES, sha256, verify_archive},
     guardian::{Guardian, GuardianError, LaunchSpec},
     material::MaterialPipe,
+    sdk_gate::SDKGate,
 };
 use serde_json::{Value, json};
 use std::{
     fs::{self, File, OpenOptions},
     io::{Read, Write},
+    net::Shutdown,
     os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt, PermissionsExt},
-    os::unix::net::UnixListener,
+    os::unix::net::{UnixListener, UnixStream},
     path::{Path, PathBuf},
     process::{Command, Stdio},
     thread,
@@ -151,6 +154,89 @@ fn selection(session: &str, offer: &Value) -> Result<Value, ()> {
         "capability":"execution_profile/v1","artifact_class":"native-executable/v1"}}))
 }
 
+fn closed_gate_probe(
+    spec: &LaunchSpec,
+    guardian: &mut Guardian,
+    custody: &Value,
+) -> Result<(), ()> {
+    let index: Value =
+        serde_json::from_slice(&read(&spec.bundle.join("session-bundle.json"), 65536)?)
+            .map_err(|_| ())?;
+    let binding = &index["binding"];
+    let text = |field: &str| binding[field].as_str().map(str::to_owned).ok_or(());
+    let fence = SessionFence {
+        execution_id: text("execution_id")?,
+        owner_incarnation_id: uuid()?,
+        attempt_id: text("attempt_id")?,
+        claim_token: uuid()?,
+        worker_incarnation_id: uuid()?,
+        session_id: spec.session_id.clone(),
+        supervisor_incarnation_id: text("supervisor_incarnation_id")?,
+        runtime_incarnation_id: text("runtime_incarnation_id")?,
+        binding_sha256: "a".repeat(64),
+        channel_custody_sha256: custody["channel_custody_sha256"].as_str().ok_or(())?.into(),
+    };
+    guardian.verify_session(&fence).map_err(|_| ())?;
+    let mut stale = fence.clone();
+    stale.channel_custody_sha256 = "b".repeat(64);
+    if guardian.verify_session(&stale) != Err(GuardianError::Rejected) {
+        return Err(());
+    }
+    let root = spec.journal.parent().and_then(Path::parent).ok_or(())?;
+    let gate_directory = root.join(format!("g{}", spec.session_id.replace('-', "")));
+    directory(&gate_directory)?;
+    let mut gate = SDKGate::create(&gate_directory, spec.uid).map_err(|_| ())?;
+    let mut stream = UnixStream::connect(gate.path()).map_err(|_| ())?;
+    stream
+        .set_read_timeout(Some(Duration::from_secs(1)))
+        .map_err(|_| ())?;
+    stream
+        .set_write_timeout(Some(Duration::from_secs(1)))
+        .map_err(|_| ())?;
+    let sender = thread::spawn(move || {
+        let raw = br#"{"command":"Start"}"#;
+        stream
+            .write_all(&(raw.len() as u32).to_be_bytes())
+            .and_then(|_| stream.write_all(raw))
+            .map_err(|_| ())?;
+        stream.shutdown(Shutdown::Write).map_err(|_| ())?;
+        let mut prefix = [0; 4];
+        stream.read_exact(&mut prefix).map_err(|_| ())?;
+        let size = u32::from_be_bytes(prefix) as usize;
+        if size > 1024 {
+            return Err(());
+        }
+        let mut response = vec![0; size];
+        stream.read_exact(&mut response).map_err(|_| ())?;
+        let response: Value = serde_json::from_slice(&response).map_err(|_| ())?;
+        if response["admitted"] != false || response["request_sha256"] != sha256(raw) {
+            return Err(());
+        }
+        Ok::<(), ()>(())
+    });
+    // No database server exists at this address. The lifecycle-command shape
+    // must be denied before custody/SQL; this is not an SDK success proof.
+    let runtime = tokio::runtime::Runtime::new().map_err(|_| ())?;
+    let decision = runtime
+        .block_on(async {
+            let pool = sqlx::postgres::PgPoolOptions::new()
+                .max_connections(1)
+                .connect_lazy("postgresql://not-authority@127.0.0.1:1/not-authority")
+                .map_err(|_| bifrost_isolated_owner_spike::sdk_gate::GateError::Rejected)?;
+            let result = gate.serve_one_if_ready(guardian, &pool, &fence).await;
+            pool.close().await;
+            result
+        })
+        .map_err(|_| ())?;
+    if decision != Some(false) {
+        return Err(());
+    }
+    sender.join().map_err(|_| ())??;
+    gate.retire().map_err(|_| ())?;
+    fs::remove_dir(gate_directory).map_err(|_| ())?;
+    Ok(())
+}
+
 fn run_case(spec: LaunchSpec, mode: &str) -> Result<Value, ()> {
     let operation = (|| {
         match mode {
@@ -165,6 +251,9 @@ fn run_case(spec: LaunchSpec, mode: &str) -> Result<Value, ()> {
                     0o600,
                 )?;
                 guardian.verify_live().map_err(|_| ())?;
+                if mode == "normal" {
+                    closed_gate_probe(&spec, &mut guardian, &custody)?;
+                }
                 // Exercise real outbound common framing; no Prepare/Start or
                 // material, so the adapter remains inert waiting for Prepare.
                 guardian
@@ -206,6 +295,7 @@ fn run_case(spec: LaunchSpec, mode: &str) -> Result<Value, ()> {
                 Ok(json!({"case":mode,"custody":custody,"drain":drain,
                     "fresh_custody_checked":true,"poisoned_channel_denied":mode=="poisoned-channel",
                     "sdk_relay_present":mode.starts_with("sdk-relay-"),
+                    "private_gate_lifecycle_command_denied":mode=="normal",
                     "lost_sdk_ingress_stop_only":mode=="sdk-relay-lost-ingress"}))
             }
             "lost-create-reply" => {

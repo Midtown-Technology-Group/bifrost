@@ -1,0 +1,250 @@
+{
+  "sdk_version": "0.0.0-spike.2",
+  "source_commit": "b8b308f1b75e1cb8dfb6a71bb3f8a62d9e454a9f",
+  "workflow_run": 38099407395,
+  "runtime_acceptance": false,
+  "go_source_inputs_verified": 127,
+  "rust_source_inputs_verified": 32,
+  "rust_consumer_tests_passed": 28,
+  "go_tests_passed": 536,
+  "artifact_id": "sha256:28444adab20e2b8a0f66da0f2d240738618af0a9fe3ef29031de89acb06616a7",
+  "unchanged_workflow_sha256": "160917deeb94275f31ca9ddee2dacae00fb079fdf54cb60e206c8def261f9c34",
+  "cases": [
+    {
+      "case": "normal",
+      "custody": {
+        "channel_custody_sha256": "2b3772fb380fdd08a9feded0b3f700bc96d22ee9c9883fe68c2f74e0ce2217e8",
+        "observation": {
+          "attached_cli_pid": 18347,
+          "attached_cli_start_ticks": "22530",
+          "cgroup": "/sys/fs/cgroup/system.slice/docker-f7264bd1e717d8fcefa24ac44fb85ed061da707588d4ffd43c089f6cbb9aeb6b.scope",
+          "container_id": "f7264bd1e717d8fcefa24ac44fb85ed061da707588d4ffd43c089f6cbb9aeb6b",
+          "image_id": "sha256:598d4ce89b571fc0dbfc3bf888c5b0f6558f57cedb9b43d16a2a4a70c10ab443",
+          "index_sha256": "6a3d3e24fb483590bd2bf75bd95a5277b0d482967e1060c390eb65260fba74a8",
+          "init_pid": 18390,
+          "init_start_ticks": "22535",
+          "mounts": [
+            {
+              "Destination": "/adapter",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/home/runner/work/_temp/go-spike-evidence/live-guardian/d7ba11e4-ab86-4757-bd73-39499055e5de/bundle/adapter",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/bundle",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/home/runner/work/_temp/go-spike-evidence/live-guardian/d7ba11e4-ab86-4757-bd73-39499055e5de/bundle",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/material",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/home/runner/work/_temp/go-spike-evidence/live-guardian/d7ba11e4-ab86-4757-bd73-39499055e5de/material/d7ba11e4-ab86-4757-bd73-39499055e5de",
+              "Type": "bind"
+            }
+          ],
+          "network": "none",
+          "nonce": "0a10d20c-5935-4829-b958-333259dfec8c",
+          "offer_sha256": "ab66f2f76263e974d9d466eeb07a6c8778631342e34d04bd5bbcf0b35fd64673",
+          "session_id": "d7ba11e4-ab86-4757-bd73-39499055e5de",
+          "started_at": "2026-10-11T00:50:28.785320712Z",
+          "version": "isolated-guardian-custody/v1"
+        }
+      },
+      "drain": {
+        "attached_cli_waited": true,
+        "container_id": "f7264bd1e717d8fcefa24ac44fb85ed061da707588d4ffd43c089f6cbb9aeb6b",
+        "container_removed": true,
+        "lifecycle_finalization": false,
+        "namespace_drained": true,
+        "runtime_acceptance": false,
+        "source_consumer_settlement": false
+      },
+      "elapsed_ms": 407.636733,
+      "fresh_custody_checked": true,
+      "poisoned_channel_denied": false,
+      "private_paths_removed": true
+    },
+    {
+      "case": "poisoned-channel",
+      "custody": {
+        "channel_custody_sha256": "fe6bbeaced24d3aa84dd04f8de82e2a1dc7fa0dda2ff4ddc2e5c642e45467fba",
+        "observation": {
+          "attached_cli_pid": 18542,
+          "attached_cli_start_ticks": "22568",
+          "cgroup": "/sys/fs/cgroup/system.slice/docker-5f307fe62cae2b7597ed62d25cad2135e1715e3c6f2a81b43afabb53662f35ce.scope",
+          "container_id": "5f307fe62cae2b7597ed62d25cad2135e1715e3c6f2a81b43afabb53662f35ce",
+          "image_id": "sha256:598d4ce89b571fc0dbfc3bf888c5b0f6558f57cedb9b43d16a2a4a70c10ab443",
+          "index_sha256": "0ca7f7d59f0ee411574fa56cefbe6b3f6700335f6304cba8b78f21a1bd4062e4",
+          "init_pid": 18585,
+          "init_start_ticks": "22572",
+          "mounts": [
+            {
+              "Destination": "/adapter",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/home/runner/work/_temp/go-spike-evidence/live-guardian/998892e8-de41-4f4f-9810-9d69a4d794b9/bundle/adapter",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/bundle",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/home/runner/work/_temp/go-spike-evidence/live-guardian/998892e8-de41-4f4f-9810-9d69a4d794b9/bundle",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/material",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/home/runner/work/_temp/go-spike-evidence/live-guardian/998892e8-de41-4f4f-9810-9d69a4d794b9/material/998892e8-de41-4f4f-9810-9d69a4d794b9",
+              "Type": "bind"
+            }
+          ],
+          "network": "none",
+          "nonce": "74bb533c-4597-4298-beb5-5ad963c42422",
+          "offer_sha256": "a24a049581f8bfa806b56d0524914783d8302574473d8a48454d218410cfdf66",
+          "session_id": "998892e8-de41-4f4f-9810-9d69a4d794b9",
+          "started_at": "2026-10-11T00:50:29.162805208Z",
+          "version": "isolated-guardian-custody/v1"
+        }
+      },
+      "drain": {
+        "attached_cli_waited": true,
+        "container_id": "5f307fe62cae2b7597ed62d25cad2135e1715e3c6f2a81b43afabb53662f35ce",
+        "container_removed": true,
+        "lifecycle_finalization": false,
+        "namespace_drained": true,
+        "runtime_acceptance": false,
+        "source_consumer_settlement": false
+      },
+      "elapsed_ms": 360.603748,
+      "fresh_custody_checked": true,
+      "poisoned_channel_denied": true,
+      "private_paths_removed": true
+    },
+    {
+      "case": "lost-create-reply",
+      "drain": {
+        "attached_cli_waited": false,
+        "container_id": "592f4efaf3a6fead742e7a34a0cb3d191bb3c0446389bb5f79df398db4418f71",
+        "container_removed": true,
+        "lifecycle_finalization": false,
+        "namespace_drained": true,
+        "runtime_acceptance": false,
+        "source_consumer_settlement": false
+      },
+      "elapsed_ms": 167.627079,
+      "fresh_start_denied": true,
+      "private_paths_removed": true
+    },
+    {
+      "case": "guardian-crash-after-offer",
+      "custody": {
+        "channel_custody_sha256": "dd18559b6079c05539c23b0f9f3f587fa5dd3528feda3c901d0a1345065542e1",
+        "observation": {
+          "attached_cli_pid": 18805,
+          "attached_cli_start_ticks": "22624",
+          "cgroup": "/sys/fs/cgroup/system.slice/docker-1721dd66baab2dc8d2cd02b7199a28e488ce2dab774a5116d21f60f79a8da275.scope",
+          "container_id": "1721dd66baab2dc8d2cd02b7199a28e488ce2dab774a5116d21f60f79a8da275",
+          "image_id": "sha256:598d4ce89b571fc0dbfc3bf888c5b0f6558f57cedb9b43d16a2a4a70c10ab443",
+          "index_sha256": "31db9452bef0cf2a15cd90454c9a8ac274ccfa0edbf939937f742bc338872145",
+          "init_pid": 18848,
+          "init_start_ticks": "22629",
+          "mounts": [
+            {
+              "Destination": "/bundle",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/home/runner/work/_temp/go-spike-evidence/live-guardian/63379b04-2eca-48a8-bb88-e627843f7f8d/bundle",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/material",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/home/runner/work/_temp/go-spike-evidence/live-guardian/63379b04-2eca-48a8-bb88-e627843f7f8d/material/63379b04-2eca-48a8-bb88-e627843f7f8d",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/adapter",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/home/runner/work/_temp/go-spike-evidence/live-guardian/63379b04-2eca-48a8-bb88-e627843f7f8d/bundle/adapter",
+              "Type": "bind"
+            }
+          ],
+          "network": "none",
+          "nonce": "f91fd7b2-2c0b-4ae7-a658-aa5417740ae9",
+          "offer_sha256": "caa123cac2e806c92c27bfa10aaaf589f40ef6605bbee159f3a1e681b07f06ae",
+          "session_id": "63379b04-2eca-48a8-bb88-e627843f7f8d",
+          "started_at": "2026-10-11T00:50:29.718125366Z",
+          "version": "isolated-guardian-custody/v1"
+        }
+      },
+      "drain": {
+        "attached_cli_waited": false,
+        "container_id": "1721dd66baab2dc8d2cd02b7199a28e488ce2dab774a5116d21f60f79a8da275",
+        "container_removed": true,
+        "lifecycle_finalization": false,
+        "namespace_drained": true,
+        "runtime_acceptance": false,
+        "source_consumer_settlement": false
+      },
+      "elapsed_ms": 348.313955,
+      "fresh_start_denied": true,
+      "guardian_sigkill": true,
+      "guardian_waited": true,
+      "original_cli_reaped_observed": true,
+      "private_paths_removed": true
+    }
+  ],
+  "timings_ms": {
+    "module_download": 98.064677,
+    "cold_compile_warm_modules": 16100.240436,
+    "independent_cold_compile": 15831.924698,
+    "warm_source_edit_compile": 353.393729,
+    "restored_warm_compile": 335.674017,
+    "edit_to_artifact": 536.281246
+  },
+  "synthetic_execution_summary": {
+    "startup_to_sdk_ms": {
+      "median": 4.063596,
+      "p95": 4.307838,
+      "n": 20
+    },
+    "execution_ms": {
+      "median": 4.6508085,
+      "p95": 4.945027,
+      "n": 20
+    },
+    "max_rss_kib": {
+      "median": 11536.0,
+      "p95": 11536,
+      "n": 20
+    }
+  },
+  "evidence_sha256": {
+    "descriptor.json": "b1e1912ab8f5e1d4dc41a8c4828e5a4ab7bda5e186dcc442f79d720730825c7a",
+    "tests.jsonl": "074252a822ccd069c8135743e0e649381b8a8cf5f1ec8f163684c2149242c797",
+    "live-guardian/proof.json": "2cf238c7f8cb47f27543e3a470973c0b4cfd4da6b4135ac7b8f4a8449454b607",
+    "live-guardian/cleanup-inventory.txt": "c205a2fb359a6b5aee2c72682f353a14bcedfc5a48269f69df945553cd77e534",
+    "live-guardian/image-cleanup.txt": "f0bc028eb0331ef5c08a84900309ea2de13ff22cc7770071dd6df96d13112ea4",
+    "live-guardian/guardian-binary.sha256": "be4185dad3d9b427f1810f4c75667a7c9c35de32e5a0ee9f32a0cfbeec00571c",
+    "native-bundle-owner/owner-source-hashes.txt": "1e5689bfbb4adbe3ef8237ea16637dfaed6acb490c9494d5fb40de72a1de0e5b",
+    "native-bundle-owner/owner-tests.txt": "50d76be608cb91097495fa5d429c359f160a3851c7318c064023384af5d3bd99"
+  },
+  "does_not_prove": "Current SDK relay and fresh entitlement code, or the full Rust-owned SDK/result/receipt/API/cancellation/source-drain slice."
+}
