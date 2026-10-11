@@ -48,6 +48,8 @@ docker image load --input "$evidence_dir/carrier-image.tar" > "$guardian_dir/ima
 guardian_loaded=1
 test "$(docker image inspect --format '{{.Id}}' "$carrier_tag")" = "$carrier_id"
 sha256sum "$owner_dir/runtime-live-guardian-probe" > "$guardian_dir/guardian-binary.sha256"
+BIFROST_ISOLATED_DOCKER_ACK_TEST=1 \
+BIFROST_ISOLATED_DOCKER_ACK_PROXY="$spike_root/scripts/docker-create-ack-loss.py" \
 "$owner_dir/runtime-live-guardian-probe" "$evidence_dir/native-bundle.tar" \
   "$evidence_dir/native-bundle-descriptor.json" \
   "$spike_root/executionprofile/testdata/structural-vectors.json" \

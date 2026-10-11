@@ -247,6 +247,116 @@ fn closed_gate_probe(
     Ok(())
 }
 
+fn response_loss_case(spec: &LaunchSpec) -> Result<Value, ()> {
+    let proxy_root = std::env::temp_dir().join(format!("bifrost-create-ack-{}", spec.session_id));
+    directory(&proxy_root)?;
+    let socket = proxy_root.join("ack.sock");
+    let config = spec.journal.join("docker-create-proxy-spec.json");
+    save_spec(spec, &config)?;
+    let proxy_script = std::env::var("BIFROST_ISOLATED_DOCKER_ACK_PROXY").map_err(|_| ())?;
+    let mut proxy = Command::new("/usr/bin/python3")
+        .arg(proxy_script)
+        .arg(&config)
+        .env_clear()
+        .env("PATH", "/usr/bin:/bin")
+        .env("BIFROST_ISOLATED_DOCKER_ACK_TEST", "1")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(
+            OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .mode(0o600)
+                .open(spec.journal.join("docker-create-proxy.log"))
+                .map_err(|_| ())?,
+        )
+        .spawn()
+        .map_err(|_| ())?;
+    let result = (|| {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while !spec
+            .journal
+            .join("docker-create-ack-proxy-ready.json")
+            .exists()
+        {
+            if proxy.try_wait().map_err(|_| ())?.is_some() || Instant::now() >= deadline {
+                return Err(());
+            }
+            thread::sleep(Duration::from_millis(10));
+        }
+        if !matches!(
+            Guardian::create_with_response_loss_fixture(spec.clone(), &socket),
+            Err(GuardianError::Uncertain)
+        ) {
+            return Err(());
+        }
+        let dropped: Value = serde_json::from_slice(&read(
+            &spec.journal.join("docker-create-ack-dropped.json"),
+            65536,
+        )?)
+        .map_err(|_| ())?;
+        if dropped["server_status"] != 201
+            || dropped["server_create_observed"] != true
+            || dropped["client_reply_forwarded"] != false
+            || dropped["session_id"] != spec.session_id
+            || dropped["nonce"] != spec.nonce
+            || dropped["create_requests"] != 1
+        {
+            return Err(());
+        }
+        if !matches!(Guardian::create(spec.clone()), Err(GuardianError::Rejected)) {
+            return Err(());
+        }
+        let mut recovered = Guardian::recover_for_drain(spec.clone()).map_err(|_| ())?;
+        if recovered.attach_dormant() != Err(GuardianError::Rejected)
+            || recovered.verify_live() != Err(GuardianError::Rejected)
+        {
+            return Err(());
+        }
+        let drain = recovered.drain().map_err(|_| ())?;
+        if drain["container_id"] != dropped["container_id"] {
+            return Err(());
+        }
+        let attempts = fs::read_dir(&spec.journal)
+            .map_err(|_| ())?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|_| ())?
+            .into_iter()
+            .filter(|e| {
+                e.file_name()
+                    .to_string_lossy()
+                    .starts_with("docker-create-request-")
+            })
+            .count();
+        if attempts != 1 {
+            return Err(());
+        }
+        Ok(
+            json!({"case":"docker-create-response-loss","docker_response_loss_injected":true,
+            "server_create_observed":true,"client_reply_forwarded":false,"create_requests":attempts,
+            "fresh_create_denied":true,"fresh_start_denied":true,"drain":drain,
+            "tenant_start":false,"sdk_material_delivery":false,"lifecycle_finalization":false}),
+        )
+    })();
+    let killed = proxy.kill().is_ok();
+    let exited = proxy.wait().map_err(|_| ());
+    let socket_removed = match fs::remove_file(&socket) {
+        Ok(()) => true,
+        Err(error) => error.kind() == std::io::ErrorKind::NotFound,
+    };
+    let directory_removed = fs::remove_dir(&proxy_root).is_ok();
+    if !killed
+        || exited
+            .map(|status| status.signal() != Some(9))
+            .unwrap_or(true)
+        || !socket_removed
+        || !directory_removed
+    {
+        return Err(());
+    }
+    result
+}
+
 fn run_case(spec: LaunchSpec, mode: &str) -> Result<Value, ()> {
     let operation = (|| {
         match mode {
@@ -366,7 +476,8 @@ fn run_case(spec: LaunchSpec, mode: &str) -> Result<Value, ()> {
                     "private_gate_lifecycle_command_denied":mode=="normal",
                     "lost_sdk_ingress_stop_only":mode=="sdk-relay-lost-ingress"}))
             }
-            "lost-create-reply" => {
+            "docker-create-response-loss" => response_loss_case(&spec),
+            "discarded-create-handle" => {
                 let guardian = Guardian::create(spec.clone()).map_err(|_| ())?;
                 drop(guardian); // discard the returned handle; retain original intent
                 let mut recovered = Guardian::recover_for_drain(spec.clone()).map_err(|_| ())?;
@@ -649,7 +760,8 @@ fn run(arguments: &[String]) -> Result<Value, ()> {
         "poisoned-channel",
         "sdk-relay-dormant",
         "sdk-relay-lost-ingress",
-        "lost-create-reply",
+        "discarded-create-handle",
+        "docker-create-response-loss",
         "guardian-crash-before-offer",
         "guardian-crash-after-offer",
     ] {

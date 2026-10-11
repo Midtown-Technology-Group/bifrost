@@ -1324,6 +1324,35 @@ impl Guardian {
     }
 
     pub fn create(spec: LaunchSpec) -> Result<Self, GuardianError> {
+        Self::create_at(spec, None)
+    }
+
+    /// Isolated first-party fault fixture only; default launch is unchanged.
+    pub fn create_with_response_loss_fixture(
+        spec: LaunchSpec,
+        socket: &Path,
+    ) -> Result<Self, GuardianError> {
+        if std::env::var("BIFROST_ISOLATED_DOCKER_ACK_TEST").as_deref() != Ok("1") {
+            return Err(GuardianError::Rejected);
+        }
+        let expected = std::env::temp_dir().join(format!("bifrost-create-ack-{}", spec.session_id));
+        let parent = fs::symlink_metadata(&expected).map_err(|_| GuardianError::Rejected)?;
+        let metadata = fs::symlink_metadata(socket).map_err(|_| GuardianError::Rejected)?;
+        if socket != expected.join("ack.sock")
+            || !parent.is_dir()
+            || parent.uid() != spec.uid
+            || parent.mode() & 0o777 != 0o700
+            || !metadata.file_type().is_socket()
+            || metadata.uid() != spec.uid
+            || metadata.mode() & 0o777 != 0o600
+            || metadata.nlink() != 1
+        {
+            return Err(GuardianError::Rejected);
+        }
+        Self::create_at(spec, Some(socket))
+    }
+
+    fn create_at(spec: LaunchSpec, transport: Option<&Path>) -> Result<Self, GuardianError> {
         if !spec.valid(true) {
             return Err(GuardianError::Rejected);
         }
@@ -1407,6 +1436,15 @@ impl Guardian {
         ]);
         if spec.sdk_socket_directory.is_some() {
             command.push("--sdk-relay".into());
+        }
+        if let Some(socket) = transport {
+            command.splice(
+                0..0,
+                [
+                    "--host".into(),
+                    format!("unix://{}", socket.to_str().ok_or(GuardianError::Rejected)?),
+                ],
+            );
         }
         let raw = docker(&command)?;
         let id = std::str::from_utf8(&raw)
