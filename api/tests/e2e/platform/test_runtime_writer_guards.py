@@ -3353,10 +3353,17 @@ async def test_cancelled_provision_cannot_authorize_finite_issuance(provision_fa
 @pytest.mark.parametrize("prepared_start_facts", ["provision"], indirect=True)
 @pytest.mark.parametrize(
     "mode",
-    ["normal", "lost_reply", "release", "cancel_after_issue", "wrong_operations"],
+    [
+        "normal",
+        "lost_reply",
+        "release",
+        "cancel_after_issue",
+        "wrong_operations",
+        "caller_drift",
+    ],
 )
 async def test_real_finite_issuer_exchange_uses_committed_grant_and_original_peers(
-    provision_facts, tmp_path, mode
+    provision_facts, tmp_path, mode, db_session
 ):
     """Actual Rust SQL/Python signing IPC; artifact and guardian remain synthetic."""
     from src.services.isolated_runtime_sdk_bridge import _start_ticks
@@ -3389,6 +3396,9 @@ async def test_real_finite_issuer_exchange_uses_committed_grant_and_original_pee
         },
     )
     issuer = None
+    restore_caller = False
+    original_name = None
+    owner_exchange = None
     try:
         assert owner.stdout is not None and owner.stdin is not None
         assert await asyncio.wait_for(owner.stdout.readline(), timeout=2) == b"ready\n"
@@ -3443,7 +3453,12 @@ async def test_real_finite_issuer_exchange_uses_committed_grant_and_original_pee
         assert config["pid"] == issuer.pid and config["uid"] == owner_uid
         assert config["ticks"] == _start_ticks(issuer.pid)
         release = None
-        if mode in {"release", "cancel_after_issue", "wrong_operations"}:
+        if mode in {
+            "release",
+            "cancel_after_issue",
+            "wrong_operations",
+            "caller_drift",
+        }:
             release = {
                 "release_id": str(uuid4()),
                 "provision_id": facts["provision_request"]["provision_id"],
@@ -3475,7 +3490,29 @@ async def test_real_finite_issuer_exchange_uses_committed_grant_and_original_pee
                 ],
             }
         ).encode()
-        out, err = await asyncio.wait_for(owner.communicate(payload), timeout=8)
+        owner_exchange = asyncio.create_task(owner.communicate(payload))
+        if mode == "caller_drift":
+            from sqlalchemy import text
+
+            assert (
+                await asyncio.wait_for(issuer.stdout.readline(), timeout=2)
+                == b"issuer_signed_before_caller_drift\n"
+            )
+            original_name = await db_session.scalar(
+                text("SELECT name FROM users WHERE id=:id"),
+                {"id": snapshot.caller_user_id},
+            )
+            restore_caller = True
+            await db_session.execute(
+                text(
+                    "UPDATE users SET name='isolated post-sign caller drift' WHERE id=:id"
+                ),
+                {"id": snapshot.caller_user_id},
+            )
+            await db_session.commit()
+            issuer.stdin.write(b"mutated\n")
+            await issuer.stdin.drain()
+        out, err = await asyncio.wait_for(owner_exchange, timeout=8)
         assert owner.returncode == 0 and err == b""
         assert (
             out
@@ -3485,6 +3522,7 @@ async def test_real_finite_issuer_exchange_uses_committed_grant_and_original_pee
                 "release": b"issued_release_committed\n",
                 "cancel_after_issue": b"issued_release_denied\n",
                 "wrong_operations": b"issued_release_denied\n",
+                "caller_drift": b"issued_release_denied\n",
             }[mode]
         )
         issuer.stdin.write(b"finish\n")
@@ -3523,7 +3561,18 @@ async def test_real_finite_issuer_exchange_uses_committed_grant_and_original_pee
         else:
             assert await provision_snapshot(facts) == before
     finally:
+        if restore_caller:
+            from sqlalchemy import text
+
+            await db_session.rollback()
+            await db_session.execute(
+                text("UPDATE users SET name=:name WHERE id=:id"),
+                {"name": original_name, "id": snapshot.caller_user_id},
+            )
+            await db_session.commit()
         for process in (owner, issuer):
             if process is not None and process.returncode is None:
                 process.kill()
                 await process.wait()
+        if owner_exchange is not None:
+            await asyncio.gather(owner_exchange, return_exceptions=True)

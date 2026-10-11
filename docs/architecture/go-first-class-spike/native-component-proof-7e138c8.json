@@ -1,0 +1,49 @@
+{
+  "source": "7e138c885c63fc241dad13d3d2099696a926e8fe",
+  "producer_run": 38105255075,
+  "sdk_version": "0.0.0-spike.2",
+  "source_files_verified": 134,
+  "artifact_sha256": "160917deeb94275f31ca9ddee2dacae00fb079fdf54cb60e206c8def261f9c34",
+  "artifact_size_bytes": 9920235,
+  "bundle_artifact_id": "sha256:02707f3928eb6ccdce9737a221fb372b63001e3ff49c256e4c587beff5f72375",
+  "bundle_entries_verified": 6,
+  "go_tests_passed": 540,
+  "failed_tests": 0,
+  "skipped_tests": 0,
+  "packages_without_tests": 6,
+  "guardian_cases": 7,
+  "container_namespace_and_private_path_cleanup_verified": true,
+  "original_custody_digests_verified": true,
+  "crash_original_cli_reaped_observed": true,
+  "all_cases_attached_cli_waited": false,
+  "timings_ms": {
+    "module_download": 118.637964,
+    "cold_compile_warm_modules": 12261.273309,
+    "independent_cold_compile": 12124.886097,
+    "warm_source_edit_compile": 303.639426,
+    "restored_warm_compile": 271.2475,
+    "edit_to_artifact": 529.089485
+  },
+  "execution_summary": {
+    "startup_to_sdk_ms": {
+      "median": 3.3685780000000003,
+      "p95": 3.65933,
+      "n": 20
+    },
+    "execution_ms": {
+      "median": 3.796812,
+      "p95": 4.116723,
+      "n": 20
+    },
+    "max_rss_kib": {
+      "median": 11564.0,
+      "p95": 11564,
+      "n": 20
+    }
+  },
+  "scope": "Build/authoring and dormant original guardian component proof only; synthetic local supervisors are not Rust-owned workflow acceptance.",
+  "runtime_acceptance": false,
+  "source_consumer_settlement": false,
+  "durable_projection": false,
+  "production_dispatch": false
+}

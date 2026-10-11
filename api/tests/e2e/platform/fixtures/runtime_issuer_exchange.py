@@ -35,6 +35,20 @@ class LostReplyIssuer(FiniteIssuerServer):
         raise OSError("synthetic lost reply after finite signing")
 
 
+class CallerDriftIssuer(FiniteIssuerServer):
+    drift_finished: asyncio.Event
+
+    async def _signed_response(self, raw: bytes) -> bytes:
+        response = await super()._signed_response(raw)
+        # Public barrier only: token/configuration bytes never go to stdout.
+        print("issuer_signed_before_caller_drift", flush=True)
+        command = await asyncio.to_thread(sys.stdin.buffer.readline, 16)
+        if command != b"mutated\n":
+            raise ValueError("invalid caller drift barrier")
+        self.drift_finished.set()
+        return response
+
+
 async def run():
     raw = sys.stdin.buffer.readline(16385)
     if not raw.endswith(b"\n") or len(raw) > 16384:
@@ -60,9 +74,10 @@ async def run():
 
     with tempfile.TemporaryDirectory(prefix="bifrost-issuer-", dir="/tmp") as temporary:
         root = Path(temporary)
-        issuer_type = (
-            LostReplyIssuer if data["mode"] == "lost_reply" else FiniteIssuerServer
-        )
+        issuer_type = {
+            "lost_reply": LostReplyIssuer,
+            "caller_drift": CallerDriftIssuer,
+        }.get(data["mode"], FiniteIssuerServer)
         server = issuer_type(
             directory=root,
             owner_pid=data["owner_pid"],
@@ -79,6 +94,8 @@ async def run():
             policy=SelectedSDKPolicy.model_validate_json(json.dumps(data["policy"])),
             ca_pem=data["ca"],
         )
+        if isinstance(server, CallerDriftIssuer):
+            server.drift_finished = asyncio.Event()
         try:
             await server.start()
             print(
@@ -93,6 +110,10 @@ async def run():
                 ),
                 flush=True,
             )
+            # One stdin reader at a time; the owner IPC keeps its existing
+            # whole-operation deadline while parent performs the drift.
+            if isinstance(server, CallerDriftIssuer):
+                await server.drift_finished.wait()
             # Parent completion signal is separate from the original owner IPC.
             command = await asyncio.to_thread(sys.stdin.buffer.readline, 16)
             if command != b"finish\n":

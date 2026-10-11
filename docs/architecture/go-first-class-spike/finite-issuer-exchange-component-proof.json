@@ -74,5 +74,30 @@
     "failure_classification": "Compile error E0277: SQLx 0.9 rejects dynamically assembled &String SQL; corrected with compile-time literal common predicate/INSERT macros and bind-only values. No AssertSqlSafe bypass.",
     "rust_diagnostics": "/home/thomas/src/bifrost-go-spike-artifacts/6ac5112cb034963a552fcb1c60c52ba98aeb219e/rust",
     "replacement_evidence_required": true
+  },
+  "corrected_release_rust_proof": {
+    "source": "fe286ad0ac806afe843593febcb9e31a0c0d365a",
+    "run": 38107163022,
+    "provider_conclusion": "success",
+    "source_inputs_verified": 37,
+    "passed_tests": 37,
+    "failed": 0,
+    "ignored": 0,
+    "filtered_out": 0,
+    "fmt": "pass",
+    "clippy": "pass",
+    "locked_offline_tests_and_build": "pass",
+    "scope": "Rust component/unit evidence only; no actual SQL/signing or live workflow acceptance"
+  },
+  "current_candidate_gates": {
+    "source": "fe286ad0ac806afe843593febcb9e31a0c0d365a",
+    "guard_run": 38107162998,
+    "native_run": 38107162995,
+    "state_at_recording": "in_progress"
+  },
+  "additional_failed_rust_gate": {
+    "source": "a985f1f195bd574217e182d31decf6b43091a2ae",
+    "run": 38107080212,
+    "failure": "Seven unwrap calls in new test fixtures violated the unchanged existing lint gate; corrected using explicit is_ok assertions. Diagnostics retained."
   }
 }
