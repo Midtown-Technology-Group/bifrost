@@ -3,7 +3,7 @@ can_access_global_repo (one DB grab; the engine has no DB access)."""
 from uuid import uuid4
 
 import pytest
-
+from src.models.orm.file_index import FileIndex
 from src.models.orm.organizations import Organization
 from src.models.orm.solutions import Solution
 from src.models.orm.workflows import Workflow
@@ -55,8 +55,10 @@ class TestGlobalRepoEnrichment:
         wf = Workflow(id=uuid4(), name="w", function_name="main", path="workflows/w.py",
                       type="workflow", is_active=True, organization_id=None, solution_id=None)
         db.add(wf)
+        db.add(FileIndex(path=wf.path, content="def main(): pass\n", content_hash="a" * 64))
         await db.flush()
 
         data = await get_workflow_for_execution(str(wf.id), db=db)
         assert data["solution_id"] is None
         assert data["can_access_global_repo"] is False
+        assert data["content_hash"] == "a" * 64

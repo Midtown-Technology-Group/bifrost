@@ -307,7 +307,10 @@ class TestWriteFileBehavior:
                         force_deactivation=False,
                     )
 
-        set_mod.assert_awaited_once_with("workflows/run.py", "def run(): pass\n", "hash")
+        s3.put_object.assert_not_awaited()
+        db.execute.assert_not_awaited()
+        db.flush.assert_not_awaited()
+        set_mod.assert_not_awaited()
         diagnostics.scan_for_sdk_issues.assert_not_called()
         assert result.pending_deactivations == pending
         assert result.available_replacements == replacements

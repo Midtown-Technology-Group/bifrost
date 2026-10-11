@@ -386,6 +386,14 @@ async def _run_execution(execution_id: str, context_data: dict[str, Any]) -> dic
 
             # Validate content hash if pinned at dispatch time
             content_hash = context_data.get("content_hash")
+            if (
+                context_data.get("runtime_mode") in {"legacy", "repo-v1"}
+                and not context_data.get("solution_id")
+                and not content_hash
+            ):
+                raise RuntimeError(
+                    f"_repo source integrity pin missing for {file_path}"
+                )
             if content_hash and loaded_code:
                 import hashlib
 
