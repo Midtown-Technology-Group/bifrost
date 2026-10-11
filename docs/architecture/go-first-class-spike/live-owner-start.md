@@ -95,3 +95,38 @@ This candidate still needs positive source/build/admission/SDK/Result/Receipt/AP
 readback proof. Cancellation, advisory Stopped handling, physical descendant and
 source settlement, and crash/lost-ACK acceptance remain outstanding. No production
 runtime, Go-specific lifecycle table, or replacement owner is introduced.
+
+
+## Runnable original-owner entrypoint candidate
+
+`spikes/go-native/owner-rs/examples/live_owner.rs` connects the existing common
+transactions to one original network-none guardian and its private material and
+SDK gate. The foundation producer emits `runtime-live-owner` after the unchanged
+locked offline formatter, clippy, test and example-build gates. This is a runnable
+integration candidate, not runtime acceptance.
+
+The trusted parent must supply authenticated caller/source/build acceptance and
+an actual native deployment association before this entrypoint admits anything.
+The descriptor and archive pins belong to that parent. The candidate independently
+checks the closed six-entry archive and unchanged workflow digest, stages private
+immutable execution files, then requests restricted ingress on its exact socket
+directory before creating a guardian. After actual Rust admission and Start it
+reports public committed identifiers; the parent derives provision preimages
+from those committed rows and starts the original finite issuer. No bearer,
+signing material or database URL is emitted on stdout. Issuance, release,
+private delivery, SDK admissions and Result/Receipt use the existing common
+operations. No build tool runs on execution admission.
+
+Every post-launch operation outcome attempts original guardian drain before
+removing the material pipe, SDK gate and exact hash-checked source staging. The
+parent owns issuer/ingress/key/socket cleanup and an outer bounded deadline for
+stdin barriers. A failed or uncertain guardian create/drain requires inspection
+of the original durable launch journal and stop-only recovery; it does not permit
+a new nonce, owner or launch. A successful physical drain still does not establish
+durable source-consumer settlement. The CLI retains that distinction.
+
+Remaining proof: actual accepted native registration plus authenticated Execution
+API readback, SDK HTTP fetch evidence, cancellation and durable cancelled outcome,
+crash/uncertain commit/spawn/lost-ACK recovery, durable source settlement, and
+re-execution of the identical accepted binary. The current SQL exchange fixture
+and local portable supervisor do not satisfy those live prerequisites.

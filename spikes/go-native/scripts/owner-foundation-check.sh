@@ -74,3 +74,4 @@ printf '%s\n' 'Rust owner observation foundation only: locked offline checks; no
   > "$evidence_dir/owner-scope.txt"
 cp "$scratch/target/debug/examples/bundle_verify" "$evidence_dir/runtime-native-bundle-verify"
 cp "$scratch/target/debug/examples/guardian_probe" "$evidence_dir/runtime-live-guardian-probe"
+cp "$scratch/target/debug/examples/live_owner" "$evidence_dir/runtime-live-owner"

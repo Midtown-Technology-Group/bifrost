@@ -1,6 +1,6 @@
 {
   "sdk_version": "0.0.0-spike.2",
-  "status": "issuer-json-boundary-fix-and-issued-release-candidate-pending-gates",
+  "status": "actual-exchange-release-and-negative-SQL-cases-verified-component-only",
   "implementation_source": "7e138c885c63fc241dad13d3d2099696a926e8fe",
   "corrected_fixture_source": "5b97d9a61a888c012b7ae77d36fe5121cdf22d0e",
   "rust_producer": {
@@ -58,7 +58,7 @@
     }
   ],
   "limits": [
-    "Actual exchange, issued release and lost-reply cases require a fresh corrected-source gate; previous gate failed before these cases executed.",
+    "Actual exchange/issued release/lost reply/caller drift SQL component cases passed on ffc3bfb9; this does not establish live artifact/guardian/workflow custody.",
     "The exchange probe retains synthetic artifact/source and guardian custody.",
     "Issued-material release and original private delivery are implementation candidates only; positive live guardian/workflow proof and security/race acceptance remain required.",
     "Full Go SDK, durable Result/Receipt/API readback, cancellation/recovery and durable source settlement remain unproved."
@@ -110,5 +110,26 @@
     "diagnosis": "Different-grant negative fixture selected ID0001, which is exactly the fixture grant. Corrected to distinct ID0002 with an explicit inequality assertion. Signing/JSON positive and other unit cases passed, but SQL integration did not run.",
     "disposable_inventory": "verified empty containers/volumes/networks",
     "retained_artifacts": "/home/thomas/src/bifrost-go-spike-artifacts/70f62f7c136b4392dbb96a6ef5148ad610ee265e/guard/runtime-writer-guards-70f62f7c136b4392dbb96a6ef5148ad610ee265e"
+  },
+  "verified_actual_exchange_gate": {
+    "source": "ffc3bfb9c482bb7250d217627d21c6834f43a8f8",
+    "run": 38108016390,
+    "provider_conclusion": "success",
+    "git_inputs_verified": 61,
+    "unit_tests": 13893,
+    "writer_tests": 247,
+    "storage_baseline_tests": 110,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "cases": [
+      "normal",
+      "lost_reply",
+      "release",
+      "cancel_after_issue",
+      "wrong_operations",
+      "caller_drift"
+    ],
+    "scope": "Actual Rust SQL/finite Python signing/original peer exchange and issued release component cases. Artifact/source/guardian custody in these SQL fixtures remains synthetic; no live Go slice or runtime acceptance."
   }
 }
