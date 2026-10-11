@@ -50,7 +50,7 @@ receive_event() {
   test "$(jq -er '.event' "$target.new")" = "$event"
   mv "$target.new" "$target"
 }
-for case_number in 0 1; do
+for case_number in 0 1 2; do
   case_dir="$slice_root/$case_number"
   wait_file "$case_dir/launch-ready.json"
   coproc ORIGINAL_OWNER { exec env -i PATH=/usr/bin:/bin \
@@ -68,6 +68,12 @@ for case_number in 0 1; do
   wait_file "$case_dir/provision-ready.json"
   cat "$case_dir/provision-ready.json" >&"$owner_input"
   printf '\n' >&"$owner_input"
+  if [[ "$case_number" = 2 ]]; then
+    receive_event sdk_admitted "$case_dir/owner-sdk-admitted.json"
+    wait_file "$case_dir/cancel-ready.json"
+    cat "$case_dir/cancel-ready.json" >&"$owner_input"
+    printf '\n' >&"$owner_input"
+  fi
   receive_event slice_result "$case_dir/owner-result.json"
   exec {owner_input}>&-
   exec {owner_output}<&-

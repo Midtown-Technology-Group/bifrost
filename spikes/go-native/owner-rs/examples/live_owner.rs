@@ -211,6 +211,13 @@ async fn run(config: Value) -> Result<Value, ()> {
         let release = ReleaseRequest { release_id:text(&provision,"release_id")?,provision_id:request.provision_id,grant_id:reference.grant_id,
             delivery_id:request.delivery_id,operations_sha256:text(&request.snapshot,"operations_digest")?,frontier_sha256:request.frontier_sha256 };
         live.release_and_deliver(&pool,&mut guardian,&mut pipe,issued,&release,&text(&provision,"provision_message_id")?).await.map_err(|_| ())?;
+        if config["cancel_waiting_sdk"] == true {
+            live.wait_for_first_sdk_admission(&pool,&mut guardian,&mut gate).await.map_err(|_| ())?;
+            emit(&json!({"event":"sdk_admitted","session_id":session}))?;
+            let requested = parent()?;
+            if requested["event"] != "cancel_ready" || requested["session_id"] != session { return Err(()); }
+            return live.cancel_admitted_sdk(&pool,&mut guardian,&text(&config,"cancel_id")?,&text(&config,"cancel_message_id")?).await.map_err(|_| ());
+        }
         let completed = live.serve_until_result(&pool,&mut guardian,&mut gate,&text(&config,"decision_id")?,&text(&config,"receipt_message_id")?).await.map_err(|_| ())?;
         Ok::<_,()>(json!({"receipt":completed.decision.receipt_body(),"sdk_admissions":completed.sdk_admissions,
             "sdk_denials":completed.sdk_denials,"heartbeats":completed.heartbeats,"log_batches":completed.log_batches}))

@@ -62,6 +62,7 @@ pub struct LiveStart {
     log_batch_sequence: u64,
     runtime_deadline: Instant,
     serving_attempted: bool,
+    sdk_admission_observed: bool,
 }
 impl LiveStart {
     /// One process-local attempt on the original guardian. A failed/uncertain
@@ -292,7 +293,11 @@ impl LiveStart {
         decision_id: &str,
         receipt_message_id: &str,
     ) -> Result<LiveResult, BeginError> {
-        if self.serving_attempted || !self.delivery_observed {
+        if self.serving_attempted
+            || !self.delivery_observed
+            || self.protocol_failed
+            || self.report_attempted
+        {
             return Err(BeginError::Rejected);
         }
         self.serving_attempted = true;
@@ -351,6 +356,142 @@ impl LiveStart {
     pub fn start(&self) -> &Value {
         &self.start
     }
+
+    /// Observe one actual SDK admission on this original actor. The trusted
+    /// fixture then holds that HTTP response and requests cancellation. No
+    /// lifecycle projection or new capability is created by this observation.
+    pub async fn wait_for_first_sdk_admission(
+        &mut self,
+        pool: &PgPool,
+        guardian: &mut Guardian,
+        gate: &mut crate::sdk_gate::SDKGate,
+    ) -> Result<(), BeginError> {
+        if self.serving_attempted
+            || !self.delivery_observed
+            || self.protocol_failed
+            || self.report_attempted
+        {
+            return Err(BeginError::Rejected);
+        }
+        self.serving_attempted = true;
+        loop {
+            if Instant::now() >= self.runtime_deadline {
+                return Err(BeginError::Rejected);
+            }
+            match gate
+                .serve_one_if_ready(guardian, pool, &self.fence)
+                .await
+                .map_err(|_| BeginError::Rejected)?
+            {
+                Some(true) => {
+                    if Instant::now() >= self.runtime_deadline {
+                        return Err(BeginError::Rejected);
+                    }
+                    self.sdk_admission_observed = true;
+                    return Ok(());
+                }
+                Some(false) => return Err(BeginError::Rejected),
+                None => tokio::time::sleep(Duration::from_millis(2)).await,
+            }
+        }
+    }
+
+    /// Trusted parent requests cancellation only after observing its held SDK
+    /// response. This is not an SDK route and cannot issue a new capability.
+    pub async fn cancel_admitted_sdk(
+        &mut self,
+        pool: &PgPool,
+        guardian: &mut Guardian,
+        cancel_id: &str,
+        cancel_message_id: &str,
+    ) -> Result<Value, BeginError> {
+        if !self.sdk_admission_observed || self.report_attempted || self.protocol_failed {
+            return Err(BeginError::Rejected);
+        }
+        self.report_attempted = true;
+        if !canonical_uuid(cancel_id)
+            || !canonical_uuid(cancel_message_id)
+            || cancel_id == cancel_message_id
+            || self
+                .used_message_ids
+                .iter()
+                .any(|id| id == cancel_id || id == cancel_message_id)
+            || Instant::now() >= self.runtime_deadline
+            || guardian.verify_session(&self.fence)? != self.prepare["body"]["binding"]
+        {
+            return Err(BeginError::Rejected);
+        }
+        // Consume further report service before the transaction. Commit or
+        // transport ambiguity cannot turn into a retry on this live handle.
+        if crate::request_running_cancel(pool, &self.fence).await?
+            != crate::CancelDecision::Committed
+        {
+            return Err(BeginError::Rejected);
+        }
+        let cancel = json!({"protocol":"bifrost.runtime/v1","type":"Cancel",
+            "session_id":self.fence.session_id,"message_id":cancel_message_id,
+            "sequence":5,"correlation_id":null,
+            "body":{"cancel_id":cancel_id,"reason":"requested","grace_ms":100}});
+        guardian.send(&cancel)?;
+        self.used_message_ids.push(cancel_message_id.into());
+        self.used_message_ids.push(cancel_id.into());
+        loop {
+            if Instant::now() >= self.runtime_deadline || self.used_message_ids.len() >= 4096 {
+                return Err(BeginError::Rejected);
+            }
+            // This sealed reader belongs to the original channel. The runtime
+            // may already have exited after sending Stopped; no live-custody
+            // observation or advisory frame can reopen admission here.
+            let Some(received) = guardian.receive_if_ready()? else {
+                tokio::time::sleep(Duration::from_millis(2)).await;
+                continue;
+            };
+            let frame = received.frame();
+            if !runtime_identity(
+                frame,
+                &self.fence.session_id,
+                self.runtime_sequence,
+                &self.used_message_ids,
+            ) {
+                return Err(BeginError::Rejected);
+            }
+            if matched_cancelled_stopped(frame, &self.start["message_id"], cancel_id) {
+                return Ok(json!({"sdk_admissions":1,"sdk_denials":0,
+                    "cancel_commit_observed":true,"cancel":cancel,"stopped":frame,
+                    "durable_cancelled_finalization":false,"source_consumer_settlement":false}));
+            }
+            if frame["type"] != "Heartbeat"
+                || !frame["correlation_id"].is_null()
+                || frame["body"]["start_message_id"] != self.start["message_id"]
+                || frame["body"]["state"] != "executing"
+                || !frame["body"]["monotonic_elapsed_ms"]
+                    .as_u64()
+                    .is_some_and(|n| n >= self.heartbeat_elapsed_ms)
+            {
+                return Err(BeginError::Rejected);
+            }
+            self.heartbeat_elapsed_ms = frame["body"]["monotonic_elapsed_ms"]
+                .as_u64()
+                .ok_or(BeginError::Rejected)?;
+            self.runtime_sequence = frame["sequence"].as_u64().ok_or(BeginError::Rejected)?;
+            self.used_message_ids.push(
+                frame["message_id"]
+                    .as_str()
+                    .ok_or(BeginError::Rejected)?
+                    .into(),
+            );
+        }
+    }
+}
+
+fn matched_cancelled_stopped(frame: &Value, start: &Value, cancel: &str) -> bool {
+    frame["type"] == "Stopped"
+        && frame["correlation_id"].is_null()
+        && frame["body"]["start_message_id"] == *start
+        && frame["body"]["cancel_id"] == cancel
+        && frame["body"]["reason"] == "cancelled"
+        && frame["body"]["result_message_id"].is_null()
+        && frame["body"]["error"].is_null()
 }
 
 fn negotiated(offer: &Value, request: &BeginRequest) -> bool {
@@ -529,6 +670,7 @@ pub async fn admit_and_start(
         log_batch_sequence: 0,
         runtime_deadline,
         serving_attempted: false,
+        sdk_admission_observed: false,
     })
 }
 
@@ -572,9 +714,33 @@ fn debit_budget(budget: u64, elapsed: Duration) -> Result<u64, BeginError> {
 
 #[cfg(test)]
 mod tests {
-    use super::{debit_budget, matched_prepared, runtime_identity};
+    use super::{debit_budget, matched_cancelled_stopped, matched_prepared, runtime_identity};
     use serde_json::json;
     use std::time::Duration;
+
+    #[test]
+    fn advisory_cancel_stop_requires_exact_start_cancel_and_no_result_claim() {
+        let start = json!("00000000-0000-0000-0000-000000000011");
+        let cancel = "00000000-0000-0000-0000-000000000012";
+        let frame = json!({"type":"Stopped","correlation_id":null,
+            "body":{"start_message_id":start,"cancel_id":cancel,"reason":"cancelled",
+                "result_message_id":null,"error":null}});
+        assert!(matched_cancelled_stopped(&frame, &start, cancel));
+        for (key, value) in [
+            ("start_message_id", json!(cancel)),
+            ("cancel_id", start.clone()),
+            ("reason", json!("completed")),
+            ("result_message_id", start.clone()),
+            ("error", json!({"message":"not a clean stop"})),
+        ] {
+            let mut changed = frame.clone();
+            changed["body"][key] = value;
+            assert!(!matched_cancelled_stopped(&changed, &start, cancel));
+        }
+        let mut changed = frame.clone();
+        changed["correlation_id"] = start.clone();
+        assert!(!matched_cancelled_stopped(&changed, &start, cancel));
+    }
 
     #[test]
     fn elapsed_owner_work_cannot_extend_or_reanimate_a_run_budget() {

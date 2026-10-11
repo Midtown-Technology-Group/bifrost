@@ -145,3 +145,20 @@ Decision: **CONTINUE SPIKE**. Normal Result/API proof does not accept cancellati
 durable source-consumer settlement, live crash/uncertain commit/spawn/lost-ACK
 handling, a new lifecycle writer, or the runtime. Those conditions remain the
 next implementation and acceptance work under the existing isolated release.
+
+The next candidate adds a third execution of the unchanged binary. The trusted
+fixture holds an actual HTTP200 SDK response after original Rust gate admission;
+the Go caller remains waiting. It then requests cancellation on the original
+parent channel. Rust requires a newly observed common cancellation commit before
+sending the existing Cancel frame, and checks the original reader's matching
+Start/cancel IDs in Stopped. Its consumed actor handle cannot retry a commit,
+resend Cancel, service another Result, or reconstruct a channel after uncertainty.
+Physical drain still uses the original guardian. No credential, lifecycle table,
+public protocol or production dispatch is added.
+
+This candidate explicitly requires public Cancelling, a closed session and
+revoked grant, a still-running/uncompleted attempt, and no Result receipt for
+that cancellation case. Stopped and physical cleanup cannot promote those facts
+to durable Cancelled. Common durable resource/source settlement and finalization
+are still required implementation work; a green third-case mechanism test must
+not accept the full runtime or complete the goal.

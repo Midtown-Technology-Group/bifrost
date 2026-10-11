@@ -119,7 +119,7 @@ def certificates(directory):
     return cert, private
 
 
-async def test_original_rust_owner_runs_unchanged_go_twice(
+async def test_original_rust_owner_runs_unchanged_go_and_cancels_waiting_sdk(
     db_session, async_session_factory, platform_admin, e2e_client
 ):
     root = Path(os.environ["BIFROST_LIVE_SLICE_ROOT"])
@@ -324,7 +324,8 @@ async def test_original_rust_owner_runs_unchanged_go_twice(
         )
     )
     proofs = []
-    for number in range(2):
+    for number in range(3):
+        cancel_waiting_sdk = number == 2
         case = root / str(number)
         case.mkdir(mode=0o700)
         runtime_root = case / "execution"
@@ -407,6 +408,7 @@ async def test_original_rust_owner_runs_unchanged_go_twice(
             "prepare": prepare,
             "workflow_id": str(workflow),
             "caller_id": str(platform_admin.user_id),
+            "cancel_waiting_sdk": cancel_waiting_sdk,
         }
         for key in (
             "owner_id",
@@ -417,6 +419,8 @@ async def test_original_rust_owner_runs_unchanged_go_twice(
             "start_message_id",
             "decision_id",
             "receipt_message_id",
+            "cancel_id",
+            "cancel_message_id",
         ):
             config[key] = str(uuid4())
         publish(case / "owner-config.json", config)
@@ -459,11 +463,16 @@ async def test_original_rust_owner_runs_unchanged_go_twice(
             fixture_integration_id=integration,
         )
         sdk_statuses = []
+        response_held = asyncio.Event()
+        release_response = asyncio.Event()
 
         @app.middleware("http")
         async def count_response(request, call_next):
             response = await call_next(request)
             sdk_statuses.append(response.status_code)
+            if cancel_waiting_sdk:
+                response_held.set()
+                await release_response.wait()
             return response
 
         server = IsolatedSDKServer(
@@ -582,13 +591,25 @@ async def test_original_rust_owner_runs_unchanged_go_twice(
             ):
                 provision[key] = str(uuid4())
             publish(case / "provision-ready.json", provision)
+            if cancel_waiting_sdk:
+                admitted = await observation(case / "owner-sdk-admitted.json")
+                assert admitted == {"event": "sdk_admitted", "session_id": str(session)}
+                async with asyncio.timeout(45):
+                    await response_held.wait()
+                assert sdk_statuses == [200] and not release_response.is_set()
+                publish(
+                    case / "cancel-ready.json",
+                    {"event": "cancel_ready", "session_id": str(session)},
+                )
             result = await observation(case / "owner-result.json")
             assert result["event"] == "slice_result"
             assert (
                 result["component"]["sdk_admissions"] == 1
                 and result["component"]["sdk_denials"] == 0
             )
-            assert result["component"]["log_batches"] == 1 and sdk_statuses == [200]
+            assert sdk_statuses == [200]
+            if not cancel_waiting_sdk:
+                assert result["component"]["log_batches"] == 1
             assert (
                 result["physical_drain"]["container_removed"]
                 and result["physical_drain"]["namespace_drained"]
@@ -608,50 +629,121 @@ async def test_original_rust_owner_runs_unchanged_go_twice(
             )
             assert response.status_code == 200
             public = response.json()
-            assert public["status"] == "Success" and public["result"] == expected_result
-            receipt = (
-                (
-                    await db_session.execute(
+            if cancel_waiting_sdk:
+                assert public["status"] == "Cancelling" and public["result"] is None
+                component = result["component"]
+                assert (
+                    component["cancel_commit_observed"]
+                    and not component["durable_cancelled_finalization"]
+                )
+                assert component["cancel"]["body"]["cancel_id"] == config["cancel_id"]
+                assert component["stopped"]["body"]["cancel_id"] == config["cancel_id"]
+                assert (
+                    component["stopped"]["body"]["start_message_id"]
+                    == start["start"]["message_id"]
+                )
+                assert component["stopped"]["body"]["reason"] == "cancelled"
+                assert not release_response.is_set()
+                row = (
+                    (
+                        await db_session.execute(
+                            text(
+                                "SELECT s.closed_at,s.close_reason,g.revoked_at,g.revocation_reason,a.status AS attempt_status,a.completed_at "
+                                "FROM runtime_sessions s JOIN workflow_runtime_sdk_grants g ON g.runtime_session_id=s.id "
+                                "JOIN workflow_execution_attempts a ON a.id=s.workflow_attempt_id WHERE s.id=:session AND g.id=:grant"
+                            ),
+                            {"session": session, "grant": grant},
+                        )
+                    )
+                    .mappings()
+                    .one()
+                )
+                assert (
+                    row["closed_at"] is not None
+                    and row["close_reason"] == "cancel_requested"
+                )
+                assert (
+                    row["revoked_at"] is not None
+                    and row["revocation_reason"] == "session_closed"
+                )
+                assert (
+                    row["attempt_status"] == "running" and row["completed_at"] is None
+                )
+                assert (
+                    await db_session.scalar(
                         text(
-                            "SELECT result_message_id,result_sha256,raw_result_payload,decision_id,disposition,winner FROM runtime_report_receipts WHERE session_id=:session"
+                            "SELECT COUNT(*) FROM runtime_report_receipts WHERE session_id=:session"
                         ),
                         {"session": session},
                     )
+                    == 0
                 )
-                .mappings()
-                .one()
-            )
-            assert digest(receipt["raw_result_payload"]) == receipt["result_sha256"]
-            retained_receipt = {
-                key: str(receipt[key])
-                for key in (
-                    "result_message_id",
-                    "result_sha256",
-                    "decision_id",
-                    "disposition",
-                    "winner",
+                proofs.append(
+                    {
+                        "execution_id": str(execution),
+                        "session_id": str(session),
+                        "workflow_sha256": WORKFLOW_SHA,
+                        "artifact_id": descriptor["artifact"]["artifact_id"],
+                        "sdk_statuses": sdk_statuses,
+                        "sdk_response_held_until_stop": True,
+                        "public_status": public["status"],
+                        "public_result": public["result"],
+                        "cancel": component["cancel"],
+                        "stopped": component["stopped"],
+                        "physical_drain": result["physical_drain"],
+                        "elapsed_ms": result["elapsed_ms"],
+                        "durable_cancelled_finalization": False,
+                    }
                 )
-            }
-            assert (
-                retained_receipt == result["component"]["receipt"]
-                and receipt["disposition"] == "accepted"
-            )
-            proofs.append(
-                {
-                    "execution_id": str(execution),
-                    "session_id": str(session),
-                    "workflow_sha256": WORKFLOW_SHA,
-                    "artifact_id": descriptor["artifact"]["artifact_id"],
-                    "sdk_statuses": sdk_statuses,
-                    "receipt": retained_receipt,
-                    "result_sha256": receipt["result_sha256"],
-                    "public_status": public["status"],
-                    "public_result": public["result"],
-                    "physical_drain": result["physical_drain"],
-                    "elapsed_ms": result["elapsed_ms"],
+            if not cancel_waiting_sdk:
+                assert (
+                    public["status"] == "Success"
+                    and public["result"] == expected_result
+                )
+                receipt = (
+                    (
+                        await db_session.execute(
+                            text(
+                                "SELECT result_message_id,result_sha256,raw_result_payload,decision_id,disposition,winner FROM runtime_report_receipts WHERE session_id=:session"
+                            ),
+                            {"session": session},
+                        )
+                    )
+                    .mappings()
+                    .one()
+                )
+                assert digest(receipt["raw_result_payload"]) == receipt["result_sha256"]
+                retained_receipt = {
+                    key: str(receipt[key])
+                    for key in (
+                        "result_message_id",
+                        "result_sha256",
+                        "decision_id",
+                        "disposition",
+                        "winner",
+                    )
                 }
-            )
+                assert (
+                    retained_receipt == result["component"]["receipt"]
+                    and receipt["disposition"] == "accepted"
+                )
+                proofs.append(
+                    {
+                        "execution_id": str(execution),
+                        "session_id": str(session),
+                        "workflow_sha256": WORKFLOW_SHA,
+                        "artifact_id": descriptor["artifact"]["artifact_id"],
+                        "sdk_statuses": sdk_statuses,
+                        "receipt": retained_receipt,
+                        "result_sha256": receipt["result_sha256"],
+                        "public_status": public["status"],
+                        "public_result": public["result"],
+                        "physical_drain": result["physical_drain"],
+                        "elapsed_ms": result["elapsed_ms"],
+                    }
+                )
         finally:
+            release_response.set()
             if issuer is not None:
                 await issuer.stop()
                 assert not list(issuer_dir.iterdir())
@@ -662,7 +754,7 @@ async def test_original_rust_owner_runs_unchanged_go_twice(
             private.unlink()
             keys.rmdir()
         publish(case / "fixture-finished.json", {"event": "fixture_finished"})
-    assert len(proofs) == 2 and proofs[0]["artifact_id"] == proofs[1]["artifact_id"]
+    assert len(proofs) == 3 and len({proof["artifact_id"] for proof in proofs}) == 1
     publish(
         root / "live-proof.json",
         {
