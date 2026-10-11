@@ -10,15 +10,22 @@ import { authorizeMergeQueue, githubRequestUrl } from "./authorize-merge-queue.m
 test("candidate-controlled queue gate files require trusted-owner review", () => {
   const owners = readFileSync(new URL("../CODEOWNERS", import.meta.url), "utf8");
   const trustedTeam = "@Midtown-Technology-Group/bifrost-main-maintainers";
-  for (const path of [
+  const protectedPaths = [
     "/.github/CODEOWNERS",
     "/.github/workflows/mtg-queue-authorization.yml",
     "/.github/scripts/authorize-merge-queue.mjs",
     "/.github/scripts/authorize-merge-queue.test.mjs",
     "/docs/plans/2026-09-15-mtg-queue-authorization.md",
-  ]) {
-    assert.match(owners, new RegExp(`^${path.replaceAll(".", "\\.")} ${trustedTeam}$`, "m"));
-  }
+  ];
+  const rules = owners
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line && !line.startsWith("#"));
+  assert.deepEqual(
+    rules.slice(-protectedPaths.length),
+    protectedPaths.map((path) => `${path} ${trustedTeam}`),
+    "the protected exact-match rules must remain last so no later rule can override them",
+  );
 });
 
 test("permission lookups cannot escape the fixed GitHub API route", () => {
