@@ -88,6 +88,33 @@ or finalization. Missing paths cannot be treated as proof of completed cleanup.
 Any future automatic continuation must retain the same identity, exclusive phase
 custody and verifiable observations without replay or ownership reassignment.
 
+## Partial-retirement negative candidate
+
+At `56d1fb006`, a separate tenth execution exercises a negative outcome while
+preserving the nine completed cases. It runs the same accepted Go binary and
+real Rust Start/SDK/cancellation, then drains the original container/CLI. Only
+after that drain does the first-party owner add an inert fixture obstruction
+to its protected source directory; accepted file bytes and workflow code are
+unchanged. The ordinary retirement routine verifies and removes accepted source,
+material and gate, then its final directory removal must return CleanupRequired.
+No RetiredSession token or resource-settlement write is permitted.
+
+The driver SIGKILLs and waits the original owner after the failure, then tries
+the existing stop-only `--drain` entrypoint. Missing/changed original resources
+must deny adoption. Real database assertions require one retained owner, revoked
+finite grant, no Result or resource fact, API Cancelling/null result and a pinned
+source consumer. The SDK request and Cancel/Stopped/Start correlation are checked.
+Only after those assertions does the first-party fixture dispose its exact inert
+obstruction; source accounting must remain pinned. Disposal is not a runtime fact
+or durable completion. The disposable database/stack then follows normal teardown.
+
+This candidate tests partial failure and owner death after that failure, not
+arbitrary SIGKILL during every unlink or automatic cleanup resumption. Fresh
+hosted tests are pending; the reporting defect found during source review of its
+predecessor is [retained](partial-retirement-candidate-correction.json). No
+production behavior, shared protocol, role, token construction or recovery writer
+is added. Required human acceptance remains separate.
+
 ## Evidence and acceptance boundary
 
 The last fully independently inspected live/security package is
