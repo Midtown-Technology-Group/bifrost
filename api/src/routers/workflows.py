@@ -1105,11 +1105,9 @@ async def execute_workflow(
             # Embed sessions share a service subject. A matching durable retry
             # still requires the initiating session's execution capability.
             if user.embed:
-                from src.core.cache.keys import embed_execution_key
-                from src.core.cache.redis_client import get_redis
+                from src.core.embed_middleware import has_embed_execution_access
 
-                async with get_redis() as redis:
-                    owned = await redis.exists(embed_execution_key(user.jti, str(execution_request_id)))
+                owned = await has_embed_execution_access(user.jti, str(execution_request_id))
                 if not owned:
                     raise HTTPException(
                         status_code=status.HTTP_403_FORBIDDEN,
@@ -1182,6 +1180,7 @@ async def execute_workflow(
         execution_id=str(execution_request_id or uuid4()),
         is_provider_org=exec_is_provider_org,
         is_external=exec_is_external,
+        _embed_session_jti=user.jti if user.embed and not request.transient else None,
     )
 
     try:
@@ -1234,10 +1233,6 @@ async def execute_workflow(
             # but honor the caller's transient flag: dropdown-options pass
             # transient=True for the fast path, the manual Execute page passes
             # transient=False and expects a tracked execution row.
-            if user.embed and not request.transient:
-                from src.core.embed_middleware import register_embed_execution
-
-                await register_embed_execution(user.jti, shared_ctx.execution_id)
             result = await run_workflow(
                 context=shared_ctx,
                 workflow_id=str(workflow.id),
@@ -1264,10 +1259,6 @@ async def execute_workflow(
             # The dispatch metadata query above reacquires the request
             # connection, so release it immediately before enqueue.
             await db.commit()
-            if user.embed and not request.transient:
-                from src.core.embed_middleware import register_embed_execution
-
-                await register_embed_execution(user.jti, shared_ctx.execution_id)
             result = await run_workflow(
                 context=shared_ctx,
                 workflow_id=str(workflow.id),
@@ -1327,6 +1318,8 @@ async def execute_workflow(
 
         return result
 
+    except HTTPException:
+        raise
     except WorkflowNotFoundError as e:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

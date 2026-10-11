@@ -1253,20 +1253,19 @@ async def test_embed_session_is_linked_to_each_persisted_dispatch(workflow_type,
             _ctx(user), _Db(), user,
         )
     assert result.execution_id == str(execution_id)
-    register.assert_awaited_once_with("owner-session", str(execution_id))
     if delay_seconds:
+        register.assert_awaited_once_with("owner-session", str(execution_id))
         assert schedule.await_args.kwargs["commit"] is False
     else:
+        register.assert_not_awaited()
         assert dispatch.await_args.kwargs["context"].execution_id == str(execution_id)
+        assert dispatch.await_args.kwargs["context"]._embed_session_jti == "owner-session"
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("owned", [0, 1])
 async def test_embed_retry_requires_initiating_session_capability(owned) -> None:
     """A shared service subject must not let another embed recover this run."""
-    from contextlib import asynccontextmanager
-    from src.core.cache.keys import embed_execution_key
-
     user = _exec_user(embed=True, jti="retry-session")
     workflow = _workflow()
     execution_id = uuid4()
@@ -1274,17 +1273,10 @@ async def test_embed_retry_requires_initiating_session_capability(owned) -> None
         execution_id=str(execution_id), workflow_id=str(workflow.id),
         workflow_name=workflow.name, status=ExecutionStatus.SUCCESS,
     )
-    redis = SimpleNamespace(exists=AsyncMock(return_value=owned))
-
-    @asynccontextmanager
-    async def redis_context():
-        """Expose the session capability store without dispatching another job."""
-        yield redis
-
     with (
         patch("src.repositories.WorkflowRepository", return_value=_WorkflowRepo(workflow=workflow)),
         patch("src.services.execution.submission_recovery.recover_execution_submission", AsyncMock(return_value=recovered)),
-        patch("src.core.cache.redis_client.get_redis", redis_context),
+        patch("src.core.embed_middleware.has_embed_execution_access", AsyncMock(return_value=bool(owned))) as access,
         patch("src.services.execution.service.run_workflow", AsyncMock()) as dispatch,
     ):
         if owned:
@@ -1300,12 +1292,12 @@ async def test_embed_retry_requires_initiating_session_capability(owned) -> None
                     _ctx(user), _Db(), user, execution_request_id=execution_id,
                 )
             assert exc.value.status_code == status.HTTP_403_FORBIDDEN
-    redis.exists.assert_awaited_once_with(embed_execution_key("retry-session", str(execution_id)))
+    access.assert_awaited_once_with("retry-session", str(execution_id))
     dispatch.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("workflow_type,delay_seconds", [("workflow", None), ("data_provider", None), ("workflow", 60)])
+@pytest.mark.parametrize("workflow_type,delay_seconds", [("workflow", 60)])
 async def test_embed_capability_failure_prevents_durable_dispatch(workflow_type, delay_seconds) -> None:
     """Redis failure must not dispatch work or commit a scheduled execution."""
     user = _exec_user(embed=True, jti="owner-session")

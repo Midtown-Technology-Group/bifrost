@@ -121,6 +121,36 @@ async def register_embed_execution(jti: str, execution_id: str) -> None:
         )
 
 
+async def has_embed_execution_access(jti: str, execution_id: str) -> bool:
+    """Require a live grant and the session frozen by durable admission.
+
+    Checking durable evidence prevents an uncommitted or stale Redis grant
+    from authorizing another session's execution after admission fails.
+    Form and delayed submissions retain their existing exact-session grants.
+    """
+    from uuid import UUID
+
+    from src.core.cache.keys import embed_execution_key
+    from src.core.cache.redis_client import get_redis
+    from src.core.database import get_db_context
+    from src.models.orm.executions import Execution
+
+    try:
+        execution_uuid = UUID(execution_id)
+    except ValueError:
+        return False
+    async with get_redis() as redis:
+        if not await redis.exists(embed_execution_key(jti, execution_id)):
+            return False
+    async with get_db_context() as db:
+        execution = await db.get(Execution, execution_uuid)
+        if execution is None:
+            return False
+        evidence = execution.dispatch_evidence or {}
+        bound_session = (evidence.get("request") or {}).get("embed_session_jti")
+        return bound_session is None or bound_session == jti
+
+
 class EmbedScopeMiddleware(BaseHTTPMiddleware):
     """Apply the typed embed capability policy before router authorization."""
 
@@ -162,12 +192,7 @@ class EmbedScopeMiddleware(BaseHTTPMiddleware):
                     content={"detail": "Embed token missing session identifier"},
                 )
 
-            from src.core.cache.keys import embed_execution_key
-            from src.core.cache.redis_client import get_redis
-
-            async with get_redis() as redis:
-                exists = await redis.exists(embed_execution_key(jti, execution_id))
-            if not exists:
+            if not await has_embed_execution_access(jti, execution_id):
                 return JSONResponse(
                     status_code=403,
                     content={"detail": "Access denied to this execution"},

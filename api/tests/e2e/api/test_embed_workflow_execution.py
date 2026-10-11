@@ -50,7 +50,7 @@ def _mint_app_embed_session(e2e_client, platform_admin) -> dict:
         follow_redirects=False,
     )
     assert r.status_code == 302, r.text
-    return {"app": app, "embed_token": _extract_token_from_redirect(r)}
+    return {"app": app, "raw_secret": raw_secret, "embed_token": _extract_token_from_redirect(r)}
 
 
 @pytest.mark.e2e
@@ -146,7 +146,7 @@ class TestEmbedWorkflowExecutionCanReadItsOwnResult:
                 '"""Embed execution-read test workflow"""\n'
                 "from bifrost import workflow\n\n"
                 "@workflow(name='embed_exec_read')\n"
-                "async def embed_exec_read() -> dict:\n"
+                "async def embed_exec_read(value: int = 0) -> dict:\n"
                 "    return {'ok': True}\n"
             ),
             "embed_exec_read",
@@ -163,6 +163,59 @@ class TestEmbedWorkflowExecutionCanReadItsOwnResult:
         )
         assert r.status_code == 200, r.text
         return workflow
+
+    @pytest.mark.parametrize("different_input", [False, True])
+    def test_concurrent_same_app_sessions_have_one_execution_owner(
+        self, e2e_client, platform_admin, echo_workflow, different_input,
+    ):
+        """Two authenticated sessions race one ID; only its owner reads logs/results."""
+        from concurrent.futures import ThreadPoolExecutor
+        from threading import Barrier
+
+        session = _mint_app_embed_session(e2e_client, platform_admin)
+        try:
+            params = {"agent_id": "2"}
+            response = e2e_client.get(
+                f"/embed/apps/{session['app']['slug']}",
+                params={**params, "hmac": _compute_hmac(params, session["raw_secret"])},
+                follow_redirects=False,
+            )
+            assert response.status_code == 302, response.text
+            tokens = [session["embed_token"], _extract_token_from_redirect(response)]
+            execution_id = str(uuid.uuid4())
+            barrier = Barrier(2)
+
+            def submit(index):
+                barrier.wait(timeout=10)
+                return e2e_client.post(
+                    "/api/workflows/execute",
+                    headers={"Authorization": f"Bearer {tokens[index]}", "X-Bifrost-Execution-ID": execution_id},
+                    json={"workflow_id": echo_workflow["id"], "input_data": {"value": index if different_input else 0}},
+                )
+
+            with ThreadPoolExecutor(max_workers=2) as executor:
+                responses = list(executor.map(submit, range(2)))
+            winners = [index for index, response in enumerate(responses) if response.status_code == 200]
+            assert len(winners) == 1, [(r.status_code, r.text) for r in responses]
+            winner = winners[0]
+            loser = 1 - winner
+            assert responses[loser].status_code in (403, 409), responses[loser].text
+            owner_headers = {"Authorization": f"Bearer {tokens[winner]}"}
+            denied_headers = {"Authorization": f"Bearer {tokens[loser]}"}
+
+            def terminal():
+                result = e2e_client.get(f"/api/executions/{execution_id}", headers=owner_headers)
+                assert result.status_code == 200, result.text
+                return result.json() if result.json()["status"] in ("Success", "Failed") else None
+
+            result = poll_until(terminal, max_wait=30)
+            assert result is not None and result["status"] == "Success", result
+            assert result["result"] == {"ok": True}
+            for suffix in ("", "/logs"):
+                denied = e2e_client.get(f"/api/executions/{execution_id}{suffix}", headers=denied_headers)
+                assert denied.status_code == 403, denied.text
+        finally:
+            e2e_client.delete(f"/api/applications/{session['app']['id']}", headers=platform_admin.headers)
 
     def test_own_session_can_read_execution_result(
         self, e2e_client, platform_admin, echo_workflow
