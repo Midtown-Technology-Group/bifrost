@@ -211,6 +211,62 @@ class TestAutonomousAgentExecutor:
         assert repository.search.call_count == 2
 
     @pytest.mark.asyncio
+    async def test_knowledge_embedding_releases_database_lease(
+        self,
+        mock_agent,
+    ):
+        """Slow embedding I/O must run between the config and search leases."""
+        mock_agent.knowledge_sources = ["halo_kb"]
+        open_leases = [0]
+        session = AsyncMock()
+
+        class Lease:
+            async def __aenter__(self):
+                open_leases[0] += 1
+                return session
+
+            async def __aexit__(self, *_args):
+                open_leases[0] -= 1
+
+        factory = MagicMock(side_effect=lambda: Lease())
+        embedding_client = MagicMock()
+
+        async def embed(_query: str) -> list[float]:
+            assert open_leases[0] == 0
+            return [0.1, 0.2]
+
+        embedding_client.embed_single = AsyncMock(side_effect=embed)
+        repository = MagicMock()
+
+        async def search(**_kwargs):
+            assert open_leases[0] == 1
+            return []
+
+        repository.search = AsyncMock(side_effect=search)
+        executor = AutonomousAgentExecutor(factory)
+
+        with patch(
+            "src.services.embeddings.get_embedding_client",
+            new_callable=AsyncMock,
+            return_value=embedding_client,
+        ), patch(
+            "src.repositories.knowledge.KnowledgeRepository",
+            return_value=repository,
+        ):
+            result = await executor._execute_knowledge_search(
+                ToolCallRequest(
+                    id="lease-test",
+                    name="search_knowledge",
+                    arguments={"query": "connection pressure"},
+                ),
+                mock_agent,
+            )
+
+        assert result == "No relevant knowledge found."
+        assert factory.call_count == 2
+        assert open_leases[0] == 0
+
+    @pytest.mark.asyncio
     @patch("src.services.agent_runtime.model_factory.create_agent_model")
     @patch("src.services.execution.autonomous_agent_executor.resolve_agent_tools")
     async def test_run_returns_structured_result(self, mock_resolve_tools, mock_create_model, mock_session, mock_agent, mock_runtime_config):

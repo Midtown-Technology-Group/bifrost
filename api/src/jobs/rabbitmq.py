@@ -289,6 +289,19 @@ class _AbstractConsumer(ABC):
         self._consumer_tag: str | None = None
         self._draining: bool = False
         self._postgres: Any = None
+        self._admission_semaphore: asyncio.Semaphore | None = None
+
+    def set_admission_semaphore(self, semaphore: asyncio.Semaphore) -> None:
+        """Share a process-level admission limit with related consumers."""
+        self._admission_semaphore = semaphore
+
+    async def _process_admitted_message(self, body: dict[str, Any]) -> None:
+        """Run one handler after acquiring its optional shared admission slot."""
+        if self._admission_semaphore is None:
+            await self.process_message(body)
+            return
+        async with self._admission_semaphore:
+            await self.process_message(body)
 
     @abstractmethod
     async def start(self) -> None:
@@ -462,7 +475,7 @@ class _AbstractConsumer(ABC):
                 extra=self._log_extra(context),
             )
 
-            await self.process_message(context.body)
+            await self._process_admitted_message(context.body)
             await message.ack()
             self._log_decision("ack", context, duration=self._duration(started))
         except DuplicateMessage as e:
@@ -1126,7 +1139,7 @@ class BroadcastConsumer(_AbstractConsumer):
                     extra={"message_id": message.message_id},
                 )
 
-                await self.process_message(body)
+                await self._process_admitted_message(body)
 
                 logger.info(
                     "Message processed successfully",

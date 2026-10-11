@@ -966,11 +966,15 @@ class AutonomousAgentExecutor:
             if not decision.allowed:
                 return json.dumps(knowledge_search_rejection_payload(decision))
 
-            # Brief DB session for embedding client config + knowledge search
+            # Resolve credentials in a brief lease, then release it before the
+            # remote embedding request. A second brief lease owns only the
+            # database search; slow provider I/O must never consume a pool slot.
             async with self._session_factory() as db:
                 embedding_client = await get_embedding_client(db)
-                query_embedding = await embedding_client.embed_single(query)
 
+            query_embedding = await embedding_client.embed_single(query)
+
+            async with self._session_factory() as db:
                 repo = KnowledgeRepository(
                     db, org_id=agent.organization_id, is_superuser=True
                 )

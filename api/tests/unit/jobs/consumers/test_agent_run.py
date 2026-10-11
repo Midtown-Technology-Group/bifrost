@@ -12,6 +12,7 @@ from src.jobs.consumers import agent_run  # noqa: E402
 from src.jobs.consumers.agent_run import (  # noqa: E402
     AgentRunConsumer,
     _terminal_status_for_agent_result,
+    agent_prefetch_count,
 )
 
 
@@ -32,6 +33,16 @@ def test_terminal_status_for_agent_result(
     expected: str | None,
 ) -> None:
     assert _terminal_status_for_agent_result(current_status, result_status) == expected
+
+
+def test_agent_prefetch_count_is_capped_by_database_capacity() -> None:
+    settings = SimpleNamespace(
+        max_concurrency=10,
+        database_pool_size=1,
+        database_max_overflow=2,
+    )
+
+    assert agent_prefetch_count(settings) == 3
 
 
 @pytest.mark.asyncio

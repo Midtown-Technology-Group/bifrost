@@ -1,5 +1,6 @@
 """RabbitMQ connection/start/publish helper tests with fake broker objects."""
 
+import asyncio
 import json
 from typing import Any
 from unittest.mock import AsyncMock
@@ -93,6 +94,38 @@ class _FakeProcessedMessage:
 
     async def __aexit__(self, *args: object) -> None:
         self.exited = True
+
+
+@pytest.mark.asyncio
+async def test_consumers_share_process_admission_semaphore() -> None:
+    semaphore = asyncio.Semaphore(1)
+    first = _StartedBaseConsumer("first")
+    second = _StartedBaseConsumer("second")
+    first.set_admission_semaphore(semaphore)
+    second.set_admission_semaphore(semaphore)
+    first_started = asyncio.Event()
+    release_first = asyncio.Event()
+    second_started = asyncio.Event()
+
+    async def hold_first(_body: dict[str, Any]) -> None:
+        first_started.set()
+        await release_first.wait()
+
+    async def run_second(_body: dict[str, Any]) -> None:
+        second_started.set()
+
+    first.process_message = hold_first  # type: ignore[method-assign]
+    second.process_message = run_second  # type: ignore[method-assign]
+
+    first_task = asyncio.create_task(first._process_admitted_message({}))
+    await first_started.wait()
+    second_task = asyncio.create_task(second._process_admitted_message({}))
+    await asyncio.sleep(0)
+
+    assert not second_started.is_set()
+    release_first.set()
+    await asyncio.gather(first_task, second_task)
+    assert second_started.is_set()
 
 
 @pytest.mark.asyncio

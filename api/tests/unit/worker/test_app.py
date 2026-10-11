@@ -20,6 +20,10 @@ class FakeConsumer:
         self.drained: list[float] = []
         self.paused: list[float] = []
         self.resumed = 0
+        self.admission_semaphore = None
+
+    def set_admission_semaphore(self, semaphore) -> None:
+        self.admission_semaphore = semaphore
 
     async def start(self) -> None:
         if self.fail_start:
@@ -50,6 +54,8 @@ def settings() -> SimpleNamespace:
         service_token_lifetime_seconds=30,
         service_claim_enabled=True,
         worker_workflow_queue_scope="canary",
+        database_pool_size=1,
+        database_max_overflow=2,
     )
 
 
@@ -384,6 +390,10 @@ async def test_start_consumers_creates_and_starts_all_consumers(
     ]
     assert all(consumer.started == 1 for consumer in created)
     assert worker._consumers == created
+    assert all(
+        consumer.admission_semaphore is worker._execution_admission
+        for consumer in created
+    )
 
 
 @pytest.mark.asyncio
