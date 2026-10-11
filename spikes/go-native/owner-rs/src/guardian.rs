@@ -136,6 +136,10 @@ mod tests {
         };
         assert_eq!(guardian.attach_dormant(), Err(GuardianError::Rejected));
         assert_eq!(guardian.verify_live(), Err(GuardianError::Rejected));
+        assert!(matches!(
+            guardian.receive_if_ready(),
+            Err(GuardianError::Rejected)
+        ));
         assert!(guardian.attachment.is_none());
     }
 
@@ -848,6 +852,23 @@ impl Guardian {
             .recv_timeout(timeout)
             .map_err(|_| GuardianError::Uncertain)??
             .ok_or(GuardianError::Uncertain)
+    }
+
+    /// Nonblocking original-channel read for the single owning actor. Empty is
+    /// a live wait only; EOF, reader loss and invalid bytes remain failures.
+    pub fn receive_if_ready(&self) -> Result<Option<ReceivedFrame>, GuardianError> {
+        let output = self
+            .attachment
+            .as_ref()
+            .ok_or(GuardianError::Rejected)?
+            .output
+            .as_ref()
+            .ok_or(GuardianError::Rejected)?;
+        match output.try_recv() {
+            Ok(Ok(Some(frame))) => Ok(Some(frame)),
+            Err(std::sync::mpsc::TryRecvError::Empty) => Ok(None),
+            _ => Err(GuardianError::Uncertain),
+        }
     }
 
     /// Trusted coordinator only: legal common protocol state and committed owner

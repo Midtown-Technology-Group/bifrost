@@ -67,3 +67,31 @@ commit Result/Receipt and read the existing authenticated Execution API. Common
 cancellation, durable source-consumer settlement and uncertain outcomes still
 need the same original custody and reviewed lock order. Until those are proved
 and the evidence is accepted, the lifecycle goal remains incomplete.
+
+## Post-Start original actor candidate
+
+`LiveStart.serve_until_result` polls the original guardian and restricted SDK
+admission gate in one borrowed Rust actor, without executing a build tool. Its
+monotonic run budget starts before the actual Start write; issuance, delivery
+and SDK service consume that budget. It permits one service attempt and caps
+retained message identities at 4,096. Empty queue observations do not assert
+process completion; reader loss/EOF/invalid bytes fail closed.
+
+Runtime frames must carry the original session and a fresh canonical message ID
+with increasing runtime sequence. Executing heartbeats retain nondecreasing
+monotonic elapsed time. LogBatch requires the original Start correlation and
+consecutive batch numbers. No untrusted text is automatically printed or stored.
+The adapter emits one fixed credential-free process-exit observation before its
+Result. The independent local supervisor checks that log's exact published
+schema/correlation and observes it from the same unchanged workload binary.
+
+Result acceptance consumes one attempt and sends the exact received payload to
+the existing common Rust transaction. Only observed durable commit reaches
+ResultReceipt on the original channel. Uncertain commit or receipt write drains;
+it never reconstructs a live actor, repeats the transaction, or reruns a child.
+The returned counts prove component observations only, not SDK HTTP completion.
+
+This candidate still needs positive source/build/admission/SDK/Result/Receipt/API
+readback proof. Cancellation, advisory Stopped handling, physical descendant and
+source settlement, and crash/lost-ACK acceptance remain outstanding. No production
+runtime, Go-specific lifecycle table, or replacement owner is introduced.

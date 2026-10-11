@@ -58,6 +58,7 @@ type observation struct {
 	SDKCancelled        bool                     `json:"sdk_cancelled"`
 	ElapsedMS           float64                  `json:"elapsed_ms"`
 	ResultPayloadSHA256 string                   `json:"result_payload_sha256,omitempty"`
+	LogBatches          int                      `json:"log_batches"`
 }
 
 func runCase(f fixture, mode string) (observation, error) {
@@ -282,7 +283,20 @@ func runCase(f fixture, mode string) (observation, error) {
 		switch received.Frame["type"] {
 		case "Heartbeat":
 			continue
+		case "LogBatch":
+			if mode == "cancel-running" || mode == "cancel-before-material" || result.LogBatches != 0 || reportID != nil || received.Frame["correlation_id"] != start["message_id"] {
+				return result, rejected
+			}
+			value := received.Frame["body"].(map[string]any)
+			expected := map[string]any{"start_message_id": start["message_id"], "batch_sequence": json.Number("1"), "entries": []any{map[string]any{"level": "info", "message": "Workflow process exited"}}}
+			if !reflect.DeepEqual(value, expected) {
+				return result, rejected
+			}
+			result.LogBatches++
 		case "Result":
+			if result.LogBatches != 1 {
+				return result, rejected
+			}
 			if mode == "cancel-running" || mode == "cancel-before-material" {
 				return result, rejected
 			}

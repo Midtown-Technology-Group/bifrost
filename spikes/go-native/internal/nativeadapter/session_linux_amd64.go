@@ -246,6 +246,17 @@ func RunInheritedSession(ctx context.Context, transport SessionTransport, accept
 				return ReportRejected
 			}
 		case completed := <-done:
+			// Fixed adapter observation contains no input, output, stderr, SDK
+			// configuration or credentials. It claims no durable outcome.
+			logID, err := sessionMessageID()
+			if err != nil {
+				return err
+			}
+			logFrame := executionprofile.Frame{"protocol": executionprofile.Protocol, "type": "LogBatch", "session_id": prepared.sessionID, "message_id": logID, "sequence": sequence, "correlation_id": frontier.start.Frame["message_id"], "body": map[string]any{"start_message_id": frontier.start.Frame["message_id"], "batch_sequence": 1, "entries": []any{map[string]any{"level": "info", "message": "Workflow process exited"}}}}
+			if executionprofile.Write(transport.Runtime, logFrame) != nil {
+				return ReportRejected
+			}
+			sequence++
 			id, err := sessionMessageID()
 			if err != nil {
 				return err

@@ -54,6 +54,14 @@ pub struct LiveStart {
     issuance_attempted: bool,
     release_attempted: bool,
     used_message_ids: Vec<String>,
+    delivery_observed: bool,
+    report_attempted: bool,
+    protocol_failed: bool,
+    runtime_sequence: u64,
+    heartbeat_elapsed_ms: u64,
+    log_batch_sequence: u64,
+    runtime_deadline: Instant,
+    serving_attempted: bool,
 }
 impl LiveStart {
     /// One process-local attempt on the original guardian. A failed/uncertain
@@ -159,7 +167,179 @@ impl LiveStart {
         guardian.verify_material(pipe)?;
         guardian.send(&provision)?;
         pipe.deliver(&envelope).map_err(BeginError::Material)?;
+        self.used_message_ids.push(provision_message_id.into());
+        self.delivery_observed = true;
         Ok(())
+    }
+
+    /// The same original actor polls SDK ingress separately with its borrowed
+    /// guardian. This reader never blocks that capability service or persists
+    /// tenant logs. Only exact original-channel Result bytes reach durable SQL.
+    pub async fn poll_runtime(
+        &mut self,
+        pool: &PgPool,
+        guardian: &mut Guardian,
+        decision_id: &str,
+        receipt_message_id: &str,
+    ) -> Result<RuntimeObservation, BeginError> {
+        if !self.delivery_observed || self.report_attempted || self.protocol_failed {
+            return Err(BeginError::Rejected);
+        }
+        if guardian.verify_session(&self.fence)? != self.prepare["body"]["binding"] {
+            return Err(BeginError::Rejected);
+        }
+        self.protocol_failed = true; // any consumed invalid/uncertain frame poisons this actor
+        if self.used_message_ids.len() >= 4096 {
+            return Err(BeginError::Rejected);
+        }
+        let Some(received) = guardian.receive_if_ready()? else {
+            self.protocol_failed = false;
+            return Ok(RuntimeObservation::Waiting);
+        };
+        let frame = received.frame();
+        if !runtime_identity(
+            frame,
+            &self.fence.session_id,
+            self.runtime_sequence,
+            &self.used_message_ids,
+        ) {
+            return Err(BeginError::Rejected);
+        }
+        let message_id = frame["message_id"]
+            .as_str()
+            .ok_or(BeginError::Rejected)?
+            .to_owned();
+        let sequence = frame["sequence"].as_u64().ok_or(BeginError::Rejected)?;
+        let start_id = &self.start["message_id"];
+        let body = &frame["body"];
+        let kind = frame["type"].as_str().ok_or(BeginError::Rejected)?;
+        match kind {
+            "Heartbeat"
+                if frame["correlation_id"].is_null()
+                    && body["start_message_id"] == *start_id
+                    && body["state"] == "executing"
+                    && body["monotonic_elapsed_ms"]
+                        .as_u64()
+                        .is_some_and(|n| n >= self.heartbeat_elapsed_ms) =>
+            {
+                self.heartbeat_elapsed_ms = body["monotonic_elapsed_ms"]
+                    .as_u64()
+                    .ok_or(BeginError::Rejected)?;
+            }
+            "LogBatch"
+                if frame["correlation_id"] == *start_id
+                    && body["start_message_id"] == *start_id
+                    && body["batch_sequence"].as_u64()
+                        == self.log_batch_sequence.checked_add(1) =>
+            {
+                self.log_batch_sequence += 1;
+            }
+            "Result"
+                if frame["correlation_id"] == *start_id
+                    && body["start_message_id"] == *start_id =>
+            {
+                // Consume the sole live acceptance attempt before SQL. Unknown
+                // commit or failed receipt delivery must drain, never resubmit.
+                self.report_attempted = true;
+                if !canonical_uuid(decision_id)
+                    || !canonical_uuid(receipt_message_id)
+                    || receipt_message_id == message_id
+                    || self
+                        .used_message_ids
+                        .iter()
+                        .any(|id| id == receipt_message_id)
+                {
+                    return Err(BeginError::Rejected);
+                }
+                let committed =
+                    crate::accept_result(pool, &self.fence, received.payload(), decision_id)
+                        .await?;
+                if guardian.verify_session(&self.fence)? != self.prepare["body"]["binding"] {
+                    return Err(BeginError::Rejected);
+                }
+                let receipt = json!({"protocol":"bifrost.runtime/v1","type":"ResultReceipt",
+                    "session_id":self.fence.session_id,"message_id":receipt_message_id,
+                    "sequence":5,"correlation_id":message_id,"body":committed.receipt_body()});
+                guardian.send(&receipt)?;
+                self.used_message_ids.push(receipt_message_id.into());
+                self.used_message_ids.push(message_id);
+                self.runtime_sequence = sequence;
+                return Ok(RuntimeObservation::ResultCommitted(committed));
+            }
+            _ => return Err(BeginError::Rejected),
+        }
+        self.used_message_ids.push(message_id);
+        self.runtime_sequence = sequence;
+        self.protocol_failed = false;
+        if kind == "LogBatch" {
+            // Untrusted bounded observations, not an audit or durable lifecycle
+            // event. The parent still owes accepted redaction/persistence bounds.
+            Ok(RuntimeObservation::LogBatch(body.clone()))
+        } else {
+            Ok(RuntimeObservation::Heartbeat)
+        }
+    }
+
+    /// Single original actor services the restricted SDK gate while reading the
+    /// common runtime channel. No interpreter/compiler/build step enters here.
+    /// Timeout or any uncertainty leaves cleanup/finalization to this owner;
+    /// calling again cannot reconstruct the channel or replay accepted work.
+    pub async fn serve_until_result(
+        &mut self,
+        pool: &PgPool,
+        guardian: &mut Guardian,
+        gate: &mut crate::sdk_gate::SDKGate,
+        decision_id: &str,
+        receipt_message_id: &str,
+    ) -> Result<LiveResult, BeginError> {
+        if self.serving_attempted || !self.delivery_observed {
+            return Err(BeginError::Rejected);
+        }
+        self.serving_attempted = true;
+        let mut sdk_admissions = 0_u32;
+        let mut sdk_denials = 0_u32;
+        let mut heartbeats = 0_u32;
+        let mut log_batches = 0_u32;
+        loop {
+            if Instant::now() >= self.runtime_deadline {
+                return Err(BeginError::Rejected);
+            }
+            match gate
+                .serve_one_if_ready(guardian, pool, &self.fence)
+                .await
+                .map_err(|_| BeginError::Rejected)?
+            {
+                Some(true) => sdk_admissions += 1,
+                Some(false) => sdk_denials += 1,
+                None => {}
+            }
+            if Instant::now() >= self.runtime_deadline {
+                return Err(BeginError::Rejected);
+            }
+            match self
+                .poll_runtime(pool, guardian, decision_id, receipt_message_id)
+                .await?
+            {
+                RuntimeObservation::Waiting => {
+                    tokio::time::sleep(Duration::from_millis(2)).await;
+                }
+                RuntimeObservation::Heartbeat => heartbeats += 1,
+                RuntimeObservation::LogBatch(_) => {
+                    // Do not persist/print untrusted text here. Accepted bounded
+                    // log redaction/persistence remains a parent responsibility.
+                    log_batches += 1;
+                }
+                RuntimeObservation::ResultCommitted(decision) => {
+                    return Ok(LiveResult {
+                        decision,
+                        sdk_admissions,
+                        sdk_denials,
+                        heartbeats,
+                        log_batches,
+                    });
+                }
+            }
+        }
     }
 
     pub fn fence(&self) -> &SessionFence {
@@ -314,6 +494,9 @@ pub async fn admit_and_start(
     let start = json!({"protocol":"bifrost.runtime/v1","type":"Start",
         "session_id":request.fence.session_id,"message_id":request.start_message_id,
         "sequence":3,"correlation_id":request.prepare["message_id"],"body":body});
+    let runtime_deadline = Instant::now()
+        .checked_add(Duration::from_millis(remaining))
+        .ok_or(BeginError::Rejected)?;
     guardian.send(&start)?;
     let used_message_ids = [
         offer.frame()["message_id"]
@@ -338,7 +521,44 @@ pub async fn admit_and_start(
         issuance_attempted: false,
         release_attempted: false,
         used_message_ids,
+        delivery_observed: false,
+        report_attempted: false,
+        protocol_failed: false,
+        runtime_sequence: 2,
+        heartbeat_elapsed_ms: 0,
+        log_batch_sequence: 0,
+        runtime_deadline,
+        serving_attempted: false,
     })
+}
+
+/// Exact live-component counts, not SDK fetch completion or runtime acceptance.
+/// Only the returned decision comes from the common observed-commit transaction.
+pub struct LiveResult {
+    pub decision: crate::ResultDecision,
+    pub sdk_admissions: u32,
+    pub sdk_denials: u32,
+    pub heartbeats: u32,
+    pub log_batches: u32,
+}
+
+/// Component observations only. Result commit does not prove physical/source
+/// cleanup or runtime acceptance. No tenant bytes are automatically logged.
+pub enum RuntimeObservation {
+    Waiting,
+    Heartbeat,
+    LogBatch(Value),
+    ResultCommitted(crate::ResultDecision),
+}
+
+fn runtime_identity(frame: &Value, session: &str, last_sequence: u64, ids: &[String]) -> bool {
+    frame["session_id"] == session
+        && frame["sequence"]
+            .as_u64()
+            .is_some_and(|n| n > last_sequence)
+        && frame["message_id"]
+            .as_str()
+            .is_some_and(|id| canonical_uuid(id) && !ids.iter().any(|seen| seen == id))
 }
 
 fn debit_budget(budget: u64, elapsed: Duration) -> Result<u64, BeginError> {
@@ -352,7 +572,7 @@ fn debit_budget(budget: u64, elapsed: Duration) -> Result<u64, BeginError> {
 
 #[cfg(test)]
 mod tests {
-    use super::{debit_budget, matched_prepared};
+    use super::{debit_budget, matched_prepared, runtime_identity};
     use serde_json::json;
     use std::time::Duration;
 
@@ -366,6 +586,27 @@ mod tests {
         assert!(debit_budget(1, Duration::from_nanos(1)).is_err());
         assert!(debit_budget(100, Duration::from_millis(100)).is_err());
         assert!(debit_budget(100, Duration::MAX).is_err());
+    }
+
+    #[test]
+    fn post_start_channel_rejects_replayed_sequence_identity_or_session() {
+        let session = "00000000-0000-0000-0000-000000000001";
+        let message = "00000000-0000-0000-0000-000000000002";
+        let frame = json!({"session_id":session,"message_id":message,"sequence":3});
+        assert!(runtime_identity(&frame, session, 2, &[]));
+        assert!(!runtime_identity(&frame, session, 3, &[]));
+        assert!(!runtime_identity(&frame, session, 4, &[]));
+        assert!(!runtime_identity(&frame, session, 2, &[message.into()]));
+        assert!(!runtime_identity(&frame, message, 2, &[]));
+        for (key, value) in [
+            ("sequence", json!(-1)),
+            ("sequence", json!("3")),
+            ("message_id", json!("arbitrary")),
+        ] {
+            let mut changed = frame.clone();
+            changed[key] = value;
+            assert!(!runtime_identity(&changed, session, 2, &[]));
+        }
     }
 
     #[test]
