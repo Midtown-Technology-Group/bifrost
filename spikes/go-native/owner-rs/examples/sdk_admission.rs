@@ -1,6 +1,7 @@
 //! Private SDK admission probe; no JWT verifier, issuer, HTTP router or capability call.
 use bifrost_isolated_owner_spike::{
-    IntegrationGetRequest, ObserveError, SessionFence, authorize_integration_get_candidate,
+    IntegrationGetRequest, ObserveError, SessionFence, authorize_finite_issuance_candidate,
+    authorize_integration_get_candidate,
 };
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
 use std::{
@@ -63,14 +64,22 @@ async fn run() -> &'static str {
         Ok(pool) => pool,
         Err(_) => return "database_failure",
     };
-    let result = tokio::time::timeout(
-        Duration::from_secs(5),
-        authorize_integration_get_candidate(&pool, &fence, &request),
-    )
+    let action = std::env::var("BIFROST_OWNER_TEST_SDK_ACTION").unwrap_or_else(|_| "sdk".into());
+    let result = tokio::time::timeout(Duration::from_secs(5), async {
+        match action.as_str() {
+            "sdk" => authorize_integration_get_candidate(&pool, &fence, &request)
+                .await
+                .map(|_| "sdk_admitted"),
+            "issuance" => authorize_finite_issuance_candidate(&pool, &fence, &request)
+                .await
+                .map(|_| "issuance_admitted"),
+            _ => Err(ObserveError::Rejected),
+        }
+    })
     .await;
     pool.close().await;
     match result {
-        Ok(Ok(_)) => "sdk_admitted",
+        Ok(Ok(category)) => category,
         Ok(Err(ObserveError::InvalidFence | ObserveError::Rejected)) => "rejected",
         Ok(Err(ObserveError::UncertainCommit)) | Err(_) => "uncertain_commit",
         Ok(Err(ObserveError::Database(sqlx::Error::Database(error))))

@@ -20,7 +20,7 @@ pub enum ProvisionDecision {
     NewlyCommitted,
 }
 
-const SNAPSHOT_FIELDS: [&str; 32] = [
+pub(crate) const SNAPSHOT_FIELDS: [&str; 32] = [
     "id",
     "schema_version",
     "workflow_attempt_id",

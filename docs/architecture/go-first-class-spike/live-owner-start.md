@@ -37,6 +37,18 @@ Offer, and drain that original process/namespace. Unit checks cover mismatched
 Prepared acknowledgements and finite-budget exhaustion. These are acceptance
 negatives, not proof of a successful owner transaction or SDK workflow.
 
+`LiveStart::authorize_issuance` now consumes one process-local attempt before
+checking the original guardian, reads the committed finite provision under the
+common lock order, and checks the full original binding again. A failure or
+uncertain read cannot retry through this handle. Its returned snapshot/caller
+are signing prerequisites, not a credential, launch permit or release authority.
+The common read-only SQL path requires exactly the provision admission before
+issuance and exactly provision plus release before SDK use; cancellation,
+revocation, expiry, current-caller/source drift and mismatched identity deny both.
+The probe tests exercise actual committed provision and release transactions,
+with synthetic custody/source explicitly retained as component limitations.
+Authenticated issuer exchange and positive live delivery remain unimplemented.
+
 The next required consumer is the complete isolated coordinator: authenticate
 actual source/caller and accepted archive, call this path against the real core
 pool, obtain finite provision from the authenticated issuer, commit release,

@@ -1820,7 +1820,9 @@ async def sdk_admission_facts(provision_facts):
     return facts
 
 
-async def sdk_admission_probe(facts, fence=None, request=None, role="wex_core"):
+async def sdk_admission_probe(
+    facts, fence=None, request=None, role="wex_core", purpose="sdk"
+):
     executable = Path("/app/scripts/runtime-owner-sdk-admission")
     assert executable.is_file(), (
         "Required source-bound Rust SDK admission artifact is missing"
@@ -1839,6 +1841,7 @@ async def sdk_admission_probe(facts, fence=None, request=None, role="wex_core"):
         stderr=asyncio.subprocess.PIPE,
         env={
             "BIFROST_ISOLATED_OWNER_TEST": "1",
+            "BIFROST_OWNER_TEST_SDK_ACTION": purpose,
             "BIFROST_OWNER_TEST_DATABASE_URL": f"postgresql://{role}:{PASSWORDS[role]}@writer-guard-pool/bifrost_test",
         },
     )
@@ -3217,24 +3220,38 @@ async def test_rust_competing_births_retain_one_owner_and_attempt(prepared_start
 
 
 @pytest.mark.parametrize("prepared_start_facts", ["provision"], indirect=True)
-async def test_reserved_ingress_reads_only_its_committed_open_provision(provision_facts):
+async def test_reserved_ingress_reads_only_its_committed_open_provision(
+    provision_facts,
+):
     from src.core.runtime_sdk_credentials import RuntimeSDKDenied, grant_digest
-    from src.services.isolated_runtime_sdk_snapshot import load_committed_finite_snapshot
+    from src.services.isolated_runtime_sdk_snapshot import (
+        load_committed_finite_snapshot,
+    )
 
     facts = provision_facts
     engine = create_async_engine(
-        URL.create("postgresql+asyncpg", username="wex_incumbent",
-            password=PASSWORDS["wex_incumbent"], host="writer-guard-pool",
-            database="bifrost_test"),
+        URL.create(
+            "postgresql+asyncpg",
+            username="wex_incumbent",
+            password=PASSWORDS["wex_incumbent"],
+            host="writer-guard-pool",
+            database="bifrost_test",
+        ),
         poolclass=NullPool,
-        connect_args={"prepared_statement_cache_size": 0, "statement_cache_size": 0,
-            "timeout": 5, "command_timeout": 5},
+        connect_args={
+            "prepared_statement_cache_size": 0,
+            "statement_cache_size": 0,
+            "timeout": 5,
+            "command_timeout": 5,
+        },
     )
     factory = async_sessionmaker(engine, expire_on_commit=False)
     identity = {
         "grant_id": UUID(facts["provision_request"]["snapshot"]["id"]),
-        "execution_id": facts["execution"], "session_id": facts["session"],
-        "owner_incarnation_id": UUID(facts["fence"][1]), "attempt_id": facts["attempt"],
+        "execution_id": facts["execution"],
+        "session_id": facts["session"],
+        "owner_incarnation_id": UUID(facts["fence"][1]),
+        "attempt_id": facts["attempt"],
     }
     try:
         # Reservation/Start cannot substitute for a committed real provision.
@@ -3250,8 +3267,81 @@ async def test_reserved_ingress_reads_only_its_committed_open_provision(provisio
             with pytest.raises(RuntimeSDKDenied):
                 await load_committed_finite_snapshot(factory, **wrong)
         assert await provision_snapshot(facts) == retained
-        assert await probe(facts["fence"], operation="request-running-cancel") == "cancel_committed"
+        assert (
+            await probe(facts["fence"], operation="request-running-cancel")
+            == "cancel_committed"
+        )
         with pytest.raises(RuntimeSDKDenied):
             await load_committed_finite_snapshot(factory, **identity)
     finally:
         await engine.dispose()
+
+
+@pytest.mark.parametrize("prepared_start_facts", ["provision"], indirect=True)
+async def test_finite_issuance_requires_committed_unreleased_provision(provision_facts):
+    facts = provision_facts
+    snapshot, _, _, _ = facts["issuer_inputs"]
+    request = facts["provision_request"]
+    facts.update(
+        grant=snapshot.id,
+        grant_digest=request["grant_digest"],
+        provision=UUID(request["provision_id"]),
+        delivery=UUID(request["delivery_id"]),
+        release=uuid4(),
+        source=snapshot.operations_digest,
+        org=snapshot.effective_organization_id,
+        solution=snapshot.solution_install_id,
+        expires=snapshot.initial_access_expires_at,
+    )
+    before = await provision_snapshot(facts)
+    assert await sdk_admission_probe(facts, purpose="issuance") == "rejected"
+    assert await provision_snapshot(facts) == before
+    assert await provision_probe(facts) == "newly_committed"
+    before = await sdk_admission_snapshot(facts)
+    assert await sdk_admission_probe(facts, purpose="issuance") == "issuance_admitted"
+    assert await sdk_admission_probe(facts) == "rejected"
+    assert (
+        await sdk_admission_probe(facts, purpose="issuance", role="wex_incumbent")
+        == "rejected"
+    )
+    for field in range(5):
+        fields = [
+            str(facts["grant"]),
+            facts["grant_digest"],
+            "Fixture",
+            str(facts["org"]),
+            str(facts["solution"]),
+        ]
+        fields[field] = (
+            "Other" if field == 2 else "b" * 64 if field == 1 else str(uuid4())
+        )
+        assert (
+            await sdk_admission_probe(facts, purpose="issuance", request=fields)
+            == "rejected"
+        )
+    assert await sdk_admission_snapshot(facts) == before
+    assert await release_probe(facts["fence"], facts) == "newly_committed"
+    before = await sdk_admission_snapshot(facts)
+    assert await sdk_admission_probe(facts, purpose="issuance") == "rejected"
+    assert await sdk_admission_probe(facts) == "sdk_admitted"
+    assert await sdk_admission_snapshot(facts) == before
+
+
+@pytest.mark.parametrize("prepared_start_facts", ["provision"], indirect=True)
+async def test_cancelled_provision_cannot_authorize_finite_issuance(provision_facts):
+    facts = provision_facts
+    snapshot, _, _, _ = facts["issuer_inputs"]
+    facts.update(
+        grant=snapshot.id,
+        grant_digest=facts["provision_request"]["grant_digest"],
+        org=snapshot.effective_organization_id,
+        solution=snapshot.solution_install_id,
+    )
+    assert await provision_probe(facts) == "newly_committed"
+    assert (
+        await probe(facts["fence"], operation="request-running-cancel")
+        == "cancel_committed"
+    )
+    before = await sdk_admission_snapshot(facts)
+    assert await sdk_admission_probe(facts, purpose="issuance") == "rejected"
+    assert await sdk_admission_snapshot(facts) == before

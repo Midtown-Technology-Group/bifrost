@@ -20,6 +20,32 @@ pub struct IntegrationGetAdmission {
     solution_id: String,
 }
 
+/// Read-only finite-signing prerequisites, not a credential or release permit.
+/// Caller still authenticates the original issuer and live guardian/source.
+pub struct FiniteIssuanceAdmission {
+    snapshot: Value,
+    caller: Value,
+}
+impl FiniteIssuanceAdmission {
+    pub fn snapshot(&self) -> &Value {
+        &self.snapshot
+    }
+    pub fn caller(&self) -> &Value {
+        &self.caller
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Purpose {
+    FiniteIssuance,
+    ReleasedSDK,
+}
+
+struct CheckedGrant {
+    capability: IntegrationGetAdmission,
+    issuance: FiniteIssuanceAdmission,
+}
+
 impl IntegrationGetAdmission {
     pub fn integration_name(&self) -> &str {
         &self.integration_name
@@ -43,6 +69,34 @@ pub async fn authorize_integration_get_candidate(
     fence: &SessionFence,
     request: &IntegrationGetRequest,
 ) -> Result<IntegrationGetAdmission, ObserveError> {
+    Ok(
+        authorize_candidate(pool, fence, request, Purpose::ReleasedSDK)
+            .await?
+            .capability,
+    )
+}
+
+/// The original owner may call this after observed provision commit, before
+/// finite signing/release. No release row, receipt or revoked/closed session may
+/// exist. This never creates/renews a grant or permits material transmission.
+pub async fn authorize_finite_issuance_candidate(
+    pool: &PgPool,
+    fence: &SessionFence,
+    request: &IntegrationGetRequest,
+) -> Result<FiniteIssuanceAdmission, ObserveError> {
+    Ok(
+        authorize_candidate(pool, fence, request, Purpose::FiniteIssuance)
+            .await?
+            .issuance,
+    )
+}
+
+async fn authorize_candidate(
+    pool: &PgPool,
+    fence: &SessionFence,
+    request: &IntegrationGetRequest,
+    purpose: Purpose,
+) -> Result<CheckedGrant, ObserveError> {
     if !canonical_uuid(&request.grant_id)
         || !canonical_uuid(&request.organization_id)
         || !canonical_uuid(&request.solution_id)
@@ -87,7 +141,8 @@ pub async fn authorize_integration_get_candidate(
          revoked_at IS NOT NULL AS revoked,committed_start_id::text AS start, \
          start_message_id::text AS message,effective_organization_id::text AS organization, \
          solution_install_id::text AS solution,timeout_seconds, \
-         workflow_id::text AS workflow,caller_user_id::text AS caller,source_id::text AS deployment \
+         workflow_id::text AS workflow,caller_user_id::text AS caller,source_id::text AS deployment, \
+         to_jsonb(workflow_runtime_sdk_grants)::text AS raw_grant \
          FROM workflow_runtime_sdk_grants WHERE runtime_session_id=$1::text::uuid ORDER BY id FOR UPDATE",
     ).bind(&fence.session_id).fetch_all(&mut *locked.tx).await?;
     if grants.len() != 1 || grants[0].try_get::<String, _>("id")? != request.grant_id {
@@ -106,7 +161,12 @@ pub async fn authorize_integration_get_candidate(
     .bind(&fence.session_id)
     .fetch_all(&mut *locked.tx)
     .await?;
-    if grants.len() != 1 || admissions.len() != 2 || !receipts.is_empty() {
+    let admission_count = if purpose == Purpose::ReleasedSDK {
+        2
+    } else {
+        1
+    };
+    if grants.len() != 1 || admissions.len() != admission_count || !receipts.is_empty() {
         return Err(ObserveError::Rejected);
     }
     let grant = &grants[0];
@@ -128,17 +188,21 @@ pub async fn authorize_integration_get_candidate(
     // SQL purpose ordering is provision then release. Exact composite FKs also
     // retain expiry and delivery identity; neither row is a portable bearer.
     let provision = &admissions[0];
-    let release = &admissions[1];
-    if provision.try_get::<String, _>("purpose")? != "provision"
-        || release.try_get::<String, _>("purpose")? != "release"
-        || release
-            .try_get::<Option<String>, _>("provision")?
-            .as_deref()
-            != Some(provision.try_get::<String, _>("id")?.as_str())
-        || release.try_get::<String, _>("delivery")?
-            != provision.try_get::<String, _>("delivery")?
-    {
+    if provision.try_get::<String, _>("purpose")? != "provision" {
         return Err(ObserveError::Rejected);
+    }
+    if purpose == Purpose::ReleasedSDK {
+        let release = &admissions[1];
+        if release.try_get::<String, _>("purpose")? != "release"
+            || release
+                .try_get::<Option<String>, _>("provision")?
+                .as_deref()
+                != Some(provision.try_get::<String, _>("id")?.as_str())
+            || release.try_get::<String, _>("delivery")?
+                != provision.try_get::<String, _>("delivery")?
+        {
+            return Err(ObserveError::Rejected);
+        }
     }
     for admission in &admissions {
         if admission.try_get::<String, _>("grant")? != request.grant_id
@@ -197,13 +261,14 @@ pub async fn authorize_integration_get_candidate(
     let current = sqlx::query(
         "SELECT 1 FROM workflow_runtime_sdk_grants g JOIN runtime_starts s \
          ON s.id=g.committed_start_id JOIN runtime_admissions p \
-         ON p.grant_id=g.id AND p.purpose='provision' JOIN runtime_admissions r \
+         ON p.grant_id=g.id AND p.purpose='provision' LEFT JOIN runtime_admissions r \
          ON r.provision_admission_id=p.id AND r.purpose='release' \
          JOIN workflow_execution_attempts a ON a.id=g.workflow_attempt_id \
          JOIN runtime_execution_owners o ON o.execution_id=g.execution_id \
          JOIN solution_deployments d ON d.id=o.deployment_id \
          JOIN solutions sol ON sol.id=d.solution_id \
          WHERE g.id=$1::text::uuid AND g.revoked_at IS NULL \
+         AND (($2 AND r.id IS NOT NULL) OR (NOT $2 AND r.id IS NULL)) \
          AND g.started_at=s.started_at AND g.attempt_number=a.attempt_number \
          AND o.caller_snapshot->>'caller_user_id'=g.caller_user_id::text \
          AND o.caller_snapshot->>'caller_organization_id'=g.caller_organization_id::text \
@@ -228,19 +293,35 @@ pub async fn authorize_integration_get_candidate(
          AND g.initial_access_expires_at<=s.deadline_utc",
     )
     .bind(&request.grant_id)
+    .bind(purpose == Purpose::ReleasedSDK)
     .fetch_optional(&mut *locked.tx)
     .await?;
     if current.is_none() {
         return Err(ObserveError::Rejected);
+    }
+    let raw_grant: Value = serde_json::from_str(&grant.try_get::<String, _>("raw_grant")?)
+        .map_err(|_| ObserveError::Rejected)?;
+    let mut snapshot = serde_json::Map::new();
+    for field in crate::provision::SNAPSHOT_FIELDS {
+        snapshot.insert(
+            field.into(),
+            raw_grant.get(field).ok_or(ObserveError::Rejected)?.clone(),
+        );
     }
     locked
         .tx
         .commit()
         .await
         .map_err(|_| ObserveError::UncertainCommit)?;
-    Ok(IntegrationGetAdmission {
-        integration_name: request.integration_name.clone(),
-        organization_id: request.organization_id.clone(),
-        solution_id: request.solution_id.clone(),
+    Ok(CheckedGrant {
+        capability: IntegrationGetAdmission {
+            integration_name: request.integration_name.clone(),
+            organization_id: request.organization_id.clone(),
+            solution_id: request.solution_id.clone(),
+        },
+        issuance: FiniteIssuanceAdmission {
+            snapshot: Value::Object(snapshot),
+            caller: current_caller,
+        },
     })
 }

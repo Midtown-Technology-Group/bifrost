@@ -3,9 +3,9 @@
 //! No provision, signing, replay, replacement owner or production registration.
 
 use crate::{
-    AdmitRequest, ObserveError, SessionFence,
+    AdmitRequest, FiniteIssuanceAdmission, IntegrationGetRequest, ObserveError, SessionFence,
     archive::sha256,
-    canonical_uuid,
+    authorize_finite_issuance_candidate, canonical_uuid,
     guardian::{Guardian, GuardianError, ReceivedFrame},
     record_admit_candidate, record_start_candidate,
 };
@@ -48,8 +48,33 @@ pub struct LiveStart {
     fence: SessionFence,
     prepare: Value,
     start: Value,
+    issuance_attempted: bool,
 }
 impl LiveStart {
+    /// One process-local attempt on the original guardian. A failed/uncertain
+    /// check cannot be retried or transferred to a recovered supervisor.
+    /// This returns prerequisites only; signing and delivery still need their
+    /// authenticated issuer and common release transaction.
+    pub async fn authorize_issuance(
+        &mut self,
+        pool: &PgPool,
+        guardian: &mut Guardian,
+        request: &IntegrationGetRequest,
+    ) -> Result<FiniteIssuanceAdmission, BeginError> {
+        if self.issuance_attempted {
+            return Err(BeginError::Rejected);
+        }
+        self.issuance_attempted = true;
+        if guardian.verify_session(&self.fence)? != self.prepare["body"]["binding"] {
+            return Err(BeginError::Rejected);
+        }
+        let admission = authorize_finite_issuance_candidate(pool, &self.fence, request).await?;
+        if guardian.verify_session(&self.fence)? != self.prepare["body"]["binding"] {
+            return Err(BeginError::Rejected);
+        }
+        Ok(admission)
+    }
+
     pub fn fence(&self) -> &SessionFence {
         &self.fence
     }
@@ -207,6 +232,7 @@ pub async fn admit_and_start(
         fence: request.fence,
         prepare: request.prepare,
         start,
+        issuance_attempted: false,
     })
 }
 

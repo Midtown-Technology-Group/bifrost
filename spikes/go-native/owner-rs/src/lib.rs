@@ -26,7 +26,8 @@ pub use release::{
 };
 pub use result::{ResultDecision, accept_result};
 pub use sdk::{
-    IntegrationGetAdmission, IntegrationGetRequest, authorize_integration_get_candidate,
+    FiniteIssuanceAdmission, IntegrationGetAdmission, IntegrationGetRequest,
+    authorize_finite_issuance_candidate, authorize_integration_get_candidate,
 };
 pub use start::{StartCommit, StartObservation, observe_start_candidate, record_start_candidate};
 
