@@ -14,6 +14,7 @@ import { BundleLoadFailure } from "./BundleFeedback";
 import { useOrgScope } from "@/hooks/useOrgScope";
 import { authFetch } from "@/lib/api-client";
 import { clearAuthTokens, getActiveToken } from "@/lib/auth-token";
+import { ensureIsolatedAppShadow } from "./AppStyleBoundary";
 
 export interface BifrostAppBootstrap {
 	/** Router basename so app URLs live below /apps/{slug}. */
@@ -279,12 +280,19 @@ export function StandaloneV2App({
 	const unauthenticatedError = "Not authenticated — cannot mount the application.";
 
 	useEffect(() => {
-		const mountEl = containerRef.current;
+		const hostEl = containerRef.current;
 		// Read the bootstrap seed only when a mount is actually starting. The
 		// boolean dependency below tears down on logout, but ordinary token
 		// rotation keeps the app's React tree mounted.
 		const bootstrapToken = getActiveToken();
-		if (!mountEl || !bootstrapToken) return;
+		if (!hostEl || !bootstrapToken) return;
+
+		const shadowRoot = ensureIsolatedAppShadow(hostEl);
+		shadowRoot.replaceChildren();
+		const mountEl = document.createElement("div");
+		mountEl.dataset.bifrostAppMount = "true";
+		mountEl.style.width = "100%";
+		mountEl.style.height = "100%";
 
 		setIsBootstrapping(true);
 		setLoadError(null);
@@ -318,8 +326,9 @@ export function StandaloneV2App({
 						),
 					);
 			});
-			document.head.appendChild(cssEl);
+			shadowRoot.appendChild(cssEl);
 		}
+		shadowRoot.appendChild(mountEl);
 
 		let cancelled = false;
 		let appTeardown: (() => void) | null = null;
@@ -465,7 +474,7 @@ export function StandaloneV2App({
 					}
 				};
 			}
-			mountEl.replaceChildren();
+			mountEl.remove();
 		};
 	}, [appId, appSlug, isPreview, assets, sourceKey, scope, isAuthenticated]);
 

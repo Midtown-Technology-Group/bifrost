@@ -41,6 +41,7 @@ import {
 	StandaloneV2App,
 	type StandaloneV2RuntimeContract,
 } from "./StandaloneV2App";
+import { AppStyleBoundary } from "./AppStyleBoundary";
 
 // jsDelivr — JSPM's CDN 404s on floating tags (`@2`), only exact versions
 // resolve. Pinned to an exact version for reproducible loads.
@@ -714,9 +715,10 @@ export function BundledAppShell({
 
 	return (
 		<div className="relative h-full w-full">
-			{cssHref && <BundleStyles href={cssHref} />}
 			{BundledApp ? (
-				<BundledApp />
+				<AppStyleBoundary stylesheetHref={cssHref}>
+					<BundledApp />
+				</AppStyleBoundary>
 			) : (
 				<AppLoadingSkeleton appName={appName} appLogo={appLogo} />
 			)}
@@ -751,7 +753,7 @@ export function BundledAppShell({
 
 /**
  * Warm the browser cache for a stylesheet before we mount the bundled
- * component, so the <link> that BundleStyles appends applies on first paint.
+ * component, so the isolated Shadow DOM <link> applies on first paint.
  */
 function preloadStylesheet(href: string, signal?: AbortSignal): Promise<void> {
 	return new Promise((resolve, reject) => {
@@ -809,22 +811,4 @@ function preloadModule(href: string, signal?: AbortSignal): Promise<void> {
 		signal?.addEventListener("abort", onAbort);
 		document.head.appendChild(element);
 	});
-}
-
-/**
- * Inject a <link> stylesheet into the document head and remove it on cleanup.
- * Rendered as a React component so it participates in the normal lifecycle.
- */
-function BundleStyles({ href }: { href: string }) {
-	useEffect(() => {
-		const el = document.createElement("link");
-		el.rel = "stylesheet";
-		el.href = href;
-		el.dataset.bifrostBundle = "true";
-		document.head.appendChild(el);
-		return () => {
-			el.remove();
-		};
-	}, [href]);
-	return null;
 }

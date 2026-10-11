@@ -39,7 +39,6 @@ function props(entry: string) {
 }
 
 let appendedScripts: HTMLScriptElement[] = [];
-let appendedStylesheets: HTMLLinkElement[] = [];
 
 function moduleScript(entry: string): HTMLScriptElement {
 	const script = appendedScripts.find((candidate) =>
@@ -50,9 +49,19 @@ function moduleScript(entry: string): HTMLScriptElement {
 }
 
 function stylesheet(name: string): HTMLLinkElement {
-	const link = appendedStylesheets.find((candidate) =>
-		candidate.href.endsWith(`assets/${name}.css`),
-	);
+	const link = Array.from(
+		document.querySelectorAll<HTMLElement>(
+			'[data-testid="solution-v2-app-root"]',
+		),
+	)
+		.flatMap((host) =>
+			Array.from(
+				host.shadowRoot?.querySelectorAll<HTMLLinkElement>(
+					'link[rel="stylesheet"]',
+				) ?? [],
+			),
+		)
+		.find((candidate) => candidate.href.endsWith(`assets/${name}.css`));
 	if (!link) throw new Error(`No stylesheet found for ${name}`);
 	return link;
 }
@@ -86,7 +95,6 @@ async function finishModuleLoad(
 
 beforeEach(() => {
 	appendedScripts = [];
-	appendedStylesheets = [];
 	localStorage.clear();
 	sessionStorage.clear();
 	orgScopeState.scope = { type: "global", orgId: null };
@@ -101,10 +109,6 @@ beforeEach(() => {
 			// error. Retain them in-memory so each test controls load completion.
 			if (node instanceof HTMLScriptElement) {
 				appendedScripts.push(node);
-				return node;
-			}
-			if (node instanceof HTMLLinkElement) {
-				appendedStylesheets.push(node);
 				return node;
 			}
 			return appendChild(node) as T;
@@ -135,11 +139,12 @@ describe("StandaloneV2App", () => {
 		);
 		expect(script.src).not.toMatch(/[?&](m|mode|import)=/);
 
-		const stylesheet = appendedStylesheets[0];
-		expect(stylesheet.href).toBe(
+		const cssLink = stylesheet("main");
+		expect(cssLink.href).toBe(
 			`${window.location.origin}/api/applications/app-1/dist/assets/main.css`,
 		);
-		expect(stylesheet.href).not.toContain("?");
+		expect(cssLink.href).not.toContain("?");
+		expect(document.head.contains(cssLink)).toBe(false);
 	});
 
 	it("shows opening status while the standalone bundle is bootstrapping", async () => {
@@ -173,7 +178,10 @@ describe("StandaloneV2App", () => {
 		await finishModuleLoad("bootstrap", mount);
 		await waitFor(() => expect(mount).toHaveBeenCalledTimes(1));
 		const [mountEl, bootstrap] = mount.mock.calls[0];
-		expect(mountEl).toBe(root);
+		expect(mountEl).not.toBe(root);
+		expect(root.shadowRoot?.contains(mountEl)).toBe(true);
+		expect(root.style.getPropertyValue("contain")).toBe("strict");
+		expect(root.style.getPropertyPriority("contain")).toBe("important");
 		expect(bootstrap).toMatchObject({
 			token: "tok-1",
 			basename: "/apps/dash",
@@ -473,9 +481,11 @@ describe("StandaloneV2App", () => {
 		const script = appendedScripts.find((candidate) =>
 			candidate.src.endsWith("assets/legacy-strict.js"),
 		)!;
-		expect(
-			document.body.contains(window.__BIFROST_APP__?.mountEl ?? null),
-		).toBe(true);
+		const legacyMount = window.__BIFROST_APP__?.mountEl;
+		expect(legacyMount).toBeTruthy();
+		const legacyRoot = legacyMount?.getRootNode();
+		expect(legacyRoot).toBeInstanceOf(ShadowRoot);
+		expect((legacyRoot as ShadowRoot).host.isConnected).toBe(true);
 		window.__BIFROST_APP__?.registerUnmount(teardown);
 		act(() => script.dispatchEvent(new Event("load")));
 		await act(async () => Promise.resolve());
