@@ -118,6 +118,7 @@ async def enter_maintenance(
             )
             await db.commit()
             invalidate_runtime_maintenance_cache()
+            admission_tracker.start_http_disconnects()
             close_tasks = admission_tracker.start_websocket_closes()
         await admission_tracker.finish_websocket_closes(close_tasks)
         return {

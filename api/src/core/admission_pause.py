@@ -19,6 +19,7 @@ from src.services.runtime_maintenance import (
 
 WEBSOCKET_CLOSE = "websocket.close"
 WEBSOCKET_DISCONNECT = "websocket.disconnect"
+HTTP_DISCONNECT = "http.disconnect"
 
 
 class AdmissionTracker:
@@ -27,7 +28,15 @@ class AdmissionTracker:
     def __init__(self) -> None:
         self.lock = asyncio.Lock()
         self.ordinary_inflight = 0
+        self.http_disconnects: dict[int, asyncio.Event] = {}
         self.websocket_senders: dict[int, tuple[Send, asyncio.Event]] = {}
+
+    def start_http_disconnects(self) -> None:
+        """Fence existing HTTP request bodies so slow clients cannot stall drain."""
+        requests = list(self.http_disconnects.values())
+        self.http_disconnects.clear()
+        for disconnected in requests:
+            disconnected.set()
 
     def start_websocket_closes(self) -> list[asyncio.Task[None]]:
         """Fence existing sockets and start best-effort close frames."""
@@ -107,11 +116,16 @@ class AdmissionPauseMiddleware:
             await self.app(scope, receive, send)
             return
 
+        request_disconnected: asyncio.Event | None = None
         try:
             async with admission_tracker.lock:
                 paused = self.static_paused or (await self.state_reader()).active
                 if not paused and scope["type"] == "http":
                     admission_tracker.ordinary_inflight += 1
+                    request_disconnected = asyncio.Event()
+                    admission_tracker.http_disconnects[id(send)] = (
+                        request_disconnected
+                    )
                 elif not paused:
                     socket_closed = asyncio.Event()
                     admission_tracker.websocket_senders[id(send)] = (
@@ -182,11 +196,36 @@ class AdmissionPauseMiddleware:
             return
 
         if not paused:
+            assert request_disconnected is not None
+
+            async def gated_http_receive() -> Message:
+                if request_disconnected.is_set():
+                    return {"type": HTTP_DISCONNECT}
+
+                receive_task = asyncio.create_task(receive())
+                disconnected_task = asyncio.create_task(
+                    request_disconnected.wait()
+                )
+                done, pending = await asyncio.wait(
+                    {receive_task, disconnected_task},
+                    return_when=asyncio.FIRST_COMPLETED,
+                )
+                for task in pending:
+                    task.cancel()
+                await asyncio.gather(*pending, return_exceptions=True)
+                if (
+                    disconnected_task in done
+                    and request_disconnected.is_set()
+                ):
+                    return {"type": HTTP_DISCONNECT}
+                return receive_task.result()
+
             try:
-                await self.app(scope, receive, send)
+                await self.app(scope, gated_http_receive, send)
             finally:
                 async with admission_tracker.lock:
                     admission_tracker.ordinary_inflight -= 1
+                    admission_tracker.http_disconnects.pop(id(send), None)
             return
 
         if scope["type"] == "websocket":
