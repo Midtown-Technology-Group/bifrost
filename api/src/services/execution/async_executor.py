@@ -124,6 +124,40 @@ def _pending_dispatch_envelope(
     }
 
 
+def pin_scheduled_embed_dispatch(execution: Any, jti: str) -> None:
+    """Freeze a delayed admission in the promoter's canonical envelope."""
+    from src.services.solutions.deployment_manifest import canonical_json, sha256_digest
+
+    from src.sdk.context import Organization
+
+    context = ExecutionContext(
+        user_id=str(execution.executed_by),
+        name=execution.executed_by_name,
+        email="",
+        scope=str(execution.organization_id) if execution.organization_id else "GLOBAL",
+        organization=Organization(id=str(execution.organization_id), name="") if execution.organization_id else None,
+        is_platform_admin=bool(execution.execution_context.get("is_platform_admin", False)),
+        is_function_key=False,
+        execution_id=str(execution.id),
+        is_provider_org=bool(execution.execution_context.get("is_provider_org", False)),
+        is_external=bool(execution.execution_context.get("is_external", False)),
+        _embed_session_jti=jti,
+    )
+    request = _dispatch_request_identity(
+        context, str(execution.id), str(execution.workflow_id), execution.parameters,
+        form_id=str(execution.form_id) if execution.form_id else None,
+        sync=False, api_key_id=None, file_path=None, org_id_override=None,
+    )
+    envelope = _pending_dispatch_envelope(
+        request,
+        solution_deployment_id=str(execution.solution_deployment_id) if execution.solution_deployment_id else None,
+        runtime_evidence=execution.runtime_evidence,
+        runtime_mode=execution.runtime_mode,
+    )
+    execution.dispatch_evidence = envelope
+    execution.dispatch_evidence_hash = sha256_digest(canonical_json(envelope))
+
+
 def _validated_pending_dispatch(
     execution: Any,
     request_identity: dict[str, Any],

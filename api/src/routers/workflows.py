@@ -769,6 +769,7 @@ async def _insert_scheduled_execution(
     is_external: bool = False,
     execution_id: UUID | None = None,
     commit: bool = True,
+    embed_session_jti: str | None = None,
 ) -> UUID:
     """Insert a SCHEDULED execution row.
 
@@ -834,6 +835,10 @@ async def _insert_scheduled_execution(
         retry_policy=retry_policy,
         execution_context=execution_context,
     )
+    if embed_session_jti:
+        from src.services.execution.async_executor import pin_scheduled_embed_dispatch
+
+        pin_scheduled_embed_dispatch(execution, embed_session_jti)
     db.add(execution)
     await db.flush()
     from src.services.execution.attempts import ensure_dispatch_attempt
@@ -1139,6 +1144,7 @@ async def execute_workflow(
             is_external=exec_is_external,
             execution_id=execution_request_id,
             commit=not user.embed,
+            embed_session_jti=user.jti if user.embed else None,
         )
         if user.embed:
             from src.core.embed_middleware import register_embed_execution

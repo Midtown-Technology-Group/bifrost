@@ -126,7 +126,7 @@ async def has_embed_execution_access(jti: str, execution_id: str) -> bool:
 
     Checking durable evidence prevents an uncommitted or stale Redis grant
     from authorizing another session's execution after admission fails.
-    Form and delayed submissions retain their existing exact-session grants.
+    Legacy unbound rows retain their existing exact-session grant behavior.
     """
     from uuid import UUID
 

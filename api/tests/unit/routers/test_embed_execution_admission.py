@@ -142,3 +142,103 @@ async def test_two_sessions_miss_lookup_but_only_admitted_session_gets_access(mo
     grants.add((users[loser].jti, str(execution_id)))
     assert not await has_embed_execution_access(users[loser].jti, str(execution_id))
     assert not await websocket.can_access_execution(users[loser], str(execution_id))
+
+
+@pytest.mark.asyncio
+async def test_scheduled_commit_failure_grant_cannot_authorize_reused_id(monkeypatch):
+    """A Redis grant survives rollback, but belongs to no later admission."""
+    from fastapi import FastAPI
+    from httpx import ASGITransport, AsyncClient
+    from src.core.embed_middleware import EmbedScopeMiddleware, has_embed_execution_access
+    from src.core.security import create_access_token
+    from src.services.execution.async_executor import validated_recovery_dispatch
+
+    workflow, execution_id = _workflow(), uuid4()
+    committed, grants = {}, set()
+
+    class Database:
+        def __init__(self, fail_commit=False):
+            self.pending = None
+            self.fail_commit = fail_commit
+
+        async def get(self, _model, identity):
+            return committed.get(identity)
+
+        def add(self, row):
+            self.pending = row
+
+        async def flush(self):
+            pass
+
+        async def commit(self):
+            if self.fail_commit:
+                raise RuntimeError("injected commit failure after grant")
+            committed[self.pending.id] = self.pending
+
+        async def rollback(self):
+            self.pending = None
+
+    @asynccontextmanager
+    async def database_context():
+        yield Database()
+
+    async def grant(jti, identity):
+        grants.add((jti, identity))
+
+    redis = SimpleNamespace(exists=AsyncMock(side_effect=lambda key: any(
+        key == f"bifrost:embed:exec:{jti}:{identity}" for jti, identity in grants
+    )))
+
+    @asynccontextmanager
+    async def redis_context():
+        yield redis
+
+    monkeypatch.setattr("src.core.database.get_db_context", database_context)
+    monkeypatch.setattr("src.core.cache.redis_client.get_redis", redis_context)
+    monkeypatch.setattr("src.repositories.WorkflowRepository", lambda *_args, **_kwargs: _WorkflowRepo(workflow=workflow))
+    monkeypatch.setattr("src.core.embed_middleware.register_embed_execution", grant)
+    monkeypatch.setattr("src.services.workspace_release_projection.acquire_runtime_admission_lock", AsyncMock())
+    monkeypatch.setattr("src.services.solutions.deployment_runtime.pin_workflow_runtime", AsyncMock(return_value=None))
+    monkeypatch.setattr("src.services.workspace_release_runtime.pin_workspace_runtime", AsyncMock(return_value=None))
+    monkeypatch.setattr("src.services.execution.retry_policy.workflow_retry_policy_snapshot", AsyncMock(return_value={}))
+    monkeypatch.setattr("src.services.execution.attempts.ensure_dispatch_attempt", AsyncMock())
+    service_user_id, organization_id, app_id = uuid4(), uuid4(), uuid4()
+    users = [_exec_user(
+        user_id=service_user_id, organization_id=organization_id, app_id=app_id,
+        embed=True, embed_kind="app", jti=f"scheduled-session-{i}",
+    ) for i in range(2)]
+    request = WorkflowExecutionRequest(workflow_id=str(workflow.id), input_data={}, delay_seconds=3600)
+    failed_db = Database(fail_commit=True)
+    with pytest.raises(RuntimeError, match="injected commit failure"):
+        await workflows.execute_workflow(request, _ctx(users[0]), failed_db, users[0], execution_request_id=execution_id)
+    await failed_db.rollback()  # The request dependency rolls back on exception.
+    assert not committed
+    assert grants == {(users[0].jti, str(execution_id))}
+    result = await workflows.execute_workflow(request, _ctx(users[1]), Database(), users[1], execution_request_id=execution_id)
+    assert result.status == ExecutionStatus.SCHEDULED
+    assert not await has_embed_execution_access(users[0].jti, str(execution_id))
+    assert await has_embed_execution_access(users[1].jti, str(execution_id))
+    assert not await websocket.can_access_execution(users[0], str(execution_id))
+    assert await websocket.can_access_execution(users[1], str(execution_id))
+
+    app = FastAPI()
+    app.add_middleware(EmbedScopeMiddleware)
+
+    @app.get("/api/executions/{identity}")
+    @app.get("/api/executions/{identity}/result")
+    @app.get("/api/executions/{identity}/logs")
+    async def read_execution(identity: str):
+        return {"execution_id": identity}
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        for user, expected in zip(users, (403, 200), strict=True):
+            token = create_access_token({"embed": True, "embed_kind": "app", "jti": user.jti})
+            for suffix in ("", "/result", "/logs"):
+                response = await client.get(f"/api/executions/{execution_id}{suffix}", headers={"Authorization": f"Bearer {token}"})
+                assert response.status_code == expected
+    row = committed[execution_id]
+    assert row.dispatch_evidence["request"]["embed_session_jti"] == users[1].jti
+    # The promoter can validate/publish this envelope without leaking the jti.
+    publish = validated_recovery_dispatch(row)
+    assert "embed_session_jti" not in publish
+    assert publish["execution_id"] == str(execution_id)

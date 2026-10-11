@@ -217,8 +217,9 @@ class TestEmbedWorkflowExecutionCanReadItsOwnResult:
         finally:
             e2e_client.delete(f"/api/applications/{session['app']['id']}", headers=platform_admin.headers)
 
+    @pytest.mark.parametrize("delay_seconds", [None, 1])
     def test_own_session_can_read_execution_result(
-        self, e2e_client, platform_admin, echo_workflow
+        self, e2e_client, platform_admin, echo_workflow, delay_seconds
     ):
         """Read the completed worker result while denying a different session."""
         session = _mint_app_embed_session(e2e_client, platform_admin)
@@ -227,7 +228,7 @@ class TestEmbedWorkflowExecutionCanReadItsOwnResult:
             r = e2e_client.post(
                 "/api/workflows/execute",
                 headers=headers,
-                json={"workflow_id": echo_workflow["id"], "input_data": {}},
+                json={"workflow_id": echo_workflow["id"], "input_data": {}, "delay_seconds": delay_seconds},
             )
             assert r.status_code == 200, r.text
             execution_id = r.json()["execution_id"]
