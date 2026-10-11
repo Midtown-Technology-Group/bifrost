@@ -67,23 +67,29 @@ it("shares cookie recovery between provider bootstrap and an initial API request
 it("revokes the browser session before clearing local authentication state", async () => {
 	const token = `header.${btoa(JSON.stringify({ sub: "account", email: "account@example.test", roles: ["authenticated"], exp: Math.floor(Date.now() / 1000) + 3600 }))}.signature`;
 	localStorage.setItem(ACCESS_TOKEN_KEY, token);
+	document.cookie = "csrf_token=logout-csrf; path=/";
 	let tokenDuringLogout: string | null = null;
 	let logoutMethod: string | null = null;
 	let logoutAuthorization: string | null = null;
-	const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-		const url =
-			input instanceof Request ? input.url : input.toString();
-		if (url.endsWith("/auth/status")) {
-			return Response.json({ needs_setup: false });
-		}
-		if (url.endsWith("/auth/logout")) {
-			tokenDuringLogout = localStorage.getItem(ACCESS_TOKEN_KEY);
-			logoutMethod = init?.method ?? null;
-			logoutAuthorization = new Headers(init?.headers).get("Authorization");
-			return Response.json({ message: "Logged out" });
-		}
-		return Response.json({ ok: true });
-	});
+	let logoutCsrf: string | null = null;
+	const fetchMock = vi.fn(
+		async (input: RequestInfo | URL, init?: RequestInit) => {
+			const url = input instanceof Request ? input.url : input.toString();
+			if (url.endsWith("/auth/status")) {
+				return Response.json({ needs_setup: false });
+			}
+			if (url.endsWith("/auth/logout")) {
+				tokenDuringLogout = localStorage.getItem(ACCESS_TOKEN_KEY);
+				logoutMethod = init?.method ?? null;
+				logoutAuthorization = new Headers(init?.headers).get(
+					"Authorization",
+				);
+				logoutCsrf = new Headers(init?.headers).get("X-CSRF-Token");
+				return Response.json({ message: "Logged out" });
+			}
+			return Response.json({ ok: true });
+		},
+	);
 	vi.stubGlobal("fetch", fetchMock);
 
 	function Probe() {
@@ -115,6 +121,7 @@ it("revokes the browser session before clearing local authentication state", asy
 	expect(tokenDuringLogout).toBe(token);
 	expect(logoutMethod).toBe("POST");
 	expect(logoutAuthorization).toBe(`Bearer ${token}`);
+	expect(logoutCsrf).toBe("logout-csrf");
 	expect(localStorage.getItem(ACCESS_TOKEN_KEY)).toBeNull();
 	expect(
 		fetchMock.mock.calls.some(([input]) => {
@@ -122,6 +129,8 @@ it("revokes the browser session before clearing local authentication state", asy
 			return url.endsWith("/auth/logout");
 		}),
 	).toBe(true);
+	document.cookie =
+		"csrf_token=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/";
 });
 
 it("refreshes an expired browser session before retrying logout", async () => {
@@ -132,8 +141,7 @@ it("refreshes an expired browser session before retrying logout", async () => {
 	vi.stubGlobal(
 		"fetch",
 		vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-			const url =
-				input instanceof Request ? input.url : input.toString();
+			const url = input instanceof Request ? input.url : input.toString();
 			if (url.endsWith("/auth/status"))
 				return Response.json({ needs_setup: false });
 			if (url.endsWith("/api/auth/refresh"))
@@ -188,13 +196,15 @@ it("keeps the local session when server-side logout fails", async () => {
 	vi.stubGlobal(
 		"fetch",
 		vi.fn(async (input: RequestInfo | URL) => {
-			const url =
-				input instanceof Request ? input.url : input.toString();
+			const url = input instanceof Request ? input.url : input.toString();
 			if (url.endsWith("/auth/status")) {
 				return Response.json({ needs_setup: false });
 			}
 			if (url.endsWith("/auth/logout")) {
-				return Response.json({ detail: "Unavailable" }, { status: 503 });
+				return Response.json(
+					{ detail: "Unavailable" },
+					{ status: 503 },
+				);
 			}
 			return Response.json({ ok: true });
 		}),
@@ -227,4 +237,101 @@ it("keeps the local session when server-side logout fails", async () => {
 	);
 	expect(screen.getByText("account@example.test")).toBeVisible();
 	expect(localStorage.getItem(ACCESS_TOKEN_KEY)).toBe(token);
+});
+
+it("keeps the local session when an expired logout cannot refresh", async () => {
+	const token = `header.${btoa(JSON.stringify({ sub: "account", email: "account@example.test", roles: ["authenticated"], exp: Math.floor(Date.now() / 1000) + 3600 }))}.signature`;
+	localStorage.setItem(ACCESS_TOKEN_KEY, token);
+	vi.spyOn(console, "error").mockImplementation(() => undefined);
+	vi.stubGlobal(
+		"fetch",
+		vi.fn(async (input: RequestInfo | URL) => {
+			const url = input instanceof Request ? input.url : input.toString();
+			if (url.endsWith("/auth/status")) {
+				return Response.json({ needs_setup: false });
+			}
+			if (url.endsWith("/auth/logout")) {
+				return Response.json({ detail: "Expired" }, { status: 401 });
+			}
+			if (url.endsWith("/api/auth/refresh")) {
+				return Response.json({ detail: "Expired" }, { status: 401 });
+			}
+			return Response.json({ ok: true });
+		}),
+	);
+
+	function Probe() {
+		const auth = useAuth();
+		return (
+			<>
+				<p>{auth.user?.email ?? "Signed out"}</p>
+				<button type="button" onClick={auth.logout}>
+					Log out
+				</button>
+			</>
+		);
+	}
+
+	render(
+		<MemoryRouter>
+			<AuthProvider>
+				<Probe />
+			</AuthProvider>
+		</MemoryRouter>,
+	);
+
+	await screen.findByText("account@example.test");
+	fireEvent.click(screen.getByRole("button", { name: "Log out" }));
+	await vi.waitFor(() =>
+		expect(console.error).toHaveBeenCalledWith("Server logout failed"),
+	);
+	expect(screen.getByText("account@example.test")).toBeVisible();
+	expect(localStorage.getItem(ACCESS_TOKEN_KEY)).toBe(token);
+});
+
+it("keeps in-memory authentication when logout transport fails without a token", async () => {
+	const token = `header.${btoa(JSON.stringify({ sub: "account", email: "account@example.test", roles: ["authenticated"], exp: Math.floor(Date.now() / 1000) + 3600 }))}.signature`;
+	localStorage.setItem(ACCESS_TOKEN_KEY, token);
+	vi.spyOn(console, "error").mockImplementation(() => undefined);
+	vi.stubGlobal(
+		"fetch",
+		vi.fn(async (input: RequestInfo | URL) => {
+			const url = input instanceof Request ? input.url : input.toString();
+			if (url.endsWith("/auth/status")) {
+				return Response.json({ needs_setup: false });
+			}
+			if (url.endsWith("/auth/logout")) {
+				throw new TypeError("Synthetic network failure");
+			}
+			return Response.json({ ok: true });
+		}),
+	);
+
+	function Probe() {
+		const auth = useAuth();
+		return (
+			<>
+				<p>{auth.user?.email ?? "Signed out"}</p>
+				<button type="button" onClick={auth.logout}>
+					Log out
+				</button>
+			</>
+		);
+	}
+
+	render(
+		<MemoryRouter>
+			<AuthProvider>
+				<Probe />
+			</AuthProvider>
+		</MemoryRouter>,
+	);
+
+	await screen.findByText("account@example.test");
+	localStorage.removeItem(ACCESS_TOKEN_KEY);
+	fireEvent.click(screen.getByRole("button", { name: "Log out" }));
+	await vi.waitFor(() =>
+		expect(console.error).toHaveBeenCalledWith("Server logout failed"),
+	);
+	expect(screen.getByText("account@example.test")).toBeVisible();
 });
