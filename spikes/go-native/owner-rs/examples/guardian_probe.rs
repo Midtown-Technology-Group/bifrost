@@ -391,14 +391,50 @@ fn run_case(spec: LaunchSpec, mode: &str) -> Result<Value, ()> {
                     }
                     thread::sleep(Duration::from_millis(10));
                 }
+                let original_stat = fs::read_to_string(format!("/proc/{}/stat", child.id()));
                 child.kill().map_err(|_| ())?;
                 let status = child.wait().map_err(|_| ())?;
                 if status.success() {
                     return Err(());
                 }
+                let original_stat = original_stat.map_err(|_| ())?;
+                let owner_ticks = original_stat
+                    .rsplit_once(") ")
+                    .and_then(|(_, tail)| tail.split_whitespace().nth(19))
+                    .ok_or(())?;
                 let custody: Value =
                     serde_json::from_slice(&read(&spec.journal.join("live-custody.json"), 65536)?)
                         .map_err(|_| ())?;
+                // The killed original owner, not recovery, persisted this
+                // observation before admission could occur. Verify retained
+                // bytes against the independently observed original custody.
+                let mut record_file = OpenOptions::new()
+                    .read(true)
+                    .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC)
+                    .open(spec.journal.join("original-custody.json"))
+                    .map_err(|_| ())?;
+                let metadata = record_file.metadata().map_err(|_| ())?;
+                if !metadata.is_file()
+                    || metadata.uid() != spec.uid
+                    || metadata.mode() & 0o777 != 0o600
+                    || metadata.nlink() != 1
+                    || metadata.len() > 65536
+                {
+                    return Err(());
+                }
+                let mut retained = Vec::new();
+                record_file.read_to_end(&mut retained).map_err(|_| ())?;
+                let record: Value = serde_json::from_slice(&retained).map_err(|_| ())?;
+                if record["version"] != "isolated-original-custody-journal/v1"
+                    || record["session_id"] != spec.session_id
+                    || record["nonce"] != spec.nonce
+                    || record["owner_pid"] != child.id()
+                    || record["owner_start_ticks"] != owner_ticks
+                    || record["observation"] != custody["observation"]
+                    || record["observation_sha256"] != custody["channel_custody_sha256"]
+                {
+                    return Err(());
+                }
                 let mut recovered = Guardian::recover_for_drain(spec.clone()).map_err(|_| ())?;
                 if recovered.attach_dormant() != Err(GuardianError::Rejected) {
                     return Err(());
@@ -410,7 +446,8 @@ fn run_case(spec: LaunchSpec, mode: &str) -> Result<Value, ()> {
                 cli_reaped(&custody)?;
                 Ok(
                     json!({"case":mode,"guardian_sigkill":true,"guardian_waited":true,
-                    "fresh_start_denied":true,"original_cli_reaped_observed":true,"custody":custody,"drain":drain}),
+                    "fresh_start_denied":true,"original_cli_reaped_observed":true,
+                    "original_custody_survived_owner_crash":true,"custody":custody,"drain":drain}),
                 )
             }
             _ => Err(()),

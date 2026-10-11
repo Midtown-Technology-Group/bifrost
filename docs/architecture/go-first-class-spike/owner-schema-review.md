@@ -293,3 +293,24 @@ cleanup. The public receipt row is coordinator evidence; the terminated runtime
 never learned its receipt. This candidate proves no runtime replay on lost SQL
 ACK only after actual execution. It does not prove owner-crash recovery, uncertain
 spawn/release, or runtime acceptance; those remain separate required gates.
+
+## Original custody retention prerequisite
+
+Before SQL admission, the original guardian now exclusively writes and fsyncs
+`original-custody.json` and its private journal directory. The bounded0600 file
+contains the original observation and its exact digest, session/nonce, and the
+original owner PID/start ticks. It contains no credential or claim token and is
+not uploaded. No new runtime wire field or SQL lifecycle writer is introduced.
+Readers reject symlinks, multiple hard links, wrong owner and permissions.
+Duplicate creation is rejected; uncertain persistence cannot trigger another
+observation or admission.
+
+The existing physical crash probe kills and waits for the original guardian,
+then checks that this retained observation matches the original independently
+observed custody and process identity. Recovered guardians remain stop-only:
+no attached channel, Start, material delivery or SDK authority is recreated.
+This is a prerequisite for future closed-session recovery, not proof of durable
+crash finalization. That next writer must match the retained SQL fence, prove
+original owner/CLI/kernel and ingress/source retirement, use the common lock
+order, and reconcile uncertain commits without replay or ownership reassignment.
+The new prerequisite still requires fresh hosted tests and live proof.

@@ -120,6 +120,53 @@ mod tests {
     }
 
     #[test]
+    fn original_custody_is_exclusive_durable_and_link_fenced() {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_else(|_| panic!("clock"))
+            .as_nanos();
+        let root =
+            std::env::temp_dir().join(format!("bifrost-custody-{}-{nanos}", std::process::id()));
+        fs::create_dir(&root).unwrap_or_else(|_| panic!("temporary directory"));
+        fs::set_permissions(&root, fs::Permissions::from_mode(0o700))
+            .unwrap_or_else(|_| panic!("permissions"));
+        let mut spec = spec();
+        spec.uid = fs::metadata(&root)
+            .unwrap_or_else(|_| panic!("metadata"))
+            .uid();
+        spec.journal = root.clone();
+        let observation = br#"{"version":"isolated-guardian-custody/v1","synthetic":true}"#;
+        assert!(retain_custody(&spec, observation).is_ok());
+        let raw = private_record(&spec, "original-custody.json")
+            .unwrap_or_else(|_| panic!("retained custody"));
+        let record: Value = serde_json::from_slice(&raw).unwrap_or_else(|_| panic!("journal"));
+        assert_eq!(record["session_id"], spec.session_id);
+        assert_eq!(record["nonce"], spec.nonce);
+        assert_eq!(record["owner_pid"], std::process::id());
+        assert_eq!(
+            record["owner_start_ticks"],
+            start_ticks(u64::from(std::process::id())).unwrap_or_else(|_| panic!("owner ticks"))
+        );
+        assert_eq!(record["observation_sha256"], sha256(observation));
+        assert!(retain_custody(&spec, observation).is_err());
+        assert_eq!(
+            private_record(&spec, "original-custody.json").ok(),
+            Some(raw)
+        );
+        let path = root.join("original-custody.json");
+        let alias = root.join("alias");
+        fs::hard_link(&path, &alias).unwrap_or_else(|_| panic!("hard link"));
+        assert!(private_record(&spec, "original-custody.json").is_err());
+        fs::remove_file(&alias).unwrap_or_else(|_| panic!("remove alias"));
+        fs::remove_file(&path).unwrap_or_else(|_| panic!("remove custody"));
+        std::os::unix::fs::symlink("missing", &path).unwrap_or_else(|_| panic!("symlink"));
+        assert!(retain_custody(&spec, observation).is_err());
+        assert!(private_record(&spec, "original-custody.json").is_err());
+        fs::remove_file(&path).unwrap_or_else(|_| panic!("remove symlink"));
+        fs::remove_dir(&root).unwrap_or_else(|_| panic!("remove directory"));
+    }
+
+    #[test]
     fn staged_retirement_rejects_symlinks_hardlinks_and_wrong_custody() {
         use std::os::unix::fs::symlink;
         let nanos = std::time::SystemTime::now()
@@ -439,7 +486,11 @@ fn private_record(spec: &LaunchSpec, name: &str) -> Result<Vec<u8>, GuardianErro
         .open(spec.journal.join(name))
         .map_err(|_| GuardianError::Rejected)?;
     let meta = file.metadata().map_err(|_| GuardianError::Rejected)?;
-    if !meta.is_file() || meta.uid() != spec.uid || meta.mode() & 0o777 != 0o600 {
+    if !meta.is_file()
+        || meta.uid() != spec.uid
+        || meta.mode() & 0o777 != 0o600
+        || meta.nlink() != 1
+    {
         return Err(GuardianError::Rejected);
     }
     let mut raw = Vec::new();
@@ -755,6 +806,41 @@ fn retain_kernel(
         .map_err(|_| GuardianError::Uncertain)?;
     File::open(&spec.journal)
         .and_then(|dir| dir.sync_all())
+        .map_err(|_| GuardianError::Uncertain)
+}
+
+/// Retain the original observation before SQL admission. This private journal
+/// grants no recovered channel, Start, material or lifecycle authority. A later
+/// closed-only recovery must independently match SQL custody and prove the old
+/// owner/CLI/kernel gone; it cannot turn this record into a fresh observation.
+fn retain_custody(spec: &LaunchSpec, observation: &[u8]) -> Result<(), GuardianError> {
+    let raw = serde_json::to_vec(&json!({
+        "version":"isolated-original-custody-journal/v1",
+        "session_id":spec.session_id,"nonce":spec.nonce,
+        "owner_pid":std::process::id(),
+        "owner_start_ticks":start_ticks(u64::from(std::process::id()))?,
+        "observation_sha256":sha256(observation),
+        "observation":serde_json::from_slice::<Value>(observation).map_err(|_| GuardianError::Rejected)?
+    })).map_err(|_| GuardianError::Rejected)?;
+    if raw.len() > 65536 {
+        return Err(GuardianError::Rejected);
+    }
+    let mut file = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC)
+        .open(spec.journal.join("original-custody.json"))
+        .map_err(|_| GuardianError::Uncertain)?;
+    let metadata = file.metadata().map_err(|_| GuardianError::Uncertain)?;
+    if metadata.uid() != spec.uid || metadata.mode() & 0o777 != 0o600 || metadata.nlink() != 1 {
+        return Err(GuardianError::Rejected);
+    }
+    file.write_all(&raw)
+        .and_then(|_| file.sync_all())
+        .map_err(|_| GuardianError::Uncertain)?;
+    File::open(&spec.journal)
+        .and_then(|directory| directory.sync_all())
         .map_err(|_| GuardianError::Uncertain)
 }
 fn retained_kernel(
@@ -1165,6 +1251,7 @@ impl Guardian {
             "mounts":snapshot["Mounts"], "network":"none"});
         self.kernel = Some(kernel);
         let raw = serde_json::to_vec(&evidence).map_err(|_| GuardianError::Rejected)?;
+        retain_custody(&self.spec, &raw)?;
         let custody_sha256 = sha256(&raw);
         self.custody_sha256 = Some(custody_sha256.clone());
         self.offered_runtime_id = offer.frame["body"]["runtime_incarnation_id"]
