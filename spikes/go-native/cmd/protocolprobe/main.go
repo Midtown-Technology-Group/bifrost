@@ -122,7 +122,7 @@ func runCase(f fixture, mode string) (observation, error) {
 	artifact["executable_sha256"] = childDigest
 	artifact["adapter_sha256"] = adapterDigest
 	artifact["sdk"] = map[string]any{"distribution": "github.com/midtown-technology-group/bifrost-go", "version": "0.0.0-spike.2"}
-	artifact["toolchain"] = map[string]any{"implementation": "go", "version": "go1.27.1"}
+	artifact["toolchain"] = map[string]any{"implementation": "go", "version": "go1.27.2"}
 	contents := map[string][]byte{}
 	for name, path := range map[string]string{"build-evidence.json": f.evidence, "module-graph.txt": f.graph, "input-schema.json": f.inputSchema, "output-schema.json": f.outputSchema} {
 		raw, err := os.ReadFile(path)

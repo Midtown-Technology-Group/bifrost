@@ -5,7 +5,7 @@ spike_root=$(cd "$(dirname "$0")/.." && pwd)
 evidence_dir=${1:?absolute evidence output directory required}
 case "$evidence_dir" in /*) ;; *) exit 2;; esac
 mkdir -p "$evidence_dir"
-toolchain_image=golang:1.27.1-bookworm@sha256:966278043a40889499db9b0cd196fc789c37c385d41bd9a10cb1e7764af60cdc
+toolchain_image=golang:1.27.2-bookworm@sha256:5cf287a799e6b94384bad13d16b14904c531f51ba65792237e122ce42b392f61
 scratch=$(mktemp -d)
 chmod 755 "$scratch"
 carrier_tag=''

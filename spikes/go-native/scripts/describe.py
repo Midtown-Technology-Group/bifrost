@@ -91,7 +91,7 @@ def main() -> None:
         "warm_artifact_sha256": digest(changed),
         "behavior_edit_observation": {"original_missing_keys": runtime["missing_keys_observation"],
                                       "edited_missing_keys": warm_runtime["missing_keys_observation"]},
-        "go_version": "go1.27.1", "goos": "linux", "goarch": "amd64", "cgo": False,
+        "go_version": "go1.27.2", "goos": "linux", "goarch": "amd64", "cgo": False,
         "dependency_inputs_sha256": hashlib.sha256(modules.encode()).hexdigest(),
         "module_graph_sha256": digest(out / "module-graph.txt"),
         "module_graph_evidence": "module-graph.txt and cold.txt (go list -m -json all)",
