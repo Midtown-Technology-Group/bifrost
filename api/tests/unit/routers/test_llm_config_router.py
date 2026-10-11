@@ -78,7 +78,7 @@ class TestModelCapabilityVerification:
             patch(
                 "src.services.llm.factory.get_llm_config",
                 AsyncMock(return_value=saved),
-            ),
+            ) as get_config,
             patch.object(llm_config, "AIModelService", return_value=service),
             patch(
                 "src.services.model_capabilities.verify_model_capabilities",
@@ -94,6 +94,7 @@ class TestModelCapabilityVerification:
         assert exc.value.detail == (
             "Enter an API key to verify against a different endpoint."
         )
+        get_config.assert_awaited_once_with(db, detect_transport=False)
         verify.assert_not_awaited()
 
     @pytest.mark.asyncio

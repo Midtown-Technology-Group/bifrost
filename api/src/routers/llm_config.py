@@ -70,7 +70,10 @@ async def verify_model_capability_support(
     endpoint = request.endpoint
     if not api_key:
         try:
-            saved = await get_llm_config(db)
+            # Capability verification validates the destination below. Avoid
+            # runtime transport discovery here because it can make an
+            # authenticated provider request while resolving the config.
+            saved = await get_llm_config(db, detect_transport=False)
         except ValueError as exc:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,

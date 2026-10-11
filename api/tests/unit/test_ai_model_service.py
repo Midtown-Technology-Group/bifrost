@@ -521,13 +521,96 @@ async def test_connection_update_preserves_stored_key_when_omitted(db_session):
     updated = await service.update_connection(
         connection.id,
         name="Renamed Default",
-        provider="openai_compatible",
-        endpoint="https://models.example.test/v1",
     )
 
     assert updated.encrypted_api_key == encrypted_before
-    assert updated.endpoint == "https://models.example.test/v1"
+    assert updated.name == "Renamed Default"
     assert service.decrypt_api_key(updated.encrypted_api_key) == "sk-test"
+
+
+@pytest.mark.asyncio
+async def test_connection_update_requires_fresh_key_for_endpoint_change(db_session):
+    service = AIModelService(db_session)
+    connection = await _connection(service)
+    encrypted_before = connection.encrypted_api_key
+    endpoint_before = connection.endpoint
+
+    with pytest.raises(
+        ValueError, match="API key is required when changing a provider or endpoint"
+    ):
+        await service.update_connection(
+            connection.id,
+            endpoint="https://attacker.example.test/v1",
+            endpoint_provided=True,
+        )
+
+    assert connection.endpoint == endpoint_before
+    assert connection.encrypted_api_key == encrypted_before
+
+
+@pytest.mark.asyncio
+async def test_connection_update_accepts_endpoint_change_with_fresh_key(db_session):
+    service = AIModelService(db_session)
+    connection = await _connection(service)
+
+    updated = await service.update_connection(
+        connection.id,
+        endpoint="https://models.example.test/v1",
+        endpoint_provided=True,
+        api_key="sk-fresh",
+    )
+
+    assert updated.endpoint == "https://models.example.test/v1"
+    assert service.decrypt_api_key(updated.encrypted_api_key) == "sk-fresh"
+
+
+@pytest.mark.asyncio
+async def test_connection_update_requires_fresh_key_for_provider_change(db_session):
+    service = AIModelService(db_session)
+    connection = await _connection(service)
+
+    with pytest.raises(
+        ValueError, match="API key is required when changing a provider or endpoint"
+    ):
+        await service.update_connection(
+            connection.id,
+            provider="anthropic",
+            endpoint="https://api.anthropic.com",
+            endpoint_provided=True,
+        )
+
+    assert connection.provider == "openrouter"
+    assert connection.endpoint == "https://openrouter.ai/api/v1"
+
+
+@pytest.mark.asyncio
+async def test_resolve_config_can_skip_transport_discovery(db_session):
+    service = AIModelService(db_session)
+    connection = await service.create_connection(
+        name="Untrusted compatible endpoint",
+        provider="openai_compatible",
+        api_key="saved-secret",
+        endpoint="http://127.0.0.1:8080/v1",
+    )
+    profile = await service.create_profile(
+        name="Untrusted compatible profile",
+        connection_id=connection.id,
+        model="example-model",
+        capabilities=None,
+        enabled_for_chat=True,
+    )
+    await service.set_assignment("primary", profile.id)
+
+    detector = AsyncMock()
+    with patch(
+        "src.services.openai_transport_detection.detect_openai_transport", detector
+    ):
+        config = await service.resolve_config(detect_transport=False)
+
+    assert config.endpoint == "http://127.0.0.1:8080/v1"
+    assert config.api_key == "saved-secret"
+    assert config.openai_transport is None
+    detector.assert_not_awaited()
 
 
 @pytest.mark.asyncio

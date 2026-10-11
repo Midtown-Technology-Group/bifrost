@@ -34,6 +34,7 @@ async def test_get_llm_config_resolves_requested_profile(monkeypatch) -> None:
         profile_id=profile_id,
         profile_name="ignored-when-service-validates",
         assignment_key="summarizer",
+        detect_transport=True,
     )
 
 
