@@ -1,1097 +1,331 @@
 {
   "schema": 1,
   "repository": "Midtown-Technology-Group/bifrost",
-  "version": "v3.0.0",
-  "base_tag": "v2.2.0",
-  "source_commit": "70ef50da1a16cad2b579f5636ac10b07036ccbbe",
-  "source_tree": "33488eef0f42cec1fca397007e877172079e1866",
-  "contract_floor": "major",
+  "version": "v3.1.0",
+  "base_tag": "v3.0.0",
+  "source_commit": "08255ad355a3ab63f0c04a214c3c230432552dfe",
+  "source_tree": "2800db63bfd4b46b23311f3c0451191ce8e292d8",
+  "contract_floor": null,
   "pull_requests": [
     {
-      "number": 680,
-      "title": "Fix Azure Solution app storage and chat activity clicks",
+      "number": 1076,
+      "title": "Isolate concurrent service claim test from the stack worker",
       "labels": [],
-      "merge_commit": "2def0ae3f30857254316cf50d409813a6e0f55d6",
+      "merge_commit": "bb237a6df029726c5c3b8802f0cd8c8dfeca0a56",
       "author": "MTG-Thomas"
     },
     {
-      "number": 684,
-      "title": "Fix Solution deployment accountability and verified recovery",
+      "number": 1074,
+      "title": "Define the language-neutral runtime v1 document foundation",
       "labels": [],
-      "merge_commit": "d6df31ab7ee0de58315bdee09fe9dde47fac5386",
+      "merge_commit": "91be1fce66048fffe27276e223af5b67022e6f32",
       "author": "MTG-Thomas"
     },
     {
-      "number": 685,
-      "title": "Drain admitted workflows before worker shutdown",
+      "number": 1075,
+      "title": "Update review expectation guidelines in delivery-lanes.md",
       "labels": [],
-      "merge_commit": "ff017a5569ae266f35a05e50c9ed8d8694ff8426",
+      "merge_commit": "4090981454006b66e0757c2ecb40cb7fa854a700",
       "author": "MTG-Thomas"
     },
     {
-      "number": 686,
-      "title": "Coordinate integration HTTP requests across workers",
+      "number": 1064,
+      "title": "Preserve captured Solution IDs and display metadata during adoption",
       "labels": [],
-      "merge_commit": "8aeff6e94925f35b143dd647afefcc77b6594aff",
+      "merge_commit": "db3f0048d6718cd2ccc78ed270718161c74e8c03",
       "author": "MTG-Thomas"
     },
     {
-      "number": 687,
-      "title": "Resolve release-pinned imports from immutable source manifests",
+      "number": 1072,
+      "title": "Seal parent package initializers in immutable source closure",
       "labels": [],
-      "merge_commit": "dd022e3aa66a8f11ebbb15312e86b3b3126ef9d4",
+      "merge_commit": "f902a7bbb0b25b3573785984dbd0e8f48e23419b",
       "author": "MTG-Thomas"
     },
     {
-      "number": 695,
-      "title": "Prevent reviewed document repairs from overwriting concurrent changes",
+      "number": 1057,
+      "title": "Fix strict Solution event admission without weakening argument validation",
       "labels": [],
-      "merge_commit": "c2257c202c4044eda473409daf8d6d19a9bfcd1e",
+      "merge_commit": "0f556e5b4f93901866b46a7b527af4852f780f10",
       "author": "MTG-Thomas"
     },
     {
-      "number": 696,
-      "title": "Recover safe SDK reads from connection-establishment timeouts",
+      "number": 1063,
+      "title": "Settle delayed authored Source accounting from verified descendants",
       "labels": [],
-      "merge_commit": "7890dac60aa17764fdc33c94ffb4e816345425e3",
+      "merge_commit": "754ab53cf0f8fb940ecffe6ff2ffecc5b994de2f",
       "author": "MTG-Thomas"
     },
     {
-      "number": 697,
-      "title": "fix: close storage transports and preserve callback failure evidence",
+      "number": 1071,
+      "title": "Consolidate guarded App publication and original-job readback recovery",
       "labels": [],
-      "merge_commit": "b69a0e9e2696e4e49f882940b9e470c8e4bca121",
+      "merge_commit": "754ab53cf0f8fb940ecffe6ff2ffecc5b994de2f",
       "author": "MTG-Thomas"
     },
     {
-      "number": 698,
-      "title": "Fix accountability for captured Solution entities",
-      "labels": [],
-      "merge_commit": "8b81508440db3f6e4e9d2d46ae441eb476304bb7",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 699,
-      "title": "Expose immutable governance in workspace repo state",
-      "labels": [],
-      "merge_commit": "6f97c016eb9d87da79551053e6b89136299c8d49",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 700,
-      "title": "Allow workspace state snapshots without runtime inspection",
-      "labels": [],
-      "merge_commit": "cebcf40d0dd080f66ed8e60560210677f692fa2d",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 701,
-      "title": "perf: allow metadata-only workspace state reads",
-      "labels": [],
-      "merge_commit": "a8e04360d5a45c61925896407e833e82d749481c",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 702,
-      "title": "Integrate upstream execution, Chat, and tool-contract fixes",
-      "labels": [],
-      "merge_commit": "fb3e1b154cf52bfe83739e90f5e0b86966a31029",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 707,
-      "title": "Merge upstream backend improvements through 8af322ac0",
-      "labels": [],
-      "merge_commit": "b32ed0894df49bba33431d1d0e5d2d15d21aaa0c",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 708,
-      "title": "Merge upstream workspace modernization through 3c6590a45",
-      "labels": [],
-      "merge_commit": "fdfbd47e306f11d92cf6db81077d8e3de2823fec",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 709,
-      "title": "Merge upstream table batch writes and pagination fixes through c25daca1",
-      "labels": [],
-      "merge_commit": "b87b4b1d2c90e83c976bfc158c430f08e7741f0c",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 710,
-      "title": "Merge upstream artifact download hardening and fork-origin fixes",
-      "labels": [],
-      "merge_commit": "ab07596ba6ecf435cdf59e371d80a4b9eccafbf0",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 706,
-      "title": "Sync upstream Bifrost through workspace modernization (#732)",
-      "labels": [],
-      "merge_commit": "d24f399bea972b505b63e1f0e40265bbfe4c9c1f",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 711,
-      "title": "Merge upstream SDK provenance and in-place updates",
-      "labels": [],
-      "merge_commit": "d24f399bea972b505b63e1f0e40265bbfe4c9c1f",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 714,
-      "title": "Merge upstream SDK retries and Anthropic prompt caching",
-      "labels": [],
-      "merge_commit": "1bc428d27addd0fef476259142574b93eff6b977",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 716,
-      "title": "fix(promotions): scope release cohorts to workspace Python",
-      "labels": [],
-      "merge_commit": "27d1a99457b9002226310bce40112597bb1e4afb",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 478,
-      "title": "fix(security): remove sensitive incident metadata from advisory",
-      "labels": [
-        "aardvark",
-        "codex"
-      ],
-      "merge_commit": "464add8665024f033812df2742aa01184b6e23e1",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 719,
-      "title": "fix(promotions): allow pending reviewed source commits",
-      "labels": [],
-      "merge_commit": "5d6a7aaf341b7bc5ea45d0de5d9a77393077b8c0",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 721,
-      "title": "Upstream gap batch A: HMAC, chat activity, websocket claims, TLS",
-      "labels": [],
-      "merge_commit": "7b7f467fe7470a9af7fb59e79e1070492143b2ae",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 724,
-      "title": "perf(workspace): bound concurrent snapshot reads",
-      "labels": [],
-      "merge_commit": "8c197a9a9103f877a25e4267a2a22ab6a1deab2e",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 725,
-      "title": "fix(promotions): preserve baseline registration drift",
-      "labels": [],
-      "merge_commit": "7b3f69cf04815c1733c595ed076e778ce8219b86",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 722,
-      "title": "Upstream gap batch B: OAuth, header, manifests, dashboard, dropdown",
-      "labels": [],
-      "merge_commit": "8cf91afe3fe8c67d1e1d615d8634fa892f6b81be",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 727,
-      "title": "fix(promotions): avoid duplicate metadata drift blockers",
-      "labels": [],
-      "merge_commit": "0438825025399d91f33111a198b390e1c9958b21",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 729,
-      "title": "fix(promotions): accept bound non-executable declarations",
-      "labels": [],
-      "merge_commit": "af6b831b1c5e16520426419d177753897fa94c3d",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 728,
-      "title": "chore(repo): drop upstream code ownership on MTG fork",
-      "labels": [],
-      "merge_commit": "b5c1b1eef92296c58d378352bdc7aa15da75a43e",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 757,
-      "title": "feat(promotions): retire immutable Workspace releases and close Solution-lane gaps",
-      "labels": [],
-      "merge_commit": "aeda83f3196e38879e8853f68fb9ece8929c8915",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 758,
-      "title": "fix(oauth): capture entity_id from callback url params",
-      "labels": [],
-      "merge_commit": "11851b75a77310bf8dff06b05be9af7f5c461f47",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 760,
-      "title": "docs: add runtime feature flags design note",
-      "labels": [],
-      "merge_commit": "37f95be50104017ba900672f6d97b11b085a81be",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 761,
-      "title": "fix(oauth): capture entity_id on integration-level callbacks",
-      "labels": [],
-      "merge_commit": "db8c959af8d93c5736fb10bd28fe22b9b90e1275",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 764,
-      "title": "docs: propose PostgreSQL delivery invariants and prototype gates",
-      "labels": [],
-      "merge_commit": "37fd75fc6876ab1adb2bc031b7064a17913e63e8",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 765,
-      "title": "Replace RabbitMQ work delivery with a reversible PostgreSQL backend",
-      "labels": [],
-      "merge_commit": "7e754f35251c57796d9f54049bc271ee969cf3a9",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 766,
-      "title": "Pause external admissions without stranding accepted engine work",
-      "labels": [],
-      "merge_commit": "5df3eb7c93d7da4d1e2faab30b1ee0b4746ff805",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 767,
-      "title": "Detect transport for custom OpenAI endpoints",
-      "labels": [],
-      "merge_commit": "6c9cdf6797be8c11740bb09a320994f3897b7569",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 768,
-      "title": "Harden App Service hosting and guarded migration compatibility",
-      "labels": [],
-      "merge_commit": "c774da44f4ac3ec40228f14ae3461141e9022648",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 770,
-      "title": "Fix concurrent dispatch and opted-in worker-loss recovery",
-      "labels": [],
-      "merge_commit": "213fea378df5f8cd9b34dfba33c2dd2ef7076d25",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 771,
-      "title": "fix: keep readiness session teardown read-only",
-      "labels": [],
-      "merge_commit": "50aea1321cb764316452c27492875c25803a64c0",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 773,
-      "title": "ci: use affected merge checks and resumable local validation",
-      "labels": [],
-      "merge_commit": "746f58493d81601452ad4810078698cbe064b2df",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 783,
-      "title": "fix: bind event deliveries before workflow publication",
-      "labels": [],
-      "merge_commit": "3666abbe014395b9ba3d6439ed948f675cf32a69",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 772,
-      "title": "feat(release): label-driven next version and auto release draft",
+      "number": 1077,
+      "title": "Deliver protected Main Apps with original-job recovery and source accounting",
       "labels": [
         "semver:minor"
       ],
-      "merge_commit": "a3442ca9c820d5f5b724fe27d3fe13e5139a3aa5",
+      "merge_commit": "754ab53cf0f8fb940ecffe6ff2ffecc5b994de2f",
       "author": "MTG-Thomas"
     },
     {
-      "number": 796,
-      "title": "fix(ci): scope conservative test fallback to affected lanes",
+      "number": 1079,
+      "title": "fix(release): publish verified drafts by release ID",
       "labels": [],
-      "merge_commit": "0a818e7aeadaa6532bc5a545e53d42c1bc9dbe3e",
+      "merge_commit": "f0f85add2f24a436be085ccd0e7bc37f28cec62c",
       "author": "MTG-Thomas"
     },
     {
-      "number": 787,
-      "title": "feat: add bounded App Service plan diagnostics",
+      "number": 920,
+      "title": "Integrate upstream through 686cff8d8 on current MTG main",
       "labels": [],
-      "merge_commit": "ad2353b4262e88739f9d5ca54719a02c293a3053",
+      "merge_commit": "aaa756497b73a0ec5a736e4c626fce35eb2b6633",
       "author": "MTG-Thomas"
     },
     {
-      "number": 782,
-      "title": "fix: avoid Redis scans during cold module reads",
+      "number": 1068,
+      "title": "ci: stage fail-closed Sonar coverage and source-scope migration",
       "labels": [],
-      "merge_commit": "efb1c5dd580c3e3a48c3423ae7c057d278745fd2",
+      "merge_commit": "11090aa485e421ac9ca03e63eede31bebe06fc10",
       "author": "MTG-Thomas"
     },
     {
-      "number": 804,
-      "title": "feat(client): trial @shadcn/lint design-system checks",
+      "number": 1083,
+      "title": "Verify Solution App authored source and active compiled runtime before accounting",
+      "labels": [],
+      "merge_commit": "55af89eaadce7b9859630b8dcaac310ab5021b56",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1085,
+      "title": "Stage Sonar Free-plan CI cutover for main and PR analysis",
+      "labels": [],
+      "merge_commit": "19728d6526b2fa7bfc5a14aa150d7bec76a86704",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1086,
+      "title": "ci: stop cancelled-plan diagnostics and gate manual pre-PR on lint",
+      "labels": [],
+      "merge_commit": "57935689d523db4f496339de99568e3057cc9b2a",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1088,
+      "title": "Deliver complete Solution packages through the reviewed Main pipeline",
+      "labels": [],
+      "merge_commit": "b1bae08ea5a8a4a137ff06ec115fcaf0d10dcf6e",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1089,
+      "title": "Verify Sonar CI migration and retire automatic-analysis configuration",
+      "labels": [],
+      "merge_commit": "1c7b70f3bedc7a5d4b45e2f0f5eeb6e21572d03d",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1087,
+      "title": "Merge upstream worker SDK transport and credential security",
+      "labels": [],
+      "merge_commit": "91a760fb93b875d26248131c88ed4eda079305f6",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1080,
+      "title": "docs: adopt maintainer-directed contribution acceptance",
+      "labels": [],
+      "merge_commit": "9ec21074f28d240c47596a71b7b5debaed7fe1ba",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1090,
+      "title": "fix: preserve owned-table workflow successor controls",
+      "labels": [],
+      "merge_commit": "279dd419e2f45906dda16fb9f44c120c55c9e1aa",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1092,
+      "title": "Complete workflow package publication and preserve resource bindings",
+      "labels": [],
+      "merge_commit": "1bcfb1e081015a34c1a886ce3f3e47185cb90767",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1094,
+      "title": "fix: allow guarded Solution runtime file updates",
+      "labels": [],
+      "merge_commit": "225ea321e907587fdad3b1ff30d05dc02ee6bfba",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1096,
+      "title": "fix: reconcile mixed registry and legacy package delivery contracts",
+      "labels": [],
+      "merge_commit": "c6f12e847c12a9444c9239814524354bc44f69d8",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1099,
+      "title": "fix(ci): read nightly coverage from the exact worktree",
+      "labels": [],
+      "merge_commit": "9779667e21352e540584da9cf752a4b0fb81c0c1",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1097,
+      "title": "fix: repair Sonar findings and collect complete runtime coverage",
+      "labels": [],
+      "merge_commit": "d027aeb0c0726538756fccfca0c206a77eee203d",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1098,
+      "title": "MIDT-205: correct Azure Blob and Redis production guidance",
+      "labels": [],
+      "merge_commit": "5eebaa70e6a7243502fec5b0387eca0afe04dda0",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1101,
+      "title": "fix: complete Main Sonar security and coverage remediation",
+      "labels": [],
+      "merge_commit": "17fb2be097130013f64dc8331b911c8b8a200568",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1102,
+      "title": "docs: refactor audit identifying review drag and unsafe boundaries",
+      "labels": [],
+      "merge_commit": "02d1ca3d7d6c881699c5f637cab812d437bb9e8a",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1110,
+      "title": "docs: record Code Mode compatibility preflight and proof gates",
+      "labels": [],
+      "merge_commit": "ee394eeda0adda6a5603759588d3343b8e3d16d1",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1121,
+      "title": "feat(devices): actionable device_busy and convergent, idempotent cancel",
+      "labels": [],
+      "merge_commit": "9c0d3c0e372c1a80fa6fcaa6787cee6b8c05be75",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1123,
+      "title": "fix(devices): release claims of dead devices in the job sweep",
+      "labels": [],
+      "merge_commit": "457d84755928325eb562960fda36a6f2285e852e",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1124,
+      "title": "fix(promotion): verify solution-managed live registrations in preview handoff",
+      "labels": [],
+      "merge_commit": "ada8b358163e8e679c7c48466dbf1be0cdf6cbca",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1111,
+      "title": "ci: stop allocating runners for zero-shard sentinel lanes and record occupancy",
+      "labels": [],
+      "merge_commit": "ab8f87c4f500b86cfddda3dd67d2bb1884a5774f",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1128,
+      "title": "Upstream sync slice 1: port R1a operation catalog (metadata-only)",
+      "labels": [],
+      "merge_commit": "5efefbcc296825c75cdeb3bf5d095e8eca8d72a6",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1129,
+      "title": "feat(solutions): verify signed workflow removal evidence",
+      "labels": [],
+      "merge_commit": "135a305811568362347e9d485ef992e9467f634f",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1131,
+      "title": "perf: avoid CRLF replacement scans for LF-only sync content",
+      "labels": [],
+      "merge_commit": "b031b9ca3a4fc50d6eb04dbfdf578fe8f009913d",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1134,
+      "title": "fix(security): update vulnerable runtime dependencies",
       "labels": [
-        "automerge"
+        "dependencies",
+        "javascript",
+        "python"
       ],
-      "merge_commit": "0bfa33a063aeadec8e6068f7c4992654f2bb3bfc",
+      "merge_commit": "f11c6966d7b8553e4662cb6ab3414a0f8da3a2f2",
       "author": "MTG-Thomas"
     },
     {
-      "number": 809,
-      "title": "fix: restore event dispatch for cached Workspace workflows",
+      "number": 968,
+      "title": "Spike Pydantic DecisionModel dependency and TypeSafe contract (MIDT-274)",
       "labels": [],
-      "merge_commit": "5f6c8d7a540c4c76cde9e527f638fedfbc477e14",
+      "merge_commit": "b8e3e5a4fac0a0a7c70cd6b2a3b9394e0cbbac01",
       "author": "MTG-Thomas"
     },
     {
-      "number": 811,
-      "title": "fix: release event dispatch connection before nested enqueue",
+      "number": 1103,
+      "title": "Make client builds type-safe and document native compiler benchmarks",
       "labels": [],
-      "merge_commit": "5ecf817788c938a0a3e7208dd7baba7f4aa7ed90",
+      "merge_commit": "6d020165c056ae52f3d35b5e1a3b913d17ffd0ab",
       "author": "MTG-Thomas"
     },
     {
-      "number": 814,
-      "title": "feat(decision): add provider-neutral DecisionEngine core (Phase 1 of #806)",
+      "number": 1115,
+      "title": "Prepare MCP image before freezing pre-PR provenance",
       "labels": [],
-      "merge_commit": "dd412bf3ef82f5029f04cc171279510b823e114a",
+      "merge_commit": "0a4db3d55388db9a2297e1a3c195a8628884ed3c",
       "author": "MTG-Thomas"
     },
     {
-      "number": 813,
-      "title": "fix: recover unpublished work and isolate Redis display failures",
+      "number": 1133,
+      "title": "Integrate upstream own-run visibility and MCP REST parity (#814\u2013#815)",
       "labels": [],
-      "merge_commit": "90bc36a7bf6f3764b3258d9b95638e5653bf2aa6",
+      "merge_commit": "968ac4693c99cc52f156f5aacb63a40a8fcd9437",
       "author": "MTG-Thomas"
     },
     {
-      "number": 807,
-      "title": "Add durable runtime maintenance gate",
+      "number": 1144,
+      "title": "Isolate config reconciliation manifest assertion",
       "labels": [],
-      "merge_commit": "b872342a300b1f0eb0799e6ec0a8dc9faf230a0f",
+      "merge_commit": "1a96b79bae327be41934ef9331ab5471e075f792",
       "author": "MTG-Thomas"
     },
     {
-      "number": 855,
-      "title": "docs(devices): freeze device job protocol JSON schemas",
+      "number": 1147,
+      "title": "fix: reject actor JWTs on user auth paths",
       "labels": [],
-      "merge_commit": "a8684472ee24e7b92b96fe9facce07c50e5543bc",
+      "merge_commit": "5e0d89ef842c4bd9c3b136700bc6d8920c935ae8",
       "author": "MTG-Thomas"
     },
     {
-      "number": 856,
-      "title": "docs(devices): freeze device control-plane architecture",
+      "number": 1149,
+      "title": "fix: isolate app embeds from form capabilities",
       "labels": [],
-      "merge_commit": "58b9de2eda39fdd96587084d2a366e3556306a70",
+      "merge_commit": "c7d3d0b5713da4e8b683212145c2d0f12f03ca95",
       "author": "MTG-Thomas"
     },
     {
-      "number": 859,
-      "title": "feat(devices): add devices table migration and ORM",
+      "number": 1143,
+      "title": "Bind Solution app headers to authorized callers",
       "labels": [],
-      "merge_commit": "547f64933ba662392b78676ff3b43a88ff60eee4",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 861,
-      "title": "feat(devices): device control keys and key services",
-      "labels": [],
-      "merge_commit": "3db6d461d1562e9c67c90d03dbb1c00775509469",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 862,
-      "title": "feat(devices): device registry REST and enrollment routes",
-      "labels": [],
-      "merge_commit": "f79838058ed641dfc5f2c33af8219245efb12b2a",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 865,
-      "title": "feat(devices): control-key CRUD routes and scope tests",
-      "labels": [],
-      "merge_commit": "7a0a6d740325a125ea4183788fed052cb9e5b1df",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 868,
-      "title": "feat(device-jobs): device_jobs migration and claim/lost service",
-      "labels": [],
-      "merge_commit": "9844ebea6b44d7bc92f96e3f4d7a938b6d63f42e",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 870,
-      "title": "feat(device-jobs): device HTTP protocol routes and job logs",
-      "labels": [],
-      "merge_commit": "d9211429b653062dde148522014124f6de2d7091",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 872,
-      "title": "feat(ws): device WebSocket principal with Bearer-only auth",
-      "labels": [],
-      "merge_commit": "f4653b5cf32b4fa7a5a9c1516579a655a4dd989e",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 874,
-      "title": "feat(devices): job create, observation, and cooperative cancel APIs",
-      "labels": [],
-      "merge_commit": "acc07143c6dc72a93dacfcadfa1e65bf1ff23e8e",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 876,
-      "title": "test(devices): M2.5 failure and ambiguity drill suite",
-      "labels": [],
-      "merge_commit": "ef055ab1cf9401fee1557751ae9d3c9586e8019e",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 879,
-      "title": "Authenticate external actors for event-triggered agents",
-      "labels": [],
-      "merge_commit": "e71fc3b83b501d6cd828de8d18af6a2a613c5f69",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 880,
-      "title": "feat(devices): control-key freshness read (approved M0 delta)",
-      "labels": [],
-      "merge_commit": "bfad30bb8a7445a1d1d1759d8fb9e11ae0b8c99a",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 882,
-      "title": "feat(sonar): agent-driven burndown workflow plus pilot fix",
-      "labels": [
-        "automerge"
-      ],
-      "merge_commit": "e536386ab7ba863c1b3c10802fd1bc92781a31d6",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 886,
-      "title": "Bind Teams messages to linked-user Bifrost chat",
-      "labels": [],
-      "merge_commit": "662a9ee8fa92fbf4de099d28ba168ccd35a5d183",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 888,
-      "title": "Preserve Solution webhook integration binding",
-      "labels": [],
-      "merge_commit": "54b07fe6317bcb403791381827b346976b1f221c",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 889,
-      "title": "Validate ARM64 Bifrost worker and publish multiarch images",
-      "labels": [],
-      "merge_commit": "f82e1f346cf616bbee69ca477a32cd3b80873b7c",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 899,
-      "title": "Merge upstream navigation and token fixes through #776",
-      "labels": [],
-      "merge_commit": "28af3f8811db392682aa897412d1d2e01241c3be",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 900,
-      "title": "Merge upstream Solution targeting and access controls",
-      "labels": [],
-      "merge_commit": "abddf41505e29554461e6b475e68668a849e755c",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 904,
-      "title": "Send fast Teams receipts and terminal chat events",
-      "labels": [],
-      "merge_commit": "d81d2b3f064d7e59cee7146a190e2efafffbef98",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 901,
-      "title": "Issue 890: establish measured runtime baseline and fix agent DB wait",
-      "labels": [],
-      "merge_commit": "76211d905a255b72b82b4498eee04e503316e5f6",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 912,
-      "title": "Record issue 890 worker density and API process topology",
-      "labels": [],
-      "merge_commit": "4663a6c679ec0c28e87b9f0bbf989860ed22eeb0",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 902,
-      "title": "Merge upstream Kubernetes build execution into MTG fork",
-      "labels": [],
-      "merge_commit": "017d2834a653a1be140f7d6bc40e799226f830f1",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 918,
-      "title": "Correct issue 890 production B3-hour interpretation",
-      "labels": [],
-      "merge_commit": "992dd4ab1d1e60ef2735879adff505940f16fa35",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 924,
-      "title": "Measure fresh worker admission and verify issue 890 B3 denominator",
-      "labels": [],
-      "merge_commit": "486f52f4f48e2dbde77f736f0cdb07f7abfe729c",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 913,
-      "title": "Merge upstream agent output limits and profile failover",
-      "labels": [],
-      "merge_commit": "4fa4a1be2bca376ec4953d4db6414f4a4fe94545",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 906,
-      "title": "Emit targeted Teams action completion events",
-      "labels": [],
-      "merge_commit": "809bd2e291c1f389af7335ff0ca07957b435add4",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 914,
-      "title": "Merge upstream supervised services into MTG fork",
-      "labels": [],
-      "merge_commit": "ade55cd8ab9a4bcfc69342b63ff13f6287b83948",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 927,
-      "title": "Measure client and renderer budget in issue 890 lab",
-      "labels": [],
-      "merge_commit": "9d79f69b26216eacc5ddf08f33ff057d0baf41dd",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 933,
-      "title": "docs(performance): preserve issue 890 CPU and memory profiles",
-      "labels": [],
-      "merge_commit": "18202497f51028e3ec9366cdd05f6c976a3b26c8",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 930,
-      "title": "Record issue 890 full concurrency and recovery ramp",
-      "labels": [],
-      "merge_commit": "9551b2abc148321bc4ba245160e1a6cf849d175a",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 916,
-      "title": "Merge upstream table policy and service docs into MTG fork",
-      "labels": [],
-      "merge_commit": "3f80082d4e0975583a6ab76d5e28a7ede78f33e3",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 935,
-      "title": "docs(performance): record live two-instance CPU and memory",
-      "labels": [],
-      "merge_commit": "7f853f4f15234e6df6b1090f66724899feae4e8e",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 941,
-      "title": "docs(performance): retain issue 890 allocation profile",
-      "labels": [],
-      "merge_commit": "a615e9f3c5e75ed6d081810d582fc25b0d7d9718",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 934,
-      "title": "perf: capture API event-loop lag in issue 890 lab",
-      "labels": [],
-      "merge_commit": "e4ed758ed57c9956ddbdaad58320a7768d8653ed",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 942,
-      "title": "fix(devices): schedule the device-jobs lost watchdog sweep",
-      "labels": [],
-      "merge_commit": "a2aa7b5a1a6f8b04375aebbf0abc5201113901e4",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 937,
-      "title": "feat(devices): persist agent_version from device heartbeat",
-      "labels": [],
-      "merge_commit": "731fd9d79378f7e86859bfa5e5b0aff4b08ab006",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 919,
-      "title": "Merge upstream Solution bundle import with preserved fork contracts",
-      "labels": [],
-      "merge_commit": "f7e2c8b3583d1484c6111ad5fc3fd227776572b4",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 944,
-      "title": "Attribute runtime CPU and memory by Bifrost role",
-      "labels": [],
-      "merge_commit": "85818cb99fb6fd39b275ba21f19f9acc27eb400b",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 954,
-      "title": "fix(release): stop duplicate release-draft issues",
-      "labels": [],
-      "merge_commit": "f7e4b51b047814669723d6324b3823866be5f393",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 955,
-      "title": "Fix Teams receipt auth and terminal topic delivery",
-      "labels": [],
-      "merge_commit": "a69e9c961d94c97e5ab93759d894c062833ed14c",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 956,
-      "title": "Stop repeated Teams completion emissions",
-      "labels": [],
-      "merge_commit": "662e0dc789cbc3d2262ac275a3a61e2a93d15208",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 957,
-      "title": "Fix false worker requirements health count",
-      "labels": [],
-      "merge_commit": "2c926ef14432c793829638f39cd2585d56a92f29",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 962,
-      "title": "Harden admin OAuth callback host derivation behind trusted edge (MIDT-136)",
-      "labels": [],
-      "merge_commit": "affe0d5cc736a7cdd443337622507b125032120e",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 966,
-      "title": "Use generated OpenAPI types for worker diagnostics API contracts",
-      "labels": [],
-      "merge_commit": "2b064655eced2319b082d02f1b99181094059dce",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 965,
-      "title": "MIDT-87: Remove stale pre-existing E2E failure ledger",
-      "labels": [],
-      "merge_commit": "6eae390edcf62c75a4d1139bd098959b779c0581",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 964,
-      "title": "MIDT-88 / MIDT-89: Refresh PostgreSQL delivery documentation",
-      "labels": [],
-      "merge_commit": "ca048775a064ed3b8844f969a320f523b639a1de",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 975,
-      "title": "Point agents to shared MTG engineering flow",
-      "labels": [],
-      "merge_commit": "9306523f84cba9235b5e0385ae3adf17abcdad6a",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 974,
-      "title": "MIDT-278: restore main SonarCloud quality gate",
-      "labels": [],
-      "merge_commit": "d48f9f5c38df281ba8261eb248cca2153466ea2f",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 969,
-      "title": "Guard Workspace Live retirement and staged Solution runtime",
-      "labels": [],
-      "merge_commit": "bac50c6c0f8590483c4f2d6a351acd4baeea0c29",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 980,
-      "title": "Eliminate released-port races in Solution proxy tests",
-      "labels": [],
-      "merge_commit": "01131dc4b3f8f21d0a9974ff5ce8b7aff298c595",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 970,
-      "title": "Consolidate guarded Live handoff, source successors and obligation evidence",
-      "labels": [],
-      "merge_commit": "f3b684ae1ed78643b89a05f13150ee57ac2280cf",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 982,
-      "title": "Complete guarded Live handoff with reviewed shared Root table bindings",
-      "labels": [],
-      "merge_commit": "f3b684ae1ed78643b89a05f13150ee57ac2280cf",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 985,
-      "title": "Verify protected Git delivery for adopted immutable Solutions",
-      "labels": [],
-      "merge_commit": "5b21715d9e4d33f242ce0f8999c0239edf98b187",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 986,
-      "title": "Add compatible registration revisions to protected Git delivery",
-      "labels": [],
-      "merge_commit": "5b21715d9e4d33f242ce0f8999c0239edf98b187",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 987,
-      "title": "Deliver immutable source resources with execution-pinned reads",
-      "labels": [],
-      "merge_commit": "5b21715d9e4d33f242ce0f8999c0239edf98b187",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 988,
-      "title": "Share the canonical offline Solution delivery compiler in the SDK",
-      "labels": [],
-      "merge_commit": "5b21715d9e4d33f242ce0f8999c0239edf98b187",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 989,
-      "title": "Read declared source resources during local workflow development",
-      "labels": [],
-      "merge_commit": "5b21715d9e4d33f242ce0f8999c0239edf98b187",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 990,
-      "title": "Bind reviewed Root table access to the installation organization",
-      "labels": [],
-      "merge_commit": "5b21715d9e4d33f242ce0f8999c0239edf98b187",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 991,
-      "title": "Require explicit global Solution source-accountability anchors",
-      "labels": [],
-      "merge_commit": "9bedf9d3f10a1192a0fd69007ff0393adf096787",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 977,
-      "title": "Repair Workspace release history lock retries",
-      "labels": [],
-      "merge_commit": "f47fd59d2286b4db3e96e28f02aa35044a18420a",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 992,
-      "title": "Expose guarded operator revisions for global workflow backlog",
-      "labels": [],
-      "merge_commit": "79b5dba3386cefc6c242464c7600f5a4b3337989",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 994,
-      "title": "Add reviewed initial workflow deployment path",
-      "labels": [],
-      "merge_commit": "1f5b341d4448e40e9dee636d40092e46c1cfa6c2",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 995,
-      "title": "Consolidate repo-local skills and trim discovery descriptions",
-      "labels": [],
-      "merge_commit": "7fd94215ed0c236ac5750eb7fbaeb6968733cbee",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 997,
-      "title": "Allow reviewed revisions after initial workflow installation",
-      "labels": [],
-      "merge_commit": "9c15e1bc3422aaaa88ce584ff27437a6c10c5a6d",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 999,
-      "title": "docs: simplify README and correct badges",
-      "labels": [],
-      "merge_commit": "64bd3da74586bbda128bc20988949c080a7769e6",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 998,
-      "title": "Harden service-claim unit tests against stack-worker claim races",
-      "labels": [],
-      "merge_commit": "2390bab5a5f9f9968afb97fb3f16d783706cc0d5",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 1000,
-      "title": "Add reviewed Root file bindings for Solution workflow migration",
-      "labels": [],
-      "merge_commit": "fa0fd8129f21c29b21ff256966f8b7465bd238a8",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 1002,
-      "title": "docs: route platform guidance and require live development proof",
-      "labels": [],
-      "merge_commit": "03f1991415f4058527ccf7b82a66468c84da55fc",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 1001,
-      "title": "Expose privileged OAuth recovery and execution sanitation through public SDK",
-      "labels": [],
-      "merge_commit": "d39aa0adf15ba12dfde5f2f39628cac88c2e98a0",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 1004,
-      "title": "Fix deployment-pinned Python helper imports",
-      "labels": [],
-      "merge_commit": "c527ca1e4c0e1dc338b42542799290f6eba52ede",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 960,
-      "title": "Fix DELETE /api/roles/{id} 500 when role has assigned users",
-      "labels": [],
-      "merge_commit": "e77947fab5762e49dd5fdc390bd65ca84bc22c3c",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 1010,
-      "title": "ci: retain candidate dependency caches across merge queue entries",
-      "labels": [],
-      "merge_commit": "ba783472b770291e612433ad7ca9564fe671dade",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 1019,
-      "title": "Require task-owned debug stack cleanup before agent handoff",
-      "labels": [],
-      "merge_commit": "bd98a10a647c6dde934e2f9b48328798298e53ef",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 1013,
-      "title": "Add durable demand and identity-bound enrollment for external workflow workers",
-      "labels": [],
-      "merge_commit": "86caddecd8bbcf1feea9b0f5ed7865c0ea724d7b",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 1007,
-      "title": "Preserve Global Source delivery and reviewed Root table lookup scopes",
-      "labels": [],
-      "merge_commit": "f10da7c27568e65ee36d5699b72ef3a44ea7a3d8",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 1021,
-      "title": "Preserve immutable source declaration identity across deadline diagnostics",
-      "labels": [],
-      "merge_commit": "fcfbedfe189e8efab0546890828806c91cec358d",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 1022,
-      "title": "ci: shard browser coverage and rebalance backend integration tests",
-      "labels": [],
-      "merge_commit": "4899d9d9229dbd961c1ebb8d69a8aed26cb2e45f",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 1014,
-      "title": "docs: make agent companion guidance readable by section",
-      "labels": [],
-      "merge_commit": "c0931d119198c538ad7c7cc8a577a6928fe42780",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 1023,
-      "title": "Settle Solution-owned source through verified installed consumers",
-      "labels": [],
-      "merge_commit": "658283e8c8707ceecf9e2c0b56b779d074b7bdaf",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 1025,
-      "title": "ci: release superseded PR runners and bound benchmark hangs",
-      "labels": [],
-      "merge_commit": "f770094eb28d8315a414fe8cb306f510da752d89",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 1027,
-      "title": "Reconcile inherited Live bindings through certified Solution handoffs",
-      "labels": [],
-      "merge_commit": "e58db4955ddd30177bd613f1d85b7e203ad7832a",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 1028,
-      "title": "ci: retire CodSpeed integration",
-      "labels": [],
-      "merge_commit": "01cadfe09710d293a40da14d6cf4056165289e31",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 1029,
-      "title": "[chore]: Adopt TypeScript 7 native compiler for client type-checking",
-      "labels": [],
-      "merge_commit": "bf81a30b594a7d28d1282f60d41e14d32dc44722",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 1031,
-      "title": "Close Live path inventory gap and bound large installer downloads",
-      "labels": [],
-      "merge_commit": "4abdf1a163986b6bd86aa7bafe6fa56b963acbb6",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 1036,
-      "title": "Fix blocked Source delivery guards and local debug storage",
-      "labels": [],
-      "merge_commit": "7f05368c732206d39e68996a7335a031a8a2527e",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 1038,
-      "title": "ci: prepare signed release PRs and publish reviewed merges",
-      "labels": [],
-      "merge_commit": "2f5b77a7db3bcc6b9c4c11d624b533f239676e49",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 1041,
-      "title": "Adopt populated legacy Solution workflow runtimes with preserved controls",
-      "labels": [],
-      "merge_commit": "1bb86b5f67464d0a37083fde158a4dca74cb8767",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 1043,
-      "title": "ci: update Dockerfile Roast to SHA-pinned MTG main",
-      "labels": [],
-      "merge_commit": "b73ded875cb94a57d550fcc12f5c1e42415c3d3f",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 1045,
-      "title": "fix: export complete verified immutable Solution source and assets",
-      "labels": [],
-      "merge_commit": "631eba46decc151ba66ec36ce66b18232dd2bcce",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 1044,
-      "title": "fix: preserve nullable legacy descriptors in reviewed Solution adoption",
-      "labels": [],
-      "merge_commit": "473c68181ddad7f9f59ba63bc08cae1b4db35b2f",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 1046,
-      "title": "ci: stop expensive validation after failed lint",
-      "labels": [],
-      "merge_commit": "1445706946e0408198ba14c9a2a09109863aa33a",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 1049,
-      "title": "fix: preserve legacy callers and account for reviewed Solution runtimes",
-      "labels": [],
-      "merge_commit": "c45725f82f0961ce45c1dc7e4928402b44176882",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 1050,
-      "title": "Add read-only Live retirement census and enforce owner context",
-      "labels": [],
-      "merge_commit": "c45725f82f0961ce45c1dc7e4928402b44176882",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 1051,
-      "title": "fix: preserve installed caller names during native Solution adoption",
-      "labels": [],
-      "merge_commit": "c45725f82f0961ce45c1dc7e4928402b44176882",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 1054,
-      "title": "Finish bounded Live retirement and automatic authored Solution accounting",
-      "labels": [],
-      "merge_commit": "c45725f82f0961ce45c1dc7e4928402b44176882",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 1048,
-      "title": "fix(solutions): verify empty immutable Python source during bounded export",
-      "labels": [],
-      "merge_commit": "7ff37809f249ff21a9ca150780fbc8f1c6d07b0c",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 1056,
-      "title": "Require an explicit API target for local Solution development",
-      "labels": [],
-      "merge_commit": "7e737cacdba56b214e427afed5a28e89ae1b6a47",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 1061,
-      "title": "fix: verify native authored deployment resources",
-      "labels": [],
-      "merge_commit": "a54990bcc947fd097717bef55b37184f32bbd155",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 1062,
-      "title": "Release stable packages with attested digest manifests",
-      "labels": [],
-      "merge_commit": "7b3f1ac467ba5585759e1896b9681f69426d646f",
-      "author": "MTG-Thomas"
-    },
-    {
-      "number": 1070,
-      "title": "test: split source inventory assertions flagged by Sonar",
-      "labels": [],
-      "merge_commit": "70ef50da1a16cad2b579f5636ac10b07036ccbbe",
+      "merge_commit": "08255ad355a3ab63f0c04a214c3c230432552dfe",
       "author": "MTG-Thomas"
     }
   ]
