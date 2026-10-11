@@ -11,6 +11,12 @@ use std::{
 
 pub const MAX_MATERIAL: usize = 65536;
 
+// A unit-test process shares all fixture FDs across fork until exec applies
+// CLOEXEC. Physical child births must not overlap another fixture's EOF proof.
+// Production supervisors are separate processes and do not use this lock.
+#[cfg(test)]
+pub(crate) static TEST_PROCESS_CREATION: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum MaterialError {
     Rejected,
@@ -198,7 +204,7 @@ mod tests {
         io::{self, Read},
         os::unix::fs::{PermissionsExt, symlink},
         sync::{
-            Mutex, MutexGuard,
+            MutexGuard,
             atomic::{AtomicU64, Ordering},
         },
     };
@@ -208,7 +214,6 @@ mod tests {
     // not fork: a concurrent fixture's pre-exec child can briefly retain an
     // unrelated pipe writer. Keep these physical fixture births exclusive;
     // delivery/backpressure/EOF assertions remain unchanged and nonblocking.
-    static PROCESS_CREATION: Mutex<()> = Mutex::new(());
     const SESSION: &str = "00000000-0000-0000-0000-000000000001";
 
     struct Fixture {
@@ -218,7 +223,7 @@ mod tests {
     }
     impl Fixture {
         fn new() -> Self {
-            let process_creation = PROCESS_CREATION
+            let process_creation = TEST_PROCESS_CREATION
                 .lock()
                 .unwrap_or_else(|_| panic!("poisoned fixture custody"));
             let parent = std::env::temp_dir().join(format!(

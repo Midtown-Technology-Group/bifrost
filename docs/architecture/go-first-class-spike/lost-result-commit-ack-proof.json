@@ -1,0 +1,87 @@
+{
+  "source": "7f8af35231b7de952ee870badad688d68212354a",
+  "producer_run": 38120574615,
+  "sdk_version": "0.0.0-spike.2",
+  "artifact_id": "sha256:0d98768df742dd0c99c149a2250fdb0f5ef6ee601fc72cce97a8318db218d369",
+  "workflow_sha256": "160917deeb94275f31ca9ddee2dacae00fb079fdf54cb60e206c8def261f9c34",
+  "owner_sha256": "98b8f03668c06212ae6e8f2bd6751662f6c754146500c4c343667da7e000203c",
+  "verified_rust_source_inputs": 39,
+  "tests": {
+    "live-results.xml": {
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "unit-results.xml": {
+      "tests": 13896,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  },
+  "same_unchanged_binary_four_executions": true,
+  "normal_result_receipt_api_correlations": true,
+  "rust_cancel_original_channel_stopped_correlations": true,
+  "held_actual_sdk_response": true,
+  "physical_cleanup_and_empty_inventories": true,
+  "owner_total_elapsed_ms": [
+    3780.1034050000003,
+    2880.0807320000004,
+    3014.290566,
+    2972.660394
+  ],
+  "scope": "Independent retained-artifact/source/JUnit/correlation verification. SQL grant revocation, completed cancelled root/attempt, immutable exact-byte resource fact, source pin before/after settlement, no cancellation Result receipt and authenticated API assertions execute in the DB-backed test; raw database payloads and credentials are not retained. These checks do not independently recreate SQL state.",
+  "cancelled_public_status": "Cancelled",
+  "durable_cancelled_finalization": true,
+  "durable_source_settlement": true,
+  "actual_result_commit_ack_loss": true,
+  "no_result_sdk_or_receipt_replay": true,
+  "owner_crash_recovery": false,
+  "runtime_acceptance": false,
+  "production_dispatch": false,
+  "guard_verification": {
+    "source": "7f8af35231b7de952ee870badad688d68212354a",
+    "run": 38120574619,
+    "baseline_source": "6f941ae19cfad37124675f9f4f1759a89cc5112b",
+    "verified_source_inputs": 69,
+    "tests": {
+      "writer-guard-results.xml": {
+        "tests": 248,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "writer-guard-baseline.xml": {
+        "tests": 126,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "writer-guard-last-results.xml": {
+        "tests": 248,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "writer-guard-unit.xml": {
+        "tests": 13896,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      }
+    },
+    "quality_passed": true,
+    "cleanup_verified": true,
+    "runtime_acceptance": false,
+    "production_dispatch": false
+  },
+  "build_timings_ms": {
+    "module_download": 106.816499,
+    "cold_compile_warm_modules": 16248.101908,
+    "independent_cold_compile": 16135.52152,
+    "warm_source_edit_compile": 368.324808,
+    "restored_warm_compile": 337.292718,
+    "edit_to_artifact": 560.046003
+  }
+}

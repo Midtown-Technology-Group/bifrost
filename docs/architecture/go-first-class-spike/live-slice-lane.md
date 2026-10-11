@@ -245,3 +245,29 @@ The detailed identity, artifact, journal immutability and common lock-order
 review is in [owner-schema-review.md](owner-schema-review.md#closed-result-owner-crash-recovery-candidate).
 Fresh component, security, source, API and live evidence is required. This is
 not acceptance or a claim that unknown spawn/release or every crash phase works.
+
+## Observed lost Result COMMIT ACK
+
+Source `7f8af35231b7de952ee870badad688d68212354a`, run38120574615, passed
+all jobs. Retained [lost-result-commit-ack-proof.json](lost-result-commit-ack-proof.json)
+binds all four executions to the same workflow bytes, exact native archive and
+original Rust owner, including39 source inputs. The fourth server-observed COMMIT
+was withheld from the client; original Rust observed UncertainCommit, emitted no
+runtime receipt, and reconciled the sole accepted immutable receipt without
+Result/SDK/receipt replay. Existing authenticated API readback remained Success.
+Original physical/source retirement and the durable resource fact completed;
+proxy connections and all task container/volume/network inventories are empty.
+
+The same source also proved two normal outcomes and durable Cancelled, passed
+13,896 backend units, API quality, 248 writer/security tests and126 baseline
+tests with69 input hashes independently checked. Cold compile with resolved
+modules was16.248s; edited compile368.325ms; edit-to-artifact560.046ms. These are
+source-bound samples, not production guarantees. Raw SQL assertions ran in the
+database-backed lane; retained public metadata does not reconstruct database
+state independently. This evidence proves actual lost-ACK handling for an
+original actor, not the separate owner-crash candidate or runtime acceptance.
+
+The new physical recovery tests share the existing test-only fixture-birth lock
+with FIFO EOF/backpressure tests. Fork can temporarily inherit sibling fixture
+FDs until exec applies CLOEXEC. Serializing those births preserves exact EOF
+assertions; no product concurrency, business race test, timeout or retry changes.

@@ -168,6 +168,9 @@ mod tests {
 
     #[test]
     fn process_loss_requires_original_incarnation_gone() {
+        let _physical_birth = crate::material::TEST_PROCESS_CREATION
+            .lock()
+            .unwrap_or_else(|_| panic!("poisoned fixture custody"));
         let pid = u64::from(std::process::id());
         let ticks = start_ticks(pid).unwrap_or_else(|_| panic!("owner ticks"));
         assert_eq!(process_gone(pid, &ticks), Ok(false));
@@ -193,6 +196,9 @@ mod tests {
 
     #[test]
     fn retirement_custody_detects_directory_reassignment_and_mode_drift() {
+        let _physical_birth = crate::material::TEST_PROCESS_CREATION
+            .lock()
+            .unwrap_or_else(|_| panic!("poisoned fixture custody"));
         let nanos = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_else(|_| panic!("clock"))
