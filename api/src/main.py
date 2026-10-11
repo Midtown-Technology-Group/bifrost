@@ -16,6 +16,7 @@ from src.core.sentry import configure_sentry
 from src.core.telemetry import configure_opentelemetry
 from src.core.csrf import CSRFMiddleware
 from src.core.embed_middleware import EmbedScopeMiddleware
+from src.core.mcp_oauth_cors import MCPAuthCORSMiddleware
 from src.core.request_body_limit import RouteBodyLimitMiddleware
 from src.core.database import close_db, get_session_factory, init_db
 from src.core.pubsub import manager as pubsub_manager
@@ -365,14 +366,7 @@ def create_app() -> FastAPI:
     # CORS for MCP OAuth discovery endpoints (/.well-known/*, /register, /authorize, /token)
     # These routes are on FastAPI directly, not the MCP ASGI app which has its own CORS.
     # Without this, browser-based MCP clients (e.g. MCP Inspector) can't read discovery responses.
-    from starlette.middleware.cors import CORSMiddleware
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=["*"],
-        allow_methods=["GET", "POST", "OPTIONS"],
-        allow_headers=["*"],
-        expose_headers=["Mcp-Session-Id"],
-    )
+    app.add_middleware(MCPAuthCORSMiddleware)
 
     # This route accepts multipart uploads.  The cap must run before
     # Starlette constructs UploadFile and spills a body to disk.
