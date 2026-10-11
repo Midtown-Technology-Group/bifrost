@@ -60,13 +60,32 @@ def test_extract_form_workflow_ids_deduplicates_and_skips_portable_refs() -> Non
 
 
 def test_extract_agent_and_app_workflow_ids() -> None:
-    tool_a = SimpleNamespace(id=uuid4())
-    tool_b = SimpleNamespace(id=uuid4())
+    agent_org_id = uuid4()
+    tool_a = SimpleNamespace(
+        id=uuid4(),
+        is_active=True,
+        type="tool",
+        organization_id=agent_org_id,
+    )
+    tool_b = SimpleNamespace(
+        id=uuid4(),
+        is_active=True,
+        type="tool",
+        organization_id=None,
+    )
+    foreign_tool = SimpleNamespace(
+        id=uuid4(),
+        is_active=True,
+        type="tool",
+        organization_id=uuid4(),
+    )
 
-    assert extract_agent_workflow_ids(SimpleNamespace(tools=[tool_a, tool_b])) == [
-        tool_a.id,
-        tool_b.id,
-    ]
+    assert extract_agent_workflow_ids(
+        SimpleNamespace(
+            organization_id=agent_org_id,
+            tools=[tool_a, tool_b, foreign_tool],
+        )
+    ) == [tool_a.id, tool_b.id]
     assert extract_app_workflow_ids() == []
 
 
@@ -197,7 +216,19 @@ async def test_sync_form_roles_to_workflows_stops_when_no_workflows_or_roles() -
 async def test_sync_agent_roles_to_workflows_assigns_agent_roles_to_tools() -> None:
     tool_id = uuid4()
     role_id = uuid4()
-    agent = SimpleNamespace(id=uuid4(), tools=[SimpleNamespace(id=tool_id)])
+    agent_org_id = uuid4()
+    agent = SimpleNamespace(
+        id=uuid4(),
+        organization_id=agent_org_id,
+        tools=[
+            SimpleNamespace(
+                id=tool_id,
+                is_active=True,
+                type="tool",
+                organization_id=agent_org_id,
+            )
+        ],
+    )
 
     with (
         patch.object(

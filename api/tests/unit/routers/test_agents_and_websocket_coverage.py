@@ -181,6 +181,9 @@ class TestAgentRouterCoverage:
     def test_logo_data_url_and_agent_to_public_filters_relationships(self, monkeypatch):
         monkeypatch.setattr(agents, "get_system_tool_ids", lambda: ["search", "table"])
         tool_id = uuid4()
+        global_tool_id = uuid4()
+        foreign_tool_id = uuid4()
+        agent_org_id = uuid4()
         delegate_id = uuid4()
         role_id = uuid4()
         connection_a = uuid4()
@@ -192,14 +195,33 @@ class TestAgentRouterCoverage:
             system_prompt="Prompt",
             channels=["chat"],
             access_level=AgentAccessLevel.PRIVATE,
-            organization_id=uuid4(),
+            organization_id=agent_org_id,
             is_active=True,
             created_by="owner@example.test",
             created_at=None,
             updated_at=None,
             owner_user_id=uuid4(),
             owner=SimpleNamespace(email="owner@example.test"),
-            tools=[SimpleNamespace(id=tool_id)],
+            tools=[
+                SimpleNamespace(
+                    id=tool_id,
+                    is_active=True,
+                    type="tool",
+                    organization_id=agent_org_id,
+                ),
+                SimpleNamespace(
+                    id=global_tool_id,
+                    is_active=True,
+                    type="tool",
+                    organization_id=None,
+                ),
+                SimpleNamespace(
+                    id=foreign_tool_id,
+                    is_active=True,
+                    type="tool",
+                    organization_id=uuid4(),
+                ),
+            ],
             delegated_agents=[SimpleNamespace(id=delegate_id)],
             roles=[SimpleNamespace(id=role_id)],
             knowledge_sources=None,
@@ -221,12 +243,21 @@ class TestAgentRouterCoverage:
 
         assert public.logo == "data:image/png;base64,bG9nbw=="
         assert public.owner_email == "owner@example.test"
-        assert public.tool_ids == [str(tool_id)]
+        assert public.tool_ids == [str(tool_id), str(global_tool_id)]
         assert public.delegated_agent_ids == [str(delegate_id)]
         assert public.role_ids == [str(role_id)]
         assert public.system_tools == ["search"]
         assert public.mcp_connection_ids == sorted([str(connection_a), str(connection_b)])
         assert public.is_solution_managed is True
+        assert agents._agent_scope_allows_tool(agent, agent.tools[-1]) is False
+        assert (
+            agents._agent_scope_allows_tool(
+                agent,
+                agent.tools[-1],
+                allow_cross_org=True,
+            )
+            is True
+        )
         assert agents._logo_data_url(None, "image/png") is None
 
 
