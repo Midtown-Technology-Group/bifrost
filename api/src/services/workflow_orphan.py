@@ -14,6 +14,7 @@ This service provides:
 """
 
 import ast
+import hashlib
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -26,6 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.log_safety import log_safe
 from src.models.orm.agents import Agent, AgentTool
+from src.models.orm.file_index import FileIndex
 from src.models.orm.forms import Form, FormField
 from src.models.orm.workflows import Workflow
 from src.services.workspace_release_registration_authority import (
@@ -91,6 +93,14 @@ class FunctionSignature:
     return_type: str | None
 
 
+@dataclass(frozen=True)
+class WorkflowFileRecreation:
+    """Workflow row and integrity-checked source selected for recreation."""
+
+    workflow: Workflow
+    code: str
+
+
 # =============================================================================
 # Service Implementation
 # =============================================================================
@@ -115,11 +125,19 @@ class WorkflowOrphanService:
         self.db = db
 
     async def _get_code(self, path: str) -> str | None:
-        """Load file content via Redis→S3 cache chain."""
-        from src.core.module_cache import get_module
+        """Load integrity-checked stored source without consulting Redis."""
+        file_record = await self.db.get(FileIndex, path)
+        if file_record is None or file_record.content is None:
+            return None
 
-        cached = await get_module(path)
-        return cached["content"] if cached else None
+        content_hash = hashlib.sha256(file_record.content.encode("utf-8")).hexdigest()
+        if not file_record.content_hash or content_hash != file_record.content_hash:
+            logger.warning(
+                "Rejected stored workflow source with invalid hash at %s",
+                log_safe(path),
+            )
+            return None
+        return file_record.content
 
     async def get_orphaned_workflows(self) -> list[OrphanedWorkflow]:
         """
@@ -341,7 +359,7 @@ class WorkflowOrphanService:
                             return dec_name
         return None
 
-    async def recreate_file(self, workflow_id: UUID) -> Workflow:
+    async def recreate_file(self, workflow_id: UUID) -> WorkflowFileRecreation:
         """
         Recreate the file from orphaned workflow's stored code.
 
@@ -355,7 +373,7 @@ class WorkflowOrphanService:
             workflow_id: UUID of the orphaned workflow
 
         Returns:
-            Updated Workflow with file path and code to write
+            Updated Workflow and the integrity-checked code to write
 
         Raises:
             ValueError: If workflow not found, not orphaned, or missing code/path
@@ -389,7 +407,7 @@ class WorkflowOrphanService:
 
         logger.info(f"Marked workflow {log_safe(workflow_id)} for file recreation at {log_safe(wf.path)}")
 
-        return wf
+        return WorkflowFileRecreation(workflow=wf, code=code)
 
     async def deactivate_workflow(self, workflow_id: UUID) -> tuple[Workflow, int]:
         """

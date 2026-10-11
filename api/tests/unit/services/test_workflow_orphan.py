@@ -4,20 +4,21 @@ Unit tests for Workflow Orphan Service.
 Tests the WorkflowOrphanService data models and basic service initialization.
 """
 
+import hashlib
 from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
-
+from src.models.orm.file_index import FileIndex
 from src.models.orm.workflows import Workflow
 from src.services.workflow_orphan import (
-    WorkflowOrphanService,
-    OrphanedWorkflow,
-    WorkflowReference,
-    Replacement,
     FunctionSignature,
+    OrphanedWorkflow,
+    Replacement,
+    WorkflowOrphanService,
+    WorkflowReference,
 )
 
 
@@ -30,6 +31,34 @@ class TestWorkflowOrphanServiceInit:
         service = WorkflowOrphanService(db=mock_db)
 
         assert service.db == mock_db
+
+    @pytest.mark.asyncio
+    async def test_get_code_uses_integrity_checked_file_index_source(self):
+        """Redis cache state cannot influence orphaned workflow recreation."""
+        content = "def durable_source():\n    return 'durable'\n"
+        record = FileIndex(
+            path="workflows/orphan.py",
+            content=content,
+            content_hash=hashlib.sha256(content.encode("utf-8")).hexdigest(),
+        )
+        db = AsyncMock()
+        db.get = AsyncMock(return_value=record)
+        service = WorkflowOrphanService(db=db)
+
+        assert await service._get_code(record.path) == content
+        db.get.assert_awaited_once_with(FileIndex, record.path)
+
+    @pytest.mark.asyncio
+    async def test_get_code_rejects_file_index_hash_mismatch(self):
+        record = FileIndex(
+            path="workflows/orphan.py",
+            content="def poisoned(): pass\n",
+            content_hash=hashlib.sha256(b"def durable(): pass\n").hexdigest(),
+        )
+        db = AsyncMock()
+        db.get = AsyncMock(return_value=record)
+
+        assert await WorkflowOrphanService(db=db)._get_code(record.path) is None
 
 
 class TestOrphanedWorkflowModel:
@@ -677,7 +706,8 @@ class TestWorkflowOrphanCleanup:
         with patch.object(service, "_get_code", AsyncMock(return_value=_WORKFLOW_CODE)):
             result = await service.recreate_file(wf.id)
 
-        assert result is wf
+        assert result.workflow is wf
+        assert result.code == _WORKFLOW_CODE
         assert wf.is_orphaned is False
         db.commit.assert_awaited_once()
         db.refresh.assert_awaited_once_with(wf)

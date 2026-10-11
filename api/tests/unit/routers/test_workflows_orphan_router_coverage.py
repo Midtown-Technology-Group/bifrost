@@ -208,6 +208,55 @@ async def test_replace_workflow_translates_service_value_errors():
 
 
 @pytest.mark.asyncio
+async def test_recreate_workflow_writes_integrity_checked_service_source():
+    workflow_id = uuid4()
+    workflow = SimpleNamespace(
+        id=workflow_id,
+        path="workflows/recreated.py",
+    )
+    durable_code = "def durable():\n    return 'stored'\n"
+    service = SimpleNamespace(
+        recreate_file=AsyncMock(
+            return_value=SimpleNamespace(workflow=workflow, code=durable_code)
+        )
+    )
+    file_storage = SimpleNamespace(write_file=AsyncMock())
+
+    with (
+        patch.object(
+            workflows,
+            "assert_entity_id_not_solution_managed",
+            new=AsyncMock(),
+        ) as guard,
+        patch(
+            "src.services.workflow_orphan.WorkflowOrphanService",
+            return_value=service,
+        ),
+        patch(
+            "src.services.file_storage.FileStorageService",
+            return_value=file_storage,
+        ),
+    ):
+        result = await workflows.recreate_workflow_file(
+            workflow_id,
+            ctx=None,
+            user=SimpleNamespace(email="admin@example.com"),
+            db=object(),
+        )
+
+    guard.assert_awaited_once()
+    service.recreate_file.assert_awaited_once_with(workflow_id)
+    file_storage.write_file.assert_awaited_once_with(
+        path=workflow.path,
+        content=durable_code.encode("utf-8"),
+        updated_by="admin@example.com",
+    )
+    assert result.success is True
+    assert result.workflow_id == str(workflow_id)
+    assert result.path == workflow.path
+
+
+@pytest.mark.asyncio
 async def test_deactivate_workflow_includes_plural_reference_warning():
     workflow_id = uuid4()
     service = SimpleNamespace(
