@@ -386,7 +386,10 @@ async def test_original_rust_owner_runs_unchanged_go_twice(
                 "artifact": descriptor["artifact"],
                 "context": context,
                 "workload": {
-                    "input": {"integration_name": "Fixture", "required_keys": []},
+                    "input": {
+                        "integration_name": "Fixture",
+                        "required_keys": required_keys,
+                    },
                     "input_schema_digest": "sha256:" + digest(input_raw),
                     "output_schema_digest": "sha256:" + digest(output_raw),
                     "deadline_utc": (datetime.now(UTC) + timedelta(seconds=30))

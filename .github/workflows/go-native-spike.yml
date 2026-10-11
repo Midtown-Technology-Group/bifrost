@@ -2,7 +2,13 @@ name: Go native bounded spike
 on:
   push:
     branches: [spike/go-first-class-g0]
-    paths: [spikes/go-native/**, .github/workflows/go-native-spike.yml]
+    paths:
+      - spikes/go-native/**
+      - api/**
+      - docker-compose*.yml
+      - scripts/lib/**
+      - test.sh
+      - .github/workflows/go-native-spike.yml
   workflow_dispatch:
 permissions:
   contents: read
