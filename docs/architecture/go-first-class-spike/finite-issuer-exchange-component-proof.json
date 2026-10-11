@@ -1,0 +1,59 @@
+{
+  "sdk_version": "0.0.0-spike.2",
+  "status": "authenticated-issuer-implementation-pending-actual-exchange-gate",
+  "implementation_source": "7e138c885c63fc241dad13d3d2099696a926e8fe",
+  "corrected_fixture_source": "5b97d9a61a888c012b7ae77d36fe5121cdf22d0e",
+  "rust_producer": {
+    "run": 38105254994,
+    "result": "success",
+    "git_inputs_verified": 37,
+    "tests_passed": 35,
+    "failed": 0,
+    "ignored": 0,
+    "current_rust_input_hashes_identical": true,
+    "scope": "locked offline checks and private response/peer tests; no SQL/issuer integration in this producer"
+  },
+  "native_producer": {
+    "run": 38105255075,
+    "provider_result": "success",
+    "scope": "native/guardian component producer; no positive live Rust SQL/issuer/Go workflow acceptance claimed"
+  },
+  "prior_issuance_sql_proof": {
+    "source": "9b1bf69ae943fed3c5d714381fa372bfb0516f9f",
+    "run": 38104345910,
+    "git_inputs_verified": 55,
+    "writer_tests": 241,
+    "failed": 0,
+    "errors": 0,
+    "skipped": 0,
+    "disposable_inventory": "empty containers/volumes/networks"
+  },
+  "current_actual_exchange_gate": {
+    "run": 38105954693,
+    "source": "5b97d9a61a888c012b7ae77d36fe5121cdf22d0e",
+    "state_at_recording": "in_progress"
+  },
+  "superseded_guard_runs": [
+    {
+      "run": 38105255060,
+      "source": "7e138c885c63fc241dad13d3d2099696a926e8fe",
+      "provider_conclusion": "cancelled",
+      "reason": "Fixture wrongly assumed UID1001 rather than actual nonroot test runner UID. No accepted result claimed."
+    },
+    {
+      "run": 38105370390,
+      "source": "b688cc481df8beeaa8a140a6a42f0938808771a8",
+      "provider_conclusion": "cancelled",
+      "reason": "Superseded by exec-based root privilege-drop/incarnation handling and typed mutation vectors. No accepted result claimed."
+    }
+  ],
+  "limits": [
+    "Actual SQL/Python signing exchange and lost-reply cases await current source gate.",
+    "The exchange probe retains synthetic artifact/source and guardian custody.",
+    "Fresh release eligibility and original private material delivery remain required before tenant initialization.",
+    "Full Go SDK, durable Result/Receipt/API readback, cancellation/recovery and durable source settlement remain unproved."
+  ],
+  "runtime_acceptance": false,
+  "production_dispatch": false,
+  "goal_complete": false
+}
