@@ -38,6 +38,7 @@ class FakeSocket:
         self.fail = fail
         self.sent: list[str] = []
         self.accepted = False
+        self.closed: list[tuple[int, str]] = []
 
     async def accept(self) -> None:
         self.accepted = True
@@ -46,6 +47,9 @@ class FakeSocket:
         if self.fail:
             raise RuntimeError("closed")
         self.sent.append(message)
+
+    async def close(self, *, code: int, reason: str) -> None:
+        self.closed.append((code, reason))
 
 
 class RedisContext:
@@ -221,6 +225,23 @@ async def test_connection_manager_uses_table_and_file_dispatchers() -> None:
     assert file_calls == [("files:workspace:GLOBAL", {"type": "file_change"})]
     assert table_socket.sent == []
     assert file_socket.sent == []
+
+
+@pytest.mark.asyncio
+async def test_device_revocation_closes_and_unsubscribes_local_sockets() -> None:
+    manager = pubsub.ConnectionManager()
+    socket = FakeSocket()
+    channel = f"device:{uuid4()}"
+    manager.connections[channel] = {socket}
+
+    await manager._send_local(
+        channel,
+        {"type": pubsub.DEVICE_AUTHORIZATION_REVOKED},
+    )
+
+    assert socket.closed == [(4001, "Device authorization revoked")]
+    assert socket.sent == []
+    assert channel not in manager.connections
 
 
 @pytest.mark.asyncio

@@ -37,6 +37,7 @@ from src.core.redis_reconnect import ResilientPubSubListener
 logger = logging.getLogger(__name__)
 
 InternalSubscriber = Callable[[dict[str, Any]], Awaitable[None]]
+DEVICE_AUTHORIZATION_REVOKED = "device_authorization_revoked"
 
 
 def service_channel_for_log(channel: str, data: Any) -> str | None:
@@ -186,7 +187,16 @@ class ConnectionManager:
 
         for websocket in self.connections[channel]:
             try:
-                if is_table_channel:
+                if (
+                    channel.startswith("device:")
+                    and message.get("type") == DEVICE_AUTHORIZATION_REVOKED
+                ):
+                    await websocket.close(
+                        code=4001,
+                        reason="Device authorization revoked",
+                    )
+                    dead_connections.add(websocket)
+                elif is_table_channel:
                     dispatcher = getattr(websocket, "_table_dispatcher", None)
                     if dispatcher is None:
                         continue
