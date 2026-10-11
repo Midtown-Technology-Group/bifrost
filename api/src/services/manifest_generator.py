@@ -14,7 +14,7 @@ from collections.abc import Sequence
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -275,7 +275,9 @@ def serialize_mcp_server(
 
 
 async def generate_manifest(
-    db: AsyncSession, solution_id: "UUID | None" = None
+    db: AsyncSession,
+    solution_id: UUID | None = None,
+    organization_id: UUID | str | None = None,
 ) -> Manifest:
     """
     Generate a Manifest from current DB state.
@@ -286,9 +288,17 @@ async def generate_manifest(
     When ``solution_id`` is given, the solution-capable entities
     (workflows/forms/agents/apps/tables) are restricted to that one install —
     a per-scope Solution export must not cross-contaminate other tenants or the
-    ad-hoc ``_repo/`` workspace (success-criteria §5). With no ``solution_id``
-    the legacy full-dump behavior is unchanged.
+    ad-hoc ``_repo/`` workspace (success-criteria §5). When
+    ``organization_id`` is given, organization-owned sections are restricted
+    to that organization plus global fallback rows; tenant-specific mappings
+    and connections never cross that boundary. With neither scope, the legacy
+    full-workspace behavior is unchanged.
     """
+    org_uuid = (
+        UUID(organization_id) if isinstance(organization_id, str)
+        else organization_id
+    )
+
     def _scope(stmt, model):
         # Exporting ONE Solution → restrict to that install. Otherwise this is a
         # WORKSPACE (_repo/) manifest regen — exclude solution-managed rows so a
@@ -297,8 +307,30 @@ async def generate_manifest(
         # (files router, github_sync, repo_sync_writer, manifest_import) are
         # workspace-tier and want _repo/ only.
         if solution_id is not None:
-            return stmt.where(model.solution_id == solution_id)
-        return stmt.where(model.solution_id.is_(None))
+            stmt = stmt.where(model.solution_id == solution_id)
+        else:
+            stmt = stmt.where(model.solution_id.is_(None))
+        if org_uuid is not None:
+            stmt = stmt.where(
+                or_(
+                    model.organization_id == org_uuid,
+                    model.organization_id.is_(None),
+                )
+            )
+        return stmt
+
+    def _org_scope(stmt, model, *, include_global: bool = True):
+        """Apply the Git/request organization boundary to non-Solution rows."""
+        if org_uuid is None:
+            return stmt
+        if include_global:
+            return stmt.where(
+                or_(
+                    model.organization_id == org_uuid,
+                    model.organization_id.is_(None),
+                )
+            )
+        return stmt.where(model.organization_id == org_uuid)
 
     # Fetch all active workflows (sorted by name for deterministic manifest output)
     wf_result = await db.execute(
@@ -330,30 +362,46 @@ async def generate_manifest(
     apps_list = app_result.scalars().all()
 
     # Fetch organizations (sorted by name)
-    org_result = await db.execute(select(Organization).order_by(Organization.name))
+    org_query = select(Organization)
+    if org_uuid is not None:
+        org_query = org_query.where(Organization.id == org_uuid)
+    org_result = await db.execute(org_query.order_by(Organization.name))
     orgs_list = org_result.scalars().all()
 
     # Fetch roles (sorted by name)
     role_result = await db.execute(select(Role).order_by(Role.name))
     roles_list = role_result.scalars().all()
 
+    workflow_ids = {wf.id for wf in workflows_list}
+    form_ids = {form.id for form in forms_list}
+    agent_ids = {agent.id for agent in agents_list}
+    app_ids = {app.id for app in apps_list}
+
     # Fetch role assignments for all entity types
-    wf_role_result = await db.execute(select(WorkflowRole))
+    wf_role_result = await db.execute(
+        select(WorkflowRole).where(WorkflowRole.workflow_id.in_(workflow_ids))
+    )
     wf_roles_by_wf: dict[str, list[str]] = {}
     for wr in wf_role_result.scalars().all():
         wf_roles_by_wf.setdefault(str(wr.workflow_id), []).append(str(wr.role_id))
 
-    form_role_result = await db.execute(select(FormRole))
+    form_role_result = await db.execute(
+        select(FormRole).where(FormRole.form_id.in_(form_ids))
+    )
     form_roles_by_form: dict[str, list[str]] = {}
     for fr in form_role_result.scalars().all():
         form_roles_by_form.setdefault(str(fr.form_id), []).append(str(fr.role_id))
 
-    agent_role_result = await db.execute(select(AgentRole))
+    agent_role_result = await db.execute(
+        select(AgentRole).where(AgentRole.agent_id.in_(agent_ids))
+    )
     agent_roles_by_agent: dict[str, list[str]] = {}
     for ar in agent_role_result.scalars().all():
         agent_roles_by_agent.setdefault(str(ar.agent_id), []).append(str(ar.role_id))
 
-    app_role_result = await db.execute(select(AppRole))
+    app_role_result = await db.execute(
+        select(AppRole).where(AppRole.app_id.in_(app_ids))
+    )
     app_roles_by_app: dict[str, list[str]] = {}
     for apr in app_role_result.scalars().all():
         app_roles_by_app.setdefault(str(apr.app_id), []).append(str(apr.role_id))
@@ -368,9 +416,27 @@ async def generate_manifest(
     for roles in app_roles_by_app.values():
         roles.sort()
 
+    if org_uuid is not None:
+        referenced_role_ids = {
+            role_id
+            for assignments in (
+                wf_roles_by_wf,
+                form_roles_by_form,
+                agent_roles_by_agent,
+                app_roles_by_app,
+            )
+            for role_ids in assignments.values()
+            for role_id in role_ids
+        }
+        roles_list = [
+            role for role in roles_list if str(role.id) in referenced_role_ids
+        ]
+
     # Form fields (for inline form_schema)
     form_field_result = await db.execute(
-        select(FormField).order_by(FormField.form_id, FormField.position)
+        select(FormField)
+        .where(FormField.form_id.in_(form_ids))
+        .order_by(FormField.form_id, FormField.position)
     )
     fields_by_form: dict[str, list[FormField]] = {}
     for ff in form_field_result.scalars().all():
@@ -378,12 +444,22 @@ async def generate_manifest(
 
     # Agent tools (workflow UUIDs) and delegations (agent UUIDs).
     # Sorted for deterministic manifest output.
-    agent_tool_result = await db.execute(select(AgentTool))
+    agent_tool_result = await db.execute(
+        select(AgentTool).where(
+            AgentTool.agent_id.in_(agent_ids),
+            AgentTool.workflow_id.in_(workflow_ids),
+        )
+    )
     tool_ids_by_agent: dict[str, list[str]] = {}
     for at in agent_tool_result.scalars().all():
         tool_ids_by_agent.setdefault(str(at.agent_id), []).append(str(at.workflow_id))
 
-    agent_delegation_result = await db.execute(select(AgentDelegation))
+    agent_delegation_result = await db.execute(
+        select(AgentDelegation).where(
+            AgentDelegation.parent_agent_id.in_(agent_ids),
+            AgentDelegation.child_agent_id.in_(agent_ids),
+        )
+    )
     delegated_ids_by_agent: dict[str, list[str]] = {}
     for ad in agent_delegation_result.scalars().all():
         delegated_ids_by_agent.setdefault(str(ad.parent_agent_id), []).append(
@@ -391,7 +467,11 @@ async def generate_manifest(
         )
 
     # Agent MCP connection grants — sorted for deterministic manifest output.
-    agent_mcp_result = await db.execute(select(AgentMCPConnection))
+    agent_mcp_result = await db.execute(
+        select(AgentMCPConnection).where(
+            AgentMCPConnection.agent_id.in_(agent_ids)
+        )
+    )
     mcp_ids_by_agent: dict[str, list[str]] = {}
     for amc in agent_mcp_result.scalars().all():
         mcp_ids_by_agent.setdefault(str(amc.agent_id), []).append(
@@ -435,7 +515,7 @@ async def generate_manifest(
 
     # Integration mappings
     mapping_result = await db.execute(
-        select(IntegrationMapping).order_by(
+        _org_scope(select(IntegrationMapping), IntegrationMapping).order_by(
             IntegrationMapping.integration_id,
             IntegrationMapping.organization_id,
         )
@@ -447,14 +527,19 @@ async def generate_manifest(
     # ------------------------------------------------------------------
     # Configs (non-secret values, secrets redacted to None)
     # ------------------------------------------------------------------
-    config_result = await db.execute(select(Config).order_by(Config.key))
+    config_result = await db.execute(
+        _org_scope(select(Config), Config).order_by(Config.key)
+    )
     configs_list = config_result.scalars().all()
 
     # ------------------------------------------------------------------
     # Custom Claims
     # ------------------------------------------------------------------
     claim_result = await db.execute(
-        select(CustomClaim).order_by(CustomClaim.organization_id, CustomClaim.name)
+        _scope(select(CustomClaim), CustomClaim).order_by(
+            CustomClaim.organization_id,
+            CustomClaim.name,
+        )
     )
     claims_list = claim_result.scalars().all()
 
@@ -462,7 +547,7 @@ async def generate_manifest(
     # Policy Rules (exclude is_builtin rows — built-ins are seeded at startup)
     # ------------------------------------------------------------------
     policy_rule_result = await db.execute(
-        select(PolicyRule)
+        _scope(select(PolicyRule), PolicyRule)
         .where(PolicyRule.is_builtin == False)  # noqa: E712
         .order_by(PolicyRule.organization_id, PolicyRule.domain, PolicyRule.name)
     )
@@ -478,17 +563,11 @@ async def generate_manifest(
     # File policies
     # ------------------------------------------------------------------
     FilePolicy = _load_file_policy_model()
-    fp_query = select(FilePolicy).order_by(
+    fp_query = _scope(select(FilePolicy), FilePolicy).order_by(
         FilePolicy.organization_id,
         FilePolicy.location,
         FilePolicy.path,
     )
-    if solution_id is not None:
-        # Solution-scoped export: only this solution's file policies.
-        fp_query = fp_query.where(FilePolicy.solution_id == solution_id)
-    else:
-        # Workspace export: only non-solution rows (solution rows are deploy-owned).
-        fp_query = fp_query.where(FilePolicy.solution_id.is_(None))
     file_policy_result = await db.execute(fp_query)
     file_policies_list = file_policy_result.scalars().all()
 
@@ -528,20 +607,29 @@ async def generate_manifest(
     # Event sources + subscriptions
     # ------------------------------------------------------------------
     event_source_result = await db.execute(
-        select(EventSource)
+        _scope(select(EventSource), EventSource)
         .where(EventSource.is_active == True)  # noqa: E712
         .order_by(EventSource.name)
     )
     event_sources_list = event_source_result.scalars().unique().all()
 
     # Schedule sources keyed by event_source_id
-    schedule_result = await db.execute(select(ScheduleSource))
+    event_source_ids = {event_source.id for event_source in event_sources_list}
+    schedule_result = await db.execute(
+        select(ScheduleSource).where(
+            ScheduleSource.event_source_id.in_(event_source_ids)
+        )
+    )
     schedule_by_source: dict[str, ScheduleSource] = {}
     for ss in schedule_result.scalars().all():
         schedule_by_source[str(ss.event_source_id)] = ss
 
     # Webhook sources keyed by event_source_id
-    webhook_result = await db.execute(select(WebhookSource))
+    webhook_result = await db.execute(
+        select(WebhookSource).where(
+            WebhookSource.event_source_id.in_(event_source_ids)
+        )
+    )
     webhook_by_source: dict[str, WebhookSource] = {}
     for ws in webhook_result.scalars().all():
         webhook_by_source[str(ws.event_source_id)] = ws
@@ -549,7 +637,14 @@ async def generate_manifest(
     # Subscriptions keyed by event_source_id
     sub_result = await db.execute(
         select(EventSubscription)
-        .where(EventSubscription.is_active == True)  # noqa: E712
+        .where(
+            EventSubscription.is_active == True,  # noqa: E712
+            EventSubscription.event_source_id.in_(event_source_ids),
+            or_(
+                EventSubscription.workflow_id.in_(workflow_ids),
+                EventSubscription.agent_id.in_(agent_ids),
+            ),
+        )
         .order_by(EventSubscription.event_source_id, EventSubscription.workflow_id)
     )
     subs_by_source: dict[str, list[EventSubscription]] = {}
@@ -560,12 +655,19 @@ async def generate_manifest(
     # External MCP servers, connections, and per-connection tool catalogs
     # ------------------------------------------------------------------
     mcp_server_result = await db.execute(
-        select(MCPServer).order_by(MCPServer.name)
+        _org_scope(select(MCPServer), MCPServer).order_by(MCPServer.name)
     )
     mcp_servers_list = mcp_server_result.scalars().unique().all()
+    mcp_server_ids = {server.id for server in mcp_servers_list}
 
     mcp_conn_result = await db.execute(
-        select(MCPConnection).order_by(
+        _org_scope(
+            select(MCPConnection),
+            MCPConnection,
+            include_global=False,
+        )
+        .where(MCPConnection.server_id.in_(mcp_server_ids))
+        .order_by(
             MCPConnection.server_id, MCPConnection.organization_id
         )
     )
@@ -575,14 +677,32 @@ async def generate_manifest(
             str(conn.id)
         ] = conn
 
+    connection_ids = {
+        connection.id
+        for connections in connections_by_server.values()
+        for connection in connections.values()
+    }
     mcp_tool_result = await db.execute(
-        select(MCPConnectionTool).order_by(
+        select(MCPConnectionTool)
+        .where(MCPConnectionTool.connection_id.in_(connection_ids))
+        .order_by(
             MCPConnectionTool.connection_id, MCPConnectionTool.tool_name
         )
     )
     tools_by_connection: dict[str, list[MCPConnectionTool]] = {}
     for tool in mcp_tool_result.scalars().all():
         tools_by_connection.setdefault(str(tool.connection_id), []).append(tool)
+
+    if org_uuid is not None:
+        allowed_connection_ids = {
+            str(connection_id) for connection_id in connection_ids
+        }
+        for agent_id, granted_ids in mcp_ids_by_agent.items():
+            mcp_ids_by_agent[agent_id] = [
+                connection_id
+                for connection_id in granted_ids
+                if connection_id in allowed_connection_ids
+            ]
 
     # ------------------------------------------------------------------
     # Build manifest using per-entity serialization functions

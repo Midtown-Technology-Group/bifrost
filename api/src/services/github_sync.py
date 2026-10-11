@@ -20,7 +20,7 @@ import tempfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, Mapping
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import yaml
 from git import Repo as GitRepo
@@ -352,12 +352,19 @@ class GitHubSyncService:
         repo_url: str,
         branch: str = "main",
         settings: Settings | None = None,
+        organization_id: UUID | str | None = None,
     ):
         self.db = db
         self.repo_url = repo_url
         self.branch = branch
+        self.organization_id = organization_id
         self.repo_manager = GitRepoManager(settings or get_settings())
         self._resolver = ManifestResolver(db)
+
+    @property
+    def _manifest_organization_id(self) -> UUID | str | None:
+        """Return the tenant boundary, including for legacy test instances."""
+        return getattr(self, "organization_id", None)
 
     @staticmethod
     def _connect_preview_key(token: str) -> str:
@@ -829,7 +836,11 @@ class GitHubSyncService:
         from src.models.contracts.github import CommitResult
 
         # Regenerate manifest from DB so the commit captures current platform state
-        await self._regenerate_manifest_to_dir(self.db, work_dir)
+        await self._regenerate_manifest_to_dir(
+            self.db,
+            work_dir,
+            organization_id=self._manifest_organization_id,
+        )
         repo.git.add(A=True)
 
         # Check if there are changes to commit
@@ -866,10 +877,10 @@ class GitHubSyncService:
             if progress_fn:
                 await progress_fn(phase, current, total)
 
-        # NOTE: We intentionally do NOT regenerate the manifest here.
-        # The sync_execute flow commits first (which regenerates the manifest),
-        # then calls _do_pull. Regenerating here would overwrite the
-        # manifest with DB state and stash it, causing conflicts with remote.
+        # NOTE: We intentionally do NOT regenerate the manifest here. Scoped
+        # writers and explicit fetch/commit entry points own regeneration.
+        # Doing it inside pull would overwrite reviewed local manifest changes
+        # and create artificial conflicts with the remote branch.
 
         # Fetch first
         await _progress("Fetching remote...")
@@ -1070,7 +1081,11 @@ class GitHubSyncService:
             async with self.repo_manager.checkout() as work_dir:
                 repo = self._open_or_init(work_dir)
                 await _progress("Generating manifest...")
-                await self._regenerate_manifest_to_dir(self.db, work_dir)
+                await self._regenerate_manifest_to_dir(
+                    self.db,
+                    work_dir,
+                    organization_id=self._manifest_organization_id,
+                )
                 await _progress("Fetching remote...")
                 return self._do_fetch(work_dir, repo)
         except Exception as e:
@@ -1094,12 +1109,17 @@ class GitHubSyncService:
             raise GitStatusError(f"status failed: {e}") from e
 
     @staticmethod
-    async def _regenerate_manifest_to_dir(db, work_dir) -> None:
+    async def _regenerate_manifest_to_dir(
+        db,
+        work_dir,
+        *,
+        organization_id: UUID | str | None = None,
+    ) -> None:
         """Generate manifest from DB and write split files to work_dir/.bifrost/."""
         from bifrost.manifest import serialize_manifest_dir, MANIFEST_FILES
         from src.services.manifest_generator import generate_manifest
 
-        manifest = await generate_manifest(db)
+        manifest = await generate_manifest(db, organization_id=organization_id)
 
         _filter_manifest_to_work_dir(manifest, work_dir)
 
@@ -1779,7 +1799,10 @@ class GitHubSyncService:
             return 0, [], {}
 
         # Diff against current DB state to find what actually changed
-        db_manifest = await generate_manifest(self.db)
+        db_manifest = await generate_manifest(
+            self.db,
+            organization_id=self._manifest_organization_id,
+        )
         _filter_db_manifest_to_import_scope(db_manifest, manifest, work_dir)
         diff_changes, changed_ids = _diff_and_collect(manifest, db_manifest)
         removed_entity_ids = _collect_removed_entity_ids(diff_changes)
@@ -1923,7 +1946,11 @@ class GitHubSyncService:
         """
         async with self.repo_manager.checkout() as work_dir:
             # Regenerate manifest from current DB state
-            await self._regenerate_manifest_to_dir(self.db, work_dir)
+            await self._regenerate_manifest_to_dir(
+                self.db,
+                work_dir,
+                organization_id=self._manifest_organization_id,
+            )
 
             # Import entities atomically with savepoint
             async with self.db.begin_nested():

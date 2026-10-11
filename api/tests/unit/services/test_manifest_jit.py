@@ -17,6 +17,7 @@ async def test_desktop_commit_regenerates_manifest_before_staging():
     service = GitHubSyncService.__new__(GitHubSyncService)
     service.db = mock_db
     service.branch = "main"
+    service.organization_id = "00000000-0000-0000-0000-000000000001"
 
     mock_work_dir = MagicMock(spec=Path)
     mock_repo = MagicMock()
@@ -36,7 +37,8 @@ async def test_desktop_commit_regenerates_manifest_before_staging():
          patch.object(service, '_run_preflight') as mock_preflight:
 
         # Track call order
-        async def regen_side_effect(db, work_dir):
+        async def regen_side_effect(db, work_dir, *, organization_id=None):
+            assert organization_id == service.organization_id
             call_order.append("regenerate_manifest")
             return []
         mock_regen.side_effect = regen_side_effect
@@ -51,7 +53,11 @@ async def test_desktop_commit_regenerates_manifest_before_staging():
 
         # Manifest must be regenerated BEFORE git add
         assert call_order == ["regenerate_manifest", "git_add"]
-        mock_regen.assert_called_once_with(mock_db, mock_work_dir)
+        mock_regen.assert_called_once_with(
+            mock_db,
+            mock_work_dir,
+            organization_id=service.organization_id,
+        )
 
 
 @pytest.mark.asyncio
@@ -63,6 +69,7 @@ async def test_reimport_regenerates_manifest_and_reindexes_workflows():
     service = GitHubSyncService.__new__(GitHubSyncService)
     service.db = mock_db
     service.branch = "main"
+    service.organization_id = "00000000-0000-0000-0000-000000000001"
 
     mock_work_dir = MagicMock(spec=Path)
 
