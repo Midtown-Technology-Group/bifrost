@@ -25,8 +25,16 @@ pub struct IntegrationGetAdmission {
 pub struct FiniteIssuanceAdmission {
     snapshot: Value,
     caller: Value,
+    expires_at: String,
+    grant_digest: String,
 }
 impl FiniteIssuanceAdmission {
+    pub fn grant_digest(&self) -> &str {
+        &self.grant_digest
+    }
+    pub fn expires_at(&self) -> &str {
+        &self.expires_at
+    }
     pub fn snapshot(&self) -> &Value {
         &self.snapshot
     }
@@ -142,7 +150,8 @@ async fn authorize_candidate(
          start_message_id::text AS message,effective_organization_id::text AS organization, \
          solution_install_id::text AS solution,timeout_seconds, \
          workflow_id::text AS workflow,caller_user_id::text AS caller,source_id::text AS deployment, \
-         to_jsonb(workflow_runtime_sdk_grants)::text AS raw_grant \
+         to_jsonb(workflow_runtime_sdk_grants)::text AS raw_grant, \
+         to_char(initial_access_expires_at AT TIME ZONE 'UTC','YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"') AS expires_wire \
          FROM workflow_runtime_sdk_grants WHERE runtime_session_id=$1::text::uuid ORDER BY id FOR UPDATE",
     ).bind(&fence.session_id).fetch_all(&mut *locked.tx).await?;
     if grants.len() != 1 || grants[0].try_get::<String, _>("id")? != request.grant_id {
@@ -322,6 +331,8 @@ async fn authorize_candidate(
         issuance: FiniteIssuanceAdmission {
             snapshot: Value::Object(snapshot),
             caller: current_caller,
+            expires_at: grant.try_get("expires_wire")?,
+            grant_digest: request.grant_digest.clone(),
         },
     })
 }

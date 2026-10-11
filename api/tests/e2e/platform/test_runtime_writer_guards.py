@@ -6,6 +6,8 @@ The task's stack-down gate owns removal of the committed fixture and principals.
 
 import asyncio
 import json
+import secrets
+import sys
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
@@ -3345,3 +3347,118 @@ async def test_cancelled_provision_cannot_authorize_finite_issuance(provision_fa
     before = await sdk_admission_snapshot(facts)
     assert await sdk_admission_probe(facts, purpose="issuance") == "rejected"
     assert await sdk_admission_snapshot(facts) == before
+
+
+@pytest.mark.parametrize("prepared_start_facts", ["provision"], indirect=True)
+@pytest.mark.parametrize("mode", ["normal", "lost_reply"])
+async def test_real_finite_issuer_exchange_uses_committed_grant_and_original_peers(
+    provision_facts, tmp_path, mode
+):
+    """Actual Rust SQL/Python signing IPC; artifact and guardian remain synthetic."""
+    from src.services.isolated_runtime_sdk_bridge import _start_ticks
+    from tests.unit.services.test_isolated_runtime_sdk_server import certificate_pair
+
+    facts = provision_facts
+    assert await provision_probe(facts) == "newly_committed"
+    snapshot, caller, source, policy = facts["issuer_inputs"]
+    facts.update(grant=snapshot.id)
+    before = await provision_snapshot(facts)
+    executable = Path("/app/scripts/runtime-owner-issuer")
+    assert executable.is_file(), "Required source-bound Rust issuer artifact is missing"
+    owner = await asyncio.create_subprocess_exec(
+        "/usr/sbin/gosu",
+        "1001:1001",
+        str(executable),
+        stdin=asyncio.subprocess.PIPE,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+        env={
+            "BIFROST_ISOLATED_OWNER_TEST": "1",
+            "BIFROST_OWNER_TEST_DATABASE_URL": f"postgresql://wex_core:{PASSWORDS['wex_core']}@writer-guard-pool/bifrost_test",
+        },
+    )
+    issuer = None
+    try:
+        assert owner.stdout is not None and owner.stdin is not None
+        assert await asyncio.wait_for(owner.stdout.readline(), timeout=2) == b"ready\n"
+        cert, _ = certificate_pair(tmp_path)
+        ca = cert.read_text()
+        issuer = await asyncio.create_subprocess_exec(
+            sys.executable,
+            "/app/tests/e2e/platform/fixtures/runtime_issuer_exchange.py",
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            cwd="/tmp",
+            env={
+                "PYTHONPATH": "/app",
+                "PYTHONDONTWRITEBYTECODE": "1",
+                "BIFROST_SECRET_KEY": secrets.token_hex(32),
+                "BIFROST_ENVIRONMENT": "testing",
+            },
+        )
+        assert issuer.stdin is not None and issuer.stdout is not None
+        issuer.stdin.write(
+            json.dumps(
+                {
+                    "mode": mode,
+                    "owner_pid": owner.pid,
+                    "owner_ticks": _start_ticks(owner.pid),
+                    "ca": ca,
+                    "identity": {
+                        "grant_id": str(snapshot.id),
+                        "execution_id": facts["fence"][0],
+                        "owner_incarnation_id": facts["fence"][1],
+                        "attempt_id": facts["fence"][2],
+                        "session_id": facts["fence"][5],
+                    },
+                    "caller": caller.model_dump(mode="json"),
+                    "source": source.model_dump(mode="json"),
+                    "policy": policy.model_dump(mode="json"),
+                }
+            ).encode()
+            + b"\n"
+        )
+        await issuer.stdin.drain()
+        ready = await asyncio.wait_for(issuer.stdout.readline(), timeout=5)
+        assert len(ready) <= 8192 and ready.endswith(b"\n")
+        config = json.loads(ready)
+        assert config["pid"] == issuer.pid and config["uid"] == 1001
+        assert config["ticks"] == _start_ticks(issuer.pid)
+        payload = json.dumps(
+            {
+                "fence": facts["fence"],
+                "issuer": config,
+                "request": [
+                    str(snapshot.id),
+                    facts["provision_request"]["grant_digest"],
+                    "Fixture",
+                    str(snapshot.effective_organization_id),
+                    str(snapshot.solution_install_id),
+                ],
+            }
+        ).encode()
+        out, err = await asyncio.wait_for(owner.communicate(payload), timeout=8)
+        assert owner.returncode == 0 and err == b""
+        assert out == (
+            b"issuer_material_observed\n" if mode == "normal" else b"rejected\n"
+        )
+        issuer.stdin.write(b"finish\n")
+        await issuer.stdin.drain()
+        out, err = await asyncio.wait_for(issuer.communicate(), timeout=3)
+        assert issuer.returncode == 0 and err == b""
+        assert out == (
+            b"issuer_drained\n"
+            if mode == "normal"
+            else b"issuer_signed_reply_lost\nissuer_drained\n"
+        )
+        assert (
+            not Path(config["path"]).exists()
+            and not Path(config["path"]).parent.exists()
+        )
+        assert await provision_snapshot(facts) == before
+    finally:
+        for process in (owner, issuer):
+            if process is not None and process.returncode is None:
+                process.kill()
+                await process.wait()

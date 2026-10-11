@@ -29,6 +29,7 @@ pub enum BeginError {
     Rejected,
     Guardian(GuardianError),
     Owner(ObserveError),
+    Issuer(crate::issuer::IssuerError),
 }
 impl From<GuardianError> for BeginError {
     fn from(error: GuardianError) -> Self {
@@ -73,6 +74,24 @@ impl LiveStart {
             return Err(BeginError::Rejected);
         }
         Ok(admission)
+    }
+
+    /// Authenticate the original issuer, bind one finite response to the actual
+    /// committed preimages, then recheck original guardian custody. A returned
+    /// credential still cannot authorize release or delivery by itself.
+    pub async fn issue_material(
+        &mut self,
+        pool: &PgPool,
+        guardian: &mut Guardian,
+        channel: &mut crate::issuer::IssuerChannel,
+        request: &IntegrationGetRequest,
+    ) -> Result<crate::issuer::IssuedMaterial, BeginError> {
+        let admission = self.authorize_issuance(pool, guardian, request).await?;
+        let material = channel.issue_once(&admission).map_err(BeginError::Issuer)?;
+        if guardian.verify_session(&self.fence)? != self.prepare["body"]["binding"] {
+            return Err(BeginError::Rejected);
+        }
+        Ok(material)
     }
 
     pub fn fence(&self) -> &SessionFence {

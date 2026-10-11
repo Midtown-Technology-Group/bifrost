@@ -23,6 +23,9 @@ pub struct OriginalPeer {
 }
 
 impl OriginalPeer {
+    pub fn uid(&self) -> u32 {
+        self.uid
+    }
     pub fn pin(pid: u32, uid: u32, start_ticks: &str) -> Result<Self, PeerError> {
         if pid == 0
             || uid == 0

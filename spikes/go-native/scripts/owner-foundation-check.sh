@@ -55,6 +55,7 @@ cp "$scratch/target/debug/examples/result_report" "$evidence_dir/runtime-owner-r
 cp "$scratch/target/debug/examples/release_observation" "$evidence_dir/runtime-owner-release"
 cp "$scratch/target/debug/examples/start_commit" "$evidence_dir/runtime-owner-start"
 cp "$scratch/target/debug/examples/sdk_admission" "$evidence_dir/runtime-owner-sdk-admission"
+cp "$scratch/target/debug/examples/issuer_exchange" "$evidence_dir/runtime-owner-issuer"
 cp "$scratch/target/debug/examples/provision_commit" "$evidence_dir/runtime-owner-provision"
 cp "$scratch/target/debug/examples/admit_commit" "$evidence_dir/runtime-owner-admit"
 rust none cargo metadata --locked --offline --format-version 1 > "$evidence_dir/owner-dependency-graph.json"
