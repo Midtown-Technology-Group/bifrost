@@ -181,6 +181,7 @@ services:
       BIFROST_KUBERNETES_BUILD_SERVICE_ACCOUNT: ${BIFROST_KUBERNETES_BUILD_SERVICE_ACCOUNT:-}
       BIFROST_KUBERNETES_BUILD_JOB_TYPES: ${BIFROST_KUBERNETES_BUILD_JOB_TYPES:-application.deploy,application.sdk_update}
       EMBEDDING_ALLOWED_HOSTS: scheduler-fixtures
+      MCP_ENCRYPTED_TUNNEL_HOSTS: scheduler-fixtures
       BIFROST_DEFAULT_USER_EMAIL: ${BIFROST_DEFAULT_USER_EMAIL:-dev@localhost}
       BIFROST_DEFAULT_USER_PASSWORD: ${BIFROST_DEFAULT_USER_PASSWORD:-}
       BIFROST_WEBAUTHN_RP_ID: ${BIFROST_WEBAUTHN_RP_ID:-localhost}
@@ -290,6 +291,7 @@ services:
       BIFROST_DATABASE_URL_SYNC: postgresql://bifrost:${POSTGRES_PASSWORD_URLENCODED:?Use debug.sh}@pgbouncer:5432/bifrost
       BIFROST_RABBITMQ_URL: amqp://bifrost:bifrost_debug@rabbitmq:5672/
       BIFROST_REDIS_URL: redis://redis:6379/0
+      MCP_ENCRYPTED_TUNNEL_HOSTS: scheduler-fixtures
       BIFROST_S3_BUCKET: bifrost-local
       BIFROST_S3_ENDPOINT_URL: http://seaweedfs:8333
       # Browser-reachable S3 origin: presigned URLs get rewritten to /s3/...

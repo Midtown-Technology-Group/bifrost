@@ -120,6 +120,74 @@ def _http_transport(peer: _NegotiationPeer) -> StreamableHttpTransport:
     )
 
 
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://mcp.example.com/mcp",
+        "http://localhost:8000/mcp",
+        "http://127.0.0.1:8000/mcp",
+        "http://[::1]:8000/mcp",
+    ],
+)
+def test_resolve_server_url_accepts_https_and_loopback_http(url: str) -> None:
+    connection = SimpleNamespace(
+        server_url_override=None,
+        server=SimpleNamespace(server_url=url),
+    )
+
+    assert mcp_client._resolve_server_url(connection) == url
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://mcp.example.com/mcp",
+        "http://10.0.0.5/mcp",
+        "http://100.64.0.5/mcp",
+    ],
+)
+def test_resolve_server_url_rejects_non_loopback_http(url: str) -> None:
+    connection = SimpleNamespace(
+        server_url_override=None,
+        server=SimpleNamespace(server_url=url),
+    )
+
+    with pytest.raises(ValueError, match="must use HTTPS unless it is loopback"):
+        mcp_client._resolve_server_url(connection)
+
+
+def test_resolve_server_url_accepts_exact_encrypted_tunnel_host(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(
+        "MCP_ENCRYPTED_TUNNEL_HOSTS",
+        "scheduler-fixtures, tunnel.example.com",
+    )
+    connection = SimpleNamespace(
+        server_url_override=None,
+        server=SimpleNamespace(server_url="http://scheduler-fixtures:8080/mcp"),
+    )
+
+    assert mcp_client._resolve_server_url(connection) == (
+        "http://scheduler-fixtures:8080/mcp"
+    )
+
+
+def test_resolve_server_url_does_not_suffix_match_tunnel_host(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("MCP_ENCRYPTED_TUNNEL_HOSTS", "tunnel.example.com")
+    connection = SimpleNamespace(
+        server_url_override=None,
+        server=SimpleNamespace(
+            server_url="http://attacker-tunnel.example.com/mcp"
+        ),
+    )
+
+    with pytest.raises(ValueError, match="must use HTTPS unless it is loopback"):
+        mcp_client._resolve_server_url(connection)
+
+
 @pytest.mark.asyncio
 async def test_fastmcp_auto_negotiates_modern_first() -> None:
     peer = _NegotiationPeer("modern")
@@ -176,6 +244,10 @@ async def test_open_client_uses_auto_mode_and_logs_negotiated_path(
     )
     constructed: dict[str, Any] = {}
 
+    class FakeTransport:
+        def __init__(self, url: str, *, auth: str) -> None:
+            constructed.update(url=url, auth=auth)
+
     class FakeClient:
         initialize_result = None
         protocol_version = "2026-07-28"
@@ -190,15 +262,21 @@ async def test_open_client_uses_auto_mode_and_logs_negotiated_path(
             return None
 
     monkeypatch.setattr("fastmcp.Client", FakeClient)
+    monkeypatch.setattr(
+        "fastmcp.client.transports.StreamableHttpTransport",
+        FakeTransport,
+    )
 
     with caplog.at_level(logging.INFO):
         async with mcp_client.open_client(connection, "secret-token") as opened:
             assert isinstance(opened, FakeClient)
 
     assert constructed == {
-        "transport": "https://peer.example/mcp",
+        "url": "https://peer.example/mcp",
         "auth": "secret-token",
+        "transport": constructed["transport"],
         "mode": "auto",
     }
+    assert isinstance(constructed["transport"], FakeTransport)
     assert "protocol_version=2026-07-28 path=modern_discover" in caplog.text
     assert "secret-token" not in caplog.text
