@@ -61,3 +61,11 @@ writer-guard/security/race evidence must qualify the same source before acceptan
 Remaining gates: cancellation and durable cancelled finalization, crash/unknown
 commit/spawn/lost-ACK cases through this live workflow, and durable source-consumer
 settlement. A physical drain or successful conformance run is not those gates.
+
+The first live-consumer run38111045383 (`21de2f85c14ec843ad7af98f0df0ad426f6e13c6`)
+passed its native/independent consumer producer, then stopped before stack boot:
+the runner's Compose version rejects overriding an already included `test-runner`.
+It installed no owner, grant or execution. Retained cleanup inventories are empty.
+The correction merges the fixture override with the base before include, using
+unchanged writer-pool configuration. Local Compose config validation alone did
+not catch the older runner's behavior; the corrected hosted run is required.

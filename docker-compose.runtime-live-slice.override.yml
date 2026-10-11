@@ -1,0 +1,10 @@
+# Trusted fixture only; merged with the base before Compose include.
+services:
+  test-runner:
+    pid: host
+    environment:
+      BIFROST_LIVE_SLICE_ROOT: ${LOG_DIR}/live-slice
+      BIFROST_LIVE_SOURCE_SHA: ${BIFROST_LIVE_SOURCE_SHA}
+      BIFROST_LIVE_PRODUCER_RUN: ${BIFROST_LIVE_PRODUCER_RUN}
+    volumes:
+    - ${LOG_DIR}/live-slice:${LOG_DIR}/live-slice
