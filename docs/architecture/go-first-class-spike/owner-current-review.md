@@ -91,8 +91,10 @@ custody and verifiable observations without replay or ownership reassignment.
 ## Evidence and acceptance boundary
 
 The last fully independently inspected live/security package is
-[`eight-case-proof.json`](eight-case-proof.json), source `976caebb5131e914dd1bec0059d0dfb3d138923c`.
-New nine-case live and current-source security/race runs are pending. Their old
+[`nine-case-proof.json`](nine-case-proof.json), source `c739480ce7f79168d5df173158147f7be2d94700`.
+It includes actual open-session owner-loss recovery, 13,898 unit tests, 126 baseline
+and both 248-case guard suites, API quality and verified task cleanup. The newer
+`50ccb` current-source full live/security lanes remain pending. Their old
 statuses do not qualify this candidate. The complete source-bound results and
 cleanup records must be inspected before submitting runtime evidence for acceptance.
 

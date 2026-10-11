@@ -5,7 +5,7 @@
 Ordinary Go authoring, immutable native build, portable common-protocol local
 execution and a real Rust-owned SDK/Result/cancellation slice now have runnable
 artifacts. The latest fully inspected live/security proof is
-`976caebb5131e914dd1bec0059d0dfb3d138923c`: eight real-owner executions, actual
+`c739480ce7f79168d5df173158147f7be2d94700`: nine real-owner executions, actual
 closed-Result crash recovery and uncertain release, 13,898 passing backend unit
 tests,126 baseline and 248 guard cases, API quality and verified task teardown.
 [Requirement-by-requirement audit](completion-audit.md).
@@ -49,11 +49,12 @@ must fail rather than emit a misleading schema. Rust consumes metadata, not Go A
 
 ## Evidence and developer experience
 
-[Source-bound live/guard proof](eight-case-proof.json) covers eight
+[Source-bound live/guard proof](nine-case-proof.json) covers nine
 executions of the same Go binary: ready, missing-key, cancellation during a held
 SDK response, lost Result COMMIT acknowledgement, closed-Result and closed-cancel owner crashes and
 lost release COMMIT acknowledgement without material/SDK delivery, plus resource-
-settlement ACK loss reconciled by exact readback without replay. Rust alone owns
+settlement ACK loss reconciled by exact readback without replay, and open-session
+owner loss closed through the existing Rust cancellation/settlement writers. Rust alone owns
 admission, Start, cancel, durable result and source settlement. Authenticated
 existing Execution API readback confirms durable outcomes. SDK authority is finite,
 attempt/session/operation-bound, rejected by ordinary routes, and has no lifecycle,
@@ -65,16 +66,16 @@ warm edits are fast. The custom build/registration/protocol harness is still a
 spike rather than a polished `bifrost run .` product. Static errors intentionally
 avoid disclosing credentials through arbitrary application diagnostics.
 
-| Measured concern, source `976ca` | Observation |
+| Measured concern, source `c739` | Observation |
 | --- | --- |
-| Module resolution/verification |115.471ms; small representative dependency graph, not arbitrary package resolution |
-| Cold compile with resolved modules |12.413s |
-| Independent cold compile |12.060s |
-| Single-file warm compile |309.988ms |
-| Restored warm compile |291.103ms; original byte equality verified |
-| Edit to artifact |647.418ms; broader test/scan preparation excluded |
-| Original-owner fixture executions |2.115–2.957s; includes Docker/SQL/fixture pauses/drain |
-| Closed-Result closing actor |1.823s; excludes original execution before SIGKILL |
+| Module resolution/verification |85.578ms; small representative dependency graph, not arbitrary package resolution |
+| Cold compile with resolved modules |16.899s |
+| Independent cold compile |16.660s |
+| Single-file warm compile |375.890ms |
+| Restored warm compile |366.193ms; original byte equality verified |
+| Edit to artifact |572.389ms; broader test/scan preparation excluded |
+| Original-owner fixture executions |2.941–3.575s; includes Docker/SQL/fixture pauses/drain |
+| Closed-Result closing actor |2.632s; excludes original execution before SIGKILL |
 | Binary size |9,942,367 bytes |
 | Remote deploy latency / fair Python lifecycle comparison |Not implemented/measured |
 
@@ -114,10 +115,11 @@ more work before first-class product adoption.
 
 ## Exact remaining gates
 
-The eight-case runtime and current-source writer/security suites are verified.
+The nine-case runtime and its source-bound writer/security suites are verified.
 The corrected scanner and Go1.27.2 artifact now pass source-bound gates, including
-resource-settlement ACK-loss reconciliation. Prove remaining uncertain-spawn/
-open-session/partial-cleanup behavior without replay or reassignment,
+resource-settlement ACK-loss reconciliation. The actual Docker create-response-loss component at `50ccb` is independently
+verified; that candidate's full live/security lanes remain pending. Prove
+interrupted partial-cleanup behavior without replay or reassignment,
 and submit the concrete schema/identity/immutability/writer/common-lock-order
 and runtime evidence for required acceptance.
 [Audit](completion-audit.md) lists each unresolved case explicitly.
@@ -134,7 +136,7 @@ The SDK HTTP path was affected. That old behavioral proof was not accepted.
 The corrected parser passed 11 hosted regressions and rejected the actual old
 stream before descriptor creation. Go1.27.2 is pinned by verified image digest.
 The replacement binary has a new explicit identity; the unchanged replacement
-serves all eight cases. Its retained scanner stream contains zero findings.
+serves all nine cases. Its retained scanner stream contains zero findings.
 [Toolchain change and guarded rejection](toolchain-remediation.json) preserves
 both the old scan denial and rejection by the old byte pin. The initially missed
 API fixture pin failed before admission with verified teardown; its correction
