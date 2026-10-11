@@ -324,15 +324,15 @@ mod tests {
             Err(MaterialError::Rejected)
         );
         let path = pipe.directory().join("sdk.pipe");
-        fs::set_permissions(&path, fs::Permissions::from_mode(0o640)).unwrap();
+        assert!(fs::set_permissions(&path, fs::Permissions::from_mode(0o640)).is_ok());
         assert_eq!(
             pipe.verify_for(pipe.directory(), fixture.uid),
             Err(MaterialError::Rejected)
         );
-        fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
+        assert!(fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).is_ok());
         assert_eq!(pipe.verify_for(pipe.directory(), fixture.uid), Ok(()));
-        fs::remove_file(&path).unwrap();
-        fs::write(&path, b"replacement").unwrap();
+        assert!(fs::remove_file(&path).is_ok());
+        assert!(fs::write(&path, b"replacement").is_ok());
         assert_eq!(
             pipe.verify_for(pipe.directory(), fixture.uid),
             Err(MaterialError::Rejected)
@@ -379,11 +379,11 @@ mod tests {
         let pipe = fixture.pipe();
         let original = pipe.directory().to_owned();
         let retained = fixture.parent.join("retained-original");
-        fs::rename(&original, &retained).unwrap();
+        assert!(fs::rename(&original, &retained).is_ok());
         let mut builder = fs::DirBuilder::new();
         builder.mode(0o700);
-        builder.create(&original).unwrap();
-        fs::hard_link(retained.join("sdk.pipe"), original.join("sdk.pipe")).unwrap();
+        assert!(builder.create(&original).is_ok());
+        assert!(fs::hard_link(retained.join("sdk.pipe"), original.join("sdk.pipe")).is_ok());
         assert_eq!(
             pipe.verify_for(&original, fixture.uid),
             Err(MaterialError::Rejected)
