@@ -3,7 +3,7 @@
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from types import SimpleNamespace
-from typing import Any, AsyncIterator
+from typing import Any, AsyncIterator, Mapping
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
@@ -243,8 +243,8 @@ async def test_tenant_sender_and_role_resolve_without_guessing(db_session: Async
     delivery = SimpleNamespace(
         id=uuid4(), subscription=SimpleNamespace(agent=agent, input_mapping=None),
     )
-    enqueue_kwargs: dict[str, Any] = {}
-    audit_kwargs: dict[str, Any] = {}
+    enqueue_kwargs: Mapping[str, Any] = {}
+    audit_kwargs: Mapping[str, Any] = {}
     try:
         with (
             patch(
