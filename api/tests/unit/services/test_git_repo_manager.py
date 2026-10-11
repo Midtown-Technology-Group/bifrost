@@ -183,6 +183,7 @@ class TestPersistentWorkDir:
 
         assert manager.work_dir == work_dir
         assert work_dir.is_dir()
+        assert work_dir.stat().st_mode & 0o777 == 0o700
 
     def test_is_initialized_requires_git_directory(
         self, manager, tmp_path, monkeypatch

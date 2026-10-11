@@ -4,6 +4,7 @@ Unit tests for GitHub Sync Service.
 Tests the GitHubSyncService data models and exceptions.
 """
 
+import base64
 import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -16,10 +17,64 @@ from src.models.contracts.github import (
     OrphanInfo,
     PreflightIssue,
     PreflightResult,
-    WorkingTreeStatus,
     WorkflowReference,
+    WorkingTreeStatus,
 )
-from src.services.github_sync import GitStatusError, SyncError
+from src.services.github_sync import GitHubSyncService, GitStatusError, SyncError
+
+
+def test_git_credentials_are_separated_from_persistent_remote_url() -> None:
+    clean_url, environment = GitHubSyncService._separate_git_credentials(
+        "https://x-access-token:token%3A%2F%40@github.com/example/repo.git"
+    )
+
+    assert clean_url == "https://github.com/example/repo.git"
+    assert "token" not in clean_url
+    assert environment["GIT_CONFIG_KEY_0"] == "http.https://github.com/.extraheader"
+    scheme, encoded = environment["GIT_CONFIG_VALUE_0"].split(" ", 2)[1:]
+    assert scheme == "Basic"
+    assert base64.b64decode(encoded).decode() == "x-access-token:token:/@"
+
+
+def test_open_existing_repo_scrubs_authenticated_origin_from_git_config(tmp_path: Path) -> None:
+    repo = Repo.init(tmp_path)
+    repo.create_remote(
+        "origin",
+        "https://x-access-token:secret-value@github.com/example/repo.git",
+    )
+    service = GitHubSyncService.__new__(GitHubSyncService)
+    service.repo_url = "https://github.com/example/repo.git"
+
+    opened = service._open_or_init(tmp_path)
+
+    assert opened.remotes.origin.url == "https://github.com/example/repo.git"
+    assert "secret-value" not in (tmp_path / ".git" / "config").read_text()
+
+
+def test_fetch_supplies_github_authorization_only_to_git_process(tmp_path: Path) -> None:
+    calls: list[tuple[str, dict[str, object]]] = []
+
+    class Origin:
+        def fetch(self, branch: str, **kwargs: object) -> None:
+            calls.append((branch, kwargs))
+
+    class Head:
+        @staticmethod
+        def is_valid() -> bool:
+            return False
+
+    class FakeRepo:
+        remotes = type("Remotes", (), {"origin": Origin()})()
+        head = Head()
+
+    service = GitHubSyncService.__new__(GitHubSyncService)
+    service.branch = "main"
+    service._git_auth_env = {"GIT_CONFIG_VALUE_0": "Authorization: Basic opaque"}
+
+    result = service._do_fetch(tmp_path, FakeRepo())
+
+    assert result.success is True
+    assert calls == [("main", {"env": service._git_auth_env})]
 
 
 class _StatusRepoManager:
