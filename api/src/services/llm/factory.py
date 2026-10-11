@@ -4,8 +4,11 @@ LLM Client Factory
 Creates the appropriate LLM client based on reusable AI model profiles.
 """
 
+from __future__ import annotations
+
 import logging
-from typing import Literal
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Literal
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,6 +16,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.models.contracts.ai_models import AIModelAssignmentKey
 from src.services.ai_model_service import AIModelService
 from src.services.llm.base import BaseLLMClient, LLMConfig
+
+if TYPE_CHECKING:
+    from src.services.openai_transport_detection import OpenAITransportProbe
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +65,8 @@ async def get_llm_configs(
     profile_id: UUID | None = None,
     profile_name: str | None = None,
     assignment_key: AIModelAssignmentKey = "primary",
+    before_transport_probe: Callable[[], None] | None = None,
+    record_transport_probe: Callable[[OpenAITransportProbe], None] | None = None,
 ) -> list[LLMConfig]:
     """
     Resolve the primary LLM configuration plus its failover chain.
@@ -71,7 +79,11 @@ async def get_llm_configs(
         ValueError: If configuration is missing or invalid
     """
     try:
-        return await AIModelService(session).resolve_chain(
+        return await AIModelService(
+            session,
+            before_transport_probe=before_transport_probe,
+            record_transport_probe=record_transport_probe,
+        ).resolve_chain(
             profile_id=profile_id,
             profile_name=profile_name,
             assignment_key=assignment_key,
