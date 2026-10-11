@@ -23,7 +23,8 @@ Auth strategy — two mutually exclusive paths:
 
 1. **FastMCP HTTP context** (a tool call reached the MCP server via HTTP):
    :func:`fastmcp.server.dependencies.get_access_token` yields the caller's
-   bearer token. We reuse it directly.
+   verified bearer token. REST-audience tokens are reused; MCP-resource tokens
+   are explicitly revalidated and exchanged for a short-lived REST token.
 2. **Verified internal executor context**: trusted construction sites attach
    an unforgeable in-process capability before a short-lived JWT may be minted
    from the context. Ordinary/default contexts fail closed when FastMCP auth is
@@ -47,11 +48,55 @@ if TYPE_CHECKING:
 _BRIDGE_URL_ENV = "BIFROST_MCP_HTTP_BRIDGE_URL"
 
 
+def _rest_claims(source: dict[str, Any]) -> dict[str, Any]:
+    """Select identity and scope claims permitted in a REST bridge token."""
+    return {
+        "sub": str(source.get("sub") or source.get("user_id") or ""),
+        "email": source.get("email") or "",
+        "name": source.get("name") or "",
+        "is_superuser": bool(source.get("is_superuser", False)),
+        "is_provider_org": bool(source.get("is_provider_org", False)),
+        "is_external": bool(source.get("is_external", False)),
+        "org_id": str(source["org_id"]) if source.get("org_id") else None,
+    }
+
+
+def _exchange_verified_mcp_token(token: Any) -> str:
+    """Exchange one middleware-verified MCP token for a REST-audience token."""
+    from src.core.security import create_access_token, decode_token
+    from src.services.mcp_server.auth import MCP_SCOPE
+
+    access_claims = getattr(token, "claims", None)
+    if not isinstance(access_claims, dict):
+        raise PermissionError("A verified MCP access token is required")
+
+    resource = access_claims.get("resource")
+    if (
+        access_claims.get("mcp") is not True
+        or access_claims.get("scope") != MCP_SCOPE
+        or not isinstance(resource, str)
+        or not resource
+    ):
+        raise PermissionError("A verified MCP access token is required")
+
+    payload = decode_token(token.token, expected_type="access", audience=resource)
+    if (
+        payload is None
+        or payload.get("mcp") is not True
+        or payload.get("scope") != MCP_SCOPE
+        or payload.get("resource") != resource
+    ):
+        raise PermissionError("A verified MCP access token is required")
+
+    return create_access_token(data=_rest_claims(payload))
+
+
 def _token_from_context(context: "MCPContext") -> str:
     """Return a bearer token usable for an in-process REST call.
 
-    Prefer the live FastMCP access token (same bytes the external MCP client
-    sent). Mint from context claims only when a verified internal execution
+    Reuse a live REST-audience FastMCP token, or exchange a middleware-verified
+    MCP-resource token after independently checking its signed audience and
+    markers. Mint from context claims only when a verified internal execution
     path explicitly attached the private bridge capability.
     """
     token_error: Exception | None = None
@@ -69,7 +114,7 @@ def _token_from_context(context: "MCPContext") -> str:
         payload = decode_token(token.token, expected_type="access")
         if payload is not None and not payload.get("mcp"):
             return token.token
-        raise PermissionError("A verified user access token is required")
+        return _exchange_verified_mcp_token(token)
 
     if not context.can_mint_rest_bridge_token:
         raise PermissionError(
@@ -78,19 +123,21 @@ def _token_from_context(context: "MCPContext") -> str:
 
     from src.core.security import create_access_token
 
-    claims: dict[str, Any] = {
-        "sub": str(context.user_id) if context.user_id else "",
-        "email": context.user_email or "",
-        "name": context.user_name or "",
-        "is_superuser": bool(context.is_platform_admin),
-        "is_provider_org": bool(getattr(context, "is_provider_org", False)),
-        # OPEN-F: carry is_external from the MCP context. The real user-token
-        # mints (mcp_server/auth.py) stamp this via resolve_external_claim;
-        # this fallback mint (executor / test contexts) is the one site that
-        # dropped it, re-opening the global tier to external MCP principals.
-        "is_external": bool(getattr(context, "is_external", False)),
-        "org_id": str(context.org_id) if context.org_id else None,
-    }
+    claims: dict[str, Any] = _rest_claims(
+        {
+            "sub": str(context.user_id) if context.user_id else "",
+            "email": context.user_email or "",
+            "name": context.user_name or "",
+            "is_superuser": bool(context.is_platform_admin),
+            "is_provider_org": bool(getattr(context, "is_provider_org", False)),
+            # OPEN-F: carry is_external from the MCP context. The real user-token
+            # mints (mcp_server/auth.py) stamp this via resolve_external_claim;
+            # this fallback mint (executor / test contexts) is the one site that
+            # dropped it, re-opening the global tier to external MCP principals.
+            "is_external": bool(getattr(context, "is_external", False)),
+            "org_id": str(context.org_id) if context.org_id else None,
+        }
+    )
     return create_access_token(data=claims)
 
 

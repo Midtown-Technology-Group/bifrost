@@ -39,6 +39,9 @@ async def test_verify_token_preserves_canonical_scope_bypass_claims():
     assert token is not None
     assert token.claims["is_superuser"] is False
     assert token.claims["is_provider_org"] is True
+    assert token.claims["mcp"] is True
+    assert token.claims["scope"] == "mcp:access"
+    assert token.claims["resource"] == provider.resource
 
 
 def test_internal_http_bridge_mint_preserves_provider_org_claim():

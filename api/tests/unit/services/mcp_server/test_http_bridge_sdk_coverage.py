@@ -130,6 +130,66 @@ def test_token_from_context_reuses_non_mcp_fastmcp_token():
     create_access_token.assert_not_called()
 
 
+def test_token_from_context_exchanges_verified_mcp_token():
+    resource = "https://example.test/mcp"
+    token = SimpleNamespace(
+        token="mcp-resource-token",
+        claims={"mcp": True, "scope": "mcp:access", "resource": resource},
+    )
+    payload = {
+        "sub": str(uuid4()),
+        "email": "mcp-user@example.test",
+        "name": "MCP User",
+        "is_superuser": False,
+        "is_provider_org": True,
+        "is_external": False,
+        "org_id": str(uuid4()),
+        "mcp": True,
+        "scope": "mcp:access",
+        "resource": resource,
+    }
+
+    with (
+        patch("fastmcp.server.dependencies.get_access_token", return_value=token),
+        patch("src.core.security.decode_token", side_effect=[None, payload]) as decode,
+        patch(
+            "src.core.security.create_access_token", return_value="rest-token"
+        ) as create,
+    ):
+        result = _http_bridge._token_from_context(_context())
+
+    assert result == "rest-token"
+    decode.assert_any_call(
+        "mcp-resource-token", expected_type="access", audience=resource
+    )
+    claims = create.call_args.kwargs["data"]
+    assert claims["sub"] == payload["sub"]
+    assert claims["is_provider_org"] is True
+    assert "mcp" not in claims
+    assert "resource" not in claims
+
+
+def test_token_from_context_rejects_unverified_mcp_token():
+    token = SimpleNamespace(
+        token="wrong-resource-token",
+        claims={
+            "mcp": True,
+            "scope": "mcp:access",
+            "resource": "https://example.test/mcp",
+        },
+    )
+
+    with (
+        patch("fastmcp.server.dependencies.get_access_token", return_value=token),
+        patch("src.core.security.decode_token", side_effect=[None, None]),
+        patch("src.core.security.create_access_token") as create,
+        pytest.raises(PermissionError, match="verified MCP access token"),
+    ):
+        _http_bridge._token_from_context(_context())
+
+    create.assert_not_called()
+
+
 def test_token_from_context_fails_closed_without_authenticated_token():
     ctx = MCPContext(user_id=uuid4(), is_platform_admin=True, org_id=None)
 
