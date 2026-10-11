@@ -242,7 +242,7 @@ pub async fn record_admit_candidate(
     Ok(AdmitDecision::NewlyCommitted)
 }
 
-const SELECT_ELIGIBILITY: &str = concat!(
+pub(crate) const SELECT_ELIGIBILITY: &str = concat!(
     "SELECT name,artifact,input_schema,caller::text AS caller FROM (",
     eligibility_sql!(),
     ") eligible"

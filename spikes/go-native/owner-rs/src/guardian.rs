@@ -190,7 +190,7 @@ impl LaunchSpec {
     fn user(&self) -> String {
         format!("{}:{}", self.uid, self.gid)
     }
-    fn valid(&self) -> bool {
+    fn valid(&self, require_ingress: bool) -> bool {
         self.uid != 0
             && self.gid != 0
             && canonical_uuid(&self.session_id)
@@ -231,14 +231,18 @@ impl LaunchSpec {
                     && fs::read_dir(directory).is_ok_and(|entries| {
                         let entries: Result<Vec<_>, _> = entries.collect();
                         entries.is_ok_and(|items| {
-                            items.len() == 1 && items[0].file_name() == "ingress.sock"
+                            (!require_ingress && items.is_empty())
+                                || (items.len() == 1 && items[0].file_name() == "ingress.sock")
                         })
                     })
-                    && fs::symlink_metadata(directory.join("ingress.sock")).is_ok_and(|m| {
-                        m.file_type().is_socket()
-                            && m.uid() == self.uid
-                            && m.mode() & 0o777 == 0o600
-                    })
+                    && match fs::symlink_metadata(directory.join("ingress.sock")) {
+                        Ok(m) => {
+                            m.file_type().is_socket()
+                                && m.uid() == self.uid
+                                && m.mode() & 0o777 == 0o600
+                        }
+                        Err(e) => !require_ingress && e.kind() == std::io::ErrorKind::NotFound,
+                    }
             })
     }
     fn launch_args(&self) -> Value {
@@ -597,7 +601,7 @@ fn kernel_observation(pid: u64) -> Result<KernelObservation, GuardianError> {
 
 impl Guardian {
     pub fn create(spec: LaunchSpec) -> Result<Self, GuardianError> {
-        if !spec.valid() {
+        if !spec.valid(true) {
             return Err(GuardianError::Rejected);
         }
         // Journal is exclusive and durable before contacting the daemon. The
@@ -711,7 +715,10 @@ impl Guardian {
     /// Observe original, authenticated intent solely to terminate/settle it.
     /// No start method is released on a recovered instance.
     pub fn recover_for_drain(spec: LaunchSpec) -> Result<Self, GuardianError> {
-        if !spec.valid() {
+        // A gateway may have lost/unlinked its socket before recovery. Original
+        // intent/config/kernel custody still permits only physical stop/drain;
+        // absence must not authorize another launch or SDK connection.
+        if !spec.valid(false) {
             return Err(GuardianError::Rejected);
         }
         let raw = private_record(&spec, "launch-intent.json")?;

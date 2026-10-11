@@ -108,8 +108,24 @@ deadlines using the actual clock after the locks and denies uncertain read commi
 It performs no lifecycle writes, signing, renewal or integration fetch. Source/
 caller entitlement, the full CRED-P1 signature/claim/digest verification, trusted
 ingress custody and real restricted SDK HTTP behavior remain mandatory gates.
-Its tests use real Rust Start/release with an explicitly unsigned synthetic grant;
-they cannot qualify the issuer, ingress or whole runtime by passing.
+Its earlier tests used real Rust Start/release with an explicitly unsigned
+synthetic grant. The current candidate replaces SDK fixture insertion with real
+Rust owner birth, Start, canonical finite grant/provision and release transactions.
+Artifact/source and channel custody remain synthetic in these database tests;
+passing them cannot qualify ingress or the whole runtime.
+
+SDK admission now reuses owner birth's current user/organization/role/workflow
+eligibility predicate, binds caller identity only from the locked grant and
+requires the current complete caller snapshot to equal the immutable owner
+snapshot. It rechecks active deployment/Solution and runtime mode, exact current
+source manifest/resolution, same-org scope and coherent grant caller literals
+before its final actual-clock read and commit. Current checks add no row locks,
+new writer, operation or credential and preserve the common lock order. Dedicated
+tests change caller activity/email/name/admin state, roles, workflow activity and
+Solution runtime after grant birth, require read-only denial and restore shared
+caller fixtures. Hosted results for this new candidate remain required. Full
+accepted source/dependency closure, signature/claim/preimage validation, fresh
+live guardian custody and the real restricted HTTP gateway remain separate gates.
 
 ## Finite grant/provision writer candidate
 

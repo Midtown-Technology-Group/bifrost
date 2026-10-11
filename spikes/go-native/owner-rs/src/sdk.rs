@@ -1,5 +1,6 @@
 //! Restricted SDK admission candidate; no token issuer or HTTP router is enabled.
 use crate::{ObserveError, SessionFence, canonical_uuid, digest, lock_session};
+use serde_json::Value;
 use sqlx::{PgPool, Row};
 
 /// Trusted ingress supplies this only after CRED-P1 signature, issuer, audience,
@@ -33,8 +34,9 @@ impl IntegrationGetAdmission {
 
 /// Serialize the SDK admission with close/Cancel/Result using the common lock
 /// order. It authorizes only the retained integration-get policy after release.
-/// Caller must still verify the token and current source/caller entitlement and
-/// invoke the stable capability API; this component does not fetch integrations.
+/// Recheck current source/workflow/caller entitlement and the unchanged caller
+/// snapshot. Caller must still verify the token, complete source closure and live
+/// custody, then invoke the stable capability API; this does not fetch integrations.
 /// An uncertain read commit denies the call, never broadens or renews authority.
 pub async fn authorize_integration_get_candidate(
     pool: &PgPool,
@@ -84,7 +86,8 @@ pub async fn authorize_integration_get_candidate(
         "SELECT id::text AS id,grant_digest,operations_digest, \
          revoked_at IS NOT NULL AS revoked,committed_start_id::text AS start, \
          start_message_id::text AS message,effective_organization_id::text AS organization, \
-         solution_install_id::text AS solution,timeout_seconds \
+         solution_install_id::text AS solution,timeout_seconds, \
+         workflow_id::text AS workflow,caller_user_id::text AS caller,source_id::text AS deployment \
          FROM workflow_runtime_sdk_grants WHERE runtime_session_id=$1::text::uuid ORDER BY id FOR UPDATE",
     ).bind(&fence.session_id).fetch_all(&mut *locked.tx).await?;
     if grants.len() != 1 || grants[0].try_get::<String, _>("id")? != request.grant_id {
@@ -149,6 +152,29 @@ pub async fn authorize_integration_get_candidate(
     if operations.len() != 1 {
         return Err(ObserveError::Rejected);
     }
+    // Use the same current-user/role/workflow predicate as owner birth. Bind
+    // only locked grant/parent facts, never request-provided caller identity.
+    // This read is part of SDK admission under the common source/session order;
+    // it grants no new source, role, scope or operation.
+    let eligibility = sqlx::query(crate::admit::SELECT_ELIGIBILITY)
+        .bind(grant.try_get::<String, _>("workflow")?)
+        .bind(grant.try_get::<String, _>("caller")?)
+        .bind(&request.solution_id)
+        .bind(&request.organization_id)
+        .bind(grant.try_get::<String, _>("deployment")?)
+        .fetch_optional(&mut *locked.tx)
+        .await?
+        .ok_or(ObserveError::Rejected)?;
+    let current_caller: Value = serde_json::from_str(&eligibility.try_get::<String, _>("caller")?)
+        .map_err(|_| ObserveError::Rejected)?;
+    let retained_caller: String = sqlx::query_scalar(
+        "SELECT caller_snapshot::text FROM runtime_execution_owners WHERE execution_id=$1::text::uuid",
+    ).bind(&fence.execution_id).fetch_one(&mut *locked.tx).await?;
+    let retained_caller: Value =
+        serde_json::from_str(&retained_caller).map_err(|_| ObserveError::Rejected)?;
+    if current_caller != retained_caller {
+        return Err(ObserveError::Rejected);
+    }
     let operation = &operations[0];
     if operation.try_get::<i32, _>("ordinal")? != 0
         || operation.try_get::<String, _>("operation")? != "integration-get"
@@ -175,11 +201,27 @@ pub async fn authorize_integration_get_candidate(
          ON r.provision_admission_id=p.id AND r.purpose='release' \
          JOIN workflow_execution_attempts a ON a.id=g.workflow_attempt_id \
          JOIN runtime_execution_owners o ON o.execution_id=g.execution_id \
+         JOIN solution_deployments d ON d.id=o.deployment_id \
+         JOIN solutions sol ON sol.id=d.solution_id \
          WHERE g.id=$1::text::uuid AND g.revoked_at IS NULL \
          AND g.started_at=s.started_at AND g.attempt_number=a.attempt_number \
          AND o.caller_snapshot->>'caller_user_id'=g.caller_user_id::text \
          AND o.caller_snapshot->>'caller_organization_id'=g.caller_organization_id::text \
          AND o.caller_snapshot->>'effective_organization_id'=g.effective_organization_id::text \
+         AND o.caller_snapshot->>'caller_email'=g.caller_email \
+         AND o.caller_snapshot->>'caller_name'=g.caller_name \
+         AND (o.caller_snapshot->>'caller_admin')::boolean=(g.caller_admin=1) \
+         AND (o.caller_snapshot->>'caller_provider')::boolean=(g.caller_provider=1) \
+         AND (o.caller_snapshot->>'caller_external')::boolean=(g.caller_external=1) \
+         AND g.workflow_id=o.workflow_id AND g.source_kind='solution-deployment' \
+         AND g.source_id=d.id AND g.source_global_permission=0 \
+         AND g.source_manifest_digest=d.compiled_manifest_hash \
+         AND g.source_resolution_digest=d.resolution_map_hash \
+         AND d.state IN ('active','committed_unpushed') \
+         AND d.organization_id=g.effective_organization_id \
+         AND sol.status='active' AND sol.active_deployment_id=d.id \
+         AND sol.organization_id=g.effective_organization_id \
+         AND sol.execution_runtime_mode='deployment-v1' \
          AND g.credential_deadline=g.initial_access_expires_at \
          AND g.initial_access_expires_at>clock_timestamp() \
          AND s.deadline_utc IS NOT NULL AND s.deadline_utc>clock_timestamp() \

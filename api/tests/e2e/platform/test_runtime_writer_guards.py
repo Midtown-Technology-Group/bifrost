@@ -939,7 +939,11 @@ async def prepared_start_facts(db_session, association, request):
         "additionalProperties": False,
         "properties": {"integration_name": {"type": "string", "minLength": 1}},
     }
-    case = getattr(request, "param", "valid")
+    case = getattr(
+        request,
+        "param",
+        "provision" if "provision_facts" in request.fixturenames else "valid",
+    )
     input_value = {
         "integration_name": ""
         if case == "invalid-input"
@@ -985,7 +989,7 @@ async def prepared_start_facts(db_session, association, request):
         )
     )
     await db_session.commit()
-    if case == "admit":
+    if case in {"admit", "provision"}:
         # Synthetic source acceptance only. No archive/binary custody or runtime
         # acceptance is claimed by selecting an active fixture deployment.
         # Follow the actual migrated deployment transition guard. Never bypass
@@ -1022,25 +1026,6 @@ async def prepared_start_facts(db_session, association, request):
             "effective_organization_id": str(org),
         }
         caller_hash = association["source"]
-        if case == "provision":
-            from src.core.runtime_sdk_credentials import (
-                AuthorizedCallerSnapshot,
-                caller_digest,
-            )
-
-            literal_caller = AuthorizedCallerSnapshot(
-                caller_user_id=association["reviewer"],
-                caller_organization_id=org,
-                effective_organization_id=org,
-                caller_email="schema@example.test",
-                caller_name="Synthetic schema",
-                caller_admin=True,
-                caller_provider=False,
-                caller_external=False,
-                roles=(),
-            )
-            caller = literal_caller.model_dump(mode="json")
-            caller_hash = caller_digest(literal_caller)
         binding = {
             "kind": "execution-binding/v1",
             "execution_kind": "workflow",
@@ -1120,7 +1105,7 @@ async def prepared_start_facts(db_session, association, request):
         binding_hash = sha256(
             json.dumps(binding, separators=(",", ":")).encode()
         ).hexdigest()
-        if case != "admit":
+        if case not in {"admit", "provision"}:
             async with conn.transaction():
                 await clone(
                     conn,
@@ -1814,79 +1799,23 @@ async def release_snapshot(facts):
 
 
 @pytest.fixture
-async def sdk_admission_facts(prepared_start_facts):
-    """Real Rust Start/release, synthetic unsigned grant and operation policy."""
-    from hashlib import sha256
-    import re
-
-    from tests.e2e.platform.test_runtime_deployment_artifacts import GRANT_INSERT
-
-    facts = dict(prepared_start_facts)
-    assert isinstance(await start_probe(facts), dict)
-    async with connection("wex_core") as conn:
-        row = await conn.fetchrow(
-            "SELECT o.owner_incarnation_id AS owner,o.workflow_id AS workflow,"
-            "o.deployment_id AS deployment,(o.caller_snapshot->>'caller_user_id')::uuid AS reviewer,"
-            "d.solution_id AS solution,sol.organization_id AS org,"
-            "d.compiled_manifest_hash AS manifest_digest,d.resolution_map_hash AS resolution_digest,"
-            "ra.source_sha256 AS source,s.claim_token_digest AS claim_digest,"
-            "s.worker_incarnation_id AS worker,s.supervisor_incarnation_id AS supervisor,"
-            "st.started_at AS started,st.deadline_utc AS expires,clock_timestamp() AS issued "
-            "FROM runtime_sessions s JOIN runtime_execution_owners o ON o.execution_id=s.execution_id "
-            "JOIN runtime_starts st ON st.session_id=s.id "
-            "JOIN solution_deployments d ON d.id=o.deployment_id "
-            "JOIN solutions sol ON sol.id=d.solution_id "
-            "JOIN runtime_deployment_artifacts ra ON ra.deployment_id=o.deployment_id AND ra.workflow_id=o.workflow_id "
-            "WHERE s.id=$1",
-            facts["session"],
-        )
-        assert row is not None
-        facts.update(dict(row))
-        facts.update(
-            grant=uuid4(),
-            provision=uuid4(),
-            delivery=uuid4(),
-            release=uuid4(),
-            number=1,
-            caller_digest=facts["source"],
-            start_message=facts["message"],
-        )
-        assert (
-            facts["claim_digest"]
-            == sha256(
-                b"16:cred-p1/claim/v1,36:" + facts["fence"][3].encode() + b","
-            ).hexdigest()
-        )
-        keys = list(dict.fromkeys(re.findall(r"(?<!:):(\w+)", GRANT_INSERT.text)))
-        statement = re.sub(
-            r"(?<!:):(\w+)",
-            lambda match: "$" + str(keys.index(match[1]) + 1),
-            GRANT_INSERT.text,
-        )
-        async with conn.transaction():
-            await conn.execute(statement, *(facts[key] for key in keys))
-            await conn.execute(
-                "INSERT INTO workflow_runtime_sdk_grant_operations "
-                "(grant_id,ordinal,operation,integration_name,scope_kind,scope_organization_id,resolved_organization_id,solution_install_id) "
-                "VALUES ($1,0,'integration-get','Fixture','organization',$2,$2,$3)",
-                facts["grant"],
-                facts["org"],
-                facts["solution"],
-            )
-            await conn.execute(
-                "INSERT INTO runtime_admissions "
-                "(id,purpose,session_id,committed_start_id,start_message_id,grant_id,delivery_id,operations_digest,expires_at,frontier_sha256,admitted_at) "
-                "VALUES ($1,'provision',$2,$3,$4,$5,$6,$7,$8,$7,$9)",
-                facts["provision"],
-                facts["session"],
-                facts["start"],
-                facts["message"],
-                facts["grant"],
-                facts["delivery"],
-                facts["source"],
-                facts["expires"],
-                facts["issued"],
-            )
+async def sdk_admission_facts(provision_facts):
+    """Real Rust owner birth/Start/provision/release; synthetic artifact/custody."""
+    facts = dict(provision_facts)
+    assert await provision_probe(facts) == "newly_committed"
+    snapshot, _, _, _ = facts["issuer_inputs"]
+    request = facts["provision_request"]
+    facts.update(
+        grant=snapshot.id,
+        grant_digest=request["grant_digest"],
+        provision=UUID(request["provision_id"]),
+        delivery=UUID(request["delivery_id"]),
+        release=uuid4(),
+        source=snapshot.operations_digest,
+        org=snapshot.effective_organization_id,
+        solution=snapshot.solution_install_id,
+        expires=snapshot.initial_access_expires_at,
+    )
     assert await release_probe(facts["fence"], facts) == "newly_committed"
     return facts
 
@@ -1898,7 +1827,7 @@ async def sdk_admission_probe(facts, fence=None, request=None, role="wex_core"):
     )
     fields = request or [
         str(facts["grant"]),
-        facts["source"],
+        facts["grant_digest"],
         "Fixture",
         str(facts["org"]),
         str(facts["solution"]),
@@ -1947,6 +1876,112 @@ async def test_rust_sdk_admission_is_bounded_and_read_only(sdk_admission_facts):
     assert await sdk_admission_snapshot(facts) == before
 
 
+@pytest.mark.parametrize("field", ["is_active", "email", "name", "is_superuser"])
+async def test_rust_sdk_admission_denies_current_caller_drift(
+    sdk_admission_facts, db_session, field
+):
+    from sqlalchemy import text
+
+    facts = sdk_admission_facts
+    original = await db_session.scalar(
+        text(f"SELECT {field} FROM users WHERE id=:caller"),
+        {"caller": facts["caller"]},
+    )
+    changed = (
+        False
+        if field == "is_active"
+        else not original
+        if field == "is_superuser"
+        else f"sdk-drift-{uuid4()}@example.test"
+        if field == "email"
+        else f"{original or ''} SDK drift"
+    )
+    before = await sdk_admission_snapshot(facts)
+    try:
+        await db_session.execute(
+            text(f"UPDATE users SET {field}=:value WHERE id=:caller"),
+            {"value": changed, "caller": facts["caller"]},
+        )
+        await db_session.commit()
+        assert await sdk_admission_probe(facts) == "rejected"
+        assert await sdk_admission_snapshot(facts) == before
+    finally:
+        await db_session.rollback()
+        await db_session.execute(
+            text(f"UPDATE users SET {field}=:value WHERE id=:caller"),
+            {"value": original, "caller": facts["caller"]},
+        )
+        await db_session.commit()
+    assert await sdk_admission_probe(facts) == "sdk_admitted"
+
+
+async def test_rust_sdk_admission_denies_inactive_current_workflow(
+    sdk_admission_facts, db_session
+):
+    from sqlalchemy import text
+
+    facts = sdk_admission_facts
+    before = await sdk_admission_snapshot(facts)
+    await db_session.execute(
+        text("UPDATE workflows SET is_active=false WHERE id=:workflow"),
+        {"workflow": facts["workflow"]},
+    )
+    await db_session.commit()
+    assert await sdk_admission_probe(facts) == "rejected"
+    assert await sdk_admission_snapshot(facts) == before
+
+
+async def test_rust_sdk_admission_denies_changed_current_role_snapshot(
+    sdk_admission_facts, db_session
+):
+    from sqlalchemy import text
+    from src.models.orm.users import Role, UserRole
+
+    facts = sdk_admission_facts
+    role_id = uuid4()
+    before = await sdk_admission_snapshot(facts)
+    try:
+        db_session.add(
+            Role(id=role_id, name=f"sdk-drift-{role_id}", created_by="isolated fixture")
+        )
+        await db_session.flush()
+        db_session.add(
+            UserRole(
+                user_id=facts["caller"],
+                role_id=role_id,
+                assigned_by="isolated fixture",
+            )
+        )
+        await db_session.commit()
+        assert await sdk_admission_probe(facts) == "rejected"
+        assert await sdk_admission_snapshot(facts) == before
+    finally:
+        await db_session.rollback()
+        await db_session.execute(
+            text("DELETE FROM roles WHERE id=:id"), {"id": role_id}
+        )
+        await db_session.commit()
+    assert await sdk_admission_probe(facts) == "sdk_admitted"
+
+
+async def test_rust_sdk_admission_denies_changed_current_solution_runtime(
+    sdk_admission_facts, db_session
+):
+    from sqlalchemy import text
+
+    facts = sdk_admission_facts
+    before = await sdk_admission_snapshot(facts)
+    await db_session.execute(
+        text(
+            "UPDATE solutions SET execution_runtime_mode='repo-v1' WHERE id=:solution"
+        ),
+        {"solution": facts["solution"]},
+    )
+    await db_session.commit()
+    assert await sdk_admission_probe(facts) == "rejected"
+    assert await sdk_admission_snapshot(facts) == before
+
+
 @pytest.mark.parametrize("field", range(5))
 async def test_rust_sdk_admission_denies_each_credential_or_operation_drift(
     sdk_admission_facts, field
@@ -1955,7 +1990,7 @@ async def test_rust_sdk_admission_denies_each_credential_or_operation_drift(
     before = await sdk_admission_snapshot(facts)
     request = [
         str(facts["grant"]),
-        facts["source"],
+        facts["grant_digest"],
         "Fixture",
         str(facts["org"]),
         str(facts["solution"]),
@@ -2686,7 +2721,7 @@ async def test_rust_result_retained_output_schema_allows_declared_nullable_array
 
 @pytest.fixture
 async def provision_facts(prepared_start_facts):
-    """Real Rust Start and canonical private preimages; synthetic source/custody."""
+    """Real Rust birth/Start and canonical preimages; synthetic source/custody."""
     from src.core.runtime_sdk_credentials import (
         AcceptedManifestIdentity,
         AuthorizedCallerSnapshot,
@@ -2700,6 +2735,7 @@ async def provision_facts(prepared_start_facts):
     )
 
     facts = dict(prepared_start_facts)
+    assert await admit_probe(facts) == "newly_committed"
     assert isinstance(await start_probe(facts), dict)
     async with connection("wex_core") as conn:
         row = await conn.fetchrow(
@@ -2881,6 +2917,7 @@ async def test_rust_provision_commits_canonical_grant_operation_and_admission(
     assert decode_token(credential.access_token, expected_type="refresh") is None
     facts.update(
         grant=snapshot.id,
+        grant_digest=request["grant_digest"],
         provision=UUID(request["provision_id"]),
         delivery=UUID(request["delivery_id"]),
         release=uuid4(),

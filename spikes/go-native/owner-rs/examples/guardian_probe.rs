@@ -44,6 +44,15 @@ fn directory(path: &Path) -> Result<(), ()> {
     builder.mode(0o700);
     builder.create(path).map_err(|_| ())
 }
+fn socket_directory(root: &Path, session: &str) -> Result<PathBuf, ()> {
+    let path = root.join(format!("s{}", session.replace('-', "")));
+    // Linux sockaddr_un.sun_path includes its terminating NUL. Keep this
+    // first-party fixture path bounded before bind; no silent path fallback.
+    if path.join("ingress.sock").to_str().ok_or(())?.len() >= 108 {
+        return Err(());
+    }
+    Ok(path)
+}
 fn uuid() -> Result<String, ()> {
     let mut bytes = [0; 16];
     File::open("/dev/urandom")
@@ -145,7 +154,7 @@ fn selection(session: &str, offer: &Value) -> Result<Value, ()> {
 fn run_case(spec: LaunchSpec, mode: &str) -> Result<Value, ()> {
     let operation = (|| {
         match mode {
-            "normal" | "poisoned-channel" | "sdk-relay-dormant" => {
+            "normal" | "poisoned-channel" | "sdk-relay-dormant" | "sdk-relay-lost-ingress" => {
                 let mut guardian = Guardian::create(spec.clone()).map_err(|_| ())?;
                 guardian.attach_dormant().map_err(|_| ())?;
                 let offer = guardian.receive(Duration::from_secs(5)).map_err(|_| ())?;
@@ -174,10 +183,30 @@ fn run_case(spec: LaunchSpec, mode: &str) -> Result<Value, ()> {
                 if guardian.attach_dormant() != Err(GuardianError::Rejected) {
                     return Err(());
                 }
-                let drain = guardian.drain().map_err(|_| ())?;
+                let drain = if mode == "sdk-relay-lost-ingress" {
+                    fs::remove_file(
+                        spec.sdk_socket_directory
+                            .as_ref()
+                            .ok_or(())?
+                            .join("ingress.sock"),
+                    )
+                    .map_err(|_| ())?;
+                    drop(guardian);
+                    let mut recovered =
+                        Guardian::recover_for_drain(spec.clone()).map_err(|_| ())?;
+                    if recovered.attach_dormant() != Err(GuardianError::Rejected)
+                        || recovered.verify_live() != Err(GuardianError::Rejected)
+                    {
+                        return Err(());
+                    }
+                    recovered.drain().map_err(|_| ())?
+                } else {
+                    guardian.drain().map_err(|_| ())?
+                };
                 Ok(json!({"case":mode,"custody":custody,"drain":drain,
                     "fresh_custody_checked":true,"poisoned_channel_denied":mode=="poisoned-channel",
-                    "sdk_relay_present":mode=="sdk-relay-dormant"}))
+                    "sdk_relay_present":mode.starts_with("sdk-relay-"),
+                    "lost_sdk_ingress_stop_only":mode=="sdk-relay-lost-ingress"}))
             }
             "lost-create-reply" => {
                 let guardian = Guardian::create(spec.clone()).map_err(|_| ())?;
@@ -300,6 +329,7 @@ fn run(arguments: &[String]) -> Result<Value, ()> {
         "normal",
         "poisoned-channel",
         "sdk-relay-dormant",
+        "sdk-relay-lost-ingress",
         "lost-create-reply",
         "guardian-crash-after-offer",
     ] {
@@ -312,8 +342,8 @@ fn run(arguments: &[String]) -> Result<Value, ()> {
         directory(&bundle)?;
         directory(&journal)?;
         directory(&material)?;
-        let sdk_directory = base.join("sdk");
-        let sdk_listener = if mode == "sdk-relay-dormant" {
+        let sdk_directory = socket_directory(&root, &session)?;
+        let sdk_listener = if mode.starts_with("sdk-relay-") {
             directory(&sdk_directory)?;
             let listener =
                 UnixListener::bind(sdk_directory.join("ingress.sock")).map_err(|_| ())?;
@@ -377,7 +407,14 @@ fn run(arguments: &[String]) -> Result<Value, ()> {
         fs::remove_dir(&bundle).map_err(|_| ())?;
         if sdk_listener.is_some() {
             drop(sdk_listener);
-            fs::remove_file(sdk_directory.join("ingress.sock")).map_err(|_| ())?;
+            if mode == "sdk-relay-lost-ingress" {
+                let absent = fs::symlink_metadata(sdk_directory.join("ingress.sock"));
+                if !matches!(absent, Err(e) if e.kind()==std::io::ErrorKind::NotFound) {
+                    return Err(());
+                }
+            } else {
+                fs::remove_file(sdk_directory.join("ingress.sock")).map_err(|_| ())?;
+            }
             fs::remove_dir(&sdk_directory).map_err(|_| ())?;
         }
         result["private_paths_removed"] = json!(true);
@@ -413,6 +450,20 @@ fn main() {
 mod tests {
     use super::*;
     use bifrost_execution_wire_spike::Codec;
+    #[test]
+    fn sdk_socket_fixture_obeys_linux_path_bound() {
+        let root = Path::new("/home/runner/work/_temp/go-spike-evidence/live-guardian");
+        let session = "00000000-0000-0000-0000-000000000005";
+        let directory =
+            socket_directory(root, session).unwrap_or_else(|_| panic!("trusted short path"));
+        assert!(
+            directory
+                .join("ingress.sock")
+                .to_str()
+                .is_some_and(|p| p.len() < 108)
+        );
+        assert!(socket_directory(Path::new(&format!("/{}", "a".repeat(108))), session).is_err());
+    }
     #[test]
     fn selection_uses_schema_capability_name_not_profile_uri() {
         let offer = json!({"message_id":"00000000-0000-0000-0000-000000000064"});

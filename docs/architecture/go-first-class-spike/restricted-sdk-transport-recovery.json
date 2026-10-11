@@ -1,0 +1,17 @@
+{
+  "source_commit": "c19f3188e50930c5215d290b0572a8f9cb29893c",
+  "workflow_run": 38099819396,
+  "failed_step": "Live Rust dormant guardian custody and crash drain",
+  "classification": "Fixture code: Linux Unix socket path is 109 bytes, exceeding sockaddr_un.sun_path capacity (107 pathname bytes plus NUL). Rust UnixListener::bind failed before the SDK relay case could create a guardian intent.",
+  "diagnosis": "The two completed normal/poisoned cases retain custody journals and have no staged bundle/material paths or remaining containers. The next SDK socket bind uses the published evidence-root/session/sdk/ingress.sock path, whose measured length is 109.",
+  "repair": "Use an explicit shorter, injectively session-bound socket directory under the same private evidence root; validate the Linux path bound before bind and add a regression. No timeout, resource, codec, isolation or credential changes.",
+  "runtime_acceptance": false,
+  "retained_checks_qualify_new_source": false,
+  "evidence_sha256": {
+    "live-guardian/cleanup-inventory.txt": "2040bdef14de7aade824d43c9074b9b43a188e74a458b6a0c09d170636e086d4",
+    "live-guardian/image-cleanup.txt": "9b3b12e613ffc6b0a44f69fa61b6e3519712b489a128f7b268546fd925177163",
+    "live-guardian/guardian-binary.sha256": "cd1a5b5d9fb54432fdb1c09da2b0d9e5804da6d9ce68702560c4aebac51e1ed3",
+    "descriptor.json": "84f4dcf6ba54ea4c979dad4aeb8f2335e31568b6c108ee57b8d3c05b24ce6f7e",
+    "tests.jsonl": "11757dffff649d9cfe2088e427cb7b939c4b9c614e53d61fbbaf390122b91a42"
+  }
+}
