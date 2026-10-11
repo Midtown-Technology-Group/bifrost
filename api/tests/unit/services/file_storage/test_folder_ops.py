@@ -3,9 +3,9 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import AsyncMock, call
 
 import pytest
-
 from src.services.file_storage.folder_ops import FolderOperationsService
 
 
@@ -127,17 +127,99 @@ async def test_list_files_recursive_filters_excluded_folders_and_folder_markers(
 @pytest.mark.asyncio
 async def test_create_folder_writes_gitkeep_placeholder(monkeypatch):
     writes = []
+    existence_checks = []
 
     class RepoStorage:
-        async def write(self, path, content):
-            writes.append((path, content))
+        async def exists_strict(self, path):
+            existence_checks.append(path)
+            return False
+
+    async def write_file(path, content, updated_by):
+        writes.append((path, content, updated_by))
 
     monkeypatch.setattr("src.services.repo_storage.RepoStorage", RepoStorage)
-    service = _service([])
+    service = _service([], write_file=write_file)
 
-    await service.create_folder("/nested/path/")
+    await service.create_folder("nested/path/", updated_by="alice")
 
-    assert writes == [("nested/path/.gitkeep", b"")]
+    assert existence_checks == ["nested", "nested/path"]
+    assert writes == [("nested/path/.gitkeep", b"", "alice")]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "path",
+    [
+        "",
+        "/",
+        ".git",
+        ".git/HEAD",
+        ".env",
+        "node_modules/pkg",
+        "/absolute",
+        "../outside",
+        "nested/../outside",
+        "nested//path",
+        "nested\\path",
+    ],
+)
+async def test_create_folder_rejects_protected_or_ambiguous_paths(monkeypatch, path):
+    repo = SimpleNamespace(exists_strict=AsyncMock())
+    write_file = AsyncMock()
+    monkeypatch.setattr("src.services.repo_storage.RepoStorage", lambda: repo)
+
+    with pytest.raises(ValueError):
+        await _service([], write_file=write_file).create_folder(path)
+
+    repo.exists_strict.assert_not_awaited()
+    write_file.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_create_folder_rejects_indexed_file_ancestor(monkeypatch):
+    repo = SimpleNamespace(exists_strict=AsyncMock())
+    write_file = AsyncMock()
+    monkeypatch.setattr("src.services.repo_storage.RepoStorage", lambda: repo)
+
+    with pytest.raises(ValueError, match="existing file: nested"):
+        await _service([_file("nested")], write_file=write_file).create_folder(
+            "nested/path"
+        )
+
+    repo.exists_strict.assert_not_awaited()
+    write_file.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_create_folder_rejects_s3_only_file_ancestor(monkeypatch):
+    repo = SimpleNamespace(
+        exists_strict=AsyncMock(side_effect=[False, True]),
+    )
+    write_file = AsyncMock()
+    monkeypatch.setattr("src.services.repo_storage.RepoStorage", lambda: repo)
+
+    with pytest.raises(ValueError, match="existing file: nested/path"):
+        await _service([], write_file=write_file).create_folder("nested/path")
+
+    assert repo.exists_strict.await_args_list == [
+        call("nested"),
+        call("nested/path"),
+    ]
+    write_file.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_create_folder_propagates_conflict_check_storage_failure(monkeypatch):
+    repo = SimpleNamespace(
+        exists_strict=AsyncMock(side_effect=RuntimeError("storage unavailable")),
+    )
+    write_file = AsyncMock()
+    monkeypatch.setattr("src.services.repo_storage.RepoStorage", lambda: repo)
+
+    with pytest.raises(RuntimeError, match="storage unavailable"):
+        await _service([], write_file=write_file).create_folder("nested/path")
+
+    write_file.assert_not_awaited()
 
 
 @pytest.mark.asyncio
