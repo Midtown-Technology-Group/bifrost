@@ -272,6 +272,7 @@ async def _execute_async(
             ),
             source_hashes=dict(context.get("workspace_release_source_hashes") or {}),
         )
+    expected_generation = context.get("workspace_generation")
     try:
         workspace_refresh = _clear_workspace_modules()
     finally:
@@ -280,7 +281,18 @@ async def _execute_async(
         clear_solution_context()
         clear_workspace_release_context()
 
-    context["workspace_generation"] = workspace_refresh.generation
+    if (
+        expected_generation
+        and workspace_refresh.generation != expected_generation
+    ):
+        from src.core.module_cache_sync import WorkspaceGenerationChangedError
+
+        raise WorkspaceGenerationChangedError(
+            "workspace source changed after execution admission"
+        )
+    context["workspace_generation"] = (
+        expected_generation or workspace_refresh.generation
+    )
 
     # 2. Run the execution using existing worker logic
     # This reuses the shared _run_execution() from worker.py

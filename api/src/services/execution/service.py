@@ -136,7 +136,8 @@ async def get_workflow_for_execution(
 
     Returns metadata only (path, function_name, timeout, etc.) — no code.
     Workers load code via the virtual import hook: Redis cache → S3 _repo/ fallback.
-    Content hash is pinned separately by the consumer for reproducibility.
+    The current file-index hash is returned so admission evidence and consumer
+    metadata can be compared before the worker receives executable source.
 
     This is DB-only (no Redis caching) since metadata may be updated frequently
     and we want the latest version for each execution.
@@ -158,21 +159,30 @@ async def get_workflow_for_execution(
         - solution_id: Solution install id if solution-managed (else None)
         - type: Executable type (workflow, tool, or data_provider)
         - cache_ttl_seconds: Data provider cache TTL
+        - content_hash: Current file-index SHA-256 for the workflow path
 
     Raises:
         WorkflowNotFoundError: If workflow doesn't exist in database
     """
     from sqlalchemy import select
+
     from src.core.database import get_session_factory
     from src.models import Workflow as WorkflowORM
+    from src.models.orm.file_index import FileIndex
 
     async def _fetch(session: AsyncSession) -> dict[str, Any]:
         from sqlalchemy import or_
+
         from src.models.orm.solutions import Solution as SolutionORM
 
         stmt = (
-            select(WorkflowORM, SolutionORM.allow_outbound_access)
+            select(
+                WorkflowORM,
+                SolutionORM.allow_outbound_access,
+                FileIndex.content_hash,
+            )
             .outerjoin(SolutionORM, WorkflowORM.solution_id == SolutionORM.id)
+            .outerjoin(FileIndex, FileIndex.path == WorkflowORM.path)
             .where(
                 WorkflowORM.id == workflow_id,
                 WorkflowORM.is_active == True,  # noqa: E712
@@ -191,7 +201,7 @@ async def get_workflow_for_execution(
         if row is None:
             raise WorkflowNotFoundError(f"Workflow with ID '{workflow_id}' not found")
 
-        workflow_record, allow_outbound_access = row
+        workflow_record, allow_outbound_access, content_hash = row
         logger.debug(f"Loaded workflow for execution: {workflow_id} -> {workflow_record.name}")
 
         return {
@@ -208,6 +218,7 @@ async def get_workflow_for_execution(
             "can_access_global_repo": bool(allow_outbound_access),
             "type": workflow_record.type or "workflow",
             "cache_ttl_seconds": workflow_record.cache_ttl_seconds or 0,
+            "content_hash": content_hash,
         }
 
     if db is not None:

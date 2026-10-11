@@ -284,6 +284,15 @@ async def test_insert_scheduled_execution_persists_expected_execution_fields():
     form_id = uuid4()
     db = _Db(None)  # Shared runtime admission fence before pin selection.
     scheduled_at = datetime.now(UTC)
+    runtime_evidence = {
+        "schema_version": "bifrost.repo-workflow-runtime/v1",
+        "workflow_source_hash": "a" * 64,
+    }
+    repo_runtime = SimpleNamespace(
+        runtime_mode="repo-v1",
+        name="sync_records",
+        queue_evidence=lambda: runtime_evidence,
+    )
 
     with (
         patch(
@@ -293,6 +302,10 @@ async def test_insert_scheduled_execution_persists_expected_execution_fields():
         patch(
             "src.services.workspace_release_runtime.pin_workspace_runtime",
             return_value=None,
+        ),
+        patch(
+            "src.services.execution.repo_runtime.pin_repo_workflow_runtime",
+            return_value=repo_runtime,
         ),
     ):
         execution_id = await workflows._insert_scheduled_execution(
@@ -329,4 +342,7 @@ async def test_insert_scheduled_execution_persists_expected_execution_fields():
         "is_platform_admin": True,
         "is_provider_org": False,
         "is_external": False,
+        "runtime_evidence": runtime_evidence,
     }
+    assert execution.runtime_mode == "repo-v1"
+    assert execution.runtime_evidence == runtime_evidence

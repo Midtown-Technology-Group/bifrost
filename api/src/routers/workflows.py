@@ -779,14 +779,17 @@ async def _insert_scheduled_execution(
     from src.models.orm.executions import Execution
 
     exec_id = execution_id or uuid4()
+    from src.services.execution.repo_runtime import pin_repo_workflow_runtime
     from src.services.solutions.deployment_runtime import pin_workflow_runtime
-    from src.services.workspace_release_runtime import pin_workspace_runtime
     from src.services.workspace_release_projection import acquire_runtime_admission_lock
+    from src.services.workspace_release_runtime import pin_workspace_runtime
 
     await acquire_runtime_admission_lock(db)
     pinned_runtime = await pin_workflow_runtime(db, workflow_id)
     if pinned_runtime is None:
         pinned_runtime = await pin_workspace_runtime(db, workflow_id)
+    if pinned_runtime is None:
+        pinned_runtime = await pin_repo_workflow_runtime(db, workflow_id)
     runtime_evidence = pinned_runtime.queue_evidence() if pinned_runtime else None
     from src.services.solutions.deployment_manifest import canonical_json, sha256_digest
 
