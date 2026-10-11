@@ -44,6 +44,7 @@ class CommitAckLossProxy:
         self.failed = False
         self.forwarded_commits = 0
         self.tasks: set[asyncio.Task] = set()
+        self.writers: set[asyncio.StreamWriter] = set()
         self.server: asyncio.Server | None = None
 
     def armed(self) -> bool:
@@ -90,16 +91,24 @@ class CommitAckLossProxy:
         task = asyncio.current_task()
         if task is not None:
             self.tasks.add(task)
+        self.writers.add(output)
         upstream_output = None
         copy = None
         try:
             upstream, connected = await asyncio.open_connection(self.host, self.port)
             upstream_output = connected
+            self.writers.add(connected)
 
             async def forward_client() -> None:
-                while raw := await client.read(65536):
-                    connected.write(raw)
-                    await connected.drain()
+                try:
+                    while raw := await client.read(65536):
+                        connected.write(raw)
+                        await connected.drain()
+                finally:
+                    # The original owner can die with pooled connections idle.
+                    # Client EOF must close the upstream too, otherwise the
+                    # server-read loop retains this connection indefinitely.
+                    connected.close()
 
             copy = asyncio.create_task(forward_client())
             while True:
@@ -148,6 +157,9 @@ class CommitAckLossProxy:
             except asyncio.CancelledError:
                 pass
             finally:
+                for writer in (output, upstream_output):
+                    if writer is not None:
+                        self.writers.discard(writer)
                 if task is not None:
                     self.tasks.discard(task)
 
@@ -156,11 +168,16 @@ class CommitAckLossProxy:
             raise ValueError("isolated proxy not started")
         self.server.close()
         await self.server.wait_closed()
+        # No buffered bytes may be delivered on fixture termination. Abort the
+        # owned transports before awaiting handlers, including idle connections
+        # left by SIGKILL; do not wait for an upstream peer to send another frame.
+        for writer in list(self.writers):
+            writer.transport.abort()
         tasks = list(self.tasks)
         for task in tasks:
             task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
-        if self.tasks or self.failed:
+        if self.tasks or self.writers or self.failed:
             raise ValueError("isolated proxy still owns connections")
 
 

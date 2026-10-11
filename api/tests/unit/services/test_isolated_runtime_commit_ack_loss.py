@@ -11,6 +11,42 @@ from src.services.isolated_runtime_commit_ack_loss import CommitAckLossProxy, pu
 
 
 @pytest.mark.asyncio
+async def test_owner_eof_closes_idle_upstream_and_proxy_connections(tmp_path):
+    connected = asyncio.Event()
+    closed = asyncio.Event()
+
+    async def backend(reader, writer):
+        connected.set()
+        try:
+            assert await reader.read() == b""
+        finally:
+            writer.close()
+            await writer.wait_closed()
+            closed.set()
+
+    server = await asyncio.start_server(backend, "127.0.0.1", 0)
+    proxy = CommitAckLossProxy(
+        "127.0.0.1", server.sockets[0].getsockname()[1], tmp_path, str(uuid4())
+    )
+    port = await proxy.start()
+    _reader, writer = await asyncio.open_connection("127.0.0.1", port)
+    try:
+        async with asyncio.timeout(3):
+            await connected.wait()
+            writer.transport.abort()
+            await closed.wait()
+            while proxy.tasks or proxy.writers:
+                await asyncio.sleep(0)
+        assert not proxy.failed and not proxy.dropped
+    finally:
+        writer.close()
+        await writer.wait_closed()
+        await proxy.stop()
+        server.close()
+        await server.wait_closed()
+
+
+@pytest.mark.asyncio
 async def test_only_one_armed_server_commit_response_is_lost(tmp_path):
     opaque = b"synthetic opaque client bytes"
     packet = b"C" + struct.pack("!I", 11) + b"COMMIT\0"

@@ -1,0 +1,16 @@
+{
+  "source": "31cd2e94c714258483069875ab8c1d0384ae56b6",
+  "producer_run": 38121671407,
+  "run_conclusion": "cancelled",
+  "live_test_result": "failed",
+  "failure": "45-second observation expired waiting for commit-ack-proxy-stopped.json after closed Result owner recovery",
+  "outer_job": "30-minute live job timeout; public failure artifact retained",
+  "artifact_id": 11696062441,
+  "retained_path": "/home/thomas/src/bifrost-go-spike-artifacts/31cd2e94c714258483069875ab8c1d0384ae56b6/live",
+  "diagnosis": "The helper's client forwarding task leaves an idle upstream open after client EOF; the server-read task can remain waiting indefinitely. This is a concrete leak, but the retained logs do not prove it is the sole shutdown failure cause.",
+  "candidate_fix": "Close upstream on client-forward completion and abort all owned transports at stop before awaiting handlers. Add an actual idle-upstream/client-disconnect unit regression.",
+  "retry": "No unchanged retry. Fresh source-bound producer, live consumer, Rust and writer/security evidence required.",
+  "runtime_accepted": false,
+  "cleanup_verified": false,
+  "note": "Outer cancellation interrupted cleanup before inventory/public per-case evidence was retained. No claim that the failed run proves complete crash recovery, durable closure or teardown. No timeout increase, skip, transaction replay or ownership reassignment."
+}
