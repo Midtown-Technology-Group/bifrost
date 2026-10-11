@@ -416,6 +416,11 @@ class FileOperationsService:
 
         Pattern: S3 first (source of truth), then conditional side effects.
         """
+        from src.services.editor.file_filter import validate_workspace_path
+
+        if validate_workspace_path(path) != path:
+            raise ValueError(f"Invalid workspace path: {path}")
+
         # === S3: Source of truth (must succeed) ===
         await self._delete_from_s3(path)
 

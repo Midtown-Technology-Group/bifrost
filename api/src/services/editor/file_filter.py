@@ -10,7 +10,7 @@ This module is the single source of truth for what files should be
 excluded from the workspace.
 """
 
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 # Directories to exclude from workspace operations
 EXCLUDED_DIRECTORIES = frozenset({
@@ -103,6 +103,39 @@ def is_allowed_path(path: str | Path) -> bool:
         True if the path is allowed, False if it should be excluded
     """
     return not is_excluded_path(path)
+
+
+def validate_workspace_path(
+    path: str | Path,
+    *,
+    allow_empty: bool = False,
+    allow_directory_prefix: bool = False,
+) -> str:
+    """Return one canonical workspace path or reject metadata/ambiguous input."""
+    raw = str(path)
+    if "\x00" in raw or "\\" in raw:
+        raise ValueError("Invalid workspace path")
+    if Path(raw).is_absolute() or PureWindowsPath(raw).is_absolute():
+        raise ValueError("Workspace path must be relative")
+
+    trailing_slash = raw.endswith("/")
+    candidate = raw[:-1] if trailing_slash else raw
+    if not candidate:
+        if allow_empty and not raw:
+            return ""
+        raise ValueError("Workspace path is required")
+
+    parts = candidate.split("/")
+    if any(part in {"", ".", ".."} for part in parts):
+        raise ValueError("Workspace path must be normalized")
+    normalized = "/".join(parts)
+    if is_excluded_path(normalized):
+        raise ValueError("Path is excluded from workspace operations")
+    if trailing_slash:
+        if not allow_directory_prefix:
+            raise ValueError("Workspace file path cannot end with a slash")
+        normalized += "/"
+    return normalized
 
 
 # Export constants for use in other modules (e.g., frontend type generation)
