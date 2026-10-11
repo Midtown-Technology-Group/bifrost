@@ -1,0 +1,48 @@
+{
+  "sdk_version": "0.0.0-spike.2",
+  "status": "isolated-implementation-in-progress-not-runtime-acceptance",
+  "human_release_commit": "b8b44cbc01b1fb6be86f4fba050e93eb0da55924",
+  "platform_main": "08255ad355a3ab63f0c04a214c3c230432552dfe",
+  "workspace_main_observed": "bb290eed8dbef5064f993c2da08f17c9f5596e4e",
+  "workspace_modified": false,
+  "committed_grant_reader": {
+    "source": "f9d48e5918600dc3b1a7ad6e712291e2ff390226",
+    "run": 38103517672,
+    "result": "success",
+    "git_source_hashes_verified": 55,
+    "writer_tests": 239,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "quality": "passed: pyright zero errors/warnings, ruff",
+    "disposable_inventory": "empty containers/volumes/networks"
+  },
+  "finite_issuance_rust_foundation": {
+    "source": "9b1bf69ae943fed3c5d714381fa372bfb0516f9f",
+    "run": 38104345889,
+    "result": "success",
+    "git_source_hashes_verified": 34,
+    "tests_passed": 33,
+    "failed": 0,
+    "ignored": 0,
+    "checks": "locked offline fmt, clippy all targets, tests all targets, example build",
+    "limitations": "No actual PostgreSQL transaction or positive issuer/delivery evidence in this run."
+  },
+  "latest_implementation_source": "080699358a197fab8925cd8990ee2dbd791b1e5d",
+  "latest_runs_pending_at_recording": {
+    "rust": 38104504648,
+    "native": 38104504671,
+    "guard": 38104504638
+  },
+  "remaining": [
+    "Authenticated issuer consumes original peer and one-use live owner authorization with independently loaded signing preimages.",
+    "Real release and private delivery; positive Go SDK execution under original Rust owner.",
+    "Durable Result/Receipt and existing authenticated Execution API readback.",
+    "Cancellation and crash/commit/spawn/lost-ACK exclusion with source-consumer settlement.",
+    "Full measured end-to-end runtime evidence and human acceptance."
+  ],
+  "production_dispatch": false,
+  "runtime_acceptance": false,
+  "goal_complete": false,
+  "note": "Earlier passing evidence is scoped to its producer source and does not qualify the latest dependency/peer implementation."
+}
