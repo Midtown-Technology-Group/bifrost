@@ -1,0 +1,16 @@
+{
+  "sdk_version": "0.0.0-spike.2",
+  "runtime_acceptance": false,
+  "implementation_source": "dea2954910bf3305d08cc532651b9a04b2996e01",
+  "reconciled_candidate": "d56ce97ba2a560a7be8e4f7502094fe6a5a2dc0e",
+  "platform_main": "08255ad35",
+  "stale_base_runs": [38097753092, 38097753085],
+  "live_probe_failed_runs": [38097753079, 38097820127],
+  "classification": "Probe code: Select used the full profile URI rather than the schema's exact capability name execution_profile/v1; common codec rejected outbound framing after successful actual kernel custody retention.",
+  "retained_failure_root": "/home/thomas/src/bifrost-go-spike-artifacts/d56ce97ba2a560a7be8e4f7502094fe6a5a2dc0e/go",
+  "observed_failure_resources": "Independent inventory shows no remaining session container; task carrier image tag removed. Failed staged bundle and private journals retained for diagnosis, not claimed as completed source cleanup.",
+  "repair": "Use the published capability name without schema changes. No retransmission, restart or takeover of a failed session; new candidate gets new isolated fixture sessions and full applicable validation.",
+  "retained_checks_qualify_new_source": false,
+  "production_dispatch": false,
+  "merge_authority": false
+}

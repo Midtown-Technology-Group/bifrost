@@ -165,6 +165,10 @@ impl LaunchSpec {
             && self.bundle.is_dir()
             && self.material.is_dir()
             && self.journal.is_dir()
+            && !self.journal.starts_with(&self.bundle)
+            && !self.journal.starts_with(&self.material)
+            && !self.material.starts_with(&self.bundle)
+            && !self.bundle.starts_with(&self.material)
     }
     fn intent(&self) -> Value {
         json!({"version":"isolated-guardian-intent/v1", "session_id":self.session_id,
@@ -225,6 +229,26 @@ impl LaunchSpec {
                     })
             })
     }
+}
+
+fn private_record(spec: &LaunchSpec, name: &str) -> Result<Vec<u8>, GuardianError> {
+    let file = OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC)
+        .open(spec.journal.join(name))
+        .map_err(|_| GuardianError::Rejected)?;
+    let meta = file.metadata().map_err(|_| GuardianError::Rejected)?;
+    if !meta.is_file() || meta.uid() != spec.uid || meta.mode() & 0o777 != 0o600 {
+        return Err(GuardianError::Rejected);
+    }
+    let mut raw = Vec::new();
+    file.take(65537)
+        .read_to_end(&mut raw)
+        .map_err(|_| GuardianError::Rejected)?;
+    if raw.is_empty() || raw.len() > 65536 {
+        return Err(GuardianError::Rejected);
+    }
+    Ok(raw)
 }
 
 fn docker_command() -> Command {
@@ -494,6 +518,14 @@ impl Guardian {
             .mode(0o600)
             .open(spec.journal.join("launch-intent.json"))
             .map_err(|_| GuardianError::Rejected)?;
+        if journal
+            .metadata()
+            .map_err(|_| GuardianError::Rejected)?
+            .uid()
+            != spec.uid
+        {
+            return Err(GuardianError::Rejected);
+        }
         journal
             .write_all(&raw)
             .and_then(|_| journal.sync_all())
@@ -592,8 +624,7 @@ impl Guardian {
         if !spec.valid() {
             return Err(GuardianError::Rejected);
         }
-        let raw = fs::read(spec.journal.join("launch-intent.json"))
-            .map_err(|_| GuardianError::Rejected)?;
+        let raw = private_record(&spec, "launch-intent.json")?;
         let retained: Value = serde_json::from_slice(&raw).map_err(|_| GuardianError::Rejected)?;
         if retained != spec.intent() {
             return Err(GuardianError::Rejected);

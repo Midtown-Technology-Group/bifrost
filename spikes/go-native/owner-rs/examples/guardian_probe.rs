@@ -129,6 +129,13 @@ fn cli_reaped(custody: &Value) -> Result<(), ()> {
     }
 }
 
+fn selection(session: &str, offer: &Value) -> Result<Value, ()> {
+    Ok(json!({"protocol":"bifrost.runtime/v1","type":"Select",
+        "session_id":session,"message_id":uuid()?,"sequence":1,
+        "correlation_id":offer["message_id"],"body":{"protocol":"bifrost.runtime/v1",
+        "capability":"execution_profile/v1","artifact_class":"native-executable/v1"}}))
+}
+
 fn run_case(spec: LaunchSpec, mode: &str) -> Result<Value, ()> {
     let operation = (|| {
         match mode {
@@ -137,12 +144,15 @@ fn run_case(spec: LaunchSpec, mode: &str) -> Result<Value, ()> {
                 guardian.attach_dormant().map_err(|_| ())?;
                 let offer = guardian.receive(Duration::from_secs(5)).map_err(|_| ())?;
                 let custody = guardian.observe_live(&offer).map_err(|_| ())?;
+                write_new(
+                    &spec.journal.join("live-custody.json"),
+                    &serde_json::to_vec(&custody).map_err(|_| ())?,
+                    0o600,
+                )?;
                 // Exercise real outbound common framing; no Prepare/Start or
                 // material, so the adapter remains inert waiting for Prepare.
-                guardian.send(&json!({"protocol":"bifrost.runtime/v1","type":"Select",
-                    "session_id":spec.session_id,"message_id":uuid()?,"sequence":1,
-                    "correlation_id":offer.frame()["message_id"],"body":{"protocol":"bifrost.runtime/v1",
-                    "capability":"bifrost.runtime/v1/execution_profile/v1","artifact_class":"native-executable/v1"}}))
+                guardian
+                    .send(&selection(&spec.session_id, offer.frame())?)
                     .map_err(|_| ())?;
                 if guardian.attach_dormant() != Err(GuardianError::Rejected) {
                     return Err(());
@@ -345,5 +355,29 @@ fn main() {
             );
             std::process::exit(1);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bifrost_execution_wire_spike::Codec;
+    #[test]
+    fn selection_uses_schema_capability_name_not_profile_uri() {
+        let offer = json!({"message_id":"00000000-0000-0000-0000-000000000064"});
+        let mut frame = selection("00000000-0000-0000-0000-000000000005", &offer)
+            .unwrap_or_else(|_| panic!("trusted selection"));
+        let codec = Codec::new().unwrap_or_else(|_| panic!("trusted schema"));
+        assert!(
+            codec
+                .decode(&serde_json::to_vec(&frame).unwrap_or_default())
+                .is_ok()
+        );
+        frame["body"]["capability"] = json!("bifrost.runtime/v1/execution_profile/v1");
+        assert!(
+            codec
+                .decode(&serde_json::to_vec(&frame).unwrap_or_default())
+                .is_err()
+        );
     }
 }
