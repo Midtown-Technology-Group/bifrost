@@ -11,11 +11,14 @@ import uuid
 import zipfile
 
 import pytest
-from sqlalchemy import delete
+from sqlalchemy import delete, func, select
 
 from src.core.security import decrypt_secret, encrypt_secret
 from src.models.orm.applications import Application
 from src.models.orm.platform_jobs import PlatformJob
+from src.models.orm.solution_deploy_jobs import SolutionDeployJob
+from src.models.orm.solution_deployments import SolutionDeployment
+from src.models.orm.solutions import Solution
 from src.models.orm.workspace_promotions import (
     SolutionDeployObligation,
     WorkspaceSourceRelease,
@@ -201,6 +204,21 @@ async def test_recovery_releases_obligation_without_redeploying(
         runtime_before = {
             path: await storage.read(path) for path in await storage.list()
         }
+        deploy_job_ids_before = set(
+            await db_session.scalars(
+                select(SolutionDeployJob.id).where(
+                    SolutionDeployJob.install_id == solution_id
+                )
+            )
+        )
+        deployment_count_before = await db_session.scalar(
+            select(func.count())
+            .select_from(SolutionDeployment)
+            .where(SolutionDeployment.solution_id == solution_id)
+        )
+        active_deployment_before = (
+            await db_session.get(Solution, solution_id)
+        ).active_deployment_id
         route = f"/api/solutions/{solution_id}/deploy-jobs/{deploy_job_id}/reconcile"
         forbidden = e2e_client.post(route, headers=org1_user.headers)
         assert forbidden.status_code == 403, forbidden.text
@@ -224,6 +242,43 @@ async def test_recovery_releases_obligation_without_redeploying(
             == accountability["evidence_id"]
         )
         assert obligation.resolved_at is not None
+
+        # A retry must be idempotent: same evidence and obligation, with no
+        # new deploy job, no new deployment history, and no activation change.
+        recovered_again = e2e_client.post(route, headers=headers)
+        assert recovered_again.status_code == 202, recovered_again.text
+        again = await _wait_for_platform_job(
+            e2e_client, headers, recovered_again.json()["job_id"]
+        )
+        assert again["job_type"] == "solution.deploy.reconcile"
+        again_accountability = again["result"]["source_release_accountability"]
+        assert again_accountability["state"] == "released", again
+        assert again_accountability["obligation_id"] == str(obligation.id)
+        assert (
+            again_accountability["evidence_id"] == accountability["evidence_id"]
+        )
+        await db_session.refresh(obligation)
+        assert obligation.disposition == "released"
+        assert obligation.deploy_job_id == deploy_job_id
+        assert obligation.candidate_id == candidate_id
+        assert set(
+            await db_session.scalars(
+                select(SolutionDeployJob.id).where(
+                    SolutionDeployJob.install_id == solution_id
+                )
+            )
+        ) == (set(deploy_job_ids_before) | {deploy_job_id})
+        assert (
+            await db_session.scalar(
+                select(func.count())
+                .select_from(SolutionDeployment)
+                .where(SolutionDeployment.solution_id == solution_id)
+            )
+        ) == deployment_count_before
+        solution_row = await db_session.get(Solution, solution_id)
+        await db_session.refresh(solution_row)
+        assert solution_row.active_deployment_id == active_deployment_before
+
         assert read_solution() == before
         assert await SolutionSourceArtifactStorage(solution_id).read() == artifact
         assert {
