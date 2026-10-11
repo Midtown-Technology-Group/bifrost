@@ -7,13 +7,13 @@ remains effective; it does not accept the runtime, writer or profile.
 [Exact authorization](isolated-implementation-authorization.json).
 
 The latest fully inspected real-owner proof is source
-`50ccb0ef3432b39f939e0e6e361e4299f2681478`, native/live run 38131329041 and
-writer/security run 38131329077. Both passed. [Retained complete proof](nine-case-create-loss-proof.json)
+`56d1fb006d220b9dbb0747f1cca4def18677f918`, native/live run 38132471738 and
+writer/security run 38132471756. Both passed. [Retained complete proof](final-isolated-proof.json)
 verifies nine executions of the unchanged Go binary, actual closed-Result owner
 crash recovery, uncertain release without material delivery, 13,898 unit tests,
 126 baseline and 248 guard cases, API quality and empty resource inventories.
 
-All three candidate lanes passed, including Rust foundation run 38131329088.
+All three candidate lanes passed, including Rust foundation run 38132471702.
 Behavioral evidence includes closed-cancellation recovery before resource settlement.
 The [partial six-case proof](six-case-partial-proof.json) at581d passed runtime cases
 but failed the mandatory live-client proxy shutdown regression; it is not accepted.
@@ -34,7 +34,7 @@ pins and failures; prior missing-work statements are superseded here.
 | 7. Neutral registration | Explicit JSON manifest/schemas and immutable native descriptor. No source execution for metadata discovery; Rust reads the descriptor/association, not Go AST. General schema extraction and product registration UX remain limited. |
 | 8. Accepted deployment pin | Real migrated native association and existing workflow/Solution deployment are checked in the isolated live fixture. Accepted archive bytes and owner binary consumed by that run are independently hashed. No production trust anchor claimed. |
 | 9. Rust admission/Start | Real Rust transactions create the existing execution/typed attempt/owner/session and commit Start before material delivery. No Go-specific lifecycle table or fake durable store. |
-| 10. Published protocol only | Independent Go/Python/Rust codecs and session vectors cover the proposed common profile. Go adapter uses that profile; workload sees its typed capability context. Human profile/runtime acceptance remains open. |
+| 10. Published protocol only | Independent Go/Python/Rust codecs and session vectors cover the proposed common profile. Go adapter uses that profile; workload sees its typed capability context. Required bounded writer/runtime evidence acceptance remains open; profile freeze is outside the authorization. |
 | 11. No Rust linkage | Workload/SDK have no Rust crates, structs, FFI, DB, Redis or private scheduling knowledge. The independent Rust owner/codec is an implementation of common contracts. |
 | 12. Restricted SDK | Real synthetic TLS integration-get uses the finite dedicated attempt/session-bound credential, exact organization/Solution/name, no redirect/renewal, and ordinary-route rejection. Issuer and ingress are first-party fixtures, not a live vendor. |
 | 13. Logs/Result/Receipt | Actual adapter LogBatch/Result, raw-payload SHA256 and committed receipt correlate with Start. Normal ResultReceipt follows observed commit; lost Result ACK case sends no receipt and does not replay. |
@@ -53,7 +53,7 @@ common order: workspace-release advisory fence → attempt → NOWAIT owner/root
 deployment/Solution → session → Start → ordered admissions → grants/operations →
 receipts → resource fact. Existing Python-owned positive cases remain required.
 
-At `50ccb`, independent retained evidence verifies248 guard cases,126 baseline cases,
+At `56d1fb006`, independent retained evidence verifies248 guard cases,126 baseline cases,
 248 post-repeat cases, 13,898 backend unit tests, API quality and empty task
 container/volume/network inventories. These are isolated authenticated principals
 and real-schema checks, not production principal acceptance. First-party hosted
@@ -62,11 +62,11 @@ No production dispatch, credential expansion, deployment, merge or renewal is ad
 
 ## Crash and uncertain outcomes
 
-Proved at `50ccb`: actual PostgreSQL COMMIT observed but its Result acknowledgement
+Proved at `56d1fb006`: actual PostgreSQL COMMIT observed but its Result acknowledgement
 withheld; Rust sees UncertainCommit, performs no Result/SDK/receipt replay, drains
 original resources, reads the sole immutable receipt and preserves durable Success.
 
-Also proved at `50ccb`: closed-Result original-owner SIGKILL, recovery denial while
+Also proved at `56d1fb006`: closed-Result original-owner SIGKILL, recovery denial while
 that actor is alive, immutable receipt/source/owner readback and stop-only resource
 closure without Result/SDK/receipt replay or owner reassignment. A lost release
 COMMIT acknowledgement delivers no Provision/material/SDK and reaches Cancelled
@@ -74,12 +74,12 @@ only after original physical/source closure. The independent dormant guardian
 probe proves birth before retained custody, original owner death, duplicate-create/
 Start denial and original namespace/CLI/path cleanup; this is physical evidence.
 
-Proved at `50ccb`: original-owner death after committed cancellation/Stopped and
+Proved at `56d1fb006`: original-owner death after committed cancellation/Stopped and
 before resource settlement. The closing actor uses the same closed SQL owner,
 original custody and resource writer, with no receipt or protocol replay. Existing
 authenticated API reads Cancelling before settlement and Cancelled afterward.
 
-Also proved at `50ccb`: resource-settlement COMMIT observed by PostgreSQL with its
+Also proved at `56d1fb006`: resource-settlement COMMIT observed by PostgreSQL with its
 acknowledgment lost to the original Rust owner. The consumed retirement token is
 not rebuilt. Read-only reconciliation denies a wrong digest and owner, reads the
 single immutable exact fact, and preserves durable Cancelled/API/source settlement.
@@ -92,7 +92,7 @@ The a103 fix closes owned transports/handlers first; both idle owner-disconnect
 and live-owner stop regressions passed within the full13,898-unit gate. Earlier
 failures remain retained. No timeout increase, skip or unchanged retry qualified it.
 
-Proved at `50ccb`: original-owner loss with an open session after one admitted SDK
+Proved at `56d1fb006`: original-owner loss with an open session after one admitted SDK
 call. A living owner blocks recovery before intent or cancellation. After actual
 SIGKILL/wait, API reads Running with no Result/resource fact and pinned source.
 The fresh Rust actor proves original custody/death, commits the existing cancel,
@@ -103,20 +103,33 @@ retained. Its observed SDK admission was omitted from instrumentation; the fix
 counts the actual admission without weakening any assertion or authority gate.
 
 [Actual Docker reply-loss component](docker-create-loss-component-proof.json)
-at `50ccb` verifies real daemon HTTP201, exactly one request, uncertainty and
+at `56d1fb006` verifies real daemon HTTP201, exactly one request, uncertainty and
 fresh create/Start denial, original drain and empty container inventories. Its same-source whole live/security and Rust foundation lanes passed and are
-independently inspected in the complete package. The newer `56d1fb006` negative
-partial-retirement candidate still needs its own full evidence.
+independently inspected in the complete package. The final package independently re-verifies actual create reply loss at
+`56d1fb006`, together with that source's full live/security/foundation lanes.
 
-Still unproved: interrupted partial cleanup and human writer/runtime acceptance. Failures retain custody/source obligations;
+Proved at `56d1fb006`: the separate partial-retirement negative executes the same
+Go binary, actual SDK call and common Cancel/Stopped, then drains the original
+process. An inert first-party obstruction makes ordinary source retirement fail
+after accepted files/material/gate are removed. No retirement token or resource
+fact is produced. After actual owner death, stop-only adoption is denied. API
+remains Cancelling/null and source accounting pinned, even after disposal of the
+exact fixture obstruction. This is failure handling, not automatic partial-cleanup
+resumption or finalization. All ten task container inventories and stack/volume/
+network cleanup are verified; only the nine completed executions settle source.
+
+The remaining release is required human acceptance of the common writer constraints
+and bounded runtime evidence, as specified in Thomas's approval. Automatic recovery
+from arbitrary cleanup-phase crashes remains an explicitly unqualified roadmap
+item. [Concrete acceptance request](isolated-evidence-acceptance-request.md). Failures retain custody/source obligations;
 no replay or owner reassignment is permitted. Missing evidence is not completion.
 
 ## Measurements and decision
 
-At `50ccb`: cold compile 16.413s, independent cold 16.252s, edited warm compile 374.341ms,
-restored 356.612ms, edit-to-artifact 572.434ms, module resolution 209.200ms.
-Full original-owner fixture durations range 2.900–3.480s. The closed-Result recovery
-actor separately takes 2.615s and excludes the original execution before SIGKILL.
+At `56d1fb006`: cold compile 11.960s, independent cold 11.489s, edited warm compile 319.892ms,
+restored 269.930ms, edit-to-artifact 551.160ms, module resolution 145.081ms.
+Full original-owner fixture durations range 2.884–3.944s. The closed-Result recovery
+actor separately takes 2.530s and excludes the original execution before SIGKILL.
 These measurements include Docker, SQL, fixture pauses and physical/source
 settlement; they are not bare runtime overhead. Native authoring-only startup/result samples are
 separately retained; no fair current Python lifecycle benchmark or remote deploy

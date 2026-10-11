@@ -5,7 +5,7 @@
 Ordinary Go authoring, immutable native build, portable common-protocol local
 execution and a real Rust-owned SDK/Result/cancellation slice now have runnable
 artifacts. The latest fully inspected live/security proof is
-`50ccb0ef3432b39f939e0e6e361e4299f2681478`: nine real-owner executions, actual
+`56d1fb006d220b9dbb0747f1cca4def18677f918`: nine real-owner executions, actual
 closed-Result crash recovery and uncertain release, 13,898 passing backend unit
 tests,126 baseline and 248 guard cases, API quality and verified task teardown.
 [Requirement-by-requirement audit](completion-audit.md).
@@ -49,7 +49,7 @@ must fail rather than emit a misleading schema. Rust consumes metadata, not Go A
 
 ## Evidence and developer experience
 
-[Source-bound live/guard proof](nine-case-create-loss-proof.json) covers nine
+[Source-bound live/guard proof](final-isolated-proof.json) covers nine
 executions of the same Go binary: ready, missing-key, cancellation during a held
 SDK response, lost Result COMMIT acknowledgement, closed-Result and closed-cancel owner crashes and
 lost release COMMIT acknowledgement without material/SDK delivery, plus resource-
@@ -66,20 +66,23 @@ warm edits are fast. The custom build/registration/protocol harness is still a
 spike rather than a polished `bifrost run .` product. Static errors intentionally
 avoid disclosing credentials through arbitrary application diagnostics.
 
-| Measured concern, source `50ccb` | Observation |
+| Measured concern, source `56d1fb006` | Observation |
 | --- | --- |
-| Module resolution/verification |209.200ms; small representative dependency graph, not arbitrary package resolution |
-| Cold compile with resolved modules |16.413s |
-| Independent cold compile |16.252s |
-| Single-file warm compile |374.341ms |
-| Restored warm compile |356.612ms; original byte equality verified |
-| Edit to artifact |572.434ms; broader test/scan preparation excluded |
-| Original-owner fixture executions |2.900–3.480s; includes Docker/SQL/fixture pauses/drain |
-| Closed-Result closing actor |2.615s; excludes original execution before SIGKILL |
+| Module resolution/verification |145.081ms; small representative dependency graph, not arbitrary package resolution |
+| Cold compile with resolved modules |11.960s |
+| Independent cold compile |11.489s |
+| Single-file warm compile |319.892ms |
+| Restored warm compile |269.930ms; original byte equality verified |
+| Edit to artifact |551.160ms; broader test/scan preparation excluded |
+| Original-owner fixture executions |2.884–3.944s; includes Docker/SQL/fixture pauses/drain |
+| Closed-Result closing actor |2.530s; excludes original execution before SIGKILL |
 | Binary size |9,942,367 bytes |
 | Remote deploy latency / fair Python lifecycle comparison |Not implemented/measured |
 
-Separate authoring-only process startup/SDK/result samples are retained in producer
+Authoring-only samples (n=20) record median startup-to-SDK 3.630ms
+and total local execution 4.276ms; median RSS
+13552KiB. These use synthetic HTTPS and no Rust
+owner transactions. Separate authoring-only samples are retained in producer
 artifacts. They cannot stand in for Rust control-plane overhead. The build recipe
 uses resource-limited, non-root containers with readonly inputs and no runtime or
 production authority; hostile multi-tenant production isolation remains unaccepted.
@@ -117,12 +120,16 @@ more work before first-class product adoption.
 
 The nine-case runtime and its source-bound writer/security suites are verified.
 The corrected scanner and Go1.27.2 artifact now pass source-bound gates, including
-resource-settlement ACK-loss reconciliation. The actual Docker create-response-loss component at `50ccb` is independently
+resource-settlement ACK-loss reconciliation. The actual Docker create-response-loss component at `56d1fb006` is independently
 verified together with that candidate's full live/security and Rust foundation
-lanes. The newer partial-retirement negative candidate needs its own fresh proof. Prove
-interrupted partial-cleanup behavior without replay or reassignment,
-and submit the concrete schema/identity/immutability/writer/common-lock-order
-and runtime evidence for required acceptance.
+lanes. The same-source partial-retirement negative also passed: no token/fact, source
+remains pinned and API Cancelling, with owner death and stop-only adoption denied.
+Fixture obstruction disposal is not runtime settlement. Automatic continuation
+after arbitrary cleanup-phase crashes remains unqualified.
+
+Required human acceptance of the concrete common writer constraints and bounded
+runtime evidence remains open. [Acceptance request](isolated-evidence-acceptance-request.md).
+That acceptance grants no production permission or profile freeze.
 [Audit](completion-audit.md) lists each unresolved case explicitly.
 
 No current evidence supports ADOPT AS FIRST-CLASS LANGUAGE. The promising Go

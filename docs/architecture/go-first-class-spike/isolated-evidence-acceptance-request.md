@@ -1,12 +1,12 @@
 # Bounded isolated evidence acceptance request
 
-Status: preparation only; **not yet submitted for acceptance**. Current candidate
+Status: **submitted for required human acceptance; not accepted**. Candidate
 `56d1fb006d220b9dbb0747f1cca4def18677f918`, SDK `0.0.0-spike.2`.
-Its hosted producer and Rust foundation passed; its live and security/race lanes
-remain pending. The last complete verified package is
-[nine-case plus create-loss proof](nine-case-create-loss-proof.json), source
-`50ccb0ef3432b39f939e0e6e361e4299f2681478`.
-Do not accept new-source claims from that prior package.
+All candidate lanes passed: native/live38132471738, writer/security38132471756
+and Rust foundation38132471702. [Final independently verified proof](final-isolated-proof.json)
+retains same-run/source/artifact identities, nine completed executions, one
+partial-retirement negative, actual Docker reply loss, tests, timings and cleanup.
+[Requirement audit](completion-audit.md); [developer assessment](decision.md).
 
 Thomas's recorded [isolated implementation approval](isolated-implementation-authorization.json)
 requires: “Green conformance is not runtime acceptance. No runtime or lifecycle
@@ -36,7 +36,7 @@ sources. Review these facts together before accepting the isolated lifecycle wri
 
 ## Required proof before submission
 
-All final-candidate lanes must finish and their same-run artifacts must be
+All final-candidate lanes finished and their same-run artifacts were
 independently inspected. Required observations include the unchanged accepted
 Go binary, real Rust admission and Start, finite SDK, normal durable Result/Receipt,
 cancellation, authenticated existing Execution API readback, original resource
@@ -50,7 +50,7 @@ negative case. It requires actual cancellation and process drain, an inert
 first-party source obstruction, CleanupRequired after partial retirement, no
 retirement token or resource fact, original-owner death and denied stop-only
 adoption. API must remain Cancelling/null and source accounting pinned. Disposing
-the exact fixture obstruction is explicitly not runtime settlement. This test
+the exact fixture obstruction is explicitly not runtime settlement. This test passed; it
 must not be reported as automatic partial-cleanup recovery or durable completion.
 
 ## Limits that acceptance cannot silently erase
@@ -69,3 +69,14 @@ the bounded isolated proof requirement only; it grants no production, deployment
 merge, broader credentials, renewal, extra agents or profile freeze. If the
 reviewer requires a missing technical condition for this bounded acceptance,
 record that precise objection and continue the authorized implementation.
+
+## Exact requested decision
+
+Accept the common schema/identity/immutability/writer-exclusion/common-lock-order
+review and the bounded isolated runtime evidence at the candidate above, including
+the explicit fail-closed partial-retirement limit. This is acceptance of the
+demonstrated isolated slice only. The recommendation remains CONTINUE SPIKE for
+first-class product adoption; production qualification, general recovery, Python
+runtime extraction/parity, builder policy and product UX remain roadmap work.
+If a condition prevents this bounded evidence acceptance, identify that specific
+condition so authorized work can continue.

@@ -1,6 +1,6 @@
 # Current isolated lifecycle writer review
 
-Candidate implementation: `50ccb0ef3432b39f939e0e6e361e4299f2681478`.
+Candidate implementation: `56d1fb006d220b9dbb0747f1cca4def18677f918`.
 SDK `0.0.0-spike.2`. Interface release: Thomas's approval of
 `b8b44cbc01b1fb6be86f4fba050e93eb0da55924` for isolated implementation.
 This is the accountable source review, not human writer or runtime acceptance.
@@ -82,7 +82,8 @@ proves one daemon-accepted create, no reply forwarded, no second create, denied
 fresh Start and exact container drain. This physical case supplies no tenant
 Start, SDK execution or durable finalization claim.
 
-Interrupted partial source retirement remains unproved. The current exclusive
+The final candidate proves a bounded partial-retirement failure, described below;
+automatic recovery across arbitrary interrupted cleanup phases remains unqualified. The current exclusive
 recovery intent denies a retry after uncertainty; partial removal yields no token
 or finalization. Missing paths cannot be treated as proof of completed cleanup.
 Any future automatic continuation must retain the same identity, exclusive phase
@@ -110,7 +111,8 @@ or durable completion. The disposable database/stack then follows normal teardow
 
 This candidate tests partial failure and owner death after that failure, not
 arbitrary SIGKILL during every unlink or automatic cleanup resumption. Fresh
-hosted tests are pending; the reporting defect found during source review of its
+hosted live/security/foundation tests passed and the retained artifacts are
+independently verified in [final proof](final-isolated-proof.json); the reporting defect found during source review of its
 predecessor is [retained](partial-retirement-candidate-correction.json). No
 production behavior, shared protocol, role, token construction or recovery writer
 is added. Required human acceptance remains separate.
@@ -118,12 +120,11 @@ is added. Required human acceptance remains separate.
 ## Evidence and acceptance boundary
 
 The last fully independently inspected live/security package is
-[`nine-case-create-loss-proof.json`](nine-case-create-loss-proof.json), source
-`50ccb0ef3432b39f939e0e6e361e4299f2681478`.
+[`final-isolated-proof.json`](final-isolated-proof.json), source
+`56d1fb006d220b9dbb0747f1cca4def18677f918`.
 It includes actual open-session owner-loss recovery, 13,898 unit tests, 126 baseline
-and both 248-case guard suites, API quality and verified task cleanup. Actual create reply loss and all same-source foundation/live/security lanes are
-verified in this package. The newer `56d1fb006` partial-retirement negative
-candidate still requires fresh complete validation. Their old
+and both 248-case guard suites, API quality and verified task cleanup. Actual create reply loss, the partial-retirement negative and all same-source
+foundation/live/security lanes are independently verified in this package. Their old
 statuses do not qualify this candidate. The complete source-bound results and
 cleanup records must be inspected before submitting runtime evidence for acceptance.
 
