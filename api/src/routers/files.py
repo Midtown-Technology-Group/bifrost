@@ -2825,18 +2825,23 @@ async def delete_file_editor(
     Cloud mode only - used by browser editor.
     Uses S3 prefix listing to detect folders (no file_index markers needed).
     """
+    from src.services.editor.file_filter import validate_workspace_path
     from src.services.repo_storage import RepoStorage
 
     try:
+        target_path = validate_workspace_path(
+            path,
+            allow_directory_prefix=True,
+        ).rstrip("/")
         storage = FileStorageService(db)
         repo = RepoStorage()
 
         await _reject_release_governed_prefix_mutations(
-            db, ctx.org_id, [path]
+            db, ctx.org_id, [target_path]
         )
 
         # Check if this is a folder by listing S3 for children
-        folder_prefix = path.rstrip("/") + "/"
+        folder_prefix = target_path + "/"
         children = await repo.list(folder_prefix)
 
         if children:
@@ -2848,7 +2853,7 @@ async def delete_file_editor(
                         await repo.delete(child_path)
                     else:
                         await storage.delete_file(child_path)
-                await repo.delete(path.rstrip("/"))
+                await repo.delete(target_path)
                 await repo.delete(folder_prefix)
 
                 children = await repo.list(folder_prefix)
@@ -2858,7 +2863,7 @@ async def delete_file_editor(
                     await asyncio.sleep(0.1)
         else:
             # Single file delete
-            await storage.delete_file(path)
+            await storage.delete_file(target_path)
 
         # File deletion also deactivates indexed entities. Commit those side
         # effects before returning so a subsequent request cannot observe the
