@@ -9,8 +9,7 @@ from uuid import uuid4
 import pytest
 from fastapi import HTTPException
 
-from src.models.contracts.executions import WorkflowExecutionResponse
-from src.models.contracts.workflows import WorkflowExecutionRequest
+from src.models.contracts.executions import WorkflowExecutionRequest, WorkflowExecutionResponse
 from src.models.enums import ExecutionStatus
 from src.routers import workflows, websocket
 from src.services.execution.async_executor import _persist_execution_pin
