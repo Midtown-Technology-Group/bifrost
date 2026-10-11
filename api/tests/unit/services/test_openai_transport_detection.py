@@ -1,3 +1,4 @@
+import asyncio
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -159,4 +160,37 @@ async def test_detect_openai_transport_does_not_fallback_for_rate_limits() -> No
             model="test-model",
         )
 
+    client.chat.completions.create.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_detect_openai_transport_bounds_the_complete_probe_sequence() -> None:
+    async def never_returns(**_kwargs):
+        await asyncio.Event().wait()
+
+    client = _client()
+    client.responses.create = AsyncMock(side_effect=never_returns)
+    probes: list[OpenAITransportProbe] = []
+
+    with (
+        patch(
+            "src.services.openai_transport_detection.AsyncOpenAI",
+            return_value=client,
+        ),
+        patch(
+            "src.services.openai_transport_detection.OPENAI_TRANSPORT_DETECTION_TIMEOUT_SECONDS",
+            0.01,
+        ),
+        pytest.raises(TimeoutError),
+    ):
+        await detect_openai_transport(
+            api_key="test-key",
+            endpoint="https://models.example.test/v1",
+            model="test-model",
+            record_probe=probes.append,
+        )
+
+    assert len(probes) == 1
+    assert probes[0].transport == "responses"
+    assert probes[0].succeeded is False
     client.chat.completions.create.assert_not_awaited()

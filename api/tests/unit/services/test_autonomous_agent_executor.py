@@ -60,8 +60,8 @@ def mock_external_actor_resolution():
         "src.services.execution.autonomous_agent_executor.resolve_run_external_actor",
         new_callable=AsyncMock,
         return_value=None,
-    ):
-        yield
+    ) as resolver:
+        yield resolver
 
 
 @pytest.fixture
@@ -244,6 +244,76 @@ class TestAutonomousAgentExecutor:
             before_transport_probe=ANY,
             record_transport_probe=ANY,
         )
+
+    @pytest.mark.asyncio
+    async def test_paused_run_revalidates_actor_without_resolving_llm_config(
+        self,
+        mock_session,
+        mock_agent,
+        mock_runtime_config,
+        mock_external_actor_resolution,
+    ):
+        mock_agent.is_active = False
+        run_id = uuid4()
+
+        result = await AutonomousAgentExecutor(mock_session).run(
+            agent=mock_agent,
+            input_data={"message": "do not probe"},
+            run_id=str(run_id),
+        )
+
+        assert result == {
+            "output": None,
+            "iterations_used": 0,
+            "tokens_used": 0,
+            "status": "paused",
+            "accepted": False,
+            "message": "Agent 'Test Agent' is paused. Request not processed.",
+            "llm_model": None,
+        }
+        mock_external_actor_resolution.assert_awaited_once_with(
+            mock_session._mock_session,
+            run_id,
+            None,
+        )
+        mock_runtime_config.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_transport_probe_budget_exhaustion_returns_budget_status(
+        self,
+        mock_session,
+        mock_agent,
+        mock_runtime_config,
+    ):
+        mock_agent.is_active = True
+        mock_agent.max_iterations = 1
+
+        async def exhaust_during_fallback(_session, **kwargs):
+            kwargs["record_transport_probe"](
+                OpenAITransportProbe(
+                    model="probe-model",
+                    transport="responses",
+                    input_tokens=0,
+                    output_tokens=0,
+                    duration_ms=5,
+                    succeeded=False,
+                )
+            )
+            kwargs["before_transport_probe"]()
+            raise AssertionError("budget guard did not reject the fallback probe")
+
+        mock_runtime_config.side_effect = exhaust_during_fallback
+        result = await AutonomousAgentExecutor(mock_session).run(
+            agent=mock_agent,
+            input_data={"message": "bounded"},
+            run_id=str(uuid4()),
+        )
+
+        assert result["status"] == "budget_exceeded"
+        assert result["iterations_used"] == 1
+        assert result["tokens_used"] == 0
+        assert result["llm_model"] is None
+        assert "transport detection" in result["output"]
 
     @pytest.mark.asyncio
     @patch("src.services.agent_runtime.model_factory.create_agent_model")

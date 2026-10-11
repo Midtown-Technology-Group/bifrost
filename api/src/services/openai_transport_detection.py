@@ -1,5 +1,6 @@
 """Detect and report the usable OpenAI-compatible inference transport."""
 
+import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from time import perf_counter
@@ -10,6 +11,7 @@ from openai import APIStatusError, AsyncOpenAI
 from src.services.agent_runtime.retry_transport import get_ai_retry_http_client
 
 OpenAITransport = Literal["responses", "chat_completions"]
+OPENAI_TRANSPORT_DETECTION_TIMEOUT_SECONDS = 30
 
 
 @dataclass(frozen=True)
@@ -93,7 +95,11 @@ async def detect_openai_transport(
     before_request: Callable[[], None] | None = None,
     record_probe: Callable[[OpenAITransportProbe], None] | None = None,
 ) -> OpenAITransport:
-    """Probe Responses first and use Chat only for a definite unsupported error."""
+    """Probe Responses first and use Chat only for a definite unsupported error.
+
+    One deadline covers both probes and retry-transport backoff so callers can
+    safely serialize first-time detection under a database row lock.
+    """
 
     client = AsyncOpenAI(
         api_key=api_key,
@@ -101,42 +107,43 @@ async def detect_openai_transport(
         http_client=get_ai_retry_http_client(),
         max_retries=0,
     )
-    try:
-        await _observed_request(
-            lambda: client.responses.create(
+    async with asyncio.timeout(OPENAI_TRANSPORT_DETECTION_TIMEOUT_SECONDS):
+        try:
+            await _observed_request(
+                lambda: client.responses.create(
+                    model=model,
+                    input="Reply with OK.",
+                    max_output_tokens=64,
+                    store=False,
+                ),
                 model=model,
-                input="Reply with OK.",
-                max_output_tokens=64,
-                store=False,
-            ),
-            model=model,
-            transport="responses",
-            before_request=before_request,
-            record_probe=record_probe,
-        )
-        return "responses"
-    except APIStatusError as error:
-        if not _responses_are_unsupported(error):
-            raise ValueError(
-                f"Could not verify model '{model}' through the Responses API "
-                f"(HTTP {error.status_code}); transport was not changed."
-            ) from error
+                transport="responses",
+                before_request=before_request,
+                record_probe=record_probe,
+            )
+            return "responses"
+        except APIStatusError as error:
+            if not _responses_are_unsupported(error):
+                raise ValueError(
+                    f"Could not verify model '{model}' through the Responses API "
+                    f"(HTTP {error.status_code}); transport was not changed."
+                ) from error
 
-    try:
-        await _observed_request(
-            lambda: client.chat.completions.create(
+        try:
+            await _observed_request(
+                lambda: client.chat.completions.create(
+                    model=model,
+                    messages=[{"role": "user", "content": "Reply with OK."}],
+                    max_completion_tokens=64,
+                ),
                 model=model,
-                messages=[{"role": "user", "content": "Reply with OK."}],
-                max_completion_tokens=64,
-            ),
-            model=model,
-            transport="chat_completions",
-            before_request=before_request,
-            record_probe=record_probe,
-        )
-    except APIStatusError as error:
-        raise ValueError(
-            f"Model '{model}' is unavailable through both Responses and Chat "
-            f"Completions (Chat HTTP {error.status_code})."
-        ) from error
-    return "chat_completions"
+                transport="chat_completions",
+                before_request=before_request,
+                record_probe=record_probe,
+            )
+        except APIStatusError as error:
+            raise ValueError(
+                f"Model '{model}' is unavailable through both Responses and Chat "
+                f"Completions (Chat HTTP {error.status_code})."
+            ) from error
+        return "chat_completions"

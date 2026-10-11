@@ -11,6 +11,7 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING, Literal
 from uuid import UUID
 
+from pydantic_ai.exceptions import UsageLimitExceeded
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.contracts.ai_models import AIModelAssignmentKey
@@ -52,7 +53,7 @@ async def get_llm_config(
             profile_name=profile_name,
             assignment_key=assignment_key,
         )
-    except ValueError:
+    except (UsageLimitExceeded, ValueError):
         raise
     except Exception as e:
         logger.error(f"Failed to resolve LLM configuration: {e}")
@@ -88,7 +89,7 @@ async def get_llm_configs(
             profile_name=profile_name,
             assignment_key=assignment_key,
         )
-    except ValueError:
+    except (UsageLimitExceeded, ValueError):
         raise
     except Exception as e:
         logger.error(f"Failed to resolve LLM configuration: {e}")

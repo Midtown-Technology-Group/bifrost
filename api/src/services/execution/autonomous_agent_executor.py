@@ -312,30 +312,43 @@ class AutonomousAgentExecutor:
                     "is_provider_org": principal.is_provider_org,
                     "roles": principal.roles,
                 }
-            llm_configs = await get_llm_configs(
-                db,
-                profile_id=agent.llm_profile_id,
-                before_transport_probe=before_transport_probe,
-                record_transport_probe=record_transport_probe,
-            )
+            # Revalidate an external actor before applying the paused gate, but
+            # do not resolve configuration or spend transport-probe budget for
+            # a run that will not execute.
+            if not agent.is_active:
+                return {
+                    "output": None,
+                    "iterations_used": 0,
+                    "tokens_used": 0,
+                    "status": "paused",
+                    "accepted": False,
+                    "message": f"Agent '{agent.name}' is paused. Request not processed.",
+                    "llm_model": None,
+                }
+            try:
+                llm_configs = await get_llm_configs(
+                    db,
+                    profile_id=agent.llm_profile_id,
+                    before_transport_probe=before_transport_probe,
+                    record_transport_probe=record_transport_probe,
+                )
+            except UsageLimitExceeded:
+                return {
+                    "output": (
+                        "I reached this run's limit before I could finish. "
+                        "No model execution started because transport detection "
+                        "used this run's budget."
+                    ),
+                    "iterations_used": usage.requests - usage_start_requests,
+                    "tokens_used": usage.total_tokens - usage_start_tokens,
+                    "status": "budget_exceeded",
+                    "llm_model": None,
+                }
             # Transport detection updates are intentionally durable before the
             # run proceeds. No connection is held across model/tool execution.
             await db.commit()
         llm_config = llm_configs[0]
         model_name = llm_config.model
-
-        # Short-circuit if agent is paused. Runs already past this point continue
-        # normally — this check only gates new runs at entry.
-        if not agent.is_active:
-            return {
-                "output": None,
-                "iterations_used": 0,
-                "tokens_used": 0,
-                "status": "paused",
-                "accepted": False,
-                "message": f"Agent '{agent.name}' is paused. Request not processed.",
-                "llm_model": model_name,
-            }
 
         step_number = 0
         # A child gets at most its own configured allowance, but never escapes
