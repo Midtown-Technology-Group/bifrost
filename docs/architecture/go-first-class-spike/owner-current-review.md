@@ -118,10 +118,12 @@ is added. Required human acceptance remains separate.
 ## Evidence and acceptance boundary
 
 The last fully independently inspected live/security package is
-[`nine-case-proof.json`](nine-case-proof.json), source `c739480ce7f79168d5df173158147f7be2d94700`.
+[`nine-case-create-loss-proof.json`](nine-case-create-loss-proof.json), source
+`50ccb0ef3432b39f939e0e6e361e4299f2681478`.
 It includes actual open-session owner-loss recovery, 13,898 unit tests, 126 baseline
-and both 248-case guard suites, API quality and verified task cleanup. The newer
-`50ccb` current-source full live/security lanes remain pending. Their old
+and both 248-case guard suites, API quality and verified task cleanup. Actual create reply loss and all same-source foundation/live/security lanes are
+verified in this package. The newer `56d1fb006` partial-retirement negative
+candidate still requires fresh complete validation. Their old
 statuses do not qualify this candidate. The complete source-bound results and
 cleanup records must be inspected before submitting runtime evidence for acceptance.
 

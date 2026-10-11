@@ -7,13 +7,13 @@ remains effective; it does not accept the runtime, writer or profile.
 [Exact authorization](isolated-implementation-authorization.json).
 
 The latest fully inspected real-owner proof is source
-`c739480ce7f79168d5df173158147f7be2d94700`, native/live run 38130627987 and
-writer/security run 38130628006. Both passed. [Retained complete proof](nine-case-proof.json)
+`50ccb0ef3432b39f939e0e6e361e4299f2681478`, native/live run 38131329041 and
+writer/security run 38131329077. Both passed. [Retained complete proof](nine-case-create-loss-proof.json)
 verifies nine executions of the unchanged Go binary, actual closed-Result owner
 crash recovery, uncertain release without material delivery, 13,898 unit tests,
 126 baseline and 248 guard cases, API quality and empty resource inventories.
 
-All three candidate lanes passed, including Rust foundation run 38130627964.
+All three candidate lanes passed, including Rust foundation run 38131329088.
 Behavioral evidence includes closed-cancellation recovery before resource settlement.
 The [partial six-case proof](six-case-partial-proof.json) at581d passed runtime cases
 but failed the mandatory live-client proxy shutdown regression; it is not accepted.
@@ -53,7 +53,7 @@ common order: workspace-release advisory fence → attempt → NOWAIT owner/root
 deployment/Solution → session → Start → ordered admissions → grants/operations →
 receipts → resource fact. Existing Python-owned positive cases remain required.
 
-At `c739`, independent retained evidence verifies248 guard cases,126 baseline cases,
+At `50ccb`, independent retained evidence verifies248 guard cases,126 baseline cases,
 248 post-repeat cases, 13,898 backend unit tests, API quality and empty task
 container/volume/network inventories. These are isolated authenticated principals
 and real-schema checks, not production principal acceptance. First-party hosted
@@ -62,11 +62,11 @@ No production dispatch, credential expansion, deployment, merge or renewal is ad
 
 ## Crash and uncertain outcomes
 
-Proved at `c739`: actual PostgreSQL COMMIT observed but its Result acknowledgement
+Proved at `50ccb`: actual PostgreSQL COMMIT observed but its Result acknowledgement
 withheld; Rust sees UncertainCommit, performs no Result/SDK/receipt replay, drains
 original resources, reads the sole immutable receipt and preserves durable Success.
 
-Also proved at `c739`: closed-Result original-owner SIGKILL, recovery denial while
+Also proved at `50ccb`: closed-Result original-owner SIGKILL, recovery denial while
 that actor is alive, immutable receipt/source/owner readback and stop-only resource
 closure without Result/SDK/receipt replay or owner reassignment. A lost release
 COMMIT acknowledgement delivers no Provision/material/SDK and reaches Cancelled
@@ -74,12 +74,12 @@ only after original physical/source closure. The independent dormant guardian
 probe proves birth before retained custody, original owner death, duplicate-create/
 Start denial and original namespace/CLI/path cleanup; this is physical evidence.
 
-Proved at `c739`: original-owner death after committed cancellation/Stopped and
+Proved at `50ccb`: original-owner death after committed cancellation/Stopped and
 before resource settlement. The closing actor uses the same closed SQL owner,
 original custody and resource writer, with no receipt or protocol replay. Existing
 authenticated API reads Cancelling before settlement and Cancelled afterward.
 
-Also proved at `c739`: resource-settlement COMMIT observed by PostgreSQL with its
+Also proved at `50ccb`: resource-settlement COMMIT observed by PostgreSQL with its
 acknowledgment lost to the original Rust owner. The consumed retirement token is
 not rebuilt. Read-only reconciliation denies a wrong digest and owner, reads the
 single immutable exact fact, and preserves durable Cancelled/API/source settlement.
@@ -92,7 +92,7 @@ The a103 fix closes owned transports/handlers first; both idle owner-disconnect
 and live-owner stop regressions passed within the full13,898-unit gate. Earlier
 failures remain retained. No timeout increase, skip or unchanged retry qualified it.
 
-Proved at `c739`: original-owner loss with an open session after one admitted SDK
+Proved at `50ccb`: original-owner loss with an open session after one admitted SDK
 call. A living owner blocks recovery before intent or cancellation. After actual
 SIGKILL/wait, API reads Running with no Result/resource fact and pinned source.
 The fresh Rust actor proves original custody/death, commits the existing cancel,
@@ -104,18 +104,19 @@ counts the actual admission without weakening any assertion or authority gate.
 
 [Actual Docker reply-loss component](docker-create-loss-component-proof.json)
 at `50ccb` verifies real daemon HTTP201, exactly one request, uncertainty and
-fresh create/Start denial, original drain and empty container inventories. Its
-whole current-source live/security lanes remain pending.
+fresh create/Start denial, original drain and empty container inventories. Its same-source whole live/security and Rust foundation lanes passed and are
+independently inspected in the complete package. The newer `56d1fb006` negative
+partial-retirement candidate still needs its own full evidence.
 
 Still unproved: interrupted partial cleanup and human writer/runtime acceptance. Failures retain custody/source obligations;
 no replay or owner reassignment is permitted. Missing evidence is not completion.
 
 ## Measurements and decision
 
-At `c739`: cold compile 16.899s, independent cold 16.660s, edited warm compile 375.890ms,
-restored 366.193ms, edit-to-artifact 572.389ms, module resolution 85.578ms.
-Full original-owner fixture durations range 2.941–3.575s. The closed-Result recovery
-actor separately takes 2.632s and excludes the original execution before SIGKILL.
+At `50ccb`: cold compile 16.413s, independent cold 16.252s, edited warm compile 374.341ms,
+restored 356.612ms, edit-to-artifact 572.434ms, module resolution 209.200ms.
+Full original-owner fixture durations range 2.900–3.480s. The closed-Result recovery
+actor separately takes 2.615s and excludes the original execution before SIGKILL.
 These measurements include Docker, SQL, fixture pauses and physical/source
 settlement; they are not bare runtime overhead. Native authoring-only startup/result samples are
 separately retained; no fair current Python lifecycle benchmark or remote deploy
