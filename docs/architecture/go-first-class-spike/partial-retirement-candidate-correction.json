@@ -1,0 +1,13 @@
+{
+  "source": "e4faf86621b31f9bccb6e920af903d335fde3d63",
+  "run": 38132373351,
+  "classification": "source-review-diagnosed fixture reporting bug; not infrastructure",
+  "scope": "new negative partial source-retirement case only",
+  "diagnosis": "cancel_admitted_sdk returns its observations directly; live_counts is populated by the normal serve_until_result path and remains None on this cancellation path. The new case incorrectly read live_counts after the real partial retirement failure.",
+  "action": "Cancelled this active native lane before relying on runtime proof; preserve provider run. Replace the reporting read with the actual returned cancellation observation and add SDK/Cancel/Stopped identity assertions. Fresh changed-source lanes required.",
+  "cancel_request_submitted": true,
+  "runtime_failure_observed": false,
+  "accepted_evidence": false,
+  "no_assertion_waiver": true,
+  "runtime_acceptance": false
+}

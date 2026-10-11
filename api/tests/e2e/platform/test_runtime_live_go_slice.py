@@ -681,6 +681,19 @@ async def test_original_rust_owner_runs_unchanged_go_and_cancels_waiting_sdk(
                 assert failed["retirement_token_produced"] is False
                 assert failed["settlement_attempted"] is False
                 assert failed["counts"]["sdk_admissions"] == 1
+                assert failed["counts"]["sdk_denials"] == 0
+                assert sdk_statuses == [200]
+                assert failed["counts"]["cancel_commit_observed"] is True
+                cancel, stopped = (
+                    failed["counts"]["cancel"],
+                    failed["counts"]["stopped"],
+                )
+                assert cancel["type"] == "Cancel" and stopped["type"] == "Stopped"
+                assert cancel["session_id"] == stopped["session_id"] == str(session)
+                assert cancel["body"]["cancel_id"] == stopped["body"]["cancel_id"]
+                assert (
+                    stopped["body"]["start_message_id"] == start["start"]["message_id"]
+                )
                 assert failed["physical_drain"]["container_removed"] is True
                 assert failed["physical_drain"]["namespace_drained"] is True
                 assert failed["physical_drain"]["attached_cli_waited"] is True

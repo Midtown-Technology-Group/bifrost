@@ -353,7 +353,7 @@ async fn run(config: Value) -> Result<Value, ()> {
                 &json!({"event":"partial_retirement_failed","session_id":session,
                 "owner_pid":std::process::id(),"physical_drain":drained,
                 "retirement_token_produced":false,"settlement_attempted":false,
-                "counts":live_counts.as_ref().ok_or(())?}),
+                "counts":operation.as_ref().map_err(|_| ())?}),
             )?;
             // The trusted driver kills/waits this actor and proves that a fresh
             // recovery cannot infer retirement from the now-missing paths.
