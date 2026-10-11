@@ -2050,7 +2050,7 @@ async def test_delete_file_editor_deletes_folder_children_and_markers(monkeypatc
     await files.delete_file_editor(
         _ctx(is_superuser=True),
         SimpleNamespace(user_id=USER_ID),
-        path="folder",
+        path="folder/",
         db=db,
     )
 
@@ -2102,6 +2102,46 @@ async def test_delete_file_editor_deletes_single_file_and_maps_missing(monkeypat
     db.commit.assert_not_awaited()
     assert exc_info.value.status_code == 404
     assert exc_info.value.detail == "Not found: missing.txt"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "path",
+    ["", "/", "///", ".", "..", "../outside", ".git", "C:\\repo"],
+)
+async def test_delete_file_editor_rejects_root_or_ambiguous_path_before_storage(
+    monkeypatch, path
+):
+    release_guard = AsyncMock()
+
+    class UnexpectedStorage:
+        def __init__(self, _db):
+            raise AssertionError("storage must not initialize for an invalid path")
+
+    class UnexpectedRepo:
+        def __init__(self):
+            raise AssertionError("repository storage must not initialize")
+
+    monkeypatch.setattr(files, "FileStorageService", UnexpectedStorage)
+    monkeypatch.setattr("src.services.repo_storage.RepoStorage", UnexpectedRepo)
+    monkeypatch.setattr(
+        files,
+        "_reject_release_governed_prefix_mutations",
+        release_guard,
+    )
+
+    db = SimpleNamespace(commit=AsyncMock())
+    with pytest.raises(HTTPException) as exc_info:
+        await files.delete_file_editor(
+            _ctx(is_superuser=True),
+            SimpleNamespace(user_id=USER_ID),
+            path=path,
+            db=db,
+        )
+
+    assert exc_info.value.status_code == 400
+    release_guard.assert_not_awaited()
+    db.commit.assert_not_awaited()
 
 
 @pytest.mark.asyncio
