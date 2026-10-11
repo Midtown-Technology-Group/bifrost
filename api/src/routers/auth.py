@@ -307,6 +307,28 @@ class UserCreate(BaseModel):
 # =============================================================================
 
 
+async def _audit_password_login_failure(
+    db: DbSession,
+    *,
+    email: str,
+    reason: str,
+    user_id: UUID | None = None,
+) -> None:
+    """Persist a failed-login event before the request raises its denial."""
+    await emit_audit(
+        db,
+        "auth.login.failed",
+        resource_type="user" if user_id is not None else None,
+        resource_id=user_id,
+        outcome="failure",
+        details={"email": email, "reason": reason},
+    )
+    # The request-scoped dependency rolls back when the caller raises its
+    # HTTPException. Commit this read-only login transaction now so the audit
+    # row survives that expected denial.
+    await db.commit()
+
+
 @router.post("/login", response_model=LoginResponse)
 async def login(
     response: Response,
@@ -349,11 +371,10 @@ async def login(
     user = await user_repo.get_by_email(form_data.username)
 
     if not user:
-        await emit_audit(
+        await _audit_password_login_failure(
             db,
-            "auth.login.failed",
-            outcome="failure",
-            details={"email": form_data.username, "reason": "user_not_found"},
+            email=form_data.username,
+            reason="user_not_found",
         )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -362,13 +383,11 @@ async def login(
         )
 
     if not user.hashed_password:
-        await emit_audit(
+        await _audit_password_login_failure(
             db,
-            "auth.login.failed",
-            resource_type="user",
-            resource_id=user.id,
-            outcome="failure",
-            details={"email": user.email, "reason": "no_password"},
+            email=user.email,
+            reason="no_password",
+            user_id=user.id,
         )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -377,13 +396,11 @@ async def login(
         )
 
     if not verify_password(form_data.password, user.hashed_password):
-        await emit_audit(
+        await _audit_password_login_failure(
             db,
-            "auth.login.failed",
-            resource_type="user",
-            resource_id=user.id,
-            outcome="failure",
-            details={"email": user.email, "reason": "wrong_password"},
+            email=user.email,
+            reason="wrong_password",
+            user_id=user.id,
         )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -392,13 +409,11 @@ async def login(
         )
 
     if not user.is_active:
-        await emit_audit(
+        await _audit_password_login_failure(
             db,
-            "auth.login.failed",
-            resource_type="user",
-            resource_id=user.id,
-            outcome="failure",
-            details={"email": user.email, "reason": "inactive"},
+            email=user.email,
+            reason="inactive",
+            user_id=user.id,
         )
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
