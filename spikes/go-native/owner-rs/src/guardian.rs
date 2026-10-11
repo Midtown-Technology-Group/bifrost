@@ -9,7 +9,7 @@ use std::{
     io::{Read, Write},
     os::{
         fd::AsRawFd,
-        unix::fs::{MetadataExt, OpenOptionsExt},
+        unix::fs::{FileTypeExt, MetadataExt, OpenOptionsExt},
     },
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
@@ -40,6 +40,7 @@ mod tests {
             bundle: "/trusted/bundle".into(),
             material: "/trusted/material".into(),
             journal: "/trusted/journal".into(),
+            sdk_socket_directory: None,
             uid: 1001,
             gid: 1001,
         }
@@ -83,6 +84,19 @@ mod tests {
                 .unwrap_or_else(|| panic!("invalid trusted pointer")) = value;
             assert!(!spec.matches(&changed), "{pointer}");
         }
+        let mut relay_spec = spec.clone();
+        relay_spec.sdk_socket_directory = Some("/trusted/sdk".into());
+        let mut relay_snapshot = snapshot.clone();
+        relay_snapshot["Config"]["Cmd"] =
+            json!(["--index-sha256", spec.index_sha256, "--sdk-relay"]);
+        relay_snapshot["Mounts"]
+            .as_array_mut()
+            .unwrap_or_else(|| panic!("trusted mounts"))
+            .push(json!({"Type":"bind","Source":"/trusted/sdk","Destination":"/sdk","RW":false}));
+        assert!(relay_spec.matches(&relay_snapshot));
+        assert!(!spec.matches(&relay_snapshot));
+        relay_snapshot["Mounts"][3]["RW"] = json!(true);
+        assert!(!relay_spec.matches(&relay_snapshot));
     }
 
     #[test]
@@ -162,6 +176,10 @@ pub struct LaunchSpec {
     pub bundle: PathBuf,
     pub material: PathBuf,
     pub journal: PathBuf,
+    /// Optional, private per-session directory containing only ingress.sock.
+    /// The socket terminates at the trusted restricted SDK ingress; no DB/key
+    /// directory is mounted and the runtime's network remains disabled.
+    pub sdk_socket_directory: Option<PathBuf>,
     pub uid: u32,
     pub gid: u32,
 }
@@ -196,13 +214,57 @@ impl LaunchSpec {
             && !self.journal.starts_with(&self.material)
             && !self.material.starts_with(&self.bundle)
             && !self.bundle.starts_with(&self.material)
+            && self.sdk_socket_directory.as_ref().is_none_or(|directory| {
+                directory.is_absolute()
+                    && directory
+                        .to_str()
+                        .is_some_and(|s| !s.contains([',', '\n', '\r']))
+                    && directory
+                        .canonicalize()
+                        .is_ok_and(|real| real == *directory)
+                    && fs::symlink_metadata(directory).is_ok_and(|m| {
+                        m.is_dir() && m.uid() == self.uid && m.mode() & 0o777 == 0o700
+                    })
+                    && [&self.bundle, &self.material, &self.journal]
+                        .into_iter()
+                        .all(|other| !directory.starts_with(other) && !other.starts_with(directory))
+                    && fs::read_dir(directory).is_ok_and(|entries| {
+                        let entries: Result<Vec<_>, _> = entries.collect();
+                        entries.is_ok_and(|items| {
+                            items.len() == 1 && items[0].file_name() == "ingress.sock"
+                        })
+                    })
+                    && fs::symlink_metadata(directory.join("ingress.sock")).is_ok_and(|m| {
+                        m.file_type().is_socket()
+                            && m.uid() == self.uid
+                            && m.mode() & 0o777 == 0o600
+                    })
+            })
+    }
+    fn launch_args(&self) -> Value {
+        if self.sdk_socket_directory.is_some() {
+            json!(["--index-sha256", self.index_sha256, "--sdk-relay"])
+        } else {
+            json!(["--index-sha256", self.index_sha256])
+        }
+    }
+    fn mounts(&self) -> Vec<(&PathBuf, &'static str)> {
+        let mut mounts = vec![
+            (&self.adapter, "/adapter"),
+            (&self.bundle, "/bundle"),
+            (&self.material, "/material"),
+        ];
+        if let Some(directory) = &self.sdk_socket_directory {
+            mounts.push((directory, "/sdk"));
+        }
+        mounts
     }
     fn intent(&self) -> Value {
         json!({"version":"isolated-guardian-intent/v1", "session_id":self.session_id,
             "nonce":self.nonce, "name":self.name(), "image_id":self.image_id,
             "index_sha256":self.index_sha256, "adapter":self.adapter,
             "bundle":self.bundle, "material":self.material, "user":self.user(),
-            "network":"none", "tenant_release":false})
+            "network":"none", "tenant_release":false,"sdk_socket_directory":self.sdk_socket_directory})
     }
     fn matches(&self, snapshot: &Value) -> bool {
         let host = &snapshot["HostConfig"];
@@ -213,7 +275,7 @@ impl LaunchSpec {
             && config["User"] == self.user()
             && config["Tty"] == false
             && config["Entrypoint"] == json!(["/launcher"])
-            && config["Cmd"] == json!(["--index-sha256", self.index_sha256])
+            && config["Cmd"] == self.launch_args()
             && config["Labels"]["bifrost.isolated.guardian.nonce"] == self.nonce
             && config["Labels"]["bifrost.isolated.guardian.session"] == self.session_id
             && config["Env"].as_array().is_some_and(|env| {
@@ -236,14 +298,8 @@ impl LaunchSpec {
                 .as_object()
                 .is_some_and(|net| net.len() == 1 && net.contains_key("none"))
             && mounts.is_some_and(|m| {
-                m.len() == 3
-                    && [
-                        (&self.adapter, "/adapter"),
-                        (&self.bundle, "/bundle"),
-                        (&self.material, "/material"),
-                    ]
-                    .into_iter()
-                    .all(|(source, destination)| {
+                m.len() == self.mounts().len()
+                    && self.mounts().into_iter().all(|(source, destination)| {
                         m.iter()
                             .filter(|item| {
                                 item["Type"] == "bind"
@@ -610,11 +666,7 @@ impl Guardian {
             "--label",
             &format!("bifrost.isolated.guardian.session={}", spec.session_id),
         ]);
-        for (source, destination) in [
-            (&spec.adapter, "/adapter"),
-            (&spec.bundle, "/bundle"),
-            (&spec.material, "/material"),
-        ] {
+        for (source, destination) in spec.mounts() {
             command.push("--mount".into());
             command.push(format!(
                 "type=bind,src={},dst={destination},readonly",
@@ -626,6 +678,9 @@ impl Guardian {
             "--index-sha256".into(),
             spec.index_sha256.clone(),
         ]);
+        if spec.sdk_socket_directory.is_some() {
+            command.push("--sdk-relay".into());
+        }
         let raw = docker(&command)?;
         let id = std::str::from_utf8(&raw)
             .map_err(|_| GuardianError::Uncertain)?

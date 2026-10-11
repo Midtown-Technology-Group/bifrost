@@ -9,6 +9,7 @@ use std::{
     fs::{self, File, OpenOptions},
     io::{Read, Write},
     os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt, PermissionsExt},
+    os::unix::net::UnixListener,
     path::{Path, PathBuf},
     process::{Command, Stdio},
     thread,
@@ -63,7 +64,7 @@ fn uuid() -> Result<String, ()> {
 fn save_spec(spec: &LaunchSpec, path: &Path) -> Result<(), ()> {
     let record = json!({"session_id":spec.session_id,"nonce":spec.nonce,"image_id":spec.image_id,
         "index_sha256":spec.index_sha256,"adapter":spec.adapter,"bundle":spec.bundle,
-        "material":spec.material,"journal":spec.journal,"uid":spec.uid,"gid":spec.gid});
+        "material":spec.material,"journal":spec.journal,"sdk_socket_directory":spec.sdk_socket_directory,"uid":spec.uid,"gid":spec.gid});
     write_new(path, &serde_json::to_vec(&record).map_err(|_| ())?, 0o600)
 }
 fn load_spec(path: &Path) -> Result<LaunchSpec, ()> {
@@ -78,6 +79,11 @@ fn load_spec(path: &Path) -> Result<LaunchSpec, ()> {
         bundle: text("bundle")?.into(),
         material: text("material")?.into(),
         journal: text("journal")?.into(),
+        sdk_socket_directory: if value["sdk_socket_directory"].is_null() {
+            None
+        } else {
+            Some(text("sdk_socket_directory")?.into())
+        },
         uid: u32::try_from(value["uid"].as_u64().ok_or(())?).map_err(|_| ())?,
         gid: u32::try_from(value["gid"].as_u64().ok_or(())?).map_err(|_| ())?,
     })
@@ -139,7 +145,7 @@ fn selection(session: &str, offer: &Value) -> Result<Value, ()> {
 fn run_case(spec: LaunchSpec, mode: &str) -> Result<Value, ()> {
     let operation = (|| {
         match mode {
-            "normal" | "poisoned-channel" => {
+            "normal" | "poisoned-channel" | "sdk-relay-dormant" => {
                 let mut guardian = Guardian::create(spec.clone()).map_err(|_| ())?;
                 guardian.attach_dormant().map_err(|_| ())?;
                 let offer = guardian.receive(Duration::from_secs(5)).map_err(|_| ())?;
@@ -170,7 +176,8 @@ fn run_case(spec: LaunchSpec, mode: &str) -> Result<Value, ()> {
                 }
                 let drain = guardian.drain().map_err(|_| ())?;
                 Ok(json!({"case":mode,"custody":custody,"drain":drain,
-                    "fresh_custody_checked":true,"poisoned_channel_denied":mode=="poisoned-channel"}))
+                    "fresh_custody_checked":true,"poisoned_channel_denied":mode=="poisoned-channel",
+                    "sdk_relay_present":mode=="sdk-relay-dormant"}))
             }
             "lost-create-reply" => {
                 let guardian = Guardian::create(spec.clone()).map_err(|_| ())?;
@@ -292,6 +299,7 @@ fn run(arguments: &[String]) -> Result<Value, ()> {
     for mode in [
         "normal",
         "poisoned-channel",
+        "sdk-relay-dormant",
         "lost-create-reply",
         "guardian-crash-after-offer",
     ] {
@@ -304,6 +312,20 @@ fn run(arguments: &[String]) -> Result<Value, ()> {
         directory(&bundle)?;
         directory(&journal)?;
         directory(&material)?;
+        let sdk_directory = base.join("sdk");
+        let sdk_listener = if mode == "sdk-relay-dormant" {
+            directory(&sdk_directory)?;
+            let listener =
+                UnixListener::bind(sdk_directory.join("ingress.sock")).map_err(|_| ())?;
+            fs::set_permissions(
+                sdk_directory.join("ingress.sock"),
+                fs::Permissions::from_mode(0o600),
+            )
+            .map_err(|_| ())?;
+            Some(listener)
+        } else {
+            None
+        };
         for (name, raw) in NAMES.iter().zip(contents) {
             write_new(
                 &bundle.join(name),
@@ -334,6 +356,7 @@ fn run(arguments: &[String]) -> Result<Value, ()> {
             bundle: bundle.clone(),
             material: pipe.directory().to_owned(),
             journal,
+            sdk_socket_directory: sdk_listener.as_ref().map(|_| sdk_directory.clone()),
             uid: metadata.uid(),
             gid: metadata.gid(),
         };
@@ -352,6 +375,11 @@ fn run(arguments: &[String]) -> Result<Value, ()> {
             fs::remove_file(bundle.join(name)).map_err(|_| ())?;
         }
         fs::remove_dir(&bundle).map_err(|_| ())?;
+        if sdk_listener.is_some() {
+            drop(sdk_listener);
+            fs::remove_file(sdk_directory.join("ingress.sock")).map_err(|_| ())?;
+            fs::remove_dir(&sdk_directory).map_err(|_| ())?;
+        }
         result["private_paths_removed"] = json!(true);
         result["elapsed_ms"] = json!(started.elapsed().as_secs_f64() * 1000.0);
         cases.push(result);

@@ -18,7 +18,7 @@ import (
 var rejected = errors.New("native launcher rejected")
 
 func indexDigest(args []string) (string, error) {
-	if len(args) != 2 || args[0] != "--index-sha256" || len(args[1]) != 64 {
+	if (len(args) != 2 && len(args) != 3) || args[0] != "--index-sha256" || len(args[1]) != 64 || (len(args) == 3 && args[2] != "--sdk-relay") {
 		return "", rejected
 	}
 	for _, ch := range args[1] {
@@ -65,6 +65,13 @@ func run(args []string) error {
 	defer material.Close()
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	if len(args) == 3 {
+		relay, err := startSDKRelay(ctx, "/sdk/ingress.sock", "127.0.0.1:8443")
+		if err != nil {
+			return err
+		}
+		defer relay.close()
+	}
 	cmd := exec.CommandContext(ctx, "/adapter", "--bundle", "/bundle", "--index-sha256", digest)
 	cmd.Env = []string{"PATH=/nonexistent", "HOME=/nonexistent"}
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
