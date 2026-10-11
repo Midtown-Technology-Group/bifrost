@@ -2859,12 +2859,27 @@ async def deploy_solution(
 async def get_deploy_job(
     job_id: UUID, ctx: Context, user: CurrentSuperuser
 ) -> SolutionDeployJobStatus:
+    """Keep projected outcomes nonterminal until the owning job finishes."""
     job = await ctx.db.get(SolutionDeployJob, job_id)
     if job is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Deploy job not found"
         )
-    return SolutionDeployJobStatus.model_validate(job)
+    response = SolutionDeployJobStatus.model_validate(job)
+    owner = await ctx.db.get(PlatformJob, job_id)
+    # Deployment records its projected outcome before the owning job finishes
+    # install rollback/storage cleanup. Pollers must observe that completion.
+    if (
+        response.status in ("succeeded", "failed")
+        and owner is not None
+        and owner.status in ("queued", "running", "waiting", "cancel_requested")
+    ):
+        return response.model_copy(update={
+            "status": "queued" if owner.status == "queued" else "running",
+            "error": None,
+            "result": None,
+        })
+    return response
 
 
 @router.post(
