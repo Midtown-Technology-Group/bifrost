@@ -1,6 +1,6 @@
 {
   "name": "bifrost",
-  "version": "3.0.0",
+  "version": "3.1.0",
   "description": "Bifrost \u2014 MSP automation platform. Skills for building workflows, forms, agents, independent Apps, Solutions, tables, and files with the Bifrost SDK + CLI, including v1 migration into either V2 ownership model.",
   "author": {
     "name": "Jack Musick",
