@@ -1,9 +1,16 @@
+import asyncio
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
 import pytest
+from sqlalchemy import delete
 
 from src.models.orm.agents import Agent
+from src.models.orm.ai_models import (
+    AIModelAssignment,
+    AIModelProfile,
+    AIProviderConnection,
+)
 from src.services.ai_model_service import (
     AIModelService,
     OPENCODE_GO_DEFAULT_ENDPOINT,
@@ -319,6 +326,86 @@ async def test_openai_compatible_profile_detects_and_remembers_transport(db_sess
     assert first.openai_transport == "responses"
     assert second.openai_transport == "responses"
     detector.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_openai_compatible_transport_persists_across_concurrent_run_sessions(
+    async_session_factory,
+):
+    connection_id = None
+    profile_id = None
+    detection_started = asyncio.Event()
+    release_detection = asyncio.Event()
+
+    async def detect_once(**_kwargs):
+        detection_started.set()
+        await release_detection.wait()
+        return "responses"
+
+    detector = AsyncMock(side_effect=detect_once)
+    try:
+        async with async_session_factory() as seed:
+            service = AIModelService(seed)
+            connection = await service.create_connection(
+                name=f"Persistent Foundry {uuid4().hex[:8]}",
+                provider="openai_compatible",
+                api_key="sk-test",
+                endpoint="https://foundry.example.test/openai/v1",
+            )
+            profile = await service.create_profile(
+                name=f"Persistent Model {uuid4().hex[:8]}",
+                connection_id=connection.id,
+                model="gpt-5.6-luna",
+                capabilities=None,
+                enabled_for_chat=True,
+            )
+            connection_id = connection.id
+            profile_id = profile.id
+            await seed.commit()
+
+        with patch(
+            "src.services.openai_transport_detection.detect_openai_transport",
+            detector,
+        ):
+            async def resolve_once():
+                async with async_session_factory() as run_session:
+                    config = await AIModelService(run_session).resolve_config(
+                        profile_id=profile_id
+                    )
+                    await run_session.commit()
+                    return config.openai_transport
+
+            first = asyncio.create_task(resolve_once())
+            await detection_started.wait()
+            second = asyncio.create_task(resolve_once())
+            await asyncio.sleep(0.05)
+            detection_count_while_locked = detector.await_count
+            release_detection.set()
+
+            assert await asyncio.gather(first, second) == ["responses", "responses"]
+            assert detection_count_while_locked == 1
+
+            assert await resolve_once() == "responses"
+
+        detector.assert_awaited_once()
+    finally:
+        release_detection.set()
+        if profile_id is not None and connection_id is not None:
+            async with async_session_factory() as cleanup:
+                await cleanup.execute(
+                    delete(AIModelAssignment).where(
+                        AIModelAssignment.profile_id == profile_id
+                    )
+                )
+                await cleanup.execute(
+                    delete(AIModelProfile).where(AIModelProfile.id == profile_id)
+                )
+                await cleanup.execute(
+                    delete(AIProviderConnection).where(
+                        AIProviderConnection.id == connection_id
+                    )
+                )
+                await cleanup.commit()
 
 
 @pytest.mark.asyncio
