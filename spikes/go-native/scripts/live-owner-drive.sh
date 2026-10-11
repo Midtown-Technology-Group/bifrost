@@ -55,7 +55,7 @@ receive_event() {
   test "$(jq -er '.event' "$target.new")" = "$event"
   mv "$target.new" "$target"
 }
-for case_number in 0 1 2 3 4 5 6 7; do
+for case_number in 0 1 2 3 4 5 6 7 8; do
   case_dir="$slice_root/$case_number"
   wait_file "$case_dir/launch-ready.json"
   session=$(jq -er '.prepare.body.binding.session_id' "$case_dir/owner-config.json")
@@ -114,12 +114,16 @@ for case_number in 0 1 2 3 4 5 6 7; do
     cat "$case_dir/cancel-ready.json" >&"$owner_input"
     printf '\n' >&"$owner_input"
   fi
-  if [[ "$case_number" = 4 || "$case_number" = 6 ]]; then
+  if [[ "$case_number" = 4 || "$case_number" = 6 || "$case_number" = 8 ]]; then
     recovery_mode=--recover-closed-result
     recovery_event=closed_result_recovery_required
     if [[ "$case_number" = 6 ]]; then
       recovery_mode=--recover-closed-cancel
       recovery_event=closed_cancel_recovery_required
+    fi
+    if [[ "$case_number" = 8 ]]; then
+      recovery_mode=--recover-open-session
+      recovery_event=open_session_recovery_required
     fi
     receive_event "$recovery_event" "$case_dir/owner-crash-required.json"
     test "$(jq -er '.owner_pid' "$case_dir/owner-crash-required.json")" = "$owner_pid"
@@ -161,7 +165,7 @@ for case_number in 0 1 2 3 4 5 6 7; do
   exec {owner_output}<&-
   wait "$owner_pid"
   exit_event=owner_exited
-  if [[ "$case_number" = 4 || "$case_number" = 6 ]]; then exit_event=closed_recovery_exited; fi
+  if [[ "$case_number" = 4 || "$case_number" = 6 || "$case_number" = 8 ]]; then exit_event=closed_recovery_exited; fi
   printf '{"event":"%s","pid":%s,"exit_code":0}\n' "$exit_event" "$owner_pid" > "$case_dir/owner-exited.json.new"
   mv "$case_dir/owner-exited.json.new" "$case_dir/owner-exited.json"
   owner_pid=''

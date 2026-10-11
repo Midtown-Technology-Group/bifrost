@@ -451,3 +451,32 @@ Fresh hosted eight-case and security/race evidence is required. This candidate
 adds no schema, role grants, wire messages, lifecycle transition, owner assignment,
 production dispatch or Python-owned changes. Open-session owner recovery, actual
 Docker response loss and interrupted cleanup remain distinct unproved paths.
+
+
+## Open-session original-owner loss candidate
+
+The ninth same-binary case parks the original owner after one admitted SDK call
+and before cancellation, Result acceptance or resource settlement. The fixture
+holds the actual response, attempts recovery while that actor is alive and
+requires denial before a cancellation write or cleanup intent. After SIGKILL
+and wait for the exact actor, authenticated API must still read Running, the
+finite grant must remain unrevoked and no Result/resource fact may exist.
+
+The fresh Rust closing actor uses the original SessionFence and existing
+`request_running_cancel` transaction. Before it calls that writer, the shared
+read-only guardian preflight verifies original protected custody/hash, owner
+PID/start ticks gone, original kernel/container/StartedAt/cgroup, nonce, source
+artifact/binding and retirement-path identities. The same validator runs again
+before physical retirement. The common cancellation commits closure/revocation
+under the existing lock order; it neither assigns an owner nor reissues a grant.
+The actor then observes the closed session and consumes stop-only retirement
+through the existing resource-fact writer. The sole durable owner/attempt/session
+and Start/admission counts must remain unchanged. No SDK, Result, protocol
+Cancel/Stopped or material delivery is replayed or reconstructed.
+
+A failed preflight, non-original identity, uncertain cancellation commit or
+non-Committed cancellation result denies this open-recovery path and retains
+obligations for inspection. It does not resume execution, renew authority or
+retry an uncertain mutation. Fresh hosted nine-case/source/security/race proof
+is required. The candidate adds no schema, role privilege, runtime wire message,
+production route, Python-owned change or second lifecycle state machine.

@@ -326,12 +326,15 @@ async def test_original_rust_owner_runs_unchanged_go_and_cancels_waiting_sdk(
         )
     )
     proofs = []
-    for number in range(8):
-        cancel_waiting_sdk = number in (2, 6, 7)
+    for number in range(9):
+        cancel_waiting_sdk = number in (2, 6, 7, 8)
         lost_result_commit_ack = number in (3, 4)
         crash_after_result_commit = number == 4
         crash_after_cancel = number == 6
-        owner_crashed = crash_after_result_commit or crash_after_cancel
+        crash_before_cancel = number == 8
+        owner_crashed = (
+            crash_after_result_commit or crash_after_cancel or crash_before_cancel
+        )
         lost_release_commit_ack = number == 5
         lost_settlement_commit_ack = number == 7
         owner_cancelled = cancel_waiting_sdk or lost_release_commit_ack
@@ -421,6 +424,7 @@ async def test_original_rust_owner_runs_unchanged_go_and_cancels_waiting_sdk(
             "lost_result_commit_ack": lost_result_commit_ack,
             "crash_after_result_commit": crash_after_result_commit,
             "crash_after_cancel": crash_after_cancel,
+            "crash_before_cancel": crash_before_cancel,
             "lost_release_commit_ack": lost_release_commit_ack,
             "lost_settlement_commit_ack": lost_settlement_commit_ack,
         }
@@ -655,7 +659,7 @@ async def test_original_rust_owner_runs_unchanged_go_and_cancels_waiting_sdk(
                     case / "abort-release-ready.json",
                     {"event": "abort_release_ready", "session_id": str(session)},
                 )
-            if cancel_waiting_sdk:
+            if cancel_waiting_sdk and not crash_before_cancel:
                 admitted = await observation(case / "owner-sdk-admitted.json")
                 assert admitted == {"event": "sdk_admitted", "session_id": str(session)}
                 async with asyncio.timeout(45):
@@ -677,13 +681,19 @@ async def test_original_rust_owner_runs_unchanged_go_and_cancels_waiting_sdk(
             if owner_crashed:
                 crash_required = await observation(case / "owner-crash-required.json")
                 expected_crash = {
-                    "event": "closed_cancel_recovery_required"
+                    "event": "open_session_recovery_required"
+                    if crash_before_cancel
+                    else "closed_cancel_recovery_required"
                     if crash_after_cancel
                     else "closed_result_recovery_required",
                     "session_id": str(session),
                     "owner_pid": ingress["owner_pid"],
                 }
-                if crash_after_cancel:
+                if crash_before_cancel:
+                    async with asyncio.timeout(45):
+                        await response_held.wait()
+                    assert sdk_statuses == [200] and not release_response.is_set()
+                elif crash_after_cancel:
                     expected_crash["cancel_commit_observed"] = True
                 else:
                     expected_crash["result_commit_observation"] = "lost_ack"
@@ -732,17 +742,37 @@ async def test_original_rust_owner_runs_unchanged_go_and_cancels_waiting_sdk(
                         "SELECT count(*) FROM runtime_report_receipts WHERE session_id=:session AND disposition='accepted' AND winner='result'"
                     ),
                     {"session": session},
-                ) == (0 if crash_after_cancel else 1)
+                ) == (0 if crash_after_cancel or crash_before_cancel else 1)
                 committed = e2e_client.get(
                     f"/api/executions/{execution}", headers=platform_admin.headers
                 )
                 assert (
                     committed.status_code == 200
                     and committed.json()["status"]
-                    == ("Cancelling" if crash_after_cancel else "Success")
+                    == (
+                        "Running"
+                        if crash_before_cancel
+                        else "Cancelling"
+                        if crash_after_cancel
+                        else "Success"
+                    )
                     and committed.json()["result"]
-                    == (None if crash_after_cancel else expected_result)
+                    == (
+                        None
+                        if crash_after_cancel or crash_before_cancel
+                        else expected_result
+                    )
                 )
+                if crash_before_cancel:
+                    assert (
+                        await db_session.scalar(
+                            text(
+                                "SELECT count(*) FROM workflow_runtime_sdk_grants WHERE runtime_session_id=:session AND revoked_at IS NOT NULL"
+                            ),
+                            {"session": session},
+                        )
+                        == 0
+                    )
                 publish(
                     case / "closed-recovery-ready.json",
                     {"event": "closed_recovery_ready", "session_id": str(session)},
@@ -962,10 +992,19 @@ async def test_original_rust_owner_runs_unchanged_go_and_cancels_waiting_sdk(
                     "connections_remaining": 0,
                     "dropped": True,
                 }
-            if crash_after_cancel:
+            if crash_after_cancel or crash_before_cancel:
                 assert result["component"]["original_owner_crash_recovered"] is True
                 assert result["component"]["reconciled_without_replay"] is True
                 assert "receipt" not in result["component"]
+                if crash_before_cancel:
+                    assert (
+                        result["component"]["open_session_owner_crash_recovered"]
+                        is True
+                    )
+                    assert (
+                        "cancel" not in result["component"]
+                        and "stopped" not in result["component"]
+                    )
                 assert (
                     resource_observation["recovery_kind"]
                     == "closed-cancel-original-owner-loss/v1"
@@ -998,7 +1037,7 @@ async def test_original_rust_owner_runs_unchanged_go_and_cancels_waiting_sdk(
                     component["cancel_commit_observed"]
                     and component["durable_cancelled_finalization"]
                 )
-                if cancel_waiting_sdk:
+                if cancel_waiting_sdk and not crash_before_cancel:
                     assert (
                         component["cancel"]["body"]["cancel_id"] == config["cancel_id"]
                     )
@@ -1070,14 +1109,16 @@ async def test_original_rust_owner_runs_unchanged_go_and_cancels_waiting_sdk(
                     "physical_drain": result["physical_drain"],
                     "elapsed_ms": result["elapsed_ms"],
                     "durable_cancelled_finalization": True,
-                    "original_owner_crash_recovered": crash_after_cancel,
+                    "original_owner_crash_recovered": crash_after_cancel
+                    or crash_before_cancel,
+                    "open_session_owner_crash_recovered": crash_before_cancel,
                     "resource_settlement": result["resource_settlement"],
                     "settlement_commit_ack_lost": lost_settlement_commit_ack,
                 }
-                if cancel_waiting_sdk:
+                if cancel_waiting_sdk and not crash_before_cancel:
                     cancelled_proof["cancel"] = component["cancel"]
                     cancelled_proof["stopped"] = component["stopped"]
-                else:
+                elif lost_release_commit_ack:
                     cancelled_proof.pop("sdk_response_held_until_stop")
                     cancelled_proof["release_commit_ack_lost"] = True
                     cancelled_proof["delivery_observed"] = False
@@ -1147,7 +1188,7 @@ async def test_original_rust_owner_runs_unchanged_go_and_cancels_waiting_sdk(
             private.unlink()
             keys.rmdir()
         publish(case / "fixture-finished.json", {"event": "fixture_finished"})
-    assert len(proofs) == 8 and len({proof["artifact_id"] for proof in proofs}) == 1
+    assert len(proofs) == 9 and len({proof["artifact_id"] for proof in proofs}) == 1
     publish(
         root / "live-proof.json",
         {
@@ -1159,6 +1200,7 @@ async def test_original_rust_owner_runs_unchanged_go_and_cancels_waiting_sdk(
             "durable_source_settlement": True,
             "closed_result_owner_crash_recovery": True,
             "closed_cancel_owner_crash_recovery": True,
+            "open_session_owner_crash_recovery": True,
             "uncertain_release_abandoned_without_delivery": True,
             "uncertain_settlement_reconciled_without_replay": True,
             "production_dispatch": False,

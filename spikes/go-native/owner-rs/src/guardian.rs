@@ -1149,26 +1149,25 @@ impl Guardian {
         )
     }
 
-    /// Consume stop-only custody and an independently observed immutable closed
-    /// session. No channel or effect is replayed and owner identity is unchanged.
-    pub fn retire_closed_session(
-        self,
-        closed: crate::ClosedSessionRecovery,
+    /// Read-only original-custody preflight before an existing coordinator
+    /// cancellation request. This supplies no launch, channel or SDK authority.
+    pub fn verify_original_owner_loss(
+        &self,
+        fence: &SessionFence,
         pins: &ArchivePins,
-    ) -> Result<RetiredSession, GuardianError> {
+    ) -> Result<(), GuardianError> {
+        self.original_owner_loss_records(fence, pins).map(|_| ())
+    }
+
+    fn original_owner_loss_records(
+        &self,
+        fence: &SessionFence,
+        pins: &ArchivePins,
+    ) -> Result<(Value, Value), GuardianError> {
         if self.may_start || self.attachment.is_some() || self.kernel.is_none() {
             return Err(GuardianError::Rejected);
         }
-        if closed.artifact_id != format!("sha256:{}", pins.archive_sha256) {
-            return Err(GuardianError::Rejected);
-        }
         let spec = self.spec.clone();
-        let recovery_kind = if closed.cancelled {
-            "closed-cancel-original-owner-loss/v1"
-        } else {
-            "closed-result-original-owner-loss/v1"
-        };
-        let fence = closed.fence;
         let raw = private_record(&spec, "original-custody.json")?;
         let record: Value = serde_json::from_slice(&raw).map_err(|_| GuardianError::Rejected)?;
         let observation = &record["observation"];
@@ -1217,12 +1216,6 @@ impl Guardian {
                 return Err(GuardianError::Rejected);
             }
         }
-        let cli_pid = observation["attached_cli_pid"]
-            .as_u64()
-            .ok_or(GuardianError::Rejected)?;
-        let cli_ticks = observation["attached_cli_start_ticks"]
-            .as_str()
-            .ok_or(GuardianError::Rejected)?;
         let retirement_raw = private_record(&spec, "retirement-custody.json")?;
         if observation["retirement_custody_sha256"] != sha256(&retirement_raw) {
             return Err(GuardianError::Rejected);
@@ -1244,6 +1237,43 @@ impl Guardian {
         {
             return Err(GuardianError::Rejected);
         }
+        Ok((record, retained))
+    }
+
+    /// Consume stop-only custody and an independently observed immutable closed
+    /// session. No channel or effect is replayed and owner identity is unchanged.
+    pub fn retire_closed_session(
+        self,
+        closed: crate::ClosedSessionRecovery,
+        pins: &ArchivePins,
+    ) -> Result<RetiredSession, GuardianError> {
+        if self.may_start || self.attachment.is_some() || self.kernel.is_none() {
+            return Err(GuardianError::Rejected);
+        }
+        if closed.artifact_id != format!("sha256:{}", pins.archive_sha256) {
+            return Err(GuardianError::Rejected);
+        }
+        let spec = self.spec.clone();
+        let recovery_kind = if closed.cancelled {
+            "closed-cancel-original-owner-loss/v1"
+        } else {
+            "closed-result-original-owner-loss/v1"
+        };
+        let fence = closed.fence;
+        let (record, retained) = self.original_owner_loss_records(&fence, pins)?;
+        let observation = &record["observation"];
+        let owner_pid = record["owner_pid"]
+            .as_u64()
+            .ok_or(GuardianError::Rejected)?;
+        let owner_ticks = record["owner_start_ticks"]
+            .as_str()
+            .ok_or(GuardianError::Rejected)?;
+        let cli_pid = observation["attached_cli_pid"]
+            .as_u64()
+            .ok_or(GuardianError::Rejected)?;
+        let cli_ticks = observation["attached_cli_start_ticks"]
+            .as_str()
+            .ok_or(GuardianError::Rejected)?;
         // Exclusive durable cleanup intent prevents concurrent recovery/replay.
         // A failed or uncertain recovery is retained for inspection, not retried.
         exclusive_record(
