@@ -68,8 +68,10 @@ replay; uncertain release abort without Provision/material/SDK delivery; dormant
 process birth before retained channel custody with stop-only drain.
 
 [Retained failed recovery run](closed-recovery-fixture-failure.json) timed out at
-proxy shutdown and did not verify teardown. The current source fixes client-EOF
-upstream leakage and adds idle owner-disconnect/live-owner shutdown regressions.
+proxy shutdown and did not verify teardown. Client-EOF upstream closure passed its regression, but the live-owner stop
+regression failed at server.wait_closed before transport abortion. The next
+source closes owned transports/handlers before that server wait; both regressions
+and fresh live proof remain required.
 The dormant birth probe passed once but then failed; the current source retains
 stop-only kernel custody before inducing owner EOF. No unchanged retries, timeout
 increases or weakened drain checks qualify either fix.

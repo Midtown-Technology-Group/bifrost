@@ -167,7 +167,6 @@ class CommitAckLossProxy:
         if self.server is None:
             raise ValueError("isolated proxy not started")
         self.server.close()
-        await self.server.wait_closed()
         # No buffered bytes may be delivered on fixture termination. Abort the
         # owned transports before awaiting handlers, including idle connections
         # left by SIGKILL; do not wait for an upstream peer to send another frame.
@@ -177,6 +176,9 @@ class CommitAckLossProxy:
         for task in tasks:
             task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
+        # Server.wait_closed also waits for its accepted transports. Waiting
+        # before aborting idle clients deadlocks shutdown on Python 3.14.
+        await self.server.wait_closed()
         if self.tasks or self.writers or self.failed:
             raise ValueError("isolated proxy still owns connections")
 

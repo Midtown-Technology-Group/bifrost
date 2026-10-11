@@ -8,9 +8,21 @@
   "artifact_id": 11696062441,
   "retained_path": "/home/thomas/src/bifrost-go-spike-artifacts/31cd2e94c714258483069875ab8c1d0384ae56b6/live",
   "diagnosis": "The helper's client forwarding task leaves an idle upstream open after client EOF; the server-read task can remain waiting indefinitely. This is a concrete leak, but the retained logs do not prove it is the sole shutdown failure cause.",
-  "candidate_fix": "Close upstream on client-forward completion and abort all owned transports at stop before awaiting handlers. Add an actual idle-upstream/client-disconnect unit regression.",
+  "candidate_fix": "Close upstream on client EOF; close server listener, abort owned transports, cancel/wait handlers, then await server.wait_closed. Keep both idle-owner shutdown regression cases.",
   "retry": "No unchanged retry. Fresh source-bound producer, live consumer, Rust and writer/security evidence required.",
   "runtime_accepted": false,
   "cleanup_verified": false,
-  "note": "Outer cancellation interrupted cleanup before inventory/public per-case evidence was retained. No claim that the failed run proves complete crash recovery, durable closure or teardown. No timeout increase, skip, transaction replay or ownership reassignment."
+  "note": "Outer cancellation interrupted cleanup before inventory/public per-case evidence was retained. No claim that the failed run proves complete crash recovery, durable closure or teardown. No timeout increase, skip, transaction replay or ownership reassignment.",
+  "subsequent_reproduced_failure": {
+    "source": "b105d7ab38e573bb8c2a28e01c9acc956c3a589a",
+    "writer_run": 38124022933,
+    "test": "test_idle_upstream_closes_on_owner_eof_or_proxy_stop[False]",
+    "failure": "Timeout at proxy.stop awaiting server.wait_closed before client transports are aborted",
+    "unit_result": {
+      "passed": 13897,
+      "failed": 1
+    },
+    "diagnosis": "Server.wait_closed waits for accepted connections; shutdown must abort owned transports and complete handlers first. The earlier client-EOF fix alone is insufficient.",
+    "cleanup_inventory_empty": true
+  }
 }
