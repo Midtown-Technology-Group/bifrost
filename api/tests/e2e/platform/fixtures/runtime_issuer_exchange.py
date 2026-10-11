@@ -8,12 +8,10 @@ import tempfile
 from pathlib import Path
 from uuid import UUID
 
-# This trusted fixture runs only in the disposable API test container. Drop
-# privilege before application imports or loading the isolated signing key.
+# The parent execs this fixture as its actual nonroot UID (gosu only when
+# starting from root). Refuse root before imports or loading signing material.
 if os.geteuid() == 0:
-    os.setgroups([])
-    os.setgid(1001)
-    os.setuid(1001)
+    raise RuntimeError("isolated issuer fixture requires nonroot exec custody")
 
 from sqlalchemy import URL  # noqa: E402
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine  # noqa: E402

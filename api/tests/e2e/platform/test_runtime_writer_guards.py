@@ -3386,9 +3386,14 @@ async def test_real_finite_issuer_exchange_uses_committed_grant_and_original_pee
         assert await asyncio.wait_for(owner.stdout.readline(), timeout=2) == b"ready\n"
         cert, _ = certificate_pair(tmp_path)
         ca = cert.read_text()
-        issuer = await asyncio.create_subprocess_exec(
+        issuer_command = [
             sys.executable,
             "/app/tests/e2e/platform/fixtures/runtime_issuer_exchange.py",
+        ]
+        if os.geteuid() == 0:
+            issuer_command = ["/usr/sbin/gosu", "1001:1001", *issuer_command]
+        issuer = await asyncio.create_subprocess_exec(
+            *issuer_command,
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
