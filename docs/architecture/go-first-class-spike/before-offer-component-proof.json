@@ -1,0 +1,41 @@
+{
+  "source": "b105d7ab38e573bb8c2a28e01c9acc956c3a589a",
+  "producer_run": 38124022944,
+  "artifact": "sha256:e893c1ba622d390eebc70bf81e14332b16158080a76d8da9fdee13d4a3388c70",
+  "source_inputs_verified": 39,
+  "cases_verified": 8,
+  "case": {
+    "case": "guardian-crash-before-offer",
+    "cli": {
+      "observation": {
+        "attached_cli_pid": 19725,
+        "attached_cli_start_ticks": "24012"
+      }
+    },
+    "container_id": "307ca0568a334563d36e8dbae72368d8719a2eb4757c69ffc38f137f2c4c3283",
+    "docker_response_loss_injected": false,
+    "drain": {
+      "attached_cli_waited": false,
+      "container_id": "307ca0568a334563d36e8dbae72368d8719a2eb4757c69ffc38f137f2c4c3283",
+      "container_removed": true,
+      "lifecycle_finalization": false,
+      "namespace_drained": true,
+      "runtime_acceptance": false,
+      "source_consumer_settlement": false
+    },
+    "duplicate_create_denied": true,
+    "durable_lifecycle": false,
+    "elapsed_ms": 203.388287,
+    "fresh_start_denied": true,
+    "guardian_sigkill": true,
+    "guardian_waited": true,
+    "observed_pid": 19775,
+    "original_cli_reaped_observed": true,
+    "original_custody_absent": true,
+    "private_paths_removed": true,
+    "process_birth_observed_before_owner_loss": true,
+    "stop_only_kernel_observed_before_owner_loss": true
+  },
+  "scope": "pre-admission physical guardian recovery only; live bootstrap failed separately",
+  "runtime_accepted": false
+}

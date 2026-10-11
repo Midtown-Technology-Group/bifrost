@@ -111,6 +111,12 @@ carrier_loaded=1
 test "$(docker image inspect --format '{{.Id}}' "$carrier_tag")" = "$(cat "$native_dir/carrier-image-id.txt")"
 git rev-parse HEAD > "$evidence_dir/source.txt"
 sha256sum "$owner_dir/runtime-live-owner" "$native_dir/native-bundle.tar" > "$evidence_dir/accepted-inputs.sha256"
+# Template initialization hides stdout from its implicit image build. Build the
+# same fixed first-party service explicitly and retain both output streams so a
+# locked dependency failure is diagnosable before any runtime admission. The
+# ordinary stack/test build checks still run and consume their existing cache.
+docker compose -p "$slice_project" -f "$COMPOSE_FILE" --progress plain build init \
+  > "$evidence_dir/api-build.log" 2>&1
 bash test.sh stack up > "$evidence_dir/stack.log" 2>&1
 docker compose -p "$slice_project" -f "$COMPOSE_FILE" up -d --wait --wait-timeout 60 writer-guard-pool
 pool_container=$(docker compose -p "$slice_project" -f "$COMPOSE_FILE" ps -q writer-guard-pool)

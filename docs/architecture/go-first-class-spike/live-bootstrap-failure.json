@@ -1,0 +1,21 @@
+{
+  "source": "b105d7ab38e573bb8c2a28e01c9acc956c3a589a",
+  "producer_run": 38124022944,
+  "native_producer": "success",
+  "rust_foundation_run": 38124022967,
+  "rust_foundation": "success",
+  "live_job": "failure",
+  "failed_boundary": "first-party API image bootstrap, Dockerfile.dev line29 locked pip install",
+  "runtime_admission_reached": false,
+  "classification": "unclassified build dependency installation failure; package-level output was suppressed by template initialization",
+  "retained_path": "/home/thomas/src/bifrost-go-spike-artifacts/b105d7ab38e573bb8c2a28e01c9acc956c3a589a/live",
+  "cleanup_verified": true,
+  "inventory": {
+    "container": "",
+    "volume": "",
+    "network": ""
+  },
+  "diagnostic_change": "Explicitly build the same init service with plain progress into retained api-build.log before ordinary stack setup. Existing pinned image/dependency hashes, install policy, stack/tests and gates remain intact.",
+  "unchanged_retry": false,
+  "runtime_acceptance": false
+}
