@@ -1,0 +1,37 @@
+{
+  "source": "74b0558b7f953b5455dc00b59d529c4a117ab9b7",
+  "run": 38129846747,
+  "overall_run": "failure",
+  "failure": "case8 real SDK admitted once but shared observation counter remained zero; unchanged assertion rejected it",
+  "file": "api/tests/e2e/platform/test_runtime_live_go_slice.py:826",
+  "observed_sdk_admissions": 0,
+  "actual_sdk_http_statuses": [
+    200
+  ],
+  "partial_component": {
+    "cancel_commit_observed": true,
+    "durable_cancelled_finalization": true,
+    "heartbeats": 0,
+    "log_batches": 0,
+    "open_session_owner_crash_recovered": true,
+    "original_owner_crash_recovered": true,
+    "reconciled_without_replay": true,
+    "sdk_admissions": 0,
+    "sdk_denials": 0,
+    "source_consumer_settlement": true
+  },
+  "partial_physical_drain": {
+    "attached_cli_waited": false,
+    "container_id": "fb4b51f6f4a15bd5eee4498b6239fd8e3fede1665a6ae43fc9667d6050e58dbc",
+    "container_removed": true,
+    "lifecycle_finalization": false,
+    "namespace_drained": true,
+    "original_cli_reaped_observed": true,
+    "runtime_acceptance": false,
+    "source_consumer_settlement": false
+  },
+  "cleanup_verified": true,
+  "runtime_acceptance": false,
+  "scope": "Partial component observation is not a verified ninth-case durable/API acceptance proof. Full current-source gates remain required.",
+  "fix": "Increment shared observed_sdk_admissions at actual successful wait_for_first_sdk_admission, not at recovery or reporting."
+}

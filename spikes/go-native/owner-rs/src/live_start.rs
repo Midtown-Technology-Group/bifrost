@@ -406,6 +406,7 @@ impl LiveStart {
                 .map_err(|_| BeginError::Rejected)?
             {
                 Some(true) => {
+                    self.observed_sdk_admissions += 1;
                     if Instant::now() >= self.runtime_deadline {
                         return Err(BeginError::Rejected);
                     }
