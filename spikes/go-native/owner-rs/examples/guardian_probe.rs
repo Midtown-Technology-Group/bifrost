@@ -14,6 +14,7 @@ use std::{
     net::Shutdown,
     os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt, PermissionsExt},
     os::unix::net::{UnixListener, UnixStream},
+    os::unix::process::ExitStatusExt,
     path::{Path, PathBuf},
     process::{Command, Stdio},
     thread,
@@ -102,10 +103,18 @@ fn load_spec(path: &Path) -> Result<LaunchSpec, ()> {
     })
 }
 
-fn worker(path: &Path) -> Result<(), ()> {
+fn worker(path: &Path, before_offer: bool) -> Result<(), ()> {
     let spec = load_spec(path)?;
     let mut guardian = Guardian::create(spec.clone()).map_err(|_| ())?;
     guardian.attach_dormant().map_err(|_| ())?;
+    if before_offer {
+        // Birth can occur without a retained channel/kernel observation. Do
+        // not receive Offer or manufacture custody before the parent kills us.
+        write_new(&spec.journal.join("spawn-issued"), b"issued\n", 0o600)?;
+        loop {
+            thread::park();
+        }
+    }
     let offer = guardian.receive(Duration::from_secs(5)).map_err(|_| ())?;
     let custody = guardian.observe_live(&offer).map_err(|_| ())?;
     write_new(
@@ -370,6 +379,118 @@ fn run_case(spec: LaunchSpec, mode: &str) -> Result<Value, ()> {
                 let drain = recovered.drain().map_err(|_| ())?;
                 Ok(json!({"case":mode,"fresh_start_denied":true,"drain":drain}))
             }
+            "guardian-crash-before-offer" => {
+                let spec_path = spec.journal.join("worker-spec.json");
+                save_spec(&spec, &spec_path)?;
+                let mut child = Command::new(std::env::current_exe().map_err(|_| ())?)
+                    .arg("--worker-before-offer")
+                    .arg(&spec_path)
+                    .env_clear()
+                    .stdin(Stdio::null())
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::null())
+                    .spawn()
+                    .map_err(|_| ())?;
+                let observed = (|| -> Result<(Value, Value), ()> {
+                    let deadline = Instant::now() + Duration::from_secs(5);
+                    loop {
+                        if child.try_wait().map_err(|_| ())?.is_some() {
+                            return Err(());
+                        }
+                        if spec.journal.join("spawn-issued").exists() {
+                            let output = Command::new("/usr/bin/docker")
+                                .args(["container", "inspect"])
+                                .arg(format!("bifrost-guardian-{}", spec.session_id))
+                                .env_clear()
+                                .output()
+                                .map_err(|_| ())?;
+                            if !output.status.success() {
+                                return Err(());
+                            }
+                            let snapshot: Vec<Value> =
+                                serde_json::from_slice(&output.stdout).map_err(|_| ())?;
+                            if snapshot.len() != 1 {
+                                return Err(());
+                            }
+                            if snapshot[0]["State"]["Running"] == true {
+                                let children = fs::read_to_string(format!(
+                                    "/proc/{}/task/{}/children",
+                                    child.id(),
+                                    child.id()
+                                ))
+                                .map_err(|_| ())?;
+                                let pids: Vec<&str> = children.split_whitespace().collect();
+                                if pids.len() != 1
+                                    || fs::read_link(format!("/proc/{}/exe", pids[0]))
+                                        .map_err(|_| ())?
+                                        != Path::new("/usr/bin/docker")
+                                {
+                                    return Err(());
+                                }
+                                let pid: u64 = pids[0].parse().map_err(|_| ())?;
+                                let stat = fs::read_to_string(format!("/proc/{pid}/stat"))
+                                    .map_err(|_| ())?;
+                                let ticks = stat
+                                    .rsplit_once(") ")
+                                    .and_then(|(_, tail)| tail.split_whitespace().nth(19))
+                                    .ok_or(())?;
+                                return Ok((
+                                    snapshot[0].clone(),
+                                    json!({"observation":{
+                                    "attached_cli_pid":pid,"attached_cli_start_ticks":ticks}}),
+                                ));
+                            }
+                        }
+                        if Instant::now() >= deadline {
+                            return Err(());
+                        }
+                        thread::sleep(Duration::from_millis(10));
+                    }
+                })();
+                // Always reap the exact child, including failed observations.
+                let killed = child.kill();
+                let waited = child.wait();
+                let (snapshot, cli) = observed?;
+                killed.map_err(|_| ())?;
+                if waited.map_err(|_| ())?.signal() != Some(libc::SIGKILL) {
+                    return Err(());
+                }
+                for name in [
+                    "original-custody.json",
+                    "live-custody.json",
+                    "kernel-observation.json",
+                ] {
+                    if !matches!(fs::symlink_metadata(spec.journal.join(name)),
+                        Err(e) if e.kind() == std::io::ErrorKind::NotFound)
+                    {
+                        return Err(());
+                    }
+                }
+                if Guardian::create(spec.clone()).is_ok() {
+                    return Err(());
+                }
+                let mut recovered = Guardian::recover_for_drain(spec.clone()).map_err(|_| ())?;
+                if recovered.attach_dormant() != Err(GuardianError::Rejected)
+                    || recovered.verify_live() != Err(GuardianError::Rejected)
+                {
+                    return Err(());
+                }
+                let drain = recovered.drain().map_err(|_| ())?;
+                cli_reaped(&cli)?;
+                if drain["container_id"] != snapshot["Id"] || drain["attached_cli_waited"] != false
+                {
+                    return Err(());
+                }
+                Ok(
+                    json!({"case":mode,"guardian_sigkill":true,"guardian_waited":true,
+                    "process_birth_observed_before_owner_loss":true,
+                    "container_id":snapshot["Id"],"observed_pid":snapshot["State"]["Pid"],
+                    "original_custody_absent":true,"duplicate_create_denied":true,
+                    "original_cli_reaped_observed":true,"cli":cli,
+                    "fresh_start_denied":true,"docker_response_loss_injected":false,
+                    "durable_lifecycle":false,"drain":drain}),
+                )
+            }
             "guardian-crash-after-offer" => {
                 let spec_path = spec.journal.join("worker-spec.json");
                 save_spec(&spec, &spec_path)?;
@@ -524,6 +645,7 @@ fn run(arguments: &[String]) -> Result<Value, ()> {
         "sdk-relay-dormant",
         "sdk-relay-lost-ingress",
         "lost-create-reply",
+        "guardian-crash-before-offer",
         "guardian-crash-after-offer",
     ] {
         let session = uuid()?;
@@ -622,8 +744,14 @@ fn run(arguments: &[String]) -> Result<Value, ()> {
 }
 fn main() {
     let arguments: Vec<String> = std::env::args().collect();
-    if arguments.len() == 3 && arguments[1] == "--worker" {
-        if worker(Path::new(&arguments[2])).is_err() {
+    if arguments.len() == 3 && matches!(arguments[1].as_str(), "--worker" | "--worker-before-offer")
+    {
+        if worker(
+            Path::new(&arguments[2]),
+            arguments[1] == "--worker-before-offer",
+        )
+        .is_err()
+        {
             std::process::exit(1);
         }
         return;

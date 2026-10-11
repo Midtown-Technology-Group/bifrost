@@ -73,3 +73,20 @@ uncertain owner commit/material/spawn/lost-ACK settlement, or durable source
 consumer cleanup. Those remain mandatory for the complete vertical slice and
 human runtime acceptance. Production dispatch and Python-owned executions remain
 unchanged; no deployment, merge, credential expansion or renewal is authorized.
+
+## Process birth before retained custody
+
+The `guardian-crash-before-offer` hosted case kills the original Rust guardian
+after an independent Docker observation proves its dormant adapter is running,
+but before the guardian receives Offer or retains channel/kernel custody. The
+parent records the original attached Docker CLI's PID/start time, SIGKILLs and
+waits for the exact guardian, and requires all original custody records absent.
+Duplicate creation and recovered attach/Start remain denied. Stop-only recovery
+must drain and remove that exact container and observe the original CLI gone;
+the fixture then removes the original material/source paths.
+
+This case injects actual owner death, not a dropped Docker HTTP reply. It is
+pre-admission physical evidence: no database owner assignment, SDK issuance,
+tenant Start, receipt or durable source settlement is claimed. Unknown Docker
+transport outcomes and durable recovery of an admitted pre-Result execution
+still require separate evidence. A passed probe does not release either gate.
