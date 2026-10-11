@@ -96,3 +96,32 @@ Unix stream before SQL, with no database authority at its lazy test endpoint.
 These new checks still require exact-source hosted evidence. Positive finite JWT
 HTTP ingress, real source/owner transactions and the same unchanged tenant binary
 must be connected before this bridge can qualify as the required SDK slice.
+
+## Restricted ingress application candidate
+
+`build_isolated_sdk_app` now binds one parent-loaded immutable grant and original
+owner custody to an unmounted, private application. It exposes only the existing
+integration-get request/response DTOs. Dedicated finite JWT and exact bounded raw
+body verification precede the private Rust bridge; only an observed positive
+reply opens a database session for the stable capability fetch. Duplicate bearer
+headers, query-selected context, unknown body fields, oversized bodies, denial,
+disconnect or uncertainty prevents fetch. No ordinary application authentication,
+refresh, lifecycle, OpenAPI or redirect route is installed. Requests are bounded
+to one in flight and sixteen attempts per ingress instance; failures consume the
+budget. Recreating an ingress never restores owner custody or release permission.
+
+The trusted parent pins a synthetic integration UUID independently of HTTP.
+`fetch_synthetic_integration` locks that exact current integration row with
+`FOR UPDATE NOWAIT` and rejects an attached OAuth provider before invoking the
+existing shared SDK service. The parent row lock is retained through the fetch;
+the provider foreign key prevents concurrent installation from passing its key
+share lock. The integration UUID, OAuth absence and external-caller policy are
+preserved in the response. This transaction starts after Rust admission and takes
+no lifecycle locks. Fixtures must contain only isolated synthetic configuration.
+
+New tests distinguish mocked owner sequencing from real PostgreSQL capability
+behavior: the former proves denial cannot open a fetch session, while the latter
+uses the actual shared service and attempts a concurrent OAuth-provider insert.
+The constructor does not start a TLS server, authenticate issuer provenance or
+run the Go artifact. Those remain the next complete-slice integration steps;
+neither ASGI tests nor this fetch test constitute runtime acceptance.

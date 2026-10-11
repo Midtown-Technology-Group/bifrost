@@ -7,9 +7,13 @@ on:
       - api/src/core/runtime_sdk_credentials.py
       - api/src/services/isolated_runtime_sdk_tokens.py
       - api/src/services/isolated_runtime_sdk_bridge.py
+      - api/src/services/isolated_runtime_sdk_http.py
+      - api/shared/isolated_runtime_sdk.py
+      - api/tests/e2e/platform/test_isolated_runtime_sdk_fetch.py
       - api/tests/unit/core/test_runtime_sdk_credentials.py
       - api/tests/unit/services/test_isolated_runtime_sdk_tokens.py
       - api/tests/unit/services/test_isolated_runtime_sdk_bridge.py
+      - api/tests/unit/services/test_isolated_runtime_sdk_http.py
       - spikes/go-native/owner-rs/**
       - spikes/go-native/scripts/owner-foundation-check.sh
       - spikes/go-native/peers/rust-execution/**
@@ -56,9 +60,13 @@ jobs:
             api/src/core/runtime_sdk_credentials.py \
             api/src/services/isolated_runtime_sdk_tokens.py \
             api/src/services/isolated_runtime_sdk_bridge.py \
+            api/src/services/isolated_runtime_sdk_http.py \
+            api/shared/isolated_runtime_sdk.py \
+            api/tests/e2e/platform/test_isolated_runtime_sdk_fetch.py \
             api/tests/unit/core/test_runtime_sdk_credentials.py \
             api/tests/unit/services/test_isolated_runtime_sdk_tokens.py \
             api/tests/unit/services/test_isolated_runtime_sdk_bridge.py \
+            api/tests/unit/services/test_isolated_runtime_sdk_http.py \
             docker-compose.runtime-writer-guards.yml \
             scripts/ci/writer-guards/pgbouncer.ini \
             scripts/ci/writer-primer/userlist.txt \
@@ -109,6 +117,7 @@ jobs:
           bash test.sh unit --durations=0 > "$RUNNER_TEMP/writer-guard-unit.log" 2>&1
           cp /tmp/bifrost-*/test-results.xml "$RUNNER_TEMP/writer-guard-unit.xml"
           bash test.sh tests/e2e/platform/test_runtime_deployment_artifacts.py \
+            tests/e2e/platform/test_isolated_runtime_sdk_fetch.py \
             tests/e2e/platform/test_execution_history_pagination.py \
             tests/unit/models/test_execution_attempts_contract.py \
             tests/unit/services/execution/test_attempts.py --durations=0 \
