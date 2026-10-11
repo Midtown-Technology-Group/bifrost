@@ -156,6 +156,38 @@ def test_resolve_server_url_rejects_non_loopback_http(url: str) -> None:
         mcp_client._resolve_server_url(connection)
 
 
+def test_resolve_server_url_accepts_exact_encrypted_tunnel_host(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(
+        "MCP_ENCRYPTED_TUNNEL_HOSTS",
+        "scheduler-fixtures, tunnel.example.com",
+    )
+    connection = SimpleNamespace(
+        server_url_override=None,
+        server=SimpleNamespace(server_url="http://scheduler-fixtures:8080/mcp"),
+    )
+
+    assert mcp_client._resolve_server_url(connection) == (
+        "http://scheduler-fixtures:8080/mcp"
+    )
+
+
+def test_resolve_server_url_does_not_suffix_match_tunnel_host(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("MCP_ENCRYPTED_TUNNEL_HOSTS", "tunnel.example.com")
+    connection = SimpleNamespace(
+        server_url_override=None,
+        server=SimpleNamespace(
+            server_url="http://attacker-tunnel.example.com/mcp"
+        ),
+    )
+
+    with pytest.raises(ValueError, match="must use HTTPS unless it is loopback"):
+        mcp_client._resolve_server_url(connection)
+
+
 @pytest.mark.asyncio
 async def test_fastmcp_auto_negotiates_modern_first() -> None:
     peer = _NegotiationPeer("modern")

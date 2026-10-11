@@ -11,6 +11,7 @@ tokens with consent metadata).
 be returned by the API without leaking secrets.
 """
 
+import os
 from datetime import datetime
 from ipaddress import ip_address
 from typing import Annotated, Any, Literal
@@ -20,8 +21,21 @@ from uuid import UUID
 from pydantic import BaseModel, BeforeValidator, ConfigDict, Field
 
 
+_MCP_ENCRYPTED_TUNNEL_HOSTS_ENV = "MCP_ENCRYPTED_TUNNEL_HOSTS"
+
+
+def _encrypted_tunnel_hosts() -> set[str]:
+    """Return exact hostnames whose HTTP hop is protected by an outer tunnel."""
+    raw = os.environ.get(_MCP_ENCRYPTED_TUNNEL_HOSTS_ENV, "")
+    return {
+        hostname.strip().lower().rstrip(".")
+        for hostname in raw.split(",")
+        if hostname.strip()
+    }
+
+
 def validate_streamable_http_url(value: str) -> str:
-    """Require HTTPS except for loopback development endpoints."""
+    """Require HTTPS except for loopback or operator-attested tunnel hosts."""
     if not isinstance(value, str) or value != value.strip():
         raise ValueError("MCP server URL must use HTTP or HTTPS")
     try:
@@ -33,14 +47,19 @@ def validate_streamable_http_url(value: str) -> str:
     if parsed.scheme.lower() not in {"http", "https"} or not hostname:
         raise ValueError("MCP server URL must use HTTP or HTTPS")
     if parsed.scheme.lower() == "http":
-        is_loopback = hostname.lower() == "localhost"
+        normalized_hostname = hostname.lower().rstrip(".")
+        is_loopback = normalized_hostname == "localhost"
         if not is_loopback:
             try:
                 is_loopback = ip_address(hostname).is_loopback
             except ValueError:
                 is_loopback = False
-        if not is_loopback:
-            raise ValueError("MCP server URL must use HTTPS unless it is loopback")
+        is_tunnel_host = normalized_hostname in _encrypted_tunnel_hosts()
+        if not is_loopback and not is_tunnel_host:
+            raise ValueError(
+                "MCP server URL must use HTTPS unless it is loopback or an "
+                "operator-attested encrypted-tunnel host"
+            )
     return value
 
 
