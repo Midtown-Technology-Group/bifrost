@@ -242,15 +242,58 @@ async fn run(config: Value) -> Result<Value, ()> {
         "runtime_acceptance":false,"production_dispatch":false}),
     )
 }
+fn recover(config: &Value) -> Result<Value, ()> {
+    let root = PathBuf::from(text(config, "root")?);
+    let metadata = fs::symlink_metadata(&root).map_err(|_| ())?;
+    if !metadata.is_dir()
+        || metadata.uid() == 0
+        || metadata.mode() & 0o777 != 0o700
+        || root.canonicalize().map_err(|_| ())? != root
+    {
+        return Err(());
+    }
+    let descriptor: Value =
+        serde_json::from_slice(&read(Path::new(&text(config, "descriptor")?), 65536)?)
+            .map_err(|_| ())?;
+    let binding = &config["prepare"]["body"]["binding"];
+    let index = serde_json::to_vec(&json!({"version":"isolated-native-session-bundle/v1",
+        "binding":binding,"artifact":descriptor["artifact"],
+        "input_schema_sha256":descriptor["input_schema_sha256"],
+        "output_schema_sha256":descriptor["output_schema_sha256"]}))
+    .map_err(|_| ())?;
+    let bundle = root.join("bundle");
+    let spec = LaunchSpec {
+        session_id: text(binding, "session_id")?,
+        nonce: text(config, "nonce")?,
+        image_id: text(config, "image_id")?,
+        index_sha256: sha256(&index),
+        adapter: bundle.join("adapter"),
+        bundle,
+        material: root.join("material").join(text(binding, "session_id")?),
+        journal: root.join("journal"),
+        sdk_socket_directory: Some(root.join("sdk")),
+        uid: metadata.uid(),
+        gid: metadata.gid(),
+    };
+    let guardian = Guardian::recover_for_drain(spec).map_err(|_| ())?;
+    let drained = guardian.drain().map_err(|_| ())?;
+    Ok(
+        json!({"event":"stop_only_recovery","physical_drain":drained,"runtime_acceptance":false,
+        "source_consumer_settlement":false,"lifecycle_finalization":false}),
+    )
+}
+
 #[tokio::main]
 async fn main() {
     let args: Vec<String> = std::env::args().collect();
-    if args.len() != 2 {
+    let drain = args.len() == 3 && args[1] == "--drain";
+    if args.len() != 2 && !drain {
         std::process::exit(1);
     }
-    let result = match read(Path::new(&args[1]), 65536)
+    let result = match read(Path::new(if drain { &args[2] } else { &args[1] }), 65536)
         .and_then(|raw| serde_json::from_slice(&raw).map_err(|_| ()))
     {
+        Ok(config) if drain => recover(&config),
         Ok(config) => run(config).await,
         Err(()) => Err(()),
     };

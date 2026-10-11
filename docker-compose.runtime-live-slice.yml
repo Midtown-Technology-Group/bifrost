@@ -1,0 +1,14 @@
+# Hosted isolated slice only. The trusted fixture shares the owner's PID namespace
+# for kernel-authenticated local IPC. Tenant carriers retain private PID/network
+# namespaces and never receive this mount, Docker socket or fixture credentials.
+include:
+  - path: docker-compose.runtime-writer-guards.yml
+services:
+  test-runner:
+    pid: host
+    environment:
+      BIFROST_LIVE_SLICE_ROOT: ${LOG_DIR}/live-slice
+      BIFROST_LIVE_SOURCE_SHA: ${BIFROST_LIVE_SOURCE_SHA}
+      BIFROST_LIVE_PRODUCER_RUN: ${BIFROST_LIVE_PRODUCER_RUN}
+    volumes:
+      - ${LOG_DIR}/live-slice:${LOG_DIR}/live-slice
