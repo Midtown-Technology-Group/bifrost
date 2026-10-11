@@ -75,11 +75,12 @@ async def test_fixed_preimages_produce_only_finite_scoped_configuration():
     ["duplicate", "unknown", "grant", "snapshot", "caller", "digest", "expiry"],
 )
 async def test_incoming_models_cannot_rebind_fixed_issuer_preimages(change):
-    server, load, request, _ = fixture()
+    server, load, request, snapshot = fixture()
     if change == "unknown":
         request["renewal"] = True
     elif change == "grant":
-        request["grant_id"] = "00000000-0000-0000-0000-000000000001"
+        request["grant_id"] = "00000000-0000-0000-0000-000000000002"
+        assert request["grant_id"] != str(snapshot.id)
     elif change == "snapshot":
         assert isinstance(request["snapshot"], dict)
         request["snapshot"]["caller_name"] = "different caller"

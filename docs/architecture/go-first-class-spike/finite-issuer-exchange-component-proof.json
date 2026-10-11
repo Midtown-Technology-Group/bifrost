@@ -99,5 +99,16 @@
     "source": "a985f1f195bd574217e182d31decf6b43091a2ae",
     "run": 38107080212,
     "failure": "Seven unwrap calls in new test fixtures violated the unchanged existing lint gate; corrected using explicit is_ok assertions. Diagnostics retained."
+  },
+  "negative_grant_fixture_failure": {
+    "source": "70f62f7c136b4392dbb96a6ef5148ad610ee265e",
+    "run": 38107319686,
+    "tests": 13893,
+    "failures": 1,
+    "errors": 0,
+    "skipped": 0,
+    "diagnosis": "Different-grant negative fixture selected ID0001, which is exactly the fixture grant. Corrected to distinct ID0002 with an explicit inequality assertion. Signing/JSON positive and other unit cases passed, but SQL integration did not run.",
+    "disposable_inventory": "verified empty containers/volumes/networks",
+    "retained_artifacts": "/home/thomas/src/bifrost-go-spike-artifacts/70f62f7c136b4392dbb96a6ef5148ad610ee265e/guard/runtime-writer-guards-70f62f7c136b4392dbb96a6ef5148ad610ee265e"
   }
 }

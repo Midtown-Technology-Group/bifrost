@@ -46,5 +46,16 @@
     "The live Begin integration proves denial/replay exclusion, not positive SQL admission or tenant Start.",
     "No real SDK issuance, durable Result/Receipt/API readback or source-consumer settlement in this producer.",
     "This producer precedes the reserved-ingress committed-snapshot loader."
-  ]
+  ],
+  "post_start_actor_rust": {
+    "source": "734c1b3e055c31ad2a5baf8ad677b50fb25f179a",
+    "run": 38107745914,
+    "source_inputs_verified": 37,
+    "tests_passed": 38,
+    "failed": 0,
+    "ignored": 0,
+    "filtered_out": 0,
+    "scope": "Original reader/sequence and locked offline Rust component checks, not live SDK or Result integration"
+  },
+  "production_dispatch": false
 }
