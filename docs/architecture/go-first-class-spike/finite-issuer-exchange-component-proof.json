@@ -65,5 +65,14 @@
   ],
   "runtime_acceptance": false,
   "production_dispatch": false,
-  "goal_complete": false
+  "goal_complete": false,
+  "issued_release_candidate": {
+    "source": "6ac5112cb034963a552fcb1c60c52ba98aeb219e",
+    "rust_run": 38106918487,
+    "guard_run": 38106918455,
+    "conclusion": "failure",
+    "failure_classification": "Compile error E0277: SQLx 0.9 rejects dynamically assembled &String SQL; corrected with compile-time literal common predicate/INSERT macros and bind-only values. No AssertSqlSafe bypass.",
+    "rust_diagnostics": "/home/thomas/src/bifrost-go-spike-artifacts/6ac5112cb034963a552fcb1c60c52ba98aeb219e/rust",
+    "replacement_evidence_required": true
+  }
 }

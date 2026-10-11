@@ -27,6 +27,7 @@ pub struct MaterialPipe {
     writer: Option<File>,
     device: u64,
     inode: u64,
+    directory_identity: (u64, u64),
 }
 
 impl MaterialPipe {
@@ -51,6 +52,9 @@ impl MaterialPipe {
         builder
             .create(&directory)
             .map_err(|_| MaterialError::Rejected)?;
+        let directory_metadata =
+            fs::symlink_metadata(&directory).map_err(|_| MaterialError::CleanupRequired)?;
+        let directory_identity = (directory_metadata.dev(), directory_metadata.ino());
         let fifo = directory.join("sdk.pipe");
         // Fixed first-party tool, no shell, source execution or inherited env.
         // Any failed/uncertain creation retains its directory for inspection;
@@ -90,6 +94,7 @@ impl MaterialPipe {
             writer: Some(writer),
             device: metadata.dev(),
             inode: metadata.ino(),
+            directory_identity,
         })
     }
 
@@ -109,6 +114,7 @@ impl MaterialPipe {
         let writer = self.writer.as_ref().ok_or(MaterialError::Rejected)?;
         let held = writer.metadata().map_err(|_| MaterialError::Rejected)?;
         if !parent.is_dir()
+            || (parent.dev(), parent.ino()) != self.directory_identity
             || parent.uid() != uid
             || parent.mode() & 0o777 != 0o700
             || [path, held].iter().any(|m| {
@@ -149,6 +155,11 @@ impl MaterialPipe {
     /// Replaced files or unexpected directory contents deny cleanup.
     pub fn retire(mut self) -> Result<(), MaterialError> {
         self.close();
+        let directory =
+            fs::symlink_metadata(&self.directory).map_err(|_| MaterialError::CleanupRequired)?;
+        if !directory.is_dir() || (directory.dev(), directory.ino()) != self.directory_identity {
+            return Err(MaterialError::CleanupRequired);
+        }
         let metadata =
             fs::symlink_metadata(&self.fifo).map_err(|_| MaterialError::CleanupRequired)?;
         if !metadata.file_type().is_fifo()
@@ -360,6 +371,26 @@ mod tests {
         assert!(fs::write(&path, b"unowned replacement").is_ok());
         assert_eq!(pipe.retire(), Err(MaterialError::CleanupRequired));
         assert_eq!(fs::read(path).ok(), Some(b"unowned replacement".to_vec()));
+    }
+
+    #[test]
+    fn replaced_directory_with_same_fifo_inode_is_not_original_custody() {
+        let fixture = Fixture::new();
+        let pipe = fixture.pipe();
+        let original = pipe.directory().to_owned();
+        let retained = fixture.parent.join("retained-original");
+        fs::rename(&original, &retained).unwrap();
+        let mut builder = fs::DirBuilder::new();
+        builder.mode(0o700);
+        builder.create(&original).unwrap();
+        fs::hard_link(retained.join("sdk.pipe"), original.join("sdk.pipe")).unwrap();
+        assert_eq!(
+            pipe.verify_for(&original, fixture.uid),
+            Err(MaterialError::Rejected)
+        );
+        assert_eq!(pipe.retire(), Err(MaterialError::CleanupRequired));
+        assert!(original.join("sdk.pipe").exists());
+        assert!(retained.join("sdk.pipe").exists());
     }
 
     #[test]

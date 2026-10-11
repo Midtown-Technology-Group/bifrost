@@ -2,6 +2,32 @@
 use crate::{ObserveError, SessionFence, canonical_uuid, digest, lock_session_state};
 use sqlx::{PgPool, Row};
 
+// Both storage and issued paths use the identical common INSERT. Parameter
+// locations are compile-time literals, never requester-controlled SQL text.
+macro_rules! release_insert_sql {
+    ($release:literal, $frontier:literal, $provision:literal) => { concat!(
+        "INSERT INTO runtime_admissions ",
+        "(id,purpose,session_id,committed_start_id,start_message_id,grant_id,delivery_id, ",
+        "operations_digest,expires_at,provision_admission_id,provision_purpose,frontier_sha256,admitted_at) ",
+        "SELECT ", $release, "::text::uuid,'release',p.session_id,p.committed_start_id,p.start_message_id, ",
+        "p.grant_id,p.delivery_id,p.operations_digest,p.expires_at,p.id,'provision',", $frontier, ",clock_timestamp() ",
+        "FROM runtime_admissions p JOIN runtime_starts s ON s.id=p.committed_start_id ",
+        "JOIN workflow_runtime_sdk_grants g ON g.id=p.grant_id ",
+        "WHERE p.id=", $provision, "::text::uuid AND p.purpose='provision' ",
+        "AND g.revoked_at IS NULL AND g.initial_access_expires_at > clock_timestamp() ",
+        "AND p.expires_at > clock_timestamp() ",
+        "AND (s.deadline_utc IS NULL OR s.deadline_utc > clock_timestamp())"
+    )};
+}
+const INSERT_RELEASE: &str = release_insert_sql!("$1", "$2", "$3");
+const INSERT_ISSUED_RELEASE: &str = concat!(
+    "WITH current_eligible AS (",
+    crate::admit::eligibility_sql!(),
+    ") ",
+    release_insert_sql!("$6", "$7", "$8"),
+    " AND EXISTS (SELECT 1 FROM current_eligible WHERE caller=$9::jsonb)"
+);
+
 pub struct ReleaseRequest {
     pub release_id: String,
     pub provision_id: String,
@@ -214,47 +240,30 @@ async fn release_transaction(
     }
     // Evaluate expiry after all locks, at the actual INSERT clock. Any deadline
     // or grant expiry that passes during contention rejects without a release.
-    let insert_sql = "INSERT INTO runtime_admissions \
-         (id,purpose,session_id,committed_start_id,start_message_id,grant_id,delivery_id, \
-         operations_digest,expires_at,provision_admission_id,provision_purpose,frontier_sha256,admitted_at) \
-         SELECT $1::text::uuid,'release',p.session_id,p.committed_start_id,p.start_message_id, \
-         p.grant_id,p.delivery_id,p.operations_digest,p.expires_at,p.id,'provision',$2,clock_timestamp() \
-         FROM runtime_admissions p JOIN runtime_starts s ON s.id=p.committed_start_id \
-         JOIN workflow_runtime_sdk_grants g ON g.id=p.grant_id \
-         WHERE p.id=$3::text::uuid AND p.purpose='provision' \
-         AND g.revoked_at IS NULL AND g.initial_access_expires_at > clock_timestamp() \
-         AND p.expires_at > clock_timestamp() \
-         AND (s.deadline_utc IS NULL OR s.deadline_utc > clock_timestamp())";
-    // Caller/role eligibility is selected again in the INSERT's own snapshot,
-    // requiring the identical preimage. A prior read alone cannot qualify it.
-    let statement = if release_eligibility.is_some() {
-        let mut eligible = crate::admit::SELECT_ELIGIBILITY.to_owned();
-        for (old, new) in [(5, 8), (4, 7), (3, 6), (2, 5), (1, 4)] {
-            eligible = eligible.replace(&format!("${old}::"), &format!("${new}::"));
-        }
-        format!(
-            "WITH current_eligible AS ({eligible}) {insert_sql} AND EXISTS (SELECT 1 FROM current_eligible WHERE caller::jsonb=$9::jsonb)"
-        )
+    // Static SQL only; values remain binds. Reuse the same shared predicate
+    // at the write's own snapshot instead of carrying read-time authorization.
+    let inserted = if let Some((snapshot, caller)) = &release_eligibility {
+        let field = |name: &str| snapshot[name].as_str().ok_or(ObserveError::Rejected);
+        sqlx::query(INSERT_ISSUED_RELEASE)
+            .bind(field("workflow_id")?)
+            .bind(field("caller_user_id")?)
+            .bind(field("solution_install_id")?)
+            .bind(field("effective_organization_id")?)
+            .bind(field("source_id")?)
+            .bind(&request.release_id)
+            .bind(&request.frontier_sha256)
+            .bind(&request.provision_id)
+            .bind(caller)
+            .execute(&mut *locked.tx)
+            .await?
     } else {
-        insert_sql.to_owned()
+        sqlx::query(INSERT_RELEASE)
+            .bind(&request.release_id)
+            .bind(&request.frontier_sha256)
+            .bind(&request.provision_id)
+            .execute(&mut *locked.tx)
+            .await?
     };
-    let mut query = sqlx::query(&statement)
-        .bind(&request.release_id)
-        .bind(&request.frontier_sha256)
-        .bind(&request.provision_id);
-    if let Some((snapshot, caller)) = &release_eligibility {
-        for field in [
-            "workflow_id",
-            "caller_user_id",
-            "solution_install_id",
-            "effective_organization_id",
-            "source_id",
-        ] {
-            query = query.bind(snapshot[field].as_str().ok_or(ObserveError::Rejected)?);
-        }
-        query = query.bind(caller);
-    }
-    let inserted = query.execute(&mut *locked.tx).await?;
     if inserted.rows_affected() != 1 {
         return Err(ObserveError::Rejected);
     }

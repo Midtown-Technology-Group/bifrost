@@ -96,3 +96,11 @@ SQL exchange cases ran (13,893 unit tests, two failures, zero skips/errors).
 The correction uses strict JSON model validation after closed/canonical parsing;
 it does not relax UUID/date, identity, duplicate-field or credential restrictions.
 Disposable CI containers, volumes and networks were independently verified empty.
+
+The first issued-release candidate `6ac5112cb` failed compilation at SQLx's safe
+SQL boundary (Rust run 38106918487, guard run 38106918455). The replacement uses
+compile-time static common INSERT/eligibility macros and bound values; it does
+not assert arbitrary SQL safe or waive checks. Material custody additionally
+pins the original directory device/inode, so a replacement directory containing
+a hard link to the same FIFO cannot qualify or be retired as original custody.
+A nonroot physical replacement test exercises this case. Fresh evidence is due.

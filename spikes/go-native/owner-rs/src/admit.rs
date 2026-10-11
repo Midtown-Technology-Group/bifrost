@@ -22,6 +22,8 @@ macro_rules! eligibility_sql { () => { r#"SELECT w.name,a.artifact::text AS arti
  OR (w.access_level='authenticated' AND NOT u.is_external)
  OR EXISTS (SELECT 1 FROM workflow_roles wr JOIN user_roles ur ON ur.role_id=wr.role_id WHERE wr.workflow_id=w.id AND ur.user_id=u.id))"# }; }
 
+pub(crate) use eligibility_sql;
+
 pub struct AdmitRequest {
     pub workflow_id: String,
     /// Authenticated platform caller, supplied by trusted ingress, not input.
