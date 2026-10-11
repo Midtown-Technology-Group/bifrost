@@ -12,6 +12,11 @@ from fastapi import APIRouter, HTTPException, status
 from src.core.auth import CurrentActiveUser, RequirePlatformAdmin
 from src.core.db_deps import DbSession
 from src.core.log_safety import log_safe
+from src.models.contracts.artifacts import (
+    ModelCapabilityLookupRequest,
+    ModelCapabilityLookupResponse,
+    ModelCapabilityVerifyRequest,
+)
 from src.models.contracts.llm import (
     EmbeddingConfigRequest,
     EmbeddingConfigResponse,
@@ -19,11 +24,6 @@ from src.models.contracts.llm import (
     EmbeddingReindexResponse,
     EmbeddingTestRequest,
     EmbeddingTestResponse,
-)
-from src.models.contracts.artifacts import (
-    ModelCapabilityLookupRequest,
-    ModelCapabilityLookupResponse,
-    ModelCapabilityVerifyRequest,
 )
 from src.services.ai_model_service import AIModelService
 
@@ -62,10 +62,12 @@ async def verify_model_capability_support(
 ) -> ModelCapabilityLookupResponse:
     """Run a bounded, one-time provider conformance check for an unknown model."""
     del user
+    from src.services.embeddings.url_safety import validate_embedding_endpoint
     from src.services.llm.factory import get_llm_config
     from src.services.model_capabilities import verify_model_capabilities
 
     api_key = request.api_key
+    endpoint = request.endpoint
     if not api_key:
         try:
             saved = await get_llm_config(db)
@@ -79,13 +81,33 @@ async def verify_model_capability_support(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="The saved API key belongs to a different provider.",
             )
+        service = AIModelService(db)
+        requested_endpoint = service.normalize_endpoint(
+            request.provider, request.endpoint
+        )
+        saved_endpoint = service.normalize_endpoint(saved.provider, saved.endpoint)
+        if request.endpoint is not None and requested_endpoint != saved_endpoint:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Enter an API key to verify against a different endpoint.",
+            )
         api_key = saved.api_key
+        endpoint = saved.endpoint
+
+    if endpoint:
+        try:
+            endpoint = validate_embedding_endpoint(endpoint)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Provider endpoint rejected: {exc}",
+            ) from exc
 
     try:
         capabilities, message = await verify_model_capabilities(
             provider=request.provider,
             model=request.model,
-            endpoint=request.endpoint,
+            endpoint=endpoint,
             api_key=api_key,
         )
     except Exception as exc:
@@ -485,9 +507,8 @@ async def test_embedding_connection(
 
     Credential resolution order:
     1. request.api_key + request.endpoint when provided
-    2. saved dedicated embedding config (decrypt stored key, use stored endpoint)
-    3. LLM provider config — only when provider is openai (Anthropic doesn't
-       have embeddings). Inherits both key and endpoint.
+    2. saved dedicated embedding config, but only with its stored endpoint.
+       Testing another endpoint requires a fresh request.api_key.
     """
     try:
         api_key = request.api_key
@@ -497,9 +518,23 @@ async def test_embedding_connection(
             service = AIModelService(db)
             existing = await service.get_embedding_config_row()
             if existing:
+                saved_endpoint = service.embedding_client_endpoint(
+                    existing.connection.provider,
+                    existing.connection.endpoint,
+                )
+                if (
+                    request.endpoint is not None
+                    and normalized_endpoint != _normalize_endpoint(saved_endpoint)
+                ):
+                    return EmbeddingTestResponse(
+                        success=False,
+                        message=(
+                            "Enter an API key to test against a different endpoint."
+                        ),
+                        dimensions=None,
+                    )
+                normalized_endpoint = saved_endpoint
                 api_key = service.decrypt_api_key(existing.connection.encrypted_api_key)
-                if request.endpoint is None:
-                    normalized_endpoint = existing.connection.endpoint
             else:
                 return EmbeddingTestResponse(
                     success=False,
