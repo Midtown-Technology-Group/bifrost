@@ -303,6 +303,186 @@ def _collect_changed_ids(incoming: "Manifest", current: "Manifest") -> set[str]:
     return ids
 
 
+def normalize_git_manifest_identities(
+    incoming: "Manifest",
+    current: "Manifest",
+) -> "Manifest":
+    """Map portable manifest identities onto stable database identities.
+
+    Git content may come from another environment, where the same natural
+    entity has a different UUID.  Primary keys in this environment are durable
+    authority and must never be rewritten from repository input.  Rewrite the
+    incoming graph instead, including every exact UUID reference and mapping
+    key, before diffing or applying it.
+    """
+    from pathlib import PurePosixPath
+
+    id_map: dict[str, str] = {}
+    target_sources: dict[str, str] = {}
+
+    def remember(
+        entity_type: str,
+        source_id: str,
+        target_id: str | None,
+        current_ids: set[str],
+    ) -> None:
+        if target_id is None or source_id == target_id:
+            return
+        if source_id in current_ids:
+            raise ValueError(
+                f"{entity_type} manifest id {source_id} already belongs to a "
+                "different database entity"
+            )
+        other_source = target_sources.get(target_id)
+        if other_source is not None and other_source != source_id:
+            raise ValueError(
+                f"multiple {entity_type} manifest ids resolve to database id "
+                f"{target_id}"
+            )
+        existing_target = id_map.get(source_id)
+        if existing_target is not None and existing_target != target_id:
+            raise ValueError(
+                f"manifest id {source_id} resolves ambiguously to "
+                f"{existing_target} and {target_id}"
+            )
+        id_map[source_id] = target_id
+        target_sources[target_id] = source_id
+
+    def index(values, key):
+        indexed = {}
+        for item in values:
+            natural = key(item)
+            if natural is not None:
+                indexed[natural] = item.id
+        return indexed
+
+    def ids(values) -> set[str]:
+        return {item.id for item in values}
+
+    current_orgs = index(current.organizations, lambda item: item.name)
+    current_org_ids = ids(current.organizations)
+    for item in incoming.organizations:
+        remember("organization", item.id, current_orgs.get(item.name), current_org_ids)
+
+    current_roles = index(current.roles, lambda item: item.name)
+    current_role_ids = ids(current.roles)
+    for item in incoming.roles:
+        remember("role", item.id, current_roles.get(item.name), current_role_ids)
+
+    def mapped(value: str | None) -> str | None:
+        return id_map.get(value, value) if value is not None else None
+
+    current_workflows = index(
+        current.workflows.values(),
+        lambda item: (item.path, item.function_name, item.organization_id),
+    )
+    current_workflow_ids = ids(current.workflows.values())
+    for item in incoming.workflows.values():
+        natural = (item.path, item.function_name, mapped(item.organization_id))
+        remember(
+            "workflow", item.id, current_workflows.get(natural), current_workflow_ids
+        )
+
+    current_integrations = index(current.integrations.values(), lambda item: item.name)
+    current_integration_ids = ids(current.integrations.values())
+    for item in incoming.integrations.values():
+        remember(
+            "integration",
+            item.id,
+            current_integrations.get(item.name),
+            current_integration_ids,
+        )
+
+    def app_slug(item) -> str | None:
+        if item.slug:
+            return item.slug
+        return PurePosixPath(item.path).name if item.path else None
+
+    current_apps = index(current.apps.values(), app_slug)
+    current_app_ids = ids(current.apps.values())
+    for item in incoming.apps.values():
+        remember("app", item.id, current_apps.get(app_slug(item)), current_app_ids)
+
+    current_rules = index(
+        current.policy_rules.values(),
+        lambda item: (item.name, item.domain, item.organization_id),
+    )
+    current_rule_ids = ids(current.policy_rules.values())
+    for item in incoming.policy_rules.values():
+        natural = (item.name, item.domain, mapped(item.organization_id))
+        remember("policy rule", item.id, current_rules.get(natural), current_rule_ids)
+
+    current_tables = index(
+        current.tables.values(), lambda item: (item.name, item.organization_id)
+    )
+    current_table_ids = ids(current.tables.values())
+    for item in incoming.tables.values():
+        natural = (item.name, mapped(item.organization_id))
+        remember("table", item.id, current_tables.get(natural), current_table_ids)
+
+    current_policies = index(
+        current.file_policies.values(),
+        lambda item: (
+            item.organization_id,
+            item.location,
+            item.path,
+            item.solution_id,
+        ),
+    )
+    current_policy_ids = ids(current.file_policies.values())
+    for item in incoming.file_policies.values():
+        natural = (
+            mapped(item.organization_id),
+            item.location,
+            item.path,
+            mapped(item.solution_id),
+        )
+        remember(
+            "file policy", item.id, current_policies.get(natural), current_policy_ids
+        )
+
+    current_claims = index(
+        current.claims.values(), lambda item: (item.name, item.organization_id)
+    )
+    current_claim_ids = ids(current.claims.values())
+    for item in incoming.claims.values():
+        natural = (item.name, mapped(item.organization_id))
+        remember("claim", item.id, current_claims.get(natural), current_claim_ids)
+
+    current_configs = index(
+        current.configs.values(),
+        lambda item: (item.key, item.integration_id, item.organization_id),
+    )
+    current_config_ids = ids(current.configs.values())
+    for item in incoming.configs.values():
+        natural = (
+            item.key,
+            mapped(item.integration_id),
+            mapped(item.organization_id),
+        )
+        remember("config", item.id, current_configs.get(natural), current_config_ids)
+
+    if not id_map:
+        return incoming
+
+    def rewrite(value):
+        if isinstance(value, dict):
+            return {
+                id_map.get(str(key), key): rewrite(item)
+                for key, item in value.items()
+            }
+        if isinstance(value, list):
+            return [rewrite(item) for item in value]
+        if isinstance(value, str):
+            return id_map.get(value, value)
+        return value
+
+    payload = incoming.model_dump(
+        mode="json", by_alias=True, exclude_unset=True
+    )
+    return Manifest.model_validate(rewrite(payload))
+
+
 def _collect_removed_entity_ids(changes: list[dict[str, str]]) -> dict[str, set[str]]:
     """Return entity IDs that the manifest diff explicitly removed."""
     removed: dict[str, set[str]] = {}
@@ -782,15 +962,10 @@ class ManifestResolver:
 
         Cache invariant
         ---------------
-        All caches are keyed on parent UUIDs **as of prefetch time**. When a
-        resolver rewrites an entity's primary key in the same transaction
-        (cross-env id sync via the existing-by-name path), Postgres FK ON
-        UPDATE CASCADE migrates dependents to the new id, but the cache is
-        still keyed on the old id. The resolver responsible for the rewrite
-        MUST refresh / rekey any dependent caches before subsequent reads —
-        otherwise downstream lookups miss and fall through to INSERT, which
-        collides with the cascade-migrated rows. See `_resolve_integration`
-        for the canonical pattern and issue #148 for the original incident.
+        Caches are keyed by stable database UUIDs captured at prefetch time.
+        Repository manifests are normalized onto those identities before Git
+        diff/import, and natural-key resolver fallbacks preserve the cached ID.
+        No resolver may rekey a primary key from portable manifest input.
         """
         from src.models.orm.applications import Application
         from src.models.orm.config import Config
@@ -823,8 +998,16 @@ class ManifestResolver:
             cache["role_ids"].add(row[0])
             cache["role_by_name"][row[1]] = row[0]
 
-        # Workflows: {(path, function_name): id} + {id} set
-        workflow_query = select(Workflow.id, Workflow.path, Workflow.function_name)
+        # Workflows: {(path, function_name, organization_id): id} + {id} set.
+        # Organization scope is part of import identity even though the legacy
+        # _repo uniqueness index is global; a cross-scope collision must fail
+        # closed at INSERT rather than mutate another organization's row.
+        workflow_query = select(
+            Workflow.id,
+            Workflow.path,
+            Workflow.function_name,
+            Workflow.organization_id,
+        )
         if self._workspace_global_scope:
             workflow_query = workflow_query.where(
                 Workflow.solution_id.is_(None),
@@ -835,7 +1018,7 @@ class ManifestResolver:
         for row in wf_result.all():
             cache["wf_ids"].add(row[0])
             if row[1] and row[2]:
-                cache["wf_by_natural"][(row[1], row[2])] = row[0]
+                cache["wf_by_natural"][(row[1], row[2], row[3])] = row[0]
 
         # Integrations: {name: id} + {id} set
         integ_result = await self.db.execute(select(Integration.id, Integration.name))
@@ -1517,14 +1700,15 @@ class ManifestResolver:
                 match_on="id",
             )]
 
-        # 2. Try by name (cross-env ID sync)
+        # 2. Try by name. Repository input updates the stable local row; it
+        # never rewrites a database primary key.
         existing_by_name = cache["org_by_name"].get(morg.name)
         if existing_by_name is not None:
             return [Upsert(
                 model=Organization,
-                id=org_id,
-                values={"id": org_id, "name": fields["name"], "is_active": fields["is_active"]},
-                match_on="name",
+                id=existing_by_name,
+                values={"name": fields["name"], "is_active": fields["is_active"]},
+                match_on="id",
             )]
 
         # 3. Insert new
@@ -1560,14 +1744,14 @@ class ManifestResolver:
                 match_on="id",
             )]
 
-        # 2. Try by name (cross-env ID sync)
+        # 2. Try by name without changing the stable local primary key.
         existing_by_name = cache["role_by_name"].get(mrole.name)
         if existing_by_name is not None:
             return [Upsert(
                 model=Role,
-                id=role_id,
-                values={"id": role_id, "name": fields["name"]},
-                match_on="name",
+                id=existing_by_name,
+                values={"name": fields["name"]},
+                match_on="id",
             )]
 
         # 3. Insert new
@@ -1636,26 +1820,32 @@ class ManifestResolver:
 
         wf_id = UUID(mwf.id)
 
-        # Check prefetch cache for existing workflow
-        existing_by_natural = cache["wf_by_natural"].get((mwf.path, mwf.function_name))
-
         # Source column values from the model; fix up organization_id to UUID and
         # name to the manifest key (resolver logic: the dict key is the canonical name).
         direct = mwf.to_orm_values(Destination.GIT_SYNC).direct
+        direct.pop("id", None)
+        organization_id = (
+            UUID(direct["organization_id"])
+            if direct.get("organization_id")
+            else None
+        )
+        existing_by_natural = cache["wf_by_natural"].get(
+            (mwf.path, mwf.function_name, organization_id)
+        )
         wf_values = {
             **direct,
             "name": manifest_name,
-            "organization_id": UUID(direct["organization_id"]) if direct.get("organization_id") else None,
+            "organization_id": organization_id,
         }
 
         ops: list[SyncOp] = []
 
         if existing_by_natural is not None:
-            # Match on natural key — update (including ID if it changed)
+            # Natural-key matches retain their database primary key.
             ops.append(Upsert(
                 model=Workflow,
                 id=existing_by_natural,
-                values={"id": wf_id, **wf_values},
+                values=wf_values,
                 match_on="id",
             ))
         else:
@@ -1677,7 +1867,7 @@ class ManifestResolver:
             ops.append(SyncRoles(
                 junction_model=WorkflowRole,
                 entity_fk="workflow_id",
-                entity_id=wf_id,
+                entity_id=existing_by_natural or wf_id,
                 role_ids=role_ids,
             ))
 
@@ -2269,7 +2459,7 @@ class ManifestResolver:
 
         from bifrost.manifest_codec import Destination
 
-        integ_id = UUID(minteg.id)
+        manifest_integ_id = UUID(minteg.id)
         fields = minteg.to_orm_values(Destination.GIT_SYNC).direct
 
         # Check by natural key (name) — use cache if available
@@ -2294,62 +2484,16 @@ class ManifestResolver:
             "is_deleted": False,
         }
 
-        # Upsert integration row FIRST (must exist before config schema / mapping FKs)
-        id_was_rewritten = existing_by_name is not None and existing_by_name != integ_id
-        if existing_by_name is not None:
-            upsert_op = Upsert(
-                model=Integration,
-                id=existing_by_name,
-                values={"id": integ_id, **integ_values},
-                match_on="id",
-            )
-        else:
-            upsert_op = Upsert(
-                model=Integration,
-                id=integ_id,
-                values=integ_values,
-                match_on="id",
-            )
+        # Upsert the integration row first (children reference it), preserving
+        # the database primary key on natural-name matches.
+        integ_id = existing_by_name or manifest_integ_id
+        upsert_op = Upsert(
+            model=Integration,
+            id=integ_id,
+            values=integ_values,
+            match_on="id",
+        )
         await upsert_op.execute(self.db)
-
-        # If the upsert rewrote the integration's PK (cross-env id sync), the
-        # FK ON UPDATE CASCADE on integration_config_schema, integration_mappings,
-        # and configs migrated those rows from existing_by_name → integ_id in the
-        # same statement. The prefetch cache is still keyed on the OLD id, so
-        # refresh dependent caches before we read them — otherwise the
-        # upsert-by-natural-key path below misses the (now-migrated) rows and
-        # tries to INSERT, hitting unique-index violations.
-        if id_was_rewritten and cache is not None:
-            cs_refresh = await self.db.execute(
-                select(IntegrationConfigSchema).where(
-                    IntegrationConfigSchema.integration_id == integ_id
-                )
-            )
-            cache["integ_cs"][integ_id] = {
-                cs.key: cs for cs in cs_refresh.scalars().all()
-            }
-            cache["integ_cs"].pop(existing_by_name, None)
-
-            m_refresh = await self.db.execute(
-                select(IntegrationMapping).where(
-                    IntegrationMapping.integration_id == integ_id
-                )
-            )
-            cache["integ_mappings"][integ_id] = {
-                str(m.organization_id) if m.organization_id else None: m
-                for m in m_refresh.scalars().all()
-            }
-            cache["integ_mappings"].pop(existing_by_name, None)
-
-            # _resolve_config runs later and reads cache["config_by_natural"]
-            # keyed on (key, integ_id, org_id). After CASCADE the underlying
-            # rows live under integ_id; rewrite cache keys to match so the
-            # update path is taken instead of an insert that would collide.
-            cfg_natural = cache.get("config_by_natural")
-            if cfg_natural:
-                stale_keys = [k for k in cfg_natural if k[1] == existing_by_name]
-                for old_key in stale_keys:
-                    cfg_natural[(old_key[0], integ_id, old_key[2])] = cfg_natural.pop(old_key)
 
         # Sync config schema items: upsert by (integration_id, key) to preserve IDs
         # (Config rows reference schema IDs via FK — deleting schema cascades to configs)
@@ -2524,9 +2668,8 @@ class ManifestResolver:
         if cache_hit is not None:
             existing_id, _existing_value, _config_schema_id = cache_hit
 
-            # Update existing row (including ID if it changed)
+            # Update the stable local row; a manifest never rewrites its PK.
             update_values: dict = {
-                "id": cfg_id,
                 "key": vals["key"],
                 "config_type": ct,
                 "description": vals["description"],
@@ -2593,7 +2736,6 @@ class ManifestResolver:
         cache_hit = cache["policy_rule_by_natural"].get((vals["name"], vals["domain"], org_id))
 
         base_values: dict = {
-            "id": rule_id,
             "name": vals["name"],
             "domain": vals["domain"],
             "description": vals["description"],
@@ -2650,6 +2792,7 @@ class ManifestResolver:
 
         from bifrost.manifest_codec import Destination
         _direct = mapp.to_orm_values(Destination.GIT_SYNC).direct
+        _direct.pop("id", None)
         app_values = {
             **_direct,
             # resolver overrides: slug derived from path, repo_path defaulted,
@@ -2665,7 +2808,7 @@ class ManifestResolver:
             ops.append(Upsert(
                 model=Application,
                 id=existing_id,
-                values={"id": app_id, **app_values},
+                values=app_values,
                 match_on="id",
             ))
         else:
@@ -2682,7 +2825,7 @@ class ManifestResolver:
             ops.append(SyncRoles(
                 junction_model=AppRole,
                 entity_fk="app_id",
-                entity_id=app_id,
+                entity_id=existing_id or app_id,
                 role_ids=role_ids,
             ))
 
@@ -2693,14 +2836,12 @@ class ManifestResolver:
 
         Uses prefetch cache for lookups when available.
         Two-pass natural-key lookup (mirrors _resolve_workflow):
-        1. Match by (name, organization_id) — if found, update including ID realignment
+        1. Match by (name, organization_id) — if found, preserve the local ID
         2. Match by ID — if found, update name/schema
         3. Otherwise insert new
 
-        ID realignment ensures the DB row ID matches the manifest UUID so that
-        _resolve_deletions can correctly identify which tables are present.
-        Documents are preserved in all cases (cascade is on the table row, and
-        we never delete the row here).
+        Git sync normalizes manifest identities before diffing, so deletion
+        accounting uses the stable local ID without rewriting referenced rows.
         """
         from uuid import UUID
 
@@ -2781,17 +2922,10 @@ class ManifestResolver:
             existing_by_natural = (await self.db.execute(natural_q)).scalar_one_or_none()
 
         if existing_by_natural is not None:
-            if existing_by_natural != table_id:
-                # ID mismatch (cross-env) — realign the DB row's ID to the manifest ID.
-                # Documents have ON UPDATE CASCADE on table_id so they follow along.
-                logger.info(
-                    f"Realigning table {table_name!r}: DB id={existing_by_natural} → manifest id={table_id}"
-                )
             await self.db.execute(
                 update(Table)
                 .where(Table.id == existing_by_natural)
                 .values(
-                    id=table_id,
                     description=src["description"],
                     schema=src["schema"],
                     access=access,
@@ -2917,7 +3051,6 @@ class ManifestResolver:
                 update(FilePolicy)
                 .where(FilePolicy.id == existing_by_natural)
                 .values(
-                    id=policy_id,
                     policies=policy_document,
                     updated_at=now,
                 )
@@ -3043,8 +3176,8 @@ class ManifestResolver:
         """Resolve a custom claim from manifest into the DB.
 
         Uses upsert-by-natural-key ``(organization_id, name)`` first so importing
-        the same portable claim into another environment preserves existing rows
-        and then realigns the DB id to the manifest UUID.
+        the same portable claim into another environment preserves the existing
+        row and its stable database UUID.
         """
         from uuid import UUID
 

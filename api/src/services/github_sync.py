@@ -66,7 +66,9 @@ from src.services.manifest_import import (
     ManifestResolver,
     _collect_removed_entity_ids,
     _filter_manifest_to_scope,
+    _filter_non_file_entities_to_scope,
     _safe_app_repo_path,
+    normalize_git_manifest_identities,
 )
 
 
@@ -236,15 +238,16 @@ def _filter_manifest_to_work_dir(manifest: Manifest, work_dir: Path) -> None:
 
 def _filter_db_manifest_to_import_scope(
     db_manifest: Manifest,
-    incoming_manifest: Manifest,
     work_dir: Path,
 ) -> None:
     """Restrict DB-side diff candidates to this repo/import scope."""
+    # First restrict file-backed entities by the checked-out tree. Non-file
+    # sections are filtered only after incoming cross-environment UUIDs have
+    # been normalized onto stable database identities.
     _filter_manifest_to_scope(
         db_manifest,
         path_exists=lambda path: (work_dir / path).exists(),
         dir_exists=lambda path: (work_dir / path).is_dir(),
-        scope_manifest=incoming_manifest,
     )
 
 
@@ -1780,7 +1783,9 @@ class GitHubSyncService:
 
         # Diff against current DB state to find what actually changed
         db_manifest = await generate_manifest(self.db)
-        _filter_db_manifest_to_import_scope(db_manifest, manifest, work_dir)
+        _filter_db_manifest_to_import_scope(db_manifest, work_dir)
+        manifest = normalize_git_manifest_identities(manifest, db_manifest)
+        _filter_non_file_entities_to_scope(db_manifest, manifest)
         diff_changes, changed_ids = _diff_and_collect(manifest, db_manifest)
         removed_entity_ids = _collect_removed_entity_ids(diff_changes)
 

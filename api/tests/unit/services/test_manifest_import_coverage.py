@@ -50,6 +50,158 @@ SUBSCRIPTION_ID = "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee"
 MCP_CONNECTION_ID = "ffffffff-ffff-ffff-ffff-ffffffffffff"
 
 
+def test_git_identity_normalization_preserves_local_ids_and_rewrites_references():
+    local_org = "10101010-1010-1010-1010-101010101010"
+    local_workflow = "20202020-2020-2020-2020-202020202020"
+    local_integration = "30303030-3030-3030-3030-303030303030"
+    local_config = "40404040-4040-4040-4040-404040404040"
+    local_app = "50505050-5050-5050-5050-505050505050"
+    current = Manifest(
+        organizations=[ManifestOrganization(id=local_org, name="Midtown")],
+        workflows={
+            "run": ManifestWorkflow(
+                id=local_workflow,
+                name="Run",
+                path="workflows/run.py",
+                function_name="run",
+                organization_id=local_org,
+            )
+        },
+        integrations={
+            "halo": ManifestIntegration(id=local_integration, name="Halo")
+        },
+        configs={
+            "halo.url": ManifestConfig(
+                id=local_config,
+                integration_id=local_integration,
+                organization_id=local_org,
+                key="url",
+                value="old",
+            )
+        },
+        apps={
+            "portal": ManifestApp(
+                id=local_app,
+                name="Portal",
+                slug="portal",
+                path="apps/portal",
+                organization_id=local_org,
+            )
+        },
+    )
+    incoming = Manifest(
+        organizations=[ManifestOrganization(id=ORG_ID, name="Midtown")],
+        workflows={
+            "run": ManifestWorkflow(
+                id=WORKFLOW_ID,
+                name="Run",
+                path="workflows/run.py",
+                function_name="run",
+                organization_id=ORG_ID,
+            )
+        },
+        integrations={
+            "halo": ManifestIntegration(
+                id=INTEGRATION_ID,
+                name="Halo",
+                list_entities_data_provider_id=WORKFLOW_ID,
+            )
+        },
+        configs={
+            "halo.url": ManifestConfig(
+                id=CONFIG_ID,
+                integration_id=INTEGRATION_ID,
+                organization_id=ORG_ID,
+                key="url",
+                value="new",
+            )
+        },
+        apps={
+            "portal": ManifestApp(
+                id=APP_ID,
+                name="Portal",
+                slug="portal",
+                path="apps/portal",
+                organization_id=ORG_ID,
+            )
+        },
+        events={
+            "schedule": ManifestEventSource(
+                id=EVENT_ID,
+                name="Schedule",
+                source_type="schedule",
+                organization_id=ORG_ID,
+                cron_expression="0 * * * *",
+                subscriptions=[
+                    ManifestEventSubscription(
+                        id=SUBSCRIPTION_ID,
+                        workflow_id=WORKFLOW_ID,
+                    )
+                ],
+            )
+        },
+    )
+
+    normalized = manifest_import.normalize_git_manifest_identities(incoming, current)
+
+    assert normalized.organizations[0].id == local_org
+    assert normalized.workflows["run"].id == local_workflow
+    assert normalized.workflows["run"].organization_id == local_org
+    assert "roles" not in normalized.workflows["run"].model_fields_set
+    assert normalized.integrations["halo"].id == local_integration
+    assert (
+        normalized.integrations["halo"].list_entities_data_provider_id
+        == local_workflow
+    )
+    assert normalized.configs["halo.url"].id == local_config
+    assert normalized.configs["halo.url"].integration_id == local_integration
+    assert normalized.configs["halo.url"].organization_id == local_org
+    assert normalized.apps["portal"].id == local_app
+    assert normalized.events["schedule"].organization_id == local_org
+    assert (
+        normalized.events["schedule"].subscriptions[0].workflow_id
+        == local_workflow
+    )
+    changes, changed_ids = manifest_import._diff_and_collect(normalized, current)
+    assert not [change for change in changes if change["action"] == "delete"]
+    assert not {
+        ORG_ID,
+        WORKFLOW_ID,
+        INTEGRATION_ID,
+        CONFIG_ID,
+        APP_ID,
+    } & changed_ids
+
+
+def test_git_identity_normalization_does_not_cross_workflow_org_scope():
+    current = Manifest(
+        workflows={
+            "run": ManifestWorkflow(
+                id=EXISTING_ID,
+                name="Run",
+                path="workflows/run.py",
+                function_name="run",
+                organization_id=OTHER_ORG_ID,
+            )
+        }
+    )
+    incoming = Manifest(
+        workflows={
+            "run": ManifestWorkflow(
+                id=WORKFLOW_ID,
+                name="Run",
+                path="workflows/run.py",
+                function_name="run",
+                organization_id=ORG_ID,
+            )
+        }
+    )
+
+    normalized = manifest_import.normalize_git_manifest_identities(incoming, current)
+
+    assert normalized.workflows["run"].id == WORKFLOW_ID
+
+
 def test_diff_collect_ignores_oauth_token_mapping_noise_and_cascades_configs():
     current = Manifest(
         organizations=[ManifestOrganization(id=ORG_ID, name="Midtown")],
@@ -606,7 +758,7 @@ def test_inline_content_detection_and_manifest_access_level_defaults():
     assert manifest_import._manifest_access_level(None, None) is None
 
 
-def test_resolve_workflow_realigns_natural_key_and_clears_explicit_empty_roles():
+def test_resolve_workflow_preserves_natural_key_id_and_clears_explicit_empty_roles():
     resolver = manifest_import.ManifestResolver(AsyncMock())
     workflow = ManifestWorkflow(
         id=WORKFLOW_ID,
@@ -620,21 +772,25 @@ def test_resolve_workflow_realigns_natural_key_and_clears_explicit_empty_roles()
     ops = resolver._resolve_workflow(
         "Canonical Name",
         workflow,
-        {"wf_by_natural": {("workflows/ticket.py", "run"): UUID(EXISTING_ID)}},
+        {
+            "wf_by_natural": {
+                ("workflows/ticket.py", "run", UUID(ORG_ID)): UUID(EXISTING_ID)
+            }
+        },
     )
 
     assert len(ops) == 2
     upsert, sync_roles = ops
     assert upsert.id == UUID(EXISTING_ID)
-    assert upsert.values["id"] == UUID(WORKFLOW_ID)
+    assert "id" not in upsert.values
     assert upsert.values["name"] == "Canonical Name"
     assert upsert.values["organization_id"] == UUID(ORG_ID)
     assert sync_roles.entity_fk == "workflow_id"
-    assert sync_roles.entity_id == UUID(WORKFLOW_ID)
+    assert sync_roles.entity_id == UUID(EXISTING_ID)
     assert sync_roles.role_ids == set()
 
 
-def test_resolve_app_derives_repo_path_realigns_slug_and_syncs_roles():
+def test_resolve_app_derives_repo_path_preserves_id_and_syncs_roles():
     resolver = manifest_import.ManifestResolver(AsyncMock())
     app = ManifestApp(
         id=APP_ID,
@@ -654,11 +810,12 @@ def test_resolve_app_derives_repo_path_realigns_slug_and_syncs_roles():
     assert len(ops) == 2
     upsert, sync_roles = ops
     assert upsert.id == UUID(EXISTING_ID)
-    assert upsert.values["id"] == UUID(APP_ID)
+    assert "id" not in upsert.values
     assert upsert.values["slug"] == "portal"
     assert upsert.values["repo_path"] == "apps/portal"
     assert upsert.values["organization_id"] == UUID(ORG_ID)
     assert sync_roles.entity_fk == "app_id"
+    assert sync_roles.entity_id == UUID(EXISTING_ID)
     assert sync_roles.role_ids == {UUID(ROLE_ID)}
 
 
@@ -738,7 +895,7 @@ def test_resolve_config_links_integration_schema_without_marking_cache_touch():
 
     assert len(ops) == 1
     assert ops[0].id == UUID(EXISTING_ID)
-    assert ops[0].values["id"] == UUID(CONFIG_ID)
+    assert "id" not in ops[0].values
     assert ops[0].values["config_schema_id"] == schema.id
     assert "value" in ops[0].values
     assert resolver.configs_touched == set()
@@ -760,7 +917,7 @@ def test_resolve_policy_rule_uses_natural_key_or_supplies_insert_timestamps():
         {"policy_rule_by_natural": {("Support only", "table", UUID(ORG_ID)): UUID(EXISTING_ID)}},
     )
     assert existing_ops[0].id == UUID(EXISTING_ID)
-    assert existing_ops[0].values["id"] == UUID("dddddddd-dddd-dddd-dddd-dddddddddddd")
+    assert "id" not in existing_ops[0].values
 
     insert_ops = resolver._resolve_policy_rule(rule, {"policy_rule_by_natural": {}})
     assert insert_ops[0].id == UUID("dddddddd-dddd-dddd-dddd-dddddddddddd")
@@ -1234,7 +1391,7 @@ async def test_prefetch_existing_entities_builds_all_resolver_caches():
     db = _SequenceDb(
         _RowsResult([(org_uuid, "Midtown")]),
         _RowsResult([(UUID(ROLE_ID), "Operator")]),
-        _RowsResult([(workflow_uuid, "workflows/tickets.py", "run")]),
+        _RowsResult([(workflow_uuid, "workflows/tickets.py", "run", org_uuid)]),
         _RowsResult([(integration_uuid, "Halo")]),
         _ScalarRowsResult([schema]),
         _ScalarRowsResult([mapping]),
@@ -1253,7 +1410,9 @@ async def test_prefetch_existing_entities_builds_all_resolver_caches():
     assert cache["role_ids"] == {UUID(ROLE_ID)}
     assert cache["role_by_name"] == {"Operator": UUID(ROLE_ID)}
     assert cache["wf_ids"] == {workflow_uuid}
-    assert cache["wf_by_natural"] == {("workflows/tickets.py", "run"): workflow_uuid}
+    assert cache["wf_by_natural"] == {
+        ("workflows/tickets.py", "run", org_uuid): workflow_uuid
+    }
     assert cache["integ_ids"] == {integration_uuid}
     assert cache["integ_by_name"] == {"Halo": integration_uuid}
     assert cache["integ_cs"] == {integration_uuid: {"api_url": schema}}
@@ -1502,8 +1661,9 @@ def test_resolve_organization_uses_id_name_then_insert_paths():
 
     assert id_op.match_on == "id"
     assert id_op.values == {"name": "Renamed", "is_active": True}
-    assert name_op.match_on == "name"
-    assert name_op.values["id"] == UUID(OTHER_ORG_ID)
+    assert name_op.match_on == "id"
+    assert name_op.id == org_id
+    assert "id" not in name_op.values
     assert name_op.values["name"] == "Midtown"
     assert insert_op.match_on == "id"
     assert insert_op.values["created_by"] == "git-sync"
@@ -1534,8 +1694,9 @@ def test_resolve_role_uses_id_name_then_insert_paths():
 
     assert id_op.match_on == "id"
     assert id_op.values == {"name": "Renamed"}
-    assert name_op.match_on == "name"
-    assert name_op.values == {"id": UUID(EXISTING_ID), "name": "Operator"}
+    assert name_op.match_on == "id"
+    assert name_op.id == role_id
+    assert name_op.values == {"name": "Operator"}
     assert insert_op.match_on == "id"
     assert insert_op.values == {"name": "New role", "created_by": "git-sync"}
 
@@ -1626,11 +1787,10 @@ async def test_resolve_deletions_applies_explicit_hard_and_soft_removals():
 
 
 @pytest.mark.asyncio
-async def test_resolve_integration_rekeys_dependent_cache_and_syncs_children(monkeypatch):
+async def test_resolve_integration_preserves_id_and_syncs_children(monkeypatch):
     from src.services.sync_ops import Upsert
 
     old_integration_id = UUID(EXISTING_ID)
-    new_integration_id = UUID(INTEGRATION_ID)
     existing_schema = SimpleNamespace(
         key="api_url",
         type="string",
@@ -1660,12 +1820,9 @@ async def test_resolve_integration_rekeys_dependent_cache_and_syncs_children(mon
         entity_name="Global",
     )
     db = _SequenceDb(
-        _ScalarRowsResult([existing_schema, stale_schema]),
-        _ScalarRowsResult([existing_mapping, stale_mapping]),
         _RowsResult([]),
         _RowsResult([]),
         _ScalarRowsResult([existing_schema]),
-        _RowsResult([]),
         _RowsResult([]),
         _RowsResult([]),
         _RowsResult([]),
@@ -1745,7 +1902,7 @@ async def test_resolve_integration_rekeys_dependent_cache_and_syncs_children(mon
     assert await resolver._resolve_integration("Halo", integration, cache) == []
 
     assert executed_upserts[0].id == old_integration_id
-    assert executed_upserts[0].values["id"] == new_integration_id
+    assert "id" not in executed_upserts[0].values
     assert executed_upserts[0].values["list_entities_data_provider_id"] == UUID(WORKFLOW_ID)
     assert existing_schema.type == "string"
     assert existing_schema.required is True
@@ -1754,10 +1911,9 @@ async def test_resolve_integration_rekeys_dependent_cache_and_syncs_children(mon
     assert existing_schema.position == 0
     assert existing_mapping.entity_id == "tenant-1"
     assert existing_mapping.entity_name == "Tenant One"
-    assert old_integration_id not in cache["integ_cs"]
-    assert old_integration_id not in cache["integ_mappings"]
-    assert ("api_url", new_integration_id, UUID(ORG_ID)) in cache["config_by_natural"]
-    assert len(db.statements) == 8
+    assert old_integration_id in cache["integ_cs"]
+    assert old_integration_id in cache["integ_mappings"]
+    assert ("api_url", old_integration_id, UUID(ORG_ID)) in cache["config_by_natural"]
 
 
 @pytest.mark.asyncio
