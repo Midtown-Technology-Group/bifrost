@@ -1573,6 +1573,23 @@ def _extract_workflow_parameters(func: Any) -> list[dict[str, Any]]:
     return params
 
 
+def _redact_direct_output(value: str, execution_context: Any | None) -> str:
+    """Redact secrets registered by SDK calls from standalone CLI output."""
+    if execution_context is None:
+        return value
+    try:
+        secrets = execution_context._collect_secret_values()
+    except (AttributeError, TypeError):
+        return value
+    for secret in sorted(
+        (item for item in secrets if isinstance(item, str) and len(item) >= 4),
+        key=len,
+        reverse=True,
+    ):
+        value = value.replace(secret, "[REDACTED]")
+    return value
+
+
 def _run_direct(
     selected_workflow: str,
     workflows: dict[str, Any],
@@ -1598,6 +1615,8 @@ def _run_direct(
         Exit code (0 for success, 1 for error)
     """
     import uuid
+
+    execution_context: Any | None = None
 
     # Try to authenticate for SDK features (knowledge, ai, etc.)
     # but don't require it — standalone mode can run without API access
@@ -1673,6 +1692,7 @@ def _run_direct(
                 solution_id=solution_id,
             )
             set_execution_context(ctx)
+            execution_context = ctx
         except Exception:
             pass  # Context setup is best-effort
 
@@ -1696,10 +1716,14 @@ def _run_direct(
         source = pathlib.Path(workflow_file) if workflow_file is not None else None
         with local_resource_context(source, resource_recipe):
             result = asyncio.run(workflow_fn(**params))
+        serialized_result = _redact_direct_output(
+            json.dumps(result, indent=2 if verbose else None, default=str),
+            execution_context,
+        )
         if verbose:
-            print(f"Result: {json.dumps(result, indent=2, default=str)}")
+            print(f"Result: {serialized_result}")
         else:
-            print(json.dumps(result, default=str))
+            print(serialized_result)
         if promotion_evidence is not None and workflow_file is not None:
             from bifrost.promotion import (
                 build_promotion_bundle,
@@ -1755,8 +1779,14 @@ def _run_direct(
             temporary.replace(promotion_evidence)
         return 0
     except Exception as e:
-        print(f"Error executing workflow: {e}", file=sys.stderr)
+        message = _redact_direct_output(str(e), execution_context)
+        print(f"Error executing workflow: {message}", file=sys.stderr)
         return 1
+    finally:
+        if execution_context is not None:
+            from bifrost._context import clear_execution_context
+
+            clear_execution_context()
 
 
 def handle_run(args: list[str]) -> int:

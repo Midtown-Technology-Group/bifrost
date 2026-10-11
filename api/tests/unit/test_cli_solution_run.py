@@ -153,6 +153,50 @@ def test_run_direct_executes_workflow_and_reports_errors(monkeypatch, capsys):
     assert "bad workflow" in capsys.readouterr().err
 
 
+def test_run_direct_redacts_registered_secrets_from_results_and_errors(
+    monkeypatch, capsys
+):
+    from bifrost._context import get_execution_context, register_secret
+
+    secret = "standalone-secret-value"
+
+    class Client:
+        user = {"id": "user-1", "email": "dev@example.test", "name": "Dev"}
+        organization = None
+
+    class ClientFactory:
+        @staticmethod
+        def get_instance(require_auth=True):
+            return Client()
+
+    class StringableResult:
+        def __str__(self):
+            return f"wrapped:{secret}"
+
+    async def returns_secret():
+        register_secret(secret)
+        return {"direct": secret, "custom": StringableResult()}
+
+    async def raises_secret():
+        register_secret(secret)
+        raise RuntimeError(f"failed with {secret}")
+
+    monkeypatch.setattr(cli, "BifrostClient", ClientFactory)
+
+    assert cli._run_direct("result", {"result": returns_secret}, {}) == 0
+    result_output = capsys.readouterr().out
+    assert secret not in result_output
+    assert result_output.count("[REDACTED]") == 2
+
+    with pytest.raises(RuntimeError, match="No execution context found"):
+        get_execution_context()
+
+    assert cli._run_direct("error", {"error": raises_secret}, {}) == 1
+    error_output = capsys.readouterr().err
+    assert secret not in error_output
+    assert "failed with [REDACTED]" in error_output
+
+
 def test_run_direct_fetches_org_context_and_sets_solution_context(monkeypatch, capsys, tmp_path):
     contexts = []
 
