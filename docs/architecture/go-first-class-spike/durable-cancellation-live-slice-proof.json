@@ -1,0 +1,96 @@
+{
+  "source": "15ae4e5ff6cb51fc1f7b064cbdc15dad9010bff9",
+  "producer_run": 38118070913,
+  "sdk_version": "0.0.0-spike.2",
+  "artifact_id": "sha256:095f951c392028f3b322ad3bc3a07a7a488f1b02a2e6dae7643aee79a9fca681",
+  "workflow_sha256": "160917deeb94275f31ca9ddee2dacae00fb079fdf54cb60e206c8def261f9c34",
+  "owner_sha256": "af7f9e0ce4467ddb08639cab2f2ddd8cce65c27fe4a86c8a42b05e994a0be13c",
+  "verified_rust_source_inputs": 39,
+  "tests": {
+    "live-results.xml": {
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "unit-results.xml": {
+      "tests": 13893,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  },
+  "same_unchanged_binary_three_executions": true,
+  "normal_result_receipt_api_correlations": true,
+  "rust_cancel_original_channel_stopped_correlations": true,
+  "held_actual_sdk_response": true,
+  "physical_cleanup_and_empty_inventories": true,
+  "owner_total_elapsed_ms": [
+    3860.088657,
+    2878.737137,
+    3132.554467
+  ],
+  "scope": "Independent retained-artifact/source/JUnit/correlation verification. SQL grant revocation, completed cancelled root/attempt, immutable exact-byte resource fact, source pin before/after settlement, no cancellation Result receipt and authenticated API assertions execute in the DB-backed test; raw database payloads and credentials are not retained. These checks do not independently recreate SQL state.",
+  "cancelled_public_status": "Cancelled",
+  "durable_cancelled_finalization": true,
+  "durable_source_settlement": true,
+  "live_uncertain_recovery": false,
+  "runtime_acceptance": false,
+  "production_dispatch": false,
+  "guard_schema_verification": {
+    "source": "15ae4e5ff6cb51fc1f7b064cbdc15dad9010bff9",
+    "guard_run": 38118070949,
+    "schema_run": 38118070989,
+    "verified_guard_source_inputs": 67,
+    "tests": {
+      "guards/writer-guard-results.xml": {
+        "tests": 248,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "guards/writer-guard-baseline.xml": {
+        "tests": 126,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "guards/writer-guard-last-results.xml": {
+        "tests": 248,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "guards/writer-guard-unit.xml": {
+        "tests": 13893,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "schema/home/runner/work/_temp/runtime-schema-unit-results.xml": {
+        "tests": 13893,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "schema/tmp/bifrost-bifrost-test-0b7397c6/test-results.xml": {
+        "tests": 164,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      }
+    },
+    "quality_passed": true,
+    "cleanup_verified": true,
+    "runtime_acceptance": false,
+    "production_dispatch": false
+  },
+  "build_timings_ms": {
+    "module_download": 139.331831,
+    "cold_compile_warm_modules": 16229.930451,
+    "independent_cold_compile": 15699.043562,
+    "warm_source_edit_compile": 365.619402,
+    "restored_warm_compile": 325.806777,
+    "edit_to_artifact": 551.30052
+  }
+}

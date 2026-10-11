@@ -58,9 +58,10 @@ issuer material and TLS keys. Owner metadata removes the private claim token;
 raw execution config remains private and is never uploaded. Broad unit/API quality checks remain required. Actual
 writer-guard/security/race evidence must qualify the same source before acceptance.
 
-Remaining gates: cancellation and durable cancelled finalization, crash/unknown
-commit/spawn/lost-ACK cases through this live workflow, and durable source-consumer
-settlement. A physical drain or successful conformance run is not those gates.
+Remaining gates: live crash/unknown commit/spawn/lost-ACK cases and human
+acceptance of the reviewed writer/runtime evidence. Durable cancellation and
+source-consumer settlement now have source-bound live proof below. A physical
+drain or successful conformance run alone does not satisfy these gates.
 
 The first live-consumer run38111045383 (`21de2f85c14ec843ad7af98f0df0ad426f6e13c6`)
 passed its native/independent consumer producer, then stopped before stack boot:
@@ -187,3 +188,38 @@ settlement or Cancelled writer. Fresh candidate checks remain required; the
 previous source's green checks do not transfer. Common immutable settlement
 schema, exclusion constraints, lock order and finalization evidence remain the
 next implementation work. Runtime acceptance and production dispatch remain false.
+
+## Durable cancellation and source settlement proof
+
+Source `15ae4e5ff6cb51fc1f7b064cbdc15dad9010bff9`, hosted run38118070913,
+executes the same accepted Go binary twice to Success and once to durable
+Cancelled. Rust issues common Cancel while a genuine admitted SDK HTTP200
+response is held, observes correlated Stopped, consumes original process and
+source custody, and commits the immutable resource fact with cancelled
+root/attempt finalization. The existing authenticated Execution API reads
+Cancelled with no result. No cancellation Result receipt is invented.
+
+The actual source-consumer predicate remains held before the resource fact and
+is discharged only after its commit, including when normal Result already
+committed Success. This prevents a terminal result from silently dropping
+native source custody. Python executions without a runtime session preserve
+the existing predicate. Retained public correlation/source/JUnit verification
+is [durable-cancellation-live-slice-proof.json](durable-cancellation-live-slice-proof.json);
+the SQL assertions ran in the database-backed fixture, and retained metadata
+does not independently reconstruct database state.
+
+The same source passed 248 writer/security tests, 126 baseline tests, 164 schema
+and source tests, 13,893 backend unit tests and API quality. Verified teardown
+inventories are empty. Cold compile with resolved modules took16.230s; a single
+file edit compiled in365.619ms and reached an artifact in551.301ms. These are
+build samples, not production latency guarantees. Whole-owner times include
+fixture coordination and physical provisioning/cleanup.
+
+The subsequent lost-COMMIT-ACK candidate `b5856255ffaa853cc99378749ebc7b9ec9cf5f53`,
+run38119268979, passed its native, independent consumer/codec, physical crash-drain
+and ownership producers but failed live observation before the fourth owner
+ingress. The three preceding cases completed. It is not lost-ACK proof. The
+original lane omitted the helper's stderr from retained evidence; the next
+revision observes helper death directly and retains its first-party diagnostics,
+with unchanged45s observation deadlines and no transaction/launch retry.
+Crash recovery, uncertain spawn/commit and runtime acceptance remain unproved.

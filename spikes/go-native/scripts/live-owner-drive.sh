@@ -66,6 +66,18 @@ for case_number in 0 1 2 3; do
       python3 api/src/services/isolated_runtime_commit_ack_loss.py "$pool_ip" "$case_dir" "$session" \
       > "$case_dir/commit-ack-proxy.log" 2>&1 &
     proxy_pid=$!
+    # Observe the original helper, not just a file: a failed launch must retain
+    # its first-party diagnostics instead of becoming an owner ingress timeout.
+    deadline=$((SECONDS + 45))
+    while [[ ! -f "$case_dir/commit-ack-proxy-ready.json" ]]; do
+      if ! kill -0 "$proxy_pid" 2>/dev/null; then
+        cat "$case_dir/commit-ack-proxy.log" >&2
+        wait "$proxy_pid"
+        exit 1
+      fi
+      test "$SECONDS" -lt "$deadline"
+      sleep 0.02
+    done
     wait_file "$case_dir/commit-ack-proxy-ready.json"
     database_target="127.0.0.1:$(jq -er '.port' "$case_dir/commit-ack-proxy-ready.json")"
     database_suffix='?sslmode=disable'
