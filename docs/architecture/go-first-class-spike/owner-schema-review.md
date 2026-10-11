@@ -505,8 +505,13 @@ This proves resource-creation uncertainty only when fresh hosted evidence passes
 no tenant Start, SDK material or durable result is claimed for this physical case.
 The existing nine-case SQL/API slice remains independently required.
 
-Validation is pending at this source. Earlier green evidence does not qualify
-this candidate. Interrupted partial source retirement remains unproved: an
+The [retained component proof](docker-create-loss-component-proof.json) verifies
+this source's nine physical guardian cases, the daemon's actual HTTP201 and
+container identity, exactly one create request, fresh create/Start denial and
+empty container inventory. Proxy kill/wait/socket/directory cleanup is required
+by the successful source-bound probe; no independent proxy OS inventory was
+retained. The whole live SQL/API and writer/security lanes remain pending.
+Earlier green evidence does not qualify this candidate. Interrupted partial source retirement remains unproved: an
 exclusive recovery intent currently denies retry after uncertainty, preserves
 obligations and grants no retirement token or successful finalization. A new
 closing actor must not infer completion from missing paths or recreate a token.

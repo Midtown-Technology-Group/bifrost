@@ -1,0 +1,57 @@
+{
+  "source": "50ccb0ef3432b39f939e0e6e361e4299f2681478",
+  "producer_run": 38131329041,
+  "sdk_version": "0.0.0-spike.2",
+  "scope": "Actual Docker create HTTP reply loss; physical guardian component only. Live SQL/API and writer/security gates pending; no tenant Start or runtime acceptance.",
+  "artifact_id": "sha256:6fae93dfb709a825aac39a1edd4d12cfd09ace957a523317a1524cfc8529f275",
+  "workflow_sha256": "5f9c912ec6055882e0d443378cb93bb87b58eb7ab2a49eb5e14d338d72865edd",
+  "verified_rust_inputs": 39,
+  "guardian_case_count": 9,
+  "actual_create_ack": {
+    "client_reply_forwarded": false,
+    "container_id": "0bd996fe29672f57fe06fde55b86a4819bb4bddf9a5ea5635d37377ceabb0064",
+    "create_requests": 1,
+    "event": "docker_create_ack_dropped",
+    "nonce": "bd72ede0-9adb-4944-a252-1cbcb3dd4d88",
+    "request_sha256": "ecfc518a7f119582a6f401020c7b5a430b2742e8de69627bddb3e086b3442b92",
+    "server_create_observed": true,
+    "server_status": 201,
+    "session_id": "998d78e3-378d-4419-9534-2104065d885b"
+  },
+  "case": {
+    "case": "docker-create-response-loss",
+    "client_reply_forwarded": false,
+    "create_requests": 1,
+    "docker_response_loss_injected": true,
+    "drain": {
+      "attached_cli_waited": false,
+      "container_id": "0bd996fe29672f57fe06fde55b86a4819bb4bddf9a5ea5635d37377ceabb0064",
+      "container_removed": true,
+      "lifecycle_finalization": false,
+      "namespace_drained": true,
+      "runtime_acceptance": false,
+      "source_consumer_settlement": false
+    },
+    "elapsed_ms": 240.524494,
+    "fresh_create_denied": true,
+    "fresh_start_denied": true,
+    "lifecycle_finalization": false,
+    "private_paths_removed": true,
+    "sdk_material_delivery": false,
+    "server_create_observed": true,
+    "tenant_start": false
+  },
+  "retained_hashes": {
+    "live-guardian/proof.json": "69555c955e374a7679ff38993270dc657c80bd27eb039a12fc775ac1a7fd328c",
+    "live-guardian/cleanup-inventory.txt": "747cc4a40fbe52a9b08f7a74042591d20bb7835bc3106335994405d028f4db8b",
+    "live-guardian/image-cleanup.txt": "9e12700196ed582f6fda725c51a4f63657a57c56d383650e1488814f4c337d38",
+    "live-guardian/998d78e3-378d-4419-9534-2104065d885b/journal/docker-create-ack-dropped.json": "657dc013383c1252daf44afc96ca5adf116d240a2e57692f09a665b38d170e29",
+    "live-guardian/998d78e3-378d-4419-9534-2104065d885b/journal/docker-create-proxy-spec.json": "3665817f77740a022fb6526db349f010b610a9ce881664c1f664567568119839",
+    "live-guardian/998d78e3-378d-4419-9534-2104065d885b/journal/docker-create-request-1.json": "97cabf049f8e976c77b321acb7fd10da94354b24eed54e0a43067b68740a3e98",
+    "live-guardian/998d78e3-378d-4419-9534-2104065d885b/journal/docker-create-proxy.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "cleanup_container_inventory_empty": true,
+  "proxy_kill_wait_socket_directory_cleanup": "Required by successful source-bound probe return; no independent OS inventory retained for the proxy.",
+  "runtime_acceptance": false,
+  "production_dispatch": false
+}
