@@ -391,7 +391,7 @@ fn run_case(spec: LaunchSpec, mode: &str) -> Result<Value, ()> {
                     .stderr(Stdio::null())
                     .spawn()
                     .map_err(|_| ())?;
-                let observed = (|| -> Result<(Value, Value), ()> {
+                let observed = (|| -> Result<(Value, Value, Guardian), ()> {
                     let deadline = Instant::now() + Duration::from_secs(5);
                     loop {
                         if child.try_wait().map_err(|_| ())?.is_some() {
@@ -438,6 +438,11 @@ fn run_case(spec: LaunchSpec, mode: &str) -> Result<Value, ()> {
                                     snapshot[0].clone(),
                                     json!({"observation":{
                                     "attached_cli_pid":pid,"attached_cli_start_ticks":ticks}}),
+                                    // Preserve a stop-only kernel observation
+                                    // before EOF can make the adapter exit.
+                                    // This cannot attach, admit or retain the
+                                    // original owner's channel custody.
+                                    Guardian::recover_for_drain(spec.clone()).map_err(|_| ())?,
                                 ));
                             }
                         }
@@ -450,7 +455,7 @@ fn run_case(spec: LaunchSpec, mode: &str) -> Result<Value, ()> {
                 // Always reap the exact child, including failed observations.
                 let killed = child.kill();
                 let waited = child.wait();
-                let (snapshot, cli) = observed?;
+                let (snapshot, cli, mut recovered) = observed?;
                 killed.map_err(|_| ())?;
                 if waited.map_err(|_| ())?.signal() != Some(libc::SIGKILL) {
                     return Err(());
@@ -469,7 +474,6 @@ fn run_case(spec: LaunchSpec, mode: &str) -> Result<Value, ()> {
                 if Guardian::create(spec.clone()).is_ok() {
                     return Err(());
                 }
-                let mut recovered = Guardian::recover_for_drain(spec.clone()).map_err(|_| ())?;
                 if recovered.attach_dormant() != Err(GuardianError::Rejected)
                     || recovered.verify_live() != Err(GuardianError::Rejected)
                 {
@@ -486,6 +490,7 @@ fn run_case(spec: LaunchSpec, mode: &str) -> Result<Value, ()> {
                     "process_birth_observed_before_owner_loss":true,
                     "container_id":snapshot["Id"],"observed_pid":snapshot["State"]["Pid"],
                     "original_custody_absent":true,"duplicate_create_denied":true,
+                    "stop_only_kernel_observed_before_owner_loss":true,
                     "original_cli_reaped_observed":true,"cli":cli,
                     "fresh_start_denied":true,"docker_response_loss_injected":false,
                     "durable_lifecycle":false,"drain":drain}),

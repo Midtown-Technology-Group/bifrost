@@ -79,8 +79,10 @@ unchanged; no deployment, merge, credential expansion or renewal is authorized.
 The `guardian-crash-before-offer` hosted case kills the original Rust guardian
 after an independent Docker observation proves its dormant adapter is running,
 but before the guardian receives Offer or retains channel/kernel custody. The
-parent records the original attached Docker CLI's PID/start time, SIGKILLs and
-waits for the exact guardian, and requires all original custody records absent.
+parent records the original attached Docker CLI's PID/start time and captures
+opaque stop-only kernel custody while the original container is running. It then
+SIGKILLs and waits for the exact guardian, requiring all original custody records
+absent. This stop-only object grants neither attachment nor lifecycle ownership.
 Duplicate creation and recovered attach/Start remain denied. Stop-only recovery
 must drain and remove that exact container and observe the original CLI gone;
 the fixture then removes the original material/source paths.
@@ -90,3 +92,13 @@ pre-admission physical evidence: no database owner assignment, SDK issuance,
 tenant Start, receipt or durable source settlement is claimed. Unknown Docker
 transport outcomes and durable recovery of an admitted pre-Result execution
 still require separate evidence. A passed probe does not release either gate.
+
+The first version passed at `b31367b9356f1e2f1e27f0b4834ae341ae269a1d` but
+failed at `5c1b4df91293c3944262a0c2efae3e1e21613b2a` and
+`ba7fea8a9105f08ffb57ea83c86304a7dd71b0e5`: it recaptured kernel custody only
+after killing the owner. Owner EOF can already have exited the dormant adapter;
+without original kernel evidence, stopped status correctly cannot prove namespace
+drain. Those failures remain blocking, not infrastructure or waived by the first
+pass. Capture the independent stop-only kernel observation before inducing owner
+death, then use that same object to verify original PID/cgroup absence. No replay,
+retained channel invention, timeout increase or weaker drain predicate is added.
