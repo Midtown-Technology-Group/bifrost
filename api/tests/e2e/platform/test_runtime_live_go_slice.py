@@ -614,6 +614,7 @@ async def test_original_rust_owner_runs_unchanged_go_and_cancels_waiting_sdk(
                 result["physical_drain"]["container_removed"]
                 and result["physical_drain"]["namespace_drained"]
             )
+            assert result["original_session_drained"] is True
             assert (
                 result["source_staging_removed"]
                 and not (runtime_root / "bundle").exists()

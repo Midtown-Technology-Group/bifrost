@@ -46,6 +46,69 @@ mod tests {
         }
     }
 
+    fn fence() -> SessionFence {
+        SessionFence {
+            execution_id: "00000000-0000-0000-0000-000000000001".into(),
+            owner_incarnation_id: "00000000-0000-0000-0000-000000000002".into(),
+            attempt_id: "00000000-0000-0000-0000-000000000003".into(),
+            claim_token: "00000000-0000-0000-0000-000000000004".into(),
+            worker_incarnation_id: "00000000-0000-0000-0000-000000000007".into(),
+            session_id: spec().session_id,
+            supervisor_incarnation_id: "00000000-0000-0000-0000-000000000008".into(),
+            runtime_incarnation_id: "00000000-0000-0000-0000-000000000009".into(),
+            binding_sha256: "c".repeat(64),
+            channel_custody_sha256: "d".repeat(64),
+        }
+    }
+
+    #[test]
+    fn drain_observation_rejects_every_identity_substitution() {
+        let original = fence();
+        let proof = DrainedSession {
+            fence: original.clone(),
+            observation: json!({}),
+        };
+        assert!(proof.matches(&original));
+        for field in 0..10 {
+            let mut changed = original.clone();
+            let target = match field {
+                0 => &mut changed.execution_id,
+                1 => &mut changed.owner_incarnation_id,
+                2 => &mut changed.attempt_id,
+                3 => &mut changed.claim_token,
+                4 => &mut changed.worker_incarnation_id,
+                5 => &mut changed.session_id,
+                6 => &mut changed.supervisor_incarnation_id,
+                7 => &mut changed.runtime_incarnation_id,
+                8 => &mut changed.binding_sha256,
+                _ => &mut changed.channel_custody_sha256,
+            };
+            *target = if field < 8 {
+                "00000000-0000-0000-0000-000000000099".into()
+            } else {
+                "e".repeat(64)
+            };
+            assert!(!proof.matches(&changed), "field {field}");
+        }
+    }
+
+    #[test]
+    fn stop_only_custody_cannot_construct_original_session_drain() {
+        let recovered = Guardian {
+            spec: spec(),
+            id: "a".repeat(64),
+            may_start: false,
+            attachment: None,
+            kernel: None,
+            custody_sha256: None,
+            offered_runtime_id: None,
+        };
+        assert!(matches!(
+            recovered.drain_session(&fence()),
+            Err(GuardianError::Rejected)
+        ));
+    }
+
     #[test]
     fn observed_footprint_rejects_privilege_network_or_source_substitution() {
         let spec = spec();
@@ -475,6 +538,35 @@ pub struct Guardian {
     kernel: Option<KernelObservation>,
     custody_sha256: Option<String>,
     offered_runtime_id: Option<String>,
+}
+
+/// Consumed original-session drain evidence. Public JSON, advisory Stopped and
+/// stop-only recovery cannot construct this value. It proves physical custody
+/// settlement only; staged source and ingress retirement remain prerequisites
+/// for any future durable resource-settlement transaction.
+pub struct DrainedSession {
+    fence: SessionFence,
+    observation: Value,
+}
+
+impl DrainedSession {
+    pub fn observation(&self) -> &Value {
+        &self.observation
+    }
+
+    /// Identity comparison discloses no claim token or private configuration.
+    pub fn matches(&self, fence: &SessionFence) -> bool {
+        self.fence.execution_id == fence.execution_id
+            && self.fence.owner_incarnation_id == fence.owner_incarnation_id
+            && self.fence.attempt_id == fence.attempt_id
+            && self.fence.claim_token == fence.claim_token
+            && self.fence.worker_incarnation_id == fence.worker_incarnation_id
+            && self.fence.session_id == fence.session_id
+            && self.fence.supervisor_incarnation_id == fence.supervisor_incarnation_id
+            && self.fence.runtime_incarnation_id == fence.runtime_incarnation_id
+            && self.fence.binding_sha256 == fence.binding_sha256
+            && self.fence.channel_custody_sha256 == fence.channel_custody_sha256
+    }
 }
 
 #[derive(Clone)]
@@ -942,6 +1034,15 @@ impl Guardian {
     }
 
     pub fn verify_session(&mut self, fence: &SessionFence) -> Result<Value, GuardianError> {
+        let binding = self.verify_retained_session(fence)?;
+        self.verify_live()?;
+        Ok(binding)
+    }
+
+    // Deliberately separate original custody from liveness: a completed adapter
+    // may have exited before drain. Recovery has neither original channel nor
+    // offered incarnation and cannot pass this retained-session check.
+    fn verify_retained_session(&self, fence: &SessionFence) -> Result<Value, GuardianError> {
         if !fence.valid()
             || fence.session_id != self.spec.session_id
             || self.custody_sha256.as_deref() != Some(fence.channel_custody_sha256.as_str())
@@ -949,7 +1050,6 @@ impl Guardian {
         {
             return Err(GuardianError::Rejected);
         }
-        self.verify_live()?;
         let file = OpenOptions::new()
             .read(true)
             .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC)
@@ -986,6 +1086,27 @@ impl Guardian {
             }
         }
         Ok(binding.clone())
+    }
+
+    /// Consume the original guardian and return an opaque physical observation
+    /// only after kernel descendants, container and original channel are drained.
+    /// This cannot authorize admission, spawn, renewal or lifecycle projection.
+    pub fn drain_session(self, fence: &SessionFence) -> Result<DrainedSession, GuardianError> {
+        if self.attachment.is_none() || self.kernel.is_none() {
+            return Err(GuardianError::Rejected);
+        }
+        self.verify_retained_session(fence)?;
+        let observation = self.drain()?;
+        if observation["namespace_drained"] != true
+            || observation["container_removed"] != true
+            || observation["attached_cli_waited"] != true
+        {
+            return Err(GuardianError::CleanupRequired);
+        }
+        Ok(DrainedSession {
+            fence: fence.clone(),
+            observation,
+        })
     }
 
     /// Recheck this owned channel and original kernel incarnation immediately

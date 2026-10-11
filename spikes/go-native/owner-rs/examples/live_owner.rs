@@ -182,6 +182,7 @@ async fn run(config: Value) -> Result<Value, ()> {
         .await
         .map_err(|_| ())?;
     let mut guardian = Guardian::create(spec.clone()).map_err(|_| ())?;
+    let mut admitted_fence = None;
     let operation = async {
         guardian.attach_dormant().map_err(|_| ())?;
         let offer = guardian.receive(Duration::from_secs(5)).map_err(|_| ())?;
@@ -192,6 +193,7 @@ async fn run(config: Value) -> Result<Value, ()> {
         let mut live = admit_and_start(&pool,&mut guardian,&offer,BeginRequest { fence,
             workflow_id:text(&config,"workflow_id")?,caller_id:text(&config,"caller_id")?,prepare:prepare.clone(),
             select_message_id:text(&config,"select_message_id")?,start_id:text(&config,"start_id")?,start_message_id:text(&config,"start_message_id")? }).await.map_err(|_| ())?;
+        admitted_fence = Some(live.fence().clone());
         emit(&json!({"event":"start_committed","session_id":session,"start":live.start(),
             "binding_sha256":live.fence().binding_sha256,"channel_custody_sha256":live.fence().channel_custody_sha256}))?;
         // The parent reads actual committed Start/caller/source facts to derive
@@ -224,7 +226,16 @@ async fn run(config: Value) -> Result<Value, ()> {
     }.await;
     // Every post-launch outcome drains this original container/channel. No
     // recovery object may enter admission, issuance, delivery or Result service.
-    let drained = guardian.drain().map_err(|_| ())?;
+    let (drained, original_drain) = if operation.is_ok() {
+        let fence = admitted_fence.as_ref().ok_or(())?;
+        let observation = guardian.drain_session(fence).map_err(|_| ())?;
+        if !observation.matches(fence) {
+            return Err(());
+        }
+        (observation.observation().clone(), Some(observation))
+    } else {
+        (guardian.drain().map_err(|_| ())?, None)
+    };
     pipe.retire().map_err(|_| ())?;
     gate.retire().map_err(|_| ())?;
     fs::remove_dir(&gate_dir).map_err(|_| ())?;
@@ -241,11 +252,15 @@ async fn run(config: Value) -> Result<Value, ()> {
     }
     fs::remove_file(bundle.join("session-bundle.json")).map_err(|_| ())?;
     fs::remove_dir(&bundle).map_err(|_| ())?;
+    // Keep the opaque original-custody observation through staged-source
+    // retirement. No durable settlement writer is released by this token alone.
+    let original_session_drained = original_drain.is_some();
     pool.close().await;
     let result = operation?;
     Ok(
         json!({"event":"slice_result","component":result,"physical_drain":drained,
         "source_staging_removed":true,"elapsed_ms":started.elapsed().as_secs_f64()*1000.0,
+        "original_session_drained":original_session_drained,
         "runtime_acceptance":false,"production_dispatch":false}),
     )
 }
