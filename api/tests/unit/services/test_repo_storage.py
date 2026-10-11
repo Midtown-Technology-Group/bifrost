@@ -2,7 +2,6 @@ from datetime import datetime, timezone
 from unittest.mock import AsyncMock
 
 import pytest
-
 from src.services.repo_storage import RepoStorage
 
 
@@ -212,3 +211,32 @@ async def test_exists_returns_false_when_head_object_raises():
         Bucket="repo-bucket",
         Key="_repo/missing.py",
     )
+
+
+@pytest.mark.asyncio
+async def test_exists_strict_distinguishes_missing_keys_from_storage_failures():
+    from botocore.exceptions import ClientError
+
+    storage = _repo_storage()
+    client = AsyncMock()
+
+    class NoSuchKey(Exception):
+        pass
+
+    client.head_object.side_effect = NoSuchKey("missing")
+    context = AsyncMock()
+    context.__aenter__.return_value = client
+    context.__aexit__.return_value = None
+    storage._get_client = lambda: context
+
+    assert await storage.exists_strict("missing.py") is False
+
+    client.head_object.side_effect = ClientError(
+        {"Error": {"Code": "404", "Message": "Not Found"}},
+        "HeadObject",
+    )
+    assert await storage.exists_strict("missing-s3.py") is False
+
+    client.head_object.side_effect = RuntimeError("storage unavailable")
+    with pytest.raises(RuntimeError, match="storage unavailable"):
+        await storage.exists_strict("unknown.py")

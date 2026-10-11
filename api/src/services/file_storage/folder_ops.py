@@ -64,13 +64,37 @@ class FolderOperationsService:
         path: str,
         updated_by: str = "system",
     ) -> None:
-        """Create a folder by writing a .gitkeep placeholder in S3."""
+        """Create a safe, conflict-free folder placeholder."""
+        from src.services.editor.file_filter import validate_workspace_path
         from src.services.repo_storage import RepoStorage
 
-        clean_path = path.strip("/")
-        gitkeep_path = f"{clean_path}/.gitkeep"
+        clean_path = validate_workspace_path(
+            path,
+            allow_directory_prefix=True,
+        ).rstrip("/")
+        parts = clean_path.split("/")
+        ancestors = ["/".join(parts[:index]) for index in range(1, len(parts) + 1)]
+
+        indexed = await self.db.execute(
+            select(FileIndex.path).where(FileIndex.path.in_(ancestors))
+        )
+        indexed_conflicts = set(indexed.scalars().all())
+        conflict = next(
+            (candidate for candidate in ancestors if candidate in indexed_conflicts),
+            None,
+        )
+        if conflict is not None:
+            raise ValueError(f"Folder path conflicts with existing file: {conflict}")
+
         repo = RepoStorage()
-        await repo.write(gitkeep_path, b"")
+        for candidate in ancestors:
+            if await repo.exists_strict(candidate):
+                raise ValueError(
+                    f"Folder path conflicts with existing file: {candidate}"
+                )
+
+        gitkeep_path = f"{clean_path}/.gitkeep"
+        await self._write_file(gitkeep_path, b"", updated_by)
 
     async def list_files(
         self,
