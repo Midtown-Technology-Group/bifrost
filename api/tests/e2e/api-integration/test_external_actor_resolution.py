@@ -243,16 +243,45 @@ async def test_tenant_sender_and_role_resolve_without_guessing(db_session: Async
     delivery = SimpleNamespace(
         id=uuid4(), subscription=SimpleNamespace(agent=agent, input_mapping=None),
     )
-    with (
-        patch(
-            "src.services.execution.agent_run_service.enqueue_agent_run",
-            new=AsyncMock(return_value=str(uuid4())),
-        ) as enqueue,
-        patch("src.services.events.processor.emit_audit", new=AsyncMock()) as audit,
-    ):
-        await EventProcessor(db_session)._queue_agent_run(delivery, event)
-    assert enqueue.await_args.kwargs["caller_user_id"] == str(user.id)
-    assert enqueue.await_args.kwargs["caller_roles"] == [role.name]
-    assert enqueue.await_args.kwargs["org_id"] == str(org.id)
-    assert enqueue.await_args.kwargs["event_delivery_id"] == str(delivery.id)
-    assert audit.await_args.kwargs["strict"] is True
+    enqueue_kwargs: dict[str, Any] = {}
+    audit_kwargs: dict[str, Any] = {}
+    try:
+        with (
+            patch(
+                "src.services.execution.agent_run_service.enqueue_agent_run",
+                new=AsyncMock(return_value=str(uuid4())),
+            ) as enqueue,
+            patch("src.services.events.processor.emit_audit", new=AsyncMock()) as audit,
+        ):
+            await EventProcessor(db_session)._queue_agent_run(delivery, event)
+            enqueue_kwargs = enqueue.await_args.kwargs
+            audit_kwargs = audit.await_args.kwargs
+    finally:
+        # _queue_agent_run deliberately commits before audit/enqueue so the
+        # rollback-scoped db_session fixture can no longer clean this test's
+        # setup. Own every committed row here to preserve later E2E fixtures.
+        await db_session.execute(delete(UserRole).where(UserRole.user_id == user.id))
+        await db_session.execute(
+            delete(ExternalIdentity).where(ExternalIdentity.id == identity.id)
+        )
+        await db_session.execute(delete(Agent).where(Agent.id == agent.id))
+        await db_session.execute(
+            delete(IntegrationMapping).where(
+                IntegrationMapping.integration_id == integration.id
+            )
+        )
+        await db_session.execute(delete(User).where(User.id == user.id))
+        await db_session.execute(delete(Role).where(Role.id == role.id))
+        await db_session.execute(
+            delete(Integration).where(Integration.id == integration.id)
+        )
+        await db_session.execute(
+            delete(Organization).where(Organization.id.in_([org.id, other_org.id]))
+        )
+        await db_session.commit()
+
+    assert enqueue_kwargs["caller_user_id"] == str(user.id)
+    assert enqueue_kwargs["caller_roles"] == [role.name]
+    assert enqueue_kwargs["org_id"] == str(org.id)
+    assert enqueue_kwargs["event_delivery_id"] == str(delivery.id)
+    assert audit_kwargs["strict"] is True
