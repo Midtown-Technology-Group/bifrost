@@ -391,6 +391,52 @@ async def test_process_webhook_handles_adapter_result_types_and_errors(monkeypat
 
 
 @pytest.mark.asyncio
+async def test_process_webhook_runs_admission_after_validation_before_writes(
+    monkeypatch,
+):
+    processor = p.EventProcessor(AsyncMock())
+    delivery = Deliver(data={"id": 1}, event_type="ticket.created")
+    adapter = SimpleNamespace(
+        authenticates_external_actor=False,
+        handle_request=AsyncMock(return_value=delivery),
+    )
+    monkeypatch.setattr(p, "get_adapter", lambda _name: adapter)
+    order: list[str] = []
+
+    async def admit() -> None:
+        order.append("admit")
+
+    async def persist(**_kwargs):
+        order.append("persist")
+        return delivery
+
+    processor._process_delivery = AsyncMock(side_effect=persist)
+    source = SimpleNamespace(adapter_name="generic", config={}, state={})
+    request = WebhookRequest("POST", "/hooks/source", {}, {}, b"{}")
+
+    assert await processor.process_webhook(
+        SimpleNamespace(id=uuid.uuid4()),
+        source,
+        request,
+        before_delivery=admit,
+    ) is delivery
+    assert order == ["admit", "persist"]
+
+    order.clear()
+    adapter.handle_request.return_value = Rejected("bad signature", 401)
+    assert isinstance(
+        await processor.process_webhook(
+            SimpleNamespace(id=uuid.uuid4()),
+            source,
+            request,
+            before_delivery=admit,
+        ),
+        Rejected,
+    )
+    assert order == []
+
+
+@pytest.mark.asyncio
 async def test_generic_adapter_cannot_assert_authenticated_actor(monkeypatch):
     processor = p.EventProcessor(AsyncMock())
     actor = AuthenticatedExternalActor(
