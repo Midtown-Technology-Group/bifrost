@@ -424,6 +424,7 @@ class WorkflowExecutionConsumer(BaseConsumer):
 
         # DB operations + flush — single short-lived session
         # (flush functions do Redis reads internally but DB writes share the session)
+        change_acknowledgements: list[tuple[str, dict[str, str]]] = []
         log_acknowledgements: list[tuple[str, list[str]]] = []
         session_factory = get_session_factory()
         async with session_factory() as session:
@@ -518,7 +519,11 @@ class WorkflowExecutionConsumer(BaseConsumer):
             changes_count = 0
             try:
                 from bifrost._sync import flush_pending_changes
-                changes_count = await flush_pending_changes(execution_id, session=session)
+                changes_count = await flush_pending_changes(
+                    execution_id,
+                    session=session,
+                    pending_acknowledgements=change_acknowledgements,
+                )
                 if changes_count > 0:
                     logger.info(f"Flushed {changes_count} pending changes for {execution_id[:8]}...")
             except Exception as e:
@@ -629,6 +634,12 @@ class WorkflowExecutionConsumer(BaseConsumer):
         )
 
         from bifrost._logging import acknowledge_persisted_logs
+        from bifrost._sync import acknowledge_persisted_changes
+
+        await self._run_derived_step(
+            "change-acknowledgement",
+            lambda: acknowledge_persisted_changes(change_acknowledgements),
+        )
         await self._run_derived_step(
             "log-acknowledgement",
             lambda: acknowledge_persisted_logs(log_acknowledgements),
@@ -722,6 +733,7 @@ class WorkflowExecutionConsumer(BaseConsumer):
             status = ExecutionStatus.FAILED
 
         # DB operations + flush — single short-lived session
+        change_acknowledgements: list[tuple[str, dict[str, str]]] = []
         log_acknowledgements: list[tuple[str, list[str]]] = []
         session_factory = get_session_factory()
         async with session_factory() as session:
@@ -866,7 +878,11 @@ class WorkflowExecutionConsumer(BaseConsumer):
             changes_count = 0
             try:
                 from bifrost._sync import flush_pending_changes
-                changes_count = await flush_pending_changes(execution_id, session=session)
+                changes_count = await flush_pending_changes(
+                    execution_id,
+                    session=session,
+                    pending_acknowledgements=change_acknowledgements,
+                )
                 if changes_count > 0:
                     logger.info(f"Flushed {changes_count} pending changes for failed {execution_id[:8]}...")
             except Exception as e:
@@ -964,6 +980,12 @@ class WorkflowExecutionConsumer(BaseConsumer):
         )
 
         from bifrost._logging import acknowledge_persisted_logs
+        from bifrost._sync import acknowledge_persisted_changes
+
+        await self._run_derived_step(
+            "change-acknowledgement",
+            lambda: acknowledge_persisted_changes(change_acknowledgements),
+        )
         await self._run_derived_step(
             "log-acknowledgement",
             lambda: acknowledge_persisted_logs(log_acknowledgements),

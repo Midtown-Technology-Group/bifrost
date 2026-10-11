@@ -21,30 +21,41 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+_ACKNOWLEDGE_PENDING_CHANGES_LUA = """
+local removed = 0
+for index = 1, #ARGV, 2 do
+    local field = ARGV[index]
+    local expected = ARGV[index + 1]
+    if redis.call("HGET", KEYS[1], field) == expected then
+        removed = removed + redis.call("HDEL", KEYS[1], field)
+    end
+end
+return removed
+"""
+
 
 class SyncError(Exception):
     """Failed to sync pending changes to Postgres."""
+
     pass
-
-
-async def acknowledge_pending_changes(execution_id: str) -> None:
-    """Delete buffered changes only after their database transaction commits."""
-    r = await get_shared_redis()
-    await r.delete(pending_changes_key(execution_id))
 
 
 async def flush_pending_changes(
     execution_id: str,
     session: "AsyncSession | None" = None,
+    *,
+    pending_acknowledgements: list[tuple[str, dict[str, str]]] | None = None,
 ) -> int:
     """
     Flush all pending changes for an execution to Postgres.
 
     Args:
         execution_id: Execution ID to flush
-        session: Optional database session. If provided, uses it and the caller
-                 must commit before calling :func:`acknowledge_pending_changes`.
-                 If None, creates and commits its own session before acknowledging.
+        session: Optional database session. If provided, uses it and
+                 caller is responsible for commit. If None, creates own session.
+        pending_acknowledgements: Collector for the exact Redis hash snapshot.
+                 With a caller session, invoke acknowledge_persisted_changes
+                 only after commit. Omitting it preserves the source until TTL.
 
     Returns:
         int: Number of changes applied
@@ -55,7 +66,7 @@ async def flush_pending_changes(
     r = await get_shared_redis()
     redis_key = pending_changes_key(execution_id)
 
-    pending = await r.hgetall(redis_key)  # type: ignore[misc]
+    pending: dict[str, str] = await r.hgetall(redis_key)  # type: ignore[misc]
     if not pending:
         return 0
 
@@ -86,22 +97,46 @@ async def flush_pending_changes(
                 async with session_factory() as db:
                     await _apply_all(db)
                     await db.commit()
-
-            if session is None:
-                await acknowledge_pending_changes(execution_id)
-                logger.info(f"Flushed {len(changes)} changes for {execution_id}")
-            else:
-                logger.info(
-                    "Applied %s pending changes for %s; awaiting transaction commit",
-                    len(changes),
-                    execution_id,
-                )
-            return len(changes)
+            break
         except Exception as e:
             if attempt == 2:
                 raise SyncError(f"Failed to flush: {e}") from e
 
-    return 0
+    acknowledgement = (redis_key, dict(pending))
+    if session is None:
+        try:
+            await acknowledge_persisted_changes([acknowledgement])
+        except Exception as e:  # noqa: BLE001 - the database commit is already durable
+            logger.warning(
+                "Committed %d changes for %s but could not acknowledge Redis: %s",
+                len(changes),
+                execution_id,
+                e,
+            )
+    elif pending_acknowledgements is not None:
+        pending_acknowledgements.append(acknowledgement)
+
+    logger.info(f"Flushed {len(changes)} changes for {execution_id}")
+    return len(changes)
+
+
+async def acknowledge_persisted_changes(
+    pending_acknowledgements: list[tuple[str, dict[str, str]]],
+) -> None:
+    """Delete only unchanged Redis fields from an already committed flush."""
+    if not pending_acknowledgements:
+        return
+
+    redis = await get_shared_redis()
+    for redis_key, snapshot in pending_acknowledgements:
+        arguments = [item for pair in snapshot.items() for item in pair]
+        if arguments:
+            await redis.eval(
+                _ACKNOWLEDGE_PENDING_CHANGES_LUA,
+                1,
+                redis_key,
+                *arguments,
+            )
 
 
 async def _apply_change(db: "AsyncSession", change: dict[str, Any]) -> None:
@@ -137,14 +172,24 @@ async def _apply_config_change(db: "AsyncSession", change: dict[str, Any]) -> No
         await db.execute(
             delete(Config).where(
                 Config.key == key,
-                Config.organization_id == org_uuid if org_uuid else Config.organization_id.is_(None)
+                Config.organization_id == org_uuid
+                if org_uuid
+                else Config.organization_id.is_(None),
             )
         )
     else:
         if org_uuid:
-            result = await db.execute(select(Config).where(Config.key == key, Config.organization_id == org_uuid))
+            result = await db.execute(
+                select(Config).where(
+                    Config.key == key, Config.organization_id == org_uuid
+                )
+            )
         else:
-            result = await db.execute(select(Config).where(Config.key == key, Config.organization_id.is_(None)))
+            result = await db.execute(
+                select(Config).where(
+                    Config.key == key, Config.organization_id.is_(None)
+                )
+            )
         existing = result.scalars().first()
 
         config_type = ConfigType(data.get("config_type", "string"))
@@ -154,13 +199,15 @@ async def _apply_config_change(db: "AsyncSession", change: dict[str, Any]) -> No
             existing.config_type = config_type
             existing.updated_by = user_id or "system"
         else:
-            db.add(Config(
-                organization_id=org_uuid,
-                key=key,
-                value={"value": data.get("value")},
-                config_type=config_type,
-                updated_by=user_id or "system"
-            ))
+            db.add(
+                Config(
+                    organization_id=org_uuid,
+                    key=key,
+                    value={"value": data.get("value")},
+                    config_type=config_type,
+                    updated_by=user_id or "system",
+                )
+            )
 
 
 async def _apply_role_change(db: "AsyncSession", change: dict[str, Any]) -> None:
@@ -188,12 +235,14 @@ async def _apply_role_change(db: "AsyncSession", change: dict[str, Any]) -> None
                 if field in data:
                     setattr(role, field, data[field])
     elif operation == "create":
-        db.add(Role(
-            id=role_uuid,
-            name=data.get("name", ""),
-            description=data.get("description", ""),
-            created_by=user_id
-        ))
+        db.add(
+            Role(
+                id=role_uuid,
+                name=data.get("name", ""),
+                description=data.get("description", ""),
+                created_by=user_id,
+            )
+        )
 
 
 async def _apply_org_change(db: "AsyncSession", change: dict[str, Any]) -> None:
@@ -209,25 +258,31 @@ async def _apply_org_change(db: "AsyncSession", change: dict[str, Any]) -> None:
     org_uuid = UUID(org_id) if org_id else UUID(entity_key)
 
     if operation == "delete":
-        result = await db.execute(select(Organization).where(Organization.id == org_uuid))
+        result = await db.execute(
+            select(Organization).where(Organization.id == org_uuid)
+        )
         org = result.scalars().first()
         if org:
             org.is_active = False
     elif operation == "update":
-        result = await db.execute(select(Organization).where(Organization.id == org_uuid))
+        result = await db.execute(
+            select(Organization).where(Organization.id == org_uuid)
+        )
         org = result.scalars().first()
         if org:
             for field in ["name", "domain", "is_active"]:
                 if field in data:
                     setattr(org, field, data[field])
     elif operation == "create":
-        db.add(Organization(
-            id=org_uuid,
-            name=data.get("name", ""),
-            domain=data.get("domain"),
-            is_active=data.get("is_active", True),
-            created_by=user_id
-        ))
+        db.add(
+            Organization(
+                id=org_uuid,
+                name=data.get("name", ""),
+                domain=data.get("domain"),
+                is_active=data.get("is_active", True),
+                created_by=user_id,
+            )
+        )
 
 
 async def _apply_user_role_change(db: "AsyncSession", change: dict[str, Any]) -> None:
@@ -243,10 +298,14 @@ async def _apply_user_role_change(db: "AsyncSession", change: dict[str, Any]) ->
     for user_id in data.get("user_ids", []):
         user_uuid = UUID(user_id)
         result = await db.execute(
-            select(UserRole).where(and_(UserRole.role_id == role_uuid, UserRole.user_id == user_uuid))
+            select(UserRole).where(
+                and_(UserRole.role_id == role_uuid, UserRole.user_id == user_uuid)
+            )
         )
         if not result.scalars().first():
-            db.add(UserRole(role_id=role_uuid, user_id=user_uuid, assigned_by=assigned_by))
+            db.add(
+                UserRole(role_id=role_uuid, user_id=user_uuid, assigned_by=assigned_by)
+            )
 
 
 async def _apply_form_role_change(db: "AsyncSession", change: dict[str, Any]) -> None:
@@ -262,7 +321,11 @@ async def _apply_form_role_change(db: "AsyncSession", change: dict[str, Any]) ->
     for form_id in data.get("form_ids", []):
         form_uuid = UUID(form_id)
         result = await db.execute(
-            select(FormRole).where(and_(FormRole.role_id == role_uuid, FormRole.form_id == form_uuid))
+            select(FormRole).where(
+                and_(FormRole.role_id == role_uuid, FormRole.form_id == form_uuid)
+            )
         )
         if not result.scalars().first():
-            db.add(FormRole(role_id=role_uuid, form_id=form_uuid, assigned_by=assigned_by))
+            db.add(
+                FormRole(role_id=role_uuid, form_id=form_uuid, assigned_by=assigned_by)
+            )
