@@ -17,6 +17,8 @@ from src.services.operation_catalog import operation_route
 from src.core.auth import Context, CurrentUser, get_current_user_optional
 from src.core.db_deps import DbSession
 from src.core.principal import UserPrincipal
+from src.models.contracts.device_peer_sessions import DevicePeerSessionCreate
+from src.models.contracts.platform_jobs import PlatformJobAccepted
 from src.models.contracts.device_jobs import (
     DeviceJobCreate,
     DeviceJobDetail,
@@ -507,5 +509,67 @@ async def cancel_job_route(
             )
         job = await request_cancel(db, user, job_id)
         return DeviceJobPublic.model_validate(job)
+    except DeviceOperationError as exc:
+        return exc.to_response()
+
+
+@router.post("/{device_id}/peer-sessions", response_model=PlatformJobAccepted, status_code=202)
+async def create_peer_session_route(device_id: UUID, body: DevicePeerSessionCreate, ctx: Context, user: CurrentUser) -> PlatformJobAccepted | JSONResponse:
+    """Authorize an isolated lighthouse lease for locally generated endpoint keys."""
+    from datetime import datetime, timezone
+    from src.config import get_settings
+    from src.jobs.platform.device_peer_sessions import DEVICE_PEER_START_DEFINITION
+    from src.models.contracts.device_peer_sessions import DevicePeerSessionPayload
+    from src.services.device_peer_launcher import enabled
+    from src.services.device_peer_admission import enqueue_peer_session
+
+    try:
+        if user.is_engine_token or user.embed or user.is_system_account:
+            raise DeviceOperationError(403, "permission_denied", "User device session permission required")
+        await require_device_execute_permission(ctx.db, user)
+        device = await get_device_scoped(ctx.db, user, device_id)
+        if device.status != DEVICE_STATUS_ACTIVE:
+            raise DeviceOperationError(403, "device_disabled", "Device is disabled")
+        if not enabled(get_settings()):
+            raise DeviceOperationError(503, "peer_unavailable", "Device peer launcher is not configured")
+        if not 10 <= (body.expires - datetime.now(timezone.utc)).total_seconds() <= 1800:
+            raise DeviceOperationError(422, "invalid_parameter", "Session expiry must be between 10 seconds and 30 minutes")
+        payload = DevicePeerSessionPayload(device_id=device.id, **body.model_dump())
+        job, reused = await enqueue_peer_session(ctx.db, DEVICE_PEER_START_DEFINITION, payload,
+            dedupe_key=f"{user.user_id}:{device_id}:{body.request_id}", organization_id=device.organization_id,
+            requested_by_user_id=user.user_id, requested_by_email=user.email, requested_by_name=user.name,
+            resource_type="device", resource_id=str(device.id), title="Start device session lighthouse", action_url=None)
+        if reused and job.payload != payload.model_dump(mode="json"):
+            raise DeviceOperationError(409, "peer_conflict", "Request identity already used with different policy")
+        await ctx.db.commit()
+        return PlatformJobAccepted(job_id=job.id, status=job.status, reused=reused, notification_id=job.notification_id)
+    except DeviceOperationError as exc:
+        return exc.to_response()
+
+
+@router.post("/{device_id}/peer-sessions/{session_job_id}/revoke", response_model=PlatformJobAccepted, status_code=202)
+async def revoke_peer_session_route(device_id: UUID, session_job_id: UUID, ctx: Context, user: CurrentUser) -> PlatformJobAccepted | JSONResponse:
+    from src.jobs.platform.device_peer_sessions import DEVICE_PEER_REVOKE_DEFINITION
+    from src.models.contracts.device_peer_sessions import DevicePeerRevokePayload
+    from src.models.orm.platform_jobs import PlatformJob
+    from src.services.platform_jobs import enqueue_platform_job, request_platform_job_cancel
+
+    try:
+        if user.is_engine_token or user.embed or user.is_system_account:
+            raise DeviceOperationError(403, "permission_denied", "User device session permission required")
+        await require_device_execute_permission(ctx.db, user)
+        device = await get_device_scoped(ctx.db, user, device_id)
+        session = await ctx.db.get(PlatformJob, session_job_id)
+        if session is None or session.job_type != "device.peer_lighthouse.start" or session.resource_id != str(device.id) or not (user.is_platform_admin or session.requested_by_user_id == str(user.user_id)):
+            raise DeviceOperationError(404, "unknown_session", "Device session not found")
+        job, reused = await enqueue_platform_job(ctx.db, DEVICE_PEER_REVOKE_DEFINITION,
+            DevicePeerRevokePayload(device_id=device.id, session_job_id=session.id),
+            dedupe_key=str(session.id), organization_id=device.organization_id,
+            requested_by_user_id=user.user_id, requested_by_email=user.email, requested_by_name=user.name,
+            resource_type="device", resource_id=str(device.id), title="Revoke device session lighthouse", action_url=None)
+        await ctx.db.commit()
+        # Persist the authoritative stop before cancellation commits independently.
+        await request_platform_job_cancel(ctx.db, session)
+        return PlatformJobAccepted(job_id=job.id, status=job.status, reused=reused, notification_id=job.notification_id)
     except DeviceOperationError as exc:
         return exc.to_response()

@@ -5078,6 +5078,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/devices/{device_id}/peer-sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Peer Session Route
+         * @description Authorize an isolated lighthouse lease for locally generated endpoint keys.
+         */
+        post: operations["create_peer_session_route_api_devices__device_id__peer_sessions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/devices/{device_id}/peer-sessions/{session_job_id}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Revoke Peer Session Route */
+        post: operations["revoke_peer_session_route_api_devices__device_id__peer_sessions__session_job_id__revoke_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/device-control-keys": {
         parameters: {
             query?: never;
@@ -18910,6 +18947,25 @@ export interface components {
             text: string;
             /** Ts */
             ts?: string | null;
+        };
+        /** DevicePeerSessionCreate */
+        DevicePeerSessionCreate: {
+            /**
+             * Request Id
+             * Format: uuid
+             */
+            request_id: string;
+            /** Operator Key */
+            operator_key: string;
+            /** Target Key */
+            target_key: string;
+            /** Destination */
+            destination: string;
+            /**
+             * Expires
+             * Format: date-time
+             */
+            expires: string;
         };
         /**
          * DevicePublic
@@ -45131,6 +45187,73 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DeviceJobPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_peer_session_route_api_devices__device_id__peer_sessions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                device_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DevicePeerSessionCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlatformJobAccepted"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revoke_peer_session_route_api_devices__device_id__peer_sessions__session_job_id__revoke_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                device_id: string;
+                session_job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlatformJobAccepted"];
                 };
             };
             /** @description Validation Error */
