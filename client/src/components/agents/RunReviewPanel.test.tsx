@@ -3,7 +3,10 @@ import { renderWithProviders, screen } from "@/test-utils";
 import type { components } from "@/lib/v1";
 
 const mockRegenSummary = vi.fn();
-const mockAuth = vi.fn(() => ({ isPlatformAdmin: true }));
+const mockAuth = vi.fn(() => ({
+	isPlatformAdmin: true,
+	hasRole: () => false,
+}));
 
 vi.mock("@/contexts/AuthContext", () => ({
 	useAuth: () => mockAuth(),
@@ -564,7 +567,10 @@ describe("RunReviewPanel", () => {
 	});
 
 	it("disables regen for non-admins but still shows it (tooltip)", () => {
-		mockAuth.mockReturnValueOnce({ isPlatformAdmin: false });
+		mockAuth.mockReturnValueOnce({
+			isPlatformAdmin: false,
+			hasRole: () => false,
+		});
 		renderWithProviders(
 			<RunReviewPanel
 				run={{

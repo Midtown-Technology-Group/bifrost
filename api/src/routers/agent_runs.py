@@ -119,7 +119,11 @@ def _require_flagged_completed_run(run: AgentRun) -> None:
         )
 
 
-def _run_to_response(run: AgentRun) -> AgentRunResponse:
+def _run_to_response(
+    run: AgentRun,
+    *,
+    include_sensitive: bool = False,
+) -> AgentRunResponse:
     """Convert AgentRun ORM to AgentRunResponse."""
     return AgentRunResponse(
         id=run.id,
@@ -129,8 +133,8 @@ def _run_to_response(run: AgentRun) -> AgentRunResponse:
         trigger_source=run.trigger_source,
         conversation_id=run.conversation_id,
         event_delivery_id=run.event_delivery_id,
-        input=run.input,
-        output=run.output,
+        input=run.input if include_sensitive else None,
+        output=run.output if include_sensitive else None,
         status=run.status,
         error=run.error,
         org_id=run.org_id,
@@ -150,7 +154,7 @@ def _run_to_response(run: AgentRun) -> AgentRunResponse:
         confidence=run.confidence,
         confidence_reason=run.confidence_reason,
         summary_status=run.summary_status,
-        summary_error=run.summary_error,
+        summary_error=run.summary_error if include_sensitive else None,
         verdict=run.verdict,
         verdict_note=run.verdict_note,
         verdict_set_at=run.verdict_set_at,
@@ -319,7 +323,13 @@ async def list_agent_runs(
     next_cursor = str(page_offset + len(runs)) if has_more else None
 
     return AgentRunListResponse(
-        items=[_run_to_response(run) for run in runs],
+        items=[
+            _run_to_response(
+                run,
+                include_sensitive=user.has_platform_admin_grant(),
+            )
+            for run in runs
+        ],
         total=total,
         next_cursor=next_cursor,
     )
@@ -531,6 +541,8 @@ async def get_agent_run(
             detail=f"Agent run {run_id} not found",
         )
 
+    include_sensitive = user.has_platform_admin_grant()
+
     # Fetch AI usage records for this run
     ai_usage_result = await db.execute(
         select(AIUsage)
@@ -635,7 +647,7 @@ async def get_agent_run(
                         run_id=UUID(data["run_id"]),
                         step_number=int(data["step_number"]),
                         type=data["type"],
-                        content=content,
+                        content=content if include_sensitive else None,
                         tokens_used=int(tokens_str) if tokens_str else None,
                         duration_ms=int(duration_str) if duration_str else None,
                         created_at=datetime.fromisoformat(data["created_at"]),
@@ -646,7 +658,9 @@ async def get_agent_run(
             steps_response = [
                 AgentRunStepResponse(
                     id=step.id, run_id=step.run_id, step_number=step.step_number,
-                    type=step.type, content=step.content, tokens_used=step.tokens_used,
+                    type=step.type,
+                    content=step.content if include_sensitive else None,
+                    tokens_used=step.tokens_used,
                     duration_ms=step.duration_ms, created_at=step.created_at,
                 )
                 for step in run.steps
@@ -656,7 +670,9 @@ async def get_agent_run(
         steps_response = [
             AgentRunStepResponse(
                 id=step.id, run_id=step.run_id, step_number=step.step_number,
-                type=step.type, content=step.content, tokens_used=step.tokens_used,
+                type=step.type,
+                content=step.content if include_sensitive else None,
+                tokens_used=step.tokens_used,
                 duration_ms=step.duration_ms, created_at=step.created_at,
             )
             for step in run.steps
@@ -670,8 +686,8 @@ async def get_agent_run(
         trigger_source=run.trigger_source,
         conversation_id=run.conversation_id,
         event_delivery_id=run.event_delivery_id,
-        input=run.input,
-        output=run.output,
+        input=run.input if include_sensitive else None,
+        output=run.output if include_sensitive else None,
         status=run.status,
         error=run.error,
         org_id=run.org_id,
@@ -691,7 +707,7 @@ async def get_agent_run(
         confidence=run.confidence,
         confidence_reason=run.confidence_reason,
         summary_status=run.summary_status,
-        summary_error=run.summary_error,
+        summary_error=run.summary_error if include_sensitive else None,
         verdict=run.verdict,
         verdict_note=run.verdict_note,
         verdict_set_at=run.verdict_set_at,

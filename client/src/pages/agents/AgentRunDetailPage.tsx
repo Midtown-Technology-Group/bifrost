@@ -82,7 +82,11 @@ export function AgentRunDetailPage() {
 		runId: string;
 	}>();
 	const queryClient = useQueryClient();
-	const { isPlatformAdmin } = useAuth();
+	const { isPlatformAdmin, hasRole } = useAuth();
+	const canViewRaw =
+		isPlatformAdmin ||
+		hasRole("Platform Admin") ||
+		hasRole("Platform Owner");
 	const location = useLocation();
 	const navigate = useNavigate();
 	const activeTab =
@@ -895,6 +899,7 @@ export function AgentRunDetailPage() {
 						<CardContent className="flex min-h-0 min-w-0 flex-1 flex-col p-0">
 							<AgentActivityWorkspace
 								run={run}
+								canViewRaw={canViewRaw}
 								focused={activeTab === "activity"}
 								expanded={activityInspecting}
 								onFocusedChange={(focused) =>

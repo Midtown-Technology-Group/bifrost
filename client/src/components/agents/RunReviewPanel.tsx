@@ -178,7 +178,11 @@ export function RunReviewPanel({
 	const maxActions = compact ? 3 : 4;
 	const visibleActions = fallbackActions.slice(0, maxActions);
 	const overflow = fallbackActions.length - visibleActions.length;
-	const { isPlatformAdmin } = useAuth();
+	const { isPlatformAdmin, hasRole } = useAuth();
+	const canViewRaw =
+		isPlatformAdmin ||
+		hasRole("Platform Admin") ||
+		hasRole("Platform Owner");
 	const summaryStatus = run.summary_status;
 	const needsRegen = summaryStatus && summaryStatus !== "completed";
 
@@ -402,7 +406,9 @@ export function RunReviewPanel({
 					</Section>
 				) : null}
 
-				{run.summary_status === "failed" && run.summary_error ? (
+				{canViewRaw &&
+				run.summary_status === "failed" &&
+				run.summary_error ? (
 					<Section label="Summary error" compact={compact} plain>
 						<div
 							className={cn(
