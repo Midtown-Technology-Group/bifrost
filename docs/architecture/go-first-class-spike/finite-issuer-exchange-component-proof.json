@@ -1,6 +1,6 @@
 {
   "sdk_version": "0.0.0-spike.2",
-  "status": "authenticated-issuer-implementation-pending-actual-exchange-gate",
+  "status": "issuer-json-boundary-fix-and-issued-release-candidate-pending-gates",
   "implementation_source": "7e138c885c63fc241dad13d3d2099696a926e8fe",
   "corrected_fixture_source": "5b97d9a61a888c012b7ae77d36fe5121cdf22d0e",
   "rust_producer": {
@@ -31,7 +31,17 @@
   "current_actual_exchange_gate": {
     "run": 38105954693,
     "source": "5b97d9a61a888c012b7ae77d36fe5121cdf22d0e",
-    "state_at_recording": "in_progress"
+    "state_at_recording": "completed",
+    "conclusion": "failure",
+    "diagnosis": "Strict UUID/datetime records were incorrectly parsed with Python-object model_validate after JSON decode. Fixed via strict model_validate_json after duplicate/canonical-byte checks; no strict=False.",
+    "unit_results": {
+      "tests": 13893,
+      "failures": 2,
+      "errors": 0,
+      "skipped": 0
+    },
+    "disposable_inventory": "verified empty containers/volumes/networks",
+    "retained_artifacts": "/home/thomas/src/bifrost-go-spike-artifacts/5b97d9a61a888c012b7ae77d36fe5121cdf22d0e/guard"
   },
   "superseded_guard_runs": [
     {
@@ -48,9 +58,9 @@
     }
   ],
   "limits": [
-    "Actual SQL/Python signing exchange and lost-reply cases await current source gate.",
+    "Actual exchange, issued release and lost-reply cases require a fresh corrected-source gate; previous gate failed before these cases executed.",
     "The exchange probe retains synthetic artifact/source and guardian custody.",
-    "Fresh release eligibility and original private material delivery remain required before tenant initialization.",
+    "Issued-material release and original private delivery are implementation candidates only; positive live guardian/workflow proof and security/race acceptance remain required.",
     "Full Go SDK, durable Result/Receipt/API readback, cancellation/recovery and durable source settlement remain unproved."
   ],
   "runtime_acceptance": false,

@@ -70,9 +70,13 @@ async def run():
             owner_start_ticks=data["owner_ticks"],
             grant_id=ids["grant_id"],
             load_snapshot=committed,
-            caller=AuthorizedCallerSnapshot.model_validate(data["caller"]),
-            source=AcceptedManifestIdentity.model_validate(data["source"]),
-            policy=SelectedSDKPolicy.model_validate(data["policy"]),
+            caller=AuthorizedCallerSnapshot.model_validate_json(
+                json.dumps(data["caller"])
+            ),
+            source=AcceptedManifestIdentity.model_validate_json(
+                json.dumps(data["source"])
+            ),
+            policy=SelectedSDKPolicy.model_validate_json(json.dumps(data["policy"])),
             ca_pem=data["ca"],
         )
         try:

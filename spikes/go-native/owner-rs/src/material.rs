@@ -93,6 +93,37 @@ impl MaterialPipe {
         })
     }
 
+    /// Check this still-open original writer and its exact staged pathname.
+    /// Only the guardian's original launch spec supplies expected directory/UID.
+    pub(crate) fn verify_for(&self, directory: &Path, uid: u32) -> Result<(), MaterialError> {
+        if directory != self.directory
+            || directory
+                .canonicalize()
+                .map_err(|_| MaterialError::Rejected)?
+                != directory
+        {
+            return Err(MaterialError::Rejected);
+        }
+        let parent = fs::symlink_metadata(directory).map_err(|_| MaterialError::Rejected)?;
+        let path = fs::symlink_metadata(&self.fifo).map_err(|_| MaterialError::Rejected)?;
+        let writer = self.writer.as_ref().ok_or(MaterialError::Rejected)?;
+        let held = writer.metadata().map_err(|_| MaterialError::Rejected)?;
+        if !parent.is_dir()
+            || parent.uid() != uid
+            || parent.mode() & 0o777 != 0o700
+            || [path, held].iter().any(|m| {
+                !m.file_type().is_fifo()
+                    || m.uid() != uid
+                    || m.mode() & 0o777 != 0o600
+                    || m.dev() != self.device
+                    || m.ino() != self.inode
+            })
+        {
+            return Err(MaterialError::Rejected);
+        }
+        Ok(())
+    }
+
     pub fn directory(&self) -> &Path {
         &self.directory
     }
@@ -266,6 +297,41 @@ mod tests {
         assert_eq!(&partial[..4], &(MAX_MATERIAL as u32).to_be_bytes());
         drop(reader);
         assert_eq!(pipe.retire(), Ok(()));
+    }
+
+    #[test]
+    fn original_open_fifo_verification_rejects_rebinding_and_consumption() {
+        let fixture = Fixture::new();
+        let mut pipe = fixture.pipe();
+        assert_eq!(pipe.verify_for(pipe.directory(), fixture.uid), Ok(()));
+        assert_eq!(
+            pipe.verify_for(&fixture.parent, fixture.uid),
+            Err(MaterialError::Rejected)
+        );
+        assert_eq!(
+            pipe.verify_for(pipe.directory(), fixture.uid + 1),
+            Err(MaterialError::Rejected)
+        );
+        let path = pipe.directory().join("sdk.pipe");
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o640)).unwrap();
+        assert_eq!(
+            pipe.verify_for(pipe.directory(), fixture.uid),
+            Err(MaterialError::Rejected)
+        );
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
+        assert_eq!(pipe.verify_for(pipe.directory(), fixture.uid), Ok(()));
+        fs::remove_file(&path).unwrap();
+        fs::write(&path, b"replacement").unwrap();
+        assert_eq!(
+            pipe.verify_for(pipe.directory(), fixture.uid),
+            Err(MaterialError::Rejected)
+        );
+        pipe.close();
+        assert_eq!(
+            pipe.verify_for(pipe.directory(), fixture.uid),
+            Err(MaterialError::Rejected)
+        );
+        assert_eq!(pipe.retire(), Err(MaterialError::CleanupRequired));
     }
 
     #[test]

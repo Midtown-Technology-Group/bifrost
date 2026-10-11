@@ -27,8 +27,12 @@ pub struct FiniteIssuanceAdmission {
     caller: Value,
     expires_at: String,
     grant_digest: String,
+    integration_name: String,
 }
 impl FiniteIssuanceAdmission {
+    pub fn integration_name(&self) -> &str {
+        &self.integration_name
+    }
     pub fn grant_digest(&self) -> &str {
         &self.grant_digest
     }
@@ -117,6 +121,46 @@ async fn authorize_candidate(
         return Err(ObserveError::InvalidFence);
     }
     let mut locked = lock_session(pool, fence).await?;
+    let checked = authorize_locked(&mut locked, fence, request, purpose).await?;
+    locked
+        .tx
+        .commit()
+        .await
+        .map_err(|_| ObserveError::UncertainCommit)?;
+    Ok(checked)
+}
+
+/// Fresh finite pre-release checks inside the caller's common release transaction.
+/// No separate read commit and no portable permission survive into its write.
+pub(crate) async fn authorize_issued_release_locked(
+    locked: &mut crate::LockedSession<'_>,
+    fence: &SessionFence,
+    request: &IntegrationGetRequest,
+) -> Result<FiniteIssuanceAdmission, ObserveError> {
+    Ok(
+        authorize_locked(locked, fence, request, Purpose::FiniteIssuance)
+            .await?
+            .issuance,
+    )
+}
+
+async fn authorize_locked(
+    locked: &mut crate::LockedSession<'_>,
+    fence: &SessionFence,
+    request: &IntegrationGetRequest,
+    purpose: Purpose,
+) -> Result<CheckedGrant, ObserveError> {
+    if !canonical_uuid(&request.grant_id)
+        || !canonical_uuid(&request.organization_id)
+        || !canonical_uuid(&request.solution_id)
+        || !digest(&request.grant_digest)
+        || request.integration_name.is_empty()
+        || request.integration_name.len() > 255
+        || request.integration_name.contains('\0')
+        || request.integration_name.trim() != request.integration_name
+    {
+        return Err(ObserveError::InvalidFence);
+    }
     if locked.closed
         || locked.execution_status != "Running"
         || locked.attempt_status != "running"
@@ -317,11 +361,6 @@ async fn authorize_candidate(
             raw_grant.get(field).ok_or(ObserveError::Rejected)?.clone(),
         );
     }
-    locked
-        .tx
-        .commit()
-        .await
-        .map_err(|_| ObserveError::UncertainCommit)?;
     Ok(CheckedGrant {
         capability: IntegrationGetAdmission {
             integration_name: request.integration_name.clone(),
@@ -333,6 +372,7 @@ async fn authorize_candidate(
             caller: current_caller,
             expires_at: grant.try_get("expires_wire")?,
             grant_digest: request.grant_digest.clone(),
+            integration_name: request.integration_name.clone(),
         },
     })
 }

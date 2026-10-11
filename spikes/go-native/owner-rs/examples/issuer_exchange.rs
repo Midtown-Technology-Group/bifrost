@@ -1,7 +1,8 @@
 //! Isolated actual-SQL/private-issuer probe. No guardian or runtime acceptance.
 use bifrost_isolated_owner_spike::{
-    IntegrationGetRequest, SessionFence, authorize_finite_issuance_candidate,
-    issuer::IssuerChannel, peer::OriginalPeer,
+    IntegrationGetRequest, ReleaseCommitObservation, ReleaseRequest, SessionFence,
+    authorize_finite_issuance_candidate, issuer::IssuerChannel, peer::OriginalPeer,
+    record_issued_release_candidate, request_running_cancel,
 };
 use serde_json::Value;
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
@@ -12,7 +13,7 @@ use std::{
     time::Duration,
 };
 
-async fn run() -> Result<(), ()> {
+async fn run() -> Result<&'static str, ()> {
     if std::env::args().count() != 1
         || std::env::var("BIFROST_ISOLATED_OWNER_TEST").as_deref() != Ok("1")
     {
@@ -92,18 +93,40 @@ async fn run() -> Result<(), ()> {
     {
         return Err(());
     }
+    let outcome = if let Some(release) = value.get("release") {
+        let field =
+            |name: &str| -> Result<String, ()> { Ok(release[name].as_str().ok_or(())?.into()) };
+        let release = ReleaseRequest {
+            release_id: field("release_id")?,
+            provision_id: field("provision_id")?,
+            grant_id: field("grant_id")?,
+            delivery_id: field("delivery_id")?,
+            operations_sha256: field("operations_sha256")?,
+            frontier_sha256: field("frontier_sha256")?,
+        };
+        if value["cancel_after_issue"] == true {
+            request_running_cancel(&pool, &fence)
+                .await
+                .map_err(|_| ())?;
+        }
+        match record_issued_release_candidate(&pool, &fence, &release, &material).await {
+            Ok(ReleaseCommitObservation::NewlyCommitted) => "issued_release_committed",
+            _ => "issued_release_denied",
+        }
+    } else {
+        "issuer_material_observed"
+    };
     pool.close().await;
-    Ok(())
+    Ok(outcome)
 }
 #[tokio::main]
 async fn main() {
     let result = tokio::time::timeout(Duration::from_secs(8), run()).await;
     println!(
         "{}",
-        if matches!(result, Ok(Ok(()))) {
-            "issuer_material_observed"
-        } else {
-            "rejected"
+        match result {
+            Ok(Ok(outcome)) => outcome,
+            _ => "rejected",
         }
     );
 }

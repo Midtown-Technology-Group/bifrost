@@ -3351,7 +3351,10 @@ async def test_cancelled_provision_cannot_authorize_finite_issuance(provision_fa
 
 
 @pytest.mark.parametrize("prepared_start_facts", ["provision"], indirect=True)
-@pytest.mark.parametrize("mode", ["normal", "lost_reply"])
+@pytest.mark.parametrize(
+    "mode",
+    ["normal", "lost_reply", "release", "cancel_after_issue", "wrong_operations"],
+)
 async def test_real_finite_issuer_exchange_uses_committed_grant_and_original_peers(
     provision_facts, tmp_path, mode
 ):
@@ -3362,7 +3365,12 @@ async def test_real_finite_issuer_exchange_uses_committed_grant_and_original_pee
     facts = provision_facts
     assert await provision_probe(facts) == "newly_committed"
     snapshot, caller, source, policy = facts["issuer_inputs"]
-    facts.update(grant=snapshot.id)
+    facts.update(
+        grant=snapshot.id,
+        grant_digest=facts["provision_request"]["grant_digest"],
+        org=snapshot.effective_organization_id,
+        solution=snapshot.solution_install_id,
+    )
     before = await provision_snapshot(facts)
     executable = Path("/app/scripts/runtime-owner-issuer")
     assert executable.is_file(), "Required source-bound Rust issuer artifact is missing"
@@ -3434,8 +3442,28 @@ async def test_real_finite_issuer_exchange_uses_committed_grant_and_original_pee
         config = json.loads(ready)
         assert config["pid"] == issuer.pid and config["uid"] == owner_uid
         assert config["ticks"] == _start_ticks(issuer.pid)
+        release = None
+        if mode in {"release", "cancel_after_issue", "wrong_operations"}:
+            release = {
+                "release_id": str(uuid4()),
+                "provision_id": facts["provision_request"]["provision_id"],
+                "grant_id": str(snapshot.id),
+                "delivery_id": facts["provision_request"]["delivery_id"],
+                "operations_sha256": snapshot.operations_digest
+                if mode != "wrong_operations"
+                else "b" * 64,
+                "frontier_sha256": "a" * 64,
+            }
         payload = json.dumps(
             {
+                **(
+                    {
+                        "release": release,
+                        "cancel_after_issue": mode == "cancel_after_issue",
+                    }
+                    if release
+                    else {}
+                ),
                 "fence": facts["fence"],
                 "issuer": config,
                 "request": [
@@ -3449,8 +3477,15 @@ async def test_real_finite_issuer_exchange_uses_committed_grant_and_original_pee
         ).encode()
         out, err = await asyncio.wait_for(owner.communicate(payload), timeout=8)
         assert owner.returncode == 0 and err == b""
-        assert out == (
-            b"issuer_material_observed\n" if mode == "normal" else b"rejected\n"
+        assert (
+            out
+            == {
+                "normal": b"issuer_material_observed\n",
+                "lost_reply": b"rejected\n",
+                "release": b"issued_release_committed\n",
+                "cancel_after_issue": b"issued_release_denied\n",
+                "wrong_operations": b"issued_release_denied\n",
+            }[mode]
         )
         issuer.stdin.write(b"finish\n")
         await issuer.stdin.drain()
@@ -3458,14 +3493,35 @@ async def test_real_finite_issuer_exchange_uses_committed_grant_and_original_pee
         assert issuer.returncode == 0 and err == b""
         assert out == (
             b"issuer_drained\n"
-            if mode == "normal"
+            if mode != "lost_reply"
             else b"issuer_signed_reply_lost\nissuer_drained\n"
         )
         assert (
             not Path(config["path"]).exists()
             and not Path(config["path"]).parent.exists()
         )
-        assert await provision_snapshot(facts) == before
+        if mode == "release":
+            async with connection("wex_core") as conn:
+                assert (
+                    await conn.fetchval(
+                        "SELECT count(*) FROM runtime_admissions WHERE session_id=$1 AND purpose='release'",
+                        facts["session"],
+                    )
+                    == 1
+                )
+            assert await sdk_admission_probe(facts) == "sdk_admitted"
+        elif mode == "cancel_after_issue":
+            async with connection("wex_core") as conn:
+                assert (
+                    await conn.fetchval(
+                        "SELECT count(*) FROM runtime_admissions WHERE session_id=$1 AND purpose='release'",
+                        facts["session"],
+                    )
+                    == 0
+                )
+            assert await sdk_admission_probe(facts) == "rejected"
+        else:
+            assert await provision_snapshot(facts) == before
     finally:
         for process in (owner, issuer):
             if process is not None and process.returncode is None:

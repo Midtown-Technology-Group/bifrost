@@ -65,3 +65,34 @@ source/build association, fresh release eligibility, original material delivery,
 real Go SDK call, Result/Receipt/API readback, cancellation/recovery and durable
 source-consumer settlement still require the complete coordinator and evidence.
 Neither a finite token nor an observed issuer response is release/spawn authority.
+
+## Issued release and original delivery candidate
+
+The actual issuer response retains its private immutable capability reference,
+operations digest and expiry. `record_issued_release_candidate` checks these
+against current shared caller/source/grant preimages inside the common release
+transaction. It takes the existing source → attempt → NOWAIT secondary → session
+→ Start → admission → grant → operations → receipt order. It rechecks identical
+caller/role eligibility at the release INSERT as well as after acquiring locks.
+No schema, principal, lifecycle table or production dispatcher is added.
+
+`LiveStart.release_and_deliver` consumes one actual material value and one local
+attempt. It validates the common Provision with the independent codec and binds
+its message ID, Prepare, Start, delivery and finite operations. Only a newly
+observed commit reaches the original channel and held FIFO. Guardian/session and
+FIFO pathname/held-FD device/inode/UID/mode are checked before committing and
+before writing. Commit ambiguity, retained rows and failed/partial writes cannot
+be replayed through this handle; the caller must drain the original process.
+
+The added SQL/signing component cases cover successful issued release,
+cancellation after issuance and a mismatched operations digest. Held-FIFO tests
+cover wrong directory/UID, changed permissions, replaced pathname and consumed
+writer. These remain pending fresh hosted evidence. They do not prove the full
+accepted Go workflow, SDK HTTP call, durable Result/Receipt, authenticated
+Execution API readback, cancellation finalization or source settlement.
+
+The prior source gate 38105954693 failed in two strict JSON input tests before
+SQL exchange cases ran (13,893 unit tests, two failures, zero skips/errors).
+The correction uses strict JSON model validation after closed/canonical parsing;
+it does not relax UUID/date, identity, duplicate-field or credential restrictions.
+Disposable CI containers, volumes and networks were independently verified empty.

@@ -32,9 +32,16 @@ pub struct IssuerChannel {
 pub struct IssuedMaterial {
     configuration: Value,
     expires_at: String,
-    grant_id: String,
+    reference: crate::IntegrationGetRequest,
+    operations_digest: String,
 }
 impl IssuedMaterial {
+    pub(crate) fn reference(&self) -> &crate::IntegrationGetRequest {
+        &self.reference
+    }
+    pub fn operations_digest(&self) -> &str {
+        &self.operations_digest
+    }
     pub fn configuration(&self) -> &Value {
         &self.configuration
     }
@@ -42,7 +49,7 @@ impl IssuedMaterial {
         &self.expires_at
     }
     pub fn grant_id(&self) -> &str {
-        &self.grant_id
+        &self.reference.grant_id
     }
 }
 
@@ -138,13 +145,35 @@ impl IssuerChannel {
         if private_socket(&self.path, self.uid)? != self.inode {
             return Err(IssuerError::Rejected);
         }
-        accepted_response(
+        let configuration = accepted_response(
             &response,
             &request,
             admission.snapshot(),
             admission.expires_at(),
             &self.ca_pem,
-        )
+        )?;
+        let snapshot = admission.snapshot();
+        Ok(IssuedMaterial {
+            configuration,
+            expires_at: admission.expires_at().into(),
+            reference: crate::IntegrationGetRequest {
+                grant_id: snapshot["id"].as_str().ok_or(IssuerError::Rejected)?.into(),
+                grant_digest: admission.grant_digest().into(),
+                integration_name: admission.integration_name().into(),
+                organization_id: snapshot["effective_organization_id"]
+                    .as_str()
+                    .ok_or(IssuerError::Rejected)?
+                    .into(),
+                solution_id: snapshot["solution_install_id"]
+                    .as_str()
+                    .ok_or(IssuerError::Rejected)?
+                    .into(),
+            },
+            operations_digest: snapshot["operations_digest"]
+                .as_str()
+                .ok_or(IssuerError::Rejected)?
+                .into(),
+        })
     }
 }
 
@@ -177,7 +206,7 @@ fn accepted_response(
     snapshot: &Value,
     expires_at: &str,
     ca: &str,
-) -> Result<IssuedMaterial, IssuerError> {
+) -> Result<Value, IssuerError> {
     let value: Value = serde_json::from_slice(raw).map_err(|_| IssuerError::Rejected)?;
     // Canonical byte equality also rejects duplicate keys/normalization/trailing bytes.
     if serde_json::to_vec(&value).map_err(|_| IssuerError::Rejected)? != raw
@@ -200,11 +229,7 @@ fn accepted_response(
     {
         return Err(IssuerError::Rejected);
     }
-    Ok(IssuedMaterial {
-        configuration: config.clone(),
-        expires_at: expires_at.into(),
-        grant_id: snapshot["id"].as_str().ok_or(IssuerError::Rejected)?.into(),
-    })
+    Ok(config.clone())
 }
 
 fn remaining(deadline: Instant) -> Result<Duration, IssuerError> {

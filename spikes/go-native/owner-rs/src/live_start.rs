@@ -1,6 +1,7 @@
 //! Original-guardian admission and Start integration, isolated dispatch only.
 //! Source/build acceptance and caller authentication are parent prerequisites.
-//! No provision, signing, replay, replacement owner or production registration.
+//! Finite issued-material release/delivery is an isolated candidate only.
+//! No replay, replacement owner or production registration.
 
 use crate::{
     AdmitRequest, FiniteIssuanceAdmission, IntegrationGetRequest, ObserveError, SessionFence,
@@ -30,6 +31,7 @@ pub enum BeginError {
     Guardian(GuardianError),
     Owner(ObserveError),
     Issuer(crate::issuer::IssuerError),
+    Material(crate::material::MaterialError),
 }
 impl From<GuardianError> for BeginError {
     fn from(error: GuardianError) -> Self {
@@ -50,6 +52,8 @@ pub struct LiveStart {
     prepare: Value,
     start: Value,
     issuance_attempted: bool,
+    release_attempted: bool,
+    used_message_ids: Vec<String>,
 }
 impl LiveStart {
     /// One process-local attempt on the original guardian. A failed/uncertain
@@ -92,6 +96,70 @@ impl LiveStart {
             return Err(BeginError::Rejected);
         }
         Ok(material)
+    }
+
+    /// Consume actual issuer material and one release attempt. Only a newly
+    /// observed common release commit reaches the original protocol/FIFO writes.
+    /// Any failure leaves the original guardian/pipe with the caller for drain;
+    /// no retained row or uncertain write may be replayed by this handle.
+    pub async fn release_and_deliver(
+        &mut self,
+        pool: &PgPool,
+        guardian: &mut Guardian,
+        pipe: &mut crate::material::MaterialPipe,
+        material: crate::issuer::IssuedMaterial,
+        request: &crate::ReleaseRequest,
+        provision_message_id: &str,
+    ) -> Result<(), BeginError> {
+        if self.release_attempted {
+            return Err(BeginError::Rejected);
+        }
+        self.release_attempted = true;
+        if !canonical_uuid(provision_message_id)
+            || self
+                .used_message_ids
+                .iter()
+                .any(|id| id == provision_message_id)
+            || request.grant_id != material.grant_id()
+            || request.operations_sha256 != material.operations_digest()
+        {
+            return Err(BeginError::Rejected);
+        }
+        if guardian.verify_session(&self.fence)? != self.prepare["body"]["binding"] {
+            return Err(BeginError::Rejected);
+        }
+        guardian.verify_material(pipe)?;
+        let provision = json!({"protocol":"bifrost.runtime/v1","type":"Provision",
+            "session_id":self.fence.session_id,"message_id":provision_message_id,
+            "sequence":4,"correlation_id":self.prepare["message_id"],
+            "body":{"binding":self.prepare["body"]["binding"],
+            "prepare_message_id":self.prepare["message_id"],
+            "committed_start_id":self.start["body"]["committed_start_id"],
+            "grant_id":material.grant_id(),"delivery_id":request.delivery_id,
+            "expires_at":material.expires_at(),"capabilities":["integration-get"],
+            "operations_digest":format!("sha256:{}", material.operations_digest())}});
+        Codec::new()
+            .map_err(|_| BeginError::Rejected)?
+            .decode(&serde_json::to_vec(&provision).map_err(|_| BeginError::Rejected)?)
+            .map_err(|_| BeginError::Rejected)?;
+        let envelope = serde_json::to_vec(&json!({"version":"runtime-private-delivery/v1",
+            "provision":provision,"sdk_configuration":material.configuration()}))
+        .map_err(|_| BeginError::Rejected)?;
+        if envelope.is_empty() || envelope.len() > crate::material::MAX_MATERIAL {
+            return Err(BeginError::Rejected);
+        }
+        let committed =
+            crate::record_issued_release_candidate(pool, &self.fence, request, &material).await?;
+        if committed != crate::ReleaseCommitObservation::NewlyCommitted {
+            return Err(BeginError::Rejected);
+        }
+        if guardian.verify_session(&self.fence)? != self.prepare["body"]["binding"] {
+            return Err(BeginError::Rejected);
+        }
+        guardian.verify_material(pipe)?;
+        guardian.send(&provision)?;
+        pipe.deliver(&envelope).map_err(BeginError::Material)?;
+        Ok(())
     }
 
     pub fn fence(&self) -> &SessionFence {
@@ -247,11 +315,29 @@ pub async fn admit_and_start(
         "session_id":request.fence.session_id,"message_id":request.start_message_id,
         "sequence":3,"correlation_id":request.prepare["message_id"],"body":body});
     guardian.send(&start)?;
+    let used_message_ids = [
+        offer.frame()["message_id"]
+            .as_str()
+            .ok_or(BeginError::Rejected)?,
+        &request.select_message_id,
+        request.prepare["message_id"]
+            .as_str()
+            .ok_or(BeginError::Rejected)?,
+        prepared.frame()["message_id"]
+            .as_str()
+            .ok_or(BeginError::Rejected)?,
+        &request.start_message_id,
+    ]
+    .into_iter()
+    .map(str::to_owned)
+    .collect();
     Ok(LiveStart {
         fence: request.fence,
         prepare: request.prepare,
         start,
         issuance_attempted: false,
+        release_attempted: false,
+        used_message_ids,
     })
 }
 

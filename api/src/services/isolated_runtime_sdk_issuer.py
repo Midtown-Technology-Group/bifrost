@@ -190,8 +190,10 @@ class FiniteIssuerServer:
             or request["grant_id"] != str(self.grant_id)
         ):
             raise RuntimeSDKDenied("finite issuer request denied")
-        supplied = GrantSnapshot.model_validate(request["snapshot"])
-        caller = AuthorizedCallerSnapshot.model_validate(request["caller"])
+        supplied = GrantSnapshot.model_validate_json(_canonical(request["snapshot"]))
+        caller = AuthorizedCallerSnapshot.model_validate_json(
+            _canonical(request["caller"])
+        )
         # This loader chooses the fixed original identity, never incoming IDs.
         snapshot = GrantSnapshot.model_validate(await self.load_snapshot())
         expiry = (

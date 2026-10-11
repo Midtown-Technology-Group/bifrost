@@ -910,6 +910,16 @@ impl Guardian {
     /// Private coordinator/SDK ingress precondition. The fence must name this
     /// original observed process/channel and the pinned neutral bundle binding.
     /// A recovery object cannot manufacture fresh custody from its journal.
+    pub fn verify_material(
+        &mut self,
+        material: &crate::material::MaterialPipe,
+    ) -> Result<(), GuardianError> {
+        self.verify_live()?;
+        material
+            .verify_for(&self.spec.material, self.spec.uid)
+            .map_err(|_| GuardianError::Rejected)
+    }
+
     pub fn verify_session(&mut self, fence: &SessionFence) -> Result<Value, GuardianError> {
         if !fence.valid()
             || fence.session_id != self.spec.session_id
