@@ -59,11 +59,11 @@ cleanup_slice() {
     cp "$LOG_DIR/test-results.xml" "$evidence_dir/live-results.xml"
   fi
   # Explicit public evidence allowlist. Never retain issuer material/TLS keys.
-  for case_number in 0 1 2 3 4; do
+  for case_number in 0 1 2 3 4 5; do
     mkdir -p "$evidence_dir/$case_number"
     # The byte-blind first-party proxy logs no SQL, credentials or packet data;
     # retain its launch/guard traceback when it fails before publishing ready.
-    for entry in owner-ingress.json owner-start.json owner-sdk-admitted.json owner-resources-retired.json owner-result.json owner-exited.json owner-crash-required.json original-owner-crashed.json live-owner-recovery-denied.json closed-recovery-started.json stop-only-recovery.json commit-ack-proxy-ready.json commit-ack-dropped.json commit-ack-proxy-stopped.json commit-ack-proxy.log; do
+    for entry in owner-ingress.json owner-start.json owner-sdk-admitted.json owner-resources-retired.json owner-result.json owner-exited.json owner-crash-required.json original-owner-crashed.json live-owner-recovery-denied.json closed-recovery-started.json release-commit-required.json release-commit-unknown.json stop-only-recovery.json commit-ack-proxy-ready.json commit-ack-dropped.json commit-ack-proxy-stopped.json commit-ack-proxy.log; do
       if sudo test -f "$slice_root/$case_number/$entry"; then
         sudo cp "$slice_root/$case_number/$entry" "$evidence_dir/$case_number/$entry" || cleanup=1
       fi

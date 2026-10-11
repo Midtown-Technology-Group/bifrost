@@ -326,10 +326,12 @@ async def test_original_rust_owner_runs_unchanged_go_and_cancels_waiting_sdk(
         )
     )
     proofs = []
-    for number in range(5):
+    for number in range(6):
         cancel_waiting_sdk = number == 2
         lost_result_commit_ack = number in (3, 4)
         crash_after_result_commit = number == 4
+        lost_release_commit_ack = number == 5
+        owner_cancelled = cancel_waiting_sdk or lost_release_commit_ack
         case = root / str(number)
         case.mkdir(mode=0o700)
         runtime_root = case / "execution"
@@ -415,6 +417,7 @@ async def test_original_rust_owner_runs_unchanged_go_and_cancels_waiting_sdk(
             "cancel_waiting_sdk": cancel_waiting_sdk,
             "lost_result_commit_ack": lost_result_commit_ack,
             "crash_after_result_commit": crash_after_result_commit,
+            "lost_release_commit_ack": lost_release_commit_ack,
         }
         for key in (
             "owner_id",
@@ -597,6 +600,56 @@ async def test_original_rust_owner_runs_unchanged_go_and_cancels_waiting_sdk(
             ):
                 provision[key] = str(uuid4())
             publish(case / "provision-ready.json", provision)
+            if lost_release_commit_ack:
+                required = await observation(case / "release-commit-required.json")
+                assert required == {
+                    "event": "release_commit_required",
+                    "session_id": str(session),
+                }
+                publish(
+                    case / "commit-ack-arm.json",
+                    {"event": "arm_commit_ack_loss", "session_id": str(session)},
+                )
+                publish(
+                    case / "release-ready.json",
+                    {"event": "release_ready", "session_id": str(session)},
+                )
+                unknown = await observation(case / "release-commit-unknown.json")
+                assert unknown == {
+                    "event": "release_commit_unknown",
+                    "session_id": str(session),
+                    "release_reconciliation": "already_retained",
+                    "delivery_observed": False,
+                }
+                dropped = await observation(case / "commit-ack-dropped.json")
+                assert (
+                    dropped["session_id"] == str(session)
+                    and dropped["server_commit_observed"] is True
+                    and dropped["client_commit_ack_forwarded"] is False
+                )
+                assert sdk_statuses == []
+                assert (
+                    await db_session.scalar(
+                        text(
+                            "SELECT count(*) FROM runtime_admissions WHERE session_id=:session AND purpose='release' AND id=:release"
+                        ),
+                        {"session": session, "release": provision["release_id"]},
+                    )
+                    == 1
+                )
+                assert (
+                    await db_session.scalar(
+                        text(
+                            "SELECT count(*) FROM runtime_report_receipts WHERE session_id=:session"
+                        ),
+                        {"session": session},
+                    )
+                    == 0
+                )
+                publish(
+                    case / "abort-release-ready.json",
+                    {"event": "abort_release_ready", "session_id": str(session)},
+                )
             if cancel_waiting_sdk:
                 admitted = await observation(case / "owner-sdk-admitted.json")
                 assert admitted == {"event": "sdk_admitted", "session_id": str(session)}
@@ -717,7 +770,7 @@ async def test_original_rust_owner_runs_unchanged_go_and_cancels_waiting_sdk(
             )
             assert before_settlement.status_code == 200
             assert before_settlement.json()["status"] == (
-                "Cancelling" if cancel_waiting_sdk else "Success"
+                "Cancelling" if owner_cancelled else "Success"
             )
             publish(
                 case / "settlement-ready.json",
@@ -726,11 +779,12 @@ async def test_original_rust_owner_runs_unchanged_go_and_cancels_waiting_sdk(
             result = await observation(case / "owner-result.json")
             assert result["event"] == "slice_result"
             assert (
-                result["component"]["sdk_admissions"] == 1
+                result["component"]["sdk_admissions"]
+                == (0 if lost_release_commit_ack else 1)
                 and result["component"]["sdk_denials"] == 0
             )
-            assert sdk_statuses == [200]
-            if not cancel_waiting_sdk:
+            assert sdk_statuses == ([] if lost_release_commit_ack else [200])
+            if not owner_cancelled:
                 assert result["component"]["log_batches"] == 1
             assert (
                 result["physical_drain"]["container_removed"]
@@ -812,14 +866,28 @@ async def test_original_rust_owner_runs_unchanged_go_and_cancels_waiting_sdk(
             )
             assert response.status_code == 200
             public = response.json()
-            if lost_result_commit_ack:
+            if lost_result_commit_ack or lost_release_commit_ack:
                 dropped = await observation(case / "commit-ack-dropped.json")
                 assert dropped["session_id"] == str(session)
                 assert dropped["event"] == "commit_ack_dropped"
                 assert dropped["server_commit_observed"] is True
                 assert dropped["client_commit_ack_forwarded"] is False
-                assert result["component"]["result_commit_observation"] == "lost_ack"
-                assert result["component"]["result_receipt_sent"] is False
+                if lost_result_commit_ack:
+                    assert (
+                        result["component"]["result_commit_observation"] == "lost_ack"
+                    )
+                    assert result["component"]["result_receipt_sent"] is False
+                if lost_release_commit_ack:
+                    assert (
+                        result["component"]["release_commit_observation"] == "lost_ack"
+                    )
+                    assert (
+                        result["component"]["release_reconciliation"]
+                        == "already_retained"
+                    )
+                    assert result["component"]["delivery_observed"] is False
+                    assert result["component"]["sdk_admissions"] == 0
+                    assert result["component"]["log_batches"] == 0
                 assert result["component"]["reconciled_without_replay"] is True
                 if crash_after_result_commit:
                     assert result["component"]["original_owner_crash_recovered"] is True
@@ -859,20 +927,31 @@ async def test_original_rust_owner_runs_unchanged_go_and_cancels_waiting_sdk(
                     "connections_remaining": 0,
                     "dropped": True,
                 }
-            if cancel_waiting_sdk:
+            if owner_cancelled:
                 assert public["status"] == "Cancelled" and public["result"] is None
                 component = result["component"]
                 assert (
                     component["cancel_commit_observed"]
                     and component["durable_cancelled_finalization"]
                 )
-                assert component["cancel"]["body"]["cancel_id"] == config["cancel_id"]
-                assert component["stopped"]["body"]["cancel_id"] == config["cancel_id"]
-                assert (
-                    component["stopped"]["body"]["start_message_id"]
-                    == start["start"]["message_id"]
-                )
-                assert component["stopped"]["body"]["reason"] == "cancelled"
+                if cancel_waiting_sdk:
+                    assert (
+                        component["cancel"]["body"]["cancel_id"] == config["cancel_id"]
+                    )
+                    assert (
+                        component["stopped"]["body"]["cancel_id"] == config["cancel_id"]
+                    )
+                    assert (
+                        component["stopped"]["body"]["start_message_id"]
+                        == start["start"]["message_id"]
+                    )
+                    assert component["stopped"]["body"]["reason"] == "cancelled"
+                else:
+                    assert (
+                        "cancel" not in component
+                        and "stopped" not in component
+                        and "receipt" not in component
+                    )
                 assert not release_response.is_set()
                 row = (
                     (
@@ -915,25 +994,30 @@ async def test_original_rust_owner_runs_unchanged_go_and_cancels_waiting_sdk(
                     )
                     == 0
                 )
-                proofs.append(
-                    {
-                        "execution_id": str(execution),
-                        "session_id": str(session),
-                        "workflow_sha256": WORKFLOW_SHA,
-                        "artifact_id": descriptor["artifact"]["artifact_id"],
-                        "sdk_statuses": sdk_statuses,
-                        "sdk_response_held_until_stop": True,
-                        "public_status": public["status"],
-                        "public_result": public["result"],
-                        "cancel": component["cancel"],
-                        "stopped": component["stopped"],
-                        "physical_drain": result["physical_drain"],
-                        "elapsed_ms": result["elapsed_ms"],
-                        "durable_cancelled_finalization": True,
-                        "resource_settlement": result["resource_settlement"],
-                    }
-                )
-            if not cancel_waiting_sdk:
+                cancelled_proof = {
+                    "execution_id": str(execution),
+                    "session_id": str(session),
+                    "workflow_sha256": WORKFLOW_SHA,
+                    "artifact_id": descriptor["artifact"]["artifact_id"],
+                    "sdk_statuses": sdk_statuses,
+                    "sdk_response_held_until_stop": True,
+                    "public_status": public["status"],
+                    "public_result": public["result"],
+                    "physical_drain": result["physical_drain"],
+                    "elapsed_ms": result["elapsed_ms"],
+                    "durable_cancelled_finalization": True,
+                    "resource_settlement": result["resource_settlement"],
+                }
+                if cancel_waiting_sdk:
+                    cancelled_proof["cancel"] = component["cancel"]
+                    cancelled_proof["stopped"] = component["stopped"]
+                else:
+                    cancelled_proof.pop("sdk_response_held_until_stop")
+                    cancelled_proof["release_commit_ack_lost"] = True
+                    cancelled_proof["delivery_observed"] = False
+                    cancelled_proof["release_reconciled_without_replay"] = True
+                proofs.append(cancelled_proof)
+            if not owner_cancelled:
                 assert (
                     public["status"] == "Success"
                     and public["result"] == expected_result
@@ -996,7 +1080,7 @@ async def test_original_rust_owner_runs_unchanged_go_and_cancels_waiting_sdk(
             private.unlink()
             keys.rmdir()
         publish(case / "fixture-finished.json", {"event": "fixture_finished"})
-    assert len(proofs) == 5 and len({proof["artifact_id"] for proof in proofs}) == 1
+    assert len(proofs) == 6 and len({proof["artifact_id"] for proof in proofs}) == 1
     publish(
         root / "live-proof.json",
         {
@@ -1007,6 +1091,7 @@ async def test_original_rust_owner_runs_unchanged_go_and_cancels_waiting_sdk(
             "runtime_acceptance": False,
             "durable_source_settlement": True,
             "closed_result_owner_crash_recovery": True,
+            "uncertain_release_abandoned_without_delivery": True,
             "production_dispatch": False,
         },
     )

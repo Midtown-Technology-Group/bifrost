@@ -504,6 +504,40 @@ impl LiveStart {
             );
         }
     }
+
+    /// Trusted coordinator abandons a failed/unknown release without replaying
+    /// material or promoting a retained release row to delivery authority.
+    /// No protocol Stopped or durable terminal outcome is fabricated here.
+    pub async fn abandon_failed_release(
+        &mut self,
+        pool: &PgPool,
+        guardian: &mut Guardian,
+    ) -> Result<Value, BeginError> {
+        if !self.release_attempted
+            || self.delivery_observed
+            || self.report_attempted
+            || self.serving_attempted
+            || self.sdk_admission_observed
+        {
+            return Err(BeginError::Rejected);
+        }
+        self.report_attempted = true;
+        self.protocol_failed = true;
+        if guardian.verify_session(&self.fence)? != self.prepare["body"]["binding"] {
+            return Err(BeginError::Rejected);
+        }
+        if crate::request_running_cancel(pool, &self.fence).await?
+            != crate::CancelDecision::Committed
+        {
+            return Err(BeginError::Rejected);
+        }
+        let mut observation = self.observed_counts();
+        observation["cancel_commit_observed"] = json!(true);
+        observation["delivery_observed"] = json!(false);
+        observation["durable_cancelled_finalization"] = json!(false);
+        observation["source_consumer_settlement"] = json!(false);
+        Ok(observation)
+    }
 }
 
 fn matched_cancelled_stopped(frame: &Value, start: &Value, cancel: &str) -> bool {

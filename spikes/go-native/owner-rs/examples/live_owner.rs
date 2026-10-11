@@ -217,7 +217,29 @@ async fn run(config: Value) -> Result<Value, ()> {
         let issued = live.issue_material(&pool,&mut guardian,&mut channel,&reference).await.map_err(|_| ())?;
         let release = ReleaseRequest { release_id:text(&provision,"release_id")?,provision_id:request.provision_id,grant_id:reference.grant_id,
             delivery_id:request.delivery_id,operations_sha256:text(&request.snapshot,"operations_digest")?,frontier_sha256:request.frontier_sha256 };
-        live.release_and_deliver(&pool,&mut guardian,&mut pipe,issued,&release,&text(&provision,"provision_message_id")?).await.map_err(|_| ())?;
+        if config["lost_release_commit_ack"] == true {
+            emit(&json!({"event":"release_commit_required","session_id":session}))?;
+            let ready = parent()?;
+            if ready["event"]!="release_ready" || ready["session_id"]!=session { return Err(()); }
+        }
+        let delivered = live.release_and_deliver(&pool,&mut guardian,&mut pipe,issued,&release,&text(&provision,"provision_message_id")?).await;
+        if config["lost_release_commit_ack"] == true {
+            if !matches!(delivered, Err(bifrost_isolated_owner_spike::live_start::BeginError::Owner(bifrost_isolated_owner_spike::ObserveError::UncertainCommit))) {
+                return Err(());
+            }
+            if bifrost_isolated_owner_spike::observe_release_candidate(&pool,live.fence(),&release).await.map_err(|_| ())?
+                != bifrost_isolated_owner_spike::ReleaseCommitObservation::AlreadyRetained { return Err(()); }
+            emit(&json!({"event":"release_commit_unknown","session_id":session,
+                "release_reconciliation":"already_retained","delivery_observed":false}))?;
+            let abort = parent()?;
+            if abort["event"]!="abort_release_ready" || abort["session_id"]!=session { return Err(()); }
+            let mut closed = live.abandon_failed_release(&pool,&mut guardian).await.map_err(|_| ())?;
+            closed["release_commit_observation"] = json!("lost_ack");
+            closed["release_reconciliation"] = json!("already_retained");
+            closed["reconciled_without_replay"] = json!(true);
+            return Ok::<_,()>(closed);
+        }
+        delivered.map_err(|_| ())?;
         if config["cancel_waiting_sdk"] == true {
             live.wait_for_first_sdk_admission(&pool,&mut guardian,&mut gate).await.map_err(|_| ())?;
             emit(&json!({"event":"sdk_admitted","session_id":session}))?;
@@ -331,7 +353,7 @@ async fn run(config: Value) -> Result<Value, ()> {
     } else {
         operation?
     };
-    if config["cancel_waiting_sdk"] == true {
+    if config["cancel_waiting_sdk"] == true || config["lost_release_commit_ack"] == true {
         result["durable_cancelled_finalization"] =
             settlement["durable_cancelled_finalization"].clone();
         result["source_consumer_settlement"] = settlement["durable_source_settlement"].clone();

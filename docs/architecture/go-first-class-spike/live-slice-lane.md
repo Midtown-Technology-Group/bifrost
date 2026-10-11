@@ -271,3 +271,11 @@ The new physical recovery tests share the existing test-only fixture-birth lock
 with FIFO EOF/backpressure tests. Fork can temporarily inherit sibling fixture
 FDs until exec applies CLOEXEC. Serializing those births preserves exact EOF
 assertions; no product concurrency, business race test, timeout or retry changes.
+
+The sixth candidate case covers a lost release COMMIT reply before any material
+delivery. It proves that a retained release cannot authorize retransmission,
+then aborts through the original Rust owner's common cancellation and actual
+resource settlement. Expected SDK requests and Result receipts are zero.
+This negative execution uses the same immutable artifact and does not claim
+that authored Go ran before permission. All other normal, SDK cancellation,
+Result lost-ACK and closed-Result owner-crash cases retain their assertions.

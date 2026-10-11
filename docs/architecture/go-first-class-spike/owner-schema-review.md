@@ -367,3 +367,29 @@ writer/runtime acceptance. It does not prove pre-Result owner recovery, uncertai
 spawn/release, partial cleanup recovery, or ambiguous settlement commit. Failure
 after exclusive closing intent remains inspect-only; no retry or new owner is
 authorized. All fresh hosted security/race/source and live gates remain required.
+
+## Uncertain release abort candidate
+
+The sixth same-artifact case arms the existing one-shot response-loss proxy
+only after the original issuer returned actual finite material and immediately
+before the release transaction. The server must observe COMMIT while Rust
+receives UncertainCommit. No Provision or FIFO write can follow that error.
+The common read-only release reconciliation must find the exact retained row;
+AlreadyRetained remains observation, never a new delivery permit.
+
+The authenticated fixture observes that release fact, zero SDK requests and
+zero Result receipts, then requests abort of this same original execution.
+`LiveStart::abandon_failed_release` consumes further report service, requires
+original live custody and an attempted but unobserved release, and uses the
+existing common running→Cancelling/session-close/grant-revoke transaction. It
+sends no forged Cancel/Stopped/ResultReceipt frame. Original actual physical
+and source retirement then qualifies the existing resource-settlement writer
+to project the common Cancelled outcome; a stopped process alone cannot do so.
+
+There is no second release, issuance, material delivery, SDK call, report, owner
+assignment or credential renewal. A second ambiguity fails closed and requires
+inspection rather than retry. The live fixture must prove exact release identity,
+revoked finite grant, no Result, source pin before/after resource commit, durable
+Cancelled root/attempt and existing authenticated API readback with cleanup.
+This adds no SQL schema, role privileges or Go-specific state. Fresh hosted
+evidence is required; uncertain spawn and other crash phases remain separate.
