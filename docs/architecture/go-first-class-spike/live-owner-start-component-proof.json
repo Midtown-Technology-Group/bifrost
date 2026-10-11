@@ -57,5 +57,19 @@
     "filtered_out": 0,
     "scope": "Original reader/sequence and locked offline Rust component checks, not live SDK or Result integration"
   },
-  "production_dispatch": false
+  "production_dispatch": false,
+  "entrypoint_candidate_failure": {
+    "source": "3d610cc15a2284b9ac5c3bd01f486046d909b6f7",
+    "run": 38109894948,
+    "conclusion": "failure",
+    "fmt": "pass",
+    "clippy": "pass",
+    "tests_passed_before_failure": 28,
+    "tests_failed": 1,
+    "failed_test": "material::tests::live_fifo_single_delivery_eof_and_exclusive_identity",
+    "diagnosis": "An immediate nonblocking EOF assertion can observe a still-open writer when concurrent first-party mkfifo creation transiently inherits descriptors before exec. CLOEXEC applies at exec, not fork. Fixture isolation correction and a deterministic held-writer-copy regression require fresh evidence; failing run is retained, not waived.",
+    "diagnosis_basis": "inference from concurrent Command creation and POSIX descriptor lifetime; controlled duplicate-writer regression added",
+    "retained_artifacts": "/home/thomas/src/bifrost-go-spike-artifacts/3d610cc15a2284b9ac5c3bd01f486046d909b6f7/rust",
+    "runtime_acceptance": false
+  }
 }

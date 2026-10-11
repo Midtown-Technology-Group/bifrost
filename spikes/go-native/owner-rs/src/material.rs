@@ -142,7 +142,8 @@ impl MaterialPipe {
     pub fn deliver(&mut self, payload: &[u8]) -> Result<(), MaterialError> {
         let mut writer = self.writer.take().ok_or(MaterialError::Rejected)?;
         write_once(&mut writer, payload)
-        // File drops here, including on error, so a live peer observes EOF.
+        // File drops here, including on error. EOF requires every inherited
+        // writer to close too; CLOEXEC closes transient trusted pre-exec copies.
     }
 
     /// Close without delivering (e.g. cancellation before material).
@@ -196,18 +197,30 @@ mod tests {
     use std::{
         io::{self, Read},
         os::unix::fs::{PermissionsExt, symlink},
-        sync::atomic::{AtomicU64, Ordering},
+        sync::{
+            Mutex, MutexGuard,
+            atomic::{AtomicU64, Ordering},
+        },
     };
 
     static NEXT: AtomicU64 = AtomicU64::new(0);
+    // Each fixture forks the fixed mkfifo tool. CLOEXEC is applied at exec,
+    // not fork: a concurrent fixture's pre-exec child can briefly retain an
+    // unrelated pipe writer. Keep these physical fixture births exclusive;
+    // delivery/backpressure/EOF assertions remain unchanged and nonblocking.
+    static PROCESS_CREATION: Mutex<()> = Mutex::new(());
     const SESSION: &str = "00000000-0000-0000-0000-000000000001";
 
     struct Fixture {
+        _process_creation: MutexGuard<'static, ()>,
         parent: PathBuf,
         uid: u32,
     }
     impl Fixture {
         fn new() -> Self {
+            let process_creation = PROCESS_CREATION
+                .lock()
+                .unwrap_or_else(|_| panic!("poisoned fixture custody"));
             let parent = std::env::temp_dir().join(format!(
                 "guardian-material-{}-{}",
                 std::process::id(),
@@ -223,6 +236,7 @@ mod tests {
                 "kernel evidence must run in the nonroot isolated lane"
             );
             Self {
+                _process_creation: process_creation,
                 parent,
                 uid: metadata.uid(),
             }
@@ -268,6 +282,34 @@ mod tests {
         drop(reader);
         assert_eq!(pipe.retire(), Ok(()));
         assert!(!fixture.parent.join(SESSION).exists());
+    }
+
+    #[test]
+    fn retained_writer_copy_delays_eof_but_cannot_reauthorize_delivery() {
+        let fixture = Fixture::new();
+        let mut pipe = fixture.pipe();
+        // Deterministic kernel reproduction of a pre-exec inherited writer:
+        // closing the original alone cannot establish FIFO EOF.
+        let retained = pipe
+            .writer
+            .as_ref()
+            .and_then(|file| file.try_clone().ok())
+            .unwrap_or_else(|| panic!("missing fixture writer"));
+        let mut reader = fixture.reader(&pipe);
+        assert_eq!(pipe.deliver(b"first"), Ok(()));
+        let mut raw = [0; 9];
+        assert!(reader.read_exact(&mut raw).is_ok());
+        assert_eq!(&raw[..4], &5_u32.to_be_bytes());
+        assert_eq!(&raw[4..], b"first");
+        assert_eq!(
+            reader.read(&mut [0]).err().map(|error| error.kind()),
+            Some(io::ErrorKind::WouldBlock)
+        );
+        assert_eq!(pipe.deliver(b"second"), Err(MaterialError::Rejected));
+        drop(retained);
+        assert!(matches!(reader.read(&mut [0]), Ok(0)));
+        drop(reader);
+        assert_eq!(pipe.retire(), Ok(()));
     }
 
     #[test]

@@ -1,0 +1,54 @@
+{
+  "source": "734c1b3e055c31ad2a5baf8ad677b50fb25f179a",
+  "producer_run": 38107745928,
+  "sdk_version": "0.0.0-spike.2",
+  "source_files_verified": 134,
+  "source_closure_sha256": "42a6f80b0c97101b4fcb636c3398989716b2993f8c4241a0b4e306f00b62ec48",
+  "artifact_sha256": "160917deeb94275f31ca9ddee2dacae00fb079fdf54cb60e206c8def261f9c34",
+  "artifact_size_bytes": 9920235,
+  "bundle_artifact_id": "sha256:60233188a2c93af76dbe08113cce59635325424758822981371f2cf943926c50",
+  "bundle_entries_verified": 6,
+  "go_tests_passed": 540,
+  "failed_tests": 0,
+  "skipped_tests": 0,
+  "local_supervisor_log_batch_cases": [
+    "success",
+    "success-again",
+    "missing"
+  ],
+  "local_supervisor_fixed_log": "Workflow process exited",
+  "guardian_cases": 7,
+  "container_namespace_and_private_path_cleanup_verified": true,
+  "original_custody_digests_verified": true,
+  "all_cases_attached_cli_waited": false,
+  "timings_ms": {
+    "module_download": 241.900034,
+    "cold_compile_warm_modules": 11627.371735,
+    "independent_cold_compile": 11287.00123,
+    "warm_source_edit_compile": 303.479874,
+    "restored_warm_compile": 298.45488,
+    "edit_to_artifact": 526.473732
+  },
+  "execution_summary": {
+    "startup_to_sdk_ms": {
+      "median": 2.9553555,
+      "p95": 3.165913,
+      "n": 20
+    },
+    "execution_ms": {
+      "median": 3.4015495,
+      "p95": 3.662504,
+      "n": 20
+    },
+    "max_rss_kib": {
+      "median": 11512.0,
+      "p95": 13700,
+      "n": 20
+    }
+  },
+  "scope": "Independent downloaded artifact/source verification and local portable-supervisor/dormant guardian component evidence; no real Rust workflow lifecycle integration or durable source settlement. Timing execution_summary belongs to fake local supervisor, not live Rust slice.",
+  "runtime_acceptance": false,
+  "durable_projection": false,
+  "source_consumer_settlement": false,
+  "production_dispatch": false
+}
