@@ -134,7 +134,7 @@ def build_cli_artifact(source_dir: Path, output_dir: Path, version: str) -> Path
                         if file_path == source_dir / "__init__.py":
                             stamped = re.subn(
                                 rb"^__version__\s*=\s*_compute_version\(\)",
-                                f'__version__ = "{version}"'.encode(),
+                                f"__version__ = {pep440_version!r}".encode(),
                                 data,
                                 count=1,
                                 flags=re.MULTILINE,

@@ -1,5 +1,6 @@
 """CLI build-time artifact generation."""
 
+import ast
 import tarfile
 import tomllib
 from pathlib import Path
@@ -35,7 +36,7 @@ def test_build_cli_artifact_stamps_and_filters_package(tmp_path: Path) -> None:
             requirement.startswith("packaging")
             for requirement in metadata["project"]["dependencies"]
         )
-        assert '__version__ = "v1.2.3"' in init.read().decode()
+        assert "__version__ = '1.2.3'" in init.read().decode()
 
     assert "bifrost/lucide_icon_names.json" in names
     assert "_bifrost_workspace_effects.py" in names
@@ -49,3 +50,29 @@ def test_build_cli_artifact_is_deterministic(tmp_path: Path) -> None:
     second = build_cli_artifact(source_dir, tmp_path / "second", "debug")
 
     assert first.read_bytes() == second.read_bytes()
+
+
+def test_build_cli_artifact_treats_version_as_data(tmp_path: Path) -> None:
+    """Untrusted build-version text cannot escape the version assignment."""
+    source_dir = Path(__file__).resolve().parents[3] / "bifrost"
+    supplied = '1.2.3"; __import__("os").system("id"); #'
+
+    artifact = build_cli_artifact(source_dir, tmp_path, supplied)
+
+    with tarfile.open(artifact, mode="r:gz") as archive:
+        init = archive.extractfile("bifrost/__init__.py")
+        assert init is not None
+        module = ast.parse(init.read().decode())
+
+    assignments = [
+        node
+        for node in module.body
+        if isinstance(node, ast.Assign)
+        and any(
+            isinstance(target, ast.Name) and target.id == "__version__"
+            for target in node.targets
+        )
+    ]
+    assert len(assignments) == 1
+    assert isinstance(assignments[0].value, ast.Constant)
+    assert assignments[0].value.value == to_pep440(supplied)
