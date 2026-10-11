@@ -280,7 +280,8 @@ async def verify_owned_host(client: httpx.AsyncClient, token: str, settings: Set
     return True
 
 
-async def enroll_replica(db: AsyncSession, azure: Azure, replica: str, boot: UUID) -> dict[str, str]:
+async def enroll_replica(db: AsyncSession, azure: Azure, replica: str, boot: UUID,
+                         *, owner_token: str | None = None) -> dict[str, str]:
     settings = azure.settings
     app_name = settings.external_worker_app_resource_id.rsplit("/", 1)[-1]
     if not re.fullmatch(re.escape(app_name) + r"--[a-z0-9-]+", replica) or replica not in await azure.replicas():
@@ -290,6 +291,7 @@ async def enroll_replica(db: AsyncSession, azure: Azure, replica: str, boot: UUI
     key = "host-" + hashlib.sha256(replica.encode()).hexdigest()
     state = await row(db, key)
     value = dict(state.value_json or {})
+    await check_enrollment_owner(db, value, owner_token)
     if value.get("code") and value.get("boot") == str(boot):
         if datetime.now(UTC).timestamp() - value["created"] > 300:
             raise ValueError("Startup enrollment expired")
@@ -332,11 +334,13 @@ async def enroll_replica(db: AsyncSession, azure: Azure, replica: str, boot: UUI
         if host_id:
             if not await verify_owned_host(client, token, settings, host_id, name):
                 raise RuntimeError("Recorded external host is missing")
+            await check_enrollment_owner(db, dict(state.value_json or {}), owner_token)
             response = await client.post("https://api.defined.net/v1/hosts/" + host_id + "/enrollment-code",
                                          headers={"Authorization": "Bearer " + token}, json={})
             response.raise_for_status()
             code = response.json()["data"]["code"]
         else:
+            await check_enrollment_owner(db, dict(state.value_json or {}), owner_token)
             response = await client.post("https://api.defined.net/v2/host-and-enrollment-code",
                 headers={"Authorization": "Bearer " + token}, json={"name": name,
                 "networkID": settings.external_worker_defined_network_id,
@@ -345,11 +349,21 @@ async def enroll_replica(db: AsyncSession, azure: Azure, replica: str, boot: UUI
             response.raise_for_status()
             result = response.json()["data"]
             host_id, code = result["host"]["id"], result["enrollmentCode"]["code"]
+    await db.refresh(state)
     value = dict(state.value_json or {})
+    await check_enrollment_owner(db, value, owner_token)
     value.update({"host_id": host_id, "code": encrypt_secret(code)})
     state.value_json = value
     await db.commit()
     return {"code": code, "hostId": host_id}
+
+
+async def check_enrollment_owner(db: AsyncSession, value: dict, token: str | None) -> None:
+    if "vojeto_owner" in value or token is not None:
+        from src.services.external_worker_ownership import database_time, require_owner
+        owner = require_owner(value, token, await database_time(db))
+        if owner["phase"] != "grant-started":
+            raise ValueError("External worker enrollment owner rejected")
 
 
 async def reconcile_hosts(db: AsyncSession, azure: Azure, live: set[str]) -> None:
@@ -382,6 +396,11 @@ async def reconcile_hosts(db: AsyncSession, azure: Azure, live: set[str]) -> Non
                 continue
             host_id = value.get("host_id")
             if not host_id:
+                if not value.get("intent"):
+                    # Ownership may be acquired before any provider allocation.
+                    # No Defined host exists to delete; retain the fence until
+                    # an operator verifies the abandoned process is gone.
+                    continue
                 host_id = await find_intended_host(client, token, azure.settings, value["intent"])
                 if not host_id:
                     # Retain unresolved intent until a host can be authoritatively reconciled.
