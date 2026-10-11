@@ -28,6 +28,7 @@ import base64
 import hashlib
 import logging
 from dataclasses import dataclass
+from uuid import UUID
 
 from shared.file_access import (
     FileCaller,
@@ -54,6 +55,31 @@ class FileReadResult:
 
     content: bytes
     binary: bool
+
+
+async def _mutation_conflict_detail(
+    caller: FileCaller,
+    *,
+    location: str,
+    scope: str | None,
+    path: str,
+    solution_id: UUID | None,
+    readable_detail: dict[str, object],
+) -> dict[str, object]:
+    """Return conflict metadata only when the caller may read the file."""
+    if await authorize_file_policy(
+        caller,
+        action="read",
+        location=location,
+        scope=scope,
+        path=path,
+        solution_id=solution_id,
+    ):
+        return readable_detail
+    return {
+        "reason": "precondition_failed",
+        "message": "File mutation precondition failed.",
+    }
 
 
 async def sdk_read_file(
@@ -377,38 +403,59 @@ async def sdk_write_file(
             if create_only and current_stat.exists:
                 raise FileServiceError(
                     409,
-                    {
-                        "reason": "file_exists",
-                        "path": path,
-                        "message": "File already exists; read it before replacing it.",
-                        "current_version": current_stat.version,
-                        "current_last_modified": current_stat.last_modified,
-                        "current_updated_by": current_stat.updated_by,
-                    },
+                    await _mutation_conflict_detail(
+                        caller,
+                        location=location,
+                        scope=effective_scope,
+                        path=path,
+                        solution_id=solution_id,
+                        readable_detail={
+                            "reason": "file_exists",
+                            "path": path,
+                            "message": "File already exists; read it before replacing it.",
+                            "current_version": current_stat.version,
+                            "current_last_modified": current_stat.last_modified,
+                            "current_updated_by": current_stat.updated_by,
+                        },
+                    ),
                 )
             if expected_version is not None:
                 if not current_stat.exists:
                     raise FileServiceError(
                         409,
-                        {
-                            "reason": "file_missing",
-                            "path": path,
-                            "expected_version": expected_version,
-                            "message": "File no longer exists.",
-                        },
+                        await _mutation_conflict_detail(
+                            caller,
+                            location=location,
+                            scope=effective_scope,
+                            path=path,
+                            solution_id=solution_id,
+                            readable_detail={
+                                "reason": "file_missing",
+                                "path": path,
+                                "expected_version": expected_version,
+                                "message": "File no longer exists.",
+                            },
+                        ),
                     )
                 if current_stat.version != expected_version:
                     raise FileServiceError(
                         409,
-                        {
-                            "reason": "version_conflict",
-                            "path": path,
-                            "expected_version": expected_version,
-                            "current_version": current_stat.version,
-                            "message": "File changed after it was read.",
-                            "current_last_modified": current_stat.last_modified,
-                            "current_updated_by": current_stat.updated_by,
-                        },
+                        await _mutation_conflict_detail(
+                            caller,
+                            location=location,
+                            scope=effective_scope,
+                            path=path,
+                            solution_id=solution_id,
+                            readable_detail={
+                                "reason": "version_conflict",
+                                "path": path,
+                                "expected_version": expected_version,
+                                "current_version": current_stat.version,
+                                "message": "File changed after it was read.",
+                                "current_last_modified": current_stat.last_modified,
+                                "current_updated_by": current_stat.updated_by,
+                            },
+                        ),
                     )
 
         if binary:
@@ -519,25 +566,39 @@ async def sdk_delete_file(
             if not current_stat.exists:
                 raise FileServiceError(
                     409,
-                    {
-                        "reason": "file_missing",
-                        "path": path,
-                        "expected_version": expected_version,
-                        "message": "File no longer exists.",
-                    },
+                    await _mutation_conflict_detail(
+                        caller,
+                        location=location,
+                        scope=effective_scope,
+                        path=path,
+                        solution_id=solution_id,
+                        readable_detail={
+                            "reason": "file_missing",
+                            "path": path,
+                            "expected_version": expected_version,
+                            "message": "File no longer exists.",
+                        },
+                    ),
                 )
             if current_stat.version != expected_version:
                 raise FileServiceError(
                     409,
-                    {
-                        "reason": "version_conflict",
-                        "path": path,
-                        "expected_version": expected_version,
-                        "current_version": current_stat.version,
-                        "message": "File changed after it was read.",
-                        "current_last_modified": current_stat.last_modified,
-                        "current_updated_by": current_stat.updated_by,
-                    },
+                    await _mutation_conflict_detail(
+                        caller,
+                        location=location,
+                        scope=effective_scope,
+                        path=path,
+                        solution_id=solution_id,
+                        readable_detail={
+                            "reason": "version_conflict",
+                            "path": path,
+                            "expected_version": expected_version,
+                            "current_version": current_stat.version,
+                            "message": "File changed after it was read.",
+                            "current_last_modified": current_stat.last_modified,
+                            "current_updated_by": current_stat.updated_by,
+                        },
+                    ),
                 )
         await backend.delete(path, location, scope=effective_scope)
         if mode == "cloud":

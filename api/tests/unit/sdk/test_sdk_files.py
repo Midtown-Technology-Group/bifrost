@@ -468,6 +468,9 @@ def _allow_write_policy(monkeypatch) -> None:
     monkeypatch.setattr(
         "shared.sdk_files.require_file_policy", AsyncMock(return_value=None)
     )
+    monkeypatch.setattr(
+        "shared.sdk_files.authorize_file_policy", AsyncMock(return_value=True)
+    )
 
 
 def _deny_all_policies(monkeypatch) -> AsyncMock:
@@ -649,6 +652,46 @@ class TestSdkWriteFile:
         assert exc.value.detail["reason"] == "file_missing"
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("guard", "files"),
+        [
+            ("create_only", {("a.txt", str(ORG_ID)): b"old"}),
+            ("expected_version", {("a.txt", str(ORG_ID)): b"old"}),
+            ("expected_version", {}),
+        ],
+    )
+    async def test_write_only_conflict_is_opaque(
+        self, monkeypatch, guard, files
+    ) -> None:
+        caller = _mutation_caller()
+        _rw_backend(monkeypatch, files=files)
+        _allow_write_policy(monkeypatch)
+        monkeypatch.setattr(
+            "shared.sdk_files.authorize_file_policy",
+            AsyncMock(return_value=False),
+        )
+
+        with pytest.raises(FileServiceError) as exc:
+            await sdk_write_file(
+                caller,
+                path="a.txt",
+                content="new",
+                binary=False,
+                location="reports",
+                scope=None,
+                create_only=guard == "create_only",
+                expected_version=(
+                    None if guard == "create_only" else "sha256:attacker-guess"
+                ),
+            )
+
+        assert exc.value.status_code == 409
+        assert exc.value.detail == {
+            "reason": "precondition_failed",
+            "message": "File mutation precondition failed.",
+        }
+
+    @pytest.mark.asyncio
     async def test_write_matching_expected_version_succeeds(
         self, monkeypatch
     ) -> None:
@@ -813,6 +856,31 @@ class TestSdkDeleteFile:
             )
         assert exc.value.status_code == 409
         assert exc.value.detail["reason"] == "version_conflict"
+
+    @pytest.mark.asyncio
+    async def test_delete_only_conflict_is_opaque(self, monkeypatch) -> None:
+        caller = _mutation_caller()
+        _rw_backend(monkeypatch, files={("a.txt", str(ORG_ID)): b"old"})
+        _allow_write_policy(monkeypatch)
+        monkeypatch.setattr(
+            "shared.sdk_files.authorize_file_policy",
+            AsyncMock(return_value=False),
+        )
+
+        with pytest.raises(FileServiceError) as exc:
+            await sdk_delete_file(
+                caller,
+                path="a.txt",
+                location="reports",
+                scope=None,
+                expected_version="sha256:attacker-guess",
+            )
+
+        assert exc.value.status_code == 409
+        assert exc.value.detail == {
+            "reason": "precondition_failed",
+            "message": "File mutation precondition failed.",
+        }
 
     @pytest.mark.asyncio
     async def test_delete_expected_version_missing_file_is_409(
