@@ -146,7 +146,7 @@ durable source-consumer settlement, live crash/uncertain commit/spawn/lost-ACK
 handling, a new lifecycle writer, or the runtime. Those conditions remain the
 next implementation and acceptance work under the existing isolated release.
 
-The next candidate adds a third execution of the unchanged binary. The trusted
+Candidate `237a40be37abbe5ac99bb6e6f536d5ce5e0d65f4` adds a third execution of the unchanged binary. The trusted
 fixture holds an actual HTTP200 SDK response after original Rust gate admission;
 the Go caller remains waiting. It then requests cancellation on the original
 parent channel. Rust requires a newly observed common cancellation commit before
@@ -162,3 +162,28 @@ that cancellation case. Stopped and physical cleanup cannot promote those facts
 to durable Cancelled. Common durable resource/source settlement and finalization
 are still required implementation work; a green third-case mechanism test must
 not accept the full runtime or complete the goal.
+
+Run 38115978145 passed this three-execution mechanism test, 13,893 backend unit
+tests and API quality. Its same-source foundation and actual-schema writer-guard
+runs 38115978155 and 38115978157 also passed. [Independent retained-artifact
+verification](cancellation-live-slice-proof.json) checks all six archive entries,
+the actual accepted archive and Rust executable hashes, 38 exact Rust source
+inputs, Start/Cancel/Stopped/Receipt correlations, successful JUnit assertions,
+owner exit and empty stack/guardian inventories. Database assertions for the
+closed session, revoked grant, uncompleted attempt and absent receipt ran in the
+actual authenticated fixture; the public artifact does not recreate database
+state. The unchanged workflow digest remains `160917deeb94275f31ca9ddee2dacae00fb079fdf54cb60e206c8def261f9c34`.
+Whole-owner spans were 3762.863ms, 2988.222ms and 2836.922ms; these include launch,
+provision, execution/cancellation and drain, rather than isolated Go overhead.
+
+Candidate `4f07f3078e1584eb21ef9207e91ceb1604162095` introduces an opaque,
+consumed original-session drain observation. Recovery objects and public JSON
+cannot construct it, and identity matching includes owner, execution, attempt,
+claim, worker, supervisor, runtime, binding and channel custody. The genuine
+fixture must observe its creation after actual kernel/container/channel drain.
+Two component tests cover every identity substitution and stop-only rejection.
+It retains the observation through staged-source retirement but adds no durable
+settlement or Cancelled writer. Fresh candidate checks remain required; the
+previous source's green checks do not transfer. Common immutable settlement
+schema, exclusion constraints, lock order and finalization evidence remain the
+next implementation work. Runtime acceptance and production dispatch remain false.

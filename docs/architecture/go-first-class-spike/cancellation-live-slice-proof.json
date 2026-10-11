@@ -1,0 +1,40 @@
+{
+  "source": "237a40be37abbe5ac99bb6e6f536d5ce5e0d65f4",
+  "producer_run": 38115978145,
+  "sdk_version": "0.0.0-spike.2",
+  "artifact_id": "sha256:55254c668e894ee169163b6962bfb1a17102ab95328d2f41e161de85555dbd97",
+  "workflow_sha256": "160917deeb94275f31ca9ddee2dacae00fb079fdf54cb60e206c8def261f9c34",
+  "owner_sha256": "0ff9e8f56021e1c74b7acc4dd86210e02f54e92c071597a6b19ec35a62ef9f0c",
+  "verified_rust_source_inputs": 38,
+  "tests": {
+    "live-results.xml": {
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "unit-results.xml": {
+      "tests": 13893,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  },
+  "same_unchanged_binary_three_executions": true,
+  "normal_result_receipt_api_correlations": true,
+  "rust_cancel_original_channel_stopped_correlations": true,
+  "held_actual_sdk_response": true,
+  "physical_cleanup_and_empty_inventories": true,
+  "owner_total_elapsed_ms": [
+    3762.862636,
+    2988.222186,
+    2836.922021
+  ],
+  "scope": "Independent retained-artifact/source/JUnit/correlation verification. SQL grant revocation, uncompleted cancelled attempt, no Result receipt and authenticated API assertions execute in the DB-backed test; raw database payloads and credentials are not retained. These checks do not independently recreate SQL state.",
+  "cancelled_public_status": "Cancelling",
+  "durable_cancelled_finalization": false,
+  "durable_source_settlement": false,
+  "live_uncertain_recovery": false,
+  "runtime_acceptance": false,
+  "production_dispatch": false
+}
