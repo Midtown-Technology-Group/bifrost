@@ -55,13 +55,13 @@ receive_event() {
   test "$(jq -er '.event' "$target.new")" = "$event"
   mv "$target.new" "$target"
 }
-for case_number in 0 1 2 3 4 5 6; do
+for case_number in 0 1 2 3 4 5 6 7; do
   case_dir="$slice_root/$case_number"
   wait_file "$case_dir/launch-ready.json"
   session=$(jq -er '.prepare.body.binding.session_id' "$case_dir/owner-config.json")
   database_target=$pool_ip
   database_suffix=''
-  if [[ "$case_number" = 3 || "$case_number" = 4 || "$case_number" = 5 ]]; then
+  if [[ "$case_number" = 3 || "$case_number" = 4 || "$case_number" = 5 || "$case_number" = 7 ]]; then
     session=$(jq -er '.prepare.body.binding.session_id' "$case_dir/owner-config.json")
     env -i PATH=/usr/bin:/bin BIFROST_ISOLATED_COMMIT_ACK_TEST=1 \
       python3 "$slice_root/commit-ack-proxy.py" "$pool_ip" "$case_dir" "$session" \
@@ -108,7 +108,7 @@ for case_number in 0 1 2 3 4 5 6; do
     cat "$case_dir/abort-release-ready.json" >&"$owner_input"
     printf '\n' >&"$owner_input"
   fi
-  if [[ "$case_number" = 2 || "$case_number" = 6 ]]; then
+  if [[ "$case_number" = 2 || "$case_number" = 6 || "$case_number" = 7 ]]; then
     receive_event sdk_admitted "$case_dir/owner-sdk-admitted.json"
     wait_file "$case_dir/cancel-ready.json"
     cat "$case_dir/cancel-ready.json" >&"$owner_input"

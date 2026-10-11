@@ -9,7 +9,7 @@ use bifrost_isolated_owner_spike::{
     material::MaterialPipe,
     observe_closed_cancel_recovery, observe_closed_result_recovery,
     peer::OriginalPeer,
-    reconcile_committed_result, record_provision_candidate,
+    reconcile_committed_result, reconcile_committed_settlement, record_provision_candidate,
     sdk_gate::SDKGate,
     settle_retired_session,
 };
@@ -341,9 +341,47 @@ async fn run(config: Value) -> Result<Value, ()> {
                 .map_err(|_| ())?,
             );
         }
-        settle_retired_session(&pool, retired)
-            .await
-            .map_err(|_| ())?
+        let expected = sha256(&serde_json::to_vec(retired.observation()).map_err(|_| ())?);
+        match settle_retired_session(&pool, retired).await {
+            Ok(fact) => {
+                if config["lost_settlement_commit_ack"] == true {
+                    return Err(());
+                }
+                fact
+            }
+            Err(bifrost_isolated_owner_spike::ObserveError::UncertainCommit)
+                if config["lost_settlement_commit_ack"] == true =>
+            {
+                let fence = admitted_fence.as_ref().ok_or(())?;
+                let wrong = if expected.starts_with('0') {
+                    "1".repeat(64)
+                } else {
+                    "0".repeat(64)
+                };
+                if reconcile_committed_settlement(&pool, fence, &wrong)
+                    .await
+                    .is_ok()
+                {
+                    return Err(());
+                }
+                let mut wrong_fence = fence.clone();
+                wrong_fence.owner_incarnation_id = "10000000-0000-4000-8000-000000000099".into();
+                if reconcile_committed_settlement(&pool, &wrong_fence, &expected)
+                    .await
+                    .is_ok()
+                {
+                    return Err(());
+                }
+                let mut fact = reconcile_committed_settlement(&pool, fence, &expected)
+                    .await
+                    .map_err(|_| ())?;
+                fact["commit_observation"] = json!("lost_ack");
+                fact["wrong_digest_denied"] = json!(true);
+                fact["wrong_owner_denied"] = json!(true);
+                fact
+            }
+            Err(_) => return Err(()),
+        }
     } else {
         // Failed protocol/admission operation still physically cleans up, but
         // cannot turn cleanup JSON into the opaque finalization prerequisite.

@@ -424,3 +424,30 @@ message is added; the coordination events belong only to the trusted fixture.
 Fresh hosted evidence is required. This does not cover owner death while the
 session remains open, interrupted cleanup or ambiguous resource-fact commits.
 Those paths retain obligations and fail closed; they do not authorize replay.
+
+
+## Resource-settlement COMMIT uncertainty candidate
+
+The eighth same-artifact case cancels during the admitted SDK response, closes
+and revokes that same session, drains the original process/CLI, retires paths,
+and retains the source pin until the existing resource-settlement transaction.
+Only then does the fixture arm the one-shot PostgreSQL response-loss proxy.
+The server must observe COMMIT while the original Rust actor sees UncertainCommit.
+No settlement INSERT, cleanup, grant, SDK operation or protocol frame is retried.
+
+The owner retains only the original observation digest and same SessionFence
+before consuming RetiredSession. `reconcile_committed_settlement` is a readback,
+not a writer or token constructor. It requires the same authenticated principal,
+source/advisory → typed attempt → NOWAIT owner/root/deployment/Solution → session
+prefix and Start → ordered admissions → grants → receipts → resource-fact tail.
+It checks terminal root/attempt agreement, permanently closed session, revoked
+finite grant, receipt winner, exact composite resource identity, raw-byte digest
+and accepted artifact. Wrong owner/digest, missing fact or uncertain read commit
+must deny. It neither reconstructs custody nor changes lifecycle/source state.
+The caller reports ACK loss from its actual error; readback merely reports the
+already committed fact. API and source accounting must agree after reconciliation.
+
+Fresh hosted eight-case and security/race evidence is required. This candidate
+adds no schema, role grants, wire messages, lifecycle transition, owner assignment,
+production dispatch or Python-owned changes. Open-session owner recovery, actual
+Docker response loss and interrupted cleanup remain distinct unproved paths.

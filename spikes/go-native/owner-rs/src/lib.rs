@@ -35,7 +35,7 @@ pub use release::{
 #[cfg(target_os = "linux")]
 pub use resources::{
     ClosedSessionRecovery, observe_closed_cancel_recovery, observe_closed_result_recovery,
-    reconcile_committed_result, settle_retired_session,
+    reconcile_committed_result, reconcile_committed_settlement, settle_retired_session,
 };
 pub use result::{ResultDecision, accept_result};
 pub use sdk::{

@@ -326,13 +326,14 @@ async def test_original_rust_owner_runs_unchanged_go_and_cancels_waiting_sdk(
         )
     )
     proofs = []
-    for number in range(7):
-        cancel_waiting_sdk = number in (2, 6)
+    for number in range(8):
+        cancel_waiting_sdk = number in (2, 6, 7)
         lost_result_commit_ack = number in (3, 4)
         crash_after_result_commit = number == 4
         crash_after_cancel = number == 6
         owner_crashed = crash_after_result_commit or crash_after_cancel
         lost_release_commit_ack = number == 5
+        lost_settlement_commit_ack = number == 7
         owner_cancelled = cancel_waiting_sdk or lost_release_commit_ack
         case = root / str(number)
         case.mkdir(mode=0o700)
@@ -421,6 +422,7 @@ async def test_original_rust_owner_runs_unchanged_go_and_cancels_waiting_sdk(
             "crash_after_result_commit": crash_after_result_commit,
             "crash_after_cancel": crash_after_cancel,
             "lost_release_commit_ack": lost_release_commit_ack,
+            "lost_settlement_commit_ack": lost_settlement_commit_ack,
         }
         for key in (
             "owner_id",
@@ -780,6 +782,11 @@ async def test_original_rust_owner_runs_unchanged_go_and_cancels_waiting_sdk(
             assert before_settlement.json()["status"] == (
                 "Cancelling" if owner_cancelled else "Success"
             )
+            if lost_settlement_commit_ack:
+                publish(
+                    case / "commit-ack-arm.json",
+                    {"event": "arm_commit_ack_loss", "session_id": str(session)},
+                )
             publish(
                 case / "settlement-ready.json",
                 {"event": "settlement_ready", "session_id": str(session)},
@@ -829,6 +836,30 @@ async def test_original_rust_owner_runs_unchanged_go_and_cancels_waiting_sdk(
                 digest(settlement["raw_observation"])
                 == settlement["observation_sha256"]
             )
+            if lost_settlement_commit_ack:
+                dropped = await observation(case / "commit-ack-dropped.json")
+                assert dropped["server_commit_observed"] is True
+                assert dropped["client_commit_ack_forwarded"] is False
+                assert dropped["session_id"] == str(session)
+                assert result["resource_settlement"]["commit_observation"] == "lost_ack"
+                assert (
+                    result["resource_settlement"]["reconciled_without_replay"] is True
+                )
+                assert result["resource_settlement"]["wrong_digest_denied"] is True
+                assert result["resource_settlement"]["wrong_owner_denied"] is True
+                assert (
+                    result["resource_settlement"]["observation_sha256"]
+                    == settlement["observation_sha256"]
+                )
+                assert (
+                    await db_session.scalar(
+                        text(
+                            "SELECT count(*) FROM runtime_resource_settlements WHERE session_id=:session"
+                        ),
+                        {"session": session},
+                    )
+                    == 1
+                )
             resource_observation = json.loads(settlement["raw_observation"])
             assert (
                 resource_observation["version"]
@@ -1041,6 +1072,7 @@ async def test_original_rust_owner_runs_unchanged_go_and_cancels_waiting_sdk(
                     "durable_cancelled_finalization": True,
                     "original_owner_crash_recovered": crash_after_cancel,
                     "resource_settlement": result["resource_settlement"],
+                    "settlement_commit_ack_lost": lost_settlement_commit_ack,
                 }
                 if cancel_waiting_sdk:
                     cancelled_proof["cancel"] = component["cancel"]
@@ -1100,6 +1132,7 @@ async def test_original_rust_owner_runs_unchanged_go_and_cancels_waiting_sdk(
                         "physical_drain": result["physical_drain"],
                         "elapsed_ms": result["elapsed_ms"],
                         "resource_settlement": result["resource_settlement"],
+                        "settlement_commit_ack_lost": lost_settlement_commit_ack,
                     }
                 )
         finally:
@@ -1114,7 +1147,7 @@ async def test_original_rust_owner_runs_unchanged_go_and_cancels_waiting_sdk(
             private.unlink()
             keys.rmdir()
         publish(case / "fixture-finished.json", {"event": "fixture_finished"})
-    assert len(proofs) == 7 and len({proof["artifact_id"] for proof in proofs}) == 1
+    assert len(proofs) == 8 and len({proof["artifact_id"] for proof in proofs}) == 1
     publish(
         root / "live-proof.json",
         {
@@ -1127,6 +1160,7 @@ async def test_original_rust_owner_runs_unchanged_go_and_cancels_waiting_sdk(
             "closed_result_owner_crash_recovery": True,
             "closed_cancel_owner_crash_recovery": True,
             "uncertain_release_abandoned_without_delivery": True,
+            "uncertain_settlement_reconciled_without_replay": True,
             "production_dispatch": False,
         },
     )

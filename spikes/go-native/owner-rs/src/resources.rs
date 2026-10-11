@@ -134,6 +134,102 @@ async fn read_committed_result(
     Ok((receipt, artifact_id))
 }
 
+/// Read only after an uncertain settlement commit. This never reconstructs a
+/// RetiredSession, retries the INSERT, drains resources or assigns an owner.
+pub async fn reconcile_committed_settlement(
+    pool: &PgPool,
+    fence: &crate::SessionFence,
+    expected_observation_sha256: &str,
+) -> Result<Value, ObserveError> {
+    if expected_observation_sha256.len() != 64
+        || !expected_observation_sha256
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+    {
+        return Err(ObserveError::Rejected);
+    }
+    let mut locked = lock_session_state(pool, fence, true).await?;
+    let cancelled = locked.execution_status == "Cancelled";
+    if !locked.closed
+        || !locked.attempt_completed
+        || (cancelled
+            && (locked.close_reason.as_deref() != Some("cancel_requested")
+                || locked.attempt_status != "cancelled"))
+        || (!cancelled
+            && (locked.close_reason.as_deref() != Some("result_committed")
+                || !matching_result_projection(&locked.execution_status, &locked.attempt_status)))
+    {
+        return Err(ObserveError::Rejected);
+    }
+    // Preserve the common lock tail, including rows not being modified.
+    let starts =
+        sqlx::query("SELECT id FROM runtime_starts WHERE session_id=$1::text::uuid FOR UPDATE")
+            .bind(&fence.session_id)
+            .fetch_all(&mut *locked.tx)
+            .await?;
+    let admissions = sqlx::query("SELECT purpose FROM runtime_admissions WHERE session_id=$1::text::uuid ORDER BY purpose,id FOR UPDATE")
+        .bind(&fence.session_id).fetch_all(&mut *locked.tx).await?;
+    let grants = sqlx::query("SELECT revoked_at IS NOT NULL AS revoked, revocation_reason FROM workflow_runtime_sdk_grants WHERE runtime_session_id=$1::text::uuid ORDER BY id FOR UPDATE")
+        .bind(&fence.session_id).fetch_all(&mut *locked.tx).await?;
+    let receipts = sqlx::query("SELECT disposition,winner FROM runtime_report_receipts WHERE session_id=$1::text::uuid ORDER BY result_message_id FOR UPDATE")
+        .bind(&fence.session_id).fetch_all(&mut *locked.tx).await?;
+    if starts.len() != 1
+        || admissions.len() != 2
+        || admissions.iter().any(|r| {
+            !matches!(
+                r.try_get::<String, _>("purpose").ok().as_deref(),
+                Some("provision" | "release")
+            )
+        })
+        || grants.len() != 1
+        || !grants[0].try_get::<bool, _>("revoked")?
+        || grants[0].try_get::<String, _>("revocation_reason")? != "session_closed"
+    {
+        return Err(ObserveError::Rejected);
+    }
+    if cancelled {
+        if receipts.iter().any(|r| {
+            r.try_get::<String, _>("disposition").ok().as_deref() != Some("retained")
+                || r.try_get::<String, _>("winner").ok().as_deref() != Some("cancel")
+        }) {
+            return Err(ObserveError::Rejected);
+        }
+    } else if receipts.len() != 1
+        || receipts[0].try_get::<String, _>("disposition")? != "accepted"
+        || receipts[0].try_get::<String, _>("winner")? != "result"
+    {
+        return Err(ObserveError::Rejected);
+    }
+    let fact = sqlx::query("SELECT raw_observation,observation_sha256 FROM runtime_resource_settlements WHERE session_id=$1::text::uuid AND execution_id=$2::text::uuid AND owner_incarnation_id=$3::text::uuid AND workflow_attempt_id=$4::text::uuid FOR UPDATE")
+        .bind(&fence.session_id).bind(&fence.execution_id).bind(&fence.owner_incarnation_id).bind(&fence.attempt_id)
+        .fetch_optional(&mut *locked.tx).await?.ok_or(ObserveError::Rejected)?;
+    let raw: Vec<u8> = fact.try_get("raw_observation")?;
+    let digest: String = fact.try_get("observation_sha256")?;
+    let observation: Value = serde_json::from_slice(&raw).map_err(|_| ObserveError::Rejected)?;
+    if raw.is_empty()
+        || raw.len() > 65536
+        || sha256(&raw) != digest
+        || digest != expected_observation_sha256
+        || observation["archive_sha256"]
+            .as_str()
+            .map(|s| format!("sha256:{s}"))
+            != Some(locked.artifact_id)
+    {
+        return Err(ObserveError::Rejected);
+    }
+    locked
+        .tx
+        .commit()
+        .await
+        .map_err(|_| ObserveError::UncertainCommit)?;
+    Ok(
+        json!({"session_id":fence.session_id,"observation_sha256":digest,
+        "durable_source_settlement":true,"durable_cancelled_finalization":cancelled,
+        "reconciliation":"already_committed","reconciled_without_replay":true,
+        "runtime_acceptance":false,"production_dispatch":false}),
+    )
+}
+
 pub async fn settle_retired_session(
     pool: &PgPool,
     retired: RetiredSession,
