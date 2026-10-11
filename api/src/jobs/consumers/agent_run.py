@@ -45,6 +45,19 @@ DEFAULT_RUN_TIMEOUT = 1800  # 30 minutes
 CANCEL_CHECK_INTERVAL = 2  # seconds between cancel flag checks
 
 
+def _terminal_status_for_agent_result(
+    current_status: str,
+    result_status: str,
+) -> str | None:
+    """Resolve whether this consumer still owns the run's terminal transition."""
+    if current_status == "running":
+        return result_status
+    if current_status == "cancelling":
+        # Once cancellation is accepted it wins a race with executor completion.
+        return "cancelled"
+    return None
+
+
 async def _publish_sync_result(run_id: str, result: dict) -> None:
     """Release a synchronous caller waiting on this run."""
     result_key = f"{REDIS_PREFIX}:{run_id}:result"
@@ -503,8 +516,13 @@ class AgentRunConsumer(BaseConsumer):
                     )
                     await db.commit()
                     return
-                if run_obj.status == "running":
-                    run_obj.status = run_result.get("status", "completed")
+                result_status = run_result.get("status", "completed")
+                persisted_result_status = _terminal_status_for_agent_result(
+                    run_obj.status,
+                    result_status,
+                )
+                if persisted_result_status is not None:
+                    run_obj.status = persisted_result_status
                     run_obj.output = (
                         run_result.get("output")
                         if isinstance(run_result.get("output"), dict)
@@ -538,16 +556,19 @@ class AgentRunConsumer(BaseConsumer):
                 if executor:
                     await executor.flush_to_db(db)
 
+                attempt_result_status = persisted_result_status or result_status
                 attempt_status = {
                     "completed": "succeeded",
                     "cancelled": "cancelled",
-                }.get(run_result.get("status"), "failed")
+                }.get(attempt_result_status, "failed")
                 await transition_execution_attempt(
                     db,
                     attempt_id=attempt_id,
                     status=attempt_status,
                     failure_code=(
-                        None if attempt_status == "succeeded" else run_result.get("status")
+                        None
+                        if attempt_status == "succeeded"
+                        else attempt_result_status
                     ),
                     failure_message=run_result.get("error"),
                 )
