@@ -1,0 +1,20 @@
+{
+  "read_at_utc": "2026-10-11T10:42:00Z",
+  "platform_main": "08255ad355a3ab63f0c04a214c3c230432552dfe",
+  "platform_main_fetched": true,
+  "workspace_main": "dbe105486b819784eecd8ec57c9fc035292913dd",
+  "workspace_main_fetched": true,
+  "previous_workspace_main": "3e8de3d1b19501fc2be07c5591d3c47482488a40",
+  "workspace_new_commits": [
+    "40f24151a",
+    "dbe105486"
+  ],
+  "workspace_change_scope": "Estate server-reboot coordinator/host maintenance, release metadata and tests; NinjaOne scheduled reboot PowerShell and test. No shared runtime/SDK/credential contract change or imported fixture input in this isolated Go readiness slice. No workspace content edits.",
+  "rust_pr_heads": {
+    "1011": "93ec9421b23b0b4a1493ab45f15f55ded3377d2e",
+    "1024": "6419069da195b053c885ab349f431ff4fae62098",
+    "1132": "35daf020d5e1286f82bdfed6bb3fc537bf3d78f6"
+  },
+  "runtime_acceptance": false,
+  "production_dispatch": false
+}
