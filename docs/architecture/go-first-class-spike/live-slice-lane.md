@@ -28,7 +28,9 @@ any database, Redis, Docker, signing, caller-authentication or issuer authority.
 
 The trusted fixture shares the hosted owner's PID namespace solely to pin the
 original UID/PID/start-ticks and authenticate private Unix IPC; it receives the
-same task-owned result directory at its host pathname. This is an explicit trusted
+same task-owned result directory at its host pathname. Rust sets non-dumpable
+process protection before handling config/credentials, and the fixture requires
+an explicit denial when reading the owner's environment. This is an explicit trusted
 fixture boundary requiring security review before acceptance. It is not a tenant
 namespace policy or a production Compose change. The API test runner receives no
 Docker socket. The host launcher uses UID1000 and the existing Docker group only
@@ -52,7 +54,8 @@ the original config/journal and permit only `runtime-live-owner --drain` with th
 same spec/nonce. A residue fails cleanup; no new owner or launch is created.
 
 Evidence retention is an explicit public allowlist, excluding private delivery,
-issuer material and TLS keys. Broad unit/API quality checks remain required. Actual
+issuer material and TLS keys. Owner metadata removes the private claim token;
+raw execution config remains private and is never uploaded. Broad unit/API quality checks remain required. Actual
 writer-guard/security/race evidence must qualify the same source before acceptance.
 
 Remaining gates: cancellation and durable cancelled finalization, crash/unknown

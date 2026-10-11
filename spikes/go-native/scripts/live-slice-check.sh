@@ -52,12 +52,13 @@ cleanup_slice() {
   # Explicit public evidence allowlist. Never retain issuer material/TLS keys.
   for case_number in 0 1; do
     sudo mkdir -p "$evidence_dir/$case_number"
-    for entry in owner-config.json owner-ingress.json owner-start.json owner-result.json owner-exited.json stop-only-recovery.json; do
+    for entry in owner-ingress.json owner-start.json owner-result.json owner-exited.json stop-only-recovery.json; do
       if sudo test -f "$slice_root/$case_number/$entry"; then
         sudo cp "$slice_root/$case_number/$entry" "$evidence_dir/$case_number/$entry" || cleanup=1
       fi
     done
     if sudo test -f "$slice_root/$case_number/owner-config.json"; then
+      sudo jq 'del(.claim_token)' "$slice_root/$case_number/owner-config.json" > "$evidence_dir/$case_number/owner-metadata.json"
       session=$(sudo jq -er '.prepare.body.binding.session_id' "$slice_root/$case_number/owner-config.json")
       remaining=$(docker container ls -aq --no-trunc --filter "name=^/bifrost-guardian-$session$")
       printf '%s=%s\n' "$session" "$remaining" >> "$evidence_dir/guardian-inventory.txt"

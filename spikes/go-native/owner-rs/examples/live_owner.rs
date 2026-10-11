@@ -285,6 +285,13 @@ fn recover(config: &Value) -> Result<Value, ()> {
 
 #[tokio::main]
 async fn main() {
+    // The trusted SDK fixture shares the PID namespace for original-peer IPC,
+    // but must not inspect this owner's core credential environment or memory.
+    if rustix::process::set_dumpable_behavior(rustix::process::DumpableBehavior::NotDumpable)
+        .is_err()
+    {
+        std::process::exit(1);
+    }
     let args: Vec<String> = std::env::args().collect();
     let drain = args.len() == 3 && args[1] == "--drain";
     if args.len() != 2 && !drain {

@@ -426,6 +426,8 @@ async def test_original_rust_owner_runs_unchanged_go_twice(
             ingress["event"] == "ingress_required"
             and ingress["owner_uid"] == os.geteuid()
         )
+        with pytest.raises(PermissionError):
+            Path(f"/proc/{ingress['owner_pid']}/environ").read_bytes()
         ticks = _start_ticks(ingress["owner_pid"])
         identity = dict(
             grant_id=grant,
