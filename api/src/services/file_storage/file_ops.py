@@ -414,26 +414,30 @@ class FileOperationsService:
         """
         Delete a file from storage.
 
-        Pattern: S3 first (source of truth), then conditional side effects.
+        Python deletion fails closed: close the runtime cache before removing
+        durable source, then require database authority to be retired before
+        acknowledging success.  Presentation-only cleanup remains best effort.
         """
-        # === S3: Source of truth (must succeed) ===
-        await self._delete_from_s3(path)
+        # The workspace generation barrier prevents new loads while this runs.
+        # Invalidate first so a Redis failure leaves both source and database
+        # authority unchanged instead of exposing cached deleted code.
+        await self._invalidate_module_cache_if_python(path)
 
-        # === Side effects (best-effort, independent) ===
-        for op in (
-            self._remove_from_search_index,
-            self._handle_app_file_cleanup,
-            self._remove_metadata,
-            self._invalidate_module_cache_if_python,
-        ):
-            try:
-                await op(path)
-            except Exception as e:
-                logger.warning(
-                    "Delete side effect failed for %s: %s",
-                    log_safe(path),
-                    log_safe(e),
-                )
+        # Durable source deletion and database retirement are both required.
+        await self._delete_from_s3(path)
+        await self._remove_metadata(path)
+        await self._remove_from_search_index(path)
+
+        # Preview cleanup is presentation-only and must not turn a completed
+        # source/authority retirement into an ambiguous delete failure.
+        try:
+            await self._handle_app_file_cleanup(path)
+        except Exception as e:
+            logger.warning(
+                "Delete preview cleanup failed for %s: %s",
+                log_safe(path),
+                log_safe(e),
+            )
 
         # Broadcast file_delete event for watch mode sync
         try:

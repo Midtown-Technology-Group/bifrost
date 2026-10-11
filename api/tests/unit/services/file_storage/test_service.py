@@ -3,12 +3,38 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
-
 from src.services.file_storage import service as service_module
 from src.services.file_storage.service import _SCOPE_SKIP, _scope_to_org_id
+
+
+@pytest.mark.asyncio
+async def test_remove_metadata_retires_workflows_before_best_effort_diagnostics() -> None:
+    events: list[str] = []
+
+    async def retire(_path: str) -> None:
+        events.append("retire")
+
+    async def clear(_path: str) -> None:
+        events.append("diagnostics")
+        raise RuntimeError("notification backend unavailable")
+
+    service = service_module.FileStorageService.__new__(service_module.FileStorageService)
+    service._workflow_indexer = SimpleNamespace(
+        delete_workflows_for_file=AsyncMock(side_effect=retire)
+    )
+    service._diagnostics = SimpleNamespace(
+        clear_diagnostic_notification=AsyncMock(side_effect=clear)
+    )
+
+    await service_module.FileStorageService._remove_metadata(
+        service, "workflows/remove.py"
+    )
+
+    assert events == ["retire", "diagnostics"]
 
 
 def test_scope_to_org_id_maps_workspace_and_global_to_unscoped_metadata() -> None:
