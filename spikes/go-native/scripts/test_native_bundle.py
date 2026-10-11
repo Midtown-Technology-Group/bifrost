@@ -47,7 +47,7 @@ def fixture():
         "cgo": False,
         "entrypoint": "workflow",
         "sdk_version": "0.0.0-spike.2",
-        "go_version": "go1.27.1",
+        "go_version": "go1.27.2",
         "build_flags": ["-mod=readonly", "-trimpath", "-buildvcs=false"],
         "validation": {
             key: "pass" for key in ("go_test", "go_vet", "gofmt", "govulncheck")

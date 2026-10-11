@@ -114,7 +114,7 @@ async fn run(config: Value) -> Result<Value, ()> {
     let contents = verify_archive(&raw, &pins).map_err(|_| ())?;
     let build: Value = serde_json::from_slice(contents[1]).map_err(|_| ())?;
     if build["guardian_carrier"]["image_id"] != config["image_id"]
-        || sha256(contents[5]) != "160917deeb94275f31ca9ddee2dacae00fb079fdf54cb60e206c8def261f9c34"
+        || sha256(contents[5]) != "5f9c912ec6055882e0d443378cb93bb87b58eb7ab2a49eb5e14d338d72865edd"
     {
         return Err(());
     }
@@ -487,7 +487,7 @@ async fn recover_closed_session(config: &Value, cancelled: bool) -> Result<Value
     let contents = verify_archive(&archive, &pins).map_err(|_| ())?;
     let build: Value = serde_json::from_slice(contents[1]).map_err(|_| ())?;
     if build["guardian_carrier"]["image_id"] != config["image_id"]
-        || sha256(contents[5]) != "160917deeb94275f31ca9ddee2dacae00fb079fdf54cb60e206c8def261f9c34"
+        || sha256(contents[5]) != "5f9c912ec6055882e0d443378cb93bb87b58eb7ab2a49eb5e14d338d72865edd"
     {
         return Err(());
     }

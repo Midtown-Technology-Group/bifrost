@@ -160,7 +160,7 @@ docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-
   --mount "type=bind,src=$evidence_dir/workflow,dst=/workflow,readonly" \
   --mount "type=bind,src=$scratch/results,dst=/out" \
   --entrypoint /probe bifrost-go-spike-runtime --artifact /workflow --output /out/sealed-execution.json \
-  --sealed-artifact-sha256 160917deeb94275f31ca9ddee2dacae00fb079fdf54cb60e206c8def261f9c34
+  --sealed-artifact-sha256 5f9c912ec6055882e0d443378cb93bb87b58eb7ab2a49eb5e14d338d72865edd
 cp "$scratch/results/sealed-execution.json" "$evidence_dir/sealed-execution.json"
 docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges \
   --user "$task_uid:$task_gid" --pids-limit 64 --memory 128m --cpus 2 \

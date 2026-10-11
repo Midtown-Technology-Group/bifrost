@@ -1,0 +1,19 @@
+{
+  "sdk_version": "0.0.0-spike.2",
+  "old_source": "12e1a26770cc26fa2f4f9007a8b9e9dfc0874480",
+  "old_run": 38127256053,
+  "scanner_gate": "11 build-plane tests pass; actual retained 1.27.1 stream denied before descriptor/artifact admission",
+  "replacement_source": "e151389275c15e8abad0c4678b22c98f2d154968",
+  "replacement_run": 38127319517,
+  "replacement_result": "Deliberately rejected by existing exact old binary pin; no Rust/live consumer ran",
+  "new_workflow_sha256": "5f9c912ec6055882e0d443378cb93bb87b58eb7ab2a49eb5e14d338d72865edd",
+  "new_workflow_size_bytes": 9942367,
+  "toolchain": "go1.27.2",
+  "toolchain_image": "golang:1.27.2-bookworm@sha256:5cf287a799e6b94384bad13d16b14904c531f51ba65792237e122ce42b392f61",
+  "official_release_source": "https://go.dev/dl/?mode=json&include=all",
+  "unchanged_workload_code": true,
+  "artifact_acceptance": false,
+  "next_gate": "Updated explicit fixture binary pins; fresh complete scan/build/owner/live/security evidence required",
+  "codec_run": 38127319523,
+  "codec_status": "success"
+}

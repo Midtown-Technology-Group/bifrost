@@ -68,7 +68,7 @@ fn run() -> Result<Value, ()> {
         || artifact["dependencies"]["digest"] != format!("sha256:{}", sha256(contents[3]))
         || descriptor["output_schema_sha256"] != sha256(contents[4])
         || artifact["executable_sha256"] != sha256(contents[5])
-        || sha256(contents[5]) != "160917deeb94275f31ca9ddee2dacae00fb079fdf54cb60e206c8def261f9c34"
+        || sha256(contents[5]) != "5f9c912ec6055882e0d443378cb93bb87b58eb7ab2a49eb5e14d338d72865edd"
     {
         return Err(());
     }

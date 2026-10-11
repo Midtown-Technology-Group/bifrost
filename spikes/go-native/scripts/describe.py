@@ -59,7 +59,7 @@ def main() -> None:
     runtime = json.loads((out / "execution.json").read_text())
     sealed_runtime = json.loads((out / "sealed-execution.json").read_text())
     assert sealed_runtime["sealed_executable_sha256"] == digest(out / "workflow")
-    assert sealed_runtime["sealed_executable_sha256"] == "160917deeb94275f31ca9ddee2dacae00fb079fdf54cb60e206c8def261f9c34"
+    assert sealed_runtime["sealed_executable_sha256"] == "5f9c912ec6055882e0d443378cb93bb87b58eb7ab2a49eb5e14d338d72865edd"
     assert sealed_runtime["missing_keys_observation"] == ["alpha", "zeta"]
     assert len(sealed_runtime["samples"]) == 20 and sealed_runtime["same_artifact_runs"] == 22
     warm_runtime = json.loads((out / "warm-execution.json").read_text())
