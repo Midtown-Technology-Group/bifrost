@@ -11,7 +11,10 @@ from src.services.isolated_runtime_commit_ack_loss import CommitAckLossProxy, pu
 
 
 @pytest.mark.asyncio
-async def test_owner_eof_closes_idle_upstream_and_proxy_connections(tmp_path):
+@pytest.mark.parametrize("owner_disconnects", [True, False])
+async def test_idle_upstream_closes_on_owner_eof_or_proxy_stop(
+    tmp_path, owner_disconnects
+):
     connected = asyncio.Event()
     closed = asyncio.Event()
 
@@ -33,7 +36,10 @@ async def test_owner_eof_closes_idle_upstream_and_proxy_connections(tmp_path):
     try:
         async with asyncio.timeout(3):
             await connected.wait()
-            writer.transport.abort()
+            if owner_disconnects:
+                writer.transport.abort()
+            else:
+                await proxy.stop()
             await closed.wait()
             while proxy.tasks or proxy.writers:
                 await asyncio.sleep(0)
@@ -41,7 +47,8 @@ async def test_owner_eof_closes_idle_upstream_and_proxy_connections(tmp_path):
     finally:
         writer.close()
         await writer.wait_closed()
-        await proxy.stop()
+        if owner_disconnects:
+            await proxy.stop()
         server.close()
         await server.wait_closed()
 
