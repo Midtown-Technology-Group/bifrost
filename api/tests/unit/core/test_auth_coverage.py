@@ -196,6 +196,27 @@ def test_execution_context_properties() -> None:
 
 
 @pytest.mark.asyncio
+async def test_embed_app_header_requires_matching_signed_app_claim() -> None:
+    app_id = uuid4()
+    app = SimpleNamespace(id=app_id, solution_id=uuid4())
+
+    class Db:
+        async def get(self, model, requested_id):
+            assert requested_id == app_id
+            return app
+
+    principal = _principal(
+        embed=True,
+        embed_kind="app",
+        app_id=str(app_id),
+    )
+    assert await auth._authorized_app_for_principal(Db(), principal, app_id) is app
+
+    principal.app_id = str(uuid4())
+    assert await auth._authorized_app_for_principal(Db(), principal, app_id) is None
+
+
+@pytest.mark.asyncio
 async def test_execution_context_rejects_solution_app_mismatch(monkeypatch):
     solution_id = uuid4()
     app_solution_id = uuid4()
@@ -214,7 +235,12 @@ async def test_execution_context_rejects_solution_app_mismatch(monkeypatch):
     async def no_roles(user_id, db):
         return [], []
 
+    async def authorized_app(db, user, requested_app_id):
+        assert requested_app_id == app_id
+        return SimpleNamespace(id=app_id, solution_id=app_solution_id)
+
     monkeypatch.setattr(auth, "get_user_roles", no_roles)
+    monkeypatch.setattr(auth, "_authorized_app_for_principal", authorized_app)
     request = _request(
         headers={"X-Bifrost-App": str(app_id)},
         query_params={"solution": str(solution_id)},
