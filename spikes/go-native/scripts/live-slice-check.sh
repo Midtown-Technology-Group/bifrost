@@ -111,6 +111,17 @@ docker_gid=$(stat -c %g /var/run/docker.sock)
 docker compose -p "$slice_project" -f "$COMPOSE_FILE" build test-runner > "$evidence_dir/fixture-build.log" 2>&1
 bash test.sh tests/e2e/platform/test_runtime_live_go_slice.py --durations=0 > "$evidence_dir/live-tests.log" 2>&1 &
 fixture_pid=$!
+# The ordinary test command resets the disposable database/services before
+# pytest. Observe that same live fixture process until it publishes its exact
+# first launch request; only then start the driver's runtime observation clock.
+# The hosted job bounds bootstrap; no transaction, owner or spawn is retried.
+while ! sudo test -f "$slice_root/0/launch-ready.json"; do
+  if ! kill -0 "$fixture_pid" 2>/dev/null; then
+    wait "$fixture_pid"
+    exit 1
+  fi
+  sleep 0.05
+done
 sudo env -i PATH=/usr/bin:/bin /usr/bin/setpriv --reuid 1000 --regid 1000 --groups "$docker_gid" \
   bash spikes/go-native/scripts/live-owner-drive.sh "$slice_root" "$slice_root/runtime-live-owner" "$pool_ip" \
   > "$evidence_dir/owner-drive.log" 2>&1 &

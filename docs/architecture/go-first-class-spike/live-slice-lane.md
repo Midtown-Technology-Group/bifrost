@@ -89,3 +89,13 @@ directory and exited before stack teardown. This run has no verified teardown
 and must not be represented as clean. Evidence directories now belong to the
 runner; evidence-write failures mark cleanup failed while allowing teardown and
 inventory checks to continue. Fresh hosted validation remains required.
+
+Run38112628968 (`dd8c4afd52f7c71dc74eedeeb44b00d5e5ee13b6`) retained a
+cached fixture build but still timed out before ingress. Inspection shows the
+ordinary test command also resets database/services before pytest; prebuilding
+alone did not move all bootstrap outside the driver's observation clock. Start
+the original driver only after the same live fixture publishes its first exact
+launch-ready file, watching that fixture's process handle during bootstrap.
+The hosted job bounds bootstrap and all existing runtime deadlines remain intact.
+This run's repaired teardown retained empty stack and guardian inventories;
+no owner ingress, admission or runtime acceptance was proved.
