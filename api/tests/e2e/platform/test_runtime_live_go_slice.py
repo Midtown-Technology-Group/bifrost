@@ -326,9 +326,10 @@ async def test_original_rust_owner_runs_unchanged_go_and_cancels_waiting_sdk(
         )
     )
     proofs = []
-    for number in range(4):
+    for number in range(5):
         cancel_waiting_sdk = number == 2
-        lost_result_commit_ack = number == 3
+        lost_result_commit_ack = number in (3, 4)
+        crash_after_result_commit = number == 4
         case = root / str(number)
         case.mkdir(mode=0o700)
         runtime_root = case / "execution"
@@ -413,6 +414,7 @@ async def test_original_rust_owner_runs_unchanged_go_and_cancels_waiting_sdk(
             "caller_id": str(platform_admin.user_id),
             "cancel_waiting_sdk": cancel_waiting_sdk,
             "lost_result_commit_ack": lost_result_commit_ack,
+            "crash_after_result_commit": crash_after_result_commit,
         }
         for key in (
             "owner_id",
@@ -614,8 +616,85 @@ async def test_original_rust_owner_runs_unchanged_go_and_cancels_waiting_sdk(
                     {"event": "arm_commit_ack_loss", "session_id": str(session)},
                 )
                 release_response.set()
+            if crash_after_result_commit:
+                crash_required = await observation(case / "owner-crash-required.json")
+                assert crash_required == {
+                    "event": "closed_result_recovery_required",
+                    "session_id": str(session),
+                    "owner_pid": ingress["owner_pid"],
+                    "result_commit_observation": "lost_ack",
+                    "result_receipt_sent": False,
+                }
+                denied = await observation(case / "live-owner-recovery-denied.json")
+                assert denied == {
+                    "event": "live_owner_recovery_denied",
+                    "session_id": str(session),
+                    "recovery_intent_created": False,
+                }
+                crashed = await observation(case / "original-owner-crashed.json")
+                assert crashed == {
+                    "event": "original_owner_crashed",
+                    "pid": ingress["owner_pid"],
+                    "exit_code": 137,
+                }
+                if Path(f"/proc/{ingress['owner_pid']}").exists():
+                    assert _start_ticks(ingress["owner_pid"]) != ticks
+                assert not (
+                    runtime_root / "journal/closed-recovery-intent.json"
+                ).exists()
+                assert (runtime_root / "bundle").exists() and (
+                    runtime_root / "material"
+                ).exists()
+                assert (
+                    await db_session.scalar(
+                        select(Execution.id).where(
+                            Execution.id == execution,
+                            unsettled_runtime_source_consumer(),
+                        )
+                    )
+                    == execution
+                )
+                assert (
+                    await db_session.scalar(
+                        text(
+                            "SELECT count(*) FROM runtime_resource_settlements WHERE session_id=:session"
+                        ),
+                        {"session": session},
+                    )
+                    == 0
+                )
+                assert (
+                    await db_session.scalar(
+                        text(
+                            "SELECT count(*) FROM runtime_report_receipts WHERE session_id=:session AND disposition='accepted' AND winner='result'"
+                        ),
+                        {"session": session},
+                    )
+                    == 1
+                )
+                committed = e2e_client.get(
+                    f"/api/executions/{execution}", headers=platform_admin.headers
+                )
+                assert (
+                    committed.status_code == 200
+                    and committed.json()["status"] == "Success"
+                    and committed.json()["result"] == expected_result
+                )
+                publish(
+                    case / "closed-recovery-ready.json",
+                    {"event": "closed_recovery_ready", "session_id": str(session)},
+                )
             retired = await observation(case / "owner-resources-retired.json")
             assert retired == {"event": "resources_retired", "session_id": str(session)}
+            if crash_after_result_commit:
+                recovering = await observation(case / "closed-recovery-started.json")
+                assert (
+                    recovering["event"] == "closed_recovery_started"
+                    and recovering["original_owner_pid"] == ingress["owner_pid"]
+                )
+                assert recovering["pid"] != ingress["owner_pid"]
+                with pytest.raises(PermissionError):
+                    Path(f"/proc/{recovering['pid']}/environ").read_bytes()
             assert (
                 await db_session.scalar(
                     select(Execution.id).where(
@@ -720,8 +799,12 @@ async def test_original_rust_owner_runs_unchanged_go_and_cancels_waiting_sdk(
             )
             exited = await observation(case / "owner-exited.json")
             assert exited == {
-                "event": "owner_exited",
-                "pid": ingress["owner_pid"],
+                "event": "closed_recovery_exited"
+                if crash_after_result_commit
+                else "owner_exited",
+                "pid": recovering["pid"]
+                if crash_after_result_commit
+                else ingress["owner_pid"],
                 "exit_code": 0,
             }
             response = e2e_client.get(
@@ -738,6 +821,35 @@ async def test_original_rust_owner_runs_unchanged_go_and_cancels_waiting_sdk(
                 assert result["component"]["result_commit_observation"] == "lost_ack"
                 assert result["component"]["result_receipt_sent"] is False
                 assert result["component"]["reconciled_without_replay"] is True
+                if crash_after_result_commit:
+                    assert result["component"]["original_owner_crash_recovered"] is True
+                    assert (
+                        resource_observation["recovery_kind"]
+                        == "closed-result-original-owner-loss/v1"
+                    )
+                    assert resource_observation["original_owner_gone"] is True
+                    assert result["physical_drain"]["attached_cli_waited"] is False
+                    assert (
+                        result["physical_drain"]["original_cli_reaped_observed"] is True
+                    )
+                    assert (
+                        await db_session.scalar(
+                            text(
+                                "SELECT count(*) FROM runtime_execution_owners WHERE execution_id=:execution AND owner_incarnation_id=:owner"
+                            ),
+                            {"execution": execution, "owner": config["owner_id"]},
+                        )
+                        == 1
+                    )
+                    assert (
+                        await db_session.scalar(
+                            text(
+                                "SELECT count(*) FROM runtime_admissions WHERE session_id=:session"
+                            ),
+                            {"session": session},
+                        )
+                        == 2
+                    )
                 stopped_proxy = await observation(
                     case / "commit-ack-proxy-stopped.json"
                 )
@@ -863,6 +975,7 @@ async def test_original_rust_owner_runs_unchanged_go_and_cancels_waiting_sdk(
                         "receipt": retained_receipt,
                         "result_commit_ack_lost": lost_result_commit_ack,
                         "result_receipt_sent": not lost_result_commit_ack,
+                        "original_owner_crash_recovered": crash_after_result_commit,
                         "result_sha256": receipt["result_sha256"],
                         "public_status": public["status"],
                         "public_result": public["result"],
@@ -883,7 +996,7 @@ async def test_original_rust_owner_runs_unchanged_go_and_cancels_waiting_sdk(
             private.unlink()
             keys.rmdir()
         publish(case / "fixture-finished.json", {"event": "fixture_finished"})
-    assert len(proofs) == 4 and len({proof["artifact_id"] for proof in proofs}) == 1
+    assert len(proofs) == 5 and len({proof["artifact_id"] for proof in proofs}) == 1
     publish(
         root / "live-proof.json",
         {
@@ -893,6 +1006,7 @@ async def test_original_rust_owner_runs_unchanged_go_and_cancels_waiting_sdk(
             "executions": proofs,
             "runtime_acceptance": False,
             "durable_source_settlement": True,
+            "closed_result_owner_crash_recovery": True,
             "production_dispatch": False,
         },
     )

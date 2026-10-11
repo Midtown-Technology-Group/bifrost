@@ -208,12 +208,13 @@ immutable trigger rejects changed observations. Storage tests explicitly label
 synthetic observations as schema-only, never process or finalization acceptance.
 
 The Rust `settle_retired_session` entrypoint consumes an opaque `RetiredSession`.
-Only the original guardian's `drain_session` and `retire_resources` path constructs
-it: actual kernel/descendant/container/channel drain, original material FIFO and
+The verified original guardian's `drain_session` and `retire_resources` path
+constructs it: actual kernel/descendant/container/channel drain, original material FIFO and
 SDK gate retirement, no-follow/UID/mode/single-link reads of all six accepted
 source files and the pinned binding index, exact source digests and removal of
-those complete directories. A public JSON report, Stopped, recovered stop-only
-object or copied fence cannot construct this value. Any incomplete cleanup
+those complete directories. A public JSON report, Stopped, bare recovered stop-only
+object or copied fence cannot construct this value. The proposed closed-Result
+recovery constructor below requires separate SQL and original-custody proof. Any incomplete cleanup
 produces no settlement token. The source archive digest is rechecked against the
 locked immutable owner association before the SQL write.
 
@@ -314,3 +315,55 @@ crash finalization. That next writer must match the retained SQL fence, prove
 original owner/CLI/kernel and ingress/source retirement, use the common lock
 order, and reconcile uncertain commits without replay or ownership reassignment.
 The new prerequisite still requires fresh hosted tests and live proof.
+
+## Closed-Result owner-crash recovery candidate
+
+The fifth unchanged-binary case extends isolated implementation only. The same
+one-shot proxy must cause the original Rust actor to observe actual lost Result
+COMMIT acknowledgement. Before any physical/source cleanup, that actor persists
+its uncertainty observation, emits a public coordination event and accepts no
+more commands. The launcher first tries read-only recovery while it is alive;
+that must fail before a cleanup intent or OS effect. It then SIGKILLs and waits
+for the original actor. The authenticated fixture proves an accepted immutable
+Result receipt and Success already exist, source is still held, and no resource
+settlement exists. Only then may a new first-party Rust process close resources.
+
+No logical owner, attempt, worker, session, deployment or claim is reassigned.
+`ClosedResultRecovery` is an opaque readback value: the existing common lock
+prefix must observe the exact retained closed session, matching terminal root
+and attempt, original accepted receipt decision and immutable accepted artifact.
+Its commit is read-only; any uncertainty denies physical recovery. This value
+grants no channel, Start, SDK, credential provision, release or renewal permit.
+
+Original owner PID/start ticks and the exact retirement-journal digest now form
+part of the original observation whose digest SQL admission retains. This binds
+bundle, material directory/FIFO and gate directory/socket device/inode/type/mode
+identities to the retained session; editing a private cleanup journal alone cannot
+qualify a different owner or substituted resource. All journal reads are bounded,
+no-follow, single-link, UID/mode checked. The source index binds the entire neutral
+binding and artifact; every accepted source file is hashed before and after drain.
+
+The new process remains a stop-only guardian. It requires the old owner
+incarnation gone and a new exclusive, fsynced closing intent before physical
+action. It drains the retained original container/kernel, separately observes
+the original Docker CLI gone, and removes only matching original resources. It
+correctly reports `attached_cli_waited:false`: it has no original child handle.
+The separate `original_cli_reaped_observed:true` must come from kernel
+incarnation checks, never from copying a report. Complete source retirement can
+then construct the opaque proof consumed by the existing settlement writer.
+
+That writer repeats the full source→attempt→NOWAIT secondary→session→Start→
+ordered admission/grant/receipt→settlement order and preserves the already
+committed Result outcome. There is no Result acceptance replay or runtime
+ResultReceipt resend. The fixture must prove one SDK HTTP200, exactly the original
+admissions, unchanged owner identity, durable fact hash/identities, source pin
+before/after, authenticated API readback and physical/fixture cleanup. Normal and
+Cancelled paths retain their own original-handle semantics and required checks.
+
+This candidate changes no SQL schema, role grants, protocol messages, SDK
+operations, production dispatcher or Python-owned execution. It remains subject
+to human review of these concrete constraints and common lock order before
+writer/runtime acceptance. It does not prove pre-Result owner recovery, uncertain
+spawn/release, partial cleanup recovery, or ambiguous settlement commit. Failure
+after exclusive closing intent remains inspect-only; no retry or new owner is
+authorized. All fresh hosted security/race/source and live gates remain required.

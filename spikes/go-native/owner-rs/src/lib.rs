@@ -33,7 +33,10 @@ pub use release::{
     ReleaseCommitObservation, ReleaseRequest, observe_release_candidate, record_release_candidate,
 };
 #[cfg(target_os = "linux")]
-pub use resources::{reconcile_committed_result, settle_retired_session};
+pub use resources::{
+    ClosedResultRecovery, observe_closed_result_recovery, reconcile_committed_result,
+    settle_retired_session,
+};
 pub use result::{ResultDecision, accept_result};
 pub use sdk::{
     FiniteIssuanceAdmission, IntegrationGetAdmission, IntegrationGetRequest,
@@ -127,6 +130,7 @@ struct LockedSession<'a> {
     attempt_status: String,
     attempt_completed: bool,
     output_schema: String,
+    artifact_id: String,
 }
 
 async fn lock_session<'a>(
@@ -259,6 +263,7 @@ async fn lock_session_state<'a>(
         attempt_status: attempt.try_get("status")?,
         attempt_completed: attempt.try_get("completed")?,
         output_schema: association.try_get("output_schema")?,
+        artifact_id: artifact,
     })
 }
 

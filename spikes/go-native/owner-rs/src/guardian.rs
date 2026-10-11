@@ -167,6 +167,87 @@ mod tests {
     }
 
     #[test]
+    fn process_loss_requires_original_incarnation_gone() {
+        let pid = u64::from(std::process::id());
+        let ticks = start_ticks(pid).unwrap_or_else(|_| panic!("owner ticks"));
+        assert_eq!(process_gone(pid, &ticks), Ok(false));
+        assert_eq!(process_gone(pid, "0"), Ok(true));
+        for (pid, ticks) in [(0, "1"), (1, "1"), (pid, ""), (pid, "invalid")] {
+            assert!(process_gone(pid, ticks).is_err());
+        }
+        let mut child = Command::new("/usr/bin/sleep")
+            .arg("60")
+            .env_clear()
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .unwrap_or_else(|_| panic!("owned child"));
+        let child_pid = u64::from(child.id());
+        let observed = start_ticks(child_pid);
+        child.kill().unwrap_or_else(|_| panic!("kill owned child"));
+        child.wait().unwrap_or_else(|_| panic!("wait owned child"));
+        let child_ticks = observed.unwrap_or_else(|_| panic!("child ticks"));
+        assert_eq!(process_gone(child_pid, &child_ticks), Ok(true));
+    }
+
+    #[test]
+    fn retirement_custody_detects_directory_reassignment_and_mode_drift() {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_else(|_| panic!("clock"))
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("bf-retire-{}-{nanos}", std::process::id()));
+        fs::create_dir(&root).unwrap_or_else(|_| panic!("temporary root"));
+        fs::set_permissions(&root, fs::Permissions::from_mode(0o700))
+            .unwrap_or_else(|_| panic!("root permissions"));
+        let mut spec = spec();
+        spec.uid = fs::metadata(&root)
+            .unwrap_or_else(|_| panic!("metadata"))
+            .uid();
+        spec.bundle = root.join("bundle");
+        spec.journal = root.join("journal");
+        let material = root.join("material");
+        let gate_dir = root.join("gate");
+        for path in [&spec.bundle, &spec.journal, &material, &gate_dir] {
+            fs::create_dir(path).unwrap_or_else(|_| panic!("directory"));
+            fs::set_permissions(path, fs::Permissions::from_mode(0o700))
+                .unwrap_or_else(|_| panic!("permissions"));
+        }
+        fs::set_permissions(&spec.bundle, fs::Permissions::from_mode(0o500))
+            .unwrap_or_else(|_| panic!("bundle permissions"));
+        let pipe = MaterialPipe::create(&material, &spec.session_id, spec.uid)
+            .unwrap_or_else(|_| panic!("original material"));
+        spec.material = pipe.directory().to_owned();
+        let gate = SDKGate::create(&gate_dir, spec.uid).unwrap_or_else(|_| panic!("original gate"));
+        let original = retirement_custody(&spec).unwrap_or_else(|_| panic!("original custody"));
+        exclusive_record(&spec, "retirement-custody.json", &original)
+            .unwrap_or_else(|_| panic!("journal"));
+        assert!(exclusive_record(&spec, "retirement-custody.json", &original).is_err());
+        fs::set_permissions(gate.path(), fs::Permissions::from_mode(0o640))
+            .unwrap_or_else(|_| panic!("gate drift"));
+        assert!(retirement_custody(&spec).is_err());
+        fs::set_permissions(gate.path(), fs::Permissions::from_mode(0o600))
+            .unwrap_or_else(|_| panic!("restore gate"));
+        let old = root.join("old-bundle");
+        fs::rename(&spec.bundle, &old).unwrap_or_else(|_| panic!("reassign directory"));
+        fs::create_dir(&spec.bundle).unwrap_or_else(|_| panic!("replacement directory"));
+        fs::set_permissions(&spec.bundle, fs::Permissions::from_mode(0o500))
+            .unwrap_or_else(|_| panic!("replacement permissions"));
+        assert_ne!(retirement_custody(&spec).ok(), Some(original));
+        pipe.retire()
+            .unwrap_or_else(|_| panic!("retire original material"));
+        gate.retire()
+            .unwrap_or_else(|_| panic!("retire original gate"));
+        fs::remove_file(spec.journal.join("retirement-custody.json"))
+            .unwrap_or_else(|_| panic!("remove journal"));
+        for path in [&spec.bundle, &old, &spec.journal, &material, &gate_dir] {
+            fs::remove_dir(path).unwrap_or_else(|_| panic!("remove directory"));
+        }
+        fs::remove_dir(root).unwrap_or_else(|_| panic!("remove root"));
+    }
+
+    #[test]
     fn staged_retirement_rejects_symlinks_hardlinks_and_wrong_custody() {
         use std::os::unix::fs::symlink;
         let nanos = std::time::SystemTime::now()
@@ -503,6 +584,110 @@ fn private_record(spec: &LaunchSpec, name: &str) -> Result<Vec<u8>, GuardianErro
     Ok(raw)
 }
 
+fn exclusive_record(spec: &LaunchSpec, name: &str, value: &Value) -> Result<(), GuardianError> {
+    let raw = serde_json::to_vec(value).map_err(|_| GuardianError::Rejected)?;
+    if raw.is_empty() || raw.len() > 65536 {
+        return Err(GuardianError::Rejected);
+    }
+    let mut file = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC)
+        .open(spec.journal.join(name))
+        .map_err(|_| GuardianError::Uncertain)?;
+    let metadata = file.metadata().map_err(|_| GuardianError::Uncertain)?;
+    if metadata.uid() != spec.uid || metadata.mode() & 0o777 != 0o600 || metadata.nlink() != 1 {
+        return Err(GuardianError::Rejected);
+    }
+    file.write_all(&raw)
+        .and_then(|_| file.sync_all())
+        .map_err(|_| GuardianError::Uncertain)?;
+    File::open(&spec.journal)
+        .and_then(|directory| directory.sync_all())
+        .map_err(|_| GuardianError::Uncertain)
+}
+
+fn retirement_custody(spec: &LaunchSpec) -> Result<Value, GuardianError> {
+    let root = spec.bundle.parent().ok_or(GuardianError::Rejected)?;
+    if spec.material != root.join("material").join(&spec.session_id) {
+        return Err(GuardianError::Rejected);
+    }
+    let mut entries = Vec::new();
+    for (path, kind, mode) in [
+        (spec.bundle.clone(), "directory", 0o500),
+        (root.join("material"), "directory", 0o700),
+        (spec.material.clone(), "directory", 0o700),
+        (spec.material.join("sdk.pipe"), "fifo", 0o600),
+        (root.join("gate"), "directory", 0o700),
+        (root.join("gate/gate.sock"), "socket", 0o600),
+    ] {
+        let metadata = fs::symlink_metadata(&path).map_err(|_| GuardianError::Rejected)?;
+        let valid_type = match kind {
+            "directory" => metadata.is_dir(),
+            "fifo" => metadata.file_type().is_fifo(),
+            "socket" => metadata.file_type().is_socket(),
+            _ => false,
+        };
+        if !valid_type
+            || metadata.uid() != spec.uid
+            || metadata.mode() & 0o777 != mode
+            || (kind != "directory" && metadata.nlink() != 1)
+        {
+            return Err(GuardianError::Rejected);
+        }
+        entries.push(json!({"path":path,"kind":kind,"mode":mode,"device":metadata.dev(),"inode":metadata.ino()}));
+    }
+    Ok(
+        json!({"version":"isolated-original-retirement-custody/v1", "session_id":spec.session_id,
+        "nonce":spec.nonce,"index_sha256":spec.index_sha256,"entries":entries}),
+    )
+}
+
+fn process_gone(pid: u64, ticks: &str) -> Result<bool, GuardianError> {
+    if pid < 2 || ticks.is_empty() || !ticks.bytes().all(|b| b.is_ascii_digit()) {
+        return Err(GuardianError::Rejected);
+    }
+    match fs::read_to_string(format!("/proc/{pid}/stat")) {
+        Ok(text) => Ok(text
+            .rsplit_once(") ")
+            .and_then(|(_, tail)| tail.split_whitespace().nth(19))
+            .ok_or(GuardianError::Rejected)?
+            != ticks),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(true),
+        Err(_) => Err(GuardianError::CleanupRequired),
+    }
+}
+
+fn verify_staged_source(spec: &LaunchSpec, pins: &ArchivePins) -> Result<Value, GuardianError> {
+    for (i, name) in NAMES.iter().enumerate() {
+        let mode = if *name == "workflow" || *name == "adapter" {
+            0o500
+        } else {
+            0o400
+        };
+        if sha256(&staged_bytes(
+            &spec.bundle.join(name),
+            spec.uid,
+            mode,
+            MAX_ARCHIVE,
+        )?) != pins.entries_sha256[i]
+        {
+            return Err(GuardianError::Rejected);
+        }
+    }
+    let raw = staged_bytes(
+        &spec.bundle.join("session-bundle.json"),
+        spec.uid,
+        0o400,
+        65536,
+    )?;
+    if sha256(&raw) != spec.index_sha256 {
+        return Err(GuardianError::Rejected);
+    }
+    serde_json::from_slice(&raw).map_err(|_| GuardianError::Rejected)
+}
+
 fn docker_command() -> Command {
     let mut command = Command::new("/usr/bin/docker");
     command
@@ -655,6 +840,12 @@ pub struct DrainedSession {
 pub struct RetiredSession {
     pub(crate) fence: SessionFence,
     pub(crate) observation: Value,
+}
+
+impl RetiredSession {
+    pub fn observation(&self) -> &Value {
+        &self.observation
+    }
 }
 
 impl DrainedSession {
@@ -939,6 +1130,158 @@ fn kernel_observation(pid: u64) -> Result<KernelObservation, GuardianError> {
 }
 
 impl Guardian {
+    /// The original owner retains exact cleanup identities before admission.
+    /// This does not expose any recovered constructor for channel/material use.
+    pub fn retain_retirement_custody(&self) -> Result<(), GuardianError> {
+        if !self.may_start || self.attachment.is_some() || self.custody_sha256.is_some() {
+            return Err(GuardianError::Rejected);
+        }
+        exclusive_record(
+            &self.spec,
+            "retirement-custody.json",
+            &retirement_custody(&self.spec)?,
+        )
+    }
+
+    /// Consume stop-only custody and an independently observed immutable closed
+    /// Result. No channel or effect is replayed and owner identity is unchanged.
+    pub fn retire_closed_result(
+        self,
+        closed: crate::ClosedResultRecovery,
+        pins: &ArchivePins,
+    ) -> Result<RetiredSession, GuardianError> {
+        if self.may_start || self.attachment.is_some() || self.kernel.is_none() {
+            return Err(GuardianError::Rejected);
+        }
+        if closed.artifact_id != format!("sha256:{}", pins.archive_sha256) {
+            return Err(GuardianError::Rejected);
+        }
+        let spec = self.spec.clone();
+        let fence = closed.fence;
+        let raw = private_record(&spec, "original-custody.json")?;
+        let record: Value = serde_json::from_slice(&raw).map_err(|_| GuardianError::Rejected)?;
+        let observation = &record["observation"];
+        let kernel = self.kernel.as_ref().ok_or(GuardianError::Rejected)?;
+        if record.as_object().map(|o| o.len()) != Some(7)
+            || record["version"] != "isolated-original-custody-journal/v1"
+            || record["session_id"] != spec.session_id
+            || record["nonce"] != spec.nonce
+            || fence.session_id != spec.session_id
+            || record["observation_sha256"] != fence.channel_custody_sha256
+            || sha256(&serde_json::to_vec(observation).map_err(|_| GuardianError::Rejected)?)
+                != fence.channel_custody_sha256
+            || observation["session_id"] != spec.session_id
+            || observation["nonce"] != spec.nonce
+            || observation["container_id"] != self.id
+            || observation["image_id"] != spec.image_id
+            || observation["index_sha256"] != spec.index_sha256
+            || record["owner_pid"] != observation["owner_pid"]
+            || record["owner_start_ticks"] != observation["owner_start_ticks"]
+            || observation["init_pid"] != kernel.pid
+            || observation["init_start_ticks"] != kernel.start_ticks
+            || observation["cgroup"] != kernel.cgroup.to_str().ok_or(GuardianError::Rejected)?
+        {
+            return Err(GuardianError::Rejected);
+        }
+        let owner_pid = record["owner_pid"]
+            .as_u64()
+            .ok_or(GuardianError::Rejected)?;
+        let owner_ticks = record["owner_start_ticks"]
+            .as_str()
+            .ok_or(GuardianError::Rejected)?;
+        if !process_gone(owner_pid, owner_ticks)? {
+            return Err(GuardianError::Rejected);
+        }
+        let snapshot = inspect(&self.id)?;
+        if !spec.matches(&snapshot) || snapshot["State"]["StartedAt"] != observation["started_at"] {
+            return Err(GuardianError::Rejected);
+        }
+        if snapshot["State"]["Running"] == true {
+            let current = kernel_observation(
+                snapshot["State"]["Pid"]
+                    .as_u64()
+                    .ok_or(GuardianError::Rejected)?,
+            )?;
+            if !kernel.same_incarnation(&current) {
+                return Err(GuardianError::Rejected);
+            }
+        }
+        let cli_pid = observation["attached_cli_pid"]
+            .as_u64()
+            .ok_or(GuardianError::Rejected)?;
+        let cli_ticks = observation["attached_cli_start_ticks"]
+            .as_str()
+            .ok_or(GuardianError::Rejected)?;
+        let retirement_raw = private_record(&spec, "retirement-custody.json")?;
+        if observation["retirement_custody_sha256"] != sha256(&retirement_raw) {
+            return Err(GuardianError::Rejected);
+        }
+        let retained: Value =
+            serde_json::from_slice(&retirement_raw).map_err(|_| GuardianError::Rejected)?;
+        if retained != retirement_custody(&spec)? {
+            return Err(GuardianError::Rejected);
+        }
+        let index = verify_staged_source(&spec, pins)?;
+        if sha256(&serde_json::to_vec(&index["binding"]).map_err(|_| GuardianError::Rejected)?)
+            != fence.binding_sha256
+            || index["binding"]["execution_id"] != fence.execution_id
+            || index["binding"]["attempt_id"] != fence.attempt_id
+            || index["binding"]["session_id"] != fence.session_id
+            || index["binding"]["runtime_incarnation_id"] != fence.runtime_incarnation_id
+            || index["binding"]["supervisor_incarnation_id"] != fence.supervisor_incarnation_id
+            || index["artifact"]["artifact_id"] != format!("sha256:{}", pins.archive_sha256)
+        {
+            return Err(GuardianError::Rejected);
+        }
+        // Exclusive durable cleanup intent prevents concurrent recovery/replay.
+        // A failed or uncertain recovery is retained for inspection, not retried.
+        exclusive_record(
+            &spec,
+            "closed-recovery-intent.json",
+            &json!({
+            "version":"isolated-closed-result-recovery/v1","session_id":fence.session_id,
+            "owner_incarnation_id":fence.owner_incarnation_id,"original_owner_pid":owner_pid,
+            "original_owner_start_ticks":owner_ticks,"recovery_pid":std::process::id()}),
+        )?;
+        let mut drained = self.drain()?;
+        if drained["namespace_drained"] != true || drained["container_removed"] != true {
+            return Err(GuardianError::CleanupRequired);
+        }
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while !process_gone(cli_pid, cli_ticks)? {
+            if Instant::now() >= deadline {
+                return Err(GuardianError::CleanupRequired);
+            }
+            thread::sleep(Duration::from_millis(10));
+        }
+        drained["original_cli_reaped_observed"] = json!(true);
+        if retained != retirement_custody(&spec)? {
+            return Err(GuardianError::CleanupRequired);
+        }
+        verify_staged_source(&spec, pins)?;
+        let root = spec.bundle.parent().ok_or(GuardianError::Rejected)?;
+        fs::remove_file(spec.material.join("sdk.pipe"))
+            .map_err(|_| GuardianError::CleanupRequired)?;
+        fs::remove_dir(&spec.material).map_err(|_| GuardianError::CleanupRequired)?;
+        fs::remove_dir(root.join("material")).map_err(|_| GuardianError::CleanupRequired)?;
+        fs::remove_file(root.join("gate/gate.sock")).map_err(|_| GuardianError::CleanupRequired)?;
+        fs::remove_dir(root.join("gate")).map_err(|_| GuardianError::CleanupRequired)?;
+        fs::set_permissions(&spec.bundle, fs::Permissions::from_mode(0o700))
+            .map_err(|_| GuardianError::CleanupRequired)?;
+        for name in NAMES.iter().chain(std::iter::once(&"session-bundle.json")) {
+            fs::remove_file(spec.bundle.join(name)).map_err(|_| GuardianError::CleanupRequired)?;
+        }
+        fs::remove_dir(&spec.bundle).map_err(|_| GuardianError::CleanupRequired)?;
+        Ok(RetiredSession {
+            fence,
+            observation: json!({
+            "version":"bifrost.runtime-resource-settlement/v1","physical_drain":drained,
+            "recovery_kind":"closed-result-original-owner-loss/v1","original_owner_gone":true,
+            "staged_source_removed":true,"material_retired":true,"sdk_gate_retired":true,
+            "index_sha256":spec.index_sha256,"archive_sha256":pins.archive_sha256}),
+        })
+    }
+
     pub fn create(spec: LaunchSpec) -> Result<Self, GuardianError> {
         if !spec.valid(true) {
             return Err(GuardianError::Rejected);
@@ -1242,7 +1585,21 @@ impl Guardian {
             return Err(GuardianError::Rejected);
         }
         retain_kernel(&self.spec, &self.id, &kernel)?;
+        // Optional only for dormant physical probes. Actual admitted source
+        // retirement is journaled by the original owner before this observation
+        // and cryptographically bound to the SQL-retained custody digest.
+        let retirement_custody_sha256 =
+            if self.spec.journal.join("retirement-custody.json").exists() {
+                Some(sha256(&private_record(
+                    &self.spec,
+                    "retirement-custody.json",
+                )?))
+            } else {
+                None
+            };
         let evidence = json!({"version":"isolated-guardian-custody/v1", "session_id":self.spec.session_id,
+            "owner_pid":std::process::id(),"owner_start_ticks":start_ticks(u64::from(std::process::id()))?,
+            "retirement_custody_sha256":retirement_custody_sha256,
             "nonce":self.spec.nonce, "container_id":self.id, "image_id":self.spec.image_id,
             "attached_cli_pid":attachment.child.id(), "attached_cli_start_ticks":start_ticks(u64::from(attachment.child.id()))?,
             "init_pid":kernel.pid, "init_start_ticks":kernel.start_ticks,

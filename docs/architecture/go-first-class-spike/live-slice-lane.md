@@ -233,3 +233,15 @@ the test stack runs, verifies source/staged SHA256 equality, and retains the
 source hash. It does not chmod the checkout, change roles, retry a transaction
 or relax the observation deadline. A fresh complete producer/consumer run is
 required for the corrected candidate.
+
+## Closed Result crash candidate
+
+A fifth case adds actual original-owner SIGKILL after lost Result COMMIT ACK,
+with read-only recovery denial while that owner is alive. The same retained
+logical owner/session/attempt/source identities then permit closing-only Rust
+resource settlement after actual death and exact original custody verification.
+The same accepted Go binary is used; no Result/SDK/material effect is replayed.
+The detailed identity, artifact, journal immutability and common lock-order
+review is in [owner-schema-review.md](owner-schema-review.md#closed-result-owner-crash-recovery-candidate).
+Fresh component, security, source, API and live evidence is required. This is
+not acceptance or a claim that unknown spawn/release or every crash phase works.

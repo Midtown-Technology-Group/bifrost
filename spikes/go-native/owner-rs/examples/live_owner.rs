@@ -7,6 +7,7 @@ use bifrost_isolated_owner_spike::{
     issuer::IssuerChannel,
     live_start::{BeginRequest, admit_and_start},
     material::MaterialPipe,
+    observe_closed_result_recovery,
     peer::OriginalPeer,
     reconcile_committed_result, record_provision_candidate,
     sdk_gate::SDKGate,
@@ -183,6 +184,7 @@ async fn run(config: Value) -> Result<Value, ()> {
         .await
         .map_err(|_| ())?;
     let mut guardian = Guardian::create(spec.clone()).map_err(|_| ())?;
+    guardian.retain_retirement_custody().map_err(|_| ())?;
     let mut admitted_fence = None;
     let mut live_counts = None;
     let mut uncertain_result_commit = false;
@@ -233,6 +235,33 @@ async fn run(config: Value) -> Result<Value, ()> {
     // Every post-launch outcome drains this original container/channel. No
     // recovery object may enter admission, issuance, delivery or Result service.
     let lost_ack = config["lost_result_commit_ack"] == true && uncertain_result_commit;
+    if config["crash_after_result_commit"] == true {
+        if !lost_ack {
+            return Err(());
+        }
+        write_new(
+            &journal.join("result-uncertainty.json"),
+            &serde_json::to_vec(&json!({"version":"isolated-original-result-uncertainty/v1",
+                "session_id":session,"decision_id":config["decision_id"],
+                "result_commit_observation":"lost_ack","result_receipt_sent":false,
+                "counts":live_counts.as_ref().ok_or(())?}))
+            .map_err(|_| ())?,
+            0o600,
+        )?;
+        File::open(&journal)
+            .and_then(|directory| directory.sync_all())
+            .map_err(|_| ())?;
+        emit(
+            &json!({"event":"closed_result_recovery_required","session_id":session,
+            "owner_pid":std::process::id(),"result_commit_observation":"lost_ack",
+            "result_receipt_sent":false}),
+        )?;
+        // Trusted parent deliberately SIGKILLs and waits for this original
+        // actor. No command is accepted and no cleanup/effect is replayed here.
+        loop {
+            std::thread::park();
+        }
+    }
     let (drained, original_drain) = if operation.is_ok() || lost_ack {
         let fence = admitted_fence.as_ref().ok_or(())?;
         let observation = guardian.drain_session(fence).map_err(|_| ())?;
@@ -315,7 +344,7 @@ async fn run(config: Value) -> Result<Value, ()> {
         "runtime_acceptance":false,"production_dispatch":false}),
     )
 }
-fn recover(config: &Value) -> Result<Value, ()> {
+fn recovery_spec(config: &Value) -> Result<LaunchSpec, ()> {
     let root = PathBuf::from(text(config, "root")?);
     let metadata = fs::symlink_metadata(&root).map_err(|_| ())?;
     if !metadata.is_dir()
@@ -348,11 +377,135 @@ fn recover(config: &Value) -> Result<Value, ()> {
         uid: metadata.uid(),
         gid: metadata.gid(),
     };
-    let guardian = Guardian::recover_for_drain(spec).map_err(|_| ())?;
+    Ok(spec)
+}
+
+fn recover(config: &Value) -> Result<Value, ()> {
+    let guardian = Guardian::recover_for_drain(recovery_spec(config)?).map_err(|_| ())?;
     let drained = guardian.drain().map_err(|_| ())?;
     Ok(
         json!({"event":"stop_only_recovery","physical_drain":drained,"runtime_acceptance":false,
         "source_consumer_settlement":false,"lifecycle_finalization":false}),
+    )
+}
+
+fn read_private(path: &Path, uid: u32) -> Result<Value, ()> {
+    let file = OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC)
+        .open(path)
+        .map_err(|_| ())?;
+    let metadata = file.metadata().map_err(|_| ())?;
+    if !metadata.is_file()
+        || metadata.uid() != uid
+        || metadata.mode() & 0o777 != 0o600
+        || metadata.nlink() != 1
+    {
+        return Err(());
+    }
+    let mut raw = Vec::new();
+    file.take(65537).read_to_end(&mut raw).map_err(|_| ())?;
+    if raw.is_empty() || raw.len() > 65536 {
+        return Err(());
+    }
+    serde_json::from_slice(&raw).map_err(|_| ())
+}
+
+async fn recover_closed_result(config: &Value) -> Result<Value, ()> {
+    if std::env::var("BIFROST_ISOLATED_OWNER_TEST").as_deref() != Ok("1") {
+        return Err(());
+    }
+    let started = Instant::now();
+    let spec = recovery_spec(config)?;
+    let descriptor: Value =
+        serde_json::from_slice(&read(Path::new(&text(config, "descriptor")?), 65536)?)
+            .map_err(|_| ())?;
+    let entries = descriptor["entries"]
+        .as_array()
+        .filter(|v| v.len() == 6)
+        .ok_or(())?;
+    let mut pins = ArchivePins {
+        archive_sha256: descriptor["artifact"]["artifact_id"]
+            .as_str()
+            .and_then(|v| v.strip_prefix("sha256:"))
+            .ok_or(())?
+            .into(),
+        entries_sha256: std::array::from_fn(|_| String::new()),
+    };
+    for (i, name) in NAMES.iter().enumerate() {
+        if entries[i]["path"] != *name {
+            return Err(());
+        }
+        pins.entries_sha256[i] = text(&entries[i], "sha256")?;
+    }
+    let archive = read(Path::new(&text(config, "archive")?), MAX_ARCHIVE)?;
+    let contents = verify_archive(&archive, &pins).map_err(|_| ())?;
+    let build: Value = serde_json::from_slice(contents[1]).map_err(|_| ())?;
+    if build["guardian_carrier"]["image_id"] != config["image_id"]
+        || sha256(contents[5]) != "160917deeb94275f31ca9ddee2dacae00fb079fdf54cb60e206c8def261f9c34"
+    {
+        return Err(());
+    }
+    let custody = read_private(&spec.journal.join("original-custody.json"), spec.uid)?;
+    let uncertainty = read_private(&spec.journal.join("result-uncertainty.json"), spec.uid)?;
+    if uncertainty["version"] != "isolated-original-result-uncertainty/v1"
+        || uncertainty["session_id"] != spec.session_id
+        || uncertainty["decision_id"] != config["decision_id"]
+        || uncertainty["result_commit_observation"] != "lost_ack"
+        || uncertainty["result_receipt_sent"] != false
+    {
+        return Err(());
+    }
+    let binding = &config["prepare"]["body"]["binding"];
+    let fence = SessionFence {
+        execution_id: text(binding, "execution_id")?,
+        owner_incarnation_id: text(config, "owner_id")?,
+        attempt_id: text(binding, "attempt_id")?,
+        claim_token: text(config, "claim_token")?,
+        worker_incarnation_id: text(config, "worker_id")?,
+        session_id: spec.session_id.clone(),
+        supervisor_incarnation_id: text(binding, "supervisor_incarnation_id")?,
+        runtime_incarnation_id: text(binding, "runtime_incarnation_id")?,
+        binding_sha256: sha256(&serde_json::to_vec(binding).map_err(|_| ())?),
+        channel_custody_sha256: text(&custody, "observation_sha256")?,
+    };
+    let url = std::env::var("BIFROST_OWNER_TEST_DATABASE_URL").map_err(|_| ())?;
+    let options = PgConnectOptions::from_str(&url).map_err(|_| ())?;
+    let pool = PgPoolOptions::new()
+        .max_connections(1)
+        .acquire_timeout(Duration::from_secs(5))
+        .connect_with(options.statement_cache_capacity(0).extra_float_digits(None))
+        .await
+        .map_err(|_| ())?;
+    let closed = observe_closed_result_recovery(&pool, &fence, &text(config, "decision_id")?)
+        .await
+        .map_err(|_| ())?;
+    let receipt = closed.receipt().clone();
+    let guardian = Guardian::recover_for_drain(spec).map_err(|_| ())?;
+    let retired = guardian
+        .retire_closed_result(closed, &pins)
+        .map_err(|_| ())?;
+    let physical = retired.observation()["physical_drain"].clone();
+    emit(&json!({"event":"resources_retired","session_id":fence.session_id}))?;
+    let ready = parent()?;
+    if ready["event"] != "settlement_ready" || ready["session_id"] != fence.session_id {
+        return Err(());
+    }
+    let settlement = settle_retired_session(&pool, retired)
+        .await
+        .map_err(|_| ())?;
+    pool.close().await;
+    let mut component = uncertainty["counts"].clone();
+    component["receipt"] = receipt;
+    component["result_commit_observation"] = json!("lost_ack");
+    component["result_receipt_sent"] = json!(false);
+    component["reconciled_without_replay"] = json!(true);
+    component["original_owner_crash_recovered"] = json!(true);
+    Ok(
+        json!({"event":"slice_result","component":component,"physical_drain":physical,
+        "source_staging_removed":true,"elapsed_ms":started.elapsed().as_secs_f64()*1000.0,
+        "original_session_drained":true,"resource_settlement":settlement,
+        "runtime_acceptance":false,"production_dispatch":false}),
     )
 }
 
@@ -367,13 +520,22 @@ async fn main() {
     }
     let args: Vec<String> = std::env::args().collect();
     let drain = args.len() == 3 && args[1] == "--drain";
-    if args.len() != 2 && !drain {
+    let closed_recovery = args.len() == 3 && args[1] == "--recover-closed-result";
+    if args.len() != 2 && !drain && !closed_recovery {
         std::process::exit(1);
     }
-    let result = match read(Path::new(if drain { &args[2] } else { &args[1] }), 65536)
-        .and_then(|raw| serde_json::from_slice(&raw).map_err(|_| ()))
+    let result = match read(
+        Path::new(if drain || closed_recovery {
+            &args[2]
+        } else {
+            &args[1]
+        }),
+        65536,
+    )
+    .and_then(|raw| serde_json::from_slice(&raw).map_err(|_| ()))
     {
         Ok(config) if drain => recover(&config),
+        Ok(config) if closed_recovery => recover_closed_result(&config).await,
         Ok(config) => run(config).await,
         Err(()) => Err(()),
     };

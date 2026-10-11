@@ -11,6 +11,34 @@ fn matching_result_projection(root: &str, attempt: &str) -> bool {
     )
 }
 
+/// Closed, immutable Result readback only. No Clone/serde constructor and no
+/// Start/provision/SDK permit. Physical recovery must still prove the original
+/// owner dead and consume its exclusive original custody and resource journals.
+pub struct ClosedResultRecovery {
+    pub(crate) fence: crate::SessionFence,
+    pub(crate) artifact_id: String,
+    receipt: Value,
+}
+
+impl ClosedResultRecovery {
+    pub fn receipt(&self) -> &Value {
+        &self.receipt
+    }
+}
+
+pub async fn observe_closed_result_recovery(
+    pool: &PgPool,
+    fence: &crate::SessionFence,
+    decision_id: &str,
+) -> Result<ClosedResultRecovery, ObserveError> {
+    let (receipt, artifact_id) = read_committed_result(pool, fence, decision_id).await?;
+    Ok(ClosedResultRecovery {
+        fence: fence.clone(),
+        artifact_id,
+        receipt,
+    })
+}
+
 /// Readback after a genuinely lost Result COMMIT acknowledgement. This never
 /// calls accept_result, constructs a ResultReceipt frame or resumes the runtime.
 /// The later settlement writer repeats the complete common lock tail.
@@ -19,6 +47,14 @@ pub async fn reconcile_committed_result(
     fence: &crate::SessionFence,
     decision_id: &str,
 ) -> Result<Value, ObserveError> {
+    Ok(read_committed_result(pool, fence, decision_id).await?.0)
+}
+
+async fn read_committed_result(
+    pool: &PgPool,
+    fence: &crate::SessionFence,
+    decision_id: &str,
+) -> Result<(Value, String), ObserveError> {
     if !crate::canonical_uuid(decision_id) {
         return Err(ObserveError::Rejected);
     }
@@ -45,12 +81,13 @@ pub async fn reconcile_committed_result(
     let receipt = json!({"result_message_id":rows[0].try_get::<String,_>("message")?,
         "result_sha256":rows[0].try_get::<String,_>("result_sha256")?,
         "decision_id":decision_id,"disposition":"accepted","winner":"result"});
+    let artifact_id = locked.artifact_id;
     locked
         .tx
         .commit()
         .await
         .map_err(|_| ObserveError::UncertainCommit)?;
-    Ok(receipt)
+    Ok((receipt, artifact_id))
 }
 
 pub async fn settle_retired_session(
