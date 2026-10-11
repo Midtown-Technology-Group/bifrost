@@ -37,7 +37,20 @@ def _generated_client(session: _SequenceSession):
                 "post": {"responses": {"200": {"description": "OK"}}},
                 "put": {"responses": {"200": {"description": "OK"}}},
                 "patch": {"responses": {"200": {"description": "OK"}}},
-            }
+            },
+            "/api/endpoints/{workflow_id}": {
+                "get": {
+                    "parameters": [
+                        {
+                            "name": "workflow_id",
+                            "in": "path",
+                            "required": True,
+                            "schema": {"type": "string"},
+                        }
+                    ],
+                    "responses": {"200": {"description": "OK"}},
+                }
+            },
         },
     }
     code, _ = sdk_generator.generate_sdk(spec, "retry", "bearer")
@@ -122,3 +135,13 @@ def test_generated_sdk_retries_idempotent_methods(
 
     assert result == {}
     assert len(session.calls) == 2
+
+
+def test_generated_sdk_does_not_retry_workflow_execution_get() -> None:
+    session = _SequenceSession([_response(503), _response(200)])
+    client, sdk_error = _generated_client(session)
+
+    with pytest.raises(sdk_error, match="HTTP 503"):
+        client.get_endpoints("workflow-id")
+
+    assert len(session.calls) == 1

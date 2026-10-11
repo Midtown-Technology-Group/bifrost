@@ -11,6 +11,7 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
+from urllib.parse import urlsplit
 
 import requests
 
@@ -102,6 +103,7 @@ class _{{ class_name }}Client:
     # ambiguous upstream response. Keep automatic retries to HTTP methods whose
     # semantics make repeating the request safe.
     RETRYABLE_METHODS = {"GET", "HEAD", "OPTIONS", "PUT", "DELETE"}
+    NON_REPLAYABLE_PATH_PREFIXES = ("/api/endpoints/",)
 
     def __init__(
         self,
@@ -126,7 +128,11 @@ class _{{ class_name }}Client:
         kwargs.setdefault("timeout", self.timeout)
         last_response = None
         method = method.upper()
-        max_attempts = self.max_retries + 1 if method in self.RETRYABLE_METHODS else 1
+        path = urlsplit(url).path
+        replay_safe = method in self.RETRYABLE_METHODS and not any(
+            path.startswith(prefix) for prefix in self.NON_REPLAYABLE_PATH_PREFIXES
+        )
+        max_attempts = self.max_retries + 1 if replay_safe else 1
 
         for attempt in range(max_attempts):
             response = self.session.request(method, url, **kwargs)
