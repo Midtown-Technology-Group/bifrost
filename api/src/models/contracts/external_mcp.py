@@ -12,6 +12,7 @@ be returned by the API without leaking secrets.
 """
 
 from datetime import datetime
+from ipaddress import ip_address
 from typing import Annotated, Any, Literal
 from urllib.parse import urlsplit
 from uuid import UUID
@@ -20,7 +21,7 @@ from pydantic import BaseModel, BeforeValidator, ConfigDict, Field
 
 
 def validate_streamable_http_url(value: str) -> str:
-    """Require an absolute HTTP(S) endpoint without changing its wire form."""
+    """Require HTTPS except for loopback development endpoints."""
     if not isinstance(value, str) or value != value.strip():
         raise ValueError("MCP server URL must use HTTP or HTTPS")
     try:
@@ -31,6 +32,15 @@ def validate_streamable_http_url(value: str) -> str:
         raise ValueError("MCP server URL must use HTTP or HTTPS") from exc
     if parsed.scheme.lower() not in {"http", "https"} or not hostname:
         raise ValueError("MCP server URL must use HTTP or HTTPS")
+    if parsed.scheme.lower() == "http":
+        is_loopback = hostname.lower() == "localhost"
+        if not is_loopback:
+            try:
+                is_loopback = ip_address(hostname).is_loopback
+            except ValueError:
+                is_loopback = False
+        if not is_loopback:
+            raise ValueError("MCP server URL must use HTTPS unless it is loopback")
     return value
 
 

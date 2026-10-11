@@ -120,6 +120,42 @@ def _http_transport(peer: _NegotiationPeer) -> StreamableHttpTransport:
     )
 
 
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://mcp.example.com/mcp",
+        "http://localhost:8000/mcp",
+        "http://127.0.0.1:8000/mcp",
+        "http://[::1]:8000/mcp",
+    ],
+)
+def test_resolve_server_url_accepts_https_and_loopback_http(url: str) -> None:
+    connection = SimpleNamespace(
+        server_url_override=None,
+        server=SimpleNamespace(server_url=url),
+    )
+
+    assert mcp_client._resolve_server_url(connection) == url
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://mcp.example.com/mcp",
+        "http://10.0.0.5/mcp",
+        "http://100.64.0.5/mcp",
+    ],
+)
+def test_resolve_server_url_rejects_non_loopback_http(url: str) -> None:
+    connection = SimpleNamespace(
+        server_url_override=None,
+        server=SimpleNamespace(server_url=url),
+    )
+
+    with pytest.raises(ValueError, match="must use HTTPS unless it is loopback"):
+        mcp_client._resolve_server_url(connection)
+
+
 @pytest.mark.asyncio
 async def test_fastmcp_auto_negotiates_modern_first() -> None:
     peer = _NegotiationPeer("modern")
