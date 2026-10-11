@@ -77,6 +77,8 @@ jobs:
             > "$RUNNER_TEMP/go-spike-evidence/native-bundle-rust-verification.json"
           sha256sum "$RUNNER_TEMP/native-bundle-owner/runtime-native-bundle-verify" \
             > "$RUNNER_TEMP/go-spike-evidence/native-bundle-rust-verifier.sha256"
+      - name: Live Rust dormant guardian custody and crash drain
+        run: bash spikes/go-native/scripts/live-guardian-check.sh "$RUNNER_TEMP/go-spike-evidence" "$RUNNER_TEMP/native-bundle-owner"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: Midtown-Technology-Group/bifrost
