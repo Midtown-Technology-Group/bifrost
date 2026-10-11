@@ -47,7 +47,7 @@ def test_non_tty_push_prints_progress(monkeypatch, capsys, tmp_path):
             str(tmp_path),
             repo_prefix="app",
             client=_FakeClient(),
-            one_way=True,
+            direction="push",
         )
     )
 

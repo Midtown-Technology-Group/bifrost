@@ -33,7 +33,7 @@ import webbrowser
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from typing import TYPE_CHECKING, Any, TextIO
+from typing import TYPE_CHECKING, Any, Literal, TextIO
 from urllib.parse import parse_qs, urlparse, urlsplit, urlunsplit
 
 if TYPE_CHECKING:
@@ -2429,8 +2429,8 @@ Options:
   --yes, -y             Non-interactive: take default actions, no TUI (alias of --force)
   --help, -h            Show this help message
 
-Non-interactive: pass --yes/-y, set BIFROST_NONINTERACTIVE=1, or run without a
-TTY (e.g. in CI) to skip the selection TUI and apply default actions.
+Plain push is safe in non-interactive shells. For destructive --mirror pushes,
+pass --yes/-y (or set BIFROST_NONINTERACTIVE=1) to approve default actions.
 
 Use 'bifrost watch' for continuous file watching.
 A pushed file lands at the same relative path under _repo, based on the
@@ -2494,7 +2494,7 @@ Examples:
         try:
             return asyncio.run(_sync_files(
                 parsed.local_path, mirror=parsed.mirror, validate=parsed.validate, force=parsed.force,
-                client=client, single_file=single_file, one_way=not parsed.mirror,
+                client=client, single_file=single_file, direction="push",
             ))
         except KeyboardInterrupt:
             return 130
@@ -2529,8 +2529,8 @@ Options:
   --yes, -y             Non-interactive: take default actions, no TUI (alias of --force)
   --help, -h            Show this help message
 
-Non-interactive: pass --yes/-y, set BIFROST_NONINTERACTIVE=1, or run without a
-TTY (e.g. in CI) to skip the selection TUI and apply default actions.
+Non-interactive runs must pass --yes/-y or set BIFROST_NONINTERACTIVE=1 to
+approve the default actions. Redirecting stdin or stdout alone never consents.
 
 Examples:
   bifrost sync
@@ -2574,7 +2574,7 @@ Examples:
         try:
             return asyncio.run(_sync_files(
                 parsed.local_path, mirror=parsed.mirror, validate=parsed.validate, force=parsed.force,
-                client=client,
+                client=client, direction="sync",
             ))
         except KeyboardInterrupt:
             return 130
@@ -2707,13 +2707,14 @@ Arguments:
 Options:
   --mirror              Make local match platform exactly (delete local files not on platform)
   --force               Skip overwrite confirmation prompts
+  --yes, -y             Non-interactive: approve default pull actions
   --help, -h            Show this help message
 
 Overwrite safety:
   - Files with uncommitted git changes trigger a warning
   - Git-tracked files can be recovered from history
   - Non-git files warn about irreversible loss
-  - Use --force to skip all prompts
+  - Headless pulls fail closed unless --force/--yes is passed
 
 Examples:
   bifrost pull
@@ -2727,7 +2728,7 @@ Examples:
     force = False
     mirror = False
     for arg in args:
-        if arg == "--force":
+        if arg in ("--force", "--yes", "-y"):
             force = True
         elif arg == "--mirror":
             mirror = True
@@ -2767,6 +2768,7 @@ Examples:
         try:
             return asyncio.run(_sync_files(
                 local_path, mirror=mirror, force=force, client=client,
+                direction="pull",
             ))
         except KeyboardInterrupt:
             print("\nPull cancelled.")
@@ -2821,9 +2823,24 @@ async def _push_with_precheck(
         repo_prefix = _detect_repo_prefix(path)
 
     if watch:
-        return await _watch_and_push(local_path, repo_prefix=repo_prefix, mirror=mirror, validate=validate, client=client)
+        return await _watch_and_push(
+            local_path,
+            repo_prefix=repo_prefix,
+            mirror=mirror,
+            validate=validate,
+            force=force,
+            client=client,
+        )
     else:
-        return await _sync_files(local_path, repo_prefix=repo_prefix, mirror=mirror, validate=validate, force=force, client=client)
+        return await _sync_files(
+            local_path,
+            repo_prefix=repo_prefix,
+            mirror=mirror,
+            validate=validate,
+            force=force,
+            client=client,
+            direction="push",
+        )
 
 
 class _WatchState:
@@ -3523,6 +3540,7 @@ async def _watch_and_push(
     mirror: bool,
     validate: bool,
     client: "BifrostClient",
+    force: bool = False,
 ) -> int:
     """Watch directory for changes and auto-push."""
     from watchdog.observers import Observer
@@ -3552,7 +3570,13 @@ async def _watch_and_push(
     if not (sys.stdin.isatty() and sys.stdout.isatty()):
         print(f"Initial sync of {path}...", flush=True)
     initial_rc = await _sync_files(
-        str(path), repo_prefix=repo_prefix, mirror=mirror, validate=validate, client=client
+        str(path),
+        repo_prefix=repo_prefix,
+        mirror=mirror,
+        validate=validate,
+        force=force,
+        client=client,
+        direction="push",
     )
     if initial_rc != 0:
         return initial_rc
@@ -3750,7 +3774,7 @@ async def _sync_files(
     force: bool = False,
     client: "BifrostClient | None" = None,
     single_file: str | None = None,
-    one_way: bool = False,
+    direction: Literal["sync", "push", "pull"] = "sync",
 ) -> int:
     """Unified bidirectional sync between local directory and Bifrost platform.
 
@@ -3760,14 +3784,14 @@ async def _sync_files(
     mutation commands (`bifrost orgs`, `bifrost workflows`, etc.); this
     function does not touch `.bifrost/` manifests.
 
-    ``one_way`` (set for plain `bifrost push`) and ``single_file`` (single-file
-    push) both make this a non-interactive one-way push: the per-file selection
-    TUI is never opened and default (push) actions are applied. Only the
-    destructive `--mirror` path or the bidirectional `sync`/`pull` callers keep
-    the interactive TUI. When ``single_file`` is set, ``local_path`` may point
-    at the file itself — the containing directory is used as the sync root.
+    ``direction`` gives each public command a fail-closed action policy: push
+    never downloads server content, pull never uploads local content, and sync
+    remains bidirectional. Plain push can run unattended because all of its
+    actions are uploads. Bidirectional and destructive mirror operations
+    require a TTY or explicit non-interactive consent. When ``single_file`` is
+    set, ``local_path`` may point at the file itself — the containing directory
+    is used as the sync root.
     """
-    push_only = single_file is not None or one_way
     if single_file is not None:
         # Single-file push: anchor the sync root at the file's containing
         # directory so prefix detection and repo keys stay correct whether
@@ -3789,11 +3813,25 @@ async def _sync_files(
     if not repo_prefix:
         repo_prefix = _detect_repo_prefix(path)
 
+    is_tty = _resolve_is_tty()
+    review_required = direction != "push" or mirror
+    explicit_headless_consent = (
+        force or os.environ.get("BIFROST_NONINTERACTIVE") == "1"
+    )
+    if review_required and not is_tty and not explicit_headless_consent:
+        print(
+            "Error: refusing to apply default sync actions without a TTY. "
+            "Pass --yes/--force or set BIFROST_NONINTERACTIVE=1 to approve "
+            "this non-interactive operation.",
+            file=sys.stderr,
+        )
+        return 1
+
     # ── 1. Collect local files ───────────────────────────────────────────
     # Non-TTY (CI, piped, agent-driven) runs get line-oriented progress so a
     # large push never looks hung. Detect once up front so the phase banners
     # can be printed before the slow scan/compare/upload steps.
-    line_progress = push_only and not _resolve_is_tty()
+    line_progress = direction == "push" and not mirror and not is_tty
     if line_progress:
         print("Scanning files...", flush=True)
     files, skipped = _collect_push_files(path, repo_prefix, single_file=single_file)
@@ -3872,6 +3910,7 @@ async def _sync_files(
     # ── 3. Compare files (local vs server) ───────────────────────────────
     spec = _build_file_filter(path)
     sync_items: list[dict[str, Any]] = []
+    unchanged = 0
 
     # Track which server paths we've matched to a local file
     matched_server_paths: set[str] = set()
@@ -3882,14 +3921,16 @@ async def _sync_files(
         server_info = server_metadata.get(repo_path)
 
         if server_info is None:
-            # New locally — not on server
+            if direction == "pull" and not mirror:
+                continue
+            default_action = "delete" if direction == "pull" else "push"
             sync_items.append({
                 "name": rel,
                 "why": "new locally",
                 "modified": _format_file_time(path / rel),
                 "author": "",
-                "default_action": "push",
-                "valid_actions": ["push", "delete", "skip"],
+                "default_action": default_action,
+                "valid_actions": [default_action, "skip"],
                 "section": "files",
                 "repo_path": repo_path,
                 "rel": rel,
@@ -3897,27 +3938,37 @@ async def _sync_files(
             })
         elif (server_info.get("content_hash") or server_info["etag"]) != local_md5:
             matched_server_paths.add(repo_path)
-            # Content differs — check timestamps
             local_file = path / rel
-            try:
-                local_mtime = local_file.stat().st_mtime
-                local_dt = datetime.fromtimestamp(local_mtime, tz=timezone.utc)
-            except OSError:
-                local_dt = datetime.min.replace(tzinfo=timezone.utc)
-
-            try:
-                server_dt = datetime.fromisoformat(server_info["last_modified"])
-                if server_dt.tzinfo is None:
-                    server_dt = server_dt.replace(tzinfo=timezone.utc)
-            except (ValueError, TypeError):
-                server_dt = datetime.min.replace(tzinfo=timezone.utc)
-
-            if local_dt > server_dt:
-                why = "local newer"
+            if direction == "push":
+                why = "differs"
                 default_action = "push"
-            else:
-                why = "server newer"
+                valid_actions = ["push", "skip"]
+            elif direction == "pull":
+                why = "differs"
                 default_action = "pull"
+                valid_actions = ["pull", "skip"]
+            else:
+                # Bidirectional sync alone uses timestamps to choose defaults.
+                try:
+                    local_mtime = local_file.stat().st_mtime
+                    local_dt = datetime.fromtimestamp(local_mtime, tz=timezone.utc)
+                except OSError:
+                    local_dt = datetime.min.replace(tzinfo=timezone.utc)
+
+                try:
+                    server_dt = datetime.fromisoformat(server_info["last_modified"])
+                    if server_dt.tzinfo is None:
+                        server_dt = server_dt.replace(tzinfo=timezone.utc)
+                except (ValueError, TypeError):
+                    server_dt = datetime.min.replace(tzinfo=timezone.utc)
+
+                if local_dt > server_dt:
+                    why = "local newer"
+                    default_action = "push"
+                else:
+                    why = "server newer"
+                    default_action = "pull"
+                valid_actions = ["push", "pull", "skip"]
 
             sync_items.append({
                 "name": rel,
@@ -3925,7 +3976,7 @@ async def _sync_files(
                 "modified": _format_file_time(local_file),
                 "author": server_info.get("updated_by", ""),
                 "default_action": default_action,
-                "valid_actions": ["push", "pull", "skip"],
+                "valid_actions": valid_actions,
                 "section": "files",
                 "repo_path": repo_path,
                 "rel": rel,
@@ -3934,8 +3985,10 @@ async def _sync_files(
         else:
             # Unchanged
             matched_server_paths.add(repo_path)
+            unchanged += 1
 
-    # Server-only files — always show for pull; --mirror adds delete option
+    # Server-only files follow the command direction. A push mirror deletes
+    # them remotely; it never downloads them into the caller's checkout.
     for server_path, server_info in server_metadata.items():
         if server_path in matched_server_paths:
             continue
@@ -3946,31 +3999,36 @@ async def _sync_files(
             continue
         if _should_skip_path(rel, spec, server_path):
             continue
+        if direction == "push":
+            if not mirror:
+                continue
+            default_action = "delete"
+            valid_actions = ["delete", "skip"]
+        elif direction == "pull":
+            default_action = "pull"
+            valid_actions = ["pull", "skip"]
+        else:
+            default_action = "pull"
+            valid_actions = (
+                ["pull", "delete", "skip"] if mirror else ["pull", "skip"]
+            )
         sync_items.append({
             "name": rel,
             "why": "server only",
             "modified": _format_server_time(server_info.get("last_modified", "")),
             "author": server_info.get("updated_by", ""),
-            "default_action": "pull",
-            "valid_actions": ["pull", "delete", "skip"] if mirror else ["pull", "skip"],
+            "default_action": default_action,
+            "valid_actions": valid_actions,
             "section": "files",
             "repo_path": server_path,
             "rel": rel,
             "_content": "",
         })
 
-    if push_only:
-        sync_items = [
-            item for item in sync_items
-            if item.get("default_action") == "push"
-        ]
-
     # ── 4. Check if there's anything to sync ─────────────────────────────
     if not sync_items:
         print("Already up to date.")
         return 0
-
-    unchanged = len(regular_files) - len(sync_items)
 
     if line_progress:
         print(f"Scanned {len(regular_files)} files, {unchanged} unchanged", flush=True)
@@ -3981,17 +4039,15 @@ async def _sync_files(
         subtitle += f", {skipped} skipped"
 
     # ── 6. Interactive TUI or auto-accept ────────────────────────────────
-    is_tty = _resolve_is_tty()
     # _use_tui is the single source of truth for both the selection TUI (below)
     # AND the progress TUI (further down). When --yes/-y (force), or
     # BIFROST_NONINTERACTIVE=1, or no TTY, we must use NEITHER — the progress TUI
     # blocks on "press Enter" when a file errors, which would hang an unattended
     # run despite skipping the selection TUI (criterion 17).
-    # One-way push (plain `bifrost push` or a single-file push) is never
-    # interactive — it always applies default (push) actions. Only the
-    # destructive --mirror path and the bidirectional sync/pull callers reach
-    # the selection/progress TUI.
-    _use_tui = (not push_only) and _sync_use_tui(force=force, is_tty=is_tty)
+    # Plain push is never interactive because every action is an upload.
+    # Destructive mirrors and bidirectional/pull commands require review or
+    # the explicit headless consent checked above.
+    _use_tui = review_required and _sync_use_tui(force=force, is_tty=is_tty)
 
     if not _use_tui:
         # Auto-accept: use default actions

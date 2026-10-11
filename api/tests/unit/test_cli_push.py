@@ -8,10 +8,19 @@ def test_push_accepts_single_file(tmp_path, monkeypatch):
     f.write_text("x = 1\n")
     captured = {}
 
-    async def fake_sync(local_path, *, mirror, validate, force, client, single_file=None, one_way=False):
+    async def fake_sync(
+        local_path,
+        *,
+        mirror,
+        validate,
+        force,
+        client,
+        single_file=None,
+        direction="sync",
+    ):
         captured["single_file"] = single_file
         captured["local_path"] = local_path
-        captured["one_way"] = one_way
+        captured["direction"] = direction
         return 0
 
     monkeypatch.setattr(cli, "_sync_files", fake_sync)
@@ -141,7 +150,7 @@ async def test_push_only_drops_pull_items_before_auto_accept(tmp_path, monkeypat
         mirror=False,
         force=False,
         client=client,
-        one_way=True,
+        direction="push",
     )
 
     assert rc == 0
@@ -149,3 +158,106 @@ async def test_push_only_drops_pull_items_before_auto_accept(tmp_path, monkeypat
     assert not (tmp_path / "remote.py").exists()
     out = capsys.readouterr().out
     assert "to pull" not in out
+
+
+@pytest.mark.asyncio
+async def test_headless_sync_requires_explicit_consent(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(cli, "_resolve_is_tty", lambda: False)
+    monkeypatch.delenv("BIFROST_NONINTERACTIVE", raising=False)
+
+    class NoNetworkClient:
+        async def post(self, *_args, **_kwargs):
+            raise AssertionError("refusal must happen before the server is contacted")
+
+    rc = await cli._sync_files(
+        str(tmp_path),
+        force=False,
+        client=NoNetworkClient(),
+        direction="sync",
+    )
+
+    assert rc == 1
+    assert "refusing to apply default sync actions without a TTY" in capsys.readouterr().err
+
+
+@pytest.mark.asyncio
+async def test_headless_sync_accepts_explicit_environment_consent(tmp_path, monkeypatch):
+    monkeypatch.setattr(cli, "_resolve_is_tty", lambda: False)
+    monkeypatch.setenv("BIFROST_NONINTERACTIVE", "1")
+
+    class EmptyResponse:
+        status_code = 200
+
+        @staticmethod
+        def json():
+            return {"files_metadata": []}
+
+    class EmptyClient:
+        async def post(self, url, *_args, **_kwargs):
+            assert url == "/api/files/list"
+            return EmptyResponse()
+
+    assert await cli._sync_files(
+        str(tmp_path),
+        force=False,
+        client=EmptyClient(),
+        direction="sync",
+    ) == 0
+
+
+@pytest.mark.asyncio
+async def test_push_mirror_deletes_remote_only_files_without_pulling(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(cli, "_resolve_is_tty", lambda: False)
+
+    class FakeResp:
+        def __init__(self, status_code, payload=None):
+            self.status_code = status_code
+            self._payload = payload or {}
+
+        def json(self):
+            return self._payload
+
+    class FakeClient:
+        def __init__(self):
+            self.calls = []
+
+        async def post(self, url, *args, **kwargs):
+            self.calls.append((url, kwargs.get("json")))
+            if url == "/api/files/list":
+                return FakeResp(
+                    200,
+                    {
+                        "files_metadata": [
+                            {
+                                "path": "remote.py",
+                                "etag": "server-md5",
+                                "last_modified": "2026-01-01T00:00:00+00:00",
+                                "updated_by": "server",
+                            }
+                        ]
+                    },
+                )
+            if url == "/api/files/delete":
+                return FakeResp(204)
+            if url == "/api/files/read":
+                raise AssertionError("push --mirror must never download server files")
+            return FakeResp(200, {})
+
+    client = FakeClient()
+    rc = await cli._sync_files(
+        str(tmp_path),
+        mirror=True,
+        force=True,
+        client=client,
+        direction="push",
+    )
+
+    assert rc == 0
+    assert not (tmp_path / "remote.py").exists()
+    assert [
+        payload["path"]
+        for url, payload in client.calls
+        if url == "/api/files/delete"
+    ] == ["remote.py"]

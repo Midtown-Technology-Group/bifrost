@@ -597,8 +597,9 @@ def test_push_sync_and_pull_dispatch_to_sync_files(monkeypatch, tmp_path):
     assert calls[-1][2]["validate"] is True
     assert calls[-1][2]["force"] is True
     assert calls[-1][2]["client"] is client
+    assert calls[-1][2]["direction"] == "sync"
     assert calls[-1][2]["single_file"] == str(file_path)
-    assert calls[-1][2]["one_way"] is False
+    assert calls[-1][2]["direction"] == "push"
 
     assert cli.handle_sync([str(root), "--mirror", "--validate", "--yes"]) == 42
     assert calls[-1][1] == str(root)
@@ -612,6 +613,7 @@ def test_push_sync_and_pull_dispatch_to_sync_files(monkeypatch, tmp_path):
     assert calls[-1][2]["mirror"] is True
     assert calls[-1][2]["force"] is True
     assert calls[-1][2]["client"] is client
+    assert calls[-1][2]["direction"] == "pull"
     assert {action for _, action in locks if isinstance(action, str)} == {
         "push",
         "sync",
