@@ -1,4 +1,5 @@
-"""ASGI request-body limits for routes which receive large multipart uploads."""
+"""Early ASGI request-body limits for routes with bounded payload contracts."""
+
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
@@ -19,11 +20,18 @@ class _BodyTooLarge(Exception):
 
 
 class RouteBodyLimitMiddleware:
-    """Reject selected request bodies before multipart parsing can spool them."""
+    """Reject selected request bodies before framework-level parsing."""
 
-    def __init__(self, app: ASGIApp, *, limits: dict[tuple[str, str], int]) -> None:
+    def __init__(
+        self,
+        app: ASGIApp,
+        *,
+        limits: dict[tuple[str, str], int],
+        detail: str = "Solution archive exceeds the compressed upload limit.",
+    ) -> None:
         self.app = app
         self.limits = limits
+        self.detail = detail
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http":
@@ -36,7 +44,11 @@ class RouteBodyLimitMiddleware:
             return
 
         content_length = next(
-            (value for name, value in scope.get("headers", []) if name.lower() == b"content-length"),
+            (
+                value
+                for name, value in scope.get("headers", [])
+                if name.lower() == b"content-length"
+            ),
             None,
         )
         if content_length is not None:
@@ -64,10 +76,9 @@ class RouteBodyLimitMiddleware:
         except _BodyTooLarge:
             await self._reject(scope, receive, send)
 
-    @staticmethod
-    async def _reject(scope: Scope, receive: Receive, send: Send) -> None:
+    async def _reject(self, scope: Scope, receive: Receive, send: Send) -> None:
         response = JSONResponse(
             status_code=413,
-            content={"detail": "Solution archive exceeds the compressed upload limit."},
+            content={"detail": self.detail},
         )
         await response(scope, receive, send)
