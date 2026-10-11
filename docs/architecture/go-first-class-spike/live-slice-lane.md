@@ -223,3 +223,13 @@ original lane omitted the helper's stderr from retained evidence; the next
 revision observes helper death directly and retains its first-party diagnostics,
 with unchanged45s observation deadlines and no transaction/launch retry.
 Crash recovery, uncertain spawn/commit and runtime acceptance remain unproved.
+
+Run38120035383 (`82a75b0960f902d545847c0b93ba3ff773710edd`) retained the
+original helper failure: UID1000 could not read the proxy script through the
+runner checkout (`Errno13 Permission denied`). It reached no fourth owner ingress
+and proves no lost acknowledgement. The correction stages only that fixed
+first-party script as UID1000-owned0400 in the existing0700 slice root before
+the test stack runs, verifies source/staged SHA256 equality, and retains the
+source hash. It does not chmod the checkout, change roles, retry a transaction
+or relax the observation deadline. A fresh complete producer/consumer run is
+required for the corrected candidate.

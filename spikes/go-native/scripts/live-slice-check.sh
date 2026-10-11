@@ -28,6 +28,15 @@ for entry in descriptor.json native-bundle-descriptor.json native-bundle.tar wor
   sudo install -m 400 -o 1000 -g 1000 "$native_dir/$entry" "$slice_root/native/$entry"
 done
 sudo install -m 500 -o 1000 -g 1000 "$owner_dir/runtime-live-owner" "$slice_root/runtime-live-owner"
+# The test stack may restrict checkout directories to its own UID. Stage only
+# this fixed first-party helper under the original launcher's private root;
+# never broaden repository permissions or give the helper a credential env.
+proxy_source=api/src/services/isolated_runtime_commit_ack_loss.py
+sudo install -m 400 -o 1000 -g 1000 "$proxy_source" "$slice_root/commit-ack-proxy.py"
+proxy_source_sha=$(sha256sum "$proxy_source" | cut -d ' ' -f1)
+proxy_staged_sha=$(sudo sha256sum "$slice_root/commit-ack-proxy.py" | cut -d ' ' -f1)
+test "$proxy_source_sha" = "$proxy_staged_sha"
+printf '%s  %s\n' "$proxy_source_sha" "$proxy_source" > "$evidence_dir/commit-ack-proxy-source.sha256"
 carrier_tag="bifrost-go-native-carrier:${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
 if docker image inspect "$carrier_tag" >/dev/null 2>&1; then exit 1; fi
 carrier_loaded=0

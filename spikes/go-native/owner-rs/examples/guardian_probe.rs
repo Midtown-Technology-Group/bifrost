@@ -408,7 +408,7 @@ fn run_case(spec: LaunchSpec, mode: &str) -> Result<Value, ()> {
                 // The killed original owner, not recovery, persisted this
                 // observation before admission could occur. Verify retained
                 // bytes against the independently observed original custody.
-                let mut record_file = OpenOptions::new()
+                let record_file = OpenOptions::new()
                     .read(true)
                     .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC)
                     .open(spec.journal.join("original-custody.json"))
@@ -423,7 +423,13 @@ fn run_case(spec: LaunchSpec, mode: &str) -> Result<Value, ()> {
                     return Err(());
                 }
                 let mut retained = Vec::new();
-                record_file.read_to_end(&mut retained).map_err(|_| ())?;
+                record_file
+                    .take(65537)
+                    .read_to_end(&mut retained)
+                    .map_err(|_| ())?;
+                if retained.is_empty() || retained.len() > 65536 {
+                    return Err(());
+                }
                 let record: Value = serde_json::from_slice(&retained).map_err(|_| ())?;
                 if record["version"] != "isolated-original-custody-journal/v1"
                     || record["session_id"] != spec.session_id

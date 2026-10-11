@@ -63,7 +63,7 @@ for case_number in 0 1 2 3; do
   if [[ "$case_number" = 3 ]]; then
     session=$(jq -er '.prepare.body.binding.session_id' "$case_dir/owner-config.json")
     env -i PATH=/usr/bin:/bin BIFROST_ISOLATED_COMMIT_ACK_TEST=1 \
-      python3 api/src/services/isolated_runtime_commit_ack_loss.py "$pool_ip" "$case_dir" "$session" \
+      python3 "$slice_root/commit-ack-proxy.py" "$pool_ip" "$case_dir" "$session" \
       > "$case_dir/commit-ack-proxy.log" 2>&1 &
     proxy_pid=$!
     # Observe the original helper, not just a file: a failed launch must retain
