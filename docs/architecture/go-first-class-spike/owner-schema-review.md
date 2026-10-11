@@ -480,3 +480,35 @@ obligations for inspection. It does not resume execution, renew authority or
 retry an uncertain mutation. Fresh hosted nine-case/source/security/race proof
 is required. The candidate adds no schema, role privilege, runtime wire message,
 production route, Python-owned change or second lifecycle state machine.
+
+
+## Actual Docker create acknowledgement-loss candidate
+
+At `50ccb0ef3432b39f939e0e6e361e4299f2681478`, the hosted guardian probe
+uses a first-party, private Unix socket proxy for one Docker create request.
+It verifies the exact session name, nonce labels and pinned carrier image,
+forwards the request to the real daemon, retains its HTTP201/container identity,
+and closes the client connection before forwarding the response. Request-count
+evidence must prove that Docker's client did not replay the create.
+
+The Rust constructor must return Uncertain. Its already-exclusive launch intent
+must deny fresh creation; stop-only recovery must deny attachment/Start and drain
+the exact daemon-returned container. The proxy process is killed and waited, and
+its socket/directory removed. The prior discarded-returned-handle case is now
+named `discarded-create-handle`; historical reports keep their original names.
+It was never evidence of an actual withheld daemon reply.
+
+The transport override is fixture-only and requires the isolated flag, exact
+session path, matching UID, private directory and mode0600 socket. Default
+launch, lifecycle transactions, credential scope and the Go binary are unchanged.
+This proves resource-creation uncertainty only when fresh hosted evidence passes:
+no tenant Start, SDK material or durable result is claimed for this physical case.
+The existing nine-case SQL/API slice remains independently required.
+
+Validation is pending at this source. Earlier green evidence does not qualify
+this candidate. Interrupted partial source retirement remains unproved: an
+exclusive recovery intent currently denies retry after uncertainty, preserves
+obligations and grants no retirement token or successful finalization. A new
+closing actor must not infer completion from missing paths or recreate a token.
+Human review of the common writer/schema/identity/lock order and acceptance of
+the required runtime evidence remain separate from isolated implementation.
