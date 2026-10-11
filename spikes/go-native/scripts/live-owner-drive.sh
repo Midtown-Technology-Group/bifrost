@@ -9,6 +9,7 @@ pool_ip=$3
 owner_pid=''
 owner_input=''
 owner_output=''
+proxy_pid=''
 case_dir=''
 cleanup_owner() {
   original=$?
@@ -25,6 +26,10 @@ cleanup_owner() {
       env -i PATH=/usr/bin:/bin "$owner_binary" --drain "$case_dir/owner-config.json" \
         > "$case_dir/stop-only-recovery.json" || exit 1
     fi
+  fi
+  if [[ -n "$proxy_pid" ]]; then
+    kill -TERM "$proxy_pid" 2>/dev/null || true
+    wait "$proxy_pid" || exit 1
   fi
   exit "$original"
 }
@@ -50,12 +55,24 @@ receive_event() {
   test "$(jq -er '.event' "$target.new")" = "$event"
   mv "$target.new" "$target"
 }
-for case_number in 0 1 2; do
+for case_number in 0 1 2 3; do
   case_dir="$slice_root/$case_number"
   wait_file "$case_dir/launch-ready.json"
+  database_target=$pool_ip
+  database_suffix=''
+  if [[ "$case_number" = 3 ]]; then
+    session=$(jq -er '.prepare.body.binding.session_id' "$case_dir/owner-config.json")
+    env -i PATH=/usr/bin:/bin BIFROST_ISOLATED_COMMIT_ACK_TEST=1 \
+      python3 api/src/services/isolated_runtime_commit_ack_loss.py "$pool_ip" "$case_dir" "$session" \
+      > "$case_dir/commit-ack-proxy.log" 2>&1 &
+    proxy_pid=$!
+    wait_file "$case_dir/commit-ack-proxy-ready.json"
+    database_target="127.0.0.1:$(jq -er '.port' "$case_dir/commit-ack-proxy-ready.json")"
+    database_suffix='?sslmode=disable'
+  fi
   coproc ORIGINAL_OWNER { exec env -i PATH=/usr/bin:/bin \
     BIFROST_ISOLATED_OWNER_TEST=1 \
-    "BIFROST_OWNER_TEST_DATABASE_URL=postgresql://wex_core:synthetic_primer_core@$pool_ip/bifrost_test" \
+    "BIFROST_OWNER_TEST_DATABASE_URL=postgresql://wex_core:synthetic_primer_core@$database_target/bifrost_test$database_suffix" \
     "$owner_binary" "$case_dir/owner-config.json"; }
   owner_pid=$ORIGINAL_OWNER_PID
   exec {owner_input}>&"${ORIGINAL_OWNER[1]}"
@@ -85,6 +102,11 @@ for case_number in 0 1 2; do
   printf '{"event":"owner_exited","pid":%s,"exit_code":0}\n' "$owner_pid" > "$case_dir/owner-exited.json.new"
   mv "$case_dir/owner-exited.json.new" "$case_dir/owner-exited.json"
   owner_pid=''
+  if [[ -n "$proxy_pid" ]]; then
+    kill -TERM "$proxy_pid"
+    wait "$proxy_pid"
+    proxy_pid=''
+  fi
   wait_file "$case_dir/fixture-finished.json"
 done
 wait_file "$slice_root/live-proof.json"

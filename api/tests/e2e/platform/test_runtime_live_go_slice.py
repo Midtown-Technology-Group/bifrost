@@ -326,15 +326,16 @@ async def test_original_rust_owner_runs_unchanged_go_and_cancels_waiting_sdk(
         )
     )
     proofs = []
-    for number in range(3):
+    for number in range(4):
         cancel_waiting_sdk = number == 2
+        lost_result_commit_ack = number == 3
         case = root / str(number)
         case.mkdir(mode=0o700)
         runtime_root = case / "execution"
         runtime_root.mkdir(mode=0o700)
         expected_result = {
-            "ready": number == 0,
-            "missing_keys": [] if number == 0 else ["timezone"],
+            "ready": number != 1,
+            "missing_keys": ["timezone"] if number == 1 else [],
         }
         required_keys = ["region", " region ", ""] + (
             ["timezone"] if number == 1 else []
@@ -411,6 +412,7 @@ async def test_original_rust_owner_runs_unchanged_go_and_cancels_waiting_sdk(
             "workflow_id": str(workflow),
             "caller_id": str(platform_admin.user_id),
             "cancel_waiting_sdk": cancel_waiting_sdk,
+            "lost_result_commit_ack": lost_result_commit_ack,
         }
         for key in (
             "owner_id",
@@ -472,7 +474,7 @@ async def test_original_rust_owner_runs_unchanged_go_and_cancels_waiting_sdk(
         async def count_response(request, call_next):
             response = await call_next(request)
             sdk_statuses.append(response.status_code)
-            if cancel_waiting_sdk:
+            if cancel_waiting_sdk or lost_result_commit_ack:
                 response_held.set()
                 await release_response.wait()
             return response
@@ -603,6 +605,15 @@ async def test_original_rust_owner_runs_unchanged_go_and_cancels_waiting_sdk(
                     case / "cancel-ready.json",
                     {"event": "cancel_ready", "session_id": str(session)},
                 )
+            if lost_result_commit_ack:
+                async with asyncio.timeout(45):
+                    await response_held.wait()
+                assert sdk_statuses == [200] and not release_response.is_set()
+                publish(
+                    case / "commit-ack-arm.json",
+                    {"event": "arm_commit_ack_loss", "session_id": str(session)},
+                )
+                release_response.set()
             retired = await observation(case / "owner-resources-retired.json")
             assert retired == {"event": "resources_retired", "session_id": str(session)}
             assert (
@@ -718,6 +729,24 @@ async def test_original_rust_owner_runs_unchanged_go_and_cancels_waiting_sdk(
             )
             assert response.status_code == 200
             public = response.json()
+            if lost_result_commit_ack:
+                dropped = await observation(case / "commit-ack-dropped.json")
+                assert dropped["session_id"] == str(session)
+                assert dropped["event"] == "commit_ack_dropped"
+                assert dropped["server_commit_observed"] is True
+                assert dropped["client_commit_ack_forwarded"] is False
+                assert result["component"]["result_commit_observation"] == "lost_ack"
+                assert result["component"]["result_receipt_sent"] is False
+                assert result["component"]["reconciled_without_replay"] is True
+                stopped_proxy = await observation(
+                    case / "commit-ack-proxy-stopped.json"
+                )
+                assert stopped_proxy == {
+                    "event": "commit_ack_proxy_stopped",
+                    "session_id": str(session),
+                    "connections_remaining": 0,
+                    "dropped": True,
+                }
             if cancel_waiting_sdk:
                 assert public["status"] == "Cancelled" and public["result"] is None
                 component = result["component"]
@@ -832,6 +861,8 @@ async def test_original_rust_owner_runs_unchanged_go_and_cancels_waiting_sdk(
                         "artifact_id": descriptor["artifact"]["artifact_id"],
                         "sdk_statuses": sdk_statuses,
                         "receipt": retained_receipt,
+                        "result_commit_ack_lost": lost_result_commit_ack,
+                        "result_receipt_sent": not lost_result_commit_ack,
                         "result_sha256": receipt["result_sha256"],
                         "public_status": public["status"],
                         "public_result": public["result"],
@@ -852,7 +883,7 @@ async def test_original_rust_owner_runs_unchanged_go_and_cancels_waiting_sdk(
             private.unlink()
             keys.rmdir()
         publish(case / "fixture-finished.json", {"event": "fixture_finished"})
-    assert len(proofs) == 3 and len({proof["artifact_id"] for proof in proofs}) == 1
+    assert len(proofs) == 4 and len({proof["artifact_id"] for proof in proofs}) == 1
     publish(
         root / "live-proof.json",
         {

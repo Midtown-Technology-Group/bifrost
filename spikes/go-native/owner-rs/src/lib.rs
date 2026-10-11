@@ -33,7 +33,7 @@ pub use release::{
     ReleaseCommitObservation, ReleaseRequest, observe_release_candidate, record_release_candidate,
 };
 #[cfg(target_os = "linux")]
-pub use resources::settle_retired_session;
+pub use resources::{reconcile_committed_result, settle_retired_session};
 pub use result::{ResultDecision, accept_result};
 pub use sdk::{
     FiniteIssuanceAdmission, IntegrationGetAdmission, IntegrationGetRequest,

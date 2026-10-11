@@ -8,6 +8,8 @@ on:
       - api/src/models/orm/runtime_execution.py
       - api/src/services/runtime_source_consumers.py
       - api/src/services/solution_source_accountability.py
+      - api/src/services/isolated_runtime_commit_ack_loss.py
+      - api/tests/unit/services/test_isolated_runtime_commit_ack_loss.py
       - api/src/core/runtime_sdk_credentials.py
       - api/src/services/isolated_runtime_sdk_tokens.py
       - api/src/services/isolated_runtime_sdk_bridge.py
@@ -71,6 +73,8 @@ jobs:
             api/src/models/orm/runtime_execution.py \
             api/src/services/runtime_source_consumers.py \
             api/src/services/solution_source_accountability.py \
+            api/src/services/isolated_runtime_commit_ack_loss.py \
+            api/tests/unit/services/test_isolated_runtime_commit_ack_loss.py \
             api/src/core/runtime_sdk_credentials.py \
             api/src/services/isolated_runtime_sdk_tokens.py \
             api/src/services/isolated_runtime_sdk_bridge.py \

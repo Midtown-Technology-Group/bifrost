@@ -63,6 +63,10 @@ pub struct LiveStart {
     runtime_deadline: Instant,
     serving_attempted: bool,
     sdk_admission_observed: bool,
+    observed_sdk_admissions: u32,
+    observed_sdk_denials: u32,
+    observed_heartbeats: u32,
+    observed_log_batches: u32,
 }
 impl LiveStart {
     /// One process-local attempt on the original guardian. A failed/uncertain
@@ -314,8 +318,14 @@ impl LiveStart {
                 .await
                 .map_err(|_| BeginError::Rejected)?
             {
-                Some(true) => sdk_admissions += 1,
-                Some(false) => sdk_denials += 1,
+                Some(true) => {
+                    sdk_admissions += 1;
+                    self.observed_sdk_admissions += 1;
+                }
+                Some(false) => {
+                    sdk_denials += 1;
+                    self.observed_sdk_denials += 1;
+                }
                 None => {}
             }
             if Instant::now() >= self.runtime_deadline {
@@ -328,11 +338,15 @@ impl LiveStart {
                 RuntimeObservation::Waiting => {
                     tokio::time::sleep(Duration::from_millis(2)).await;
                 }
-                RuntimeObservation::Heartbeat => heartbeats += 1,
+                RuntimeObservation::Heartbeat => {
+                    heartbeats += 1;
+                    self.observed_heartbeats += 1;
+                }
                 RuntimeObservation::LogBatch(_) => {
                     // Do not persist/print untrusted text here. Accepted bounded
                     // log redaction/persistence remains a parent responsibility.
                     log_batches += 1;
+                    self.observed_log_batches += 1;
                 }
                 RuntimeObservation::ResultCommitted(decision) => {
                     return Ok(LiveResult {
@@ -349,6 +363,14 @@ impl LiveStart {
 
     pub fn fence(&self) -> &SessionFence {
         &self.fence
+    }
+
+    /// Actual original-actor counts survive a failed Result commit observation;
+    /// they neither establish a durable outcome nor permit another service call.
+    pub fn observed_counts(&self) -> Value {
+        json!({"sdk_admissions":self.observed_sdk_admissions,
+            "sdk_denials":self.observed_sdk_denials,"heartbeats":self.observed_heartbeats,
+            "log_batches":self.observed_log_batches})
     }
     pub fn prepare(&self) -> &Value {
         &self.prepare
@@ -671,6 +693,10 @@ pub async fn admit_and_start(
         runtime_deadline,
         serving_attempted: false,
         sdk_admission_observed: false,
+        observed_sdk_admissions: 0,
+        observed_sdk_denials: 0,
+        observed_heartbeats: 0,
+        observed_log_batches: 0,
     })
 }
 

@@ -4,6 +4,55 @@ use crate::{ObserveError, archive::sha256, guardian::RetiredSession, lock_sessio
 use serde_json::{Value, json};
 use sqlx::{PgPool, Row};
 
+fn matching_result_projection(root: &str, attempt: &str) -> bool {
+    matches!(
+        (root, attempt),
+        ("Success", "succeeded") | ("Failed", "failed")
+    )
+}
+
+/// Readback after a genuinely lost Result COMMIT acknowledgement. This never
+/// calls accept_result, constructs a ResultReceipt frame or resumes the runtime.
+/// The later settlement writer repeats the complete common lock tail.
+pub async fn reconcile_committed_result(
+    pool: &PgPool,
+    fence: &crate::SessionFence,
+    decision_id: &str,
+) -> Result<Value, ObserveError> {
+    if !crate::canonical_uuid(decision_id) {
+        return Err(ObserveError::Rejected);
+    }
+    let mut locked = lock_session_state(pool, fence, true).await?;
+    if !locked.closed
+        || locked.close_reason.as_deref() != Some("result_committed")
+        || !matching_result_projection(&locked.execution_status, &locked.attempt_status)
+        || !locked.attempt_completed
+    {
+        return Err(ObserveError::Rejected);
+    }
+    // Immutable receipt/Start facts can be independently read under the session
+    // serialization point without taking a new, reversed receipt mutation lock.
+    let rows = sqlx::query("SELECT r.result_message_id::text AS message,r.result_sha256,r.decision_id::text AS decision,r.disposition,r.winner FROM runtime_report_receipts r JOIN runtime_starts s ON s.id=r.committed_start_id AND s.session_id=r.session_id AND s.start_message_id=r.start_message_id WHERE r.session_id=$1::text::uuid AND s.execution_id=$2::text::uuid AND s.owner_incarnation_id=$3::text::uuid AND s.workflow_attempt_id=$4::text::uuid")
+        .bind(&fence.session_id).bind(&fence.execution_id).bind(&fence.owner_incarnation_id).bind(&fence.attempt_id)
+        .fetch_all(&mut *locked.tx).await?;
+    if rows.len() != 1
+        || rows[0].try_get::<String, _>("decision")? != decision_id
+        || rows[0].try_get::<String, _>("disposition")? != "accepted"
+        || rows[0].try_get::<String, _>("winner")? != "result"
+    {
+        return Err(ObserveError::Rejected);
+    }
+    let receipt = json!({"result_message_id":rows[0].try_get::<String,_>("message")?,
+        "result_sha256":rows[0].try_get::<String,_>("result_sha256")?,
+        "decision_id":decision_id,"disposition":"accepted","winner":"result"});
+    locked
+        .tx
+        .commit()
+        .await
+        .map_err(|_| ObserveError::UncertainCommit)?;
+    Ok(receipt)
+}
+
 pub async fn settle_retired_session(
     pool: &PgPool,
     retired: RetiredSession,
@@ -22,8 +71,7 @@ pub async fn settle_retired_session(
                 || locked.attempt_completed))
         || (!cancelled
             && (locked.close_reason.as_deref() != Some("result_committed")
-                || !matches!(locked.execution_status.as_str(), "Success" | "Failed")
-                || !matches!(locked.attempt_status.as_str(), "succeeded" | "failed")
+                || !matching_result_projection(&locked.execution_status, &locked.attempt_status)
                 || !locked.attempt_completed))
     {
         return Err(ObserveError::Rejected);
@@ -115,4 +163,25 @@ pub async fn settle_retired_session(
         "durable_source_settlement":true,"durable_cancelled_finalization":cancelled,
         "runtime_acceptance":false,"production_dispatch":false}),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::matching_result_projection;
+
+    #[test]
+    fn reconciliation_rejects_crossed_or_nonterminal_outcomes() {
+        assert!(matching_result_projection("Success", "succeeded"));
+        assert!(matching_result_projection("Failed", "failed"));
+        for (root, attempt) in [
+            ("Success", "failed"),
+            ("Failed", "succeeded"),
+            ("Running", "succeeded"),
+            ("Cancelled", "cancelled"),
+            ("Success", "running"),
+            ("Success", "worker_lost"),
+        ] {
+            assert!(!matching_result_projection(root, attempt));
+        }
+    }
 }

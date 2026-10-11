@@ -260,3 +260,36 @@ content is changed. Relevant #1011, #1024 and #1132 heads remain respectively
 `93ec9421b23b0b4a1493ab45f15f55ded3377d2e`,
 `6419069da195b053c885ab349f431ff4fae62098` and
 `35daf020d5e1286f82bdfed6bb3fc537bf3d78f6`.
+
+## Actual lost Result COMMIT acknowledgement candidate
+
+A fourth unchanged-binary execution uses a dedicated first-party byte-forwarding
+fixture in front of the existing synthetic `wex_core` pool. Its only fault is to
+consume one server `CommandComplete(COMMIT)` after the trusted SDK response-hold
+seam arms it, then close that connection before forwarding the acknowledgement.
+The runtime/SDK fixture never receives the core credential. The proxy receives
+no credential environment, records no authentication/SQL/payload bytes, binds
+only host loopback and forwards only to the already selected private pool. This
+fault case explicitly uses that isolated pool's existing plain TCP transport;
+production TLS, roles, SDK operations and dispatch are unchanged. Packet bounds,
+wrong-arm identity and exact one-shot/no-repeat behavior have hosted unit gates.
+
+The original Rust actor must receive `ObserveError::UncertainCommit` from the
+actual Result commit. Its sole report attempt stays consumed. It sends no runtime
+ResultReceipt, repeats neither Result acceptance nor SDK work, and drains the
+same original guardian/source. Readback then requires the exact retained closed
+session/owner/attempt/Start, matching terminal root/attempt outcome and the sole
+accepted immutable receipt with the original decision ID. That read-only
+reconciliation does not construct/send a protocol receipt or restore the runtime
+channel. The existing resource-settlement writer repeats its complete locks and
+preserves that already committed durable result. Crossed Success/failed or
+Failed/succeeded projections are rejected.
+
+The live case must retain the server-observed/client-unforwarded commit marker,
+Rust's uncertain observation, explicitly unsent runtime receipt, one actual SDK
+HTTP200, one immutable Result receipt, existing authenticated API result, source
+pin before/after settlement and complete original-process/source/proxy/fixture
+cleanup. The public receipt row is coordinator evidence; the terminated runtime
+never learned its receipt. This candidate proves no runtime replay on lost SQL
+ACK only after actual execution. It does not prove owner-crash recovery, uncertain
+spawn/release, or runtime acceptance; those remain separate required gates.

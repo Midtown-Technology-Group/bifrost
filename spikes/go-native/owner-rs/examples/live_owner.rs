@@ -8,7 +8,7 @@ use bifrost_isolated_owner_spike::{
     live_start::{BeginRequest, admit_and_start},
     material::MaterialPipe,
     peer::OriginalPeer,
-    record_provision_candidate,
+    reconcile_committed_result, record_provision_candidate,
     sdk_gate::SDKGate,
     settle_retired_session,
 };
@@ -184,6 +184,8 @@ async fn run(config: Value) -> Result<Value, ()> {
         .map_err(|_| ())?;
     let mut guardian = Guardian::create(spec.clone()).map_err(|_| ())?;
     let mut admitted_fence = None;
+    let mut live_counts = None;
+    let mut uncertain_result_commit = false;
     let operation = async {
         guardian.attach_dormant().map_err(|_| ())?;
         let offer = guardian.receive(Duration::from_secs(5)).map_err(|_| ())?;
@@ -221,13 +223,17 @@ async fn run(config: Value) -> Result<Value, ()> {
             if requested["event"] != "cancel_ready" || requested["session_id"] != session { return Err(()); }
             return live.cancel_admitted_sdk(&pool,&mut guardian,&text(&config,"cancel_id")?,&text(&config,"cancel_message_id")?).await.map_err(|_| ());
         }
-        let completed = live.serve_until_result(&pool,&mut guardian,&mut gate,&text(&config,"decision_id")?,&text(&config,"receipt_message_id")?).await.map_err(|_| ())?;
+        let served = live.serve_until_result(&pool,&mut guardian,&mut gate,&text(&config,"decision_id")?,&text(&config,"receipt_message_id")?).await;
+        live_counts = Some(live.observed_counts());
+        uncertain_result_commit = matches!(&served, Err(bifrost_isolated_owner_spike::live_start::BeginError::Owner(bifrost_isolated_owner_spike::ObserveError::UncertainCommit)));
+        let completed = served.map_err(|_| ())?;
         Ok::<_,()>(json!({"receipt":completed.decision.receipt_body(),"sdk_admissions":completed.sdk_admissions,
             "sdk_denials":completed.sdk_denials,"heartbeats":completed.heartbeats,"log_batches":completed.log_batches}))
     }.await;
     // Every post-launch outcome drains this original container/channel. No
     // recovery object may enter admission, issuance, delivery or Result service.
-    let (drained, original_drain) = if operation.is_ok() {
+    let lost_ack = config["lost_result_commit_ack"] == true && uncertain_result_commit;
+    let (drained, original_drain) = if operation.is_ok() || lost_ack {
         let fence = admitted_fence.as_ref().ok_or(())?;
         let observation = guardian.drain_session(fence).map_err(|_| ())?;
         if !observation.matches(fence) {
@@ -238,6 +244,7 @@ async fn run(config: Value) -> Result<Value, ()> {
         (guardian.drain().map_err(|_| ())?, None)
     };
     let original_session_drained = original_drain.is_some();
+    let mut reconciled_receipt = None;
     let settlement = if let Some(original) = original_drain {
         let retired = original
             .retire_resources(pipe, gate, &pins)
@@ -248,6 +255,17 @@ async fn run(config: Value) -> Result<Value, ()> {
         let ready = parent()?;
         if ready["event"] != "settlement_ready" || ready["session_id"] != session {
             return Err(());
+        }
+        if lost_ack {
+            reconciled_receipt = Some(
+                reconcile_committed_result(
+                    &pool,
+                    admitted_fence.as_ref().ok_or(())?,
+                    &text(&config, "decision_id")?,
+                )
+                .await
+                .map_err(|_| ())?,
+            );
         }
         settle_retired_session(&pool, retired)
             .await
@@ -274,7 +292,16 @@ async fn run(config: Value) -> Result<Value, ()> {
         Value::Null
     };
     pool.close().await;
-    let mut result = operation?;
+    let mut result = if lost_ack {
+        let mut counts = live_counts.ok_or(())?;
+        counts["receipt"] = reconciled_receipt.ok_or(())?;
+        counts["result_commit_observation"] = json!("lost_ack");
+        counts["result_receipt_sent"] = json!(false);
+        counts["reconciled_without_replay"] = json!(true);
+        counts
+    } else {
+        operation?
+    };
     if config["cancel_waiting_sdk"] == true {
         result["durable_cancelled_finalization"] =
             settlement["durable_cancelled_finalization"].clone();
