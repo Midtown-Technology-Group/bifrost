@@ -183,6 +183,8 @@ docker run --rm --read-only --cap-drop ALL --security-opt no-new-privileges \
   GOMODCACHE=/modules GOCACHE=/tmp/cache GOPROXY=off GOSUMDB=off GOFLAGS=-mod=readonly \
   /opt/tools/govulncheck -json ./... > "$evidence_dir/govulncheck.jsonl"
 
+python3 -B -m unittest discover -s "$spike_root/scripts" -p 'test_native_bundle.py' \
+  > "$evidence_dir/native-bundle-tests.txt" 2>&1
 python3 "$spike_root/scripts/describe.py" "$spike_root" "$evidence_dir" "$toolchain_image"
 
 # Independent local supervisor uses the published contract with the actual
@@ -224,8 +226,6 @@ openssl pkeyutl -verify -rawin -pubin -inkey "$evidence_dir/attestation-public.p
 
 # Trusted build-plane packaging, after tenant containers and producer attestation.
 # Never called by runtime admission. Disable Python bytecode so inputs stay fixed.
-python3 -B -m unittest discover -s "$spike_root/scripts" -p 'test_native_bundle.py' \
-  > "$evidence_dir/native-bundle-tests.txt" 2>&1
 python3 -B "$spike_root/scripts/native_bundle.py" "$spike_root" "$evidence_dir" \
   > "$evidence_dir/native-bundle-assembly.json"
 openssl pkeyutl -sign -rawin -inkey "$scratch/attestation.key" \

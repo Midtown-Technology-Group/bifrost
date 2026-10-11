@@ -4,11 +4,10 @@
 
 Ordinary Go authoring, immutable native build, portable common-protocol local
 execution and a real Rust-owned SDK/Result/cancellation slice now have runnable
-artifacts. The latest fully inspected live proof is
-`7f8af35231b7de952ee870badad688d68212354a`; the newer crash/uncertainty candidate
-`b105d7ab38e573bb8c2a28e01c9acc956c3a589a` passed native/Rust foundation checks but failed live bootstrap at API dependency
-installation before admission. The diagnostic successor retains full build output
-and needs fresh live evidence.
+artifacts. The latest fully inspected live/security proof is
+`e0d69dd9c4658054340b1454195a32d5b4ac1fc0`: seven real-owner executions, actual
+closed-Result crash recovery and uncertain release,13,898 passing backend unit
+tests,126 baseline and248 guard cases, API quality and verified task teardown.
 [Requirement-by-requirement audit](completion-audit.md).
 [Historical design and source decisions](decision-history.md).
 
@@ -50,9 +49,10 @@ must fail rather than emit a misleading schema. Rust consumes metadata, not Go A
 
 ## Evidence and developer experience
 
-[Source-bound live/guard proof](lost-result-commit-ack-proof.json) covers four
-executions of the same Go binary: ready, missing-key, cancellation during a real
-held SDK response, and actual lost Result COMMIT acknowledgement. Rust alone owns
+[Source-bound live/guard proof](seven-case-proof.json) covers seven
+executions of the same Go binary: ready, missing-key, cancellation during a held
+SDK response, lost Result COMMIT acknowledgement, closed-Result and closed-cancel owner crashes and
+lost release COMMIT acknowledgement without material/SDK delivery. Rust alone owns
 admission, Start, cancel, durable result and source settlement. Authenticated
 existing Execution API readback confirms durable outcomes. SDK authority is finite,
 attempt/session/operation-bound, rejected by ordinary routes, and has no lifecycle,
@@ -64,15 +64,16 @@ warm edits are fast. The custom build/registration/protocol harness is still a
 spike rather than a polished `bifrost run .` product. Static errors intentionally
 avoid disclosing credentials through arbitrary application diagnostics.
 
-| Measured concern, source7f | Observation |
+| Measured concern, sourcee0d69 | Observation |
 | --- | --- |
-| Module resolution/verification |106.816ms; small representative dependency graph, not arbitrary package resolution |
-| Cold compile with resolved modules |16.248s |
-| Independent cold compile |16.136s |
-| Single-file warm compile |368.325ms |
-| Restored warm compile |337.293ms; original byte equality verified |
-| Edit to artifact |560.046ms; broader test/scan preparation excluded |
-| Full real-owner fixture executions |3.780s,2.880s,3.014s,2.973s; includes Docker/SQL/fixture pauses/drain |
+| Module resolution/verification |121.792ms; small representative dependency graph, not arbitrary package resolution |
+| Cold compile with resolved modules |10.067s |
+| Independent cold compile |9.745s |
+| Single-file warm compile |251.317ms |
+| Restored warm compile |221.904ms; original byte equality verified |
+| Edit to artifact |464.940ms; broader test/scan preparation excluded |
+| Original-owner fixture executions |2.822–3.545s; includes Docker/SQL/fixture pauses/drain |
+| Closed-Result closing actor |2.498s; excludes original execution before SIGKILL |
 | Binary size |9,920,235 bytes |
 | Remote deploy latency / fair Python lifecycle comparison |Not implemented/measured |
 
@@ -112,14 +113,26 @@ more work before first-class product adoption.
 
 ## Exact remaining gates
 
-Verify the current candidate's crash and uncertain-release fixes with unchanged
-artifact, genuine Rust transactions, API readback and empty resource inventories.
-Preserve failed runs and qualify races through fresh source-bound evidence.
-Then prove remaining uncertain-spawn/pre-Result/partial-cleanup/ambiguous-settlement
-behavior without replay or reassignment, and submit the concrete schema/identity/
-immutability/writer/common-lock-order and runtime evidence for required acceptance.
+The seven-case runtime and current-source writer/security suites are verified.
+First repair the scanner gate and pinned vulnerable toolchain, then obtain fresh
+source/artifact-bound evidence. Prove remaining uncertain-spawn/open-session/
+partial-cleanup/ambiguous-settlement behavior without replay or reassignment,
+and submit the concrete schema/identity/immutability/writer/common-lock-order
+and runtime evidence for required acceptance.
 [Audit](completion-audit.md) lists each unresolved case explicitly.
 
 No current evidence supports ADOPT AS FIRST-CLASS LANGUAGE. The promising Go
 application/build experience and existing vertical slice justify continuing the
 bounded spike; they do not justify bypassing any protocol or security gate.
+
+## Security audit correction
+
+The current scanner stream contains 199 finding messages, including 164 reachable
+traces. The descriptor incorrectly marked JSON-mode exit status as a clean scan.
+The SDK HTTP path is among the reachable traces; the seven-case behavioral proof
+does not pass security acceptance. The build-evidence parser now rejects reachable
+findings, with regressions for trailing findings and malformed/missing streams.
+Fresh hosted verification of that correction is required. The pinned Go1.27.1
+toolchain needs remediation; changing it will require newly identified artifacts
+and fresh runtime evidence. No scan waiver or transferred acceptance is permitted.
+[Exact retained scanner and behavioral audit](seven-case-proof.json).

@@ -1,0 +1,33 @@
+{
+  "source": "581d9dd4db6b00bbf103de7649ab1e26dcf57f23",
+  "producer_run": 38124430826,
+  "sdk_version": "0.0.0-spike.2",
+  "artifact_id": "sha256:3ca282eb80242502248a2bd2e394657776f946848a30c780b6fe623ad592610f",
+  "workflow_sha256": "160917deeb94275f31ca9ddee2dacae00fb079fdf54cb60e206c8def261f9c34",
+  "owner_sha256": "8f755b4ea5c2d4e34934aa1038133b977b44a41d3ce6e095370ca95767267fe7",
+  "verified_rust_inputs": 39,
+  "live_junit": {
+    "tests": 1,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "same_binary_executions": 6,
+  "closed_result_owner_crash": true,
+  "uncertain_release_no_material_or_sdk_delivery": true,
+  "actual_commit_ack_loss": true,
+  "cleanup_verified": true,
+  "owner_or_recovery_elapsed_ms": [
+    2114.421323,
+    1744.0583090000002,
+    1766.507005,
+    1744.9051519999998,
+    1502.521483,
+    1726.88408
+  ],
+  "scope": "Metadata/source/archive/correlation verification; SQL/root/grant/source assertions execute inside the DB-backed fixture. Case4 elapsed is replacement closing actor duration, not whole execution. Overall lane failed mandatory unit shutdown regression; no runtime or gate acceptance.",
+  "overall_run": "failure",
+  "unit_failure": "idle live-client proxy stop timeout",
+  "runtime_acceptance": false,
+  "production_dispatch": false
+}

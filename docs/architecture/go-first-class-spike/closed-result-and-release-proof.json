@@ -1,0 +1,101 @@
+{
+  "source": "a103f5540e3ac0ef3b1801ffcf1efccb55f7a948",
+  "producer_run": 38124731963,
+  "sdk_version": "0.0.0-spike.2",
+  "artifact_id": "sha256:722a24597e483bf569f823a564087c8eccbb79afc89ddf39b6250b5627bdc797",
+  "workflow_sha256": "160917deeb94275f31ca9ddee2dacae00fb079fdf54cb60e206c8def261f9c34",
+  "owner_sha256": "8f755b4ea5c2d4e34934aa1038133b977b44a41d3ce6e095370ca95767267fe7",
+  "verified_rust_inputs": 39,
+  "live_junit": {
+    "tests": 1,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "same_binary_executions": 6,
+  "closed_result_owner_crash": true,
+  "uncertain_release_no_material_or_sdk_delivery": true,
+  "actual_commit_ack_loss": true,
+  "cleanup_verified": true,
+  "owner_or_recovery_elapsed_ms": [
+    2953.500854,
+    2374.339085,
+    2374.3154670000004,
+    2442.41733,
+    1844.695885,
+    2263.9369340000003
+  ],
+  "scope": "Metadata/source/archive/correlation verification; SQL/root/grant/source assertions execute inside the DB-backed fixture. Case4 elapsed is replacement closing actor duration, not whole execution. Whole native/live lane passed, including backend unit and API quality; human writer/runtime acceptance remains separate.",
+  "overall_run": "success",
+  "unit_junit": {
+    "tests": 13898,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "quality_passed": true,
+  "runtime_acceptance": false,
+  "production_dispatch": false,
+  "guard_verification": {
+    "source": "a103f5540e3ac0ef3b1801ffcf1efccb55f7a948",
+    "run": 38124731938,
+    "verified_source_inputs": 69,
+    "tests": {
+      "writer-guard-unit.xml": {
+        "tests": 13898,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "writer-guard-baseline.xml": {
+        "tests": 126,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "writer-guard-results.xml": {
+        "tests": 248,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "writer-guard-last-results.xml": {
+        "tests": 248,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      }
+    },
+    "idle_owner_eof_and_live_owner_stop_regressions": "passed",
+    "quality_passed": true,
+    "cleanup_verified": true,
+    "runtime_acceptance": false
+  },
+  "build_timings_ms": {
+    "module_download": 69.641317,
+    "cold_compile_warm_modules": 16103.895909,
+    "independent_cold_compile": 16121.902361,
+    "warm_source_edit_compile": 374.652856,
+    "restored_warm_compile": 333.508797,
+    "edit_to_artifact": 566.217695
+  },
+  "authoring_only_execution_summary": {
+    "startup_to_sdk_ms": {
+      "median": 4.4603675,
+      "p95": 4.836698,
+      "n": 20
+    },
+    "execution_ms": {
+      "median": 5.0736799999999995,
+      "p95": 5.468776,
+      "n": 20
+    },
+    "max_rss_kib": {
+      "median": 13632.0,
+      "p95": 13632,
+      "n": 20
+    }
+  },
+  "first_authoring_only_execution_ms": 5.985307,
+  "authoring_only_cancellation_ms": 0.452221
+}

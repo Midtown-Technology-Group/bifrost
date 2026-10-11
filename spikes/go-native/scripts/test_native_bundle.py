@@ -7,6 +7,8 @@ import tarfile
 import tempfile
 import unittest
 
+from describe import scanner_configuration
+
 from native_bundle import (
     ORDER,
     Rejected,
@@ -15,6 +17,24 @@ from native_bundle import (
     digest,
     verify_archive,
 )
+
+
+class ScannerEvidenceTests(unittest.TestCase):
+    def test_reachable_finding_after_config_denies(self):
+        raw = json.dumps({"config": {"scan_level": "symbol", "scan_mode": "source"}})
+        raw += "\n" + json.dumps({"finding": {"trace": [{"module": "stdlib", "function": "Do"}]}})
+        with self.assertRaises(ValueError):
+            scanner_configuration(raw)
+
+    def test_module_observation_is_not_symbol_reachability(self):
+        raw = json.dumps({"config": {"scan_level": "symbol", "scan_mode": "source"}})
+        raw += "\n" + json.dumps({"finding": {"trace": [{"module": "stdlib"}]}})
+        self.assertEqual(scanner_configuration(raw)["scan_level"], "symbol")
+
+    def test_missing_or_truncated_scan_denies(self):
+        for raw in ("", "{}", '{"config":'):
+            with self.subTest(raw=raw), self.assertRaises(ValueError):
+                scanner_configuration(raw)
 
 
 def fixture():

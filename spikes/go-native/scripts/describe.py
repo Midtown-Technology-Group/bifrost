@@ -16,6 +16,30 @@ def digest(path: pathlib.Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def scanner_configuration(raw: str) -> dict:
+    """JSON mode can exit zero with findings; inspect the entire stream."""
+    decoder = json.JSONDecoder()
+    config = None
+    while raw.strip():
+        message, end = decoder.raw_decode(raw.lstrip())
+        raw = raw.lstrip()[end:]
+        if not isinstance(message, dict):
+            raise ValueError("invalid scanner message")
+        if "config" in message:
+            if config is not None:
+                raise ValueError("duplicate scanner configuration")
+            config = message["config"]
+        if "finding" in message:
+            trace = message["finding"].get("trace")
+            if not isinstance(trace, list) or not trace:
+                raise ValueError("invalid vulnerability trace")
+            if any("function" in frame for frame in trace):
+                raise ValueError("reachable vulnerability; deployment evidence denied")
+    if not isinstance(config, dict) or config.get("scan_level") != "symbol" or config.get("scan_mode") != "source":
+        raise ValueError("missing source/symbol scanner configuration")
+    return config
+
+
 def closure(root: pathlib.Path) -> tuple[str, list[dict[str, str]]]:
     files = [{"path": str(p.relative_to(root)), "sha256": digest(p)}
              for p in sorted(root.rglob("*")) if p.is_file()]
@@ -50,7 +74,7 @@ def main() -> None:
     assert not any(t["Action"] == "fail" for t in tests), "test failure"
     artifact = out / "workflow"
     changed = out / "workflow-warm-edit"
-    scanner, _ = json.JSONDecoder().raw_decode((out / "govulncheck.jsonl").read_text())
+    scanner = scanner_configuration((out / "govulncheck.jsonl").read_text())
     assert digest(artifact) != digest(changed), "source edit did not change artifact"
     info = {
         "runtime": "go-native/v1", "profile": "local-authoring-only",
@@ -78,7 +102,7 @@ def main() -> None:
         "sdk_version": runtime["sdk_version"], "recipe_version": "go-native-spike/v1",
         "build_recipe_sha256": digest(root / "scripts/measure.sh"),
         "builder_image": image, "scanner_image": (out / "scanner-image.txt").read_text().strip(),
-        "scanner_configuration": scanner["config"],
+        "scanner_configuration": scanner,
         "entrypoint": "workflow", "build_entrypoint": "./cmd/workflow",
         "build_flags": ["-mod=readonly", "-trimpath", "-buildvcs=false"],
         "reviewed_deployment": False,
