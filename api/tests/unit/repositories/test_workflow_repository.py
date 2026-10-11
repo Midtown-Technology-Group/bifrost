@@ -4,11 +4,12 @@ Unit tests for WorkflowRepository.
 Tests the database operations for workflow registry.
 """
 
-import pytest
 from datetime import datetime, timedelta, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 from uuid import uuid4
 
+import pytest
+from src.core.org_filter import OrgFilterType
 from src.repositories.workflows import WorkflowRepository
 
 
@@ -413,3 +414,59 @@ class TestWorkflowRepository:
         assert get_by_type.call_args_list[1].kwargs == {"active_only": True}
         assert get_by_type.call_args_list[2].args == ("workflow",)
         assert get_by_type.call_args_list[2].kwargs == {"active_only": True}
+
+    async def test_tool_listing_filters_inactive_rows_by_canonical_access_gate(
+        self, mock_session
+    ):
+        """include_inactive must not bypass workflow role/access-level checks."""
+        allowed = MagicMock()
+        allowed.name = "allowed-inactive"
+        allowed.is_active = False
+        denied = MagicMock()
+        denied.name = "denied-inactive"
+        denied.is_active = False
+        query_result = MagicMock()
+        query_result.scalars.return_value.all.return_value = [allowed, denied]
+        mock_session.execute.return_value = query_result
+        repository = WorkflowRepository(
+            mock_session,
+            org_id=uuid4(),
+            user_id=uuid4(),
+            is_superuser=False,
+        )
+
+        with patch.object(
+            repository,
+            "_can_access_entity",
+            new=AsyncMock(side_effect=[True, False]),
+        ) as can_access:
+            result = await repository.list_tools_for_filter(
+                OrgFilterType.ORG_PLUS_GLOBAL,
+                repository.org_id,
+                active_only=False,
+            )
+
+        assert result == [allowed]
+        assert can_access.await_args_list == [call(allowed), call(denied)]
+
+    async def test_tool_listing_superuser_bypasses_per_row_role_checks(
+        self, repository, mock_session
+    ):
+        workflows = [MagicMock(name="first"), MagicMock(name="second")]
+        query_result = MagicMock()
+        query_result.scalars.return_value.all.return_value = workflows
+        mock_session.execute.return_value = query_result
+
+        with patch.object(
+            repository,
+            "_can_access_entity",
+            new_callable=AsyncMock,
+        ) as can_access:
+            result = await repository.list_tools_for_filter(
+                OrgFilterType.ALL,
+                None,
+                active_only=False,
+            )
+
+        assert result == workflows
+        can_access.assert_not_awaited()
