@@ -110,8 +110,14 @@ async def test_invalid_session_nonce_cannot_reach_transport(invalid):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("fault", ["array", "nonce", "missing_grant", "role", "expired", "extended", "naive", "bad_date", "grant_identity", "bad_json"])
-async def test_rejects_foreign_or_invalid_launcher_grants(fault):
+@pytest.mark.parametrize(
+    "fault,grant_role",
+    [(fault, None) for fault in ("array", "nonce", "bad_json")]
+    + [(fault, role) for role in ("operator", "target") for fault in (
+        "missing_grant", "role", "destination", "expired", "extended", "naive", "bad_date", "grant_identity",
+    )],
+)
+async def test_rejects_foreign_or_invalid_launcher_grants(fault, grant_role):
     """A successful HTTP response cannot broaden the admitted lease policy."""
     request = payload()
     response = {"id": "a" * 32, **{
@@ -123,18 +129,20 @@ async def test_rejects_foreign_or_invalid_launcher_grants(fault):
     elif fault == "nonce":
         response["id"] = "b" * 32
     elif fault == "missing_grant":
-        del response["target"]
+        del response[grant_role]
     elif fault == "role":
-        response["target"]["role"] = "operator"
+        response[grant_role]["role"] = "target" if grant_role == "operator" else "operator"
+    elif fault == "destination":
+        response[grant_role]["target"] = "127.0.0.1:22"
     elif fault in {"expired", "extended", "naive", "bad_date"}:
-        response["target"]["expires"] = {
+        response[grant_role]["expires"] = {
             "expired": (datetime.now(timezone.utc) - timedelta(seconds=1)).isoformat(),
             "extended": (request.expires + timedelta(seconds=1)).isoformat(),
             "naive": request.expires.replace(tzinfo=None).isoformat(),
             "bad_date": "untrusted-date",
         }[fault]
     elif fault == "grant_identity":
-        response["target"]["id"] = "foreign-grant"
+        response[grant_role]["id"] = "foreign-grant"
     with patch("src.services.device_peer_launcher.ssl.create_default_context", return_value=MagicMock()):
         client = PeerLauncherClient(settings())
     await client.client.aclose()
