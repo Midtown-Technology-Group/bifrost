@@ -46,7 +46,7 @@ pins and failures; prior missing-work statements are superseded here.
 
 ## Security and writer review
 
-[Concrete schema/lock review](owner-schema-review.md) covers composite owner,
+[Concrete schema/lock review](owner-current-review.md) covers composite owner,
 execution, typed-attempt and session identities, immutable artifact/binding and
 raw receipt/resource facts, permanent close/revocation, writer exclusion and the
 common order: workspace-release advisory fence → attempt → NOWAIT owner/root/
