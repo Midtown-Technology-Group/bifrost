@@ -1,0 +1,34 @@
+{
+  "schema": 1,
+  "repository": "Midtown-Technology-Group/bifrost",
+  "mode": "shadow",
+  "routinePaths": [
+    "client/src/components/ui/accordion.tsx",
+    "client/src/components/ui/alert.tsx",
+    "client/src/components/ui/badge.tsx",
+    "client/src/components/ui/button.tsx",
+    "client/src/components/ui/card.tsx",
+    "client/src/components/ui/skeleton.tsx",
+    "client/src/components/ui/spinner.tsx"
+  ],
+  "humanPaths": [
+    ".github/", ".agents/", ".claude/", ".codex/", ".claude-plugin/", ".codex-plugin/",
+    "AGENTS.md", "CLAUDE.md", "SECURITY.md", "GOVERNANCE.md", "test.sh", "debug.sh",
+    "scripts/", "config/", "deploy/", "k8s/", "release/", "plugins/", "skills/",
+    "docs/dev/", "docs/runbooks/", "docs/plans/", "docs/VERSIONING.md", "docs/release-manifest.schema.json",
+    "api/alembic/", "api/shared/", "api/src/models/", "api/src/core/",
+    "api/src/services/execution/", "api/src/services/solutions/", "api/src/jobs/",
+    "api/bifrost/", "client/src/lib/", "client/src/services/", "client/src/hooks/"
+  ],
+  "reviewers": [],
+  "requiredChecks": [
+    {"name": "Plan Affected Tests", "appId": 15368, "appSlug": "github-actions", "workflow": ".github/workflows/ci.yml"},
+    {"name": "Lint & Type Check", "appId": 15368, "appSlug": "github-actions", "workflow": ".github/workflows/ci.yml"},
+    {"name": "Unit Tests", "appId": 15368, "appSlug": "github-actions", "workflow": ".github/workflows/ci.yml"},
+    {"name": "Client Unit Tests", "appId": 15368, "appSlug": "github-actions", "workflow": ".github/workflows/ci.yml"},
+    {"name": "MCP Conformance", "appId": 15368, "appSlug": "github-actions", "workflow": ".github/workflows/ci.yml"},
+    {"name": "Candidate Images", "appId": 15368, "appSlug": "github-actions", "workflow": ".github/workflows/ci.yml"},
+    {"name": "CodeQL", "appId": 57789, "appSlug": "github-advanced-security"},
+    {"name": "SonarCloud Code Analysis", "appId": 12526, "appSlug": "sonarqubecloud"}
+  ]
+}
