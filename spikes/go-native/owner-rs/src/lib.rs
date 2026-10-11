@@ -11,6 +11,8 @@ pub mod guardian;
 pub mod live_start;
 #[cfg(target_os = "linux")]
 pub mod material;
+#[cfg(target_os = "linux")]
+pub mod peer;
 mod provision;
 mod release;
 mod result;

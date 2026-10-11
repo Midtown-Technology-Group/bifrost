@@ -48,6 +48,16 @@ revocation, expiry, current-caller/source drift and mismatched identity deny bot
 The probe tests exercise actual committed provision and release transactions,
 with synthetic custody/source explicitly retained as component limitations.
 Authenticated issuer exchange and positive live delivery remain unimplemented.
+The private `peer::OriginalPeer` primitive pins the parent-custodied PID, nonroot
+UID and current `/proc` start ticks, then checks actual `SO_PEERCRED` on a connected
+Unix stream and rechecks the incarnation. It fails closed across an unobservable
+PID namespace. This is IPC identity only, never signing or lifecycle permission;
+there is no caller-controlled wire identity, reconnect or recovery policy.
+It uses the safe `rustix` 1.1.4 net API with the existing `unsafe_code=forbid`
+gate. The lock adds only rustix, errno and linux-raw-sys; existing dependency
+versions are unchanged. Application compilation/tests remain in hosted isolation.
+The issuer still needs to consume this pin, its private socket identity, the
+one-use live-owner check and independently loaded immutable signing preimages.
 
 The next required consumer is the complete isolated coordinator: authenticate
 actual source/caller and accepted archive, call this path against the real core
