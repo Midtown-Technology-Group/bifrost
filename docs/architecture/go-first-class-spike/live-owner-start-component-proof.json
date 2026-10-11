@@ -1,0 +1,50 @@
+{
+  "sdk_version": "0.0.0-spike.2",
+  "source_commit": "6b3e05ecfbac1a9d449fa0aacf92804c460a7da5",
+  "runs": {
+    "native": 38102723828,
+    "rust": 38102723870,
+    "guard": 38102723885
+  },
+  "go_inputs_verified": 131,
+  "rust_inputs_verified": 34,
+  "guard_inputs_verified": 54,
+  "go_tests_passed": 540,
+  "rust_consumer_tests_passed": 33,
+  "guard_tests": {
+    "unit": 13882,
+    "baseline": 110,
+    "writer": 238,
+    "failed": 0,
+    "skipped": 0
+  },
+  "quality": "passed",
+  "cleanup_inventory": "empty",
+  "artifact_id": "sha256:84a363fa7396da3b4ae280eaa19a1e4194831c40653f3c36fdd08aa10f5445c9",
+  "unchanged_workflow_sha256": "160917deeb94275f31ca9ddee2dacae00fb079fdf54cb60e206c8def261f9c34",
+  "guardian_proof_sha256": "ae97cbef8ad5fe14edb125f5a77732da7871294fd8a8b3e26bb736fc1428f4ad",
+  "guardian_cases": [
+    "normal",
+    "live-start-invalid-identity",
+    "poisoned-channel",
+    "sdk-relay-dormant",
+    "sdk-relay-lost-ingress",
+    "lost-create-reply",
+    "guardian-crash-after-offer"
+  ],
+  "invalid_parent_identity_and_begin_replay_denied": true,
+  "timings_ms": {
+    "module_download": 186.226312,
+    "cold_compile_warm_modules": 16184.251305,
+    "independent_cold_compile": 15855.077277,
+    "warm_source_edit_compile": 372.234809,
+    "restored_warm_compile": 323.063019,
+    "edit_to_artifact": 557.481504
+  },
+  "runtime_acceptance": false,
+  "limitations": [
+    "The live Begin integration proves denial/replay exclusion, not positive SQL admission or tenant Start.",
+    "No real SDK issuance, durable Result/Receipt/API readback or source-consumer settlement in this producer.",
+    "This producer precedes the reserved-ingress committed-snapshot loader."
+  ]
+}
