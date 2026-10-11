@@ -71,5 +71,22 @@
     "diagnosis_basis": "inference from concurrent Command creation and POSIX descriptor lifetime; controlled duplicate-writer regression added",
     "retained_artifacts": "/home/thomas/src/bifrost-go-spike-artifacts/3d610cc15a2284b9ac5c3bd01f486046d909b6f7/rust",
     "runtime_acceptance": false
+  },
+  "verified_runnable_entrypoint_build": {
+    "source": "ea8ac0a699d0e85d07a1ba730a3c189a07de1ee8",
+    "run": 38110108995,
+    "source_inputs_verified": 38,
+    "tests_passed": 39,
+    "failed": 0,
+    "ignored": 0,
+    "filtered_out": 0,
+    "fmt": "pass",
+    "clippy": "pass",
+    "locked_offline_build": "pass",
+    "artifact": "runtime-live-owner",
+    "artifact_sha256": "6cf8140ce18328cd2e92f687d79ba5f12b392feb77a820eb35a8a07640acf308",
+    "artifact_size_bytes": 78308736,
+    "scope": "Compiled original owner CLI and component tests only. Actual native association/authenticated parent ingress orchestration, SDK HTTP fetch, Rust/Go lifecycle slice, cancellation finalization and durable source settlement remain required.",
+    "runtime_acceptance": false
   }
 }
