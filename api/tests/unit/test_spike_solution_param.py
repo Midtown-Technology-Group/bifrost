@@ -4,10 +4,15 @@ from uuid import uuid4
 
 import pytest
 
+from src.core.auth import get_execution_context
+from src.core.principal import UserPrincipal
+from src.models.orm.applications import Application
 from src.models.orm.organizations import Organization
 from src.models.orm.solutions import Solution
 from src.services.solution_scope import (
+    check_inbound_allowed,
     derive_execution_solution_scope,
+    resolve_trustworthy_caller,
     resolve_solution_ref,
 )
 
@@ -32,6 +37,78 @@ def _no_ctx():
 
 @pytest.mark.e2e
 class TestSpikeSolutionRef:
+    async def test_unauthorized_app_header_is_not_trusted_caller(
+        self, db_session
+    ):
+        """A raw header cannot impersonate a role-restricted Solution app."""
+        org = await _org(db_session)
+        sol = await _sol(db_session, org.id, "sealed")
+        sol.allow_inbound_access = False
+        app = Application(
+            id=uuid4(),
+            name="Restricted app",
+            slug=f"restricted-{uuid4().hex[:8]}",
+            repo_path=f"apps/{uuid4().hex}",
+            organization_id=org.id,
+            solution_id=sol.id,
+            app_model="standalone_v2",
+            access_level="role_based",
+        )
+        db_session.add(app)
+        await db_session.flush()
+
+        user = UserPrincipal(
+            user_id=uuid4(),
+            email="unprivileged@example.test",
+            organization_id=org.id,
+        )
+        request = SimpleNamespace(
+            headers={"X-Bifrost-App": str(app.id)},
+            query_params={},
+            url=SimpleNamespace(path="/api/tables"),
+        )
+
+        ctx = await get_execution_context(request, user, db_session)
+
+        assert ctx.app_id is None
+        assert ctx.solution_id is None
+        assert await resolve_trustworthy_caller(db_session, ctx) is None
+        assert await check_inbound_allowed(db_session, sol.id, None) is False
+
+    async def test_authorized_app_header_remains_trusted_caller(self, db_session):
+        """An in-scope app that grants access still establishes its install."""
+        org = await _org(db_session)
+        sol = await _sol(db_session, org.id, "authorized")
+        app = Application(
+            id=uuid4(),
+            name="Authorized app",
+            slug=f"authorized-{uuid4().hex[:8]}",
+            repo_path=f"apps/{uuid4().hex}",
+            organization_id=org.id,
+            solution_id=sol.id,
+            app_model="standalone_v2",
+            access_level="authenticated",
+        )
+        db_session.add(app)
+        await db_session.flush()
+
+        user = UserPrincipal(
+            user_id=uuid4(),
+            email="member@example.test",
+            organization_id=org.id,
+        )
+        request = SimpleNamespace(
+            headers={"X-Bifrost-App": str(app.id)},
+            query_params={},
+            url=SimpleNamespace(path="/api/tables"),
+        )
+
+        ctx = await get_execution_context(request, user, db_session)
+
+        assert ctx.app_id == str(app.id)
+        assert ctx.solution_id == str(sol.id)
+        assert await resolve_trustworthy_caller(db_session, ctx) == sol.id
+
     async def test_slug_resolves_in_scope(self, db_session):
         org = (await _org(db_session)).id
         sol = await _sol(db_session, org, "acme-crm")
