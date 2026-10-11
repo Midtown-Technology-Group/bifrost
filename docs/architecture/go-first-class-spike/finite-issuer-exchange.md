@@ -48,7 +48,9 @@ transmission. The whole exchange has a three-second budget, including partial I/
 individual reads cannot extend it by slowly dripping bytes. The issuer explicitly
 joins its request task and removes only its original socket during drain.
 
-The hosted fixture connects a nonroot Rust probe performing actual SQL issuance
+The fixture uses the test runner's actual nonroot UID; only a root fixture parent
+drops its two children to UID1001. It adds no container capabilities or alternate
+principals. The hosted fixture connects a nonroot Rust probe performing actual SQL issuance
 admission to a separate nonroot Python issuer loading actual rows with the existing
 readonly fixture principal. The core fixture credential goes only to Rust. A
 separate ephemeral signing key goes only to the trusted issuer. Success must

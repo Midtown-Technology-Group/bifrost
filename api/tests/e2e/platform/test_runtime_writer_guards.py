@@ -6,6 +6,7 @@ The task's stack-down gate owns removal of the committed fixture and principals.
 
 import asyncio
 import json
+import os
 import secrets
 import sys
 from contextlib import asynccontextmanager
@@ -3365,10 +3366,12 @@ async def test_real_finite_issuer_exchange_uses_committed_grant_and_original_pee
     before = await provision_snapshot(facts)
     executable = Path("/app/scripts/runtime-owner-issuer")
     assert executable.is_file(), "Required source-bound Rust issuer artifact is missing"
+    owner_uid = os.geteuid() or 1001
+    owner_command = [str(executable)]
+    if os.geteuid() == 0:
+        owner_command = ["/usr/sbin/gosu", "1001:1001", *owner_command]
     owner = await asyncio.create_subprocess_exec(
-        "/usr/sbin/gosu",
-        "1001:1001",
-        str(executable),
+        *owner_command,
         stdin=asyncio.subprocess.PIPE,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
@@ -3403,6 +3406,7 @@ async def test_real_finite_issuer_exchange_uses_committed_grant_and_original_pee
                 {
                     "mode": mode,
                     "owner_pid": owner.pid,
+                    "owner_uid": owner_uid,
                     "owner_ticks": _start_ticks(owner.pid),
                     "ca": ca,
                     "identity": {
@@ -3423,7 +3427,7 @@ async def test_real_finite_issuer_exchange_uses_committed_grant_and_original_pee
         ready = await asyncio.wait_for(issuer.stdout.readline(), timeout=5)
         assert len(ready) <= 8192 and ready.endswith(b"\n")
         config = json.loads(ready)
-        assert config["pid"] == issuer.pid and config["uid"] == 1001
+        assert config["pid"] == issuer.pid and config["uid"] == owner_uid
         assert config["ticks"] == _start_ticks(issuer.pid)
         payload = json.dumps(
             {

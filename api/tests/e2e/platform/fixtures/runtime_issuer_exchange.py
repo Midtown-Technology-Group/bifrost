@@ -68,7 +68,7 @@ async def run():
         server = issuer_type(
             directory=root,
             owner_pid=data["owner_pid"],
-            owner_uid=1001,
+            owner_uid=data["owner_uid"],
             owner_start_ticks=data["owner_ticks"],
             grant_id=ids["grant_id"],
             load_snapshot=committed,
