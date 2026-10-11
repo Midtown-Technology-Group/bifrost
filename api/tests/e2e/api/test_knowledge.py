@@ -14,6 +14,7 @@ Requires EMBEDDINGS_AI_TEST_KEY environment variable.
 
 import logging
 import os
+from uuid import uuid4
 
 import pytest
 
@@ -970,10 +971,157 @@ class TestKnowledgeDocumentByIdOrgScope:
         assert create.status_code == 201, create.text
         doc_id = create.json()["id"]
         path = f"/api/knowledge-sources/e2e-test/documents/{doc_id}"
+        role_id = None
 
-        other_org = e2e_client.get(path, headers=org1_user.headers)
-        assert other_org.status_code == 404, other_org.text
+        try:
+            role = e2e_client.post(
+                "/api/roles",
+                headers=platform_admin.headers,
+                json={"name": f"Org2 knowledge reader {uuid4().hex[:8]}"},
+            )
+            assert role.status_code == 201, role.text
+            role_id = role.json()["id"]
+            assigned_user = e2e_client.post(
+                f"/api/roles/{role_id}/users",
+                headers=platform_admin.headers,
+                json={"user_ids": [str(org2_user.user_id)]},
+            )
+            assert assigned_user.status_code in (200, 201, 204), (
+                assigned_user.text
+            )
+            assigned_namespace = e2e_client.post(
+                f"/api/roles/{role_id}/knowledge",
+                headers=platform_admin.headers,
+                json={
+                    "entries": [
+                        {
+                            "namespace": "e2e-test",
+                            "organization_id": org2["id"],
+                        }
+                    ]
+                },
+            )
+            assert assigned_namespace.status_code == 204, (
+                assigned_namespace.text
+            )
 
-        own_org = e2e_client.get(path, headers=org2_user.headers)
-        assert own_org.status_code == 200, own_org.text
-        assert own_org.json()["content"] == "org2 only"
+            other_org = e2e_client.get(path, headers=org1_user.headers)
+            assert other_org.status_code == 404, other_org.text
+
+            own_org = e2e_client.get(path, headers=org2_user.headers)
+            assert own_org.status_code == 200, own_org.text
+            assert own_org.json()["content"] == "org2 only"
+        finally:
+            if role_id is not None:
+                e2e_client.delete(
+                    f"/api/roles/{role_id}", headers=platform_admin.headers
+                )
+
+
+class TestKnowledgeNamespaceRoleAccess:
+    """Direct document reads require a namespace role assignment."""
+
+    def test_role_assignment_controls_namespace_lists_and_document_reads(
+        self,
+        e2e_client,
+        platform_admin,
+        org1,
+        org1_user,
+        embedding_config_setup,
+        knowledge_cleanup,
+    ):
+        suffix = uuid4().hex[:8]
+        namespace = f"rbac-{suffix}"
+        role_id = None
+        document_id = None
+
+        try:
+            created = e2e_client.post(
+                f"/api/knowledge-sources/{namespace}/documents",
+                headers=platform_admin.headers,
+                params={"scope": org1["id"]},
+                json={
+                    "content": "namespace role protected content",
+                    "key": f"protected-{suffix}",
+                },
+            )
+            assert created.status_code == 201, created.text
+            document_id = created.json()["id"]
+            document_path = (
+                f"/api/knowledge-sources/{namespace}/documents/{document_id}"
+            )
+
+            unassigned_all = e2e_client.get(
+                "/api/knowledge-sources/documents",
+                headers=org1_user.headers,
+                params={"namespace": namespace},
+            )
+            assert unassigned_all.status_code == 200, unassigned_all.text
+            assert unassigned_all.json() == []
+
+            unassigned_namespace = e2e_client.get(
+                f"/api/knowledge-sources/{namespace}/documents",
+                headers=org1_user.headers,
+            )
+            assert unassigned_namespace.status_code == 200, (
+                unassigned_namespace.text
+            )
+            assert unassigned_namespace.json() == []
+
+            unassigned_document = e2e_client.get(
+                document_path, headers=org1_user.headers
+            )
+            assert unassigned_document.status_code == 404, (
+                unassigned_document.text
+            )
+
+            role = e2e_client.post(
+                "/api/roles",
+                headers=platform_admin.headers,
+                json={"name": f"Knowledge reader {suffix}"},
+            )
+            assert role.status_code == 201, role.text
+            role_id = role.json()["id"]
+
+            assigned_user = e2e_client.post(
+                f"/api/roles/{role_id}/users",
+                headers=platform_admin.headers,
+                json={"user_ids": [str(org1_user.user_id)]},
+            )
+            assert assigned_user.status_code in (200, 201, 204), (
+                assigned_user.text
+            )
+
+            assigned_namespace = e2e_client.post(
+                f"/api/roles/{role_id}/knowledge",
+                headers=platform_admin.headers,
+                json={
+                    "entries": [
+                        {
+                            "namespace": namespace,
+                            "organization_id": org1["id"],
+                        }
+                    ]
+                },
+            )
+            assert assigned_namespace.status_code == 204, (
+                assigned_namespace.text
+            )
+
+            allowed_document = e2e_client.get(
+                document_path, headers=org1_user.headers
+            )
+            assert allowed_document.status_code == 200, allowed_document.text
+            assert allowed_document.json()["content"] == (
+                "namespace role protected content"
+            )
+        finally:
+            if document_id is not None:
+                e2e_client.delete(
+                    f"/api/knowledge-sources/{namespace}/documents/{document_id}",
+                    headers=platform_admin.headers,
+                )
+            if role_id is not None:
+                e2e_client.delete(
+                    f"/api/roles/{role_id}", headers=platform_admin.headers
+                )

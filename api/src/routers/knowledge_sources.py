@@ -12,10 +12,10 @@ from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query, status
+from shared.knowledge_access import accessible_knowledge_namespaces
+from shared.scope_resolver import has_scope_bypass
 from sqlalchemy import delete, select, update
 
-from shared.scope_resolver import has_scope_bypass
-from src.services.operation_catalog import operation_route
 from src.core.auth import CurrentActiveUser, CurrentSuperuser
 from src.core.db_deps import DbSession
 from src.core.log_safety import log_safe
@@ -34,6 +34,7 @@ from src.models.orm.knowledge import KnowledgeStore
 from src.models.orm.knowledge_sources import KnowledgeNamespaceRole
 from src.models.orm.users import Role
 from src.repositories.knowledge import KnowledgeRepository
+from src.services.operation_catalog import operation_route
 
 logger = logging.getLogger(__name__)
 
@@ -73,6 +74,10 @@ async def list_namespaces(
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
 
+    allowed_namespaces = await accessible_knowledge_namespaces(db, user)
+    if allowed_namespaces is not None and not allowed_namespaces:
+        return []
+
     repo = KnowledgeRepository(session=db, org_id=filter_org_id)
 
     if filter_type == OrgFilterType.ALL:
@@ -85,6 +90,9 @@ async def list_namespaces(
     else:
         # ORG_PLUS_GLOBAL
         ns_list = await repo.list_namespaces(organization_id=filter_org_id, include_global=True)
+
+    if allowed_namespaces is not None:
+        ns_list = [ns for ns in ns_list if ns.namespace in allowed_namespaces]
 
     return [
         KnowledgeNamespaceInfo(
@@ -228,6 +236,10 @@ async def list_all_documents(
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
 
+    allowed_namespaces = await accessible_knowledge_namespaces(db, user)
+    if allowed_namespaces is not None and not allowed_namespaces:
+        return []
+
     stmt = select(KnowledgeStore)
 
     # Apply org scope filter via the single source of truth — never a
@@ -237,6 +249,9 @@ async def list_all_documents(
     )
     if _clause is not None:
         stmt = stmt.where(_clause)
+
+    if allowed_namespaces is not None:
+        stmt = stmt.where(KnowledgeStore.namespace.in_(allowed_namespaces))
 
     if namespace:
         stmt = stmt.where(KnowledgeStore.namespace == namespace)
@@ -366,6 +381,10 @@ async def list_documents(
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
 
+    allowed_namespaces = await accessible_knowledge_namespaces(db, user)
+    if allowed_namespaces is not None and namespace not in allowed_namespaces:
+        return []
+
     stmt = select(KnowledgeStore).where(KnowledgeStore.namespace == namespace)
 
     # Org scope via the single source of truth (org_filter_clause).
@@ -461,6 +480,12 @@ async def get_document(
 ) -> KnowledgeDocumentPublic:
     """Get a document by UUID."""
     _deny_external(user)
+    allowed_namespaces = await accessible_knowledge_namespaces(db, user)
+    if allowed_namespaces is not None and namespace not in allowed_namespaces:
+        raise HTTPException(
+            404, f"Document {doc_id} not found in namespace {namespace}"
+        )
+
     repo = KnowledgeRepository(session=db, org_id=user.organization_id)
     doc = await repo.get_by_id(doc_id)
 

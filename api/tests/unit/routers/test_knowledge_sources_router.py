@@ -4,7 +4,6 @@ from uuid import uuid4
 
 import pytest
 from fastapi import HTTPException
-
 from src.models.contracts.knowledge import (
     KnowledgeDocumentBulkScopeUpdate,
     KnowledgeDocumentUpdate,
@@ -138,6 +137,42 @@ async def test_list_namespaces_maps_repository_scope_counts(monkeypatch):
     assert result[0].global_count == 2
     assert result[0].org_count == 3
     assert calls[1] == ("all",)
+
+
+@pytest.mark.asyncio
+async def test_namespace_and_document_reads_require_a_role_grant(monkeypatch):
+    async def no_namespaces(_db, _user):
+        return set()
+
+    monkeypatch.setattr(
+        knowledge_sources,
+        "accessible_knowledge_namespaces",
+        no_namespaces,
+    )
+    user = _user(is_superuser=False)
+
+    namespace_db = _Db()
+    assert await knowledge_sources.list_namespaces(namespace_db, user) == []
+    assert namespace_db.statements == []
+
+    all_documents_db = _Db()
+    assert await knowledge_sources.list_all_documents(
+        all_documents_db, user
+    ) == []
+    assert all_documents_db.statements == []
+
+    namespace_documents_db = _Db()
+    assert await knowledge_sources.list_documents(
+        "private-runbooks", namespace_documents_db, user
+    ) == []
+    assert namespace_documents_db.statements == []
+
+    with pytest.raises(HTTPException) as exc:
+        await knowledge_sources.get_document(
+            "private-runbooks", uuid4(), _Db(), user
+        )
+
+    assert exc.value.status_code == 404
 
 
 @pytest.mark.asyncio
