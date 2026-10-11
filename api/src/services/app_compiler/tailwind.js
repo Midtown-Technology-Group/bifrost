@@ -26,6 +26,9 @@
  */
 const { compile } = require("@tailwindcss/node");
 
+const maxOutputBytes = Number.parseInt(process.argv[2], 10);
+const maxInputBytes = Number.parseInt(process.argv[3], 10);
+
 const BASELINE_IMPORTS =
   "@import 'tailwindcss/theme' layer(theme);\n" +
   // App utilities supplement the host design system; authored CSS remains
@@ -33,10 +36,22 @@ const BASELINE_IMPORTS =
   "@import 'tailwindcss/utilities' layer(bifrost-app-utilities);\n";
 
 let input = "";
+let inputBytes = 0;
+let inputTooLarge = false;
 process.stdin.setEncoding("utf8");
-process.stdin.on("data", (chunk) => { input += chunk; });
+process.stdin.on("data", (chunk) => {
+  inputBytes += Buffer.byteLength(chunk);
+  if (Number.isFinite(maxInputBytes) && inputBytes > maxInputBytes) {
+    inputTooLarge = true;
+    return;
+  }
+  input += chunk;
+});
 process.stdin.on("end", async () => {
   try {
+    if (inputTooLarge) {
+      throw new Error("Tailwind input exceeds its byte limit");
+    }
     const cfg = JSON.parse(input);
     const candidates = cfg.candidates || [];
     const userCss = cfg.user_css;
@@ -60,6 +75,12 @@ process.stdin.on("end", async () => {
       onDependency: () => {},
     });
     const css = compiler.build(candidates);
+    if (
+      Number.isFinite(maxOutputBytes)
+      && Buffer.byteLength(css) > maxOutputBytes
+    ) {
+      throw new Error("Tailwind output exceeds its byte limit");
+    }
 
     process.stdout.write(JSON.stringify({ css, error: null }));
   } catch (err) {

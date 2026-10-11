@@ -30,6 +30,11 @@ COMPILER_QUEUE_TIMEOUT_SECONDS = 5.0
 COMPILER_TIMEOUT_SECONDS = 30.0
 COMPILER_MAX_OLD_SPACE_MB = 256
 
+TAILWIND_MAX_SOURCE_BYTES = 8 * 1024 * 1024
+TAILWIND_MAX_CANDIDATES = 10_000
+TAILWIND_MAX_PAYLOAD_BYTES = 8 * 1024 * 1024
+TAILWIND_MAX_OUTPUT_BYTES = 8 * 1024 * 1024
+
 _COMPILER_SLOTS = asyncio.Semaphore(COMPILER_MAX_CONCURRENCY)
 
 
@@ -42,16 +47,24 @@ class CompileResult:
     error: str | None = None
     default_export: str | None = None
     named_exports: list[str] = field(default_factory=list)
+    retryable: bool = False
 
 
 class AppCompilerService:
     """Compile TSX/JSX source files via Node.js subprocess."""
 
     @staticmethod
-    def _failure_results(files: list[dict], error: str) -> list[CompileResult]:
+    def _failure_results(
+        files: list[dict], error: str, *, retryable: bool = False
+    ) -> list[CompileResult]:
         """Return one stable failure result for each requested input file."""
         return [
-            CompileResult(path=str(item.get("path", "")), success=False, error=error)
+            CompileResult(
+                path=str(item.get("path", "")),
+                success=False,
+                error=error,
+                retryable=retryable,
+            )
             for item in files
         ]
 
@@ -110,7 +123,7 @@ class AppCompilerService:
                     f"{COMPILER_QUEUE_TIMEOUT_SECONDS:g} seconds"
                 )
                 logger.warning(error)
-                return self._failure_results(files, error)
+                return self._failure_results(files, error, retryable=True)
 
             try:
                 proc = await asyncio.create_subprocess_exec(
@@ -135,7 +148,7 @@ class AppCompilerService:
                         f"{COMPILER_TIMEOUT_SECONDS:g}-second limit"
                     )
                     logger.warning(error)
-                    return self._failure_results(files, error)
+                    return self._failure_results(files, error, retryable=True)
                 except asyncio.CancelledError:
                     with suppress(ProcessLookupError):
                         proc.kill()
@@ -152,15 +165,27 @@ class AppCompilerService:
             if proc.returncode != 0:
                 error_msg = stderr.decode().strip() or "Node process exited with error"
                 logger.error(f"Compiler process failed: {error_msg}")
-                return self._failure_results(files, error_msg)
+                return self._failure_results(files, error_msg, retryable=True)
 
             output = json.loads(stdout.decode())
 
             if "error" in output:
-                return self._failure_results(files, output["error"])
+                return self._failure_results(files, output["error"], retryable=True)
+
+            output_results = output.get("results")
+            expected_paths = [str(item.get("path", "")) for item in files]
+            if (
+                not isinstance(output_results, list)
+                or [item.get("path") for item in output_results] != expected_paths
+            ):
+                return self._failure_results(
+                    files,
+                    "Compiler returned an incomplete response",
+                    retryable=True,
+                )
 
             results = []
-            for item in output.get("results", []):
+            for item in output_results:
                 if item.get("error"):
                     results.append(CompileResult(
                         path=item["path"],
@@ -179,10 +204,10 @@ class AppCompilerService:
 
         except FileNotFoundError:
             logger.error("Node.js not found — cannot compile app files")
-            return self._failure_results(files, "Node.js not available")
+            return self._failure_results(files, "Node.js not available", retryable=True)
         except Exception as e:
             logger.exception("Compilation failed")
-            return self._failure_results(files, str(e))
+            return self._failure_results(files, str(e), retryable=True)
 
 
 # Extract all string literals from compiled JS output, then split into tokens.
@@ -215,12 +240,26 @@ class AppTailwindService:
         Over-extraction is harmless — Tailwind ignores unknown candidates.
         """
         candidates: set[str] = set()
+        source_bytes = 0
         for source in sources:
+            if not isinstance(source, str):
+                raise TypeError("Tailwind sources must be text")
+            source_bytes += len(source.encode("utf-8"))
+            if source_bytes > TAILWIND_MAX_SOURCE_BYTES:
+                raise ValueError(
+                    "Tailwind sources exceed the "
+                    f"{TAILWIND_MAX_SOURCE_BYTES}-byte limit"
+                )
             for match in _STRING_LITERAL.finditer(source):
                 for token in _TOKEN_SPLIT.split(match.group(1)):
                     token = token.strip()
                     if token and _LOOKS_LIKE_CLASS.match(token):
                         candidates.add(token)
+                        if len(candidates) > TAILWIND_MAX_CANDIDATES:
+                            raise ValueError(
+                                "Tailwind candidates exceed the "
+                                f"{TAILWIND_MAX_CANDIDATES}-candidate limit"
+                            )
         return sorted(candidates)
 
     @staticmethod
@@ -234,7 +273,11 @@ class AppTailwindService:
         `generate_css_pipeline` for the pipeline mode that supports
         @apply / @layer / @theme.
         """
-        candidates = AppTailwindService.extract_candidates(sources)
+        try:
+            candidates = AppTailwindService.extract_candidates(sources)
+        except (TypeError, ValueError) as error:
+            logger.warning("Tailwind CSS generation rejected: %s", error)
+            return None
         if not candidates:
             return None
 
@@ -261,7 +304,11 @@ class AppTailwindService:
         Returns the generated CSS string (utilities + processed user CSS),
         or None on failure.
         """
-        candidates = AppTailwindService.extract_candidates(code_sources)
+        try:
+            candidates = AppTailwindService.extract_candidates(code_sources)
+        except (TypeError, ValueError) as error:
+            logger.warning("Tailwind CSS generation rejected: %s", error)
+            return None
         payload: dict[str, object] = {
             "candidates": candidates,
             "user_css": [
@@ -280,19 +327,72 @@ class AppTailwindService:
     async def _invoke(payload: dict[str, object]) -> str | None:
         """Send a payload to tailwind.js, return the css or None on error."""
         input_data = json.dumps(payload)
+        input_bytes = input_data.encode()
+        if len(input_bytes) > TAILWIND_MAX_PAYLOAD_BYTES:
+            logger.warning(
+                "Tailwind payload exceeds the %d-byte limit",
+                TAILWIND_MAX_PAYLOAD_BYTES,
+            )
+            return None
 
         try:
-            proc = await asyncio.create_subprocess_exec(
-                "node", str(TAILWIND_SCRIPT),
-                stdin=asyncio.subprocess.PIPE,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            stdout, stderr = await proc.communicate(input=input_data.encode())
+            try:
+                await asyncio.wait_for(
+                    _COMPILER_SLOTS.acquire(),
+                    timeout=COMPILER_QUEUE_TIMEOUT_SECONDS,
+                )
+            except TimeoutError:
+                logger.warning(
+                    "Tailwind capacity unavailable after %g seconds",
+                    COMPILER_QUEUE_TIMEOUT_SECONDS,
+                )
+                return None
+
+            try:
+                proc = await asyncio.create_subprocess_exec(
+                    "node",
+                    f"--max-old-space-size={COMPILER_MAX_OLD_SPACE_MB}",
+                    str(TAILWIND_SCRIPT),
+                    str(TAILWIND_MAX_OUTPUT_BYTES),
+                    str(TAILWIND_MAX_PAYLOAD_BYTES),
+                    stdin=asyncio.subprocess.PIPE,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                try:
+                    stdout, stderr = await asyncio.wait_for(
+                        proc.communicate(input=input_bytes),
+                        timeout=COMPILER_TIMEOUT_SECONDS,
+                    )
+                except TimeoutError:
+                    with suppress(ProcessLookupError):
+                        proc.kill()
+                    await proc.wait()
+                    logger.warning(
+                        "Tailwind CSS generation exceeded the %g-second limit",
+                        COMPILER_TIMEOUT_SECONDS,
+                    )
+                    return None
+                except asyncio.CancelledError:
+                    with suppress(ProcessLookupError):
+                        proc.kill()
+                    await proc.wait()
+                    raise
+                except Exception:
+                    with suppress(ProcessLookupError):
+                        proc.kill()
+                    await proc.wait()
+                    raise
+            finally:
+                _COMPILER_SLOTS.release()
 
             if proc.returncode != 0:
                 error_msg = stderr.decode().strip() or "tailwind.js exited with error"
                 logger.error(f"Tailwind CSS generation failed: {error_msg}")
+                return None
+
+            if len(stdout) > TAILWIND_MAX_OUTPUT_BYTES:
+                logger.error("Tailwind CSS output exceeded its byte limit")
                 return None
 
             output = json.loads(stdout.decode())

@@ -38,6 +38,10 @@ PUBLISH_COPY_CONCURRENCY = 16
 PUBLICATION_INTENT_SCHEMA = "bifrost.application-publication-intent/v1"
 
 
+class RetryablePreviewSyncError(RuntimeError):
+    """Preview compilation failed before storage could be safely updated."""
+
+
 def _precondition_rejected(error: Exception) -> bool:
     if isinstance(error, ClientError):
         return (error.response.get("ResponseMetadata", {}).get("HTTPStatusCode") in {409, 412}
@@ -213,6 +217,17 @@ class AppStorageService:
                     for rel, content in ts_files
                 ]
                 results = await compiler.compile_batch(batch_input)
+
+                retryable_errors = [
+                    f"{result.path}: {result.error}"
+                    for result in results
+                    if not result.success and getattr(result, "retryable", False)
+                ]
+                if retryable_errors:
+                    raise RetryablePreviewSyncError(
+                        "Retryable preview compilation failure: "
+                        + "; ".join(retryable_errors)
+                    )
 
                 for result in results:
                     if result.success and result.compiled:

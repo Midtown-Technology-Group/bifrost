@@ -834,7 +834,8 @@ class TestGitHubSyncAppPreviews:
         service = object.__new__(GitHubSyncService)
         service.repo_manager = type("RepoManager", (), {"_settings": object()})()
 
-        await service._sync_app_previews(tmp_path)
+        with pytest.raises(RuntimeError, match="storage down"):
+            await service._sync_app_previews(tmp_path)
 
         assert calls == [
             ("app-ok", "apps/ok"),
