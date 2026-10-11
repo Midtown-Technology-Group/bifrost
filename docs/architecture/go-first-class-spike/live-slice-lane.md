@@ -99,3 +99,14 @@ launch-ready file, watching that fixture's process handle during bootstrap.
 The hosted job bounds bootstrap and all existing runtime deadlines remain intact.
 This run's repaired teardown retained empty stack and guardian inventories;
 no owner ingress, admission or runtime acceptance was proved.
+
+Run38113163230 (`58b2e90b28a22fb0c33edfe6f263787e8ec399fb`) reached the
+original Rust owner and unchanged accepted Go binary. The first execution retained
+one SDK admission, HTTP200, one common LogBatch, an accepted committed ResultReceipt,
+original owner exit0, namespace/container drain and staged-source removal. Its
+owner elapsed time was2695.176164ms, including launch, provisioning and drain;
+this is not a workload-only latency measurement. Stack and guardian inventories
+were empty after teardown. The test failed while awaiting the synchronous
+authenticated Execution API client's Response. Use that existing client's normal
+synchronous call. Public response contents, exact durable receipt readback and
+the second unchanged-binary execution were not verified; the lane remains red.

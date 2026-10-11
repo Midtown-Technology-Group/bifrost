@@ -603,7 +603,7 @@ async def test_original_rust_owner_runs_unchanged_go_twice(
                 "pid": ingress["owner_pid"],
                 "exit_code": 0,
             }
-            response = await e2e_client.get(
+            response = e2e_client.get(
                 f"/api/executions/{execution}", headers=platform_admin.headers
             )
             assert response.status_code == 200
