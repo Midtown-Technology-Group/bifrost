@@ -14,6 +14,7 @@ import type { components } from "@/lib/v1";
 import { refreshAccessToken } from "@/lib/api-client";
 import { getActiveToken } from "@/lib/auth-token";
 import type { ChatStreamEnvelope } from "@/lib/chat-runtime";
+import { requestWebSocketTicket } from "@/lib/websocket-auth";
 import { useNotificationStore } from "@/stores/notificationStore";
 import type { Notification } from "@/stores/notificationStore";
 
@@ -594,12 +595,12 @@ class WebSocketService {
 			const params = new URLSearchParams();
 			channels.forEach((ch) => params.append("channels", ch));
 
-			// For embed tokens, pass as query param since browser WebSocket
-			// API can't set custom headers. getActiveToken() prefers the
-			// per-tab embed token (sessionStorage) over the user token.
+			// Browser WebSockets cannot set Authorization headers. Embed sessions
+			// exchange their bearer token over HTTPS for an opaque, single-use
+			// ticket so the long-lived JWT never enters a URL or access log.
 			const embedToken = getActiveToken();
 			if (embedToken && isEmbedToken(embedToken)) {
-				params.set("token", embedToken);
+				params.set("ticket", await requestWebSocketTicket(embedToken));
 			}
 
 			const wsUrl = `${protocol}//${host}/ws/connect?${params.toString()}`;
@@ -1179,10 +1180,7 @@ class WebSocketService {
 	/**
 	 * Subscribe to live log lines for a specific service
 	 */
-	onServiceLog(
-		serviceId: string,
-		callback: ServiceLogCallback,
-	): () => void {
+	onServiceLog(serviceId: string, callback: ServiceLogCallback): () => void {
 		if (!this.serviceLogCallbacks.has(serviceId)) {
 			this.serviceLogCallbacks.set(serviceId, new Set());
 		}

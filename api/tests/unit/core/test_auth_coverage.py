@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
+from unittest.mock import AsyncMock, Mock
 from uuid import uuid4
 
 import pytest
 from fastapi import HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
-
 from src.core import auth
 from src.core.principal import UserPrincipal
 
@@ -347,18 +347,37 @@ async def test_websocket_auth_rejects_actor_scoped_token(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_websocket_auth_accepts_query_token_for_embed_browser_clients(monkeypatch):
+async def test_websocket_auth_rejects_access_token_query_parameter(monkeypatch):
+    decode = Mock()
+    monkeypatch.setattr(auth, "decode_token", decode)
+
+    user = await auth.get_current_user_ws(_request(query_params={"token": "access-token"}))
+
+    assert user is None
+    decode.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_websocket_auth_accepts_single_use_ticket_for_embed_browser_clients(
+    monkeypatch,
+):
+    consume = AsyncMock(return_value="embed-token")
+    monkeypatch.setattr(
+        "src.core.websocket_tickets.consume_websocket_ticket",
+        consume,
+    )
     monkeypatch.setattr(
         auth,
         "decode_token",
         lambda token, *, expected_type: _payload(org_id=None, embed=True),
     )
 
-    user = await auth.get_current_user_ws(_request(query_params={"token": "query-token"}))
+    user = await auth.get_current_user_ws(_request(query_params={"ticket": "opaque-ticket"}))
 
     assert user is not None
     assert user.embed is True
     assert user.organization_id is None
+    consume.assert_awaited_once_with("opaque-ticket")
 
 
 @pytest.mark.asyncio

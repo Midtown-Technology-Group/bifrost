@@ -1,4 +1,5 @@
 import type { components } from "@/lib/v1";
+import { requestWebSocketTicket } from "@/lib/websocket-auth";
 import { getBifrostTransport } from "./transport";
 
 type Expr = components["schemas"]["Expr"];
@@ -36,18 +37,16 @@ export type FileChangeMessage =
 /**
  * Build the `/ws/connect` URL through the installed transport. With a
  * provider transport (npm-dev / `solution start` — possibly cross-origin),
- * the socket must target the transport's baseUrl, and since `WebSocket`
- * cannot send an Authorization header, auth rides as a `token` query param
- * (accepted by the server's ws auth). The same-origin default (v1 inline
- * apps) keeps cookie auth and sends no token.
+ * the socket targets the transport's baseUrl. Browser authentication uses a
+ * short-lived ticket obtained separately over HTTPS; the bearer token never
+ * enters this URL. The same-origin default keeps cookie auth.
  */
-export function buildWsUrl(): string {
+export function buildWsUrl(ticket?: string): string {
   const t = getBifrostTransport();
   const base = t.baseUrl ? new URL(t.baseUrl) : new URL(window.location.href);
   const proto = base.protocol === "https:" ? "wss:" : "ws:";
   const url = new URL("/ws/connect", `${proto}//${base.host}`);
-	const token = t.getToken?.() ?? t.token;
-	if (token) url.searchParams.set("token", token);
+  if (ticket) url.searchParams.set("ticket", ticket);
   return url.toString();
 }
 
@@ -109,10 +108,27 @@ export function createReconnectingSubscription({
     socket = null;
   };
 
-  const connect = () => {
+  const scheduleReconnect = () => {
+    if (stopped || reconnectTimer) return;
+    const baseDelay = Math.min(
+      RECONNECT_BASE_DELAY_MS * 2 ** reconnectAttempt,
+      RECONNECT_MAX_DELAY_MS,
+    );
+    reconnectAttempt += 1;
+    const delay = Math.min(
+      Math.round(baseDelay * (0.75 + reconnectJitter() * 0.5)),
+      RECONNECT_MAX_DELAY_MS,
+    );
+    reconnectTimer = setTimeout(() => {
+      reconnectTimer = null;
+      connect();
+    }, delay);
+  };
+
+  const openSocket = (ticket?: string) => {
     if (stopped) return;
 
-    const current = new WebSocket(buildWsUrl());
+    const current = new WebSocket(buildWsUrl(ticket));
     socket = current;
 
     current.addEventListener("open", () => {
@@ -153,20 +169,31 @@ export function createReconnectingSubscription({
         return;
       }
 
-      const baseDelay = Math.min(
-        RECONNECT_BASE_DELAY_MS * 2 ** reconnectAttempt,
-        RECONNECT_MAX_DELAY_MS,
-      );
-      reconnectAttempt += 1;
-      const delay = Math.min(
-        Math.round(baseDelay * (0.75 + reconnectJitter() * 0.5)),
-        RECONNECT_MAX_DELAY_MS,
-      );
-      reconnectTimer = setTimeout(() => {
-        reconnectTimer = null;
-        connect();
-      }, delay);
+      scheduleReconnect();
     });
+  };
+
+  const connect = () => {
+    if (stopped) return;
+    const transport = getBifrostTransport();
+    const token = transport.getToken?.() ?? transport.token;
+    if (!token) {
+      openSocket();
+      return;
+    }
+    void requestWebSocketTicket(
+      token,
+      transport.baseUrl,
+      transport.fetchImpl ?? fetch,
+    )
+      .then((ticket) => openSocket(ticket))
+      .catch(() => {
+        if (!stopped) {
+          notifySocketDown();
+          console.warn(`[bifrost-sdk] ${label} ticket request failed`);
+          scheduleReconnect();
+        }
+      });
   };
 
   connect();

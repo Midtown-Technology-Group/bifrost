@@ -372,6 +372,15 @@ def integration_oauth_pkce_key(state: str) -> str:
     return f"bifrost:integration_oauth:pkce:{state}"
 
 
+def websocket_ticket_key(ticket_digest: str) -> str:
+    """Key for a single-use WebSocket authentication ticket.
+
+    The raw ticket is only sent to the browser. Redis receives its SHA-256
+    digest so a cache inspection cannot recover a usable query credential.
+    """
+    return f"bifrost:auth:websocket_ticket:{ticket_digest}"
+
+
 def rate_limit_key(endpoint: str, identifier: str) -> str:
     """
     Key for rate limiting by endpoint and IP/user.
@@ -422,5 +431,6 @@ TTL_EMBED_EXECUTION = 86400  # 24 hours (embed session → execution link)
 # Auth TTLs
 TTL_REFRESH_TOKEN = 604800  # 7 days (matches refresh token expiry)
 TTL_OAUTH_STATE = 600  # 10 minutes
+TTL_WEBSOCKET_TICKET = 30  # one connection attempt only
 TTL_RATE_LIMIT = 60  # 1 minute window
 TTL_DEVICE_CODE = 300  # 5 minutes (device authorization flow)

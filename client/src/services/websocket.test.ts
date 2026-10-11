@@ -43,6 +43,60 @@ describe("webSocketService security hardening", () => {
 		expect(warnSpy).toHaveBeenCalledWith("[WS] Notification received");
 		expect(warnSpy.mock.calls[0]).toHaveLength(1);
 	});
+
+	it("uses a one-time ticket rather than an embed JWT in the socket URL", async () => {
+		const payload = btoa(JSON.stringify({ embed: true }));
+		const embedToken = `header.${payload}.signature`;
+		const ticket = "a".repeat(43);
+		sessionStorage.setItem("bifrost_embed_token", embedToken);
+		const fetchImpl = vi.fn().mockResolvedValue({
+			ok: true,
+			status: 200,
+			json: async () => ({ ticket }),
+		});
+		vi.stubGlobal("fetch", fetchImpl);
+
+		class MockWebSocket {
+			static urls: string[] = [];
+			onopen: (() => void) | null = null;
+			onmessage: (() => void) | null = null;
+			onerror: (() => void) | null = null;
+			onclose: (() => void) | null = null;
+
+			constructor(url: string) {
+				MockWebSocket.urls.push(url);
+			}
+
+			addEventListener(type: string, listener: () => void): void {
+				if (type === "open") queueMicrotask(listener);
+			}
+		}
+		vi.stubGlobal("WebSocket", MockWebSocket);
+		const service = webSocketService as unknown as {
+			_connect(channels: string[]): Promise<void>;
+			ws: WebSocket | null;
+		};
+
+		try {
+			await service._connect([]);
+			const url = new URL(MockWebSocket.urls[0]);
+			expect(url.searchParams.get("ticket")).toBe(ticket);
+			expect(url.searchParams.has("token")).toBe(false);
+			expect(url.toString()).not.toContain(embedToken);
+			expect(fetchImpl).toHaveBeenCalledWith(
+				"/ws/ticket",
+				expect.objectContaining({
+					headers: expect.objectContaining({
+						Authorization: `Bearer ${embedToken}`,
+					}),
+				}),
+			);
+		} finally {
+			service.ws = null;
+			sessionStorage.removeItem("bifrost_embed_token");
+			vi.unstubAllGlobals();
+		}
+	});
 });
 
 describe("platform-job WebSocket contract", () => {
