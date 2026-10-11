@@ -161,7 +161,7 @@ BEGIN
         EXECUTE format('GRANT INSERT, UPDATE, DELETE ON public.%I TO wex_incumbent, wex_core', relation);
     END LOOP;
     FOREACH relation IN ARRAY ARRAY['runtime_execution_owners','runtime_sessions','runtime_starts','runtime_report_receipts',
-        'workflow_runtime_sdk_grants','workflow_runtime_sdk_grant_operations','runtime_admissions'] LOOP
+        'workflow_runtime_sdk_grants','workflow_runtime_sdk_grant_operations','runtime_admissions','runtime_resource_settlements'] LOOP
         EXECUTE format('CREATE TRIGGER isolated_runtime_owner BEFORE INSERT OR UPDATE OR DELETE ON public.%I FOR EACH ROW EXECUTE FUNCTION public.isolated_runtime_writer_guard()', relation);
         EXECUTE format('GRANT INSERT, UPDATE ON public.%I TO wex_core', relation);
     END LOOP;

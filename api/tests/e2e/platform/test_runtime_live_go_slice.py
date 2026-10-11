@@ -21,7 +21,7 @@ from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import NameOID
-from sqlalchemy import text
+from sqlalchemy import select, text
 
 from src.core.constants import PROVIDER_ORG_ID
 from src.core.runtime_sdk_credentials import (
@@ -37,6 +37,7 @@ from src.core.runtime_sdk_credentials import (
 )
 from src.models.orm.config import Config
 from src.models.orm.integrations import Integration
+from src.models.orm.executions import Execution
 from src.models.orm.runtime_execution import RuntimeDeploymentArtifact
 from src.models.orm.solution_deployments import SolutionDeployment
 from src.models.orm.solutions import Solution
@@ -46,6 +47,7 @@ from src.services.isolated_runtime_sdk_http import build_isolated_sdk_app
 from src.services.isolated_runtime_sdk_issuer import FiniteIssuerServer
 from src.services.isolated_runtime_sdk_server import IsolatedSDKServer
 from src.services.isolated_runtime_sdk_snapshot import load_committed_finite_snapshot
+from src.services.runtime_source_consumers import unsettled_runtime_source_consumer
 
 from tests.e2e.platform.test_runtime_writer_guards import (
     installed_guards as installed_guards,
@@ -601,6 +603,36 @@ async def test_original_rust_owner_runs_unchanged_go_and_cancels_waiting_sdk(
                     case / "cancel-ready.json",
                     {"event": "cancel_ready", "session_id": str(session)},
                 )
+            retired = await observation(case / "owner-resources-retired.json")
+            assert retired == {"event": "resources_retired", "session_id": str(session)}
+            assert (
+                await db_session.scalar(
+                    select(Execution.id).where(
+                        Execution.id == execution, unsettled_runtime_source_consumer()
+                    )
+                )
+                == execution
+            )
+            assert (
+                await db_session.scalar(
+                    text(
+                        "SELECT count(*) FROM runtime_resource_settlements WHERE session_id=:session"
+                    ),
+                    {"session": session},
+                )
+                == 0
+            )
+            before_settlement = e2e_client.get(
+                f"/api/executions/{execution}", headers=platform_admin.headers
+            )
+            assert before_settlement.status_code == 200
+            assert before_settlement.json()["status"] == (
+                "Cancelling" if cancel_waiting_sdk else "Success"
+            )
+            publish(
+                case / "settlement-ready.json",
+                {"event": "settlement_ready", "session_id": str(session)},
+            )
             result = await observation(case / "owner-result.json")
             assert result["event"] == "slice_result"
             assert (
@@ -618,6 +650,62 @@ async def test_original_rust_owner_runs_unchanged_go_and_cancels_waiting_sdk(
             assert (
                 result["source_staging_removed"]
                 and not (runtime_root / "bundle").exists()
+                and not (runtime_root / "material").exists()
+                and not (runtime_root / "gate").exists()
+            )
+            settlement = (
+                (
+                    await db_session.execute(
+                        text(
+                            "SELECT execution_id,owner_incarnation_id,workflow_attempt_id,raw_observation,observation_sha256,created_at "
+                            "FROM runtime_resource_settlements WHERE session_id=:session"
+                        ),
+                        {"session": session},
+                    )
+                )
+                .mappings()
+                .one()
+            )
+            assert str(settlement["execution_id"]) == str(execution)
+            assert str(settlement["owner_incarnation_id"]) == config["owner_id"]
+            assert (
+                str(settlement["workflow_attempt_id"])
+                == config["prepare"]["body"]["binding"]["attempt_id"]
+            )
+            assert settlement["created_at"] is not None
+            assert (
+                digest(settlement["raw_observation"])
+                == settlement["observation_sha256"]
+            )
+            resource_observation = json.loads(settlement["raw_observation"])
+            assert (
+                resource_observation["version"]
+                == "bifrost.runtime-resource-settlement/v1"
+            )
+            assert resource_observation["physical_drain"] == result["physical_drain"]
+            assert resource_observation["archive_sha256"] == descriptor["artifact"][
+                "artifact_id"
+            ].removeprefix("sha256:")
+            assert all(
+                resource_observation[key] is True
+                for key in (
+                    "staged_source_removed",
+                    "material_retired",
+                    "sdk_gate_retired",
+                )
+            )
+            assert (
+                result["resource_settlement"]["observation_sha256"]
+                == settlement["observation_sha256"]
+            )
+            assert result["resource_settlement"]["durable_source_settlement"] is True
+            assert (
+                await db_session.scalar(
+                    select(Execution.id).where(
+                        Execution.id == execution, unsettled_runtime_source_consumer()
+                    )
+                )
+                is None
             )
             exited = await observation(case / "owner-exited.json")
             assert exited == {
@@ -631,11 +719,11 @@ async def test_original_rust_owner_runs_unchanged_go_and_cancels_waiting_sdk(
             assert response.status_code == 200
             public = response.json()
             if cancel_waiting_sdk:
-                assert public["status"] == "Cancelling" and public["result"] is None
+                assert public["status"] == "Cancelled" and public["result"] is None
                 component = result["component"]
                 assert (
                     component["cancel_commit_observed"]
-                    and not component["durable_cancelled_finalization"]
+                    and component["durable_cancelled_finalization"]
                 )
                 assert component["cancel"]["body"]["cancel_id"] == config["cancel_id"]
                 assert component["stopped"]["body"]["cancel_id"] == config["cancel_id"]
@@ -649,9 +737,9 @@ async def test_original_rust_owner_runs_unchanged_go_and_cancels_waiting_sdk(
                     (
                         await db_session.execute(
                             text(
-                                "SELECT s.closed_at,s.close_reason,g.revoked_at,g.revocation_reason,a.status AS attempt_status,a.completed_at "
+                                "SELECT s.closed_at,s.close_reason,g.revoked_at,g.revocation_reason,a.status AS attempt_status,a.completed_at,e.completed_at AS root_completed "
                                 "FROM runtime_sessions s JOIN workflow_runtime_sdk_grants g ON g.runtime_session_id=s.id "
-                                "JOIN workflow_execution_attempts a ON a.id=s.workflow_attempt_id WHERE s.id=:session AND g.id=:grant"
+                                "JOIN workflow_execution_attempts a ON a.id=s.workflow_attempt_id JOIN executions e ON e.id=s.execution_id WHERE s.id=:session AND g.id=:grant"
                             ),
                             {"session": session, "grant": grant},
                         )
@@ -668,7 +756,14 @@ async def test_original_rust_owner_runs_unchanged_go_and_cancels_waiting_sdk(
                     and row["revocation_reason"] == "session_closed"
                 )
                 assert (
-                    row["attempt_status"] == "running" and row["completed_at"] is None
+                    row["attempt_status"] == "cancelled"
+                    and row["completed_at"] is not None
+                    and row["root_completed"] is not None
+                )
+                assert (
+                    row["closed_at"]
+                    <= settlement["created_at"]
+                    <= row["root_completed"]
                 )
                 assert (
                     await db_session.scalar(
@@ -693,7 +788,8 @@ async def test_original_rust_owner_runs_unchanged_go_and_cancels_waiting_sdk(
                         "stopped": component["stopped"],
                         "physical_drain": result["physical_drain"],
                         "elapsed_ms": result["elapsed_ms"],
-                        "durable_cancelled_finalization": False,
+                        "durable_cancelled_finalization": True,
+                        "resource_settlement": result["resource_settlement"],
                     }
                 )
             if not cancel_waiting_sdk:
@@ -741,6 +837,7 @@ async def test_original_rust_owner_runs_unchanged_go_and_cancels_waiting_sdk(
                         "public_result": public["result"],
                         "physical_drain": result["physical_drain"],
                         "elapsed_ms": result["elapsed_ms"],
+                        "resource_settlement": result["resource_settlement"],
                     }
                 )
         finally:
@@ -764,7 +861,7 @@ async def test_original_rust_owner_runs_unchanged_go_and_cancels_waiting_sdk(
             "sdk_version": "0.0.0-spike.2",
             "executions": proofs,
             "runtime_acceptance": False,
-            "durable_source_settlement": False,
+            "durable_source_settlement": True,
             "production_dispatch": False,
         },
     )

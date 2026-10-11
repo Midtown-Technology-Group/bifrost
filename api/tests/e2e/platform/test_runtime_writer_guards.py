@@ -11,6 +11,7 @@ import secrets
 import sys
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
+from hashlib import sha256
 from pathlib import Path
 from uuid import UUID, uuid4
 from unittest.mock import AsyncMock
@@ -85,7 +86,7 @@ async def installed_guards():
     try:
         assert (
             await admin.fetchval("SELECT version_num FROM alembic_version")
-            == "20261010_runtime_fences"
+            == "20261011_runtime_resources"
         )
         async with admin.transaction():
             await admin.execute(
@@ -3576,3 +3577,56 @@ async def test_real_finite_issuer_exchange_uses_committed_grant_and_original_pee
                 await process.wait()
         if owner_exchange is not None:
             await asyncio.gather(owner_exchange, return_exceptions=True)
+
+
+async def test_resource_settlement_excludes_incumbent_writer(session_fence):
+    """Real-role exclusion on synthetic closed-session metadata, not launch proof."""
+    execution, owner, attempt = map(UUID, session_fence[:3])
+    session = UUID(session_fence[5])
+    raw = b'{"schema_fixture_only":true}'
+    async with connection("wex_core") as conn:
+        await conn.execute(
+            "UPDATE runtime_sessions SET closed_at=clock_timestamp(),close_reason='schema_only' WHERE id=$1",
+            session,
+        )
+    async with connection("wex_incumbent") as conn:
+        with pytest.raises(asyncpg.InsufficientPrivilegeError):
+            await conn.execute(
+                "INSERT INTO runtime_resource_settlements(session_id,execution_id,owner_incarnation_id,workflow_attempt_id,raw_observation,observation_sha256) VALUES($1,$2,$3,$4,$5,$6)",
+                session,
+                execution,
+                owner,
+                attempt,
+                raw,
+                sha256(raw).hexdigest(),
+            )
+        assert (
+            await conn.fetchval(
+                "SELECT count(*) FROM runtime_resource_settlements WHERE session_id=$1",
+                session,
+            )
+            == 0
+        )
+    async with connection("wex_core") as conn:
+        await conn.execute(
+            "INSERT INTO runtime_resource_settlements(session_id,execution_id,owner_incarnation_id,workflow_attempt_id,raw_observation,observation_sha256) VALUES($1,$2,$3,$4,$5,$6)",
+            session,
+            execution,
+            owner,
+            attempt,
+            raw,
+            sha256(raw).hexdigest(),
+        )
+        with pytest.raises(asyncpg.CheckViolationError):
+            await conn.execute(
+                "UPDATE runtime_resource_settlements SET owner_incarnation_id=$2 WHERE session_id=$1",
+                session,
+                uuid4(),
+            )
+        assert (
+            await conn.fetchval(
+                "SELECT observation_sha256 FROM runtime_resource_settlements WHERE session_id=$1",
+                session,
+            )
+            == sha256(raw).hexdigest()
+        )

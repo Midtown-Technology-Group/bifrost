@@ -74,6 +74,10 @@ for case_number in 0 1 2; do
     cat "$case_dir/cancel-ready.json" >&"$owner_input"
     printf '\n' >&"$owner_input"
   fi
+  receive_event resources_retired "$case_dir/owner-resources-retired.json"
+  wait_file "$case_dir/settlement-ready.json"
+  cat "$case_dir/settlement-ready.json" >&"$owner_input"
+  printf '\n' >&"$owner_input"
   receive_event slice_result "$case_dir/owner-result.json"
   exec {owner_input}>&-
   exec {owner_output}<&-

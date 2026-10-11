@@ -21,6 +21,7 @@ from src.models.orm.runtime_execution import (
     RuntimeDeploymentArtifact,
     RuntimeExecutionOwner,
     RuntimeReportReceipt,
+    RuntimeResourceSettlement,
     RuntimeSession,
     RuntimeStart,
     WorkflowRuntimeSDKGrant,
@@ -419,6 +420,7 @@ async def test_duplicate_session_cannot_create_a_second_launch_identity(
         "runtime_sessions",
         "runtime_starts",
         "runtime_report_receipts",
+        "runtime_resource_settlements",
         "workflow_runtime_sdk_grants",
         "workflow_runtime_sdk_grant_operations",
     ],
@@ -436,6 +438,7 @@ async def test_alembic_runtime_tables_remain_registered_in_platform_metadata(
             RuntimeSession,
             RuntimeStart,
             RuntimeReportReceipt,
+            RuntimeResourceSettlement,
             WorkflowRuntimeSDKGrant,
             WorkflowRuntimeSDKGrantOperation,
         )
@@ -964,3 +967,183 @@ async def test_grant_cannot_substitute_a_different_start_clock(
                 },
             )
     assert getattr(caught.value.orig, "sqlstate", None) == "23503"
+
+
+RESOURCE_INSERT = text("""
+    INSERT INTO runtime_resource_settlements
+        (session_id, execution_id, owner_incarnation_id, workflow_attempt_id,
+         raw_observation, observation_sha256)
+    VALUES (:session, :execution, :owner, :attempt, :payload, :digest)
+""")
+
+
+@pytest.fixture
+async def resource_storage(db_session, owner_session):
+    """Synthetic storage evidence only; never original physical-custody proof."""
+    await db_session.execute(SESSION_INSERT, owner_session)
+    await db_session.execute(
+        text(
+            "UPDATE runtime_sessions SET closed_at=clock_timestamp(),close_reason='schema_only' WHERE id=:session"
+        ),
+        owner_session,
+    )
+    payload = b'{"schema_fixture_only":true}'
+    return {**owner_session, "payload": payload, "digest": sha256(payload).hexdigest()}
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("digest", "0" * 64),
+        ("payload", b"changed"),
+        ("payload", b""),
+        ("payload", b"x" * 65537),
+        ("execution", uuid4()),
+        ("owner", uuid4()),
+        ("attempt", uuid4()),
+        ("session", uuid4()),
+    ],
+)
+async def test_resource_storage_rejects_byte_and_parent_drift(
+    db_session, resource_storage, field, value
+):
+    with pytest.raises(DBAPIError) as caught:
+        async with db_session.begin_nested():
+            await db_session.execute(
+                RESOURCE_INSERT, {**resource_storage, field: value}
+            )
+    assert getattr(caught.value.orig, "sqlstate", None) == "23514"
+    assert (
+        await db_session.scalar(
+            text(
+                "SELECT count(*) FROM runtime_resource_settlements WHERE session_id=:session"
+            ),
+            resource_storage,
+        )
+        == 0
+    )
+
+
+async def test_resource_storage_requires_retained_closed_session(
+    db_session, owner_session
+):
+    await db_session.execute(SESSION_INSERT, owner_session)
+    payload = b'{"schema_fixture_only":true}'
+    with pytest.raises(DBAPIError, match="retained closed session"):
+        async with db_session.begin_nested():
+            await db_session.execute(
+                RESOURCE_INSERT,
+                {
+                    **owner_session,
+                    "payload": payload,
+                    "digest": sha256(payload).hexdigest(),
+                },
+            )
+    assert (
+        await db_session.scalar(
+            text(
+                "SELECT count(*) FROM runtime_resource_settlements WHERE session_id=:session"
+            ),
+            owner_session,
+        )
+        == 0
+    )
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "UPDATE runtime_resource_settlements SET observation_sha256=repeat('f',64) WHERE session_id=:session",
+        "UPDATE runtime_resource_settlements SET workflow_attempt_id=gen_random_uuid() WHERE session_id=:session",
+        "DELETE FROM runtime_resource_settlements WHERE session_id=:session",
+        "INSERT INTO runtime_resource_settlements SELECT session_id,execution_id,owner_incarnation_id,workflow_attempt_id,raw_observation,observation_sha256,created_at FROM runtime_resource_settlements WHERE session_id=:session ON CONFLICT(session_id) DO UPDATE SET created_at=clock_timestamp()",
+    ],
+)
+async def test_resource_storage_rejects_mutation_delete_and_conflict_update(
+    db_session, resource_storage, mutation
+):
+    await db_session.execute(RESOURCE_INSERT, resource_storage)
+    with pytest.raises(DBAPIError) as caught:
+        async with db_session.begin_nested():
+            await db_session.execute(text(mutation), resource_storage)
+    assert getattr(caught.value.orig, "sqlstate", None) == "23514"
+    row = (
+        await db_session.execute(
+            text(
+                "SELECT raw_observation,observation_sha256 FROM runtime_resource_settlements WHERE session_id=:session"
+            ),
+            resource_storage,
+        )
+    ).one()
+    assert tuple(row) == (resource_storage["payload"], resource_storage["digest"])
+
+
+async def test_resource_storage_rolls_back_with_parent_transaction(
+    db_session, resource_storage
+):
+    async with db_session.begin_nested() as transaction:
+        await db_session.execute(RESOURCE_INSERT, resource_storage)
+        assert (
+            await db_session.scalar(
+                text(
+                    "SELECT count(*) FROM runtime_resource_settlements WHERE session_id=:session"
+                ),
+                resource_storage,
+            )
+            == 1
+        )
+        await transaction.rollback()
+    assert (
+        await db_session.scalar(
+            text(
+                "SELECT count(*) FROM runtime_resource_settlements WHERE session_id=:session"
+            ),
+            resource_storage,
+        )
+        == 0
+    )
+
+
+async def test_runtime_source_pin_survives_terminal_result_until_settlement(
+    db_session, resource_storage
+):
+    from sqlalchemy import select
+    from src.services.runtime_source_consumers import unsettled_runtime_source_consumer
+
+    # Synthetic schema state deliberately closes every older logical source
+    # signal. Only the new common physical-consumer obligation may retain it.
+    await db_session.execute(
+        text(
+            "UPDATE executions SET status='Success',completed_at=clock_timestamp() WHERE id=:execution"
+        ),
+        resource_storage,
+    )
+    await db_session.execute(
+        text(
+            "UPDATE workflow_execution_attempts SET status='succeeded',phase='terminal',completed_at=clock_timestamp() WHERE id=:attempt"
+        ),
+        resource_storage,
+    )
+    query = select(Execution.id).where(
+        Execution.id == resource_storage["execution"],
+        unsettled_runtime_source_consumer(),
+    )
+    assert await db_session.scalar(query) == resource_storage["execution"]
+    await db_session.execute(RESOURCE_INSERT, resource_storage)
+    assert await db_session.scalar(query) is None
+    ordinary = Execution(
+        id=uuid4(),
+        workflow_name="Ordinary Python schema fixture",
+        executed_by_name="Synthetic",
+        status=ExecutionStatus.SUCCESS,
+    )
+    db_session.add(ordinary)
+    await db_session.flush()
+    assert (
+        await db_session.scalar(
+            select(Execution.id).where(
+                Execution.id == ordinary.id, unsettled_runtime_source_consumer()
+            )
+        )
+        is None
+    )

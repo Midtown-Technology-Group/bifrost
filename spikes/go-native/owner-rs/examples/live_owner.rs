@@ -10,6 +10,7 @@ use bifrost_isolated_owner_spike::{
     peer::OriginalPeer,
     record_provision_candidate,
     sdk_gate::SDKGate,
+    settle_retired_session,
 };
 use serde_json::{Value, json};
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
@@ -236,31 +237,54 @@ async fn run(config: Value) -> Result<Value, ()> {
     } else {
         (guardian.drain().map_err(|_| ())?, None)
     };
-    pipe.retire().map_err(|_| ())?;
-    gate.retire().map_err(|_| ())?;
-    fs::remove_dir(&gate_dir).map_err(|_| ())?;
-    fs::remove_dir(&material).map_err(|_| ())?;
-    fs::set_permissions(&bundle, fs::Permissions::from_mode(0o700)).map_err(|_| ())?;
-    for (i, name) in NAMES.iter().enumerate() {
-        if sha256(&read(&bundle.join(name), MAX_ARCHIVE)?) != pins.entries_sha256[i] {
+    let original_session_drained = original_drain.is_some();
+    let settlement = if let Some(original) = original_drain {
+        let retired = original
+            .retire_resources(pipe, gate, &pins)
+            .map_err(|_| ())?;
+        // Trusted fixture observation seam: source accounting must still retain
+        // this session after Result/physical retirement but before durable fact.
+        emit(&json!({"event":"resources_retired","session_id":session}))?;
+        let ready = parent()?;
+        if ready["event"] != "settlement_ready" || ready["session_id"] != session {
             return Err(());
         }
-        fs::remove_file(bundle.join(name)).map_err(|_| ())?;
-    }
-    if sha256(&read(&bundle.join("session-bundle.json"), 65536)?) != sha256(&index) {
-        return Err(());
-    }
-    fs::remove_file(bundle.join("session-bundle.json")).map_err(|_| ())?;
-    fs::remove_dir(&bundle).map_err(|_| ())?;
-    // Keep the opaque original-custody observation through staged-source
-    // retirement. No durable settlement writer is released by this token alone.
-    let original_session_drained = original_drain.is_some();
+        settle_retired_session(&pool, retired)
+            .await
+            .map_err(|_| ())?
+    } else {
+        // Failed protocol/admission operation still physically cleans up, but
+        // cannot turn cleanup JSON into the opaque finalization prerequisite.
+        pipe.retire().map_err(|_| ())?;
+        gate.retire().map_err(|_| ())?;
+        fs::remove_dir(&gate_dir).map_err(|_| ())?;
+        fs::remove_dir(&material).map_err(|_| ())?;
+        fs::set_permissions(&bundle, fs::Permissions::from_mode(0o700)).map_err(|_| ())?;
+        for (i, name) in NAMES.iter().enumerate() {
+            if sha256(&read(&bundle.join(name), MAX_ARCHIVE)?) != pins.entries_sha256[i] {
+                return Err(());
+            }
+            fs::remove_file(bundle.join(name)).map_err(|_| ())?;
+        }
+        if sha256(&read(&bundle.join("session-bundle.json"), 65536)?) != sha256(&index) {
+            return Err(());
+        }
+        fs::remove_file(bundle.join("session-bundle.json")).map_err(|_| ())?;
+        fs::remove_dir(&bundle).map_err(|_| ())?;
+        Value::Null
+    };
     pool.close().await;
-    let result = operation?;
+    let mut result = operation?;
+    if config["cancel_waiting_sdk"] == true {
+        result["durable_cancelled_finalization"] =
+            settlement["durable_cancelled_finalization"].clone();
+        result["source_consumer_settlement"] = settlement["durable_source_settlement"].clone();
+    }
     Ok(
         json!({"event":"slice_result","component":result,"physical_drain":drained,
         "source_staging_removed":true,"elapsed_ms":started.elapsed().as_secs_f64()*1000.0,
         "original_session_drained":original_session_drained,
+        "resource_settlement":settlement,
         "runtime_acceptance":false,"production_dispatch":false}),
     )
 }

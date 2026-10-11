@@ -1,7 +1,13 @@
 //! Private Linux guardian custody. No lifecycle/SDK authority or production dispatch.
 //! The initial live lane permits only a dormant, network-none carrier. A retained
 //! intent permits stop-only recovery, never another start or tenant initialization.
-use crate::{SessionFence, archive::sha256, canonical_uuid, digest};
+use crate::{
+    SessionFence,
+    archive::{ArchivePins, MAX_ARCHIVE, NAMES, sha256},
+    canonical_uuid, digest,
+    material::MaterialPipe,
+    sdk_gate::SDKGate,
+};
 use bifrost_execution_wire_spike::{Codec, MAX_FRAME};
 use serde_json::{Value, json};
 use std::{
@@ -9,7 +15,7 @@ use std::{
     io::{Read, Write},
     os::{
         fd::AsRawFd,
-        unix::fs::{FileTypeExt, MetadataExt, OpenOptionsExt},
+        unix::fs::{FileTypeExt, MetadataExt, OpenOptionsExt, PermissionsExt},
     },
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
@@ -67,6 +73,10 @@ mod tests {
         let proof = DrainedSession {
             fence: original.clone(),
             observation: json!({}),
+            bundle: spec().bundle,
+            material: spec().material,
+            uid: spec().uid,
+            index_sha256: spec().index_sha256,
         };
         assert!(proof.matches(&original));
         for field in 0..10 {
@@ -107,6 +117,41 @@ mod tests {
             recovered.drain_session(&fence()),
             Err(GuardianError::Rejected)
         ));
+    }
+
+    #[test]
+    fn staged_retirement_rejects_symlinks_hardlinks_and_wrong_custody() {
+        use std::os::unix::fs::symlink;
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_else(|_| panic!("clock"))
+            .as_nanos();
+        let root =
+            std::env::temp_dir().join(format!("bifrost-staged-{}-{nanos}", std::process::id()));
+        fs::create_dir(&root).unwrap_or_else(|_| panic!("temporary directory"));
+        let path = root.join("source");
+        fs::write(&path, b"immutable fixture").unwrap_or_else(|_| panic!("fixture"));
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o400))
+            .unwrap_or_else(|_| panic!("permissions"));
+        let uid = fs::metadata(&path)
+            .unwrap_or_else(|_| panic!("metadata"))
+            .uid();
+        assert_eq!(
+            staged_bytes(&path, uid, 0o400, 64).ok(),
+            Some(b"immutable fixture".to_vec())
+        );
+        assert!(staged_bytes(&path, uid ^ 1, 0o400, 64).is_err());
+        assert!(staged_bytes(&path, uid, 0o500, 64).is_err());
+        assert!(staged_bytes(&path, uid, 0o400, 1).is_err());
+        let alias = root.join("alias");
+        symlink(&path, &alias).unwrap_or_else(|_| panic!("symlink"));
+        assert!(staged_bytes(&alias, uid, 0o400, 64).is_err());
+        fs::remove_file(&alias).unwrap_or_else(|_| panic!("remove alias"));
+        fs::hard_link(&path, &alias).unwrap_or_else(|_| panic!("hard link"));
+        assert!(staged_bytes(&path, uid, 0o400, 64).is_err());
+        fs::remove_file(&alias).unwrap_or_else(|_| panic!("remove alias"));
+        fs::remove_file(&path).unwrap_or_else(|_| panic!("remove source"));
+        fs::remove_dir(&root).unwrap_or_else(|_| panic!("remove directory"));
     }
 
     #[test]
@@ -547,6 +592,18 @@ pub struct Guardian {
 pub struct DrainedSession {
     fence: SessionFence,
     observation: Value,
+    bundle: PathBuf,
+    material: PathBuf,
+    uid: u32,
+    index_sha256: String,
+}
+
+/// Actual original process, gate, material and immutable staged-source closure.
+/// No JSON/deserialization/Clone constructor; the common writer consumes this
+/// value once. A failed/uncertain write cannot recover it for another action.
+pub struct RetiredSession {
+    pub(crate) fence: SessionFence,
+    pub(crate) observation: Value,
 }
 
 impl DrainedSession {
@@ -567,6 +624,102 @@ impl DrainedSession {
             && self.fence.binding_sha256 == fence.binding_sha256
             && self.fence.channel_custody_sha256 == fence.channel_custody_sha256
     }
+
+    pub fn retire_resources(
+        self,
+        pipe: MaterialPipe,
+        gate: SDKGate,
+        pins: &ArchivePins,
+    ) -> Result<RetiredSession, GuardianError> {
+        let root = self.bundle.parent().ok_or(GuardianError::Rejected)?;
+        let gate_dir = root.join("gate");
+        let material_dir = root.join("material");
+        if pipe.directory() != self.material.as_path()
+            || gate.path().parent() != Some(gate_dir.as_path())
+        {
+            return Err(GuardianError::Rejected);
+        }
+        let directory = fs::symlink_metadata(&self.bundle).map_err(|_| GuardianError::Rejected)?;
+        if !directory.is_dir() || directory.uid() != self.uid || directory.mode() & 0o777 != 0o500 {
+            return Err(GuardianError::Rejected);
+        }
+        // Verify the complete accepted source before removing any entry. Reads
+        // never follow links; the task-owned 0700 root is outside tenant mounts.
+        for (i, name) in NAMES.iter().enumerate() {
+            let mode = if *name == "workflow" || *name == "adapter" {
+                0o500
+            } else {
+                0o400
+            };
+            if sha256(&staged_bytes(
+                &self.bundle.join(name),
+                self.uid,
+                mode,
+                MAX_ARCHIVE,
+            )?) != pins.entries_sha256[i]
+            {
+                return Err(GuardianError::Rejected);
+            }
+        }
+        if sha256(&staged_bytes(
+            &self.bundle.join("session-bundle.json"),
+            self.uid,
+            0o400,
+            65536,
+        )?) != self.index_sha256
+        {
+            return Err(GuardianError::Rejected);
+        }
+        pipe.retire().map_err(|_| GuardianError::CleanupRequired)?;
+        gate.retire().map_err(|_| GuardianError::CleanupRequired)?;
+        fs::remove_dir(&gate_dir).map_err(|_| GuardianError::CleanupRequired)?;
+        fs::remove_dir(&material_dir).map_err(|_| GuardianError::CleanupRequired)?;
+        let current =
+            fs::symlink_metadata(&self.bundle).map_err(|_| GuardianError::CleanupRequired)?;
+        if (current.dev(), current.ino()) != (directory.dev(), directory.ino()) {
+            return Err(GuardianError::CleanupRequired);
+        }
+        fs::set_permissions(&self.bundle, fs::Permissions::from_mode(0o700))
+            .map_err(|_| GuardianError::CleanupRequired)?;
+        for name in NAMES.iter().chain(std::iter::once(&"session-bundle.json")) {
+            fs::remove_file(self.bundle.join(name)).map_err(|_| GuardianError::CleanupRequired)?;
+        }
+        // Unknown source entries or incomplete retirement cannot produce proof.
+        fs::remove_dir(&self.bundle).map_err(|_| GuardianError::CleanupRequired)?;
+        Ok(RetiredSession {
+            fence: self.fence,
+            observation: json!({
+                "version":"bifrost.runtime-resource-settlement/v1",
+                "physical_drain":self.observation,"staged_source_removed":true,
+                "material_retired":true,"sdk_gate_retired":true,
+                "index_sha256":self.index_sha256,"archive_sha256":pins.archive_sha256
+            }),
+        })
+    }
+}
+
+fn staged_bytes(path: &Path, uid: u32, mode: u32, limit: usize) -> Result<Vec<u8>, GuardianError> {
+    let file = OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC)
+        .open(path)
+        .map_err(|_| GuardianError::Rejected)?;
+    let metadata = file.metadata().map_err(|_| GuardianError::Rejected)?;
+    if !metadata.is_file()
+        || metadata.uid() != uid
+        || metadata.mode() & 0o777 != mode
+        || metadata.nlink() != 1
+    {
+        return Err(GuardianError::Rejected);
+    }
+    let mut raw = Vec::new();
+    file.take((limit + 1) as u64)
+        .read_to_end(&mut raw)
+        .map_err(|_| GuardianError::Rejected)?;
+    if raw.is_empty() || raw.len() > limit {
+        return Err(GuardianError::Rejected);
+    }
+    Ok(raw)
 }
 
 #[derive(Clone)]
@@ -1096,6 +1249,10 @@ impl Guardian {
             return Err(GuardianError::Rejected);
         }
         self.verify_retained_session(fence)?;
+        let self_bundle = self.spec.bundle.clone();
+        let self_material = self.spec.material.clone();
+        let self_uid = self.spec.uid;
+        let self_index = self.spec.index_sha256.clone();
         let observation = self.drain()?;
         if observation["namespace_drained"] != true
             || observation["container_removed"] != true
@@ -1106,6 +1263,10 @@ impl Guardian {
         Ok(DrainedSession {
             fence: fence.clone(),
             observation,
+            bundle: self_bundle,
+            material: self_material,
+            uid: self_uid,
+            index_sha256: self_index,
         })
     }
 

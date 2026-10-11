@@ -183,3 +183,80 @@ custody before invoking the primitive; strings and active fixture rows are not
 that proof. Source retention uses existing deployment FK/immutable association;
 physical descendant settlement and source drain remain unresolved acceptance
 requirements. No production route, dispatcher, credential or role grant changes.
+
+## Common resource/source settlement candidate (2026-10-11)
+
+This isolated implementation extends the released Stop/drain interface. It does
+not accept the new writer or runtime. The unchanged Go workload and common wire
+profile receive no new lifecycle API. Production dispatch remains disabled.
+
+`20261011_runtime_resources` follows the existing Alembic head; ORM metadata
+registers the same `runtime_resource_settlements` table. Its primary key permits
+one fact per session. A RESTRICT composite FK binds session, execution, immutable
+owner incarnation and typed workflow attempt. The bounded 1–65536-byte raw
+observation is retained with a database-checked exact SHA256 and database clock.
+UPDATE/DELETE/conflict-update mutation is rejected by the existing immutable
+report-evidence trigger. Insertion requires the exact parent to be closed; the
+closed-session tombstone receives no mutable-field exception. Downgrade refuses
+retained facts. PUBLIC receives no privileges or callable guard function.
+
+The existing isolated fixture extends its same `wex_core` metadata guard to this
+relation. Incumbent/ordinary SDK writers remain excluded; no new login, token
+purpose, SDK operation, source mutation, production role grant or dispatch is
+introduced. UPDATE privilege is used only for the common row-lock path; the
+immutable trigger rejects changed observations. Storage tests explicitly label
+synthetic observations as schema-only, never process or finalization acceptance.
+
+The Rust `settle_retired_session` entrypoint consumes an opaque `RetiredSession`.
+Only the original guardian's `drain_session` and `retire_resources` path constructs
+it: actual kernel/descendant/container/channel drain, original material FIFO and
+SDK gate retirement, no-follow/UID/mode/single-link reads of all six accepted
+source files and the pinned binding index, exact source digests and removal of
+those complete directories. A public JSON report, Stopped, recovered stop-only
+object or copied fence cannot construct this value. Any incomplete cleanup
+produces no settlement token. The source archive digest is rechecked against the
+locked immutable owner association before the SQL write.
+
+Transaction order is the unchanged shared workspace-release fence → exact typed
+attempt → NOWAIT owner/execution/deployment/Solution → exact session → Start →
+ordered admissions → ordered grants → ordered receipts → settlement row. Session
+serialization fences an absent settlement. FK/closed-parent trigger locks revisit
+that already-held parent, never acquire a new unrelated session. Source locks
+carry the original read/lock-only guard. Competing Result/Cancel/issuer/ingress
+paths share the same prefix and cannot reopen the closed session or revoke the
+winner. No operations rows are mutated or independently locked by settlement.
+
+The writer requires a closed session, committed Start, provision/release, one
+revoked same-session grant and consistent existing domain/receipt state. Normal
+Success/Failed and their accepted Result receipt are preserved. A Cancelling
+root with its uncompleted running attempt and retained cancellation tombstone
+can become the existing Cancelled/terminal-cancelled projection only in the same
+transaction as the actual resource/source fact. Existing accepted Result receipts
+cannot be overwritten. The new path is INSERT-only: no retry, conflict update,
+owner reassignment, grant renewal, channel reconstruction or spawn follows an
+uncertain commit. The consumed physical proof cannot be reclaimed for replay.
+
+Required evidence is fresh exact-source native/owner/guard/storage validation,
+actual three-execution unchanged-binary API/receipt/settlement readback, identity
+and byte-drift/open-parent/immutability/rollback/role negatives, and further actual
+race/crash/uncertain-commit/lost-ACK evidence. Source review and green conformance
+alone cannot accept this writer, the runtime, or completion of the goal.
+
+Source accounting now includes a common session whose immutable settlement is
+absent, even when Result already made its existing root and attempt terminal.
+Admission's atomic retained session therefore creates a durable source-consumer
+obligation. `solution_source_accountability` keeps that deployment/dependency pin
+until settlement; the predicate does not depend on runtime language. Roots with
+no common session retain their existing Python behavior. The live lane pauses
+after original physical/source retirement and checks the actual common source
+predicate and absent settlement before releasing the fixed writer; it then
+checks the pin is discharged only after committed settlement. This private
+first-party observation seam is not a workload message, admission, replay or
+new control-plane authorization.
+
+Refreshed platform main remains `08255ad355a3ab63f0c04a214c3c230432552dfe`.
+Workspace main is `3e8de3d1b19501fc2be07c5591d3c47482488a40`; no workspace
+content is changed. Relevant #1011, #1024 and #1132 heads remain respectively
+`93ec9421b23b0b4a1493ab45f15f55ded3377d2e`,
+`6419069da195b053c885ab349f431ff4fae62098` and
+`35daf020d5e1286f82bdfed6bb3fc537bf3d78f6`.

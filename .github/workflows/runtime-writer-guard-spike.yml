@@ -4,6 +4,10 @@ on:
     branches: [spike/go-first-class-g0]
     paths:
       - api/tests/e2e/platform/test_runtime_writer_guards.py
+      - api/alembic/versions/20261011_runtime_resource_settlements.py
+      - api/src/models/orm/runtime_execution.py
+      - api/src/services/runtime_source_consumers.py
+      - api/src/services/solution_source_accountability.py
       - api/src/core/runtime_sdk_credentials.py
       - api/src/services/isolated_runtime_sdk_tokens.py
       - api/src/services/isolated_runtime_sdk_bridge.py
@@ -63,6 +67,10 @@ jobs:
             spikes/go-native/executionprofile/schemas/*.json \
             api/tests/e2e/platform/fixtures/runtime_writer_guards.sql \
             api/tests/e2e/platform/test_runtime_writer_guards.py \
+            api/alembic/versions/20261011_runtime_resource_settlements.py \
+            api/src/models/orm/runtime_execution.py \
+            api/src/services/runtime_source_consumers.py \
+            api/src/services/solution_source_accountability.py \
             api/src/core/runtime_sdk_credentials.py \
             api/src/services/isolated_runtime_sdk_tokens.py \
             api/src/services/isolated_runtime_sdk_bridge.py \

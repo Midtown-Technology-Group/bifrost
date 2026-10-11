@@ -52,7 +52,7 @@ cleanup_slice() {
   # Explicit public evidence allowlist. Never retain issuer material/TLS keys.
   for case_number in 0 1 2; do
     mkdir -p "$evidence_dir/$case_number"
-    for entry in owner-ingress.json owner-start.json owner-sdk-admitted.json owner-result.json owner-exited.json stop-only-recovery.json; do
+    for entry in owner-ingress.json owner-start.json owner-sdk-admitted.json owner-resources-retired.json owner-result.json owner-exited.json stop-only-recovery.json; do
       if sudo test -f "$slice_root/$case_number/$entry"; then
         sudo cp "$slice_root/$case_number/$entry" "$evidence_dir/$case_number/$entry" || cleanup=1
       fi

@@ -17,6 +17,8 @@ pub mod material;
 pub mod peer;
 mod provision;
 mod release;
+#[cfg(target_os = "linux")]
+mod resources;
 mod result;
 mod schema;
 mod sdk;
@@ -30,6 +32,8 @@ pub use release::record_issued_release_candidate;
 pub use release::{
     ReleaseCommitObservation, ReleaseRequest, observe_release_candidate, record_release_candidate,
 };
+#[cfg(target_os = "linux")]
+pub use resources::settle_retired_session;
 pub use result::{ResultDecision, accept_result};
 pub use sdk::{
     FiniteIssuanceAdmission, IntegrationGetAdmission, IntegrationGetRequest,

@@ -32,6 +32,7 @@ from src.models.orm.workflows import Workflow
 from src.models.orm.workspace_promotions import WorkspaceSourceRelease
 from src.repositories.solution_deployments import SolutionDeploymentRepository
 from src.services.operation_receipts import canonical_operation_scope_key, canonical_request_fingerprint
+from src.services.runtime_source_consumers import unsettled_runtime_source_consumer
 from src.services.solutions.deployment_manifest import validate_runtime_closure
 from src.services.solutions.deployment_storage import SolutionDeploymentStorage
 from src.services.solutions.source_revision import _require_registration
@@ -435,7 +436,8 @@ async def _collect_consumers(db: AsyncSession, policy: SolutionGitDeliveryPolicy
     accepted_workflow_attempt = exists(select(WorkflowExecutionAttempt.id).where(
         WorkflowExecutionAttempt.execution_id == Execution.id,
         WorkflowExecutionAttempt.completed_at.is_(None)))
-    accepted_execution = or_(Execution.status.in_(ACCEPTED), accepted_attempt, accepted_workflow_attempt)
+    accepted_execution = or_(Execution.status.in_(ACCEPTED), accepted_attempt, accepted_workflow_attempt,
+        unsettled_runtime_source_consumer())
     pins = (await db.scalars(select(Execution.solution_deployment_id).where(
         accepted_execution, Execution.solution_deployment_id.is_not(None)).distinct())).all()
     for identity in pins:

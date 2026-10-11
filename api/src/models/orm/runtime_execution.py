@@ -11,6 +11,46 @@ from sqlalchemy.dialects import postgresql
 from src.models.orm.base import Base
 
 
+class RuntimeResourceSettlement(Base):
+    __table__ = sa.Table(
+        "runtime_resource_settlements",
+        Base.metadata,
+        sa.Column("session_id", postgresql.UUID(), primary_key=True),
+        sa.Column("execution_id", postgresql.UUID(), nullable=False),
+        sa.Column("owner_incarnation_id", postgresql.UUID(), nullable=False),
+        sa.Column("workflow_attempt_id", postgresql.UUID(), nullable=False),
+        sa.Column("raw_observation", sa.LargeBinary(), nullable=False),
+        sa.Column("observation_sha256", sa.String(64), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.text("clock_timestamp()"),
+        ),
+        sa.ForeignKeyConstraint(
+            [
+                "session_id",
+                "execution_id",
+                "owner_incarnation_id",
+                "workflow_attempt_id",
+            ],
+            [
+                "runtime_sessions.id",
+                "runtime_sessions.execution_id",
+                "runtime_sessions.owner_incarnation_id",
+                "runtime_sessions.workflow_attempt_id",
+            ],
+            name="fk_runtime_resource_session_identity",
+            ondelete="RESTRICT",
+        ),
+        sa.CheckConstraint(
+            "octet_length(raw_observation) BETWEEN 1 AND 65536 AND "
+            "observation_sha256 = encode(sha256(raw_observation), 'hex')",
+            name="ck_runtime_resource_exact_bytes",
+        ),
+    )
+
+
 class RuntimeDeploymentArtifact(Base):
     __table__ = sa.Table(
         "runtime_deployment_artifacts",
