@@ -139,7 +139,7 @@ fn selection(session: &str, offer: &Value) -> Result<Value, ()> {
 fn run_case(spec: LaunchSpec, mode: &str) -> Result<Value, ()> {
     let operation = (|| {
         match mode {
-            "normal" => {
+            "normal" | "poisoned-channel" => {
                 let mut guardian = Guardian::create(spec.clone()).map_err(|_| ())?;
                 guardian.attach_dormant().map_err(|_| ())?;
                 let offer = guardian.receive(Duration::from_secs(5)).map_err(|_| ())?;
@@ -149,22 +149,37 @@ fn run_case(spec: LaunchSpec, mode: &str) -> Result<Value, ()> {
                     &serde_json::to_vec(&custody).map_err(|_| ())?,
                     0o600,
                 )?;
+                guardian.verify_live().map_err(|_| ())?;
                 // Exercise real outbound common framing; no Prepare/Start or
                 // material, so the adapter remains inert waiting for Prepare.
                 guardian
                     .send(&selection(&spec.session_id, offer.frame())?)
                     .map_err(|_| ())?;
+                guardian.verify_live().map_err(|_| ())?;
+                if mode == "poisoned-channel" {
+                    // A rejected frame poisons physical outbound custody. No
+                    // retained digest may authorize SDK admission afterward.
+                    if guardian.send(&json!({})) != Err(GuardianError::Uncertain)
+                        || guardian.verify_live() != Err(GuardianError::Rejected)
+                    {
+                        return Err(());
+                    }
+                }
                 if guardian.attach_dormant() != Err(GuardianError::Rejected) {
                     return Err(());
                 }
                 let drain = guardian.drain().map_err(|_| ())?;
-                Ok(json!({"case":mode,"custody":custody,"drain":drain}))
+                Ok(json!({"case":mode,"custody":custody,"drain":drain,
+                    "fresh_custody_checked":true,"poisoned_channel_denied":mode=="poisoned-channel"}))
             }
             "lost-create-reply" => {
                 let guardian = Guardian::create(spec.clone()).map_err(|_| ())?;
                 drop(guardian); // discard the returned handle; retain original intent
                 let mut recovered = Guardian::recover_for_drain(spec.clone()).map_err(|_| ())?;
                 if recovered.attach_dormant() != Err(GuardianError::Rejected) {
+                    return Err(());
+                }
+                if recovered.verify_live() != Err(GuardianError::Rejected) {
                     return Err(());
                 }
                 let drain = recovered.drain().map_err(|_| ())?;
@@ -201,6 +216,9 @@ fn run_case(spec: LaunchSpec, mode: &str) -> Result<Value, ()> {
                         .map_err(|_| ())?;
                 let mut recovered = Guardian::recover_for_drain(spec.clone()).map_err(|_| ())?;
                 if recovered.attach_dormant() != Err(GuardianError::Rejected) {
+                    return Err(());
+                }
+                if recovered.verify_live() != Err(GuardianError::Rejected) {
                     return Err(());
                 }
                 let drain = recovered.drain().map_err(|_| ())?;
@@ -271,7 +289,12 @@ fn run(arguments: &[String]) -> Result<Value, ()> {
         return Err(());
     }
     let mut cases = Vec::new();
-    for mode in ["normal", "lost-create-reply", "guardian-crash-after-offer"] {
+    for mode in [
+        "normal",
+        "poisoned-channel",
+        "lost-create-reply",
+        "guardian-crash-after-offer",
+    ] {
         let session = uuid()?;
         let base = root.join(&session);
         directory(&base)?;

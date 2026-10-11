@@ -50,8 +50,21 @@ The crash case requires parent wait of that guardian, original namespace/cgroup
 drain, observed reaping of its original attached CLI, and denial of fresh start.
 After container/mount release, private FIFO and staged bundle pathnames are
 removed; journals and exact diagnostics remain. Independent task-container
-inventory and carrier-image cleanup are retained. These checks are pending until
-the exact candidate's hosted evidence is inspected.
+inventory and carrier-image cleanup are retained. [Inspected hosted proof](live-guardian-component-proof.json)
+at `438408f178c72e4eb93687709bd43834c7561ada` verifies these three cases,
+32 Rust source inputs, 27 Rust tests and 127 Go source inputs. The unchanged
+workflow digest remains `160917deeb94275f31ca9ddee2dacae00fb079fdf54cb60e206c8def261f9c34`.
+These results qualify that exact component candidate, not later code.
+
+Fresh custody checking is the next implementation step: the guardian must still
+own both stream directions and a live reader/attached CLI; actual container
+configuration, kernel PID/start-time and cgroup must match the originally retained
+incarnation. This check returns no portable authorization token. A poisoned
+outbound channel, stop-only recovery, or different kernel incarnation denies it.
+The updated live probe checks custody before and after Select and separately
+poisons the channel to prove denial followed by physical drain. Those new checks
+require their own hosted evidence. Current caller/source eligibility, common owner
+serialization and finite SDK admission remain separate mandatory checks.
 
 This does not prove the required unchanged-binary SDK execution, authenticated
 issuer/ingress, real Rust admission/Start/result/finalization chain, Execution API

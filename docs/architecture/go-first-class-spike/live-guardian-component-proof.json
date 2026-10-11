@@ -1,0 +1,200 @@
+{
+  "sdk_version": "0.0.0-spike.2",
+  "source_commit": "438408f178c72e4eb93687709bd43834c7561ada",
+  "platform_main": "08255ad355a3ab63f0c04a214c3c230432552dfe",
+  "runtime_acceptance": false,
+  "go_workflow_run": 38098738821,
+  "rust_workflow_run": 38098738751,
+  "rust_source_inputs_verified": 32,
+  "go_source_inputs_verified": 127,
+  "rust_tests_passed": 27,
+  "go_tests_passed": 536,
+  "artifact_id": "sha256:37bd5f1a3801c960f44b58ac66fd2f7ea16a694d870074b567beead282f2a866",
+  "unchanged_workflow_sha256": "160917deeb94275f31ca9ddee2dacae00fb079fdf54cb60e206c8def261f9c34",
+  "timings_ms": {
+    "module_download": 72.917778,
+    "cold_compile_warm_modules": 16446.738781,
+    "independent_cold_compile": 16380.911751,
+    "warm_source_edit_compile": 383.954296,
+    "restored_warm_compile": 350.925564,
+    "edit_to_artifact": 580.280056
+  },
+  "synthetic_execution_summary": {
+    "startup_to_sdk_ms": {
+      "median": 4.153557,
+      "p95": 4.320448,
+      "n": 20
+    },
+    "execution_ms": {
+      "median": 4.7148135,
+      "p95": 4.89642,
+      "n": 20
+    },
+    "max_rss_kib": {
+      "median": 13660.0,
+      "p95": 13660,
+      "n": 20
+    }
+  },
+  "live_guardian_cases": [
+    {
+      "case": "normal",
+      "custody": {
+        "channel_custody_sha256": "8ea9fe6e3055d2b97415416e6ee0f911bf3c5d5ffae5cf6d2b9993a94ae861cf",
+        "observation": {
+          "attached_cli_pid": 18356,
+          "attached_cli_start_ticks": "41603",
+          "cgroup": "/sys/fs/cgroup/system.slice/docker-6a48fe6d07c73142b21b5a2b773dc51a93af5e40344ce0edbc7e8d03a614b7c3.scope",
+          "container_id": "6a48fe6d07c73142b21b5a2b773dc51a93af5e40344ce0edbc7e8d03a614b7c3",
+          "image_id": "sha256:f65c86e14a01e666d9b020ff20b64de5a117a57a04b9d56c520bb850f76dc2c2",
+          "index_sha256": "5af533fec3afc2f443259eaac51ac7dd454c2f96a645204ae7a875fded8d690a",
+          "init_pid": 18400,
+          "init_start_ticks": "41608",
+          "mounts": [
+            {
+              "Destination": "/adapter",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/home/runner/work/_temp/go-spike-evidence/live-guardian/5dbbc13f-0351-4d2a-97ed-f0505c9e55a9/bundle/adapter",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/bundle",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/home/runner/work/_temp/go-spike-evidence/live-guardian/5dbbc13f-0351-4d2a-97ed-f0505c9e55a9/bundle",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/material",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/home/runner/work/_temp/go-spike-evidence/live-guardian/5dbbc13f-0351-4d2a-97ed-f0505c9e55a9/material/5dbbc13f-0351-4d2a-97ed-f0505c9e55a9",
+              "Type": "bind"
+            }
+          ],
+          "network": "none",
+          "nonce": "0db3db45-fa52-4862-b6b0-5fd9c02c403d",
+          "offer_sha256": "551f55d216f0180fc42f2850e144eafd675f8b857cc87d3ee51fcba900694141",
+          "session_id": "5dbbc13f-0351-4d2a-97ed-f0505c9e55a9",
+          "started_at": "2026-10-11T00:38:12.07186584Z",
+          "version": "isolated-guardian-custody/v1"
+        }
+      },
+      "drain": {
+        "attached_cli_waited": true,
+        "container_id": "6a48fe6d07c73142b21b5a2b773dc51a93af5e40344ce0edbc7e8d03a614b7c3",
+        "container_removed": true,
+        "lifecycle_finalization": false,
+        "namespace_drained": true,
+        "runtime_acceptance": false,
+        "source_consumer_settlement": false
+      },
+      "elapsed_ms": 375.790864,
+      "private_paths_removed": true
+    },
+    {
+      "case": "lost-create-reply",
+      "drain": {
+        "attached_cli_waited": false,
+        "container_id": "28a66d7e380912d13ce4d75986c013db11c4d7eb0612f632f036f22a1f5fd659",
+        "container_removed": true,
+        "lifecycle_finalization": false,
+        "namespace_drained": true,
+        "runtime_acceptance": false,
+        "source_consumer_settlement": false
+      },
+      "elapsed_ms": 167.71228399999998,
+      "fresh_start_denied": true,
+      "private_paths_removed": true
+    },
+    {
+      "case": "guardian-crash-after-offer",
+      "custody": {
+        "channel_custody_sha256": "1c55f4dbf60c8d0300427771dd9f60b7ef9245d8b1fdab345172c6cb6e819910",
+        "observation": {
+          "attached_cli_pid": 18610,
+          "attached_cli_start_ticks": "41655",
+          "cgroup": "/sys/fs/cgroup/system.slice/docker-3c9d9172a4c4cfac5c4331376be410235f7bfac42e862dacd9698aa4f4f37c44.scope",
+          "container_id": "3c9d9172a4c4cfac5c4331376be410235f7bfac42e862dacd9698aa4f4f37c44",
+          "image_id": "sha256:f65c86e14a01e666d9b020ff20b64de5a117a57a04b9d56c520bb850f76dc2c2",
+          "index_sha256": "008e04760c37243dfe57bfde315648ca52a4d0d912778bcc66198fab19b553d2",
+          "init_pid": 18652,
+          "init_start_ticks": "41660",
+          "mounts": [
+            {
+              "Destination": "/adapter",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/home/runner/work/_temp/go-spike-evidence/live-guardian/2fe71bf9-6f52-478a-a57b-c234b83ea9bc/bundle/adapter",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/bundle",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/home/runner/work/_temp/go-spike-evidence/live-guardian/2fe71bf9-6f52-478a-a57b-c234b83ea9bc/bundle",
+              "Type": "bind"
+            },
+            {
+              "Destination": "/material",
+              "Mode": "",
+              "Propagation": "rprivate",
+              "RW": false,
+              "Source": "/home/runner/work/_temp/go-spike-evidence/live-guardian/2fe71bf9-6f52-478a-a57b-c234b83ea9bc/material/2fe71bf9-6f52-478a-a57b-c234b83ea9bc",
+              "Type": "bind"
+            }
+          ],
+          "network": "none",
+          "nonce": "39048ad4-0d1f-43f8-a333-adf6e6b2a4de",
+          "offer_sha256": "cbcd672b68d6fea91f3d23799f6995f7feb5dcd04719e8139742a26eb33a75bb",
+          "session_id": "2fe71bf9-6f52-478a-a57b-c234b83ea9bc",
+          "started_at": "2026-10-11T00:38:12.593256212Z",
+          "version": "isolated-guardian-custody/v1"
+        }
+      },
+      "drain": {
+        "attached_cli_waited": false,
+        "container_id": "3c9d9172a4c4cfac5c4331376be410235f7bfac42e862dacd9698aa4f4f37c44",
+        "container_removed": true,
+        "lifecycle_finalization": false,
+        "namespace_drained": true,
+        "runtime_acceptance": false,
+        "source_consumer_settlement": false
+      },
+      "elapsed_ms": 349.718284,
+      "fresh_start_denied": true,
+      "guardian_sigkill": true,
+      "guardian_waited": true,
+      "original_cli_reaped_observed": true,
+      "private_paths_removed": true
+    }
+  ],
+  "evidence_sha256": {
+    "rust/source.txt": "71649e45eb0ac64c8f137dba5f1418c457dd4a3170ae3dcbb19b24deb27eb12f",
+    "rust/owner-source-hashes.txt": "b29d7e97aedcbe19b9cff168e0c317f5e65a7229228c8a6c4da3d8fbab9ea204",
+    "rust/owner-tests.txt": "9224c62ffbc086a7b40dcd1b47ceee39a0eed04bb10c4f695ee1ae3b3095b52e",
+    "rust/owner-clippy.txt": "c5927c3f1b9cbc3efa60ac435d0bf853811797a0481fed91cd72b77e14a5015f",
+    "rust/owner-build.txt": "ccfb1fddc92c72d917f160cf5fb1145daf3661075617ccbca4cf2434f04b151e",
+    "go/descriptor.json": "63040f1b35a4ea005902e7b575befc93d2d7150ee6b2d9cb7ea5edeefdc26977",
+    "go/tests.jsonl": "e45f53930190adcc6e996077b46d8dcf33822dd7c8e44abb316449cf0c1912a9",
+    "go/native-bundle-descriptor.json": "1ecfa74df957a79ec20a1bda0129ca5c0b678482fbe55ba6ace7ccb862145752",
+    "go/native-bundle-rust-verification.json": "8bf2d1e0024a47461e3a72fd3e153070f7200345b5b53b1f0d71f04563f9b5b9",
+    "go/live-guardian/proof.json": "9bd75049f0a443295d02bd709ca8533667fe6ba7f4c7944ca14f9c56ff2c2da3",
+    "go/live-guardian/cleanup-inventory.txt": "254b3df6480f31f6f7bb4c9ebcf6543129f20cba1dfe719a26e5d82f39fd38e5",
+    "go/live-guardian/image-cleanup.txt": "b26d4b7226f7024dd62dee3bf5ad9c49fa6d6301246366c38cdf51a1fd832f1b"
+  },
+  "does_not_prove": [
+    "Actual Rust-owned unchanged-workflow SDK/Result/Receipt/API chain",
+    "Cancellation after possible effects and workload-descendant cleanup",
+    "Fresh authenticated source/caller and restricted SDK-only ingress",
+    "Durable source-consumer settlement",
+    "Uncertain commit/material/spawn/lost-ACK recovery in the complete slice",
+    "Human runtime acceptance"
+  ]
+}

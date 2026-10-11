@@ -119,7 +119,34 @@ mod tests {
             kernel: None,
         };
         assert_eq!(guardian.attach_dormant(), Err(GuardianError::Rejected));
+        assert_eq!(guardian.verify_live(), Err(GuardianError::Rejected));
         assert!(guardian.attachment.is_none());
+    }
+
+    #[test]
+    fn fresh_kernel_observation_cannot_replace_retained_incarnation() {
+        let original = KernelObservation {
+            pid: 123,
+            start_ticks: "456".into(),
+            cgroup: "/sys/fs/cgroup/original".into(),
+        };
+        for current in [
+            KernelObservation {
+                pid: 124,
+                ..original.clone()
+            },
+            KernelObservation {
+                start_ticks: "457".into(),
+                ..original.clone()
+            },
+            KernelObservation {
+                cgroup: "/sys/fs/cgroup/replacement".into(),
+                ..original.clone()
+            },
+        ] {
+            assert!(!original.same_incarnation(&current));
+        }
+        assert!(original.same_incarnation(&original.clone()));
     }
 }
 
@@ -382,10 +409,18 @@ pub struct Guardian {
     kernel: Option<KernelObservation>,
 }
 
+#[derive(Clone)]
 struct KernelObservation {
     pid: u64,
     start_ticks: String,
     cgroup: PathBuf,
+}
+impl KernelObservation {
+    fn same_incarnation(&self, current: &Self) -> bool {
+        self.pid == current.pid
+            && self.start_ticks == current.start_ticks
+            && self.cgroup == current.cgroup
+    }
 }
 fn retain_kernel(
     spec: &LaunchSpec,
@@ -795,6 +830,43 @@ impl Guardian {
         self.kernel = Some(kernel);
         let raw = serde_json::to_vec(&evidence).map_err(|_| GuardianError::Rejected)?;
         Ok(json!({"observation":evidence,"channel_custody_sha256":sha256(&raw)}))
+    }
+
+    /// Recheck this owned channel and original kernel incarnation immediately
+    /// before owner admission/issuance or a restricted SDK request. A retained
+    /// custody digest alone is insufficient. This is a physical precondition,
+    /// not authorization, source eligibility or an atomic database/OS guarantee.
+    /// Recovery and poisoned output channels cannot pass this check.
+    pub fn verify_live(&mut self) -> Result<(), GuardianError> {
+        let kernel = self.kernel.as_ref().ok_or(GuardianError::Rejected)?;
+        let attachment = self.attachment.as_mut().ok_or(GuardianError::Rejected)?;
+        if attachment.input.is_none()
+            || attachment.output.is_none()
+            || attachment
+                .reader
+                .as_ref()
+                .is_none_or(|reader| reader.is_finished())
+            || attachment
+                .child
+                .try_wait()
+                .map_err(|_| GuardianError::Uncertain)?
+                .is_some()
+        {
+            return Err(GuardianError::Rejected);
+        }
+        let snapshot = inspect(&self.id)?;
+        if !self.spec.matches(&snapshot) || snapshot["State"]["Running"] != true {
+            return Err(GuardianError::Rejected);
+        }
+        let current = kernel_observation(
+            snapshot["State"]["Pid"]
+                .as_u64()
+                .ok_or(GuardianError::Rejected)?,
+        )?;
+        if !kernel.same_incarnation(&current) {
+            return Err(GuardianError::Rejected);
+        }
+        Ok(())
     }
 
     /// Physical drain only, never lifecycle finalization or permission to replay.
