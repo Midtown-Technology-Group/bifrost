@@ -54,7 +54,7 @@ from tests.e2e.platform.test_runtime_writer_guards import (
 )
 
 pytestmark = [pytest.mark.e2e, pytest.mark.asyncio]
-WORKFLOW_SHA = "160917deeb94275f31ca9ddee2dacae00fb079fdf54cb60e206c8def261f9c34"
+WORKFLOW_SHA = "5f9c912ec6055882e0d443378cb93bb87b58eb7ab2a49eb5e14d338d72865edd"
 
 
 def canonical(value):
