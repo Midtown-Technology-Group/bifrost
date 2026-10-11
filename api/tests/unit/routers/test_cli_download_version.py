@@ -17,6 +17,13 @@ def test_to_pep440_preserves_dirty_dev_release_versions() -> None:
     assert to_pep440("1.0.8-dev.11-dirty") == "1.0.8.dev11+dirty"
 
 
+def test_to_pep440_normalizes_supported_described_tags() -> None:
+    assert to_pep440("v3.0.0-2-gabc1234") == "3.0.0.post2+gabc1234"
+    assert to_pep440("v2.1.0-rc.7-2-gabc1234-dirty") == (
+        "2.1.0rc7.post2+gabc1234.dirty"
+    )
+
+
 def test_build_cli_artifact_stamps_and_filters_package(tmp_path: Path) -> None:
     source_dir = Path(__file__).resolve().parents[3] / "bifrost"
 
@@ -55,14 +62,19 @@ def test_build_cli_artifact_is_deterministic(tmp_path: Path) -> None:
 def test_build_cli_artifact_treats_version_as_data(tmp_path: Path) -> None:
     """Untrusted build-version text cannot escape the version assignment."""
     source_dir = Path(__file__).resolve().parents[3] / "bifrost"
-    supplied = '1.2.3"; __import__("os").system("id"); #'
+    supplied = "1.2.3\" #\\';print(123);#-1-gabc"
 
     artifact = build_cli_artifact(source_dir, tmp_path, supplied)
 
     with tarfile.open(artifact, mode="r:gz") as archive:
+        pyproject = archive.extractfile("pyproject.toml")
         init = archive.extractfile("bifrost/__init__.py")
+        assert pyproject is not None
         assert init is not None
+        metadata = tomllib.loads(pyproject.read().decode())
         module = ast.parse(init.read().decode())
+
+    assert metadata["project"]["version"] == to_pep440(supplied)
 
     assignments = [
         node
