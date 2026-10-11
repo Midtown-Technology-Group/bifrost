@@ -4,7 +4,6 @@ from uuid import uuid4
 
 import pytest
 from fastapi import HTTPException
-
 from shared.sdk_modules import ModuleSourceScope
 from src.core.constants import SYSTEM_USER_UUID
 from src.core.principal import UserPrincipal
@@ -541,6 +540,39 @@ async def test_resolve_module_uses_workspace_without_solution_context():
         **workspace_module,
     }
     mock_get.assert_awaited_once_with("modules/helpers.py")
+
+
+async def test_resolve_module_refuses_excluded_module_and_namespace_paths():
+    from shared.sdk_modules import resolve_module_name
+
+    with (
+        patch(
+            f"{SERVICE}.get_module_resolution_cache",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+        patch(f"{SERVICE}.set_module_resolution_cache", new_callable=AsyncMock),
+        patch(f"{SERVICE}.get_module", new_callable=AsyncMock) as mock_get,
+        patch(f"{SERVICE}._prefix_exists", new_callable=AsyncMock) as mock_prefix,
+    ):
+        result = await resolve_module_name(
+            "venv.hidden",
+            scope=ModuleSourceScope(solution_id=None, global_repo_access=False),
+        )
+
+    assert result == {"kind": "not_found", "path": "venv/hidden"}
+    mock_get.assert_not_awaited()
+    mock_prefix.assert_not_awaited()
+
+
+async def test_fetch_module_source_rejects_excluded_path_before_storage():
+    from shared.sdk_modules import ModuleSourceError, fetch_module_source
+
+    with patch(f"{SERVICE}.get_module", new_callable=AsyncMock) as mock_get:
+        with pytest.raises(ModuleSourceError, match="Excluded module path"):
+            await fetch_module_source("__pycache__/stale.py")
+
+    mock_get.assert_not_awaited()
 
 
 async def test_resolve_module_falls_back_to_workspace_when_global_access_on():

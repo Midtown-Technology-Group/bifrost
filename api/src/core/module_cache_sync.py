@@ -45,8 +45,8 @@ from uuid import UUID, uuid4
 import redis
 
 from src.core.module_cache_contract import (
-    MODULE_INDEX_KEY,
     MODULE_INDEX_GENERATION_KEY,
+    MODULE_INDEX_KEY,
     MODULE_KEY_PREFIX,
     MODULE_RESOLUTION_KEY_PREFIX,
     MODULE_RESOLUTION_READ_SCRIPT,
@@ -57,6 +57,7 @@ from src.core.module_cache_contract import (
     CachedModule,
     module_resolution_cache_key,
 )
+from src.services.editor.file_filter import is_allowed_python_module_path
 
 logger = logging.getLogger(__name__)
 
@@ -678,6 +679,10 @@ def _module_resolution_from_cached_source(
     storage_path: str,
     raw_module: str,
 ) -> ModuleResolution | None:
+    if not is_allowed_python_module_path(path) or not is_allowed_python_module_path(
+        storage_path
+    ):
+        return None
     try:
         module = json.loads(raw_module)
         content = module["content"]
@@ -695,6 +700,17 @@ def _module_resolution_from_cached_source(
     )
 
 
+def _module_resolution_allowed(resolution: ModuleResolution) -> bool:
+    if resolution.kind in {"module", "package"}:
+        return is_allowed_python_module_path(resolution.path) and (
+            resolution.storage_path is None
+            or is_allowed_python_module_path(resolution.storage_path)
+        )
+    if resolution.kind == "namespace":
+        return is_allowed_python_module_path(f"{resolution.path}/__init__.py")
+    return resolution.kind == "not_found"
+
+
 def _get_cached_module_resolution(name: str) -> ModuleResolution | None:
     """Hydrate resolver metadata and source directly from worker-visible Redis."""
     try:
@@ -709,7 +725,13 @@ def _get_cached_module_resolution(name: str) -> ModuleResolution | None:
         data = json.loads(raw_resolution)
         kind = data.get("kind")
         path = data.get("path") or name.replace(".", "/")
-        if kind in {"namespace", "not_found"}:
+        if kind == "namespace":
+            return (
+                ModuleResolution(kind=kind, path=path)
+                if is_allowed_python_module_path(f"{path}/__init__.py")
+                else None
+            )
+        if kind == "not_found":
             return ModuleResolution(kind=kind, path=path)
         if kind not in {"module", "package"}:
             return None
@@ -746,6 +768,8 @@ def _get_exact_scoped_module(name: str) -> ModuleResolution | None:
             (f"{base_path}.py", "module"),
             (f"{base_path}/__init__.py", "package"),
         ):
+            if not is_allowed_python_module_path(relative_path):
+                continue
             storage_path = f"{scope_prefix}{relative_path}"
             raw_module = client.get(f"{MODULE_KEY_PREFIX}{storage_path}")
             if not raw_module:
@@ -790,6 +814,8 @@ def resolve_module_sync(name: str) -> ModuleResolution:
             (f"{base_path}.py", "module"),
             (f"{base_path}/__init__.py", "package"),
         ):
+            if not is_allowed_python_module_path(relative_path):
+                continue
             if relative_path not in source_hashes:
                 continue
             module = get_module_sync(relative_path)
@@ -819,7 +845,9 @@ def resolve_module_sync(name: str) -> ModuleResolution:
     cache = _get_resolution_cache()
     cached = cache.get(cache_key)
     if cached is not None:
-        return cached
+        if _module_resolution_allowed(cached):
+            return cached
+        cache.pop(cache_key, None)
 
     resolution = _get_cached_module_resolution(name)
     if resolution is None:
@@ -836,6 +864,8 @@ def resolve_module_sync(name: str) -> ModuleResolution:
             resolution = _fetch_module_resolution_from_api(name)
     if resolution is None:
         raise ModuleResolutionError(f"Module resolver unavailable for {name}")
+    if not _module_resolution_allowed(resolution):
+        resolution = ModuleResolution(kind="not_found", path=name.replace(".", "/"))
 
     cache[cache_key] = resolution
     return resolution
@@ -1234,6 +1264,9 @@ def get_module_sync(path: str) -> CachedModule | None:
     The returned CachedModule keeps the logical (bare) ``path`` so __file__ and
     spec origin stay stable regardless of where the bytes were stored.
     """
+    if not is_allowed_python_module_path(path):
+        return None
+
     try:
         client = _get_sync_redis()
 
@@ -1264,17 +1297,23 @@ def get_modules_sync(paths: list[str]) -> dict[str, CachedModule | None]:
     if not ordered_paths:
         return {}
 
+    allowed_paths = [
+        path for path in ordered_paths if is_allowed_python_module_path(path)
+    ]
+    resolved: dict[str, CachedModule | None] = {
+        path: None for path in ordered_paths if path not in allowed_paths
+    }
+
     try:
         client = _get_sync_redis()
         candidates = [
             (path, storage_path)
-            for path in ordered_paths
+            for path in allowed_paths
             for storage_path in _candidate_storage_paths(path)
         ]
         values = client.mget(
             [f"{MODULE_KEY_PREFIX}{storage_path}" for _path, storage_path in candidates]
         )
-        resolved: dict[str, CachedModule | None] = {}
         expected_generation = workspace_generation_for_import()
         for (path, storage_path), data in zip(candidates, values, strict=True):
             if path in resolved or not data:
@@ -1357,9 +1396,9 @@ def _list_s3_modules() -> set[str]:
         for page in paginator.paginate(Bucket=bucket, Prefix=REPO_PREFIX):
             for obj in page.get("Contents", []):
                 key: str = obj["Key"]
-                if key.endswith(".py"):
-                    # Strip the _repo/ prefix to get the relative path
-                    paths.add(key[len(REPO_PREFIX) :])
+                relative_path = key[len(REPO_PREFIX) :]
+                if is_allowed_python_module_path(relative_path):
+                    paths.add(relative_path)
     except Exception as e:
         logger.warning(f"S3 list error when rebuilding module index: {e}")
 
@@ -1376,8 +1415,9 @@ def _list_blob_modules() -> set[str]:
     try:
         for blob in client.list_blobs(name_starts_with=REPO_PREFIX):
             key: str = blob.name
-            if key.endswith(".py"):
-                paths.add(key[len(REPO_PREFIX) :])
+            relative_path = key[len(REPO_PREFIX) :]
+            if is_allowed_python_module_path(relative_path):
+                paths.add(relative_path)
     except Exception as e:
         logger.warning(f"Azure Blob list error when rebuilding module index: {e}")
 
@@ -1409,7 +1449,7 @@ def get_module_index_sync() -> set[str]:
         return {
             f"{release_ctx.runtime_storage_prefix}{path.lstrip('/')}"
             for path in release_ctx.source_hashes
-            if path.endswith(".py")
+            if is_allowed_python_module_path(path)
         }
 
     try:
@@ -1420,7 +1460,13 @@ def get_module_index_sync() -> set[str]:
             index_generation = index_generation.decode()
         paths = client.smembers(MODULE_INDEX_KEY)
         if paths and index_generation == generation:
-            return {p if isinstance(p, str) else p.decode() for p in paths}
+            return {
+                path
+                for value in paths
+                if is_allowed_python_module_path(
+                    path := value if isinstance(value, str) else value.decode()
+                )
+            }
 
         # Children resolve individual imports on the socket. With no current
         # index, clear_workspace_modules treats loaded workspace modules as
@@ -1437,6 +1483,10 @@ def get_module_index_sync() -> set[str]:
             else _fetch_module_index_from_api()
         )
         if api_paths:
+            api_paths = {
+                path for path in api_paths if is_allowed_python_module_path(path)
+            }
+        if api_paths:
             try:
                 client.sadd(MODULE_INDEX_KEY, *api_paths)
                 client.expire(MODULE_INDEX_KEY, MODULE_CACHE_TTL)
@@ -1448,6 +1498,9 @@ def get_module_index_sync() -> set[str]:
         # API not available — try direct object storage (legacy path)
         logger.debug("API index unavailable, falling back to object storage listing")
         storage_paths = _list_object_storage_modules()
+        storage_paths = {
+            path for path in storage_paths if is_allowed_python_module_path(path)
+        }
         if storage_paths:
             try:
                 client.sadd(MODULE_INDEX_KEY, *storage_paths)

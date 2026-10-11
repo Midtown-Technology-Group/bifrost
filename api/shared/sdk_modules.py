@@ -40,6 +40,7 @@ from src.core.module_cache import (
     set_module_resolution_cache,
 )
 from src.core.module_cache_contract import module_resolution_cache_key
+from src.services.editor.file_filter import is_allowed_python_module_path
 from src.services.repo_storage import RepoStorage
 from src.services.solutions.storage import SOLUTIONS_ROOT, SolutionStorage
 
@@ -124,11 +125,25 @@ async def _prefix_exists(storage_prefix: str) -> bool:
 
 
 async def hydrate_cached_resolution(cached: dict) -> dict | None:
-    if cached.get("kind") not in {"module", "package"}:
+    kind = cached.get("kind")
+    path = cached.get("path")
+    if kind == "namespace":
+        return (
+            cached
+            if isinstance(path, str)
+            and is_allowed_python_module_path(f"{path}/__init__.py")
+            else None
+        )
+    if kind not in {"module", "package"}:
         return cached
 
     storage_path = cached.get("storage_path")
-    if not isinstance(storage_path, str):
+    if (
+        not isinstance(path, str)
+        or not is_allowed_python_module_path(path)
+        or not isinstance(storage_path, str)
+        or not is_allowed_python_module_path(storage_path)
+    ):
         return None
     module = await get_module(storage_path)
     if module is None:
@@ -186,6 +201,8 @@ async def resolve_module_name(
                 (f"{base_path}.py", "module"),
                 (f"{base_path}/__init__.py", "package"),
             ):
+                if not is_allowed_python_module_path(relative_path):
+                    continue
                 storage_path = f"{scope_prefix}{relative_path}"
                 module = await get_module(storage_path)
                 if module is not None:
@@ -211,7 +228,9 @@ async def resolve_module_name(
             # The trailing slash is significant: without it, ``modules/foo``
             # would incorrectly treat ``modules/foobar.py`` as a child.
             storage_prefix = f"{scope_prefix}{base_path}/"
-            if await _prefix_exists(storage_prefix):
+            if is_allowed_python_module_path(
+                f"{base_path}/__init__.py"
+            ) and await _prefix_exists(storage_prefix):
                 namespace_result: dict[str, object] = {
                     "kind": "namespace",
                     "path": base_path,
@@ -237,6 +256,8 @@ async def fetch_module_source(
     as the module cache would.
     """
     validate_module_path(path)
+    if not is_allowed_python_module_path(path):
+        raise ModuleSourceError(400, "Excluded module path")
     if scope is not None:
         validate_engine_storage_path(path, scope)
 

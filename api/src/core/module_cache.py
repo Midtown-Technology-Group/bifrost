@@ -22,8 +22,8 @@ from uuid import uuid4
 
 from src.core.log_safety import log_safe
 from src.core.module_cache_contract import (
-    MODULE_INDEX_KEY,
     MODULE_INDEX_GENERATION_KEY,
+    MODULE_INDEX_KEY,
     MODULE_KEY_PREFIX,
     MODULE_RESOLUTION_KEY_PREFIX,
     MODULE_RESOLUTION_GENERATION_PREFIX,
@@ -34,11 +34,12 @@ from src.core.module_cache_contract import (
     MODULE_RESOLUTION_NEGATIVE_TTL,
     MODULE_RESOLUTION_TTL,
     WORKSPACE_GENERATION_KEY,
-    WORKSPACE_UPDATING_PREFIX,
     WORKSPACE_UPDATE_LOCK_SECONDS,
+    WORKSPACE_UPDATING_PREFIX,
     CachedModule,
 )
 from src.core.redis_client import get_redis_client
+from src.services.editor.file_filter import is_allowed_python_module_path
 from src.services.repo_storage import RepoStorage
 
 logger = logging.getLogger(__name__)
@@ -515,6 +516,9 @@ async def get_module(path: str) -> CachedModule | None:
     Returns:
         CachedModule dict if found, None otherwise
     """
+    if not is_allowed_python_module_path(path):
+        return None
+
     redis = get_redis_client()
     key = f"{MODULE_KEY_PREFIX}{path}"
     immutable_module = path.startswith(
@@ -589,6 +593,9 @@ async def set_module(
             Read-through fills use False: durable source has not changed, and
             scanning the Redis keyspace must not delay a cold module read.
     """
+    if not is_allowed_python_module_path(path):
+        raise ValueError(f"Excluded Python module path: {path}")
+
     redis = get_redis_client()
     key = f"{MODULE_KEY_PREFIX}{path}"
 
@@ -654,15 +661,26 @@ async def get_all_module_paths() -> set[str]:
     )
     paths = await cast(Awaitable[set[str]], redis_conn.smembers(MODULE_INDEX_KEY))
     if index_generation == generation and paths:
-        return {p if isinstance(p, str) else p.decode() for p in paths}
+        return {
+            path
+            for value in paths
+            if is_allowed_python_module_path(
+                path := value if isinstance(value, str) else value.decode()
+            )
+        }
 
     workspace_paths = {
-        path for path in await RepoStorage().list() if path.endswith(".py")
+        path
+        for path in await RepoStorage().list()
+        if is_allowed_python_module_path(path)
     }
     solution_paths = {
-        p if isinstance(p, str) else p.decode()
-        for p in paths
-        if (p if isinstance(p, str) else p.decode()).startswith(f"{SOLUTIONS_ROOT}/")
+        path
+        for value in paths
+        if (path := value if isinstance(value, str) else value.decode()).startswith(
+            f"{SOLUTIONS_ROOT}/"
+        )
+        and is_allowed_python_module_path(path)
     }
     rebuilt = workspace_paths | solution_paths
     await redis_conn.delete(MODULE_INDEX_KEY)

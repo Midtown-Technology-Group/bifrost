@@ -105,6 +105,19 @@ def is_allowed_path(path: str | Path) -> bool:
     return not is_excluded_path(path)
 
 
+def is_allowed_python_module_path(path: str | Path) -> bool:
+    """Return whether a relative Python source path may enter the import graph."""
+    raw_path = str(path)
+    candidate = Path(path)
+    return (
+        "\\" not in raw_path
+        and not candidate.is_absolute()
+        and ".." not in candidate.parts
+        and candidate.suffix == ".py"
+        and is_allowed_path(candidate)
+    )
+
+
 # Export constants for use in other modules (e.g., frontend type generation)
 def get_exclusion_rules() -> dict:
     """

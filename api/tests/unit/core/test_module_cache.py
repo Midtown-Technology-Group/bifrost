@@ -74,6 +74,22 @@ class TestModuleCacheAsync:
 
             assert result is None
 
+    async def test_get_module_rejects_excluded_path_before_cache_or_storage(
+        self, mock_redis_client
+    ):
+        mock_client, _ = mock_redis_client
+        mock_repo = AsyncMock()
+        with (
+            patch("src.core.module_cache.get_redis_client", return_value=mock_client),
+            patch("src.core.module_cache.RepoStorage", return_value=mock_repo),
+        ):
+            from src.core.module_cache import get_module
+
+            assert await get_module("node_modules/dependency.py") is None
+
+        mock_client.get.assert_not_awaited()
+        mock_repo.read.assert_not_awaited()
+
     async def test_get_module_falls_back_to_s3(self, mock_redis_client):
         """When Redis misses, get_module should fall back to S3 and re-cache."""
         mock_client, mock_redis = mock_redis_client
@@ -470,6 +486,7 @@ class TestModuleCacheAsync:
             "shared/a.py",
             "shared/b.py",
             "modules/c.py",
+            "venv/hidden.py",
         }
 
         mock_repo = AsyncMock()
