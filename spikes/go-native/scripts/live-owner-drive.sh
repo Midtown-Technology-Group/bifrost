@@ -55,9 +55,10 @@ receive_event() {
   test "$(jq -er '.event' "$target.new")" = "$event"
   mv "$target.new" "$target"
 }
-for case_number in 0 1 2 3 4 5; do
+for case_number in 0 1 2 3 4 5 6; do
   case_dir="$slice_root/$case_number"
   wait_file "$case_dir/launch-ready.json"
+  session=$(jq -er '.prepare.body.binding.session_id' "$case_dir/owner-config.json")
   database_target=$pool_ip
   database_suffix=''
   if [[ "$case_number" = 3 || "$case_number" = 4 || "$case_number" = 5 ]]; then
@@ -107,20 +108,26 @@ for case_number in 0 1 2 3 4 5; do
     cat "$case_dir/abort-release-ready.json" >&"$owner_input"
     printf '\n' >&"$owner_input"
   fi
-  if [[ "$case_number" = 2 ]]; then
+  if [[ "$case_number" = 2 || "$case_number" = 6 ]]; then
     receive_event sdk_admitted "$case_dir/owner-sdk-admitted.json"
     wait_file "$case_dir/cancel-ready.json"
     cat "$case_dir/cancel-ready.json" >&"$owner_input"
     printf '\n' >&"$owner_input"
   fi
-  if [[ "$case_number" = 4 ]]; then
-    receive_event closed_result_recovery_required "$case_dir/owner-crash-required.json"
+  if [[ "$case_number" = 4 || "$case_number" = 6 ]]; then
+    recovery_mode=--recover-closed-result
+    recovery_event=closed_result_recovery_required
+    if [[ "$case_number" = 6 ]]; then
+      recovery_mode=--recover-closed-cancel
+      recovery_event=closed_cancel_recovery_required
+    fi
+    receive_event "$recovery_event" "$case_dir/owner-crash-required.json"
     test "$(jq -er '.owner_pid' "$case_dir/owner-crash-required.json")" = "$owner_pid"
     # Real closed SQL state is insufficient while the original owner is alive.
     # This read-only attempt must deny before any recovery intent or OS effect.
     if env -i PATH=/usr/bin:/bin BIFROST_ISOLATED_OWNER_TEST=1 \
       "BIFROST_OWNER_TEST_DATABASE_URL=postgresql://wex_core:synthetic_primer_core@$database_target/bifrost_test$database_suffix" \
-      "$owner_binary" --recover-closed-result "$case_dir/owner-config.json" \
+      "$owner_binary" "$recovery_mode" "$case_dir/owner-config.json" \
       > "$case_dir/live-owner-recovery-denied.log" 2>&1; then exit 1; fi
     test ! -e "$case_dir/execution/journal/closed-recovery-intent.json"
     printf '{"event":"live_owner_recovery_denied","session_id":"%s","recovery_intent_created":false}\n' "$session" > "$case_dir/live-owner-recovery-denied.json.new"
@@ -138,7 +145,7 @@ for case_number in 0 1 2 3 4 5; do
     coproc CLOSED_RECOVERY { exec env -i PATH=/usr/bin:/bin \
       BIFROST_ISOLATED_OWNER_TEST=1 \
       "BIFROST_OWNER_TEST_DATABASE_URL=postgresql://wex_core:synthetic_primer_core@$database_target/bifrost_test$database_suffix" \
-      "$owner_binary" --recover-closed-result "$case_dir/owner-config.json"; }
+      "$owner_binary" "$recovery_mode" "$case_dir/owner-config.json"; }
     owner_pid=$CLOSED_RECOVERY_PID
     exec {owner_input}>&"${CLOSED_RECOVERY[1]}"
     exec {owner_output}<&"${CLOSED_RECOVERY[0]}"
@@ -154,7 +161,7 @@ for case_number in 0 1 2 3 4 5; do
   exec {owner_output}<&-
   wait "$owner_pid"
   exit_event=owner_exited
-  if [[ "$case_number" = 4 ]]; then exit_event=closed_recovery_exited; fi
+  if [[ "$case_number" = 4 || "$case_number" = 6 ]]; then exit_event=closed_recovery_exited; fi
   printf '{"event":"%s","pid":%s,"exit_code":0}\n' "$exit_event" "$owner_pid" > "$case_dir/owner-exited.json.new"
   mv "$case_dir/owner-exited.json.new" "$case_dir/owner-exited.json"
   owner_pid=''

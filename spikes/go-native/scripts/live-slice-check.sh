@@ -59,7 +59,7 @@ cleanup_slice() {
     cp "$LOG_DIR/test-results.xml" "$evidence_dir/live-results.xml"
   fi
   # Explicit public evidence allowlist. Never retain issuer material/TLS keys.
-  for case_number in 0 1 2 3 4 5; do
+  for case_number in 0 1 2 3 4 5 6; do
     mkdir -p "$evidence_dir/$case_number"
     # The byte-blind first-party proxy logs no SQL, credentials or packet data;
     # retain its launch/guard traceback when it fails before publishing ready.

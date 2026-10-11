@@ -11,18 +11,19 @@ fn matching_result_projection(root: &str, attempt: &str) -> bool {
     )
 }
 
-/// Closed, immutable Result readback only. No Clone/serde constructor and no
+/// Closed session readback only. No Clone/serde constructor and no
 /// Start/provision/SDK permit. Physical recovery must still prove the original
 /// owner dead and consume its exclusive original custody and resource journals.
-pub struct ClosedResultRecovery {
+pub struct ClosedSessionRecovery {
     pub(crate) fence: crate::SessionFence,
     pub(crate) artifact_id: String,
-    receipt: Value,
+    pub(crate) cancelled: bool,
+    receipt: Option<Value>,
 }
 
-impl ClosedResultRecovery {
-    pub fn receipt(&self) -> &Value {
-        &self.receipt
+impl ClosedSessionRecovery {
+    pub fn receipt(&self) -> Option<&Value> {
+        self.receipt.as_ref()
     }
 }
 
@@ -30,12 +31,55 @@ pub async fn observe_closed_result_recovery(
     pool: &PgPool,
     fence: &crate::SessionFence,
     decision_id: &str,
-) -> Result<ClosedResultRecovery, ObserveError> {
+) -> Result<ClosedSessionRecovery, ObserveError> {
     let (receipt, artifact_id) = read_committed_result(pool, fence, decision_id).await?;
-    Ok(ClosedResultRecovery {
+    Ok(ClosedSessionRecovery {
         fence: fence.clone(),
         artifact_id,
-        receipt,
+        cancelled: false,
+        receipt: Some(receipt),
+    })
+}
+
+/// Observe an already committed cancellation, never request one or reconstruct
+/// a live session. The existing settlement writer still consumes physical proof
+/// and repeats the full lock tail before terminal projection.
+pub async fn observe_closed_cancel_recovery(
+    pool: &PgPool,
+    fence: &crate::SessionFence,
+) -> Result<ClosedSessionRecovery, ObserveError> {
+    let mut locked = lock_session_state(pool, fence, true).await?;
+    if !locked.closed
+        || locked.close_reason.as_deref() != Some("cancel_requested")
+        || locked.execution_status != "Cancelling"
+        || locked.attempt_status != "running"
+        || locked.attempt_completed
+    {
+        return Err(ObserveError::Rejected);
+    }
+    let facts: (i64, i64, i64) = sqlx::query_as(
+        "SELECT (SELECT count(*) FROM runtime_starts WHERE session_id=$1::text::uuid), \
+        (SELECT count(*) FROM runtime_report_receipts WHERE session_id=$1::text::uuid), \
+        (SELECT count(*) FROM workflow_runtime_sdk_grants WHERE runtime_session_id=$1::text::uuid \
+        AND revoked_at IS NOT NULL AND revocation_reason='session_closed')",
+    )
+    .bind(&fence.session_id)
+    .fetch_one(&mut *locked.tx)
+    .await?;
+    if facts != (1, 0, 1) {
+        return Err(ObserveError::Rejected);
+    }
+    let artifact_id = locked.artifact_id;
+    locked
+        .tx
+        .commit()
+        .await
+        .map_err(|_| ObserveError::UncertainCommit)?;
+    Ok(ClosedSessionRecovery {
+        fence: fence.clone(),
+        artifact_id,
+        cancelled: true,
+        receipt: None,
     })
 }
 

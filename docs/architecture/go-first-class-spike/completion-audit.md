@@ -62,7 +62,7 @@ Proved at7f: actual PostgreSQL COMMIT observed but its Result acknowledgement
 withheld; Rust sees UncertainCommit, performs no Result/SDK/receipt replay, drains
 original resources, reads the sole immutable receipt and preserves durable Success.
 
-Pending atb105: closed-Result original owner SIGKILL, live-owner recovery denial,
+Pending, including the next closed-cancellation candidate: closed-Result original owner SIGKILL, live-owner recovery denial,
 read-only exact original SQL/custody recovery, no ownership reassignment or receipt
 replay; uncertain release abort without Provision/material/SDK delivery; dormant
 process birth before retained channel custody with stop-only drain.
@@ -76,8 +76,7 @@ The dormant birth probe passed once but then failed; the current source retains
 stop-only kernel custody before inducing owner EOF. No unchanged retries, timeout
 increases or weakened drain checks qualify either fix.
 
-Still unproved: Docker transport response-loss injection, durable pre-Result owner
-recovery, interrupted partial cleanup, ambiguous resource-fact commit reconciliation
+Still unproved: Docker transport response-loss injection, durable recovery of an open pre-Result session, interrupted partial cleanup, ambiguous resource-fact commit reconciliation
 and human writer/runtime acceptance. Failures retain custody/source obligations;
 no replay or owner reassignment is permitted. Missing evidence is not completion.
 

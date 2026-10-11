@@ -7,7 +7,7 @@ use bifrost_isolated_owner_spike::{
     issuer::IssuerChannel,
     live_start::{BeginRequest, admit_and_start},
     material::MaterialPipe,
-    observe_closed_result_recovery,
+    observe_closed_cancel_recovery, observe_closed_result_recovery,
     peer::OriginalPeer,
     reconcile_committed_result, record_provision_candidate,
     sdk_gate::SDKGate,
@@ -257,6 +257,29 @@ async fn run(config: Value) -> Result<Value, ()> {
     // Every post-launch outcome drains this original container/channel. No
     // recovery object may enter admission, issuance, delivery or Result service.
     let lost_ack = config["lost_result_commit_ack"] == true && uncertain_result_commit;
+    if config["crash_after_cancel"] == true {
+        if config["cancel_waiting_sdk"] != true || operation.is_err() {
+            return Err(());
+        }
+        write_new(
+            &journal.join("cancel-uncertainty.json"),
+            &serde_json::to_vec(&json!({"version":"isolated-original-cancel-uncertainty/v1",
+                "session_id":session,"cancel_commit_observed":true,
+                "counts":operation.as_ref().map_err(|_| ())?}))
+            .map_err(|_| ())?,
+            0o600,
+        )?;
+        File::open(&journal)
+            .and_then(|directory| directory.sync_all())
+            .map_err(|_| ())?;
+        emit(
+            &json!({"event":"closed_cancel_recovery_required","session_id":session,
+            "owner_pid":std::process::id(),"cancel_commit_observed":true}),
+        )?;
+        loop {
+            std::thread::park();
+        }
+    }
     if config["crash_after_result_commit"] == true {
         if !lost_ack {
             return Err(());
@@ -433,7 +456,7 @@ fn read_private(path: &Path, uid: u32) -> Result<Value, ()> {
     serde_json::from_slice(&raw).map_err(|_| ())
 }
 
-async fn recover_closed_result(config: &Value) -> Result<Value, ()> {
+async fn recover_closed_session(config: &Value, cancelled: bool) -> Result<Value, ()> {
     if std::env::var("BIFROST_ISOLATED_OWNER_TEST").as_deref() != Ok("1") {
         return Err(());
     }
@@ -469,13 +492,25 @@ async fn recover_closed_result(config: &Value) -> Result<Value, ()> {
         return Err(());
     }
     let custody = read_private(&spec.journal.join("original-custody.json"), spec.uid)?;
-    let uncertainty = read_private(&spec.journal.join("result-uncertainty.json"), spec.uid)?;
-    if uncertainty["version"] != "isolated-original-result-uncertainty/v1"
-        || uncertainty["session_id"] != spec.session_id
-        || uncertainty["decision_id"] != config["decision_id"]
-        || uncertainty["result_commit_observation"] != "lost_ack"
-        || uncertainty["result_receipt_sent"] != false
-    {
+    let uncertainty = read_private(
+        &spec.journal.join(if cancelled {
+            "cancel-uncertainty.json"
+        } else {
+            "result-uncertainty.json"
+        }),
+        spec.uid,
+    )?;
+    let valid_uncertainty = if cancelled {
+        uncertainty["version"] == "isolated-original-cancel-uncertainty/v1"
+            && uncertainty["cancel_commit_observed"] == true
+            && config["crash_after_cancel"] == true
+    } else {
+        uncertainty["version"] == "isolated-original-result-uncertainty/v1"
+            && uncertainty["decision_id"] == config["decision_id"]
+            && uncertainty["result_commit_observation"] == "lost_ack"
+            && uncertainty["result_receipt_sent"] == false
+    };
+    if uncertainty["session_id"] != spec.session_id || !valid_uncertainty {
         return Err(());
     }
     let binding = &config["prepare"]["body"]["binding"];
@@ -499,13 +534,16 @@ async fn recover_closed_result(config: &Value) -> Result<Value, ()> {
         .connect_with(options.statement_cache_capacity(0).extra_float_digits(None))
         .await
         .map_err(|_| ())?;
-    let closed = observe_closed_result_recovery(&pool, &fence, &text(config, "decision_id")?)
-        .await
-        .map_err(|_| ())?;
-    let receipt = closed.receipt().clone();
+    let closed = if cancelled {
+        observe_closed_cancel_recovery(&pool, &fence).await
+    } else {
+        observe_closed_result_recovery(&pool, &fence, &text(config, "decision_id")?).await
+    }
+    .map_err(|_| ())?;
+    let receipt = closed.receipt().cloned();
     let guardian = Guardian::recover_for_drain(spec).map_err(|_| ())?;
     let retired = guardian
-        .retire_closed_result(closed, &pins)
+        .retire_closed_session(closed, &pins)
         .map_err(|_| ())?;
     let physical = retired.observation()["physical_drain"].clone();
     emit(&json!({"event":"resources_retired","session_id":fence.session_id}))?;
@@ -518,9 +556,18 @@ async fn recover_closed_result(config: &Value) -> Result<Value, ()> {
         .map_err(|_| ())?;
     pool.close().await;
     let mut component = uncertainty["counts"].clone();
-    component["receipt"] = receipt;
-    component["result_commit_observation"] = json!("lost_ack");
-    component["result_receipt_sent"] = json!(false);
+    if cancelled {
+        if receipt.is_some() {
+            return Err(());
+        }
+        component["durable_cancelled_finalization"] =
+            settlement["durable_cancelled_finalization"].clone();
+        component["source_consumer_settlement"] = settlement["durable_source_settlement"].clone();
+    } else {
+        component["receipt"] = receipt.ok_or(())?;
+        component["result_commit_observation"] = json!("lost_ack");
+        component["result_receipt_sent"] = json!(false);
+    }
     component["reconciled_without_replay"] = json!(true);
     component["original_owner_crash_recovered"] = json!(true);
     Ok(
@@ -542,7 +589,9 @@ async fn main() {
     }
     let args: Vec<String> = std::env::args().collect();
     let drain = args.len() == 3 && args[1] == "--drain";
-    let closed_recovery = args.len() == 3 && args[1] == "--recover-closed-result";
+    let closed_cancel = args.len() == 3 && args[1] == "--recover-closed-cancel";
+    let closed_recovery =
+        args.len() == 3 && (args[1] == "--recover-closed-result" || closed_cancel);
     if args.len() != 2 && !drain && !closed_recovery {
         std::process::exit(1);
     }
@@ -557,7 +606,7 @@ async fn main() {
     .and_then(|raw| serde_json::from_slice(&raw).map_err(|_| ()))
     {
         Ok(config) if drain => recover(&config),
-        Ok(config) if closed_recovery => recover_closed_result(&config).await,
+        Ok(config) if closed_recovery => recover_closed_session(&config, closed_cancel).await,
         Ok(config) => run(config).await,
         Err(()) => Err(()),
     };

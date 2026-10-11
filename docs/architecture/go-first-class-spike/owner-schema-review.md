@@ -393,3 +393,34 @@ revoked finite grant, no Result, source pin before/after resource commit, durabl
 Cancelled root/attempt and existing authenticated API readback with cleanup.
 This adds no SQL schema, role privileges or Go-specific state. Fresh hosted
 evidence is required; uncertain spawn and other crash phases remain separate.
+
+## Closed cancellation before durable resource settlement
+
+The next isolated candidate shares an opaque `ClosedSessionRecovery` between
+closed Result and closed cancellation recovery. This is an implementation-private
+readback value, not wire data, owner reassignment or a Start/SDK permit. The
+cancellation observer uses the same source/attempt/NOWAIT owner/root/deployment/
+Solution/session prefix, requires `cancel_requested`, Root Cancelling and the
+unfinished Running typed attempt, exactly one Start, no Result receipts and the
+single session grant already revoked for `session_closed`. Its transaction is
+read-only; uncertain read commit denies recovery. Immutable Start/receipt and
+closed-session facts are read under the session serialization point. The later
+resource writer repeats the complete common lock tail before any final projection.
+
+The seventh live case holds an actual admitted SDK response, lets the original
+Rust owner commit cancellation and validate common Stopped, then parks that actor
+before physical/source retirement. A recovery attempt while it is alive must
+deny before an exclusive cleanup intent or OS effect. The parent SIGKILLs and
+waits for that exact original actor, proves no Result receipt/resource fact exists
+and the existing authenticated API still reads Cancelling, then permits a fresh
+stop-only closing actor. It must match the unchanged owner/attempt/session and
+original SQL-bound custody/resource/source journals, prove the old incarnation
+gone, drain the original namespace/CLI, retire the original paths and use the
+existing resource-fact writer to finalize Cancelled. No workload, SDK, Result,
+Cancel or Stopped is replayed. Stored Stopped/counts are observational evidence,
+not cleanup authority. No new schema, principal, lifecycle transition or wire
+message is added; the coordination events belong only to the trusted fixture.
+
+Fresh hosted evidence is required. This does not cover owner death while the
+session remains open, interrupted cleanup or ambiguous resource-fact commits.
+Those paths retain obligations and fail closed; they do not authorize replay.

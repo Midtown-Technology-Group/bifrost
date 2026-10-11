@@ -1150,10 +1150,10 @@ impl Guardian {
     }
 
     /// Consume stop-only custody and an independently observed immutable closed
-    /// Result. No channel or effect is replayed and owner identity is unchanged.
-    pub fn retire_closed_result(
+    /// session. No channel or effect is replayed and owner identity is unchanged.
+    pub fn retire_closed_session(
         self,
-        closed: crate::ClosedResultRecovery,
+        closed: crate::ClosedSessionRecovery,
         pins: &ArchivePins,
     ) -> Result<RetiredSession, GuardianError> {
         if self.may_start || self.attachment.is_some() || self.kernel.is_none() {
@@ -1163,6 +1163,11 @@ impl Guardian {
             return Err(GuardianError::Rejected);
         }
         let spec = self.spec.clone();
+        let recovery_kind = if closed.cancelled {
+            "closed-cancel-original-owner-loss/v1"
+        } else {
+            "closed-result-original-owner-loss/v1"
+        };
         let fence = closed.fence;
         let raw = private_record(&spec, "original-custody.json")?;
         let record: Value = serde_json::from_slice(&raw).map_err(|_| GuardianError::Rejected)?;
@@ -1245,7 +1250,7 @@ impl Guardian {
             &spec,
             "closed-recovery-intent.json",
             &json!({
-            "version":"isolated-closed-result-recovery/v1","session_id":fence.session_id,
+            "version":"isolated-closed-session-recovery/v1","recovery_kind":recovery_kind,"session_id":fence.session_id,
             "owner_incarnation_id":fence.owner_incarnation_id,"original_owner_pid":owner_pid,
             "original_owner_start_ticks":owner_ticks,"recovery_pid":std::process::id()}),
         )?;
@@ -1282,7 +1287,7 @@ impl Guardian {
             fence,
             observation: json!({
             "version":"bifrost.runtime-resource-settlement/v1","physical_drain":drained,
-            "recovery_kind":"closed-result-original-owner-loss/v1","original_owner_gone":true,
+            "recovery_kind":recovery_kind,"original_owner_gone":true,
             "staged_source_removed":true,"material_retired":true,"sdk_gate_retired":true,
             "index_sha256":spec.index_sha256,"archive_sha256":pins.archive_sha256}),
         })
