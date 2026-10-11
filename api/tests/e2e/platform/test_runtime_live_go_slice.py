@@ -284,7 +284,7 @@ async def test_original_rust_owner_runs_unchanged_go_twice(
         (
             await db_session.execute(
                 text(
-                    'SELECT DISTINCT r.name FROM user_roles ur JOIN roles r ON r.id=ur.role_id WHERE ur.user_id=:id ORDER BY r.name COLLATE "C"'
+                    'SELECT DISTINCT r.name COLLATE "C" AS role_name FROM user_roles ur JOIN roles r ON r.id=ur.role_id WHERE ur.user_id=:id ORDER BY role_name'
                 ),
                 {"id": platform_admin.user_id},
             )

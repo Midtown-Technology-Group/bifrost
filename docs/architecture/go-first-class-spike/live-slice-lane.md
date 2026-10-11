@@ -69,3 +69,12 @@ It installed no owner, grant or execution. Retained cleanup inventories are empt
 The correction merges the fixture override with the base before include, using
 unchanged writer-pool configuration. Local Compose config validation alone did
 not catch the older runner's behavior; the corrected hosted run is required.
+
+Run38111421935 (`3e3b8db155578105102c7ed63ffccadb28bf71be`) passed the
+native producer, independent consumer and codec interchange, then booted the
+disposable stack. Its live fixture failed before owner admission because
+PostgreSQL rejects `SELECT DISTINCT r.name ORDER BY r.name COLLATE "C"`.
+The fixture now selects the collated expression and orders its alias, preserving
+unique, deterministic role names. Retained cleanup inventories show no containers,
+volumes or networks. This failure is fixture evidence, not runtime acceptance;
+the corrected source requires fresh hosted proof.
