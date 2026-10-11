@@ -1,4 +1,3 @@
-import subprocess
 import sys
 import types
 import importlib
@@ -19,24 +18,28 @@ def test_compute_version_prefers_environment(monkeypatch) -> None:
     assert bifrost._compute_version() == "2026.7.test"
 
 
-def test_compute_version_uses_git_describe_when_environment_absent(monkeypatch) -> None:
+def test_compute_version_uses_package_metadata_when_environment_absent(
+    monkeypatch,
+) -> None:
     monkeypatch.delenv("BIFROST_VERSION", raising=False)
     monkeypatch.setattr(
-        bifrost._subprocess,
-        "check_output",
-        lambda *args, **kwargs: "v1.2.3-dirty\n",
+        bifrost._importlib_metadata,
+        "version",
+        lambda name: "1.2.3" if name == "bifrost" else "unexpected",
     )
 
-    assert bifrost._compute_version() == "v1.2.3-dirty"
+    assert bifrost._compute_version() == "1.2.3"
 
 
-def test_compute_version_falls_back_to_unknown_when_git_fails(monkeypatch) -> None:
+def test_compute_version_falls_back_to_unknown_when_metadata_is_missing(
+    monkeypatch,
+) -> None:
     monkeypatch.delenv("BIFROST_VERSION", raising=False)
 
-    def fail_git(*args, **kwargs):
-        raise subprocess.CalledProcessError(1, ["git"])
+    def missing_package(_name: str) -> str:
+        raise bifrost._importlib_metadata.PackageNotFoundError
 
-    monkeypatch.setattr(bifrost._subprocess, "check_output", fail_git)
+    monkeypatch.setattr(bifrost._importlib_metadata, "version", missing_package)
 
     assert bifrost._compute_version() == "unknown"
 
