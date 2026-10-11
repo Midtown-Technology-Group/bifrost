@@ -14,7 +14,12 @@ from fastapi import APIRouter, Depends, Header, Query, status
 from starlette.responses import JSONResponse
 
 from src.services.operation_catalog import operation_route
-from src.core.auth import Context, CurrentUser, get_current_user_optional
+from src.core.auth import (
+    Context,
+    CurrentUser,
+    get_current_user_optional,
+    require_active_engine_attempt,
+)
 from src.core.db_deps import DbSession
 from src.core.principal import UserPrincipal
 from src.models.contracts.device_jobs import (
@@ -185,6 +190,7 @@ async def get_device_route(
                 "unauthenticated",
                 "user permission or device-scoped control key required",
             )
+        await require_active_engine_attempt(db, user)
         await require_device_manage_permission(db, user)
         device = await get_device_scoped(db, user, device_id)
         return DevicePublic.model_validate(device)
