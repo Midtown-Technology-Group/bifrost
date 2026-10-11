@@ -1,0 +1,83 @@
+{
+  "sdk_version": "0.0.0-spike.2",
+  "source_commit": "3d46d0435f8c32fd19d12340d76c1e693fdd1764",
+  "workflow_run": 38101437313,
+  "runtime_acceptance": false,
+  "go_source_inputs_verified": 130,
+  "rust_source_inputs_verified": 33,
+  "go_tests_passed": 540,
+  "unchanged_workflow_sha256": "160917deeb94275f31ca9ddee2dacae00fb079fdf54cb60e206c8def261f9c34",
+  "artifact_id": "sha256:38b260b7a57d5081efb6f9970aac26bfcb8b30a7406e0c407b1826382b2226c3",
+  "guardian_proof_sha256": "ff87a63ab2516bf88a56732c133bf44fade703190c24f27d62caf59b36a2eacf",
+  "cases": [
+    {
+      "case": "normal",
+      "namespace_drained": true,
+      "container_removed": true,
+      "private_paths_removed": true,
+      "private_gate_lifecycle_command_denied": true,
+      "fresh_start_denied": false,
+      "custody_sha256": "2c2faa8c3314e7201e05404d33e9ac58ce7fd43ac1795778d7af900042d212fa"
+    },
+    {
+      "case": "poisoned-channel",
+      "namespace_drained": true,
+      "container_removed": true,
+      "private_paths_removed": true,
+      "private_gate_lifecycle_command_denied": false,
+      "fresh_start_denied": false,
+      "custody_sha256": "8b1630dae8d0d700e8f513f4eb6849cce2b6a4dcc1ab9b4c7872ae4e405f031f"
+    },
+    {
+      "case": "sdk-relay-dormant",
+      "namespace_drained": true,
+      "container_removed": true,
+      "private_paths_removed": true,
+      "private_gate_lifecycle_command_denied": false,
+      "fresh_start_denied": false,
+      "custody_sha256": "aab300eb35698a4e92d3dee43a066e0da474959f26c2a4eaf631e2b6df8f522e"
+    },
+    {
+      "case": "sdk-relay-lost-ingress",
+      "namespace_drained": true,
+      "container_removed": true,
+      "private_paths_removed": true,
+      "private_gate_lifecycle_command_denied": false,
+      "fresh_start_denied": false,
+      "custody_sha256": "3800fca2673a4b94c74c6997e7e0785ecf248b292777db188a31ab6ccca1e0a0"
+    },
+    {
+      "case": "lost-create-reply",
+      "namespace_drained": true,
+      "container_removed": true,
+      "private_paths_removed": true,
+      "private_gate_lifecycle_command_denied": false,
+      "fresh_start_denied": true,
+      "custody_sha256": null
+    },
+    {
+      "case": "guardian-crash-after-offer",
+      "namespace_drained": true,
+      "container_removed": true,
+      "private_paths_removed": true,
+      "private_gate_lifecycle_command_denied": false,
+      "fresh_start_denied": true,
+      "custody_sha256": "4ee5d3b978a596b55bab4de8fe42c1d620b9ec7331397f0e73c7dd1e6e2dc8e9"
+    }
+  ],
+  "timings_ms": {
+    "module_download": 69.578701,
+    "cold_compile_warm_modules": 16066.217923,
+    "independent_cold_compile": 15920.336607,
+    "warm_source_edit_compile": 356.362641,
+    "restored_warm_compile": 333.075584,
+    "edit_to_artifact": 546.600784
+  },
+  "limitations": [
+    "No tenant Start, SDK issuance, positive Rust SDK admission or durable lifecycle in the live guardian probe.",
+    "The gate command-denial test uses a lazy non-authoritative SQL endpoint and synthetic fence.",
+    "Source path cleanup is not durable source-consumer settlement.",
+    "Timings measure isolated Go authoring, not Rust-owned end-to-end execution.",
+    "This run precedes the ingress application and TLS server source."
+  ]
+}

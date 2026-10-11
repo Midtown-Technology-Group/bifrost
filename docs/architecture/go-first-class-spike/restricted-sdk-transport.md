@@ -125,3 +125,12 @@ uses the actual shared service and attempts a concurrent OAuth-provider insert.
 The constructor does not start a TLS server, authenticate issuer provenance or
 run the Go artifact. Those remain the next complete-slice integration steps;
 neither ASGI tests nor this fetch test constitute runtime acceptance.
+
+`IsolatedSDKServer` supplies the explicit TLS socket lifetime for this app. It
+rejects any broader application, symlinked/shared socket directory, restart or
+key inside the runtime mount. It hosts only the accepted route, without access
+logging or signal-handler replacement of the parent. Shutdown waits for serving
+and request tasks before removing the original inode; a changed path or unproven
+drain is a cleanup failure, never an accepted settlement. A real HTTPS-over-Unix
+test uses a disposable fixture certificate and mocked owner admission. This
+proves the transport host and denial ordering, not a Rust-owned execution.

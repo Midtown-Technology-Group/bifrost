@@ -8,12 +8,14 @@ on:
       - api/src/services/isolated_runtime_sdk_tokens.py
       - api/src/services/isolated_runtime_sdk_bridge.py
       - api/src/services/isolated_runtime_sdk_http.py
+      - api/src/services/isolated_runtime_sdk_server.py
       - api/shared/isolated_runtime_sdk.py
       - api/tests/e2e/platform/test_isolated_runtime_sdk_fetch.py
       - api/tests/unit/core/test_runtime_sdk_credentials.py
       - api/tests/unit/services/test_isolated_runtime_sdk_tokens.py
       - api/tests/unit/services/test_isolated_runtime_sdk_bridge.py
       - api/tests/unit/services/test_isolated_runtime_sdk_http.py
+      - api/tests/unit/services/test_isolated_runtime_sdk_server.py
       - spikes/go-native/owner-rs/**
       - spikes/go-native/scripts/owner-foundation-check.sh
       - spikes/go-native/peers/rust-execution/**
@@ -61,12 +63,14 @@ jobs:
             api/src/services/isolated_runtime_sdk_tokens.py \
             api/src/services/isolated_runtime_sdk_bridge.py \
             api/src/services/isolated_runtime_sdk_http.py \
+            api/src/services/isolated_runtime_sdk_server.py \
             api/shared/isolated_runtime_sdk.py \
             api/tests/e2e/platform/test_isolated_runtime_sdk_fetch.py \
             api/tests/unit/core/test_runtime_sdk_credentials.py \
             api/tests/unit/services/test_isolated_runtime_sdk_tokens.py \
             api/tests/unit/services/test_isolated_runtime_sdk_bridge.py \
             api/tests/unit/services/test_isolated_runtime_sdk_http.py \
+            api/tests/unit/services/test_isolated_runtime_sdk_server.py \
             docker-compose.runtime-writer-guards.yml \
             scripts/ci/writer-guards/pgbouncer.ini \
             scripts/ci/writer-primer/userlist.txt \
