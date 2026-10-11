@@ -9,8 +9,10 @@ from uuid import uuid4
 
 import pytest
 from fastapi import HTTPException
-
-from src.models.contracts.oauth import UpdateOAuthConnectionRequest
+from src.models.contracts.oauth import (
+    CreateOAuthConnectionRequest,
+    UpdateOAuthConnectionRequest,
+)
 from src.routers import oauth_connections
 
 
@@ -101,6 +103,43 @@ async def test_get_connection_returns_repository_detail():
     assert result == detail
     repo.get_by_connection_name.assert_awaited_once_with("halo")
     repo.to_detail.assert_awaited_once_with(provider)
+
+
+@pytest.mark.asyncio
+async def test_create_connection_binds_provider_to_caller_org():
+    org_id = uuid4()
+    integration = SimpleNamespace(id=uuid4(), name="Halo")
+    query_result = MagicMock()
+    query_result.scalar_one_or_none.return_value = integration
+    ctx = _ctx(org_id=org_id)
+    ctx.db.execute.return_value = query_result
+    detail = _detail(connection_name="Halo")
+    repo = _repo(get_by_connection_name_in_scope=None, to_detail=detail)
+    request = CreateOAuthConnectionRequest(
+        integration_id=str(integration.id),
+        oauth_flow_type="client_credentials",
+        client_id="org-client",
+        client_secret="org-secret",
+        token_url="https://auth.example.test/token",
+    )
+
+    with (
+        patch.object(oauth_connections, "OAuthProviderRepository", return_value=repo),
+        patch("src.core.security.encrypt_secret", return_value="encrypted"),
+        patch.object(oauth_connections, "CACHE_INVALIDATION_AVAILABLE", False),
+    ):
+        result = await oauth_connections.create_connection(
+            request,
+            ctx,
+            MagicMock(),
+        )
+
+    assert result == detail
+    repo.get_by_connection_name_in_scope.assert_awaited_once_with("Halo")
+    provider = ctx.db.add.call_args.args[0]
+    assert provider.organization_id == org_id
+    assert provider.integration_id == integration.id
+    assert provider.encrypted_client_secret == b"encrypted"
 
 
 @pytest.mark.asyncio

@@ -29,7 +29,7 @@ from src.models import (
 from src.core.auth import Context, CurrentSuperuser
 from src.core.log_safety import log_safe
 from src.models import OAuthProvider, OAuthToken
-from src.models.orm.integrations import IntegrationMapping
+from src.models.orm.integrations import Integration, IntegrationMapping
 from src.models.orm.platform_jobs import PlatformJob
 from src.models.contracts.platform_jobs import PlatformJobAccepted
 from src.jobs.platform.system_maintenance import (
@@ -159,9 +159,6 @@ async def create_connection(
     user: CurrentSuperuser,
 ) -> OAuthConnectionDetail:
     """Create a new OAuth connection."""
-    from uuid import UUID
-    from src.models.orm.integrations import Integration
-
     org_id = ctx.org_id
     repo = OAuthProviderRepository(ctx.db, org_id=org_id, is_superuser=True)
 
@@ -180,8 +177,9 @@ async def create_connection(
     # Use the integration name as the provider/connection name
     provider_name = integration.name
 
-    # Check for existing connection (global check — top-level connections are org=NULL)
-    existing = await repo.get_by_connection_name(provider_name)
+    # Writes are exact-scope: an org may override a visible global provider,
+    # but it must never mutate or block on that global fallback.
+    existing = await repo.get_by_connection_name_in_scope(provider_name)
     if existing:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -195,7 +193,7 @@ async def create_connection(
         encrypted_secret = encrypt_secret(request.client_secret).encode()
 
     provider = OAuthProvider(
-        # organization_id omitted → NULL → global connection
+        organization_id=org_id,
         provider_name=provider_name,
         display_name=integration.name,
         description=request.description,
