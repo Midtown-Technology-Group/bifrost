@@ -1,14 +1,22 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock
 
+import httpx
 import jwt
 import pytest
 from cryptography.hazmat.primitives.asymmetric import rsa
 
+from src.services import github_actions_oidc
 from src.services.github_actions_oidc import (
     GITHUB_ACTIONS_ISSUER,
+    GITHUB_ACTIONS_JWKS_MAX_BYTES,
+    GITHUB_ACTIONS_JWKS_MAX_KEYS,
+    GITHUB_ACTIONS_JWKS_UNKNOWN_KID_REFRESH_SECONDS,
+    GITHUB_ACTIONS_OIDC_MAX_TOKEN_LENGTH,
     WORKSPACE_SOURCE_RELEASE_AUDIENCE,
     GitHubActionsOIDCError,
     authenticate_workspace_source_release_producer,
@@ -78,7 +86,11 @@ def test_tracking_organization_rejects_an_invalid_uuid() -> None:
         workspace_source_release_tracking_organization_id(settings)
 
 
-def _token(*, overrides: dict[str, object] | None = None):
+def _token(
+    *,
+    overrides: dict[str, object] | None = None,
+    kid: str = "test-key",
+):
     private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     now = datetime.now(timezone.utc)
     claims: dict[str, object] = {
@@ -105,13 +117,13 @@ def _token(*, overrides: dict[str, object] | None = None):
         claims,
         private_key,
         algorithm="RS256",
-        headers={"kid": "test-key"},
+        headers={"kid": kid},
     )
     public_key = private_key.public_key()
     jwks = {
         "keys": [
             jwt.algorithms.RSAAlgorithm.to_jwk(public_key, as_dict=True)
-            | {"kid": "test-key", "alg": "RS256", "use": "sig"}
+            | {"kid": kid, "alg": "RS256", "use": "sig"}
         ]
     }
     return token, jwks
@@ -346,3 +358,211 @@ async def test_rejects_wrong_audience() -> None:
             settings=_settings(),
             jwks=jwks,
         )
+
+
+@pytest.mark.asyncio
+async def test_rejects_oversized_token_before_jwt_parsing(monkeypatch) -> None:
+    parse_header = MagicMock(side_effect=AssertionError("must not parse oversized token"))
+    monkeypatch.setattr(jwt, "get_unverified_header", parse_header)
+
+    with pytest.raises(GitHubActionsOIDCError, match="too large"):
+        await authenticate_workspace_source_release_producer(
+            "x" * (GITHUB_ACTIONS_OIDC_MAX_TOKEN_LENGTH + 1),
+            settings=_settings(),
+            jwks={"keys": []},
+        )
+
+    parse_header.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_rejects_oversized_key_identifier_before_jwks_access() -> None:
+    token, _ = _token(kid="k" * 257)
+
+    with pytest.raises(GitHubActionsOIDCError, match="key identifier"):
+        await authenticate_workspace_source_release_producer(
+            token,
+            settings=_settings(),
+            jwks={"keys": []},
+        )
+
+
+@pytest.mark.asyncio
+async def test_concurrent_unknown_kids_share_one_bounded_refresh(monkeypatch) -> None:
+    _, known_jwks = _token(kid="known-key")
+    fetch_jwks = AsyncMock(return_value=known_jwks)
+    monkeypatch.setattr(
+        github_actions_oidc,
+        "_fetch_github_actions_jwks",
+        fetch_jwks,
+    )
+    cache = github_actions_oidc._GitHubActionsJWKSCache()
+    monkeypatch.setattr(
+        github_actions_oidc,
+        "_github_actions_jwks_cache",
+        cache,
+    )
+
+    await cache.get()
+    cache._last_attempt_at -= GITHUB_ACTIONS_JWKS_UNKNOWN_KID_REFRESH_SECONDS + 1
+    tokens = [_token(kid=f"unknown-{index}")[0] for index in range(12)]
+
+    results = await asyncio.gather(
+        *(
+            authenticate_workspace_source_release_producer(
+                token,
+                settings=_settings(),
+            )
+            for token in tokens
+        ),
+        return_exceptions=True,
+    )
+
+    assert all(isinstance(result, GitHubActionsOIDCError) for result in results)
+    assert all("not recognized" in str(result) for result in results)
+    assert fetch_jwks.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_jwks_failure_backoff_coalesces_concurrent_fetches(monkeypatch) -> None:
+    fetch_jwks = AsyncMock(
+        side_effect=GitHubActionsOIDCError(
+            "GitHub Actions OIDC signing keys are unavailable"
+        )
+    )
+    monkeypatch.setattr(
+        github_actions_oidc,
+        "_fetch_github_actions_jwks",
+        fetch_jwks,
+    )
+    cache = github_actions_oidc._GitHubActionsJWKSCache()
+
+    results = await asyncio.gather(
+        *(cache.get() for _ in range(12)),
+        return_exceptions=True,
+    )
+
+    assert all(isinstance(result, GitHubActionsOIDCError) for result in results)
+    assert fetch_jwks.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_fetch_jwks_accepts_a_bounded_key_document(monkeypatch) -> None:
+    expected = {"keys": []}
+
+    async def respond(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=expected)
+
+    original_client = httpx.AsyncClient
+
+    def client_with_mock_transport(**kwargs):
+        return original_client(
+            **kwargs,
+            transport=httpx.MockTransport(respond),
+        )
+
+    monkeypatch.setattr(
+        github_actions_oidc.httpx,
+        "AsyncClient",
+        client_with_mock_transport,
+    )
+
+    assert await github_actions_oidc._fetch_github_actions_jwks() == expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("body", "message"),
+    [
+        (b"x" * (GITHUB_ACTIONS_JWKS_MAX_BYTES + 1), "too large"),
+        (b'{"keys": {}}', "invalid"),
+        (
+            (
+                '{"keys":['
+                + ",".join("{}" for _ in range(GITHUB_ACTIONS_JWKS_MAX_KEYS + 1))
+                + "]}"
+            ).encode(),
+            "invalid",
+        ),
+    ],
+    ids=["oversized", "wrong-key-shape", "too-many-keys"],
+)
+async def test_fetch_jwks_rejects_unbounded_or_invalid_documents(
+    monkeypatch,
+    body: bytes,
+    message: str,
+) -> None:
+    async def respond(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=body)
+
+    original_client = httpx.AsyncClient
+
+    def client_with_mock_transport(**kwargs):
+        return original_client(
+            **kwargs,
+            transport=httpx.MockTransport(respond),
+        )
+
+    monkeypatch.setattr(
+        github_actions_oidc.httpx,
+        "AsyncClient",
+        client_with_mock_transport,
+    )
+
+    with pytest.raises(GitHubActionsOIDCError, match=message):
+        await github_actions_oidc._fetch_github_actions_jwks()
+
+
+@pytest.mark.asyncio
+async def test_jwks_total_deadline_releases_waiters_and_starts_backoff(
+    monkeypatch,
+) -> None:
+    started = asyncio.Event()
+    request_count = 0
+
+    class ProgressingStream(httpx.AsyncByteStream):
+        async def __aiter__(self):
+            started.set()
+            yield b'{"keys":['
+            while True:
+                await asyncio.sleep(0.01)
+                yield b" "
+
+    async def respond(_request: httpx.Request) -> httpx.Response:
+        nonlocal request_count
+        request_count += 1
+        return httpx.Response(200, stream=ProgressingStream())
+
+    original_client = httpx.AsyncClient
+
+    def client_with_mock_transport(**kwargs):
+        return original_client(
+            **kwargs,
+            transport=httpx.MockTransport(respond),
+        )
+
+    monkeypatch.setattr(
+        github_actions_oidc,
+        "GITHUB_ACTIONS_JWKS_FETCH_TIMEOUT_SECONDS",
+        0.05,
+    )
+    monkeypatch.setattr(
+        github_actions_oidc.httpx,
+        "AsyncClient",
+        client_with_mock_transport,
+    )
+    cache = github_actions_oidc._GitHubActionsJWKSCache()
+
+    owner = asyncio.create_task(cache.get())
+    await started.wait()
+    waiter = asyncio.create_task(cache.get())
+    results = await asyncio.gather(owner, waiter, return_exceptions=True)
+
+    assert all(isinstance(result, GitHubActionsOIDCError) for result in results)
+    assert all("unavailable" in str(result) for result in results)
+    assert request_count == 1
+    assert cache._lock.locked() is False
+
+    with pytest.raises(GitHubActionsOIDCError, match="unavailable"):
+        await cache.get()
+    assert request_count == 1
