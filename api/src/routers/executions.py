@@ -427,7 +427,7 @@ class ExecutionRepository:
             logs_query = (
                 select(ExecutionLogORM)
                 .where(ExecutionLogORM.execution_id == execution_id)
-                .order_by(ExecutionLogORM.sequence)
+                .order_by(ExecutionLogORM.sequence, ExecutionLogORM.id)
             )
             if not user.is_superuser:
                 logs_query = logs_query.where(
@@ -438,14 +438,14 @@ class ExecutionRepository:
 
             logs = [
                 ExecutionLogPublic(
-                    id=log.id,
+                    id=public_id,
                     timestamp=log.timestamp.isoformat() if log.timestamp else "",
                     level=log.level or "info",
                     message=log.message or "",
                     data=log.log_metadata,
                     sequence=log.sequence,
                 )
-                for log in log_entries
+                for public_id, log in enumerate(log_entries)
             ]
 
         # 3. Fetch AI usage data
@@ -626,7 +626,7 @@ class ExecutionRepository:
         logs_query = (
             select(ExecutionLogORM)
             .where(ExecutionLogORM.execution_id == execution_id)
-            .order_by(ExecutionLogORM.sequence)
+            .order_by(ExecutionLogORM.sequence, ExecutionLogORM.id)
         )
         if not user.is_superuser:
             logs_query = logs_query.where(ExecutionLogORM.level.notin_(["DEBUG", "TRACEBACK"]))
@@ -636,14 +636,14 @@ class ExecutionRepository:
 
         logs = [
             ExecutionLogPublic(
-                id=log.id,
+                id=public_id,
                 timestamp=log.timestamp.isoformat() if log.timestamp else "",
                 level=log.level or "info",
                 message=log.message or "",
                 data=log.log_metadata,
                 sequence=log.sequence,
             )
-            for log in log_entries
+            for public_id, log in enumerate(log_entries)
         ]
 
         return logs, None

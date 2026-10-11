@@ -705,7 +705,7 @@ async def get_sdk_execution(
         logs_query = (
             select(ExecutionLogORM)
             .where(ExecutionLogORM.execution_id == execution_id)
-            .order_by(ExecutionLogORM.sequence)
+            .order_by(ExecutionLogORM.sequence, ExecutionLogORM.id)
         )
         if not principal.is_superuser:
             logs_query = logs_query.where(
@@ -716,14 +716,14 @@ async def get_sdk_execution(
 
         logs = [
             ExecutionLogPublic(
-                id=log.id,
+                id=public_id,
                 timestamp=log.timestamp.isoformat() if log.timestamp else "",
                 level=log.level or "info",
                 message=log.message or "",
                 data=log.log_metadata,
                 sequence=log.sequence,
             )
-            for log in log_entries
+            for public_id, log in enumerate(log_entries)
         ]
 
     ai_usage_query = (
