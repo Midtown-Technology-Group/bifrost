@@ -51,22 +51,25 @@ cleanup_slice() {
   fi
   # Explicit public evidence allowlist. Never retain issuer material/TLS keys.
   for case_number in 0 1; do
-    sudo mkdir -p "$evidence_dir/$case_number"
+    mkdir -p "$evidence_dir/$case_number"
     for entry in owner-ingress.json owner-start.json owner-result.json owner-exited.json stop-only-recovery.json; do
       if sudo test -f "$slice_root/$case_number/$entry"; then
         sudo cp "$slice_root/$case_number/$entry" "$evidence_dir/$case_number/$entry" || cleanup=1
       fi
     done
     if sudo test -f "$slice_root/$case_number/owner-config.json"; then
-      sudo jq 'del(.claim_token)' "$slice_root/$case_number/owner-config.json" > "$evidence_dir/$case_number/owner-metadata.json"
-      session=$(sudo jq -er '.prepare.body.binding.session_id' "$slice_root/$case_number/owner-config.json")
-      remaining=$(docker container ls -aq --no-trunc --filter "name=^/bifrost-guardian-$session$")
-      printf '%s=%s\n' "$session" "$remaining" >> "$evidence_dir/guardian-inventory.txt"
-      test -z "$remaining" || cleanup=1
+      sudo jq 'del(.claim_token)' "$slice_root/$case_number/owner-config.json" > "$evidence_dir/$case_number/owner-metadata.json" || cleanup=1
+      if session=$(sudo jq -er '.prepare.body.binding.session_id' "$slice_root/$case_number/owner-config.json"); then
+        remaining=$(docker container ls -aq --no-trunc --filter "name=^/bifrost-guardian-$session$") || cleanup=1
+        printf '%s=%s\n' "$session" "$remaining" >> "$evidence_dir/guardian-inventory.txt"
+        test -z "$remaining" || cleanup=1
+      else
+        cleanup=1
+      fi
     fi
   done
   if sudo test -f "$slice_root/live-proof.json"; then sudo cp "$slice_root/live-proof.json" "$evidence_dir/live-proof.json"; fi
-  sudo chown -R "$(id -u):$(id -g)" "$evidence_dir"
+  sudo chown -R "$(id -u):$(id -g)" "$evidence_dir" || cleanup=1
   bash test.sh stack down > "$evidence_dir/stack-cleanup.log" 2>&1 || cleanup=1
   for kind in container volume network; do
     case "$kind" in
@@ -103,6 +106,9 @@ pool_container=$(docker compose -p "$slice_project" -f "$COMPOSE_FILE" ps -q wri
 pool_ip=$(docker inspect --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$pool_container")
 test -n "$pool_ip"
 docker_gid=$(stat -c %g /var/run/docker.sock)
+# Build the trusted fixture before starting bounded runtime observation. The
+# ordinary test command still performs its existing cached build/checks.
+docker compose -p "$slice_project" -f "$COMPOSE_FILE" build test-runner > "$evidence_dir/fixture-build.log" 2>&1
 bash test.sh tests/e2e/platform/test_runtime_live_go_slice.py --durations=0 > "$evidence_dir/live-tests.log" 2>&1 &
 fixture_pid=$!
 sudo env -i PATH=/usr/bin:/bin /usr/bin/setpriv --reuid 1000 --regid 1000 --groups "$docker_gid" \

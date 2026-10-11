@@ -78,3 +78,14 @@ The fixture now selects the collated expression and orders its alias, preserving
 unique, deterministic role names. Retained cleanup inventories show no containers,
 volumes or networks. This failure is fixture evidence, not runtime acceptance;
 the corrected source requires fresh hosted proof.
+
+Run38112123871 (`f4df83eaf422f92cb27f8826dc8ad11b2be23b35`) passed the
+producer and ownership gates and the corrected caller query. The fixture then
+timed out awaiting owner ingress; the driver had no output, consistent with its
+bounded launch-file wait expiring during test-runner build. Build that trusted
+fixture before starting runtime observation; retain the existing deadlines.
+Its cleanup also failed writing redacted metadata into a root-owned evidence
+directory and exited before stack teardown. This run has no verified teardown
+and must not be represented as clean. Evidence directories now belong to the
+runner; evidence-write failures mark cleanup failed while allowing teardown and
+inventory checks to continue. Fresh hosted validation remains required.
