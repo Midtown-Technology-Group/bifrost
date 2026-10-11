@@ -24,12 +24,10 @@ Auth strategy — two mutually exclusive paths:
 1. **FastMCP HTTP context** (a tool call reached the MCP server via HTTP):
    :func:`fastmcp.server.dependencies.get_access_token` yields the caller's
    bearer token. We reuse it directly.
-2. **Executor / test context** (no FastMCP request on the stack, the MCP
-   context was constructed by the agent executor or a unit test): we mint
-   a short-lived JWT matching the ``MCPContext``'s claims using the same
-   ``create_access_token`` helper Bifrost uses for login. This keeps every
-   request going through :mod:`src.core.security` — there is no "trusted
-   in-process" side door that skips auth validation.
+2. **Verified internal executor context**: trusted construction sites attach
+   an unforgeable in-process capability before a short-lived JWT may be minted
+   from the context. Ordinary/default contexts fail closed when FastMCP auth is
+   absent or broken.
 """
 
 from __future__ import annotations
@@ -52,24 +50,31 @@ _BRIDGE_URL_ENV = "BIFROST_MCP_HTTP_BRIDGE_URL"
 def _token_from_context(context: "MCPContext") -> str:
     """Return a bearer token usable for an in-process REST call.
 
-    Prefers the live FastMCP access token (same bytes the external MCP
-    client sent); falls back to minting a short-lived JWT from the
-    context's claims so executor / test contexts still go through the
-    standard auth path.
+    Prefer the live FastMCP access token (same bytes the external MCP client
+    sent). Mint from context claims only when a verified internal execution
+    path explicitly attached the private bridge capability.
     """
+    token_error: Exception | None = None
     try:
         from fastmcp.server.dependencies import get_access_token
 
         token = get_access_token()
-        if token is not None and getattr(token, "token", None):
-            from src.core.security import decode_token
+    except Exception as exc:
+        token = None
+        token_error = exc
 
-            payload = decode_token(token.token, expected_type="access")
-            if payload is not None and not payload.get("mcp"):
-                return token.token
-    except Exception:
-        # Not in a FastMCP HTTP request — fall through to minting.
-        pass
+    if token is not None and getattr(token, "token", None):
+        from src.core.security import decode_token
+
+        payload = decode_token(token.token, expected_type="access")
+        if payload is not None and not payload.get("mcp"):
+            return token.token
+        raise PermissionError("A verified user access token is required")
+
+    if not context.can_mint_rest_bridge_token:
+        raise PermissionError(
+            "Authenticated MCP access token required"
+        ) from token_error
 
     from src.core.security import create_access_token
 

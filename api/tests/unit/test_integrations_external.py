@@ -24,6 +24,7 @@ import pytest
 
 from src.repositories.integrations import IntegrationsRepository
 from src.repositories.oauth import OAuthTokenRepository
+from src.services.mcp_server.server import MCPContext
 
 
 def _session():
@@ -162,7 +163,7 @@ class TestHttpBridgeMintCarriesExternal:
         return json.loads(base64.urlsafe_b64decode(payload))
 
     def _ctx(self, *, is_external, is_platform_admin=False):
-        return MagicMock(
+        return MCPContext.for_internal_execution(
             user_id=uuid4(),
             user_email="x@y.z",
             user_name="X",

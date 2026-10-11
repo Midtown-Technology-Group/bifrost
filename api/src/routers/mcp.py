@@ -68,7 +68,7 @@ def _gateway_service(current_user: CurrentActiveUser):
     from src.services.mcp_server.server import MCPContext
 
     return MCPAgentGatewayService(
-        MCPContext(
+        MCPContext.for_internal_execution(
             user_id=current_user.user_id,
             org_id=current_user.organization_id,
             is_platform_admin=current_user.is_superuser,

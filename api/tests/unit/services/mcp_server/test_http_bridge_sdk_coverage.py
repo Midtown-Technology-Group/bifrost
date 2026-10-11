@@ -5,6 +5,7 @@ from uuid import uuid4
 
 import pytest
 
+from src.services.mcp_server.server import MCPContext
 from src.services.mcp_server.tools import _http_bridge, data_providers, sdk
 
 
@@ -129,8 +130,28 @@ def test_token_from_context_reuses_non_mcp_fastmcp_token():
     create_access_token.assert_not_called()
 
 
-def test_token_from_context_mints_executor_token_and_carries_external_claim():
-    ctx = _context(is_platform_admin=True, org_id=None)
+def test_token_from_context_fails_closed_without_authenticated_token():
+    ctx = MCPContext(user_id=uuid4(), is_platform_admin=True, org_id=None)
+
+    with (
+        patch("fastmcp.server.dependencies.get_access_token", side_effect=RuntimeError),
+        patch("src.core.security.create_access_token") as create,
+        pytest.raises(PermissionError, match="Authenticated MCP access token required"),
+    ):
+        _http_bridge._token_from_context(ctx)
+
+    create.assert_not_called()
+
+
+def test_token_from_context_mints_only_for_internal_execution_context():
+    ctx = MCPContext.for_internal_execution(
+        user_id=uuid4(),
+        org_id=None,
+        user_email="user@example.test",
+        user_name="Unit User",
+        is_platform_admin=True,
+        is_external=True,
+    )
 
     with (
         patch("fastmcp.server.dependencies.get_access_token", side_effect=RuntimeError),

@@ -41,10 +41,10 @@ async def test_verify_token_preserves_canonical_scope_bypass_claims():
     assert token.claims["is_provider_org"] is True
 
 
-def test_http_bridge_fallback_preserves_provider_org_claim():
+def test_internal_http_bridge_mint_preserves_provider_org_claim():
     from src.core.security import decode_token
 
-    context = MCPContext(
+    context = MCPContext.for_internal_execution(
         user_id=uuid4(),
         org_id=uuid4(),
         is_provider_org=True,
