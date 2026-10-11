@@ -55,7 +55,7 @@ receive_event() {
   test "$(jq -er '.event' "$target.new")" = "$event"
   mv "$target.new" "$target"
 }
-for case_number in 0 1 2 3 4 5 6 7 8; do
+for case_number in 0 1 2 3 4 5 6 7 8 9; do
   case_dir="$slice_root/$case_number"
   wait_file "$case_dir/launch-ready.json"
   session=$(jq -er '.prepare.body.binding.session_id' "$case_dir/owner-config.json")
@@ -108,7 +108,7 @@ for case_number in 0 1 2 3 4 5 6 7 8; do
     cat "$case_dir/abort-release-ready.json" >&"$owner_input"
     printf '\n' >&"$owner_input"
   fi
-  if [[ "$case_number" = 2 || "$case_number" = 6 || "$case_number" = 7 ]]; then
+  if [[ "$case_number" = 2 || "$case_number" = 6 || "$case_number" = 7 || "$case_number" = 9 ]]; then
     receive_event sdk_admitted "$case_dir/owner-sdk-admitted.json"
     wait_file "$case_dir/cancel-ready.json"
     cat "$case_dir/cancel-ready.json" >&"$owner_input"
@@ -155,6 +155,28 @@ for case_number in 0 1 2 3 4 5 6 7 8; do
     exec {owner_output}<&"${CLOSED_RECOVERY[0]}"
     printf '{"event":"closed_recovery_started","pid":%s,"original_owner_pid":%s}\n' "$owner_pid" "$original_owner_pid" > "$case_dir/closed-recovery-started.json.new"
     mv "$case_dir/closed-recovery-started.json.new" "$case_dir/closed-recovery-started.json"
+  fi
+  if [[ "$case_number" = 9 ]]; then
+    receive_event partial_retirement_failed "$case_dir/partial-retirement-failed.json"
+    test "$(jq -er '.owner_pid' "$case_dir/partial-retirement-failed.json")" = "$owner_pid"
+    failed_owner_pid=$owner_pid
+    kill -KILL "$owner_pid"
+    if wait "$owner_pid"; then exit 1; else partial_exit=$?; fi
+    test "$partial_exit" = 137
+    owner_pid=''
+    exec {owner_input}>&-
+    exec {owner_output}<&-
+    printf '{"event":"partial_retirement_owner_crashed","pid":%s,"exit_code":137}\n' "$failed_owner_pid" > "$case_dir/partial-retirement-owner-crashed.json.new"
+    mv "$case_dir/partial-retirement-owner-crashed.json.new" "$case_dir/partial-retirement-owner-crashed.json"
+    if env -i PATH=/usr/bin:/bin BIFROST_ISOLATED_OWNER_TEST=1 \
+      "BIFROST_OWNER_TEST_DATABASE_URL=postgresql://wex_core:synthetic_primer_core@$database_target/bifrost_test$database_suffix" \
+      "$owner_binary" --drain "$case_dir/owner-config.json" \
+      > "$case_dir/partial-retirement-recovery-denied.log" 2>&1; then exit 1; fi
+    test ! -e "$case_dir/execution/journal/closed-recovery-intent.json"
+    printf '{"event":"partial_retirement_recovery_denied","session_id":"%s","mode":"stop-only","recovery_intent_created":false}\n' "$session" > "$case_dir/partial-retirement-recovery-denied.json.new"
+    mv "$case_dir/partial-retirement-recovery-denied.json.new" "$case_dir/partial-retirement-recovery-denied.json"
+    wait_file "$case_dir/fixture-finished.json"
+    continue
   fi
   receive_event resources_retired "$case_dir/owner-resources-retired.json"
   wait_file "$case_dir/settlement-ready.json"

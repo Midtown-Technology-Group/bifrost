@@ -326,8 +326,11 @@ async def test_original_rust_owner_runs_unchanged_go_and_cancels_waiting_sdk(
         )
     )
     proofs = []
-    for number in range(9):
-        cancel_waiting_sdk = number in (2, 6, 7, 8)
+    partial_retirement_proofs = []
+    for number in range(10):
+        cancel_waiting_sdk = number in (2, 6, 7, 8, 9)
+        partial_source_retirement = number == 9
+        partial_fault_verified = False
         lost_result_commit_ack = number in (3, 4)
         crash_after_result_commit = number == 4
         crash_after_cancel = number == 6
@@ -425,6 +428,7 @@ async def test_original_rust_owner_runs_unchanged_go_and_cancels_waiting_sdk(
             "crash_after_result_commit": crash_after_result_commit,
             "crash_after_cancel": crash_after_cancel,
             "crash_before_cancel": crash_before_cancel,
+            "partial_source_retirement": partial_source_retirement,
             "lost_release_commit_ack": lost_release_commit_ack,
             "lost_settlement_commit_ack": lost_settlement_commit_ack,
         }
@@ -669,6 +673,132 @@ async def test_original_rust_owner_runs_unchanged_go_and_cancels_waiting_sdk(
                     case / "cancel-ready.json",
                     {"event": "cancel_ready", "session_id": str(session)},
                 )
+            if partial_source_retirement:
+                failed = await observation(case / "partial-retirement-failed.json")
+                assert failed["event"] == "partial_retirement_failed"
+                assert failed["session_id"] == str(session)
+                assert failed["owner_pid"] == ingress["owner_pid"]
+                assert failed["retirement_token_produced"] is False
+                assert failed["settlement_attempted"] is False
+                assert failed["counts"]["sdk_admissions"] == 1
+                assert failed["physical_drain"]["container_removed"] is True
+                assert failed["physical_drain"]["namespace_drained"] is True
+                assert failed["physical_drain"]["attached_cli_waited"] is True
+                crashed = await observation(
+                    case / "partial-retirement-owner-crashed.json"
+                )
+                assert crashed == {
+                    "event": "partial_retirement_owner_crashed",
+                    "pid": ingress["owner_pid"],
+                    "exit_code": 137,
+                }
+                if Path(f"/proc/{ingress['owner_pid']}").exists():
+                    assert _start_ticks(ingress["owner_pid"]) != ticks
+                denied = await observation(
+                    case / "partial-retirement-recovery-denied.json"
+                )
+                assert denied == {
+                    "event": "partial_retirement_recovery_denied",
+                    "session_id": str(session),
+                    "mode": "stop-only",
+                    "recovery_intent_created": False,
+                }
+                assert not (
+                    runtime_root / "journal/closed-recovery-intent.json"
+                ).exists()
+                assert not (runtime_root / "material").exists()
+                assert not (runtime_root / "gate").exists()
+                source = runtime_root / "bundle"
+                assert [p.name for p in source.iterdir()] == [
+                    "fixture-retirement-obstruction"
+                ]
+                obstruction = source / "fixture-retirement-obstruction"
+                assert obstruction.read_bytes() == b"isolated retirement obstruction\n"
+                assert (
+                    await db_session.scalar(
+                        text(
+                            "SELECT count(*) FROM runtime_resource_settlements WHERE session_id=:session"
+                        ),
+                        {"session": session},
+                    )
+                    == 0
+                )
+                assert (
+                    await db_session.scalar(
+                        text(
+                            "SELECT count(*) FROM runtime_report_receipts WHERE session_id=:session"
+                        ),
+                        {"session": session},
+                    )
+                    == 0
+                )
+                assert (
+                    await db_session.scalar(
+                        text(
+                            "SELECT count(*) FROM runtime_execution_owners WHERE execution_id=:execution"
+                        ),
+                        {"execution": execution},
+                    )
+                    == 1
+                )
+                assert (
+                    await db_session.scalar(
+                        text(
+                            "SELECT count(*) FROM workflow_runtime_sdk_grants WHERE runtime_session_id=:session AND revoked_at IS NOT NULL AND revocation_reason='session_closed'"
+                        ),
+                        {"session": session},
+                    )
+                    == 1
+                )
+                assert (
+                    await db_session.scalar(
+                        select(Execution.id).where(
+                            Execution.id == execution,
+                            unsettled_runtime_source_consumer(),
+                        )
+                    )
+                    == execution
+                )
+                public = e2e_client.get(
+                    f"/api/executions/{execution}", headers=platform_admin.headers
+                )
+                assert (
+                    public.status_code == 200
+                    and public.json()["status"] == "Cancelling"
+                    and public.json()["result"] is None
+                )
+                # Dispose only the exact fixture-created obstruction after the
+                # owner has died. This is not runtime settlement or token proof.
+                obstruction.unlink()
+                source.rmdir()
+                assert (
+                    await db_session.scalar(
+                        select(Execution.id).where(
+                            Execution.id == execution,
+                            unsettled_runtime_source_consumer(),
+                        )
+                    )
+                    == execution
+                )
+                partial_retirement_proofs.append(
+                    {
+                        "session_id": str(session),
+                        "execution_id": str(execution),
+                        "artifact_id": descriptor["artifact"]["artifact_id"],
+                        "workflow_sha256": "5f9c912ec6055882e0d443378cb93bb87b58eb7ab2a49eb5e14d338d72865edd",
+                        "failure": failed,
+                        "owner_crash": crashed,
+                        "recovery_denied": denied,
+                        "public_status": "Cancelling",
+                        "public_result": None,
+                        "resource_facts": 0,
+                        "source_consumer_retained": True,
+                        "fixture_obstruction_disposed": True,
+                        "durable_source_settlement": False,
+                    }
+                )
+                partial_fault_verified = True
+                continue
             if lost_result_commit_ack:
                 async with asyncio.timeout(45):
                     await response_held.wait()
@@ -1187,8 +1317,11 @@ async def test_original_rust_owner_runs_unchanged_go_and_cancels_waiting_sdk(
             cert.unlink()
             private.unlink()
             keys.rmdir()
+            if partial_fault_verified:
+                publish(case / "fixture-finished.json", {"event": "fixture_finished"})
         publish(case / "fixture-finished.json", {"event": "fixture_finished"})
     assert len(proofs) == 9 and len({proof["artifact_id"] for proof in proofs}) == 1
+    assert len(partial_retirement_proofs) == 1
     publish(
         root / "live-proof.json",
         {
@@ -1196,6 +1329,7 @@ async def test_original_rust_owner_runs_unchanged_go_and_cancels_waiting_sdk(
             "producer_run": descriptor["producer_run_id"],
             "sdk_version": "0.0.0-spike.2",
             "executions": proofs,
+            "partial_retirement_failures": partial_retirement_proofs,
             "runtime_acceptance": False,
             "durable_source_settlement": True,
             "closed_result_owner_crash_recovery": True,

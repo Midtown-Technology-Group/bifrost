@@ -3,7 +3,7 @@
 use bifrost_isolated_owner_spike::{
     IntegrationGetRequest, ProvisionRequest, ReleaseRequest, SessionFence,
     archive::{ArchivePins, MAX_ARCHIVE, NAMES, sha256, verify_archive},
-    guardian::{Guardian, LaunchSpec},
+    guardian::{Guardian, GuardianError, LaunchSpec},
     issuer::IssuerChannel,
     live_start::{BeginRequest, admit_and_start},
     material::MaterialPipe,
@@ -329,6 +329,38 @@ async fn run(config: Value) -> Result<Value, ()> {
     let original_session_drained = original_drain.is_some();
     let mut reconciled_receipt = None;
     let settlement = if let Some(original) = original_drain {
+        if config["partial_source_retirement"] == true {
+            // First-party fault after real process drain: no accepted source or
+            // workflow byte changes, and the extra entry is never executed.
+            if config["cancel_waiting_sdk"] != true || operation.is_err() {
+                return Err(());
+            }
+            let source = root.join("bundle");
+            fs::set_permissions(&source, fs::Permissions::from_mode(0o700)).map_err(|_| ())?;
+            write_new(
+                &source.join("fixture-retirement-obstruction"),
+                b"isolated retirement obstruction\n",
+                0o400,
+            )?;
+            fs::set_permissions(&source, fs::Permissions::from_mode(0o500)).map_err(|_| ())?;
+            if !matches!(
+                original.retire_resources(pipe, gate, &pins),
+                Err(GuardianError::CleanupRequired)
+            ) {
+                return Err(());
+            }
+            emit(
+                &json!({"event":"partial_retirement_failed","session_id":session,
+                "owner_pid":std::process::id(),"physical_drain":drained,
+                "retirement_token_produced":false,"settlement_attempted":false,
+                "counts":live_counts.as_ref().ok_or(())?}),
+            )?;
+            // The trusted driver kills/waits this actor and proves that a fresh
+            // recovery cannot infer retirement from the now-missing paths.
+            loop {
+                std::thread::park();
+            }
+        }
         let retired = original
             .retire_resources(pipe, gate, &pins)
             .map_err(|_| ())?;
