@@ -557,6 +557,78 @@ class TestManifestIntegrationOAuthProviderImport:
         assert provider.scopes == ["read", "write"]
         assert provider.provider_metadata == {"omit_token_exchange_scope": False}
 
+    @pytest.mark.asyncio
+    async def test_recreate_reattaches_orphaned_provider_and_tokens(self, db_session):
+        import uuid
+
+        from bifrost.manifest import ManifestIntegration, ManifestOAuthProvider
+        from sqlalchemy import delete, select
+        from src.models.orm.integrations import Integration
+        from src.models.orm.oauth import OAuthProvider, OAuthToken
+        from src.services.manifest_import import ManifestResolver
+
+        integration_id = uuid.uuid4()
+        manifest_integration = ManifestIntegration(
+            id=str(integration_id),
+            name="preserved-oauth",
+            oauth_provider=ManifestOAuthProvider(
+                provider_name="preserved-oauth",
+                client_id="__NEEDS_SETUP__",
+                token_url="https://auth.example.com/oauth/token",
+                scopes=["read"],
+            ),
+        )
+        resolver = ManifestResolver(db_session)
+
+        await resolver._resolve_integration("preserved-oauth", manifest_integration)
+        await db_session.flush()
+        provider = (
+            await db_session.execute(
+                select(OAuthProvider).where(
+                    OAuthProvider.integration_id == integration_id
+                )
+            )
+        ).scalar_one()
+        provider_id = provider.id
+        provider.client_id = "configured-client"
+        provider.encrypted_client_secret = b"configured-secret"
+        token = OAuthToken(
+            provider_id=provider_id,
+            encrypted_access_token=b"configured-token",
+        )
+        db_session.add(token)
+        await db_session.flush()
+        token_id = token.id
+
+        await db_session.execute(
+            delete(Integration).where(Integration.id == integration_id)
+        )
+        await db_session.flush()
+        db_session.expire_all()
+
+        orphan = await db_session.get(OAuthProvider, provider_id)
+        assert orphan is not None
+        assert orphan.integration_id is None
+
+        await resolver._resolve_integration("preserved-oauth", manifest_integration)
+        await db_session.flush()
+        db_session.expire_all()
+
+        providers = (
+            await db_session.execute(
+                select(OAuthProvider).where(
+                    OAuthProvider.provider_name == "preserved-oauth"
+                )
+            )
+        ).scalars().all()
+        assert [item.id for item in providers] == [provider_id]
+        assert providers[0].integration_id == integration_id
+        assert providers[0].client_id == "configured-client"
+        assert providers[0].encrypted_client_secret == b"configured-secret"
+        preserved_token = await db_session.get(OAuthToken, token_id)
+        assert preserved_token is not None
+        assert preserved_token.provider_id == provider_id
+
 
 class TestManifestAppPathSafety:
     """Manifest app paths must stay inside one app source directory."""
