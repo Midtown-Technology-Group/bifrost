@@ -29,7 +29,7 @@ def fixture():
         policy=policy,
         ca_pem="accepted fixture CA",
     )
-    request = {
+    request: dict[str, object] = {
         "snapshot": snapshot.model_dump(mode="json"),
         "caller": caller.model_dump(mode="json"),
         "grant_id": str(snapshot.id),
