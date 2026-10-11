@@ -358,6 +358,20 @@ def oauth_state_key(state: str) -> str:
     return f"bifrost:auth:oauth_state:{state}"
 
 
+def integration_oauth_pkce_key(state: str) -> str:
+    """
+    Key for an integration-OAuth PKCE verifier bound to an authorize ``state``.
+
+    Namespaced apart from :func:`oauth_state_key` (SSO login lane) so the
+    two lanes can never read each other's verifiers.
+
+    Structure: STRING containing JSON with
+    ``{code_verifier, redirect_uri, provider_id, mapping_id}``
+    TTL: 10 minutes (matches the integration state-JWT TTL)
+    """
+    return f"bifrost:integration_oauth:pkce:{state}"
+
+
 def rate_limit_key(endpoint: str, identifier: str) -> str:
     """
     Key for rate limiting by endpoint and IP/user.

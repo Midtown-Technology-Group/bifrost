@@ -11,9 +11,9 @@ Behavior:
    pkce_verifier, optional user_id, nonce).
 2. Verify the nonce is unused (Redis check-and-delete).
 3. Resolve the connection's OAuth provider details.
-4. Exchange the ``code`` for access + refresh tokens via the existing
-   ``OAuthProviderClient.exchange_code_for_token`` (which we found
-   already exists in ``src/services/oauth_provider.py``).
+4. Exchange the ``code`` for access + refresh tokens via
+   ``OAuthProviderClient._make_token_request`` (direct payload: MCP sends
+   connection-scoped credentials plus ``resource`` and ``code_verifier``).
 5. Encrypt the resulting tokens, persist via ``OAuthToken``.
 6. For service flow: update ``mcp_connections.service_oauth_token_id``.
    For user flow: upsert ``user_mcp_credentials`` for the (user, connection).
@@ -167,11 +167,12 @@ async def _exchange_code_for_token(
 ) -> dict[str, Any]:
     """Run the authorization-code exchange.
 
-    Reuses ``OAuthProviderClient.exchange_code_for_token`` but adds the
-    PKCE verifier (the existing helper takes ``client_secret`` and
-    ``audience`` but does not currently pass ``code_verifier``). Since
-    every MCP OAuth flow we ship uses PKCE, the simplest path is to
-    POST directly with the existing low-level transport.
+    Builds the token payload directly (instead of
+    ``OAuthProviderClient.exchange_code_for_token``, which now also accepts
+    ``code_verifier``) because MCP uses the connection's per-org
+    ``client_id``/``client_secret`` and sends ``resource``. Since every MCP
+    OAuth flow we ship uses PKCE, the simplest path is to POST directly
+    with the existing low-level transport.
     """
     if not provider.token_url:
         raise HTTPException(
@@ -191,9 +192,9 @@ async def _exchange_code_for_token(
     defaults = await get_url_resolution_defaults(db, provider)
     token_url = resolve_url_template(provider.token_url, defaults=defaults)
 
-    # Build payload directly so we can include code_verifier (the existing
-    # exchange_code_for_token helper doesn't accept PKCE). We still use
-    # OAuthProviderClient._make_token_request for retry/parse semantics.
+    # Build payload directly for the connection-scoped credentials above.
+    # We still use OAuthProviderClient._make_token_request for retry/parse
+    # semantics.
     payload: dict[str, str] = {
         "grant_type": "authorization_code",
         "code": code,
