@@ -59,6 +59,7 @@ async def open_client(
     # Imported lazily so the MCP SDK and its HTTP dependencies
     # stays out of the worker import closure (tests/unit/test_import_hygiene.py).
     from fastmcp import Client
+    from fastmcp.client.transports import StreamableHttpTransport
 
     server_url = _resolve_server_url(connection)
     logger.debug(
@@ -67,7 +68,8 @@ async def open_client(
         server_url,
     )
 
-    client = Client(server_url, auth=access_token, mode="auto")
+    transport = StreamableHttpTransport(server_url, auth=access_token)
+    client = Client(transport, mode="auto")
     async with client:
         negotiation_path = (
             "modern_discover"
