@@ -110,3 +110,36 @@ were empty after teardown. The test failed while awaiting the synchronous
 authenticated Execution API client's Response. Use that existing client's normal
 synchronous call. Public response contents, exact durable receipt readback and
 the second unchanged-binary execution were not verified; the lane remains red.
+
+Run38113720626 (`d678ac1faa7044a70e306ed9b148877f94840b16`) passed the normal
+live slice and its required broad checks. [Retained exact-source evidence](normal-live-slice-proof.json)
+contains two fresh Rust-owned executions of the same unchanged Go binary and
+the same accepted native archive. Each made one admitted SDK HTTP200, emitted
+one common LogBatch and an accepted ResultReceipt, then exited and drained its
+original container/namespace/staging. Existing authenticated Execution API
+readback returned Success with `{ready:true,missing_keys:[]}` and
+`{ready:false,missing_keys:["timezone"]}`. The actual database-backed test checked
+the SHA256 of stored raw Result bytes against the receipt; those raw bytes were
+not retained in the public artifact. Independent artifact verification matched
+source, owner/Start/Result/exit/API correlation, both native archive hashes and
+the source-bound original Rust executable, plus empty teardown inventories.
+
+That source passed13893 unit tests and API quality, the native producer passed540
+Go tests, and the checked owner passed39 component tests. All recorded62 inputs
+of guard run38111288478 at `b3d85ecc392e432d9349f3536adcefe9c9fb12f4` are unchanged
+at the live source; its247 writer/credential/race and110 storage-baseline tests
+are separately recorded component evidence, not a transferred candidate status.
+
+The two whole-owner spans were3257.511765ms and2694.989155ms, including native
+launch, provisioning, execution and drain. Two observations do not isolate Go
+execution overhead or establish a cold/warm runtime distribution. The actual
+build measured16500.082493ms cold compile,16125.834739ms independent cold
+compile,372.385612ms warm edit compile and566.374923ms edit-to-artifact. Ordinary
+Go authoring and the warm compiler loop are promising; the isolated harness is
+still substantial and is not a finished developer CLI. Portable-supervisor
+timings remain separately labelled in the evidence.
+
+Decision: **CONTINUE SPIKE**. Normal Result/API proof does not accept cancellation,
+durable source-consumer settlement, live crash/uncertain commit/spawn/lost-ACK
+handling, a new lifecycle writer, or the runtime. Those conditions remain the
+next implementation and acceptance work under the existing isolated release.

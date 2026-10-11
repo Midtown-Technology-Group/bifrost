@@ -1,0 +1,273 @@
+{
+  "decision": "CONTINUE SPIKE",
+  "source": "d678ac1faa7044a70e306ed9b148877f94840b16",
+  "producer_run": 38113720626,
+  "producer_url": "https://github.com/Midtown-Technology-Group/bifrost/actions/runs/38113720626",
+  "sdk_version": "0.0.0-spike.2",
+  "normal_live_proof": {
+    "durable_source_settlement": false,
+    "executions": [
+      {
+        "artifact_id": "sha256:3582a5df386a9e5cc8dc198dc20c6e397db9c21cd37e44d6ed5fe2a4272d2777",
+        "elapsed_ms": 3257.5117649999997,
+        "execution_id": "c3e3190c-d393-4083-aba2-32703fae08a3",
+        "physical_drain": {
+          "attached_cli_waited": true,
+          "container_id": "5973f8079dcbbd6226afbca650bf27a3beba2a97a56d7cf2224720954081544d",
+          "container_removed": true,
+          "lifecycle_finalization": false,
+          "namespace_drained": true,
+          "runtime_acceptance": false,
+          "source_consumer_settlement": false
+        },
+        "public_result": {
+          "missing_keys": [],
+          "ready": true
+        },
+        "public_status": "Success",
+        "receipt": {
+          "decision_id": "a4ef6f4a-8135-4668-8bd1-062e9a7cd7f3",
+          "disposition": "accepted",
+          "result_message_id": "0deee9b4-ed66-4d78-be69-2afd3a996cda",
+          "result_sha256": "010dfb117812b8fabad58941603c35f589caed940226a4017d8c4cbe84cd65db",
+          "winner": "result"
+        },
+        "result_sha256": "010dfb117812b8fabad58941603c35f589caed940226a4017d8c4cbe84cd65db",
+        "sdk_statuses": [
+          200
+        ],
+        "session_id": "aed88a7e-a441-441d-9815-94682b35f359",
+        "workflow_sha256": "160917deeb94275f31ca9ddee2dacae00fb079fdf54cb60e206c8def261f9c34"
+      },
+      {
+        "artifact_id": "sha256:3582a5df386a9e5cc8dc198dc20c6e397db9c21cd37e44d6ed5fe2a4272d2777",
+        "elapsed_ms": 2694.989155,
+        "execution_id": "80ab0cd0-6736-420b-aa46-4c58bcde53a7",
+        "physical_drain": {
+          "attached_cli_waited": true,
+          "container_id": "dea4cbc5536eaeccf2b313707cb2390342995734af65614169cc75bd38f8c014",
+          "container_removed": true,
+          "lifecycle_finalization": false,
+          "namespace_drained": true,
+          "runtime_acceptance": false,
+          "source_consumer_settlement": false
+        },
+        "public_result": {
+          "missing_keys": [
+            "timezone"
+          ],
+          "ready": false
+        },
+        "public_status": "Success",
+        "receipt": {
+          "decision_id": "d8fa8e56-bf58-4a04-beef-a10f5c945484",
+          "disposition": "accepted",
+          "result_message_id": "6ae022d4-8a3c-4367-a16b-1a1681da67fe",
+          "result_sha256": "460be71b2bbf213563b3bbc68c5bd60e392969d0f6f46c4f68bce201ce587a07",
+          "winner": "result"
+        },
+        "result_sha256": "460be71b2bbf213563b3bbc68c5bd60e392969d0f6f46c4f68bce201ce587a07",
+        "sdk_statuses": [
+          200
+        ],
+        "session_id": "7df08810-70d1-4751-b3e0-e7b3f3b9cc15",
+        "workflow_sha256": "160917deeb94275f31ca9ddee2dacae00fb079fdf54cb60e206c8def261f9c34"
+      }
+    ],
+    "producer_run": "38113720626",
+    "production_dispatch": false,
+    "runtime_acceptance": false,
+    "sdk_version": "0.0.0-spike.2",
+    "source": "d678ac1faa7044a70e306ed9b148877f94840b16"
+  },
+  "independent_live_verification": {
+    "source": "d678ac1faa7044a70e306ed9b148877f94840b16",
+    "producer_run": 38113720626,
+    "sdk_version": "0.0.0-spike.2",
+    "live_tests": {
+      "live-results.xml": {
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "unit-results.xml": {
+        "tests": 13893,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      }
+    },
+    "api_quality_passed": true,
+    "physical_cleanup_verified": true,
+    "two_unchanged_binary_executions_verified": true,
+    "owner_start_result_exit_api_correlations_verified": true,
+    "owner_total_elapsed_ms": [
+      3257.5117649999997,
+      2694.989155
+    ],
+    "scope": "Independent verification of same-run source-bound live proof, original owner/Start/Receipt/exit/API result correlation, successful JUnit assertions and cleanup. Raw-result SHA verification occurred in the actual DB-backed test; raw payload is not retained here.",
+    "durable_source_settlement": false,
+    "live_cancellation": false,
+    "live_uncertain_recovery": false,
+    "runtime_acceptance": false,
+    "production_dispatch": false
+  },
+  "independent_native_verification": {
+    "source": "d678ac1faa7044a70e306ed9b148877f94840b16",
+    "producer_run": 38113720626,
+    "sdk_version": "0.0.0-spike.2",
+    "verified_source_files": 137,
+    "source_closure_sha256": "411f0a0f2cbb552c96c486481ab1e24364acf3050d8b4220bfaa65b8607ad927",
+    "artifact_sha256": "160917deeb94275f31ca9ddee2dacae00fb079fdf54cb60e206c8def261f9c34",
+    "artifact_size_bytes": 9920235,
+    "bundle_entries_verified": 6,
+    "bundle_artifact_id": "sha256:3582a5df386a9e5cc8dc198dc20c6e397db9c21cd37e44d6ed5fe2a4272d2777",
+    "go_test_results": {
+      "pass": 540
+    },
+    "timings_ms": {
+      "module_download": 76.111259,
+      "cold_compile_warm_modules": 16500.082493,
+      "independent_cold_compile": 16125.834739,
+      "warm_source_edit_compile": 372.385612,
+      "restored_warm_compile": 332.098937,
+      "edit_to_artifact": 566.374923
+    },
+    "execution_summary": {
+      "startup_to_sdk_ms": {
+        "median": 4.234722,
+        "p95": 4.462926,
+        "n": 20
+      },
+      "execution_ms": {
+        "median": 4.8285295,
+        "p95": 4.935895,
+        "n": 20
+      },
+      "max_rss_kib": {
+        "median": 11536.0,
+        "p95": 13692,
+        "n": 20
+      }
+    },
+    "scope": "Independent Git source/hash and tar content verification. Execution_summary timings are portable fake-supervisor observations, not live Rust lifecycle overhead.",
+    "runtime_acceptance": false,
+    "durable_source_settlement": false,
+    "production_dispatch": false
+  },
+  "independent_owner_verification": {
+    "source": "d678ac1faa7044a70e306ed9b148877f94840b16",
+    "producer_run": 38113720626,
+    "verified_owner_source_inputs": 38,
+    "owner_binary_sha256": "b05d91c360fec850c6d4defadbb0941bebdae61f32418b2e3e6d2d411669d8a5",
+    "owner_binary_size_bytes": 78750600,
+    "owner_tests_passed": 39,
+    "same_live_accepted_binary_hash_verified": true,
+    "runtime_acceptance": false
+  },
+  "guard_component_evidence": {
+    "source": "b3d85ecc392e432d9349f3536adcefe9c9fb12f4",
+    "producer_run": 38111288478,
+    "sdk_version": "0.0.0-spike.2",
+    "verified_files": 62,
+    "recorded_inputs_changed_at_current_head": [],
+    "results": {
+      "writer-guard-unit.xml": {
+        "tests": 13893,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "writer-guard-results.xml": {
+        "tests": 247,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "writer-guard-baseline.xml": {
+        "tests": 110,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      }
+    },
+    "scope": "Exact-source component writer/credential/race/storage evidence; no actual native lifecycle acceptance or candidate status transfer.",
+    "runtime_acceptance": false,
+    "production_dispatch": false,
+    "compared_head": "d678ac1faa7044a70e306ed9b148877f94840b16",
+    "cleanup_inventory_empty": true,
+    "api_quality_passed": true,
+    "issuer_cancel_commit_cases": [
+      "test_rust_start_commits_running_and_exact_clock_once",
+      "test_rust_start_concurrent_writers_have_one_committed_decision",
+      "test_rust_running_cancel_commits_projection_close_and_revoke_once",
+      "test_rust_cancel_rejects_each_stale_identity_without_writes[0]",
+      "test_rust_cancel_rejects_each_stale_identity_without_writes[1]",
+      "test_rust_cancel_rejects_each_stale_identity_without_writes[2]",
+      "test_rust_cancel_rejects_each_stale_identity_without_writes[3]",
+      "test_rust_cancel_rejects_each_stale_identity_without_writes[4]",
+      "test_rust_cancel_rejects_each_stale_identity_without_writes[5]",
+      "test_rust_cancel_rejects_each_stale_identity_without_writes[6]",
+      "test_rust_cancel_rejects_each_stale_identity_without_writes[7]",
+      "test_rust_cancel_rejects_each_stale_identity_without_writes[8]",
+      "test_rust_cancel_rejects_each_stale_identity_without_writes[9]",
+      "test_rust_cancel_rejects_incumbent_without_writes",
+      "test_rust_cancel_without_retained_start_has_no_projection",
+      "test_rust_cancel_tail_contention_aborts_before_any_projection",
+      "test_rust_cancel_late_revoke_failure_rolls_back_all_projection",
+      "test_rust_cancel_preserves_committed_success",
+      "test_rust_cancel_rejects_inconsistent_winning_receipt",
+      "test_rust_cancel_readback_is_read_only_before_and_after_commit",
+      "test_rust_cancel_process_exit_before_reply_reconciles_without_replay",
+      "test_rust_cancel_readback_rejects_stale_identity_without_writes[0]",
+      "test_rust_cancel_readback_rejects_stale_identity_without_writes[1]",
+      "test_rust_cancel_readback_rejects_stale_identity_without_writes[2]",
+      "test_rust_cancel_readback_rejects_stale_identity_without_writes[3]",
+      "test_rust_cancel_readback_rejects_stale_identity_without_writes[4]",
+      "test_rust_cancel_readback_rejects_stale_identity_without_writes[5]",
+      "test_rust_cancel_readback_rejects_stale_identity_without_writes[6]",
+      "test_rust_cancel_readback_rejects_stale_identity_without_writes[7]",
+      "test_rust_cancel_readback_rejects_stale_identity_without_writes[8]",
+      "test_rust_cancel_readback_rejects_stale_identity_without_writes[9]",
+      "test_rust_cancel_readback_rejects_incumbent_without_writes",
+      "test_rust_cancel_readback_rejects_partial_close_without_repair",
+      "test_rust_cancel_readback_tail_contention_has_no_effects",
+      "test_rust_cancel_tombstone_blocks_later_sdk_admission",
+      "test_rust_release_observed_commit_and_no_replay",
+      "test_rust_release_commit_reply_loss_retains_same_release",
+      "test_rust_release_read_only_after_cancel_keeps_retained_identity",
+      "test_rust_release_closed_before_commit_has_no_release",
+      "test_rust_release_incumbent_cannot_commit",
+      "test_rust_release_concurrent_commit_has_one_fresh_observation",
+      "test_rust_release_cancel_race_retains_winner_without_replay",
+      "test_rust_result_commits_exact_receipt_and_existing_projection_once",
+      "test_rust_result_preserves_cancel_winner_without_early_terminalization",
+      "test_rust_result_winner_cannot_be_overwritten_by_cancel",
+      "test_rust_result_cancel_concurrent_transactions_have_one_winner",
+      "test_rust_provision_commits_canonical_grant_operation_and_admission[provision]",
+      "test_rust_cancel_before_grant_birth_blocks_provision[provision]",
+      "test_reserved_ingress_reads_only_its_committed_open_provision[provision]",
+      "test_finite_issuance_requires_committed_unreleased_provision[provision]",
+      "test_cancelled_provision_cannot_authorize_finite_issuance[provision]",
+      "test_real_finite_issuer_exchange_uses_committed_grant_and_original_peers[normal-provision]",
+      "test_real_finite_issuer_exchange_uses_committed_grant_and_original_peers[lost_reply-provision]",
+      "test_real_finite_issuer_exchange_uses_committed_grant_and_original_peers[release-provision]",
+      "test_real_finite_issuer_exchange_uses_committed_grant_and_original_peers[cancel_after_issue-provision]",
+      "test_real_finite_issuer_exchange_uses_committed_grant_and_original_peers[wrong_operations-provision]",
+      "test_real_finite_issuer_exchange_uses_committed_grant_and_original_peers[caller_drift-provision]"
+    ]
+  },
+  "developer_experience": "Ordinary typed Go, context.Context, interfaces and control flow remain intact; the warm edit-to-artifact loop measured566.374923ms. Local portable-supervisor measurements are separate from the full Rust owner span. The isolated owner/SDK harness is still substantial and not a finished developer CLI.",
+  "remaining_required_evidence": [
+    "Same unchanged binary cancelled while its restricted SDK call waits; Rust durable Cancelled projection only after verified process/descendant and source settlement.",
+    "Common durable source-consumer settlement and concrete schema/identity/immutability/writer-exclusion/lock-order review.",
+    "Live crash recovery and uncertain commit/spawn/lost-ACK handling without replay or ownership reassignment.",
+    "Final required security/race/source/credential gates and human evidence acceptance."
+  ],
+  "runtime_acceptance": false,
+  "durable_source_settlement": false,
+  "production_dispatch": false,
+  "production_deployment_authorized": false,
+  "merge_authorized": false
+}
