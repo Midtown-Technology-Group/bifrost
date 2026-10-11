@@ -3,6 +3,7 @@ use bifrost_isolated_owner_spike::{
     SessionFence,
     archive::{ArchivePins, MAX_ARCHIVE, NAMES, sha256, verify_archive},
     guardian::{Guardian, GuardianError, LaunchSpec},
+    live_start::{BeginError, BeginRequest, admit_and_start},
     material::MaterialPipe,
     sdk_gate::SDKGate,
 };
@@ -240,6 +241,64 @@ fn closed_gate_probe(
 fn run_case(spec: LaunchSpec, mode: &str) -> Result<Value, ()> {
     let operation = (|| {
         match mode {
+            "live-start-invalid-identity" => {
+                let mut guardian = Guardian::create(spec.clone()).map_err(|_| ())?;
+                guardian.attach_dormant().map_err(|_| ())?;
+                let offer = guardian.receive(Duration::from_secs(5)).map_err(|_| ())?;
+                let index: Value =
+                    serde_json::from_slice(&read(&spec.bundle.join("session-bundle.json"), 65536)?)
+                        .map_err(|_| ())?;
+                let binding = &index["binding"];
+                let text = |key: &str| binding[key].as_str().map(str::to_owned).ok_or(());
+                let request = || -> Result<BeginRequest, ()> {
+                    Ok(BeginRequest {
+                        fence: SessionFence {
+                            execution_id: text("execution_id")?,
+                            owner_incarnation_id: uuid()?,
+                            attempt_id: text("attempt_id")?,
+                            claim_token: uuid()?,
+                            worker_incarnation_id: uuid()?,
+                            session_id: spec.session_id.clone(),
+                            supervisor_incarnation_id: text("supervisor_incarnation_id")?,
+                            runtime_incarnation_id: text("runtime_incarnation_id")?,
+                            binding_sha256: "a".repeat(64),
+                            channel_custody_sha256: "b".repeat(64),
+                        },
+                        workflow_id: uuid()?,
+                        caller_id: uuid()?,
+                        prepare: json!({"type":"Prepare","session_id":spec.session_id,"message_id":uuid()?}),
+                        select_message_id: "invalid-parent-identity".into(),
+                        start_id: uuid()?,
+                        start_message_id: uuid()?,
+                    })
+                };
+                let runtime = tokio::runtime::Runtime::new().map_err(|_| ())?;
+                runtime.block_on(async {
+                    let pool = sqlx::postgres::PgPoolOptions::new()
+                        .max_connections(1)
+                        .connect_lazy("postgresql://not-authority@127.0.0.1:1/not-authority")
+                        .map_err(|_| ())?;
+                    if !matches!(
+                        admit_and_start(&pool, &mut guardian, &offer, request()?).await,
+                        Err(BeginError::Rejected)
+                    ) {
+                        return Err(());
+                    }
+                    // Physical observation was consumed before rejection. Even
+                    // an attempted retry with this original Offer cannot reach SQL.
+                    if !matches!(
+                        admit_and_start(&pool, &mut guardian, &offer, request()?).await,
+                        Err(BeginError::Guardian(GuardianError::Rejected))
+                    ) {
+                        return Err(());
+                    }
+                    pool.close().await;
+                    Ok(())
+                })?;
+                let drain = guardian.drain().map_err(|_| ())?;
+                Ok(json!({"case":mode,"invalid_parent_identity_denied":true,
+                    "begin_replay_denied":true,"drain":drain}))
+            }
             "normal" | "poisoned-channel" | "sdk-relay-dormant" | "sdk-relay-lost-ingress" => {
                 let mut guardian = Guardian::create(spec.clone()).map_err(|_| ())?;
                 guardian.attach_dormant().map_err(|_| ())?;
@@ -417,6 +476,7 @@ fn run(arguments: &[String]) -> Result<Value, ()> {
     let mut cases = Vec::new();
     for mode in [
         "normal",
+        "live-start-invalid-identity",
         "poisoned-channel",
         "sdk-relay-dormant",
         "sdk-relay-lost-ingress",

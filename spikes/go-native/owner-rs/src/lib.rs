@@ -8,6 +8,8 @@ pub mod archive;
 #[cfg(target_os = "linux")]
 pub mod guardian;
 #[cfg(target_os = "linux")]
+pub mod live_start;
+#[cfg(target_os = "linux")]
 pub mod material;
 mod provision;
 mod release;

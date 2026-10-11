@@ -1,0 +1,50 @@
+{
+  "sdk_version": "0.0.0-spike.2",
+  "source_commit": "3d46d0435f8c32fd19d12340d76c1e693fdd1764",
+  "workflow_run": 38101437361,
+  "source_inputs_verified": 47,
+  "junit": {
+    "unit": {
+      "tests": 13868,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "baseline": {
+      "tests": 109,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "results": {
+      "tests": 238,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  },
+  "quality": {
+    "pyright_errors": 0,
+    "ruff": "passed"
+  },
+  "disposable_stack_cleanup": {
+    "containers_remaining": 0,
+    "volumes_remaining": 0,
+    "networks_remaining": 0
+  },
+  "retained_file_sha256": {
+    "writer-guard-source.txt": "d01ca9d649ba93ecfd7df1712f7d2e4cae17126f055db9e43412acd6b3eeba40",
+    "writer-guard-source-hashes.txt": "cf6f4403cee376e9cc34827106f12a1bd017ad0fe5e0e1d100085be0e81eb91d",
+    "writer-guard-unit.xml": "5e7c293955fb740a2514cf69607e5512ed9ba22146a0eaff59ecb039022b027e",
+    "writer-guard-baseline.xml": "1662d07a078c83f8cbcbf50051c26b5823761ffdbedc94d42b3089c06e44d671",
+    "writer-guard-results.xml": "5417765662fe3b3692210d8be6ee1000f83b1ae6bacecd95946d8d1fddd9d18c",
+    "writer-guard-quality.log": "df2e925e7b78c3e1ffdd1a529e49c7f06a6716f310c7284d730bba362fb61d64",
+    "writer-guard-cleanup.log": "7afe80741ad1eeb46ab5e5f703a4037e803bd9cf97e6625fd3dee9c9a7c97083"
+  },
+  "runtime_acceptance": false,
+  "limitations": [
+    "This exact-source run precedes ingress/TLS hosting and live-owner Start integration.",
+    "Real Rust transaction and authenticated pool component evidence uses synthetic source/custody fixtures.",
+    "No same-binary complete SDK execution, durable API readback or final source-consumer settlement proved."
+  ]
+}
