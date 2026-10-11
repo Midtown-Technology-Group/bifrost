@@ -473,6 +473,27 @@ class TestGitHubSyncFetchAndPush:
 
 
 class TestGitHubSyncCommit:
+    def test_stage_workspace_tree_force_adds_only_recognized_manifests(
+        self, tmp_path
+    ) -> None:
+        from src.services.github_sync import GitHubSyncService
+
+        repo = Repo.init(tmp_path)
+        (tmp_path / ".gitignore").write_text(".bifrost/\n")
+        manifest_dir = tmp_path / ".bifrost"
+        manifest_dir.mkdir()
+        (manifest_dir / "workflows.yaml").write_text("workflows: {}\n")
+        (manifest_dir / "metadata.yaml").write_text("version: '1'\n")
+        (manifest_dir / "secrets.enc").write_bytes(b"must-not-stage")
+
+        GitHubSyncService._stage_workspace_tree(tmp_path, repo)
+
+        staged = set(repo.git.diff("--cached", "--name-only").splitlines())
+        assert ".gitignore" in staged
+        assert ".bifrost/workflows.yaml" in staged
+        assert ".bifrost/metadata.yaml" in staged
+        assert ".bifrost/secrets.enc" not in staged
+
     @pytest.mark.asyncio
     async def test_do_commit_returns_noop_when_head_has_no_changes(self, tmp_path):
         from src.services.github_sync import GitHubSyncService
