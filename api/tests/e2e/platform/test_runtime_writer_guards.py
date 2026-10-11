@@ -3214,3 +3214,44 @@ async def test_rust_competing_births_retain_one_owner_and_attempt(prepared_start
         for value in decisions
     )
     assert all(len(json.loads(row)) == 1 for row in await admit_snapshot(facts))
+
+
+@pytest.mark.parametrize("prepared_start_facts", ["provision"], indirect=True)
+async def test_reserved_ingress_reads_only_its_committed_open_provision(provision_facts):
+    from src.core.runtime_sdk_credentials import RuntimeSDKDenied, grant_digest
+    from src.services.isolated_runtime_sdk_snapshot import load_committed_finite_snapshot
+
+    facts = provision_facts
+    engine = create_async_engine(
+        URL.create("postgresql+asyncpg", username="wex_incumbent",
+            password=PASSWORDS["wex_incumbent"], host="writer-guard-pool",
+            database="bifrost_test"),
+        poolclass=NullPool,
+        connect_args={"prepared_statement_cache_size": 0, "statement_cache_size": 0,
+            "timeout": 5, "command_timeout": 5},
+    )
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    identity = {
+        "grant_id": UUID(facts["provision_request"]["snapshot"]["id"]),
+        "execution_id": facts["execution"], "session_id": facts["session"],
+        "owner_incarnation_id": UUID(facts["fence"][1]), "attempt_id": facts["attempt"],
+    }
+    try:
+        # Reservation/Start cannot substitute for a committed real provision.
+        with pytest.raises(RuntimeSDKDenied):
+            await load_committed_finite_snapshot(factory, **identity)
+        assert await provision_probe(facts) == "newly_committed"
+        retained = await provision_snapshot(facts)
+        snapshot = await load_committed_finite_snapshot(factory, **identity)
+        assert grant_digest(snapshot) == facts["provision_request"]["grant_digest"]
+        for field in identity:
+            wrong = dict(identity)
+            wrong[field] = uuid4()
+            with pytest.raises(RuntimeSDKDenied):
+                await load_committed_finite_snapshot(factory, **wrong)
+        assert await provision_snapshot(facts) == retained
+        assert await probe(facts["fence"], operation="request-running-cancel") == "cancel_committed"
+        with pytest.raises(RuntimeSDKDenied):
+            await load_committed_finite_snapshot(factory, **identity)
+    finally:
+        await engine.dispose()

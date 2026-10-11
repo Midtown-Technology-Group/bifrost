@@ -6,6 +6,7 @@ auth, refresh, application routes or lifecycle commands are installed.
 """
 
 import asyncio
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID
@@ -22,6 +23,7 @@ from src.core.runtime_sdk_credentials import (
     GrantSnapshot,
     RuntimeSDKDenied,
     SelectedSDKPolicy,
+    decode_runtime_sdk_access,
 )
 from src.models.contracts.cli import (
     SDKIntegrationsGetRequest,
@@ -33,7 +35,8 @@ from src.services.isolated_runtime_sdk_tokens import verify_finite_integration_g
 
 def build_isolated_sdk_app(
     *,
-    snapshot: GrantSnapshot,
+    grant_id: UUID,
+    load_snapshot: Callable[[], Awaitable[GrantSnapshot]],
     caller: AuthorizedCallerSnapshot,
     source: AcceptedManifestIdentity,
     policy: SelectedSDKPolicy,
@@ -44,9 +47,9 @@ def build_isolated_sdk_app(
     session_factory: async_sessionmaker[AsyncSession],
     fixture_integration_id: UUID,
 ) -> FastAPI:
-    """Bind one immutable grant and original actor; no request-selected fence.
+    """Reserve one grant and original actor before the dormant runtime starts.
 
-    The parent must load these facts from committed owner/provision records and
+    The parent loader reads this fixed grant from committed owner/provision records and
     actual original process custody. Supplying consistent fixture models alone
     does not establish issuance or runtime acceptance. All requests still need
     fresh Rust custody/SQL admission, and no denied or uncertain admission fetches.
@@ -55,16 +58,17 @@ def build_isolated_sdk_app(
         openapi_url=None, docs_url=None, redoc_url=None, redirect_slashes=False
     )
     # Copy validated preimages so caller mutation cannot rebind this ingress.
-    snapshot = GrantSnapshot.model_validate(snapshot.model_dump())
     caller = AuthorizedCallerSnapshot.model_validate(caller.model_dump())
     source = AcceptedManifestIdentity.model_validate(source.model_dump())
     policy = SelectedSDKPolicy.model_validate(policy.model_dump())
     busy = False
     requests = 0
+    snapshot: GrantSnapshot | None = None
+    snapshot_attempted = False
 
     @app.post("/api/sdk/integrations/get", response_model=SDKIntegrationsGetResponse)
     async def integration_get(request: Request) -> SDKIntegrationsGetResponse:
-        nonlocal busy, requests
+        nonlocal busy, requests, snapshot, snapshot_attempted
         # Bound concurrent work and total connections to the guardian gate's
         # fixed session budget. Failed requests consume budget; never replay.
         if busy or requests >= 16:
@@ -87,6 +91,20 @@ def build_isolated_sdk_app(
                     if len(body) + len(chunk) > 8192:
                         raise RuntimeSDKDenied("runtime SDK request denied")
                     body.extend(chunk)
+                # Authenticate purpose/signature and this parent-reserved grant
+                # before consulting storage. HTTP never selects a grant/session.
+                claims = decode_runtime_sdk_access(authorization[0][7:])
+                if claims.sub != str(grant_id):
+                    raise RuntimeSDKDenied("runtime SDK request denied")
+                if snapshot is None:
+                    if snapshot_attempted:
+                        raise RuntimeSDKDenied("runtime SDK request denied")
+                    snapshot_attempted = True
+                    loaded = await load_snapshot()
+                    frozen = GrantSnapshot.model_validate(loaded.model_dump())
+                    if frozen.id != grant_id:
+                        raise RuntimeSDKDenied("runtime SDK request denied")
+                    snapshot = frozen
                 intent = verify_finite_integration_get(
                     authorization[0][7:],
                     bytes(body),

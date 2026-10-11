@@ -99,8 +99,8 @@ must be connected before this bridge can qualify as the required SDK slice.
 
 ## Restricted ingress application candidate
 
-`build_isolated_sdk_app` now binds one parent-loaded immutable grant and original
-owner custody to an unmounted, private application. It exposes only the existing
+`build_isolated_sdk_app` reserves one parent-selected grant ID and original owner
+custody in an unmounted, private application. It exposes only the existing
 integration-get request/response DTOs. Dedicated finite JWT and exact bounded raw
 body verification precede the private Rust bridge; only an observed positive
 reply opens a database session for the stable capability fetch. Duplicate bearer
@@ -109,6 +109,25 @@ disconnect or uncertainty prevents fetch. No ordinary application authentication
 refresh, lifecycle, OpenAPI or redirect route is installed. Requests are bounded
 to one in flight and sixteen attempts per ingress instance; failures consume the
 budget. Recreating an ingress never restores owner custody or release permission.
+
+Reservation resolves the real startup dependency: the SDK socket must exist
+before dormant guardian launch, whereas its finite grant is committed after
+Start. The constructor does not read or fabricate a grant. Before the first
+snapshot read, dedicated JWT verification must match the fixed parent-selected
+grant ID. A trusted zero-argument loader reads that exact committed provision
+once; HTTP never supplies storage selectors. The snapshot is copied and frozen,
+and a failed, cancelled or uncertain load leaves the ingress closed permanently
+without reconnect/reload. Every subsequent operation still revalidates finite
+preimages and needs fresh Rust admission.
+
+`load_committed_finite_snapshot` supplies the readonly storage seam: it matches
+the fixed grant/execution/session/owner/attempt tuple, real Start and provision
+admission, unrevoked open session and finite unexpired deadline. It returns only
+the existing closed32-field CRED-P1 snapshot and takes no lifecycle locks or
+writes. It is not issuer admission, signing authority, source entitlement or live
+custody. Actual pool tests require denial before Rust provision, an unchanged
+canonical snapshot after real provision, every wrong-identity denial without
+mutation, and denial after Rust cancellation.
 
 The trusted parent pins a synthetic integration UUID independently of HTTP.
 `fetch_synthetic_integration` locks that exact current integration row with

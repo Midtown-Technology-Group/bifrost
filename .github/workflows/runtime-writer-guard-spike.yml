@@ -8,6 +8,7 @@ on:
       - api/src/services/isolated_runtime_sdk_tokens.py
       - api/src/services/isolated_runtime_sdk_bridge.py
       - api/src/services/isolated_runtime_sdk_http.py
+      - api/src/services/isolated_runtime_sdk_snapshot.py
       - api/src/services/isolated_runtime_sdk_server.py
       - api/shared/isolated_runtime_sdk.py
       - api/tests/e2e/platform/test_isolated_runtime_sdk_fetch.py
@@ -63,6 +64,7 @@ jobs:
             api/src/services/isolated_runtime_sdk_tokens.py \
             api/src/services/isolated_runtime_sdk_bridge.py \
             api/src/services/isolated_runtime_sdk_http.py \
+            api/src/services/isolated_runtime_sdk_snapshot.py \
             api/src/services/isolated_runtime_sdk_server.py \
             api/shared/isolated_runtime_sdk.py \
             api/tests/e2e/platform/test_isolated_runtime_sdk_fetch.py \
