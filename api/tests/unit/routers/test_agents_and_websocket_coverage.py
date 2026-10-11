@@ -86,6 +86,42 @@ class _FakeWebSocket:
 
 class TestAgentRouterCoverage:
     @pytest.mark.asyncio
+    async def test_list_agents_forces_active_only_for_non_admin(self, monkeypatch):
+        repo = SimpleNamespace(
+            list_agents=AsyncMock(return_value=[]),
+            list_all_in_scope=AsyncMock(return_value=[]),
+        )
+        monkeypatch.setattr(agents, "AgentRepository", lambda **_kwargs: repo)
+        user = _principal()
+        user.has_platform_admin_grant = lambda: False
+
+        assert await agents.list_agents(
+            db=_FakeDb([]),
+            user=user,
+            active_only=False,
+        ) == []
+
+        repo.list_agents.assert_awaited_once_with(active_only=True)
+        repo.list_all_in_scope.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_get_agent_hides_inactive_record_from_non_admin(self, monkeypatch):
+        agent_id = uuid4()
+        repo = SimpleNamespace(
+            get_agent_with_access_check=AsyncMock(
+                return_value=SimpleNamespace(id=agent_id, is_active=False)
+            )
+        )
+        monkeypatch.setattr(agents, "AgentRepository", lambda **_kwargs: repo)
+        user = _principal()
+        user.has_platform_admin_grant = lambda: False
+
+        with pytest.raises(HTTPException) as exc:
+            await agents.get_agent(agent_id, db=_FakeDb([]), user=user)
+
+        assert exc.value.status_code == 404
+
+    @pytest.mark.asyncio
     async def test_validate_agent_references_collects_tool_and_delegate_errors(self):
         target_org_id = uuid4()
         agent_id = uuid4()

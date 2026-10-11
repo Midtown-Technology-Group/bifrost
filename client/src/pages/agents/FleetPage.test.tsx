@@ -103,7 +103,10 @@ const baseStats = {
 beforeEach(() => {
 	mockUseAgents.mockReturnValue({ data: [], isLoading: false });
 	mockUseFleetStats.mockReturnValue({ data: fleetStats, isLoading: false });
-	mockUseAuth.mockReturnValue({ isPlatformAdmin: false });
+	mockUseAuth.mockReturnValue({
+		isPlatformAdmin: false,
+		hasRole: () => false,
+	});
 });
 
 async function renderPage() {
@@ -203,6 +206,10 @@ describe("FleetPage — header + fleet stats", () => {
 
 describe("FleetPage — agent cards (grid)", () => {
 	it("hides inactive agents by default and includes them when requested", async () => {
+		mockUseAuth.mockReturnValue({
+			isPlatformAdmin: false,
+			hasRole: (role: string) => role === "Platform Admin",
+		});
 		const { user } = await renderPage();
 
 		expect(mockUseAgents).toHaveBeenLastCalledWith(undefined, {
@@ -215,6 +222,18 @@ describe("FleetPage — agent cards (grid)", () => {
 
 		expect(mockUseAgents).toHaveBeenLastCalledWith(undefined, {
 			includeInactive: true,
+			includeStats: true,
+		});
+	});
+
+	it("does not offer inactive agents to ordinary users", async () => {
+		await renderPage();
+
+		expect(
+			screen.queryByRole("switch", { name: "Show Inactive" }),
+		).not.toBeInTheDocument();
+		expect(mockUseAgents).toHaveBeenLastCalledWith(undefined, {
+			includeInactive: false,
 			includeStats: true,
 		});
 	});
@@ -247,7 +266,10 @@ describe("FleetPage — agent cards (grid)", () => {
 
 describe("FleetPage — solution-managed badge", () => {
 	it("shows the managed badge on a solution-managed agent for platform admins", async () => {
-		mockUseAuth.mockReturnValue({ isPlatformAdmin: true });
+		mockUseAuth.mockReturnValue({
+			isPlatformAdmin: true,
+			hasRole: () => false,
+		});
 		mockUseAgents.mockReturnValue({
 			data: [
 				makeAgent({
@@ -267,7 +289,10 @@ describe("FleetPage — solution-managed badge", () => {
 	});
 
 	it("does not show the badge on a non-managed agent", async () => {
-		mockUseAuth.mockReturnValue({ isPlatformAdmin: true });
+		mockUseAuth.mockReturnValue({
+			isPlatformAdmin: true,
+			hasRole: () => false,
+		});
 		mockUseAgents.mockReturnValue({
 			data: [makeAgent({ id: "plain", name: "Plain" })],
 			isLoading: false,
@@ -279,7 +304,10 @@ describe("FleetPage — solution-managed badge", () => {
 	});
 
 	it("hides the badge from non-admins even when managed", async () => {
-		mockUseAuth.mockReturnValue({ isPlatformAdmin: false });
+		mockUseAuth.mockReturnValue({
+			isPlatformAdmin: false,
+			hasRole: () => false,
+		});
 		mockUseAgents.mockReturnValue({
 			data: [
 				makeAgent({
@@ -472,7 +500,10 @@ it("opens an agent row in another tab without navigating the current page", asyn
 });
 
 it("keeps agent editing in the table action menu", async () => {
-	mockUseAuth.mockReturnValue({ isPlatformAdmin: true });
+	mockUseAuth.mockReturnValue({
+		isPlatformAdmin: true,
+		hasRole: () => false,
+	});
 	mockUseAgents.mockReturnValue({ data: [makeAgent()], isLoading: false });
 	const { user } = await renderPage();
 	await user.click(screen.getByLabelText(/table view/i));

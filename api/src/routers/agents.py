@@ -362,6 +362,11 @@ async def list_agents(
     - Platform admins see all agents
     - Users see AUTHENTICATED agents + ROLE_BASED agents assigned to their roles
     """
+    # Inactive records include soft-deleted agents. Only callers with an
+    # explicit platform-admin grant may enumerate them, regardless of the
+    # client-supplied active_only query value.
+    active_only = active_only or not user.has_platform_admin_grant()
+
     if discovery_only:
         filter_org_id = user.organization_id
         is_admin = False
@@ -777,6 +782,15 @@ async def get_agent(
     agent = await repo.get_agent_with_access_check(agent_id)
 
     if not agent:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Agent {agent_id} not found",
+        )
+
+    # Inactive records include soft-deleted agents. Keep their existence and
+    # configuration hidden from ordinary callers even when a stale ID still
+    # passes the repository's organization/role access check.
+    if not agent.is_active and not user.has_platform_admin_grant():
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Agent {agent_id} not found",
