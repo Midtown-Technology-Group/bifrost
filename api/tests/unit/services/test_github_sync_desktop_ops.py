@@ -152,8 +152,8 @@ async def test_desktop_resolve_commits_merge_and_reports_ahead_behind(tmp_path):
         def checkout(self, *args):
             self.calls.append(("checkout", args))
 
-        def add(self, path):
-            self.calls.append(("add", path))
+        def add(self, *args):
+            self.calls.append(("add", args))
 
         def commit(self, *args):
             self.calls.append(("commit", args))
@@ -181,8 +181,8 @@ async def test_desktop_resolve_commits_merge_and_reports_ahead_behind(tmp_path):
     assert result.commits_ahead == 3
     assert result.commits_behind == 1
     assert Repo.git.calls == [
-        ("checkout", ("--ours", "workflows/conflict.py")),
-        ("add", "workflows/conflict.py"),
+        ("checkout", ("--ours", "--", "workflows/conflict.py")),
+        ("add", ("--", "workflows/conflict.py")),
         ("commit", ("-m", "Merge with conflict resolution")),
     ]
 
@@ -197,12 +197,12 @@ async def test_desktop_resolve_handles_stash_conflict_without_merge_head(tmp_pat
             self.calls.append(("checkout", args))
             raise RuntimeError("deleted on one side")
 
-        def rm(self, path):
-            self.calls.append(("rm", path))
+        def rm(self, *args):
+            self.calls.append(("rm", args))
             raise RuntimeError("already gone")
 
-        def add(self, path):
-            self.calls.append(("add", path))
+        def add(self, *args):
+            self.calls.append(("add", args))
 
         def rev_list(self, *args):
             raise RuntimeError("no origin ref")
@@ -229,9 +229,9 @@ async def test_desktop_resolve_handles_stash_conflict_without_merge_head(tmp_pat
     assert result.commits_ahead == 0
     assert result.commits_behind == 0
     assert Repo.git.calls == [
-        ("checkout", ("--theirs", "workflows/conflict.py")),
-        ("rm", "workflows/conflict.py"),
-        ("add", "workflows/conflict.py"),
+        ("checkout", ("--theirs", "--", "workflows/conflict.py")),
+        ("rm", ("--", "workflows/conflict.py")),
+        ("add", ("--", "workflows/conflict.py")),
     ]
     assert Repo.index.commits == ["Apply stashed changes with conflict resolution"]
 
@@ -249,6 +249,23 @@ async def test_desktop_resolve_returns_error_result_when_checkout_open_fails(tmp
 
     assert result.success is False
     assert result.error == "storage offline"
+
+
+@pytest.mark.asyncio
+async def test_desktop_resolve_rejects_unsafe_path_before_git_mutation(tmp_path):
+    class Git:
+        def checkout(self, *args):
+            raise AssertionError(f"unsafe checkout: {args}")
+
+    class Repo:
+        git = Git()
+
+    result = await _service(tmp_path, Repo()).desktop_resolve(
+        {".git/config": "ours"}
+    )
+
+    assert result.success is False
+    assert "Git internals" in result.error
 
 
 @pytest.mark.asyncio
@@ -326,6 +343,47 @@ async def test_desktop_diff_returns_head_and_replacement_decoded_content(tmp_pat
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("path", ["../secret.txt", "/etc/passwd", ".git/config"])
+async def test_desktop_diff_rejects_paths_outside_worktree(tmp_path, path):
+    secret = tmp_path.parent / "secret.txt"
+    secret.write_text("must not leak")
+
+    class Git:
+        def show(self, ref):
+            raise AssertionError(f"unsafe Git object read: {ref}")
+
+    class Repo:
+        head = _Head(valid=True)
+        git = Git()
+
+    result = await _service(tmp_path, Repo()).desktop_diff(path)
+
+    assert result.path == path
+    assert result.head_content is None
+    assert result.working_content is None
+
+
+@pytest.mark.asyncio
+async def test_desktop_diff_rejects_symlink_escape(tmp_path):
+    secret = tmp_path.parent / "outside-secret.txt"
+    secret.write_text("must not leak")
+    (tmp_path / "linked-secret.txt").symlink_to(secret)
+
+    class Git:
+        def show(self, ref):
+            raise AssertionError(f"unsafe Git object read: {ref}")
+
+    class Repo:
+        head = _Head(valid=True)
+        git = Git()
+
+    result = await _service(tmp_path, Repo()).desktop_diff("linked-secret.txt")
+
+    assert result.head_content is None
+    assert result.working_content is None
+
+
+@pytest.mark.asyncio
 async def test_desktop_discard_restores_tracked_and_deletes_untracked_paths(
     tmp_path, monkeypatch
 ):
@@ -362,3 +420,27 @@ async def test_desktop_discard_restores_tracked_and_deletes_untracked_paths(
     assert not (tmp_path / "workflows" / "new.py").exists()
     assert service.repo_manager.synced_up is True
     refresh.assert_awaited_once_with(tmp_path)
+
+
+@pytest.mark.asyncio
+async def test_desktop_discard_rejects_unsafe_batch_before_mutation(tmp_path):
+    outside = tmp_path.parent / "outside.txt"
+    outside.write_text("keep")
+    inside = tmp_path / "inside.txt"
+    inside.write_text("keep")
+
+    class Git:
+        def checkout(self, *args):
+            raise AssertionError(f"unsafe checkout: {args}")
+
+    class Repo:
+        head = _Head(valid=True)
+        git = Git()
+
+    service = _service(tmp_path, Repo())
+    result = await service.desktop_discard(["inside.txt", "../outside.txt"])
+
+    assert result.success is False
+    assert outside.read_text() == "keep"
+    assert inside.read_text() == "keep"
+    assert service.repo_manager.synced_up is False

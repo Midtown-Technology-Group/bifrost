@@ -1571,9 +1571,15 @@ class GitHubSyncService:
         Applies ours/theirs per file, creates a merge commit.
         NO push, NO S3 sync, NO entity import — those happen when user pushes via sync.
         """
+        from shared.workspace_paths import validate_workspace_relative_path
+
         from src.models.contracts.github import ResolveResult
 
         try:
+            safe_resolutions = {
+                validate_workspace_relative_path(path): resolution
+                for path, resolution in resolutions.items()
+            }
             async with self.repo_manager.lock() as work_dir:
                 repo = self._open_or_init(work_dir)
 
@@ -1586,19 +1592,19 @@ class GitHubSyncService:
                     return ResolveResult(success=False, error="No conflicts to resolve")
 
                 # Apply resolutions
-                for cpath, resolution in resolutions.items():
+                for cpath, resolution in safe_resolutions.items():
                     try:
                         if resolution == "ours":
-                            repo.git.checkout("--ours", cpath)
+                            repo.git.checkout("--ours", "--", cpath)
                         elif resolution == "theirs":
-                            repo.git.checkout("--theirs", cpath)
-                        repo.git.add(cpath)
+                            repo.git.checkout("--theirs", "--", cpath)
+                        repo.git.add("--", cpath)
                     except Exception:
                         # DU/UD conflict — one side deleted, checkout fails
                         try:
-                            repo.git.rm(cpath)
+                            repo.git.rm("--", cpath)
                         except Exception:
-                            repo.git.add(cpath)
+                            repo.git.add("--", cpath)
 
                 # Complete the operation (merge commit is local)
                 if is_merge:
@@ -1630,28 +1636,34 @@ class GitHubSyncService:
 
     async def desktop_diff(self, path: str) -> "DiffResult":
         """Get file diff: HEAD content vs working tree content. No S3 sync."""
+        from shared.workspace_paths import (
+            resolve_workspace_path,
+            validate_workspace_relative_path,
+        )
+
         from src.models.contracts.github import DiffResult
 
         try:
+            safe_path = validate_workspace_relative_path(path)
             async with self.repo_manager.lock() as work_dir:
+                working_path = resolve_workspace_path(work_dir, safe_path)
                 repo = self._open_or_init(work_dir)
 
                 # Get HEAD content
                 head_content = None
                 if repo.head.is_valid():
                     try:
-                        head_content = repo.git.show(f"HEAD:{path}")
+                        head_content = repo.git.show(f"HEAD:{safe_path}")
                     except Exception:
                         pass  # File doesn't exist in HEAD (new file)
 
                 # Get working tree content
                 working_content = None
-                working_path = work_dir / path
-                if working_path.exists():
+                if working_path.is_file():
                     working_content = working_path.read_text(errors="replace")
 
                 return DiffResult(
-                    path=path,
+                    path=safe_path,
                     head_content=head_content,
                     working_content=working_content,
                 )
@@ -1661,15 +1673,25 @@ class GitHubSyncService:
 
     async def desktop_discard(self, paths: list[str]) -> "DiscardResult":
         """Discard working tree changes for specific files. S3 sync up so API sees revert."""
+        from shared.workspace_paths import (
+            resolve_workspace_path,
+            validate_workspace_relative_path,
+        )
+
         from src.models.contracts.github import DiscardResult
 
         try:
+            safe_paths = [validate_workspace_relative_path(path) for path in paths]
             async with self.repo_manager.lock() as work_dir:
+                resolved_paths = {
+                    path: resolve_workspace_path(work_dir, path)
+                    for path in safe_paths
+                }
                 repo = self._open_or_init(work_dir)
                 discarded = []
 
-                for path in paths:
-                    file_path = work_dir / path
+                for path in safe_paths:
+                    file_path = resolved_paths[path]
                     try:
                         if repo.head.is_valid():
                             try:
