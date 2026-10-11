@@ -122,6 +122,111 @@ export default function Page() {
         assert result.success is False
         assert result.error == "Node.js not available"
 
+    @pytest.mark.asyncio
+    async def test_compile_batch_rejects_oversized_source_before_spawn(
+        self, compiler, monkeypatch
+    ):
+        async def create_subprocess_exec(*_args, **_kwargs):
+            raise AssertionError("oversized source must not spawn Node")
+
+        monkeypatch.setattr(app_compiler, "COMPILER_MAX_SOURCE_BYTES", 4)
+        monkeypatch.setattr(
+            app_compiler.asyncio,
+            "create_subprocess_exec",
+            create_subprocess_exec,
+        )
+
+        results = await compiler.compile_batch([
+            {"path": "pages/a.tsx", "source": "12345"},
+        ])
+
+        assert results[0].success is False
+        assert results[0].error == (
+            "Compiler source for 'pages/a.tsx' exceeds the 4-byte limit"
+        )
+
+    @pytest.mark.asyncio
+    async def test_compile_batch_rejects_oversized_batch_before_spawn(
+        self, compiler, monkeypatch
+    ):
+        async def create_subprocess_exec(*_args, **_kwargs):
+            raise AssertionError("oversized batch must not spawn Node")
+
+        monkeypatch.setattr(app_compiler, "COMPILER_MAX_BATCH_SOURCE_BYTES", 4)
+        monkeypatch.setattr(
+            app_compiler.asyncio,
+            "create_subprocess_exec",
+            create_subprocess_exec,
+        )
+
+        results = await compiler.compile_batch([
+            {"path": "pages/a.tsx", "source": "123"},
+            {"path": "pages/b.tsx", "source": "456"},
+        ])
+
+        assert len(results) == 2
+        assert all(result.success is False for result in results)
+        assert {result.error for result in results} == {
+            "Compilation batch source exceeds the 4-byte limit"
+        }
+
+    @pytest.mark.asyncio
+    async def test_compile_batch_times_out_and_reaps_node(
+        self, compiler, monkeypatch
+    ):
+        process = _HangingProcess()
+
+        async def create_subprocess_exec(*args, **_kwargs):
+            assert args[:2] == (
+                "node",
+                f"--max-old-space-size={app_compiler.COMPILER_MAX_OLD_SPACE_MB}",
+            )
+            return process
+
+        monkeypatch.setattr(app_compiler, "COMPILER_TIMEOUT_SECONDS", 0.001)
+        monkeypatch.setattr(
+            app_compiler.asyncio,
+            "create_subprocess_exec",
+            create_subprocess_exec,
+        )
+
+        results = await compiler.compile_batch([
+            {"path": "pages/a.tsx", "source": "export default 1"},
+        ])
+
+        assert process.killed is True
+        assert process.waited is True
+        assert results[0].success is False
+        assert results[0].error == "Compilation exceeded the 0.001-second limit"
+
+    @pytest.mark.asyncio
+    async def test_compile_batch_bounds_capacity_wait(
+        self, compiler, monkeypatch
+    ):
+        async def create_subprocess_exec(*_args, **_kwargs):
+            raise AssertionError("capacity timeout must not spawn Node")
+
+        monkeypatch.setattr(
+            app_compiler,
+            "_COMPILER_SLOTS",
+            app_compiler.asyncio.Semaphore(0),
+        )
+        monkeypatch.setattr(app_compiler, "COMPILER_QUEUE_TIMEOUT_SECONDS", 0.001)
+        monkeypatch.setattr(
+            app_compiler.asyncio,
+            "create_subprocess_exec",
+            create_subprocess_exec,
+        )
+
+        results = await compiler.compile_batch([
+            {"path": "pages/a.tsx", "source": "export default 1"},
+        ])
+
+        assert results[0].success is False
+        assert results[0].error == (
+            "Compiler capacity unavailable after 0.001 seconds"
+        )
+
 
 class TestAppTailwindService:
     def test_extract_candidates_keeps_tailwind_arbitrary_values(self):
@@ -228,3 +333,20 @@ class _FakeProcess:
     async def communicate(self, input=None):
         self.input = input
         return self._stdout, self._stderr
+
+
+class _HangingProcess:
+    def __init__(self):
+        self.returncode = None
+        self.killed = False
+        self.waited = False
+
+    async def communicate(self, input=None):
+        del input
+        await app_compiler.asyncio.Event().wait()
+
+    def kill(self):
+        self.killed = True
+
+    async def wait(self):
+        self.waited = True

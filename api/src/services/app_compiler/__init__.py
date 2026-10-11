@@ -11,6 +11,7 @@ import asyncio
 import json
 import logging
 import re
+from contextlib import suppress
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -18,6 +19,18 @@ logger = logging.getLogger(__name__)
 
 COMPILE_SCRIPT = Path(__file__).parent / "compile.js"
 TAILWIND_SCRIPT = Path(__file__).parent / "tailwind.js"
+
+# App compilation accepts source from editor, validation, preview-sync, and MCP
+# paths. Keep one set of process limits here so every caller is protected.
+COMPILER_MAX_FILES = 256
+COMPILER_MAX_SOURCE_BYTES = 1024 * 1024
+COMPILER_MAX_BATCH_SOURCE_BYTES = 8 * 1024 * 1024
+COMPILER_MAX_CONCURRENCY = 2
+COMPILER_QUEUE_TIMEOUT_SECONDS = 5.0
+COMPILER_TIMEOUT_SECONDS = 30.0
+COMPILER_MAX_OLD_SPACE_MB = 256
+
+_COMPILER_SLOTS = asyncio.Semaphore(COMPILER_MAX_CONCURRENCY)
 
 
 @dataclass
@@ -34,6 +47,41 @@ class CompileResult:
 class AppCompilerService:
     """Compile TSX/JSX source files via Node.js subprocess."""
 
+    @staticmethod
+    def _failure_results(files: list[dict], error: str) -> list[CompileResult]:
+        """Return one stable failure result for each requested input file."""
+        return [
+            CompileResult(path=str(item.get("path", "")), success=False, error=error)
+            for item in files
+        ]
+
+    @staticmethod
+    def _validate_batch(files: list[dict]) -> str | None:
+        """Reject compiler work that exceeds the shared process input bounds."""
+        if len(files) > COMPILER_MAX_FILES:
+            return f"Compilation batch exceeds the {COMPILER_MAX_FILES}-file limit"
+
+        total_source_bytes = 0
+        for item in files:
+            path = str(item.get("path", ""))
+            source = item.get("source")
+            if not isinstance(source, str):
+                return f"Compiler source for '{path}' must be text"
+            source_bytes = len(source.encode("utf-8"))
+            if source_bytes > COMPILER_MAX_SOURCE_BYTES:
+                return (
+                    f"Compiler source for '{path}' exceeds the "
+                    f"{COMPILER_MAX_SOURCE_BYTES}-byte limit"
+                )
+            total_source_bytes += source_bytes
+
+        if total_source_bytes > COMPILER_MAX_BATCH_SOURCE_BYTES:
+            return (
+                "Compilation batch source exceeds the "
+                f"{COMPILER_MAX_BATCH_SOURCE_BYTES}-byte limit"
+            )
+        return None
+
     async def compile_file(self, source: str, path: str = "component.tsx") -> CompileResult:
         """Compile a single file."""
         results = await self.compile_batch([{"path": path, "source": source}])
@@ -44,32 +92,72 @@ class AppCompilerService:
         if not files:
             return []
 
+        validation_error = self._validate_batch(files)
+        if validation_error:
+            return self._failure_results(files, validation_error)
+
         input_data = json.dumps({"files": files})
 
         try:
-            proc = await asyncio.create_subprocess_exec(
-                "node", str(COMPILE_SCRIPT),
-                stdin=asyncio.subprocess.PIPE,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            stdout, stderr = await proc.communicate(input=input_data.encode())
+            try:
+                await asyncio.wait_for(
+                    _COMPILER_SLOTS.acquire(),
+                    timeout=COMPILER_QUEUE_TIMEOUT_SECONDS,
+                )
+            except TimeoutError:
+                error = (
+                    "Compiler capacity unavailable after "
+                    f"{COMPILER_QUEUE_TIMEOUT_SECONDS:g} seconds"
+                )
+                logger.warning(error)
+                return self._failure_results(files, error)
+
+            try:
+                proc = await asyncio.create_subprocess_exec(
+                    "node",
+                    f"--max-old-space-size={COMPILER_MAX_OLD_SPACE_MB}",
+                    str(COMPILE_SCRIPT),
+                    stdin=asyncio.subprocess.PIPE,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                try:
+                    stdout, stderr = await asyncio.wait_for(
+                        proc.communicate(input=input_data.encode()),
+                        timeout=COMPILER_TIMEOUT_SECONDS,
+                    )
+                except TimeoutError:
+                    with suppress(ProcessLookupError):
+                        proc.kill()
+                    await proc.wait()
+                    error = (
+                        "Compilation exceeded the "
+                        f"{COMPILER_TIMEOUT_SECONDS:g}-second limit"
+                    )
+                    logger.warning(error)
+                    return self._failure_results(files, error)
+                except asyncio.CancelledError:
+                    with suppress(ProcessLookupError):
+                        proc.kill()
+                    await proc.wait()
+                    raise
+                except Exception:
+                    with suppress(ProcessLookupError):
+                        proc.kill()
+                    await proc.wait()
+                    raise
+            finally:
+                _COMPILER_SLOTS.release()
 
             if proc.returncode != 0:
                 error_msg = stderr.decode().strip() or "Node process exited with error"
                 logger.error(f"Compiler process failed: {error_msg}")
-                return [
-                    CompileResult(path=f["path"], success=False, error=error_msg)
-                    for f in files
-                ]
+                return self._failure_results(files, error_msg)
 
             output = json.loads(stdout.decode())
 
             if "error" in output:
-                return [
-                    CompileResult(path=f["path"], success=False, error=output["error"])
-                    for f in files
-                ]
+                return self._failure_results(files, output["error"])
 
             results = []
             for item in output.get("results", []):
@@ -91,16 +179,10 @@ class AppCompilerService:
 
         except FileNotFoundError:
             logger.error("Node.js not found — cannot compile app files")
-            return [
-                CompileResult(path=f["path"], success=False, error="Node.js not available")
-                for f in files
-            ]
+            return self._failure_results(files, "Node.js not available")
         except Exception as e:
-            logger.exception(f"Compilation failed: {e}")
-            return [
-                CompileResult(path=f["path"], success=False, error=str(e))
-                for f in files
-            ]
+            logger.exception("Compilation failed")
+            return self._failure_results(files, str(e))
 
 
 # Extract all string literals from compiled JS output, then split into tokens.
@@ -224,6 +306,6 @@ class AppTailwindService:
         except FileNotFoundError:
             logger.error("Node.js not found — cannot generate Tailwind CSS")
             return None
-        except Exception as e:
-            logger.exception(f"Tailwind CSS generation failed: {e}")
+        except Exception:
+            logger.exception("Tailwind CSS generation failed")
             return None
