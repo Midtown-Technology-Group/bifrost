@@ -102,6 +102,11 @@ class TestUserListing:
             assert [user["name"] for user in second.json()] == [f"{marker} Bravo"]
         finally:
             for user_id in created_ids:
+                e2e_client.patch(
+                    f"/api/users/{user_id}",
+                    headers=platform_admin.headers,
+                    json={"is_active": False},
+                )
                 e2e_client.delete(
                     f"/api/users/{user_id}", headers=platform_admin.headers
                 )
@@ -288,8 +293,10 @@ class TestDisableEnableUser:
 class TestPermanentDelete:
     """Test permanent user deletion."""
 
-    def test_can_permanently_delete_active_user(self, e2e_client, platform_admin, org1):
-        """Can permanently delete a user without disabling first."""
+    def test_active_user_must_be_disabled_before_permanent_delete(
+        self, e2e_client, platform_admin, org1
+    ):
+        """Permanent deletion rejects active users and accepts them once disabled."""
         # Create a test user (active by default)
         create_resp = e2e_client.post(
             "/api/users",
@@ -304,7 +311,23 @@ class TestPermanentDelete:
         assert create_resp.status_code == 201
         user_id = create_resp.json()["id"]
 
-        # Delete directly (no disable step needed)
+        # Active accounts retain a separate, reviewable disable step.
+        del_resp = e2e_client.delete(
+            f"/api/users/{user_id}",
+            headers=platform_admin.headers,
+        )
+        assert del_resp.status_code == 409
+        assert del_resp.json()["detail"] == (
+            "Disable the user before permanently deleting them"
+        )
+
+        disable_resp = e2e_client.patch(
+            f"/api/users/{user_id}",
+            headers=platform_admin.headers,
+            json={"is_active": False},
+        )
+        assert disable_resp.status_code == 200
+
         del_resp = e2e_client.delete(
             f"/api/users/{user_id}",
             headers=platform_admin.headers,
@@ -353,7 +376,14 @@ class TestPermanentDelete:
         )
         assert assign_resp.status_code == 204
 
-        # Delete the user — should succeed despite role assignments
+        disable_resp = e2e_client.patch(
+            f"/api/users/{user_id}",
+            headers=platform_admin.headers,
+            json={"is_active": False},
+        )
+        assert disable_resp.status_code == 200
+
+        # Delete the inactive user — should succeed despite role assignments
         del_resp = e2e_client.delete(
             f"/api/users/{user_id}",
             headers=platform_admin.headers,

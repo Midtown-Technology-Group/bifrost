@@ -676,9 +676,13 @@ async def update_user(
     # Try UUID first
     try:
         uuid_id = UUID(user_id)
-        result = await db.execute(select(UserORM).where(UserORM.id == uuid_id))
+        result = await db.execute(
+            select(UserORM).where(UserORM.id == uuid_id).with_for_update()
+        )
     except ValueError:
-        result = await db.execute(select(UserORM).where(UserORM.email == user_id))
+        result = await db.execute(
+            select(UserORM).where(UserORM.email == user_id).with_for_update()
+        )
 
     db_user = result.scalar_one_or_none()
 
@@ -773,6 +777,12 @@ async def delete_user(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="System user cannot be deleted",
+        )
+
+    if db_user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Disable the user before permanently deleting them",
         )
 
     deleted_id = db_user.id
