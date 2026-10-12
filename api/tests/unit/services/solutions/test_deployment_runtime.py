@@ -146,7 +146,10 @@ async def test_parameter_evidence_contract_preserves_preexisting_accepted_work(m
     workflow = SimpleNamespace(id=workflow_id, solution_id=solution_id, is_active=False)
     solution = SimpleNamespace(id=solution_id, status="active", organization_id=None,
         allow_outbound_access=False, active_deployment_id=uuid4())
-    schema = {"type": "object", "properties": {"user": {"type": "string", "default": "root"}}}
+    schema = {
+        "type": "object",
+        "properties": {"attempts": {"type": "integer", "default": 1}},
+    }
     definition = {"parameters_schema": schema}
     if versioned:
         definition["parameters_schema_contract"] = WORKFLOW_PARAMETERS_SCHEMA_CONTRACT
@@ -166,20 +169,49 @@ async def test_parameter_evidence_contract_preserves_preexisting_accepted_work(m
     )
     pinned = await resolve_pinned_workflow_runtime(session, deployment_id, workflow_id)
     evidence = pinned.queue_evidence()
+    authoritative = pinned.queue_evidence()
     if versioned:
         assert evidence["workflow_parameters_schema"] == schema
         assert pinned.parameters_schema == schema
+        assert "workflow_parameters_schema_evidence" not in evidence
     else:
-        assert "workflow_parameters_schema" not in evidence
+        assert evidence["workflow_parameters_schema"] == schema
         assert pinned.parameters_schema is None
-    # Existing durable evidence has no schema key even if the old manifest
-    # already stored schema metadata. It must still validate after rollout.
-    durable = dict(evidence)
-    if not versioned:
-        durable.pop("workflow_parameters_schema", None)
-    verify_runtime_evidence(str(deployment_id), durable, durable,
-        sha256_digest(canonical_json(durable)), evidence)
+        assert pinned.legacy_parameters_schema == schema
+        assert "workflow_parameters_schema_evidence" not in evidence
+        assert getattr(authoritative, "legacy_unversioned_schema", False) is True
 
+    historical = [dict(evidence)]
+    if not versioned:
+        # The baseline producer included the unmarked schema. The next release
+        # omitted it. Neither historical representation carried the new
+        # compatibility marker.
+        with_schema = dict(evidence)
+        without_schema = dict(with_schema)
+        without_schema.pop("workflow_parameters_schema")
+        historical = [with_schema, without_schema]
+    for durable in historical:
+        verify_runtime_evidence(
+            str(deployment_id),
+            durable,
+            durable,
+            sha256_digest(canonical_json(durable)),
+            authoritative,
+        )
+
+    tampered = dict(historical[0])
+    tampered["workflow_parameters_schema"] = {
+        "type": "object",
+        "properties": {"attempts": {"type": "integer", "default": True}},
+    }
+    with pytest.raises(DeploymentRuntimeError, match="immutable deployment manifest"):
+        verify_runtime_evidence(
+            str(deployment_id),
+            tampered,
+            tampered,
+            sha256_digest(canonical_json(tampered)),
+            authoritative,
+        )
 
 @pytest.mark.asyncio
 async def test_bounded_deployment_pin_preserves_live_duration_and_output_limits(monkeypatch):
