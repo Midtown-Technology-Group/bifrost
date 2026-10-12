@@ -30,7 +30,7 @@ cd bifrost
 docker compose up -d
 ```
 
-For the default `localhost` setup, open [the client](http://localhost:3000) or [API documentation](http://localhost:3000/api/docs). `./setup.sh` creates the local `.env` file and prompts for a domain; use the domain you chose if you changed the default. Stop the stack with `docker compose down`.
+For the default `localhost` setup, open [the client](http://localhost:3000) or [API documentation](http://localhost:3000/api/docs). `./setup.sh` creates the local `.env` file and prompts for a domain; use the domain you chose if you changed the default. Stop the stack with `docker compose down`. See the [build and install guide](docs/BUILD.md) for source builds, required tools, and CLI installation.
 
 ## Development
 
@@ -47,6 +47,7 @@ Use the URL from `./debug.sh status`; the local port or NetBird URL depends on y
 
 ## Documentation
 
+- [Build and install guide](docs/BUILD.md): build inputs, variables, developer and operator paths
 - [API reference](http://localhost:3000/api/docs) when the default Compose stack is running
 - [Developer and test commands](CLAUDE.md#testing--quality)
 - [Architecture decisions](docs/architecture/) and [execution details](api/src/services/execution/README.md)
