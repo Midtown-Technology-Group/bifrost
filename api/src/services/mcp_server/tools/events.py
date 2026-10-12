@@ -199,6 +199,7 @@ async def create_event_source(
     """
     from src.models.enums import EventSourceType
     from src.models.orm.events import EventSource, EventSubscription, ScheduleSource, WebhookSource
+    from src.models.orm.workflows import Workflow
     from src.services.webhooks.registry import get_adapter_registry
 
     logger.info(f"MCP create_event_source called: name={name}, type={source_type}, workflow_id={workflow_id}")
@@ -241,12 +242,17 @@ async def create_event_source(
             org_uuid = UUID(organization_id) if organization_id else None
 
             if workflow_id:
+                if await db.get(Workflow, UUID(workflow_id)) is None:
+                    return error_result(f"Workflow not found: {workflow_id}")
                 service_rejection = await _reject_service_target(db, workflow_id)
                 if service_rejection is not None:
                     return service_rejection
 
             # Upsert logic: if workflow_id provided, check for existing matching source
             existing_source = None
+            adapter = None
+            integration = None
+            webhook_source = None
             if workflow_id:
                 query = (
                     select(EventSource)
@@ -277,8 +283,6 @@ async def create_event_source(
                 # before db.add/db.flush, so an unknown adapter, a missing
                 # integration, or unresolvable auth cannot leave a partial
                 # source behind when the session commits.
-                adapter = None
-                integration = None
                 parsed_integration_id = None
                 if source_type_enum == EventSourceType.WEBHOOK:
                     registry = get_adapter_registry()
@@ -349,28 +353,6 @@ async def create_event_source(
                     db.add(webhook_source)
                     await db.flush()
 
-                    if adapter:
-                        # Providers such as Graph validate the callback while
-                        # subscribe is in flight. Its separate request must see
-                        # both rows, just as in the REST create lifecycle.
-                        await db.commit()
-                        try:
-                            result = await adapter.subscribe(
-                                callback_url=callback_url,
-                                config=webhook_config or {},
-                                integration=integration,
-                            )
-                            webhook_source.external_id = result.external_id
-                            webhook_source.state = result.state
-                            webhook_source.expires_at = result.expires_at
-                        except Exception as e:
-                            logger.error(f"Failed to subscribe webhook: {e}", exc_info=True)
-                            await db.delete(source)
-                            await db.commit()
-                            return error_result(f"Failed to create provider subscription: {e}")
-
-                    await db.flush()
-
                 # Handle schedule
                 if source_type_enum == EventSourceType.SCHEDULE:
                     schedule_source = ScheduleSource(
@@ -432,6 +414,63 @@ async def create_event_source(
                         "workflow_name": subscription.workflow.name if subscription.workflow else None,
                         "already_existed": False,
                     }
+
+            if adapter and webhook_source is not None:
+                # Finish local validation/subscription writes before exposing
+                # the callback to the provider's independent transaction.
+                source_id = source.id
+                await db.commit()
+                provider_result = None
+                try:
+                    provider_result = await adapter.subscribe(
+                        callback_url=callback_url,
+                        config=webhook_config or {},
+                        integration=integration,
+                    )
+                    webhook_source.external_id = provider_result.external_id
+                    webhook_source.state = provider_result.state
+                    webhook_source.expires_at = provider_result.expires_at
+                    # Keep metadata persistence inside the compensation boundary.
+                    await db.commit()
+                except Exception as e:
+                    logger.exception("Failed to finalize provider subscription")
+                    await db.rollback()
+                    cleanup_error = None
+                    if provider_result is not None:
+                        try:
+                            await adapter.unsubscribe(
+                                external_id=provider_result.external_id,
+                                state=provider_result.state,
+                                integration=integration,
+                            )
+                        except Exception as unsubscribe_error:
+                            logger.exception("Failed to compensate provider subscription")
+                            cleanup_error = unsubscribe_error
+                    # Rollback expires ORM objects; reload the durable rows.
+                    source = await db.get(EventSource, source_id)
+                    if source is not None:
+                        if cleanup_error is None:
+                            await db.delete(source)
+                        else:
+                            # Retain provider identity for an explicit cleanup
+                            # instead of losing the only record of the orphan.
+                            retained_webhook = await db.scalar(
+                                select(WebhookSource).where(
+                                    WebhookSource.event_source_id == source_id
+                                )
+                            )
+                            if retained_webhook is not None and provider_result is not None:
+                                retained_webhook.external_id = provider_result.external_id
+                                retained_webhook.state = provider_result.state
+                                retained_webhook.expires_at = provider_result.expires_at
+                            source.is_active = False
+                            source.error_message = "Provider subscription cleanup required"
+                        await db.commit()
+                    if cleanup_error is not None:
+                        return error_result(
+                            f"Failed to finalize provider subscription; cleanup required for source {source_id}"
+                        )
+                    return error_result(f"Failed to create provider subscription: {e}")
 
             response: dict[str, Any] = {
                 "id": str(source.id),
