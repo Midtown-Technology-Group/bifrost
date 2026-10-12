@@ -1265,6 +1265,8 @@ async def test_activation_closure_preserves_activation_for_other_history_bytes(
 async def test_git_commit_failure_preserves_activation_with_recovery_evidence(
     monkeypatch,
 ):
+    mark_dirty = AsyncMock(side_effect=RuntimeError("redis unavailable"))
+    monkeypatch.setattr("src.core.repo_dirty.mark_repo_dirty", mark_dirty)
     writer = RecordingWriter(
         error=RuntimeError("git commit failed"),
         history_hashes={"features/a.txt": hashlib.sha256(b"a").hexdigest()},
@@ -1319,12 +1321,15 @@ async def test_git_commit_failure_preserves_activation_with_recovery_evidence(
         "plan_id": None,
         "protected_main_source_sha": None,
     }
+    mark_dirty.assert_awaited_once_with()
 
 
 @pytest.mark.asyncio
 async def test_retry_git_closure_after_writer_configuration_skips_activation(
     monkeypatch,
 ):
+    mark_dirty = AsyncMock()
+    monkeypatch.setattr("src.core.repo_dirty.mark_repo_dirty", mark_dirty)
     svc = WorkspaceRepoChangesetService(
         FakeDB(),
         uuid4(),
@@ -1368,6 +1373,7 @@ async def test_retry_git_closure_after_writer_configuration_skips_activation(
     assert failed.failure_detail["state"] == "not_configured"
     assert failed.failure_detail["provenance"]["commit_message"] == "release source"
     assert CountingStorage.writes == 1
+    mark_dirty.assert_awaited_once_with()
 
     retry_writer = RecordingWriter(
         result=PlatformCommitResult(

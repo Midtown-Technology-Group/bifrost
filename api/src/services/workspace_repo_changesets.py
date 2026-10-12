@@ -79,6 +79,18 @@ COMMIT_WRITER_NOT_CONFIGURED = "verified GitHub App commit writer is not configu
 SNAPSHOT_READ_CONCURRENCY = 32
 
 
+async def _mark_unclosed_activation_dirty() -> None:
+    """Keep legacy repo status conservative when verified Git closure is absent."""
+    from src.core.repo_dirty import mark_repo_dirty
+
+    try:
+        await mark_repo_dirty()
+    except Exception:
+        # The durable changeset remains the recovery source of truth. A Redis
+        # outage must not obscure the Git-closure outcome or undo activation.
+        logger.exception("Failed to mark repo dirty after incomplete Git closure")
+
+
 @dataclass
 class _GitConvergencePlan:
     response: WorkspaceRepoGitConvergenceResponse
@@ -1359,6 +1371,7 @@ class WorkspaceRepoChangesetService:
                 "activation_preserved": True,
                 "provenance": provenance,
             }
+            await _mark_unclosed_activation_dirty()
             await self.db.flush()
             await self.db.commit()
             return self._response(row)
@@ -1502,6 +1515,7 @@ class WorkspaceRepoChangesetService:
             if commit_sha:
                 row.commit_sha = commit_sha
                 row.failure_detail["commit_sha"] = commit_sha
+            await _mark_unclosed_activation_dirty()
             await self.db.flush()
             await self.db.commit()
             return self._response(row)
