@@ -127,9 +127,15 @@ export function useWorkflowMutation<T = unknown>(
 			setError(null);
 			setIsLoading(true);
 
-			// Call the execute API
-			const { data: responseData, error: responseError } =
-				await apiClient.POST("/api/workflows/execute", {
+			// Call the execute API. A transport-level throw (auth middleware
+			// rejecting, network failure, replay error) must land in the hook's
+			// error state — otherwise the promise just rejects, isLoading stays
+			// true and `data` stays null, so app code that renders "Not
+			// Connected" from an empty result keeps showing it even after the
+			// same workflow succeeds when run directly.
+			let postResponse;
+			try {
+				postResponse = await apiClient.POST("/api/workflows/execute", {
 					body: {
 						workflow_id: workflowId,
 						input_data: params ?? {},
@@ -139,6 +145,21 @@ export function useWorkflowMutation<T = unknown>(
 						script_name: null,
 					},
 				});
+			} catch (transportError) {
+				const message =
+					transportError instanceof Error
+						? transportError.message
+						: String(transportError);
+				if (mountedRef.current) {
+					setError(message);
+					setIsLoading(false);
+				}
+				throw transportError instanceof Error
+					? transportError
+					: new Error(message);
+			}
+
+			const { data: responseData, error: responseError } = postResponse;
 
 			if (responseError) {
 				const errorMessage =
