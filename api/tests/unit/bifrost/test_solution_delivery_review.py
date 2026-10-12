@@ -229,6 +229,63 @@ def test_global_rebinding_in_helper_cannot_replace_executable_decorator(legacy):
         review_solution_recipe(value, files, resources)
 
 
+@pytest.mark.parametrize(
+    "expression",
+    [
+        "[workflow for workflow in range(3)]",
+        "{workflow for workflow in range(3)}",
+        "{workflow: workflow for workflow in range(3)}",
+        "tuple(workflow for workflow in range(3))",
+        "[(workflow, other) for workflow, other in pairs]",
+    ],
+)
+def test_comprehension_local_names_do_not_shadow_module_decorator(expression):
+    value, files, resources = fixture()
+    files["run.py"] = (
+        "from bifrost import workflow\n"
+        f"items = {expression}\n"
+        "@workflow\n"
+        "async def run():\n"
+        " return 1\n"
+    ).encode()
+    review_solution_recipe(value, files, resources)
+
+
+def test_comprehension_named_expression_cannot_replace_module_decorator():
+    value, files, resources = fixture()
+    files["run.py"] = (
+        b"from bifrost import workflow\n"
+        b"items = [(workflow := item) for item in values]\n"
+        b"@workflow\n"
+        b"async def run():\n"
+        b" return 1\n"
+    )
+    with pytest.raises(WorkflowRecipeError, match="shadowed"):
+        review_solution_recipe(value, files, resources)
+
+
+@pytest.mark.parametrize(
+    "expression",
+    [
+        "[item for (local, [box[[workflow := value for value in values]]]) in sources]",
+        "{item for (local, [box[[workflow := value for value in values]]]) in sources}",
+        "{item: item for (local, [box[[workflow := value for value in values]]]) in sources}",
+        "tuple(item for (local, [box[[workflow := value for value in values]]]) in sources)",
+    ],
+)
+def test_comprehension_target_expression_cannot_replace_module_decorator(expression):
+    value, files, resources = fixture()
+    files["run.py"] = (
+        "from bifrost import workflow\n"
+        f"items = {expression}\n"
+        "@workflow\n"
+        "async def run():\n"
+        " return 1\n"
+    ).encode()
+    with pytest.raises(WorkflowRecipeError, match="shadowed"):
+        review_solution_recipe(value, files, resources)
+
+
 def test_downloaded_artifact_reviews_source_without_platform_or_source_execution(tmp_path):
     artifact = build_cli_artifact(Path("bifrost"), tmp_path / "artifacts", "2.2.1-dev.999")
     destination = tmp_path / "standalone"
