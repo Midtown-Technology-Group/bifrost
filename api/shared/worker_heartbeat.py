@@ -14,6 +14,18 @@ from dataclasses import dataclass, field
 from typing import Any, Mapping
 
 
+def _integer_from_text(text: str) -> int | None:
+    """Parse integral numeric text without truncating fractional values."""
+    try:
+        return int(text)
+    except ValueError:
+        try:
+            value = float(text)
+        except ValueError:
+            return None
+        return int(value) if value.is_integer() else None
+
+
 def _to_int(value: Any) -> int | None:
     """Best-effort int coercion; returns None when the value is unusable."""
     if value is None or isinstance(value, bool):
@@ -23,17 +35,7 @@ def _to_int(value: Any) -> int | None:
     if isinstance(value, float):
         return int(value) if value.is_integer() else None
     if isinstance(value, str):
-        text = value.strip()
-        if not text:
-            return None
-        try:
-            return int(text)
-        except ValueError:
-            try:
-                as_float = float(text)
-            except ValueError:
-                return None
-            return int(as_float) if as_float.is_integer() else None
+        return _integer_from_text(value.strip())
     return None
 
 
@@ -71,6 +73,20 @@ class NormalizedHeartbeat:
     admission_rejections: dict[str, int] = field(default_factory=dict)
 
 
+def _admission_rejections(admission: Any) -> dict[str, int]:
+    """Normalize usable rejection counts from the optional admission payload."""
+    rejections: dict[str, int] = {}
+    if not isinstance(admission, Mapping):
+        return rejections
+    raw_rejections = admission.get("rejections")
+    if isinstance(raw_rejections, Mapping):
+        for reason, count in raw_rejections.items():
+            coerced = _to_int(count)
+            if coerced is not None:
+                rejections[str(reason)] = coerced
+    return rejections
+
+
 def normalize_heartbeat(hb: Mapping[str, Any] | None) -> NormalizedHeartbeat:
     """Apply the shared capacity fallback rules to one heartbeat payload.
 
@@ -86,23 +102,15 @@ def normalize_heartbeat(hb: Mapping[str, Any] | None) -> NormalizedHeartbeat:
 
     active_raw = _to_int(hb.get("active_process_count"))
     size_raw = _to_int(hb.get("pool_size"))
-    active = active_raw if active_raw is not None else (size_raw if size_raw is not None else 0)
+    active = active_raw if active_raw is not None else size_raw
+    if active is None:
+        active = 0
     size = size_raw if size_raw is not None else active
 
     capacity_raw = _to_int(hb.get("configured_capacity"))
     max_workers_raw = _to_int(hb.get("max_workers"))
     configured = capacity_raw if capacity_raw is not None else max_workers_raw
     max_workers = max_workers_raw if max_workers_raw is not None else configured
-
-    admission = hb.get("admission")
-    rejections: dict[str, int] = {}
-    if isinstance(admission, Mapping):
-        raw_rejections = admission.get("rejections")
-        if isinstance(raw_rejections, Mapping):
-            for reason, count in raw_rejections.items():
-                coerced = _to_int(count)
-                if coerced is not None:
-                    rejections[str(reason)] = coerced
 
     return NormalizedHeartbeat(
         active_process_count=active,
@@ -115,5 +123,5 @@ def normalize_heartbeat(hb: Mapping[str, Any] | None) -> NormalizedHeartbeat:
         saturation_ratio=_to_float(hb.get("saturation_ratio")),
         requirements_installed=_to_int(hb.get("requirements_installed")),
         requirements_total=_to_int(hb.get("requirements_total")),
-        admission_rejections=rejections,
+        admission_rejections=_admission_rejections(hb.get("admission")),
     )

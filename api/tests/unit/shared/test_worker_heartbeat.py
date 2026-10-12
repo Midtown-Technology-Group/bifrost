@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from shared.worker_heartbeat import normalize_heartbeat
 
 
@@ -88,3 +90,14 @@ def test_string_and_invalid_capacity_values():
     assert norm.available_slots is None
     assert norm.saturation_ratio == 0.5
     assert norm.admission_rejections == {"timeout": 3}
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [(0, 0), (" 2 ", 2), ("2.0", 2), (2.0, 2), ("2.5", 0), ("", 0), ("nan", 0), (True, 0)],
+)
+def test_legacy_process_counts_accept_only_integral_numbers(value, expected):
+    norm = normalize_heartbeat({"pool_size": value})
+
+    assert norm.active_process_count == expected
+    assert norm.pool_size == expected
