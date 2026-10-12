@@ -1549,6 +1549,35 @@ async def test_resolve_deletions_requires_manifest_or_work_dir():
 
 
 @pytest.mark.asyncio
+async def test_targetless_subscription_does_not_suppress_stale_deletion():
+    db = _SequenceDb(_RowsResult([(UUID(SUBSCRIPTION_ID),)]))
+    resolver = manifest_import.ManifestResolver(db)
+    manifest = Manifest(
+        events={
+            EVENT_ID: ManifestEventSource(
+                id=EVENT_ID,
+                name="Targetless source",
+                source_type="webhook",
+                subscriptions=[
+                    ManifestEventSubscription(
+                        id=SUBSCRIPTION_ID,
+                        target_type="workflow",
+                        workflow_id=None,
+                    )
+                ],
+            )
+        }
+    )
+
+    changes = await resolver._resolve_deletions(manifest=manifest, dry_run=True)
+
+    assert [(change.entity_type, change.entity_id) for change in changes] == [
+        ("event_subscriptions", SUBSCRIPTION_ID)
+    ]
+    assert "NOT IN" not in str(db.statements[0])
+
+
+@pytest.mark.asyncio
 async def test_resolve_deletions_honors_explicit_config_removal_and_preserves_tables():
     stale_table_id = UUID("abababab-abab-abab-abab-abababababab")
     db = _SequenceDb(
