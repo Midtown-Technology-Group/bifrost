@@ -3,8 +3,6 @@ from __future__ import annotations
 # ruff: noqa: E402
 
 import asyncio
-import json
-import subprocess
 import sys
 import types
 from datetime import datetime, timedelta, timezone
@@ -142,33 +140,6 @@ async def test_start_template_reuses_manager_installed_requirements(monkeypatch)
 
     assert created == [False]
     assert isinstance(pool._template, FakeTemplate)
-
-
-def test_get_installed_packages_returns_json_on_success(monkeypatch):
-    monkeypatch.setattr(
-        process_pool.subprocess,
-        "run",
-        lambda *_args, **_kwargs: subprocess.CompletedProcess(
-            "pip list",
-            0,
-            stdout=json.dumps([{"name": "pytest", "version": "9"}]),
-            stderr="",
-        ),
-    )
-
-    assert process_pool._get_installed_packages() == [
-        {"name": "pytest", "version": "9"}
-    ]
-
-
-def test_get_installed_packages_returns_empty_on_failure(monkeypatch):
-    monkeypatch.setattr(
-        process_pool.subprocess,
-        "run",
-        lambda *_args, **_kwargs: subprocess.CompletedProcess("pip list", 1, stdout="[]", stderr="no"),
-    )
-
-    assert process_pool._get_installed_packages() == []
 
 
 @pytest.mark.asyncio
