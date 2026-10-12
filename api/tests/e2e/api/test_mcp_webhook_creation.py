@@ -115,7 +115,8 @@ async def test_mcp_subscription_callback_is_durable_and_failure_cleans_up(
                 assert webhook is None
             elif failure == "cleanup":
                 assert "cleanup required" in data["error"]
-                assert source is not None and not source.is_active
+                assert source is not None
+                assert not source.is_active
                 assert source.error_message == "Provider subscription cleanup required"
                 assert webhook is not None
                 assert webhook.external_id == "test-subscription"
