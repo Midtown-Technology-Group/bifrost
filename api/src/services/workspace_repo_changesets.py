@@ -1425,7 +1425,7 @@ class WorkspaceRepoChangesetService:
                 if history_hash == target_hash:
                     disposition = "target"
                     superseded_paths.append(path)
-                elif operation == "verify":
+                elif operation == "verify" and history_hash is None:
                     disposition = "verified"
                     files.append(
                         PlatformCommitFile(

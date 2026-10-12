@@ -1289,6 +1289,63 @@ async def test_activation_closure_commits_verified_registration_source(monkeypat
 
 
 @pytest.mark.asyncio
+async def test_activation_closure_rejects_divergent_verified_history():
+    changed_path = "features/changed.py"
+    verified_path = "features/existing.py"
+    changed = b"changed\n"
+    verified = b"@workflow\ndef existing():\n    return True\n"
+    divergent = b"different signed history\n"
+    writer = RecordingWriter(
+        history_hashes={
+            changed_path: None,
+            verified_path: hashlib.sha256(divergent).hexdigest(),
+        }
+    )
+    svc = WorkspaceRepoChangesetService(
+        FakeDB(),
+        uuid4(),
+        repo=MemoryRepo({changed_path: changed, verified_path: verified}),
+        commit_writer=writer,
+    )
+    svc.rows = MemoryRows()
+    started = await svc.begin(WorkspaceRepoChangesetBegin(scope="features"), uuid4())
+    row = svc.rows.items[started.id]
+    row.mutations = [
+        {
+            "path": changed_path,
+            "operation": "write",
+            "before_hash": None,
+            "after_hash": hashlib.sha256(changed).hexdigest(),
+            "content_base64": base64.b64encode(changed).decode(),
+        },
+        {
+            "path": verified_path,
+            "operation": "verify",
+            "before_hash": hashlib.sha256(verified).hexdigest(),
+            "after_hash": hashlib.sha256(verified).hexdigest(),
+        },
+    ]
+    row.status = "activated"
+
+    result = await svc._complete_git_closure(
+        row.id,
+        WorkspaceRepoActivateRequest(
+            commit_message="Release mixed registration", push=True
+        ),
+        operator="operator@example.com",
+    )
+
+    assert result.status == "activated"
+    assert result.failure_detail["activation_preserved"] is True
+    evidence = {
+        item["path"]: item for item in result.failure_detail["history"]["paths"]
+    }
+    assert evidence[verified_path]["disposition"] == "other"
+    assert "outside the reviewed before/target states" in result.error
+    assert writer.requests == []
+
+
+@pytest.mark.asyncio
 async def test_activation_closure_preserves_activation_for_other_history_bytes(
     monkeypatch,
 ):
@@ -1703,6 +1760,21 @@ async def test_git_convergence_includes_verified_registration_source():
     assert preview.ready_to_apply is True
     assert [item.path for item in preview.paths] == [changed_path, verified_path]
     assert preview.changesets[0].reconciled_paths == [changed_path, verified_path]
+    applied = await svc.apply_git_convergence(
+        WorkspaceRepoGitConvergenceApplyRequest(
+            changeset_ids=[row.id],
+            protected_main_source_sha=source_sha,
+            candidate_id=preview.candidate_id,
+            commit_message="Converge mixed registration",
+        ),
+        operator="operator@example.com",
+    )
+
+    assert applied.applied is True
+    assert {item.path for item in writer.requests[0].files} == {
+        changed_path,
+        verified_path,
+    }
 
 
 @pytest.mark.asyncio
