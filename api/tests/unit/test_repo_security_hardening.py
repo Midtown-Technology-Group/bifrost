@@ -106,13 +106,28 @@ def test_ci_test_image_consumers_use_the_exact_published_tag() -> None:
         ),
     }
     for job_name, expected_command in expected_commands.items():
+        steps = jobs[job_name]["steps"]
+        pull_index, pull = next(
+            (index, step)
+            for index, step in enumerate(steps)
+            if step["name"] == "Pull CI image caches before checkout"
+        )
+        checkout_index, checkout = next(
+            (index, step)
+            for index, step in enumerate(steps)
+            if step["name"] == "Checkout repository"
+        )
         prepare = next(
             step
-            for step in jobs[job_name]["steps"]
+            for step in steps
             if step["name"] == "Prepare CI test images"
         )
+        assert pull_index < checkout_index
+        assert checkout["with"]["persist-credentials"] is False
+        assert pull["env"]["GHCR_TOKEN"] == "${{ secrets.GITHUB_TOKEN }}"
+        assert "docker logout" in pull["run"]
         assert prepare["run"] == expected_command
-        assert prepare["env"]["GHCR_TOKEN"] == "${{ secrets.GITHUB_TOKEN }}"
+        assert "GHCR_TOKEN" not in prepare["env"]
 
     api_root = Path(__file__).resolve().parents[2]
     image_script = (api_root / "scripts/ci/prepare-test-images.sh").read_text(

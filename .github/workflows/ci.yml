@@ -667,6 +667,23 @@ jobs:
           echo "Affected test planning failed or was cancelled." >&2
           exit 1
 
+      # This is trusted workflow text and runs before pull-request source exists
+      # on disk. Logout removes the package credential before checkout.
+      - name: Pull CI image caches before checkout
+        if: needs.affected-test-plan.outputs.api_unit_mode != 'skip'
+        env:
+          GHCR_USERNAME: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          [[ "$CI_TEST_IMAGE_TAG" =~ ^sha-[0-9a-f]{40}$ ]]
+          trap 'docker logout "$REGISTRY" >/dev/null 2>&1 || true' EXIT
+          printf '%s' "$GHCR_TOKEN" | docker login "$REGISTRY" --username "$GHCR_USERNAME" --password-stdin
+          for image in "$CI_API_TEST_IMAGE" "$CI_CLIENT_TEST_IMAGE"; do
+            ref="$REGISTRY/$image:$CI_TEST_IMAGE_TAG"
+            docker pull "$ref" || echo "::warning::Unable to pull $ref; reviewed source will build without it."
+          done
+
       - name: Checkout repository
         if: needs.affected-test-plan.outputs.api_unit_mode != 'skip'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -685,8 +702,6 @@ jobs:
       - name: Prepare CI test images
         if: needs.affected-test-plan.outputs.api_unit_mode != 'skip'
         env:
-          GHCR_USERNAME: ${{ github.actor }}
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           API_IMAGE_CHANGED: ${{ steps.test-image-inputs.outputs.api_changed }}
           CLIENT_IMAGE_CHANGED: ${{ steps.test-image-inputs.outputs.client_changed }}
         run: bash api/scripts/ci/prepare-test-images.sh api client
@@ -748,6 +763,21 @@ jobs:
           echo "Affected test planning failed or was cancelled." >&2
           exit 1
 
+      - name: Pull CI image caches before checkout
+        if: needs.affected-test-plan.outputs.mcp_conformance_mode != 'skip'
+        env:
+          GHCR_USERNAME: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          [[ "$CI_TEST_IMAGE_TAG" =~ ^sha-[0-9a-f]{40}$ ]]
+          trap 'docker logout "$REGISTRY" >/dev/null 2>&1 || true' EXIT
+          printf '%s' "$GHCR_TOKEN" | docker login "$REGISTRY" --username "$GHCR_USERNAME" --password-stdin
+          for image in "$CI_API_TEST_IMAGE" "$CI_CLIENT_TEST_IMAGE"; do
+            ref="$REGISTRY/$image:$CI_TEST_IMAGE_TAG"
+            docker pull "$ref" || echo "::warning::Unable to pull $ref; reviewed source will build without it."
+          done
+
       - name: Checkout repository
         if: needs.affected-test-plan.outputs.mcp_conformance_mode != 'skip'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -762,8 +792,6 @@ jobs:
       - name: Prepare CI test images
         if: needs.affected-test-plan.outputs.mcp_conformance_mode != 'skip'
         env:
-          GHCR_USERNAME: ${{ github.actor }}
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           API_IMAGE_CHANGED: ${{ steps.test-image-inputs.outputs.api_changed }}
           CLIENT_IMAGE_CHANGED: ${{ steps.test-image-inputs.outputs.client_changed }}
         run: bash api/scripts/ci/prepare-test-images.sh api client
@@ -829,9 +857,26 @@ jobs:
           echo "Affected test planning failed or was cancelled." >&2
           exit 1
 
+      - name: Pull CI image caches before checkout
+        if: matrix.total != 0
+        env:
+          GHCR_USERNAME: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          [[ "$CI_TEST_IMAGE_TAG" =~ ^sha-[0-9a-f]{40}$ ]]
+          trap 'docker logout "$REGISTRY" >/dev/null 2>&1 || true' EXIT
+          printf '%s' "$GHCR_TOKEN" | docker login "$REGISTRY" --username "$GHCR_USERNAME" --password-stdin
+          for image in "$CI_API_TEST_IMAGE" "$CI_CLIENT_TEST_IMAGE"; do
+            ref="$REGISTRY/$image:$CI_TEST_IMAGE_TAG"
+            docker pull "$ref" || echo "::warning::Unable to pull $ref; reviewed source will build without it."
+          done
+
       - name: Checkout repository
         if: matrix.total != 0
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Detect test image input changes
         if: matrix.total != 0
@@ -841,8 +886,6 @@ jobs:
       - name: Prepare CI test images
         if: matrix.total != 0
         env:
-          GHCR_USERNAME: ${{ github.actor }}
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           API_IMAGE_CHANGED: ${{ steps.test-image-inputs.outputs.api_changed }}
           CLIENT_IMAGE_CHANGED: ${{ steps.test-image-inputs.outputs.client_changed }}
         run: bash api/scripts/ci/prepare-test-images.sh api client
@@ -958,9 +1001,26 @@ jobs:
           echo "Affected test planning failed or was cancelled." >&2
           exit 1
 
+      - name: Pull CI image caches before checkout
+        if: needs.affected-test-plan.outputs.client_e2e_mode != 'skip'
+        env:
+          GHCR_USERNAME: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          [[ "$CI_TEST_IMAGE_TAG" =~ ^sha-[0-9a-f]{40}$ ]]
+          trap 'docker logout "$REGISTRY" >/dev/null 2>&1 || true' EXIT
+          printf '%s' "$GHCR_TOKEN" | docker login "$REGISTRY" --username "$GHCR_USERNAME" --password-stdin
+          for image in "$CI_API_TEST_IMAGE" "$CI_CLIENT_TEST_IMAGE" "$CI_PLAYWRIGHT_TEST_IMAGE"; do
+            ref="$REGISTRY/$image:$CI_TEST_IMAGE_TAG"
+            docker pull "$ref" || echo "::warning::Unable to pull $ref; reviewed source will build without it."
+          done
+
       - name: Checkout repository
         if: needs.affected-test-plan.outputs.client_e2e_mode != 'skip'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Detect test image input changes
         if: needs.affected-test-plan.outputs.client_e2e_mode != 'skip'
@@ -970,8 +1030,6 @@ jobs:
       - name: Prepare CI test images
         if: needs.affected-test-plan.outputs.client_e2e_mode != 'skip'
         env:
-          GHCR_USERNAME: ${{ github.actor }}
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           API_IMAGE_CHANGED: ${{ steps.test-image-inputs.outputs.api_changed }}
           CLIENT_IMAGE_CHANGED: ${{ steps.test-image-inputs.outputs.client_changed }}
           PLAYWRIGHT_IMAGE_CHANGED: ${{ steps.test-image-inputs.outputs.playwright_changed }}

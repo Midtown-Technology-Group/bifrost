@@ -5,6 +5,7 @@ from scripts.check_mtg_ci_boundaries import (
     REQUIRED_CI_JOB_NAMES,
     _repo_root,
     _resolve_workflow_path,
+    check_ci_image_token_boundaries,
     check_ci_workflow,
     check_codeowners,
 )
@@ -25,6 +26,86 @@ def test_required_ci_check_identities_are_preserved():
     workflow = _repo_root() / ".github/workflows/ci.yml"
 
     assert check_ci_workflow(workflow) == []
+
+
+def test_ci_image_tokens_are_removed_before_checkout():
+    root = _repo_root()
+
+    assert check_ci_image_token_boundaries(
+        root / ".github/workflows/ci.yml",
+        root / ".github/workflows/sonar-coverage.yml",
+    ) == []
+
+
+def test_ci_image_token_after_checkout_is_rejected(tmp_path: Path):
+    root = _repo_root()
+    original = (root / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    mutated = tmp_path / "ci.yml"
+    mutated.write_text(
+        original.replace(
+            "          API_IMAGE_CHANGED: ${{ steps.test-image-inputs.outputs.api_changed }}",
+            "          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n"
+            "          API_IMAGE_CHANGED: ${{ steps.test-image-inputs.outputs.api_changed }}",
+            1,
+        ),
+        encoding="utf-8",
+    )
+
+    violations = check_ci_image_token_boundaries(
+        mutated,
+        root / ".github/workflows/sonar-coverage.yml",
+    )
+
+    assert any("outside the pre-checkout cache pull" in item for item in violations)
+
+
+def test_ci_image_checkout_credentials_must_not_persist(tmp_path: Path):
+    root = _repo_root()
+    original = (root / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    mutated = tmp_path / "ci.yml"
+    mutated.write_text(
+        original.replace(
+            "        if: needs.affected-test-plan.outputs.api_unit_mode != 'skip'\n"
+            "        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1\n"
+            "        with:\n"
+            "          persist-credentials: false\n",
+            "        if: needs.affected-test-plan.outputs.api_unit_mode != 'skip'\n"
+            "        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1\n",
+            1,
+        ),
+        encoding="utf-8",
+    )
+
+    violations = check_ci_image_token_boundaries(
+        mutated,
+        root / ".github/workflows/sonar-coverage.yml",
+    )
+
+    assert any("persist-credentials: false" in item for item in violations)
+
+
+def test_ci_image_authentication_must_precede_checkout(tmp_path: Path):
+    root = _repo_root()
+    original = (root / ".github/workflows/sonar-coverage.yml").read_text(
+        encoding="utf-8"
+    )
+    start = original.index("      - name: Pull CI image caches before checkout\n")
+    end = original.index("\n      - name: Checkout exact analysis source\n", start)
+    pull_block = original[start:end]
+    without_pull = original[:start] + original[end:]
+    insertion = without_pull.index("\n      - name: Bind analysis context\n")
+    mutated = tmp_path / "sonar-coverage.yml"
+    mutated.write_text(
+        without_pull[:insertion] + "\n" + pull_block + without_pull[insertion:],
+        encoding="utf-8",
+    )
+
+    violations = check_ci_image_token_boundaries(
+        root / ".github/workflows/ci.yml",
+        mutated,
+    )
+
+    assert any("authentication must finish before checkout" in item for item in violations)
 
 
 def test_required_ci_check_identity_change_is_rejected(tmp_path: Path):
