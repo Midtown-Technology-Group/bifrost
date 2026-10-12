@@ -333,7 +333,9 @@ jobs:
       # The attestation storage-record write can hit transient GitHub API rate
       # limits during merge-group bursts after build, sign, and push already
       # succeeded. Back off once and retry before failing the gate; a second
-      # failure still blocks the merge.
+      # failure still blocks the merge. The action exposes only its outcome,
+      # so this retries any attestation failure, not just classified rate limits.
+      # The fixed delay does not interpret Retry-After or rate-limit reset headers.
       - name: Back off before attestation retry
         if: steps.attest.outcome == 'failure'
         run: sleep 180
