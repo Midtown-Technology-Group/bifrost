@@ -66,3 +66,18 @@ class TestEmbedAccessToken:
         assert payload["grant"] == "public"
         assert payload["name"] == "Public Form · Contact us"
         assert payload["capability_fingerprint"] == fingerprint
+
+    def test_public_form_display_name_is_bounded_for_execution_attribution(self):
+        display_name = "Public Form · " + "x" * 255
+        token = create_embed_access_token(
+            embed_kind="form",
+            grant="public",
+            resource_id=str(uuid4()),
+            org_id=str(uuid4()),
+            display_name=display_name,
+        )
+
+        payload = decode_token(token, expected_type="access")
+        assert payload is not None
+        assert payload["name"] == display_name[:255]
+        assert len(payload["name"]) == 255
