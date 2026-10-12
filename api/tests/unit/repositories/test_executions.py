@@ -114,6 +114,16 @@ def test_to_pydantic_includes_admin_fields_for_superuser() -> None:
     assert result.value == 12.5
 
 
+def test_to_pydantic_hides_stale_workflow_id_for_local_execution() -> None:
+    repo = ExecutionRepository(session=None)  # type: ignore[arg-type]
+    execution = _execution(is_local_execution=True)
+
+    result = repo._to_pydantic(execution, _user(is_superuser=True))
+
+    assert execution.workflow_id is not None
+    assert result.workflow_id is None
+
+
 def test_to_pydantic_without_user_treats_request_as_non_admin() -> None:
     repo = ExecutionRepository(session=None)  # type: ignore[arg-type]
     execution = _execution(workflow_id=None, organization_id=None, form_id=None, session_id=None)

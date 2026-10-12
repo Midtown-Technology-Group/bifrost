@@ -536,7 +536,12 @@ class ExecutionRepository(BaseRepository[Execution]):
         return WorkflowExecution(
             execution_id=str(execution.id),
             workflow_name=execution.workflow_name,
-            workflow_id=str(execution.workflow_id) if execution.workflow_id else None,
+            workflow_id=(
+                str(execution.workflow_id)
+                if execution.workflow_id
+                and not getattr(execution, "is_local_execution", False)
+                else None
+            ),
             org_id=str(execution.organization_id) if execution.organization_id else None,
             form_id=str(execution.form_id) if execution.form_id else None,
             executed_by=str(execution.executed_by),
@@ -757,7 +762,12 @@ class ExecutionRepository(BaseRepository[Execution]):
         return WorkflowExecution(
             execution_id=str(execution.id),
             workflow_name=execution.workflow_name,
-            workflow_id=str(execution.workflow_id) if execution.workflow_id else None,
+            workflow_id=(
+                str(execution.workflow_id)
+                if execution.workflow_id
+                and not getattr(execution, "is_local_execution", False)
+                else None
+            ),
             org_id=str(execution.organization_id) if execution.organization_id else None,
             form_id=str(execution.form_id) if execution.form_id else None,
             executed_by=str(execution.executed_by),
