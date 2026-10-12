@@ -252,6 +252,11 @@ Transitions and rules:
   including after `lost`. A late
   agent result never resurrects a job. On fence rejection the agent stops its
   local execution best-effort, drops that job's spool, and never re-runs.
+- **Log output cap:** entry and batch limits count UTF-8 bytes. While holding
+  the job-row lock, the server also adds the bytes for newly accepted entries
+  to the bytes already stored for that job and rejects a batch that would
+  exceed `max_output_bytes`. Identical `(job_id, seq)` replays remain no-op
+  successes and do not consume the cap twice.
 - **Cancellation:** cooperative per the ownership table above. The agent
   observes `cancel_requested` on its heartbeat response for the job it owns.
   Additive cancel observability (#1060): `pending`/`claimed` cancels return

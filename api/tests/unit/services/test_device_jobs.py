@@ -96,6 +96,7 @@ def _session() -> AsyncMock:
 def _result(scalar=None, rows=None) -> MagicMock:
     result = MagicMock()
     result.scalar_one_or_none.return_value = scalar
+    result.scalar_one.return_value = scalar
     result.scalars.return_value.all.return_value = rows or []
     return result
 
@@ -626,11 +627,15 @@ class TestSweepWatchdog:
         assert stats["lost_silence"] == 0
 
 
-def _append_session(job, existing=None) -> AsyncMock:
+def _append_session(job, existing=None, stored_bytes=None) -> AsyncMock:
+    existing_rows = existing or []
+    if stored_bytes is None:
+        stored_bytes = sum(len(row.text.encode("utf-8")) for row in existing_rows)
     session = _session()
     session.execute.side_effect = [
         _result(scalar=job),
-        _result(rows=existing or []),
+        _result(rows=existing_rows),
+        _result(scalar=stored_bytes),
     ]
     return session
 
@@ -691,6 +696,19 @@ class TestAppendLogs:
         assert exc.value.code == "payload_too_large"
         session.execute.assert_not_awaited()
 
+    async def test_entry_limit_counts_utf8_bytes(self):
+        session = _session()
+        with pytest.raises(DeviceOperationError) as exc:
+            await append_logs(
+                session,
+                job_id=uuid4(),
+                claim_token=uuid4(),
+                entries=[{"seq": 1, "stream": "stdout", "text": "é" * 32769}],
+            )
+        assert exc.value.code == "payload_too_large"
+        assert "UTF-8 bytes" in exc.value.message
+        session.execute.assert_not_awaited()
+
     async def test_fence_and_terminal(self):
         token = uuid4()
         live = _job(status=JOB_STATUS_RUNNING, claim_token=token)
@@ -736,6 +754,50 @@ class TestAppendLogs:
         assert session.add.call_count == 2
         session.commit.assert_awaited()
 
+    async def test_cumulative_utf8_bytes_may_reach_job_cap_exactly(self):
+        token = uuid4()
+        job = _job(
+            status=JOB_STATUS_RUNNING,
+            claim_token=token,
+            max_output_bytes=6,
+        )
+        session = _append_session(job, stored_bytes=4)
+
+        _job_result, inserted = await append_logs(
+            session,
+            job_id=job.id,
+            claim_token=token,
+            entries=[{"seq": 1, "stream": "stdout", "text": "é"}],
+            now=NOW,
+        )
+
+        assert len(inserted) == 1
+        session.add.assert_called_once()
+        session.commit.assert_awaited_once()
+
+    async def test_cumulative_utf8_bytes_reject_new_rows_past_job_cap(self):
+        token = uuid4()
+        job = _job(
+            status=JOB_STATUS_RUNNING,
+            claim_token=token,
+            max_output_bytes=5,
+        )
+        session = _append_session(job, stored_bytes=4)
+
+        with pytest.raises(DeviceOperationError) as exc:
+            await append_logs(
+                session,
+                job_id=job.id,
+                claim_token=token,
+                entries=[{"seq": 1, "stream": "stdout", "text": "é"}],
+                now=NOW,
+            )
+
+        assert exc.value.code == "payload_too_large"
+        assert "max_output_bytes (5 bytes)" in exc.value.message
+        session.add.assert_not_called()
+        session.commit.assert_not_awaited()
+
     async def test_identical_replay_is_noop(self):
         from src.models.orm.device_job_logs import DeviceJobLog
 
@@ -755,6 +817,33 @@ class TestAppendLogs:
         assert inserted == []
         session.add.assert_not_called()
         session.commit.assert_awaited()  # activity still renewed
+
+    async def test_identical_replay_succeeds_when_stored_output_is_at_cap(self):
+        from src.models.orm.device_job_logs import DeviceJobLog
+
+        token = uuid4()
+        job = _job(
+            status=JOB_STATUS_RUNNING,
+            claim_token=token,
+            log_sequence=1,
+            max_output_bytes=4,
+        )
+        existing = DeviceJobLog(
+            job_id=job.id, seq=1, stream="stdout", text="same"
+        )
+        session = _append_session(job, existing=[existing], stored_bytes=4)
+
+        _got, inserted = await append_logs(
+            session,
+            job_id=job.id,
+            claim_token=token,
+            entries=[{"seq": 1, "stream": "stdout", "text": "same"}],
+            now=NOW,
+        )
+
+        assert inserted == []
+        session.add.assert_not_called()
+        session.commit.assert_awaited_once()
 
     async def test_changed_content_for_same_seq_conflicts(self):
         from src.models.orm.device_job_logs import DeviceJobLog
