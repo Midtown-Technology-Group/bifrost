@@ -82,6 +82,29 @@ def test_mtg_candidate_images_are_promoted_without_rebuild() -> None:
     assert "--main-source-sha" in source
 
 
+def test_dev_image_tags_use_the_full_triggering_commit_sha() -> None:
+    promotion = _load_workflow(CI_WORKFLOW)["jobs"]["build-dev"]
+
+    for component in ("API", "worker", "client"):
+        promote = next(
+            step
+            for step in promotion["steps"]
+            if step["name"] == f"Promote tested {component} candidate"
+        )
+        fallback = next(
+            step
+            for step in promotion["steps"]
+            if step["name"] == f"Build and push {component} dev image"
+        )
+
+        assert '--tag "sha-${GITHUB_SHA}"' in promote["run"]
+        assert ":sha-${{ github.sha }}" in fallback["with"]["tags"]
+
+    source = CI_WORKFLOW.read_text()
+    assert "short_sha" not in source
+    assert "SHORT_SHA" not in source
+
+
 def test_release_tags_pass_skipped_candidate_jobs_through_manifest_gate() -> None:
     jobs = _load_workflow(CI_WORKFLOW)["jobs"]
     verification = jobs["verify-release-manifest"]

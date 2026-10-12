@@ -1124,7 +1124,6 @@ jobs:
           version="$(./scripts/compute-dev-version.sh --next-after "$publication_parent")"
           tree_sha="$(git rev-parse "${GITHUB_SHA}^{tree}")"
           echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "short_sha=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
           echo "tree_sha=$tree_sha" >> "$GITHUB_OUTPUT"
 
       # Surface manifest drift to the job summary. Plugin manifests are updated
@@ -1169,7 +1168,6 @@ jobs:
         id: promote-api
         env:
           IMAGE: ghcr.io/${{ env.API_IMAGE }}
-          SHORT_SHA: ${{ steps.version.outputs.short_sha }}
           TREE_SHA: ${{ steps.version.outputs.tree_sha }}
           VERSION: ${{ steps.version.outputs.version }}
         run: |
@@ -1182,7 +1180,7 @@ jobs:
             --main-source-sha "$GITHUB_SHA" \
             --tag "$VERSION" \
             --tag dev \
-            --tag "sha-${SHORT_SHA}" \
+            --tag "sha-${GITHUB_SHA}" \
             --github-output "$GITHUB_OUTPUT"
 
       - name: Build and push API dev image
@@ -1197,7 +1195,7 @@ jobs:
           tags: |
             ghcr.io/${{ env.API_IMAGE }}:${{ steps.version.outputs.version }}
             ghcr.io/${{ env.API_IMAGE }}:dev
-            ghcr.io/${{ env.API_IMAGE }}:sha-${{ steps.version.outputs.short_sha }}
+            ghcr.io/${{ env.API_IMAGE }}:sha-${{ github.sha }}
           build-args: |
             BIFROST_VERSION=${{ steps.version.outputs.version }}
           labels: |
@@ -1244,7 +1242,6 @@ jobs:
         id: promote-worker
         env:
           IMAGE: ghcr.io/${{ env.WORKER_IMAGE }}
-          SHORT_SHA: ${{ steps.version.outputs.short_sha }}
           TREE_SHA: ${{ steps.version.outputs.tree_sha }}
           VERSION: ${{ steps.version.outputs.version }}
         run: |
@@ -1257,7 +1254,7 @@ jobs:
             --main-source-sha "$GITHUB_SHA" \
             --tag "$VERSION" \
             --tag dev \
-            --tag "sha-${SHORT_SHA}" \
+            --tag "sha-${GITHUB_SHA}" \
             --github-output "$GITHUB_OUTPUT"
 
       - name: Build and push worker dev image
@@ -1272,7 +1269,7 @@ jobs:
           tags: |
             ghcr.io/${{ env.WORKER_IMAGE }}:${{ steps.version.outputs.version }}
             ghcr.io/${{ env.WORKER_IMAGE }}:dev
-            ghcr.io/${{ env.WORKER_IMAGE }}:sha-${{ steps.version.outputs.short_sha }}
+            ghcr.io/${{ env.WORKER_IMAGE }}:sha-${{ github.sha }}
           build-args: |
             BIFROST_VERSION=${{ steps.version.outputs.version }}
           labels: |
@@ -1319,7 +1316,6 @@ jobs:
         id: promote-client
         env:
           IMAGE: ghcr.io/${{ env.CLIENT_IMAGE }}
-          SHORT_SHA: ${{ steps.version.outputs.short_sha }}
           TREE_SHA: ${{ steps.version.outputs.tree_sha }}
           VERSION: ${{ steps.version.outputs.version }}
         run: |
@@ -1332,7 +1328,7 @@ jobs:
             --main-source-sha "$GITHUB_SHA" \
             --tag "$VERSION" \
             --tag dev \
-            --tag "sha-${SHORT_SHA}" \
+            --tag "sha-${GITHUB_SHA}" \
             --github-output "$GITHUB_OUTPUT"
 
       - name: Build and push client dev image
@@ -1348,7 +1344,7 @@ jobs:
           tags: |
             ghcr.io/${{ env.CLIENT_IMAGE }}:${{ steps.version.outputs.version }}
             ghcr.io/${{ env.CLIENT_IMAGE }}:dev
-            ghcr.io/${{ env.CLIENT_IMAGE }}:sha-${{ steps.version.outputs.short_sha }}
+            ghcr.io/${{ env.CLIENT_IMAGE }}:sha-${{ github.sha }}
           build-args: |
             VITE_BIFROST_VERSION=${{ steps.version.outputs.version }}
           labels: |
