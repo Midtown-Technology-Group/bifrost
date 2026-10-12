@@ -22,12 +22,10 @@ from src.models.contracts.codex_gateway import (
     CodexGatewayOAuthImportRequest,
     CodexGatewayOAuthImportResponse,
     CodexGatewayOAuthStatusResponse,
-    OpenAICompatibleError,
 )
 from src.repositories.codex_gateway import (
     CodexGatewayKeyLimitError,
     CodexGatewayRepository,
-    is_plausible_gateway_key,
 )
 from src.services.audit import emit_audit
 from src.services.codex_gateway.oauth import CodexAuthCacheError, parse_codex_auth_cache
@@ -47,18 +45,6 @@ def get_codex_gateway_repository(db: DbSession) -> CodexGatewayRepository:
 
 def get_codex_gateway_runtime(db: DbSession) -> CodexGatewayRuntime:
     return CodexGatewayRuntime(repository=CodexGatewayRepository(db))
-
-
-def _invalid_gateway_key_response() -> JSONResponse:
-    return JSONResponse(
-        status_code=401,
-        content={
-            "error": OpenAICompatibleError(
-                message="The Bifrost Codex Gateway key is invalid or revoked.",
-                code="invalid_gateway_key",
-            ).model_dump()
-        },
-    )
 
 
 def _key_record_response(record) -> CodexGatewayKeyRecord:
@@ -318,9 +304,6 @@ async def create_response(
     ] = None,
 ) -> JSONResponse:
     gateway_key = extract_gateway_key(authorization, x_bifrost_codex_key)
-    if not is_plausible_gateway_key(gateway_key):
-        return _invalid_gateway_key_response()
-
     result = await runtime.create_response(
         gateway_key=gateway_key,
         payload=payload.model_dump(),

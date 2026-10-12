@@ -119,12 +119,30 @@ class CodexGatewayRuntime:
             message="The Bifrost Codex Gateway key is invalid or revoked.",
         )
         if not is_plausible_gateway_key(gateway_key):
+            await self._log_denial(
+                request_id=request_id,
+                endpoint=CODEX_GATEWAY_RESPONSES_ENDPOINT,
+                model=model if isinstance(model, str) else None,
+                status_code=invalid_key_response.status_code,
+                code="invalid_gateway_key",
+                source_ip=source_ip,
+                client_user_agent=client_user_agent,
+            )
             return invalid_key_response
 
         key_record = await self.repository.get_active_gateway_key_by_plaintext(
             gateway_key
         )
         if key_record is None:
+            await self._log_denial(
+                request_id=request_id,
+                endpoint=CODEX_GATEWAY_RESPONSES_ENDPOINT,
+                model=model if isinstance(model, str) else None,
+                status_code=invalid_key_response.status_code,
+                code="invalid_gateway_key",
+                source_ip=source_ip,
+                client_user_agent=client_user_agent,
+            )
             return invalid_key_response
 
         if not isinstance(model, str) or not model:

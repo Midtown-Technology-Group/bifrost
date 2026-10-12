@@ -257,7 +257,7 @@ def test_v1_responses_uses_fallback_gateway_key_header():
     }
 
 
-def test_v1_responses_rejects_missing_gateway_key_before_runtime():
+def test_v1_responses_sends_missing_gateway_key_to_auditable_runtime():
     app = FastAPI()
     app.include_router(router)
     runtime = FakeRuntime()
@@ -269,9 +269,9 @@ def test_v1_responses_rejects_missing_gateway_key_before_runtime():
         json={"model": "gpt-5.1-codex", "input": "missing key"},
     )
 
-    assert response.status_code == 401
-    assert response.json()["error"]["code"] == "invalid_gateway_key"
-    assert runtime.calls == []
+    assert response.status_code == 200
+    [runtime_call] = runtime.calls
+    assert runtime_call["gateway_key"] == ""
 
 
 def test_create_gateway_key_returns_plaintext_once_and_audits(monkeypatch):
@@ -352,7 +352,7 @@ def test_revoke_gateway_key_is_user_scoped_and_audited(monkeypatch):
     audit.assert_awaited_once()
 
 
-def test_v1_responses_rejects_malformed_gateway_key_before_runtime():
+def test_v1_responses_sends_malformed_gateway_key_to_auditable_runtime():
     app = FastAPI()
     app.include_router(router)
     runtime = FakeRuntime()
@@ -365,9 +365,9 @@ def test_v1_responses_rejects_malformed_gateway_key_before_runtime():
         json={"model": "gpt-5.1-codex", "input": "bad key"},
     )
 
-    assert response.status_code == 401
-    assert response.json()["error"]["code"] == "invalid_gateway_key"
-    assert runtime.calls == []
+    assert response.status_code == 200
+    [runtime_call] = runtime.calls
+    assert runtime_call["gateway_key"] == "not-a-bifrost-key"
 
 
 def test_codex_gateway_oauth_status_reports_disconnected_without_tokens():

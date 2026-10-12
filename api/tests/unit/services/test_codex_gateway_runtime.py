@@ -122,7 +122,7 @@ async def test_allowed_response_uses_same_user_upstream_token_and_logs_metadata(
 
 
 @pytest.mark.asyncio
-async def test_unknown_well_formed_gateway_key_returns_openai_error_without_log():
+async def test_unknown_well_formed_gateway_key_returns_openai_error_and_logs_denial():
     repository = _repository(key_record=None, account_record=None)
     runtime = CodexGatewayRuntime(
         repository=repository, upstream_client=FakeUpstreamClient()
@@ -131,15 +131,28 @@ async def test_unknown_well_formed_gateway_key_returns_openai_error_without_log(
     response = await runtime.create_response(
         gateway_key=VALID_GATEWAY_KEY,
         payload={"model": "gpt-5.1-codex"},
+        source_ip="203.0.113.10",
+        client_user_agent="codex-cli",
     )
 
     assert response.status_code == 401
     assert response.body["error"]["code"] == "invalid_gateway_key"
-    repository.create_request_log.assert_not_awaited()
+    repository.create_request_log.assert_awaited_once()
+    log_kwargs = repository.create_request_log.call_args.kwargs
+    assert log_kwargs["user_id"] is None
+    assert log_kwargs["project_id"] is None
+    assert log_kwargs["gateway_key_id"] is None
+    assert log_kwargs["oauth_account_id"] is None
+    assert log_kwargs["status_code"] == 401
+    assert log_kwargs["policy_decision"] == "deny"
+    assert log_kwargs["denied_reason"] == "invalid_gateway_key"
+    assert log_kwargs["source_ip"] == "203.0.113.10"
+    assert log_kwargs["client_user_agent"] == "codex-cli"
+    assert VALID_GATEWAY_KEY not in repr(log_kwargs)
 
 
 @pytest.mark.asyncio
-async def test_malformed_gateway_key_returns_openai_error_without_lookup_or_log():
+async def test_malformed_gateway_key_returns_openai_error_without_lookup_and_logs_denial():
     repository = _repository(key_record=None, account_record=None)
     runtime = CodexGatewayRuntime(
         repository=repository, upstream_client=FakeUpstreamClient()
@@ -148,12 +161,25 @@ async def test_malformed_gateway_key_returns_openai_error_without_lookup_or_log(
     response = await runtime.create_response(
         gateway_key="not-a-bifrost-key",
         payload={"model": "gpt-5.1-codex"},
+        source_ip="203.0.113.11",
+        client_user_agent="codex-cli",
     )
 
     assert response.status_code == 401
     assert response.body["error"]["code"] == "invalid_gateway_key"
     repository.get_active_gateway_key_by_plaintext.assert_not_awaited()
-    repository.create_request_log.assert_not_awaited()
+    repository.create_request_log.assert_awaited_once()
+    log_kwargs = repository.create_request_log.call_args.kwargs
+    assert log_kwargs["user_id"] is None
+    assert log_kwargs["project_id"] is None
+    assert log_kwargs["gateway_key_id"] is None
+    assert log_kwargs["oauth_account_id"] is None
+    assert log_kwargs["status_code"] == 401
+    assert log_kwargs["policy_decision"] == "deny"
+    assert log_kwargs["denied_reason"] == "invalid_gateway_key"
+    assert log_kwargs["source_ip"] == "203.0.113.11"
+    assert log_kwargs["client_user_agent"] == "codex-cli"
+    assert "not-a-bifrost-key" not in repr(log_kwargs)
 
 
 @pytest.mark.asyncio
