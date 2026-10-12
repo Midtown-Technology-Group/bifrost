@@ -91,18 +91,41 @@ async function retryAfterTransient5xx(
 	for (const delay of RETRY_BACKOFF_MS) {
 		if (!isTransient5xx(response.status)) return response;
 		await new Promise((resolve) => setTimeout(resolve, delay));
-		response = await fetch(baseRequest.clone());
+		response = await fetch(rebuildRequest(baseRequest));
 	}
 	return response;
 }
 
-/**
- * Cache of pre-send Request clones, keyed by the live Request object that
- * openapi-fetch hands to onRequest/onResponse. Stashed in onRequest before
- * the body stream is consumed so 5xx retry in onResponse can replay
- * requests with bodies (e.g. PUT).
- */
-const _requestClones = new WeakMap<Request, Request>();
+// Keep bytes rather than teeing Request streams: Chromium does not expose
+// tee'd bodies to request observers. Bytes also survive multiple consumed
+// attempts and preserve multipart boundaries and binary uploads exactly.
+const requestBodies = new WeakMap<Request, ArrayBuffer>();
+
+function rebuildRequest(request: Request): Request {
+	return new Request(request.url, {
+		method: request.method,
+		headers: request.headers,
+		body: requestBodies.get(request),
+		credentials: request.credentials,
+		mode: request.mode,
+		cache: request.cache,
+		redirect: request.redirect,
+		referrer: request.referrer,
+		referrerPolicy: request.referrerPolicy,
+		integrity: request.integrity,
+		keepalive: request.keepalive,
+		signal: request.signal,
+	});
+}
+
+async function prepareRequest(request: Request): Promise<Request> {
+	if (!request.body) return request;
+	const body = await request.arrayBuffer();
+	requestBodies.set(request, body);
+	const prepared = rebuildRequest(request);
+	requestBodies.set(prepared, body);
+	return prepared;
+}
 
 // Endpoints that should skip token refresh check
 const AUTH_ENDPOINTS = [
@@ -201,14 +224,9 @@ async function refreshAccessToken(): Promise<boolean> {
 
 /**
  * Retry a request after token refresh using current auth state.
- *
- * `request` MUST be a pre-send clone (see `_requestClones`): the live
- * Request has already been through `fetch`, which consumes its body stream.
- * Rebuilding from that produces a replay with no body (browsers) or throws
- * "Cannot construct a Request with a Request whose body is used" (Node).
  */
 async function retryRequestWithFreshAuth(request: Request): Promise<Response> {
-	const headers = new Headers(request.headers);
+	const headers = request.headers;
 	const token = localStorage.getItem(ACCESS_TOKEN_KEY);
 
 	if (token) {
@@ -217,12 +235,7 @@ async function retryRequestWithFreshAuth(request: Request): Promise<Response> {
 		headers.delete("Authorization");
 	}
 
-	return fetch(
-		new Request(request, {
-			headers,
-			credentials: "same-origin",
-		}),
-	);
+	return fetch(rebuildRequest(request));
 }
 
 /**
@@ -351,14 +364,7 @@ baseClient.use({
 			}
 		}
 
-		// Stash a pre-send clone so onResponse can replay this request: on
-		// transient 5xx (idempotent methods only) and on a 401 once the token
-		// has been refreshed (any method — the replayed POST must carry its
-		// original body, which `fetch` has consumed from the live Request by
-		// then). WeakMap-keyed, so the clone dies with the request.
-		_requestClones.set(request, request.clone());
-
-		return request;
+		return prepareRequest(request);
 	},
 	async onResponse({ request, response }) {
 		// Handle 429 Too Many Requests - rate limited
@@ -370,8 +376,7 @@ baseClient.use({
 			throw new RateLimitError(retryAfter);
 		}
 
-		if (response.status === 401)
-			return handleAuthResponse(request, response);
+		const finalResponse = await handleAuthResponse(request, response);
 
 		// 403 Forbidden = permission issue, don't redirect (user is authenticated)
 		// Let the calling code handle displaying an appropriate error message
@@ -379,16 +384,18 @@ baseClient.use({
 		// Retry transient 5xx (502/503/504) on idempotent methods. Rides
 		// through brief windows during a rolling API deploy where a pod is
 		// dropping out of the LB.
-		if (isTransient5xx(response.status) && isIdempotent(request.method)) {
-			const baseRequest = _requestClones.get(request) ?? request;
+		if (
+			isTransient5xx(finalResponse.status) &&
+			isIdempotent(request.method)
+		) {
 			return retryAfterTransient5xx(
 				request.method,
-				baseRequest,
-				response,
+				request,
+				finalResponse,
 			);
 		}
 
-		return response;
+		return finalResponse;
 	},
 });
 
@@ -460,15 +467,7 @@ async function handleAuthResponse(
 			return response;
 		}
 		const refreshed = await refreshAccessToken();
-		if (refreshed) {
-			// Replay from the pre-send clone. The live Request's body stream was
-			// consumed by the attempt that returned 401, so rebuilding from it
-			// loses the body — `POST /api/workflows/execute` would reach the
-			// server empty and come back as a validation error instead of the
-			// workflow result the app's status cards render from.
-			const baseRequest = _requestClones.get(request) ?? request;
-			return retryRequestWithFreshAuth(baseRequest);
-		}
+		if (refreshed) return retryRequestWithFreshAuth(request);
 		handleAuthFailure();
 	}
 
@@ -502,12 +501,7 @@ export function withUserContext(userId: string) {
 				}
 			}
 
-			// Stash a pre-send clone for the same replay paths as the base
-			// client (transient 5xx + 401 refresh), covering bodied requests
-			// too.
-			_requestClones.set(request, request.clone());
-
-			return request;
+			return prepareRequest(request);
 		},
 		async onResponse({ request, response }) {
 			const finalResponse = await handleAuthResponse(request, response);
@@ -515,10 +509,9 @@ export function withUserContext(userId: string) {
 				isTransient5xx(finalResponse.status) &&
 				isIdempotent(request.method)
 			) {
-				const baseRequest = _requestClones.get(request) ?? request;
 				return retryAfterTransient5xx(
 					request.method,
-					baseRequest,
+					request,
 					finalResponse,
 				);
 			}
@@ -598,16 +591,18 @@ export async function authFetch(
 	}
 
 	// Build request for retry support
-	const request = new Request(url, {
-		...options,
-		headers,
-		credentials: "same-origin",
-	});
+	const request = await prepareRequest(
+		new Request(url, {
+			...options,
+			headers,
+			credentials: "same-origin",
+		}),
+	);
 
 	// Wrap the fetch + auth-handling in transient-5xx retry. Each attempt
-	// clones the assembled Request so any body stream is fresh.
+	// rebuilds from the captured bytes so any body stream is fresh.
 	return withTransient5xxRetry(method, async () => {
-		const response = await fetch(request.clone());
-		return handleAuthResponse(request.clone(), response);
+		const response = await fetch(rebuildRequest(request));
+		return handleAuthResponse(request, response);
 	});
 }

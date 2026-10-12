@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { apiClient, authFetch } from "./api-client";
+import { apiClient, authFetch, withUserContext } from "./api-client";
 import { ACCESS_TOKEN_KEY } from "./auth-token";
 
 interface TestPlatformAuthBridge {
@@ -272,7 +272,7 @@ describe("apiClient (openapi-fetch middleware) transient 5xx retry", () => {
 		expect(fetchMock).toHaveBeenCalledTimes(2);
 	});
 
-	it("apiClient.PUT replays the body across retries via the WeakMap clone cache", async () => {
+	it("apiClient.PUT replays the body across transient retries", async () => {
 		// Capture the body sent on each fetch call. The body is a stream so
 		// we read it eagerly in the mock impl before resolving.
 		const capturedBodies: string[] = [];
@@ -294,7 +294,7 @@ describe("apiClient (openapi-fetch middleware) transient 5xx retry", () => {
 		expect(response.status).toBe(200);
 		expect(fetchMock).toHaveBeenCalledTimes(2);
 		// Both attempts must have carried the same body — proves the
-		// WeakMap-cached pre-send clone replayed correctly.
+		// Every attempt carries the original body.
 		expect(capturedBodies).toHaveLength(2);
 		expect(JSON.parse(capturedBodies[0])).toEqual({
 			primary_color: "#abcdef",
@@ -395,7 +395,7 @@ describe("apiClient 401 refresh replay for bodied requests", () => {
 	/**
 	 * A real `fetch()` consumes the request body before the middleware ever
 	 * sees the 401, so the replay in `handleAuthResponse` must be built from
-	 * the pre-send clone — not from the Request fetch already read.
+	 * captured bytes, without constructing from the consumed Request.
 	 *
 	 * This is the exact path `POST /api/workflows/execute` takes when a page
 	 * refresh races token expiry: the setup-status query dies here, and the
@@ -411,6 +411,10 @@ describe("apiClient 401 refresh replay for bodied requests", () => {
 		// already-sent Request.
 		const RealRequest = globalThis.Request;
 		class StrictRequest extends RealRequest {
+			clone(): Request {
+				throw new Error("Request bodies must not be tee'd for replay");
+			}
+
 			constructor(input: RequestInfo | URL, init?: RequestInit) {
 				if (input instanceof RealRequest && input.bodyUsed) {
 					throw new TypeError(
@@ -488,5 +492,143 @@ describe("apiClient 401 refresh replay for bodied requests", () => {
 			execution_id: "exec-setup-1",
 			status: "Success",
 		});
+	});
+});
+
+describe("clone-free request replay", () => {
+	beforeEach(() => {
+		localStorage.setItem(ACCESS_TOKEN_KEY, buildFakeToken());
+		const RealRequest = globalThis.Request;
+		class StrictRequest extends RealRequest {
+			constructor(input: RequestInfo | URL, init?: RequestInit) {
+				if (input instanceof RealRequest && input.bodyUsed)
+					throw new TypeError("Request body already consumed");
+				super(input, init);
+			}
+			clone(): Request {
+				throw new Error("Request bodies must not be tee'd for replay");
+			}
+		}
+		vi.stubGlobal("Request", StrictRequest);
+	});
+
+	afterEach(() => {
+		vi.useRealTimers();
+		vi.unstubAllGlobals();
+		localStorage.clear();
+		sessionStorage.clear();
+	});
+
+	it.each(["base", "user context", "raw"])(
+		"%s replays PUT after 401 then 503 with the fresh token",
+		async (clientKind) => {
+			vi.useFakeTimers();
+			const refreshedToken = `${buildFakeToken()}-rotated`;
+			const attempts: {
+				body: string;
+				auth: string | null;
+				user: string | null;
+			}[] = [];
+			const fetchMock = vi.fn(async (input: Request | string) => {
+				if (typeof input === "string") {
+					if (input === "/auth/me") return mockResponse(401);
+					if (input === "/api/auth/refresh")
+						return mockJsonResponse(200, {
+							access_token: refreshedToken,
+						});
+					throw new Error(`Unexpected endpoint: ${input}`);
+				}
+				attempts.push({
+					body: await input.text(),
+					auth: input.headers.get("Authorization"),
+					user: input.headers.get("X-User-Id"),
+				});
+				return mockJsonResponse(
+					[401, 503, 200][attempts.length - 1],
+					{},
+				);
+			});
+			vi.stubGlobal("fetch", fetchMock);
+			const body = { organization_name: "Replay test" };
+			const result =
+				clientKind === "raw"
+					? authFetch("/api/branding", {
+							method: "PUT",
+							body: JSON.stringify(body),
+						})
+					: (clientKind === "base"
+							? apiClient
+							: withUserContext("target-user")
+						)
+							.PUT("/api/branding", {
+								body,
+								fetch: fetchMock,
+							} as never)
+							.then(({ response }) => response);
+			const settled = expect(result).resolves.toHaveProperty(
+				"status",
+				200,
+			);
+			await flushRetries();
+			await settled;
+			expect(attempts).toHaveLength(3);
+			for (const attempt of attempts)
+				expect(JSON.parse(attempt.body)).toEqual(body);
+			expect(attempts.slice(1).map(({ auth }) => auth)).toEqual([
+				`Bearer ${refreshedToken}`,
+				`Bearer ${refreshedToken}`,
+			]);
+			if (clientKind === "user context")
+				expect(attempts.map(({ user }) => user)).toEqual(
+					Array(3).fill("target-user"),
+				);
+		},
+	);
+
+	it("preserves multipart bytes, boundary and abort signal on a 401 replay", async () => {
+		const attempts: {
+			bytes: number[];
+			type: string | null;
+			aborted: boolean;
+		}[] = [];
+		const controller = new AbortController();
+		const signals: AbortSignal[] = [];
+		const fetchMock = vi.fn(async (input: Request | string) => {
+			if (typeof input === "string") {
+				if (input === "/auth/me") return mockResponse(401);
+				return mockJsonResponse(200, {
+					access_token: buildFakeToken(),
+				});
+			}
+			attempts.push({
+				bytes: Array.from(new Uint8Array(await input.arrayBuffer())),
+				type: input.headers.get("Content-Type"),
+				aborted: input.signal.aborted,
+			});
+			signals.push(input.signal);
+			return mockResponse(attempts.length === 1 ? 401 : 200);
+		});
+		vi.stubGlobal("fetch", fetchMock);
+		const form = new FormData();
+		form.append(
+			"logo",
+			new Blob([new Uint8Array([0, 128, 255])]),
+			"logo.bin",
+		);
+		expect(
+			(
+				await authFetch("/api/branding/logo", {
+					method: "POST",
+					body: form,
+					signal: controller.signal,
+				})
+			).status,
+		).toBe(200);
+		expect(attempts).toHaveLength(2);
+		expect(attempts[1]).toEqual(attempts[0]);
+		expect(attempts[0].type).toMatch(/^multipart\/form-data; boundary=/);
+		expect(attempts[0].bytes).toContain(255);
+		controller.abort();
+		expect(signals.every((signal) => signal.aborted)).toBe(true);
 	});
 });
