@@ -222,6 +222,18 @@ jobs:
               sudo chown --no-dereference "$(id -u):$(id -g)" "$file"
             fi
           done
+          # A failed combiner retains its real runtime inputs before the
+          # disposable coverage volume is deleted. No report is synthesized.
+          runtime_shards="$SONAR_LOG_DIR/sonar-runtime-shards"
+          if [ -e "$runtime_shards" ] || [ -L "$runtime_shards" ]; then
+            test -d "$runtime_shards" && test ! -L "$runtime_shards"
+            sudo chown --no-dereference "$(id -u):$(id -g)" "$runtime_shards"
+            while IFS= read -r -d '' shard; do
+              test -f "$shard" && test ! -L "$shard"
+              sudo chown --no-dereference "$(id -u):$(id -g)" "$shard"
+            done < <(find "$runtime_shards" -mindepth 1 -maxdepth 1 -print0)
+            cp -R "$runtime_shards" .sonar-evidence/diagnostics/
+          fi
           if [ -f "$SONAR_LOG_DIR/test-results.xml" ]; then
             cp "$SONAR_LOG_DIR/test-results.xml" .sonar-evidence/diagnostics/api-unit-junit.xml
           fi

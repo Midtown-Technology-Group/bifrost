@@ -380,7 +380,7 @@ def test_sonar_private_artifacts_transfer_on_export_failure(tmp_path: Path):
     block = workflow[start:end]
     assert "if: always() && env.SONAR_LOG_DIR != ''" in block
     assert start > workflow.index("      - name: Tear down task-owned stack")
-    assert workflow.count("sudo chown --no-dereference") == 1
+    assert workflow.count("sudo chown --no-dereference") == 3
     start = block.index("          for private_file in ")
     end = block.index("          done\n", start) + len("          done\n")
     script = textwrap.dedent(block[start:end])
@@ -420,6 +420,46 @@ def test_sonar_private_artifacts_transfer_on_export_failure(tmp_path: Path):
     assert result.returncode != 0
     assert "Unsafe private Sonar diagnostic artifact" in result.stderr
     assert not capture.exists()
+
+
+def test_sonar_failed_runtime_inputs_survive_volume_teardown(tmp_path: Path):
+    workflow_path = API_ROOT.parent / ".github/workflows/sonar-coverage.yml"
+    workflow = workflow_path.read_text()
+    start = workflow.index('          runtime_shards="$SONAR_LOG_DIR/sonar-runtime-shards"')
+    end = workflow.index('          if [ -f "$SONAR_LOG_DIR/test-results.xml" ]; then', start)
+    script = textwrap.dedent(workflow[start:end])
+    results = tmp_path / "results"
+    shards = results / "sonar-runtime-shards"
+    shards.mkdir(parents=True, mode=0o700)
+    shard = shards / ".coverage.sonar.failed"
+    shard.write_bytes(b"actual failing database")
+    shard.chmod(0o600)
+    destination = tmp_path / ".sonar-evidence/diagnostics"
+    destination.mkdir(parents=True)
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    sudo = bin_dir / "sudo"
+    sudo.write_text('#!/bin/sh\nexec "$@"\n')
+    sudo.chmod(0o700)
+    environment = dict(os.environ, PATH=f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+                       SONAR_LOG_DIR=str(results))
+    result = subprocess.run(["bash", "-euo", "pipefail", "-c", script], env=environment,
+                            cwd=tmp_path, capture_output=True, text=True, check=False)
+    assert result.returncode == 0, result.stderr
+    retained = destination / shards.name / shard.name
+    assert retained.read_bytes() == shard.read_bytes()
+    assert retained.stat().st_mode & 0o777 == 0o600
+    assert retained.parent.stat().st_mode & 0o777 == 0o700
+    outside = tmp_path / "outside"
+    outside.write_bytes(b"outside diagnostic boundary")
+    shard.unlink()
+    shard.symlink_to(outside)
+    retained.unlink()
+    result = subprocess.run(["bash", "-euo", "pipefail", "-c", script], env=environment,
+                            cwd=tmp_path, capture_output=True, text=True, check=False)
+    assert result.returncode != 0
+    assert not retained.exists()
+    assert outside.read_bytes() == b"outside diagnostic boundary"
 
 
 def _runtime_combiner(tmp_path: Path):
@@ -488,7 +528,7 @@ def test_sonar_runtime_mount_and_workflow_use_the_tested_combiner() -> None:
     assert "coverage combine --strict" not in workflow
 
 
-@pytest.mark.parametrize("invalid", ["corrupt", "incompatible"])
+@pytest.mark.parametrize("invalid", ["corrupt", "incompatible", "empty"])
 def test_sonar_invalid_report_is_not_skipped_when_another_report_is_valid(
     tmp_path: Path, invalid: str
 ) -> None:
@@ -506,9 +546,18 @@ def test_sonar_invalid_report_is_not_skipped_when_another_report_is_valid(
         invalid_path.write_bytes(b"not a coverage database")
     else:
         incompatible = coverage.CoverageData(basename=str(invalid_path))
-        incompatible.add_lines({source: [1]})
+        if invalid == "empty":
+            incompatible.add_arcs({})
+        else:
+            incompatible.add_lines({source: [1]})
         incompatible.write()
-    with pytest.raises((ValueError, CoverageException)):
+    original_reports = {path.name: path.read_bytes() for path in module.RUNTIME_DIR.iterdir()}
+    expected = "Empty actual runtime coverage data:.*invalid" if invalid == "empty" else None
+    with pytest.raises((ValueError, CoverageException), match=expected):
         module.main()
     assert module.DATA_FILE.read_bytes() == original
     assert invalid_path.exists()
+    retained = module.DATA_FILE.parent / "sonar-runtime-shards"
+    assert retained.stat().st_mode & 0o777 == 0o700
+    assert {path.name: path.read_bytes() for path in retained.iterdir()} == original_reports
+    assert all(path.stat().st_mode & 0o777 == 0o600 for path in retained.iterdir())

@@ -1,5 +1,7 @@
 """Combine actual Sonar unit and server-process hits; reject absent runtime data."""
 
+import os
+import shutil
 from pathlib import Path
 
 import coverage
@@ -18,13 +20,26 @@ def main() -> int:
     collector = coverage.Coverage(config_file=str(RC_FILE), data_file=str(DATA_FILE))
     collector.load()
     unit_data = collector.get_data()
-    for report in reports:
-        runtime_data = coverage.CoverageData(basename=str(report))
-        runtime_data.read()
-        if not runtime_data.measured_files():
-            raise ValueError("Empty actual runtime coverage data")
-        if runtime_data.has_arcs() != unit_data.has_arcs():
-            raise ValueError("Incompatible unit and runtime branch coverage data")
+    try:
+        for report in reports:
+            runtime_data = coverage.CoverageData(basename=str(report))
+            runtime_data.read()
+            if not runtime_data.measured_files():
+                raise ValueError(f"Empty actual runtime coverage data: {report.name}")
+            if runtime_data.has_arcs() != unit_data.has_arcs():
+                raise ValueError(f"Incompatible unit and runtime branch coverage data: {report.name}")
+    except (ValueError, coverage.exceptions.CoverageException):
+        # The runtime volume is removed during teardown. Keep the actual input
+        # databases in the already-private result directory before failing.
+        diagnostics = DATA_FILE.parent / "sonar-runtime-shards"
+        diagnostics.mkdir(mode=0o700, exist_ok=False)
+        for report in reports:
+            destination = diagnostics / report.name
+            descriptor = os.open(destination, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            with os.fdopen(descriptor, "wb") as output:
+                with report.open("rb") as source:
+                    shutil.copyfileobj(source, output)
+        raise
     collector.combine(data_paths=[str(RUNTIME_DIR)], strict=True, keep=True)
     collector.save()
     return 0
