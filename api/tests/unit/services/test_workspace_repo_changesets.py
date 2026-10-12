@@ -1203,6 +1203,92 @@ async def test_activation_closure_commits_only_before_paths_from_mixed_history(
 
 
 @pytest.mark.asyncio
+async def test_activation_closure_commits_verified_registration_source(monkeypatch):
+    changed_path = "features/changed.py"
+    verified_path = "features/existing.py"
+    before = b"before\n"
+    changed = b"changed\n"
+    verified = b"@workflow\ndef existing():\n    return True\n"
+    writer = RecordingWriter(
+        history_hashes={
+            changed_path: hashlib.sha256(before).hexdigest(),
+            verified_path: None,
+        }
+    )
+    svc = WorkspaceRepoChangesetService(
+        FakeDB(),
+        uuid4(),
+        repo=MemoryRepo({changed_path: before, verified_path: verified}),
+        commit_writer=writer,
+        module_coherence_inspector=coherent_runtime,
+    )
+    svc.rows = MemoryRows()
+    row = await svc.begin(WorkspaceRepoChangesetBegin(scope="features"), uuid4())
+    await svc.stage(
+        row.id,
+        WorkspaceRepoFileMutationRequest(
+            path=changed_path,
+            operation="write",
+            content_base64=base64.b64encode(changed).decode(),
+        ),
+    )
+    await svc.stage(
+        row.id,
+        WorkspaceRepoFileMutationRequest(
+            path=verified_path,
+            operation="verify",
+            expected_hash=hashlib.sha256(verified).hexdigest(),
+        ),
+    )
+    stored = svc.rows.items[row.id]
+    stored.validation = {"valid": True}
+    stored.status = "validated"
+
+    class Storage:
+        def __init__(self, _db):
+            pass
+
+        async def write_file(self, path, content, **_kwargs):
+            await svc.repo.write(path, content)
+            return SimpleNamespace(pending_deactivations=[])
+
+    monkeypatch.setattr(
+        "src.services.workspace_repo_changesets.FileStorageService", Storage
+    )
+
+    @asynccontextmanager
+    async def source_update(**_kwargs):
+        yield
+
+    monkeypatch.setattr("src.core.module_cache.workspace_source_update", source_update)
+    closed = await svc.activate(
+        row.id,
+        activation_request(
+            stored, commit_message="Release mixed registration", push=True
+        ),
+        "operator@example.com",
+    )
+
+    assert writer.inspections == [
+        ((changed_path, verified_path), None, None),
+    ]
+    assert len(writer.requests) == 1
+    committed = {item.path: item for item in writer.requests[0].files}
+    assert set(committed) == {changed_path, verified_path}
+    assert (
+        committed[verified_path].content_base64 == base64.b64encode(verified).decode()
+    )
+    assert committed[verified_path].expected_before_sha256 is None
+    assert (
+        committed[verified_path].expected_sha256 == hashlib.sha256(verified).hexdigest()
+    )
+    assert closed.validation["git_closure"]["committed_paths"] == [
+        changed_path,
+        verified_path,
+    ]
+
+
+@pytest.mark.asyncio
 async def test_activation_closure_preserves_activation_for_other_history_bytes(
     monkeypatch,
 ):
@@ -1558,6 +1644,65 @@ async def test_git_convergence_uses_history_parent_hash_not_workspace_before_has
     assert request.convergence_candidate_id == preview.candidate_id
     assert request.reconciled_changeset_ids == (row.id,)
     assert svc.db.commits == 2
+
+
+@pytest.mark.asyncio
+async def test_git_convergence_includes_verified_registration_source():
+    changed_path = "features/changed.py"
+    verified_path = "features/existing.py"
+    changed = b"changed\n"
+    verified = b"@workflow\ndef existing():\n    return True\n"
+    changed_hash = hashlib.sha256(changed).hexdigest()
+    verified_hash = hashlib.sha256(verified).hexdigest()
+    source_sha = "d" * 40
+    writer = ConvergenceWriter(
+        source_sha=source_sha,
+        source_hashes={changed_path: changed_hash, verified_path: verified_hash},
+        history_sha="e" * 40,
+        history_hashes={changed_path: None, verified_path: None},
+    )
+    svc = WorkspaceRepoChangesetService(
+        FakeDB(),
+        uuid4(),
+        repo=MemoryRepo({changed_path: b"before\n", verified_path: verified}),
+        commit_writer=writer,
+    )
+    svc.rows = MemoryRows()
+    started = await svc.begin(WorkspaceRepoChangesetBegin(scope="features"), uuid4())
+    await svc.stage(
+        started.id,
+        WorkspaceRepoFileMutationRequest(
+            path=changed_path,
+            operation="write",
+            content_base64=base64.b64encode(changed).decode(),
+        ),
+    )
+    await svc.stage(
+        started.id,
+        WorkspaceRepoFileMutationRequest(
+            path=verified_path,
+            operation="verify",
+            expected_hash=verified_hash,
+        ),
+    )
+    row = svc.rows.items[started.id]
+    await svc.repo.write(changed_path, changed)
+    row.status = "activated"
+    row.failure_detail = {
+        "phase": "git_closure",
+        "state": "failed",
+        "activation_preserved": True,
+    }
+
+    preview = await svc.preview_git_convergence(
+        WorkspaceRepoGitConvergencePreviewRequest(
+            changeset_ids=[row.id], protected_main_source_sha=source_sha
+        )
+    )
+
+    assert preview.ready_to_apply is True
+    assert [item.path for item in preview.paths] == [changed_path, verified_path]
+    assert preview.changesets[0].reconciled_paths == [changed_path, verified_path]
 
 
 @pytest.mark.asyncio
