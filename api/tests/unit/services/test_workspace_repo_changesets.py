@@ -1725,6 +1725,61 @@ async def test_git_convergence_marks_older_selected_bytes_as_superseded():
 
 
 @pytest.mark.asyncio
+async def test_git_convergence_closes_without_write_when_history_already_matches():
+    path = "features/already_converged.py"
+    before = b"before\n"
+    live = b"reviewed and already preserved\n"
+    live_hash = hashlib.sha256(live).hexdigest()
+    source_sha = "d" * 40
+    writer = ConvergenceWriter(
+        source_sha=source_sha,
+        source_hashes={path: live_hash},
+        history_sha="e" * 40,
+        history_hashes={path: live_hash},
+    )
+    svc = WorkspaceRepoChangesetService(
+        FakeDB(), uuid4(), repo=MemoryRepo({path: before}), commit_writer=writer
+    )
+    svc.rows = MemoryRows()
+    started = await svc.begin(WorkspaceRepoChangesetBegin(scope=path), uuid4())
+    await svc.stage(
+        started.id,
+        WorkspaceRepoFileMutationRequest(
+            path=path,
+            operation="write",
+            content_base64=base64.b64encode(live).decode(),
+        ),
+    )
+    row = svc.rows.items[started.id]
+    row.status = "activated"
+    row.failure_detail = {"phase": "git_closure", "state": "failed"}
+    await svc.repo.write(path, live)
+    request = WorkspaceRepoGitConvergencePreviewRequest(
+        changeset_ids=[row.id], protected_main_source_sha=source_sha
+    )
+
+    preview = await svc.preview_git_convergence(request)
+    assert preview.ready_to_apply is True
+    assert preview.paths[0].requires_write is False
+
+    applied = await svc.apply_git_convergence(
+        WorkspaceRepoGitConvergenceApplyRequest(
+            **request.model_dump(),
+            candidate_id=preview.candidate_id,
+            commit_message="Close already preserved history",
+        ),
+        operator="operator@example.com",
+    )
+
+    assert applied.applied is True
+    assert applied.commit_sha == "e" * 40
+    assert applied.signature_state == "VALID"
+    assert row.status == "committed"
+    assert row.failure_detail is None
+    assert writer.requests == []
+
+
+@pytest.mark.asyncio
 async def test_git_convergence_uses_current_reviewed_bytes_for_superseded_path():
     path = "features/shared.py"
     selected_bytes = b"bytes from selected release\n"
