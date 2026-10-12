@@ -1,6 +1,6 @@
 from pathlib import Path
-import pytest
 
+import pytest
 from scripts.check_mtg_ci_boundaries import (
     REQUIRED_CI_JOB_NAMES,
     _repo_root,
@@ -31,10 +31,13 @@ def test_required_ci_check_identities_are_preserved():
 def test_ci_image_tokens_are_removed_before_checkout():
     root = _repo_root()
 
-    assert check_ci_image_token_boundaries(
-        root / ".github/workflows/ci.yml",
-        root / ".github/workflows/sonar-coverage.yml",
-    ) == []
+    assert (
+        check_ci_image_token_boundaries(
+            root / ".github/workflows/ci.yml",
+            root / ".github/workflows/sonar-coverage.yml",
+        )
+        == []
+    )
 
 
 def test_ci_image_token_after_checkout_is_rejected(tmp_path: Path):
@@ -105,7 +108,95 @@ def test_ci_image_authentication_must_precede_checkout(tmp_path: Path):
         mutated,
     )
 
-    assert any("authentication must finish before checkout" in item for item in violations)
+    assert any(
+        "authentication must finish before checkout" in item for item in violations
+    )
+
+
+@pytest.mark.parametrize(
+    ("old", "new", "expected"),
+    (
+        (
+            "          GHCR_TOKEN: ${{ github.token }}",
+            "          GHCR_TOKEN: unavailable",
+            "must receive the read-only GitHub token",
+        ),
+        (
+            '            docker pull "$ref"',
+            '            docker inspect "$ref"',
+            "must login, pull, and logout inline",
+        ),
+        (
+            (
+                "          trap 'docker logout \"$REGISTRY\" >/dev/null 2>&1 || true' EXIT\n"
+                "          printf '%s' \"$GHCR_TOKEN\" | docker login"
+            ),
+            (
+                "          printf '%s' \"$GHCR_TOKEN\" | docker login\n"
+                "          trap 'docker logout \"$REGISTRY\" >/dev/null 2>&1 || true' EXIT\n"
+                "          # preserve command suffix\n"
+                "          true #"
+            ),
+            "logout cleanup must be armed before registry login",
+        ),
+        (
+            "run: bash api/scripts/ci/prepare-test-images.sh api client",
+            "run: bash untrusted-image-preparation.sh api client",
+            "must use the credential-free repository helper",
+        ),
+    ),
+)
+def test_ci_image_boundary_rejects_malformed_trusted_steps(
+    tmp_path: Path,
+    old: str,
+    new: str,
+    expected: str,
+):
+    root = _repo_root()
+    original = (root / ".github/workflows/sonar-coverage.yml").read_text(
+        encoding="utf-8"
+    )
+    assert old in original
+    mutated = tmp_path / "sonar-coverage.yml"
+    mutated.write_text(original.replace(old, new, 1), encoding="utf-8")
+
+    violations = check_ci_image_token_boundaries(
+        root / ".github/workflows/ci.yml", mutated
+    )
+
+    assert any(expected in item for item in violations)
+
+
+def test_ci_image_boundary_requires_files_jobs_and_named_steps(tmp_path: Path):
+    root = _repo_root()
+    missing = tmp_path / "missing.yml"
+    assert any(
+        "workflow file does not exist" in item
+        for item in check_ci_image_token_boundaries(
+            root / ".github/workflows/ci.yml", missing
+        )
+    )
+
+    missing.write_text("jobs:\n  unrelated:\n    steps: []\n", encoding="utf-8")
+    assert any(
+        "required image consumer job is missing" in item
+        for item in check_ci_image_token_boundaries(
+            root / ".github/workflows/ci.yml", missing
+        )
+    )
+
+    original = (root / ".github/workflows/sonar-coverage.yml").read_text(
+        encoding="utf-8"
+    )
+    start = original.index("      - name: Pull CI image caches before checkout\n")
+    end = original.index("\n      - name: Checkout exact analysis source\n", start)
+    missing.write_text(original[:start] + original[end:], encoding="utf-8")
+    assert any(
+        "require a trusted cache pull" in item
+        for item in check_ci_image_token_boundaries(
+            root / ".github/workflows/ci.yml", missing
+        )
+    )
 
 
 def test_required_ci_check_identity_change_is_rejected(tmp_path: Path):
@@ -158,10 +249,12 @@ def test_zero_shard_sentinel_guard_is_required(tmp_path: Path):
     mutated = tmp_path / "ci.yml"
     sentinel_guard = (
         " && fromJSON(needs.affected-test-plan.outputs.api_e2e_matrix || "
-        "'{\"include\":[{\"shard\":0,\"total\":0}]}').include[0].total != 0"
+        '\'{"include":[{"shard":0,"total":0}]}\').include[0].total != 0'
     )
     mutated.write_text(original.replace(sentinel_guard, "", 1), encoding="utf-8")
-    assert mutated.read_text(encoding="utf-8") != original, "sentinel guard not found in ci.yml"
+    assert mutated.read_text(encoding="utf-8") != original, (
+        "sentinel guard not found in ci.yml"
+    )
 
     violations = check_ci_workflow(mutated)
 
