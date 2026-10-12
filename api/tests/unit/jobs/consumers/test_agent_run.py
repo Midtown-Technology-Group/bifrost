@@ -16,7 +16,7 @@ from src.jobs.consumers.agent_run import AgentRunConsumer  # noqa: E402
 @pytest.mark.parametrize(
     ("status", "claimable"),
     [
-        ("scheduled", False),
+        ("scheduled", True),
         ("queued", True),
         ("running", False),
         ("completed", False),
@@ -61,7 +61,7 @@ async def test_durable_agent_run_claim_serializes_with_publisher(
 @pytest.mark.parametrize(
     ("status", "expected_status", "failed"),
     [
-        ("scheduled", "scheduled", False),
+        ("scheduled", "failed", True),
         ("queued", "failed", True),
         ("running", "running", False),
         ("completed", "completed", False),
