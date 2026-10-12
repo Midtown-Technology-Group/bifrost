@@ -207,6 +207,31 @@ async def test_preview_reports_proposed_syntax_before_unrelated_legacy_paths() -
 
 
 @pytest.mark.asyncio
+async def test_preview_can_repair_an_invalid_target_python_file() -> None:
+    service = WorkspaceFileImpactService(
+        _Repo(
+            {
+                "helpers/shared.py": b"def broken(:\n",
+                "features/vendor/report.py": b"from helpers.shared import VALUE\n",
+            }
+        )
+    )
+
+    result = await service.preview(
+        WorkspaceFileImpactRequest(
+            path="helpers/shared.py",
+            content="VALUE = 1\n",
+        )
+    )
+
+    assert result.ready_to_write is True
+    assert result.changed is True
+    assert [item.path for item in result.reverse_dependencies] == [
+        "features/vendor/report.py"
+    ]
+
+
+@pytest.mark.asyncio
 async def test_preview_rejects_non_authored_python_root() -> None:
     service = WorkspaceFileImpactService(
         _Repo({"api/bifrost.py": b"VALUE = 'legacy module'\n"})
@@ -565,7 +590,12 @@ async def test_snapshot_cache_rejects_updating_workspace_generation(
     )
 
     with pytest.raises(WorkspaceFileImpactInvalid, match="update is in progress"):
-        await service.preview(WorkspaceFileImpactRequest(path="helpers/shared.py"))
+        await service.preview(
+            WorkspaceFileImpactRequest(
+                path="helpers/shared.py",
+                content="OTHER = 2\n",
+            )
+        )
 
     assert repo.read_count == 0
 
@@ -592,7 +622,12 @@ async def test_snapshot_cache_rejects_generation_change_during_load(
     )
 
     with pytest.raises(WorkspaceFileImpactInvalid, match="changed during"):
-        await service.preview(WorkspaceFileImpactRequest(path="helpers/shared.py"))
+        await service.preview(
+            WorkspaceFileImpactRequest(
+                path="helpers/shared.py",
+                content="OTHER = 2\n",
+            )
+        )
 
     assert repo.read_count == 1
 
