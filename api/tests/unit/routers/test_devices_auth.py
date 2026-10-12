@@ -32,11 +32,15 @@ async def test_get_device_rejects_revoked_engine_attempt_before_authorization() 
         async def scalar(self, statement):
             return None
 
+    device_id = uuid4()
+    db = RevokedAttemptDb()
+    user = _engine_principal()
+
     with pytest.raises(HTTPException) as exc:
         await devices.get_device_route(
-            device_id=uuid4(),
-            db=RevokedAttemptDb(),
-            user=_engine_principal(),
+            device_id=device_id,
+            db=db,
+            user=user,
             x_bifrost_control_key=None,
         )
 
