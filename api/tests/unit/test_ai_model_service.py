@@ -476,7 +476,6 @@ async def test_resolve_config_carries_anthropic_cache_capability(db_session):
         api_key="sk-test",
         endpoint="https://gateway.example.test",
     )
-    connection.anthropic_prompt_cache_supported = False
     profile = await service.create_profile(
         name=f"Claude {uuid4().hex[:8]}",
         connection_id=connection.id,
@@ -484,10 +483,14 @@ async def test_resolve_config_carries_anthropic_cache_capability(db_session):
         capabilities=None,
         enabled_for_chat=True,
     )
+    profile.anthropic_prompt_cache_supported = False
+    await db_session.flush()
 
     config = await service.resolve_config(profile_id=profile.id)
 
+    assert config.model_profile_id == profile.id
     assert config.provider_connection_id == connection.id
+    assert config.provider_connection_updated_at == connection.updated_at
     assert config.anthropic_prompt_cache_supported is False
 
 
@@ -500,16 +503,57 @@ async def test_connection_transport_change_resets_cache_capability(db_session):
         api_key="sk-test",
         endpoint="https://one.example.test",
     )
-    connection.anthropic_prompt_cache_supported = False
+    profile = await service.create_profile(
+        name=f"Claude {uuid4().hex[:8]}",
+        connection_id=connection.id,
+        model="claude-test",
+        capabilities=None,
+        enabled_for_chat=True,
+    )
+    profile.anthropic_prompt_cache_supported = False
     await db_session.flush()
 
-    updated = await service.update_connection(
+    await service.update_connection(
         connection.id,
         endpoint="https://two.example.test",
         endpoint_provided=True,
     )
 
+    refreshed = await service.get_profile(profile.id)
+    assert refreshed.anthropic_prompt_cache_supported is None
+
+
+@pytest.mark.asyncio
+async def test_profile_model_change_resets_only_that_cache_capability(db_session):
+    service = AIModelService(db_session)
+    connection = await service.create_connection(
+        name=f"Anthropic {uuid4().hex[:8]}",
+        provider="anthropic",
+        api_key="sk-test",
+        endpoint="https://gateway.example.test",
+    )
+    changed = await service.create_profile(
+        name=f"Changed {uuid4().hex[:8]}",
+        connection_id=connection.id,
+        model="claude-one",
+        capabilities=None,
+        enabled_for_chat=True,
+    )
+    unchanged = await service.create_profile(
+        name=f"Unchanged {uuid4().hex[:8]}",
+        connection_id=connection.id,
+        model="claude-two",
+        capabilities=None,
+        enabled_for_chat=True,
+    )
+    changed.anthropic_prompt_cache_supported = False
+    unchanged.anthropic_prompt_cache_supported = True
+    await db_session.flush()
+
+    updated = await service.update_profile(changed.id, model="claude-three")
+
     assert updated.anthropic_prompt_cache_supported is None
+    assert (await service.get_profile(unchanged.id)).anthropic_prompt_cache_supported is True
 
 
 @pytest.mark.asyncio

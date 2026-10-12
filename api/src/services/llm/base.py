@@ -7,6 +7,7 @@ Abstract base class and data types for LLM providers.
 from abc import ABC, abstractmethod
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass, field
+from datetime import datetime
 from decimal import Decimal
 from typing import Any, Literal
 from uuid import UUID
@@ -130,7 +131,9 @@ class LLMConfig:
     api_key: str
     endpoint: str | None = None
     openai_transport: Literal["responses", "chat_completions"] | None = None
+    model_profile_id: UUID | None = None
     provider_connection_id: UUID | None = None
+    provider_connection_updated_at: datetime | None = None
     anthropic_prompt_cache_supported: bool | None = None
     # Profile-level default output cap (AIModelProfile.default_max_tokens).
     # Populated by AIModelService.resolve_config; loses to an explicit

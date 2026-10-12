@@ -1,5 +1,6 @@
 """Anthropic prompt-cache settings and adaptive endpoint behavior."""
 
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
@@ -15,6 +16,7 @@ from src.services.agent_runtime.model_factory import (
 )
 from src.services.anthropic_prompt_cache import (
     is_prompt_cache_rejection,
+    persist_prompt_cache_support,
     request_with_prompt_cache_fallback,
 )
 from src.services.llm.base import LLMConfig
@@ -109,6 +111,11 @@ def test_cache_control_validation_error_is_retryable(status_code):
     "error",
     [
         ModelHTTPError(400, "claude", {"error": {"message": "invalid model"}}),
+        ModelHTTPError(
+            400,
+            "claude",
+            {"error": {"message": "invalid model; cache_control was included"}},
+        ),
         ModelHTTPError(401, "claude", {"error": {"message": "cache_control denied"}}),
         ModelHTTPError(429, "claude", {"error": {"message": "cache_control limited"}}),
         ModelHTTPError(503, "claude", {"error": {"message": "cache_control unavailable"}}),
@@ -119,13 +126,66 @@ def test_ambiguous_or_non_validation_errors_are_not_cache_rejections(error):
 
 
 @pytest.mark.asyncio
-async def test_unknown_endpoint_falls_back_once_and_remembers_unsupported():
+async def test_persistence_is_fenced_to_the_resolved_profile_and_connection_revision():
+    profile_id = uuid4()
     connection_id = uuid4()
+    connection_updated_at = datetime.now(UTC)
     config = LLMConfig(
         provider="anthropic",
         model="claude",
         api_key="key",
+        model_profile_id=profile_id,
         provider_connection_id=connection_id,
+        provider_connection_updated_at=connection_updated_at,
+    )
+
+    class Session:
+        statement = None
+        committed = False
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, traceback):
+            return None
+
+        async def execute(self, statement):
+            self.statement = statement
+
+        async def commit(self):
+            self.committed = True
+
+    session = Session()
+    with patch(
+        "src.core.database.get_session_factory",
+        return_value=lambda: session,
+    ):
+        await persist_prompt_cache_support(config, False)
+
+    assert session.statement is not None
+    compiled = session.statement.compile()
+    sql = " ".join(str(compiled).split())
+    params = compiled.params
+    assert "ai_model_profiles.model =" in sql
+    assert "ai_model_profiles.connection_id =" in sql
+    assert "EXISTS (SELECT 1 FROM ai_provider_connections" in sql
+    assert "ai_provider_connections.updated_at =" in sql
+    assert profile_id in params.values()
+    assert connection_id in params.values()
+    assert connection_updated_at in params.values()
+    assert session.committed is True
+
+
+@pytest.mark.asyncio
+async def test_unknown_endpoint_falls_back_once_and_remembers_unsupported():
+    profile_id = uuid4()
+    config = LLMConfig(
+        provider="anthropic",
+        model="claude",
+        api_key="key",
+        model_profile_id=profile_id,
+        provider_connection_id=uuid4(),
+        provider_connection_updated_at=datetime.now(UTC),
     )
     send = AsyncMock(
         side_effect=[
@@ -147,17 +207,19 @@ async def test_unknown_endpoint_falls_back_once_and_remembers_unsupported():
     assert send.await_args_list[0].args[0]["anthropic_cache"] is True
     assert not set(anthropic_prompt_cache_settings()) & send.await_args_list[1].args[0].keys()
     assert config.anthropic_prompt_cache_supported is False
-    persist.assert_awaited_once_with(connection_id, False)
+    persist.assert_awaited_once_with(config, False)
 
 
 @pytest.mark.asyncio
 async def test_unknown_endpoint_success_remembers_supported():
-    connection_id = uuid4()
+    profile_id = uuid4()
     config = LLMConfig(
         provider="anthropic",
         model="claude",
         api_key="key",
-        provider_connection_id=connection_id,
+        model_profile_id=profile_id,
+        provider_connection_id=uuid4(),
+        provider_connection_updated_at=datetime.now(UTC),
     )
     send = AsyncMock(return_value="ok")
 
@@ -171,7 +233,80 @@ async def test_unknown_endpoint_success_remembers_supported():
 
     assert result == "ok"
     assert config.anthropic_prompt_cache_supported is True
-    persist.assert_awaited_once_with(connection_id, True)
+    persist.assert_awaited_once_with(config, True)
+
+
+@pytest.mark.asyncio
+async def test_failed_uncached_fallback_does_not_poison_profile_capability():
+    config = LLMConfig(
+        provider="anthropic",
+        model="claude",
+        api_key="key",
+        model_profile_id=uuid4(),
+    )
+    cache_error = ModelHTTPError(
+        400,
+        "claude",
+        {"error": {"message": "cache_control unsupported"}},
+    )
+    fallback_error = ModelHTTPError(
+        400,
+        "claude",
+        {"error": {"message": "invalid model"}},
+    )
+    send = AsyncMock(side_effect=[cache_error, fallback_error])
+
+    with patch(
+        "src.services.anthropic_prompt_cache.persist_prompt_cache_support",
+        new=AsyncMock(),
+    ) as persist, pytest.raises(ModelHTTPError) as raised:
+        await request_with_prompt_cache_fallback(
+            send, anthropic_prompt_cache_settings(), config
+        )
+
+    assert raised.value is fallback_error
+    assert config.anthropic_prompt_cache_supported is None
+    persist.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_model_override_cannot_read_or_mutate_profile_capability():
+    profile_id = uuid4()
+    config = LLMConfig(
+        provider="anthropic",
+        model="configured-claude",
+        api_key="key",
+        model_profile_id=profile_id,
+        anthropic_prompt_cache_supported=False,
+    )
+    send = AsyncMock(
+        side_effect=[
+            ModelHTTPError(
+                400,
+                "override-claude",
+                {"error": {"message": "cache_control unsupported"}},
+            ),
+            "ok",
+        ]
+    )
+
+    with patch(
+        "src.services.anthropic_prompt_cache.persist_prompt_cache_support",
+        new=AsyncMock(),
+    ) as persist:
+        result = await request_with_prompt_cache_fallback(
+            send,
+            anthropic_prompt_cache_settings(),
+            config,
+            effective_model="override-claude",
+        )
+
+    assert result == "ok"
+    assert send.await_args_list[0].args[0]["anthropic_cache"] is True
+    assert config.anthropic_prompt_cache_supported is False
+    override_settings = PydanticAIClient(config)._model_settings(100, "override-claude")
+    assert override_settings["anthropic_cache"] is True
+    persist.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -180,7 +315,7 @@ async def test_generic_validation_error_is_not_retried_or_persisted():
         provider="anthropic",
         model="claude",
         api_key="key",
-        provider_connection_id=uuid4(),
+        model_profile_id=uuid4(),
     )
     error = ModelHTTPError(400, "claude", {"error": {"message": "invalid model"}})
     send = AsyncMock(side_effect=error)
