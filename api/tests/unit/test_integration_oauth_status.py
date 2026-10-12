@@ -88,12 +88,15 @@ async def test_persist_integration_oauth_recovery_clears_stale_provider_failure(
     from src.services.oauth_provider import persist_integration_oauth_recovery
 
     provider = SimpleNamespace(
+        organization_id=None,
         status="failed",
         status_message="Token refresh failed: bad entity_id",
         last_token_refresh=None,
         scopes=["scope"],
     )
     token = SimpleNamespace(
+        organization_id=None,
+        user_id=None,
         encrypted_access_token=b"old-token",
         encrypted_refresh_token=None,
         expires_at=None,
@@ -126,4 +129,74 @@ async def test_persist_integration_oauth_recovery_clears_stale_provider_failure(
     assert token.status == "completed"
     assert token.status_message is None
     assert token.encrypted_access_token == b"new-token"
+    db.flush.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_org_oauth_recovery_does_not_clear_global_provider_failure():
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock, MagicMock, patch
+    from uuid import uuid4
+
+    from src.services.oauth_provider import persist_integration_oauth_recovery
+
+    org_id = uuid4()
+    provider = SimpleNamespace(
+        id=uuid4(),
+        organization_id=None,
+        status="failed",
+        status_message="Global credential is unavailable",
+        last_token_refresh=None,
+        scopes=["scope"],
+    )
+    global_token = SimpleNamespace(
+        organization_id=None,
+        user_id=None,
+        encrypted_access_token=b"global-token",
+        encrypted_refresh_token=None,
+        expires_at=None,
+        scopes=["global-scope"],
+        status="failed",
+        status_message="Global token failed",
+        last_refresh_at=None,
+    )
+    org_token = SimpleNamespace(
+        organization_id=org_id,
+        user_id=None,
+        encrypted_access_token=b"old-org-token",
+        encrypted_refresh_token=None,
+        expires_at=None,
+        scopes=[],
+        status="failed",
+        status_message="Org token failed",
+        last_refresh_at=None,
+    )
+    db = MagicMock()
+    db.add = MagicMock()
+    db.flush = AsyncMock()
+
+    with patch(
+        "src.services.oauth_scope_resolution.get_oauth_token_for_scope",
+        new_callable=AsyncMock,
+        return_value=org_token,
+    ) as get_scoped_token:
+        result = await persist_integration_oauth_recovery(
+            db,
+            provider=provider,
+            org_uuid=org_id,
+            stored_token=global_token,
+            encrypted_access_token=b"new-org-token",
+            expires_at=datetime.now(timezone.utc),
+            scopes=["org-scope"],
+        )
+
+    assert result is org_token
+    assert org_token.encrypted_access_token == b"new-org-token"
+    assert org_token.status == "completed"
+    assert global_token.encrypted_access_token == b"global-token"
+    assert global_token.status == "failed"
+    assert provider.status == "failed"
+    assert provider.status_message == "Global credential is unavailable"
+    assert provider.last_token_refresh is None
+    get_scoped_token.assert_awaited_once_with(db, provider.id, org_id)
     db.flush.assert_awaited_once()

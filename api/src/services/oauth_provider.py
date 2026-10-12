@@ -780,11 +780,21 @@ async def persist_integration_oauth_recovery(
     encrypted_refresh_token: bytes | None = None,
     scopes: list[str] | None = None,
 ) -> "OAuthToken":
-    """Persist a recovered integration OAuth token and clear stale provider failure."""
+    """Persist recovery at its exact token scope.
+
+    An organization recovery may be given a global fallback token by the SDK
+    read cascade. Never overwrite that fallback, and never let an org-only
+    success rewrite the status of a global provider shared by other tenants.
+    """
     from src.services.oauth_scope_resolution import get_oauth_token_for_scope
 
     now = datetime.now(timezone.utc)
     token_obj = stored_token
+    if token_obj is not None and (
+        getattr(token_obj, "organization_id", None) != org_uuid
+        or getattr(token_obj, "user_id", None) is not None
+    ):
+        token_obj = None
     if token_obj is None:
         token_obj = await get_oauth_token_for_scope(db, provider.id, org_uuid)
 
@@ -813,9 +823,10 @@ async def persist_integration_oauth_recovery(
     token_obj.status_message = None
     token_obj.last_refresh_at = now
 
-    provider.status = "completed"
-    provider.status_message = None
-    provider.last_token_refresh = now
+    if getattr(provider, "organization_id", None) == org_uuid:
+        provider.status = "completed"
+        provider.status_message = None
+        provider.last_token_refresh = now
 
     await db.flush()
     return token_obj
