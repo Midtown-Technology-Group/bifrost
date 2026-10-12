@@ -463,8 +463,9 @@ services:
                                       # bifrost-build/platform-api.md to enforce docs
                                       # cover every PLATFORM_EXPORT_NAMES entry.
       # Host-mounted for test results (junitxml) — per-worktree, driven by
-      # LOG_DIR (set by test.sh to /tmp/bifrost-$COMPOSE_PROJECT_NAME) so two
-      # worktrees running in parallel don't clobber each other's results.
+      # LOG_DIR. test.sh places it behind an owner-only Git metadata directory
+      # so parallel worktrees stay isolated without exposing writable logs in
+      # shared /tmp.
       - ${LOG_DIR:-/tmp/bifrost}:/tmp/bifrost
       # Reliability evidence uses a non-public container path so static analysis
       # and the harness agree that callers cannot redirect the report.

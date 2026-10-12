@@ -59,7 +59,24 @@ export COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.test.yml}"
 export COMPOSE_PROJECT_NAME
 COMPOSE_PROJECT_NAME="$(compute_project_name .)"
 
-LOG_DIR="/tmp/bifrost-$COMPOSE_PROJECT_NAME"
+# Keep container-writable artifacts behind an owner-only directory. LOG_DIR is
+# deliberately stable across invocations because a long-lived Compose stack
+# retains its bind mounts, but it must not live at a predictable path in shared
+# /tmp: the test runner later grants its container uid write access, which would
+# let another local user plant symlinks for host-side log writers to follow.
+TEST_ARTIFACTS_DIR="$(git rev-parse --path-format=absolute --git-path bifrost-test-artifacts)"
+if [ -L "$TEST_ARTIFACTS_DIR" ]; then
+    echo "ERROR: refusing symlinked test artifacts directory: $TEST_ARTIFACTS_DIR" >&2
+    exit 1
+fi
+(umask 077 && mkdir -p "$TEST_ARTIFACTS_DIR")
+chmod 700 "$TEST_ARTIFACTS_DIR"
+
+LOG_DIR="$TEST_ARTIFACTS_DIR/results"
+if [ -L "$LOG_DIR" ]; then
+    echo "ERROR: refusing symlinked test results directory: $LOG_DIR" >&2
+    exit 1
+fi
 mkdir -p "$LOG_DIR"
 # Pre-create the fixture subdir the api container bind-mounts (install/preview-repo
 # e2e tests stage file:// git repos here). Creating it host-side first means Docker
