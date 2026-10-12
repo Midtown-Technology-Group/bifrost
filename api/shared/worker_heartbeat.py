@@ -11,6 +11,7 @@ per endpoint.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from math import isfinite
 from typing import Any, Mapping
 
 
@@ -41,19 +42,13 @@ def _to_int(value: Any) -> int | None:
 
 def _to_float(value: Any) -> float | None:
     """Best-effort float coercion; returns None when the value is unusable."""
-    if value is None or isinstance(value, bool):
+    if isinstance(value, bool) or not isinstance(value, (int, float, str)):
         return None
-    if isinstance(value, (int, float)):
-        return float(value)
-    if isinstance(value, str):
-        text = value.strip()
-        if not text:
-            return None
-        try:
-            return float(text)
-        except ValueError:
-            return None
-    return None
+    try:
+        result = float(value)
+    except (ValueError, OverflowError):
+        return None
+    return result if isfinite(result) else None
 
 
 @dataclass(frozen=True)

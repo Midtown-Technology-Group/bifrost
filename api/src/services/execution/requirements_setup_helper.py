@@ -59,7 +59,7 @@ def _egg_fragment_name(line: str) -> str | None:
     ``packaging.Requirement`` rejects. Matching on the egg fragment keeps
     those lines counted against the installed distributions.
     """
-    _, _, fragment = line.partition("#")
+    _, _, fragment = _strip_inline_comment(line).partition("#")
     for param in fragment.split("&"):
         key, sep, value = param.partition("=")
         if sep and key.strip() == "egg":

@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import json
+from dataclasses import asdict
+
 import pytest
 
 from shared.worker_heartbeat import normalize_heartbeat
@@ -101,3 +104,14 @@ def test_legacy_process_counts_accept_only_integral_numbers(value, expected):
 
     assert norm.active_process_count == expected
     assert norm.pool_size == expected
+
+
+@pytest.mark.parametrize(
+    "ratio",
+    ["NaN", "Infinity", "-Infinity", float("nan"), float("inf"), float("-inf")],
+)
+def test_nonfinite_saturation_is_unknown_and_json_serializable(ratio):
+    norm = normalize_heartbeat({"saturation_ratio": ratio})
+
+    assert norm.saturation_ratio is None
+    assert json.loads(json.dumps(asdict(norm), allow_nan=False))["saturation_ratio"] is None

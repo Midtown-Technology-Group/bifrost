@@ -1,3 +1,5 @@
+import pytest
+
 from src.services.execution import requirements_setup_helper
 from src.services.execution.requirements_setup_result import RequirementsInstallResult
 
@@ -40,10 +42,11 @@ def test_tab_comment_and_unparseable_line_do_not_abort_count(monkeypatch):
     assert result.requirements_installed == 2
 
 
-def test_pip_vcs_requirement_matched_via_egg_fragment(monkeypatch):
+@pytest.mark.parametrize("comment", ["", " # note", "\t# tab comment"])
+def test_pip_vcs_requirement_matched_via_egg_fragment(monkeypatch, comment):
     monkeypatch.setattr(
         "src.core.requirements_cache.get_requirements_sync",
-        lambda: "git+https://github.com/example/pkg.git#egg=sample\nrequests==2.28\n",
+        lambda: f"git+https://github.com/example/pkg.git#egg=sample{comment}\nrequests==2.28\n",
     )
     monkeypatch.setattr(
         requirements_setup_helper,
