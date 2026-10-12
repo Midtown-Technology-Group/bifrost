@@ -159,6 +159,14 @@ def test_docs_noop_workflow_cannot_spoof_required_ci_check_names() -> None:
     assert job_names.isdisjoint(REQUIRED_CI_CHECK_NAMES)
 
 
+def test_codeql_remains_enabled_and_sdk_fetch_is_not_suppressed() -> None:
+    codeql = _load_yaml(".github/workflows/codeql.yml")
+    triggers = codeql[True]
+
+    assert {"push", "pull_request", "merge_group", "schedule"} <= triggers.keys()
+    assert "# NOSONAR" not in _read("api/src/services/sdk_generator.py")
+
+
 def test_release_assets_upload_before_immutable_release_publication() -> None:
     ci = _load_yaml(".github/workflows/ci.yml")
     steps = ci["jobs"]["create-release"]["steps"]
