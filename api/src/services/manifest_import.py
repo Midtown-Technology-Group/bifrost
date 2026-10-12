@@ -1783,6 +1783,7 @@ class ManifestResolver:
         repo: "RepoStorage | None" = None,
         dry_run: bool = False,
         removed_entity_ids: dict[str, set[str]] | None = None,
+        organization_id: UUID | str | None = None,
         removed_paths: set[str] | None = None,
         approved_deletes: set[tuple[str, str]] | None = None,
         lock_rows: bool = False,
@@ -1832,6 +1833,10 @@ class ManifestResolver:
                 manifest = read_manifest_from_dir(work_dir / ".bifrost")
             else:
                 raise ValueError("Either manifest or work_dir must be provided")
+
+        deletion_organization_id = (
+            UUID(str(organization_id)) if organization_id is not None else None
+        )
 
         # Build existence-check helpers based on repo or work_dir
         if repo:
@@ -1934,6 +1939,43 @@ class ManifestResolver:
                 return q.where(model.solution_id.is_(None))  # type: ignore[attr-defined]
             return q
 
+        def _scope_deletion_query(
+            model: type,
+            q,
+            explicit_ids: list[UUID] | None,
+        ):
+            """Restrict a tenant repository's deletion candidates to its owner.
+
+            Global workspace syncs intentionally retain the legacy full-workspace
+            sweep. Tenant repositories, however, may only sweep rows owned by the
+            selected organization. Entity types without an ownership column fail
+            closed for implicit absence-based sweeps; explicitly reviewed IDs keep
+            their existing partial-import behavior.
+            """
+            if deletion_organization_id is None:
+                return q
+            if model is EventSubscription:
+                return q.where(
+                    EventSubscription.event_source_id.in_(
+                        select(EventSource.id).where(
+                            EventSource.organization_id == deletion_organization_id
+                        )
+                    )
+                )
+            if model is Organization:
+                return q.where(Organization.id == deletion_organization_id)
+            if "organization_id" in model.__table__.columns:  # type: ignore[attr-defined]
+                return q.where(  # type: ignore[attr-defined]
+                    model.organization_id == deletion_organization_id
+                )
+            if explicit_ids is None:
+                logger.debug(
+                    "Skipping implicit %s deletion sweep: no organization ownership column",
+                    model.__tablename__,  # type: ignore[attr-defined]
+                )
+                return None
+            return q
+
         # Helper: query stale IDs (+ names when available) and bulk-delete
         async def _bulk_delete(
             model: type,
@@ -1951,6 +1993,9 @@ class ManifestResolver:
             else:
                 q = select(model.id).where(*base_filter)  # type: ignore[attr-defined]
             q = _spare_solution_managed(model, q)
+            q = _scope_deletion_query(model, q, explicit_ids)
+            if q is None:
+                return 0
             if explicit_ids is not None:
                 q = q.where(model.id.in_(explicit_ids))  # type: ignore[attr-defined]
             elif present:
@@ -1997,6 +2042,9 @@ class ManifestResolver:
             else:
                 q = select(model.id).where(*base_filter)  # type: ignore[attr-defined]
             q = _spare_solution_managed(model, q)
+            q = _scope_deletion_query(model, q, explicit_ids)
+            if q is None:
+                return 0
             if explicit_ids is not None:
                 q = q.where(model.id.in_(explicit_ids))  # type: ignore[attr-defined]
             elif present:
@@ -2063,6 +2111,10 @@ class ManifestResolver:
         cfg_q = select(
             Config.id, Config.integration_id, Config.organization_id, Config.key
         ).where(Config.config_schema_id.is_(None))
+        if deletion_organization_id is not None:
+            cfg_q = cfg_q.where(
+                Config.organization_id == deletion_organization_id
+            )
         explicit_config_ids = _explicit_ids("configs")
         if explicit_config_ids == []:
             stale_cfg_rows = []
@@ -2108,6 +2160,10 @@ class ManifestResolver:
 
         # Tables not in manifest (data preserved — report as "keep")
         table_q = select(Table.id, Table.name)
+        if deletion_organization_id is not None:
+            table_q = table_q.where(
+                Table.organization_id == deletion_organization_id
+            )
         if present_table_uuids:
             table_q = table_q.where(Table.id.notin_(present_table_uuids))
         table_result = await self.db.execute(table_q)
@@ -2183,6 +2239,14 @@ class ManifestResolver:
             tool_q = select(MCPConnectionTool.id, MCPConnectionTool.tool_name, MCPConnectionTool.connection_id).where(
                 MCPConnectionTool.connection_id.in_(present_mcp_connection_uuids)
             )
+            if deletion_organization_id is not None:
+                tool_q = tool_q.where(
+                    MCPConnectionTool.connection_id.in_(
+                        select(MCPConnection.id).where(
+                            MCPConnection.organization_id == deletion_organization_id
+                        )
+                    )
+                )
             if lock_rows:
                 tool_q = tool_q.with_for_update()
             tool_rows = (await self.db.execute(tool_q)).all()

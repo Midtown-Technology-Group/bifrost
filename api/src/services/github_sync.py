@@ -1355,6 +1355,7 @@ class GitHubSyncService:
                     work_dir=work_dir,
                     dry_run=True,
                     removed_entity_ids=None,
+                    organization_id=self._manifest_organization_id,
                     removed_paths=removed_paths,
                 )
                 await validation.rollback()
@@ -1424,6 +1425,7 @@ class GitHubSyncService:
                         work_dir=work_dir,
                         dry_run=True,
                         removed_entity_ids=None,
+                        organization_id=self._manifest_organization_id,
                         removed_paths=removed_paths,
                         lock_rows=True,
                     )
@@ -1438,6 +1440,7 @@ class GitHubSyncService:
                         await self._resolver._resolve_deletions(
                             work_dir=work_dir,
                             removed_entity_ids=None,
+                            organization_id=self._manifest_organization_id,
                             removed_paths=removed_paths,
                             approved_deletes=approved_deletes,
                             lock_rows=True,
@@ -1958,6 +1961,7 @@ class GitHubSyncService:
                 await self._resolver._resolve_deletions(
                     work_dir=work_dir,
                     removed_entity_ids=None,
+                    organization_id=self._manifest_organization_id,
                 )
                 await self._update_file_index(work_dir)
             await self.db.commit()

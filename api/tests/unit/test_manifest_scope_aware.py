@@ -11,10 +11,10 @@ from __future__ import annotations
 import uuid
 
 import pytest
-
+from bifrost.manifest import Manifest
 from src.models.enums import EventSourceType
 from src.models.orm.config import Config
-from src.models.orm.events import EventSource
+from src.models.orm.events import EventSource, EventSubscription
 from src.models.orm.integrations import Integration, IntegrationMapping
 from src.models.orm.organizations import Organization
 from src.models.orm.solutions import Solution
@@ -23,10 +23,137 @@ from src.models.orm.users import Role
 from src.models.orm.workflow_roles import WorkflowRole
 from src.models.orm.workflows import Workflow
 from src.services.manifest_generator import generate_manifest
+from src.services.manifest_import import ManifestResolver
 
 
 @pytest.mark.e2e
 class TestScopeAwareManifest:
+    async def test_organization_deletion_sweep_cannot_cross_tenants(
+        self, db_session
+    ) -> None:
+        """Absence from one tenant's manifest never deletes another scope."""
+        db = db_session
+        suffix = uuid.uuid4().hex[:8]
+        local_org = Organization(
+            id=uuid.uuid4(),
+            name=f"Deletion Local {suffix}",
+            created_by="test@example.com",
+        )
+        foreign_org = Organization(
+            id=uuid.uuid4(),
+            name=f"Deletion Foreign {suffix}",
+            created_by="test@example.com",
+        )
+        integration = Integration(
+            id=uuid.uuid4(),
+            name=f"Deletion Integration {suffix}",
+            is_deleted=False,
+        )
+        db.add_all([local_org, foreign_org, integration])
+        await db.flush()
+
+        def workflow(label: str, organization_id) -> Workflow:
+            return Workflow(
+                id=uuid.uuid4(),
+                name=f"deletion_{label}_{suffix}",
+                function_name="run",
+                path=f"workflows/deletion_{label}_{suffix}.py",
+                type="workflow",
+                organization_id=organization_id,
+                solution_id=None,
+            )
+
+        local_workflow = workflow("local", local_org.id)
+        foreign_workflow = workflow("foreign", foreign_org.id)
+        global_workflow = workflow("global", None)
+        db.add_all([local_workflow, foreign_workflow, global_workflow])
+        await db.flush()
+
+        def event_source(label: str, organization_id) -> EventSource:
+            return EventSource(
+                id=uuid.uuid4(),
+                name=f"deletion_event_{label}_{suffix}",
+                source_type=EventSourceType.TOPIC,
+                organization_id=organization_id,
+                created_by="test@example.com",
+            )
+
+        local_event = event_source("local", local_org.id)
+        foreign_event = event_source("foreign", foreign_org.id)
+        global_event = event_source("global", None)
+        db.add_all([local_event, foreign_event, global_event])
+        await db.flush()
+
+        local_subscription = EventSubscription(
+            event_source_id=local_event.id,
+            workflow_id=local_workflow.id,
+            created_by="test@example.com",
+        )
+        foreign_subscription = EventSubscription(
+            event_source_id=foreign_event.id,
+            workflow_id=foreign_workflow.id,
+            created_by="test@example.com",
+        )
+        global_subscription = EventSubscription(
+            event_source_id=global_event.id,
+            workflow_id=global_workflow.id,
+            created_by="test@example.com",
+        )
+        local_config = Config(
+            id=uuid.uuid4(), key=f"local_{suffix}", value={"scope": "local"},
+            organization_id=local_org.id, integration_id=integration.id,
+            updated_by="test@example.com",
+        )
+        foreign_config = Config(
+            id=uuid.uuid4(), key=f"foreign_{suffix}", value={"scope": "foreign"},
+            organization_id=foreign_org.id, integration_id=integration.id,
+            updated_by="test@example.com",
+        )
+        global_config = Config(
+            id=uuid.uuid4(), key=f"global_{suffix}", value={"scope": "global"},
+            organization_id=None, integration_id=integration.id,
+            updated_by="test@example.com",
+        )
+        local_table = Table(
+            id=uuid.uuid4(), name=f"local_table_{suffix}",
+            organization_id=local_org.id,
+        )
+        foreign_table = Table(
+            id=uuid.uuid4(), name=f"foreign_table_{suffix}",
+            organization_id=foreign_org.id,
+        )
+        global_table = Table(
+            id=uuid.uuid4(), name=f"global_table_{suffix}", organization_id=None,
+        )
+        db.add_all([
+            local_subscription, foreign_subscription, global_subscription,
+            local_config, foreign_config, global_config,
+            local_table, foreign_table, global_table,
+        ])
+        await db.flush()
+
+        changes = await ManifestResolver(db)._resolve_deletions(
+            manifest=Manifest(),
+            organization_id=local_org.id,
+            dry_run=True,
+        )
+        changed_ids = {change.entity_id: change.action for change in changes}
+
+        assert changed_ids[str(local_subscription.id)] == "removed"
+        assert changed_ids[str(local_workflow.id)] == "removed"
+        assert changed_ids[str(local_event.id)] == "removed"
+        assert changed_ids[str(local_config.id)] == "removed"
+        assert changed_ids[str(local_table.id)] == "keep"
+        for protected_id in (
+            foreign_subscription.id, global_subscription.id,
+            foreign_workflow.id, global_workflow.id,
+            foreign_event.id, global_event.id,
+            foreign_config.id, global_config.id,
+            foreign_table.id, global_table.id,
+            integration.id,
+        ):
+            assert str(protected_id) not in changed_ids
+
     async def test_organization_filter_excludes_other_tenant_metadata(
         self, db_session
     ) -> None:

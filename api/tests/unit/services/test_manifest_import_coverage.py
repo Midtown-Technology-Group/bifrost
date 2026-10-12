@@ -1549,6 +1549,44 @@ async def test_resolve_deletions_requires_manifest_or_work_dir():
 
 
 @pytest.mark.asyncio
+async def test_resolve_deletions_scopes_implicit_sweep_to_organization():
+    db = _SequenceDb(*[_RowsResult([]) for _ in range(13)])
+    resolver = manifest_import.ManifestResolver(db)
+
+    await resolver._resolve_deletions(
+        manifest=Manifest(),
+        organization_id=ORG_ID,
+        dry_run=True,
+    )
+
+    statements = [str(statement) for statement in db.statements]
+    scoped_tables = {
+        "event_subscriptions": "event_sources.organization_id",
+        "workflows": "workflows.organization_id",
+        "configs": "configs.organization_id",
+        "tables": "tables.organization_id",
+        "file_policies": "file_policies.organization_id",
+        "custom_claims": "custom_claims.organization_id",
+        "policy_rules": "policy_rules.organization_id",
+        "event_sources": "event_sources.organization_id",
+        "forms": "forms.organization_id",
+        "agents": "agents.organization_id",
+        "applications": "applications.organization_id",
+        "mcp_connections": "mcp_connections.organization_id",
+        "mcp_servers": "mcp_servers.organization_id",
+    }
+    for table, scope_clause in scoped_tables.items():
+        matching = [sql for sql in statements if f"FROM {table}" in sql]
+        assert matching, f"expected a deletion candidate query for {table}"
+        assert all(scope_clause in sql for sql in matching)
+
+    # Integrations and roles are global definitions with no tenant ownership
+    # column, so a tenant repository must fail closed instead of sweeping them.
+    assert not any("FROM integrations" in sql for sql in statements)
+    assert not any("FROM roles" in sql for sql in statements)
+
+
+@pytest.mark.asyncio
 async def test_resolve_deletions_honors_explicit_config_removal_and_preserves_tables():
     stale_table_id = UUID("abababab-abab-abab-abab-abababababab")
     db = _SequenceDb(

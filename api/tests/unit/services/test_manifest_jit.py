@@ -103,4 +103,9 @@ async def test_reimport_regenerates_manifest_and_reindexes_workflows():
 
         mock_regen.assert_called_once()
         mock_reindex.assert_called_once()
+        mock_resolver._resolve_deletions.assert_awaited_once_with(
+            work_dir=mock_work_dir,
+            removed_entity_ids=None,
+            organization_id=service.organization_id,
+        )
         assert result == 5
