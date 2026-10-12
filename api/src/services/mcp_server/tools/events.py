@@ -346,8 +346,14 @@ async def create_event_source(
                     )
 
                     callback_url = _build_callback_url(source.id)
+                    db.add(webhook_source)
+                    await db.flush()
 
                     if adapter:
+                        # Providers such as Graph validate the callback while
+                        # subscribe is in flight. Its separate request must see
+                        # both rows, just as in the REST create lifecycle.
+                        await db.commit()
                         try:
                             result = await adapter.subscribe(
                                 callback_url=callback_url,
@@ -359,9 +365,10 @@ async def create_event_source(
                             webhook_source.expires_at = result.expires_at
                         except Exception as e:
                             logger.error(f"Failed to subscribe webhook: {e}", exc_info=True)
-                            source.error_message = str(e)
+                            await db.delete(source)
+                            await db.commit()
+                            return error_result(f"Failed to create provider subscription: {e}")
 
-                    db.add(webhook_source)
                     await db.flush()
 
                 # Handle schedule
