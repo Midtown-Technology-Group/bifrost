@@ -29,6 +29,8 @@ from src.models.orm.workspace_promotions import (
 )
 from src.services.solution_deploy_obligations import solution_source_content_id
 from src.services.solutions.guard import install_solution_write_guard
+from src.services.solutions.source_artifact import SolutionSourceArtifactStorage
+from src.services.solutions.storage import SolutionStorage
 
 pytestmark = pytest.mark.e2e
 
@@ -199,3 +201,7 @@ async def test_post_deploy_reconciliation_releases_matching_obligation(
             delete(Solution).where(Solution.id == solution_id)
         )
         await db_session.commit()
+        storage = SolutionStorage(solution_id)
+        for path in await storage.list():
+            await storage.delete(path)
+        await SolutionSourceArtifactStorage(solution_id).delete()
