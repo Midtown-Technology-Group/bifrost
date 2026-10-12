@@ -15,9 +15,10 @@ import hashlib
 import json
 import logging
 from dataclasses import asdict, dataclass
+from datetime import datetime, timezone
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, Awaitable, Callable, Iterable, cast
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -42,6 +43,7 @@ from src.models.contracts.workspace_repo_changesets import (
 )
 from src.models.orm.workspace_repo_changesets import WorkspaceRepoChangeset
 from src.repositories.workspace_repo_changesets import (
+    GIT_CLOSURE_PENDING_STALE_AFTER,
     RETRYABLE_GIT_FAILURE_STATES,
     WorkspaceRepoChangesetRepository,
 )
@@ -115,6 +117,34 @@ class WorkspaceRepoChangesetService:
         ("activated", "git_closure"),
         ("committed_unpushed", "git_push"),
     }
+
+    @staticmethod
+    def _git_failure_is_retryable(
+        row: WorkspaceRepoChangeset,
+        failure: dict,
+    ) -> bool:
+        state = failure.get("state")
+        if state in RETRYABLE_GIT_FAILURE_STATES:
+            return True
+        if state != "pending":
+            return False
+        updated_at = row.updated_at
+        if updated_at is None:
+            return True
+        if updated_at.tzinfo is None:
+            updated_at = updated_at.replace(tzinfo=timezone.utc)
+        return (
+            updated_at <= datetime.now(timezone.utc) - GIT_CLOSURE_PENDING_STALE_AFTER
+        )
+
+    @staticmethod
+    def _owns_git_closure(row: WorkspaceRepoChangeset, operation_id: str) -> bool:
+        failure = row.failure_detail if isinstance(row.failure_detail, dict) else {}
+        return (
+            failure.get("phase") == "git_closure"
+            and failure.get("state") == "pending"
+            and failure.get("operation_id") == operation_id
+        )
 
     def __init__(
         self,
@@ -782,7 +812,7 @@ class WorkspaceRepoChangesetService:
         retry_key = (row.status, str(failure.get("phase") or ""))
         if (
             retry_key not in self.RETRYABLE_GIT_FAILURES
-            or failure.get("state") not in RETRYABLE_GIT_FAILURE_STATES
+            or not self._git_failure_is_retryable(row, failure)
         ):
             raise ChangesetInvalid(
                 f"changeset in {row.status!r} state does not have a retryable Git closure failure"
@@ -1137,7 +1167,7 @@ class WorkspaceRepoChangesetService:
             convergence_retry = (
                 row.status == "activated"
                 and failure.get("phase") == "git_convergence"
-                and failure.get("state") in RETRYABLE_GIT_FAILURE_STATES
+                and self._git_failure_is_retryable(row, failure)
             )
             if retry_key not in self.RETRYABLE_GIT_FAILURES and not convergence_retry:
                 raise ChangesetInvalid(
@@ -1417,12 +1447,17 @@ class WorkspaceRepoChangesetService:
         # Leave a durable pending marker before Git. If persisting the outcome
         # later fails, the active workspace is still explicit and reconcilable.
         candidate_commit_sha = prior_failure.get("commit_sha")
+        operation_id = str(uuid4())
+        pending_started_at = datetime.now(timezone.utc)
         row.failure_detail = {
             "phase": "git_closure",
             "state": "pending",
+            "operation_id": operation_id,
+            "started_at": pending_started_at.isoformat(),
             "activation_preserved": True,
             "provenance": provenance,
         }
+        row.updated_at = pending_started_at
         if candidate_commit_sha:
             row.failure_detail["commit_sha"] = str(candidate_commit_sha)
         await self.db.flush()
@@ -1523,6 +1558,8 @@ class WorkspaceRepoChangesetService:
                 )
             if not files:
                 row = await self._required(changeset_id, for_update=True)
+                if not self._owns_git_closure(row, operation_id):
+                    return self._response(row)
                 current_validation = dict(row.validation or {})
                 row.validation = {
                     **current_validation,
@@ -1561,6 +1598,8 @@ class WorkspaceRepoChangesetService:
         except Exception as exc:
             await self.db.rollback()
             row = await self._required(changeset_id, for_update=True)
+            if not self._owns_git_closure(row, operation_id):
+                return self._response(row)
             row.error = str(exc)
             row.failure_detail = {
                 "phase": "git_closure",
@@ -1582,6 +1621,8 @@ class WorkspaceRepoChangesetService:
             return self._response(row)
 
         row = await self._required(changeset_id, for_update=True)
+        if not self._owns_git_closure(row, operation_id):
+            return self._response(row)
         current_validation = dict(row.validation or {})
         row.validation = {
             **current_validation,

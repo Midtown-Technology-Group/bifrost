@@ -2,7 +2,7 @@ import base64
 import asyncio
 import hashlib
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 from uuid import uuid4
@@ -15,7 +15,10 @@ from src.models.contracts.workspace_repo_changesets import (
     WorkspaceRepoGitConvergenceApplyRequest,
     WorkspaceRepoGitConvergencePreviewRequest,
 )
-from src.repositories.workspace_repo_changesets import RETRYABLE_GIT_FAILURE_STATES
+from src.repositories.workspace_repo_changesets import (
+    GIT_CLOSURE_PENDING_STALE_AFTER,
+    RETRYABLE_GIT_FAILURE_STATES,
+)
 from src.core.module_cache import ModuleCoherence
 from src.services.platform_commit_writer import (
     PlatformCommitError,
@@ -120,7 +123,9 @@ class MemoryRows:
             if row.organization_id == organization_id
             and (scope is None or row.scope == scope)
             and row.failure_detail
-            and row.failure_detail.get("state") in RETRYABLE_GIT_FAILURE_STATES
+            and WorkspaceRepoChangesetService._git_failure_is_retryable(
+                row, row.failure_detail
+            )
             and (
                 (row.status, row.failure_detail.get("phase"))
                 in WorkspaceRepoChangesetService.RETRYABLE_GIT_FAILURES
@@ -1583,6 +1588,124 @@ async def test_retry_git_closure_accepts_each_durable_failure_state(failure_stat
     )
 
     assert result.status == "committed"
+
+
+@pytest.mark.asyncio
+async def test_retry_git_closure_rejects_live_pending_operation():
+    svc = service({"features/a.txt": b"a"})
+    row = await svc.begin(WorkspaceRepoChangesetBegin(scope="features"), uuid4())
+    stored = svc.rows.items[row.id]
+    stored.status = "activated"
+    stored.updated_at = datetime.now(timezone.utc)
+    stored.failure_detail = {
+        "phase": "git_closure",
+        "state": "pending",
+        "operation_id": str(uuid4()),
+        "provenance": {"operator": "tester", "commit_message": "release source"},
+    }
+
+    with pytest.raises(ChangesetInvalid, match="does not have a retryable"):
+        await svc.retry_git_closure(
+            row.id,
+            WorkspaceRepoActivateRequest(push=True),
+            "retrying-operator",
+        )
+
+
+@pytest.mark.asyncio
+async def test_retry_git_closure_accepts_stale_pending_operation():
+    svc = service({"features/a.txt": b"a"})
+    svc.commit_writer = RecordingWriter(
+        history_hashes={"features/a.txt": hashlib.sha256(b"a").hexdigest()}
+    )
+    row = await svc.begin(WorkspaceRepoChangesetBegin(scope="features"), uuid4())
+    stored = svc.rows.items[row.id]
+    stored.mutations = [
+        {
+            "path": "features/a.txt",
+            "operation": "write",
+            "before_hash": hashlib.sha256(b"a").hexdigest(),
+            "after_hash": hashlib.sha256(b"A").hexdigest(),
+            "content_base64": base64.b64encode(b"A").decode(),
+        }
+    ]
+    stored.status = "activated"
+    stored.updated_at = (
+        datetime.now(timezone.utc)
+        - GIT_CLOSURE_PENDING_STALE_AFTER
+        - timedelta(seconds=1)
+    )
+    stored.failure_detail = {
+        "phase": "git_closure",
+        "state": "pending",
+        "operation_id": str(uuid4()),
+        "provenance": {"operator": "tester", "commit_message": "release source"},
+    }
+
+    result = await svc.retry_git_closure(
+        row.id,
+        WorkspaceRepoActivateRequest(push=True),
+        "retrying-operator",
+    )
+
+    assert result.status == "committed"
+
+
+@pytest.mark.asyncio
+async def test_superseded_git_closure_attempt_cannot_overwrite_new_owner():
+    svc = service({"features/a.txt": b"a"})
+    row = await svc.begin(WorkspaceRepoChangesetBegin(scope="features"), uuid4())
+    stored = svc.rows.items[row.id]
+    stored.mutations = [
+        {
+            "path": "features/a.txt",
+            "operation": "write",
+            "before_hash": hashlib.sha256(b"a").hexdigest(),
+            "after_hash": hashlib.sha256(b"A").hexdigest(),
+            "content_base64": base64.b64encode(b"A").decode(),
+        }
+    ]
+    stored.status = "activated"
+    stored.updated_at = (
+        datetime.now(timezone.utc)
+        - GIT_CLOSURE_PENDING_STALE_AFTER
+        - timedelta(seconds=1)
+    )
+    stored.failure_detail = {
+        "phase": "git_closure",
+        "state": "pending",
+        "operation_id": str(uuid4()),
+        "provenance": {"operator": "tester", "commit_message": "release source"},
+    }
+    replacement_operation_id = str(uuid4())
+
+    class OwnershipChangingWriter(RecordingWriter):
+        async def write(self, request):
+            result = await super().write(request)
+            stored.failure_detail = {
+                "phase": "git_closure",
+                "state": "pending",
+                "operation_id": replacement_operation_id,
+                "provenance": {
+                    "operator": "replacement",
+                    "commit_message": "release source",
+                },
+            }
+            return result
+
+    svc.commit_writer = OwnershipChangingWriter(
+        history_hashes={"features/a.txt": hashlib.sha256(b"a").hexdigest()}
+    )
+
+    result = await svc.retry_git_closure(
+        row.id,
+        WorkspaceRepoActivateRequest(push=True),
+        "retrying-operator",
+    )
+
+    assert result.status == "activated"
+    assert result.commit_sha is None
+    assert result.failure_detail["operation_id"] == replacement_operation_id
 
 
 @pytest.mark.asyncio

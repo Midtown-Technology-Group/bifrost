@@ -2,12 +2,14 @@
 
 import base64
 import hashlib
+from datetime import datetime, timedelta, timezone
 from uuid import UUID, uuid4
 
 import pytest
 from sqlalchemy import delete, select
 from src.models.orm.users import User
 from src.models.orm.workspace_repo_changesets import WorkspaceRepoChangeset
+from src.repositories.workspace_repo_changesets import GIT_CLOSURE_PENDING_STALE_AFTER
 from src.services.repo_storage import RepoStorage
 
 from tests.e2e.conftest import execute_workflow_sync, write_and_register
@@ -493,6 +495,11 @@ async def test_recoverable_git_closures_include_durable_retry_states(
         )
         for state in ("failed", "not_configured", "pending")
     ]
+    rows[-1].updated_at = (
+        datetime.now(timezone.utc)
+        - GIT_CLOSURE_PENDING_STALE_AFTER
+        - timedelta(seconds=1)
+    )
     db_session.add_all(rows)
     await db_session.commit()
     try:
