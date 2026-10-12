@@ -1,10 +1,10 @@
-"""Tests for CRLF line ending normalization in bifrost sync."""
+"""Tests for byte-exact file collection in bifrost sync."""
 
 import base64
 import pathlib
 from unittest.mock import patch, MagicMock
 
-from bifrost.cli import _normalize_line_endings, _collect_push_files
+from bifrost.cli import _collect_push_files
 
 
 def _mock_file_filter(*args, **kwargs):
@@ -14,45 +14,9 @@ def _mock_file_filter(*args, **kwargs):
     return spec
 
 
-class TestNormalizeLineEndings:
-    def test_basic_crlf(self):
-        assert _normalize_line_endings(b"a\r\nb\r\n") == b"a\nb\n"
-
-    def test_no_crlf_passthrough(self):
-        data = b"a\nb\n"
-        assert _normalize_line_endings(data) == data
-
-    def test_mixed_endings(self):
-        data = b"line1\r\nline2\nline3\r\n"
-        assert _normalize_line_endings(data) == b"line1\nline2\nline3\n"
-
-    def test_binary_with_crlf_unchanged(self):
-        data = b"\x00binary\r\ndata\r\n"
-        assert _normalize_line_endings(data) == data
-
-    def test_real_png_header(self):
-        # Real PNG signature contains both \r\n and \x00
-        png_header = b"\x89PNG\r\n\x1a\n" + b"\x00" * 100
-        assert _normalize_line_endings(png_header) == png_header
-
-    def test_null_byte_after_8kb_treated_as_text(self):
-        # Null byte only after 8KB boundary — treated as text
-        data = b"text\r\n" * 1400 + b"\x00"
-        result = _normalize_line_endings(data)
-        assert b"\r\n" not in result
-        assert result.endswith(b"\x00")
-
-    def test_empty_data(self):
-        assert _normalize_line_endings(b"") == b""
-
-    def test_standalone_cr_unchanged(self):
-        data = b"old\rmac\rline endings\n"
-        assert _normalize_line_endings(data) == data
-
-
-class TestCollectFilesCRLF:
+class TestCollectFilesByteExact:
     @patch("bifrost.cli._build_file_filter", side_effect=_mock_file_filter)
-    def test_crlf_matches_lf(self, _mock_filter, tmp_path: pathlib.Path):
+    def test_crlf_and_lf_remain_distinct(self, _mock_filter, tmp_path: pathlib.Path):
         text = "hello\nworld\n"
         crlf_dir = tmp_path / "crlf"
         lf_dir = tmp_path / "lf"
@@ -65,7 +29,16 @@ class TestCollectFilesCRLF:
         crlf_files, _ = _collect_push_files(crlf_dir, "")
         lf_files, _ = _collect_push_files(lf_dir, "")
 
-        assert crlf_files["file.txt"] == lf_files["file.txt"]
-        # Verify content is LF-normalized
-        decoded = base64.b64decode(crlf_files["file.txt"])
-        assert decoded == text.encode()
+        assert crlf_files["file.txt"] != lf_files["file.txt"]
+        assert base64.b64decode(crlf_files["file.txt"]) == text.replace(
+            "\n", "\r\n"
+        ).encode()
+
+    @patch("bifrost.cli._build_file_filter", side_effect=_mock_file_filter)
+    def test_binary_without_early_nul_is_preserved(self, _mock_filter, tmp_path):
+        payload = b"%PDF-byte-exact\r\n" + b"A" * 9000 + b"\x00tail\r\n"
+        (tmp_path / "document.pdf").write_bytes(payload)
+
+        files, _ = _collect_push_files(tmp_path, "")
+
+        assert base64.b64decode(files["document.pdf"]) == payload
