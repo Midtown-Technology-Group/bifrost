@@ -1822,6 +1822,7 @@ class GitHubSyncService:
             dry_run=False,
             changed_ids=changed_ids,
             sync_app_previews=False,
+            organization_id=self._manifest_organization_id,
         )
 
         # Build entity change list from the diff

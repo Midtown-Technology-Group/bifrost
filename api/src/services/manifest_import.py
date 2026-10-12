@@ -969,6 +969,7 @@ class ManifestResolver:
         sidecar_content: Any = None,
         install_id: "UUID | None" = None,
         sync_app_previews: bool = True,
+        organization_id: UUID | str | None = None,
     ) -> "list[SyncOp]":
         """Build and execute SyncOps for importing a manifest (entities only).
 
@@ -1109,7 +1110,12 @@ class ManifestResolver:
             if changed_ids is not None and minteg.id not in changed_ids:
                 continue
             await _prog(f"Importing integration: {minteg.name or key}")
-            integ_ops = await self._resolve_integration(minteg.name or key, minteg, cache)
+            integ_ops = await self._resolve_integration(
+                minteg.name or key,
+                minteg,
+                cache,
+                organization_id=organization_id,
+            )
             await self._apply_ops(integ_ops, all_ops, dry_run=dry_run, existing_ids=cache.get("integ_ids", set()))
 
         # 3. Resolve configs
@@ -1288,6 +1294,7 @@ class ManifestResolver:
             ops = await self.plan_import(
                 rewritten, work_dir=work_dir, progress_fn=progress_fn,
                 changed_ids=changed_ids, install_id=None,
+                organization_id=organization_id,
             )
         finally:
             self._skip_role_sync = False
@@ -2315,7 +2322,13 @@ class ManifestResolver:
 
         return entity_changes
 
-    async def _resolve_integration(self, integ_name: str, minteg, cache: dict | None = None) -> "list[SyncOp]":
+    async def _resolve_integration(
+        self,
+        integ_name: str,
+        minteg,
+        cache: dict | None = None,
+        organization_id: UUID | str | None = None,
+    ) -> "list[SyncOp]":
         """Resolve an integration from manifest into SyncOps.
 
         Upserts the integration and directly executes config schema, oauth
@@ -2535,8 +2548,16 @@ class ManifestResolver:
                 )
                 await self.db.execute(m_stmt)
 
+        mapping_organization_id = (
+            UUID(str(organization_id)) if organization_id is not None else None
+        )
         for org_key, existing_m in existing_m_by_org.items():
             if org_key not in manifest_org_ids:
+                if (
+                    mapping_organization_id is not None
+                    and existing_m.organization_id != mapping_organization_id
+                ):
+                    continue
                 await self.db.execute(
                     sa_delete(IntegrationMapping).where(
                         IntegrationMapping.id == existing_m.id
