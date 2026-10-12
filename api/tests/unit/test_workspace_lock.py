@@ -20,11 +20,13 @@ Properties under test:
   and is then SIGKILLed), the next acquire from this process succeeds —
   i.e. no manual cleanup is needed.
 """
+
 from __future__ import annotations
 
 import os
 import pathlib
 import signal
+import stat
 import subprocess
 import sys
 import textwrap
@@ -87,12 +89,81 @@ def test_holder_metadata_records_command(tmp_path: pathlib.Path) -> None:
     """The lock file should record the holder's command so a contender can
     name what to stop."""
     import json
+
     ws = _make_workspace(tmp_path)
     with WorkspaceLock(ws, "watch"):
         meta = json.loads(_workspace_lock._lock_path(ws).read_text())
         assert meta["command"] == "watch"
         assert meta["pid"] == os.getpid()
         assert "started_at" in meta
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX symlink semantics")
+def test_acquire_rejects_symlink_private_directory(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The per-user lock root cannot be redirected before Bifrost creates it."""
+    monkeypatch.setattr(
+        _workspace_lock.tempfile, "gettempdir", lambda: str(tmp_path / "temp")
+    )
+    ws = _make_workspace(tmp_path / "workspace")
+    lock_path = _workspace_lock._lock_path(ws)
+    lock_path.parent.parent.parent.mkdir(parents=True)
+    redirected = tmp_path / "redirected"
+    redirected.mkdir()
+    lock_path.parent.parent.symlink_to(redirected, target_is_directory=True)
+
+    with pytest.raises(OSError):
+        with WorkspaceLock(ws, "watch"):
+            pass
+
+    assert list(redirected.iterdir()) == []
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX symlink semantics")
+def test_acquire_rejects_symlink_lock_file_without_clobbering_target(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A predictable lock filename must never follow an attacker-made symlink."""
+    monkeypatch.setattr(
+        _workspace_lock.tempfile, "gettempdir", lambda: str(tmp_path / "temp")
+    )
+    ws = _make_workspace(tmp_path / "workspace")
+    lock_path = _workspace_lock._lock_path(ws)
+    lock_path.parent.mkdir(parents=True)
+    target = tmp_path / "target.txt"
+    target.write_text("do not overwrite", encoding="utf-8")
+    lock_path.symlink_to(target)
+
+    with pytest.raises(OSError):
+        with WorkspaceLock(ws, "watch"):
+            pass
+
+    assert target.read_text(encoding="utf-8") == "do not overwrite"
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX permission semantics")
+def test_lock_directory_and_file_are_owner_only(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Existing same-owner directories are tightened before lock metadata is written."""
+    monkeypatch.setattr(
+        _workspace_lock.tempfile, "gettempdir", lambda: str(tmp_path / "temp")
+    )
+    ws = _make_workspace(tmp_path / "workspace")
+    lock_path = _workspace_lock._lock_path(ws)
+    lock_path.parent.mkdir(parents=True)
+    lock_path.parent.chmod(0o777)
+
+    with WorkspaceLock(ws, "watch"):
+        directory_mode = stat.S_IMODE(lock_path.parent.stat().st_mode)
+        file_mode = stat.S_IMODE(lock_path.stat().st_mode)
+
+    assert directory_mode == 0o700
+    assert file_mode == 0o600
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="POSIX flock semantics")
@@ -159,7 +230,54 @@ def test_killed_holder_releases_lock(tmp_path: pathlib.Path) -> None:
         pass
 
 
-def test_workspace_lock_error_includes_human_readable_time(tmp_path: pathlib.Path) -> None:
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX flock migration semantics")
+def test_legacy_holder_blocks_new_namespace_until_release(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A pre-upgrade holder must remain exclusive across the path migration."""
+    monkeypatch.setattr(
+        _workspace_lock.tempfile, "gettempdir", lambda: str(tmp_path / "temp")
+    )
+    ws = _make_workspace(tmp_path / "workspace")
+    legacy_path = _workspace_lock._legacy_lock_path(ws)
+    legacy_path.parent.mkdir(parents=True)
+    holder_script = textwrap.dedent(f"""
+        import fcntl
+        import pathlib
+        import time
+        path = pathlib.Path({str(legacy_path)!r})
+        with path.open("a+", encoding="utf-8") as fh:
+            fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            print("ACQUIRED", flush=True)
+            time.sleep(60)
+    """).strip()
+
+    proc = subprocess.Popen(
+        [sys.executable, "-c", holder_script],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+    )
+    try:
+        assert proc.stdout is not None
+        assert (
+            proc.stdout.readline().decode("utf-8", errors="replace").strip()
+            == "ACQUIRED"
+        )
+        with pytest.raises(WorkspaceLockError):
+            with WorkspaceLock(ws, "sync"):
+                pass
+    finally:
+        proc.terminate()
+        proc.wait(timeout=5)
+
+    with WorkspaceLock(ws, "sync"):
+        pass
+
+
+def test_workspace_lock_error_includes_human_readable_time(
+    tmp_path: pathlib.Path,
+) -> None:
     """The error message should render the lock holder's start time in a
     locale-friendly form, not a raw ISO string."""
     ws = _make_workspace(tmp_path)
@@ -221,7 +339,9 @@ def test_failed_acquire_closes_fd_and_rolls_back_reservation(
         pass
 
 
-def test_blocking_acquire_does_not_leak_fd_or_reservation(tmp_path: pathlib.Path) -> None:
+def test_blocking_acquire_does_not_leak_fd_or_reservation(
+    tmp_path: pathlib.Path,
+) -> None:
     """A BlockingIOError from a cross-process contender must close the
     contender's FD and roll back the in-process reservation, leaving the
     workspace acquirable again once the holder releases."""
