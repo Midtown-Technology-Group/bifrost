@@ -66,6 +66,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/integrations", tags=["Integrations"])
 
 REFRESH_FAILED_MESSAGE = "Refresh failed"
+BATCH_MAPPING_SAVE_FAILED_MESSAGE = "mapping could not be saved"
 
 
 def _logo_data_url(data: bytes | None, content_type: str | None) -> str | None:
@@ -1507,28 +1508,48 @@ async def batch_upsert_mappings(
     errors: list[str] = []
 
     for item in request.mappings:
+        operation: str | None = None
         try:
-            existing = await repo.get_mapping_by_org(integration_id, item.organization_id)
-            if existing:
-                update_data = IntegrationMappingUpdate(
-                    entity_id=item.entity_id,
-                    entity_name=item.entity_name,
+            # A repository flush can fail and poison the outer session. Isolate
+            # every item in a savepoint so one invalid mapping rolls back only
+            # its own work and later items can still be committed.
+            async with ctx.db.begin_nested():
+                existing = await repo.get_mapping_by_org(
+                    integration_id, item.organization_id
                 )
-                await repo.update_mapping(
-                    integration_id, existing.id, update_data, updated_by=user.email
-                )
+                if existing:
+                    update_data = IntegrationMappingUpdate(
+                        entity_id=item.entity_id,
+                        entity_name=item.entity_name,
+                    )
+                    await repo.update_mapping(
+                        integration_id,
+                        existing.id,
+                        update_data,
+                        updated_by=user.email,
+                    )
+                    operation = "updated"
+                else:
+                    create_data = IntegrationMappingCreate(
+                        organization_id=item.organization_id,
+                        entity_id=item.entity_id,
+                        entity_name=item.entity_name,
+                    )
+                    await repo.create_mapping(
+                        create_data, integration_id, updated_by=user.email
+                    )
+                    operation = "created"
+            if operation == "updated":
                 updated += 1
             else:
-                create_data = IntegrationMappingCreate(
-                    organization_id=item.organization_id,
-                    entity_id=item.entity_id,
-                    entity_name=item.entity_name,
-                )
-                await repo.create_mapping(create_data, integration_id, updated_by=user.email)
                 created += 1
         except Exception as e:
-            errors.append(f"org {item.organization_id}: {str(e)}")
-            logger.error(f"Batch mapping error for org {item.organization_id}: {log_safe(e)}")
+            errors.append(
+                f"org {item.organization_id}: {BATCH_MAPPING_SAVE_FAILED_MESSAGE}"
+            )
+            logger.error(
+                f"Batch mapping error for org {log_safe(item.organization_id)}: {log_safe(e)}"
+            )
 
     await ctx.db.commit()
 
