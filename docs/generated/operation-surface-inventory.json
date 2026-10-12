@@ -16005,7 +16005,7 @@
     "cli": 158,
     "manifest": 16,
     "mcp": 90,
-    "rest": 777,
+    "rest": 778,
     "sdk": 19
   },
   "schema_version": 1,
@@ -18231,6 +18231,13 @@
       },
       {
         "method": "POST",
+        "operation_id": "",
+        "path": "/api/forms/{form_id}/upload",
+        "reason": "REST operation has not entered the canonical operation catalog yet.",
+        "status": "missing_surface"
+      },
+      {
+        "method": "PUT",
         "operation_id": "",
         "path": "/api/forms/{form_id}/upload",
         "reason": "REST operation has not entered the canonical operation catalog yet.",
