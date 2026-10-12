@@ -1,18 +1,29 @@
 """Execution History ordering and keyset pagination regressions."""
 
+import base64
+import json
 from datetime import datetime, timedelta, timezone
 from uuid import UUID, uuid4
 
 import pytest
-
+from shared.sdk_execution_reads import decode_history_cursor, list_sdk_executions
 from src.core.constants import PROVIDER_ORG_ID
 from src.core.principal import UserPrincipal
 from src.models.enums import ExecutionStatus
 from src.models.orm.executions import Execution
 from src.models.orm.users import User
-from shared.sdk_execution_reads import decode_history_cursor, list_sdk_executions
+from src.routers.executions import ExecutionRepository
 
 pytestmark = pytest.mark.e2e
+
+
+def _legacy_v1_cursor(row_id: UUID, started_at: datetime | None = None) -> str:
+    payload = {
+        "v": 1,
+        "s": started_at.isoformat() if started_at else None,
+        "i": str(row_id),
+    }
+    return base64.urlsafe_b64encode(json.dumps(payload).encode()).decode()
 
 
 def _execution(
@@ -123,3 +134,65 @@ async def test_history_pages_use_the_display_timeline_without_gaps(db_session):
     assert len(set(all_ids)) == len(rows)
     assert all_ids[-1] == str(stale_cancelled.id)
     assert final_token is None
+
+
+@pytest.mark.asyncio
+async def test_legacy_v1_cursor_restarts_instead_of_returning_an_empty_page(
+    db_session,
+):
+    now = datetime(2026, 9, 11, 12, 0, tzinfo=timezone.utc)
+    user_id = uuid4()
+    workflow_name = f"legacy-history-cursor-{uuid4().hex}"
+    db_session.add(
+        User(
+            id=user_id,
+            email=f"legacy-history-{user_id}@example.com",
+            name="Legacy history cursor test",
+            organization_id=PROVIDER_ORG_ID,
+        )
+    )
+    newest = _execution(
+        name=workflow_name,
+        status=ExecutionStatus.PENDING,
+        created_at=now,
+        executed_by=user_id,
+    )
+    older = _execution(
+        name=workflow_name,
+        status=ExecutionStatus.PENDING,
+        created_at=now - timedelta(minutes=1),
+        executed_by=user_id,
+    )
+    db_session.add_all([newest, older])
+    await db_session.flush()
+
+    principal = UserPrincipal(
+        user_id=user_id,
+        email="legacy-history-admin@example.com",
+        organization_id=PROVIDER_ORG_ID,
+        is_superuser=True,
+    )
+    cursor = decode_history_cursor(_legacy_v1_cursor(older.id))
+    assert cursor == (None, older.id)
+
+    shared_page, shared_token = await list_sdk_executions(
+        db_session,
+        principal,
+        workflow_name=workflow_name,
+        limit=1,
+        cursor=cursor,
+    )
+    router_page, router_token = await ExecutionRepository(db_session).list_executions(
+        principal,
+        None,
+        workflow_name=workflow_name,
+        limit=1,
+        cursor=cursor,
+    )
+
+    assert [row.execution_id for row in shared_page] == [str(newest.id)]
+    assert [row.execution_id for row in router_page] == [str(newest.id)]
+    assert shared_token is not None
+    assert router_token is not None
+    assert json.loads(base64.urlsafe_b64decode(shared_token.encode()))["v"] == 2
+    assert json.loads(base64.urlsafe_b64decode(router_token.encode()))["v"] == 2

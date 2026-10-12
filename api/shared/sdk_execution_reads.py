@@ -75,7 +75,7 @@ class SdkExecutionReadError(Exception):
 def encode_history_cursor(timeline_at: datetime | None, row_id: UUID) -> str:
     """Encode the last-served row's position as an opaque token."""
     payload = {
-        "v": 1,
+        "v": 2,
         "s": timeline_at.isoformat() if timeline_at else None,
         "i": str(row_id),
     }
@@ -83,14 +83,23 @@ def encode_history_cursor(timeline_at: datetime | None, row_id: UUID) -> str:
 
 
 def decode_history_cursor(token: str) -> tuple[datetime | None, UUID] | None:
-    """Decode a keyset cursor; None for legacy offsets or malformed tokens."""
+    """Decode a keyset cursor; v1 restarts safely under the v2 timeline."""
     try:
         payload = json.loads(base64.urlsafe_b64decode(token.encode()))
-        if not isinstance(payload, dict) or payload.get("v") != 1:
+        if not isinstance(payload, dict) or payload.get("v") not in (1, 2):
             return None
+        row_id = UUID(payload["i"])
+        # Version 1 encoded started_at, while version 2 encodes the composite
+        # display timeline. Reusing v1 as v2 can skip or duplicate rows. A
+        # validated v1 token therefore explicitly restarts at page one.
+        if payload["v"] == 1:
+            raw_started = payload.get("s")
+            if raw_started is not None:
+                datetime.fromisoformat(raw_started)
+            return None, row_id
         raw_started = payload.get("s")
         started_at = datetime.fromisoformat(raw_started) if raw_started else None
-        return started_at, UUID(payload["i"])
+        return started_at, row_id
     except (ValueError, KeyError, TypeError, json.JSONDecodeError):
         # Not a keyset cursor (legacy numeric offset, or garbage) — the caller
         # falls back to legacy offset parsing / first page.
@@ -574,9 +583,10 @@ async def list_sdk_executions(
     if cursor is not None:
         cursor_timeline, cursor_id = cursor
         if cursor_timeline is None:
-            query = query.where(
-                and_(timeline_at.is_(None), ExecutionModel.id < cursor_id)
-            )
+            # A validated v1 cursor used started_at semantics. Restart the
+            # listing rather than interpreting it against the v2 composite
+            # timeline and silently returning a gap or duplicate block.
+            pass
         else:
             query = query.where(
                 or_(

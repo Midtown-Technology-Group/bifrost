@@ -4,8 +4,6 @@ Executions Router
 Provides access to workflow execution history with filtering capabilities.
 """
 
-import base64
-import json
 import logging
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
@@ -41,6 +39,10 @@ from src.models.orm.executions import WorkflowExecutionAttempt as ExecutionAttem
 
 from bifrost._logging import read_logs_from_stream
 from shared.pending_execution import get_pending_execution_fallback
+from shared.sdk_execution_reads import (
+    decode_history_cursor as _decode_history_cursor,
+    encode_history_cursor as _encode_history_cursor,
+)
 from src.core.auth import Context, RequirePlatformAdmin
 from src.core.principal import UserPrincipal
 from src.core.log_safety import log_safe
@@ -137,43 +139,6 @@ async def _load_attempt_history(
             for row in rows
         ],
     )
-
-
-# =============================================================================
-# History pagination cursor
-# =============================================================================
-#
-# History pagination is keyset-based: the continuation token names the last
-# row the client saw — (timeline_at, id) — and the next page is "rows strictly
-# older than that". An offset token ("give me rows 26–50") re-serves the
-# previous page's tail whenever new executions land between page loads, which
-# on a busy instance is every pagination: users stepping into the past see
-# today's rows (and a "Today" day header) at the top of every page.
-
-
-def _encode_history_cursor(timeline_at: datetime | None, row_id: UUID) -> str:
-    """Encode the last-served row's position as an opaque token."""
-    payload = {
-        "v": 1,
-        "s": timeline_at.isoformat() if timeline_at else None,
-        "i": str(row_id),
-    }
-    return base64.urlsafe_b64encode(json.dumps(payload).encode()).decode()
-
-
-def _decode_history_cursor(token: str) -> tuple[datetime | None, UUID] | None:
-    """Decode a keyset cursor; None for legacy offsets or malformed tokens."""
-    try:
-        payload = json.loads(base64.urlsafe_b64decode(token.encode()))
-        if not isinstance(payload, dict) or payload.get("v") != 1:
-            return None
-        raw_started = payload.get("s")
-        started_at = datetime.fromisoformat(raw_started) if raw_started else None
-        return started_at, UUID(payload["i"])
-    except (ValueError, KeyError, TypeError, json.JSONDecodeError):
-        # Not a keyset cursor (legacy numeric offset, or garbage) — the caller
-        # falls back to legacy offset parsing or rejects the token.
-        return None
 
 
 def _query_param(request: Request, name: str) -> str | None:
@@ -320,12 +285,10 @@ class ExecutionRepository:
         if cursor is not None:
             cursor_timeline, cursor_id = cursor
             if cursor_timeline is None:
-                # Defensive support for an old cursor minted from a row with
-                # NULL started_at. New cursors always carry a timeline value
-                # because created_at is non-null.
-                query = query.where(
-                    and_(timeline_at.is_(None), ExecutionModel.id < cursor_id)
-                )
+                # A validated v1 cursor used started_at semantics. Restart the
+                # listing rather than interpreting it against the v2 composite
+                # timeline and silently returning a gap or duplicate block.
+                pass
             else:
                 # Strictly older than the cursor row. Excludes the NULL block
                 # and prevents new rows from injecting themselves into the
