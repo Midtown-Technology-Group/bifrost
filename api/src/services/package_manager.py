@@ -6,13 +6,14 @@ Packages are installed to the system Python site-packages.
 """
 
 import asyncio
-import json
 import logging
 import sys
 from pathlib import Path
 from typing import Awaitable, Callable, Optional
 
 import aiohttp
+
+from src.core.package_inventory import get_installed_packages
 
 logger = logging.getLogger(__name__)
 
@@ -84,20 +85,7 @@ class WorkspacePackageManager:
         Returns:
             List of dicts with 'name' and 'version' keys
         """
-        process = await asyncio.create_subprocess_exec(
-            sys.executable, "-m", "pip", "list",
-            "--format", "json",
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE
-        )
-
-        stdout, stderr = await process.communicate()
-
-        if process.returncode != 0:
-            logger.warning(f"Failed to list packages: {stderr.decode()}")
-            return []
-
-        return json.loads(stdout.decode())
+        return await asyncio.to_thread(get_installed_packages)
 
     async def check_for_updates(self) -> list[dict]:
         """
