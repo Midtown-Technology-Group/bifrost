@@ -2,6 +2,7 @@
 
 import asyncio
 from datetime import timedelta
+from functools import partial
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -44,7 +45,8 @@ async def test_stop_claim_window_reconciles_without_orphan_or_restart(
             attempt = await service_lifecycle.claim_eligible_service(
                 claimant, worker_id="stop-claim-probe", now=claim_time
             )
-            assert attempt is not None and attempt.service_id == service_id
+            assert attempt is not None
+            assert attempt.service_id == service_id
             claims.append((attempt.id, attempt.lease_token))
             await claimant.commit()
         return live
@@ -66,7 +68,8 @@ async def test_stop_claim_window_reconciles_without_orphan_or_restart(
         async with async_session_factory() as before_beat:
             definition = await before_beat.get(ServiceDefinition, service_id)
             live = await service_lifecycle.get_live_attempt(before_beat, service_id)
-            assert live is not None and live.stop_requested_at is None
+            assert live is not None
+            assert live.stop_requested_at is None
             assert service_lifecycle.describe_observed_state(definition, live) == "stopping"
         pool = StubPool()
         pool.stop_service_child = AsyncMock(return_value=True)
@@ -88,12 +91,13 @@ async def test_stop_claim_window_reconciles_without_orphan_or_restart(
             redis.setex = cancel_stop_key
         elif cancel_at == "child":
             pool.stop_service_child.side_effect = [asyncio.CancelledError(), True]
-        with patch("src.core.cache.get_redis", lambda: _fake_redis_holder({"redis": redis})):
+        with patch(
+            "src.core.cache.get_redis", side_effect=partial(_fake_redis_holder, {"redis": redis})
+        ):
             if cancel_at is not None:
-                with pytest.raises(asyncio.CancelledError):
-                    async with async_session_factory(autoflush=False) as interrupted:
+                async with async_session_factory(autoflush=False) as interrupted:
+                    with pytest.raises(asyncio.CancelledError):
                         await loop._beat_owned(interrupted)
-                        await interrupted.commit()
                 assert not loop._owned[str(attempt_id)].stop_mirrored
                 async with async_session_factory() as observer:
                     live = await service_lifecycle.get_live_attempt(observer, service_id)
@@ -115,7 +119,8 @@ async def test_stop_claim_window_reconciles_without_orphan_or_restart(
             async with async_session_factory() as observer:
                 definition = await observer.get(ServiceDefinition, service_id)
                 live = await service_lifecycle.get_live_attempt(observer, service_id)
-                assert live is not None and live.stop_requested_at is not None
+                assert live is not None
+                assert live.stop_requested_at is not None
                 assert service_lifecycle.describe_observed_state(definition, live) == "stopping"
             # The real completion path clears ownership and suppresses relaunch.
             pool.stop_service_child.side_effect = None
@@ -127,7 +132,8 @@ async def test_stop_claim_window_reconciles_without_orphan_or_restart(
             assert str(attempt_id) not in loop._owned
             async with async_session_factory(autoflush=False) as restart:
                 terminal = await restart.get(ServiceAttempt, attempt_id)
-                assert terminal.state == "stopped" and terminal.error is None
+                assert terminal.state == "stopped"
+                assert terminal.error is None
                 assert await service_lifecycle.get_live_attempt(restart, service_id) is None
                 assert await service_lifecycle.claim_eligible_service(
                     restart, worker_id="no-restart-probe", now=claim_time
@@ -138,8 +144,10 @@ async def test_stop_claim_window_reconciles_without_orphan_or_restart(
                 fresh = await service_lifecycle.claim_eligible_service(
                     restart, worker_id="explicit-restart-probe"
                 )
-                assert fresh is not None and fresh.id != attempt_id
-                assert fresh.lease_token != lease_token and fresh.stop_requested_at is None
+                assert fresh is not None
+                assert fresh.id != attempt_id
+                assert fresh.lease_token != lease_token
+                assert fresh.stop_requested_at is None
                 fresh_id, fresh_token = fresh.id, fresh.lease_token
                 await restart.commit()
             loop._owned[str(fresh_id)] = OwnedAttempt(fresh_id, service_id, fresh_token)
@@ -174,7 +182,8 @@ async def test_cancel_after_child_stop_keeps_requested_completion(async_session_
         attempt = await service_lifecycle.claim_eligible_service(
             setup, worker_id="cancelled-beat-probe", now=claim_time
         )
-        assert attempt is not None and attempt.service_id == service_id
+        assert attempt is not None
+        assert attempt.service_id == service_id
         attempt_id, lease_token = attempt.id, attempt.lease_token
         # Reproduce the durable outcome of the proven late-claim interleaving.
         definition.desired_state = "stopped"
@@ -185,16 +194,18 @@ async def test_cancel_after_child_stop_keeps_requested_completion(async_session_
     monkeypatch.setattr(loop, "_report_memory", AsyncMock(side_effect=asyncio.CancelledError))
     redis = FakeRedis()
     try:
-        with patch("src.core.cache.get_redis", lambda: _fake_redis_holder({"redis": redis})):
-            with pytest.raises(asyncio.CancelledError):
-                async with async_session_factory(autoflush=False) as interrupted:
+        with patch(
+            "src.core.cache.get_redis", side_effect=partial(_fake_redis_holder, {"redis": redis})
+        ):
+            async with async_session_factory(autoflush=False) as interrupted:
+                with pytest.raises(asyncio.CancelledError):
                     await loop._beat_owned(interrupted)
-                    await interrupted.commit()
             assert loop._owned[str(attempt_id)].stop_mirrored
             pool.stop_service_child.assert_awaited_once_with(str(attempt_id))
             async with async_session_factory() as observer:
                 live = await service_lifecycle.get_live_attempt(observer, service_id)
-                assert live is not None and live.stop_requested_at is None
+                assert live is not None
+                assert live.stop_requested_at is None
             await loop.handle_service_result({
                 "success": False, "status": "Failed", "error": "requested shutdown",
                 "service": {"service_id": str(service_id), "attempt_id": str(attempt_id),
@@ -203,7 +214,8 @@ async def test_cancel_after_child_stop_keeps_requested_completion(async_session_
             assert str(attempt_id) not in loop._owned
             async with async_session_factory() as observer:
                 terminal = await observer.get(ServiceAttempt, attempt_id)
-                assert terminal.state == "stopped" and terminal.error is None
+                assert terminal.state == "stopped"
+                assert terminal.error is None
                 assert terminal.exit_reason == "stop_requested"
                 assert await service_lifecycle.get_live_attempt(observer, service_id) is None
                 assert await service_lifecycle.claim_eligible_service(
@@ -236,7 +248,8 @@ async def test_stop_and_completion_preserve_attempt_before_definition_lock_order
         attempt = await service_lifecycle.claim_eligible_service(
             setup, worker_id="completion-order-probe", now=claim_time
         )
-        assert attempt is not None and attempt.service_id == service_id
+        assert attempt is not None
+        assert attempt.service_id == service_id
         attempt_id, lease_token = attempt.id, attempt.lease_token
         await setup.commit()
 
