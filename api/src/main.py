@@ -389,6 +389,21 @@ def create_app() -> FastAPI:
         },
     )
 
+    # Reject oversized Codex credential imports before JSON parsing or token
+    # encryption. Field-level limits are enforced by the parser as a second
+    # boundary before repository persistence.
+    from src.services.codex_gateway.oauth import MAX_CODEX_AUTH_CACHE_IMPORT_BYTES
+    app.add_middleware(
+        RouteBodyLimitMiddleware,
+        limits={
+            (
+                "POST",
+                "/api/codex-gateway/oauth/import-auth-cache",
+            ): MAX_CODEX_AUTH_CACHE_IMPORT_BYTES,
+        },
+        detail="Codex auth cache request exceeds the import limit.",
+    )
+
     # Add CSRF protection middleware
     # Only enforces for cookie-based auth with unsafe methods (POST, PUT, DELETE, PATCH)
     # Bearer token auth is exempt since browsers don't automatically include it

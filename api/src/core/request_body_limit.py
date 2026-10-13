@@ -21,11 +21,18 @@ class _BodyTooLarge(Exception):
 class RouteBodyLimitMiddleware:
     """Reject selected bodies before parsers allocate or spool their contents."""
 
-    def __init__(self, app: ASGIApp, *, limits: dict[tuple[str, str], int],
-                 messages: dict[tuple[str, str], str] | None = None) -> None:
+    def __init__(
+        self,
+        app: ASGIApp,
+        *,
+        limits: dict[tuple[str, str], int],
+        messages: dict[tuple[str, str], str] | None = None,
+        detail: str = "Request body exceeds the configured limit.",
+    ) -> None:
         self.app = app
         self.limits = limits
         self.messages = messages or {}
+        self.detail = detail
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http":
@@ -38,7 +45,11 @@ class RouteBodyLimitMiddleware:
             return
 
         content_length = next(
-            (value for name, value in scope.get("headers", []) if name.lower() == b"content-length"),
+            (
+                value
+                for name, value in scope.get("headers", [])
+                if name.lower() == b"content-length"
+            ),
             None,
         )
         if content_length is not None:
@@ -69,7 +80,6 @@ class RouteBodyLimitMiddleware:
     async def _reject(self, scope: Scope, receive: Receive, send: Send) -> None:
         response = JSONResponse(
             status_code=413,
-            content={"detail": self.messages.get((scope["method"], scope["path"]),
-                                                "Request body exceeds the configured limit.")},
+            content={"detail": self.messages.get((scope["method"], scope["path"]), self.detail)},
         )
         await response(scope, receive, send)
