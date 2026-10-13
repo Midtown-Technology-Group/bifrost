@@ -3394,7 +3394,7 @@ class TestPullUpsertNaturalKeys:
         )
         rows = result.scalars().all()
         assert len(rows) == 1, f"Expected 1 workflow row, got {len(rows)}"
-        assert rows[0].id == id_b, f"Expected manifest ID {id_b}, got {rows[0].id}"
+        assert rows[0].id == id_a, f"Expected stable local ID {id_a}, got {rows[0].id}"
 
     async def test_integration_import_with_different_id(
         self,
@@ -3443,7 +3443,7 @@ class TestPullUpsertNaturalKeys:
         )
         rows = result.scalars().all()
         assert len(rows) == 1, f"Expected 1 integration, got {len(rows)}"
-        assert rows[0].id == id_b, f"Expected manifest ID {id_b}, got {rows[0].id}"
+        assert rows[0].id == id_a, f"Expected stable local ID {id_a}, got {rows[0].id}"
 
     async def test_integration_import_with_different_id_and_config_schema(
         self,
@@ -3510,11 +3510,11 @@ class TestPullUpsertNaturalKeys:
             select(Integration).where(Integration.name == "CascadeSchemaInteg")
         )).scalars().all()
         assert len(integ_rows) == 1
-        assert integ_rows[0].id == id_b
+        assert integ_rows[0].id == id_a
 
         cs_rows = (await db_session.execute(
             select(IntegrationConfigSchema).where(
-                IntegrationConfigSchema.integration_id == id_b
+                IntegrationConfigSchema.integration_id == id_a
             ).order_by(IntegrationConfigSchema.position)
         )).scalars().all()
         assert [c.key for c in cs_rows] == ["api_key", "region"]
@@ -3580,7 +3580,7 @@ class TestPullUpsertNaturalKeys:
 
         m_rows = (await db_session.execute(
             select(IntegrationMapping).where(
-                IntegrationMapping.integration_id == id_b
+                IntegrationMapping.integration_id == id_a
             )
         )).scalars().all()
         assert len(m_rows) == 1
@@ -3651,14 +3651,15 @@ class TestPullUpsertNaturalKeys:
         cfg_rows = (await db_session.execute(
             select(Config).where(
                 Config.key == "api_url",
-                Config.integration_id == id_b,
+                Config.integration_id == id_a,
             )
         )).scalars().all()
-        assert len(cfg_rows) == 1, f"Expected 1 config row under integ id_b, got {len(cfg_rows)}"
+        assert len(cfg_rows) == 1, f"Expected 1 config row under local integration, got {len(cfg_rows)}"
+        assert cfg_rows[0].id == cfg_id
         assert cfg_rows[0].value == {"value": "https://new.example.com"}
-        # And nothing left under the old integ id (CASCADE moved them all)
+        # Portable IDs must not create duplicate parent or config rows.
         orphans = (await db_session.execute(
-            select(Config).where(Config.integration_id == id_a)
+            select(Config).where(Config.integration_id == id_b)
         )).scalars().all()
         assert orphans == []
 
@@ -3724,7 +3725,7 @@ class TestPullUpsertNaturalKeys:
         )
         rows = result.scalars().all()
         assert len(rows) == 1, f"Expected 1 app, got {len(rows)}"
-        assert rows[0].id == id_b, f"Expected manifest ID {id_b}, got {rows[0].id}"
+        assert rows[0].id == id_a, f"Expected stable local ID {id_a}, got {rows[0].id}"
 
     async def test_config_import_with_different_id(
         self,
@@ -3795,7 +3796,7 @@ class TestPullUpsertNaturalKeys:
         )
         rows = result.scalars().all()
         assert len(rows) == 1, f"Expected 1 config, got {len(rows)}"
-        assert rows[0].id == id_b, f"Expected manifest ID {id_b}, got {rows[0].id}"
+        assert rows[0].id == id_a, f"Expected stable local ID {id_a}, got {rows[0].id}"
 
     async def test_event_subscription_import_with_different_id(
         self,
@@ -4092,9 +4093,9 @@ class TestOrgImport:
         assert result.success
 
         row = (await db_session.execute(
-            select(Organization).where(Organization.id == new_id)
+            select(Organization).where(Organization.id == old_id)
         )).scalar_one_or_none()
-        assert row is not None, "Org should have new ID"
+        assert row is not None, "Org should preserve its local ID"
         assert row.name == "SharedOrg"
 
     async def test_org_preserves_domain(
@@ -4278,7 +4279,7 @@ class TestRoleImport:
     async def test_update_role_by_name_new_id(
         self, db_session: AsyncSession, sync_service, working_clone,
     ):
-        """Role exists by name, different UUID → ID updated."""
+        """Role exists by name, different UUID → local ID preserved."""
         from src.models.orm.users import Role
 
         old_id = uuid4()
@@ -4300,7 +4301,7 @@ class TestRoleImport:
         assert result.success
 
         row = (await db_session.execute(
-            select(Role).where(Role.id == new_id)
+            select(Role).where(Role.id == old_id)
         )).scalar_one_or_none()
         assert row is not None
         assert row.name == "SharedRole"

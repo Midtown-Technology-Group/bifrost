@@ -1710,6 +1710,34 @@ async def test_resolve_deletions_requires_manifest_or_work_dir():
 
 
 @pytest.mark.asyncio
+async def test_git_deletions_normalize_portable_integration_ids(tmp_path, monkeypatch):
+    incoming = Manifest(integrations={
+        "Halo": ManifestIntegration(id=INTEGRATION_ID, name="Halo")
+    })
+    current = Manifest(integrations={
+        "Halo": ManifestIntegration(id=EXISTING_ID, name="Halo")
+    })
+    monkeypatch.setattr(manifest_import, "read_manifest_from_dir", lambda _: incoming)
+    generate = AsyncMock(return_value=current)
+    monkeypatch.setattr("src.services.manifest_generator.generate_manifest", generate)
+    db = _SequenceDb()
+
+    await manifest_import.ManifestResolver(db)._resolve_deletions(
+        work_dir=tmp_path, dry_run=True
+    )
+
+    generate.assert_awaited_once_with(db)
+    integration_queries = [
+        statement for statement in db.statements
+        if "integrations.id NOT IN" in str(statement)
+    ]
+    assert len(integration_queries) == 1
+    params = integration_queries[0].compile().params
+    assert [UUID(EXISTING_ID)] in params.values()
+    assert [UUID(INTEGRATION_ID)] not in params.values()
+
+
+@pytest.mark.asyncio
 async def test_resolve_deletions_honors_explicit_config_removal_and_preserves_tables():
     stale_table_id = UUID("abababab-abab-abab-abab-abababababab")
     db = _SequenceDb(
@@ -1943,7 +1971,7 @@ async def test_sync_role_assignments_adds_before_removing_stale_roles():
 
 
 @pytest.mark.asyncio
-async def test_resolve_table_realigns_existing_natural_key_and_seeds_access():
+async def test_resolve_table_preserves_existing_natural_key_id_and_seeds_access():
     db = _SequenceDb()
     resolver = manifest_import.ManifestResolver(db)
     existing_table_id = UUID(EXISTING_ID)
@@ -1967,7 +1995,8 @@ async def test_resolve_table_realigns_existing_natural_key_and_seeds_access():
 
     assert len(db.statements) == 1
     params = db.statements[0].compile().params
-    assert params["id"] == UUID(CONFIG_ID)
+    assert "id" not in params
+    assert params["id_1"] == existing_table_id
     assert params["description"] == "Ticket intake"
     assert params["schema"] == {"columns": [{"name": "summary", "type": "text"}]}
     assert params["access"]["policies"][0]["name"] == "admin_bypass"
@@ -2045,7 +2074,8 @@ async def test_resolve_file_policy_uses_solution_aware_natural_key(monkeypatch):
     assert calls[0][2] == "file"
     assert len(db.statements) == 1
     params = db.statements[0].compile().params
-    assert params["id"] == UUID(CONFIG_ID)
+    assert "id" not in params
+    assert params["id_1"] == existing_policy_id
     assert params["policies"] == {"policies": [{"$ref": "docs-read"}]}
 
 

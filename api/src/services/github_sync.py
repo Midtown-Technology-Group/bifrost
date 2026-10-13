@@ -1880,6 +1880,7 @@ class GitHubSyncService:
         from each app's path, and copies files to the preview store.
         """
         from src.services.app_storage import AppStorageService
+        from src.services.manifest_generator import generate_manifest
 
         bifrost_dir = work_dir / ".bifrost"
         manifest = read_manifest_from_dir(bifrost_dir)
@@ -1890,6 +1891,10 @@ class GitHubSyncService:
         import asyncio
 
         app_storage = AppStorageService(self.repo_manager._settings)
+
+        manifest = normalize_git_manifest_identities(
+            manifest, await generate_manifest(self.db)
+        )
 
         async def _sync_one_app(mapp_id: str, source_dir: str) -> None:
             try:

@@ -2020,6 +2020,13 @@ class ManifestResolver:
         if manifest is None:
             if work_dir:
                 manifest = read_manifest_from_dir(work_dir / ".bifrost")
+                # Git input retains portable IDs on disk. Deletion accounting
+                # must use the same stable local graph as the import planner.
+                from src.services.manifest_generator import generate_manifest
+
+                manifest = normalize_git_manifest_identities(
+                    manifest, await generate_manifest(self.db)
+                )
             else:
                 raise ValueError("Either manifest or work_dir must be provided")
 

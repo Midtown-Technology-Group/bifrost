@@ -115,7 +115,7 @@ def test_resolve_config_uses_natural_key_cache_and_tracks_only_global_configs():
     )
 
     assert global_ops[0].id == UUID(EXISTING_ID)
-    assert global_ops[0].values["id"] == UUID(CONFIG_ID)
+    assert "id" not in global_ops[0].values
     assert global_ops[0].values["value"] == {"enabled": True}
     assert resolver.configs_touched == {(ORG_ID, "feature_flags")}
 
@@ -161,7 +161,7 @@ def test_resolve_policy_rule_updates_by_natural_key_and_timestamps_new_rows():
     insert_ops = resolver._resolve_policy_rule(rule, {"policy_rule_by_natural": {}})
 
     assert update_ops[0].id == UUID(EXISTING_ID)
-    assert update_ops[0].values["id"] == UUID(POLICY_RULE_ID)
+    assert "id" not in update_ops[0].values
     assert update_ops[0].values["body"]["actions"] == ["read"]
     assert "created_at" not in update_ops[0].values
     assert insert_ops[0].id == UUID(POLICY_RULE_ID)
