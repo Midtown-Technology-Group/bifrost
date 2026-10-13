@@ -2756,8 +2756,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Generate presigned URL for file upload
-         * @description Generate a presigned S3 URL for direct file upload. The file will be stored in the uploads folder.
+         * Authorize a file upload
+         * @description Authorize a bounded server upload for embed sessions or a direct storage upload for authenticated users.
          */
         post: operations["generate_upload_url_api_forms__form_id__upload_post"];
         delete?: never;
@@ -21915,10 +21915,7 @@ export interface components {
             } | null;
             /** Allowed Query Params */
             allowed_query_params?: string[] | null;
-            /** Form Schema */
-            form_schema: {
-                [key: string]: unknown;
-            } | components["schemas"]["FormSchema"];
+            form_schema: components["schemas"]["FormSchema"];
             /** @default role_based */
             access_level: components["schemas"]["FormAccessLevel"] | null;
             /**
@@ -22442,10 +22439,7 @@ export interface components {
             } | null;
             /** Allowed Query Params */
             allowed_query_params?: string[] | null;
-            /** Form Schema */
-            form_schema?: {
-                [key: string]: unknown;
-            } | components["schemas"]["FormSchema"] | null;
+            form_schema?: components["schemas"]["FormSchema"] | null;
             /** Is Active */
             is_active?: boolean | null;
             access_level?: components["schemas"]["FormAccessLevel"] | null;
