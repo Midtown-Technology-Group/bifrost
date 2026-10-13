@@ -49,6 +49,8 @@ async def test_cached_preview_never_crosses_actor_or_organization_and_expiry_is_
 
 @pytest.mark.parametrize("branchless", ["empty", "invalid-head", "valid-other-branch", "refused"])
 def test_remote_branch_error_cannot_silently_select_another_nonempty_branch(tmp_path, branchless):
+    service = object.__new__(sync.GitHubSyncService)
+    service._git_auth_env = {}
     destination = tmp_path / "clone"
     destination.mkdir()
     (destination / "partial").write_text("failed clone")
@@ -57,10 +59,10 @@ def test_remote_branch_error_cannot_silently_select_another_nonempty_branch(tmp_
     second = RuntimeError("empty repository") if branchless == "empty" else RuntimeError("authorization refused") if branchless == "refused" else other
     with patch.object(sync.GitRepo, "clone_from", side_effect=[RuntimeError("remote branch main not found"), second]) as clone:
         if branchless in {"empty", "invalid-head"}:
-            assert sync.GitHubSyncService._clone_connect_remote(destination, "https://example.invalid/repo", "main") is None
+            assert service._clone_connect_remote(destination, "https://example.invalid/repo", "main") is None
         else:
             with pytest.raises(sync.GitConnectPreviewError):
-                sync.GitHubSyncService._clone_connect_remote(destination, "https://example.invalid/repo", "main")
+                service._clone_connect_remote(destination, "https://example.invalid/repo", "main")
     assert clone.call_args_list == [
         call("https://example.invalid/repo", str(destination), branch="main"),
         call("https://example.invalid/repo", str(destination)),
