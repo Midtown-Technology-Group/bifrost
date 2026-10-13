@@ -183,15 +183,18 @@ test.describe("Apps Preview", () => {
 				.getByTestId("app-layout")
 				.getAttribute("data-instance-id");
 			await page.evaluate(() => {
-				const stylesheet = document.querySelector<HTMLLinkElement>(
-					'link[data-bifrost-bundle="true"]',
+				const shadowRoot = document.querySelector(
+					'[data-bifrost-app-style-boundary="true"]',
+				)?.shadowRoot;
+				const stylesheet = shadowRoot?.querySelector<HTMLLinkElement>(
+					'link[data-bifrost-app-stylesheet="true"]',
 				);
 				if (!stylesheet)
 					throw new Error("V1 bundle stylesheet was not mounted");
 				const continuity = { stylesheet, removed: false };
 				new MutationObserver(() => {
 					if (!stylesheet.isConnected) continuity.removed = true;
-				}).observe(document.head, { childList: true });
+				}).observe(shadowRoot!, { childList: true });
 				(
 					window as typeof window & {
 						__v1CssContinuity?: typeof continuity;
