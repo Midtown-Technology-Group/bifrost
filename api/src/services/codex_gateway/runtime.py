@@ -104,6 +104,14 @@ class CodexGatewayRuntime:
         )
         self.policy_engine = policy_engine or CodexGatewayPolicyEngine()
 
+    async def _get_active_gateway_key(
+        self, gateway_key: str | None
+    ) -> CodexGatewayKey | None:
+        """Reject malformed credentials before performing an active-key lookup."""
+        if not is_plausible_gateway_key(gateway_key):
+            return None
+        return await self.repository.get_active_gateway_key_by_plaintext(gateway_key)
+
     async def create_response(
         self,
         *,
@@ -122,21 +130,7 @@ class CodexGatewayRuntime:
             code="invalid_gateway_key",
             message="The Bifrost Codex Gateway key is invalid or revoked.",
         )
-        if not is_plausible_gateway_key(gateway_key):
-            await self._log_denial(
-                request_id=request_id,
-                endpoint=CODEX_GATEWAY_RESPONSES_ENDPOINT,
-                model=model if isinstance(model, str) else None,
-                status_code=invalid_key_response.status_code,
-                code="invalid_gateway_key",
-                source_ip=source_ip,
-                client_user_agent=client_user_agent,
-            )
-            return invalid_key_response
-
-        key_record = await self.repository.get_active_gateway_key_by_plaintext(
-            gateway_key
-        )
+        key_record = await self._get_active_gateway_key(gateway_key)
         if key_record is None:
             await self._log_denial(
                 request_id=request_id,
@@ -411,19 +405,14 @@ class CodexGatewayRuntime:
                 denied_reason=code,
                 source_ip=source_ip,
                 client_user_agent=client_user_agent,
-                request_metadata={
-                    "request_id": request_id,
-                    "user_id": str(key.user_id) if key else None,
-                    "gateway_key_id": str(key.id) if key else None,
-                    "project_id": str(key.project_id)
-                    if key and key.project_id
-                    else None,
-                    "oauth_account_id": str(account.id) if account else None,
-                    "endpoint": endpoint,
-                    "model": model,
-                    "policy_decision": "deny",
-                    "denied_reason": code,
-                },
+                request_metadata=self._denial_metadata(
+                    request_id=request_id,
+                    endpoint=endpoint,
+                    model=model,
+                    code=code,
+                    key=key,
+                    account=account,
+                ),
             )
 
         if code != "invalid_gateway_key":
@@ -444,6 +433,29 @@ class CodexGatewayRuntime:
                 code,
                 type(exc).__name__,
             )
+
+    @staticmethod
+    def _denial_metadata(
+        *,
+        request_id: str,
+        endpoint: str,
+        model: str | None,
+        code: str,
+        key: CodexGatewayKey | None,
+        account: CodexGatewayUpstreamAccount | None,
+    ) -> dict[str, Any]:
+        """Build denial audit metadata without submitted credentials or prompts."""
+        return {
+            "request_id": request_id,
+            "user_id": str(key.user_id) if key else None,
+            "gateway_key_id": str(key.id) if key else None,
+            "project_id": str(key.project_id) if key and key.project_id else None,
+            "oauth_account_id": str(account.id) if account else None,
+            "endpoint": endpoint,
+            "model": model,
+            "policy_decision": "deny",
+            "denied_reason": code,
+        }
 
     @staticmethod
     def _key_context(key: CodexGatewayKey) -> CodexGatewayKeyContext:

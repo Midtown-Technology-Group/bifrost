@@ -729,6 +729,8 @@ class TestEventSourceMutationEndpoints:
     async def test_topic_creation_does_not_return_success_when_commit_fails(self):
         db, _ = self._db_that_reloads_added_source()
         db.commit.side_effect = RuntimeError("commit failed")
+        ctx = _ctx()
+        user = _user()
         request = EventSourceCreate(
             name="Ticket Created",
             source_type=EventSourceType.TOPIC,
@@ -738,7 +740,7 @@ class TestEventSourceMutationEndpoints:
             events, "_build_event_source_response", AsyncMock(return_value=object())
         ):
             with pytest.raises(RuntimeError, match="commit failed"):
-                await events.create_source(request, _ctx(), _user(), db)
+                await events.create_source(request, ctx, user, db)
 
     @pytest.mark.asyncio
     async def test_create_topic_source_rejects_missing_or_invalid_topic(self):
