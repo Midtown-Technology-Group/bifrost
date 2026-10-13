@@ -903,7 +903,11 @@ def describe_observed_state(
         if definition.blocked_reason is not None:
             return "stopped"
         return "restarting"
-    if live_attempt.stop_requested_at is not None:
+    if (
+        definition.desired_state != "running"
+        or not definition.enabled
+        or live_attempt.stop_requested_at is not None
+    ):
         return "stopping"
     if live_attempt.state == "running":
         return "running"
