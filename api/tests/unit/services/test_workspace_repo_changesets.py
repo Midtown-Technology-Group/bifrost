@@ -1325,6 +1325,84 @@ async def test_git_commit_failure_preserves_activation_with_recovery_evidence(
 
 
 @pytest.mark.asyncio
+async def test_missing_writer_cancellation_persists_failure_before_reraise(
+    monkeypatch,
+):
+    mark_dirty = AsyncMock(side_effect=asyncio.CancelledError)
+    monkeypatch.setattr("src.core.repo_dirty.mark_repo_dirty", mark_dirty)
+    svc = service()
+    row = await svc.begin(WorkspaceRepoChangesetBegin(scope="features"), uuid4())
+    row.status = "activated"
+
+    with pytest.raises(asyncio.CancelledError):
+        await svc._complete_git_closure(
+            row.id,
+            WorkspaceRepoActivateRequest(
+                commit_message="release source",
+                push=True,
+            ),
+            operator="tester",
+        )
+
+    assert row.error == "verified GitHub App commit writer is not configured"
+    assert row.failure_detail["phase"] == "git_closure"
+    assert row.failure_detail["state"] == "not_configured"
+    assert row.failure_detail["activation_preserved"] is True
+    assert svc.db.commits == 1
+    mark_dirty.assert_awaited_once_with()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("cancelled_during", ["inspect", "write"])
+async def test_git_closure_cancellation_persists_recovery_evidence_and_reraises(
+    monkeypatch,
+    cancelled_during,
+):
+    path = "features/a.txt"
+    before_hash = hashlib.sha256(b"a").hexdigest()
+    after_hash = hashlib.sha256(b"A").hexdigest()
+    writer = RecordingWriter(history_hashes={path: before_hash})
+    if cancelled_during == "inspect":
+        writer.inspect = AsyncMock(side_effect=asyncio.CancelledError)
+    else:
+        writer.write = AsyncMock(side_effect=asyncio.CancelledError)
+    mark_dirty = AsyncMock()
+    monkeypatch.setattr("src.core.repo_dirty.mark_repo_dirty", mark_dirty)
+    svc = service({path: b"A"})
+    svc.commit_writer = writer
+    row = await svc.begin(WorkspaceRepoChangesetBegin(scope="features"), uuid4())
+    row.status = "activated"
+    row.mutations = [
+        {
+            "path": path,
+            "operation": "write",
+            "before_hash": before_hash,
+            "after_hash": after_hash,
+            "content_base64": base64.b64encode(b"A").decode(),
+        }
+    ]
+
+    with pytest.raises(asyncio.CancelledError):
+        await svc._complete_git_closure(
+            row.id,
+            WorkspaceRepoActivateRequest(
+                commit_message="release source",
+                push=True,
+            ),
+            operator="tester",
+        )
+
+    assert row.error == f"Git closure cancelled during {cancelled_during}"
+    assert row.failure_detail["phase"] == "git_closure"
+    assert row.failure_detail["state"] == "failed"
+    assert row.failure_detail["cancelled"] is True
+    assert row.failure_detail["cancelled_during"] == cancelled_during
+    assert row.failure_detail["activation_preserved"] is True
+    assert svc.db.commits == 2
+    mark_dirty.assert_awaited_once_with()
+
+
+@pytest.mark.asyncio
 async def test_retry_git_closure_after_writer_configuration_skips_activation(
     monkeypatch,
 ):

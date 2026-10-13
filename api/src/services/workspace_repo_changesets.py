@@ -85,6 +85,9 @@ async def _mark_unclosed_activation_dirty() -> None:
 
     try:
         await mark_repo_dirty()
+    except asyncio.CancelledError:
+        logger.warning("Repo dirty marking was cancelled after incomplete Git closure")
+        raise
     except Exception:
         # The durable changeset remains the recovery source of truth. A Redis
         # outage must not obscure the Git-closure outcome or undo activation.
@@ -1371,9 +1374,9 @@ class WorkspaceRepoChangesetService:
                 "activation_preserved": True,
                 "provenance": provenance,
             }
-            await _mark_unclosed_activation_dirty()
             await self.db.flush()
             await self.db.commit()
+            await _mark_unclosed_activation_dirty()
             return self._response(row)
 
         # Leave a durable pending marker before Git. If persisting the outcome
@@ -1390,6 +1393,7 @@ class WorkspaceRepoChangesetService:
         await self.db.flush()
         await self.db.commit()
         history_evidence: dict[str, object] | None = None
+        closure_stage = "inspect"
         try:
             source_mutations = tuple(
                 item for item in row.mutations if item.get("operation") != "verify"
@@ -1480,6 +1484,7 @@ class WorkspaceRepoChangesetService:
                 await self.db.commit()
                 return self._response(row)
 
+            closure_stage = "write"
             result = await self.commit_writer.write(
                 PlatformCommitRequest(
                     commit_message=provenance["commit_message"],
@@ -1496,6 +1501,26 @@ class WorkspaceRepoChangesetService:
                     expected_head_sha=history.commit_sha,
                 )
             )
+        except asyncio.CancelledError:
+            await self.db.rollback()
+            row = await self._required(changeset_id, for_update=True)
+            message = f"Git closure cancelled during {closure_stage}"
+            row.error = message
+            row.failure_detail = {
+                "phase": "git_closure",
+                "state": "failed",
+                "message": message,
+                "cancelled": True,
+                "cancelled_during": closure_stage,
+                "activation_preserved": True,
+                "provenance": provenance,
+            }
+            if history_evidence is not None:
+                row.failure_detail["history"] = history_evidence
+            await self.db.flush()
+            await self.db.commit()
+            await _mark_unclosed_activation_dirty()
+            raise
         except Exception as exc:
             await self.db.rollback()
             row = await self._required(changeset_id, for_update=True)
@@ -1515,9 +1540,9 @@ class WorkspaceRepoChangesetService:
             if commit_sha:
                 row.commit_sha = commit_sha
                 row.failure_detail["commit_sha"] = commit_sha
-            await _mark_unclosed_activation_dirty()
             await self.db.flush()
             await self.db.commit()
+            await _mark_unclosed_activation_dirty()
             return self._response(row)
 
         row = await self._required(changeset_id, for_update=True)
