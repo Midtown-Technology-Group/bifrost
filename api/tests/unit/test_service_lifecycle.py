@@ -74,6 +74,35 @@ async def _ensure(db_session, org_id="org-scoped", **overrides):
 
 
 @pytest.mark.asyncio
+async def test_stop_serializes_claim_admission_before_attempt_scan(monkeypatch):
+    """A stop cannot scan attempts while a concurrent claim owns the definition."""
+    import asyncio
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+
+    locked = asyncio.Event()
+    release_claim = asyncio.Event()
+    definition = SimpleNamespace(id=uuid4(), desired_state="running")
+
+    async def refresh(row, *, with_for_update):
+        assert row is definition and with_for_update is True
+        locked.set()
+        await release_claim.wait()
+
+    stop_attempt = AsyncMock()
+    monkeypatch.setattr(service_lifecycle, "_request_attempt_stop", stop_attempt)
+    db = SimpleNamespace(refresh=refresh, flush=AsyncMock())
+    stop = asyncio.create_task(service_lifecycle.stop_service(db, definition))
+    await locked.wait()
+    stop_attempt.assert_not_awaited()
+    assert definition.desired_state == "running"
+    release_claim.set()
+    await stop
+    stop_attempt.assert_awaited_once_with(db, definition.id)
+    assert definition.desired_state == "stopped"
+
+
+@pytest.mark.asyncio
 async def test_ensure_creates_defaults(db_session):
     """First ensure creates an enabled, running-desired, always-restart definition."""
     definition, wf = await _ensure(db_session)

@@ -298,6 +298,10 @@ async def start_service(db: AsyncSession, definition: ServiceDefinition) -> Serv
 async def stop_service(db: AsyncSession, definition: ServiceDefinition) -> ServiceDefinition:
     """Request stopped. Durable desire is stored first so the outcome is never
     mistaken for an unexpected exit."""
+    # Claim admission locks this row before creating a live attempt. Take the
+    # same lock before reading attempts so a concurrent claim cannot appear
+    # after the stop scan but before stopped desire is committed.
+    await db.refresh(definition, with_for_update=True)
     definition.desired_state = "stopped"
     await _request_attempt_stop(db, definition.id)
     definition.updated_at = _now()
