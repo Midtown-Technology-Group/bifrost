@@ -3,6 +3,7 @@
 import base64
 import hashlib
 import hmac as hmac_module
+from urllib.parse import quote, urlencode
 
 import pytest
 
@@ -31,6 +32,20 @@ class TestComputeEmbedHmac:
             b"my-secret", b"agent_id=42&ticket_id=1001", hashlib.sha256
         ).hexdigest()
         assert result == expected
+
+    def test_reserved_delimiters_have_unambiguous_canonicalization(self):
+        secret = "my-secret"
+        encoded_value = compute_embed_hmac({"a": "1&b=2"}, secret)
+        injected_param = compute_embed_hmac({"a": "1", "b": "2"}, secret)
+
+        expected_message = urlencode(
+            [("a", "1&b=2")], safe="", quote_via=quote
+        ).encode()
+        expected = hmac_module.new(
+            secret.encode(), expected_message, hashlib.sha256
+        ).hexdigest()
+        assert encoded_value == expected
+        assert encoded_value != injected_param
 
     def test_empty_params(self):
         result = compute_embed_hmac({}, "my-secret")

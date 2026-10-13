@@ -13,6 +13,7 @@ Two signing schemes are supported, selected per stored secret via the
 import base64
 import hashlib
 import hmac as hmac_module
+from urllib.parse import quote, urlencode
 
 SCHEME_SHOPIFY = "shopify"
 SCHEME_HALOPSA = "halopsa"
@@ -29,7 +30,7 @@ def compute_embed_hmac(params: dict[str, str], secret: str) -> str:
     Returns:
         Hex-encoded HMAC digest.
     """
-    message = "&".join(f"{k}={v}" for k, v in sorted(params.items()))
+    message = urlencode(sorted(params.items()), doseq=False, safe="", quote_via=quote)
     return hmac_module.new(
         secret.encode(), message.encode(), hashlib.sha256
     ).hexdigest()

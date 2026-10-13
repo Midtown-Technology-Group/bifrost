@@ -335,7 +335,7 @@ async def test_publish_app_reports_nonaccepted_or_malformed_rest_response():
 @pytest.mark.asyncio
 async def test_get_app_dependencies_by_slug_reports_declared_packages():
     app = _app(dependencies={"dayjs": "^1.11.0", "@scope/pkg": "2.0"})
-    db = _Db([_ScalarRowsResult([app])])
+    db = _Db([_ScalarRowsResult([app]), _ScalarResult(app)])
 
     with patch.object(apps, "get_tool_db", _tool_db(db)):
         result = await apps.get_app_dependencies(_context(org_id=app.organization_id), app_slug=app.slug)
@@ -349,7 +349,9 @@ async def test_get_app_dependencies_reports_empty_and_missing_apps():
     empty_app = _app(dependencies=None)
     empty_db = _Db([_ScalarResult(empty_app)])
     with patch.object(apps, "get_tool_db", _tool_db(empty_db)):
-        empty = await apps.get_app_dependencies(_context(), app_id=str(empty_app.id))
+        empty = await apps.get_app_dependencies(
+            _context(org_id=empty_app.organization_id), app_id=str(empty_app.id)
+        )
 
     missing_db = _Db([_ScalarRowsResult([])])
     with patch.object(apps, "get_tool_db", _tool_db(missing_db)):
@@ -358,6 +360,19 @@ async def test_get_app_dependencies_reports_empty_and_missing_apps():
     assert empty.structured_content["dependencies"] == {}
     assert "No dependencies declared" in empty.content[0].text
     assert "Application not found" in missing.structured_content["error"]
+
+
+@pytest.mark.asyncio
+async def test_get_app_dependencies_enforces_role_based_access():
+    app = _app(access_level="role_based")
+    db = _Db([_ScalarResult(app), _ScalarRowsResult([])])
+
+    with patch.object(apps, "get_tool_db", _tool_db(db)):
+        result = await apps.get_app_dependencies(
+            _context(org_id=app.organization_id), app_id=str(app.id)
+        )
+
+    assert "Application not found" in result.structured_content["error"]
 
 
 @pytest.mark.asyncio

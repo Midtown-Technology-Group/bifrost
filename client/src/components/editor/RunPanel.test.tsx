@@ -112,6 +112,26 @@ beforeEach(() => {
 });
 
 describe("RunPanel", () => {
+	it("consumes a run request queued before the panel mounts", async () => {
+		const executeRef = { current: null as (() => void) | null };
+		const pendingExecuteRef = { current: true };
+
+		renderWithProviders(
+			<RunPanel
+				executeRef={executeRef}
+				pendingExecuteRef={pendingExecuteRef}
+			/>,
+		);
+
+		await waitFor(() =>
+			expect(
+				screen.getByRole("textbox", { name: /review id/i }),
+			).toHaveFocus(),
+		);
+		expect(pendingExecuteRef.current).toBe(false);
+		expect(executeRef.current).toBeTypeOf("function");
+	});
+
 	it("renders the workflow form immediately when metadata is already available", async () => {
 		renderWithProviders(<RunPanel />);
 

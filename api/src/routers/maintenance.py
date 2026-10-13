@@ -646,10 +646,16 @@ async def run_preflight(
                 dec_name = None
                 if isinstance(dec, ast.Name):
                     dec_name = dec.id
+                elif isinstance(dec, ast.Attribute):
+                    dec_name = dec.attr
                 elif isinstance(dec, ast.Call) and isinstance(
                     dec.func, ast.Name
                 ):
                     dec_name = dec.func.id
+                elif isinstance(dec, ast.Call) and isinstance(
+                    dec.func, ast.Attribute
+                ):
+                    dec_name = dec.func.attr
                 if dec_name in decorator_names:
                     candidates.append(node.name)
                     break

@@ -1064,30 +1064,42 @@ async def get_app_dependencies(
     from sqlalchemy import select
 
     from src.models.orm.applications import Application
+    from src.repositories.applications import ApplicationRepository
 
     if not app_id and not app_slug:
         return error_result("Either app_id or app_slug is required")
 
     try:
         async with get_tool_db(context) as db:
+            repo = ApplicationRepository(
+                session=db,
+                org_id=context.org_id,
+                user_id=context.user_id,
+                is_superuser=_write_scope_bypass(context),
+                is_external=bool(getattr(context, "is_external", False)),
+            )
             if app_id:
                 try:
                     app_uuid = UUID(app_id)
                 except ValueError:
                     return error_result(f"Invalid app_id format: {app_id}")
-                query = select(Application).where(Application.id == app_uuid)
+                app = await repo.get(id=app_uuid)
+            elif _write_scope_bypass(context):
+                app = await repo.get_by_slug_global(app_slug)
             else:
-                query = select(Application).where(Application.slug == app_slug)
-
-            # Org cascade (external-aware): externals get no global tier.
-            query = apply_mcp_org_scope(query, Application, context)
-
-            result = await db.execute(query)
-            if app_id:
-                app = result.scalar_one_or_none()
-            else:
-                # Slugs are unique per install, not globally — disambiguate.
-                app = _pick_slug_row(list(result.scalars().all()), context.org_id)
+                query = apply_mcp_org_scope(
+                    select(Application).where(Application.slug == app_slug),
+                    Application,
+                    context,
+                )
+                result = await db.execute(query)
+                candidate = _pick_slug_row(
+                    list(result.scalars().all()), context.org_id
+                )
+                # Slug resolution may legitimately see multiple solution
+                # installs. Resolve deterministically, then enforce the
+                # repository's role/private access rules by immutable ID.
+                app = await repo.get(id=candidate.id) if candidate else None
             if not app:
                 return error_result(f"Application not found: {app_id or app_slug}")
 
@@ -1131,9 +1143,7 @@ async def update_app_dependencies(
     import re
     from uuid import UUID
 
-    from sqlalchemy import select
-
-    from src.models.orm.applications import Application
+    from src.repositories.applications import ApplicationRepository
     from src.services.app_storage import AppStorageService
 
     MAX_DEPS = 20
@@ -1156,12 +1166,14 @@ async def update_app_dependencies(
 
     try:
         async with get_tool_db(context) as db:
-            query = select(Application).where(Application.id == app_uuid)
-            # Org cascade (external-aware): externals get no global tier.
-            query = apply_mcp_org_scope(query, Application, context)
-
-            result = await db.execute(query)
-            app = result.scalar_one_or_none()
+            repo = ApplicationRepository(
+                session=db,
+                org_id=context.org_id,
+                user_id=context.user_id,
+                is_superuser=_write_scope_bypass(context),
+                is_external=bool(getattr(context, "is_external", False)),
+            )
+            app = await repo.get(id=app_uuid)
             if not app:
                 return error_result(f"Application not found: {app_id}")
 

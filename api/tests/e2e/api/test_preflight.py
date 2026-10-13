@@ -67,3 +67,39 @@ def unreg_wf():
             "/api/files/editor?path=workflows/unreg_preflight.py",
             headers=platform_admin.headers,
         )
+
+    def test_preflight_detects_qualified_decorators_in_nested_files(
+        self, e2e_client, platform_admin
+    ):
+        """Nested files and module-qualified decorators are scanned."""
+        path = "workflows/nested/qualified_preflight.py"
+        e2e_client.put(
+            "/api/files/editor/content",
+            headers=platform_admin.headers,
+            json={
+                "path": path,
+                "content": "import bifrost\n\n@bifrost.workflow()\ndef qualified_wf():\n    pass\n",
+                "encoding": "utf-8",
+            },
+        )
+
+        try:
+            resp = e2e_client.post(
+                "/api/maintenance/preflight",
+                headers=platform_admin.headers,
+            )
+            assert resp.status_code == 200
+            all_items = resp.json().get("issues", []) + resp.json().get(
+                "warnings", []
+            )
+            assert any(
+                item.get("category") == "unregistered_function"
+                and "qualified_wf" in item.get("detail", "")
+                and item.get("path") == path
+                for item in all_items
+            )
+        finally:
+            e2e_client.delete(
+                f"/api/files/editor?path={path}",
+                headers=platform_admin.headers,
+            )

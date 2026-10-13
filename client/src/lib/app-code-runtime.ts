@@ -81,6 +81,57 @@ function wrapAsComponent(compiled: string): string {
     return __defaultExport__;
   `;
 }
+
+const reservedParameterNames = new Set([
+	"await",
+	"break",
+	"case",
+	"catch",
+	"class",
+	"const",
+	"continue",
+	"debugger",
+	"default",
+	"delete",
+	"do",
+	"else",
+	"enum",
+	"export",
+	"extends",
+	"false",
+	"finally",
+	"for",
+	"function",
+	"if",
+	"import",
+	"in",
+	"instanceof",
+	"let",
+	"new",
+	"null",
+	"return",
+	"static",
+	"super",
+	"switch",
+	"this",
+	"throw",
+	"true",
+	"try",
+	"typeof",
+	"var",
+	"void",
+	"while",
+	"with",
+	"yield",
+]);
+
+function isSafeDirectBinding(name: string): boolean {
+	return (
+		/^[$A-Z_a-z][$\w]*$/.test(name) &&
+		!reservedParameterNames.has(name) &&
+		!(name in globalThis)
+	);
+}
 import { createPlatformScope } from "./app-code-platform/scope";
 
 /**
@@ -185,7 +236,10 @@ import * as ComboboxModule from "@/components/ui/combobox";
 import * as PaginationModule from "@/components/ui/pagination";
 import * as TagsInputModule from "@/components/ui/tags-input";
 import * as MultiComboboxModule from "@/components/ui/multi-combobox";
-import { Calendar as CalendarPicker, CalendarDayButton } from "@/components/ui/calendar";
+import {
+	Calendar as CalendarPicker,
+	CalendarDayButton,
+} from "@/components/ui/calendar";
 import * as DateRangePickerModule from "@/components/ui/date-range-picker";
 
 // Utilities - date-fns
@@ -298,15 +352,12 @@ function ErrorComponent({
 		{
 			className: "p-4 text-destructive",
 		},
-		React.createElement(
-			"div",
-			{ className: "font-semibold mb-2" },
-			title,
-		),
+		React.createElement("div", { className: "font-semibold mb-2" }, title),
 		React.createElement(
 			"pre",
 			{
-				className: "text-sm whitespace-pre-wrap font-mono overflow-auto",
+				className:
+					"text-sm whitespace-pre-wrap font-mono overflow-auto",
 			},
 			message,
 		),
@@ -362,15 +413,19 @@ export function createComponent(
 		return function ServerCompileRequired() {
 			return ErrorComponent({
 				title: "Compilation Required",
-				message: "This file needs server-side compilation. Save the file to trigger compilation.",
+				message:
+					"This file needs server-side compilation. Save the file to trigger compilation.",
 			});
 		};
 	}
 
 	// Step 2: Build the full scope
+	const registry = { ...$, ...customComponents };
+	const directScope = Object.fromEntries(
+		Object.entries(registry).filter(([name]) => isSafeDirectBinding(name)),
+	);
 	const scope = {
-		...$,
-		...customComponents,
+		...directScope,
 		$: { ...$, ...customComponents }, // Also provide $ for explicit imports
 		$deps: externalDeps,
 	};
@@ -403,7 +458,9 @@ export function createComponent(
 				return React.createElement(Component, props);
 			} catch (err) {
 				const errorMessage =
-					err instanceof Error ? err.message : "Unknown runtime error";
+					err instanceof Error
+						? err.message
+						: "Unknown runtime error";
 				return ErrorComponent({
 					title: "Runtime Error",
 					message: errorMessage,
@@ -413,7 +470,9 @@ export function createComponent(
 	} catch (err) {
 		// Factory creation or execution failed
 		const errorMessage =
-			err instanceof Error ? err.message : "Unknown error creating component";
+			err instanceof Error
+				? err.message
+				: "Unknown error creating component";
 		return function FactoryError() {
 			return ErrorComponent({
 				title: "Component Factory Error",

@@ -109,6 +109,7 @@ export function EditorLayout() {
 	});
 
 	const executeRef = useRef<(() => void) | null>(null);
+	const pendingExecuteRef = useRef(false);
 
 	// Listen for run-editor-file event and trigger execution
 	useEffect(() => {
@@ -123,6 +124,8 @@ export function EditorLayout() {
 			// If RunPanel is already mounted, execute immediately
 			if (executeRef.current) {
 				executeRef.current();
+			} else {
+				pendingExecuteRef.current = true;
 			}
 		};
 
@@ -364,7 +367,12 @@ export function EditorLayout() {
 										<SourceControlPanel />
 									)}
 									{sidebarPanel === "run" && (
-										<RunPanel executeRef={executeRef} />
+										<RunPanel
+											executeRef={executeRef}
+											pendingExecuteRef={
+												pendingExecuteRef
+											}
+										/>
 									)}
 									{sidebarPanel === "packages" && (
 										<PackagePanel />

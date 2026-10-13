@@ -10,6 +10,7 @@ Create Date: 2026-02-12
 
 import sqlalchemy as sa
 from alembic import op
+from sqlalchemy.dialects import postgresql
 
 revision = "20260212_pub_snap"
 down_revision = "20260212_uq_webhook_es"
@@ -20,7 +21,7 @@ depends_on = None
 def upgrade() -> None:
     op.add_column(
         "applications",
-        sa.Column("published_snapshot", sa.JSON(), nullable=True),
+        sa.Column("published_snapshot", postgresql.JSONB(), nullable=True),
     )
 
 

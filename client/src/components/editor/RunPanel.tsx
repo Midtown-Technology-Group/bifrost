@@ -57,13 +57,14 @@ interface LogEntry {
 
 interface RunPanelProps {
 	executeRef?: MutableRefObject<(() => void) | null>;
+	pendingExecuteRef?: MutableRefObject<boolean>;
 }
 
 /**
  * Run panel for executing workflows, data providers, and scripts
  * Shows detected file type and appropriate inputs
  */
-export function RunPanel({ executeRef }: RunPanelProps) {
+export function RunPanel({ executeRef, pendingExecuteRef }: RunPanelProps) {
 	const navigate = useNavigate();
 	const queryClient = useQueryClient();
 	const orgId = useScopeStore((state) => state.scope.orgId);
@@ -184,7 +185,7 @@ export function RunPanel({ executeRef }: RunPanelProps) {
 	const [selectedWorkflowId, setSelectedWorkflowId] = useState<string | null>(
 		null,
 	);
-	const firstInputRef = useRef<HTMLInputElement>(null);
+	const parametersRef = useRef<HTMLDivElement>(null);
 	const runContextKey = `${openFile?.path ?? ""}::${selectedWorkflowId ?? ""}`;
 	const [prevRunContextKey, setPrevRunContextKey] = useState<string | null>(
 		null,
@@ -722,9 +723,15 @@ export function RunPanel({ executeRef }: RunPanelProps) {
 			selectedWorkflow.parameters &&
 			(selectedWorkflow.parameters.length ?? 0) > 0;
 
-		if (hasParameters && firstInputRef.current) {
+		if (hasParameters && parametersRef.current) {
 			// Focus first input if there are parameters
-			setTimeout(() => firstInputRef.current?.focus(), 50);
+			setTimeout(() => {
+				parametersRef.current
+					?.querySelector<HTMLElement>(
+						'input:not([type="hidden"]), textarea, button[role="combobox"], button[role="checkbox"]',
+					)
+					?.focus();
+			}, 50);
 		} else if (detectedItem.type === "script") {
 			// Execute script immediately if no parameters
 			handleExecuteScript();
@@ -742,12 +749,30 @@ export function RunPanel({ executeRef }: RunPanelProps) {
 		if (executeRef) {
 			executeRef.current = handleExecuteEvent;
 		}
+		if (
+			pendingExecuteRef?.current &&
+			detectedItem &&
+			!isLoadingMetadata &&
+			!metadataError &&
+			hasMetadata
+		) {
+			pendingExecuteRef.current = false;
+			handleExecuteEvent();
+		}
 		return () => {
 			if (executeRef) {
 				executeRef.current = null;
 			}
 		};
-	}, [handleExecuteEvent, executeRef]);
+	}, [
+		detectedItem,
+		executeRef,
+		handleExecuteEvent,
+		hasMetadata,
+		isLoadingMetadata,
+		metadataError,
+		pendingExecuteRef,
+	]);
 
 	// No file open
 	if (!openFile) {
@@ -882,28 +907,30 @@ export function RunPanel({ executeRef }: RunPanelProps) {
 										>
 											<SelectValue placeholder="Select a workflow to run" />
 										</SelectTrigger>
-									<SelectContent className="z-[200]">
-										{detectedItem.workflows
-											?.filter((w) => w.type !== "service")
-											.map((w) => (
-												<SelectItem
-													key={w.id}
-													value={w.id}
-												>
-													<div className="flex flex-col items-start">
-														<span>
-															{w.name}
-														</span>
-														{w.description && (
-															<span className="text-xs text-muted-foreground">
-																{
-																	w.description
-																}
+										<SelectContent className="z-[200]">
+											{detectedItem.workflows
+												?.filter(
+													(w) => w.type !== "service",
+												)
+												.map((w) => (
+													<SelectItem
+														key={w.id}
+														value={w.id}
+													>
+														<div className="flex flex-col items-start">
+															<span>
+																{w.name}
 															</span>
-														)}
-													</div>
-												</SelectItem>
-											))}
+															{w.description && (
+																<span className="text-xs text-muted-foreground">
+																	{
+																		w.description
+																	}
+																</span>
+															)}
+														</div>
+													</SelectItem>
+												))}
 										</SelectContent>
 									</Select>
 								</div>
@@ -934,7 +961,7 @@ export function RunPanel({ executeRef }: RunPanelProps) {
 								</Button>
 							</div>
 						) : selectedWorkflow ? (
-							<div className="p-3">
+							<div className="p-3" ref={parametersRef}>
 								<WorkflowParametersForm
 									key={selectedWorkflowId} // Reset form when workflow changes
 									parameters={
