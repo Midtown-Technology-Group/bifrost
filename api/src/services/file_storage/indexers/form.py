@@ -188,13 +188,15 @@ class FormIndexer:
             fields_data = form_schema.get("fields", [])
         elif "fields" in form_data and isinstance(form_data["fields"], list):
             # Flat fields format — normalize 'default' to 'default_value'
+            if any(not isinstance(field, dict) for field in form_data["fields"]):
+                logger.warning(f"Invalid field in {path}: expected an object")
+                return content_modified
             fields_data = []
             for f in form_data["fields"]:
-                if isinstance(f, dict):
-                    fd = dict(f)
-                    if "default" in fd and "default_value" not in fd:
-                        fd["default_value"] = fd.pop("default")
-                    fields_data.append(fd)
+                fd = dict(f)
+                if "default" in fd and "default_value" not in fd:
+                    fd["default_value"] = fd.pop("default")
+                fields_data.append(fd)
         else:
             fields_data = None
 

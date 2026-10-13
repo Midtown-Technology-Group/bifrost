@@ -22061,10 +22061,7 @@ export interface components {
             } | null;
             /** Allowed Query Params */
             allowed_query_params?: string[] | null;
-            /** Form Schema */
-            form_schema: {
-                [key: string]: unknown;
-            } | components["schemas"]["FormSchema"];
+            form_schema: components["schemas"]["FormSchema"];
             /** @default role_based */
             access_level: components["schemas"]["FormAccessLevel"] | null;
             /**
@@ -22588,10 +22585,7 @@ export interface components {
             } | null;
             /** Allowed Query Params */
             allowed_query_params?: string[] | null;
-            /** Form Schema */
-            form_schema?: {
-                [key: string]: unknown;
-            } | components["schemas"]["FormSchema"] | null;
+            form_schema?: components["schemas"]["FormSchema"] | null;
             /** Is Active */
             is_active?: boolean | null;
             access_level?: components["schemas"]["FormAccessLevel"] | null;

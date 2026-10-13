@@ -142,3 +142,64 @@ fields:
     assert modified is False
     assert db.execute.await_count == 1
     db.add.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "fields_yaml",
+    [
+        "  - not-a-field",
+        "  - name: valid\n    label: Valid\n  - not-a-field",
+    ],
+)
+@pytest.mark.asyncio
+async def test_index_form_rejects_non_object_legacy_fields_before_delete(
+    fields_yaml: str,
+) -> None:
+    form_id = uuid4()
+    db = AsyncMock()
+    db.add = MagicMock()
+
+    modified = await FormIndexer(db).index_form(
+        f"forms/{form_id}.form.yaml",
+        f"""
+id: {form_id}
+name: Invalid Legacy Intake
+fields:
+{fields_yaml}
+""".encode(),
+    )
+
+    assert modified is False
+    assert db.execute.await_count == 1
+    db.add.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "fields_yaml",
+    [
+        "    - not-a-field",
+        "    - name: valid\n      label: Valid\n    - not-a-field",
+    ],
+)
+@pytest.mark.asyncio
+async def test_index_form_rejects_non_object_canonical_fields_before_delete(
+    fields_yaml: str,
+) -> None:
+    form_id = uuid4()
+    db = AsyncMock()
+    db.add = MagicMock()
+
+    modified = await FormIndexer(db).index_form(
+        f"forms/{form_id}.form.yaml",
+        f"""
+id: {form_id}
+name: Invalid Canonical Intake
+form_schema:
+  fields:
+{fields_yaml}
+""".encode(),
+    )
+
+    assert modified is False
+    assert db.execute.await_count == 1
+    db.add.assert_not_called()
