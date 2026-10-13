@@ -31,6 +31,11 @@ def _unresolved_refs_title(path: str) -> str:
     return f"Unresolved Workflow Refs: {file_name} [{path_digest}]"
 
 
+def _legacy_unresolved_refs_title(path: str) -> str:
+    """Return the basename-only title used before path-qualified titles."""
+    return f"Unresolved Workflow Refs: {Path(path).name}"
+
+
 @dataclass
 class FileDiagnosticInfo:
     """A file-specific issue detected during save/indexing."""
@@ -280,6 +285,15 @@ class DiagnosticsService:
             title=title,
             category=NotificationCategory.SYSTEM,
         )
+        if existing is None:
+            legacy = await service.find_admin_notification_by_title(
+                title=_legacy_unresolved_refs_title(path),
+                category=NotificationCategory.SYSTEM,
+            )
+            if legacy is not None and (getattr(legacy, "metadata", None) or {}).get(
+                "file_path"
+            ) == path:
+                existing = legacy
         if existing:
             logger.debug("Unresolved refs notification already exists for %s", log_safe(path))
             return
@@ -331,6 +345,15 @@ class DiagnosticsService:
             title=title,
             category=NotificationCategory.SYSTEM,
         )
+        if existing is None:
+            legacy = await service.find_admin_notification_by_title(
+                title=_legacy_unresolved_refs_title(path),
+                category=NotificationCategory.SYSTEM,
+            )
+            if legacy is not None and (getattr(legacy, "metadata", None) or {}).get(
+                "file_path"
+            ) == path:
+                existing = legacy
         if existing:
             await service.dismiss_notification(existing.id, user_id="system")
             logger.info("Cleared unresolved refs notification for %s", log_safe(path))

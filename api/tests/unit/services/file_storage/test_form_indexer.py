@@ -140,7 +140,7 @@ fields:
     )
 
     assert modified is False
-    assert db.execute.await_count == 1
+    db.execute.assert_not_awaited()
     db.add.assert_not_called()
 
 
@@ -170,7 +170,7 @@ fields:
     )
 
     assert modified is False
-    assert db.execute.await_count == 1
+    db.execute.assert_not_awaited()
     db.add.assert_not_called()
 
 
@@ -201,5 +201,25 @@ form_schema:
     )
 
     assert modified is False
-    assert db.execute.await_count == 1
+    db.execute.assert_not_awaited()
+    db.add.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_index_form_rejects_more_than_fifty_fields_before_db_write() -> None:
+    form_id = uuid4()
+    db = AsyncMock()
+    db.add = MagicMock()
+    fields = "\n".join(
+        f"  - name: field_{index}\n    label: Field {index}"
+        for index in range(51)
+    )
+
+    modified = await FormIndexer(db).index_form(
+        f"forms/{form_id}.form.yaml",
+        f"id: {form_id}\nname: Too Large\nfields:\n{fields}\n".encode(),
+    )
+
+    assert modified is False
+    db.execute.assert_not_awaited()
     db.add.assert_not_called()

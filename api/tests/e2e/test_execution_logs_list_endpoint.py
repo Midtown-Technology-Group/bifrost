@@ -82,7 +82,8 @@ async def seeded_logs(db_session):
         yield {
             "workflow_name": workflow_name,
             "message_token": message_token,
-            "log_ids": {str(log.id) for log in logs},
+            "log_ids": {log.id for log in logs},
+            "error_log_id": logs[0].id,
         }
     finally:
         await db_session.execute(delete(ExecutionLog).where(
@@ -287,6 +288,23 @@ class TestLogsListEndpoint:
         data = response.json()
         assert len(data["logs"]) == 2
         assert {log["id"] for log in data["logs"]} == seeded_logs["log_ids"]
+
+        bounded_response = http_client.get(
+            "/api/executions/logs",
+            headers=auth_headers(admin_token),
+            params={
+                "start_date": "2020-01-01T00:00:00Z",
+                "end_date": "2026-09-02T12:00:00Z",
+                "workflow_name": seeded_logs["workflow_name"],
+                "limit": 50,
+            },
+        )
+        assert bounded_response.status_code == 200
+        bounded_logs = bounded_response.json()["logs"]
+        assert [log["id"] for log in bounded_logs] == [
+            seeded_logs["error_log_id"]
+        ]
+        assert bounded_logs[0]["level"] == "ERROR"
 
     @pytest.mark.asyncio
     async def test_list_logs_response_structure(

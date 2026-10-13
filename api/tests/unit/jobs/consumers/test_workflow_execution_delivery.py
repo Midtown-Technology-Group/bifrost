@@ -489,7 +489,7 @@ async def test_poison_finalization_skips_messages_without_durable_execution_id(
 @pytest.mark.parametrize(
     ("status", "expected_status", "failed"),
     [
-        ("Scheduled", "Scheduled", False),
+        ("Scheduled", "Failed", True),
         ("Pending", "Failed", True),
         ("Running", "Running", False),
         ("Success", "Success", False),
@@ -534,7 +534,7 @@ async def test_missing_context_failure_is_locked_and_state_aware(
 @pytest.mark.parametrize(
     ("status", "claimable"),
     [
-        ("Scheduled", False),
+        ("Scheduled", True),
         ("Pending", True),
         ("Running", False),
         ("Success", False),
@@ -559,6 +559,7 @@ async def test_durable_execution_claim_serializes_with_publisher(
     execution_id = str(uuid4())
     claim_token = uuid4()
     claim = SimpleNamespace(claim_token=claim_token)
+    mark_attempt_published = AsyncMock()
     with (
         patch(
             "src.core.database.get_db_context",
@@ -569,6 +570,10 @@ async def test_durable_execution_claim_serializes_with_publisher(
             new_callable=AsyncMock,
             return_value=claim,
         ) as create_claimed_attempt,
+        patch(
+            "src.services.execution.attempts.mark_attempt_published",
+            new=mark_attempt_published,
+        ),
     ):
         result = await consumer._claim_durable_execution(execution_id)
 
@@ -583,9 +588,14 @@ async def test_durable_execution_claim_serializes_with_publisher(
             worker_id="worker-test",
             worker_incarnation_id=consumer._pool.worker_incarnation_id,
         )
+        if status == "Scheduled":
+            mark_attempt_published.assert_awaited_once_with(db, row)
+        else:
+            mark_attempt_published.assert_not_awaited()
     else:
         db.commit.assert_not_awaited()
         create_claimed_attempt.assert_not_awaited()
+        mark_attempt_published.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -1054,6 +1064,8 @@ async def test_process_success_updates_storage_metrics_pubsub_and_sync_result() 
     consumer = make_consumer()
     execution_id = str(uuid4())
     session = _Session()
+    call_order: list[str] = []
+    session.commit.side_effect = lambda: call_order.append("commit")
     pending = {
         "workflow_id": "wf-1",
         "workflow_name": "Workflow",
@@ -1061,10 +1073,14 @@ async def test_process_success_updates_storage_metrics_pubsub_and_sync_result() 
         "user_id": "user-1",
         "user_name": "User One",
         "sync": True,
+        "event": {"type": "demo"},
     }
     consumer._redis_client.get_active_execution.return_value = pending
     consumer._redis_client.delete_pending_execution = AsyncMock()
-    consumer._redis_client.push_result = AsyncMock()
+    consumer._redis_client.push_result = AsyncMock(
+        side_effect=lambda **_kwargs: call_order.append("push_result")
+    )
+    delivery = SimpleNamespace(id=uuid4())
 
     with (
         patch("src.core.database.get_session_factory", return_value=_session_factory(session)),
@@ -1074,7 +1090,16 @@ async def test_process_success_updates_storage_metrics_pubsub_and_sync_result() 
             new_callable=AsyncMock,
             return_value=ExecutionStatus.SUCCESS,
         ) as update_execution,
-        patch("src.services.events.processor.update_delivery_from_execution", new_callable=AsyncMock) as update_delivery,
+        patch(
+            "src.services.events.processor.update_delivery_from_execution",
+            new_callable=AsyncMock,
+            return_value=delivery,
+        ) as update_delivery,
+        patch(
+            "src.services.events.processor.broadcast_delivery_update_after_commit",
+            new_callable=AsyncMock,
+            side_effect=lambda *_args: call_order.append("broadcast_delivery"),
+        ) as broadcast_delivery,
         patch("bifrost._sync.flush_pending_changes", new_callable=AsyncMock, return_value=2) as flush_changes,
         patch("bifrost._logging.flush_logs_to_postgres", new_callable=AsyncMock, return_value=3) as flush_logs,
         patch("src.core.metrics.update_daily_metrics", new_callable=AsyncMock) as update_daily_metrics,
@@ -1104,7 +1129,11 @@ async def test_process_success_updates_storage_metrics_pubsub_and_sync_result() 
     assert update_execution.await_args.kwargs["result"] == {"ok": True}
     assert update_execution.await_args.kwargs["time_saved"] == 4
     assert update_execution.await_args.kwargs["value"] == 12.5
-    update_delivery.assert_not_awaited()
+    update_delivery.assert_awaited_once_with(
+        execution_id, "Success", session=session
+    )
+    broadcast_delivery.assert_awaited_once_with(session, delivery)
+    assert call_order.index("push_result") < call_order.index("broadcast_delivery")
     flush_changes.assert_awaited_once_with(execution_id, session=session)
     flush_logs.assert_not_awaited()
     update_daily_metrics.assert_awaited_once()
@@ -1234,7 +1263,7 @@ async def test_process_failure_maps_cancelled_status_and_emits_failure_event() -
         db=session,
     )
     assert session.commit.await_count == 2
-    assert call_order[:3] == ["commit", "broadcast_delivery", "push_result"]
+    assert call_order[:3] == ["commit", "push_result", "broadcast_delivery"]
     assert call_order.index("push_result") < call_order.index("publish_execution")
     assert call_order.index("push_result") < call_order.index("publish_history")
     assert call_order.index("push_result") < call_order.index("cleanup_cache")
