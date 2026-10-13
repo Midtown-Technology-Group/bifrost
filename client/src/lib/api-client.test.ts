@@ -130,6 +130,23 @@ describe("authFetch transient 5xx retry", () => {
 		expect(fetchMock).toHaveBeenCalledTimes(1);
 	});
 
+	it.each(["GET", "PUT", "DELETE"])(
+		"does not retry side-effectful workflow endpoint %s requests",
+		async (method) => {
+			fetchMock.mockResolvedValueOnce(mockResponse(503));
+
+			const promise = authFetch(
+				"/api/endpoints/00000000-0000-0000-0000-000000000001",
+				{ method },
+			);
+			await flushRetries();
+			const response = await promise;
+
+			expect(response.status).toBe(503);
+			expect(fetchMock).toHaveBeenCalledTimes(1);
+		},
+	);
+
 	it("returns the last 503 after a PUT exhausts all retries", async () => {
 		fetchMock
 			.mockResolvedValueOnce(mockResponse(503))
@@ -270,6 +287,22 @@ describe("apiClient (openapi-fetch middleware) transient 5xx retry", () => {
 
 		expect(response.status).toBe(200);
 		expect(fetchMock).toHaveBeenCalledTimes(2);
+	});
+
+	it("apiClient.GET does not replay a workflow execution endpoint", async () => {
+		fetchMock.mockResolvedValueOnce(mockResponse(503));
+
+		const promise = apiClient.GET("/api/endpoints/{workflow_id}", {
+			params: {
+				path: { workflow_id: "00000000-0000-0000-0000-000000000001" },
+			},
+			fetch: fetchMock,
+		} as never);
+		await flushRetries();
+		const { response } = await promise;
+
+		expect(response.status).toBe(503);
+		expect(fetchMock).toHaveBeenCalledTimes(1);
 	});
 
 	it("apiClient.PUT replays the body across transient retries", async () => {
