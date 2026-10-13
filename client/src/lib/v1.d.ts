@@ -21716,7 +21716,7 @@ export interface components {
         FileType: "file" | "folder";
         /**
          * FileUploadRequest
-         * @description Request model for generating file upload SAS URL
+         * @description Request model for authorizing a form file upload.
          */
         FileUploadRequest: {
             /**
@@ -21742,7 +21742,7 @@ export interface components {
         };
         /**
          * FileUploadResponse
-         * @description Response model for file upload SAS URL generation
+         * @description Response for bounded server or direct storage form uploads.
          */
         FileUploadResponse: {
             /**
