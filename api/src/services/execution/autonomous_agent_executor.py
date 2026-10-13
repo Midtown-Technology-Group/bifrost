@@ -69,6 +69,7 @@ from src.services.agent_runtime import (
 from src.services.agent_runtime.empty_output import EmptyOutputCircuitBreaker
 from src.services.llm import ToolCallRequest
 from src.services.llm.factory import get_llm_configs
+from src.services.openai_transport_detection import OpenAITransportProbe
 from src.services.knowledge.search_budget import (
     KNOWLEDGE_FULL_CONTENT_HINT,
     KnowledgeSearchBudget,
@@ -251,6 +252,47 @@ class AutonomousAgentExecutor:
         self._caller = dict(_caller) if _caller else None
         self._external_actor = None
 
+        configured_iterations = agent.max_iterations
+        configured_tokens = agent.max_token_budget
+        usage = _shared_usage or RunUsage()
+        usage_start_requests = usage.requests
+        usage_start_tokens = usage.total_tokens
+        if _shared_budget is None:
+            budget = AgentRunBudget(
+                max_requests=configured_iterations,
+                max_total_tokens=configured_tokens,
+            )
+        else:
+            budget = _shared_budget.child_subtree(
+                current_requests=usage_start_requests,
+                current_total_tokens=usage_start_tokens,
+                child_max_requests=configured_iterations,
+                child_max_total_tokens=configured_tokens,
+            )
+        self._active_usage = usage
+        self._active_budget = budget
+
+        def before_transport_probe() -> None:
+            budget.usage_limits().check_before_request(usage)
+
+        def record_transport_probe(probe: OpenAITransportProbe) -> None:
+            usage.incr(
+                RunUsage(
+                    requests=1,
+                    input_tokens=probe.input_tokens,
+                    output_tokens=probe.output_tokens,
+                )
+            )
+            self._buffer_ai_usage(
+                agent=agent,
+                run_id=run_id,
+                provider="openai",
+                model=probe.model,
+                input_tokens=probe.input_tokens,
+                output_tokens=probe.output_tokens,
+                duration_ms=probe.duration_ms,
+            )
+
         async with self._session_factory() as db:
             resolved = await resolve_run_external_actor(db, UUID(run_id), caller_user_id)
             if resolved is not None:
@@ -270,50 +312,50 @@ class AutonomousAgentExecutor:
                     "is_provider_org": principal.is_provider_org,
                     "roles": principal.roles,
                 }
-            llm_configs = await get_llm_configs(db, profile_id=agent.llm_profile_id)
+            # Revalidate an external actor before applying the paused gate, but
+            # do not resolve configuration or spend transport-probe budget for
+            # a run that will not execute.
+            if not agent.is_active:
+                return {
+                    "output": None,
+                    "iterations_used": 0,
+                    "tokens_used": 0,
+                    "status": "paused",
+                    "accepted": False,
+                    "message": f"Agent '{agent.name}' is paused. Request not processed.",
+                    "llm_model": None,
+                }
+            try:
+                llm_configs = await get_llm_configs(
+                    db,
+                    profile_id=agent.llm_profile_id,
+                    before_transport_probe=before_transport_probe,
+                    record_transport_probe=record_transport_probe,
+                )
+            except UsageLimitExceeded:
+                return {
+                    "output": (
+                        "I reached this run's limit before I could finish. "
+                        "No model execution started because transport detection "
+                        "used this run's budget."
+                    ),
+                    "iterations_used": usage.requests - usage_start_requests,
+                    "tokens_used": usage.total_tokens - usage_start_tokens,
+                    "status": "budget_exceeded",
+                    "llm_model": None,
+                }
+            # Transport detection updates are intentionally durable before the
+            # run proceeds. No connection is held across model/tool execution.
+            await db.commit()
         llm_config = llm_configs[0]
         model_name = llm_config.model
 
-        # Short-circuit if agent is paused. Runs already past this point continue
-        # normally — this check only gates new runs at entry.
-        if not agent.is_active:
-            return {
-                "output": None,
-                "iterations_used": 0,
-                "tokens_used": 0,
-                "status": "paused",
-                "accepted": False,
-                "message": f"Agent '{agent.name}' is paused. Request not processed.",
-                "llm_model": model_name,
-            }
-
         step_number = 0
-        configured_iterations = agent.max_iterations
-        configured_tokens = agent.max_token_budget
-        usage = _shared_usage or RunUsage()
-        usage_start_requests = usage.requests
-        usage_start_tokens = usage.total_tokens
-
         # A child gets at most its own configured allowance, but never escapes
-        # the ceiling inherited from its parent. Grandchildren inherit the
-        # child's effective subtree ceiling. The root starts at zero, so these
-        # are simply its configured limits there.
-        if _shared_budget is None:
-            budget = AgentRunBudget(
-                max_requests=configured_iterations,
-                max_total_tokens=configured_tokens,
-            )
-        else:
-            budget = _shared_budget.child_subtree(
-                current_requests=usage_start_requests,
-                current_total_tokens=usage_start_tokens,
-                child_max_requests=configured_iterations,
-                child_max_total_tokens=configured_tokens,
-            )
+        # the ceiling inherited from its parent. Transport probes above consume
+        # this same shared request/token ledger.
         max_iterations = budget.max_requests
         max_tokens = budget.max_total_tokens
-        self._active_usage = usage
-        self._active_budget = budget
 
         # Resolve tools in one short DB lease. No DB
         # connection is held across model requests or tool execution.
