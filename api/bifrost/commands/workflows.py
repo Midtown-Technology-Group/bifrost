@@ -46,6 +46,7 @@ from typing import Any
 from uuid import uuid4
 
 import click
+import httpx
 
 from bifrost.client import BifrostClient
 from bifrost.dto_flags import (
@@ -65,6 +66,9 @@ from .base import _apply_flags, entity_group, output_result, pass_resolver, run_
 _TERMINAL_STATUSES = frozenset(
     {"Success", "Failed", "CompletedWithErrors", "Timeout", "Cancelled"}
 )
+_STATUS_POLL_INITIAL_IDLE_SECONDS = 2.0
+_STATUS_POLL_MAX_IDLE_SECONDS = 16.0
+_RECOVERABLE_STATUS_POLL_CODES = frozenset({404, 408, 409, 425, 429})
 
 workflows_group = entity_group("workflows", "Manage workflows.")
 
@@ -350,28 +354,37 @@ async def _stream_execution_logs(
     headers = {"Authorization": f"Bearer {client._access_token}"}
 
     final_status: str = "Failed"
+    consecutive_poll_failures = 0
     try:
         async with ws_connect(ws_url, additional_headers=headers) as websocket:
             try:
                 while True:
                     try:
                         raw = await asyncio.wait_for(
-                            websocket.recv(), timeout=2.0
+                            websocket.recv(),
+                            timeout=min(
+                                _STATUS_POLL_INITIAL_IDLE_SECONDS
+                                * (2 ** consecutive_poll_failures),
+                                _STATUS_POLL_MAX_IDLE_SECONDS,
+                            ),
                         )
                     except TimeoutError:
                         # A fast execution can finish before the websocket
                         # subscription is established. Poll REST while the
                         # stream is idle so a missed terminal update cannot
                         # leave the CLI waiting forever.
-                        response = await client.get(
-                            f"/api/executions/{execution_id}"
+                        polled_status, poll_succeeded = (
+                            await _poll_execution_status(client, execution_id)
                         )
-                        response.raise_for_status()
-                        polled_status = response.json().get("status")
+                        if poll_succeeded:
+                            consecutive_poll_failures = 0
+                        else:
+                            consecutive_poll_failures += 1
                         if polled_status in _TERMINAL_STATUSES:
                             final_status = polled_status
                             break
                         continue
+                    consecutive_poll_failures = 0
                     msg = json.loads(raw)
                     msg_type = msg.get("type")
 
@@ -396,6 +409,46 @@ async def _stream_execution_logs(
         ) from exc
 
     return final_status
+
+
+async def _poll_execution_status(
+    client: BifrostClient,
+    execution_id: str,
+) -> tuple[str | None, bool]:
+    """Best-effort idle-stream poll without sacrificing a healthy websocket.
+
+    Authentication and authorization failures are definitive. Visibility races,
+    throttling, server errors, exhausted transport retries, and malformed
+    transient responses keep the stream alive; the caller exponentially backs
+    off subsequent polls while continuing to receive websocket messages.
+    """
+    try:
+        response = await client.get(f"/api/executions/{execution_id}")
+    except httpx.HTTPError:
+        return None, False
+
+    if response.status_code in {401, 403}:
+        raise click.ClickException(
+            "Execution status polling was denied; authenticate again or request "
+            "access to this execution."
+        )
+    if (
+        response.status_code in _RECOVERABLE_STATUS_POLL_CODES
+        or response.status_code >= 500
+    ):
+        return None, False
+    try:
+        response.raise_for_status()
+        payload = response.json()
+        if not isinstance(payload, dict):
+            return None, False
+        return payload.get("status"), True
+    except httpx.HTTPStatusError as exc:
+        raise click.ClickException(
+            f"Execution status polling failed with HTTP {response.status_code}."
+        ) from exc
+    except ValueError:
+        return None, False
 
 
 async def _fetch_final_execution(

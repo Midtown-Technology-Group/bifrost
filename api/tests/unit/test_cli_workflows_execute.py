@@ -11,12 +11,13 @@ import json
 from typing import Any
 from uuid import UUID
 
+import click
 import httpx
 import pytest
 from click.testing import CliRunner
 
 from bifrost import client as bifrost_client_module
-from bifrost.commands.workflows import workflows_group
+from bifrost.commands.workflows import _poll_execution_status, workflows_group
 
 
 _WORKFLOW_UUID = "11111111-2222-3333-4444-555555555555"
@@ -90,6 +91,21 @@ class _SilentWebSocket(_FakeWebSocket):
         raise AssertionError("unreachable")
 
 
+class _IdleThenMessagesWebSocket(_FakeWebSocket):
+    """Time out once, then resume the same healthy websocket stream."""
+
+    def __init__(self, messages: list[dict[str, Any]]) -> None:
+        super().__init__(messages)
+        self._idled = False
+
+    async def recv(self) -> str:
+        if not self._idled:
+            self._idled = True
+            await asyncio.Event().wait()
+            raise AssertionError("unreachable")
+        return await super().recv()
+
+
 def _ws_connect_factory(messages: list[dict[str, Any]]):
     captured: dict[str, Any] = {}
 
@@ -137,6 +153,75 @@ def _invoke(args: list[str]):
 
 
 class TestWorkflowsExecute:
+    @pytest.mark.asyncio
+    async def test_status_poll_fails_closed_for_access_denial(
+        self,
+        fake_client: _FakeClient,
+    ) -> None:
+        fake_client.queue(
+            "GET",
+            "/api/executions/exec-denied",
+            403,
+            {"detail": "forbidden"},
+        )
+
+        with pytest.raises(click.ClickException, match="polling was denied"):
+            await _poll_execution_status(fake_client, "exec-denied")
+
+    def test_transient_idle_poll_failure_keeps_healthy_websocket(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        fake_client: _FakeClient,
+        stub_resolver: dict[str, str],
+    ) -> None:
+        fake_client.queue(
+            "POST",
+            "/api/workflows/execute",
+            200,
+            {"execution_id": "exec-transient", "status": "Pending"},
+        )
+        fake_client.queue(
+            "GET",
+            "/api/executions/exec-transient",
+            500,
+            {"detail": "temporary failure"},
+        )
+        fake_client.queue(
+            "GET",
+            "/api/executions/exec-transient",
+            200,
+            {
+                "execution_id": "exec-transient",
+                "status": "Success",
+                "result": {"answer": 42},
+            },
+        )
+
+        def _connect(*_args, **_kwargs):
+            return _IdleThenMessagesWebSocket([
+                {
+                    "type": "execution_update",
+                    "executionId": "exec-transient",
+                    "status": "Success",
+                }
+            ])
+
+        import websockets.asyncio.client as ws_client_module
+
+        monkeypatch.setattr(ws_client_module, "connect", _connect)
+        real_wait_for = asyncio.wait_for
+
+        async def _fast_wait_for(awaitable, *, timeout):
+            return await real_wait_for(awaitable, timeout=min(timeout, 0.01))
+
+        monkeypatch.setattr(asyncio, "wait_for", _fast_wait_for)
+
+        result = _invoke(["--json", "execute", "my-workflow"])
+
+        assert result.exit_code == 0, result.output
+        assert [call[0] for call in fake_client.calls].count("POST") == 1
+        assert [call[0] for call in fake_client.calls].count("GET") == 2
+
     def test_polls_rest_when_terminal_websocket_update_is_missed(
         self,
         monkeypatch: pytest.MonkeyPatch,
