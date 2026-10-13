@@ -28,6 +28,7 @@ def test_timezone_migration_includes_form_field_timestamps():
 
 def test_forward_timezone_repair_only_alters_naive_columns():
     migration = _load_migration("20261013_repair_form_field_timezones.py")
+    assert migration.down_revision == "20261012_work_delivery_started"
     altered: list[str] = []
 
     class Result:

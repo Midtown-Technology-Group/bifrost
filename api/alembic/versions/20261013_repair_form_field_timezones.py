@@ -1,7 +1,7 @@
 """Repair form field timestamps skipped by the original UTC migration.
 
 Revision ID: 20261013_form_field_tz
-Revises: 20261006_mtg_upstream_sdk
+Revises: 20261012_work_delivery_started
 Create Date: 2026-10-13
 """
 
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 revision = "20261013_form_field_tz"
-down_revision = "20261006_mtg_upstream_sdk"
+down_revision = "20261012_work_delivery_started"
 branch_labels = None
 depends_on = None
 
