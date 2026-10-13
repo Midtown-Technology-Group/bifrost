@@ -318,7 +318,7 @@ class FormCreate(BaseModel):
     launch_workflow_id: str | None = None
     default_launch_params: dict | None = None
     allowed_query_params: list[str] | None = None
-    form_schema: dict | FormSchema
+    form_schema: FormSchema
     access_level: FormAccessLevel | None = FormAccessLevel.ROLE_BASED
     organization_id: UUID | None = Field(
         default=None, description="Organization ID (null = global resource)"
@@ -339,7 +339,7 @@ class FormUpdate(BaseModel):
     launch_workflow_id: str | None = None
     default_launch_params: dict | None = None
     allowed_query_params: list[str] | None = None
-    form_schema: dict | FormSchema | None = None
+    form_schema: FormSchema | None = None
     is_active: bool | None = None
     access_level: FormAccessLevel | None = None
     organization_id: UUID | None = Field(

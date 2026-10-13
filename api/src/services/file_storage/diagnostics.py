@@ -5,6 +5,7 @@ Scans Python files for SDK reference issues and other diagnostics,
 creating platform admin notifications when issues are found.
 """
 
+import hashlib
 import logging
 from dataclasses import dataclass
 from pathlib import Path
@@ -21,6 +22,13 @@ from src.models.contracts.notifications import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _unresolved_refs_title(path: str) -> str:
+    """Build a human-readable title that remains unique across directories."""
+    file_name = Path(path).name
+    path_digest = hashlib.sha256(path.encode("utf-8")).hexdigest()[:12]
+    return f"Unresolved Workflow Refs: {file_name} [{path_digest}]"
 
 
 @dataclass
@@ -265,9 +273,7 @@ class DiagnosticsService:
 
         service = get_notification_service()
 
-        # Build title from file name
-        file_name = Path(path).name
-        title = f"Unresolved Workflow Refs: {file_name}"
+        title = _unresolved_refs_title(path)
 
         # Check for existing notification to avoid duplicates
         existing = await service.find_admin_notification_by_title(
@@ -319,9 +325,7 @@ class DiagnosticsService:
         """
         service = get_notification_service()
 
-        # Match the title format used in scan_for_unresolved_refs
-        file_name = Path(path).name
-        title = f"Unresolved Workflow Refs: {file_name}"
+        title = _unresolved_refs_title(path)
 
         existing = await service.find_admin_notification_by_title(
             title=title,

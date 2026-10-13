@@ -1162,6 +1162,7 @@ async def test_process_failure_maps_cancelled_status_and_emits_failure_event() -
     consumer._redis_client.push_result = AsyncMock(
         side_effect=lambda **_kwargs: call_order.append("push_result")
     )
+    delivery = SimpleNamespace(id=uuid4())
 
     with (
         patch("src.core.database.get_session_factory", return_value=_session_factory(session)),
@@ -1171,7 +1172,16 @@ async def test_process_failure_maps_cancelled_status_and_emits_failure_event() -
             new_callable=AsyncMock,
             return_value=ExecutionStatus.CANCELLED,
         ) as update_execution,
-        patch("src.services.events.processor.update_delivery_from_execution", new_callable=AsyncMock) as update_delivery,
+        patch(
+            "src.services.events.processor.update_delivery_from_execution",
+            new_callable=AsyncMock,
+            return_value=delivery,
+        ) as update_delivery,
+        patch(
+            "src.services.events.processor.broadcast_delivery_update_after_commit",
+            new_callable=AsyncMock,
+            side_effect=lambda *_args: call_order.append("broadcast_delivery"),
+        ) as broadcast_delivery,
         patch("bifrost._sync.flush_pending_changes", new_callable=AsyncMock, return_value=0),
         patch("bifrost._logging.flush_logs_to_postgres", new_callable=AsyncMock, return_value=0),
         patch("src.core.metrics.update_daily_metrics", new_callable=AsyncMock) as update_daily_metrics,
@@ -1211,6 +1221,7 @@ async def test_process_failure_maps_cancelled_status_and_emits_failure_event() -
         error_message="cancelled",
         session=session,
     )
+    broadcast_delivery.assert_awaited_once_with(session, delivery)
     update_daily_metrics.assert_awaited_once_with(
         org_id="org-1",
         status="Cancelled",
@@ -1223,7 +1234,7 @@ async def test_process_failure_maps_cancelled_status_and_emits_failure_event() -
         db=session,
     )
     assert session.commit.await_count == 2
-    assert call_order[:2] == ["commit", "push_result"]
+    assert call_order[:3] == ["commit", "broadcast_delivery", "push_result"]
     assert call_order.index("push_result") < call_order.index("publish_execution")
     assert call_order.index("push_result") < call_order.index("publish_history")
     assert call_order.index("push_result") < call_order.index("cleanup_cache")

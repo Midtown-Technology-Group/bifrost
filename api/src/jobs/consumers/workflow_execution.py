@@ -425,6 +425,7 @@ class WorkflowExecutionConsumer(BaseConsumer):
         # DB operations + flush — single short-lived session
         # (flush functions do Redis reads internally but DB writes share the session)
         log_acknowledgements: list[tuple[str, list[str]]] = []
+        event_delivery = None
         session_factory = get_session_factory()
         async with session_factory() as session:
             await self._lock_execution(session, execution_id)
@@ -506,7 +507,7 @@ class WorkflowExecutionConsumer(BaseConsumer):
             if metadata.get("event") is not None or recovered_from_database:
                 try:
                     from src.services.events.processor import update_delivery_from_execution
-                    await update_delivery_from_execution(
+                    event_delivery = await update_delivery_from_execution(
                         execution_id, status.value, session=session
                     )
                 except Exception as e:
@@ -542,6 +543,22 @@ class WorkflowExecutionConsumer(BaseConsumer):
             logs_flushed_ms = (time.perf_counter() - completion_started) * 1000
 
             await session.commit()
+            if event_delivery is not None:
+                try:
+                    from src.services.events.processor import (
+                        broadcast_delivery_update_after_commit,
+                    )
+
+                    await broadcast_delivery_update_after_commit(
+                        session,
+                        event_delivery,
+                    )
+                except Exception as e:
+                    logger.warning(
+                        "Failed to broadcast event delivery for %s...: %s",
+                        execution_id[:8],
+                        e,
+                    )
         durable_ms = (time.perf_counter() - completion_started) * 1000
 
         # Wake sync callers as soon as their result and buffered SDK writes are
@@ -710,6 +727,7 @@ class WorkflowExecutionConsumer(BaseConsumer):
 
         # DB operations + flush — single short-lived session
         log_acknowledgements: list[tuple[str, list[str]]] = []
+        event_delivery = None
         session_factory = get_session_factory()
         async with session_factory() as session:
             await self._lock_execution(session, execution_id)
@@ -839,7 +857,7 @@ class WorkflowExecutionConsumer(BaseConsumer):
             if metadata.get("event") is not None or recovered_from_database:
                 try:
                     from src.services.events.processor import update_delivery_from_execution
-                    await update_delivery_from_execution(
+                    event_delivery = await update_delivery_from_execution(
                         execution_id,
                         status.value,
                         error_message=error,
@@ -875,6 +893,22 @@ class WorkflowExecutionConsumer(BaseConsumer):
                     )
 
             await session.commit()
+            if event_delivery is not None:
+                try:
+                    from src.services.events.processor import (
+                        broadcast_delivery_update_after_commit,
+                    )
+
+                    await broadcast_delivery_update_after_commit(
+                        session,
+                        event_delivery,
+                    )
+                except Exception as e:
+                    logger.warning(
+                        "Failed to broadcast event delivery for %s...: %s",
+                        execution_id[:8],
+                        e,
+                    )
 
         # A sync failure is just as latency-sensitive as a success. Wake the
         # caller once the authoritative failure is durable; aggregates and

@@ -151,6 +151,32 @@ class TestUnresolvedRefNotifications:
             # Should not create when existing
             mock_service.create_notification.assert_not_called()
 
+    @pytest.mark.asyncio
+    async def test_same_basename_paths_use_distinct_notification_titles(
+        self, diagnostics_service
+    ):
+        with patch(
+            "src.services.file_storage.diagnostics.get_notification_service"
+        ) as mock_get_service:
+            mock_service = MagicMock()
+            mock_service.find_admin_notification_by_title = AsyncMock(return_value=None)
+            mock_service.create_notification = AsyncMock()
+            mock_get_service.return_value = mock_service
+
+            await diagnostics_service.scan_for_unresolved_refs(
+                "apps/a/index.tsx", "app_file", ["workflows/missing.py::run"]
+            )
+            await diagnostics_service.scan_for_unresolved_refs(
+                "apps/b/index.tsx", "app_file", ["workflows/missing.py::run"]
+            )
+
+        titles = [
+            call.kwargs["title"]
+            for call in mock_service.find_admin_notification_by_title.await_args_list
+        ]
+        assert len(set(titles)) == 2
+        assert all("index.tsx" in title for title in titles)
+
 
 class TestSdkAndFileDiagnosticNotifications:
     """Behavior tests for SDK and file diagnostic notification lifecycles."""

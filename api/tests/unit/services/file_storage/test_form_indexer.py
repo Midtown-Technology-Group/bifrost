@@ -88,7 +88,6 @@ fields:
     type: text
     required: true
     default: Midtown
-  - label: Missing name is ignored
 """.encode(),
     )
 
@@ -99,3 +98,47 @@ fields:
     assert added_fields[0].form_id == form_id
     assert added_fields[0].name == "customer"
     assert added_fields[0].default_value == "Midtown"
+
+
+@pytest.mark.asyncio
+async def test_index_form_preserves_legacy_missing_type_and_label() -> None:
+    form_id = uuid4()
+    db = AsyncMock()
+    added_fields = []
+    db.add = MagicMock(side_effect=added_fields.append)
+
+    modified = await FormIndexer(db).index_form(
+        f"forms/{form_id}.form.yaml",
+        f"""
+id: {form_id}
+name: Legacy Intake
+fields:
+  - name: customer
+""".encode(),
+    )
+
+    assert modified is False
+    assert len(added_fields) == 1
+    assert added_fields[0].type.value == "text"
+    assert added_fields[0].label == "customer"
+
+
+@pytest.mark.asyncio
+async def test_index_form_keeps_existing_fields_when_replacement_is_invalid() -> None:
+    form_id = uuid4()
+    db = AsyncMock()
+    db.add = MagicMock()
+
+    modified = await FormIndexer(db).index_form(
+        f"forms/{form_id}.form.yaml",
+        f"""
+id: {form_id}
+name: Invalid Intake
+fields:
+  - label: Missing name
+""".encode(),
+    )
+
+    assert modified is False
+    assert db.execute.await_count == 1
+    db.add.assert_not_called()
