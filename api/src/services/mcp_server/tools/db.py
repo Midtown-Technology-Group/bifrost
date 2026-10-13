@@ -23,8 +23,9 @@ async def get_tool_db(context: "MCPContext") -> AsyncGenerator[AsyncSession, Non
     yield it directly without managing its lifecycle.
     Otherwise, create a fresh session via get_db_context().
     """
-    if context.session is not None:
-        yield context.session
+    session = getattr(context, "session", None)
+    if session is not None:
+        yield session
     else:
         from src.core.database import get_db_context
 

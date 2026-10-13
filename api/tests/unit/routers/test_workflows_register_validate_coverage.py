@@ -480,7 +480,11 @@ async def test_register_workflow_validates_and_preserves_promoted_uuid() -> None
     assert result.id == str(requested_id)
     assert db.added[0].id == requested_id
     assert db.committed is True
-    indexer.index_python_file.assert_awaited_once()
+    indexer.index_python_file.assert_awaited_once_with(
+        "workflows/run.py",
+        service.read_file.return_value[0],
+        initialize_metadata_ids={requested_id},
+    )
 
 
 @pytest.mark.asyncio

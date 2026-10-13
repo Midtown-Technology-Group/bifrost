@@ -11,6 +11,7 @@ from pydantic import ValidationError
 from bifrost.manifest import (
     Manifest,
     ManifestApp,
+    ManifestAgent,
     ManifestConfig,
     ManifestEventSource,
     ManifestIntegration,
@@ -18,6 +19,7 @@ from bifrost.manifest import (
     ManifestMCPConnection,
     ManifestMCPServer,
     ManifestPolicy,
+    ManifestForm,
     ManifestTable,
     ManifestWorkflow,
 )
@@ -395,6 +397,56 @@ class TestManifestDestructiveScope:
                 ],
             ),
         })
+
+        changes, changed_ids = _diff_and_collect(incoming, current)
+
+        assert changes == []
+        assert changed_ids == set()
+
+    @pytest.mark.parametrize(
+        ("collection", "incoming_entity", "current_entity"),
+        [
+            (
+                "forms",
+                ManifestForm(id="11111111-1111-1111-1111-111111111111", name="Form"),
+                ManifestForm(
+                    id="11111111-1111-1111-1111-111111111111",
+                    name="Form",
+                    access_level="authenticated",
+                ),
+            ),
+            (
+                "agents",
+                ManifestAgent(id="22222222-2222-2222-2222-222222222222", name="Agent"),
+                ManifestAgent(
+                    id="22222222-2222-2222-2222-222222222222",
+                    name="Agent",
+                    access_level="everyone",
+                ),
+            ),
+            (
+                "apps",
+                ManifestApp(
+                    id="33333333-3333-3333-3333-333333333333",
+                    path="apps/demo",
+                    name="App",
+                ),
+                ManifestApp(
+                    id="33333333-3333-3333-3333-333333333333",
+                    path="apps/demo",
+                    name="App",
+                    access_level="role_based",
+                ),
+            ),
+        ],
+    )
+    def test_omitted_present_only_access_level_does_not_create_diff(
+        self, collection, incoming_entity, current_entity
+    ):
+        from src.services.manifest_import import _diff_and_collect
+
+        incoming = Manifest(**{collection: {incoming_entity.id: incoming_entity}})
+        current = Manifest(**{collection: {current_entity.id: current_entity}})
 
         changes, changed_ids = _diff_and_collect(incoming, current)
 

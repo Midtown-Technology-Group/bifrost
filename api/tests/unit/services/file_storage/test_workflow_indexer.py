@@ -358,7 +358,11 @@ def sync_tickets(
     return []
 '''
 
-    await indexer.index_python_file("workflows/tickets.py", content)
+    await indexer.index_python_file(
+        "workflows/tickets.py",
+        content,
+        initialize_metadata_ids={workflow_id},
+    )
 
     update_stmt = db.execute.call_args_list[0][0][0]
     assert isinstance(update_stmt, Update)
@@ -461,6 +465,47 @@ def lookup_customer(customer_id: str):
     assert params["type"] == "tool"
     assert "name" not in params
     assert "description" not in params
+    assert "category" not in params
+    assert "tags" not in params
+
+
+@pytest.mark.asyncio
+async def test_index_python_file_preserves_intentionally_cleared_category_and_tags() -> None:
+    workflow_id = uuid4()
+    existing = SimpleNamespace(
+        id=workflow_id,
+        is_active=True,
+        name="Curated name",
+        description="Curated description",
+        category="General",
+        tags=[],
+        endpoint_enabled=False,
+        path="workflows/customer.py",
+        timeout_seconds=1800,
+        time_saved=0,
+        value=0,
+        execution_mode="sync",
+        type="workflow",
+    )
+    db = AsyncMock()
+    refetch = MagicMock()
+    refetch.scalar_one.return_value = existing
+    db.execute.side_effect = [MagicMock(), refetch]
+    indexer = WorkflowIndexer(db)
+    indexer.set_prefetch_cache(
+        {("workflows/customer.py", "lookup_customer"): existing}
+    )
+
+    await indexer.index_python_file(
+        "workflows/customer.py",
+        b'''\
+from bifrost import workflow
+@workflow(category="Generated", tags=["new"])
+def lookup_customer(): return {}
+''',
+    )
+
+    params = db.execute.call_args_list[0][0][0].compile().params
     assert "category" not in params
     assert "tags" not in params
 
@@ -586,6 +631,7 @@ from bifrost import data_provider
 async def regions(country: str | None = None):
     return []
 ''',
+        initialize_metadata_ids={provider_id},
     )
 
     update_stmt = db.execute.call_args_list[0][0][0]

@@ -271,12 +271,10 @@ def execute_workflow_sync(
     }
     if org_id is not None:
         payload["org_id"] = org_id
-    response = e2e_client.post(
-        "/api/workflows/execute",
-        headers=headers,
-        json=payload,
-        timeout=request_timeout,
-    )
+    request_kwargs = {"headers": headers, "json": payload}
+    if request_timeout is not None:
+        request_kwargs["timeout"] = request_timeout
+    response = e2e_client.post("/api/workflows/execute", **request_kwargs)
     assert response.status_code == 200, f"Execute failed: {response.text}"
     data = response.json()
     execution_id = data.get("execution_id")

@@ -99,6 +99,7 @@ class WorkflowIndexer(WorkflowParameterCompiler):
         content: bytes,
         cached_ast: ast.Module | None = None,
         cached_content_str: str | None = None,
+        initialize_metadata_ids: set[Any] | None = None,
     ) -> None:
         """
         Enrich existing workflow/provider records from Python file content.
@@ -115,6 +116,8 @@ class WorkflowIndexer(WorkflowParameterCompiler):
             content: File content bytes
             cached_ast: Pre-parsed AST tree (avoids re-parsing large files)
             cached_content_str: Pre-decoded content string (avoids re-decoding)
+            initialize_metadata_ids: Brand-new registration IDs whose
+                category/tags should initialize from their decorators once.
         """
         # Use cached values if available (avoids re-decoding/re-parsing 4MB files)
         content_str = cached_content_str or content.decode("utf-8", errors="replace")
@@ -249,9 +252,12 @@ class WorkflowIndexer(WorkflowParameterCompiler):
                         "updated_at": now,
                     }
 
-                    # name/description/category/tags: only set initial values
-                    # (when DB field is NULL). YAML manifest and UI edits are
-                    # the source of truth — the indexer never overwrites them.
+                    # Name/description retain their nullable initialization
+                    # signal. Category/tags have non-null ORM defaults, so the
+                    # registration route explicitly identifies brand-new rows
+                    # whose decorator metadata should be applied once. This
+                    # prevents a later intentional UI/YAML reset to General/[]
+                    # from being repopulated on every index.
                     if existing_workflow.name is None:
                         update_values["name"] = workflow_name
                     if existing_workflow.description is None:
@@ -259,15 +265,14 @@ class WorkflowIndexer(WorkflowParameterCompiler):
                         if initial_desc:
                             update_values["description"] = initial_desc
 
-                    if existing_workflow.category is None or existing_workflow.category == "General":
+                    initialize_metadata = (
+                        initialize_metadata_ids is not None
+                        and workflow_uuid in initialize_metadata_ids
+                    )
+                    if initialize_metadata:
                         code_category = kwargs.get("category", "General")
-                        if code_category != "General":
-                            update_values["category"] = code_category
-
-                    if not existing_workflow.tags:
-                        tags_from_decorator = kwargs.get("tags")
-                        if tags_from_decorator:
-                            update_values["tags"] = tags_from_decorator
+                        update_values["category"] = code_category
+                        update_values["tags"] = kwargs.get("tags") or []
 
                     if was_inactive:
                         logger.info(f"Reactivating workflow: {log_safe(workflow_name)} ({log_safe(function_name)}) from {log_safe(path)}")
@@ -363,9 +368,8 @@ class WorkflowIndexer(WorkflowParameterCompiler):
                         "updated_at": now,
                     }
 
-                    # name/description/category/tags: only set initial values
-                    # (when DB field is NULL). YAML manifest and UI edits are
-                    # the source of truth — the indexer never overwrites them.
+                    # See the workflow branch above: category/tags initialize
+                    # only for a row explicitly marked brand-new by registration.
                     if existing_dp.name is None:
                         dp_update_values["name"] = provider_name
                     if existing_dp.description is None:
@@ -373,15 +377,14 @@ class WorkflowIndexer(WorkflowParameterCompiler):
                         if desc:
                             dp_update_values["description"] = desc
 
-                    if existing_dp.category is None or existing_dp.category == "General":
+                    initialize_metadata = (
+                        initialize_metadata_ids is not None
+                        and existing_dp.id in initialize_metadata_ids
+                    )
+                    if initialize_metadata:
                         code_category = kwargs.get("category", "General")
-                        if code_category != "General":
-                            dp_update_values["category"] = code_category
-
-                    if not existing_dp.tags:
-                        tags_from_decorator = kwargs.get("tags")
-                        if tags_from_decorator:
-                            dp_update_values["tags"] = tags_from_decorator
+                        dp_update_values["category"] = code_category
+                        dp_update_values["tags"] = kwargs.get("tags") or []
 
                     stmt = (
                         update(Workflow)

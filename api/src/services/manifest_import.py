@@ -208,7 +208,18 @@ def _diff_and_collect(
             else:
                 assert inc is not None and cur is not None
                 # Compare serialized form
-                if _diff_dump(inc) == _diff_dump(cur):
+                inc_dump = _diff_dump(inc)
+                cur_dump = _diff_dump(cur)
+                # Form/agent/app access_level is present-only on import: an
+                # omitted/null incoming value leaves the persisted binding
+                # unchanged. Ignore that current value during diffing too, or
+                # every legacy manifest reports a spurious update forever.
+                if (
+                    attr in {"forms", "agents", "apps"}
+                    and inc_dump.get("access_level") is None
+                ):
+                    cur_dump["access_level"] = None
+                if inc_dump == cur_dump:
                     continue  # No change
                 action = "update"
                 entity = inc

@@ -488,7 +488,11 @@ async def register_workflow(
 
             # Enrich with decorator metadata
             indexer = WorkflowIndexer(db)
-            await indexer.index_python_file(path, content)
+            await indexer.index_python_file(
+                path,
+                content,
+                initialize_metadata_ids={workflow_id},
+            )
 
             # Re-fetch enriched record
             result = await db.execute(

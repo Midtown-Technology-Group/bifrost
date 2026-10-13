@@ -8,8 +8,10 @@ Tests that workflows can:
 """
 
 import pytest
+from unittest.mock import AsyncMock, patch
 
 from bifrost import ExecutionContext, workflow
+from bifrost import config as bifrost_config
 from bifrost._context import clear_execution_context, set_execution_context
 from src.sdk.context import Caller, Organization
 
@@ -102,6 +104,23 @@ class TestOptionalContext:
             assert result["uses_sdk"] is True
         finally:
             clear_execution_context()
+
+    async def test_legacy_context_get_config_delegates_and_preserves_defaults(
+        self, test_context
+    ):
+        with patch.object(
+            bifrost_config, "get", new=AsyncMock(return_value="value")
+        ) as get:
+            assert await test_context.get_config("api_key", "fallback") == "value"
+        get.assert_awaited_once_with("api_key", default="fallback")
+
+        with patch.object(
+            bifrost_config,
+            "get",
+            new=AsyncMock(side_effect=lambda _key, default: default),
+        ):
+            with pytest.raises(KeyError, match="missing"):
+                await test_context.get_config("missing")
 
     async def test_workflow_with_context_accessing_sdk(self, test_context):
         """Test that workflow with explicit context can still use SDK functions."""
