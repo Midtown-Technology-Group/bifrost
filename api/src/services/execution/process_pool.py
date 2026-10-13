@@ -901,7 +901,7 @@ class ProcessPoolManager:
         if self._template is not None:
             self._template.shutdown()
             self._template = None
-        for template in list(self._retired_templates):
+        for template in self._retired_templates:
             template.shutdown()
         self._retired_templates.clear()
         self._child_template_by_pid.clear()
@@ -1992,7 +1992,9 @@ class ProcessPoolManager:
         # restart_template mutates the TemplateProcess control pipe in a worker
         # thread. Do not inspect that pipe while the restart lock is held.
         if not self._restart_lock.locked():
-            self._collect_child_exit_statuses()
+            async with self._restart_lock:
+                self._collect_child_exit_statuses()
+                await self._cleanup_retired_templates()
 
         # Snapshot to a list — items() iterator is unsafe across the awaits
         # below (peer coroutines like _handle_result mutate the dicts).
@@ -2142,12 +2144,36 @@ class ProcessPoolManager:
                 if self._child_template_by_pid.get(child_pid) is template:
                     self._child_template_by_pid.pop(child_pid, None)
 
-        for template in list(self._retired_templates):
-            if any(
+    async def _cleanup_retired_templates(self) -> None:
+        """Close drained or dead parents without blocking the event loop."""
+        # Cleanup awaits and removes entries; iteration needs an owned snapshot.
+        for template in self._retired_templates.copy():
+            if not template.is_alive():
+                owned_pids = [
+                    pid
+                    for pid, owner in self._child_template_by_pid.items()
+                    if owner is template
+                ]
+                for pid in owned_pids:
+                    self._child_template_by_pid.pop(pid, None)
+                logger.warning(
+                    "Retired template PID=%s exited; removing stale child ownership",
+                    template.pid,
+                )
+            elif any(
                 owner is template for owner in self._child_template_by_pid.values()
             ):
                 continue
-            template.shutdown()
+
+            shutdown = asyncio.create_task(asyncio.to_thread(template.shutdown))
+            try:
+                await asyncio.shield(shutdown)
+            except asyncio.CancelledError:
+                # Pool stop cancels the monitor before closing templates. Finish
+                # this close first so stop cannot race the same control pipe.
+                await shutdown
+                self._retired_templates.discard(template)
+                raise
             self._retired_templates.discard(template)
             logger.info("Retired template process fully drained and stopped")
 

@@ -2756,8 +2756,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Generate presigned URL for file upload
-         * @description Generate a presigned S3 URL for direct file upload. The file will be stored in the uploads folder.
+         * Authorize a file upload
+         * @description Authorize a bounded server upload for embed sessions or a direct storage upload for authenticated users.
          */
         post: operations["generate_upload_url_api_forms__form_id__upload_post"];
         delete?: never;
@@ -14186,7 +14186,7 @@ export interface components {
             answered?: string | null;
             /** Metadata */
             metadata?: {
-                [key: string]: string;
+                [key: string]: unknown;
             };
             /** Confidence */
             confidence?: number | null;
@@ -14333,7 +14333,7 @@ export interface components {
             answered?: string | null;
             /** Metadata */
             metadata?: {
-                [key: string]: string;
+                [key: string]: unknown;
             };
             /** Confidence */
             confidence?: number | null;

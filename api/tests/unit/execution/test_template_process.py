@@ -512,7 +512,8 @@ class TestTemplateProcessFork:
             assert old_template in pool._retired_templates
             assert old_template.is_alive()
             assert pool._template is not old_template
-            assert pool._template is not None and pool._template.is_alive()
+            assert pool._template is not None
+            assert pool._template.is_alive()
 
             if completion == "result":
                 handle.work_queue.put(
@@ -526,6 +527,7 @@ class TestTemplateProcessFork:
             deadline = time.monotonic() + 5.0
             while old_template in pool._retired_templates:
                 pool._collect_child_exit_statuses()
+                await pool._cleanup_retired_templates()
                 if old_template not in pool._retired_templates:
                     break
                 assert time.monotonic() < deadline

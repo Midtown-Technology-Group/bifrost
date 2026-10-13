@@ -286,9 +286,9 @@ class ExecutionRepository:
         if start_date:
             try:
                 start_dt = datetime.fromisoformat(start_date.replace("Z", "+00:00"))
-                # Strip timezone for naive datetime comparison (DB stores UTC without tz)
+                # Compare UTC instants against the database's naive UTC values.
                 if start_dt.tzinfo is not None:
-                    start_dt = start_dt.replace(tzinfo=None)
+                    start_dt = start_dt.astimezone(timezone.utc).replace(tzinfo=None)
                 query = query.where(timeline_at >= start_dt)
             except ValueError as e:
                 # Caller passed an invalid ISO date — silently ignore the filter
@@ -297,9 +297,9 @@ class ExecutionRepository:
         if end_date:
             try:
                 end_dt = datetime.fromisoformat(end_date.replace("Z", "+00:00"))
-                # Strip timezone for naive datetime comparison (DB stores UTC without tz)
+                # Compare UTC instants against the database's naive UTC values.
                 if end_dt.tzinfo is not None:
-                    end_dt = end_dt.replace(tzinfo=None)
+                    end_dt = end_dt.astimezone(timezone.utc).replace(tzinfo=None)
                 query = query.where(timeline_at <= end_dt)
             except ValueError as e:
                 # Caller passed an invalid ISO date — silently ignore the filter

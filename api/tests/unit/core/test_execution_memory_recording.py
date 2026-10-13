@@ -27,6 +27,7 @@ from src.services.execution.simple_worker import _capture_failure_metrics
 def test_capture_failure_metrics_reports_process_peak(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setattr("src.services.execution.simple_worker.sys.platform", "linux")
     monkeypatch.setattr(
         "src.services.execution.simple_worker.resource.getrusage",
         lambda _: SimpleNamespace(ru_maxrss=321, ru_utime=1.0, ru_stime=0.5),

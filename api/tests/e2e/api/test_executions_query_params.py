@@ -74,8 +74,10 @@ async def test_executions_accept_snake_case_aliases_and_camel_case_paging(
 ):
     workflow_id = seeded_execution_history["workflow_id"]
     start_date = (
-        seeded_execution_history["base"] - timedelta(minutes=1)
-    ).isoformat().replace("+00:00", "Z")
+        (seeded_execution_history["base"] - timedelta(minutes=1))
+        .isoformat()
+        .replace("+00:00", "Z")
+    )
 
     first = e2e_client.get(
         "/api/executions",
@@ -125,6 +127,36 @@ async def test_executions_accept_snake_case_aliases_and_camel_case_paging(
     third_ids = [item["execution_id"] for item in third_body["executions"]]
     assert third_ids == [str(seeded_execution_history["rows"][0].id)]
     assert third_body["continuation_token"] is None
+
+
+async def test_execution_timeline_filters_use_offset_instants(
+    e2e_client,
+    platform_admin,
+    seeded_execution_history,
+    db_session,
+):
+    row = seeded_execution_history["rows"][1]
+    row.started_at = None
+    row.completed_at = None
+    row.scheduled_at = seeded_execution_history["base"] + timedelta(minutes=1)
+    await db_session.commit()
+    start = seeded_execution_history["base"] + timedelta(seconds=30)
+    end = seeded_execution_history["base"] + timedelta(seconds=90)
+
+    response = e2e_client.get(
+        "/api/executions",
+        params={
+            "workflow_id": str(seeded_execution_history["workflow_id"]),
+            "start_date": start.astimezone(timezone(timedelta(hours=2))).isoformat(),
+            "end_date": end.astimezone(timezone(timedelta(hours=-3))).isoformat(),
+        },
+        headers=platform_admin.headers,
+    )
+
+    assert response.status_code == 200, response.text
+    assert [item["execution_id"] for item in response.json()["executions"]] == [
+        str(row.id)
+    ]
 
 
 async def test_executions_rejects_unknown_query_params(
