@@ -2,7 +2,13 @@
 
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
+
+def _dockerfile_path(name: str) -> Path:
+    """Locate the Compose-mounted Dockerfile or its checkout counterpart."""
+    mounted = Path("/app/api") / name
+    if mounted.is_file():
+        return mounted
+    return Path(__file__).resolve().parents[3] / "api" / name
 
 
 def _runtime_stage_lines(path: Path) -> list[str]:
@@ -15,7 +21,7 @@ def _runtime_stage_lines(path: Path) -> list[str]:
 
 def test_api_images_default_to_unprivileged_runtime_user():
     for relative_path in ("api/Dockerfile", "api/Dockerfile.dev"):
-        runtime_lines = _runtime_stage_lines(REPO_ROOT / relative_path)
+        runtime_lines = _runtime_stage_lines(_dockerfile_path(Path(relative_path).name))
         user_lines = [
             line.strip() for line in runtime_lines if line.startswith("USER ")
         ]
