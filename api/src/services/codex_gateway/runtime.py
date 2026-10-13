@@ -103,7 +103,7 @@ class CodexGatewayRuntime:
     async def create_response(
         self,
         *,
-        gateway_key: str,
+        gateway_key: str | None,
         payload: dict[str, Any],
         source_ip: str | None = None,
         client_user_agent: str | None = None,

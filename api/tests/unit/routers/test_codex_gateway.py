@@ -271,7 +271,7 @@ def test_v1_responses_sends_missing_gateway_key_to_auditable_runtime():
 
     assert response.status_code == 200
     [runtime_call] = runtime.calls
-    assert runtime_call["gateway_key"] == ""
+    assert runtime_call["gateway_key"] is None
 
 
 def test_create_gateway_key_returns_plaintext_once_and_audits(monkeypatch):
