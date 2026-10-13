@@ -33,6 +33,7 @@ export interface ProgressState {
 
 interface UseWorkerWebSocketReturn {
 	pools: PoolDetail[];
+	offlineWorkerIds: ReadonlySet<string>;
 	queue: QueueItem[];
 	isConnected: boolean;
 	scalingStates: Map<string, ScalingState>;
@@ -44,6 +45,9 @@ interface UseWorkerWebSocketReturn {
  */
 export function useWorkerWebSocket(): UseWorkerWebSocketReturn {
 	const [pools, setPools] = useState<PoolDetail[]>([]);
+	const [offlineWorkerIds, setOfflineWorkerIds] = useState<Set<string>>(
+		new Set(),
+	);
 	const [queue] = useState<QueueItem[]>([]);
 	const [isConnected, setIsConnected] = useState(false);
 	const [scalingStates, setScalingStates] = useState<
@@ -56,6 +60,12 @@ export function useWorkerWebSocket(): UseWorkerWebSocketReturn {
 	const handleMessage = useCallback((message: PoolMessage) => {
 		switch (message.type) {
 			case "worker_heartbeat": {
+				setOfflineWorkerIds((prev) => {
+					if (!prev.has(message.worker_id)) return prev;
+					const next = new Set(prev);
+					next.delete(message.worker_id);
+					return next;
+				});
 				// Update or add pool
 				setPools((prev) => {
 					const idx = prev.findIndex(
@@ -80,20 +90,25 @@ export function useWorkerWebSocket(): UseWorkerWebSocketReturn {
 
 					const existing = idx >= 0 ? prev[idx] : undefined;
 
-					const runtime = message.runtime ?? existing?.runtime ?? null;
+					const runtime =
+						message.runtime ?? existing?.runtime ?? null;
 					const runtimeChanged =
-						message.runtime != null && message.runtime !== existing?.runtime;
+						message.runtime != null &&
+						message.runtime !== existing?.runtime;
 					const updatedPool: PoolDetail = {
 						worker_id: message.worker_id,
 						hostname: message.hostname || null,
 						runtime,
 						runtime_label:
 							message.runtime_label ??
-							(runtimeChanged ? null : existing?.runtime_label ?? null),
+							(runtimeChanged
+								? null
+								: (existing?.runtime_label ?? null)),
 						status: message.status || null,
 						started_at: message.started_at || null,
 						last_heartbeat: message.timestamp || null,
-						configured_capacity: message.configured_capacity ?? null,
+						configured_capacity:
+							message.configured_capacity ?? null,
 						max_workers: message.max_workers ?? null,
 						processes,
 						memory_current_bytes:
@@ -112,6 +127,12 @@ export function useWorkerWebSocket(): UseWorkerWebSocketReturn {
 			}
 
 			case "worker_online": {
+				setOfflineWorkerIds((prev) => {
+					if (!prev.has(message.worker_id)) return prev;
+					const next = new Set(prev);
+					next.delete(message.worker_id);
+					return next;
+				});
 				// Add new pool. The online event carries no process data, so
 				// the placeholder omits `processes` (it is optional on the
 				// generated PoolDetail): the merged REST summary keeps
@@ -140,7 +161,13 @@ export function useWorkerWebSocket(): UseWorkerWebSocketReturn {
 			}
 
 			case "worker_offline": {
-				// Remove pool
+				// Remove the live pool and retain a tombstone so WorkersTab does
+				// not resurrect it from the stale mount-time REST snapshot.
+				setOfflineWorkerIds((prev) => {
+					const next = new Set(prev);
+					next.add(message.worker_id);
+					return next;
+				});
 				setPools((prev) =>
 					prev.filter((p) => p.worker_id !== message.worker_id),
 				);
@@ -280,6 +307,7 @@ export function useWorkerWebSocket(): UseWorkerWebSocketReturn {
 
 	return {
 		pools,
+		offlineWorkerIds,
 		queue,
 		isConnected,
 		scalingStates,

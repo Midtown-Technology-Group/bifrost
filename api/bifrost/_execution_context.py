@@ -328,6 +328,22 @@ class ExecutionContext:
         if value and len(value) >= _MIN_SECRET_LENGTH:
             self._dynamic_secrets.add(value)
 
+    async def get_config(self, key: str, default: Any = ...) -> Any:
+        """Backward-compatible wrapper for the runtime ``config.get`` API.
+
+        New code should import ``config`` from ``bifrost``. Keeping this method
+        preserves workflows authored against the original ExecutionContext.
+        """
+        from . import config
+
+        if default is ...:
+            missing = object()
+            value = await config.get(key, default=missing)
+            if value is missing:
+                raise KeyError(key)
+            return value
+        return await config.get(key, default=default)
+
 
 # Backward compatibility alias
 OrganizationContext = ExecutionContext

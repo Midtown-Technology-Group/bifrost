@@ -3,11 +3,7 @@ import { RefreshCw, Loader2, WifiOff, Server } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import {
-	usePools,
-	useQueueStatus,
-	type PoolSummary,
-} from "@/services/workers";
+import { usePools, useQueueStatus, type PoolSummary } from "@/services/workers";
 import { getErrorMessage } from "@/lib/api-error";
 import { QueueBadge } from "./QueueBadge";
 import { MemoryChart } from "./MemoryChart";
@@ -30,7 +26,11 @@ export function WorkersTab() {
 		refetch: refetchQueue,
 	} = useQueueStatus({ limit: 50 });
 
-	const { pools: wsPools, isConnected } = useWorkerWebSocket();
+	const {
+		pools: wsPools,
+		offlineWorkerIds,
+		isConnected,
+	} = useWorkerWebSocket();
 
 	const [isRefreshing, setIsRefreshing] = useState(false);
 
@@ -50,7 +50,9 @@ export function WorkersTab() {
 	// WS heartbeat would replace the full REST list with a single-container WS list.
 	const pools = useMemo(() => {
 		const byId = new Map<string, PoolSummary | (typeof wsPools)[number]>();
-		for (const p of poolsData?.pools ?? []) byId.set(p.worker_id, p);
+		for (const p of poolsData?.pools ?? []) {
+			if (!offlineWorkerIds.has(p.worker_id)) byId.set(p.worker_id, p);
+		}
 		for (const p of wsPools) {
 			const existing = byId.get(p.worker_id);
 			if (!existing) {
@@ -70,7 +72,7 @@ export function WorkersTab() {
 			});
 		}
 		return [...byId.values()];
-	}, [poolsData, wsPools]);
+	}, [offlineWorkerIds, poolsData, wsPools]);
 	const queueItems = queueData?.items || [];
 
 	// Stable sorted worker IDs for consistent color assignment
@@ -162,7 +164,9 @@ export function WorkersTab() {
 					<span className="text-sm text-muted-foreground">
 						{stats.containers} container
 						{stats.containers !== 1 ? "s" : ""} &middot;{" "}
-						{stats.allCapacityKnown ? `${stats.forks}/${stats.capacity} active forks` : `${stats.forks} active forks`}
+						{stats.allCapacityKnown
+							? `${stats.forks}/${stats.capacity} active forks`
+							: `${stats.forks} active forks`}
 					</span>
 					<Button
 						type="button"

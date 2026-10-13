@@ -1658,7 +1658,11 @@ async def register_workflow(
 
     # 5. Run indexer to enrich with content-derived fields
     indexer = WorkflowIndexer(db)
-    await indexer.index_python_file(request.path, content)
+    await indexer.index_python_file(
+        request.path,
+        content,
+        initialize_metadata_ids={workflow_id} if existing_wf is None else None,
+    )
 
     # 6. Re-fetch enriched record
     result = await db.execute(

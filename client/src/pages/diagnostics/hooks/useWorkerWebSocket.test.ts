@@ -113,4 +113,26 @@ describe("useWorkerWebSocket pool sequence", () => {
 			0,
 		);
 	});
+
+	it("retains an offline tombstone until that worker returns", async () => {
+		const { result } = renderHook(() => useWorkerWebSocket());
+		await waitFor(() => expect(socket.poolListener).toBeDefined());
+		const emit = socket.poolListener as (message: PoolMessage) => void;
+
+		act(() => {
+			emit({ type: "worker_online", worker_id: "worker-one" });
+			emit({ type: "worker_offline", worker_id: "worker-one" });
+		});
+		expect(result.current.pools).toEqual([]);
+		expect(result.current.offlineWorkerIds.has("worker-one")).toBe(true);
+
+		act(() => {
+			emit({
+				type: "worker_heartbeat",
+				worker_id: "worker-one",
+				processes: [],
+			});
+		});
+		expect(result.current.offlineWorkerIds.has("worker-one")).toBe(false);
+	});
 });
