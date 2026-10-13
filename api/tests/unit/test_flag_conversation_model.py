@@ -1,10 +1,10 @@
 """Per-flag tuning conversation."""
-from datetime import datetime, timezone
+
+from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
 from sqlalchemy import select
-
 from src.models.contracts.agent_run_flag_conversations import (
     AssistantTurn,
     UserTurn,
@@ -35,16 +35,16 @@ async def test_flag_conversation_persists_messages(db_session, seed_agent):
             {
                 "kind": "user",
                 "content": "wrong route",
-                "at": datetime.now(timezone.utc).isoformat(),
+                "at": datetime.now(UTC).isoformat(),
             },
             {
                 "kind": "assistant",
                 "content": "I see why. Let me investigate.",
-                "at": datetime.now(timezone.utc).isoformat(),
+                "at": datetime.now(UTC).isoformat(),
             },
         ],
-        created_at=datetime.now(timezone.utc),
-        last_updated_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
+        last_updated_at=datetime.now(UTC),
     )
     db_session.add(conv)
     await db_session.flush()
@@ -62,11 +62,11 @@ async def test_flag_conversation_persists_messages(db_session, seed_agent):
         {
             "kind": "assistant",
             "content": "Persisted after an in-place append.",
-            "at": datetime.now(timezone.utc).isoformat(),
+            "at": datetime.now(UTC).isoformat(),
         }
     )
     await db_session.commit()
-    db_session.expire(reloaded, ["messages"])
+    await db_session.refresh(reloaded, ["messages"])
     assert len(reloaded.messages) == 3
 
 
