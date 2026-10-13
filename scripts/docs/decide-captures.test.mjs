@@ -5,12 +5,13 @@ import {
   mkdtempSync,
   rmSync,
   writeFileSync,
+  symlinkSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import { pathChanged } from "./decide-captures.mjs";
+import { pathChanged, readCaptureManifest } from "./decide-captures.mjs";
 
 function fixtureRepo() {
   const repo = mkdtempSync(join(tmpdir(), "decide-captures-"));
@@ -57,6 +58,31 @@ test("changed matching path is detected", () => {
     execFileSync("git", ["add", "tracked.txt"], { cwd: repo });
     execFileSync("git", ["commit", "-qm", "change"], { cwd: repo });
     assert.equal(pathChanged(repo, sha, ["tracked.txt"]), true);
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+  }
+});
+
+test("capture manifest must remain inside the selected checkout", () => {
+  const { repo } = fixtureRepo();
+  try {
+    const manifest = join(repo, "screenshots.yaml");
+    writeFileSync(manifest, "entries: []\n");
+    assert.equal(readCaptureManifest(repo), "entries: []\n");
+    rmSync(manifest);
+    symlinkSync(join(repo, "tracked.txt"), manifest);
+    assert.throws(() => readCaptureManifest(repo), /regular file/);
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+  }
+});
+
+test("missing capture history or source filters require recapture", () => {
+  const { repo, sha } = fixtureRepo();
+  try {
+    assert.equal(pathChanged(repo, null, ["tracked.txt"]), true);
+    assert.equal(pathChanged(repo, sha, []), true);
+    assert.equal(pathChanged(repo, "0".repeat(40), ["tracked.txt"]), true);
   } finally {
     rmSync(repo, { recursive: true, force: true });
   }

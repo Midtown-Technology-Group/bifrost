@@ -10,7 +10,7 @@
  * Outputs (stdout): comma-separated IDs to capture, suitable for
  * DOCS_CAPTURE_IDS. Empty string if nothing to do (also exit 0).
  */
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, realpathSync, lstatSync } from "node:fs";
 import { resolve } from "node:path";
 import { execFileSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
@@ -43,7 +43,7 @@ export function pathChanged(repo, sinceSha, globs) {
   if (!globs || !globs.length) return true; // no globs = always recapture
   if (!/^[0-9a-f]{40}$/i.test(sinceSha)) return true;
   try {
-    execFileSync("git", ["rev-parse", "--verify", `${sinceSha}^{commit}`], {
+    execFileSync("/usr/bin/git", ["rev-parse", "--verify", `${sinceSha}^{commit}`], {
       cwd: repo,
       stdio: "ignore",
     });
@@ -51,7 +51,7 @@ export function pathChanged(repo, sinceSha, globs) {
     return true; // unknown sha — treat as changed
   }
   try {
-    execFileSync("git", ["diff", "--quiet", sinceSha, "HEAD", "--", ...globs], {
+    execFileSync("/usr/bin/git", ["diff", "--quiet", sinceSha, "HEAD", "--", ...globs], {
       cwd: repo,
       stdio: "ignore",
     });
@@ -59,6 +59,19 @@ export function pathChanged(repo, sinceSha, globs) {
   } catch {
     return true;
   }
+}
+
+export function readCaptureManifest(docsRepo) {
+  const checkout = realpathSync(docsRepo);
+  if (!existsSync(resolve(checkout, ".git"))) {
+    throw new Error("docs repository must be a Git checkout");
+  }
+  const manifestPath = resolve(checkout, "screenshots.yaml");
+  const stat = lstatSync(manifestPath);
+  if (!stat.isFile() || stat.size > 1024 * 1024) {
+    throw new Error("capture manifest must be a regular file of at most 1 MiB");
+  }
+  return readFileSync(manifestPath, "utf8");
 }
 
 async function main() {
@@ -69,7 +82,7 @@ async function main() {
     process.exit(1);
   }
   const { load: loadYaml } = await import("js-yaml");
-  const manifest = loadYaml(readFileSync(manifestPath, "utf8"));
+  const manifest = loadYaml(readCaptureManifest(args.docsRepo));
 
   // External entries (Azure portal, VSCode, etc.) are never candidates.
   const captureable = manifest.entries.filter((e) => !e.external);
