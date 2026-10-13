@@ -31,8 +31,8 @@ import stat
 import sys
 import tempfile
 import threading
-from datetime import datetime, timezone
-from typing import IO, Any
+from datetime import UTC, datetime
+from typing import IO, Any, Self
 
 logger = logging.getLogger(__name__)
 
@@ -226,7 +226,7 @@ class WorkspaceLock:
         self._fh: IO[Any] | None = None
         self._legacy_fh: IO[Any] | None = None
 
-    def __enter__(self) -> "WorkspaceLock":
+    def __enter__(self) -> Self:
         # In-process check first. POSIX flock is advisory and lets the
         # same process flock one path twice — without this guard, two
         # sessions in the same Python process would both succeed and
@@ -274,7 +274,7 @@ class WorkspaceLock:
             metadata = {
                 "pid": os.getpid(),
                 "command": self.command,
-                "started_at": datetime.now(timezone.utc).isoformat(),
+                "started_at": datetime.now(UTC).isoformat(),
             }
             for lock_fh in (self._legacy_fh, self._fh):
                 if lock_fh is None:
@@ -292,7 +292,7 @@ class WorkspaceLock:
             self._release()
             raise
 
-    def __exit__(self, *exc: Any) -> None:
+    def __exit__(self, *exc: object) -> None:
         self._release()
 
     def _release(self) -> None:

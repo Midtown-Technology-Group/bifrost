@@ -33,9 +33,10 @@ import textwrap
 import time
 
 import pytest
-
 from bifrost import _workspace_lock
 from bifrost._workspace_lock import WorkspaceLock, WorkspaceLockError
+
+API_ROOT = pathlib.Path(__file__).resolve().parents[2]
 
 
 def _make_workspace(tmp_path: pathlib.Path) -> pathlib.Path:
@@ -52,9 +53,8 @@ def test_acquire_succeeds_when_no_holder(tmp_path: pathlib.Path) -> None:
 def test_second_acquire_in_same_process_fails(tmp_path: pathlib.Path) -> None:
     ws = _make_workspace(tmp_path)
     with WorkspaceLock(ws, "watch"):
-        with pytest.raises(WorkspaceLockError) as exc_info:
-            with WorkspaceLock(ws, "sync"):
-                pass
+        with pytest.raises(WorkspaceLockError) as exc_info, WorkspaceLock(ws, "sync"):
+            pass
         msg = str(exc_info.value)
         assert "watch" in msg, f"holder command should appear in error: {msg}"
         assert str(os.getpid()) in msg, f"holder PID should appear in error: {msg}"
@@ -114,9 +114,8 @@ def test_acquire_rejects_symlink_private_directory(
     redirected.mkdir()
     lock_path.parent.parent.symlink_to(redirected, target_is_directory=True)
 
-    with pytest.raises(OSError):
-        with WorkspaceLock(ws, "watch"):
-            pass
+    with pytest.raises(OSError), WorkspaceLock(ws, "watch"):
+        pass
 
     assert list(redirected.iterdir()) == []
 
@@ -137,9 +136,8 @@ def test_acquire_rejects_symlink_lock_file_without_clobbering_target(
     target.write_text("do not overwrite", encoding="utf-8")
     lock_path.symlink_to(target)
 
-    with pytest.raises(OSError):
-        with WorkspaceLock(ws, "watch"):
-            pass
+    with pytest.raises(OSError), WorkspaceLock(ws, "watch"):
+        pass
 
     assert target.read_text(encoding="utf-8") == "do not overwrite"
 
@@ -176,9 +174,9 @@ def test_killed_holder_releases_lock(tmp_path: pathlib.Path) -> None:
     # it without giving it a chance to clean up — the kernel must release
     # the flock on its own.
     #
-    # The child needs the bifrost package on sys.path. The test container
-    # mounts the source at /app, but locally pytest runs from the repo root.
-    # Inherit the parent's PYTHONPATH so whichever applies works.
+    # The child needs the API source root on sys.path independently of the
+    # caller's working directory. Preserve any configured path and append the
+    # resolved repository API root used by this test module.
     holder_script = textwrap.dedent(f"""
         import pathlib
         from bifrost._workspace_lock import WorkspaceLock
@@ -192,7 +190,12 @@ def test_killed_holder_releases_lock(tmp_path: pathlib.Path) -> None:
         [sys.executable, "-c", holder_script],
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
-        env={**os.environ, "PYTHONPATH": os.environ.get("PYTHONPATH", "") + ":/app:."},
+        env={
+            **os.environ,
+            "PYTHONPATH": os.pathsep.join(
+                filter(None, (os.environ.get("PYTHONPATH"), str(API_ROOT)))
+            ),
+        },
     )
     captured: list[str] = []
     try:
@@ -212,9 +215,8 @@ def test_killed_holder_releases_lock(tmp_path: pathlib.Path) -> None:
         )
 
         # While the child holds the lock, our acquire must fail.
-        with pytest.raises(WorkspaceLockError):
-            with WorkspaceLock(ws, "sync"):
-                pass
+        with pytest.raises(WorkspaceLockError), WorkspaceLock(ws, "sync"):
+            pass
 
         # Kill -9 the child. No chance for cleanup. The kernel must release
         # the FD.
@@ -264,9 +266,8 @@ def test_legacy_holder_blocks_new_namespace_until_release(
             proc.stdout.readline().decode("utf-8", errors="replace").strip()
             == "ACQUIRED"
         )
-        with pytest.raises(WorkspaceLockError):
-            with WorkspaceLock(ws, "sync"):
-                pass
+        with pytest.raises(WorkspaceLockError), WorkspaceLock(ws, "sync"):
+            pass
     finally:
         proc.terminate()
         proc.wait(timeout=5)
@@ -282,9 +283,8 @@ def test_workspace_lock_error_includes_human_readable_time(
     locale-friendly form, not a raw ISO string."""
     ws = _make_workspace(tmp_path)
     with WorkspaceLock(ws, "watch"):
-        with pytest.raises(WorkspaceLockError) as exc_info:
-            with WorkspaceLock(ws, "sync"):
-                pass
+        with pytest.raises(WorkspaceLockError) as exc_info, WorkspaceLock(ws, "sync"):
+            pass
         msg = str(exc_info.value)
         # Either ISO or formatted — but never empty
         assert "started" in msg.lower(), f"missing started_at in error: {msg}"
@@ -306,9 +306,8 @@ def test_concurrent_workspaces_do_not_block(tmp_path: pathlib.Path) -> None:
     per-workspace, not global."""
     ws_a = _make_workspace(tmp_path / "a")
     ws_b = _make_workspace(tmp_path / "b")
-    with WorkspaceLock(ws_a, "watch"):
-        with WorkspaceLock(ws_b, "watch"):
-            pass
+    with WorkspaceLock(ws_a, "watch"), WorkspaceLock(ws_b, "watch"):
+        pass
 
 
 def test_failed_acquire_closes_fd_and_rolls_back_reservation(
@@ -329,9 +328,8 @@ def test_failed_acquire_closes_fd_and_rolls_back_reservation(
 
     monkeypatch.setattr(_workspace_lock, "_platform_lock", boom)
 
-    with pytest.raises(RuntimeError, match="simulated"):
-        with WorkspaceLock(ws, "watch"):
-            pass
+    with pytest.raises(RuntimeError, match="simulated"), WorkspaceLock(ws, "watch"):
+        pass
 
     # Reservation rolled back: a fresh acquire must succeed.
     monkeypatch.undo()
@@ -348,14 +346,12 @@ def test_blocking_acquire_does_not_leak_fd_or_reservation(
     ws = _make_workspace(tmp_path)
     with WorkspaceLock(ws, "watch"):
         # First attempt fails as expected.
-        with pytest.raises(WorkspaceLockError):
-            with WorkspaceLock(ws, "sync"):
-                pass
+        with pytest.raises(WorkspaceLockError), WorkspaceLock(ws, "sync"):
+            pass
         # Second attempt also fails — proves the first didn't leave a
         # stale entry in `_HELD` that would mask the real holder.
-        with pytest.raises(WorkspaceLockError):
-            with WorkspaceLock(ws, "sync"):
-                pass
+        with pytest.raises(WorkspaceLockError), WorkspaceLock(ws, "sync"):
+            pass
     # Holder released; acquire now succeeds.
     with WorkspaceLock(ws, "sync"):
         pass
