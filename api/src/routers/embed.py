@@ -169,7 +169,7 @@ async def embed_app(
     # keeping the token client-side only. This avoids cross-origin cookie
     # issues when third-party sites embed Bifrost apps in iframes.
     redirect = RedirectResponse(
-        url=f"/apps/{app.slug}#embed_token={access_token}",
+        url=f"/embedded/apps/hmac/{app.slug}#embed_token={access_token}",
         status_code=302,
     )
 

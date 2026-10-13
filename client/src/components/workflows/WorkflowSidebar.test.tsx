@@ -12,7 +12,12 @@ import { WorkflowSidebar } from "./WorkflowSidebar";
 
 const query = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/api-client", () => ({ $api: { useQuery: () => query() } }));
-beforeEach(() => query.mockReturnValue({ data: { forms: [], apps: [], agents: [] }, isLoading: false }));
+beforeEach(() =>
+	query.mockReturnValue({
+		data: { forms: [], apps: [], agents: [] },
+		isLoading: false,
+	}),
+);
 
 function renderSidebar(overrides: Record<string, unknown> = {}) {
 	const onCategorySelect = vi.fn();
@@ -47,11 +52,13 @@ function renderSidebar(overrides: Record<string, unknown> = {}) {
 
 describe("WorkflowSidebar — Orphaned filter", () => {
 	it("calls onOrphanedFilterChange(true) when clicked while off", async () => {
-		const { user, onOrphanedFilterChange } = renderSidebar();
+		const { user, onOrphanedFilterChange, onEndpointFilterChange } =
+			renderSidebar({ endpointFilter: true });
 
 		await user.click(screen.getByRole("button", { name: /orphaned/i }));
 
 		expect(onOrphanedFilterChange).toHaveBeenCalledWith(true);
+		expect(onEndpointFilterChange).toHaveBeenCalledWith(false);
 	});
 
 	it("calls onOrphanedFilterChange(false) when clicked while on", async () => {
@@ -87,8 +94,12 @@ it("shows usage-query recovery without claiming no entities exist", async () => 
 	const refetch = vi.fn();
 	query.mockReturnValue({ isError: true, isLoading: false, refetch });
 	const { user } = renderSidebar();
-	expect(screen.getByRole("alert")).toHaveTextContent("Could not load workflow usage filters.");
+	expect(screen.getByRole("alert")).toHaveTextContent(
+		"Could not load workflow usage filters.",
+	);
 	expect(screen.queryByText(/No forms found/i)).not.toBeInTheDocument();
-	await user.click(screen.getByRole("button", { name: "Retry usage filters" }));
+	await user.click(
+		screen.getByRole("button", { name: "Retry usage filters" }),
+	);
 	expect(refetch).toHaveBeenCalledOnce();
 });

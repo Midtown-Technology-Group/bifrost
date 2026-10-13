@@ -97,6 +97,14 @@ export function Workflows() {
 	const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
 	const [endpointFilter, setEndpointFilter] = useState(false);
 	const [orphanedFilter, setOrphanedFilter] = useState(false);
+	const changeEndpointFilter = (enabled: boolean) => {
+		setEndpointFilter(enabled);
+		if (enabled) setOrphanedFilter(false);
+	};
+	const changeOrphanedFilter = (enabled: boolean) => {
+		setOrphanedFilter(enabled);
+		if (enabled) setEndpointFilter(false);
+	};
 
 	const activeFilterCount = [
 		searchTerm.trim(),
@@ -471,9 +479,9 @@ export function Workflows() {
 							onAppSelect={setSelectedAppId}
 							onAgentSelect={setSelectedAgentId}
 							endpointFilter={endpointFilter}
-							onEndpointFilterChange={setEndpointFilter}
+							onEndpointFilterChange={changeEndpointFilter}
 							orphanedFilter={orphanedFilter}
-							onOrphanedFilterChange={setOrphanedFilter}
+							onOrphanedFilterChange={changeOrphanedFilter}
 							scope={
 								isPlatformAdmin
 									? (filterOrgId ?? undefined)
@@ -511,9 +519,9 @@ export function Workflows() {
 							onAppSelect={setSelectedAppId}
 							onAgentSelect={setSelectedAgentId}
 							endpointFilter={endpointFilter}
-							onEndpointFilterChange={setEndpointFilter}
+							onEndpointFilterChange={changeEndpointFilter}
 							orphanedFilter={orphanedFilter}
-							onOrphanedFilterChange={setOrphanedFilter}
+							onOrphanedFilterChange={changeOrphanedFilter}
 							scope={
 								isPlatformAdmin
 									? (filterOrgId ?? undefined)

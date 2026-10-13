@@ -557,8 +557,12 @@ class BundlerService:
 
         # --- 2. Scan user source for names imported from "bifrost" -------
         imported_names: set[str] = set()
+        has_namespace_import = False
         bifrost_import_re = _re.compile(
             r'import\s+\{([^}]+)\}\s+from\s+["\']bifrost["\']',
+        )
+        bifrost_namespace_re = _re.compile(
+            r'import\s+\*\s+as\s+[A-Za-z_$][\w$]*\s+from\s+["\']bifrost["\']',
         )
         for p in sources:
             if not p.endswith((".tsx", ".ts")):
@@ -567,6 +571,8 @@ class BundlerService:
                 content = (src_dir / p).read_text(encoding="utf-8")
             except (OSError, UnicodeDecodeError):
                 continue
+            if bifrost_namespace_re.search(content):
+                has_namespace_import = True
             for match in bifrost_import_re.findall(content):
                 for raw in match.split(","):
                     clean = raw.strip().split(" as ")[0].strip()
@@ -727,8 +733,13 @@ class BundlerService:
         # above to avoid duplicate export errors. Wrapped router primitives
         # (Link/NavLink/Navigate/useNavigate/navigate) DO go through the
         # platform scope — add them here so they route through globalThis.
+        requested_platform_names = (
+            _PLATFORM_EXPORT_NAMES
+            if has_namespace_import
+            else _PLATFORM_EXPORT_NAMES & imported_names
+        )
         platform_names = (
-            ((_PLATFORM_EXPORT_NAMES & imported_names) | wrapped_router_re_exported)
+            (requested_platform_names | wrapped_router_re_exported)
             - user_names
             - lucide_names
             - raw_router_names

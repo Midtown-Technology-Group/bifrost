@@ -26,6 +26,7 @@ from src.services.file_storage.azure_blob_client import AzureBlobStorageClient
 router = APIRouter(prefix="/health", tags=["health"])
 
 CHECK_TIMEOUT_SECONDS = 2.0
+READINESS_CACHE_SECONDS = 5.0
 ComponentStatus = dict[str, str]
 
 
@@ -174,6 +175,8 @@ class S3HealthClient:
 _rabbitmq_health_connection = RabbitMQHealthConnection()
 _redis_health_connection = RedisHealthConnection()
 _s3_health_client = S3HealthClient()
+_readiness_cache: tuple[float, dict[str, ComponentStatus]] | None = None
+_readiness_cache_lock = asyncio.Lock()
 
 
 class HealthCheck(BaseModel):
@@ -344,12 +347,34 @@ def _overall_status(components: dict[str, ComponentStatus]) -> str:
     return "healthy"
 
 
+async def _cached_health_components(
+    db: AsyncSession,
+    settings: Settings,
+) -> dict[str, ComponentStatus]:
+    """Coalesce public readiness probes into one bounded dependency check."""
+    global _readiness_cache
+
+    now = asyncio.get_running_loop().time()
+    cached = _readiness_cache
+    if cached is not None and now - cached[0] < READINESS_CACHE_SECONDS:
+        return cached[1]
+
+    async with _readiness_cache_lock:
+        now = asyncio.get_running_loop().time()
+        cached = _readiness_cache
+        if cached is not None and now - cached[0] < READINESS_CACHE_SECONDS:
+            return cached[1]
+        components = await build_health_components(db, settings)
+        _readiness_cache = (now, components)
+        return components
+
+
 async def _readiness_response(
     response: Response,
     db: AsyncSession,
 ) -> DetailedHealthCheck:
     settings = get_settings()
-    components = await build_health_components(db, settings)
+    components = await _cached_health_components(db, settings)
     overall_status = _overall_status(components)
     if overall_status == "unhealthy":
         response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE

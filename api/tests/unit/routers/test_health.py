@@ -6,6 +6,11 @@ from fastapi import Response
 from src.routers import health
 
 
+@pytest.fixture(autouse=True)
+def _reset_readiness_cache():
+    health._readiness_cache = None
+
+
 class DummyDB:
     async def execute(self, statement):
         return None
@@ -25,6 +30,7 @@ def _settings(s3_configured: bool = True, work_delivery_backend: str = "rabbitmq
         s3_region="us-east-1",
         azure_blob_configured=False,
         work_delivery_backend=work_delivery_backend,
+        is_testing=True,
     )
 
 
@@ -42,6 +48,7 @@ def _azure_blob_settings(configured: bool = True):
         s3_region="us-east-1",
         azure_blob_configured=configured,
         work_delivery_backend="rabbitmq",
+        is_testing=True,
     )
 
 
@@ -176,6 +183,24 @@ async def test_ready_returns_healthy_when_core_dependencies_pass(monkeypatch):
     assert response.status_code == 200
     assert result.status == "healthy"
     assert set(result.components) == {"database", "redis", "rabbitmq", "s3"}
+
+
+@pytest.mark.asyncio
+async def test_public_readiness_requests_share_short_dependency_cache(monkeypatch):
+    calls = 0
+
+    async def build_once(db, settings):
+        nonlocal calls
+        calls += 1
+        return await _build_components(db, settings)
+
+    monkeypatch.setattr(health, "get_settings", _settings)
+    monkeypatch.setattr(health, "build_health_components", build_once)
+
+    await health.ready_health_check(Response(), DummyDB())
+    await health.detailed_health_check(Response(), DummyDB())
+
+    assert calls == 1
 
 
 @pytest.mark.asyncio

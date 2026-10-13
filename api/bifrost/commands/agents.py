@@ -38,7 +38,7 @@ from bifrost.client import BifrostClient
 from bifrost.dto_flags import (
     DTO_EXCLUDES,
     DTO_REF_LOOKUPS,
-    assemble_body,
+    assemble_cli_body,
     build_cli_flags,
 )
 from bifrost.org_target import org_option, resolve_org_target
@@ -60,7 +60,10 @@ def _load_str_file(value: str | None) -> str | None:
     if value is None:
         return None
     if value.startswith("@"):
-        return Path(value[1:]).read_text(encoding="utf-8")
+        try:
+            return Path(value[1:]).read_text(encoding="utf-8")
+        except (OSError, UnicodeError) as exc:
+            raise click.BadParameter(f"could not load system-prompt: {exc}") from exc
     return value
 
 
@@ -205,7 +208,7 @@ async def create_agent(
     if "system_prompt" in fields:
         fields["system_prompt"] = _load_str_file(fields.get("system_prompt"))
 
-    body = await assemble_body(AgentCreate, fields, resolver=resolver)
+    body = await assemble_cli_body(AgentCreate, fields, resolver=resolver)
     target = await resolve_org_target(org, is_global, resolver)
     if target.is_set:
         body["organization_id"] = target.organization_id
@@ -256,7 +259,7 @@ async def update_agent(
     if "system_prompt" in fields:
         fields["system_prompt"] = _load_str_file(fields.get("system_prompt"))
 
-    body = await assemble_body(AgentUpdate, fields, resolver=resolver)
+    body = await assemble_cli_body(AgentUpdate, fields, resolver=resolver)
     target = await resolve_org_target(org, is_global, resolver)
     if target.is_set:
         body["organization_id"] = target.organization_id

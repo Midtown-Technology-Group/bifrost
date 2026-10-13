@@ -8,7 +8,7 @@ Implements Task 5a of the CLI mutation surface plan:
   :class:`OrganizationCreate`)
 * ``bifrost orgs update <ref>`` → ``PATCH /api/organizations/{uuid}`` (body
   from :class:`OrganizationUpdate`; unset flags omitted by
-  :func:`assemble_body`)
+  :func:`assemble_cli_body`)
 * ``bifrost orgs delete <ref>`` → ``DELETE /api/organizations/{uuid}``
 
 Flags are generated from the DTOs via :func:`build_cli_flags` with the
@@ -27,7 +27,7 @@ from bifrost.client import BifrostClient
 from bifrost.dto_flags import (
     DTO_EXCLUDES,
     DTO_REF_LOOKUPS,
-    assemble_body,
+    assemble_cli_body,
     build_cli_flags,
 )
 from bifrost.refs import RefResolver
@@ -102,7 +102,7 @@ async def create_org(
     **fields: Any,
 ) -> None:
     """Create a new organization."""
-    body = await assemble_body(OrganizationCreate, fields, resolver=resolver)
+    body = await assemble_cli_body(OrganizationCreate, fields, resolver=resolver)
     response = await client.post("/api/organizations", json=body)
     response.raise_for_status()
     output_result(response.json(), ctx=ctx)
@@ -128,7 +128,7 @@ async def update_org(
     :class:`RefResolver`; ambiguous names fail loudly with the candidate list.
     """
     org_uuid = await resolver.resolve("org", ref)
-    body = await assemble_body(OrganizationUpdate, fields, resolver=resolver)
+    body = await assemble_cli_body(OrganizationUpdate, fields, resolver=resolver)
     response = await client.patch(f"/api/organizations/{org_uuid}", json=body)
     response.raise_for_status()
     output_result(response.json(), ctx=ctx)
