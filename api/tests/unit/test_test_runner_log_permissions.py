@@ -10,12 +10,15 @@ def _test_script() -> str:
     return next(path for path in candidates if path.exists()).read_text()
 
 
+def _repository_file(path: str) -> Path:
+    candidates = (Path("/repo") / path, Path(__file__).resolve().parents[3] / path)
+    return next(candidate for candidate in candidates if candidate.exists())
+
+
 def test_container_writable_results_are_beneath_private_git_metadata():
     script = _test_script()
     initialization = script.split("# Host command locks", 1)[0]
-    helpers = (
-        Path(__file__).resolve().parents[3] / "scripts/lib/test_helpers.sh"
-    ).read_text()
+    helpers = _repository_file("scripts/lib/test_helpers.sh").read_text()
 
     assert 'LOG_DIR="$(compute_test_results_dir .)"' in initialization
     assert "git -C" in helpers
