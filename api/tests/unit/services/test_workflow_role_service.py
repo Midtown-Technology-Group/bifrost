@@ -258,7 +258,7 @@ async def test_sync_agent_roles_to_workflows_assigns_agent_roles_to_tools() -> N
 
 @pytest.mark.asyncio
 async def test_sync_agent_roles_to_workflows_stops_when_no_tools_or_roles() -> None:
-    agent = SimpleNamespace(id=uuid4(), tools=[])
+    agent = SimpleNamespace(id=uuid4(), organization_id=None, tools=[])
 
     with patch.object(
         WorkflowRoleService,
@@ -269,7 +269,9 @@ async def test_sync_agent_roles_to_workflows_stops_when_no_tools_or_roles() -> N
 
     sync_roles.assert_not_awaited()
 
-    agent.tools = [SimpleNamespace(id=uuid4())]
+    agent.tools = [SimpleNamespace(
+        id=uuid4(), is_active=True, type="tool", organization_id=None
+    )]
     with (
         patch.object(
             WorkflowRoleService,
