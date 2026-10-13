@@ -742,9 +742,11 @@ class AgentRunConsumer(BaseConsumer):
         """Claim a published run under the publisher's advisory lock.
 
         Existing queued rows advance to running before the agent can execute.
-        Scheduled rows represent an unconfirmed publication and all later
-        states represent redelivery, so neither may execute. Legacy messages
-        without a pre-created row retain the historical consumer-create path.
+        The broker delivery itself confirms publication, so scheduled rows
+        recover a publisher that died after broker confirmation but before its
+        queued commit. Later states represent redelivery and may not execute.
+        Legacy messages without a pre-created row retain the historical
+        consumer-create path.
         """
         try:
             run_uuid = UUID(run_id)
@@ -762,7 +764,7 @@ class AgentRunConsumer(BaseConsumer):
             agent_run = await db.get(AgentRun, run_uuid, with_for_update={"of": AgentRun})
             await require_delivery_ownership(db)
             if agent_run is not None:
-                if agent_run.status != "queued":
+                if agent_run.status not in {"scheduled", "queued"}:
                     return None
                 agent_run.status = "running"
             attempt = await start_execution_attempt(
@@ -784,9 +786,10 @@ class AgentRunConsumer(BaseConsumer):
         """Fail a published run whose required Redis context disappeared.
 
         The publisher uses the same transaction lock. If it is still between
-        broker confirmation and the queued commit, this waits and observes the
-        committed state. SCHEDULED and terminal rows are left untouched; only
-        a confirmed queued run is failed.
+        broker confirmation and the queued commit, this waits for the
+        transaction. Once this delivery owns the lock, scheduled and queued
+        both represent confirmed work and must be terminalized rather than
+        acknowledged without durable evidence.
         """
         try:
             run_uuid = UUID(run_id)
@@ -805,7 +808,7 @@ class AgentRunConsumer(BaseConsumer):
             await require_delivery_ownership(db)
             if agent_run is None:
                 return None
-            if agent_run.status == "queued":
+            if agent_run.status in {"scheduled", "queued"}:
                 agent_run.status = "failed"
                 agent_run.error = "Agent run context was unavailable before execution"
                 agent_run.completed_at = datetime.now(timezone.utc)

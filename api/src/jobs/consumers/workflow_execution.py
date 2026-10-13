@@ -543,22 +543,6 @@ class WorkflowExecutionConsumer(BaseConsumer):
             logs_flushed_ms = (time.perf_counter() - completion_started) * 1000
 
             await session.commit()
-            if event_delivery is not None:
-                try:
-                    from src.services.events.processor import (
-                        broadcast_delivery_update_after_commit,
-                    )
-
-                    await broadcast_delivery_update_after_commit(
-                        session,
-                        event_delivery,
-                    )
-                except Exception as e:
-                    logger.warning(
-                        "Failed to broadcast event delivery for %s...: %s",
-                        execution_id[:8],
-                        e,
-                    )
         durable_ms = (time.perf_counter() - completion_started) * 1000
 
         # Wake sync callers as soon as their result and buffered SDK writes are
@@ -578,6 +562,24 @@ class WorkflowExecutionConsumer(BaseConsumer):
                 ),
             )
         result_ready_ms = (time.perf_counter() - completion_started) * 1000
+
+        if event_delivery is not None:
+            try:
+                from src.services.events.processor import (
+                    broadcast_delivery_update_after_commit,
+                )
+
+                async with session_factory() as broadcast_session:
+                    await broadcast_delivery_update_after_commit(
+                        broadcast_session,
+                        event_delivery,
+                    )
+            except Exception as e:
+                logger.warning(
+                    "Failed to broadcast event delivery for %s...: %s",
+                    execution_id[:8],
+                    e,
+                )
 
         if is_sync:
             await asyncio.sleep(_SYNC_DERIVED_WORK_GRACE_SECONDS)
@@ -893,22 +895,6 @@ class WorkflowExecutionConsumer(BaseConsumer):
                     )
 
             await session.commit()
-            if event_delivery is not None:
-                try:
-                    from src.services.events.processor import (
-                        broadcast_delivery_update_after_commit,
-                    )
-
-                    await broadcast_delivery_update_after_commit(
-                        session,
-                        event_delivery,
-                    )
-                except Exception as e:
-                    logger.warning(
-                        "Failed to broadcast event delivery for %s...: %s",
-                        execution_id[:8],
-                        e,
-                    )
 
         # A sync failure is just as latency-sensitive as a success. Wake the
         # caller once the authoritative failure is durable; aggregates and
@@ -926,6 +912,25 @@ class WorkflowExecutionConsumer(BaseConsumer):
                 ),
             )
 
+        if event_delivery is not None:
+            try:
+                from src.services.events.processor import (
+                    broadcast_delivery_update_after_commit,
+                )
+
+                async with session_factory() as broadcast_session:
+                    await broadcast_delivery_update_after_commit(
+                        broadcast_session,
+                        event_delivery,
+                    )
+            except Exception as e:
+                logger.warning(
+                    "Failed to broadcast event delivery for %s...: %s",
+                    execution_id[:8],
+                    e,
+                )
+
+        if is_sync:
             await asyncio.sleep(_SYNC_DERIVED_WORK_GRACE_SECONDS)
 
         failure_metrics = result.get("metrics") or {}
@@ -1810,8 +1815,10 @@ class WorkflowExecutionConsumer(BaseConsumer):
         """Fail confirmed work whose required Redis context disappeared.
 
         Taking the publisher's advisory transaction lock prevents observing
-        SCHEDULED while a confirmed publication is still advancing to PENDING.
-        Unconfirmed SCHEDULED and terminal rows remain untouched.
+        SCHEDULED while a live publisher is still advancing to PENDING. Once
+        this broker delivery owns the lock, either SCHEDULED or PENDING is
+        confirmed work: SCHEDULED means the publisher died after broker
+        confirmation but before committing its state transition.
         """
         from src.core.database import get_db_context
         from src.models.enums import ExecutionStatus
@@ -1834,7 +1841,10 @@ class WorkflowExecutionConsumer(BaseConsumer):
             await require_delivery_ownership(db)
             if execution is None:
                 return None
-            if execution.status == ExecutionStatus.PENDING:
+            if execution.status in {
+                ExecutionStatus.SCHEDULED,
+                ExecutionStatus.PENDING,
+            }:
                 attempt = await db.scalar(
                     select(ExecutionAttempt)
                     .where(
@@ -1864,9 +1874,11 @@ class WorkflowExecutionConsumer(BaseConsumer):
 
         The publisher holds the same advisory transaction lock through broker
         confirmation and its SCHEDULED -> PENDING transition. A fast consumer
-        therefore waits for that transaction, then advances only PENDING to
-        RUNNING. SCHEDULED means publication was not durably confirmed; any
-        other state is a redelivery or an already-finished execution.
+        therefore waits for that transaction. Once the consumer owns the lock,
+        the broker delivery itself confirms publication: PENDING is the normal
+        path and SCHEDULED recovers a publisher that died after confirmation
+        but before commit. Any other state is a redelivery or an already-
+        finished execution.
 
         Rows are absent for legacy inline-code dispatch, which retains its
         existing Redis-first creation path.
@@ -1890,9 +1902,18 @@ class WorkflowExecutionConsumer(BaseConsumer):
             await require_delivery_ownership(db)
             if execution is None:
                 return ""
-            if execution.status != ExecutionStatus.PENDING:
+            if execution.status not in {
+                ExecutionStatus.SCHEDULED,
+                ExecutionStatus.PENDING,
+            }:
                 return None
-            from src.services.execution.attempts import create_claimed_attempt
+            from src.services.execution.attempts import (
+                create_claimed_attempt,
+                mark_attempt_published,
+            )
+
+            if execution.status == ExecutionStatus.SCHEDULED:
+                await mark_attempt_published(db, execution)
 
             claim = await create_claimed_attempt(
                 db,
