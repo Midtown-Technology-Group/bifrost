@@ -56,6 +56,7 @@ async def test_regular_user_namespaces_come_from_scoped_role_assignments():
     sql = str(statement.compile(compile_kwargs={"literal_binds": True}))
     assert "knowledge_namespace_roles" in sql
     assert "user_roles" in sql
-    assert str(user.user_id) in sql
-    assert str(user.organization_id) in sql
+    params = statement.compile().params
+    assert user.user_id in params.values()
+    assert user.organization_id in params.values()
     assert "organization_id IS NULL" in sql
