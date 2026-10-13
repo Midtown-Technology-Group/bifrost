@@ -60,6 +60,7 @@ if TYPE_CHECKING:
 from bifrost.manifest import (
     Manifest,
     get_all_entity_ids,
+    get_all_paths,
     read_manifest_from_dir,
 )
 from src.services.manifest_import import (
@@ -1768,6 +1769,11 @@ class GitHubSyncService:
 
         bifrost_dir = work_dir / ".bifrost"
         manifest = read_manifest_from_dir(bifrost_dir)
+
+        # Fail before diffing, resolving, or reading any manifest-declared
+        # source path. Repository manifests are untrusted import input, and a
+        # traversal/absolute/internal path must never reach ``work_dir / path``.
+        get_all_paths(manifest)
 
         has_entities = (
             manifest.organizations or manifest.roles
