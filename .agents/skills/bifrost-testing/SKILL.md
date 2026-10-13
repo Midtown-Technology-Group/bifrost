@@ -120,8 +120,8 @@ A scoped change may be complete without running every suite. If a broader local 
 If the repair is bounded, make it in the current change. If it is substantial and unrelated, split it into a dedicated blocking repair change rather than expanding the feature indefinitely. The scoped feature can be reported as implemented, but it must not be merged through a red required gate and the failure must not be left as an unowned follow-up.
 
 Diagnostics:
-- Logs per service: `/tmp/bifrost-<project-name>/*.log` (per-worktree).
-- JUnit on the host: `/tmp/bifrost-<project>/test-results.xml` (`./test.sh stack status` prints the project name).
+- Logs per service: `<results-dir>/*.log` (per-worktree).
+- JUnit on the host: `<results-dir>/test-results.xml` (`./test.sh stack status` prints the private results directory).
 - To isolate a test, run it alone: `./test.sh tests/e2e/path/test_foo.py::TestClass::test_method -v`.
 
 ### 7. Prefer simple tests

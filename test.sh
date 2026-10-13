@@ -64,7 +64,8 @@ COMPOSE_PROJECT_NAME="$(compute_project_name .)"
 # retains its bind mounts, but it must not live at a predictable path in shared
 # /tmp: the test runner later grants its container uid write access, which would
 # let another local user plant symlinks for host-side log writers to follow.
-TEST_ARTIFACTS_DIR="$(git rev-parse --path-format=absolute --git-path bifrost-test-artifacts)"
+LOG_DIR="$(compute_test_results_dir .)"
+TEST_ARTIFACTS_DIR="$(dirname "$LOG_DIR")"
 if [ -L "$TEST_ARTIFACTS_DIR" ]; then
     echo "ERROR: refusing symlinked test artifacts directory: $TEST_ARTIFACTS_DIR" >&2
     exit 1
@@ -72,7 +73,6 @@ fi
 (umask 077 && mkdir -p "$TEST_ARTIFACTS_DIR")
 chmod 700 "$TEST_ARTIFACTS_DIR"
 
-LOG_DIR="$TEST_ARTIFACTS_DIR/results"
 if [ -L "$LOG_DIR" ]; then
     echo "ERROR: refusing symlinked test results directory: $LOG_DIR" >&2
     exit 1
@@ -85,6 +85,9 @@ mkdir -p "$LOG_DIR/solution-repo-fixtures"
 mkdir -p "$SCRIPT_DIR/client/playwright-results"
 chmod 777 "$SCRIPT_DIR/client/playwright-results" 2>/dev/null || true
 export LOG_DIR
+if [ -n "${GITHUB_ENV:-}" ]; then
+    printf 'BIFROST_TEST_RESULTS_DIR=%s\n' "$LOG_DIR" >> "$GITHUB_ENV"
+fi
 
 # Host command locks must not live in the container-writable results directory.
 # Reliability/reporting lanes change that directory's mode and container users
@@ -123,6 +126,7 @@ fi
 print_project() {
     echo "Worktree: $(git rev-parse --show-toplevel)"
     echo "Project:  $COMPOSE_PROJECT_NAME"
+    echo "Results:  $LOG_DIR"
 }
 
 require_stack_up() {

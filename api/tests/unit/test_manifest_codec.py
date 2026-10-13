@@ -58,8 +58,8 @@ def test_assert_parity_passes_on_equal_and_fails_on_diff():
 # Re-capture deliberately with UPDATE_GOLDEN=1 (review the git diff of the fixture).
 # Committed fixtures live in the repo (read at assert time — the container mounts
 # /app READ-ONLY, so the test can only READ here). Captures in UPDATE_GOLDEN mode
-# are written to the WRITABLE LOG_DIR mount (/tmp/bifrost in-container, host
-# /tmp/bifrost-<project>) for the developer to harvest and commit into GOLDEN_DIR.
+# are written to the WRITABLE LOG_DIR mount (/tmp/bifrost in-container, under
+# the private host results directory) for the developer to harvest into GOLDEN_DIR.
 GOLDEN_DIR = Path(__file__).parent / "golden" / "manifest_codec"
 GOLDEN_CAPTURE_DIR = Path("/tmp/bifrost/golden/manifest_codec")
 
@@ -121,7 +121,7 @@ def assert_golden(produced: dict, name: str, *, volatile_keys: set[str] | None =
     path = GOLDEN_DIR / f"{name}.json"
     assert path.exists(), (
         f"golden {name}.json is missing. Capture it with UPDATE_GOLDEN=1, then copy "
-        f"from /tmp/bifrost-<project>/golden/manifest_codec into "
+        f"from <results-dir>/golden/manifest_codec into "
         f"api/tests/unit/golden/manifest_codec and commit."
     )
     golden = json.loads(path.read_text())

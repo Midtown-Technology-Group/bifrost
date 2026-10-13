@@ -13,7 +13,7 @@ export BIFROST_LAB_CLIENT_IMAGE="${BIFROST_LAB_CLIENT_IMAGE:-ghcr.io/midtown-tec
 export BIFROST_LAB_RENDERER_IMAGE="${BIFROST_LAB_RENDERER_IMAGE:-ghcr.io/mtg-thomas/bifrost-doc-renderer@sha256:6cf3dc6cf78466818690796c2f94d4c6e9c17a485ba2def7aa76343113442be3}"
 COMPOSE_PROJECT_NAME="$(compute_project_name .)"
 export COMPOSE_PROJECT_NAME
-export LOG_DIR="/tmp/bifrost-$COMPOSE_PROJECT_NAME"
+export LOG_DIR="${LOG_DIR:-$(compute_test_results_dir .)}"
 export BIFROST_LAB_UID="$(id -u)"
 export BIFROST_LAB_GID="$(id -g)"
 export BIFROST_LAB_OTEL_DIR="$LOG_DIR/issue-890-otel-$(date -u +%Y%m%dT%H%M%SZ)"

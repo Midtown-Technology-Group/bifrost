@@ -702,10 +702,10 @@ jobs:
           ./test.sh stack up
           if [ "$TEST_MODE" = "comprehensive" ]; then
             ./test.sh unit --cov=. --cov-report=xml:/tmp/bifrost/coverage.xml
-            shopt -s nullglob
-            coverage_files=(/tmp/bifrost-bifrost-test-*/coverage.xml)
-            test "${#coverage_files[@]}" -eq 1
-            cp "${coverage_files[0]}" coverage.xml
+            source scripts/lib/test_helpers.sh
+            coverage_file="$(compute_test_results_dir .)/coverage.xml"
+            test -s "$coverage_file"
+            cp "$coverage_file" coverage.xml
           else
             mapfile -t targets <<< "$TEST_TARGETS"
             if (( ${#targets[@]} == 0 )); then
@@ -783,7 +783,7 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: mcp-conformance-results
-          path: /tmp/bifrost-*/mcp-conformance/
+          path: ${{ env.BIFROST_TEST_RESULTS_DIR }}/mcp-conformance/
           if-no-files-found: error
           retention-days: 14
 
@@ -861,7 +861,7 @@ jobs:
           # Retain the served schema from this exact candidate's running API.
           source scripts/lib/test_helpers.sh
           export COMPOSE_PROJECT_NAME="$(compute_project_name .)"
-          contract_dir="/tmp/bifrost-$COMPOSE_PROJECT_NAME"
+          contract_dir="$(compute_test_results_dir .)"
           docker compose -f docker-compose.test.yml exec -T api python -c \
             'import sys, urllib.request; sys.stdout.buffer.write(urllib.request.urlopen("http://127.0.0.1:8000/openapi.json", timeout=30).read())' \
             > "$contract_dir/openapi-current.json"
@@ -899,8 +899,8 @@ jobs:
         with:
           name: api-e2e-diagnostics-${{ matrix.shard }}
           path: |
-            /tmp/bifrost-bifrost-test-*/*.log
-            /tmp/bifrost-bifrost-test-*/test-results.xml
+            ${{ env.BIFROST_TEST_RESULTS_DIR }}/*.log
+            ${{ env.BIFROST_TEST_RESULTS_DIR }}/test-results.xml
           if-no-files-found: warn
           retention-days: 7
 
@@ -910,8 +910,8 @@ jobs:
         with:
           name: api-openapi-contract-${{ matrix.shard }}
           path: |
-            /tmp/bifrost-bifrost-test-*/openapi-current.json
-            /tmp/bifrost-bifrost-test-*/openapi-digest.md
+            ${{ env.BIFROST_TEST_RESULTS_DIR }}/openapi-current.json
+            ${{ env.BIFROST_TEST_RESULTS_DIR }}/openapi-digest.md
           if-no-files-found: ignore
           retention-days: 7
 
@@ -1021,7 +1021,7 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: browser-service-logs-${{ matrix.shard }}
-          path: /tmp/bifrost-bifrost-test-*/*.log
+          path: ${{ env.BIFROST_TEST_RESULTS_DIR }}/*.log
           if-no-files-found: warn
           retention-days: 7
 

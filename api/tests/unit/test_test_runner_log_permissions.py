@@ -13,11 +13,13 @@ def _test_script() -> str:
 def test_container_writable_results_are_beneath_private_git_metadata():
     script = _test_script()
     initialization = script.split("# Host command locks", 1)[0]
+    helpers = (
+        Path(__file__).resolve().parents[3] / "scripts/lib/test_helpers.sh"
+    ).read_text()
 
-    assert (
-        "git rev-parse --path-format=absolute --git-path bifrost-test-artifacts"
-        in initialization
-    )
+    assert 'LOG_DIR="$(compute_test_results_dir .)"' in initialization
+    assert "git -C" in helpers
+    assert "--git-path bifrost-test-artifacts" in helpers
     assert 'chmod 700 "$TEST_ARTIFACTS_DIR"' in initialization
     assert '[ -L "$TEST_ARTIFACTS_DIR" ]' in initialization
     assert '[ -L "$LOG_DIR" ]' in initialization
