@@ -142,6 +142,7 @@ async def get_worker_metrics(
     points = [
         WorkerMetricPoint(
             group=row.bucket_ts.strftime(group_fmt),
+            bucket_start=row.bucket_ts,
             worker_id=row.worker_id,
             memory_current=int(row.avg_memory_current),
             memory_max=int(row.memory_max) if row.memory_max is not None else -1,

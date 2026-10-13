@@ -33230,6 +33230,12 @@ export interface components {
              */
             group: string;
             /**
+             * Bucket Start
+             * Format: date-time
+             * @description Exact UTC bucket start
+             */
+            bucket_start: string;
+            /**
              * Worker Id
              * @description Container/pool identifier
              */

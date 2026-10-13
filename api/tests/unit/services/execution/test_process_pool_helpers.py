@@ -507,6 +507,23 @@ async def test_normal_drain_waits_for_newly_forked_execution(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_drain_timeout_does_not_kill_in_flight_execution(monkeypatch):
+    pool = ProcessPoolManager(max_workers=2)
+    pool._started = True
+    pool._template = SimpleNamespace(is_alive=lambda: True)
+    handle = _handle(execution_id="exec-slow")
+    pool.processes[handle.id] = handle
+    pool.restart_template = AsyncMock()
+    pool._terminate_process = AsyncMock()
+
+    await pool.drain_and_restart_template(drain_timeout=0)
+
+    assert pool.processes[handle.id] is handle
+    pool._terminate_process.assert_not_awaited()
+    pool.restart_template.assert_awaited_once_with()
+
+
+@pytest.mark.asyncio
 async def test_route_heals_dead_template_left_by_failed_restart(monkeypatch):
     pool = ProcessPoolManager(max_workers=2)
     pool._started = True

@@ -616,11 +616,17 @@ class ProcessPoolManager:
                     break
                 await asyncio.sleep(0.2)
 
-            # Terminate any survivors that didn't drain in time.
-            for handle in list(self.processes.values()):
-                if handle.id in self.processes:
-                    del self.processes[handle.id]
-                await self._terminate_process(handle)
+            # Do not kill one-shot executions that outlive the bounded drain.
+            # They were forked from the old template and can finish safely while
+            # a refreshed template begins serving new work. Their existing
+            # result readers retain normal completion/failure accounting and
+            # remove the handles when the workers exit.
+            if self.processes:
+                logger.warning(
+                    "Template restart proceeding with %d in-flight execution(s) "
+                    "still draining",
+                    len(self.processes),
+                )
 
             # Ask service children to stop gracefully. Their handles stay
             # registered so terminal results (or crash/orphan envelopes from

@@ -58,6 +58,17 @@ async def test_flag_conversation_persists_messages(db_session, seed_agent):
     assert len(reloaded.messages) == 2
     assert reloaded.messages[0]["content"] == "wrong route"
 
+    reloaded.messages.append(
+        {
+            "kind": "assistant",
+            "content": "Persisted after an in-place append.",
+            "at": datetime.now(timezone.utc).isoformat(),
+        }
+    )
+    await db_session.commit()
+    db_session.expire(reloaded, ["messages"])
+    assert len(reloaded.messages) == 3
+
 
 def test_flag_conversation_message_contract_validates():
     msg = UserTurn(content="wrong route")
