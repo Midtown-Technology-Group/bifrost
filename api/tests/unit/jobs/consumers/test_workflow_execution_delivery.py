@@ -489,7 +489,7 @@ async def test_poison_finalization_skips_messages_without_durable_execution_id(
 @pytest.mark.parametrize(
     ("status", "expected_status", "failed"),
     [
-        ("Scheduled", "Scheduled", False),
+        ("Scheduled", "Failed", True),
         ("Pending", "Failed", True),
         ("Running", "Running", False),
         ("Success", "Success", False),
@@ -534,7 +534,7 @@ async def test_missing_context_failure_is_locked_and_state_aware(
 @pytest.mark.parametrize(
     ("status", "claimable"),
     [
-        ("Scheduled", False),
+        ("Scheduled", True),
         ("Pending", True),
         ("Running", False),
         ("Success", False),
@@ -559,6 +559,7 @@ async def test_durable_execution_claim_serializes_with_publisher(
     execution_id = str(uuid4())
     claim_token = uuid4()
     claim = SimpleNamespace(claim_token=claim_token)
+    mark_attempt_published = AsyncMock()
     with (
         patch(
             "src.core.database.get_db_context",
@@ -569,6 +570,10 @@ async def test_durable_execution_claim_serializes_with_publisher(
             new_callable=AsyncMock,
             return_value=claim,
         ) as create_claimed_attempt,
+        patch(
+            "src.services.execution.attempts.mark_attempt_published",
+            new=mark_attempt_published,
+        ),
     ):
         result = await consumer._claim_durable_execution(execution_id)
 
@@ -583,9 +588,14 @@ async def test_durable_execution_claim_serializes_with_publisher(
             worker_id="worker-test",
             worker_incarnation_id=consumer._pool.worker_incarnation_id,
         )
+        if status == "Scheduled":
+            mark_attempt_published.assert_awaited_once_with(db, row)
+        else:
+            mark_attempt_published.assert_not_awaited()
     else:
         db.commit.assert_not_awaited()
         create_claimed_attempt.assert_not_awaited()
+        mark_attempt_published.assert_not_awaited()
 
 
 @pytest.mark.asyncio
