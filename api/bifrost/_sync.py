@@ -9,7 +9,8 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import TYPE_CHECKING, Any
+from collections.abc import Awaitable
+from typing import TYPE_CHECKING, Any, cast
 from uuid import UUID
 
 from sqlalchemy import delete, select
@@ -131,12 +132,14 @@ async def acknowledge_persisted_changes(
     for redis_key, snapshot in pending_acknowledgements:
         arguments = [item for pair in snapshot.items() for item in pair]
         if arguments:
-            await redis.eval(
+            # redis.asyncio inherits a sync/async union annotation for EVAL;
+            # this provider is always the async client, and Lua returns an int.
+            await cast(Awaitable[int], redis.eval(
                 _ACKNOWLEDGE_PENDING_CHANGES_LUA,
                 1,
                 redis_key,
                 *arguments,
-            )
+            ))
 
 
 async def _apply_change(db: "AsyncSession", change: dict[str, Any]) -> None:
