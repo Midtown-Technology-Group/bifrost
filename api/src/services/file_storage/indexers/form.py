@@ -199,22 +199,31 @@ class FormIndexer:
             fields_data = None
 
         if fields_data is not None and isinstance(fields_data, list):
-            # Delete existing fields
+            # Validate the complete replacement before deleting any existing
+            # rows. Legacy files omitted type/label, so preserve their former
+            # text-field defaults while upgrading them to the canonical model.
+            validated_fields: list[FormField] = []
+            for field_dict in fields_data:
+                if not isinstance(field_dict, dict) or not field_dict.get("name"):
+                    logger.warning(f"Invalid field in {path}: missing field name")
+                    return content_modified
+
+                normalized_field = dict(field_dict)
+                normalized_field.setdefault("type", "text")
+                if normalized_field["type"] not in ("markdown", "html"):
+                    normalized_field.setdefault("label", normalized_field["name"])
+                try:
+                    validated_fields.append(FormField.model_validate(normalized_field))
+                except ValidationError as e:
+                    logger.warning(f"Invalid field in {path}: {e}")
+                    return content_modified
+
+            # Delete existing fields only after the replacement validates.
             await self.db.execute(
                 delete(FormFieldORM).where(FormFieldORM.form_id == form_id)
             )
 
-            # Create new fields from schema using Pydantic validation
-            for position, field_dict in enumerate(fields_data):
-                if not isinstance(field_dict, dict) or not field_dict.get("name"):
-                    continue
-
-                try:
-                    form_field = FormField.model_validate(field_dict)
-                except ValidationError as e:
-                    logger.warning(f"Invalid field in {path}: {e}")
-                    continue
-
+            for position, form_field in enumerate(validated_fields):
                 field_orm = FormFieldORM(
                     form_id=form_id,
                     name=form_field.name,

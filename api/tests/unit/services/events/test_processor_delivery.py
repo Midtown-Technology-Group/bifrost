@@ -706,7 +706,7 @@ async def test_emit_delivery_retry_exhausted_loads_event_and_emits_builtin(monke
 
 
 @pytest.mark.asyncio
-async def test_run_delivery_execution_update_failed_emits_retry_and_broadcasts():
+async def test_run_delivery_execution_update_failed_returns_delivery_without_broadcast():
     execution_id = uuid.uuid4()
     event = _make_event()
     delivery = _make_delivery(event=event)
@@ -731,7 +731,7 @@ async def test_run_delivery_execution_update_failed_emits_retry_and_broadcasts()
             new_callable=AsyncMock,
         ) as broadcast,
     ):
-        await p._run_delivery_execution_update(
+        updated_delivery = await p._run_delivery_execution_update(
             db,
             str(execution_id),
             EventDeliveryStatus.FAILED,
@@ -745,7 +745,8 @@ async def test_run_delivery_execution_update_failed_emits_retry_and_broadcasts()
     db.flush.assert_awaited_once()
     delivery_repo.update_event_status.assert_awaited_once_with(event.id)
     emit_retry.assert_awaited_once_with(db, delivery, "workflow failed")
-    broadcast.assert_awaited_once_with(db, delivery_repo, delivery)
+    broadcast.assert_not_awaited()
+    assert updated_delivery is delivery
 
 
 @pytest.mark.asyncio
@@ -755,7 +756,7 @@ async def test_run_delivery_execution_update_returns_when_delivery_missing():
     db = AsyncMock()
     db.execute = AsyncMock(return_value=scalar_result)
 
-    await p._run_delivery_execution_update(
+    updated_delivery = await p._run_delivery_execution_update(
         db,
         str(uuid.uuid4()),
         EventDeliveryStatus.SUCCESS,
@@ -763,6 +764,7 @@ async def test_run_delivery_execution_update_returns_when_delivery_missing():
     )
 
     db.flush.assert_not_awaited()
+    assert updated_delivery is None
 
 
 @pytest.mark.asyncio
@@ -789,16 +791,25 @@ async def test_update_delivery_from_execution_uses_session_factory(monkeypatch):
 
     monkeypatch.setattr("src.core.database.get_session_factory", lambda: SessionFactory())
 
+    delivery = _make_delivery()
+
     async def run_update(session, execution_id, delivery_status, error_message):
         calls.append((session, execution_id, delivery_status, error_message))
+        return delivery
 
     monkeypatch.setattr(p, "_run_delivery_execution_update", run_update)
+    broadcast = AsyncMock()
+    monkeypatch.setattr(p, "broadcast_delivery_update_after_commit", broadcast)
     execution_id = str(uuid.uuid4())
 
-    await p.update_delivery_from_execution(execution_id, "Success", "ignored")
+    updated_delivery = await p.update_delivery_from_execution(
+        execution_id, "Success", "ignored"
+    )
 
     assert calls == [(db, execution_id, EventDeliveryStatus.SUCCESS, "ignored")]
     db.commit.assert_awaited_once()
+    broadcast.assert_awaited_once_with(db, delivery)
+    assert updated_delivery is delivery
 
 
 @pytest.mark.asyncio
@@ -808,13 +819,18 @@ async def test_update_delivery_from_execution_uses_provided_session_without_comm
     db = SimpleNamespace(commit=AsyncMock())
     calls = []
 
+    delivery = _make_delivery()
+
     async def run_update(session, execution_id, delivery_status, error_message):
         calls.append((session, execution_id, delivery_status, error_message))
+        return delivery
 
     monkeypatch.setattr(p, "_run_delivery_execution_update", run_update)
+    broadcast = AsyncMock()
+    monkeypatch.setattr(p, "broadcast_delivery_update_after_commit", broadcast)
     execution_id = str(uuid.uuid4())
 
-    await p.update_delivery_from_execution(
+    updated_delivery = await p.update_delivery_from_execution(
         execution_id,
         "Cancelled",
         "operator stopped it",
@@ -825,6 +841,8 @@ async def test_update_delivery_from_execution_uses_provided_session_without_comm
         (db, execution_id, EventDeliveryStatus.FAILED, "operator stopped it")
     ]
     db.commit.assert_not_awaited()
+    broadcast.assert_not_awaited()
+    assert updated_delivery is delivery
 
 
 @pytest.mark.asyncio
