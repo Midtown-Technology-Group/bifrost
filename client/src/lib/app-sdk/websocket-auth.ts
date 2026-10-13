@@ -4,7 +4,9 @@ interface TicketResponse {
 	ticket?: unknown;
 }
 
-/** Exchange a bearer token for a short-lived, single-use WebSocket ticket. */
+/** Exchange a bearer token for a short-lived, single-use WebSocket ticket.
+ * Kept inside the SDK source boundary so standalone builds share this contract.
+ */
 export async function requestWebSocketTicket(
 	token: string,
 	baseUrl = "",

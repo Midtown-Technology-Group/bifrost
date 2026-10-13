@@ -212,6 +212,9 @@ def test_build_sdk_tarball_shape_and_exports():
         bundle_file = tar.extractfile("package/dist/index.mjs")
         assert bundle_file is not None
         bundle = bundle_file.read().decode()
+        assert "/ws/ticket" in bundle
+        assert "WebSocket ticket response was invalid" in bundle
+        assert "@/lib/websocket-auth" not in bundle
         for sym in (
             "BifrostProvider", "useWorkflow", "useWorkflowQuery",
             "useWorkflowMutation", "useTable", "tables", "BifrostHeader",

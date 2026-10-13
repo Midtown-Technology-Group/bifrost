@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { requestWebSocketTicket } from "./websocket-auth";
 
-describe("requestWebSocketTicket", () => {
+describe("SDK requestWebSocketTicket", () => {
 	it("exchanges the bearer in an HTTPS header and returns an opaque ticket", async () => {
 		const ticket = "a".repeat(43);
 		const fetchImpl = vi.fn().mockResolvedValue({

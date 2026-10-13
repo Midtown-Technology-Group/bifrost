@@ -1,5 +1,5 @@
 import type { components } from "@/lib/v1";
-import { requestWebSocketTicket } from "@/lib/websocket-auth";
+import { requestWebSocketTicket } from "./websocket-auth";
 import { getBifrostTransport } from "./transport";
 
 type Expr = components["schemas"]["Expr"];

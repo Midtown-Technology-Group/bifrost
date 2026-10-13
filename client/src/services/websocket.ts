@@ -14,7 +14,7 @@ import type { components } from "@/lib/v1";
 import { refreshAccessToken } from "@/lib/api-client";
 import { getActiveToken } from "@/lib/auth-token";
 import type { ChatStreamEnvelope } from "@/lib/chat-runtime";
-import { requestWebSocketTicket } from "@/lib/websocket-auth";
+import { requestWebSocketTicket } from "@/lib/app-sdk/websocket-auth";
 import { useNotificationStore } from "@/stores/notificationStore";
 import type { Notification } from "@/stores/notificationStore";
 
