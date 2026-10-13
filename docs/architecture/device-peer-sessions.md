@@ -55,3 +55,5 @@ cross-organization denial, lighthouse discovery, relay-only connectivity,
 actual service forwarding, expiry and revoke. Preserve the existing Defined
 router identity and UDP 4242. Rollback disables admissions and stops only the
 launcher service; preserve public tombstones until signed deadlines pass.
+
+Revocation receipts include `status_url`, a device/session-scoped read endpoint. Follow that URL to read the returned `job_id`, including when an administrator created the reused revoke job. It rechecks human identity, current device execute permission, device scope, session ownership (or platform admin), and the exact revoke payload. It grants no cancellation authority. Generic platform-job read and cancellation permissions remain unchanged; revocation still deduplicates one active job per session.

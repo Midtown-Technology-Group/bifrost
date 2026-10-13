@@ -6,6 +6,13 @@ from datetime import datetime, timezone
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+from src.models.contracts.platform_jobs import PlatformJobAccepted
+
+
+class DevicePeerRevokeAccepted(PlatformJobAccepted):
+    """Receipt shared with the session owner without changing job ownership."""
+
+    status_url: str
 
 
 class DevicePeerSessionCreate(BaseModel):

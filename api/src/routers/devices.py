@@ -17,8 +17,8 @@ from src.services.operation_catalog import operation_route
 from src.core.auth import Context, CurrentUser, get_current_user_optional
 from src.core.db_deps import DbSession
 from src.core.principal import UserPrincipal
-from src.models.contracts.device_peer_sessions import DevicePeerSessionCreate
-from src.models.contracts.platform_jobs import PlatformJobAccepted
+from src.models.contracts.device_peer_sessions import DevicePeerRevokeAccepted, DevicePeerSessionCreate
+from src.models.contracts.platform_jobs import PlatformJobAccepted, PlatformJobPublic
 from src.models.contracts.device_jobs import (
     DeviceJobCreate,
     DeviceJobDetail,
@@ -547,8 +547,8 @@ async def create_peer_session_route(device_id: UUID, body: DevicePeerSessionCrea
         return exc.to_response()
 
 
-@router.post("/{device_id}/peer-sessions/{session_job_id}/revoke", response_model=PlatformJobAccepted, status_code=202)
-async def revoke_peer_session_route(device_id: UUID, session_job_id: UUID, ctx: Context, user: CurrentUser) -> PlatformJobAccepted | JSONResponse:
+@router.post("/{device_id}/peer-sessions/{session_job_id}/revoke", response_model=DevicePeerRevokeAccepted, status_code=202)
+async def revoke_peer_session_route(device_id: UUID, session_job_id: UUID, ctx: Context, user: CurrentUser) -> DevicePeerRevokeAccepted | JSONResponse:
     from src.jobs.platform.device_peer_sessions import DEVICE_PEER_REVOKE_DEFINITION
     from src.models.contracts.device_peer_sessions import DevicePeerRevokePayload
     from src.models.orm.platform_jobs import PlatformJob
@@ -570,6 +570,31 @@ async def revoke_peer_session_route(device_id: UUID, session_job_id: UUID, ctx: 
         await ctx.db.commit()
         # Persist the authoritative stop before cancellation commits independently.
         await request_platform_job_cancel(ctx.db, session)
-        return PlatformJobAccepted(job_id=job.id, status=job.status, reused=reused, notification_id=job.notification_id)
+        return DevicePeerRevokeAccepted(job_id=job.id, status=job.status, reused=reused,
+            notification_id=job.notification_id,
+            status_url=f"/api/devices/{device_id}/peer-sessions/{session_job_id}/revoke/{job.id}")
+    except DeviceOperationError as exc:
+        return exc.to_response()
+
+
+@router.get("/{device_id}/peer-sessions/{session_job_id}/revoke/{job_id}", response_model=PlatformJobPublic)
+async def get_peer_revoke_status_route(device_id: UUID, session_job_id: UUID, job_id: UUID, ctx: Context, user: CurrentUser) -> PlatformJobPublic | JSONResponse:
+    """Read only this session's cleanup receipt as its owner or an admin."""
+    from src.models.orm.platform_jobs import PlatformJob
+    from src.services.platform_jobs import platform_job_to_public
+
+    try:
+        if user.is_engine_token or user.embed or user.is_system_account:
+            raise DeviceOperationError(403, "permission_denied", "User device session permission required")
+        await require_device_execute_permission(ctx.db, user)
+        device = await get_device_scoped(ctx.db, user, device_id)
+        session = await ctx.db.get(PlatformJob, session_job_id)
+        if session is None or session.job_type != "device.peer_lighthouse.start" or session.resource_id != str(device.id) or not (user.is_platform_admin or session.requested_by_user_id == str(user.user_id)):
+            raise DeviceOperationError(404, "unknown_session", "Device session not found")
+        job = await ctx.db.get(PlatformJob, job_id)
+        if job is None or job.job_type != "device.peer_lighthouse.revoke" or job.resource_type != "device" or job.resource_id != str(device.id) or job.organization_id != device.organization_id or job.payload != {"device_id": str(device.id), "session_job_id": str(session.id)}:
+            raise DeviceOperationError(404, "unknown_job", "Revocation job not found")
+        # Receipt access grants no authority to cancel an admin-owned job.
+        return platform_job_to_public(job).model_copy(update={"can_cancel": False})
     except DeviceOperationError as exc:
         return exc.to_response()
