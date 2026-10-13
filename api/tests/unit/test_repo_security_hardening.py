@@ -276,6 +276,74 @@ test "$SEAWEEDFS_SECRET_KEY" = explicit-local-test-credential
     assert not (tmp_path / "bifrost/debug/debug-explicit-storage-test").exists()
 
 
+def test_debug_signing_key_is_private_stable_and_required_by_compose(
+    tmp_path: Path,
+) -> None:
+    text = _read("debug.sh")
+    function = re.search(
+        r"^configure_debug_signing_key\(\) \{\n.*?^\}", text, re.M | re.S
+    )
+    assert function is not None
+    env = {
+        key: value
+        for key, value in os.environ.items()
+        if key != "BIFROST_SECRET_KEY"
+    }
+    env.update(XDG_STATE_HOME=str(tmp_path), COMPOSE_PROJECT_NAME="debug-signing-test")
+    subprocess.run(
+        [
+            "bash",
+            "-euc",
+            function.group()
+            + "\n"
+            + """
+configure_debug_signing_key
+test -n "$BIFROST_SECRET_KEY"
+task_first_key="$BIFROST_SECRET_KEY"
+unset BIFROST_SECRET_KEY
+configure_debug_signing_key
+test "$BIFROST_SECRET_KEY" = "$task_first_key"
+export COMPOSE_PROJECT_NAME=debug-published-signing-test
+export BIFROST_SECRET_KEY=dev-secret-key-change-in-production-must-be-32-chars
+configure_debug_signing_key
+test "$BIFROST_SECRET_KEY" != dev-secret-key-change-in-production-must-be-32-chars
+export COMPOSE_PROJECT_NAME=debug-explicit-signing-test
+export BIFROST_SECRET_KEY=explicit-local-signing-credential
+configure_debug_signing_key
+test "$BIFROST_SECRET_KEY" = explicit-local-signing-credential
+""",
+        ],
+        env=env,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    for project in ("debug-signing-test", "debug-published-signing-test"):
+        directory = tmp_path / "bifrost/debug" / project
+        secret = directory / "signing-secret"
+        assert re.fullmatch(r"[0-9a-f]{64}\n", secret.read_text())
+        assert directory.stat().st_mode & 0o777 == 0o700
+        assert secret.stat().st_mode & 0o777 == 0o600
+    assert not (tmp_path / "bifrost/debug/debug-explicit-signing-test").exists()
+
+    compose = _load_yaml("docker-compose.debug.yml")
+    required = "${BIFROST_SECRET_KEY:?Use debug.sh}"
+    for service in ("init", "api", "scheduler", "worker"):
+        assert (
+            compose["services"][service]["environment"]["BIFROST_SECRET_KEY"]
+            == required
+        )
+
+    cmd_up = re.search(r"^cmd_up\(\) \{\n.*?^\}", text, re.M | re.S)
+    assert cmd_up is not None
+    assert cmd_up.group().index("configure_debug_signing_key") < cmd_up.group().index(
+        "stack_is_running"
+    )
+    assert "service_signing_key" in text
+    assert "Applying the private debug signing key" in text
+
+
 def test_claude_hook_shell_quotes_exported_env_values() -> None:
     hook = _read(".claude/hooks/bifrost-detect.sh")
 
