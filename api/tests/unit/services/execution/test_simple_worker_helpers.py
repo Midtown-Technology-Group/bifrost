@@ -96,12 +96,10 @@ def test_parse_requirements_splits_packages_and_options():
 
     packages, options = simple_worker._parse_requirements(content)
 
-    assert packages == ["requests==2.32.0", "numpy>=2"]
+    assert packages == ["-r shared.txt", "requests==2.32.0", "numpy>=2"]
     assert options == [
         "--index-url",
         "https://packages.example/simple",
-        "-r",
-        "shared.txt",
     ]
     assert simple_worker._parse_requirement_lines(content) == packages
 
@@ -161,6 +159,56 @@ def test_install_requirements_falls_back_and_records_per_package_failures(monkey
         "--extra-index-url",
         "https://packages.example/simple",
         "okpkg==1",
+    ]
+
+
+def test_install_requirements_does_not_skip_editable_only_file(monkeypatch):
+    editable = "-e git+https://example.test/package.git@v1#egg=package"
+    monkeypatch.setattr(
+        "src.core.requirements_cache.get_requirements_sync",
+        lambda: f"{editable}\n",
+    )
+    calls: list[list[str]] = []
+
+    def fake_pip_install(args: list[str]):
+        calls.append(args)
+        return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(simple_worker, "_pip_install", fake_pip_install)
+
+    result = simple_worker.install_requirements()
+
+    assert result.attempted == [editable]
+    assert result.installed == [editable]
+    assert calls and calls[0][0] == "-r"
+
+
+def test_editable_and_nested_sources_use_valid_fallback_argv(monkeypatch):
+    editable = "--editable=git+https://example.test/package.git@v1#egg=package"
+    nested = "--requirement shared.txt"
+    monkeypatch.setattr(
+        "src.core.requirements_cache.get_requirements_sync",
+        lambda: f"{editable}\n{nested}\n",
+    )
+    calls: list[list[str]] = []
+
+    def fake_pip_install(args: list[str]):
+        calls.append(args)
+        return subprocess.CompletedProcess(
+            args,
+            1 if args[0] == "-r" and len(calls) == 1 else 0,
+            stdout="",
+            stderr="batch failed",
+        )
+
+    monkeypatch.setattr(simple_worker, "_pip_install", fake_pip_install)
+
+    result = simple_worker.install_requirements()
+
+    assert result.ok is True
+    assert calls[1:] == [
+        ["--editable", "git+https://example.test/package.git@v1#egg=package"],
+        ["--requirement", "shared.txt"],
     ]
 
 
