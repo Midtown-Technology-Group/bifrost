@@ -38,6 +38,47 @@ class _CountingRepo(_Repo):
 
 
 @pytest.mark.asyncio
+async def test_cached_preview_repairs_invalid_target_without_changing_durable_bytes(
+    monkeypatch,
+) -> None:
+    async def generation():
+        return "stable-generation"
+
+    monkeypatch.setattr("src.core.module_cache.get_workspace_generation", generation)
+    repo = _Repo({"helpers/broken.py": b"def broken(:\n"})
+    service = WorkspaceFileImpactService(repo, snapshot_cache=_WorkspaceSnapshotCache())
+    result = await service.preview(
+        WorkspaceFileImpactRequest(path="helpers/broken.py", content="VALUE = 1\n")
+    )
+    assert result.ready_to_write is True
+    assert result.changed is True
+    assert repo.files["helpers/broken.py"] == b"def broken(:\n"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "generations", [["updating:writer"], ["before", "after"]]
+)
+async def test_repair_overlay_rejects_unstable_workspace_generation(
+    monkeypatch, generations,
+) -> None:
+    values = iter(generations)
+
+    async def generation():
+        return next(values)
+
+    monkeypatch.setattr("src.core.module_cache.get_workspace_generation", generation)
+    service = WorkspaceFileImpactService(
+        _Repo({"helpers/broken.py": b"def broken(:\n"}),
+        snapshot_cache=_WorkspaceSnapshotCache(),
+    )
+    with pytest.raises(WorkspaceFileImpactInvalid, match="retry"):
+        await service._repair_snapshot(
+            "helpers/broken.py", b"VALUE = 1\n", use_cache=True,
+        )
+
+
+@pytest.mark.asyncio
 async def test_preview_binds_proposed_bytes_and_transitive_reverse_closure() -> None:
     service = WorkspaceFileImpactService(
         _Repo(
