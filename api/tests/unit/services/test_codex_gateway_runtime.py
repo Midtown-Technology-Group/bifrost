@@ -1,10 +1,10 @@
 from asyncio import sleep
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
-from sqlalchemy.exc import MultipleResultsFound
+from sqlalchemy.exc import IntegrityError, MultipleResultsFound
 
 from src.services.codex_gateway.runtime import (
     CodexGatewayRuntime,
@@ -74,6 +74,7 @@ def _account_record(user_id):
 
 def _repository(*, key_record, account_record):
     repository = AsyncMock()
+    repository.session = MagicMock()
     repository.get_active_gateway_key_by_plaintext.return_value = key_record
     repository.get_active_upstream_account_for_user.return_value = account_record
     repository.create_request_log = AsyncMock()
@@ -228,6 +229,52 @@ async def test_invalid_key_denial_uses_storage_safe_model(
     assert log_kwargs["request_metadata"]["model"] == expected_model
     assert "do not log this prompt" not in repr(log_kwargs)
     assert upstream.requests == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("gateway_key", [None, "not-a-bifrost-key", VALID_GATEWAY_KEY])
+async def test_invalid_key_remains_401_when_audit_insert_fails(gateway_key, caplog):
+    repository = _repository(key_record=None, account_record=None)
+    repository.create_request_log.side_effect = IntegrityError(
+        "private SQL statement",
+        {"model": "private parameter"},
+        RuntimeError("private database error"),
+    )
+    upstream = FakeUpstreamClient()
+    runtime = CodexGatewayRuntime(repository=repository, upstream_client=upstream)
+
+    response = await runtime.create_response(
+        gateway_key=gateway_key,
+        payload={"model": "private parameter", "input": "private prompt"},
+    )
+
+    assert response.status_code == 401
+    assert response.body["error"]["code"] == "invalid_gateway_key"
+    repository.create_request_log.assert_awaited_once()
+    repository.session.begin_nested.assert_called_once()
+    assert upstream.requests == []
+    assert "error_type=IntegrityError" in caplog.text
+    assert "private" not in caplog.text
+    assert all(record.exc_info is None for record in caplog.records)
+
+
+@pytest.mark.asyncio
+async def test_authenticated_denial_audit_failure_still_propagates():
+    key = _key_record()
+    repository = _repository(key_record=key, account_record=None)
+    repository.create_request_log.side_effect = IntegrityError(
+        "audit insert", {}, RuntimeError("database failure")
+    )
+    runtime = CodexGatewayRuntime(
+        repository=repository, upstream_client=FakeUpstreamClient()
+    )
+
+    with pytest.raises(IntegrityError):
+        await runtime.create_response(
+            gateway_key=VALID_GATEWAY_KEY, payload={"model": "gpt-5.1-codex"}
+        )
+
+    repository.session.begin_nested.assert_not_called()
 
 
 @pytest.mark.asyncio
