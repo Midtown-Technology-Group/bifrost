@@ -175,6 +175,31 @@ describe("ToolExecutionCard — result expansion", () => {
 		expect(pretty).toHaveTextContent(JSON.stringify({ value: 42 }));
 	});
 
+	it("ignores malformed MCP content blocks while rendering valid text", async () => {
+		mockUseExecution.mockReturnValue({
+			data: {
+				status: "Success",
+				result: {
+					content: [
+						null,
+						42,
+						"not a content block",
+						{ type: "text", text: "safe output" },
+						{ type: "text", text: null },
+					],
+				},
+			},
+			isLoading: false,
+		});
+
+		const { user } = renderWithProviders(
+			<ToolExecutionCard toolCall={makeToolCall()} executionId="exec-1" />,
+		);
+		await user.click(screen.getByRole("button", { name: /result/i }));
+
+		expect(await screen.findByText("safe output")).toBeInTheDocument();
+	});
+
 	it("scrolls running logs without smooth motion when reduced motion is enabled", () => {
 		mockUseExecution.mockReturnValue({
 			data: { status: "Running" },
