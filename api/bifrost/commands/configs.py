@@ -135,8 +135,9 @@ async def _build_create_body(
     body: dict[str, Any] = {
         "key": key,
         "value": value,
-        "type": config_type or ConfigType.STRING.value,
     }
+    if config_type is not None:
+        body["type"] = config_type
     if description is not None:
         body["description"] = description
     target = await resolve_org_target(org, is_global, resolver)
@@ -308,8 +309,9 @@ async def set_config(
     create_body: dict[str, Any] = {
         "key": key,
         "value": value,
-        "type": config_type or ConfigType.STRING.value,
     }
+    if config_type is not None:
+        create_body["type"] = config_type
     if description is not None:
         create_body["description"] = description
     if target.is_set:

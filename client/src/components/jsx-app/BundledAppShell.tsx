@@ -149,6 +149,7 @@ interface BundledAppShellProps {
 	appId: string;
 	appSlug: string;
 	isPreview: boolean;
+	runtimeBasePath?: string;
 	appName?: string | null;
 	appLogo?: string | null;
 }
@@ -309,6 +310,9 @@ export function BundledAppShell({
 	appId,
 	appSlug,
 	isPreview,
+	runtimeBasePath = isPreview
+		? `/apps/${appSlug}/preview`
+		: `/apps/${appSlug}`,
 	appName,
 	appLogo,
 }: BundledAppShellProps) {
@@ -403,9 +407,9 @@ export function BundledAppShell({
 	// Populate the app-builder store so platform wrappers (Link/NavLink/etc)
 	// know the app's base path when they transform `to` props.
 	useEffect(() => {
-		setAppContext(appSlug, isPreview);
+		setAppContext(appSlug, isPreview, runtimeBasePath);
 		return () => setAppContext("", false);
-	}, [appSlug, isPreview, setAppContext]);
+	}, [appSlug, isPreview, runtimeBasePath, setAppContext]);
 
 	// Install the app's org as the default scope for table SDK calls. The
 	// returned cleanup restores the prior value, so navigating between apps
@@ -703,6 +707,7 @@ export function BundledAppShell({
 				appId={appId}
 				appSlug={appSlug}
 				isPreview={isPreview}
+				runtimeBasePath={runtimeBasePath}
 				entry={v2Mount.entry}
 				css={v2Mount.css}
 				baseUrl={v2Mount.baseUrl}

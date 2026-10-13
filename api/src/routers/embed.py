@@ -160,6 +160,7 @@ async def embed_app(
         embed_kind="app",
         grant="hmac",
         resource_id=str(app.id),
+        resource_slug=app.slug,
         org_id=str(app.organization_id) if app.organization_id else None,
         verified_context=verified_params,
         expires_delta=timedelta(hours=8),

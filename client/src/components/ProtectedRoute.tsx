@@ -1,11 +1,14 @@
 import { useAuth } from "@/contexts/AuthContext";
 import { NoAccess } from "@/components/NoAccess";
 import { PageLoader } from "@/components/PageLoader";
+import { getAppEmbedCapability } from "@/lib/auth-token";
+import { useParams } from "react-router";
 
 interface ProtectedRouteProps {
 	children: React.ReactNode;
 	requirePlatformAdmin?: boolean;
 	requireOrgUser?: boolean;
+	requireAppEmbed?: boolean;
 }
 
 /**
@@ -18,13 +21,22 @@ export function ProtectedRoute({
 	children,
 	requirePlatformAdmin = false,
 	requireOrgUser = false,
+	requireAppEmbed = false,
 }: ProtectedRouteProps) {
+	const { applicationId } = useParams();
 	const { isAuthenticated, isPlatformAdmin, isOrgUser, isLoading, hasRole } =
 		useAuth();
 
 	// Wait for auth to load
 	if (isLoading) {
 		return <PageLoader message="Loading access…" size="sm" />;
+	}
+
+	if (
+		requireAppEmbed &&
+		(!applicationId || !getAppEmbedCapability(applicationId))
+	) {
+		return <NoAccess embedded message="A valid app embed capability is required." />;
 	}
 
 	// Authentication recovery belongs to AuthProvider, not the role-denied view.

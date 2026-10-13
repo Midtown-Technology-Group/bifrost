@@ -269,18 +269,6 @@ class ConfigRepository(OrgScopedRepository[ConfigModel]):  # type: ignore[type-v
         """Create or update a config in current org scope."""
         now = datetime.now(timezone.utc)
 
-        stored_value = request.value
-        if request.type == ConfigType.SECRET:
-            from src.core.security import encrypt_secret
-
-            stored_value = encrypt_secret(request.value)
-
-        db_config_type = (
-            ConfigTypeEnum(request.type.value)
-            if request.type
-            else ConfigTypeEnum.STRING
-        )
-
         # Upsert by the unique natural key (integration_id IS NULL, org, key).
         existing_q = select(self.model).where(
             self.model.key == request.key,
@@ -289,10 +277,25 @@ class ConfigRepository(OrgScopedRepository[ConfigModel]):  # type: ignore[type-v
         )
         existing = (await self.session.execute(existing_q)).scalar_one_or_none()
 
+        effective_type = request.type
+        if effective_type is None and existing and existing.config_type:
+            effective_type = ConfigType(existing.config_type.value)
+        if effective_type is None:
+            effective_type = ConfigType.STRING
+
+        stored_value = request.value
+        if effective_type == ConfigType.SECRET:
+            from src.core.security import encrypt_secret
+
+            stored_value = encrypt_secret(request.value)
+
+        db_config_type = ConfigTypeEnum(effective_type.value)
+
         if existing:
             existing.value = {"value": stored_value}
             existing.config_type = db_config_type
-            existing.description = request.description
+            if "description" in request.model_fields_set:
+                existing.description = request.description
             existing.updated_at = now
             existing.updated_by = updated_by
             await self.session.flush()
@@ -320,7 +323,7 @@ class ConfigRepository(OrgScopedRepository[ConfigModel]):  # type: ignore[type-v
             id=config.id,
             key=config.key,
             value=value,
-            type=request.type if request.type else ConfigType.STRING,
+            type=effective_type,
             scope="org" if config.organization_id else "GLOBAL",
             org_id=str(config.organization_id) if config.organization_id else None,
             description=config.description,

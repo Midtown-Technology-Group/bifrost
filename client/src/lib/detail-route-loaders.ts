@@ -3,6 +3,7 @@ import type { LoaderFunctionArgs } from "react-router";
 import { prepareAppBundle } from "@/components/jsx-app/BundledAppShell";
 import { $api } from "@/lib/api-client";
 import { queryClient } from "@/lib/queryClient";
+import { getAppEmbedCapability } from "@/lib/auth-token";
 import type { ApplicationPublic } from "@/hooks/useApplications";
 
 export const DETAIL_STALE_TIME_MS = 60_000;
@@ -70,10 +71,16 @@ export function prefetchApplicationDetail(
 	]).catch(() => undefined);
 }
 
-export function applicationDetailLoader(preview: boolean) {
+export function applicationDetailLoader(
+	preview: boolean,
+	requireAppEmbedCapability = false,
+) {
 	return async ({ params, request }: LoaderFunctionArgs) => {
 		const slug = params.applicationId;
 		if (!slug) return null;
+		if (requireAppEmbedCapability && !getAppEmbedCapability(slug)) {
+			throw new Response("App embed capability required", { status: 403 });
+		}
 
 		const application = await queryClient.ensureQueryData(
 			applicationDetailQueryOptions(slug),

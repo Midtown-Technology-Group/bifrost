@@ -353,10 +353,10 @@ const routeElements = (
 		/>
 		<Route
 			path="embedded/apps/hmac/:applicationId/*"
-			loader={applicationDetailLoader(false)}
+			loader={applicationDetailLoader(false, true)}
 			errorElement={<RouteLoadError />}
 			element={
-				<ProtectedRoute requireOrgUser>
+				<ProtectedRoute requireOrgUser requireAppEmbed>
 					<ApplicationRunner />
 				</ProtectedRoute>
 			}

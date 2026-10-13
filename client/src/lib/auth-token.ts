@@ -32,6 +32,8 @@ export interface EmbedTokenClaims {
 	embed?: boolean;
 	embed_kind?: "app" | "form";
 	grant?: "hmac" | "public";
+	app_id?: string;
+	app_slug?: string;
 	form_id?: string;
 }
 
@@ -98,8 +100,47 @@ export function consumeEmbedTokenFromHash(): void {
  */
 export function getActiveToken(): string | null {
 	const embed = sessionStorage.getItem(EMBED_TOKEN_KEY);
+	if (isAppEmbedRoute()) {
+		const slug = getAppEmbedRouteSlug();
+		return slug ? getAppEmbedCapability(slug) : null;
+	}
 	if (embed) return embed;
 	return localStorage.getItem(ACCESS_TOKEN_KEY);
+}
+
+function getAppEmbedRouteSlug(): string | null {
+	if (typeof window === "undefined") return null;
+	const match = window.location.pathname.match(
+		/^\/embedded\/apps\/hmac\/([^/]+)(?:\/|$)/,
+	);
+	if (!match?.[1]) return null;
+	try {
+		return decodeURIComponent(match[1]);
+	} catch {
+		return null;
+	}
+}
+
+/** True when the current document is serving the capability-only app route. */
+export function isAppEmbedRoute(): boolean {
+	return getAppEmbedRouteSlug() !== null;
+}
+
+/** Return the tab-scoped HMAC capability only when it is bound to this app. */
+export function getAppEmbedCapability(appSlug: string): string | null {
+	const token = sessionStorage.getItem(EMBED_TOKEN_KEY);
+	if (!token) return null;
+	const claims = parseTokenClaims(token);
+	if (
+		claims?.embed !== true ||
+		claims.embed_kind !== "app" ||
+		claims.grant !== "hmac" ||
+		claims.app_slug !== appSlug ||
+		!claims.app_id
+	) {
+		return null;
+	}
+	return token;
 }
 
 /** Read non-sensitive routing claims from the tab-scoped embed token. */

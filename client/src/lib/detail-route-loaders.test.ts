@@ -80,6 +80,24 @@ describe("detail route loaders", () => {
 			signal: request.signal,
 		});
 	});
+
+	it("rejects an embedded app route before loading data without its bound capability", async () => {
+		const ensure = vi.spyOn(queryClient, "ensureQueryData");
+		const request = new Request(
+			"http://localhost/embedded/apps/hmac/portal/reports",
+		);
+
+		await expect(
+			applicationDetailLoader(false, true)({
+				params: { applicationId: "portal", "*": "reports" },
+				request,
+				url: new URL(request.url),
+				pattern: "/embedded/apps/hmac/:applicationId/*",
+				context: new RouterContextProvider(),
+			}),
+		).rejects.toMatchObject({ status: 403 });
+		expect(ensure).not.toHaveBeenCalled();
+	});
 });
 
 it("does not replace newer application detail with a card snapshot", () => {

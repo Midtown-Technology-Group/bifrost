@@ -2756,8 +2756,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Generate presigned URL for file upload
-         * @description Generate a presigned S3 URL for direct file upload. The file will be stored in the uploads folder.
+         * Authorize a file upload
+         * @description Authorize a bounded server upload for embed sessions or a direct storage upload for authenticated users.
          */
         post: operations["generate_upload_url_api_forms__form_id__upload_post"];
         delete?: never;
@@ -29929,7 +29929,8 @@ export interface components {
              * @description Config value. For SECRET type, this will be encrypted before storage.
              */
             value: string;
-            type: components["schemas"]["ConfigType"];
+            /** @description Config type. Omit on upsert to preserve an existing type; new configs default to string. */
+            type?: components["schemas"]["ConfigType"] | null;
             /**
              * Description
              * @description Optional description of this config entry

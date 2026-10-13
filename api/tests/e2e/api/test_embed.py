@@ -55,6 +55,10 @@ class TestEmbedEntryPoint:
         assert r.status_code == 302, r.text
         location = r.headers.get("location", "")
         assert f"/embedded/apps/hmac/{app['slug']}#embed_token=" in location
+        token = location.split("#embed_token=", 1)[1]
+        claims = jwt.decode(token, options={"verify_signature": False})
+        assert claims["app_id"] == app["id"]
+        assert claims["app_slug"] == app["slug"]
 
     def test_invalid_hmac_rejected(self, e2e_client, test_app_with_secret):
         app = test_app_with_secret["app"]
