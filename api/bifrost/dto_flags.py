@@ -36,6 +36,7 @@ from uuid import UUID
 
 import click
 import yaml
+from pydantic import BaseModel
 
 from bifrost.refs import RefKind, RefResolver
 
@@ -211,7 +212,12 @@ def _is_dict(tp: Any) -> bool:
     if origin in (dict,):
         return True
     # Direct ``dict`` or non-parametrised ``dict``.
-    return inner is dict
+    if inner is dict:
+        return True
+    # Nested Pydantic request objects are entered through the CLI as the same
+    # JSON/YAML object payload as a plain dict.  This matters when an API moves
+    # from an untyped mapping to a concrete schema without changing its flag.
+    return isinstance(inner, type) and issubclass(inner, BaseModel)
 
 
 def _is_bool(tp: Any) -> bool:

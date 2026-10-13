@@ -543,22 +543,6 @@ class WorkflowExecutionConsumer(BaseConsumer):
             logs_flushed_ms = (time.perf_counter() - completion_started) * 1000
 
             await session.commit()
-            if event_delivery is not None:
-                try:
-                    from src.services.events.processor import (
-                        broadcast_delivery_update_after_commit,
-                    )
-
-                    await broadcast_delivery_update_after_commit(
-                        session,
-                        event_delivery,
-                    )
-                except Exception as e:
-                    logger.warning(
-                        "Failed to broadcast event delivery for %s...: %s",
-                        execution_id[:8],
-                        e,
-                    )
         durable_ms = (time.perf_counter() - completion_started) * 1000
 
         # Wake sync callers as soon as their result and buffered SDK writes are
@@ -578,6 +562,24 @@ class WorkflowExecutionConsumer(BaseConsumer):
                 ),
             )
         result_ready_ms = (time.perf_counter() - completion_started) * 1000
+
+        if event_delivery is not None:
+            try:
+                from src.services.events.processor import (
+                    broadcast_delivery_update_after_commit,
+                )
+
+                async with session_factory() as broadcast_session:
+                    await broadcast_delivery_update_after_commit(
+                        broadcast_session,
+                        event_delivery,
+                    )
+            except Exception as e:
+                logger.warning(
+                    "Failed to broadcast event delivery for %s...: %s",
+                    execution_id[:8],
+                    e,
+                )
 
         if is_sync:
             await asyncio.sleep(_SYNC_DERIVED_WORK_GRACE_SECONDS)
@@ -893,22 +895,6 @@ class WorkflowExecutionConsumer(BaseConsumer):
                     )
 
             await session.commit()
-            if event_delivery is not None:
-                try:
-                    from src.services.events.processor import (
-                        broadcast_delivery_update_after_commit,
-                    )
-
-                    await broadcast_delivery_update_after_commit(
-                        session,
-                        event_delivery,
-                    )
-                except Exception as e:
-                    logger.warning(
-                        "Failed to broadcast event delivery for %s...: %s",
-                        execution_id[:8],
-                        e,
-                    )
 
         # A sync failure is just as latency-sensitive as a success. Wake the
         # caller once the authoritative failure is durable; aggregates and
@@ -926,6 +912,25 @@ class WorkflowExecutionConsumer(BaseConsumer):
                 ),
             )
 
+        if event_delivery is not None:
+            try:
+                from src.services.events.processor import (
+                    broadcast_delivery_update_after_commit,
+                )
+
+                async with session_factory() as broadcast_session:
+                    await broadcast_delivery_update_after_commit(
+                        broadcast_session,
+                        event_delivery,
+                    )
+            except Exception as e:
+                logger.warning(
+                    "Failed to broadcast event delivery for %s...: %s",
+                    execution_id[:8],
+                    e,
+                )
+
+        if is_sync:
             await asyncio.sleep(_SYNC_DERIVED_WORK_GRACE_SECONDS)
 
         failure_metrics = result.get("metrics") or {}
