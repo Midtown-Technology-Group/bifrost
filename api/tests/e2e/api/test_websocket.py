@@ -27,6 +27,39 @@ class TestWebSocketConnection:
     """Test WebSocket connection establishment and authentication."""
 
     @pytest.mark.asyncio
+    async def test_app_embed_ticket_preserves_identity_and_channel_restrictions(
+        self, e2e_client, e2e_ws_url,
+    ):
+        from uuid import uuid4
+
+        from src.core.constants import SYSTEM_USER_ID
+        from src.core.security import create_embed_access_token
+
+        token = create_embed_access_token(
+            embed_kind="app", grant="public", resource_id=str(uuid4()), org_id=None,
+        )
+        response = e2e_client.post(
+            "/ws/ticket", headers={"Authorization": f"Bearer {token}"},
+        )
+        assert response.status_code == 200, response.text
+        assert response.headers["cache-control"] == "no-store"
+        ticket = response.json()["ticket"]
+        execution_channel = f"execution:{uuid4()}"
+        url = (
+            f"{e2e_ws_url}/ws/connect?ticket={ticket}"
+            f"&channels=platform_workers&channels=notification:admins"
+            f"&channels={execution_channel}"
+        )
+        async with connect(url) as ws:
+            message = json.loads(await asyncio.wait_for(ws.recv(), timeout=5))
+            assert message["type"] == "connected", message
+            identity = message.get("userId", message.get("user_id"))
+            assert str(identity) == str(SYSTEM_USER_ID), message
+            assert "platform_workers" not in message["channels"]
+            assert "notification:admins" not in message["channels"]
+            assert execution_channel not in message["channels"]
+
+    @pytest.mark.asyncio
     async def test_websocket_connect_with_valid_token(
         self,
         e2e_ws_url,
