@@ -813,6 +813,35 @@ async def test_update_delivery_from_execution_uses_session_factory(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_update_delivery_from_execution_contains_post_commit_broadcast_error(
+    monkeypatch,
+):
+    db = SimpleNamespace(commit=AsyncMock())
+
+    @asynccontextmanager
+    async def session_context():
+        yield db
+
+    monkeypatch.setattr(
+        "src.core.database.get_session_factory", lambda: session_context
+    )
+    delivery = _make_delivery()
+    monkeypatch.setattr(
+        p,
+        "_run_delivery_execution_update",
+        AsyncMock(return_value=delivery),
+    )
+    broadcast = AsyncMock(side_effect=RuntimeError("read failed"))
+    monkeypatch.setattr(p, "broadcast_delivery_update_after_commit", broadcast)
+
+    updated = await p.update_delivery_from_execution(str(uuid.uuid4()), "Success")
+
+    db.commit.assert_awaited_once()
+    broadcast.assert_awaited_once_with(db, delivery)
+    assert updated is delivery
+
+
+@pytest.mark.asyncio
 async def test_update_delivery_from_execution_uses_provided_session_without_commit(
     monkeypatch,
 ):

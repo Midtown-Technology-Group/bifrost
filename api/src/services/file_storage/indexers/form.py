@@ -16,7 +16,7 @@ import yaml
 from pydantic import ValidationError
 
 from src.models import Form, FormField as FormFieldORM, Workflow
-from src.models.contracts.forms import FormField
+from src.models.contracts.forms import FormField, FormSchema
 
 logger = logging.getLogger(__name__)
 
@@ -111,6 +111,48 @@ class FormIndexer:
             content_modified = True
             logger.info(f"Injecting ID {form_id} into form file: {path}")
 
+        # Validate the entire replacement schema before resolving references or
+        # updating form metadata.  Invalid fields must leave both the current
+        # form definition and its existing field rows untouched.
+        form_schema = form_data.get("form_schema")
+        if form_schema and isinstance(form_schema, dict):
+            fields_data = form_schema.get("fields", [])
+        elif "fields" in form_data and isinstance(form_data["fields"], list):
+            fields_data = []
+            for field in form_data["fields"]:
+                if not isinstance(field, dict):
+                    logger.warning(f"Invalid field in {path}: expected an object")
+                    return content_modified
+                normalized = dict(field)
+                if "default" in normalized and "default_value" not in normalized:
+                    normalized["default_value"] = normalized.pop("default")
+                fields_data.append(normalized)
+        else:
+            fields_data = None
+
+        validated_fields: list[FormField] | None = None
+        if fields_data is not None:
+            if not isinstance(fields_data, list):
+                logger.warning(f"Invalid form schema in {path}: fields must be a list")
+                return content_modified
+            normalized_fields = []
+            for field_dict in fields_data:
+                if not isinstance(field_dict, dict) or not field_dict.get("name"):
+                    logger.warning(f"Invalid field in {path}: missing field name")
+                    return content_modified
+                normalized_field = dict(field_dict)
+                normalized_field.setdefault("type", "text")
+                if normalized_field["type"] not in ("markdown", "html"):
+                    normalized_field.setdefault("label", normalized_field["name"])
+                normalized_fields.append(normalized_field)
+            try:
+                validated_fields = FormSchema.model_validate(
+                    {"fields": normalized_fields}
+                ).fields
+            except ValidationError as e:
+                logger.warning(f"Invalid form schema in {path}: {e}")
+                return content_modified
+
         # Forms are now "fully virtual" - their path is computed from their ID
         # (e.g., forms/{uuid}.form.yaml), so we don't need a separate file_path column.
         # We just use the ID from the YAML content directly.
@@ -181,45 +223,7 @@ class FormIndexer:
         )
         await self.db.execute(stmt)
 
-        # Sync form_schema (fields) if present
-        # Support both form_schema.fields (canonical) and flat fields (workspace shorthand)
-        form_schema = form_data.get("form_schema")
-        if form_schema and isinstance(form_schema, dict):
-            fields_data = form_schema.get("fields", [])
-        elif "fields" in form_data and isinstance(form_data["fields"], list):
-            # Flat fields format — normalize 'default' to 'default_value'
-            if any(not isinstance(field, dict) for field in form_data["fields"]):
-                logger.warning(f"Invalid field in {path}: expected an object")
-                return content_modified
-            fields_data = []
-            for f in form_data["fields"]:
-                fd = dict(f)
-                if "default" in fd and "default_value" not in fd:
-                    fd["default_value"] = fd.pop("default")
-                fields_data.append(fd)
-        else:
-            fields_data = None
-
-        if fields_data is not None and isinstance(fields_data, list):
-            # Validate the complete replacement before deleting any existing
-            # rows. Legacy files omitted type/label, so preserve their former
-            # text-field defaults while upgrading them to the canonical model.
-            validated_fields: list[FormField] = []
-            for field_dict in fields_data:
-                if not isinstance(field_dict, dict) or not field_dict.get("name"):
-                    logger.warning(f"Invalid field in {path}: missing field name")
-                    return content_modified
-
-                normalized_field = dict(field_dict)
-                normalized_field.setdefault("type", "text")
-                if normalized_field["type"] not in ("markdown", "html"):
-                    normalized_field.setdefault("label", normalized_field["name"])
-                try:
-                    validated_fields.append(FormField.model_validate(normalized_field))
-                except ValidationError as e:
-                    logger.warning(f"Invalid field in {path}: {e}")
-                    return content_modified
-
+        if validated_fields is not None:
             # Delete existing fields only after the replacement validates.
             await self.db.execute(
                 delete(FormFieldORM).where(FormFieldORM.form_id == form_id)

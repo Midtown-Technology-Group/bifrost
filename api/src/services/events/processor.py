@@ -1305,5 +1305,12 @@ async def update_delivery_from_execution(
                 error_message,
             )
             await db.commit()
-            await broadcast_delivery_update_after_commit(db, delivery)
+            try:
+                await broadcast_delivery_update_after_commit(db, delivery)
+            except Exception as exc:
+                logger.warning(
+                    "Failed to broadcast committed event delivery for %s: %s",
+                    execution_id,
+                    exc,
+                )
             return delivery
