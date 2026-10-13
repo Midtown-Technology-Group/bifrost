@@ -12139,6 +12139,57 @@
           "status": "intentionally_unsupported"
         },
         "rest": {
+          "operation_id": "externalworkers.identity",
+          "status": "exact_parity"
+        },
+        "sdk": {
+          "binding": null,
+          "status": "intentionally_unsupported"
+        }
+      },
+      "operation": {
+        "action_scopes": [],
+        "async_policy": "synchronous",
+        "audit_event": null,
+        "authorization_resolver": "src.routers.platform.external_workers.identity_operation: existing dependencies and handler checks",
+        "cli": null,
+        "exclusions": {
+          "cli": "No canonical binding assigned in this metadata-only slice.",
+          "manifest": "No canonical binding assigned in this metadata-only slice.",
+          "mcp": "No canonical binding assigned in this metadata-only slice.",
+          "native_builder": "No canonical binding assigned in this metadata-only slice.",
+          "sdk": "No canonical binding assigned in this metadata-only slice."
+        },
+        "manifest": null,
+        "mcp": null,
+        "native_builder": false,
+        "operation_id": "externalworkers.identity",
+        "rest": {
+          "method": "POST",
+          "path": "/api/platform/external-workers/identity",
+          "request_model": null,
+          "response_model": null
+        },
+        "side_effects": [],
+        "summary": "Existing REST binding: POST /api/platform/external-workers/identity",
+        "target_kind": "platform"
+      }
+    },
+    {
+      "observed": {
+        "cli": {
+          "path": null,
+          "status": "intentionally_unsupported"
+        },
+        "manifest": {
+          "entity": null,
+          "status": "intentionally_unsupported"
+        },
+        "mcp": {
+          "name": null,
+          "status": "intentionally_unsupported"
+        },
+        "rest": {
           "operation_id": "files.preview_workspace_file_impact",
           "status": "exact_parity"
         },
@@ -16005,7 +16056,7 @@
     "cli": 158,
     "manifest": 16,
     "mcp": 90,
-    "rest": 777,
+    "rest": 778,
     "sdk": 19
   },
   "schema_version": 1,
