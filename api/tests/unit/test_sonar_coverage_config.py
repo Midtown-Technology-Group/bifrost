@@ -423,7 +423,11 @@ def test_sonar_private_artifacts_transfer_on_export_failure(tmp_path: Path):
 
 
 def test_sonar_failed_runtime_inputs_survive_volume_teardown(tmp_path: Path):
-    workflow_path = API_ROOT.parent / ".github/workflows/sonar-coverage.yml"
+    workflow_path = next(
+        root / ".github/workflows/sonar-coverage.yml"
+        for root in (API_ROOT, *API_ROOT.parents)
+        if (root / ".github/workflows/sonar-coverage.yml").is_file()
+    )
     workflow = workflow_path.read_text()
     start = workflow.index('          runtime_shards="$SONAR_LOG_DIR/sonar-runtime-shards"')
     end = workflow.index('          if [ -f "$SONAR_LOG_DIR/test-results.xml" ]; then', start)
