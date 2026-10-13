@@ -174,7 +174,7 @@ Event publishing operations (async).
 **`oauth_admin.reconcile(connection_name: str, scope: str = 'global') -> OAuthReconciliationResult`**
   Reconcile duplicate token rows within one connection and exact org scope.
 
-**`oauth_admin.recover(connection_name: str, scope: str = 'global', refresh_token: Union = None, code: Union = None, redirect_uri: Union = None) -> OAuthRecoveryResult`**
+**`oauth_admin.recover(connection_name: str, scope: str = 'global', refresh_token: str | None = None, code: str | None = None, redirect_uri: str | None = None) -> OAuthRecoveryResult`**
   Recover server-side. Omit credentials to refresh the stored token.
 
 ### organizations

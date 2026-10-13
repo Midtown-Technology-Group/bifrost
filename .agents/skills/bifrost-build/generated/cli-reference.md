@@ -294,11 +294,11 @@ Usage: apps create [OPTIONS]
   repeated values or a comma-separated list; entries may be role names or
   UUIDs.
 
-  When ``--deps`` is passed this runs as a two-call orchestration: the app is
-  created first, then a ``PUT /dependencies`` applies the parsed dependency
-  dict. If the deps call fails after the create succeeded, the command prints
-  both the created app and the deps error, exits non-zero, and leaves the app
-  in place — there is no rollback.
+  When ``--deps`` is passed, local input is validated first, then this runs as
+  a two-call orchestration: the app is created and a ``PUT /dependencies``
+  applies the parsed dependency dict. If the remote deps call fails, the
+  command prints both the created app and the deps error, exits non-zero, and
+  leaves the app in place — there is no rollback.
 
 Options:
   --name TEXT          name  [required]
@@ -733,10 +733,8 @@ Usage: configs set [OPTIONS] KEY
 
   Upsert a configuration value (catalog open question #2: yes).
 
-  Looks up an existing config matching ``(key, organization_id)`` by listing
-  ``/api/config`` client-side — the endpoint does not accept a ``key`` query
-  parameter, so filtering happens in the CLI. PUTs the existing row if found;
-  POSTs otherwise. The result is idempotent from the caller's perspective.
+  POSTs the desired value to the server's atomic upsert endpoint. This keeps
+  scope selection authoritative on the server and avoids a list-and-PUT race.
 
   Org targeting follows the unified ``--org`` standard: HOME (omit) targets
   the caller's org, ``--global`` targets global, ``--org <id|name>`` targets
