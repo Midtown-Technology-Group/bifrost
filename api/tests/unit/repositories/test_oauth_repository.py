@@ -252,12 +252,10 @@ class TestOAuthProviderRepositoryCascade:
 
         assert await repo.get_by_connection_name_in_scope("github") is provider
 
-        query = str(
-            session.execute.await_args.args[0].compile(
-                compile_kwargs={"literal_binds": True}
-            )
-        )
-        assert str(ORG_A) in query
+        compiled = session.execute.await_args.args[0].compile()
+        query = str(compiled)
+        assert ORG_A in compiled.params.values()
+        assert "oauth_providers.organization_id =" in query
         assert "organization_id IS NULL" not in query
 
     async def test_exact_global_lookup_requires_null_organization(
