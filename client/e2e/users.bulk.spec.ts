@@ -9,8 +9,12 @@
  * the row's checkbox is disabled with a tooltip).
  */
 
-import { test, expect } from "./fixtures/api-fixture";
-import type { AuthedApi } from "./fixtures/api-fixture";
+import {
+	disableAndDeleteUser,
+	test,
+	expect,
+	type AuthedApi,
+} from "./fixtures/api-fixture";
 
 const SUFFIX = crypto.randomUUID().slice(0, 8);
 const SOURCE_ORG_NAME = `Bulk Source ${SUFFIX}`;
@@ -88,8 +92,7 @@ test.describe("Bulk user actions", () => {
 
 	test.afterAll(async ({ api }) => {
 		for (const id of seededUserIds) {
-			const response = await api.delete(`/api/users/${id}`);
-			expect([200, 204, 404]).toContain(response.status());
+			await disableAndDeleteUser(api, id);
 		}
 		if (sourceOrgId)
 			expect([200, 204, 404]).toContain(
