@@ -1499,6 +1499,7 @@ class WorkflowExecutionConsumer(BaseConsumer):
             # Build context for worker process
             context_data = {
                 "execution_id": execution_id,
+                "created_at": pending.get("created_at"),
                 "workflow_id": workflow_id,
                 "name": workflow_name,
                 "function_name": workflow_function_name,  # For exec_from_db()
