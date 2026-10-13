@@ -861,6 +861,48 @@ class WorkspaceRepoChangesetService:
         if self.commit_writer is None:  # guarded in plan construction as well
             raise ChangesetInvalid(COMMIT_WRITER_NOT_CONFIGURED)
 
+        if not plan.files:
+            dispositions = {
+                item.changeset_id: item for item in plan.response.changesets
+            }
+            for row in plan.rows:
+                disposition = dispositions[row.id]
+                current_validation = dict(row.validation or {})
+                row.validation = {
+                    **current_validation,
+                    "history_convergence": {
+                        "schema": GIT_CONVERGENCE_SCHEMA,
+                        "candidate_id": plan.response.candidate_id,
+                        "protected_main_source_sha": (
+                            plan.response.protected_main_source_sha
+                        ),
+                        "history_parent_sha": plan.response.history_head_sha,
+                        "commit_sha": plan.response.history_head_sha,
+                        "signature_state": "VALID",
+                        "operator": operator,
+                        "selected_changeset_ids": [
+                            str(value)
+                            for value in sorted(request.changeset_ids, key=str)
+                        ],
+                        "disposition": disposition.disposition,
+                        "reconciled_paths": disposition.reconciled_paths,
+                        "superseded_paths": disposition.superseded_paths,
+                    },
+                }
+                row.commit_sha = plan.response.history_head_sha
+                row.status = "committed"
+                row.error = None
+                row.failure_detail = None
+            await self.db.flush()
+            await self.db.commit()
+            return plan.response.model_copy(
+                update={
+                    "applied": True,
+                    "commit_sha": plan.response.history_head_sha,
+                    "signature_state": "VALID",
+                }
+            )
+
         effective_operator = operator
         if pending_retry:
             stored = cast(dict, selected_rows[0].failure_detail)
@@ -1263,12 +1305,12 @@ class WorkspaceRepoChangesetService:
                 )
             )
 
-        if not files:
+        if history.signature_state != "VALID":
             diagnostics.append(
                 {
                     "severity": "error",
-                    "source": "no_op",
-                    "message": "selected paths are already present in production-live history",
+                    "source": "production_live_history",
+                    "message": "production-live history head is not a verified GitHub-signed commit",
                 }
             )
         payload = {

@@ -1,7 +1,11 @@
 """Unit tests for typed embed access-token creation."""
 from uuid import uuid4
 
-from src.core.security import create_embed_access_token, decode_token
+from src.core.security import (
+    create_embed_access_token,
+    create_form_upload_token,
+    decode_token,
+)
 
 
 class TestEmbedAccessToken:
@@ -81,3 +85,25 @@ class TestEmbedAccessToken:
         assert payload is not None
         assert payload["name"] == display_name[:255]
         assert len(payload["name"]) == 255
+
+    def test_form_upload_capability_cannot_authenticate_as_an_access_token(self):
+        form_id = str(uuid4())
+        token = create_form_upload_token(
+            form_id=form_id,
+            org_id=str(uuid4()),
+            session_jti=str(uuid4()),
+            session_exp=2_000_000_000,
+            path=f"{form_id}/session/file/report.pdf",
+            storage_key=f"uploads/org/{form_id}/session/file/report.pdf",
+            field_name="attachment",
+            file_name="report.pdf",
+            content_type="application/pdf",
+            file_size=123,
+        )
+
+        assert decode_token(token, expected_type="access") is None
+        payload = decode_token(token, expected_type="form_upload")
+        assert payload is not None
+        assert payload["form_id"] == form_id
+        assert payload["file_size"] == 123
+        assert payload["jti"]
