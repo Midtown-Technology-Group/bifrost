@@ -456,13 +456,10 @@ def test_client_creation_brackets_ipv6_service_host_and_uses_ca_context(
     class FakeContext:
         minimum_version = None
 
-        def load_verify_locations(self, *, cafile: str) -> None:
-            captured["cafile"] = cafile
-
     context = FakeContext()
 
-    def fake_context(protocol: int) -> FakeContext:
-        captured["protocol"] = protocol
+    def fake_context(*, cafile: str) -> FakeContext:
+        captured["cafile"] = cafile
         return context
 
     monkeypatch.setenv("KUBERNETES_SERVICE_HOST", "fd00::1")
@@ -476,7 +473,7 @@ def test_client_creation_brackets_ipv6_service_host_and_uses_ca_context(
         token_path,
     )
     monkeypatch.setattr(
-        "src.jobs.platform.kubernetes_client.ssl.SSLContext",
+        "src.jobs.platform.kubernetes_client.ssl.create_default_context",
         fake_context,
     )
     monkeypatch.setattr(
@@ -491,5 +488,4 @@ def test_client_creation_brackets_ipv6_service_host_and_uses_ca_context(
     assert captured["verify"] is context
     assert captured["timeout"] == 5.0
     assert captured["cafile"] == str(ca_path)
-    assert captured["protocol"] == ssl.PROTOCOL_TLS_CLIENT
     assert context.minimum_version == ssl.TLSVersion.TLSv1_2
