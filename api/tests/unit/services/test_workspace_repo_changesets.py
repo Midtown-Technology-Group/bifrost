@@ -1332,7 +1332,7 @@ async def test_missing_writer_cancellation_persists_failure_before_reraise(
     monkeypatch.setattr("src.core.repo_dirty.mark_repo_dirty", mark_dirty)
     svc = service()
     row = await svc.begin(WorkspaceRepoChangesetBegin(scope="features"), uuid4())
-    row.status = "activated"
+    svc.rows.items[row.id].status = "activated"
 
     with pytest.raises(asyncio.CancelledError):
         await svc._complete_git_closure(
@@ -1344,10 +1344,11 @@ async def test_missing_writer_cancellation_persists_failure_before_reraise(
             operator="tester",
         )
 
-    assert row.error == "verified GitHub App commit writer is not configured"
-    assert row.failure_detail["phase"] == "git_closure"
-    assert row.failure_detail["state"] == "not_configured"
-    assert row.failure_detail["activation_preserved"] is True
+    persisted = await svc.get(row.id)
+    assert persisted.error == "verified GitHub App commit writer is not configured"
+    assert persisted.failure_detail["phase"] == "git_closure"
+    assert persisted.failure_detail["state"] == "not_configured"
+    assert persisted.failure_detail["activation_preserved"] is True
     assert svc.db.commits == 1
     mark_dirty.assert_awaited_once_with()
 
@@ -1371,8 +1372,9 @@ async def test_git_closure_cancellation_persists_recovery_evidence_and_reraises(
     svc = service({path: b"A"})
     svc.commit_writer = writer
     row = await svc.begin(WorkspaceRepoChangesetBegin(scope="features"), uuid4())
-    row.status = "activated"
-    row.mutations = [
+    stored = svc.rows.items[row.id]
+    stored.status = "activated"
+    stored.mutations = [
         {
             "path": path,
             "operation": "write",
@@ -1392,12 +1394,13 @@ async def test_git_closure_cancellation_persists_recovery_evidence_and_reraises(
             operator="tester",
         )
 
-    assert row.error == f"Git closure cancelled during {cancelled_during}"
-    assert row.failure_detail["phase"] == "git_closure"
-    assert row.failure_detail["state"] == "failed"
-    assert row.failure_detail["cancelled"] is True
-    assert row.failure_detail["cancelled_during"] == cancelled_during
-    assert row.failure_detail["activation_preserved"] is True
+    persisted = await svc.get(row.id)
+    assert persisted.error == f"Git closure cancelled during {cancelled_during}"
+    assert persisted.failure_detail["phase"] == "git_closure"
+    assert persisted.failure_detail["state"] == "failed"
+    assert persisted.failure_detail["cancelled"] is True
+    assert persisted.failure_detail["cancelled_during"] == cancelled_during
+    assert persisted.failure_detail["activation_preserved"] is True
     assert svc.db.commits == 2
     mark_dirty.assert_awaited_once_with()
 
