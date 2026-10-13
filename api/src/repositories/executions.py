@@ -60,6 +60,14 @@ def _make_json_safe(value: Any) -> Any:
     return json.loads(json.dumps(value, default=str))
 
 
+def execution_workflow_id(execution: Any) -> str | None:
+    """Return a workflow ID only when the execution has database identity."""
+    workflow_id = getattr(execution, "workflow_id", None)
+    if not workflow_id or getattr(execution, "is_local_execution", False):
+        return None
+    return str(workflow_id)
+
+
 class ExecutionRepository(BaseRepository[Execution]):
     """Repository for execution operations."""
 
@@ -536,12 +544,7 @@ class ExecutionRepository(BaseRepository[Execution]):
         return WorkflowExecution(
             execution_id=str(execution.id),
             workflow_name=execution.workflow_name,
-            workflow_id=(
-                str(execution.workflow_id)
-                if execution.workflow_id
-                and not getattr(execution, "is_local_execution", False)
-                else None
-            ),
+            workflow_id=execution_workflow_id(execution),
             org_id=str(execution.organization_id) if execution.organization_id else None,
             form_id=str(execution.form_id) if execution.form_id else None,
             executed_by=str(execution.executed_by),
@@ -762,12 +765,7 @@ class ExecutionRepository(BaseRepository[Execution]):
         return WorkflowExecution(
             execution_id=str(execution.id),
             workflow_name=execution.workflow_name,
-            workflow_id=(
-                str(execution.workflow_id)
-                if execution.workflow_id
-                and not getattr(execution, "is_local_execution", False)
-                else None
-            ),
+            workflow_id=execution_workflow_id(execution),
             org_id=str(execution.organization_id) if execution.organization_id else None,
             form_id=str(execution.form_id) if execution.form_id else None,
             executed_by=str(execution.executed_by),
