@@ -21,7 +21,7 @@ from src.models import (
 
 from src.core.auth import Context, CurrentSuperuser
 from src.core.org_filter import resolve_org_filter
-from src.repositories.config import ConfigRepository
+from src.repositories.config import ConfigRepository, ConfigTypeChangeRequiresValue
 
 from src.core.cache import invalidate_config, upsert_config
 
@@ -144,7 +144,13 @@ async def update_config(
     # Use is_superuser=True; org scoping not needed since we look up by ID
     repo = ConfigRepository(ctx.db, org_id=ctx.org_id, is_superuser=True)
 
-    update = await repo.update_config_by_id(config_id, request, updated_by=user.email)
+    try:
+        update = await repo.update_config_by_id(config_id, request, updated_by=user.email)
+    except ConfigTypeChangeRequiresValue as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
     if update is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

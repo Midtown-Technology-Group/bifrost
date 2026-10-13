@@ -690,3 +690,36 @@ class TestGetWorkflowById:
         )
         with pytest.raises(service.WorkflowLoadError, match="No decorated function"):
             await service.get_workflow_by_id("wf-load")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("configured_mode", "override", "expected"),
+    [
+        ("sync", None, True),
+        ("async", None, False),
+        ("sync", False, False),
+        ("async", True, True),
+    ],
+)
+async def test_run_workflow_uses_configured_mode_unless_caller_overrides(
+    monkeypatch, configured_mode, override, expected
+):
+    from src.services.execution import service
+
+    enqueue = AsyncMock(return_value=MagicMock())
+    monkeypatch.setattr(service, "_enqueue_workflow_async", enqueue)
+
+    await service.run_workflow(
+        context=_Context(),
+        workflow_id="wf-1",
+        sync=override,
+        dispatch_metadata={
+            "name": "Workflow",
+            "timeout_seconds": 30,
+            "execution_mode": configured_mode,
+            "type": "workflow",
+        },
+    )
+
+    assert enqueue.await_args.kwargs["sync"] is expected

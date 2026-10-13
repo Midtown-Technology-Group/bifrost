@@ -39,6 +39,7 @@ import type {
 import { useDataProviders, type DataProvider } from "@/services/dataProviders";
 import { OptionsEditor } from "./OptionsEditor";
 import { DataProviderInputsConfig } from "./DataProviderInputsConfig";
+import { normalizeCheckboxDefault } from "./fieldValueUtils";
 
 interface FieldConfigDialogProps {
 	field?: FormField | undefined;
@@ -159,7 +160,7 @@ function FieldConfigDialogContent({
 			(field?.type ?? (defaultType as FormFieldType) ?? "text") ===
 			"checkbox"
 		)
-			return Boolean(field.default_value);
+			return normalizeCheckboxDefault(field.default_value);
 		return String(field.default_value);
 	});
 	const [dataProvider, setDataProvider] = useState<string | undefined>(

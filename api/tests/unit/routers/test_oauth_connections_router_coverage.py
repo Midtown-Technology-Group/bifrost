@@ -105,7 +105,7 @@ async def test_get_connection_returns_repository_detail():
 
 @pytest.mark.asyncio
 async def test_update_connection_404_when_repo_cannot_find_connection():
-    repo = _repo(update_connection=None)
+    repo = _repo(get_by_connection_name=None, update_connection=None)
     request = UpdateOAuthConnectionRequest(name="New Name")
 
     with (
@@ -116,6 +116,45 @@ async def test_update_connection_404_when_repo_cannot_find_connection():
 
     assert exc_info.value.status_code == 404
     assert exc_info.value.detail == "OAuth connection 'missing' not found"
+
+
+@pytest.mark.asyncio
+async def test_update_connection_validates_effective_client_credentials_state():
+    provider = _provider(
+        oauth_flow_type="authorization_code",
+        encrypted_client_secret=None,
+    )
+    repo = _repo(get_by_connection_name=provider)
+    request = UpdateOAuthConnectionRequest(oauth_flow_type="client_credentials")
+
+    with (
+        patch.object(oauth_connections, "OAuthProviderRepository", return_value=repo),
+        pytest.raises(HTTPException) as exc_info,
+    ):
+        await oauth_connections.update_connection("halo", request, _ctx(), MagicMock())
+
+    assert exc_info.value.status_code == 422
+    assert "client_secret is required" in exc_info.value.detail
+    repo.update_connection.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_update_connection_accepts_requirement_from_existing_state():
+    provider = _provider(oauth_flow_type="client_credentials")
+    detail = _detail()
+    repo = _repo(
+        get_by_connection_name=provider,
+        update_connection=provider,
+        to_detail=detail,
+    )
+
+    with patch.object(oauth_connections, "OAuthProviderRepository", return_value=repo):
+        result = await oauth_connections.update_connection(
+            "halo", UpdateOAuthConnectionRequest(name="Renamed"), _ctx(), MagicMock()
+        )
+
+    assert result == detail
+    repo.update_connection.assert_awaited_once()
 
 
 @pytest.mark.asyncio

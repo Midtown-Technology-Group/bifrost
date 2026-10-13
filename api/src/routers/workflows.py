@@ -1237,7 +1237,7 @@ async def execute_workflow(
                 input_data=request.input_data,
                 form_id=request.form_id,
                 transient=request.transient,
-                sync=request.sync or False,
+                sync=request.sync,
                 dispatch_metadata=dispatch_metadata,
                 org_id_override=request.org_id,
             )

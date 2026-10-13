@@ -234,6 +234,33 @@ async def update_connection(
     org_id = ctx.org_id
     repo = OAuthProviderRepository(ctx.db, org_id=org_id, is_superuser=True)
 
+    existing = await repo.get_by_connection_name(connection_name)
+    if not existing:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"OAuth connection '{connection_name}' not found",
+        )
+
+    effective_flow = request.oauth_flow_type or existing.oauth_flow_type
+    has_client_secret = bool(
+        request.client_secret or existing.encrypted_client_secret
+    )
+    effective_authorization_url = (
+        request.authorization_url
+        if request.authorization_url is not None
+        else existing.authorization_url
+    )
+    if effective_flow == "client_credentials" and not has_client_secret:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="client_secret is required for client_credentials flow",
+        )
+    if effective_flow == "authorization_code" and not effective_authorization_url:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="authorization_url is required for authorization_code flow",
+        )
+
     provider = await repo.update_connection(
         connection_name,
         name=request.name,
@@ -247,11 +274,10 @@ async def update_connection(
         provider_metadata=request.provider_metadata,
     )
 
+    # The row was loaded above and remains in this transaction. Treat a
+    # concurrent disappearance as a normal not-found response.
     if not provider:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"OAuth connection '{connection_name}' not found",
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="OAuth connection no longer exists")
 
     logger.info(f"Updated OAuth connection: {log_safe(connection_name)}")
 

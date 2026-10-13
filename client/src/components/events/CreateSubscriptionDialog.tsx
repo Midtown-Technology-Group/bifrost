@@ -18,7 +18,10 @@ import { useWorkflows } from "@/hooks/useWorkflows";
 import { useAgents } from "@/hooks/useAgents";
 import { WorkflowSelectorDialog } from "@/components/workflows/WorkflowSelectorDialog";
 import { AgentSelectorDialog } from "@/components/agents/AgentSelectorDialog";
-import { InputMappingForm } from "@/components/events/InputMappingForm";
+import {
+	InputMappingForm,
+	normalizeInputMapping,
+} from "@/components/events/InputMappingForm";
 import {
 	EventCriteriaForm,
 	validateCriteria,
@@ -40,21 +43,6 @@ interface CreateSubscriptionDialogProps {
 	onOpenChange: (open: boolean) => void;
 	sourceId: string;
 	onSuccess?: () => void;
-}
-
-/**
- * Remove entries where value is undefined, null, or empty string.
- * Returns undefined if no non-empty values remain.
- */
-function cleanInputMapping(
-	mapping: Record<string, unknown>,
-): Record<string, unknown> | undefined {
-	const cleaned = Object.fromEntries(
-		Object.entries(mapping).filter(
-			([, v]) => v !== undefined && v !== null && v !== "",
-		),
-	);
-	return Object.keys(cleaned).length > 0 ? cleaned : undefined;
 }
 
 function CreateSubscriptionDialogContent({
@@ -120,7 +108,14 @@ function CreateSubscriptionDialogContent({
 		if (isLoading || !validateForm()) return;
 
 		try {
-			const cleanedMapping = cleanInputMapping(inputMapping);
+			const normalized = normalizeInputMapping(
+				selectedWorkflow?.parameters ?? [],
+				inputMapping,
+			);
+			if (normalized.errors.length > 0) {
+				setErrors(normalized.errors);
+				return;
+			}
 
 			await createMutation.mutateAsync({
 				params: {
@@ -133,8 +128,11 @@ function CreateSubscriptionDialogContent({
 					agent_id: targetType === "agent" ? agentId : undefined,
 					event_type: eventType.trim() || undefined,
 					criteria: criteria ?? undefined,
-					input_mapping: targetType === "workflow" ? cleanedMapping : undefined,
-				// eslint-disable-next-line @typescript-eslint/no-explicit-any
+					input_mapping:
+						targetType === "workflow"
+							? normalized.mapping
+							: undefined,
+					// eslint-disable-next-line @typescript-eslint/no-explicit-any
 				} as any,
 			});
 
@@ -297,11 +295,18 @@ function CreateSubscriptionDialogContent({
 						</p>
 					</div>
 
-                    <div className="space-y-2 border-t pt-4">
-                        <Label>Rule Criteria (optional)</Label>
-                        <p className="text-xs text-muted-foreground">Only matching events queue this target. Clear criteria to receive all payloads.</p>
-                        <EventCriteriaForm value={criteria} onChange={setCriteria} disabled={isLoading} />
-                    </div>
+					<div className="space-y-2 border-t pt-4">
+						<Label>Rule Criteria (optional)</Label>
+						<p className="text-xs text-muted-foreground">
+							Only matching events queue this target. Clear
+							criteria to receive all payloads.
+						</p>
+						<EventCriteriaForm
+							value={criteria}
+							onChange={setCriteria}
+							disabled={isLoading}
+						/>
+					</div>
 
 					{/* Input Mapping (shown when workflow has parameters) */}
 					{targetType === "workflow" &&

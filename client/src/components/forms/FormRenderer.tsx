@@ -36,6 +36,7 @@ import type {
 } from "@/lib/client-types";
 import { getEmbedTokenClaims } from "@/lib/auth-token";
 import { formRuntimeQueryParams } from "@/lib/form-embed-presentation";
+import { normalizeCheckboxDefault } from "./fieldValueUtils";
 
 type Form =
 	| components["schemas"]["FormPublic"]
@@ -742,7 +743,11 @@ function FormRendererInner({
 		mode: "onChange", // Validate on change to keep isValid up-to-date
 		defaultValues: fields.reduce(
 			(acc: Record<string, unknown>, field: FormField) => {
-				if (field.type === "multi_select") {
+				if (field.type === "checkbox") {
+					acc[field.name] = normalizeCheckboxDefault(
+						field.default_value,
+					);
+				} else if (field.type === "multi_select") {
 					// default_value is a comma-separated list of option values
 					if (
 						typeof field.default_value === "string" &&
@@ -762,8 +767,6 @@ function FormRendererInner({
 					field.default_value !== null
 				) {
 					acc[field.name] = field.default_value;
-				} else if (field.type === "checkbox") {
-					acc[field.name] = false;
 				} else if (field.type === "file") {
 					acc[field.name] = null; // File fields start as null
 				} else {

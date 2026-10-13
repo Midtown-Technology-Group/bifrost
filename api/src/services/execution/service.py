@@ -352,7 +352,7 @@ async def run_workflow(
     input_data: dict[str, Any] | None = None,
     form_id: str | None = None,
     transient: bool = False,
-    sync: bool = False,
+    sync: bool | None = None,
     dispatch_metadata: dict[str, Any] | None = None,
     org_id_override: str | None = None,
 ) -> WorkflowExecutionResponse:
@@ -368,7 +368,8 @@ async def run_workflow(
         input_data: Input parameters for the workflow
         form_id: Optional form ID if triggered by form
         transient: If True, don't persist execution record
-        sync: If True, wait for result via Redis BLPOP. If False, return PENDING immediately.
+        sync: Explicit caller override. If omitted, use the workflow's configured
+            execution mode.
 
     Returns:
         WorkflowExecutionResponse with execution results (or PENDING status if sync=False)
@@ -403,6 +404,7 @@ async def run_workflow(
                 "(type='service'). One-shot execution is not supported; "
                 "manage it through the services lifecycle (start/stop/restart)."
             )
+        configured_sync = workflow_metadata.execution_mode == "sync"
     else:
         workflow_name = dispatch_metadata["name"]
         timeout_seconds = dispatch_metadata["timeout_seconds"]
@@ -412,16 +414,17 @@ async def run_workflow(
                 "(type='service'). One-shot execution is not supported; "
                 "manage it through the services lifecycle (start/stop/restart)."
             )
+        configured_sync = dispatch_metadata.get("execution_mode") == "sync"
 
     # Enqueue for execution via worker
-    # sync is only True when explicitly passed by the caller (e.g. endpoints.py)
+    effective_sync = configured_sync if sync is None else sync
     return await _enqueue_workflow_async(
         context=context,
         workflow_id=workflow_id,
         workflow_name=workflow_name,
         parameters=parameters,
         form_id=form_id,
-        sync=sync,
+        sync=effective_sync,
         timeout_seconds=timeout_seconds,
         dispatch_metadata=dispatch_metadata,
         org_id_override=org_id_override,
