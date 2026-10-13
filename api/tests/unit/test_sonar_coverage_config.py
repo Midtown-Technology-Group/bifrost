@@ -568,5 +568,13 @@ def test_sonar_invalid_report_is_not_skipped_when_another_report_is_valid(
     assert invalid_path.exists()
     retained = module.DATA_FILE.parent / "sonar-runtime-shards"
     assert retained.stat().st_mode & 0o777 == 0o700
-    assert {path.name: path.read_bytes() for path in retained.iterdir()} == original_reports
+    assert {path.name: path.read_bytes() for path in retained.glob(".coverage.sonar.*")} == original_reports
+    manifest = json.loads((retained / "manifest.json").read_text())
+    assert manifest["rejected_report"] == invalid_path.name
+    assert {item["filename"]: item["sha256"] for item in manifest["shards"]} == {
+        name: hashlib.sha256(data).hexdigest() for name, data in original_reports.items()
+    }
+    assert {item["filename"]: item["bytes"] for item in manifest["shards"]} == {
+        name: len(data) for name, data in original_reports.items()
+    }
     assert all(path.stat().st_mode & 0o777 == 0o600 for path in retained.iterdir())

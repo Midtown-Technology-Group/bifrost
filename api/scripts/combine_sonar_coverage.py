@@ -1,5 +1,7 @@
 """Combine actual Sonar unit and server-process hits; reject absent runtime data."""
 
+import hashlib
+import json
 import os
 import shutil
 from pathlib import Path
@@ -30,17 +32,27 @@ def main() -> int:
                 raise ValueError(f"Empty actual runtime coverage data: {report.name}")
             if runtime_data.has_arcs() != unit_data.has_arcs():
                 raise ValueError(f"Incompatible unit and runtime branch coverage data: {report.name}")
-    except (ValueError, coverage.exceptions.CoverageException):
+    except (ValueError, coverage.exceptions.CoverageException) as error:
         # The runtime volume is removed during teardown. Keep the actual input
         # databases in the already-private result directory before failing.
         diagnostics = DATA_FILE.parent / "sonar-runtime-shards"
         diagnostics.mkdir(mode=0o700, exist_ok=False)
+        manifest = {"rejected_report": report.name, "error_type": type(error).__name__, "shards": []}
         for report in reports:
             destination = diagnostics / report.name
             descriptor = os.open(destination, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
             with os.fdopen(descriptor, "wb") as output:
                 with report.open("rb") as source:
                     shutil.copyfileobj(source, output)
+            with destination.open("rb") as retained:
+                digest = hashlib.file_digest(retained, "sha256").hexdigest()
+            manifest["shards"].append({
+                "filename": report.name, "bytes": destination.stat().st_size, "sha256": digest,
+            })
+        descriptor = os.open(diagnostics / "manifest.json", os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(descriptor, "w") as output:
+            json.dump(manifest, output, indent=2)
+            output.write("\n")
         raise
     collector.combine(data_paths=[str(RUNTIME_DIR)], strict=True, keep=True)
     collector.save()
