@@ -4,11 +4,37 @@
 
 **Goal:** Allow Bifrost apps to be embedded in external systems via iframes with HMAC-SHA256 verification, issuing scoped embed JWTs for workflow access.
 
-**Architecture:** New `app_embed_secrets` table stores Fernet-encrypted shared secrets per app. A public `/embed/apps/{slug}` endpoint verifies HMAC signatures against these secrets, issues 8-hour embed JWTs, and serves the app. Embed JWTs authenticate workflow execution calls using the system user identity.
+**Architecture:** New `app_embed_secrets` table stores Fernet-encrypted shared secrets per app. A public `/embed/apps/{slug}` endpoint verifies HMAC signatures against these secrets, requires a fresh signed timestamp and a single-use nonce, issues 8-hour embed JWTs, and serves the app. Embed JWTs authenticate workflow execution calls using the system user identity.
 
 **Tech Stack:** FastAPI, SQLAlchemy, Alembic, HMAC-SHA256, Fernet encryption, JWT
 
 **Design doc:** `docs/plans/2026-02-16-hmac-embed-auth-design.md`
+
+---
+
+## Mandatory replay-protection amendment
+
+This amendment is a release requirement and supersedes any abbreviated code
+example later in this historical task plan:
+
+1. Every workflow-capable embed URL must include signed `timestamp` (Unix
+   seconds) and `nonce` (at least 128 random bits).
+2. Canonicalize the sorted parameters with percent-encoding for every key and
+   value. Raw `key=value&...` concatenation is ambiguous when a value contains
+   `&` or `=` and must not be used.
+3. After constant-time signature verification, reject timestamps outside a
+   five-minute window. Then atomically reserve `(secret_id, nonce)` in Redis
+   with `SET NX` and a ten-minute TTL. A duplicate nonce or replay-store error
+   fails closed.
+4. Consume the nonce before minting the embed JWT. Exclude `hmac`, `timestamp`,
+   and `nonce` from the verified workflow context. Reopening an embed requires
+   the external system to generate a newly signed timestamp and nonce.
+5. Add tests for stale/future timestamps, a second use of the same nonce,
+   concurrent duplicate requests, unavailable replay storage, and delimiter
+   values that previously produced the same MAC input.
+
+No endpoint described below is implementation-complete until these requirements
+are present, even if its signature comparison tests pass.
 
 ---
 
@@ -547,6 +573,7 @@ Create `api/tests/unit/services/test_embed_auth.py`:
 
 import hashlib
 import hmac as hmac_module
+from urllib.parse import quote, urlencode
 
 import pytest
 
@@ -615,6 +642,7 @@ Create `api/src/services/embed_auth.py`:
 
 import hashlib
 import hmac as hmac_module
+from urllib.parse import quote, urlencode
 
 
 def compute_embed_hmac(params: dict[str, str], secret: str) -> str:
@@ -627,7 +655,7 @@ def compute_embed_hmac(params: dict[str, str], secret: str) -> str:
     Returns:
         Hex-encoded HMAC digest.
     """
-    message = "&".join(f"{k}={v}" for k, v in sorted(params.items()))
+    message = urlencode(sorted(params.items()), safe="", quote_via=quote)
     return hmac_module.new(
         secret.encode(), message.encode(), hashlib.sha256
     ).hexdigest()

@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
 from sqlalchemy import DateTime, ForeignKey, Index, JSON, LargeBinary, String, Text, text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.models.enums import AppAccessLevel
@@ -61,7 +62,7 @@ class Application(Base):
     # Published snapshot: {path: content_hash} mapping from file_index
     # NULL = never published, empty dict = published with no files
     published_snapshot: Mapped[dict | None] = mapped_column(
-        JSON, default=None, nullable=True
+        JSONB, default=None, nullable=True
     )
 
     # Independent v2 deployments are immutable, versioned artifacts. Switching
