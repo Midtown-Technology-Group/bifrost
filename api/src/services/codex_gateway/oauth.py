@@ -124,7 +124,15 @@ def _parse_expiry(token_sources: list[dict[str, Any]]) -> datetime | None:
         return _datetime_from_epoch(raw)
     if isinstance(raw, str) and raw:
         if raw.isdigit():
-            return _datetime_from_epoch(int(raw))
+            # Epoch timestamps are short in every supported unit. Bound the
+            # conversion before int() so hostile digit strings cannot trip
+            # Python's integer conversion limit or consume unbounded work.
+            if len(raw) > 20:
+                return None
+            try:
+                return _datetime_from_epoch(int(raw))
+            except ValueError:
+                return None
         try:
             return datetime.fromisoformat(raw.replace("Z", "+00:00"))
         except ValueError:

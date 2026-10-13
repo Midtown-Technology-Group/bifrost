@@ -6,6 +6,7 @@ end-to-end (POST → WS log tail → final GET) without a live platform.
 
 from __future__ import annotations
 
+import asyncio
 import json
 from typing import Any
 from uuid import UUID
@@ -81,6 +82,14 @@ class _FakeWebSocket:
         return json.dumps(self._messages.pop(0))
 
 
+class _SilentWebSocket(_FakeWebSocket):
+    """Keep the stream idle so the command must use its REST fallback."""
+
+    async def recv(self) -> str:
+        await asyncio.Event().wait()
+        raise AssertionError("unreachable")
+
+
 def _ws_connect_factory(messages: list[dict[str, Any]]):
     captured: dict[str, Any] = {}
 
@@ -128,6 +137,43 @@ def _invoke(args: list[str]):
 
 
 class TestWorkflowsExecute:
+    def test_polls_rest_when_terminal_websocket_update_is_missed(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        fake_client: _FakeClient,
+        stub_resolver: dict[str, str],
+    ) -> None:
+        fake_client.queue(
+            "POST",
+            "/api/workflows/execute",
+            200,
+            {"execution_id": "exec-missed", "status": "Pending"},
+        )
+        fake_client.queue(
+            "GET",
+            "/api/executions/exec-missed",
+            200,
+            {"execution_id": "exec-missed", "status": "Success"},
+        )
+
+        def _connect(*_args, **_kwargs):
+            return _SilentWebSocket([])
+
+        import websockets.asyncio.client as ws_client_module
+
+        monkeypatch.setattr(ws_client_module, "connect", _connect)
+        real_wait_for = asyncio.wait_for
+
+        async def _fast_wait_for(awaitable, *, timeout):
+            return await real_wait_for(awaitable, timeout=min(timeout, 0.01))
+
+        monkeypatch.setattr(asyncio, "wait_for", _fast_wait_for)
+
+        result = _invoke(["--json", "execute", "my-workflow"])
+
+        assert result.exit_code == 0, result.output
+        assert any(call[:2] == ("GET", "/api/executions/exec-missed") for call in fake_client.calls)
+
     def test_streams_logs_then_exits_on_terminal_status(
         self,
         monkeypatch: pytest.MonkeyPatch,

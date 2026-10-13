@@ -119,6 +119,19 @@ def test_parse_codex_auth_cache_accepts_numeric_expiry_string():
     )
 
 
+def test_parse_codex_auth_cache_ignores_oversized_numeric_expiry_string():
+    parsed = parse_codex_auth_cache(
+        {
+            "tokens": {
+                "access_token": "access-token-secret",
+                "expires_at": "9" * 5000,
+            }
+        }
+    )
+
+    assert parsed.access_token_expires_at is None
+
+
 def test_parse_codex_auth_cache_ignores_invalid_epoch_expiry():
     parsed = parse_codex_auth_cache(
         {

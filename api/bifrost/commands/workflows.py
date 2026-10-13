@@ -354,7 +354,24 @@ async def _stream_execution_logs(
         async with ws_connect(ws_url, additional_headers=headers) as websocket:
             try:
                 while True:
-                    raw = await websocket.recv()
+                    try:
+                        raw = await asyncio.wait_for(
+                            websocket.recv(), timeout=2.0
+                        )
+                    except TimeoutError:
+                        # A fast execution can finish before the websocket
+                        # subscription is established. Poll REST while the
+                        # stream is idle so a missed terminal update cannot
+                        # leave the CLI waiting forever.
+                        response = await client.get(
+                            f"/api/executions/{execution_id}"
+                        )
+                        response.raise_for_status()
+                        polled_status = response.json().get("status")
+                        if polled_status in _TERMINAL_STATUSES:
+                            final_status = polled_status
+                            break
+                        continue
                     msg = json.loads(raw)
                     msg_type = msg.get("type")
 
