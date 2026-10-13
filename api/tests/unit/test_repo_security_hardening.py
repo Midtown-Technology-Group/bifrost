@@ -162,9 +162,15 @@ def test_docs_noop_workflow_cannot_spoof_required_ci_check_names() -> None:
 def test_codeql_remains_enabled_and_sdk_fetch_is_not_suppressed() -> None:
     codeql = _load_yaml(".github/workflows/codeql.yml")
     triggers = codeql[True]
+    sdk_candidates = [
+        REPO_ROOT / "api/src/services/sdk_generator.py",
+        REPO_ROOT / "src/services/sdk_generator.py",
+    ]
+    sdk_sources = [path for path in sdk_candidates if path.is_file()]
 
     assert {"push", "pull_request", "merge_group", "schedule"} <= triggers.keys()
-    assert "# NOSONAR" not in _read("api/src/services/sdk_generator.py")
+    assert len(sdk_sources) == 1, sdk_sources
+    assert "# NOSONAR" not in sdk_sources[0].read_text(encoding="utf-8")
 
 
 def test_release_assets_upload_before_immutable_release_publication() -> None:
