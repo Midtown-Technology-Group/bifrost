@@ -70,6 +70,6 @@ class RouteBodyLimitMiddleware:
         response = JSONResponse(
             status_code=413,
             content={"detail": self.messages.get((scope["method"], scope["path"]),
-                                                "Solution archive exceeds the compressed upload limit.")},
+                                                "Request body exceeds the configured limit.")},
         )
         await response(scope, receive, send)
