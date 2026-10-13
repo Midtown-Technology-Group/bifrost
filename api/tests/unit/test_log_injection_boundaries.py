@@ -26,7 +26,7 @@ async def test_module_cache_sanitizes_path_in_log(monkeypatch, caplog):
     redis._get_redis = AsyncMock(return_value=redis_connection)
     monkeypatch.setattr(module_cache, "get_redis_client", lambda: redis)
 
-    path = "workflows/example.py\nFORGED\x1b[31m"
+    path = "workflows/example.py\nFORGED\x1b[31m.py"
     with caplog.at_level(logging.DEBUG, logger=module_cache.__name__):
         await module_cache.set_module(path, "content", "hash")
 
