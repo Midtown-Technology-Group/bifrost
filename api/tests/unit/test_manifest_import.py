@@ -557,6 +557,30 @@ class TestManifestIntegrationOAuthProviderImport:
         assert provider.scopes == ["read", "write"]
         assert provider.provider_metadata == {"omit_token_exchange_scope": False}
 
+        await resolver._resolve_integration(
+            "scope-sensitive",
+            ManifestIntegration(
+                id=integration_id,
+                name="scope-sensitive",
+                oauth_provider=ManifestOAuthProvider(
+                    provider_name="scope-sensitive",
+                    client_id="client-three",
+                    token_url="https://auth.example.com/oauth/token",
+                    scopes=["read"],
+                ),
+            ),
+        )
+        await db_session.flush()
+        db_session.expire_all()
+
+        provider = (
+            await db_session.execute(
+                select(OAuthProvider).where(OAuthProvider.integration_id == uuid.UUID(integration_id))
+            )
+        ).scalar_one()
+        assert provider.client_id == "client-three"
+        assert provider.provider_metadata == {"omit_token_exchange_scope": False}
+
 
 class TestManifestAppPathSafety:
     """Manifest app paths must stay inside one app source directory."""
