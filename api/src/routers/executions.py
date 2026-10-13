@@ -5,6 +5,7 @@ Provides access to workflow execution history with filtering capabilities.
 """
 
 import base64
+from shared.execution_logs import project_execution_logs
 import json
 import logging
 from datetime import datetime, timedelta, timezone
@@ -436,17 +437,7 @@ class ExecutionRepository:
             logs_result = await self.db.execute(logs_query)
             log_entries = logs_result.scalars().all()
 
-            logs = [
-                ExecutionLogPublic(
-                    id=public_id,
-                    timestamp=log.timestamp.isoformat() if log.timestamp else "",
-                    level=log.level or "info",
-                    message=log.message or "",
-                    data=log.log_metadata,
-                    sequence=log.sequence,
-                )
-                for public_id, log in enumerate(log_entries)
-            ]
+            logs = project_execution_logs(log_entries)
 
         # 3. Fetch AI usage data
         ai_usage_query = (
@@ -634,17 +625,7 @@ class ExecutionRepository:
         logs_result = await self.db.execute(logs_query)
         log_entries = logs_result.scalars().all()
 
-        logs = [
-            ExecutionLogPublic(
-                id=public_id,
-                timestamp=log.timestamp.isoformat() if log.timestamp else "",
-                level=log.level or "info",
-                message=log.message or "",
-                data=log.log_metadata,
-                sequence=log.sequence,
-            )
-            for public_id, log in enumerate(log_entries)
-        ]
+        logs = project_execution_logs(log_entries)
 
         return logs, None
 
