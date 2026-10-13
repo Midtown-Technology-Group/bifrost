@@ -24,6 +24,7 @@ from uuid import UUID, uuid4
 
 import httpx
 import pytest
+from sqlalchemy import select
 
 from src.models.orm.device_jobs import (
     CLAIM_LEASE_SECONDS,
@@ -278,9 +279,16 @@ async def test_dead_device_claim_released_by_sweep(
         json={"agent_session_id": session_id},
     )
     assert claim.status_code == 200, claim.text
-    job = await db_session.get(DeviceJob, UUID(claim.json()["job_id"]))
-    # The test session seeded this row before the API claim — re-read it.
-    await db_session.refresh(job)
+    # Retain this row lock through setup and the explicit sweep. The live
+    # scheduler uses SKIP LOCKED by design; releasing the row here would let
+    # that concurrent sweep legitimately skip or win this test-owned claim.
+    locked_job = await db_session.execute(
+        select(DeviceJob)
+        .where(DeviceJob.id == UUID(claim.json()["job_id"]))
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    job = locked_job.scalar_one()
     assert job.status == "claimed"
 
     # Test control: age the claim past the 60s lease and freeze the device
@@ -288,11 +296,14 @@ async def test_dead_device_claim_released_by_sweep(
     job.claimed_at = datetime.now(timezone.utc) - timedelta(
         seconds=CLAIM_LEASE_SECONDS + 1
     )
-    device = await db_session.get(Device, UUID(device_id))
+    locked_device = await db_session.execute(
+        select(Device).where(Device.id == UUID(device_id)).with_for_update()
+    )
+    device = locked_device.scalar_one()
     device.last_seen_at = datetime.now(timezone.utc) - timedelta(
         seconds=DEVICE_HEARTBEAT_LOST_SECONDS + 1
     )
-    await db_session.commit()
+    await db_session.flush()
 
     stats = await sweep_device_jobs(db_session, now=datetime.now(timezone.utc))
     await db_session.refresh(job)
