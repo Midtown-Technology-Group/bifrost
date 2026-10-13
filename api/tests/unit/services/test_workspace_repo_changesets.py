@@ -1591,7 +1591,8 @@ async def test_retry_git_closure_accepts_each_durable_failure_state(failure_stat
 
 
 @pytest.mark.asyncio
-async def test_retry_git_closure_rejects_live_pending_operation():
+@pytest.mark.parametrize("failure_state", ["pending", "unknown"])
+async def test_retry_git_closure_rejects_live_pending_operation(failure_state):
     svc = service({"features/a.txt": b"a"})
     row = await svc.begin(WorkspaceRepoChangesetBegin(scope="features"), uuid4())
     stored = svc.rows.items[row.id]
@@ -1599,7 +1600,7 @@ async def test_retry_git_closure_rejects_live_pending_operation():
     stored.updated_at = datetime.now(timezone.utc)
     stored.failure_detail = {
         "phase": "git_closure",
-        "state": "pending",
+        "state": failure_state,
         "operation_id": str(uuid4()),
         "provenance": {"operator": "tester", "commit_message": "release source"},
     }
@@ -1613,7 +1614,8 @@ async def test_retry_git_closure_rejects_live_pending_operation():
 
 
 @pytest.mark.asyncio
-async def test_retry_git_closure_accepts_stale_pending_operation():
+@pytest.mark.parametrize("timestamp_format", ["aware", "naive", "missing"])
+async def test_retry_git_closure_accepts_stale_pending_operation(timestamp_format):
     svc = service({"features/a.txt": b"a"})
     svc.commit_writer = RecordingWriter(
         history_hashes={"features/a.txt": hashlib.sha256(b"a").hexdigest()}
@@ -1635,6 +1637,10 @@ async def test_retry_git_closure_accepts_stale_pending_operation():
         - GIT_CLOSURE_PENDING_STALE_AFTER
         - timedelta(seconds=1)
     )
+    if timestamp_format == "naive":
+        stored.updated_at = stored.updated_at.replace(tzinfo=None)
+    elif timestamp_format == "missing":
+        stored.updated_at = None
     stored.failure_detail = {
         "phase": "git_closure",
         "state": "pending",
