@@ -102,6 +102,7 @@ async def test_plain_push_with_tty_does_not_open_tui(tmp_path, monkeypatch):
         force=False,
         client=FakeClient(),
         single_file=str(f),
+        direction="push",
     )
     assert rc == 0
 
