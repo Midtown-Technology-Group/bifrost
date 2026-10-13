@@ -49,6 +49,8 @@ COLUMNS_TO_MIGRATE = [
     ("executions", "created_at"),
     ("executions", "started_at"),
     ("form_roles", "assigned_at"),
+    ("form_fields", "created_at"),
+    ("form_fields", "updated_at"),
     ("forms", "created_at"),
     ("forms", "last_seen_at"),
     ("forms", "updated_at"),

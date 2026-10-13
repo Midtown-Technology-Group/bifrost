@@ -1922,9 +1922,6 @@ class GitHubSyncService:
         Returns count of entities imported.
         """
         async with self.repo_manager.checkout() as work_dir:
-            # Regenerate manifest from current DB state
-            await self._regenerate_manifest_to_dir(self.db, work_dir)
-
             # Import entities atomically with savepoint
             async with self.db.begin_nested():
                 count, _changes, _ = await self._import_all_entities(work_dir)

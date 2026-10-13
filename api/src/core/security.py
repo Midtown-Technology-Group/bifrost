@@ -368,9 +368,6 @@ def create_form_upload_token(
 # =============================================================================
 
 
-_FERNET_SALT = b"bifrost_secrets_v1"
-
-
 def _get_fernet_key() -> bytes:
     """
     Derive a Fernet-compatible key from the application secret using HKDF.
@@ -387,7 +384,7 @@ def _get_fernet_key() -> bytes:
     kdf = HKDF(
         algorithm=hashes.SHA256(),
         length=32,
-        salt=_FERNET_SALT,
+        salt=settings.fernet_salt.encode(),
         info=b"bifrost-secrets-encryption",
     )
 
@@ -395,7 +392,10 @@ def _get_fernet_key() -> bytes:
     return key
 
 
-def derive_fernet_key(secret_key: str) -> bytes:
+def derive_fernet_key(
+    secret_key: str,
+    fernet_salt: str = "bifrost_secrets_v1",
+) -> bytes:
     """
     Derive a Fernet-compatible key from an explicit secret key.
 
@@ -405,19 +405,23 @@ def derive_fernet_key(secret_key: str) -> bytes:
     kdf = HKDF(
         algorithm=hashes.SHA256(),
         length=32,
-        salt=_FERNET_SALT,
+        salt=fernet_salt.encode(),
         info=b"bifrost-secrets-encryption",
     )
     return base64.urlsafe_b64encode(kdf.derive(secret_key.encode()))
 
 
-def decrypt_with_key(encrypted: str, secret_key: str) -> str:
+def decrypt_with_key(
+    encrypted: str,
+    secret_key: str,
+    fernet_salt: str = "bifrost_secrets_v1",
+) -> str:
     """
     Decrypt a secret using an explicit key (not current instance settings).
 
     Used during import to decrypt values encrypted by a different instance.
     """
-    key = derive_fernet_key(secret_key)
+    key = derive_fernet_key(secret_key, fernet_salt)
     f = Fernet(key)
     encrypted_bytes = base64.urlsafe_b64decode(encrypted.encode())
     return f.decrypt(encrypted_bytes).decode()

@@ -47,3 +47,20 @@ def test_cross_instance_reencrypt():
 
     # Verify destination can decrypt
     assert decrypt_secret(re_encrypted) == "secret-value"
+
+
+def test_custom_source_salt_roundtrips_and_default_salt_fails():
+    """Imports can decrypt a source instance configured with a custom salt."""
+    import base64
+    from cryptography.fernet import Fernet
+
+    source_key = "source-instance-secret-key-abcdef"
+    source_salt = "tenant-specific-fernet-salt"
+    source_fernet = Fernet(derive_fernet_key(source_key, source_salt))
+    encrypted = base64.urlsafe_b64encode(
+        source_fernet.encrypt(b"secret-value")
+    ).decode()
+
+    assert decrypt_with_key(encrypted, source_key, source_salt) == "secret-value"
+    with pytest.raises(Exception):
+        decrypt_with_key(encrypted, source_key)

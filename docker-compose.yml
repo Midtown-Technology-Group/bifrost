@@ -128,6 +128,7 @@ services:
       # Core (required by Settings during migrations)
       BIFROST_ENVIRONMENT: ${BIFROST_ENVIRONMENT:-production}
       BIFROST_SECRET_KEY: ${BIFROST_SECRET_KEY:?BIFROST_SECRET_KEY is required (32+ chars)}
+      BIFROST_FERNET_SALT: ${BIFROST_FERNET_SALT:-bifrost_secrets_v1}
       # Migrations require one PostgreSQL session for the advisory lock.
       BIFROST_DATABASE_URL: postgresql+asyncpg://bifrost:${POSTGRES_PASSWORD}@postgres:5432/bifrost
       BIFROST_DATABASE_URL_SYNC: postgresql://bifrost:${POSTGRES_PASSWORD}@postgres:5432/bifrost
@@ -185,6 +186,7 @@ services:
       BIFROST_DEBUG: ${BIFROST_DEBUG:-false}
       BIFROST_WORK_DELIVERY_BACKEND: ${BIFROST_WORK_DELIVERY_BACKEND:-rabbitmq}
       BIFROST_SECRET_KEY: ${BIFROST_SECRET_KEY:?BIFROST_SECRET_KEY is required (32+ chars)}
+      BIFROST_FERNET_SALT: ${BIFROST_FERNET_SALT:-bifrost_secrets_v1}
       # Database (via PgBouncer for connection pooling)
       BIFROST_DATABASE_URL: postgresql+asyncpg://bifrost:${POSTGRES_PASSWORD}@pgbouncer:5432/bifrost
       BIFROST_DATABASE_URL_SYNC: postgresql://bifrost:${POSTGRES_PASSWORD}@pgbouncer:5432/bifrost
@@ -268,6 +270,7 @@ services:
       BIFROST_ENVIRONMENT: ${BIFROST_ENVIRONMENT:-production}
       BIFROST_WORK_DELIVERY_BACKEND: ${BIFROST_WORK_DELIVERY_BACKEND:-rabbitmq}
       BIFROST_SECRET_KEY: ${BIFROST_SECRET_KEY:?BIFROST_SECRET_KEY is required (32+ chars)}
+      BIFROST_FERNET_SALT: ${BIFROST_FERNET_SALT:-bifrost_secrets_v1}
       # Database (via PgBouncer for connection pooling)
       BIFROST_DATABASE_URL: postgresql+asyncpg://bifrost:${POSTGRES_PASSWORD}@pgbouncer:5432/bifrost
       BIFROST_DATABASE_URL_SYNC: postgresql://bifrost:${POSTGRES_PASSWORD}@pgbouncer:5432/bifrost
@@ -323,6 +326,7 @@ services:
       BIFROST_ENVIRONMENT: ${BIFROST_ENVIRONMENT:-production}
       BIFROST_WORK_DELIVERY_BACKEND: ${BIFROST_WORK_DELIVERY_BACKEND:-rabbitmq}
       BIFROST_SECRET_KEY: ${BIFROST_SECRET_KEY:?BIFROST_SECRET_KEY is required (32+ chars)}
+      BIFROST_FERNET_SALT: ${BIFROST_FERNET_SALT:-bifrost_secrets_v1}
       # Database (via PgBouncer for connection pooling)
       BIFROST_DATABASE_URL: postgresql+asyncpg://bifrost:${POSTGRES_PASSWORD}@pgbouncer:5432/bifrost
       BIFROST_DATABASE_URL_SYNC: postgresql://bifrost:${POSTGRES_PASSWORD}@pgbouncer:5432/bifrost

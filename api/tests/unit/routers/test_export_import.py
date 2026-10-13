@@ -1,10 +1,14 @@
 """Tests for export/import models and serialization."""
 
+import base64
 import json
 from types import SimpleNamespace
 from uuid import UUID
 
 import pytest
+from cryptography.fernet import Fernet
+
+from src.core.security import derive_fernet_key
 
 from src.models.contracts.export_import import (
     BulkExportRequest,
@@ -659,7 +663,7 @@ class TestImportHelpers:
         assert db.added == []
 
     @pytest.mark.asyncio
-    async def test_import_config_value_adds_new_secret_and_warns_on_reencrypt_failure(
+    async def test_import_config_value_fails_closed_on_reencrypt_failure(
         self,
         monkeypatch,
     ):
@@ -669,21 +673,19 @@ class TestImportHelpers:
         result = ImportResult(entity_type="configs")
         monkeypatch.setattr(export_import, "decrypt_with_key", lambda *_: (_ for _ in ()).throw(ValueError("bad key")))
 
-        await _import_config_value(
-            db,
-            integration_id,
-            UUID("44444444-4444-4444-4444-444444444444"),
-            "api_key",
-            "ciphertext",
-            "source-key",
-            "user-1",
-            result,
-        )
+        with pytest.raises(ValueError, match="bad key"):
+            await _import_config_value(
+                db,
+                integration_id,
+                UUID("44444444-4444-4444-4444-444444444444"),
+                "api_key",
+                "ciphertext",
+                "source-key",
+                "user-1",
+                result,
+            )
 
-        assert "Could not re-encrypt secret" in result.warnings[0]
-        assert len(db.added) == 1
-        assert db.added[0].key == "api_key"
-        assert db.added[0].config_type == ConfigType.SECRET
+        assert db.added == []
 
     @pytest.mark.asyncio
     async def test_import_oauth_provider_updates_existing_provider(self):
@@ -734,7 +736,57 @@ class TestImportHelpers:
         assert db.added == []
 
     @pytest.mark.asyncio
-    async def test_import_oauth_provider_creates_new_provider_and_warns_on_bad_reencrypt(
+    async def test_import_oauth_provider_reencrypts_stored_secret_format(
+        self,
+        monkeypatch,
+    ):
+        source_key = "source-instance-secret-key-abcdef"
+        source_salt = "custom-source-salt"
+        stored_secret = base64.urlsafe_b64encode(
+            Fernet(derive_fernet_key(source_key, source_salt)).encrypt(b"client-secret")
+        ).decode()
+        exported_secret = base64.b64encode(stored_secret.encode()).decode()
+        existing = SimpleNamespace(
+            provider_name="old",
+            display_name=None,
+            oauth_flow_type=None,
+            client_id=None,
+            encrypted_client_secret=None,
+            authorization_url=None,
+            token_url=None,
+            token_url_defaults=None,
+            redirect_uri=None,
+            scopes=None,
+            provider_metadata=None,
+        )
+        integration = SimpleNamespace(
+            id=UUID("55555555-5555-5555-5555-555555555555"),
+            name="Demo",
+            oauth_provider=existing,
+        )
+        monkeypatch.setattr(
+            export_import,
+            "encrypt_secret",
+            lambda plaintext: f"destination:{plaintext}",
+        )
+
+        await _import_oauth_provider(
+            _FakeDb([]),
+            integration,
+            OAuthProviderExportItem(
+                provider_name="ms",
+                client_id="client-1",
+                encrypted_client_secret=exported_secret,
+            ),
+            source_secret_key=source_key,
+            result=ImportResult(entity_type="integrations"),
+            source_fernet_salt=source_salt,
+        )
+
+        assert existing.encrypted_client_secret == b"destination:client-secret"
+
+    @pytest.mark.asyncio
+    async def test_import_oauth_provider_fails_closed_on_bad_reencrypt(
         self,
         monkeypatch,
     ):
@@ -745,25 +797,23 @@ class TestImportHelpers:
         )
         db = _FakeDb([])
         result = ImportResult(entity_type="integrations")
-        monkeypatch.setattr(export_import, "derive_fernet_key_for_oauth", lambda *_: (_ for _ in ()).throw(ValueError("bad key")))
+        monkeypatch.setattr(export_import, "decrypt_with_key", lambda *_: (_ for _ in ()).throw(ValueError("bad key")))
 
-        await _import_oauth_provider(
-            db,
-            integration,
-            OAuthProviderExportItem(
-                provider_name="ms",
-                client_id="client-1",
-                encrypted_client_secret="c2VjcmV0",
-            ),
-            source_secret_key="source-key",
-            result=result,
-            force_global=True,
-        )
+        with pytest.raises(ValueError, match="bad key"):
+            await _import_oauth_provider(
+                db,
+                integration,
+                OAuthProviderExportItem(
+                    provider_name="ms",
+                    client_id="client-1",
+                    encrypted_client_secret="c2VjcmV0",
+                ),
+                source_secret_key="source-key",
+                result=result,
+                force_global=True,
+            )
 
-        assert "Could not re-encrypt OAuth client secret" in result.warnings[0]
-        assert len(db.added) == 1
-        assert db.added[0].provider_name == "ms"
-        assert db.added[0].encrypted_client_secret == b"secret"
+        assert db.added == []
 
 
 class TestImportConfigs:

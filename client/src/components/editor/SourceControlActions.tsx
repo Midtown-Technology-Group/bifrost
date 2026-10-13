@@ -23,7 +23,7 @@ interface SourceControlActionsProps {
 export function SourceControlActions(props: SourceControlActionsProps) {
 	const id = useId();
 	const hasRemoteChanges = props.commitsAhead > 0 || props.commitsBehind > 0;
-	const syncBlocked = props.hasChanges && hasRemoteChanges;
+	const syncBlocked = props.hasChanges && props.commitsBehind > 0;
 	if (props.hasConflicts)
 		return (
 			<div className="space-y-2 p-3">

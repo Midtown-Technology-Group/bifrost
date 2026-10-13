@@ -699,6 +699,7 @@ async def import_configs(
     file: UploadFile = File(...),
     replace_existing: bool = Form(True),
     source_secret_key: str | None = Form(None),
+    source_fernet_salt: str = Form("bifrost_secrets_v1"),
     target_organization_id: str | None = Form(None),
 ) -> ImportResult:
     """Import configs from JSON file with optional secret re-encryption."""
@@ -728,7 +729,9 @@ async def import_configs(
             # Re-encrypt secrets
             if item.config_type == "secret" and value and source_secret_key:
                 try:
-                    plaintext = decrypt_with_key(value, source_secret_key)
+                    plaintext = decrypt_with_key(
+                        value, source_secret_key, source_fernet_salt
+                    )
                     value = encrypt_secret(plaintext)
                 except Exception as e:
                     result.errors += 1
@@ -806,6 +809,7 @@ async def import_integrations(
     file: UploadFile = File(...),
     replace_existing: bool = Form(True),
     source_secret_key: str | None = Form(None),
+    source_fernet_salt: str = Form("bifrost_secrets_v1"),
     target_organization_id: str | None = Form(None),
 ) -> ImportResult:
     """Import integrations from JSON file with optional secret re-encryption."""
@@ -943,6 +947,7 @@ async def import_integrations(
                         db, integ.id, org_id, cfg_key, cfg_value,
                         source_secret_key,
                         str(user.user_id), result,
+                        source_fernet_salt=source_fernet_salt,
                     )
 
             # Import default config (org_id = NULL)
@@ -951,6 +956,7 @@ async def import_integrations(
                     db, integ.id, None, cfg_key, cfg_value,
                     source_secret_key,
                     str(user.user_id), result,
+                    source_fernet_salt=source_fernet_salt,
                 )
 
             # Import OAuth provider
@@ -959,6 +965,7 @@ async def import_integrations(
                     db, integ, item.oauth_provider,
                     source_secret_key, result,
                     target_override, force_global,
+                    source_fernet_salt=source_fernet_salt,
                 )
 
         except Exception as e:
@@ -978,6 +985,7 @@ async def import_all(
     file: UploadFile = File(...),
     replace_existing: bool = Form(True),
     source_secret_key: str | None = Form(None),
+    source_fernet_salt: str = Form("bifrost_secrets_v1"),
     target_organization_id: str | None = Form(None),
 ) -> dict:
     """Import all entities from a ZIP file."""
@@ -1017,12 +1025,14 @@ async def import_all(
                     r = await import_configs(
                         db, user, temp_file, replace_existing,
                         source_secret_key,
+                        source_fernet_salt,
                         target_organization_id,
                     )
                 elif entity_type == "integrations":
                     r = await import_integrations(
                         db, user, temp_file, replace_existing,
                         source_secret_key,
+                        source_fernet_salt,
                         target_organization_id,
                     )
                 else:
@@ -1085,6 +1095,7 @@ async def _import_config_value(
     source_secret_key: str | None,
     user_id: str,
     result: ImportResult,
+    source_fernet_salt: str = "bifrost_secrets_v1",
 ) -> None:
     """Import a single config value, handling secret re-encryption."""
     # Determine config type from schema
@@ -1106,11 +1117,8 @@ async def _import_config_value(
 
     # Re-encrypt secrets
     if config_type == ConfigType.SECRET and value and source_secret_key:
-        try:
-            plaintext = decrypt_with_key(value, source_secret_key)
-            value = encrypt_secret(plaintext)
-        except Exception:
-            result.warnings.append(f"Could not re-encrypt secret for config '{key}'")
+        plaintext = decrypt_with_key(value, source_secret_key, source_fernet_salt)
+        value = encrypt_secret(plaintext)
 
     # Upsert config
     existing_query = select(Config).where(
@@ -1149,6 +1157,7 @@ async def _import_oauth_provider(
     result: ImportResult,
     target_override: UUID | None = None,
     force_global: bool = False,
+    source_fernet_salt: str = "bifrost_secrets_v1",
 ) -> None:
     """Import OAuth provider for an integration."""
     org_id = await _resolve_org_id(
@@ -1162,21 +1171,11 @@ async def _import_oauth_provider(
 
     # If we have source keys, re-encrypt the secret
     if source_secret_key and encrypted_secret_bytes:
-        try:
-            # The encrypted_client_secret in OAuthProvider is raw Fernet encrypted bytes (not base64-wrapped)
-            # We need to decrypt with source key and re-encrypt with destination key
-            from cryptography.fernet import Fernet
-
-            source_key = derive_fernet_key_for_oauth(source_secret_key)
-            f = Fernet(source_key)
-            plaintext = f.decrypt(encrypted_secret_bytes).decode()
-
-            # Re-encrypt with current instance key
-            dest_key = _get_current_fernet_key()
-            f2 = Fernet(dest_key)
-            encrypted_secret_bytes = f2.encrypt(plaintext.encode())
-        except Exception as e:
-            result.warnings.append(f"Could not re-encrypt OAuth client secret for '{oauth_item.provider_name}': {e}")
+        stored_secret = encrypted_secret_bytes.decode()
+        plaintext = decrypt_with_key(
+            stored_secret, source_secret_key, source_fernet_salt
+        )
+        encrypted_secret_bytes = encrypt_secret(plaintext).encode()
 
     if integration.oauth_provider:
         # Update existing
@@ -1209,15 +1208,3 @@ async def _import_oauth_provider(
             organization_id=org_id,
             integration_id=integration.id,
         ))
-
-
-def derive_fernet_key_for_oauth(secret_key: str) -> bytes:
-    """Derive Fernet key for OAuth secret re-encryption (same as derive_fernet_key)."""
-    from src.core.security import derive_fernet_key
-    return derive_fernet_key(secret_key)
-
-
-def _get_current_fernet_key() -> bytes:
-    """Get current instance's Fernet key."""
-    from src.core.security import _get_fernet_key
-    return _get_fernet_key()

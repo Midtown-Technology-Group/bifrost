@@ -154,6 +154,30 @@ def test_validate_manifest_missing_org(sample_manifest):
     assert any("organization" in e.lower() for e in errors)
 
 
+@pytest.mark.parametrize(
+    "unsafe_path",
+    [
+        "../escape.py",
+        "workflows/../../escape.py",
+        "/tmp/escape.py",
+        "C:/escape.py",
+        "workflows\\escape.py",
+        ".git/config",
+        ".bifrost/workflows.yaml",
+    ],
+)
+def test_manifest_paths_must_be_safe_repo_relative_paths(sample_manifest, unsafe_path):
+    from bifrost.manifest import get_all_paths, parse_manifest, validate_manifest
+
+    wf_id = sample_manifest["_wf_id"]
+    sample_manifest["workflows"][wf_id]["path"] = unsafe_path
+    manifest = parse_manifest(yaml.dump(sample_manifest, default_flow_style=False))
+
+    assert any("path" in error.lower() for error in validate_manifest(manifest))
+    with pytest.raises(ValueError, match="Unsafe manifest path"):
+        get_all_paths(manifest)
+
+
 class TestFilePoliciesManifest:
     """Tests for file policy manifest serialization."""
 

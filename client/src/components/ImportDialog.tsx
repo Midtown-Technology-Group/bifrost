@@ -216,6 +216,7 @@ export function ImportDialog({
 	const [isDragOver, setIsDragOver] = useState(false);
 	const [replaceExisting, setReplaceExisting] = useState(true);
 	const [sourceSecretKey, setSourceSecretKey] = useState("");
+	const [sourceFernetSalt, setSourceFernetSalt] = useState("");
 	const [showSecretFields, setShowSecretFields] = useState(false);
 	const [isImporting, setIsImporting] = useState(false);
 	const [importError, setImportError] = useState<string | null>(null);
@@ -339,6 +340,7 @@ export function ImportDialog({
 			const options = {
 				replaceExisting,
 				sourceSecretKey: sourceSecretKey || undefined,
+				sourceFernetSalt: sourceFernetSalt || undefined,
 				targetOrganizationId: targetOrgId,
 			};
 
@@ -386,6 +388,7 @@ export function ImportDialog({
 		setParseError(null);
 		setShowSecretFields(false);
 		setSourceSecretKey("");
+		setSourceFernetSalt("");
 		setTargetOrgId(undefined);
 		setHasOrgScopedItems(false);
 		setImportError(null);
@@ -628,6 +631,21 @@ export function ImportDialog({
 												)
 											}
 											placeholder="BIFROST_SECRET_KEY from source instance"
+										/>
+									</div>
+									<div className="space-y-2">
+										<Label htmlFor="source-fernet-salt">
+											Source Fernet Salt
+										</Label>
+										<Input
+											id="source-fernet-salt"
+											value={sourceFernetSalt}
+											onChange={(e) =>
+												setSourceFernetSalt(
+													e.target.value,
+												)
+											}
+											placeholder="bifrost_secrets_v1 (default)"
 										/>
 									</div>
 								</div>
