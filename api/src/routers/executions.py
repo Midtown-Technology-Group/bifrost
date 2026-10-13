@@ -11,7 +11,7 @@ from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query, Request, status
-from sqlalchemy import select, and_, desc, func, or_, text
+from sqlalchemy import select, and_, desc, func, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import defer, selectinload
 
@@ -42,6 +42,7 @@ from shared.pending_execution import get_pending_execution_fallback
 from shared.sdk_execution_reads import (
     decode_history_cursor as _decode_history_cursor,
     encode_history_cursor as _encode_history_cursor,
+    paginate_history_query,
 )
 from src.core.auth import Context, RequirePlatformAdmin
 from src.core.principal import UserPrincipal
@@ -282,28 +283,9 @@ class ExecutionRepository:
 
         # Pagination: keyset when the caller has a cursor, legacy offset
         # otherwise (first page, or an old numeric token still in flight).
-        if cursor is not None:
-            cursor_timeline, cursor_id = cursor
-            if cursor_timeline is None:
-                # A validated v1 cursor used started_at semantics. Restart the
-                # listing rather than interpreting it against the v2 composite
-                # timeline and silently returning a gap or duplicate block.
-                pass
-            else:
-                # Strictly older than the cursor row. Excludes the NULL block
-                # and prevents new rows from injecting themselves into the
-                # middle of an in-progress pagination.
-                query = query.where(
-                    or_(
-                        timeline_at < cursor_timeline,
-                        and_(
-                            timeline_at == cursor_timeline,
-                            ExecutionModel.id < cursor_id,
-                        ),
-                    )
-                )
-        elif offset:
-            query = query.offset(offset)
+        query = paginate_history_query(
+            query, timeline_at, ExecutionModel.id, cursor, offset
+        )
 
         query = query.limit(limit + 1)  # +1 to check for more
 

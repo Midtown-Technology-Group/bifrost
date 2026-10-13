@@ -34,10 +34,13 @@ import logging
 from datetime import datetime
 from decimal import Decimal
 from uuid import UUID
+from typing import Any
 
 from sqlalchemy import and_, desc, func, or_, select, union_all
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import defer, selectinload
+from sqlalchemy.sql import Select
+from sqlalchemy.sql.elements import SQLColumnExpression
 
 from src.core.log_safety import log_safe
 from src.core.org_filter import OrgFilterType, resolve_org_filter
@@ -80,6 +83,27 @@ def encode_history_cursor(timeline_at: datetime | None, row_id: UUID) -> str:
         "i": str(row_id),
     }
     return base64.urlsafe_b64encode(json.dumps(payload).encode()).decode()
+
+
+def paginate_history_query(
+    query: Select[Any],
+    timeline_at: SQLColumnExpression[datetime],
+    row_id: SQLColumnExpression[UUID],
+    cursor: tuple[datetime | None, UUID] | None,
+    offset: int,
+) -> Select[Any]:
+    """Apply one cursor contract to HTTP and SDK execution history reads."""
+    if cursor is None:
+        return query.offset(offset) if offset else query
+    cursor_timeline, cursor_id = cursor
+    if cursor_timeline is None:
+        # Validated v1 cursors restart rather than reuse started_at positions
+        # against the composite v2 timeline.
+        return query
+    return query.where(
+        or_(timeline_at < cursor_timeline,
+            and_(timeline_at == cursor_timeline, row_id < cursor_id))
+    )
 
 
 def decode_history_cursor(token: str) -> tuple[datetime | None, UUID] | None:
@@ -580,25 +604,7 @@ async def list_sdk_executions(
         desc(ExecutionModel.id),
     )
 
-    if cursor is not None:
-        cursor_timeline, cursor_id = cursor
-        if cursor_timeline is None:
-            # A validated v1 cursor used started_at semantics. Restart the
-            # listing rather than interpreting it against the v2 composite
-            # timeline and silently returning a gap or duplicate block.
-            pass
-        else:
-            query = query.where(
-                or_(
-                    timeline_at < cursor_timeline,
-                    and_(
-                        timeline_at == cursor_timeline,
-                        ExecutionModel.id < cursor_id,
-                    ),
-                )
-            )
-    elif offset:
-        query = query.offset(offset)
+    query = paginate_history_query(query, timeline_at, ExecutionModel.id, cursor, offset)
 
     query = query.limit(limit + 1)
 
