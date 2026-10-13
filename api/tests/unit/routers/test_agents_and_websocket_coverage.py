@@ -48,6 +48,7 @@ def _principal(**overrides):
         "is_superuser": False,
         "is_platform_admin": False,
         "is_provider_org": False,
+        "is_external": False,
         "role_ids": [],
         "role_names": [],
         "embed": False,
