@@ -737,6 +737,7 @@ describe("SolutionDetail", () => {
 		expect(open).toHaveBeenCalledWith(
 			"/tables/tbl-1?from=solution:sol-1",
 			"_blank",
+			"noopener,noreferrer",
 		);
 	});
 
