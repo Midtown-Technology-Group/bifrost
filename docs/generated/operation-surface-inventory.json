@@ -18288,6 +18288,13 @@
         "status": "missing_surface"
       },
       {
+        "method": "PUT",
+        "operation_id": "",
+        "path": "/api/forms/{form_id}/upload",
+        "reason": "REST operation has not entered the canonical operation catalog yet.",
+        "status": "missing_surface"
+      },
+      {
         "method": "POST",
         "operation_id": "",
         "path": "/api/github/abort-merge",

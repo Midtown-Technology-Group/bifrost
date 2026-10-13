@@ -1776,8 +1776,10 @@ class WorkflowExecutionConsumer(BaseConsumer):
         """Fail confirmed work whose required Redis context disappeared.
 
         Taking the publisher's advisory transaction lock prevents observing
-        SCHEDULED while a confirmed publication is still advancing to PENDING.
-        Unconfirmed SCHEDULED and terminal rows remain untouched.
+        SCHEDULED while a live publisher is still advancing to PENDING. Once
+        this broker delivery owns the lock, either SCHEDULED or PENDING is
+        confirmed work: SCHEDULED means the publisher died after broker
+        confirmation but before committing its state transition.
         """
         from src.core.database import get_db_context
         from src.models.enums import ExecutionStatus
@@ -1800,7 +1802,10 @@ class WorkflowExecutionConsumer(BaseConsumer):
             await require_delivery_ownership(db)
             if execution is None:
                 return None
-            if execution.status == ExecutionStatus.PENDING:
+            if execution.status in {
+                ExecutionStatus.SCHEDULED,
+                ExecutionStatus.PENDING,
+            }:
                 attempt = await db.scalar(
                     select(ExecutionAttempt)
                     .where(
@@ -1830,9 +1835,11 @@ class WorkflowExecutionConsumer(BaseConsumer):
 
         The publisher holds the same advisory transaction lock through broker
         confirmation and its SCHEDULED -> PENDING transition. A fast consumer
-        therefore waits for that transaction, then advances only PENDING to
-        RUNNING. SCHEDULED means publication was not durably confirmed; any
-        other state is a redelivery or an already-finished execution.
+        therefore waits for that transaction. Once the consumer owns the lock,
+        the broker delivery itself confirms publication: PENDING is the normal
+        path and SCHEDULED recovers a publisher that died after confirmation
+        but before commit. Any other state is a redelivery or an already-
+        finished execution.
 
         Rows are absent for legacy inline-code dispatch, which retains its
         existing Redis-first creation path.
@@ -1856,9 +1863,18 @@ class WorkflowExecutionConsumer(BaseConsumer):
             await require_delivery_ownership(db)
             if execution is None:
                 return ""
-            if execution.status != ExecutionStatus.PENDING:
+            if execution.status not in {
+                ExecutionStatus.SCHEDULED,
+                ExecutionStatus.PENDING,
+            }:
                 return None
-            from src.services.execution.attempts import create_claimed_attempt
+            from src.services.execution.attempts import (
+                create_claimed_attempt,
+                mark_attempt_published,
+            )
+
+            if execution.status == ExecutionStatus.SCHEDULED:
+                await mark_attempt_published(db, execution)
 
             claim = await create_claimed_attempt(
                 db,
