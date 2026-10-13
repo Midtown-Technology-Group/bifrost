@@ -36,6 +36,19 @@ function pickToIso(date: Date): string {
 
 function parseScheduledAt(value: string | undefined): Date | null {
 	if (!value) return null;
+	const calendarDate = /^(\d{4})-(\d{2})-(\d{2})(?:T|$)/.exec(value);
+	if (!calendarDate) return null;
+	const year = Number(calendarDate[1]);
+	const month = Number(calendarDate[2]);
+	const day = Number(calendarDate[3]);
+	if (
+		month < 1 ||
+		month > 12 ||
+		day < 1 ||
+		day > new Date(Date.UTC(year, month, 0)).getUTCDate()
+	) {
+		return null;
+	}
 	const parsed = new Date(value);
 	return Number.isFinite(parsed.getTime()) ? parsed : null;
 }

@@ -99,7 +99,7 @@ export function MemoryChart({ livePoints, livePools }: MemoryChartProps) {
 			// Sum memory across workers within each group bucket
 			const totalsByBucket = new Map<
 				string,
-				{ label: string; total: number }
+				{ label: string; total: number; hasValidValue: boolean }
 			>();
 			const bucketOrder: string[] = [];
 			let historicalUnknown = false;
@@ -114,20 +114,24 @@ export function MemoryChart({ livePoints, livePools }: MemoryChartProps) {
 					totalsByBucket.set(bucket, {
 						label: point.group,
 						total: 0,
+						hasValidValue: false,
 					});
 				}
 				if (isFiniteNonNegative(point.memory_current)) {
 					const aggregate = totalsByBucket.get(bucket)!;
 					aggregate.total += point.memory_current;
+					aggregate.hasValidValue = true;
 				} else {
 					historicalUnknown = true;
 				}
 			}
 
-			const result: ChartDataPoint[] = bucketOrder.map((bucket) => {
-				const aggregate = totalsByBucket.get(bucket)!;
-				return { group: aggregate.label, total: aggregate.total };
-			});
+			const result: ChartDataPoint[] = bucketOrder
+				.filter((bucket) => totalsByBucket.get(bucket)!.hasValidValue)
+				.map((bucket) => {
+					const aggregate = totalsByBucket.get(bucket)!;
+					return { group: aggregate.label, total: aggregate.total };
+				});
 
 			// Compute current totals from latest data points (server returns in order)
 			const latestByWorker = new Map<string, WorkerMetricPoint>();

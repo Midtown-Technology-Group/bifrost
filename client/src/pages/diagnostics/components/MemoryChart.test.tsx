@@ -106,6 +106,29 @@ it("treats null and non-finite memory values as unknown", () => {
 	expect(
 		screen.queryByText(/NaN|Infinity|no memory limit reported/i),
 	).not.toBeInTheDocument();
+	expect(screen.queryByTestId("memory-area-chart")).not.toBeInTheDocument();
+	expect(
+		screen.getByText("No metrics data available yet"),
+	).toBeInTheDocument();
+});
+
+it("retains a valid zero-memory bucket", () => {
+	renderWithProviders(
+		<MemoryChart
+			livePoints={[
+				{
+					group: "now",
+					worker_id: "worker-one",
+					memory_current: 0,
+					memory_max: 100,
+				} as never,
+			]}
+		/>,
+	);
+	expect(screen.getByTestId("memory-area-chart")).toHaveAttribute(
+		"data-points",
+		"1",
+	);
 });
 
 it("keeps historical invalid memory unknown after a valid latest sample", () => {

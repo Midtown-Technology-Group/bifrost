@@ -212,6 +212,20 @@ describe("ScheduleControls — validation", () => {
 		).toHaveTextContent(/pick a date and time/i);
 		expect(screen.queryByText(/past/i)).not.toBeInTheDocument();
 	});
+
+	it("rejects an ISO timestamp with an impossible calendar date", () => {
+		renderWithProviders(
+			<ScheduleControls
+				value={{ scheduled_at: "2026-02-30T09:00:00.000Z" }}
+				onChange={() => {}}
+			/>,
+		);
+
+		expect(
+			screen.getByRole("button", { name: /pick date and time/i }),
+		).toHaveTextContent(/pick a date and time/i);
+		expect(screen.queryByText(/past/i)).not.toBeInTheDocument();
+	});
 });
 
 describe("ScheduleControls — disabled", () => {
