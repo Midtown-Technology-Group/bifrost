@@ -986,6 +986,13 @@ class EventProcessor:
                 "caller_is_provider_org": principal.is_provider_org,
                 "caller_roles": principal.roles,
             }
+            # Actor resolution and agent authorization start a new transaction
+            # after the delivery loop's pre-dispatch commit. Audit persistence
+            # and enqueueing each use an independent durable session, so return
+            # this connection to the pool before either tries to acquire one.
+            # Sessions use expire_on_commit=False; the authorized rows remain
+            # available for the request payload below.
+            await self.session.commit()
 
         # Build parameters from input mapping or raw event data
         parameters: dict[str, Any] = {}
