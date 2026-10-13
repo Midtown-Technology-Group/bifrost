@@ -873,3 +873,38 @@ class TestMicrosoftBotFrameworkAdapter:
         with pytest.raises(ValueError, match="Unknown Bot Framework signing key"):
             await adapter._get_signing_jwk("another-unknown-key")
         assert calls == [adapter._OPENID_URL]
+
+    @pytest.mark.asyncio
+    async def test_waiting_cache_reader_reuses_keys_published_under_lock(
+        self, adapter, monkeypatch
+    ):
+        monkeypatch.setattr(bot_framework.time, "monotonic", lambda: 1_000.0)
+        monkeypatch.setattr(
+            bot_framework.httpx, "AsyncClient",
+            lambda **_kwargs: pytest.fail("cached keys must avoid a network request"),
+        )
+        await adapter._jwks_lock.acquire()
+        waiter = asyncio.create_task(adapter._get_jwks())
+        await asyncio.sleep(0)
+        assert not waiter.done()
+        keys = [{"kid": "rotated-key"}]
+        adapter._jwks = keys
+        adapter._jwks_expires_at = 2_000.0
+        adapter._jwks_lock.release()
+        assert await waiter is keys
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("generation_changed", [True, False])
+    async def test_unknown_key_waiter_reuses_refresh_or_failed_refresh_cooldown(
+        self, adapter, monkeypatch, generation_changed
+    ):
+        monkeypatch.setattr(bot_framework.time, "monotonic", lambda: 1_000.0)
+        monkeypatch.setattr(
+            bot_framework.httpx, "AsyncClient",
+            lambda **_kwargs: pytest.fail("waiting callers must not refresh again"),
+        )
+        keys = [{"kid": "current-key"}]
+        adapter._jwks = keys
+        adapter._jwks_generation = 2 if generation_changed else 1
+        adapter._unknown_key_refresh_attempted_at = 999.0
+        assert await adapter._get_jwks(refresh_for_unknown_kid_generation=1) is keys
