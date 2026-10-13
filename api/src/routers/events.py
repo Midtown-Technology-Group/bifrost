@@ -575,7 +575,12 @@ async def create_source(
 
     logger.info(f"Created event source {source.id}: {source.name}")
 
-    return await _build_event_source_response(source, db)
+    response = await _build_event_source_response(source, db)
+    if request.source_type == EventSourceType.TOPIC:
+        # Request-scoped dependency teardown runs after the HTTP response.
+        # Persist a newly created topic before clients can subscribe to it.
+        await db.commit()
+    return response
 
 
 @router.get(
