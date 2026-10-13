@@ -528,7 +528,7 @@ def test_sonar_runtime_mount_and_workflow_use_the_tested_combiner() -> None:
     assert "coverage combine --strict" not in workflow
 
 
-@pytest.mark.parametrize("invalid", ["corrupt", "incompatible", "empty"])
+@pytest.mark.parametrize("invalid", ["corrupt", "incompatible", "empty", "zero-byte"])
 def test_sonar_invalid_report_is_not_skipped_when_another_report_is_valid(
     tmp_path: Path, invalid: str
 ) -> None:
@@ -542,7 +542,9 @@ def test_sonar_invalid_report_is_not_skipped_when_another_report_is_valid(
     valid.add_arcs({source: [(2, 3)]})
     valid.write()
     invalid_path = module.RUNTIME_DIR / ".coverage.sonar.invalid"
-    if invalid == "corrupt":
+    if invalid == "zero-byte":
+        invalid_path.touch()
+    elif invalid == "corrupt":
         invalid_path.write_bytes(b"not a coverage database")
     else:
         incompatible = coverage.CoverageData(basename=str(invalid_path))
@@ -552,7 +554,10 @@ def test_sonar_invalid_report_is_not_skipped_when_another_report_is_valid(
             incompatible.add_lines({source: [1]})
         incompatible.write()
     original_reports = {path.name: path.read_bytes() for path in module.RUNTIME_DIR.iterdir()}
-    expected = "Empty actual runtime coverage data:.*invalid" if invalid == "empty" else None
+    expected = (
+        "Empty actual runtime coverage data:.*invalid"
+        if invalid in ("empty", "zero-byte") else None
+    )
     with pytest.raises((ValueError, CoverageException), match=expected):
         module.main()
     assert module.DATA_FILE.read_bytes() == original
