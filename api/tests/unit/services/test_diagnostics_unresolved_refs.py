@@ -173,9 +173,55 @@ class TestUnresolvedRefNotifications:
         titles = [
             call.kwargs["title"]
             for call in mock_service.find_admin_notification_by_title.await_args_list
+            if "[" in call.kwargs["title"]
         ]
         assert len(set(titles)) == 2
         assert all("index.tsx" in title for title in titles)
+
+    @pytest.mark.asyncio
+    async def test_clear_finds_matching_legacy_notification(self, diagnostics_service):
+        path = "apps/my-app/pages/index.tsx"
+        legacy = SimpleNamespace(
+            id="legacy-notification",
+            metadata={"file_path": path},
+        )
+        with patch(
+            "src.services.file_storage.diagnostics.get_notification_service"
+        ) as mock_get_service:
+            service = MagicMock()
+            service.find_admin_notification_by_title = AsyncMock(
+                side_effect=[None, legacy]
+            )
+            service.dismiss_notification = AsyncMock()
+            mock_get_service.return_value = service
+
+            await diagnostics_service.clear_unresolved_refs_notification(path)
+
+        service.dismiss_notification.assert_awaited_once_with(
+            "legacy-notification", user_id="system"
+        )
+
+    @pytest.mark.asyncio
+    async def test_clear_keeps_other_paths_legacy_notification(self, diagnostics_service):
+        legacy = SimpleNamespace(
+            id="other-notification",
+            metadata={"file_path": "apps/other/index.tsx"},
+        )
+        with patch(
+            "src.services.file_storage.diagnostics.get_notification_service"
+        ) as mock_get_service:
+            service = MagicMock()
+            service.find_admin_notification_by_title = AsyncMock(
+                side_effect=[None, legacy]
+            )
+            service.dismiss_notification = AsyncMock()
+            mock_get_service.return_value = service
+
+            await diagnostics_service.clear_unresolved_refs_notification(
+                "apps/my-app/index.tsx"
+            )
+
+        service.dismiss_notification.assert_not_awaited()
 
 
 class TestSdkAndFileDiagnosticNotifications:
