@@ -177,6 +177,7 @@ async def run_solution_deploy(
                 raise PlatformJobFailure("deploy_job_missing", "Deploy job is missing.")
             if projection.status != "succeeded":
                 if payload.kind == "install_from_repo" and payload.install_id:
+                    projection.status = "failed"
                     projection.install_id = None
                     await db.flush()
                     orphan = await db.get(Solution, payload.install_id)
