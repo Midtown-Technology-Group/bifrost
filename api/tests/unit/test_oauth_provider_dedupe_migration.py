@@ -38,6 +38,13 @@ def test_upgrade_preserves_references_and_enforces_null_aware_key(monkeypatch):
 
     migration.upgrade()
 
+    # asyncpg prepares each execution separately and rejects batches of SQL
+    # commands. The DO block is one command despite its internal delimiters.
+    for statement in statements:
+        if not statement.lstrip().startswith("DO $$"):
+            assert len([part for part in statement.split(";") if part.strip()]) == 1
+    assert len(statements) == 8
+
     sql = "\n".join(statements)
     assert "COUNT(DISTINCT integration_id)" in sql
     assert "UPDATE oauth_tokens" in sql

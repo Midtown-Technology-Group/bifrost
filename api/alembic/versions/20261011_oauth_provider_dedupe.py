@@ -88,28 +88,53 @@ def upgrade() -> None:
             SELECT id, survivor_id, integration_id
             FROM ranked
             WHERE id <> survivor_id;
-
+            """
+        )
+    )
+    op.execute(
+        sa.text(
+            """
             UPDATE oauth_providers provider
             SET integration_id = NULL
             FROM oauth_provider_dedupe duplicate
             WHERE provider.id = duplicate.id;
-
+            """
+        )
+    )
+    op.execute(
+        sa.text(
+            """
             UPDATE oauth_providers provider
             SET integration_id = duplicate.integration_id
             FROM oauth_provider_dedupe duplicate
             WHERE provider.id = duplicate.survivor_id
               AND duplicate.integration_id IS NOT NULL;
-
+            """
+        )
+    )
+    op.execute(
+        sa.text(
+            """
             UPDATE oauth_tokens token
             SET provider_id = duplicate.survivor_id
             FROM oauth_provider_dedupe duplicate
             WHERE token.provider_id = duplicate.id;
-
+            """
+        )
+    )
+    op.execute(
+        sa.text(
+            """
             UPDATE mcp_servers server
             SET oauth_provider_id = duplicate.survivor_id
             FROM oauth_provider_dedupe duplicate
             WHERE server.oauth_provider_id = duplicate.id;
-
+            """
+        )
+    )
+    op.execute(
+        sa.text(
+            """
             DELETE FROM oauth_providers provider
             USING oauth_provider_dedupe duplicate
             WHERE provider.id = duplicate.id;
