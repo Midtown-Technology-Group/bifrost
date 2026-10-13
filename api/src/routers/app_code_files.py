@@ -654,6 +654,8 @@ async def get_bundle_manifest(
 
     If no manifest exists yet, triggers a build and returns that one.
     """
+    if mode == FileMode.draft:
+        require_platform_admin(_user)
     app = await get_application_or_404(ctx, app_id)
     app_storage = AppStorageService()
     storage_mode = "preview" if mode == FileMode.draft else "live"
@@ -863,6 +865,8 @@ async def get_bundle_asset(
     """
     from fastapi.responses import Response
 
+    if mode == FileMode.draft:
+        require_platform_admin(_user)
     app = await get_application_or_404(ctx, app_id)
     app_storage = AppStorageService()
     storage_mode = "preview" if mode == FileMode.draft else "live"
