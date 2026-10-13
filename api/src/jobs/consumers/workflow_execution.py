@@ -1398,6 +1398,7 @@ class WorkflowExecutionConsumer(BaseConsumer):
                         from src.models.orm.executions import Execution
                         from src.services.execution.repo_runtime import (
                             RepoRuntimeError,
+                            pin_repo_workflow_runtime,
                             verify_repo_runtime_evidence,
                             workflow_data_from_repo_evidence,
                         )
@@ -1424,6 +1425,9 @@ class WorkflowExecutionConsumer(BaseConsumer):
                                         workflow_id, db=db
                                     )
                                 )
+                                if current_workflow_data.get("solution_id"):
+                                    current_pin = await pin_repo_workflow_runtime(db, workflow_id)
+                                    current_workflow_data["content_hash"] = current_pin.source_hash
                             workflow_data = workflow_data_from_repo_evidence(
                                 current_workflow_data,
                                 evidence,

@@ -9,6 +9,43 @@ from src.services.solutions.deployment_manifest import canonical_json, sha256_di
 
 
 @pytest.mark.asyncio
+async def test_legacy_solution_pin_reads_its_own_source_without_global_index(monkeypatch):
+    solution_id = uuid4()
+    workflow_id = uuid4()
+    source = b"async def run():\n    return 'install-local'\n"
+    workflow = SimpleNamespace(
+        id=workflow_id, solution_id=solution_id, name="Local", function_name="run",
+        path="workflows/shared.py",
+    )
+    session = SimpleNamespace(execute=AsyncMock(return_value=SimpleNamespace(
+        one_or_none=lambda: (workflow, None),
+    )))
+    read = AsyncMock(return_value=source)
+    owners = []
+
+    def storage(owner):
+        owners.append(owner)
+        return SimpleNamespace(read=read)
+
+    monkeypatch.setattr("src.services.solutions.storage.SolutionStorage", storage)
+    monkeypatch.setattr(repo_runtime, "wait_for_workspace_generation", AsyncMock(return_value="g1"))
+    pinned = await repo_runtime.pin_repo_workflow_runtime(session, workflow_id)
+
+    assert owners == [solution_id]
+    read.assert_awaited_once_with("workflows/shared.py")
+    assert pinned.source_hash == hashlib.sha256(source).hexdigest()
+    assert pinned.queue_evidence()["solution_id"] == str(solution_id)
+    metadata = {
+        "name": "Local", "function_name": "run", "path": "workflows/shared.py",
+        "solution_id": str(solution_id), "content_hash": pinned.source_hash,
+    }
+    repo_runtime.workflow_data_from_repo_evidence(metadata, pinned.queue_evidence(), str(workflow_id))
+    metadata["solution_id"] = str(uuid4())
+    with pytest.raises(repo_runtime.RepoRuntimeError, match="Solution scope changed"):
+        repo_runtime.workflow_data_from_repo_evidence(metadata, pinned.queue_evidence(), str(workflow_id))
+
+
+@pytest.mark.asyncio
 async def test_pin_repo_runtime_captures_verified_source_and_generation(monkeypatch):
     workflow_id = uuid4()
     content = "def run():\n    return 'safe'\n"
@@ -16,6 +53,7 @@ async def test_pin_repo_runtime_captures_verified_source_and_generation(monkeypa
     workflow = SimpleNamespace(
         id=workflow_id,
         name="Safe workflow",
+        solution_id=None,
         function_name="run",
         path="workflows/safe.py",
     )
@@ -39,6 +77,7 @@ async def test_pin_repo_runtime_rejects_index_hash_mismatch(monkeypatch):
     workflow = SimpleNamespace(
         id=workflow_id,
         name="Unsafe workflow",
+        solution_id=None,
         function_name="run",
         path="workflows/unsafe.py",
     )

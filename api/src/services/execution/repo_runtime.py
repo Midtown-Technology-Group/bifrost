@@ -32,6 +32,7 @@ class PinnedRepoWorkflowRuntime:
     path: str
     source_hash: str
     workspace_generation: str
+    solution_id: str | None = None
     parameters_schema: None = None
 
     @property
@@ -39,7 +40,7 @@ class PinnedRepoWorkflowRuntime:
         return "repo-v1"
 
     def queue_evidence(self) -> dict[str, str]:
-        return {
+        evidence = {
             "schema_version": REPO_RUNTIME_SCHEMA,
             "workflow_id": str(self.workflow_id),
             "workflow_name": self.name,
@@ -48,6 +49,9 @@ class PinnedRepoWorkflowRuntime:
             "workflow_source_hash": self.source_hash,
             "workspace_generation": self.workspace_generation,
         }
+        if self.solution_id is not None:
+            evidence["solution_id"] = self.solution_id
+        return evidence
 
 
 async def pin_repo_workflow_runtime(
@@ -60,7 +64,7 @@ async def pin_repo_workflow_runtime(
         row = (
             await session.execute(
                 select(Workflow, FileIndex)
-                .join(FileIndex, FileIndex.path == Workflow.path)
+                .outerjoin(FileIndex, FileIndex.path == Workflow.path)
                 .where(
                     Workflow.id == workflow_id,
                     Workflow.is_active.is_(True),
@@ -76,11 +80,20 @@ async def pin_repo_workflow_runtime(
             )
 
         workflow, source = row
-        if source.content is None or not source.content_hash:
-            raise RepoRuntimeError("repo workflow source has no integrity hash")
-        actual_hash = hashlib.sha256(source.content.encode("utf-8")).hexdigest()
-        if actual_hash != source.content_hash:
-            raise RepoRuntimeError("repo workflow source integrity mismatch")
+        solution_id = workflow.solution_id
+        if solution_id is not None:
+            from src.services.solutions.storage import SolutionStorage
+
+            content = await SolutionStorage(solution_id).read(workflow.path)
+            actual_hash = hashlib.sha256(content).hexdigest()
+            if await wait_for_workspace_generation() != generation:
+                continue
+        else:
+            if source is None or source.content is None or not source.content_hash:
+                raise RepoRuntimeError("repo workflow source has no integrity hash")
+            actual_hash = hashlib.sha256(source.content.encode("utf-8")).hexdigest()
+            if actual_hash != source.content_hash:
+                raise RepoRuntimeError("repo workflow source integrity mismatch")
         return PinnedRepoWorkflowRuntime(
             workflow_id=workflow.id,
             name=workflow.name,
@@ -88,6 +101,7 @@ async def pin_repo_workflow_runtime(
             path=workflow.path,
             source_hash=actual_hash,
             workspace_generation=generation,
+            solution_id=str(solution_id) if solution_id is not None else None,
         )
 
     raise RepoRuntimeError("workspace source changed while execution was admitted")
@@ -130,6 +144,8 @@ def workflow_data_from_repo_evidence(
     """Bind current metadata to the source identity accepted at enqueue time."""
     if evidence["workflow_id"] != workflow_id:
         raise RepoRuntimeError("repo runtime workflow id mismatch")
+    if workflow_data.get("solution_id") != evidence.get("solution_id"):
+        raise RepoRuntimeError("repo runtime Solution scope changed after admission")
     comparisons = {
         "name": "workflow_name",
         "function_name": "workflow_function_name",
