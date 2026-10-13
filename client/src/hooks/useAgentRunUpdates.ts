@@ -31,7 +31,9 @@ export function useAgentRunUpdates(options: UseAgentRunUpdatesOptions = {}) {
 	useEffect(() => {
 		const channels = ["agent-runs"];
 		if (runId) channels.push(`agent-run:${runId}`);
-		void webSocketService.connect(channels);
+		void webSocketService.connect(channels).catch(() => {
+			// The service logs connection failures and owns bounded recovery.
+		});
 		const unsubscribe = webSocketService.onAgentRunUpdate((update) => {
 			if (agentId && update.agent_id !== agentId) return;
 			// Invalidate the list query (prefix match picks up both

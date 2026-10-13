@@ -587,7 +587,9 @@ function SummaryBackfillProgress({
 	} | null>(null);
 
 	useEffect(() => {
-		void webSocketService.connect([`summary-backfill:${jobId}`]);
+		void webSocketService.connect([`summary-backfill:${jobId}`]).catch(() => {
+			// The service logs connection failures and owns bounded recovery.
+		});
 		const unsubscribe = webSocketService.onSummaryBackfillUpdate(
 			jobId,
 			(update) => {

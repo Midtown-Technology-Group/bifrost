@@ -600,7 +600,22 @@ class WebSocketService {
 			// ticket so the long-lived JWT never enters a URL or access log.
 			const embedToken = getActiveToken();
 			if (embedToken && isEmbedToken(embedToken)) {
-				params.set("ticket", await requestWebSocketTicket(embedToken));
+				try {
+					params.set("ticket", await requestWebSocketTicket(embedToken));
+				} catch (error) {
+					// No socket exists yet, so onclose cannot schedule recovery.
+					if (this.retryCount < this.maxRetries && !this.reconnectTimeout) {
+						this.retryCount++;
+						const delay = Math.min(1000 * Math.pow(2, this.retryCount), 30000);
+						this.reconnectTimeout = setTimeout(() => {
+							this.reconnectTimeout = null;
+							void this.connect(channels).catch(() => {
+								// _connect logs the failure and schedules any remaining retry.
+							});
+						}, delay);
+					}
+					throw error;
+				}
 			}
 
 			const wsUrl = `${protocol}//${host}/ws/connect?${params.toString()}`;
@@ -644,6 +659,7 @@ class WebSocketService {
 						30000,
 					);
 					this.reconnectTimeout = setTimeout(async () => {
+						this.reconnectTimeout = null;
 						// If unauthorized (4001), refresh token before reconnecting
 						// Browser will send fresh cookie on next WebSocket handshake
 						if (event.code === 4001) {
@@ -652,7 +668,9 @@ class WebSocketService {
 							);
 							await refreshAccessToken();
 						}
-						this.connect(Array.from(this.subscribedChannels));
+						void this.connect(Array.from(this.subscribedChannels)).catch(() => {
+							// _connect already reports failures; avoid a detached rejection.
+						});
 					}, delay);
 				}
 			};
