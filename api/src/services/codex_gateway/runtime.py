@@ -382,6 +382,15 @@ class CodexGatewayRuntime:
         source_ip: str | None = None,
         client_user_agent: str | None = None,
     ) -> None:
+        # JSON model values are untrusted, including on authentication failures.
+        # PostgreSQL text rejects NUL/surrogates; the model column is varchar(255).
+        if model is not None:
+            model = (
+                model[:255]
+                .encode("utf-8", errors="replace")
+                .decode("utf-8")
+                .replace("\x00", "")
+            )
         await self.repository.create_request_log(
             request_id=request_id,
             user_id=key.user_id if key else None,

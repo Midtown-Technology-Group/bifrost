@@ -199,6 +199,38 @@ async def test_gateway_key_authentication_happens_before_payload_validation():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("gateway_key", [None, "not-a-bifrost-key", VALID_GATEWAY_KEY])
+@pytest.mark.parametrize(
+    ("model", "expected_model"),
+    [
+        ("m" * 255, "m" * 255),
+        ("m" * 256, "m" * 255),
+        ("gpt\x00-\ud800", "gpt-?"),
+    ],
+)
+async def test_invalid_key_denial_uses_storage_safe_model(
+    gateway_key, model, expected_model
+):
+    repository = _repository(key_record=None, account_record=None)
+    upstream = FakeUpstreamClient()
+    runtime = CodexGatewayRuntime(repository=repository, upstream_client=upstream)
+
+    response = await runtime.create_response(
+        gateway_key=gateway_key,
+        payload={"model": model, "input": "do not log this prompt"},
+    )
+
+    assert response.status_code == 401
+    assert response.body["error"]["code"] == "invalid_gateway_key"
+    repository.create_request_log.assert_awaited_once()
+    log_kwargs = repository.create_request_log.call_args.kwargs
+    assert log_kwargs["model"] == expected_model
+    assert log_kwargs["request_metadata"]["model"] == expected_model
+    assert "do not log this prompt" not in repr(log_kwargs)
+    assert upstream.requests == []
+
+
+@pytest.mark.asyncio
 async def test_missing_upstream_account_fails_closed_and_logs_denial():
     key = _key_record()
     repository = _repository(key_record=key, account_record=None)
