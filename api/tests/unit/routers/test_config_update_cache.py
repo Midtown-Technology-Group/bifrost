@@ -101,6 +101,49 @@ async def test_update_returns_none_when_row_missing():
     assert update is None
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("current_type", "requested_type"),
+    [
+        (ConfigType.STRING, ConfigType.SECRET),
+        (ConfigType.SECRET, ConfigType.STRING),
+    ],
+)
+async def test_secret_boundary_type_change_requires_replacement_value(
+    current_type, requested_type
+):
+    from src.repositories.config import ConfigTypeChangeRequiresValue
+
+    row = _config_row(id=uuid4(), key="credential", org_id=None)
+    row.config_type = MagicMock(value=current_type.value)
+    repo = _mk_repo(row)
+
+    with pytest.raises(ConfigTypeChangeRequiresValue):
+        await repo.update_config_by_id(
+            row.id,
+            UpdateConfigRequest(type=requested_type),
+            updated_by="t@example.com",
+        )
+
+    repo.session.flush.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_secret_boundary_type_change_accepts_replacement_value():
+    row = _config_row(id=uuid4(), key="credential", org_id=None)
+    row.config_type = MagicMock(value=ConfigType.SECRET.value)
+    repo = _mk_repo(row)
+
+    update = await repo.update_config_by_id(
+        row.id,
+        UpdateConfigRequest(type=ConfigType.STRING, value="replacement"),
+        updated_by="t@example.com",
+    )
+
+    assert update is not None
+    assert row.value == {"value": "replacement"}
+
+
 # ---------------------------------------------------------------------------
 # Router-level: verify invalidate_config is called with OLD (org, key).
 # ---------------------------------------------------------------------------

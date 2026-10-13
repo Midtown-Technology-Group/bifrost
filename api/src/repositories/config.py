@@ -40,6 +40,10 @@ class RequiredConfigUnset(RuntimeError):
         )
 
 
+class ConfigTypeChangeRequiresValue(ValueError):
+    """A secret-boundary type change cannot reuse the prior stored value."""
+
+
 class ConfigRepository(OrgScopedRepository[ConfigModel]):  # type: ignore[type-var]
     """Repository for configuration values."""
 
@@ -356,6 +360,22 @@ class ConfigRepository(OrgScopedRepository[ConfigModel]):  # type: ignore[type-v
                 else ConfigType.STRING
             )
         )
+        current_type = (
+            ConfigType(config.config_type.value)
+            if config.config_type
+            else ConfigType.STRING
+        )
+        crosses_secret_boundary = (
+            current_type == ConfigType.SECRET
+        ) != (effective_type == ConfigType.SECRET)
+        if (
+            request.type is not None
+            and crosses_secret_boundary
+            and (request.value is None or request.value == "")
+        ):
+            raise ConfigTypeChangeRequiresValue(
+                "Changing to or from secret type requires a replacement value"
+            )
 
         if request.value is not None and request.value != "":
             stored_value = request.value

@@ -11,6 +11,68 @@ interface InputMappingFormProps {
 	onChange: (values: Record<string, unknown>) => void;
 }
 
+export interface NormalizedInputMapping {
+	mapping: Record<string, unknown> | undefined;
+	errors: string[];
+}
+
+/** Preserve templates, but restore structured static values from text inputs. */
+export function normalizeInputMapping(
+	parameters: WorkflowParameter[],
+	values: Record<string, unknown>,
+): NormalizedInputMapping {
+	const parameterByName = new Map(
+		parameters.map((param) => [param.name, param]),
+	);
+	const mapping: Record<string, unknown> = {};
+	const errors: string[] = [];
+
+	for (const [name, value] of Object.entries(values)) {
+		if (value === undefined || value === null || value === "") continue;
+		const parameter = parameterByName.get(name);
+		const type = parameter?.type;
+		if (type !== "json" && type !== "dict" && type !== "list") {
+			mapping[name] = value;
+			continue;
+		}
+		if (typeof value !== "string" || value.includes("{{")) {
+			mapping[name] = value;
+			continue;
+		}
+
+		try {
+			const parsed: unknown = JSON.parse(value);
+			if (
+				type === "dict" &&
+				(typeof parsed !== "object" ||
+					parsed === null ||
+					Array.isArray(parsed))
+			) {
+				throw new Error("must be a JSON object");
+			}
+			if (type === "list" && !Array.isArray(parsed)) {
+				throw new Error("must be a JSON array");
+			}
+			mapping[name] = parsed;
+		} catch (error) {
+			const reason =
+				error instanceof Error ? error.message : "invalid JSON";
+			errors.push(`${parameter?.label || name}: ${reason}`);
+		}
+	}
+
+	return {
+		mapping: Object.keys(mapping).length > 0 ? mapping : undefined,
+		errors,
+	};
+}
+
+function displayMappingValue(value: unknown): string {
+	if (value === undefined || value === null) return "";
+	if (typeof value === "object") return JSON.stringify(value);
+	return String(value);
+}
+
 const TYPE_HINTS: Record<string, string> = {
 	str: 'e.g. "hello" or {{ payload.name }}',
 	string: 'e.g. "hello" or {{ payload.name }}',
@@ -66,7 +128,9 @@ export function InputMappingForm({
 							type="text"
 							className="min-h-11 min-w-0"
 							aria-describedby={`${formId}-hint-${param.name}`}
-							value={(values[param.name ?? ""] as string) ?? ""}
+							value={displayMappingValue(
+								values[param.name ?? ""],
+							)}
 							onChange={(e) =>
 								handleChange(param.name ?? "", e.target.value)
 							}

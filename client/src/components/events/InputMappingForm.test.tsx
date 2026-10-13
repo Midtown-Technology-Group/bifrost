@@ -10,7 +10,7 @@
 
 import { describe, it, expect, vi } from "vitest";
 import { renderWithProviders, screen, fireEvent } from "@/test-utils";
-import { InputMappingForm } from "./InputMappingForm";
+import { InputMappingForm, normalizeInputMapping } from "./InputMappingForm";
 
 function renderForm(
 	overrides: Partial<Parameters<typeof InputMappingForm>[0]> = {},
@@ -19,7 +19,12 @@ function renderForm(
 	const utils = renderWithProviders(
 		<InputMappingForm
 			parameters={[
-				{ name: "ticket_id", type: "int", label: "Ticket", required: false },
+				{
+					name: "ticket_id",
+					type: "int",
+					label: "Ticket",
+					required: false,
+				},
 				{ name: "note", type: "str", required: false },
 			]}
 			values={{}}
@@ -63,5 +68,49 @@ describe("InputMappingForm", () => {
 		renderForm();
 		expect(screen.getByText(/template variables/i)).toBeInTheDocument();
 		expect(screen.getByText(/auto-injected context/i)).toBeInTheDocument();
+	});
+
+	it("renders existing structured values as JSON", () => {
+		renderForm({
+			parameters: [{ name: "payload", type: "dict", required: false }],
+			values: { payload: { enabled: true } },
+		});
+		expect(screen.getByLabelText(/payload/i)).toHaveValue(
+			'{"enabled":true}',
+		);
+	});
+});
+
+describe("normalizeInputMapping", () => {
+	const parameters = [
+		{ name: "payload", type: "dict", required: false },
+		{ name: "items", type: "list", required: false },
+		{ name: "raw", type: "json", required: false },
+	];
+
+	it("parses structured static values and preserves templates", () => {
+		expect(
+			normalizeInputMapping(parameters, {
+				payload: '{"enabled":true}',
+				items: "[1,2]",
+				raw: "{{ payload.body }}",
+			}),
+		).toEqual({
+			mapping: {
+				payload: { enabled: true },
+				items: [1, 2],
+				raw: "{{ payload.body }}",
+			},
+			errors: [],
+		});
+	});
+
+	it("rejects invalid structured static values", () => {
+		const result = normalizeInputMapping(parameters, {
+			payload: "[]",
+			items: "{}",
+		});
+		expect(result.mapping).toBeUndefined();
+		expect(result.errors).toHaveLength(2);
 	});
 });

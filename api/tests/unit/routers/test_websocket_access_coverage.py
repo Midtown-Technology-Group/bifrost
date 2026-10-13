@@ -544,6 +544,7 @@ async def test_websocket_connect_handles_runtime_subscribe_errors_and_permission
                     "package:install",
                     "agent-runs:all",
                     "summary-backfill:job",
+                    "file-activity",
                     "platform_workers",
                     "git:job-secret",
                 ],
@@ -573,10 +574,35 @@ async def test_websocket_connect_handles_runtime_subscribe_errors_and_permission
     assert {"type": "error", "channel": "package:install", "message": "Access denied"} in sent
     assert {"type": "error", "channel": "agent-runs:all", "message": "Access denied"} in sent
     assert {"type": "error", "channel": "summary-backfill:job", "message": "Access denied"} in sent
+    assert {"type": "error", "channel": "file-activity", "message": "Access denied"} in sent
     assert {"type": "error", "channel": "platform_workers", "message": "Access denied"} in sent
     assert "git:job-secret" not in manager.connections
     assert {"type": "error", "channel": "git:job-secret", "message": "Access denied"} in sent
     manager.disconnect.assert_called_once_with(ws)
+
+
+@pytest.mark.asyncio
+async def test_websocket_connect_allows_admin_runtime_file_activity_subscription():
+    user = _user(is_superuser=True)
+    ws = _QueuedWebSocket(
+        [{"type": "subscribe", "channels": ["file-activity"]}]
+    )
+    manager = SimpleNamespace(
+        connections={},
+        connect=AsyncMock(),
+        disconnect=Mock(),
+    )
+
+    with (
+        patch.object(ws_mod, "get_current_user_ws", AsyncMock(return_value=user)),
+        patch.object(ws_mod, "manager", manager),
+    ):
+        await ws_mod.websocket_connect(ws, channels=[])
+
+    assert ws in manager.connections["file-activity"]
+    ws.send_json.assert_any_await(
+        {"type": "subscribed", "channel": "file-activity"}
+    )
 
 
 @pytest.mark.asyncio

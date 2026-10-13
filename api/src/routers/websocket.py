@@ -1552,6 +1552,23 @@ async def websocket_connect(
                                 "channel": channel,
                                 "message": "Access denied"
                             })
+                    elif channel == "file-activity":
+                        # Mirrors the initial-connect whitelist: file activity
+                        # exposes platform-wide storage events.
+                        if user.is_superuser:
+                            if channel not in manager.connections:
+                                manager.connections[channel] = set()
+                            manager.connections[channel].add(websocket)
+                            await websocket.send_json({
+                                "type": "subscribed",
+                                "channel": channel,
+                            })
+                        else:
+                            await websocket.send_json({
+                                "type": "error",
+                                "channel": channel,
+                                "message": "Access denied",
+                            })
                     elif channel == "platform_workers":
                         # Platform workers channel - diagnostics, platform admins only
                         if user.is_superuser:

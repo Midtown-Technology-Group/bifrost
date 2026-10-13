@@ -18,7 +18,10 @@ import {
 	type EventSubscription,
 } from "@/services/events";
 import { useWorkflows } from "@/hooks/useWorkflows";
-import { InputMappingForm } from "@/components/events/InputMappingForm";
+import {
+	InputMappingForm,
+	normalizeInputMapping,
+} from "@/components/events/InputMappingForm";
 import {
 	EventCriteriaForm,
 	validateCriteria,
@@ -27,21 +30,6 @@ import {
 import type { components } from "@/lib/v1";
 
 type WorkflowMetadata = components["schemas"]["WorkflowMetadata"];
-
-/**
- * Remove entries where value is undefined, null, or empty string.
- * Returns undefined if no non-empty values remain.
- */
-function cleanInputMapping(
-	mapping: Record<string, unknown>,
-): Record<string, unknown> | undefined {
-	const cleaned = Object.fromEntries(
-		Object.entries(mapping).filter(
-			([, v]) => v !== undefined && v !== null && v !== "",
-		),
-	);
-	return Object.keys(cleaned).length > 0 ? cleaned : undefined;
-}
 
 interface EditSubscriptionDialogProps {
 	subscription: EventSubscription | null;
@@ -105,7 +93,14 @@ function EditSubscriptionDialogContent({
 		if (isLoading || !validateForm()) return;
 
 		try {
-			const cleanedMapping = cleanInputMapping(inputMapping);
+			const normalized = normalizeInputMapping(
+				selectedWorkflow?.parameters ?? [],
+				inputMapping,
+			);
+			if (normalized.errors.length > 0) {
+				setErrors(normalized.errors);
+				return;
+			}
 
 			await updateMutation.mutateAsync({
 				params: {
@@ -117,8 +112,8 @@ function EditSubscriptionDialogContent({
 				body: {
 					event_type: eventType.trim() || null,
 					criteria,
-					input_mapping: cleanedMapping ?? null,
-				// eslint-disable-next-line @typescript-eslint/no-explicit-any
+					input_mapping: normalized.mapping ?? null,
+					// eslint-disable-next-line @typescript-eslint/no-explicit-any
 				} as any,
 			});
 
@@ -194,11 +189,18 @@ function EditSubscriptionDialogContent({
 						</p>
 					</div>
 
-                    <div className="space-y-2 border-t pt-4">
-                        <Label>Rule Criteria (optional)</Label>
-                        <p className="text-xs text-muted-foreground">Only matching events queue this target. Clear criteria to receive all payloads.</p>
-                        <EventCriteriaForm value={criteria} onChange={setCriteria} disabled={isLoading} />
-                    </div>
+					<div className="space-y-2 border-t pt-4">
+						<Label>Rule Criteria (optional)</Label>
+						<p className="text-xs text-muted-foreground">
+							Only matching events queue this target. Clear
+							criteria to receive all payloads.
+						</p>
+						<EventCriteriaForm
+							value={criteria}
+							onChange={setCriteria}
+							disabled={isLoading}
+						/>
+					</div>
 
 					{/* Input Mapping (shown when workflow has parameters) */}
 					{selectedWorkflow?.parameters &&
