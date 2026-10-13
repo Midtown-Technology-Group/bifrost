@@ -305,7 +305,7 @@ async def test_model_override_cannot_read_or_mutate_profile_capability():
     assert send.await_args_list[0].args[0]["anthropic_cache"] is True
     assert config.anthropic_prompt_cache_supported is False
     override_settings = PydanticAIClient(config)._model_settings(100, "override-claude")
-    assert override_settings["anthropic_cache"] is True
+    assert dict(override_settings)["anthropic_cache"] is True
     persist.assert_not_awaited()
 
 
