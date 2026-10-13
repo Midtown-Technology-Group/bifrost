@@ -60,6 +60,7 @@ class TestModelCapabilityVerification:
 
     @pytest.mark.asyncio
     async def test_saved_key_cannot_be_sent_to_endpoint_override(self):
+        db = _db()
         request = ModelCapabilityVerifyRequest(
             provider="openai",
             model="example-model",
@@ -87,7 +88,7 @@ class TestModelCapabilityVerification:
             pytest.raises(HTTPException) as exc,
         ):
             await llm_config.verify_model_capability_support(
-                request, _db(), _user()
+                request, db, _user()
             )
 
         assert exc.value.status_code == status.HTTP_400_BAD_REQUEST
