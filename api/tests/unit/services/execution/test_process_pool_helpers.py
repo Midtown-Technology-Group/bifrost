@@ -524,6 +524,64 @@ async def test_drain_timeout_does_not_kill_in_flight_execution(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_restart_retires_template_that_still_owns_children():
+    pool = ProcessPoolManager(max_workers=2)
+    old_template = Mock(pid=100)
+    new_template = Mock(pid=200)
+    pool._template = old_template
+    pool._child_template_by_pid[123] = old_template
+
+    async def start_replacement() -> None:
+        assert pool._template is None
+        pool._template = new_template
+
+    pool._start_template = AsyncMock(side_effect=start_replacement)
+
+    await pool.restart_template()
+
+    old_template.shutdown.assert_not_called()
+    assert old_template in pool._retired_templates
+    assert pool._template is new_template
+
+
+@pytest.mark.asyncio
+async def test_failed_replacement_does_not_reuse_retired_template():
+    pool = ProcessPoolManager(max_workers=2)
+    old_template = Mock(pid=100)
+    pool._template = old_template
+    pool._child_template_by_pid[123] = old_template
+    pool._start_template = AsyncMock(side_effect=RuntimeError("startup failed"))
+
+    with pytest.raises(RuntimeError, match="startup failed"):
+        await pool.restart_template()
+
+    assert pool._template is None
+    assert old_template in pool._retired_templates
+    old_template.shutdown.assert_not_called()
+
+
+def test_collect_status_reaps_retired_template_after_final_child():
+    pool = ProcessPoolManager(max_workers=2)
+    current_template = Mock(pid=200)
+    current_template.collect_child_exit_statuses.return_value = {}
+    retired_template = Mock(pid=100)
+    retired_template.collect_child_exit_statuses.return_value = {123: 0}
+    handle = _handle(alive=True, exitcode=None)
+    handle.process = process_pool._PidWrapper(123)
+    pool.processes[handle.id] = handle
+    pool._template = current_template
+    pool._retired_templates.add(retired_template)
+    pool._child_template_by_pid[123] = retired_template
+
+    pool._collect_child_exit_statuses()
+
+    assert handle.process.exitcode == 0
+    assert 123 not in pool._child_template_by_pid
+    retired_template.shutdown.assert_called_once_with()
+    assert retired_template not in pool._retired_templates
+
+
+@pytest.mark.asyncio
 async def test_route_heals_dead_template_left_by_failed_restart(monkeypatch):
     pool = ProcessPoolManager(max_workers=2)
     pool._started = True

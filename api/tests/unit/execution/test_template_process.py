@@ -5,6 +5,7 @@ Tests the template process lifecycle: startup, fork requests, shutdown.
 Uses real multiprocessing (not mocks) since fork behavior can't be mocked.
 """
 
+import asyncio
 import errno
 import logging
 import os
@@ -19,6 +20,7 @@ from pathlib import Path
 
 import pytest
 
+from src.services.execution.process_pool import ProcessPoolManager
 from src.services.execution.template_process import (
     TemplateProcess,
     _load_execution_infrastructure,
@@ -491,6 +493,54 @@ class TestTemplateProcessFork:
             _wait_for_pid_to_disappear(child_pid)
         finally:
             template.shutdown()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("completion", ["result", "pipe_eof"])
+    async def test_restart_retains_old_template_until_child_is_reaped(
+        self, completion: str
+    ) -> None:
+        """A child surviving recycle stays owned and reaped by its old template."""
+        pool = ProcessPoolManager(max_workers=1)
+        old_template = TemplateProcess()
+        old_template.start()
+        pool._template = old_template
+        handle = pool._fork_process()
+
+        try:
+            await pool.restart_template()
+
+            assert old_template in pool._retired_templates
+            assert old_template.is_alive()
+            assert pool._template is not old_template
+            assert pool._template is not None and pool._template.is_alive()
+
+            if completion == "result":
+                handle.work_queue.put(
+                    ("recycle-survivor", {"engine_token": "one-shot-test-token"})
+                )
+                result = handle.result_queue.get(timeout=5.0)
+                assert result["execution_id"] == "recycle-survivor"
+            else:
+                handle.work_queue.close()
+
+            deadline = time.monotonic() + 5.0
+            while old_template in pool._retired_templates:
+                pool._collect_child_exit_statuses()
+                if old_template not in pool._retired_templates:
+                    break
+                assert time.monotonic() < deadline
+                await asyncio.sleep(0.05)
+
+            assert handle.process.exitcode == 0
+            _wait_for_pid_to_disappear(handle.pid)
+            assert not old_template.is_alive()
+        finally:
+            handle.work_queue.close()
+            handle.result_queue.close()
+            if pool._template is not None:
+                pool._template.shutdown()
+            if old_template.is_alive():
+                old_template.shutdown()
 
 
 class TestTemplateProcessCrashRecovery:

@@ -526,6 +526,12 @@ class ProcessPoolManager:
 
         # Template process for fork-based workers
         self._template: TemplateProcess | None = None
+        # A template is the direct parent and only authoritative reaper for
+        # children it forked. During a bounded recycle, keep the old template
+        # alive until every surviving child has been reaped while the new
+        # template admits fresh work.
+        self._retired_templates: set[TemplateProcess] = set()
+        self._child_template_by_pid: dict[int, TemplateProcess] = {}
 
         # Worker-local engine SDK HTTP server (Gate A). Serves the existing
         # SDK routes on a private Unix socket; children send ordinary HTTP
@@ -576,11 +582,25 @@ class ProcessPoolManager:
         """
         Restart the template process (e.g., after pip install).
 
-        All children must be drained/killed before calling this.
+        A template with surviving children is retired rather than stopped so
+        it remains their parent and reaps their exit statuses. The monitor
+        shuts it down after its final child exits.
         """
-        if self._template is not None:
+        old_template = self._template
+        if old_template is not None and any(
+            owner is old_template for owner in self._child_template_by_pid.values()
+        ):
+            self._retired_templates.add(old_template)
+            # Do not let a replacement-start failure make the still-alive but
+            # stale retired template eligible for new forks.
+            self._template = None
+            logger.info(
+                "Retaining template process PID=%s to reap draining children",
+                old_template.pid,
+            )
+        elif old_template is not None:
             logger.info("Shutting down template process for restart")
-            await asyncio.to_thread(self._template.shutdown)
+            await asyncio.to_thread(old_template.shutdown)
 
         await self._start_template()
         logger.info("Template process restarted")
@@ -678,13 +698,16 @@ class ProcessPoolManager:
 
         # Fork from template (COW memory sharing). persistent=False is
         # the only mode: child runs one execution then exits.
-        child_pid, work_queue, result_queue = self._template.fork(
+        owner_template = self._template
+        assert owner_template is not None
+        child_pid, work_queue, result_queue = owner_template.fork(
             worker_id=process_id,
             persistent=False,
             sdk_socket_path=(
                 self._sdk_http.socket_path if self._sdk_http is not None else None
             ),
         )
+        self._child_template_by_pid[child_pid] = owner_template
 
         handle = ProcessHandle(
             id=process_id,
@@ -809,7 +832,12 @@ class ProcessPoolManager:
         3. Terminates all processes gracefully
         4. Unregisters from Redis
         """
-        if self._shutdown and not self.processes:
+        if (
+            self._shutdown
+            and not self.processes
+            and not self.service_processes
+            and not self._retired_templates
+        ):
             return
 
         logger.info("ProcessPoolManager stopping...")
@@ -873,6 +901,10 @@ class ProcessPoolManager:
         if self._template is not None:
             self._template.shutdown()
             self._template = None
+        for template in list(self._retired_templates):
+            template.shutdown()
+        self._retired_templates.clear()
+        self._child_template_by_pid.clear()
 
         # Stop serving the worker-local SDK socket and remove it. Children
         # are already dead, so no request can be in flight.
@@ -2080,26 +2112,44 @@ class ProcessPoolManager:
                 await self._notify_service_slot_free()
 
     def _collect_child_exit_statuses(self) -> None:
-        """Apply exit statuses gathered by the template that owns the children."""
-        template = self._template
-        if template is None:
-            return
-
-        try:
-            exit_statuses = template.collect_child_exit_statuses()
-        except (EOFError, OSError, RuntimeError) as e:
-            logger.warning(f"Could not collect child exit statuses from template: {e}")
-            return
+        """Collect statuses from active and retired child-owning templates."""
+        templates = list(self._retired_templates)
+        if self._template is not None:
+            templates.append(self._template)
 
         handles_by_pid = {
             handle.pid: handle
-            for handle in self.processes.values()
+            for handle in (
+                list(self.processes.values()) + list(self.service_processes.values())
+            )
             if handle.pid is not None
         }
-        for child_pid, exitcode in exit_statuses.items():
-            handle = handles_by_pid.get(child_pid)
-            if handle is not None and isinstance(handle.process, _PidWrapper):
-                handle.process.mark_exited(exitcode)
+        for template in templates:
+            try:
+                exit_statuses = template.collect_child_exit_statuses()
+            except (EOFError, OSError, RuntimeError) as e:
+                logger.warning(
+                    "Could not collect child exit statuses from template PID=%s: %s",
+                    template.pid,
+                    e,
+                )
+                continue
+
+            for child_pid, exitcode in exit_statuses.items():
+                handle = handles_by_pid.get(child_pid)
+                if handle is not None and isinstance(handle.process, _PidWrapper):
+                    handle.process.mark_exited(exitcode)
+                if self._child_template_by_pid.get(child_pid) is template:
+                    self._child_template_by_pid.pop(child_pid, None)
+
+        for template in list(self._retired_templates):
+            if any(
+                owner is template for owner in self._child_template_by_pid.values()
+            ):
+                continue
+            template.shutdown()
+            self._retired_templates.discard(template)
+            logger.info("Retired template process fully drained and stopped")
 
     async def _report_orphan(self, handle: ProcessHandle) -> None:
         """

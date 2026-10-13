@@ -111,5 +111,6 @@ def test_freshness_queries_the_release_ref_instead_of_origin_main() -> None:
 def test_release_skill_uses_nonempty_ranges_without_prior_tag() -> None:
     for skill in RELEASE_SKILLS:
         source = skill.read_text(encoding="utf-8")
-        assert 'git log ${LAST_TAG}..HEAD' not in source
-        assert '"${RELEASE_RANGE:-HEAD}"' in source
+        assert "git log \"${RELEASE_RANGE:-HEAD}\" --pretty=format:'%h %s'" in source
+        assert 'git log "${RELEASE_RANGE:-HEAD}" --oneline' in source
+        assert "git log \"${RELEASE_RANGE:-HEAD}\" --format='%s' \\" in source

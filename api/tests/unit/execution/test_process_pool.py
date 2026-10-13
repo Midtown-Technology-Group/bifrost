@@ -2312,6 +2312,7 @@ def test_fork_process_injects_worker_socket_path():
     assert template.fork.call_args.kwargs["sdk_socket_path"] == (
         "/tmp/bifrost-engine.sock"
     )
+    assert pool._child_template_by_pid[4242] is template
 
 
 def test_fork_process_without_socket_passes_none():
@@ -2326,3 +2327,4 @@ def test_fork_process_without_socket_passes_none():
 
     assert handle.pid == 4243
     assert template.fork.call_args.kwargs["sdk_socket_path"] is None
+    assert pool._child_template_by_pid[4243] is template
