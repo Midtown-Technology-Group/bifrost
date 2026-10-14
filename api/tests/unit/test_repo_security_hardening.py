@@ -33,6 +33,7 @@ def test_retired_snyk_gate_is_not_reintroduced_by_workflows() -> None:
     workflow_root = REPO_ROOT / ".github" / "workflows"
 
     assert not (workflow_root / "snyk.yml").exists()
+    assert not (REPO_ROOT / ".snyk").exists()
     workflows = sorted(workflow_root.glob("*.yml")) + sorted(
         workflow_root.glob("*.yaml")
     )
