@@ -205,7 +205,7 @@ async def test_late_reports_after_lost_are_rejected(
 
 @pytest.mark.e2e
 async def test_running_loss_becomes_lost_and_requires_explicit_retry(
-    e2e_client, platform_admin, org1, db_session
+    e2e_client, platform_admin, org1, db_session, async_session_factory
 ):
     """Drill for feedback #1: running + activity silence -> terminal `lost`
     (NOT re-queued); an explicit retry creates a NEW job id; the agent's
@@ -219,20 +219,27 @@ async def test_running_loss_becomes_lost_and_requires_explicit_retry(
         db_session,
         org1["id"],
         device_id,
-        status="running",
+        # Commit an ineligible row; the test will own the running transition.
+        status="pending",
+        claim_token=uuid4(),
         claimed_at=datetime.now(timezone.utc) - timedelta(minutes=5),
         agent_session_id=uuid4(),
         last_agent_activity_at=datetime.now(timezone.utc) - timedelta(seconds=300),
     )
-    if job.claim_token is None:
-        job.claim_token = uuid4()
-        await db_session.commit()
     claim_token = job.claim_token
+    job.status = "running"
+    await db_session.flush()
 
     # Force the competing scheduler interleaving rather than hoping its 30s
     # timer lands between fixture commit and this test's explicit sweep.
-    outcome = await sweep_lost_device_jobs()
-    print(f"Competing watchdog: {outcome.summary}")
+    await sweep_lost_device_jobs()
+    async with async_session_factory() as competing_db:
+        competing_view = await competing_db.get(DeviceJob, job.id)
+        assert competing_view is not None
+        assert competing_view.status == "pending"
+
+    # Only this transaction can see and transition the uncommitted running row.
+    # The independent watchdog skips its row lock instead of stealing the work.
 
     # Watchdog sweep: running + silent > 90s -> terminal lost, never pending.
     stats = await sweep_device_jobs(db_session, now=datetime.now(timezone.utc))
