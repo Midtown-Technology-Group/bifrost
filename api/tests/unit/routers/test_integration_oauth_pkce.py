@@ -523,12 +523,15 @@ async def test_callback_pkce_replay_is_rejected():
         ) as mock_exchange,
         patch("src.routers.oauth_connections.CACHE_INVALIDATION_AVAILABLE", False),
     ):
+        request = _callback_request()
+        ctx = _ctx()
+        user = MagicMock()
         with pytest.raises(HTTPException) as exc_info:
             await oauth_connections.oauth_callback(
                 connection_name="goto",
-                request=_callback_request(),
-                ctx=_ctx(),
-                user=MagicMock(),
+                request=request,
+                ctx=ctx,
+                user=user,
             )
 
     assert exc_info.value.status_code == 400
@@ -561,12 +564,15 @@ async def test_callback_pkce_binding_mismatch_is_rejected():
         ) as mock_exchange,
         patch("src.routers.oauth_connections.CACHE_INVALIDATION_AVAILABLE", False),
     ):
+        request = _callback_request()
+        ctx = _ctx()
+        user = MagicMock()
         with pytest.raises(HTTPException) as exc_info:
             await oauth_connections.oauth_callback(
                 connection_name="goto",
-                request=_callback_request(),
-                ctx=_ctx(),
-                user=MagicMock(),
+                request=request,
+                ctx=ctx,
+                user=user,
             )
 
     assert exc_info.value.status_code == 400
@@ -751,12 +757,14 @@ async def test_callback_mapping_nonce_replay_rejected_before_storage():
         ),
         patch("src.routers.oauth_connections.CACHE_INVALIDATION_AVAILABLE", False),
     ):
+        request = _callback_request(state="signed-state")
+        user = MagicMock()
         with pytest.raises(HTTPException) as exc_info:
             await oauth_connections.oauth_callback(
                 connection_name="goto",
-                request=_callback_request(state="signed-state"),
+                request=request,
                 ctx=ctx,
-                user=MagicMock(),
+                user=user,
             )
 
     assert exc_info.value.status_code == 400

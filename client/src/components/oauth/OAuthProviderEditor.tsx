@@ -71,6 +71,31 @@ const DEFAULT_VALUES: OAuthProviderData = {
 	use_pkce: false,
 };
 
+function getClientSecretCopy(isEditMode: boolean, data: OAuthProviderData) {
+	if (isEditMode) {
+		return {
+			placeholder: "Leave empty to keep existing...",
+			description: "Leave empty to keep the existing secret, or enter a new one to update",
+		};
+	}
+	if (data.oauth_flow_type === "client_credentials") {
+		return {
+			placeholder: "Required for client credentials flow...",
+			description: "Required: Client credentials flow requires a client secret",
+		};
+	}
+	if (data.use_pkce) {
+		return {
+			placeholder: "Optional for PKCE flow...",
+			description: "Optional: Leave empty for PKCE (Proof Key for Code Exchange) flow",
+		};
+	}
+	return {
+		placeholder: "Optional unless your provider requires it...",
+		description: "Optional: only required if your provider issued a client secret",
+	};
+}
+
 /**
  * Standalone OAuth provider editor used by both the integrations dialog
  * (existing) and the MCP connection edit page (new).
@@ -154,6 +179,7 @@ export function OAuthProviderEditor({
 	};
 
 	const isAuthCode = data.oauth_flow_type === "authorization_code";
+	const clientSecretCopy = getClientSecretCopy(isEditMode, data);
 
 	return (
 		<form
@@ -294,15 +320,7 @@ export function OAuthProviderEditor({
 						onChange={(e) =>
 							setData({ ...data, client_secret: e.target.value })
 						}
-						placeholder={
-							isEditMode
-								? "Leave empty to keep existing..."
-								: data.oauth_flow_type === "client_credentials"
-									? "Required for client credentials flow..."
-									: data.use_pkce
-										? "Optional for PKCE flow..."
-										: "Optional unless your provider requires it..."
-						}
+						placeholder={clientSecretCopy.placeholder}
 						required={
 							data.oauth_flow_type === "client_credentials" &&
 							!isEditMode
@@ -311,13 +329,7 @@ export function OAuthProviderEditor({
 						className="h-11"
 					/>
 					<p className="text-xs leading-5 text-muted-foreground">
-						{isEditMode
-							? "Leave empty to keep the existing secret, or enter a new one to update"
-							: data.oauth_flow_type === "client_credentials"
-								? "Required: Client credentials flow requires a client secret"
-								: data.use_pkce
-									? "Optional: Leave empty for PKCE (Proof Key for Code Exchange) flow"
-									: "Optional: only required if your provider issued a client secret"}
+						{clientSecretCopy.description}
 					</p>
 				</div>
 			</div>
