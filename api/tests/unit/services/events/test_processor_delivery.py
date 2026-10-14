@@ -391,6 +391,52 @@ async def test_process_webhook_handles_adapter_result_types_and_errors(monkeypat
 
 
 @pytest.mark.asyncio
+async def test_process_webhook_runs_admission_after_validation_before_writes(
+    monkeypatch,
+):
+    processor = p.EventProcessor(AsyncMock())
+    delivery = Deliver(data={"id": 1}, event_type="ticket.created")
+    adapter = SimpleNamespace(
+        authenticates_external_actor=False,
+        handle_request=AsyncMock(return_value=delivery),
+    )
+    monkeypatch.setattr(p, "get_adapter", lambda _name: adapter)
+    order: list[str] = []
+
+    async def admit() -> None:
+        order.append("admit")
+
+    async def persist(**_kwargs):
+        order.append("persist")
+        return delivery
+
+    processor._process_delivery = AsyncMock(side_effect=persist)
+    source = SimpleNamespace(adapter_name="generic", config={}, state={})
+    request = WebhookRequest("POST", "/hooks/source", {}, {}, b"{}")
+
+    assert await processor.process_webhook(
+        SimpleNamespace(id=uuid.uuid4()),
+        source,
+        request,
+        before_delivery=admit,
+    ) is delivery
+    assert order == ["admit", "persist"]
+
+    order.clear()
+    adapter.handle_request.return_value = Rejected("bad signature", 401)
+    assert isinstance(
+        await processor.process_webhook(
+            SimpleNamespace(id=uuid.uuid4()),
+            source,
+            request,
+            before_delivery=admit,
+        ),
+        Rejected,
+    )
+    assert order == []
+
+
+@pytest.mark.asyncio
 async def test_generic_adapter_cannot_assert_authenticated_actor(monkeypatch):
     processor = p.EventProcessor(AsyncMock())
     actor = AuthenticatedExternalActor(
@@ -921,17 +967,38 @@ async def test_authenticated_actor_queues_human_caller_in_mapped_org(monkeypatch
         organization_id=event.organization_id, is_superuser=False,
         is_external=False, is_provider_org=False, roles=["Tier 2"],
     )
-    enqueue = AsyncMock(return_value=str(uuid.uuid4()))
+    steps = []
+
+    async def resolve_actor(*args, **kwargs):
+        steps.append("resolve")
+        return principal, event.external_identity_id
+
+    async def authorize_agent(*args, **kwargs):
+        steps.append("authorize")
+        return agent
+
+    async def enqueue_agent(**kwargs):
+        steps.append("enqueue")
+        return str(uuid.uuid4())
+
+    async def record_audit(*args, **kwargs):
+        steps.append("audit")
+
+    async def release_delivery_connection():
+        steps.append("release")
+
+    enqueue = AsyncMock(side_effect=enqueue_agent)
     monkeypatch.setattr("src.services.execution.agent_run_service.enqueue_agent_run", enqueue)
     @asynccontextmanager
     async def fake_audit_db():
         yield AsyncMock()
 
     session = AsyncMock()
+    session.commit.side_effect = release_delivery_connection
     with (
-        patch("src.services.events.processor.resolve_external_actor", new=AsyncMock(return_value=(principal, event.external_identity_id))),
-        patch("src.services.agent_run_access.load_agent_for_user", new=AsyncMock(return_value=agent)),
-        patch("src.services.events.processor.emit_audit", new=AsyncMock()) as audit,
+        patch("src.services.events.processor.resolve_external_actor", new=AsyncMock(side_effect=resolve_actor)),
+        patch("src.services.agent_run_access.load_agent_for_user", new=AsyncMock(side_effect=authorize_agent)),
+        patch("src.services.events.processor.emit_audit", new=AsyncMock(side_effect=record_audit)) as audit,
         patch("src.core.database.get_db_context", fake_audit_db),
     ):
         await p.EventProcessor(session)._queue_agent_run(delivery, event)
@@ -945,7 +1012,8 @@ async def test_authenticated_actor_queues_human_caller_in_mapped_org(monkeypatch
     assert kwargs["run_id"] == str(uuid.uuid5(delivery.id, "agent-run"))
     assert delivery.agent_run_id is not None
     assert audit.await_args.kwargs["details"]["external_identity_id"] == str(event.external_identity_id)
-    session.commit.assert_not_awaited()
+    session.commit.assert_awaited_once_with()
+    assert steps == ["resolve", "authorize", "release", "audit", "enqueue"]
 
 
 @pytest.mark.asyncio
