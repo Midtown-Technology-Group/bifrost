@@ -1707,6 +1707,49 @@ class TestBatchMappingUpsert:
                 headers=platform_admin.headers,
             )
 
+    def test_batch_invalid_org_is_isolated_and_error_is_sanitized(
+        self, e2e_client, platform_admin, integration_for_batch, org1
+    ):
+        """A failed flush must not poison later items or expose database details."""
+        integration = integration_for_batch
+        invalid_org_id = str(uuid4())
+
+        response = e2e_client.post(
+            f"/api/integrations/{integration['id']}/mappings/batch",
+            headers=platform_admin.headers,
+            json={
+                "mappings": [
+                    {
+                        "organization_id": invalid_org_id,
+                        "entity_id": "invalid-org-entity",
+                    },
+                    {
+                        "organization_id": str(org1["id"]),
+                        "entity_id": "valid-org-entity",
+                    },
+                ]
+            },
+        )
+
+        assert response.status_code == 200, response.text
+        assert response.json() == {
+            "created": 1,
+            "updated": 0,
+            "errors": [f"org {invalid_org_id}: mapping could not be saved"],
+        }
+
+        mapping_response = e2e_client.get(
+            f"/api/integrations/{integration['id']}/mappings/by-org/{org1['id']}",
+            headers=platform_admin.headers,
+        )
+        assert mapping_response.status_code == 200
+        assert mapping_response.json()["entity_id"] == "valid-org-entity"
+
+        e2e_client.delete(
+            f"/api/integrations/{integration['id']}/mappings/{mapping_response.json()['id']}",
+            headers=platform_admin.headers,
+        )
+
     def test_batch_empty_list_rejected(
         self, e2e_client, platform_admin, integration_for_batch
     ):
