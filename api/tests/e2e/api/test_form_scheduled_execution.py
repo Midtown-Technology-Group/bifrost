@@ -10,7 +10,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.enums import ExecutionStatus
-from src.models.orm.executions import Execution
+from src.models.orm.executions import Execution, WorkflowExecutionAttempt
 from tests.e2e.conftest import write_and_register
 
 
@@ -87,6 +87,7 @@ async def cleanup_scheduled_rows(db_session: AsyncSession):  # type: ignore[misc
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("schedule_kind", ["delay", "absolute"])
 async def test_form_schedule_with_delay_seconds_creates_scheduled_row(
     e2e_client,
     platform_admin,
@@ -94,15 +95,18 @@ async def test_form_schedule_with_delay_seconds_creates_scheduled_row(
     scheduled_form_workflow,
     db_session: AsyncSession,
     cleanup_scheduled_rows: list[UUID],
+    schedule_kind: str,
 ):
     before = datetime.now(timezone.utc)
+    schedule = ({"delay_seconds": 300} if schedule_kind == "delay" else
+                {"scheduled_at": (before + timedelta(seconds=300)).isoformat()})
 
     resp = e2e_client.post(
         f"/api/forms/{scheduled_form['id']}/submissions",
         headers=platform_admin.headers,
         json={
             "form_data": {"foo": "baz"},
-            "delay_seconds": 300,
+            **schedule,
         },
     )
 
@@ -127,6 +131,16 @@ async def test_form_schedule_with_delay_seconds_creates_scheduled_row(
     assert row.parameters == {"foo": "baz"}
     assert row.started_at is None
     assert row.completed_at is None
+    assert row.runtime_mode == "repo-v1"
+    assert row.attempt_tracking_version == "v1"
+    assert row.retry_policy["version"] == "execution-retry/v1"
+    assert row.execution_context["is_platform_admin"] is True
+    attempt = (await db_session.execute(
+        select(WorkflowExecutionAttempt).where(WorkflowExecutionAttempt.execution_id == exec_id)
+    )).scalar_one()
+    assert attempt.runtime_mode == row.runtime_mode
+    assert attempt.runtime_evidence_hash == row.runtime_evidence_hash
+    assert attempt.status == "dispatching"
 
     delta = row.scheduled_at - before
     assert timedelta(seconds=290) <= delta <= timedelta(seconds=330)

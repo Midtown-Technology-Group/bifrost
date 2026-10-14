@@ -372,18 +372,94 @@ async def test_other_registry_target_recipe_is_verified_and_bounded_before_assoc
             await ProtectedGitReader(configured, "ephemeral-job-token", client).source(SID, SHA, digest)
 
 
+def commit_pages(chain):
+    rows = [{"sha": identity, "parents": [{"sha": chain[index + 1]}] if index + 1 < len(chain) else []}
+            for index, identity in enumerate(chain)]
+    return {f"commits?sha={chain[0]}&per_page=100&page={page + 1}": rows[index:index + 100]
+            for page, index in enumerate(range(0, len(rows), 100))}
+
+
 @pytest.mark.asyncio
-async def test_supersession_ancestry_is_git_proof_not_time_or_equal_bytes():
-    documents, _, _ = fixture()
+async def test_delayed_source_ancestry_reaches_268_commits_in_three_bounded_reads():
+    chain = [SHA] + [f"{index:040x}" for index in range(1, 269)]
+    calls = []
+    documents = commit_pages(chain)
+    documents.update({"git/commits/" + identity: {"sha": identity, "parents": [{"sha": chain[index + 1]}]}
+                      for index, identity in enumerate(chain[:-1])})
+    async with httpx.AsyncClient(transport=transport(documents, calls)) as client:
+        reader = ProtectedGitReader(policy(), "ephemeral-job-token", client)
+        assert await reader.verified_ancestors(SHA, {chain[-1]}) == (chain[-1],)
+    assert len(calls) == 3
+
+
+@pytest.mark.asyncio
+async def test_native_history_eligibility_uses_only_bounded_first_parent_chain():
+    parent, grandparent, branch = "d" * 40, "e" * 40, "f" * 40
+    documents = commit_pages([SHA, parent, grandparent])
+    rows = documents[f"commits?sha={SHA}&per_page=100&page=1"]
+    rows.insert(1, {"sha": branch, "parents": []})
+    rows[0]["parents"].append({"sha": branch})
+    async with httpx.AsyncClient(transport=transport(documents, [])) as client:
+        reader = ProtectedGitReader(policy(), "ephemeral-job-token", client)
+        assert await reader.verified_ancestors(SHA, None) == (parent, grandparent)
+        assert await reader.verified_ancestors(SHA, None, limit=1) == (parent,)
+
+    chain = [SHA] + [f"{index:040x}" for index in range(1, 1002)]
+    calls = []
+    async with httpx.AsyncClient(transport=transport(commit_pages(chain), calls)) as client:
+        reader = ProtectedGitReader(policy(), "ephemeral-job-token", client)
+        assert await reader.verified_ancestors(SHA, None, limit=10000) == tuple(chain[1:1000])
+    assert len(calls) == 10
+
+
+@pytest.mark.asyncio
+async def test_supersession_ancestry_is_first_parent_git_proof_with_a_walk_bound():
     parent, grandparent = "d" * 40, "e" * 40
-    documents["git/commits/" + SHA]["parents"] = [{"sha": parent}]
-    documents["git/commits/" + parent] = {"sha": parent, "parents": [{"sha": grandparent}]}
-    documents["git/commits/" + grandparent] = {"sha": grandparent, "parents": []}
+    documents = commit_pages([SHA, parent, grandparent])
     async with httpx.AsyncClient(transport=transport(documents, [])) as client:
         reader = ProtectedGitReader(policy(), "ephemeral-job-token", client)
         assert await reader.verified_ancestors(SHA, {grandparent}, limit=1) == ()
         assert await reader.verified_ancestors(SHA, {parent, grandparent}) == (parent, grandparent)
         assert await reader.verified_ancestors(SHA, {"f" * 40}) == ()
+    # REST history order can contain a merged branch. Only the persisted first
+    # parent edge proves the protected-main lineage, never adjacent rows.
+    branch = "f" * 40
+    documents[f"commits?sha={SHA}&per_page=100&page=1"].insert(1, {"sha": branch, "parents": []})
+    documents[f"commits?sha={SHA}&per_page=100&page=1"][0]["parents"].append({"sha": branch})
+    async with httpx.AsyncClient(transport=transport(documents, [])) as client:
+        reader = ProtectedGitReader(policy(), "ephemeral-job-token", client)
+        assert await reader.verified_ancestors(SHA, {branch, parent, grandparent}) == (parent, grandparent)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("fault", ["missing_head", "missing_parent", "malformed_parent", "cycle", "duplicate"])
+async def test_incomplete_or_ambiguous_history_cannot_prove_an_older_source(fault):
+    parent, grandparent = "d" * 40, "e" * 40
+    rows = commit_pages([SHA, parent, grandparent])[f"commits?sha={SHA}&per_page=100&page=1"]
+    if fault == "missing_head":
+        rows.pop(0)
+    elif fault == "missing_parent":
+        rows.pop(1)
+    elif fault == "malformed_parent":
+        rows[0]["parents"] = [{"sha": "../other"}]
+    elif fault == "cycle":
+        rows[1]["parents"] = [{"sha": SHA}]
+    else:
+        rows.append(rows[0])
+    documents = {f"commits?sha={SHA}&per_page=100&page=1": rows}
+    async with httpx.AsyncClient(transport=transport(documents, [])) as client:
+        reader = ProtectedGitReader(policy(), "ephemeral-job-token", client)
+        assert await reader.verified_ancestors(SHA, {grandparent}) == ()
+
+
+@pytest.mark.asyncio
+async def test_history_page_bound_does_not_invent_ancestry_after_truncation():
+    chain = [SHA] + [f"{index:040x}" for index in range(1, 1002)]
+    calls = []
+    async with httpx.AsyncClient(transport=transport(commit_pages(chain), calls)) as client:
+        reader = ProtectedGitReader(policy(), "ephemeral-job-token", client)
+        assert await reader.verified_ancestors(SHA, {chain[-1]}, limit=10000) == ()
+    assert len(calls) == 10
 
 
 @pytest.mark.asyncio
@@ -499,7 +575,11 @@ async def test_redirect_does_not_forward_job_token():
 
 
 @pytest.mark.parametrize("suffix", ["https://attacker.invalid", "//attacker.invalid", "../other",
-    "git/blobs/../../other", "branches/main?redirect=attacker", "actions/runs/1/../../other"])
+    "git/blobs/../../other", "branches/main?redirect=attacker", "actions/runs/1/../../other",
+    "commits?sha=main&per_page=100&page=1",
+    f"commits?sha={SHA}&per_page=100&page=0",
+    f"commits?sha={SHA}&per_page=100&page=11",
+    f"commits?sha={SHA}&per_page=100&page=1&repository=other"])
 @pytest.mark.asyncio
 async def test_unapproved_endpoint_never_sends_job_credentials(suffix):
     calls = []
@@ -563,10 +643,15 @@ async def test_authored_inventory_is_complete_immutable_and_independent_of_runti
         reader = ProtectedGitReader(policy(), "ephemeral-job-token", client)
         evidence = await reader.authored_source(SHA, "solutions/fixture", TREE)
         native = await reader.source(SID, SHA, digest)
-    assert len(evidence.source_files) == 14 and len(native.files) == 7
-    assert evidence.files == authored and native.files == runtime
-    assert evidence.commit_sha == SHA and evidence.tree_sha == TREE and evidence.subtree_sha == "c" * 40
-    assert evidence.solution_slug == "fixture" and evidence.repo_subpath == "solutions/fixture"
+    assert len(evidence.source_files) == 14
+    assert len(native.files) == 7
+    assert evidence.files == authored
+    assert native.files == runtime
+    assert evidence.commit_sha == SHA
+    assert evidence.tree_sha == TREE
+    assert evidence.subtree_sha == "c" * 40
+    assert evidence.solution_slug == "fixture"
+    assert evidence.repo_subpath == "solutions/fixture"
     assert list(evidence.files) == sorted(authored)
     manifest = evidence.file_manifest()
     assert [row["path"] for row in manifest] == ["solutions/fixture/" + path for path in sorted(authored)]
@@ -690,3 +775,121 @@ async def test_authored_inventory_bounds_are_checked_before_blob_transport(fault
         with pytest.raises(GitDeliverySourceError):
             await ProtectedGitReader(policy(), "ephemeral-job-token", client).authored_source(SHA, "solutions/fixture", TREE)
     assert not any(path.startswith("git/blobs/") for path in calls)
+
+
+def inline_app_fixture():
+    files = {"app.yaml": b"scope: global\naccess_level: public\n",
+        "pages/index.tsx": b"export default () => null;\n", "assets/empty.svg": b""}
+    documents, _, _ = fixture()
+    entries = [{"path": "pages", "type": "tree", "mode": "040000", "sha": "d" * 40},
+        {"path": "assets", "type": "tree", "mode": "040000", "sha": "e" * 40}]
+    for path, content in files.items():
+        blob_sha = hashlib.sha1(b"blob " + str(len(content)).encode() + b"\0" + content,
+            usedforsecurity=False).hexdigest()
+        entries.append({"path": path, "type": "blob", "mode": "100644", "sha": blob_sha,
+            "size": len(content)})
+        documents["git/blobs/" + blob_sha] = {"sha": blob_sha, "encoding": "base64",
+            "content": base64.b64encode(content).decode()}
+    documents["git/trees/" + TREE + "?recursive=1"]["tree"] = [
+        {"path": "apps", "type": "tree", "mode": "040000", "sha": "f" * 40},
+        {"path": "apps/fixture", "type": "tree", "mode": "040000", "sha": "c" * 40},
+        *[{**entry, "path": "apps/fixture/" + entry["path"]} for entry in entries],
+    ]
+    documents["git/trees/" + "c" * 40 + "?recursive=1"] = {
+        "sha": "c" * 40, "truncated": False, "tree": entries,
+    }
+    return documents, files
+
+
+@pytest.mark.asyncio
+async def test_inline_app_content_read_proves_complete_blobs_without_solution_or_publish_authority():
+    documents, files = inline_app_fixture()
+    async with httpx.AsyncClient(transport=transport(documents, [])) as client:
+        reader = ProtectedGitReader(policy(), "ephemeral-job-token", client)
+        await reader.verify_ci(SHA, 123, 2)
+        source = await reader.inline_app_source(SHA, "apps/fixture", TREE)
+    assert source.commit_sha == SHA and source.tree_sha == TREE and source.subtree_sha == "c" * 40
+    assert source.repo_subpath == "apps/fixture"
+    assert dict(source.snapshot.files) == files
+    assert source.snapshot.hashes() == {path: "sha256:" + hashlib.sha256(content).hexdigest()
+        for path, content in sorted(files.items())}
+    assert dict(source.file_modes) == {path: "100644" for path in files}
+    assert not hasattr(source, "solution_id") and not hasattr(source, "application_id")
+    with pytest.raises(TypeError):
+        setitem(source.snapshot.files, "app.yaml", b"forged")
+    with pytest.raises(TypeError):
+        setitem(source.file_modes, "app.yaml", "120000")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("path", ["solutions/fixture", "apps/../fixture", "apps/fixture/",
+    "apps/fixture/nested", "apps/Fixture", "apps/fixture_name", "https://attacker.invalid"])
+async def test_inline_app_subtree_path_is_checked_before_git_transport(path):
+    calls = []
+    async with httpx.AsyncClient(transport=transport({}, calls)) as client:
+        with pytest.raises(GitDeliverySourceError, match="canonical inline App"):
+            await ProtectedGitReader(policy(), "ephemeral-job-token", client).inline_app_source(SHA, path, TREE)
+    assert calls == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("fault", ["missing_metadata", "generated_entry", "blob_bytes",
+    "root_disagreement", "subtree_truncated", "symlink"])
+async def test_inline_app_content_rejects_invalid_git_or_capture_input(fault):
+    documents, _ = inline_app_fixture()
+    root = documents["git/trees/" + TREE + "?recursive=1"]
+    subtree = documents["git/trees/" + "c" * 40 + "?recursive=1"]
+    entry = next(row for row in subtree["tree"] if row["path"] == "app.yaml")
+    root_entry = next(row for row in root["tree"] if row["path"] == "apps/fixture/app.yaml")
+    if fault == "missing_metadata":
+        subtree["tree"].remove(entry)
+        root["tree"].remove(root_entry)
+    elif fault == "generated_entry":
+        generated = {**entry, "path": "_entry.tsx"}
+        subtree["tree"].append(generated)
+        root["tree"].append({**generated, "path": "apps/fixture/_entry.tsx"})
+    elif fault == "blob_bytes":
+        documents["git/blobs/" + entry["sha"]]["content"] = base64.b64encode(b"forged").decode()
+    elif fault == "root_disagreement":
+        root_entry["size"] += 1
+    elif fault == "subtree_truncated":
+        subtree["truncated"] = True
+    else:
+        entry["mode"] = root_entry["mode"] = "120000"
+    async with httpx.AsyncClient(transport=transport(documents, [])) as client:
+        with pytest.raises(GitDeliverySourceError):
+            await ProtectedGitReader(policy(), "ephemeral-job-token", client).inline_app_source(SHA, "apps/fixture", TREE)
+
+
+@pytest.mark.asyncio
+async def test_inline_app_file_bound_precedes_blob_reads():
+    documents, _ = inline_app_fixture()
+    root = documents["git/trees/" + TREE + "?recursive=1"]
+    subtree = documents["git/trees/" + "c" * 40 + "?recursive=1"]
+    for number in range(256):
+        entry = {"path": f"extra-{number}.ts", "type": "blob", "mode": "100644", "sha": "d" * 40, "size": 0}
+        subtree["tree"].append(entry)
+        root["tree"].append({**entry, "path": "apps/fixture/" + entry["path"]})
+    calls = []
+    async with httpx.AsyncClient(transport=transport(documents, calls)) as client:
+        with pytest.raises(GitDeliverySourceError, match="inventory bound"):
+            await ProtectedGitReader(policy(), "ephemeral-job-token", client).inline_app_source(SHA, "apps/fixture", TREE)
+    assert not any(path.startswith("git/blobs/") for path in calls)
+
+
+@pytest.mark.asyncio
+async def test_solution_delivery_in_mixed_registry_does_not_borrow_package_or_app_authority():
+    documents, _, digest = fixture()
+    registry_path = "config/solution-delivery/installations.json"
+    rows = [
+        {"kind": "solution", "target": "production", "recipe": RECIPE},
+        {"kind": "inline_app", "target": "production", "recipe": "config/app-delivery/fixture.json"},
+        {"kind": "solution_package", "target": "production", "recipe": "config/solution-package-delivery/fixture.json"},
+    ]
+    content = json.dumps({"schema_version": "bifrost.package-delivery-installations/v1", "installations": rows}).encode()
+    add_git_document(documents, registry_path, content)
+    async with httpx.AsyncClient(transport=transport(documents, [])) as client:
+        source = await ProtectedGitReader(policy(), "ephemeral-job-token", client).source(SID, SHA, digest)
+    assert set(source.installation_registry["installations"]) == {str(SID)}
+    assert source.installation_registry["application_recipes"] == ["config/app-delivery/fixture.json"]
+    assert source.control_hashes[registry_path] == hashlib.sha256(content).hexdigest()

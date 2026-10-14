@@ -18,9 +18,28 @@ preview must omit that installation's bindings without reclaiming its workflows.
 - The original Live row/release identity, source hashes, bundle hash and recomputed
   preflight evidence digest. The receipt alone is insufficient.
 
+Two provenance variants keep that proof honest for transitions that no receipt
+can describe (#1122):
+
+- A receipt coherently bound to a predecessor Live release (both release
+  identity fields differ together) still proves the handoff while its
+  coverage, verified source paths and source hashes match the current
+  release's governed bytes. One mismatched identity field is tampering and
+  fails closed, as do initial-install, adoption and detached-revision roots.
+- When the active deployment itself carries no recorded lineage marker, the
+  key is verified directly against that closure-validated active
+  deployment: existence, active pointer, storage identity, runtime bytes,
+  contracts, dependencies, registration set, inherited identity and exposure.
+  A reviewed marker anywhere in the chain still requires its recorded base:
+  a missing marker reached through a reviewed revision fails closed. A
+  solution-managed key with no active covering deployment, an unknown key,
+  or any drift in those checks still raises `UnprovenLiveHandoff`.
+
 The original governed source files stay in the next loose snapshot because
-remaining loose workflows may depend on their helpers. Only certified workflow
-bindings leave its registration set. Solution updates use reviewed Solution
+remaining loose workflows may depend on their helpers. Workflow bindings leave
+its registration set only when the readback proves them — either through a
+certified handoff receipt or through verified coverage of their active
+Solution deployment. Solution updates use reviewed Solution
 delivery; selecting a handed-off entry for loose delivery is refused.
 
 Activation repeats registration and handoff proof under the existing global
@@ -44,3 +63,17 @@ consumer and obligation evidence.
 Rollback the platform image through its reviewed lane if readback fails. Keep
 Solution ownership and Live history intact; do not reassign a Solution workflow or
 manually settle Source debt to make preview pass.
+
+## Failed preview diagnostics
+
+A refused handoff still produces `workspace_promotion_preview_invalid` with
+`retryable: false`. Its message includes `invariant:` followed only by an
+allowlisted, authored reason. Closure, registration, runtime-byte, current Root
+contract and dependency checks annotate their failure stage without changing the
+underlying exception or validation. Unexpected provider or validation bodies are
+not copied into the public receipt; unclassified failures remain redacted.
+
+Read the existing job receipt before choosing a repair. A stage identifies the
+failed proof, not permission to skip it, replace ownership, manufacture a receipt,
+or replay a business workflow. Publish this diagnostic change through normal
+platform source/image gates before refreshing a failed production preview.

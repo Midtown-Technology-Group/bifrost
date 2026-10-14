@@ -14,6 +14,7 @@ from fastapi import APIRouter, HTTPException, Query, Response, status
 from sqlalchemy import case, exists, func, or_, select
 from sqlalchemy.exc import IntegrityError
 
+from src.services.operation_catalog import operation_route
 from src.config import get_settings
 from src.core.auth import CurrentSuperuser
 from src.core.db_deps import DbSession
@@ -49,7 +50,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/users", tags=["Users"])
 
 
-@router.get("/{user_id}/external-identities", response_model=list[ExternalIdentityResponse])
+@router.get("/{user_id}/external-identities", response_model=list[ExternalIdentityResponse], **operation_route("users.list_external_identities"))
 async def list_external_identities(
     user_id: UUID, user: CurrentSuperuser, db: DbSession,
 ) -> list[ExternalIdentityResponse]:
@@ -59,7 +60,7 @@ async def list_external_identities(
     return [ExternalIdentityResponse.model_validate(row, from_attributes=True) for row in rows]
 
 
-@router.post("/{user_id}/external-identities", response_model=ExternalIdentityResponse, status_code=201)
+@router.post("/{user_id}/external-identities", response_model=ExternalIdentityResponse, status_code=201, **operation_route("users.create_external_identity"))
 async def create_external_identity(
     user_id: UUID, request: ExternalIdentityCreateRequest,
     user: CurrentSuperuser, db: DbSession,
@@ -106,7 +107,7 @@ async def create_external_identity(
     return ExternalIdentityResponse.model_validate(identity, from_attributes=True)
 
 
-@router.delete("/{user_id}/external-identities/{identity_id}", status_code=204)
+@router.delete("/{user_id}/external-identities/{identity_id}", status_code=204, **operation_route("users.delete_external_identity"))
 async def delete_external_identity(
     user_id: UUID, identity_id: UUID, user: CurrentSuperuser, db: DbSession,
 ) -> None:
@@ -128,6 +129,7 @@ async def delete_external_identity(
     response_model=list[UserPublic],
     summary="List users",
     description="List all users with optional filtering by type and organization",
+    **operation_route("users.list"),
 )
 async def list_users(
     user: CurrentSuperuser,
@@ -266,6 +268,7 @@ async def list_users(
     status_code=status.HTTP_201_CREATED,
     summary="Create user",
     description="Create a new user proactively (Platform admin only)",
+    **operation_route("users.create"),
 )
 async def create_user(
     request: UserCreate,
@@ -329,6 +332,7 @@ async def create_user(
         "Apply one operation (move_org, replace_roles, set_active) to a batch of users "
         "in a single transaction. Returns per-user pass/fail."
     ),
+    **operation_route("users.bulk_update"),
 )
 async def bulk_update_users(
     request: BulkUserOperation,
@@ -462,6 +466,7 @@ def _set_bulk_user_active(
         404: {"description": "User not found"},
         409: {"description": "User is already registered"},
     },
+    **operation_route("users.invites.resend"),
 )
 async def resend_invite(
     user_id: UUID,
@@ -476,6 +481,7 @@ async def resend_invite(
     response_model=CreateInviteResponse,
     summary="Send invite",
     description="Emit invite automation for an existing registration link without rotating the token.",
+    **operation_route("users.invites.send"),
 )
 async def send_invite(
     user_id: UUID,
@@ -519,6 +525,7 @@ async def send_invite(
         404: {"description": "User not found"},
         409: {"description": "User is already registered"},
     },
+    **operation_route("users.invites.regenerate"),
 )
 async def regenerate_invite(
     user_id: UUID,
@@ -533,6 +540,7 @@ async def regenerate_invite(
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Revoke invite",
     description="Revoke any active invite for the user.",
+    **operation_route("users.invites.revoke"),
 )
 async def revoke_invite(
     user_id: UUID,
@@ -624,6 +632,7 @@ async def _emit_user_invited_event(
     response_model=UserPublic,
     summary="Get user details",
     description="Get a specific user's details (Platform admin only)",
+    **operation_route("users.get"),
 )
 async def get_user(
     user_id: str,
@@ -655,6 +664,7 @@ async def get_user(
     response_model=UserPublic,
     summary="Update user",
     description="Update user properties including role transitions",
+    **operation_route("users.update"),
 )
 async def update_user(
     user_id: str,
@@ -729,6 +739,7 @@ async def update_user(
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Delete user",
     description="Delete a user from the system",
+    **operation_route("users.delete"),
 )
 async def delete_user(
     user_id: str,
@@ -783,6 +794,7 @@ async def delete_user(
     response_model=UserRolesResponse,
     summary="Get user roles",
     description="Get all roles assigned to a user",
+    **operation_route("users.roles.list"),
 )
 async def get_user_roles(
     user_id: str,
@@ -815,6 +827,7 @@ async def get_user_roles(
     response_model=UserFormsResponse,
     summary="Get user forms",
     description="Get all forms a user can access based on their roles",
+    **operation_route("users.forms.list"),
 )
 async def get_user_forms(
     user_id: str,

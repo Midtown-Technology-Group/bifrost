@@ -15,14 +15,15 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import math
 import signal
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 
 import memory_sampler
-
 
 _ROUND_PREFIX = "LARGE_TABLE_ROUND "
 _TEST_PATH = "tests/e2e/platform/test_large_table_response_memory.py"
@@ -37,9 +38,10 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--trace-out",
         type=Path,
-        default=Path("/tmp/bifrost/large-table-memory.csv"),
+        default=None,
     )
-    parser.add_argument("--interval", type=float, default=0.1)
+    parser.add_argument("--interval", type=float, default=0.1,
+                        help="Sampling period in seconds (greater than zero, at most one)")
     parser.add_argument(
         "--max-retained-mib",
         type=float,
@@ -50,6 +52,7 @@ def _parse_args() -> argparse.Namespace:
 
 
 def _read_samples(path: Path) -> list[dict[str, float]]:
+    path = checked_trace_path(path)
     samples: list[dict[str, float]] = []
     with path.open() as handle:
         for row in csv.DictReader(handle):
@@ -60,6 +63,15 @@ def _read_samples(path: Path) -> list[dict[str, float]]:
             if parsed["rss_kb"] > 0:
                 samples.append(parsed)
     return samples
+
+
+def checked_trace_path(path: Path) -> Path:
+    if ".." in path.parts or path.is_symlink():
+        raise ValueError("Trace path cannot traverse or name a symlink")
+    resolved = path.resolve()
+    if not any(resolved.is_relative_to(root) for root in (Path.cwd().resolve(), Path(tempfile.gettempdir()).resolve())):
+        raise ValueError("Trace must be in the checkout or temporary test results")
+    return resolved
 
 
 def _nearest_sample(
@@ -85,6 +97,11 @@ def _mib(value: float) -> float:
 
 def main() -> int:
     args = _parse_args()
+    interval = float(args.interval)
+    if not math.isfinite(interval) or not 0 < interval <= 1:
+        raise ValueError("Sampling interval must be finite, greater than zero, and at most one second")
+    args.trace_out = checked_trace_path(args.trace_out or
+        Path(tempfile.mkdtemp(prefix="bifrost-large-table-")) / "memory.csv")
     container = memory_sampler._detect_container()
     args.trace_out.parent.mkdir(parents=True, exist_ok=True)
 
@@ -97,12 +114,12 @@ def main() -> int:
             "--out",
             str(args.trace_out),
             "--interval",
-            str(args.interval),
+            str(interval),
             "--maps-every",
             "10",
         ],
     )
-    time.sleep(max(0.2, args.interval * 2))
+    time.sleep(max(0.2, interval * 2))
 
     output_lines: list[str] = []
     try:

@@ -36,6 +36,14 @@ source mutation.
 
 ## Immutable release imports
 
+The shared dependency collector includes available parent `__init__.py` files
+when resolving a submodule import, and follows their transitive dependencies.
+This applies to absolute, relative and literal dynamic imports. Namespace
+packages contribute no invented initializer. Initializers receive the same
+resource and uncertainty checks as other source, without executing their bytes
+during review. Updating the collector requires reconciling reviewed recipe
+mappings against the expanded closure before enabling delivery on that SDK.
+
 An execution pinned to a Workspace release resolves every targeted module,
 package, and namespace against that release's source manifest. Concrete imports
 load verified bytes from its immutable storage prefix through the same reader

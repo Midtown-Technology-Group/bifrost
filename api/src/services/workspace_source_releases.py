@@ -272,7 +272,9 @@ class WorkspaceSourceReleaseService:
 
     async def _reconcile_solution_delivery(self, source_release_id: UUID) -> bool:
         from src.config import get_settings
-        if get_settings().solution_git_delivery_policy is None:
+        settings = get_settings()
+        if (settings.solution_git_delivery_policy is None
+                and getattr(settings, "solution_package_git_delivery_policy", None) is None):
             return False
         from src.services.solution_source_accountability import reconcile_solution_owned_source
         from src.services.solutions.native_authored_accounting import reconcile_native_solution_deploy_obligations

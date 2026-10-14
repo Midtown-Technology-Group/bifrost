@@ -396,6 +396,13 @@ class WorkspaceImportResolver:
             target = self.modules.get(candidate)
             if target:
                 self.resolved.add(target)
+                # Importing a submodule also executes available parent package
+                # initializers. Namespace packages have no initializer to add.
+                # Do not collect ancestor .py modules or unrelated siblings.
+                for parent_length in range(1, length):
+                    parent = self.modules.get(".".join(parts[:parent_length]))
+                    if parent and pathlib.PurePosixPath(parent).name == "__init__.py":
+                        self.resolved.add(parent)
                 return
 
     def _scan_import_from(self, node: ast.ImportFrom) -> None:

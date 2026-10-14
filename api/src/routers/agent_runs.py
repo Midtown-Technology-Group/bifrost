@@ -55,6 +55,8 @@ from src.models.contracts.agent_runs import (
 )
 from src.models.contracts.executions import AIUsagePublicSimple, AIUsageTotalsSimple
 from src.models.orm.agent_run_verdict_history import AgentRunVerdictHistory
+from src.models.enums import AgentAccessLevel
+from src.models.orm.agents import Agent
 from src.models.orm.agent_runs import AgentRun
 from src.models.orm.ai_usage import AIUsage
 from src.models.orm.summary_backfill_job import SummaryBackfillJob
@@ -75,6 +77,46 @@ from src.services.execution.tuning_service import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/agent-runs", tags=["Agent Runs"])
+
+
+async def _require_own_private_agent_run(
+    db: DbSession, user: CurrentActiveUser, run: AgentRun
+) -> None:
+    """Enforce the tuning-action rule on a run already passed visibility.
+
+    Tuning actions (rerun, verdict set/clear, flag message, dry-run) are
+    narrower than plain run visibility: a non-bypass caller may act on a
+    run only when it's their own run of an agent they own that is
+    PRIVATE — the same rule ``agent_tuning.py`` applies. Callers with a platform-admin grant may act on any run already
+    visible to them.
+    """
+    if user.has_platform_admin_grant():
+        return
+
+    agent = (
+        await db.execute(select(Agent).where(Agent.id == run.agent_id))
+    ).scalar_one_or_none()
+    if (
+        agent is None
+        or agent.access_level != AgentAccessLevel.PRIVATE
+        or agent.owner_user_id != user.user_id
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Agent run {run.id} not found",
+        )
+
+
+def _require_flagged_completed_run(run: AgentRun) -> None:
+    """Restrict flag-conversation work to completed thumbs-down runs."""
+    if run.status != "completed" or run.verdict != "down":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "Flag conversations are only available on completed runs "
+                "with a down verdict"
+            ),
+        )
 
 
 def _run_to_response(run: AgentRun) -> AgentRunResponse:
@@ -680,6 +722,7 @@ async def rerun_agent_run(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Agent run {run_id} not found",
         )
+    await _require_own_private_agent_run(db, user, original)
 
     new_run_id = await enqueue_agent_run(
         agent_id=str(original.agent_id),
@@ -792,6 +835,7 @@ async def set_verdict(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Agent run {run_id} not found",
         )
+    await _require_own_private_agent_run(db, user, run)
     if run.status != "completed":
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -840,6 +884,7 @@ async def clear_verdict(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Agent run {run_id} not found",
         )
+    await _require_own_private_agent_run(db, user, run)
 
     now = datetime.now(timezone.utc)
     previous = run.verdict
@@ -889,6 +934,8 @@ async def get_flag_conversation(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Agent run {run_id} not found",
         )
+    await _require_own_private_agent_run(db, user, run)
+    _require_flagged_completed_run(run)
 
     conv = await get_or_create_conversation(run_id, db)
     # Persist the created-empty conversation so subsequent GETs see the same id.
@@ -919,14 +966,8 @@ async def send_flag_message(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Agent run {run_id} not found",
         )
-    if run.status != "completed":
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=(
-                "Flag conversations are only available on completed runs "
-                f"(current status: {run.status})"
-            ),
-        )
+    await _require_own_private_agent_run(db, user, run)
+    _require_flagged_completed_run(run)
 
     conv = await append_user_message_and_reply(run_id, request.content, db)
     return FlagConversationResponse(
@@ -989,6 +1030,7 @@ async def dry_run_agent_run(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Agent run {run_id} not found",
         )
+    await _require_own_private_agent_run(db, user, run)
     if run.status != "completed":
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,

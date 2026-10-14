@@ -109,6 +109,9 @@ class ExecutionContext:
     # They are distinct from the target execution organization.
     is_provider_org: bool = False
     is_external: bool = False
+    # UTC deadline for a timed workflow; None when timeout_seconds=0.
+    workflow_deadline: datetime | None = None
+    workflow_timeout_seconds: int | None = None
     workflow_name: str = field(default="")  # Name of the executing workflow
     is_agent: bool = False  # True when triggered by an autonomous agent
     # Shared file workspace inherited by nested tools. Chat uses the
@@ -250,6 +253,10 @@ class ExecutionContext:
             "is_provider_org": self.is_provider_org,
             "is_external": self.is_external,
             "execution_id": self.execution_id,
+            "workflow_deadline": (
+                self.workflow_deadline.isoformat() if self.workflow_deadline else None
+            ),
+            "workflow_timeout_seconds": self.workflow_timeout_seconds,
             "workflow_name": self.workflow_name,
             "is_agent": self.is_agent,
             "artifact_workspace_id": self.artifact_workspace_id,

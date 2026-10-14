@@ -233,3 +233,8 @@ client/preview/
 scorecard.png
 .repowise/*
 !.repowise/config.yaml
+
+# Independent Sonar CI reports, provenance and scanner working directory
+.sonar-evidence/
+.scannerwork/
+client/coverage/

@@ -30,14 +30,15 @@ ENV NODE_OPTIONS="--max-old-space-size=4096"
 ARG VITE_BIFROST_VERSION=unknown
 ENV VITE_BIFROST_VERSION=${VITE_BIFROST_VERSION}
 RUN npm run build \
+    && printf '%s\n' "$VITE_BIFROST_VERSION" > dist/bifrost-version.txt \
     && find dist -type d -exec chmod 755 {} + \
     && find dist -type f -exec chmod 644 {} +
 
-# Local/CI verification target: production build plus the same Node checks
-# required by the merge gate.
+# Local/CI verification target: builder already type-checks and bundles.
+# Run the remaining Node checks required by the merge gate once.
 FROM builder AS ci
 
-CMD ["sh", "-c", "npm run tsc && npm run lint && npm test"]
+CMD ["sh", "-c", "npm run lint && npm test"]
 
 # =============================================================================
 # Stage 3: Production with nginx
@@ -66,3 +67,4 @@ USER nginx
 EXPOSE 80
 
 CMD ["nginx", "-g", "daemon off;"]
+

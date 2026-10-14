@@ -10,7 +10,9 @@ on:
       - api/src/services/execution/**
   workflow_dispatch:
 
-permissions: read-all
+permissions:
+  contents: read
+  packages: read
 
 # Superseded PR snapshots can release their runners; other events must finish.
 concurrency:

@@ -111,6 +111,28 @@ async def test_optional_user_rejects_mcp_scoped_rest_token(monkeypatch):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("actor_type", ["solution_app", "future_actor"])
+async def test_optional_user_rejects_actor_scoped_rest_token(
+    monkeypatch,
+    actor_type,
+):
+    monkeypatch.setattr(
+        auth,
+        "decode_token",
+        lambda token, *, expected_type: _payload(actor_type=actor_type),
+    )
+
+    assert (
+        await auth.get_current_user_optional(
+            _request(),
+            _credentials("actor-token"),
+            object(),
+        )
+        is None
+    )
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("claim", ["engine_execution_id", "engine_attempt_token"])
 async def test_optional_user_rejects_malformed_engine_uuid_claim(monkeypatch, claim):
     monkeypatch.setattr(
@@ -174,6 +196,27 @@ def test_execution_context_properties() -> None:
 
 
 @pytest.mark.asyncio
+async def test_embed_app_header_requires_matching_signed_app_claim() -> None:
+    app_id = uuid4()
+    app = SimpleNamespace(id=app_id, solution_id=uuid4())
+
+    class Db:
+        async def get(self, model, requested_id):
+            assert requested_id == app_id
+            return app
+
+    principal = _principal(
+        embed=True,
+        embed_kind="app",
+        app_id=str(app_id),
+    )
+    assert await auth._authorized_app_for_principal(Db(), principal, app_id) is app
+
+    principal.app_id = str(uuid4())
+    assert await auth._authorized_app_for_principal(Db(), principal, app_id) is None
+
+
+@pytest.mark.asyncio
 async def test_execution_context_rejects_solution_app_mismatch(monkeypatch):
     solution_id = uuid4()
     app_solution_id = uuid4()
@@ -192,7 +235,12 @@ async def test_execution_context_rejects_solution_app_mismatch(monkeypatch):
     async def no_roles(user_id, db):
         return [], []
 
+    async def authorized_app(db, user, requested_app_id):
+        assert requested_app_id == app_id
+        return SimpleNamespace(id=app_id, solution_id=app_solution_id)
+
     monkeypatch.setattr(auth, "get_user_roles", no_roles)
+    monkeypatch.setattr(auth, "_authorized_app_for_principal", authorized_app)
     request = _request(
         headers={"X-Bifrost-App": str(app_id)},
         query_params={"solution": str(solution_id)},
@@ -280,6 +328,22 @@ async def test_websocket_auth_uses_header_and_rejects_mcp_token(monkeypatch):
 
     assert await auth.get_current_user_ws(websocket) is None
     assert calls == [("ws-token", "access")]
+
+
+@pytest.mark.asyncio
+async def test_websocket_auth_rejects_actor_scoped_token(monkeypatch):
+    monkeypatch.setattr(
+        auth,
+        "decode_token",
+        lambda token, *, expected_type: _payload(actor_type="solution_app"),
+    )
+
+    assert (
+        await auth.get_current_user_ws(
+            _request(headers={"authorization": "Bearer actor-token"})
+        )
+        is None
+    )
 
 
 @pytest.mark.asyncio

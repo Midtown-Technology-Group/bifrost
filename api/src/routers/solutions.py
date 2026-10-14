@@ -36,6 +36,7 @@ from bifrost.solution_jobs import (
     DEPLOY_JOB_TIMEOUT_ERROR,
     DEPLOY_JOB_TIMEOUT_SECONDS,
 )
+from src.services.operation_catalog import operation_route
 from shared.logo_processing import is_logo_thumbnail_version
 from src.config import get_settings
 from src.core.auth import Context, CurrentSuperuser
@@ -107,6 +108,7 @@ from src.jobs.platform.solution_export import (
 from src.jobs.platform.solution_deploy import (
     SOLUTION_DEPLOY_DEFINITION,
     SolutionDeployPayload,
+    unresolved_solution_deploy,
 )
 from src.services.github_actions_oidc import (
     workspace_source_release_tracking_organization_id,
@@ -614,18 +616,60 @@ async def _enqueue_solution_deploy_job(
     input_path: Path | None = None,
     input_bytes: bytes | None = None,
     memory_profile_key: str | None = None,
+    publication_id: UUID | None = None,
 ) -> SolutionDeployJob:
     """Stage one validated input and atomically expose its central job row."""
     if (input_path is None) == (input_bytes is None):
         raise ValueError("exactly one staged input is required")
     if install_id is not None:
         await _lock_solution_operation(db, install_id)
+        if publication_id is not None:
+            # Protected package admission supplies a deterministic identity.
+            # A lost enqueue response must locate this original operation,
+            # rather than write a second input or create a second publisher.
+            from src.models.orm.platform_jobs import PlatformJob
+            from src.core.security import decrypt_secret
+            retained = await db.get(PlatformJob, publication_id)
+            if retained is not None:
+                original = SolutionDeployPayload.model_validate_json(decrypt_secret(retained.encrypted_payload or ""))
+                requested_digest = hashlib.sha256(input_bytes or b"").hexdigest()
+                immutable_options = ("package_source", "artifact_digest")
+                if (kind != "deliver_package" or original.kind != kind
+                        or original.install_id != install_id or original.input_sha256 != requested_digest
+                        or retained.organization_id != organization_id
+                        or retained.requested_by_user_id != str(requested_by_user_id)
+                        or any(original.options.get(key) != options.get(key) for key in immutable_options)):
+                    raise HTTPException(status_code=409, detail="Original package job identity differs.")
+                projection = await db.get(SolutionDeployJob, publication_id)
+                if projection is None:
+                    raise HTTPException(status_code=409, detail="Original package status is unavailable.")
+                if retained.status == "succeeded":
+                    from src.services.solutions.package_runtime import readback_package_runtime
+                    await readback_package_runtime(db, install_id, UUID((projection.result or {})["deployment_id"]),
+                        expected_source_sha256=original.input_sha256, expected_organization_id=organization_id)
+                elif retained.status in ("failed", "cancelled", "requires_action"):
+                    from src.jobs.platform.solution_deploy import SOLUTION_DEPLOY_INTENT_SCHEMA
+                    if (retained.result or {}).get("schema_version") != SOLUTION_DEPLOY_INTENT_SCHEMA:
+                        raise HTTPException(status_code=409, detail="Original pre-publication failure requires diagnosis before a fresh operation.")
+                    await enqueue_platform_job(db, SOLUTION_DEPLOY_DEFINITION, original,
+                        dedupe_key=retained.dedupe_key, resource_lock_key=retained.resource_lock_key,
+                        priority=retained.priority, organization_id=organization_id,
+                        requested_by_user_id=requested_by_user_id, requested_by_email=requested_by_email,
+                        requested_by_name=requested_by_name, resource_type=retained.resource_type,
+                        resource_id=retained.resource_id, title=retained.title, action_url=retained.action_url)
+                    await db.commit()
+                return projection
         if await _active_solution_sdk_update_exists(db, install_id):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="An App SDK update is already in progress for this Solution.",
             )
-    job_id = uuid4()
+        if await unresolved_solution_deploy(db, install_id) is not None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="An original reviewed package delivery requires recovery before another Solution writer.",
+            )
+    job_id = publication_id or uuid4()
     storage = SolutionDeployJobStorage(job_id)
     if input_path is not None:
         digest, _ = await storage.write_path(input_path)
@@ -680,13 +724,14 @@ async def _enqueue_solution_deploy_job(
         await db.refresh(projection)
     except Exception:
         await db.rollback()
-        await storage.delete()
+        if kind != "deliver_package":
+            await storage.delete()
         raise
     await publish_platform_job_update(platform_job)
     return projection
 
 
-@router.post("", response_model=SolutionDTO, status_code=status.HTTP_201_CREATED, summary="Create a Solution install (admin only)")
+@router.post("", response_model=SolutionDTO, status_code=status.HTTP_201_CREATED, summary="Create a Solution install (admin only)", **operation_route("solutions.create"))
 async def create_solution(body: SolutionCreate, ctx: Context, user: CurrentSuperuser) -> SolutionDTO:
     # Install kind is DERIVED from organization_id (unified --org standard) —
     # there is no `scope` input. HOME (organization_id absent) => the caller's
@@ -859,7 +904,7 @@ async def _solution_sdk_statuses_for_rows(
     }
 
 
-@router.get("", response_model=SolutionsList, summary="List Solution installs (admin only)")
+@router.get("", response_model=SolutionsList, summary="List Solution installs (admin only)", **operation_route("solutions.list"))
 async def list_solutions(ctx: Context, user: CurrentSuperuser) -> SolutionsList:
     rows = (
         (
@@ -1104,7 +1149,7 @@ async def update_solution_app_sdks(
     )
 
 
-@router.get("/{solution_id}", response_model=SolutionDTO, summary="Get a Solution install (admin only)")
+@router.get("/{solution_id}", response_model=SolutionDTO, summary="Get a Solution install (admin only)", **operation_route("solutions.get"))
 async def get_solution(solution_id: UUID, ctx: Context, user: CurrentSuperuser) -> SolutionDTO:
     row = await ctx.db.get(SolutionORM, solution_id)
     if row is None:
@@ -1239,6 +1284,7 @@ async def solution_setup(
         200: {"content": {"application/zip": {}}},
         404: {"description": "Install not found, or it predates export support"},
     },
+    **operation_route("solutions.export"),
 )
 async def export_solution(
     solution_id: UUID,
@@ -1292,6 +1338,7 @@ async def export_solution(
     from src.services.solutions.export import (
         add_live_content_to_workspace_zip_file,
         build_workspace_zip_for_export,
+        copy_workspace_zip_with_readme,
     )
     from src.services.solutions.source_artifact import SolutionSourceArtifactStorage
 
@@ -1335,7 +1382,9 @@ async def export_solution(
         else:
             has_stored_source = await artifact.copy_to_path(source_path)
             if has_stored_source and mode == "shareable":
-                source_path.replace(out_path)
+                await asyncio.to_thread(
+                    copy_workspace_zip_with_readme, source_path, out_path, sol.readme
+                )
             else:
                 bundle = await SolutionCaptureService(ctx.db).bundle_for(
                     sol,
@@ -1942,6 +1991,7 @@ async def preview_solution_capture(
     "/{solution_id}",
     response_model=SolutionDTO,
     summary="Update an install's local fields (admin only)",
+    **operation_route("solutions.update"),
 )
 async def update_solution(
     solution_id: UUID, body: SolutionUpdate, ctx: Context, user: CurrentSuperuser
@@ -2199,6 +2249,7 @@ async def get_solution_deletion_summary(
     "/{solution_id}",
     response_model=SolutionDeleteSummary,
     summary="Hard-delete an install and ALL owned data — irreversible (admin only)",
+    **operation_route("solutions.delete"),
 )
 async def delete_solution(
     solution_id: UUID,
@@ -2681,6 +2732,7 @@ async def _run_install_job(
     "/{solution_id}/deploy",
     status_code=status.HTTP_202_ACCEPTED,
     summary="Enqueue a deploy to an install (async, full replace, admin only)",
+    **operation_route("solutions.deploy"),
 )
 async def deploy_solution(
     solution_id: UUID,
@@ -2819,6 +2871,7 @@ async def get_deploy_job(
     "/{solution_id}/capture",
     response_model=SolutionCaptureResponse,
     summary="Capture existing loose entities into an install (admin only)",
+    **operation_route("solutions.capture"),
 )
 async def capture_solution_entities(
     solution_id: UUID, body: SolutionCaptureRequest, ctx: Context, user: CurrentSuperuser
@@ -2924,6 +2977,7 @@ async def ack_pulled_captures(
     response_model=PlatformJobAccepted,
     status_code=status.HTTP_202_ACCEPTED,
     summary="Queue a git-connected install update from its repo (admin only)",
+    **operation_route("solutions.sync"),
 )
 async def sync_solution(
     solution_id: UUID, response: Response, ctx: Context, user: CurrentSuperuser
@@ -3311,6 +3365,7 @@ async def install_from_repo(
     response_model=SolutionDeployEnqueued,
     status_code=status.HTTP_202_ACCEPTED,
     summary="Enqueue a Solution zip install (async deploy + config values, admin only)",
+    **operation_route("solutions.install"),
 )
 async def install_solution(
     file: Annotated[UploadFile, File(description="Solution workspace zip")],
@@ -3452,6 +3507,7 @@ async def install_solution(
     response_model=PlatformJobAccepted,
     status_code=status.HTTP_202_ACCEPTED,
     summary="Reconcile a successful Solution deployment's accountability (admin only)",
+    **operation_route("solutions.reconcile_solution_deployment"),
 )
 async def reconcile_solution_deployment(
     solution_id: UUID, deploy_job_id: UUID, ctx: Context, user: CurrentSuperuser,

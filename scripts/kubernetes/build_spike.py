@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import argparse
 import json
-from pathlib import Path
 import subprocess
 import time
+from pathlib import Path
 
-from spike import LOCAL, NS, ROOT, kubectl
+from spike import LOCAL, NS, ROOT, checked_output, kubectl
 
 MEMORY = """import json
 from pathlib import Path
@@ -20,6 +20,7 @@ print(json.dumps({'current_bytes':c,'peak_bytes':int((p/'memory.peak').read_text
 
 
 def run(out: Path, restart_scheduler: bool) -> None:
+    out = checked_output(out)
     out.mkdir(parents=True, exist_ok=False)
     samples = []
     restarted = False

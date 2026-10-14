@@ -42,7 +42,7 @@ class S3StorageClient:
         self.settings = settings
 
     @asynccontextmanager
-    async def get_client(self):
+    async def get_client(self, *, single_attempt: bool = False):
         """
         Get S3 client context manager.
 
@@ -56,12 +56,17 @@ class S3StorageClient:
             raise RuntimeError("S3 storage not configured")
 
         session = _get_shared_session()
+        client_options = {}
+        if single_attempt:
+            from botocore.config import Config
+            client_options["config"] = Config(retries={"total_max_attempts": 1})
         async with session.create_client(
             "s3",
             endpoint_url=self.settings.s3_endpoint_url,
             aws_access_key_id=self.settings.s3_access_key,
             aws_secret_access_key=self.settings.s3_secret_key,
             region_name=self.settings.s3_region,
+            **client_options,
         ) as client:
             yield client
 

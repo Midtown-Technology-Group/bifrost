@@ -4,7 +4,7 @@ import json
 
 import pytest
 from pydantic_ai.usage import RunUsage
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import ANY, AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 from tests.unit.services.agent_runtime_fakes import LegacyMockModel
@@ -22,8 +22,10 @@ from src.services.execution.autonomous_agent_executor import (
     DelegationOutcome,
     MAX_DELEGATION_DEPTH,
     ToolError,
+    _parse_structured_output,
 )
 from src.services.llm.base import LLMConfig, LLMResponse, ToolCallRequest, ToolDefinition
+from src.services.openai_transport_detection import OpenAITransportProbe
 
 
 def _tool(name: str) -> ToolDefinition:
@@ -58,8 +60,8 @@ def mock_external_actor_resolution():
         "src.services.execution.autonomous_agent_executor.resolve_run_external_actor",
         new_callable=AsyncMock,
         return_value=None,
-    ):
-        yield
+    ) as resolver:
+        yield resolver
 
 
 @pytest.fixture
@@ -239,7 +241,150 @@ class TestAutonomousAgentExecutor:
         mock_runtime_config.assert_awaited_with(
             mock_session._mock_session,
             profile_id=mock_agent.llm_profile_id,
+            before_transport_probe=ANY,
+            record_transport_probe=ANY,
         )
+
+    @pytest.mark.asyncio
+    async def test_paused_run_revalidates_actor_without_resolving_llm_config(
+        self,
+        mock_session,
+        mock_agent,
+        mock_runtime_config,
+        mock_external_actor_resolution,
+    ):
+        mock_agent.is_active = False
+        run_id = uuid4()
+
+        result = await AutonomousAgentExecutor(mock_session).run(
+            agent=mock_agent,
+            input_data={"message": "do not probe"},
+            run_id=str(run_id),
+        )
+
+        assert result == {
+            "output": None,
+            "iterations_used": 0,
+            "tokens_used": 0,
+            "status": "paused",
+            "accepted": False,
+            "message": "Agent 'Test Agent' is paused. Request not processed.",
+            "llm_model": None,
+        }
+        mock_external_actor_resolution.assert_awaited_once_with(
+            mock_session._mock_session,
+            run_id,
+            None,
+        )
+        mock_runtime_config.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_transport_probe_budget_exhaustion_returns_budget_status(
+        self,
+        mock_session,
+        mock_agent,
+        mock_runtime_config,
+    ):
+        mock_agent.is_active = True
+        mock_agent.max_iterations = 1
+
+        async def exhaust_during_fallback(_session, **kwargs):
+            kwargs["record_transport_probe"](
+                OpenAITransportProbe(
+                    model="probe-model",
+                    transport="responses",
+                    input_tokens=0,
+                    output_tokens=0,
+                    duration_ms=5,
+                    succeeded=False,
+                )
+            )
+            kwargs["before_transport_probe"]()
+            raise AssertionError("budget guard did not reject the fallback probe")
+
+        mock_runtime_config.side_effect = exhaust_during_fallback
+        result = await AutonomousAgentExecutor(mock_session).run(
+            agent=mock_agent,
+            input_data={"message": "bounded"},
+            run_id=str(uuid4()),
+        )
+
+        assert result["status"] == "budget_exceeded"
+        assert result["iterations_used"] == 1
+        assert result["tokens_used"] == 0
+        assert result["llm_model"] is None
+        assert "transport detection" in result["output"]
+
+    @pytest.mark.asyncio
+    @patch("src.services.agent_runtime.model_factory.create_agent_model")
+    @patch("src.services.execution.autonomous_agent_executor.resolve_agent_tools")
+    async def test_transport_probe_is_committed_and_counted(
+        self,
+        mock_resolve_tools,
+        mock_create_model,
+        mock_session,
+        mock_agent,
+        mock_runtime_config,
+    ):
+        mock_resolve_tools.return_value = ([], {})
+        mock_llm = AsyncMock()
+        mock_llm.complete = AsyncMock(
+            return_value=LLMResponse(
+                content="Hello world",
+                tool_calls=None,
+                finish_reason="end_turn",
+                input_tokens=100,
+                output_tokens=50,
+            )
+        )
+        mock_create_model.return_value = LegacyMockModel(mock_llm)
+
+        async def resolve_with_probe(_session, **kwargs):
+            kwargs["before_transport_probe"]()
+            kwargs["record_transport_probe"](
+                OpenAITransportProbe(
+                    model="probe-model",
+                    transport="responses",
+                    input_tokens=7,
+                    output_tokens=2,
+                    duration_ms=5,
+                    succeeded=True,
+                )
+            )
+            return [
+                LLMConfig(
+                    provider="openai",
+                    model="probe-model",
+                    api_key="test-key",
+                )
+            ]
+
+        mock_runtime_config.side_effect = resolve_with_probe
+        redis_client = AsyncMock()
+        redis_client.get.return_value = None
+        executor = AutonomousAgentExecutor(mock_session, redis_client=redis_client)
+        result = await executor.run(
+            agent=mock_agent,
+            input_data={"message": "hello"},
+            run_id=str(uuid4()),
+        )
+
+        assert result["status"] == "completed"
+        assert result["iterations_used"] == 2
+        assert result["tokens_used"] == 159
+        mock_session._mock_session.commit.assert_awaited()
+        assert executor._pending_ai_usage[0] == {
+            "provider": "openai",
+            "model": "probe-model",
+            "input_tokens": 7,
+            "output_tokens": 2,
+            "cache_read_tokens": 0,
+            "cache_write_tokens": 0,
+            "provider_cost": None,
+            "duration_ms": 5,
+            "agent_run_id": ANY,
+            "organization_id": mock_agent.organization_id,
+        }
 
     @pytest.mark.asyncio
     async def test_run_delegation_persists_chat_child_and_caller(
@@ -1119,17 +1264,22 @@ class TestAutonomousAgentExecutor:
         assert result["output"] is None
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "content",
+        ['{"result": 42}', '```json\n{"result": 42}\n```'],
+        ids=["bare", "fenced"],
+    )
     @patch("src.services.agent_runtime.model_factory.create_agent_model")
     @patch("src.services.execution.autonomous_agent_executor.resolve_agent_tools")
     async def test_run_parses_json_output_when_schema_given(
-        self, mock_resolve_tools, mock_create_model, mock_session, mock_agent
+        self, mock_resolve_tools, mock_create_model, content, mock_session, mock_agent
     ):
-        """When output_schema is provided, run attempts to parse JSON from LLM output."""
+        """When output_schema is provided, run parses the JSON reply, fenced or not."""
         mock_resolve_tools.return_value = ([], {})
 
         mock_llm = AsyncMock()
         mock_llm.complete = AsyncMock(return_value=LLMResponse(
-            content='{"result": 42}',
+            content=content,
             tool_calls=None,
             finish_reason="end_turn",
             input_tokens=100,
@@ -1146,6 +1296,27 @@ class TestAutonomousAgentExecutor:
 
         assert result["status"] == "completed"
         assert result["output"] == {"result": 42}
+
+    @pytest.mark.parametrize(
+        "content",
+        [
+            '{"result": 42}',
+            '```json\n{"result": 42}\n```',
+            '```\n{"result": 42}\n```',
+            '  ```json\n{"result": 42}\n```\n',
+        ],
+    )
+    def test_parse_structured_output_accepts_fenced_json(self, content):
+        """A ```json fence around the reply must not defeat the structured parse."""
+        assert _parse_structured_output(content) == {"result": 42}
+
+    @pytest.mark.parametrize(
+        "content",
+        ["Not JSON at all", "Here you go:\n```json\n{\"result\": 42}\n```"],
+    )
+    def test_parse_structured_output_returns_non_json_unchanged(self, content):
+        """Anything that is not a bare or fenced JSON document comes back as the raw string."""
+        assert _parse_structured_output(content) == content
 
     @pytest.mark.asyncio
     @patch("src.services.agent_runtime.model_factory.create_agent_model")

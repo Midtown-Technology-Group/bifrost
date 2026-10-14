@@ -93,9 +93,21 @@ Credit appears in commit history and release notes when applicable.
 
 ## Developer Certificate of Origin
 
-Contributions require DCO sign-off per [CONTRIBUTING.md](CONTRIBUTING.md) (Developer
-Certificate of Origin 1.1). Maintainers may reject commits that lack valid
-`Signed-off-by` lines or equivalent GitHub DCO integration when enabled.
+[CONTRIBUTING.md](CONTRIBUTING.md) defines two accepted contribution routes:
+maintainer-directed agent work with an accurate authorization/provenance record,
+and contributor-provided DCO 1.1 certification. The named maintainer remains the
+principal for work explicitly directed to their agents. Their agents can record
+and carry out that authorization within scope without inventing a personal
+DCO certification.
+
+The maintainer-directed route does not require retrospective or per-commit
+personal sign-off messages. Its record must identify the actual principal,
+agent, task and exact contribution, preserve source/license provenance, and
+pass the existing source and delivery gates. Other contributions retain the
+DCO requirements. This is an explicit project acceptance policy; it does not
+claim every accepted commit carries a DCO trailer or waive third-party rights.
+Changes to the named principals, this acceptance policy, credentials or required
+controls remain separately reviewed decisions.
 
 ## Access continuity and bus factor
 

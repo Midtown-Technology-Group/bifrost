@@ -104,6 +104,8 @@
 | DELETE | `/api/applications/{app_id}/files/{file_path}` |
 | GET | `/api/applications/{app_id}/files/{file_path}` |
 | PUT | `/api/applications/{app_id}/files/{file_path}` |
+| POST | `/api/applications/{app_id}/github-source` |
+| POST | `/api/applications/{app_id}/github-source/{job_id}/inspect` |
 | DELETE | `/api/applications/{app_id}/logo` |
 | GET | `/api/applications/{app_id}/logo` |
 | POST | `/api/applications/{app_id}/logo` |
@@ -463,6 +465,7 @@
 | GET | `/api/reports/roi/summary` |
 | GET | `/api/reports/roi/trends` |
 | GET | `/api/reports/usage` |
+| GET | `/api/reports/workflow-resources` |
 | GET | `/api/required-instructions` |
 | GET | `/api/roles` |
 | POST | `/api/roles` |
@@ -586,6 +589,9 @@
 | POST | `/api/solutions/{solution_id}/deployments` |
 | GET | `/api/solutions/{solution_id}/deployments/active` |
 | GET | `/api/solutions/{solution_id}/deployments/capabilities` |
+| POST | `/api/solutions/{solution_id}/deployments/github-package` |
+| POST | `/api/solutions/{solution_id}/deployments/github-package/recover` |
+| POST | `/api/solutions/{solution_id}/deployments/github-package/status` |
 | POST | `/api/solutions/{solution_id}/deployments/github-source` |
 | POST | `/api/solutions/{solution_id}/deployments/shared-tables/preview` |
 | GET | `/api/solutions/{solution_id}/deployments/{deployment_id}` |

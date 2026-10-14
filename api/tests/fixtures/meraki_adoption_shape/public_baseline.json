@@ -1,0 +1,262 @@
+{
+  "reviewed_recipe": {
+    "files": {
+      "functions/report_routing.py": "solutions/meraki-report-routing/functions/report_routing.py",
+      "modules/report_api.py": "solutions/meraki-report-routing/modules/report_api.py",
+      "modules/report_identity.py": "solutions/meraki-report-routing/modules/report_identity.py",
+      "modules/report_router.py": "solutions/meraki-report-routing/modules/report_router.py"
+    },
+    "schema_version": "bifrost.solution-workflow-delivery/v1",
+    "shared_tables": {},
+    "solution_id": "46155149-3bad-4743-861c-2289b9ca3aa4",
+    "workflows": [
+      {
+        "controls": {
+          "access_level": "role_based",
+          "allowed_methods": [
+            "POST"
+          ],
+          "cache_ttl_seconds": 300,
+          "disable_global_key": false,
+          "display_name": null,
+          "endpoint_enabled": false,
+          "execution_mode": "sync",
+          "public_endpoint": false,
+          "retry_policy": {
+            "enabled": false,
+            "max_attempts": 2,
+            "retry_on": [],
+            "version": "execution-retry/v1"
+          },
+          "role_ids": [],
+          "time_saved": 0,
+          "timeout_seconds": 1800,
+          "value": 0.0
+        },
+        "function_name": "correct_report_customer",
+        "id": "d34c2ad9-7a98-579b-a133-b45de4b104e6",
+        "organization_id": null,
+        "path": "functions/report_routing.py",
+        "runtime_bounds": {
+          "max_duration_seconds": 180,
+          "max_external_calls": 512,
+          "max_output_bytes": 32768,
+          "max_records_read": 110000,
+          "max_records_written": 4
+        }
+      },
+      {
+        "controls": {
+          "access_level": "role_based",
+          "allowed_methods": [
+            "POST"
+          ],
+          "cache_ttl_seconds": 300,
+          "disable_global_key": false,
+          "display_name": null,
+          "endpoint_enabled": false,
+          "execution_mode": "sync",
+          "public_endpoint": false,
+          "retry_policy": {
+            "enabled": false,
+            "max_attempts": 2,
+            "retry_on": [],
+            "version": "execution-retry/v1"
+          },
+          "role_ids": [],
+          "time_saved": 0,
+          "timeout_seconds": 1800,
+          "value": 0.0
+        },
+        "function_name": "inspect_report_organizations",
+        "id": "a235e76f-3347-56ca-8c62-9f35ecd2b1b6",
+        "organization_id": null,
+        "path": "functions/report_routing.py",
+        "runtime_bounds": {
+          "max_duration_seconds": 60,
+          "max_external_calls": 1,
+          "max_output_bytes": 262144,
+          "max_records_read": 2000
+        }
+      },
+      {
+        "controls": {
+          "access_level": "role_based",
+          "allowed_methods": [
+            "POST"
+          ],
+          "cache_ttl_seconds": 300,
+          "disable_global_key": false,
+          "display_name": null,
+          "endpoint_enabled": false,
+          "execution_mode": "sync",
+          "public_endpoint": false,
+          "retry_policy": {
+            "enabled": false,
+            "max_attempts": 2,
+            "retry_on": [],
+            "version": "execution-retry/v1"
+          },
+          "role_ids": [],
+          "time_saved": 0,
+          "timeout_seconds": 1800,
+          "value": 0.0
+        },
+        "function_name": "inspect_report_routing",
+        "id": "091cf646-ba3b-5f7b-a886-48815215de52",
+        "organization_id": null,
+        "path": "functions/report_routing.py",
+        "runtime_bounds": {
+          "max_duration_seconds": 180,
+          "max_external_calls": 512,
+          "max_output_bytes": 32768,
+          "max_records_read": 110000
+        }
+      }
+    ]
+  },
+  "source_commit_sha": "ae490be2805bd9f0447db1a8fc8ebabd0daebc05",
+  "table": {
+    "created_by": "fixture",
+    "description": "Unique ticket correction reservations and before/after identity evidence.",
+    "id": "3ada494f-6aa3-558b-9f11-ee4d11506316",
+    "is_solution_managed": true,
+    "name": "meraki_report_routing_ledger",
+    "organization_id": null,
+    "policies": {
+      "policies": [
+        {
+          "actions": [
+            "read",
+            "create",
+            "update",
+            "delete"
+          ],
+          "description": "Platform admins bypass all checks. Edit or delete to enforce stricter audit.",
+          "name": "admin_bypass",
+          "when": {
+            "user": "is_platform_admin"
+          }
+        }
+      ]
+    },
+    "schema": null,
+    "solution_id": "46155149-3bad-4743-861c-2289b9ca3aa4"
+  },
+  "workflow_baseline": [
+    {
+      "access_level": "role_based",
+      "allowed_methods": [
+        "POST"
+      ],
+      "cache_ttl_seconds": 300,
+      "category": "General",
+      "description": null,
+      "disable_global_key": false,
+      "display_name": null,
+      "endpoint_enabled": false,
+      "execution_mode": "sync",
+      "function_name": "inspect_report_routing",
+      "id": "091cf646-ba3b-5f7b-a886-48815215de52",
+      "is_solution_managed": true,
+      "is_tool": false,
+      "name": "Meraki Reports: Inspect Ticket Routing Evidence",
+      "organization_id": null,
+      "parameters": [],
+      "public_endpoint": false,
+      "relative_file_path": "functions/report_routing.py",
+      "retry_policy": {
+        "enabled": false,
+        "max_attempts": 2,
+        "retry_on": [],
+        "version": "execution-retry/v1"
+      },
+      "role_ids": [],
+      "solution_id": "46155149-3bad-4743-861c-2289b9ca3aa4",
+      "source_file_path": "functions/report_routing.py",
+      "tags": [],
+      "time_saved": 0,
+      "timeout_seconds": 1800,
+      "tool_description": null,
+      "type": "workflow",
+      "used_by_count": 0,
+      "value": 0.0
+    },
+    {
+      "access_level": "role_based",
+      "allowed_methods": [
+        "POST"
+      ],
+      "cache_ttl_seconds": 300,
+      "category": "General",
+      "description": null,
+      "disable_global_key": false,
+      "display_name": null,
+      "endpoint_enabled": false,
+      "execution_mode": "sync",
+      "function_name": "inspect_report_organizations",
+      "id": "a235e76f-3347-56ca-8c62-9f35ecd2b1b6",
+      "is_solution_managed": true,
+      "is_tool": false,
+      "name": "Meraki Reports: Inspect Organization Identity",
+      "organization_id": null,
+      "parameters": [],
+      "public_endpoint": false,
+      "relative_file_path": "functions/report_routing.py",
+      "retry_policy": {
+        "enabled": false,
+        "max_attempts": 2,
+        "retry_on": [],
+        "version": "execution-retry/v1"
+      },
+      "role_ids": [],
+      "solution_id": "46155149-3bad-4743-861c-2289b9ca3aa4",
+      "source_file_path": "functions/report_routing.py",
+      "tags": [],
+      "time_saved": 0,
+      "timeout_seconds": 1800,
+      "tool_description": null,
+      "type": "workflow",
+      "used_by_count": 0,
+      "value": 0.0
+    },
+    {
+      "access_level": "role_based",
+      "allowed_methods": [
+        "POST"
+      ],
+      "cache_ttl_seconds": 300,
+      "category": "General",
+      "description": null,
+      "disable_global_key": false,
+      "display_name": null,
+      "endpoint_enabled": false,
+      "execution_mode": "sync",
+      "function_name": "correct_report_customer",
+      "id": "d34c2ad9-7a98-579b-a133-b45de4b104e6",
+      "is_solution_managed": true,
+      "is_tool": false,
+      "name": "Meraki Reports: Correct Halo Ticket Customer",
+      "organization_id": null,
+      "parameters": [],
+      "public_endpoint": false,
+      "relative_file_path": "functions/report_routing.py",
+      "retry_policy": {
+        "enabled": false,
+        "max_attempts": 2,
+        "retry_on": [],
+        "version": "execution-retry/v1"
+      },
+      "role_ids": [],
+      "solution_id": "46155149-3bad-4743-861c-2289b9ca3aa4",
+      "source_file_path": "functions/report_routing.py",
+      "tags": [],
+      "time_saved": 0,
+      "timeout_seconds": 1800,
+      "tool_description": null,
+      "type": "workflow",
+      "used_by_count": 0,
+      "value": 0.0
+    }
+  ]
+}

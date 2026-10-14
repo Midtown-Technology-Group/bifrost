@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-from pathlib import Path
 import subprocess
+from pathlib import Path
 from typing import Any
 
 import yaml
-
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 LOCAL_K8S_DIR = REPO_ROOT / "k8s" / "local"
@@ -144,11 +143,10 @@ def test_spike_environment_and_secret_free_status_contracts() -> None:
     assert config["data"]["BIFROST_ENVIRONMENT"] == "testing"
     assert config["data"]["BIFROST_KUBERNETES_SPIKE"] == "1"
 
-    secret = _doc("Secret", "bifrost-local-secrets")
-    assert (
-        secret["stringData"]["BIFROST_RABBITMQ_URL"]
-        == "amqp://bifrost:bifrost_dev@rabbitmq.bifrost-local.svc.cluster.local:5672/"
-    )
+    # Credentials are generated privately in the selected local cluster,
+    # rather than distributed as a reusable checked-in Secret.
+    assert all(doc.get("kind") != "Secret" for doc in _load_documents())
+    assert 'scripts/kubernetes/local_secrets.py' in SCRIPT.read_text()
 
     script = SCRIPT.read_text()
     assert "umask 077" in script

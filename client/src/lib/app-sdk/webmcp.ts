@@ -139,12 +139,13 @@ export function useWebMcpTool<TInput extends object, TResult>(
 
 	useEffect(() => {
 		if (!enabled || !tool) return;
+		let active = true;
 
 		const registration = registerWebMcpTool(
 			{
 				...tool,
 				execute: (input, executeOptions) => {
-					if (!executeRef.current)
+					if (!active || !executeRef.current)
 						throw new Error("WebMCP tool is no longer available");
 					return executeRef.current(input as TInput, executeOptions);
 				},
@@ -152,7 +153,10 @@ export function useWebMcpTool<TInput extends object, TResult>(
 			exposedTo ? { exposedTo } : {},
 		);
 		registration.ready.catch((error) => onRegistrationError?.(error));
-		return registration.unregister;
+		return () => {
+			active = false;
+			registration.unregister();
+		};
 		// Tool metadata/schema changes intentionally replace the registration.
 		// execute is routed through a ref so ordinary callback identity changes do
 		// not churn the browser's tool catalog.

@@ -13,6 +13,7 @@ from src.services.solutions.deployment_manifest import (
     DeploymentResolutionMap,
     SharedRootTableBinding,
 )
+from src.models.contracts.platform_jobs import PlatformJobPublic
 
 
 class SolutionDeploymentCreate(BaseModel):
@@ -42,6 +43,14 @@ class SolutionGitSourceDeliveryRequest(BaseModel):
     ci_run_id: int = Field(gt=0)
     ci_run_attempt: int = Field(gt=0)
     artifact_digest: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+
+
+class SolutionPackageRecoveryResponse(BaseModel):
+    """An object envelope even when there is no older intent to reconcile."""
+
+    model_config = ConfigDict(extra="forbid")
+    schema_version: Literal["bifrost.solution-package-recovery/v1"] = "bifrost.solution-package-recovery/v1"
+    job: PlatformJobPublic | None
 
 
 class SolutionGitSourceDeliveryResponse(BaseModel):

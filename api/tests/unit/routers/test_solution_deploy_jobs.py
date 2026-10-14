@@ -45,6 +45,8 @@ async def test_deploy_rejects_sdk_conflict_before_staging(monkeypatch):
     app_id = uuid4()
 
     class DB:
+        scalar = AsyncMock(return_value=None)
+
         def add(self, _projection):
             pass
 
@@ -147,6 +149,31 @@ async def test_deploy_job_rejects_candidate_changed_during_staging(
             input_path=path,
         )
     delete.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("kind", ["deploy", "install_from_repo", "deliver_package"])
+async def test_unresolved_package_blocks_another_solution_writer(monkeypatch, kind):
+    install_id = uuid4()
+    row = PlatformJob(id=uuid4(), job_type="solution.deploy", status="requires_action")
+    db = SimpleNamespace(commit=AsyncMock())
+    enqueue, staging = AsyncMock(), AsyncMock()
+    monkeypatch.setattr("src.routers.solutions._lock_solution_operation", AsyncMock())
+    monkeypatch.setattr("src.routers.solutions._active_solution_sdk_update_exists", AsyncMock(return_value=False))
+    monkeypatch.setattr("src.routers.solutions.unresolved_solution_deploy", AsyncMock(return_value=row))
+    monkeypatch.setattr("src.routers.solutions.enqueue_platform_job", enqueue)
+    monkeypatch.setattr("src.routers.solutions.SolutionDeployJobStorage.write_bytes", staging)
+    with pytest.raises(HTTPException) as stopped:
+        await _enqueue_solution_deploy_job(
+            db, kind=kind, install_id=install_id, organization_id=None,
+            requested_by_user_id=uuid4(), requested_by_email="admin@example.com", requested_by_name="Admin",
+            input_bytes=b"another archive", options={},
+        )
+    assert stopped.value.status_code == 409
+    assert "original reviewed package" in stopped.value.detail
+    enqueue.assert_not_awaited()
+    staging.assert_not_awaited()
+    db.commit.assert_not_awaited()
 
 
 @pytest.mark.asyncio

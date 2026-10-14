@@ -94,6 +94,8 @@ def contract_bump(base_ref: str, current_ref: str = "HEAD") -> str | None:
     paths = ("api/shared/contract_version.py", "api/bifrost/contract_version.py")
 
     def read_contract(ref: str, path: str) -> int:
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._/~^{}-]*", ref) or ".." in ref:
+            raise ValueError("release contract requires a Git ref, never a command option")
         result = subprocess.run(
             ["git", "show", f"{ref}:{path}"],
             capture_output=True,

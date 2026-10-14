@@ -28,6 +28,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import RedirectResponse
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel, EmailStr
+from src.services.operation_catalog import operation_route
 from shared.external_access import (
     resolve_external_claim,
     resolve_provider_org_claim,
@@ -1541,7 +1542,7 @@ def _cli_redirect_with_params(redirect_uri: str, params: str) -> RedirectRespons
     )  # codeql[py/url-redirection]
 
 
-@router.post("/cli/start", response_model=CliNativeAuthStartResponse)
+@router.post("/cli/start", response_model=CliNativeAuthStartResponse, **operation_route("auth.start_cli_native_auth"))
 async def start_cli_native_auth(
     request: Request,
     start_request: CliNativeAuthStartRequest,
@@ -1597,7 +1598,7 @@ async def start_cli_native_auth(
     )
 
 
-@router.get("/cli/authorize")
+@router.get("/cli/authorize", **operation_route("auth.authorize_cli_native_auth"))
 async def authorize_cli_native_auth(
     request: Request,
     transaction_id: str,
@@ -1668,7 +1669,7 @@ async def authorize_cli_native_auth(
     return _cli_redirect_with_params(redirect_uri, params)
 
 
-@router.post("/cli/token", response_model=CliNativeAuthTokenResponse)
+@router.post("/cli/token", response_model=CliNativeAuthTokenResponse, **operation_route("auth.exchange_cli_native_auth_token"))
 async def exchange_cli_native_auth_token(
     request: Request,
     token_request: CliNativeAuthTokenRequest,

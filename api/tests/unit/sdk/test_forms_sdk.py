@@ -37,14 +37,14 @@ def _response(status_code: int, body):
 @pytest.mark.asyncio
 async def test_list_forms_returns_validated_models():
     fake = MagicMock()
-    fake.get = AsyncMock(return_value=_response(200, [_form_payload(), _form_payload(id="form-2")]))
+    fake.engine_request = AsyncMock(return_value=_response(200, [_form_payload(), _form_payload(id="form-2")]))
 
     with patch("bifrost.forms.get_client", return_value=fake), patch(
         "bifrost.forms.raise_for_status_with_detail"
     ) as raise_for_status:
         result = await forms.list()
 
-    fake.get.assert_awaited_once_with("/api/forms")
+    fake.engine_request.assert_awaited_once_with("GET", "/api/forms")
     raise_for_status.assert_called_once()
     assert [form.id for form in result] == ["form-1", "form-2"]
     assert result[0].form_schema["properties"]["ticket_id"]["type"] == "string"
@@ -53,14 +53,14 @@ async def test_list_forms_returns_validated_models():
 @pytest.mark.asyncio
 async def test_get_form_returns_validated_model():
     fake = MagicMock()
-    fake.get = AsyncMock(return_value=_response(200, _form_payload(name="Access Request")))
+    fake.engine_request = AsyncMock(return_value=_response(200, _form_payload(name="Access Request")))
 
     with patch("bifrost.forms.get_client", return_value=fake), patch(
         "bifrost.forms.raise_for_status_with_detail"
     ):
         result = await forms.get("form-1")
 
-    fake.get.assert_awaited_once_with("/api/forms/form-1")
+    fake.engine_request.assert_awaited_once_with("GET", "/api/forms/form-1")
     assert result.name == "Access Request"
     assert result.launch_workflow_id == "workflow-2"
 
@@ -68,7 +68,7 @@ async def test_get_form_returns_validated_model():
 @pytest.mark.asyncio
 async def test_get_form_maps_not_found_to_value_error():
     fake = MagicMock()
-    fake.get = AsyncMock(return_value=_response(404, {"detail": "not found"}))
+    fake.engine_request = AsyncMock(return_value=_response(404, {"detail": "not found"}))
 
     with patch("bifrost.forms.get_client", return_value=fake):
         with pytest.raises(ValueError, match="Form not found: form-missing"):
@@ -78,7 +78,7 @@ async def test_get_form_maps_not_found_to_value_error():
 @pytest.mark.asyncio
 async def test_get_form_maps_forbidden_to_permission_error():
     fake = MagicMock()
-    fake.get = AsyncMock(return_value=_response(403, {"detail": "forbidden"}))
+    fake.engine_request = AsyncMock(return_value=_response(403, {"detail": "forbidden"}))
 
     with patch("bifrost.forms.get_client", return_value=fake):
         with pytest.raises(PermissionError, match="Access denied to form: form-private"):

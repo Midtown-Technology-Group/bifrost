@@ -14,7 +14,7 @@ from bifrost.workspace_release import canonical_digest
 from sqlalchemy import exists, or_, select, update
 from sqlalchemy import inspect as orm_inspect
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import raiseload, selectinload
 
 from src.models.contracts.solution_deployments import (
     InitialWorkflowInstallInspectRequest,
@@ -108,7 +108,11 @@ class RepoWorkflowAdoptionService:
         self.repository = SolutionDeploymentRepository(db)
 
     async def _rows(self, model, predicate, *, lock: bool):
-        query = select(model).where(predicate).order_by(*orm_inspect(model).primary_key).limit(_MAX_ROWS + 1)
+        # These snapshots inspect persisted columns only. Joined relationships
+        # plus populate_existing would refresh Workflow through subscriptions
+        # and expire its explicitly loaded roles before the security snapshot.
+        query = select(model).options(raiseload("*")).where(predicate).order_by(
+            *orm_inspect(model).primary_key).limit(_MAX_ROWS + 1)
         if lock:
             query = query.with_for_update(of=model)
         rows = list((await self.db.scalars(query.execution_options(populate_existing=True))).all())

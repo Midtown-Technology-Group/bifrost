@@ -1,11 +1,19 @@
+import asyncio
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
 import pytest
+from sqlalchemy import delete
 
 from src.models.orm.agents import Agent
+from src.models.orm.ai_models import (
+    AIModelAssignment,
+    AIModelProfile,
+    AIProviderConnection,
+)
 from src.services.ai_model_service import (
     AIModelService,
+    OPENCODE_GO_DEFAULT_ENDPOINT,
     OPENROUTER_DEFAULT_ENDPOINT,
     PROVIDER_DEFAULT_ENDPOINTS,
 )
@@ -93,7 +101,9 @@ async def test_create_connection_requires_key_and_defaults_openrouter_endpoint(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("provider", ["openai", "openrouter", "google", "anthropic"])
+@pytest.mark.parametrize(
+    "provider", ["openai", "openrouter", "opencode_go", "google", "anthropic"]
+)
 async def test_create_connection_defaults_builtin_provider_endpoints(
     db_session, provider
 ):
@@ -123,6 +133,173 @@ async def test_openai_compatible_connection_requires_endpoint(db_session):
 
 
 @pytest.mark.asyncio
+async def test_opencode_go_profiles_route_models_to_their_wire_surface(db_session):
+    from unittest.mock import AsyncMock, patch
+
+    service = AIModelService(db_session)
+    connection = await service.create_connection(
+        name="Go",
+        provider="opencode_go",
+        api_key="oc_sk-test",
+        endpoint=None,
+    )
+
+    chat = await service.create_profile(
+        name="Go Chat",
+        connection_id=connection.id,
+        model="deepseek-v4.1-flash",
+        capabilities=None,
+        enabled_for_chat=True,
+    )
+    responses = await service.create_profile(
+        name="Go Responses",
+        connection_id=connection.id,
+        model="gpt-6-luna",
+        capabilities=None,
+        enabled_for_chat=True,
+    )
+    messages = await service.create_profile(
+        name="Go Messages",
+        connection_id=connection.id,
+        model="qwen3.8-flash",
+        capabilities=None,
+        enabled_for_chat=True,
+    )
+
+    # deepseek-v4.1-flash matches no documented prefix, so its surface is
+    # probed once and persisted; prefix-matched models never probe.
+    detect = AsyncMock(return_value="chat_completions")
+    with patch(
+        "src.services.opencode_go_detection.detect_opencode_go_wire_api",
+        new=detect,
+    ):
+        chat_config = await service.resolve_config(profile_id=chat.id)
+
+    detect.assert_awaited_once()
+    assert chat_config.provider == "openai"
+    assert chat_config.endpoint == OPENCODE_GO_DEFAULT_ENDPOINT
+    assert chat_config.openai_transport == "chat_completions"
+
+    responses_config = await service.resolve_config(profile_id=responses.id)
+    assert responses_config.provider == "openai"
+    assert responses_config.endpoint == OPENCODE_GO_DEFAULT_ENDPOINT
+    assert responses_config.openai_transport == "responses"
+
+    messages_config = await service.resolve_config(profile_id=messages.id)
+    assert messages_config.provider == "anthropic"
+    assert messages_config.endpoint == "https://opencode.ai/zen/go"
+    assert messages_config.openai_transport is None
+
+
+@pytest.mark.asyncio
+async def test_opencode_go_known_models_resolve_without_probing(db_session):
+    from unittest.mock import AsyncMock, patch
+
+    service = AIModelService(db_session)
+    connection = await service.create_connection(
+        name="Go Known",
+        provider="opencode_go",
+        api_key="oc_sk-test",
+        endpoint=None,
+    )
+    profile = await service.create_profile(
+        name="Go Known Responses",
+        connection_id=connection.id,
+        model="grok-4.7",
+        capabilities=None,
+        enabled_for_chat=True,
+    )
+
+    with patch(
+        "src.services.opencode_go_detection.detect_opencode_go_wire_api",
+        new=AsyncMock(side_effect=AssertionError("must not probe known models")),
+    ):
+        config = await service.resolve_config(profile_id=profile.id)
+
+    assert config.openai_transport == "responses"
+    assert profile.wire_api is None
+
+
+@pytest.mark.asyncio
+async def test_opencode_go_unknown_models_probe_once_and_persist(db_session):
+    from unittest.mock import AsyncMock, patch
+
+    service = AIModelService(db_session)
+    connection = await service.create_connection(
+        name="Go Unknown",
+        provider="opencode_go",
+        api_key="oc_sk-test",
+        endpoint=None,
+    )
+    profile = await service.create_profile(
+        name="Go Unknown",
+        connection_id=connection.id,
+        model="omen-alpha",
+        capabilities=None,
+        enabled_for_chat=True,
+    )
+
+    detect = AsyncMock(return_value="messages")
+    with patch(
+        "src.services.opencode_go_detection.detect_opencode_go_wire_api",
+        new=detect,
+    ):
+        config = await service.resolve_config(profile_id=profile.id)
+
+    detect.assert_awaited_once()
+    assert config.provider == "anthropic"
+    assert config.endpoint == "https://opencode.ai/zen/go"
+    assert profile.wire_api == "messages"
+
+    # Second resolve reuses the persisted surface without probing again.
+    detect.reset_mock()
+    with patch(
+        "src.services.opencode_go_detection.detect_opencode_go_wire_api",
+        new=detect,
+    ):
+        reread = await service.resolve_config(profile_id=profile.id)
+
+    detect.assert_not_awaited()
+    assert reread.provider == "anthropic"
+
+    # Endpoint changes invalidate the persisted surface.
+    await service.update_connection(
+        connection.id, endpoint="https://opencode.ai/zen/go/v1", endpoint_provided=True
+    )
+    assert profile.wire_api is None
+
+
+@pytest.mark.asyncio
+async def test_opencode_go_wire_api_resets_when_profile_model_changes(db_session):
+    from unittest.mock import AsyncMock, patch
+
+    service = AIModelService(db_session)
+    connection = await service.create_connection(
+        name="Go Reset",
+        provider="opencode_go",
+        api_key="oc_sk-test",
+        endpoint=None,
+    )
+    profile = await service.create_profile(
+        name="Go Reset",
+        connection_id=connection.id,
+        model="omen-alpha",
+        capabilities=None,
+        enabled_for_chat=True,
+    )
+
+    with patch(
+        "src.services.opencode_go_detection.detect_opencode_go_wire_api",
+        new=AsyncMock(return_value="chat_completions"),
+    ):
+        await service.resolve_config(profile_id=profile.id)
+    assert profile.wire_api == "chat_completions"
+
+    await service.update_profile(profile.id, model="glm-5.3")
+    assert profile.wire_api is None
+
+
+@pytest.mark.asyncio
 async def test_openai_compatible_profile_detects_and_remembers_transport(db_session):
     service = AIModelService(db_session)
     connection = await service.create_connection(
@@ -149,6 +326,86 @@ async def test_openai_compatible_profile_detects_and_remembers_transport(db_sess
     assert first.openai_transport == "responses"
     assert second.openai_transport == "responses"
     detector.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_openai_compatible_transport_persists_across_concurrent_run_sessions(
+    async_session_factory,
+):
+    connection_id = None
+    profile_id = None
+    detection_started = asyncio.Event()
+    release_detection = asyncio.Event()
+
+    async def detect_once(**_kwargs):
+        detection_started.set()
+        await release_detection.wait()
+        return "responses"
+
+    detector = AsyncMock(side_effect=detect_once)
+    try:
+        async with async_session_factory() as seed:
+            service = AIModelService(seed)
+            connection = await service.create_connection(
+                name=f"Persistent Foundry {uuid4().hex[:8]}",
+                provider="openai_compatible",
+                api_key="sk-test",
+                endpoint="https://foundry.example.test/openai/v1",
+            )
+            profile = await service.create_profile(
+                name=f"Persistent Model {uuid4().hex[:8]}",
+                connection_id=connection.id,
+                model="gpt-5.6-luna",
+                capabilities=None,
+                enabled_for_chat=True,
+            )
+            connection_id = connection.id
+            profile_id = profile.id
+            await seed.commit()
+
+        with patch(
+            "src.services.openai_transport_detection.detect_openai_transport",
+            detector,
+        ):
+            async def resolve_once():
+                async with async_session_factory() as run_session:
+                    config = await AIModelService(run_session).resolve_config(
+                        profile_id=profile_id
+                    )
+                    await run_session.commit()
+                    return config.openai_transport
+
+            first = asyncio.create_task(resolve_once())
+            await detection_started.wait()
+            second = asyncio.create_task(resolve_once())
+            await asyncio.sleep(0.05)
+            detection_count_while_locked = detector.await_count
+            release_detection.set()
+
+            assert await asyncio.gather(first, second) == ["responses", "responses"]
+            assert detection_count_while_locked == 1
+
+            assert await resolve_once() == "responses"
+
+        detector.assert_awaited_once()
+    finally:
+        release_detection.set()
+        if profile_id is not None and connection_id is not None:
+            async with async_session_factory() as cleanup:
+                await cleanup.execute(
+                    delete(AIModelAssignment).where(
+                        AIModelAssignment.profile_id == profile_id
+                    )
+                )
+                await cleanup.execute(
+                    delete(AIModelProfile).where(AIModelProfile.id == profile_id)
+                )
+                await cleanup.execute(
+                    delete(AIProviderConnection).where(
+                        AIProviderConnection.id == connection_id
+                    )
+                )
+                await cleanup.commit()
 
 
 @pytest.mark.asyncio

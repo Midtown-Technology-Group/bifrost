@@ -19,6 +19,7 @@ from sqlalchemy.exc import IntegrityError
 from src.models.orm.devices import DEVICE_STATUS_ACTIVE, DEVICE_STATUS_DISABLED, Device
 from src.models.orm.device_jobs import (
     CLAIM_LEASE_SECONDS,
+    DEVICE_HEARTBEAT_LOST_SECONDS,
     JOB_STATUS_CANCELLED,
     JOB_STATUS_CLAIMED,
     JOB_STATUS_LOST,
@@ -182,6 +183,10 @@ class TestCreate:
         assert exc.value.code == "device_busy"
         assert exc.value.status_code == status.HTTP_409_CONFLICT
         assert exc.value.extra.get("job_id") == str(active.id)
+        # Additive #1060: actionable recovery reference for the blocker.
+        assert exc.value.extra.get("cancel_url") == (
+            f"/api/devices/{active.device_id}/jobs/{active.id}/cancel"
+        )
         session.add.assert_not_called()
 
     async def test_busy_race_through_unique_index(self):
@@ -207,6 +212,9 @@ class TestCreate:
             )
         assert exc.value.code == "device_busy"
         assert exc.value.extra.get("job_id") == str(winner.id)
+        assert exc.value.extra.get("cancel_url") == (
+            f"/api/devices/{winner.device_id}/jobs/{winner.id}/cancel"
+        )
         session.rollback.assert_awaited()
 
     async def test_success_records_attribution_and_caps(self):
@@ -289,6 +297,23 @@ class TestClaim:
         assert got.status == JOB_STATUS_CLAIMED
         assert got.claim_token is not None
         assert got.claim_token != old_token
+
+    async def test_reclaim_never_consults_device_heartbeat(self):
+        # #1059 evidence: the reclaim statement has no `devices` predicate —
+        # a revived agent's claim_next recovers a lease-expired claim purely
+        # on the 60s claim lease, no matter how stale last_seen_at is.
+        session = _session()
+        session.execute.return_value = _result(scalar=None)
+        got = await claim_next(
+            session, device_id=uuid4(), agent_session_id=uuid4(), now=NOW
+        )
+        assert got is None
+        from sqlalchemy.dialects import postgresql
+
+        compiled = session.execute.call_args[0][0].compile(
+            dialect=postgresql.dialect()
+        )
+        assert "devices" not in str(compiled)
 
 
 class TestMarkRunning:
@@ -513,6 +538,91 @@ class TestSweepWatchdog:
         # Reclaim happens in claim_next, never here — no state change.
         assert stale.status == JOB_STATUS_CLAIMED
         assert stats["stale_claimed_reclaimable"] == 1
+        assert stats["lost_silence"] == 0
+
+    async def test_dead_device_claim_becomes_lost_with_distinct_reason(self):
+        # #1059: claim held while the device stops heartbeating — nothing can
+        # ever run claim_next for that device, so the sweep releases it.
+        session = _session()
+        stale = _job(
+            status=JOB_STATUS_CLAIMED,
+            claimed_at=NOW - timedelta(seconds=CLAIM_LEASE_SECONDS + 1),
+            last_agent_activity_at=NOW - timedelta(seconds=CLAIM_LEASE_SECONDS + 1),
+        )
+        stale.device = _device(
+            id=stale.device_id,
+            last_seen_at=NOW - timedelta(seconds=DEVICE_HEARTBEAT_LOST_SECONDS + 1),
+        )
+        session.execute.side_effect = [_result(rows=[]), _result(rows=[stale])]
+        stats = await sweep_device_jobs(session, now=NOW)
+        assert stale.status == JOB_STATUS_LOST
+        assert stale.error == (
+            "agent device heartbeat lost; claim released (server watchdog)"
+        )
+        assert stats["lost_silence"] == 1
+        assert stats["stale_claimed_reclaimable"] == 0
+        session.commit.assert_awaited()
+
+    async def test_heartbeat_fresh_claim_left_for_claim_next(self):
+        # Revived/healthy agent: heartbeat fresh => the sweep never steals the
+        # claim; claim_next reclaims it in place with a fresh token.
+        session = _session()
+        live = _job(
+            status=JOB_STATUS_CLAIMED,
+            claimed_at=NOW - timedelta(seconds=CLAIM_LEASE_SECONDS + 1),
+        )
+        live.device = _device(
+            id=live.device_id, last_seen_at=NOW - timedelta(seconds=5)
+        )
+        session.execute.side_effect = [_result(rows=[]), _result(rows=[live])]
+        stats = await sweep_device_jobs(session, now=NOW)
+        assert live.status == JOB_STATUS_CLAIMED
+        assert live.error is None
+        assert stats == {
+            "lost_silence": 0,
+            "lost_backstop": 0,
+            "stale_claimed_reclaimable": 1,
+        }
+
+    async def test_heartbeat_stale_under_threshold_left_for_claim_next(self):
+        # The release is bounded by DEVICE_HEARTBEAT_LOST_SECONDS: inside the
+        # window (restart/reboot/flap), claim_next still owns recovery.
+        session = _session()
+        rebooting = _job(
+            status=JOB_STATUS_CLAIMED,
+            claimed_at=NOW - timedelta(seconds=CLAIM_LEASE_SECONDS + 1),
+        )
+        rebooting.device = _device(
+            id=rebooting.device_id,
+            last_seen_at=NOW - timedelta(seconds=DEVICE_HEARTBEAT_LOST_SECONDS - 1),
+        )
+        session.execute.side_effect = [_result(rows=[]), _result(rows=[rebooting])]
+        stats = await sweep_device_jobs(session, now=NOW)
+        assert rebooting.status == JOB_STATUS_CLAIMED
+        assert stats["stale_claimed_reclaimable"] == 1
+        assert stats["lost_silence"] == 0
+
+    async def test_running_row_not_touched_by_dead_device_path(self):
+        # Existing running-row behavior is untouched: activity-fresh running
+        # stays running regardless of device heartbeat age (the two running
+        # watchdog rules — silence and backstop — govern it, as before).
+        session = _session()
+        running = _job(
+            status=JOB_STATUS_RUNNING,
+            claimed_at=NOW - timedelta(seconds=30),
+            last_agent_activity_at=NOW - timedelta(seconds=5),
+        )
+        running.device = _device(
+            id=running.device_id,
+            last_seen_at=NOW - timedelta(seconds=DEVICE_HEARTBEAT_LOST_SECONDS * 3),
+        )
+        session.execute.side_effect = [
+            _result(rows=[running]),
+            _result(rows=[running]),
+        ]
+        stats = await sweep_device_jobs(session, now=NOW)
+        assert running.status == JOB_STATUS_RUNNING
+        assert running.error is None
         assert stats["lost_silence"] == 0
 
 
@@ -807,6 +917,42 @@ class TestCancel:
             await request_cancel(session, user, job.id, now=NOW)
         assert exc.value.code == "job_terminal"
         assert exc.value.status_code == 409
+
+    async def test_cancelled_job_cancel_replays_success(self):
+        # Additive #1060: cancelling an already-cancelled job returns the
+        # same success shape (no error); other terminal outcomes still 409.
+        from src.core.principal import UserPrincipal
+
+        session = _session()
+        user = UserPrincipal(
+            user_id=uuid4(), email="u@example.com", organization_id=uuid4(), name="U",
+        )
+        job = _job(status=JOB_STATUS_CANCELLED, cancel_requested_at=NOW)
+        session.execute.return_value = _result(scalar=job)
+        got = await request_cancel(
+            session, user, job.id, now=NOW + timedelta(seconds=5)
+        )
+        assert got is job
+        assert got.status == JOB_STATUS_CANCELLED
+        assert got.cancel_requested_at == NOW
+
+    async def test_cancel_state_serializes_on_public_contract(self):
+        # Additive #1060: derived cancel_state on DeviceJobPublic.
+        from src.models.contracts.device_jobs import DeviceJobPublic
+
+        def cancel_state(**overrides) -> str:
+            job = _job(created_at=NOW, updated_at=NOW, **overrides)
+            return DeviceJobPublic.model_validate(job).cancel_state
+
+        assert cancel_state(status=JOB_STATUS_PENDING) == "none"
+        assert (
+            cancel_state(status=JOB_STATUS_RUNNING, cancel_requested_at=NOW)
+            == "requested"
+        )
+        assert (
+            cancel_state(status=JOB_STATUS_CANCELLED, cancel_requested_at=NOW)
+            == "converged"
+        )
 
     async def test_cross_org_job_is_404(self):
         from src.core.principal import UserPrincipal

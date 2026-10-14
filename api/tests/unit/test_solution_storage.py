@@ -9,6 +9,7 @@ self-contained-world guarantee (success-criteria §3.5/§3.6).
 from __future__ import annotations
 
 import uuid
+from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from typing import Any, cast
 
@@ -84,3 +85,59 @@ def test_storage_rejects_unknown_provider() -> None:
 
     with pytest.raises(ValueError, match="Unsupported object_storage_provider"):
         SolutionStorage(solution_id, settings=_settings("filesystem"))
+
+
+@pytest.mark.parametrize("provider", ["s3", "azure_blob"])
+@pytest.mark.parametrize("content", [b"abcd", b"abcde"])
+async def test_bounded_source_read_limits_transport_and_handles_short_chunks(monkeypatch, provider, content):
+    storage = SolutionStorage(uuid.uuid4(), settings=_settings(provider))
+    calls, sizes = [], []
+
+    class Body:
+        offset = 0
+        closed = False
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            self.closed = True
+
+        async def read(self, size):
+            sizes.append(size)
+            chunk = content[self.offset:self.offset + min(size, 1)]
+            self.offset += len(chunk)
+            return chunk
+
+    body = Body()
+
+    class Client:
+        async def get_object(self, **kwargs):
+            calls.append(kwargs)
+            return {"Body": body}  # Deliberately ignore Range; local reads still enforce the bound.
+
+    @asynccontextmanager
+    async def client():
+        yield Client()
+
+    monkeypatch.setattr(storage, "_get_client", client)
+    if len(content) > 4:
+        with pytest.raises(ValueError, match="exceeds its byte bound"):
+            await storage.read("functions/main.py", max_bytes=4)
+    else:
+        assert await storage.read("functions/main.py", max_bytes=4) == content
+    assert calls == [{"Bucket": storage._bucket, "Key": storage.prefix + "functions/main.py", "Range": "bytes=0-4"}]
+    assert sizes == [5, 4, 3, 2, 1]
+    assert body.closed
+
+
+@pytest.mark.parametrize("limit", [-1, True])
+async def test_invalid_source_bound_stops_before_download(monkeypatch, limit):
+    storage = SolutionStorage(uuid.uuid4())
+
+    def rejected():
+        raise AssertionError("Invalid bound must stop before opening storage")
+
+    monkeypatch.setattr(storage, "_get_client", rejected)
+    with pytest.raises(ValueError, match="byte bound is invalid"):
+        await storage.read("functions/main.py", max_bytes=limit)

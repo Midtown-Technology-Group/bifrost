@@ -1,0 +1,61 @@
+name: Sonar Migration Validation
+
+on:
+  push:
+    branches: [codex/sonar-ci-coverage, codex/sonar-free-ci-cutover]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sonar-migration-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pre-pr:
+    name: Sonar Migration Pre-PR
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact clean candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "26"
+      - name: Require unactivated CI staging
+        env:
+          ACTIVATED: ${{ vars.SONAR_CI_ENABLED }}
+        run: |
+          test "$ACTIVATED" != true
+          python3 -c 'import json; assert json.load(open(".github/sonar-ci.json"))["mode"] in ("report-only", "ci")'
+      - name: Run clean-candidate pre-PR gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          bash test.sh pre-pr 2>&1 | tee "$RUNNER_TEMP/sonar-pre-pr.log"
+      - name: Record cleanup evidence
+        if: always()
+        run: docker ps -a --format '{{.ID}} {{.Names}} {{.Status}}' > "$RUNNER_TEMP/sonar-pre-pr-containers.txt"
+      - name: Retain candidate gate evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: sonar-pre-pr-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/sonar-pre-pr.log
+            ${{ runner.temp }}/sonar-pre-pr-containers.txt
+            .git/bifrost-test-locks/pre-pr-stages.json
+            .git/bifrost-test-locks/pre-pr-affected-plan.json
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 14
+  # Broad coverage is owned by the normal CI workflow on every PR head and
+  # merge-group. This preparatory workflow only supplies the clean pre-PR gate,
+  # avoiding a second identical coverage stack on every branch push.

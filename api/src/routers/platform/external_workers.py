@@ -5,6 +5,7 @@ from uuid import UUID
 from fastapi import APIRouter, Header, HTTPException, Response
 from pydantic import BaseModel, Field
 
+from src.services.operation_catalog import operation_route
 from src.config import get_settings
 from src.core.auth import CurrentSuperuser
 from src.core.db_deps import DbSession
@@ -20,7 +21,7 @@ class EnrollmentRequest(BaseModel):
     boot: UUID
 
 
-@router.post("/enroll")
+@router.post("/enroll", **operation_route("externalworkers.enroll"))
 async def enroll(request: EnrollmentRequest, response: Response, db: DbSession,
                  authorization: Annotated[str | None, Header()] = None) -> dict[str, str]:
     settings = get_settings()
@@ -45,7 +46,7 @@ async def enroll(request: EnrollmentRequest, response: Response, db: DbSession,
         await azure.close()
 
 
-@router.get("")
+@router.get("", **operation_route("externalworkers.status"))
 async def status(_admin: CurrentSuperuser, db: DbSession) -> dict:
     try:
         return await controller_status(db)

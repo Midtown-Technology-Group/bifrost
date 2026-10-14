@@ -168,35 +168,19 @@ def test_markdown_renderer_bounds_pandoc_runtime(monkeypatch) -> None:
         markdown_to_html("# Hello")
 
 
-def test_renderer_url_fetcher_blocks_network_and_arbitrary_files(monkeypatch) -> None:
-    from doc_renderer_service.rendering import restricted_url_fetcher
-
-    fetches: list[str] = []
-    fake_weasyprint = SimpleNamespace(
-        default_url_fetcher=lambda url, **kwargs: fetches.append(url) or {"string": b"ok"}
-    )
-    monkeypatch.setitem(sys.modules, "weasyprint", fake_weasyprint)
+def test_renderer_url_fetcher_blocks_network_and_arbitrary_files() -> None:
+    from doc_renderer_service.rendering import validate_resource_url
 
     with pytest.raises(ValueError, match="External document resources"):
-        restricted_url_fetcher("https://169.254.169.254/latest/meta-data/")
+        validate_resource_url("https://169.254.169.254/latest/meta-data/")
     with pytest.raises(ValueError, match="External document resources"):
-        restricted_url_fetcher(Path(__file__).resolve().as_uri())
-
-    assert fetches == []
+        validate_resource_url(Path(__file__).resolve().as_uri())
 
 
-def test_renderer_url_fetcher_allows_data_and_bundled_theme(monkeypatch) -> None:
-    from doc_renderer_service.rendering import THEME_PATHS, restricted_url_fetcher
-
-    fetches: list[str] = []
-    fake_weasyprint = SimpleNamespace(
-        default_url_fetcher=lambda url, **kwargs: fetches.append(url) or {"string": b"ok"}
-    )
-    monkeypatch.setitem(sys.modules, "weasyprint", fake_weasyprint)
+def test_renderer_url_fetcher_allows_data_and_bundled_theme() -> None:
+    from doc_renderer_service.rendering import THEME_PATHS, validate_resource_url
 
     data_url = "data:image/png;base64,iVBORw0KGgo="
     theme_url = THEME_PATHS["clean_report"].resolve().as_uri()
-    restricted_url_fetcher(data_url)
-    restricted_url_fetcher(theme_url)
-
-    assert fetches == [data_url, theme_url]
+    validate_resource_url(data_url)
+    validate_resource_url(theme_url)

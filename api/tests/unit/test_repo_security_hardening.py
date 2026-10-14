@@ -29,6 +29,17 @@ def _load_yaml(relative_path: str) -> dict[str, Any]:
         return yaml.safe_load(f)
 
 
+def test_retired_snyk_gate_is_not_reintroduced_by_workflows() -> None:
+    workflow_root = REPO_ROOT / ".github" / "workflows"
+
+    assert not (workflow_root / "snyk.yml").exists()
+    workflows = sorted(workflow_root.glob("*.yml")) + sorted(
+        workflow_root.glob("*.yaml")
+    )
+    for workflow in workflows:
+        assert "snyk" not in workflow.read_text(encoding="utf-8").lower(), workflow.name
+
+
 def test_pull_request_ci_does_not_use_noop_path_ignore() -> None:
     ci = _load_yaml(".github/workflows/ci.yml")
     pull_request = ci[True]["pull_request"]
@@ -46,6 +57,7 @@ def test_required_e2e_gate_includes_playwright_and_mcp_conformance() -> None:
     assert set(jobs["test-e2e-gate"]["needs"]) == {
         "affected-test-plan",
         "lint",
+        "publish-ci-test-images",
         "test-e2e",
         "test-client-e2e",
         "test-client-unit",
@@ -167,10 +179,12 @@ def test_release_assets_upload_before_immutable_release_publication() -> None:
         "${{ steps.source_tarball.outputs.tarball }}.sigstore" in create_with["files"]
     )
     assert publish_index > create_index
-    assert "--draft=false" in publish_run
-    assert "args+=(--prerelease)" in publish_run
-    assert "args+=(--latest)" in publish_run
-    assert 'gh release edit "$VERSION" "${args[@]}"' in publish_run
+    assert "args=(-F draft=false)" in publish_run
+    assert "args+=(-F prerelease=true)" in publish_run
+    assert "args+=(-f make_latest=true)" in publish_run
+    assert 'gh api --method PATCH "$endpoint" "${args[@]}"' in publish_run
+    assert steps[publish_index]["env"]["RELEASE_ID"] == "${{ steps.release.outputs.id }}"
+    assert '.draft == false and .immutable == true' in publish_run
 
 
 def test_dependabot_lock_validation_does_not_commit_to_pr_branch() -> None:
@@ -260,6 +274,74 @@ test "$SEAWEEDFS_SECRET_KEY" = explicit-local-test-credential
     assert directory.stat().st_mode & 0o777 == 0o700
     assert secret.stat().st_mode & 0o777 == 0o600
     assert not (tmp_path / "bifrost/debug/debug-explicit-storage-test").exists()
+
+
+def test_debug_signing_key_is_private_stable_and_required_by_compose(
+    tmp_path: Path,
+) -> None:
+    text = _read("debug.sh")
+    function = re.search(
+        r"^configure_debug_signing_key\(\) \{\n.*?^\}", text, re.M | re.S
+    )
+    assert function is not None
+    env = {
+        key: value
+        for key, value in os.environ.items()
+        if key != "BIFROST_SECRET_KEY"
+    }
+    env.update(XDG_STATE_HOME=str(tmp_path), COMPOSE_PROJECT_NAME="debug-signing-test")
+    subprocess.run(
+        [
+            "bash",
+            "-euc",
+            function.group()
+            + "\n"
+            + """
+configure_debug_signing_key
+test -n "$BIFROST_SECRET_KEY"
+task_first_key="$BIFROST_SECRET_KEY"
+unset BIFROST_SECRET_KEY
+configure_debug_signing_key
+test "$BIFROST_SECRET_KEY" = "$task_first_key"
+export COMPOSE_PROJECT_NAME=debug-published-signing-test
+export BIFROST_SECRET_KEY=dev-secret-key-change-in-production-must-be-32-chars
+configure_debug_signing_key
+test "$BIFROST_SECRET_KEY" != dev-secret-key-change-in-production-must-be-32-chars
+export COMPOSE_PROJECT_NAME=debug-explicit-signing-test
+export BIFROST_SECRET_KEY=explicit-local-signing-credential
+configure_debug_signing_key
+test "$BIFROST_SECRET_KEY" = explicit-local-signing-credential
+""",
+        ],
+        env=env,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    for project in ("debug-signing-test", "debug-published-signing-test"):
+        directory = tmp_path / "bifrost/debug" / project
+        secret = directory / "signing-secret"
+        assert re.fullmatch(r"[0-9a-f]{64}\n", secret.read_text())
+        assert directory.stat().st_mode & 0o777 == 0o700
+        assert secret.stat().st_mode & 0o777 == 0o600
+    assert not (tmp_path / "bifrost/debug/debug-explicit-signing-test").exists()
+
+    compose = _load_yaml("docker-compose.debug.yml")
+    required = "${BIFROST_SECRET_KEY:?Use debug.sh}"
+    for service in ("init", "api", "scheduler", "worker"):
+        assert (
+            compose["services"][service]["environment"]["BIFROST_SECRET_KEY"]
+            == required
+        )
+
+    cmd_up = re.search(r"^cmd_up\(\) \{\n.*?^\}", text, re.M | re.S)
+    assert cmd_up is not None
+    assert cmd_up.group().index("configure_debug_signing_key") < cmd_up.group().index(
+        "stack_is_running"
+    )
+    assert "service_signing_key" in text
+    assert "Applying the private debug signing key" in text
 
 
 def test_claude_hook_shell_quotes_exported_env_values() -> None:

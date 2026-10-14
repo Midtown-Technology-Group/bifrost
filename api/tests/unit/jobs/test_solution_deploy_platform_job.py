@@ -47,6 +47,7 @@ async def test_failed_repo_install_cleanup_commits_before_job_failure(monkeypatc
         transaction_committed = True
 
     context = AsyncMock()
+    context.job_id = deploy_job_id
     monkeypatch.setattr(
         "src.jobs.platform.solution_deploy.SolutionDeployJobStorage.copy_to_path",
         AsyncMock(return_value=1),
@@ -76,3 +77,28 @@ async def test_failed_repo_install_cleanup_commits_before_job_failure(monkeypatc
     assert projection.install_id is None
     db.flush.assert_awaited_once()
     db.delete.assert_awaited_once_with(orphan)
+
+
+@pytest.mark.asyncio
+async def test_reviewed_package_uses_its_own_publication_and_recovery_handler(monkeypatch):
+    job_id, install_id = uuid4(), uuid4()
+    payload = SolutionDeployPayload(
+        deploy_job_id=job_id, install_id=install_id, kind="deliver_package",
+        input_sha256="a" * 64, options={},
+    )
+    context = AsyncMock()
+    context.job_id = job_id
+    result = {"original_job_id": str(job_id), "deployment_id": str(uuid4())}
+    package_worker = AsyncMock(return_value=result)
+    manual_deploy, manual_install, cleanup = AsyncMock(), AsyncMock(), AsyncMock()
+    monkeypatch.setattr(
+        "src.jobs.platform.solution_package_delivery.run_solution_package_delivery", package_worker,
+    )
+    monkeypatch.setattr("src.routers.solutions._run_deploy_job", manual_deploy)
+    monkeypatch.setattr("src.routers.solutions._run_install_job", manual_install)
+    monkeypatch.setattr("src.jobs.platform.solution_deploy.SolutionDeployJobStorage.delete", cleanup)
+    assert await run_solution_deploy(context, payload) == result
+    package_worker.assert_awaited_once_with(context, payload)
+    manual_deploy.assert_not_awaited()
+    manual_install.assert_not_awaited()
+    cleanup.assert_not_awaited()

@@ -102,15 +102,13 @@ export function BasicInfo() {
 		}
 	};
 
-	// Handle password change/set
+	// Handle password change
 	const handleChangePassword = async () => {
 		if (passwordBusy.current) return;
 		setPasswordError(null);
 
-		const hasPassword = profile?.has_password ?? false;
-
 		// Validate passwords
-		if (hasPassword && !currentPassword) {
+		if (!currentPassword) {
 			setPasswordError("Current password is required");
 			return;
 		}
@@ -130,23 +128,12 @@ export function BasicInfo() {
 		passwordBusy.current = true;
 		setChangingPassword(true);
 		try {
-			await profileService.changePassword(
-				hasPassword ? currentPassword : null,
-				newPassword,
-			);
-			toast.success(
-				hasPassword
-					? "Password changed successfully"
-					: "Password set successfully",
-			);
+			await profileService.changePassword(currentPassword, newPassword);
+			toast.success("Password changed successfully");
 			// Clear form and update profile state
 			setCurrentPassword("");
 			setNewPassword("");
 			setConfirmPassword("");
-			// The successful password response establishes this state.
-			setProfile((current) =>
-				current ? { ...current, has_password: true } : current,
-			);
 		} catch (err) {
 			console.error("Failed to change password:", err);
 			const errorMessage =
@@ -330,42 +317,38 @@ export function BasicInfo() {
 				</CardContent>
 			</Card>
 
-			{/* Change/Set Password */}
+			{/* Change Password */}
 			<Card>
 				<CardHeader>
-					<CardTitle>
-						{profile?.has_password
-							? "Change Password"
-							: "Set Password"}
-					</CardTitle>
+					<CardTitle>Change Password</CardTitle>
 					<CardDescription>
 						{profile?.has_password
 							? "Update your account password"
-							: "Add a password to your account for email/password login"}
+							: "This account uses an external sign-in method. Password enrollment is not available from profile settings."}
 					</CardDescription>
 				</CardHeader>
-				<CardContent>
-					<form
-						onSubmit={(e) => {
-							e.preventDefault();
-							void handleChangePassword();
-						}}
-					>
-						<div className="space-y-4">
-							{passwordError && (
-								<Alert
-									ref={passwordErrorRef}
-									tabIndex={-1}
-									variant="destructive"
-								>
-									<AlertCircle className="h-4 w-4" />
-									<AlertDescription>
-										{passwordError}
-									</AlertDescription>
-								</Alert>
-							)}
+				{profile?.has_password && (
+					<CardContent>
+						<form
+							onSubmit={(e) => {
+								e.preventDefault();
+								void handleChangePassword();
+							}}
+						>
+							<div className="space-y-4">
+								{passwordError && (
+									<Alert
+										ref={passwordErrorRef}
+										tabIndex={-1}
+										variant="destructive"
+									>
+										<AlertCircle className="h-4 w-4" />
+										<AlertDescription>
+											{passwordError}
+										</AlertDescription>
+									</Alert>
+								)}
 
-							{profile?.has_password && (
 								<ProfilePasswordField
 									id="current-password"
 									label="Current Password"
@@ -374,58 +357,49 @@ export function BasicInfo() {
 									autoComplete="current-password"
 									disabled={changingPassword}
 								/>
-							)}
-							<ProfilePasswordField
-								id="new-password"
-								label={
-									profile?.has_password
-										? "New Password"
-										: "Password"
-								}
-								value={newPassword}
-								onChange={setNewPassword}
-								autoComplete="new-password"
-								disabled={changingPassword}
-								hint="Minimum 8 characters"
-							/>
-							<ProfilePasswordField
-								id="confirm-password"
-								label="Confirm Password"
-								value={confirmPassword}
-								onChange={setConfirmPassword}
-								autoComplete="new-password"
-								disabled={changingPassword}
-							/>
+								<ProfilePasswordField
+									id="new-password"
+									label="New Password"
+									value={newPassword}
+									onChange={setNewPassword}
+									autoComplete="new-password"
+									disabled={changingPassword}
+									hint="Minimum 8 characters"
+								/>
+								<ProfilePasswordField
+									id="confirm-password"
+									label="Confirm Password"
+									value={confirmPassword}
+									onChange={setConfirmPassword}
+									autoComplete="new-password"
+									disabled={changingPassword}
+								/>
 
-							<div className="flex justify-end">
-								<Button
-									type="submit"
-									className="min-h-11 w-full sm:w-auto"
-									disabled={
-										changingPassword ||
-										(profile?.has_password &&
-											!currentPassword) ||
-										!newPassword ||
-										!confirmPassword
-									}
-								>
-									{changingPassword ? (
-										<>
-											<Loader2 className="mr-2 h-4 w-4 animate-spin motion-reduce:animate-none" />
-											{profile?.has_password
-												? "Changing..."
-												: "Setting..."}
-										</>
-									) : profile?.has_password ? (
-										"Change Password"
-									) : (
-										"Set Password"
-									)}
-								</Button>
+								<div className="flex justify-end">
+									<Button
+										type="submit"
+										className="min-h-11 w-full sm:w-auto"
+										disabled={
+											changingPassword ||
+											!currentPassword ||
+											!newPassword ||
+											!confirmPassword
+										}
+									>
+										{changingPassword ? (
+											<>
+												<Loader2 className="mr-2 h-4 w-4 animate-spin motion-reduce:animate-none" />
+												Changing...
+											</>
+										) : (
+											"Change Password"
+										)}
+									</Button>
+								</div>
 							</div>
-						</div>
-					</form>
-				</CardContent>
+						</form>
+					</CardContent>
+				)}
 			</Card>
 		</div>
 	);

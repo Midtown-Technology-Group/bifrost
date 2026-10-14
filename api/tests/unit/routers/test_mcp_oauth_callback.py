@@ -43,13 +43,16 @@ class TestPopupResponse:
         assert "bad thing happened" in body
         assert response.status_code == 400
 
-    def test_error_html_escapes_quotes(self):
-        """An error containing a single quote shouldn't break the JS literal."""
-        response = _popup_response(
-            success=False, connection_id="x", error="user's denied"
-        )
+    def test_error_html_neutralizes_markup_and_script_breakout(self):
+        """Untrusted error text can't inject markup or end the inline script."""
+        hostile = "x'</script><img src=x onerror=alert(1)>\\"
+        response = _popup_response(success=False, connection_id="x", error=hostile)
         body = response.body.decode()
-        assert '"error": "user\'s denied"' in body
+        import json
+        payload = body.split("postMessage(", 1)[1].split(", window.location.origin)", 1)[0]
+        assert json.loads(payload)["error"] == hostile
+        assert "<img src=x" not in body
+        assert body.count("</script>") == 1
 
     def test_error_html_escapes_markup_and_script_breakout(self):
         response = _popup_response(

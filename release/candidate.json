@@ -1,0 +1,640 @@
+{
+  "schema": 1,
+  "repository": "Midtown-Technology-Group/bifrost",
+  "version": "v3.1.0",
+  "base_tag": "v3.0.0",
+  "source_commit": "4ab290a8c8b1c1fdd8fbe734cab0a1c7e1b4f874",
+  "source_tree": "abe9c0bda7529997bebc1a895f72db8a52a77c49",
+  "contract_floor": null,
+  "pull_requests": [
+    {
+      "number": 1076,
+      "title": "Isolate concurrent service claim test from the stack worker",
+      "labels": [],
+      "merge_commit": "bb237a6df029726c5c3b8802f0cd8c8dfeca0a56",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1074,
+      "title": "Define the language-neutral runtime v1 document foundation",
+      "labels": [],
+      "merge_commit": "91be1fce66048fffe27276e223af5b67022e6f32",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1075,
+      "title": "Update review expectation guidelines in delivery-lanes.md",
+      "labels": [],
+      "merge_commit": "4090981454006b66e0757c2ecb40cb7fa854a700",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1064,
+      "title": "Preserve captured Solution IDs and display metadata during adoption",
+      "labels": [],
+      "merge_commit": "db3f0048d6718cd2ccc78ed270718161c74e8c03",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1072,
+      "title": "Seal parent package initializers in immutable source closure",
+      "labels": [],
+      "merge_commit": "f902a7bbb0b25b3573785984dbd0e8f48e23419b",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1057,
+      "title": "Fix strict Solution event admission without weakening argument validation",
+      "labels": [],
+      "merge_commit": "0f556e5b4f93901866b46a7b527af4852f780f10",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1063,
+      "title": "Settle delayed authored Source accounting from verified descendants",
+      "labels": [],
+      "merge_commit": "754ab53cf0f8fb940ecffe6ff2ffecc5b994de2f",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1071,
+      "title": "Consolidate guarded App publication and original-job readback recovery",
+      "labels": [],
+      "merge_commit": "754ab53cf0f8fb940ecffe6ff2ffecc5b994de2f",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1077,
+      "title": "Deliver protected Main Apps with original-job recovery and source accounting",
+      "labels": [
+        "semver:minor"
+      ],
+      "merge_commit": "754ab53cf0f8fb940ecffe6ff2ffecc5b994de2f",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1079,
+      "title": "fix(release): publish verified drafts by release ID",
+      "labels": [],
+      "merge_commit": "f0f85add2f24a436be085ccd0e7bc37f28cec62c",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 920,
+      "title": "Integrate upstream through 686cff8d8 on current MTG main",
+      "labels": [],
+      "merge_commit": "aaa756497b73a0ec5a736e4c626fce35eb2b6633",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1068,
+      "title": "ci: stage fail-closed Sonar coverage and source-scope migration",
+      "labels": [],
+      "merge_commit": "11090aa485e421ac9ca03e63eede31bebe06fc10",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1083,
+      "title": "Verify Solution App authored source and active compiled runtime before accounting",
+      "labels": [],
+      "merge_commit": "55af89eaadce7b9859630b8dcaac310ab5021b56",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1085,
+      "title": "Stage Sonar Free-plan CI cutover for main and PR analysis",
+      "labels": [],
+      "merge_commit": "19728d6526b2fa7bfc5a14aa150d7bec76a86704",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1086,
+      "title": "ci: stop cancelled-plan diagnostics and gate manual pre-PR on lint",
+      "labels": [],
+      "merge_commit": "57935689d523db4f496339de99568e3057cc9b2a",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1088,
+      "title": "Deliver complete Solution packages through the reviewed Main pipeline",
+      "labels": [],
+      "merge_commit": "b1bae08ea5a8a4a137ff06ec115fcaf0d10dcf6e",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1089,
+      "title": "Verify Sonar CI migration and retire automatic-analysis configuration",
+      "labels": [],
+      "merge_commit": "1c7b70f3bedc7a5d4b45e2f0f5eeb6e21572d03d",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1087,
+      "title": "Merge upstream worker SDK transport and credential security",
+      "labels": [],
+      "merge_commit": "91a760fb93b875d26248131c88ed4eda079305f6",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1080,
+      "title": "docs: adopt maintainer-directed contribution acceptance",
+      "labels": [],
+      "merge_commit": "9ec21074f28d240c47596a71b7b5debaed7fe1ba",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1090,
+      "title": "fix: preserve owned-table workflow successor controls",
+      "labels": [],
+      "merge_commit": "279dd419e2f45906dda16fb9f44c120c55c9e1aa",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1092,
+      "title": "Complete workflow package publication and preserve resource bindings",
+      "labels": [],
+      "merge_commit": "1bcfb1e081015a34c1a886ce3f3e47185cb90767",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1094,
+      "title": "fix: allow guarded Solution runtime file updates",
+      "labels": [],
+      "merge_commit": "225ea321e907587fdad3b1ff30d05dc02ee6bfba",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1096,
+      "title": "fix: reconcile mixed registry and legacy package delivery contracts",
+      "labels": [],
+      "merge_commit": "c6f12e847c12a9444c9239814524354bc44f69d8",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1099,
+      "title": "fix(ci): read nightly coverage from the exact worktree",
+      "labels": [],
+      "merge_commit": "9779667e21352e540584da9cf752a4b0fb81c0c1",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1097,
+      "title": "fix: repair Sonar findings and collect complete runtime coverage",
+      "labels": [],
+      "merge_commit": "d027aeb0c0726538756fccfca0c206a77eee203d",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1098,
+      "title": "MIDT-205: correct Azure Blob and Redis production guidance",
+      "labels": [],
+      "merge_commit": "5eebaa70e6a7243502fec5b0387eca0afe04dda0",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1101,
+      "title": "fix: complete Main Sonar security and coverage remediation",
+      "labels": [],
+      "merge_commit": "17fb2be097130013f64dc8331b911c8b8a200568",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1102,
+      "title": "docs: refactor audit identifying review drag and unsafe boundaries",
+      "labels": [],
+      "merge_commit": "02d1ca3d7d6c881699c5f637cab812d437bb9e8a",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1110,
+      "title": "docs: record Code Mode compatibility preflight and proof gates",
+      "labels": [],
+      "merge_commit": "ee394eeda0adda6a5603759588d3343b8e3d16d1",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1121,
+      "title": "feat(devices): actionable device_busy and convergent, idempotent cancel",
+      "labels": [],
+      "merge_commit": "9c0d3c0e372c1a80fa6fcaa6787cee6b8c05be75",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1123,
+      "title": "fix(devices): release claims of dead devices in the job sweep",
+      "labels": [],
+      "merge_commit": "457d84755928325eb562960fda36a6f2285e852e",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1124,
+      "title": "fix(promotion): verify solution-managed live registrations in preview handoff",
+      "labels": [],
+      "merge_commit": "ada8b358163e8e679c7c48466dbf1be0cdf6cbca",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1111,
+      "title": "ci: stop allocating runners for zero-shard sentinel lanes and record occupancy",
+      "labels": [],
+      "merge_commit": "ab8f87c4f500b86cfddda3dd67d2bb1884a5774f",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1128,
+      "title": "Upstream sync slice 1: port R1a operation catalog (metadata-only)",
+      "labels": [],
+      "merge_commit": "5efefbcc296825c75cdeb3bf5d095e8eca8d72a6",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1129,
+      "title": "feat(solutions): verify signed workflow removal evidence",
+      "labels": [],
+      "merge_commit": "135a305811568362347e9d485ef992e9467f634f",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1131,
+      "title": "perf: avoid CRLF replacement scans for LF-only sync content",
+      "labels": [],
+      "merge_commit": "b031b9ca3a4fc50d6eb04dbfdf578fe8f009913d",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1134,
+      "title": "fix(security): update vulnerable runtime dependencies",
+      "labels": [
+        "dependencies",
+        "javascript",
+        "python"
+      ],
+      "merge_commit": "f11c6966d7b8553e4662cb6ab3414a0f8da3a2f2",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 968,
+      "title": "Spike Pydantic DecisionModel dependency and TypeSafe contract (MIDT-274)",
+      "labels": [],
+      "merge_commit": "b8e3e5a4fac0a0a7c70cd6b2a3b9394e0cbbac01",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1103,
+      "title": "Make client builds type-safe and document native compiler benchmarks",
+      "labels": [],
+      "merge_commit": "6d020165c056ae52f3d35b5e1a3b913d17ffd0ab",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1115,
+      "title": "Prepare MCP image before freezing pre-PR provenance",
+      "labels": [],
+      "merge_commit": "0a4db3d55388db9a2297e1a3c195a8628884ed3c",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1133,
+      "title": "Integrate upstream own-run visibility and MCP REST parity (#814\u2013#815)",
+      "labels": [],
+      "merge_commit": "968ac4693c99cc52f156f5aacb63a40a8fcd9437",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1144,
+      "title": "Isolate config reconciliation manifest assertion",
+      "labels": [],
+      "merge_commit": "1a96b79bae327be41934ef9331ab5471e075f792",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1147,
+      "title": "fix: reject actor JWTs on user auth paths",
+      "labels": [],
+      "merge_commit": "5e0d89ef842c4bd9c3b136700bc6d8920c935ae8",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1149,
+      "title": "fix: isolate app embeds from form capabilities",
+      "labels": [],
+      "merge_commit": "c7d3d0b5713da4e8b683212145c2d0f12f03ca95",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1143,
+      "title": "Bind Solution app headers to authorized callers",
+      "labels": [],
+      "merge_commit": "08255ad355a3ab63f0c04a214c3c230432552dfe",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1158,
+      "title": "security: meter and persist autonomous transport probes",
+      "labels": [],
+      "merge_commit": "212c0474b76043021e8b78c231c45a41dc43b76a",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1118,
+      "title": "Record dependency consumers and tested simplification decisions",
+      "labels": [],
+      "merge_commit": "292e11208c23109d5a14dcdb0414fb8628d324e2",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1146,
+      "title": "fix: enforce HTTP-only MCP client transport",
+      "labels": [],
+      "merge_commit": "d4e3a6c65f922966737fef6eb879602ea35052e0",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1142,
+      "title": "Release webhook database sessions before agent delivery",
+      "labels": [],
+      "merge_commit": "839a5e1d45a69c135aea3ad07a246d9aec6e09b1",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1159,
+      "title": "security: prevent duplicate workflow execution retries",
+      "labels": [],
+      "merge_commit": "64d630375e1ca4763c0082c7346b9964fdb3104e",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1141,
+      "title": "Fence external worker host ownership by durable process generation",
+      "labels": [],
+      "merge_commit": "5931599470abcc980b20e44866a66958ffce0c1c",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1148,
+      "title": "fix: bound public form uploads at storage ingress",
+      "labels": [],
+      "merge_commit": "f38b7724a6a3551acdaf7c4e6626600b886edc35",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1145,
+      "title": "Generate private debug JWT signing keys",
+      "labels": [],
+      "merge_commit": "c6b650e36e200fa1e5b6049a16031936eb4be809",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1150,
+      "title": "Bound chat attachment reads before storage",
+      "labels": [],
+      "merge_commit": "10f741c39c1667bbdb40f28de2a36ac07a38a69b",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1155,
+      "title": "Require chat-run provenance for Teams completion",
+      "labels": [],
+      "merge_commit": "9efd4222184d87c42ccda8232691944f5bda808e",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1230,
+      "title": "Surface privileged agent tool revocations during import",
+      "labels": [],
+      "merge_commit": "46a9e4c1150727bbee0c9fee6de955c0bb8fde6a",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1232,
+      "title": "Restore strict Kubernetes TLS defaults",
+      "labels": [],
+      "merge_commit": "e565e5503c96cfe8b1e6c7add31c1bcbd2eea8c0",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1235,
+      "title": "fix(migrations): repair delivery started_at upgrades",
+      "labels": [],
+      "merge_commit": "8e473e16a16b73bdce7a570fe26799f5dbd7e5da",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1242,
+      "title": "fix(workspace): close no-write Git convergence",
+      "labels": [],
+      "merge_commit": "a89f2758e2f9d9f85db5330234c94c4d3ba6069b",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1243,
+      "title": "Recover broker-confirmed scheduled executions",
+      "labels": [],
+      "merge_commit": "162d3f47722baf2992e60d11a6026cb95b9dbf04",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1162,
+      "title": "Revoke stale WebMCP tool wrappers",
+      "labels": [],
+      "merge_commit": "f4c618eba3f288501b77c51bb723cf9fba8c8102",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1163,
+      "title": "Terminalize accepted agent cancellations",
+      "labels": [],
+      "merge_commit": "88e0bfb24e32b0ac9dbfd1658c32c0e749acb7b0",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1164,
+      "title": "Require admin before loading draft app bundles",
+      "labels": [],
+      "merge_commit": "7310bc01c30da5d3f98818721c7ecc60fa6a77c0",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1167,
+      "title": "Require browser-bound OAuth callback state",
+      "labels": [],
+      "merge_commit": "f90cc052a18fb4fa7fb4049c13ebc1e6127d684e",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1168,
+      "title": "security: bound Codex auth cache imports",
+      "labels": [],
+      "merge_commit": "9507cc6384a657f9303f6de2c51d34b247b115f6",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1169,
+      "title": "security: scrub OAuth secrets from Sentry",
+      "labels": [],
+      "merge_commit": "43e461aa8b2feb2ceb6a9b6c186a2ac4c213c465",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1172,
+      "title": "security: charge webhook quota after validation",
+      "labels": [],
+      "merge_commit": "1fcf661f23481bec7467f1732841f9bf74903c68",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1174,
+      "title": "security: bound workflow JSON result parsing",
+      "labels": [],
+      "merge_commit": "afa76d34ae48dcae7ce7984146887a1f48e1a509",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1177,
+      "title": "security: stop distributing local Claude permissions",
+      "labels": [],
+      "merge_commit": "111b2c00c287897add4c2019c154c28e5ea60269",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1178,
+      "title": "security: preserve external-only authentication",
+      "labels": [],
+      "merge_commit": "eae98fb5b5f0d6786ad26fe8e9cbdfb27fc7eb3f",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1179,
+      "title": "security: redact agent configuration for non-managers",
+      "labels": [],
+      "merge_commit": "af18d81f5adfd6fb75de29b57f238b7f8bde8c95",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1192,
+      "title": "Constrain app file reads to editable source paths",
+      "labels": [],
+      "merge_commit": "b782287bba94b1ffb37a76c5c1d5f6d666643872",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1203,
+      "title": "Bound agent router output tokens",
+      "labels": [],
+      "merge_commit": "5c1a2fada679c191c989ef7bf6dfef5ee19a8d56",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1204,
+      "title": "Redact secrets from persisted execution context",
+      "labels": [],
+      "merge_commit": "23350b3a10aaa1a098a06e6abcb1ca31188bfc13",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1214,
+      "title": "fix(security): gate flag conversations by verdict",
+      "labels": [],
+      "merge_commit": "c795bdbfeb79d33e2c72ca79057fdfc8364e6462",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1226,
+      "title": "security: bind verified files into Git closure",
+      "labels": [],
+      "merge_commit": "13aa21f0ae08ece39ba4b778a357179756441e03",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1231,
+      "title": "Preserve service worker source generation pins",
+      "labels": [],
+      "merge_commit": "fd99209fe3991994d5b039f9f39160011458d696",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1234,
+      "title": "fix(devices): gate control key issuance on execute",
+      "labels": [],
+      "merge_commit": "f11eff75331cd209a1e83a1cdb86e508ab41c62f",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1236,
+      "title": "fix(ci): reject email CODEOWNERS drift",
+      "labels": [],
+      "merge_commit": "0cbbf5d9cbc4c28837b3090674d4a04f42ea4f42",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1249,
+      "title": "fix: propagate queue creation time to workers",
+      "labels": [],
+      "merge_commit": "b1ecef23f338cfff32f2000cc623ecbb07ba4e1d",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1251,
+      "title": "security: evict timed-out RabbitMQ health connection",
+      "labels": [],
+      "merge_commit": "c80bb752a045af9a052241437081a39a5dc9063b",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1257,
+      "title": "Guard malformed MCP result blocks",
+      "labels": [],
+      "merge_commit": "b53a2573ff421c4f29633c3f7109692b177fb921",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1258,
+      "title": "Acknowledge buffered changes after commit",
+      "labels": [],
+      "merge_commit": "4bf56949674a5b2846cf5239745a00566249042d",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1261,
+      "title": "Reset form metadata across edit routes",
+      "labels": [],
+      "merge_commit": "b9d01f51675c27bca03a2aed5a3ecbbac8d5b734",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1262,
+      "title": "Isolate batch mapping failures with savepoints",
+      "labels": [],
+      "merge_commit": "b6677bbfb81770b4045ec55cae39578b9f9406e8",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1268,
+      "title": "Harden data-table new-tab row links",
+      "labels": [],
+      "merge_commit": "c74a8c88506c7f5c42845879a6342bee57349d63",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1269,
+      "title": "Reject completed-with-errors workflow mutations",
+      "labels": [],
+      "merge_commit": "90355869ffe20a0f0486794305ef46ceb6ba95f4",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1294,
+      "title": "chore(security): remove expired Authlib exception after Snyk retirement",
+      "labels": [],
+      "merge_commit": "a4d3031044c067597272f06fb6d7cc5d4640461f",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1295,
+      "title": "Cover Codex Gateway /v1/responses runtime with fake-upstream tests",
+      "labels": [],
+      "merge_commit": "4ab290a8c8b1c1fdd8fbe734cab0a1c7e1b4f874",
+      "author": "MTG-Thomas"
+    }
+  ]
+}

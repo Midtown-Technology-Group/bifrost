@@ -268,3 +268,26 @@ test.describe("Table records acceptance", () => {
 		);
 	});
 });
+
+test("selected record surface stays selected while hovered", async ({ page }) => {
+	await gotoTables(page);
+	await page.evaluate(() => {
+		const row = document.createElement("div");
+		row.id = "selected-record-style-fixture";
+		row.className = "tree-row-selected hover:bg-muted/40";
+		row.textContent = "Selected record";
+		Object.assign(row.style, {
+			position: "fixed", top: "64px", left: "8px", width: "160px",
+			height: "32px", zIndex: "100000",
+		});
+		document.body.append(row);
+	});
+	await page.mouse.move(1439, 899);
+	const row = page.locator("#selected-record-style-fixture");
+	await expect(row).toBeVisible();
+	const selected = await row.evaluate((element) => getComputedStyle(element).backgroundColor);
+	expect(selected).not.toBe("rgba(0, 0, 0, 0)");
+	await row.hover();
+	await expect.poll(() => row.evaluate((element) => getComputedStyle(element).backgroundColor))
+		.toBe(selected);
+});

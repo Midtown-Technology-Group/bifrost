@@ -32,6 +32,7 @@ from fastapi import APIRouter, HTTPException, Query, status
 from fastapi.responses import Response
 from starlette.middleware.cors import CORSMiddleware
 
+from src.services.operation_catalog import operation_route
 from src.config import get_settings
 from src.core.auth import CurrentActiveUser, CurrentSuperuser
 from src.core.db_deps import DbSession
@@ -192,6 +193,7 @@ async def execute_gateway_tool(
     "/operation-receipts/{receipt_id}/resolve",
     response_model=MCPOperationReceiptResolutionResponse,
     summary="Resolve an ambiguous MCP operation receipt",
+    **operation_route("mcp.resolve_gateway_operation_receipt"),
 )
 async def resolve_gateway_operation_receipt(
     receipt_id: UUID,

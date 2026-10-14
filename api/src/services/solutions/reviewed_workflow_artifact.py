@@ -74,8 +74,10 @@ def compile_reviewed_workflows(
                 # Frozen runtime containers use tuples internally. Revalidate
                 # JSON values, then freeze the augmented definition once.
                 payload = item.model_dump(mode="json")
+                snapshot = legacy_descriptor_snapshots[item.resolved_id]
                 payload["definition"]["legacy_descriptor_evidence"] = legacy_descriptor_evidence(
-                    legacy_descriptor_snapshots[item.resolved_id])
+                    snapshot, extended=any(payload["definition"][key] != snapshot[key]
+                                           for key in ("tags", "tool_description")))
                 marked[ref] = RuntimeEntityDefinition.model_validate(payload)
             entities = marked
         if legacy_registration_names is not None:
