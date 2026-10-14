@@ -25,6 +25,7 @@ from uuid import UUID, uuid4
 import httpx
 import pytest
 
+from src.jobs.schedulers.device_jobs_sweep import sweep_lost_device_jobs
 from src.models.orm.device_jobs import (
     CLAIM_LEASE_SECONDS,
     DEVICE_HEARTBEAT_LOST_SECONDS,
@@ -227,6 +228,11 @@ async def test_running_loss_becomes_lost_and_requires_explicit_retry(
         job.claim_token = uuid4()
         await db_session.commit()
     claim_token = job.claim_token
+
+    # Force the competing scheduler interleaving rather than hoping its 30s
+    # timer lands between fixture commit and this test's explicit sweep.
+    outcome = await sweep_lost_device_jobs()
+    print(f"Competing watchdog: {outcome.summary}")
 
     # Watchdog sweep: running + silent > 90s -> terminal lost, never pending.
     stats = await sweep_device_jobs(db_session, now=datetime.now(timezone.utc))
