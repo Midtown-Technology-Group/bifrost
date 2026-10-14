@@ -214,6 +214,7 @@ services:
       BIFROST_DEFAULT_USER_PASSWORD: ${BIFROST_DEFAULT_USER_PASSWORD:-}
       # Public URL - Set this to your public address (https://bifrost.yourdomain.com)
       BIFROST_PUBLIC_URL: ${BIFROST_PUBLIC_URL:-}
+      MCP_ENCRYPTED_TUNNEL_HOSTS: ${MCP_ENCRYPTED_TUNNEL_HOSTS:-}
     # Note: API port 8000 not exposed - access via client proxy at http://localhost:3000
     # Debug port (5678) only exposed in docker-compose.dev.yml
     depends_on:
@@ -273,6 +274,7 @@ services:
       # Message Queue & Cache
       BIFROST_RABBITMQ_URL: amqp://bifrost:${RABBITMQ_PASSWORD}@rabbitmq:5672/
       BIFROST_REDIS_URL: redis://redis:6379/0
+      MCP_ENCRYPTED_TUNNEL_HOSTS: ${MCP_ENCRYPTED_TUNNEL_HOSTS:-}
       # API URL (for SDK client injection in workflows)
       BIFROST_API_URL: http://api:8000
       # S3 Storage (for scheduled jobs that need file access)
@@ -327,6 +329,7 @@ services:
       # Message Queue & Cache
       BIFROST_RABBITMQ_URL: amqp://bifrost:${RABBITMQ_PASSWORD}@rabbitmq:5672/
       BIFROST_REDIS_URL: redis://redis:6379/0
+      MCP_ENCRYPTED_TUNNEL_HOSTS: ${MCP_ENCRYPTED_TUNNEL_HOSTS:-}
       # API URL (for SDK client injection in workflows)
       BIFROST_API_URL: http://api:8000
       # S3 Storage (for non-Python file access)
