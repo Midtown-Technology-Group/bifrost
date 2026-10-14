@@ -24,12 +24,11 @@ from enum import Enum
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Path, status
+from shared.app_authorization import require_platform_admin
 
-from src.services.operation_catalog import operation_route
 from src.core.auth import Context, CurrentUser
 from src.core.exceptions import AccessDeniedError
 from src.core.log_safety import log_safe
-from src.services.solutions.guard import assert_entity_id_not_solution_managed
 from src.models.contracts.applications import (
     AppFileUpdate,
     AppRenderResponse,
@@ -40,14 +39,16 @@ from src.models.contracts.applications import (
 from src.models.orm.applications import Application
 from src.routers.applications import ApplicationRepository
 from src.services.app_storage import AppStorageService
-from src.services.repo_storage import RepoStorage
+from src.services.editor.file_filter import is_excluded_path
 from src.services.file_storage.service import get_file_storage_service
+from src.services.operation_catalog import operation_route
+from src.services.repo_storage import RepoStorage
+from src.services.solutions.guard import assert_entity_id_not_solution_managed
 from src.services.workspace_release_files import (
     WorkspaceReleaseFileView,
     active_workspace_release_file_view,
     reject_release_governed_paths,
 )
-from shared.app_authorization import require_platform_admin
 
 logger = logging.getLogger(__name__)
 
@@ -223,6 +224,25 @@ def validate_file_path(path: str) -> None:
             )
 
 
+def validate_app_source_path(path: str) -> None:
+    """Reject files that are not part of the editable App source surface."""
+    if is_excluded_path(path):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="File path is excluded from workspace operations",
+        )
+    validate_file_path(path)
+
+
+def is_allowed_app_source_path(path: str) -> bool:
+    """Return whether an object-store key may be exposed as App source."""
+    try:
+        validate_app_source_path(path)
+    except HTTPException:
+        return False
+    return True
+
+
 # =============================================================================
 # Helper Functions
 # =============================================================================
@@ -360,12 +380,15 @@ async def list_app_files(
     # Read source from S3 and compiled from _apps/
     files: list[SimpleFileResponse] = []
     for full_path in sorted(source_paths):
+        if not full_path.startswith(repo_prefix):
+            continue
         # Derive relative path by stripping the repo prefix
         rel_path = full_path[len(repo_prefix):]
-        if not rel_path:
-            continue
-        # Skip folder marker entries
-        if rel_path.endswith("/"):
+        if (
+            not rel_path
+            or rel_path.endswith("/")
+            or not is_allowed_app_source_path(rel_path)
+        ):
             continue
 
         # Source from S3 (_repo/)
@@ -409,11 +432,12 @@ async def read_app_file(
 ) -> SimpleFileResponse:
     """Read a single file by relative path.
 
-    Source content is read from the file_index (_repo/apps/{slug}/).
+    Source content is read from S3 (_repo/apps/{slug}/).
     Compiled content is read from _apps/{app_id}/{mode}/.
     The compiled field is only set when it differs from source.
     """
     app = await get_application_or_404(ctx, app_id)
+    validate_app_source_path(file_path)
     app_storage = AppStorageService()
 
     # Source from S3 (_repo/)
@@ -475,7 +499,7 @@ async def write_app_file(
     await assert_entity_id_not_solution_managed(ctx.db, Application, app_id)
 
     # Validate path conventions
-    validate_file_path(file_path)
+    validate_app_source_path(file_path)
 
     prefix = _server_source_prefix(app)
     full_path = f"{prefix}{file_path}"
@@ -654,6 +678,8 @@ async def get_bundle_manifest(
 
     If no manifest exists yet, triggers a build and returns that one.
     """
+    if mode == FileMode.draft:
+        require_platform_admin(_user)
     app = await get_application_or_404(ctx, app_id)
     app_storage = AppStorageService()
     storage_mode = "preview" if mode == FileMode.draft else "live"
@@ -863,6 +889,8 @@ async def get_bundle_asset(
     """
     from fastapi.responses import Response
 
+    if mode == FileMode.draft:
+        require_platform_admin(_user)
     app = await get_application_or_404(ctx, app_id)
     app_storage = AppStorageService()
     storage_mode = "preview" if mode == FileMode.draft else "live"

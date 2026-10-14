@@ -86,7 +86,7 @@ async def test_flush_pending_changes_returns_zero_when_redis_empty(
 
 
 @pytest.mark.asyncio
-async def test_flush_pending_changes_sorts_valid_json_and_deletes_key(
+async def test_shared_session_flush_waits_for_commit_before_acknowledgement(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     redis = FakeRedis(
@@ -109,8 +109,11 @@ async def test_flush_pending_changes_sorts_valid_json_and_deletes_key(
 
     assert await _sync.flush_pending_changes("exec-1", session=session) == 2
     assert applied == ["config", "role"]
-    assert redis.deleted == ["pending:exec-1"]
+    assert redis.deleted == []
     assert session.commits == 0
+
+    await _sync.acknowledge_pending_changes("exec-1")
+    assert redis.deleted == ["pending:exec-1"]
 
 
 @pytest.mark.asyncio

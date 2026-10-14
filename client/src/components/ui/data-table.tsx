@@ -146,13 +146,40 @@ function isRowAction(event: React.MouseEvent<HTMLTableRowElement>) {
 	);
 }
 
+function safeRowHref(href: string | undefined): string | undefined {
+	if (!href) return undefined;
+	try {
+		// Browser documents have an HTTP(S) origin. Happy DOM and other
+		// non-hierarchical test documents report "null"; use a deterministic
+		// stand-in there while preserving the same-origin comparison.
+		const origin =
+			window.location.origin === "null"
+				? "http://localhost"
+				: window.location.origin;
+		const url = new URL(href, origin);
+		if (
+			(url.protocol !== "http:" && url.protocol !== "https:") ||
+			url.origin !== origin
+		)
+			return undefined;
+		return href;
+	} catch {
+		return undefined;
+	}
+}
+
+function openRowHref(href: string) {
+	window.open(href, "_blank", "noopener,noreferrer");
+}
+
 const DataTableRow = React.forwardRef<HTMLTableRowElement, DataTableRowProps>(
 	({ className, clickable, href, onClick, ...props }, ref) => {
+		const safeHref = safeRowHref(href);
 		const handleClick = (e: React.MouseEvent<HTMLTableRowElement>) => {
 			if (e.button === 1 || !isRowAction(e)) return;
 			if (href && (e.metaKey || e.ctrlKey)) {
 				e.preventDefault();
-				window.open(href, "_blank");
+				if (safeHref) openRowHref(safeHref);
 				return;
 			}
 			onClick?.(e);
@@ -161,7 +188,7 @@ const DataTableRow = React.forwardRef<HTMLTableRowElement, DataTableRowProps>(
 		const handleMouseUp = (e: React.MouseEvent<HTMLTableRowElement>) => {
 			if (href && e.button === 1 && isRowAction(e)) {
 				e.preventDefault();
-				window.open(href, "_blank");
+				if (safeHref) openRowHref(safeHref);
 				return;
 			}
 			props.onMouseUp?.(e);
@@ -172,7 +199,7 @@ const DataTableRow = React.forwardRef<HTMLTableRowElement, DataTableRowProps>(
 				ref={ref}
 				className={cn(
 					"border-b border-border/60 transition-colors duration-[var(--bf-motion-feedback)] motion-reduce:transition-none hover:bg-muted/50 has-aria-expanded:bg-muted/50 data-[state=selected]:bg-muted",
-					(clickable || href) && "cursor-pointer",
+					(clickable || safeHref) && "cursor-pointer",
 					className,
 				)}
 				{...props}

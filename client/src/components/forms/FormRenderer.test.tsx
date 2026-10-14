@@ -207,7 +207,17 @@ describe("FormRenderer — WebMCP pilot", () => {
 		expect(screen.getByLabelText(/email/i)).toHaveValue(
 			"agent@example.com",
 		);
-		const result = await validate!.execute(
+		expect(() =>
+			validate!.execute(
+				{},
+				{ signal: new AbortController().signal },
+			),
+		).toThrow("WebMCP tool is no longer available");
+		const currentValidate = [...registered]
+			.reverse()
+			.find((tool) => tool.name === "validate-current-form");
+		expect(currentValidate).toBeDefined();
+		const result = await currentValidate!.execute(
 			{},
 			{ signal: new AbortController().signal },
 		);

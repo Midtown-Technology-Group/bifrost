@@ -32,6 +32,7 @@ from src.services.devices import (
     enroll_device,
     get_device_scoped,
     list_devices_stmt,
+    require_device_control_key_issue_permission,
     rotate_device_key_route,
     set_device_enabled,
     user_can_manage_devices,
@@ -94,6 +95,37 @@ class TestPermissionGate:
         result.scalars.return_value.all.return_value = [{}, {"can_manage_config": False}]
         session.execute.return_value = result
         assert await user_can_manage_devices(session, make_user()) is False
+
+    async def test_control_key_issue_requires_management_and_execution(self):
+        session = mock_session()
+        manager = MagicMock()
+        manager.scalars.return_value.all.return_value = [{"can_manage_config": True}]
+        no_execution = MagicMock()
+        no_execution.scalars.return_value.all.return_value = [
+            {"can_execute_devices": False}
+        ]
+        session.execute.side_effect = [manager, no_execution]
+
+        with pytest.raises(DeviceOperationError) as exc:
+            await require_device_control_key_issue_permission(session, make_user())
+
+        assert exc.value.code == "permission_denied"
+        assert "can_execute_devices" in exc.value.message
+        assert session.execute.await_count == 2
+
+    async def test_control_key_issue_allows_both_permissions(self):
+        session = mock_session()
+        manager = MagicMock()
+        manager.scalars.return_value.all.return_value = [{"can_manage_config": True}]
+        executor = MagicMock()
+        executor.scalars.return_value.all.return_value = [
+            {"can_execute_devices": True}
+        ]
+        session.execute.side_effect = [manager, executor]
+
+        await require_device_control_key_issue_permission(session, make_user())
+
+        assert session.execute.await_count == 2
 
 
 class TestCreateDevice:
