@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
@@ -32,6 +33,7 @@ from src.services.opencode_go import (
 )
 
 if TYPE_CHECKING:
+    from src.services.openai_transport_detection import OpenAITransportProbe
     from src.services.embeddings.base import EmbeddingConfig
     from src.services.llm.base import LLMConfig
     from src.services.provider_catalog_service import (
@@ -82,9 +84,17 @@ class ModelProfileMergeResult:
 class AIModelService:
     """Manage named provider connections, reusable profiles, and global assignments."""
 
-    def __init__(self, session: AsyncSession):
+    def __init__(
+        self,
+        session: AsyncSession,
+        *,
+        before_transport_probe: Callable[[], None] | None = None,
+        record_transport_probe: Callable[[OpenAITransportProbe], None] | None = None,
+    ):
         self.session = session
         self.settings = get_settings()
+        self.before_transport_probe = before_transport_probe
+        self.record_transport_probe = record_transport_probe
 
     def _get_fernet(self) -> Fernet:
         key_bytes = self.settings.secret_key.encode()[:32].ljust(32, b"0")
@@ -409,10 +419,45 @@ class AIModelService:
                 detect_openai_transport,
             )
 
+            # Serialize first-time detection with profile/connection updates.
+            # The caller commits immediately after resolution; a concurrent
+            # resolver then refreshes this row under the lock and reuses the
+            # stored result instead of issuing another billable probe.
+            locked_profile = (
+                (
+                    await self.session.execute(
+                        select(AIModelProfile)
+                        .options(selectinload(AIModelProfile.connection))
+                        .where(AIModelProfile.id == profile.id)
+                        .with_for_update(of=AIModelProfile)
+                        .execution_options(populate_existing=True)
+                    )
+                )
+                .scalars()
+                .one()
+            )
+            profile = locked_profile
+            connection = profile.connection
+            provider = self.client_provider(connection.provider)
+            endpoint = connection.endpoint
+            openai_transport = profile.openai_transport
+            detects_openai_transport = connection.provider == "openai_compatible" or (
+                connection.provider == "openai"
+                and connection.endpoint != PROVIDER_DEFAULT_ENDPOINTS["openai"]
+            )
+            api_key = self.decrypt_api_key(connection.encrypted_api_key)
+            if not api_key:
+                raise ValueError(
+                    f"No API key configured for LLM provider connection '{connection.name}'. "
+                    "Please configure the API key in System Settings > AI Configuration."
+                )
+        if detects_openai_transport and openai_transport is None:
             openai_transport = await detect_openai_transport(
                 api_key=api_key,
                 endpoint=connection.endpoint,
                 model=profile.model,
+                before_request=self.before_transport_probe,
+                record_probe=self.record_transport_probe,
             )
             profile.openai_transport = openai_transport
             profile.updated_at = datetime.now(timezone.utc)

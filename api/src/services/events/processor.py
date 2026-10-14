@@ -15,6 +15,7 @@ Events are always processed asynchronously and return 202 immediately.
 import logging
 import re
 import uuid
+from collections.abc import Awaitable, Callable
 from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
@@ -293,6 +294,8 @@ class EventProcessor:
         event_source: EventSource,
         webhook_source: WebhookSource,
         request: WebhookRequest,
+        *,
+        before_delivery: Callable[[], Awaitable[None]] | None = None,
     ) -> HandleResult:
         """
         Process an incoming webhook request.
@@ -301,6 +304,8 @@ class EventProcessor:
             event_source: The resolved EventSource ORM object
             webhook_source: The resolved WebhookSource ORM object
             request: The incoming webhook request data
+            before_delivery: Optional admission check run after adapter
+                validation and before any delivery-side persistence.
 
         Returns:
             HandleResult indicating how to respond:
@@ -356,6 +361,11 @@ class EventProcessor:
                 or webhook_source.integration_id != result.authenticated_actor.integration_id
             ):
                 return Rejected(message="External actor integration does not match source", status_code=403)
+            if before_delivery is not None:
+                # Admission controls that rely on successful adapter
+                # authentication run here: after validation, before any Event,
+                # audit, identity, or delivery write in _process_delivery.
+                await before_delivery()
             # Process the event
             return await self._process_delivery(
                 webhook_source=webhook_source,
@@ -986,6 +996,13 @@ class EventProcessor:
                 "caller_is_provider_org": principal.is_provider_org,
                 "caller_roles": principal.roles,
             }
+            # Actor resolution and agent authorization start a new transaction
+            # after the delivery loop's pre-dispatch commit. Audit persistence
+            # and enqueueing each use an independent durable session, so return
+            # this connection to the pool before either tries to acquire one.
+            # Sessions use expire_on_commit=False; the authorized rows remain
+            # available for the request payload below.
+            await self.session.commit()
 
         # Build parameters from input mapping or raw event data
         parameters: dict[str, Any] = {}
