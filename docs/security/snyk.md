@@ -6,17 +6,30 @@ CodeQL, secret scanning, OpenSSF
 Scorecard, and other CI controls remain in place (see [SECURITY.md](../../SECURITY.md)).
 
 The rollout notes and dated findings below are retained as historical evidence,
-not current setup or promotion instructions. The root `.snyk` file remains the
-reviewed security-exception record. Repository tests independently enforce its
-approved scope and unchanged deadline, `2026-10-14T00:00:00.000Z`. Retiring the
-scanner does not extend or waive that exception.
-No Snyk account or credentials are required for the current release process.
+not current setup or promotion instructions. The Snyk-specific `.snyk` exception
+record was removed when that integration was retired; it is not an active
+security control or vulnerability disposition. No Snyk account or credentials
+are required for the current release process.
+
+## Authlib finding tracked separately
+
+`requirements.lock` currently pins Authlib 1.7.0. The public, currently
+unreviewed CVE-2026-96760 advisory describes signature verification bypass in
+Authlib versions through 1.7.2; it lists affected and patched versions as
+unknown. A prior bounded source review found no Bifrost Authlib JWS JSON
+verification calls, but that does not change the dependency's affected-version
+status or prove every runtime consumer safe. Removing the retired Snyk exception
+does not remediate or accept this finding. Keep it under dependency security
+review and reassess Authlib consumers before deployment or dependency changes.
+
+See the [GitHub Advisory Database entry](https://github.com/advisories/GHSA-6m87-8wg6-hh8w)
+for the current advisory record.
 
 ## Historical rollout notes
 
-Bifrost uses Snyk as an additional dependency, IaC, and container signal next
-to GitHub-native security controls. It does not replace Dependabot, CodeQL,
-secret scanning, or OpenSSF Scorecard.
+Historically, Bifrost used Snyk as an additional dependency, IaC, and container
+signal next to GitHub-native security controls. It did not replace Dependabot,
+CodeQL, secret scanning, or OpenSSF Scorecard.
 
 ## Local Setup
 

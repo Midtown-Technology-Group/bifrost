@@ -438,7 +438,6 @@ services:
       - ./docker-compose.test.yml:/app/docker-compose.test.yml:ro
       - ./docker-compose.sonar.yml:/app/docker-compose.sonar.yml:ro
       - ./.github:/app/.github:ro
-      - ./.snyk:/app/.snyk:ro
       - ./.claude:/app/.claude:ro
       - ./.env.debug:/app/.env.debug:ro
       - ./debug.sh:/app/debug.sh:ro

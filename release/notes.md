@@ -166,7 +166,7 @@ Security fixes and hardening in this release:
 - Solution resource access applies inbound/outbound permissions and trusted caller identity. Denied explicit workflow targets cannot fall back to shared workflows; file targets that cannot be safely resolved are rejected. [#900](https://github.com/Midtown-Technology-Group/bifrost/pull/900)
 - The admin OAuth settings callback URL is derived from deployment-owned `BIFROST_PUBLIC_URL`, preventing incoming Host and forwarded-host headers from changing the displayed callback URL. [#962](https://github.com/Midtown-Technology-Group/bifrost/pull/962)
 
-These entries describe reviewed source changes and are not a comprehensive CVE assessment or production-remediation proof. CVE-2026-96760 remains recorded as a temporary Authlib exception expiring October 14, 2026, at 00:00 UTC; no fix for that CVE is claimed here.
+These entries describe reviewed source changes and are not a comprehensive CVE assessment or production-remediation proof. CVE-2026-96760 remains an unresolved Authlib dependency risk; no fix or waiver for that CVE is claimed here.
 
 ## Upgrade notes
 
