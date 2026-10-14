@@ -76,6 +76,9 @@ _PUBLIC_HANDOFF_FAILURE_REASONS = frozenset({
 def safe_handoff_failure_reason(exc: Exception) -> str:
     if isinstance(exc, UnprovenLiveHandoff) and str(exc) in _PUBLIC_HANDOFF_FAILURE_REASONS:
         return str(exc)
+    for note in getattr(exc, "__notes__", ()):
+        if note in _PUBLIC_HANDOFF_FAILURE_REASONS:
+            return note
     return "Unclassified handoff verification failure"
 
 
@@ -84,9 +87,8 @@ def _handoff_stage(message: str) -> Iterator[None]:
     try:
         yield
     except (ValueError, KeyError, OSError, RuntimeError) as exc:
-        if isinstance(exc, UnprovenLiveHandoff):
-            raise
-        raise UnprovenLiveHandoff(message) from exc
+        exc.add_note(message)
+        raise
 
 
 class LiveHandoffReadback:

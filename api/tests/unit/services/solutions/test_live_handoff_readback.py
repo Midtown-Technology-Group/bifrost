@@ -445,8 +445,10 @@ async def test_registration_stage_failure_is_actionable_without_raw_error(handof
         raise ValueError('private-token customer-body')
 
     monkeypatch.setattr(readback, '_require_registration', fail_registration)
-    with pytest.raises(readback.UnprovenLiveHandoff) as raised:
-        await handoff.guard.require(handoff.inherited)
-    assert readback.safe_handoff_failure_reason(raised.value) == 'Immutable registration verification failed'
+    monkeypatch.setattr('src.services.workspace_promotions.find_workspace_workflow', AsyncMock(return_value=None))
+    service = WorkspacePromotionPreviewService(handoff.guard.db, uuid4(), repo_storage=SimpleNamespace())
+    with pytest.raises(WorkspacePromotionInvalid) as raised:
+        await service._current_registration_snapshot(handoff.release)
+    assert 'invariant: Immutable registration verification failed' in str(raised.value)
     assert 'private-token' not in str(raised.value)
     assert str(raised.value.__cause__) == 'private-token customer-body'
