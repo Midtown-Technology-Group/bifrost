@@ -412,3 +412,41 @@ async def test_current_table_contract_uses_its_deployment_owner_scope(handoff, m
         with pytest.raises(shared_table_bindings.SharedTableBindingError, match="organization differs"):
             await handoff.guard._current_contracts(manifest, scope)
         metadata.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_preview_reports_authored_invariant_without_chained_provider_body(handoff, monkeypatch):
+    monkeypatch.setattr('src.services.workspace_promotions.find_workspace_workflow', AsyncMock(return_value=None))
+    monkeypatch.setattr(readback.LiveHandoffReadback, 'require', AsyncMock(side_effect=readback.UnprovenLiveHandoff(
+        'Retained handoff receipt does not prove the current Live binding')))
+    service = WorkspacePromotionPreviewService(handoff.guard.db, uuid4(), repo_storage=SimpleNamespace())
+    with pytest.raises(WorkspacePromotionInvalid, match='invariant: Retained handoff receipt'):
+        await service._current_registration_snapshot(handoff.release)
+
+
+@pytest.mark.asyncio
+async def test_preview_redacts_unknown_error_bodies_and_remains_blocked(handoff, monkeypatch):
+    monkeypatch.setattr('src.services.workspace_promotions.find_workspace_workflow', AsyncMock(return_value=None))
+    for error in (ValueError('private-token customer-body'),
+                  readback.UnprovenLiveHandoff('private-token customer-body')):
+        monkeypatch.setattr(readback.LiveHandoffReadback, 'require', AsyncMock(side_effect=error))
+        service = WorkspacePromotionPreviewService(handoff.guard.db, uuid4(), repo_storage=SimpleNamespace())
+        with pytest.raises(WorkspacePromotionInvalid) as raised:
+            await service._current_registration_snapshot(handoff.release)
+        assert 'invariant: Unclassified handoff verification failure' in str(raised.value)
+        assert 'private-token' not in str(raised.value)
+        assert 'customer-body' not in str(raised.value)
+        assert raised.value.__cause__ is error
+
+
+@pytest.mark.asyncio
+async def test_registration_stage_failure_is_actionable_without_raw_error(handoff, monkeypatch):
+    def fail_registration(*_):
+        raise ValueError('private-token customer-body')
+
+    monkeypatch.setattr(readback, '_require_registration', fail_registration)
+    with pytest.raises(readback.UnprovenLiveHandoff) as raised:
+        await handoff.guard.require(handoff.inherited)
+    assert readback.safe_handoff_failure_reason(raised.value) == 'Immutable registration verification failed'
+    assert 'private-token' not in str(raised.value)
+    assert str(raised.value.__cause__) == 'private-token customer-body'

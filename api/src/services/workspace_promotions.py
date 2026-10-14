@@ -2340,7 +2340,7 @@ class WorkspacePromotionPreviewService:
                 str(inherited["function"]),
             )
             if current is None:
-                from src.services.solutions.live_handoff_readback import LiveHandoffReadback
+                from src.services.solutions.live_handoff_readback import LiveHandoffReadback, safe_handoff_failure_reason
 
                 if handoffs is None:
                     handoffs = LiveHandoffReadback(self.db, descriptor, lock=lock_handoffs)
@@ -2348,7 +2348,8 @@ class WorkspacePromotionPreviewService:
                     await handoffs.require(inherited)
                 except (ValueError, KeyError, OSError, RuntimeError) as exc:
                     raise WorkspacePromotionInvalid(
-                        f"Live registration handoff could not be verified: {key}"
+                        f"Live registration handoff could not be verified: {key}; "
+                        f"invariant: {safe_handoff_failure_reason(exc)}"
                     ) from exc
                 continue
             if (
