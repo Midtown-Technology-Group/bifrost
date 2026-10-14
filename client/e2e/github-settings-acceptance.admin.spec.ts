@@ -162,30 +162,30 @@ test.describe("GitHub settings acceptance (admin)", () => {
 			.click();
 		await page.getByRole("button", { name: "Review connection" }).click();
 
-		expect(previewPayload).toEqual({
-			repository_url: REPO,
-			branch: BRANCH,
-		});
 		const review = page.getByRole("region", {
 			name: "Review workspace connection",
 		});
 		await expect(review).toBeVisible();
+		expect(previewPayload).toEqual({
+			repository_url: REPO,
+			branch: BRANCH,
+		});
 		await review.getByRole("radio", { name: /reconcile both/i }).click();
 		await review
 			.getByRole("radio", { name: /keep local: apps\/shared.tsx/i })
 			.click();
 		await review.getByRole("button", { name: "Connect GitHub" }).click();
 
+		await expect(
+			page
+				.getByRole("status", { name: "" })
+				.filter({ hasText: "Connection queued" }),
+		).toBeVisible();
 		expect(connectPayload).toEqual({
 			preview_token: "review-token",
 			strategy: "reconcile",
 			decisions: { "apps/shared.tsx": "local" },
 			confirm_destructive: false,
 		});
-		await expect(
-			page
-				.getByRole("status", { name: "" })
-				.filter({ hasText: "Connection queued" }),
-		).toBeVisible();
 	});
 });
