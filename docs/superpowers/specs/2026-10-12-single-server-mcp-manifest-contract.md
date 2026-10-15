@@ -1,11 +1,18 @@
-# Single-server MCP manifest contract — proposed v1
+# Single-server MCP manifest contract — v1 design
 
-Status: **proposed; awaiting Thomas's three decisions below**. This document
-consolidates the existing MIDT-172 proposal, not an accepted or implemented API.
+Status: **Thomas accepted the three design choices below on 2026-10-15;
+maintainer review remains pending**. This document defines the intended contract,
+not an implemented API.
 Scope: [Bifrost #674](https://github.com/Midtown-Technology-Group/bifrost/issues/674),
 Multica `01a0e069-904b-7c2b-b84a-7850b519a9af` (MIDT-172).
 
-## Decisions required
+## Accepted design choices
+
+Thomas selected `accept-recommended` with no additional conditions in hosted
+inbox answer `inbox-answer:c0d2c78b-9ff0-46b8-a260-ddad45801e62`, persisted
+revision `ledger-18bed29651b792bd36c9cf6b`, for the existing decision packet
+`iris-midt172-contract-v1-be1aefc-decisions-20261014-r1`. The authoritative answer
+was delivered to this owner thread on 2026-10-15. It accepts all three choices:
 
 1. **Create-only v1.** Return a conflict for an existing server name; do not
    replace, attach, rename automatically, or upsert. This supersedes the optional
@@ -18,13 +25,16 @@ Multica `01a0e069-904b-7c2b-b84a-7850b519a9af` (MIDT-172).
    Activation remains a separate reviewed action.
 3. **Sanitized inline OAuth configuration in template exports.** Export only
    the allowlisted configuration below, allowing destination provider creation
-   or explicit mapping without carrying source provider IDs or credentials.
+   or explicit mapping with destination validation, without carrying source
+   provider IDs or credentials.
 
-Publication or merge of this proposal does not accept these product/security
-choices. Implementation issues MIDT-168 through MIDT-171 must not treat this
-proposal as accepted. No runtime, API, credential, or export behavior is changed.
+Acceptance settles these design choices only. It does not authorize implementation,
+merge, deployment, existing-server overwrite, credential export, or an access
+grant. Implementation issues MIDT-168 through MIDT-171 may reference the accepted
+choices but require their own applicable authorization and repository gates.
+No runtime, API, credential, or export behavior is changed by this document.
 
-### Alternatives and tradeoffs (all pending)
+### Alternatives considered and tradeoffs
 
 - Create-only keeps existing multi-org templates intact and avoids replace
   rollback/audit complexity. Explicit replacement is the alternative; v1 would
@@ -114,7 +124,7 @@ connections:
   Credential-bearing URLs must fail export/validation with a safe field error;
   they must not be copied or echoed. Validate endpoint configuration under the
   platform's existing network/security rules before any discovery request.
-- **Preserved proposed connection configuration:** client IDs and regional
+- **Preserved connection configuration:** client IDs and regional
   URL overrides occur only in the extended scope. Client IDs are public
   identifiers but environment/vendor specific; show this caveat during preview
   and allow an explicit destination override outside the document.
@@ -201,8 +211,9 @@ branch `handoff/multica-mcp-contract-20261012`. Source reviewed and live
 `origin/main` resolved to `08255ad355a3ab63f0c04a214c3c230432552dfe`.
 Loaded engineering-flow `2026-10-06.1` from skill package `2026-10-09.1`.
 
-Multica CLI readback: issue revision 14, in progress, last decision request
-2026-10-06 13:11 UTC; no later approval, active run, or linked PR. Original
+Historical Multica CLI readback on 2026-10-12: issue revision 14, in progress,
+last decision request 2026-10-06 13:11 UTC; no later approval, active run, or linked PR
+at that time. Original
 proposal comment `01a11154-173a-7717-aaa5-a53396871707`; final recommendation
 `01a11156-d808-7616-a123-c7906fb1f81d`. GitHub #674 is open with no comments.
 No Multica record changed. This readback is evidence at the recorded date, not a
@@ -222,12 +233,12 @@ Relevant current source:
 - [Workspace manifest codec](../../../api/bifrost/manifest.py): includes source
   IDs, cached schemas/discovery, and service token FKs; cannot be reused unchanged.
 
-No runtime behavior changed or runtime proof claimed. This documentation-only
-proposal can be reviewed independently; publication does not complete MIDT-172.
-Contract acceptance and maintainer review remain outstanding. A live stack,
-type regeneration, and runtime tests are inapplicable to this documentation diff;
+No runtime behavior changed or runtime proof claimed. Thomas's three design
+choices are accepted as recorded above; maintainer review remains outstanding.
+Recording acceptance does not claim that this PR is merged or MIDT-172 is closed.
+A live stack, type regeneration, and runtime tests are inapplicable to this diff;
 the publishing candidate must still pass the repository's `./test.sh pre-pr` gate.
-After acceptance, implementation proof must cover both export scopes, recursive
+Any separately authorized implementation must prove both export scopes, recursive
 credential exclusion, malformed/unknown/version rejection, no-write incomplete
 setup and collisions (including races), explicit tenant/provider mappings,
 inactive imports, and observed-tool policy gating. Follow live worktree API/UI
