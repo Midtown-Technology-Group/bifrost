@@ -1,6 +1,7 @@
 """Real Redis version fences for delayed shared-job notification projections."""
 import asyncio
 import json
+from typing import Awaitable, cast
 from uuid import uuid4
 from unittest.mock import AsyncMock
 
@@ -98,7 +99,7 @@ async def test_projection_preserves_json_values_and_concurrent_metadata(monkeypa
             current = json.loads(await client.get(key))
             current["metadata"]["concurrent"] = {"empty": [], "large": 987654321098765432}
             await client.set(key, json.dumps(current), keepttl=True)
-        return await original_eval(*args, **kwargs)
+        return await cast(Awaitable[object], original_eval(*args, **kwargs))
 
     monkeypatch.setattr(client, "eval", concurrent_eval)
     result = {"empty": [], "nested": [{"empty": []}], "large": 123456789012345678}
