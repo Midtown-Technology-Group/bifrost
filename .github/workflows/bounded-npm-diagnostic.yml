@@ -17,9 +17,10 @@ jobs:
     if: >-
       github.repository == 'Midtown-Technology-Group/bifrost' &&
       github.ref == 'refs/heads/diagnostic/finn-npm-install-observer-20261015' &&
-      github.event_name == 'push' && github.event.created == true
+      github.event_name == 'push' &&
+      github.event.before == '07b73705f67a264a8bcfe966d9f0b7fd5802b598'
     runs-on: ubuntu-latest
-    # Step budgets leave at least five minutes beyond normal cleanup/upload.
+    # Step budgets leave at least four minutes beyond normal cleanup/upload.
     timeout-minutes: 45
     env:
       PROBE_SOURCE: ${{ github.sha }}
@@ -42,7 +43,8 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$PROBE_SOURCE"
-          test "$(git rev-parse HEAD^)" = 72a4dff2f6792f114021249e726521e0ae2027e8
+          test "$(git rev-parse HEAD^)" = 07b73705f67a264a8bcfe966d9f0b7fd5802b598
+          git diff --quiet 72a4dff2f6792f114021249e726521e0ae2027e8 HEAD -- api/src/services/solutions/app_build.py api/tests/unit/test_solution_app_build.py
           test "$(git diff --name-only HEAD^ HEAD)" = .github/workflows/bounded-npm-diagnostic.yml
           test -z "$(git status --porcelain)"
           source scripts/lib/test_helpers.sh
@@ -197,12 +199,74 @@ jobs:
           if inventory_missing or any(counts.values()):
               raise RuntimeError('Owned task resources remain')
           PYCODE
-      - name: Retain bounded diagnostic evidence
+      - name: Validate explicit safe artifact files
+        id: safe
         if: always()
+        timeout-minutes: 1
+        run: |
+          python3 - <<'PYCODE'
+          import ast, json, os, pathlib, re, stat
+          output = pathlib.Path('.npm-probe-evidence')
+          caps = {'source.json': 4096, 'observation.json': 8192, 'ownership.json': 65536, 'cleanup.json': 4096}
+          documents = {}
+          for name, cap in caps.items():
+              path = output / name
+              info = path.lstat()
+              assert stat.S_ISREG(info.st_mode) and info.st_size <= cap
+              documents[name] = json.loads(path.read_text())
+          source, observation, ownership, cleanup = (documents[name] for name in caps)
+          resources = {'container', 'network', 'volume'}
+          assert set(source) == {'source', 'project', 'initial_resources'}
+          assert set(source['initial_resources']) == resources
+          assert all(type(v) is int and v == 0 for v in source['initial_resources'].values())
+          assert re.fullmatch(r'[a-z0-9][a-z0-9_-]{0,127}', source['project'])
+          assert source['source'] == os.environ['PROBE_SOURCE']
+          assert source['project'] == os.environ['PROBE_PROJECT']
+          assert set(observation) == {'source', 'project', 'observation', 'truncated', 'records', 'record_count', 'retained_record_bytes', 'outcomes'}
+          assert observation['observation'] in {'log_missing', 'log_present_no_matches', 'captured'}
+          assert type(observation['truncated']) is bool
+          records = observation['records']
+          assert type(records) is list and len(records) <= 16
+          tree = ast.parse(pathlib.Path('api/src/services/solutions/app_build.py').read_text())
+          assignment = next(n for n in tree.body if isinstance(n, ast.Assign) and any(isinstance(t, ast.Name) and t.id == '_NPM_ERROR_CODES' for t in n.targets))
+          codes = ast.literal_eval(assignment.value.args[0])
+          function = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == '_build_tool_version')
+          call = next(n for n in ast.walk(function) if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) and n.func.attr == 'fullmatch')
+          version = ast.literal_eval(call.args[0])
+          pattern = re.compile(r'App build step=npm_install exit_status=(-?\d{1,11}) npm_code=(unknown|' + '|'.join(re.escape(c) for c in sorted(codes)) + r') node_version=(unknown|' + version + r') npm_version=(unknown|' + version + r')')
+          assert all(type(record) is str and pattern.fullmatch(record) for record in records)
+          record_bytes = sum(len(record.encode('ascii')) + 1 for record in records)
+          assert type(observation['record_count']) is int and type(observation['retained_record_bytes']) is int
+          assert observation['record_count'] == len(records)
+          assert observation['retained_record_bytes'] == record_bytes <= 4096
+          assert (observation['observation'] == 'captured') == bool(records)
+          assert set(observation['outcomes']) == {'REGRESSIONS', 'QUALITY', 'FIXTURE'}
+          assert all(v in {'success', 'failure', 'skipped', 'cancelled'} for v in observation['outcomes'].values())
+          assert set(ownership) == resources
+          for kind, identifiers in ownership.items():
+              assert type(identifiers) is list and len(identifiers) <= 256
+              assert all(type(value) is str and re.fullmatch(r'[a-zA-Z0-9_.-]{1,128}', value) for value in identifiers)
+          assert set(cleanup) == {'source', 'project', 'ownership_acquired', 'remaining_resources', 'inventory_missing', 'cleanup'}
+          assert type(cleanup['ownership_acquired']) is bool and type(cleanup['inventory_missing']) is bool
+          assert set(cleanup['remaining_resources']) == resources
+          assert all(type(v) is int and 0 <= v <= 256 for v in cleanup['remaining_resources'].values())
+          assert cleanup['cleanup'] in {'verified_empty', 'incomplete', 'not_started'}
+          if cleanup['cleanup'] == 'verified_empty':
+              assert cleanup['ownership_acquired'] and not cleanup['inventory_missing'] and not any(cleanup['remaining_resources'].values())
+          for document in (observation, cleanup):
+              assert document['source'] == source['source'] and document['project'] == source['project']
+          PYCODE
+      - name: Retain bounded diagnostic evidence
+        if: always() && steps.safe.outcome == 'success'
         timeout-minutes: 2
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: bounded-npm-diagnostic-${{ github.sha }}
-          path: .npm-probe-evidence/
+          path: |
+            .npm-probe-evidence/source.json
+            .npm-probe-evidence/observation.json
+            .npm-probe-evidence/ownership.json
+            .npm-probe-evidence/cleanup.json
+          include-hidden-files: true
           if-no-files-found: error
           retention-days: 14
