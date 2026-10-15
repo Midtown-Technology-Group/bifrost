@@ -18,7 +18,7 @@ jobs:
       github.repository == 'Midtown-Technology-Group/bifrost' &&
       github.ref == 'refs/heads/diagnostic/finn-npm-install-observer-20261015' &&
       github.event_name == 'push' &&
-      github.event.before == '07b73705f67a264a8bcfe966d9f0b7fd5802b598'
+      github.event.before == '696537b30a03321aa64aa2561d174d6a3752f0d8'
     runs-on: ubuntu-latest
     # Step budgets leave at least four minutes beyond normal cleanup/upload.
     timeout-minutes: 45
@@ -43,8 +43,9 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$PROBE_SOURCE"
-          test "$(git rev-parse HEAD^)" = 07b73705f67a264a8bcfe966d9f0b7fd5802b598
-          git diff --quiet 72a4dff2f6792f114021249e726521e0ae2027e8 HEAD -- api/src/services/solutions/app_build.py api/tests/unit/test_solution_app_build.py
+          test "$(git rev-parse HEAD^)" = 315f0b36649fda645182d647aa35c55cbc670708
+          test "$(git rev-parse HEAD^^)" = 696537b30a03321aa64aa2561d174d6a3752f0d8
+          git diff --quiet 315f0b36649fda645182d647aa35c55cbc670708 HEAD -- api/src/services/solutions/app_build.py api/tests/unit/test_solution_app_build.py
           test "$(git diff --name-only HEAD^ HEAD)" = .github/workflows/bounded-npm-diagnostic.yml
           test -z "$(git status --porcelain)"
           source scripts/lib/test_helpers.sh
@@ -110,7 +111,7 @@ jobs:
               version_function = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == '_build_tool_version')
               version_call = next(n for n in ast.walk(version_function) if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) and n.func.attr == 'fullmatch')
               version = ast.literal_eval(version_call.args[0])
-              pattern = re.compile(r'App build step=npm_install exit_status=(-?\d{1,11}) npm_code=(unknown|' + '|'.join(re.escape(c) for c in sorted(codes)) + r') node_version=(unknown|' + version + r') npm_version=(unknown|' + version + r')$')
+              pattern = re.compile(r'App build step=npm_install exit_status=(-?\d{1,11}) npm_code=(unknown|' + '|'.join(re.escape(c) for c in sorted(codes)) + r') node_version=(unknown|' + version + r') npm_version=(unknown|' + version + r') stderr_state=(absent|empty|present) scan_truncated=(true|false) code_line_class=(none|allowlisted|numeric|unlisted|conflicting|overflow) format_class=(plain|sgr|alternate_heading|mixed|unmatched) exit_handler_never_called=(true|false)$')
               logfile = pathlib.Path(os.environ['PROBE_LOG_DIR']) / 'scheduler.log'
               if logfile.is_file():
                   status = 'log_present_no_matches'
@@ -126,6 +127,8 @@ jobs:
                       match = pattern.search(line.decode('utf-8', errors='replace'))
                       if match:
                           record = match.group()
+                          if len(record.encode('ascii')) > 512:
+                              continue
                           size = len(record.encode('ascii')) + 1
                           if len(records) >= 16 or retained_bytes + size > 4096:
                               truncated = True
@@ -233,8 +236,14 @@ jobs:
           function = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == '_build_tool_version')
           call = next(n for n in ast.walk(function) if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) and n.func.attr == 'fullmatch')
           version = ast.literal_eval(call.args[0])
-          pattern = re.compile(r'App build step=npm_install exit_status=(-?\d{1,11}) npm_code=(unknown|' + '|'.join(re.escape(c) for c in sorted(codes)) + r') node_version=(unknown|' + version + r') npm_version=(unknown|' + version + r')')
-          assert all(type(record) is str and pattern.fullmatch(record) for record in records)
+          pattern = re.compile(r'App build step=npm_install exit_status=(-?\d{1,11}) npm_code=(unknown|' + '|'.join(re.escape(c) for c in sorted(codes)) + r') node_version=(unknown|' + version + r') npm_version=(unknown|' + version + r') stderr_state=(absent|empty|present) scan_truncated=(true|false) code_line_class=(none|allowlisted|numeric|unlisted|conflicting|overflow) format_class=(plain|sgr|alternate_heading|mixed|unmatched) exit_handler_never_called=(true|false)')
+          assert all(type(record) is str and len(record.encode('ascii')) <= 512 and pattern.fullmatch(record) for record in records)
+          for record in records:
+              fields = dict(item.split('=', 1) for item in record.split()[2:])
+              if fields['scan_truncated'] == 'true' or fields['code_line_class'] != 'allowlisted':
+                  assert fields['npm_code'] == 'unknown'
+              if fields['format_class'] == 'unmatched':
+                  assert fields['code_line_class'] == 'none'
           record_bytes = sum(len(record.encode('ascii')) + 1 for record in records)
           assert type(observation['record_count']) is int and type(observation['retained_record_bytes']) is int
           assert observation['record_count'] == len(records)
