@@ -564,6 +564,7 @@ async def run_claimed_platform_job(claim: ClaimedPlatformJob) -> bool:
         str(claim.lease_token),
         start_new_session=True,
     )
+    ownership_ended = False
     try:
         started = _monotonic()
         while process.returncode is None:
@@ -580,7 +581,8 @@ async def run_claimed_platform_job(claim: ClaimedPlatformJob) -> bool:
             status = await _heartbeat(claim.id, claim.lease_token)
             if status is None:
                 await _terminate_runner(process)
-                return True
+                ownership_ended = True
+                break
             if status == "cancel_requested":
                 await _terminate_runner(process)
                 await _handle_runner_loss(
@@ -630,14 +632,27 @@ async def run_claimed_platform_job(claim: ClaimedPlatformJob) -> bool:
         raise
 
     async with get_db_context() as db:
-        job = await db.get(PlatformJob, claim.id)
+        job = (
+            await db.execute(
+                select(PlatformJob).where(PlatformJob.id == claim.id).with_for_update()
+            )
+        ).scalar_one_or_none()
         if job is not None and job.status in (
             "succeeded",
             "failed",
             "cancelled",
             "requires_action",
         ):
+            # The child can commit its result and lose its lease before the
+            # Redis projection completes. Reconcile after it has stopped, with
+            # the row locked so a retry cannot race this terminal publication.
+            await publish_platform_job_update(job)
             return job.status == "succeeded"
+
+    if ownership_ended:
+        # A deferred/requeued or superseding owner is not a lost runner. Never
+        # replay this child's snapshot or mutate the new attempt here.
+        return True
 
     await _handle_runner_loss(
         claim.id,

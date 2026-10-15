@@ -933,3 +933,109 @@ async def test_settings_concurrency_override_replaces_policy_default(
             "application.deploy", None, updated_by="test"
         )
         await db_session.commit()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "terminal_status", ["succeeded", "failed", "cancelled", "requires_action"]
+)
+@pytest.mark.parametrize("exits_cleanly", [False, True])
+async def test_parent_reconciles_terminal_projection_after_child_stops(
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    terminal_status: str,
+    exits_cleanly: bool,
+) -> None:
+    """A terminal DB commit must survive child loss before its Redis write."""
+    job = await _queued_job(db_session)
+    claim = await scheduler.claim_platform_job()
+    assert claim is not None
+    job.status = terminal_status
+    job.lease_token = None
+    job.lease_owner = None
+    job.lease_expires_at = None
+    job.heartbeat_at = None
+    job.completed_at = datetime.now(timezone.utc)
+    job.revision += 1
+    await db_session.commit()
+
+    class Child:
+        returncode = None
+
+        async def wait(self):
+            if exits_cleanly:
+                self.returncode = 0
+                return 0
+            await asyncio.Future()
+
+    child = Child()
+
+    async def terminate(process):
+        assert process is child
+        child.returncode = -15
+
+    monkeypatch.setattr(
+        scheduler.asyncio, "create_subprocess_exec", AsyncMock(return_value=child)
+    )
+    monkeypatch.setattr(scheduler, "HEARTBEAT_INTERVAL_SECONDS", 0.001)
+    monkeypatch.setattr(scheduler, "_terminate_runner", terminate)
+    published = []
+
+    async def project(current):
+        assert child.returncode is not None
+        published.append((current.id, current.status, current.revision))
+
+    monkeypatch.setattr(scheduler, "publish_platform_job_update", project)
+    loss = AsyncMock()
+    monkeypatch.setattr(scheduler, "_handle_runner_loss", loss)
+    assert await scheduler.run_claimed_platform_job(claim) is (terminal_status == "succeeded")
+    assert published == [(job.id, terminal_status, job.revision)]
+    loss.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("new_status", ["waiting", "queued", "running"])
+async def test_lost_old_lease_does_not_project_or_mutate_successor(
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    new_status: str,
+) -> None:
+    job = await _queued_job(db_session)
+    claim = await scheduler.claim_platform_job()
+    assert claim is not None
+    job.status = new_status
+    replacement_token = uuid4() if new_status == "running" else None
+    job.lease_token = replacement_token
+    if replacement_token is None:
+        job.lease_owner = None
+        job.lease_expires_at = None
+        job.heartbeat_at = None
+    job.revision += 1
+    await db_session.commit()
+
+    class Child:
+        returncode = None
+
+        async def wait(self):
+            await asyncio.Future()
+
+    child = Child()
+
+    async def terminate(process):
+        child.returncode = -15
+
+    monkeypatch.setattr(
+        scheduler.asyncio, "create_subprocess_exec", AsyncMock(return_value=child)
+    )
+    monkeypatch.setattr(scheduler, "HEARTBEAT_INTERVAL_SECONDS", 0.001)
+    monkeypatch.setattr(scheduler, "_terminate_runner", terminate)
+    project = AsyncMock()
+    loss = AsyncMock()
+    monkeypatch.setattr(scheduler, "publish_platform_job_update", project)
+    monkeypatch.setattr(scheduler, "_handle_runner_loss", loss)
+    assert await scheduler.run_claimed_platform_job(claim)
+    project.assert_not_awaited()
+    loss.assert_not_awaited()
+    await db_session.refresh(job)
+    assert job.status == new_status
+    assert job.lease_token == replacement_token
