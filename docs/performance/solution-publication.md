@@ -70,10 +70,11 @@ API contract changes. Old resolver metadata expires within its existing TTL;
 this change performs no production keyspace cleanup.
 
 Retain the previous complete image tuple and capacity before apply. A rollback
-must likewise drain work and restore the complete tuple. Because old resolver
-metadata can remain warm, review its age and use the established scoped
-cold-cache procedure before reopening old readers if source was published while
-the new protocol was active. Never flush unrelated Redis data. Verify image
+must likewise drain work and restore the complete tuple. If source was published
+under v2, old v1 metadata can remain stale until its original 24-hour TTL expires.
+Before reopening old readers in that window, require a separately reviewed cache
+reconciliation plan or proof that the old metadata has expired. This change adds
+no automatic rollback cleanup. Never flush unrelated Redis data. Verify image
 digests, readiness, scheduler leadership, worker capacity, and an accepted safe
 execution independently of source and CI evidence.
 
