@@ -150,7 +150,10 @@ async def test_recovery_releases_obligation_without_redeploying(
                     ("arborist-edges", "edgesOut"),
                     ("permission", "permission denied"),
                 ) if text in output]
-                diagnostic = f"npm exit={error.returncode} code={code[1] if code else 'unknown'} markers={markers}"
+                allowed_codes = {"ERESOLVE", "ETARGET", "EBADENGINE", "EACCES", "EPERM", "ECONNRESET",
+                                 "ETIMEDOUT", "ENOTFOUND", "EAI_AGAIN", "E404", "E401", "E403"}
+                category = code[1] if code and code[1] in allowed_codes else "unknown"
+                diagnostic = f"npm exit={error.returncode} code={category} markers={markers}"
             except (subprocess.TimeoutExpired, OSError):
                 diagnostic = "local compilation probe timed out or could not start"
             versions = {}
