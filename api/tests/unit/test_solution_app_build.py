@@ -69,9 +69,55 @@ def test_npm_failure_observer_preserves_exception_privacy_and_cleanup(
     assert len(caplog.records) == 1
     assert caplog.records[0].getMessage() == (
         f"App build step=npm_install exit_status=1 npm_code={code} "
-        "node_version=v20.19.0 npm_version=10.9.3"
+        "node_version=v20.19.0 npm_version=10.9.3 "
+        + " ".join(f"{key}={str(value).lower() if isinstance(value, bool) else value}"
+                   for key, value in ab._npm_stderr_structure(stderr).items() if key != "npm_code")
     )
     assert "HOSTILE_SECRET" not in caplog.text
+    assert caplog.records[0].exc_info is None
+
+
+@pytest.mark.parametrize(("stderr", "state", "kind", "format_class", "code", "truncated", "exit_handler"), [
+    (None, "absent", "none", "unmatched", "unknown", False, False),
+    (b"", "empty", "none", "unmatched", "unknown", False, False),
+    (b"npm error code ERESOLVE\r\n", "present", "allowlisted", "plain", "ERESOLVE", False, False),
+    (b"\x1b[1mnpm\x1b[22m \x1b[31merror\x1b[39m code E401", "present", "allowlisted", "sgr", "E401", False, False),
+    (b"HOSTILE_SECRET error code E401", "present", "allowlisted", "alternate_heading", "E401", False, False),
+    (b"npm error code 1", "present", "numeric", "plain", "unknown", False, False),
+    (b"npm error code HOSTILE_SECRET", "present", "unlisted", "plain", "unknown", False, False),
+    (b"npm error code E401\nnpm error code E403", "present", "conflicting", "plain", "unknown", False, False),
+    (b"npm error code E401\n" * 17, "present", "overflow", "plain", "unknown", False, False),
+    (b"npm error code E401\n" * 16, "present", "allowlisted", "plain", "E401", False, False),
+    (b"x" * 8192 + b"\nnpm error code E401", "present", "none", "unmatched", "unknown", True, False),
+    ("é" * 4096 + "\nnpm error code E401", "present", "none", "unmatched", "unknown", True, False),
+    (b"npm error code E401\n" + b"x" * 8192, "present", "allowlisted", "plain", "unknown", True, False),
+    (b"\xffnpm error code E401", "present", "none", "unmatched", "unknown", False, False),
+    (b"npm error code E401 https://HOSTILE_SECRET", "present", "none", "unmatched", "unknown", False, False),
+    (b"\x1b[999999999m npm error code E401", "present", "none", "unmatched", "unknown", False, False),
+    (b"npm error Exit handler never called!", "present", "none", "unmatched", "unknown", False, True),
+    (b"npm error code E401\n\x1b[31mnpm error code E401\x1b[0m", "present", "allowlisted", "mixed", "E401", False, False),
+])
+def test_npm_structure_has_closed_schema_and_byte_bound(
+    stderr, state, kind, format_class, code, truncated, exit_handler,
+):
+    observed = ab._npm_stderr_structure(stderr)
+    assert observed == {
+        "stderr_state": state, "scan_truncated": truncated,
+        "code_line_class": kind, "format_class": format_class,
+        "npm_code": code, "exit_handler_never_called": exit_handler,
+    }
+    assert "HOSTILE_SECRET" not in str(observed)
+
+
+def test_npm_structural_record_is_bounded_and_private(monkeypatch, caplog):
+    monkeypatch.setattr(ab.subprocess, "run", lambda argv, **kw: subprocess.CompletedProcess(argv, 0, b"1.2.3"))
+    ab._observe_npm_install_failure(subprocess.CalledProcessError(
+        1, ["HOSTILE_SECRET"], output=b"HOSTILE_SECRET", stderr=b"HOSTILE_SECRET error code E401",
+    ))
+    record = caplog.records[0].getMessage()
+    assert len(record.encode("ascii")) <= 512
+    assert "HOSTILE_SECRET" not in record
+    assert "format_class=alternate_heading" in record
     assert caplog.records[0].exc_info is None
 
 
@@ -81,7 +127,8 @@ def test_npm_observer_rejects_malformed_versions(monkeypatch, caplog, output):
     ab._observe_npm_install_failure(subprocess.CalledProcessError(1, ["npm"]))
     assert caplog.records[0].getMessage() == (
         "App build step=npm_install exit_status=1 npm_code=unknown "
-        "node_version=unknown npm_version=unknown"
+        "node_version=unknown npm_version=unknown stderr_state=absent "
+        "scan_truncated=false code_line_class=none format_class=unmatched exit_handler_never_called=false"
     )
     assert "HOSTILE_SECRET" not in caplog.text
 

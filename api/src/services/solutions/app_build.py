@@ -44,17 +44,58 @@ _NPM_ERROR_CODES = frozenset({
 })
 
 
+def _npm_stderr_structure(stderr: bytes | str | None) -> dict[str, str | bool]:
+    """Classify only an 8192-byte prefix; never return input text or tokens."""
+    if isinstance(stderr, str):
+        raw = stderr[:8193].encode("utf-8", errors="replace")
+    else:
+        raw = stderr or b""
+    truncated = len(raw) > 8192
+    text = raw[:8192].decode("utf-8", errors="replace")
+    if truncated:
+        # A cut line is not evidence of a complete code or diagnostic.
+        text = text.rsplit("\n", 1)[0] if "\n" in text else ""
+    result: dict[str, str | bool] = {
+        "stderr_state": "absent" if stderr is None else "present" if raw else "empty",
+        "scan_truncated": truncated,
+        "code_line_class": "none", "format_class": "unmatched",
+        "npm_code": "unknown", "exit_handler_never_called": False,
+    }
+    candidates: list[str] = []
+    formats: set[str] = set()
+    for line in text.splitlines():
+        normalized = re.sub(r"\x1b\[[0-9;]{0,8}m", "", line)
+        if re.fullmatch(r"(?:[!-~]{1,32} )?(?:ERR!|error) Exit handler never called!", normalized):
+            result["exit_handler_never_called"] = True
+        match = re.fullmatch(r"(?:([!-~]{1,32}) )?(?:ERR!|error) code ([A-Z0-9_]{1,32})", normalized)
+        if match is None:
+            continue
+        if len(candidates) == 16:
+            result["code_line_class"] = "overflow"
+            result["format_class"] = "mixed" if len(formats) > 1 else next(iter(formats))
+            return result
+        candidates.append(match[2])
+        line_formats = {"alternate_heading"} if match[1] != "npm" else set()
+        if line != normalized:
+            line_formats.add("sgr")
+        formats.update(line_formats or {"plain"})
+    if not candidates:
+        return result
+    result["format_class"] = "mixed" if len(formats) > 1 else next(iter(formats))
+    codes = set(candidates)
+    if len(codes) != 1:
+        result["code_line_class"] = "conflicting"
+    else:
+        code = candidates[0]
+        result["code_line_class"] = "allowlisted" if code in _NPM_ERROR_CODES else "numeric" if code.isdigit() else "unlisted"
+        if code in _NPM_ERROR_CODES and not truncated:
+            result["npm_code"] = code
+    return result
+
+
 def _npm_error_code(stderr: bytes | str | None) -> str:
-    """Expose one known npm code, never arbitrary install output."""
-    text = stderr[:8192] if stderr is not None else ""
-    if isinstance(text, bytes):
-        text = text.decode("utf-8", errors="replace")
-    codes = set(re.findall(r"^npm (?:ERR!|error) code ([A-Z0-9_]+)\r?$", text, re.MULTILINE))
-    if len(codes) == 1:
-        code = codes.pop()
-        if code in _NPM_ERROR_CODES:
-            return code
-    return "unknown"
+    """Expose one unambiguous known npm code, never arbitrary output."""
+    return str(_npm_stderr_structure(stderr)["npm_code"])
 
 
 def _build_tool_version(tool: Literal["node", "npm"]) -> str:
@@ -78,10 +119,17 @@ def _observe_npm_install_failure(error: subprocess.CalledProcessError) -> None:
                 versions[tool] = _build_tool_version(tool)
             except (OSError, subprocess.SubprocessError, UnicodeError):
                 versions[tool] = "unknown"
-        logger.warning(
-            "App build step=npm_install exit_status=%d npm_code=%s node_version=%s npm_version=%s",
-            error.returncode, _npm_error_code(error.stderr), versions["node"], versions["npm"],
+        structure = _npm_stderr_structure(error.stderr)
+        record = (
+            f"App build step=npm_install exit_status={error.returncode} "
+            f"npm_code={structure['npm_code']} node_version={versions['node']} "
+            f"npm_version={versions['npm']} stderr_state={structure['stderr_state']} "
+            f"scan_truncated={str(structure['scan_truncated']).lower()} "
+            f"code_line_class={structure['code_line_class']} format_class={structure['format_class']} "
+            f"exit_handler_never_called={str(structure['exit_handler_never_called']).lower()}"
         )
+        if len(record.encode("ascii")) <= 512:
+            logger.warning("%s", record)
     except Exception:  # noqa: BLE001 - passive diagnostics must not mask the install exception
         return
 
