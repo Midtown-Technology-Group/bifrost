@@ -90,7 +90,8 @@ async def test_solution_operation_closes_on_failure_and_cancellation(clients, fa
     with pytest.raises(failure):
         async with solution_storage().operation() as scoped:
             await scoped.write("first.py", b"first")
-            raise failure()
+            clients[0][0]._container_client.upload_blob.side_effect = failure
+            await scoped.write("second.py", b"second")
     assert len(clients) == 1
     assert_closed(clients)
 
