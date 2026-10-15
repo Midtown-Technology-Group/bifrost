@@ -6,10 +6,6 @@ import asyncio
 import hashlib
 import io
 import json
-import re
-import subprocess
-import tempfile
-from pathlib import Path
 import time
 import uuid
 import zipfile
@@ -121,51 +117,6 @@ async def test_recovery_releases_obligation_without_redeploying(
         assert deployed.status_code == 202, deployed.text
         deploy_job_id = uuid.UUID(deployed.json()["deploy_job_id"])
         completed = wait_for_deploy(e2e_client, deployed, headers)
-        if completed.status_code != 200 and with_source_app:
-            # Diagnostic only: repeat the synthetic fixture's local compilation,
-            # never the deployment/effect. Preserve the original failed assertion
-            # even if this probe passes. Do not print raw npm output: user-level
-            # registry configuration can contain credentials.
-            diagnostic = "local compilation passed; original deployment still failed"
-            try:
-                with tempfile.TemporaryDirectory(prefix="bifrost-accountability-diagnostic-") as directory:
-                    SolutionAppBuilder()._materialize(
-                        Path(directory),
-                        {path.removeprefix("apps/example/"): content.encode()
-                         for path, content in files.items() if path.startswith("apps/example/")},
-                        {},
-                    )
-                    await asyncio.to_thread(
-                        subprocess.run,
-                        ["npm", "install", "--no-audit", "--no-fund", "--package-lock=false"],
-                        cwd=directory, capture_output=True, check=True, timeout=30,
-                    )
-            except subprocess.CalledProcessError as error:
-                output = (error.stderr or b"").decode(errors="replace")
-                code = re.search(r"npm (?:ERR!|error) code ([A-Z][A-Z0-9_]+)", output)
-                markers = [label for label, text in (
-                    ("peer-resolution", "unable to resolve dependency tree"),
-                    ("missing-version", "No matching version found"),
-                    ("engine", "Unsupported engine"),
-                    ("arborist-edges", "edgesOut"),
-                    ("permission", "permission denied"),
-                ) if text in output]
-                allowed_codes = {"ERESOLVE", "ETARGET", "EBADENGINE", "EACCES", "EPERM", "ECONNRESET",
-                                 "ETIMEDOUT", "ENOTFOUND", "EAI_AGAIN", "E404", "E401", "E403"}
-                category = code[1] if code and code[1] in allowed_codes else "unknown"
-                diagnostic = f"npm exit={error.returncode} code={category} markers={markers}"
-            except (subprocess.TimeoutExpired, OSError):
-                diagnostic = "local compilation probe timed out or could not start"
-            versions = {}
-            for tool in ("node", "npm"):
-                try:
-                    result = subprocess.run([tool, "--version"], capture_output=True, text=True, timeout=5, check=False)
-                    # Emit only an ordinary numeric tool version, never raw output.
-                    version = result.stdout.strip()
-                    versions[tool] = version if re.fullmatch(r"v?[0-9]+(?:\.[0-9]+){1,3}", version) else "unknown"
-                except (subprocess.TimeoutExpired, OSError):
-                    versions[tool] = "unavailable"
-            pytest.fail(f"Original deployment failed ({completed.status_code}); build diagnostic: {diagnostic}; tools={versions}")
         assert completed.status_code == 200, completed.text
         await _wait_for_platform_job(e2e_client, headers, deploy_job_id)
 

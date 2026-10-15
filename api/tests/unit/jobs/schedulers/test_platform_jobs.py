@@ -966,7 +966,7 @@ async def test_parent_reconciles_terminal_projection_after_child_stops(
             if exits_cleanly:
                 self.returncode = 0
                 return 0
-            await asyncio.Future()
+            return await asyncio.Future()
 
     child = Child()
 
