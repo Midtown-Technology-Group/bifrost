@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import subprocess
 import uuid
+from pathlib import Path
 from contextlib import asynccontextmanager
 
 import pytest
@@ -17,6 +18,121 @@ import src.services.sdk_package as sdkpkg
 from src.services.solutions import app_build as ab
 from src.services.solutions.app_build import SolutionAppBuilder
 from src.services.solutions.deploy import SolutionDeployConflict
+
+
+@pytest.mark.parametrize(("stderr", "code"), [
+    (None, "unknown"),
+    (b"", "unknown"),
+    (b"npm error code ERESOLVE\ncustomer=HOSTILE_SECRET", "ERESOLVE"),
+    ("npm ERR! code ECONNRESET\r\nAuthorization: HOSTILE_SECRET", "ECONNRESET"),
+    (b"npm error code HOSTILE_SECRET", "unknown"),
+    (b"npm error code ERESOLVE https://HOSTILE_SECRET", "unknown"),
+    (b"prefix npm error code E401", "unknown"),
+    (b"npm error code E401\nnpm error code E403", "unknown"),
+    (b"\xffnpm error code E401", "unknown"),
+    (b"x" * 8192 + b"\nnpm error code E401", "unknown"),
+])
+def test_npm_failure_observer_preserves_exception_privacy_and_cleanup(
+    monkeypatch, caplog, stderr, code,
+):
+    builder = object.__new__(SolutionAppBuilder)
+    workdirs = []
+    calls = []
+    error = subprocess.CalledProcessError(
+        1, ["HOSTILE_SECRET"], output=b"stdout HOSTILE_SECRET", stderr=stderr,
+    )
+
+    def materialize(workdir, *_args):
+        workdirs.append(workdir)
+        (workdir / "fixture").write_text("HOSTILE_SECRET")
+
+    def run(argv, **kwargs):
+        calls.append((argv, kwargs))
+        if argv[1] == "install":
+            raise error
+        return subprocess.CompletedProcess(argv, 0, b"v20.19.0\n" if argv[0] == "node" else b"10.9.3\n")
+
+    monkeypatch.setattr(builder, "_materialize", materialize)
+    monkeypatch.setattr(ab.subprocess, "run", run)
+    with pytest.raises(subprocess.CalledProcessError) as caught:
+        builder.compile_dist(uuid.uuid4(), {}, {})
+
+    assert caught.value is error
+    assert len(workdirs) == 1
+    assert not Path(workdirs[0]).exists()
+    assert calls[0][0] == ["npm", "install", "--no-audit", "--no-fund", "--package-lock=false"]
+    assert calls[0][1] == {
+        "cwd": str(workdirs[0]), "check": True, "capture_output": True,
+        "timeout": ab._BUILD_STEP_TIMEOUT_S,
+    }
+    assert [argv for argv, _ in calls[1:]] == [["node", "--version"], ["npm", "--version"]]
+    assert len(caplog.records) == 1
+    assert caplog.records[0].getMessage() == (
+        f"App build step=npm_install exit_status=1 npm_code={code} "
+        "node_version=v20.19.0 npm_version=10.9.3"
+    )
+    assert "HOSTILE_SECRET" not in caplog.text
+    assert caplog.records[0].exc_info is None
+
+
+@pytest.mark.parametrize("output", [b"HOSTILE_SECRET", b"20.19.0\nHOSTILE_SECRET", b"1" * 33, b"\xff"])
+def test_npm_observer_rejects_malformed_versions(monkeypatch, caplog, output):
+    monkeypatch.setattr(ab.subprocess, "run", lambda argv, **kw: subprocess.CompletedProcess(argv, 0, output))
+    ab._observe_npm_install_failure(subprocess.CalledProcessError(1, ["npm"]))
+    assert caplog.records[0].getMessage() == (
+        "App build step=npm_install exit_status=1 npm_code=unknown "
+        "node_version=unknown npm_version=unknown"
+    )
+    assert "HOSTILE_SECRET" not in caplog.text
+
+
+@pytest.mark.parametrize("failure", [OSError("HOSTILE_SECRET"), subprocess.TimeoutExpired("HOSTILE_SECRET", 2)])
+def test_npm_observer_unavailable_versions_remain_unknown(monkeypatch, caplog, failure):
+    def run(*_args, **_kwargs):
+        raise failure
+
+    monkeypatch.setattr(ab.subprocess, "run", run)
+    ab._observe_npm_install_failure(subprocess.CalledProcessError(1, ["npm"]))
+    assert "node_version=unknown npm_version=unknown" in caplog.text
+    assert "HOSTILE_SECRET" not in caplog.text
+
+
+def test_npm_observer_logging_failure_does_not_replace_install_error(monkeypatch, tmp_path):
+    builder = object.__new__(SolutionAppBuilder)
+    error = subprocess.CalledProcessError(1, ["npm"])
+
+    def run(argv, **_kwargs):
+        if argv[1] == "install":
+            raise error
+        return subprocess.CompletedProcess(argv, 0, b"1.2.3")
+
+    def broken_log(*_args, **_kwargs):
+        raise RuntimeError("HOSTILE_SECRET")
+
+    monkeypatch.setattr(ab.subprocess, "run", run)
+    monkeypatch.setattr(ab.logger, "warning", broken_log)
+    with pytest.raises(subprocess.CalledProcessError) as caught:
+        builder._run_vite_build(tmp_path)
+    assert caught.value is error
+
+
+def test_npm_observer_does_not_run_for_vite_failure(monkeypatch, tmp_path, caplog):
+    builder = object.__new__(SolutionAppBuilder)
+    calls = []
+    error = subprocess.CalledProcessError(1, ["npx", "vite"], stderr=b"npm error code E401")
+
+    def run(argv, **_kwargs):
+        calls.append(argv)
+        if argv[0] == "npx":
+            raise error
+        return subprocess.CompletedProcess(argv, 0)
+
+    monkeypatch.setattr(ab.subprocess, "run", run)
+    with pytest.raises(subprocess.CalledProcessError) as caught:
+        builder._run_vite_build(tmp_path)
+    assert caught.value is error
+    assert len(calls) == 2
+    assert not caplog.records
 
 
 @pytest.mark.e2e

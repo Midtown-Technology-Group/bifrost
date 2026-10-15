@@ -17,9 +17,11 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import subprocess
 import tempfile
 from pathlib import Path
+from typing import Literal
 from uuid import UUID
 
 from src.config import Settings, get_settings
@@ -33,6 +35,55 @@ APPS_PREFIX = "_apps/"
 # dependency's postinstall script waiting on the network — would wedge the
 # install until process restart (every subsequent deploy 409s).
 _BUILD_STEP_TIMEOUT_S = 600
+
+_NPM_ERROR_CODES = frozenset({
+    "E401", "E403", "E404", "EACCES", "EAI_AGAIN", "EBADENGINE",
+    "ECONNREFUSED", "ECONNRESET", "EEXIST", "EINTEGRITY", "EINVALIDPACKAGENAME",
+    "EJSONPARSE", "ENOENT", "ENOSPC", "ENOTFOUND", "ENOTSUP", "EPERM",
+    "ERESOLVE", "ETARGET", "ETIMEDOUT",
+})
+
+
+def _npm_error_code(stderr: bytes | str | None) -> str:
+    """Expose one known npm code, never arbitrary install output."""
+    text = stderr[:8192] if stderr is not None else ""
+    if isinstance(text, bytes):
+        text = text.decode("utf-8", errors="replace")
+    codes = set(re.findall(r"^npm (?:ERR!|error) code ([A-Z0-9_]+)\r?$", text, re.MULTILINE))
+    if len(codes) == 1:
+        code = codes.pop()
+        if code in _NPM_ERROR_CODES:
+            return code
+    return "unknown"
+
+
+def _build_tool_version(tool: Literal["node", "npm"]) -> str:
+    """Read a bounded numeric version without exposing tool output."""
+    result = subprocess.run(  # noqa: S603 - fixed node/npm version query, no user arguments
+        [tool, "--version"], capture_output=True, check=False, timeout=2,
+    )
+    if result.returncode == 0 and len(result.stdout) <= 32:
+        value = result.stdout.decode("ascii").strip()
+        if re.fullmatch(r"v?\d{1,3}\.\d{1,3}\.\d{1,3}", value):
+            return value
+    return "unknown"
+
+
+def _observe_npm_install_failure(error: subprocess.CalledProcessError) -> None:
+    """Keep optional diagnostics from replacing the original build failure."""
+    try:
+        versions = {}
+        for tool in ("node", "npm"):
+            try:
+                versions[tool] = _build_tool_version(tool)
+            except (OSError, subprocess.SubprocessError, UnicodeError):
+                versions[tool] = "unknown"
+        logger.warning(
+            "App build step=npm_install exit_status=%d npm_code=%s node_version=%s npm_version=%s",
+            error.returncode, _npm_error_code(error.stderr), versions["node"], versions["npm"],
+        )
+    except Exception:  # noqa: BLE001 - passive diagnostics must not mask the install exception
+        return
 
 
 class SolutionAppBuilder:
@@ -199,13 +250,17 @@ class SolutionAppBuilder:
         declared dependencies (react, the bifrost SDK, etc.) resolve during the
         build — Vite cannot resolve bare imports from a bare package.json alone.
         """
-        subprocess.run(  # noqa: S603 - trusted toolchain, fixed argv
-            ["npm", "install", "--no-audit", "--no-fund", "--package-lock=false"],
-            cwd=str(workdir),
-            check=True,
-            capture_output=True,
-            timeout=_BUILD_STEP_TIMEOUT_S,
-        )
+        try:
+            subprocess.run(  # noqa: S603 - trusted toolchain, fixed argv
+                ["npm", "install", "--no-audit", "--no-fund", "--package-lock=false"],
+                cwd=str(workdir),
+                check=True,
+                capture_output=True,
+                timeout=_BUILD_STEP_TIMEOUT_S,
+            )
+        except subprocess.CalledProcessError as error:
+            _observe_npm_install_failure(error)
+            raise
         subprocess.run(  # noqa: S603 - trusted toolchain, fixed argv
             ["npx", "vite", "build", "--base", base],
             cwd=str(workdir),
