@@ -7,10 +7,23 @@ import pytest
 from src.jobs.platform.base import PlatformJobFailure
 from src.jobs.platform.solution_deploy import (
     SolutionDeployPayload,
+    _SolutionDeployReporter,
     run_solution_deploy,
 )
 from src.models.orm.solution_deploy_jobs import SolutionDeployJob
 from src.models.orm.solutions import Solution
+
+
+@pytest.mark.asyncio
+async def test_deploy_reporter_bounds_progress_and_tolerates_timing_failure():
+    context = AsyncMock()
+    reporter = _SolutionDeployReporter(context, last_percent=2)
+    for percent in (50, 50, 20, 150):
+        await reporter.progress("Publishing", percent)
+    assert [call.kwargs["percent"] for call in context.report.await_args_list] == [50, 99]
+    context.log.side_effect = RuntimeError("diagnostic transport unavailable")
+    await reporter.timing("redis_module_cache", 12)
+    context.log.assert_awaited_once()
 
 
 @pytest.mark.asyncio
