@@ -169,6 +169,10 @@ services:
       # Enable registration for E2E tests
       BIFROST_ALLOW_REGISTRATION: "true"
       EMBEDDING_ALLOWED_HOSTS: scheduler-fixtures
+      # This exact internal-only hostname is carried by the isolated Compose
+      # network; production remains HTTPS-only unless operators explicitly
+      # attest an encrypted-tunnel hostname in the same variable.
+      MCP_ENCRYPTED_TUNNEL_HOSTS: scheduler-fixtures
     # No ports exposed - all access via Docker network (test-runner connects to api:8000)
     volumes:
       - ./api/src:/app/src
@@ -231,6 +235,7 @@ services:
       BIFROST_DATABASE_URL_SYNC: postgresql://bifrost:bifrost_test@pgbouncer:5432/bifrost_test
       BIFROST_RABBITMQ_URL: amqp://bifrost:bifrost_test@rabbitmq:5672/
       BIFROST_REDIS_URL: redis://redis:6379/0
+      MCP_ENCRYPTED_TUNNEL_HOSTS: scheduler-fixtures
       BIFROST_SECRET_KEY: test-secret-key-for-e2e-testing-must-be-32-chars
       BIFROST_ENVIRONMENT: testing
       # Exercise the same claim/beat transitions without production idle intervals.

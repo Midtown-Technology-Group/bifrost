@@ -58,6 +58,31 @@ class FakeLateExecutor:
         return None
 
 
+class FakeCancellingExecutor:
+    """Executor stub that races its final result with an accepted cancellation."""
+
+    def __init__(self, session_factory, redis_client):
+        self._session_factory = session_factory
+        self._redis = redis_client
+
+    async def run(self, *, run_id, **kwargs):
+        async with self._session_factory() as db:
+            run_obj = await db.get(AgentRun, UUID(run_id))
+            run_obj.status = "cancelling"
+            await db.commit()
+
+        return {
+            "output": {"text": "completed during cancellation"},
+            "iterations_used": 2,
+            "tokens_used": 5,
+            "status": "completed",
+            "llm_model": "test-model",
+        }
+
+    async def flush_to_db(self, db):
+        return None
+
+
 async def _load_run(async_session_factory, run_id):
     async with async_session_factory() as db:
         result = await db.execute(select(AgentRun).where(AgentRun.id == run_id))
@@ -604,6 +629,78 @@ async def test_late_terminalized_run_is_not_overwritten(
     sync_payload = sync_mock.await_args.args[1]
     assert sync_payload["status"] == "timeout"
     assert sync_payload["error"] == "scheduler terminalized the run"
+
+
+@pytest.mark.asyncio
+async def test_accepted_cancellation_is_terminalized_and_cleans_stream(
+    consumer,
+    db_session,
+    async_session_factory,
+    seed_agent,
+):
+    run_id = uuid4()
+    run = AgentRun(
+        id=run_id,
+        agent_id=seed_agent.id,
+        trigger_type="manual",
+        status="queued",
+        iterations_used=0,
+        tokens_used=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    db_session.add(run)
+    await db_session.commit()
+
+    consumer._session_factory = async_session_factory
+    consumer._claim_durable_run = AgentRunConsumer._claim_durable_run.__get__(consumer)
+
+    redis_mock = AsyncMock()
+    context_key = f"bifrost:agent_run:{run_id}:context"
+    cancel_key = f"bifrost:agent_run:{run_id}:cancel"
+
+    async def _redis_get(key):
+        if key == context_key:
+            return json.dumps({"input": {"message": "hello"}})
+        if key == cancel_key:
+            return None
+        return None
+
+    redis_mock.get.side_effect = _redis_get
+
+    with (
+        patch(
+            "src.jobs.consumers.agent_run.get_redis",
+            return_value=FakeRedisCtx(redis_mock),
+        ),
+        patch(
+            "src.services.execution.autonomous_agent_executor.AutonomousAgentExecutor",
+            FakeCancellingExecutor,
+        ),
+        patch(
+            "src.jobs.consumers.agent_run.publish_agent_run_update", AsyncMock()
+        ) as publish_mock,
+        patch(
+            "src.jobs.consumers.agent_run._publish_sync_result", AsyncMock()
+        ) as sync_mock,
+    ):
+        await consumer.process_message(
+            {
+                "run_id": str(run_id),
+                "agent_id": str(seed_agent.id),
+                "trigger_type": "manual",
+                "sync": True,
+            }
+        )
+
+    refreshed = await _load_run(async_session_factory, run_id)
+    assert refreshed.status == "cancelled"
+    assert refreshed.completed_at is not None
+    assert refreshed.iterations_used == 2
+    assert refreshed.tokens_used == 5
+    assert publish_mock.await_args_list[-1].args[0].status == "cancelled"
+    sync_payload = sync_mock.await_args.args[1]
+    assert sync_payload["status"] == "cancelled"
+    redis_mock.delete.assert_any_await(f"bifrost:agent_run_steps:{run_id}")
 
 
 @pytest.mark.asyncio

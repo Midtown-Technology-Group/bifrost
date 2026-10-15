@@ -618,6 +618,44 @@ class TestAgentScopeFiltering:
         assert scoped_agents["org1"]["id"] in agent_ids, "Should see org1 agent"
         assert scoped_agents["org2"]["id"] not in agent_ids, "Should NOT see org2 agent"
 
+    def test_org_user_cannot_read_shared_agent_configuration(
+        self, e2e_client, org1_user, platform_admin, scoped_agents
+    ):
+        """Execution access must not imply permission to read agent prompts."""
+        agent_id = scoped_agents["org1"]["id"]
+        user_response = e2e_client.get(
+            f"/api/agents/{agent_id}", headers=org1_user.headers
+        )
+        assert user_response.status_code == 200, user_response.text
+        user_agent = user_response.json()
+        assert user_agent["system_prompt"] == ""
+        for field in (
+            "tool_ids",
+            "delegated_agent_ids",
+            "role_ids",
+            "knowledge_sources",
+            "system_tools",
+            "mcp_connection_ids",
+        ):
+            assert user_agent[field] == []
+        for field in (
+            "owner_email",
+            "created_by",
+            "llm_profile_id",
+            "llm_max_tokens",
+            "max_iterations",
+            "max_token_budget",
+        ):
+            assert user_agent[field] is None
+
+        admin_response = e2e_client.get(
+            f"/api/agents/{agent_id}", headers=platform_admin.headers
+        )
+        assert admin_response.status_code == 200, admin_response.text
+        assert admin_response.json()["system_prompt"] == scoped_agents["org1"][
+            "system_prompt"
+        ]
+
     def test_platform_admin_can_get_cross_org_agent(
         self, e2e_client, platform_admin, scoped_agents
     ):
@@ -655,6 +693,7 @@ class TestAgentScopeFiltering:
         )
         assert response.status_code == 200, response.text
         assert response.json()["id"] == org2_agent_id
+        assert response.json()["system_prompt"] == ""
         tools = e2e_client.get(
             f"/api/agents/{org2_agent_id}/tools", headers=provider_org_user.headers,
         )
@@ -709,6 +748,9 @@ class TestAgentScopeFiltering:
                 f"/api/agents/{agent_id}", headers=owner.headers
             )
             assert own_read.status_code == 200, own_read.text
+            assert own_read.json()["system_prompt"] == (
+                "Private agent for owner-only test."
+            )
 
             own_tools = e2e_client.get(
                 f"/api/agents/{agent_id}/tools", headers=owner.headers,
