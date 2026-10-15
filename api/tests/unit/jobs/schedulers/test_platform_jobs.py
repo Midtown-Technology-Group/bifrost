@@ -1039,3 +1039,90 @@ async def test_lost_old_lease_does_not_project_or_mutate_successor(
     await db_session.refresh(job)
     assert job.status == new_status
     assert job.lease_token == replacement_token
+
+
+@pytest.mark.asyncio
+async def test_terminal_projection_timeout_releases_lock_for_competing_retry(
+    async_session_factory: async_sessionmaker[AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    jobs = await _future_jobs(async_session_factory, 1)
+    job_id = jobs[0].id
+    async with async_session_factory() as db:
+        job = await db.get(PlatformJob, job_id)
+        assert job is not None
+        job.status = "succeeded"
+        job.completed_at = datetime.now(timezone.utc)
+        job.result = {"publication_verified": True}
+        await db.commit()
+
+    @asynccontextmanager
+    async def independent_context() -> AsyncGenerator[AsyncSession, None]:
+        async with async_session_factory() as db:
+            try:
+                yield db
+                await db.commit()
+            except BaseException:
+                await db.rollback()
+                raise
+
+    monkeypatch.setattr(scheduler, "get_db_context", independent_context)
+    entered = asyncio.Event()
+    cancelled = asyncio.Event()
+
+    async def stalled_projection(job):
+        entered.set()
+        try:
+            await asyncio.Future()
+        finally:
+            cancelled.set()
+
+    monkeypatch.setattr(scheduler, "publish_platform_job_update", stalled_projection)
+    # Use the real timeout scope but trigger expiry only once the independent
+    # competitor is queued; no wall-clock race or sleep decides the assertion.
+    original_timeout = asyncio.timeout
+    scopes = []
+
+    def controlled_timeout(seconds):
+        assert seconds == scheduler.TERMINAL_PROJECTION_TIMEOUT_SECONDS
+        scope = original_timeout(None)
+        scopes.append(scope)
+        return scope
+
+    monkeypatch.setattr(scheduler.asyncio, "timeout", controlled_timeout)
+
+    class ExitedChild:
+        returncode = 0
+
+    monkeypatch.setattr(
+        scheduler.asyncio, "create_subprocess_exec", AsyncMock(return_value=ExitedChild())
+    )
+    claim = scheduler.ClaimedPlatformJob(
+        id=job_id, lease_token=uuid4(), timeout_seconds=60, hard_memory_ratio=0.95,
+    )
+    running = asyncio.create_task(scheduler.run_claimed_platform_job(claim))
+    await asyncio.wait_for(entered.wait(), timeout=1)
+    attempted = asyncio.Event()
+    admitted = asyncio.Event()
+
+    async def competing_admission():
+        async with async_session_factory() as db:
+            attempted.set()
+            from sqlalchemy import select
+            current = (await db.execute(
+                select(PlatformJob).where(PlatformJob.id == job_id).with_for_update()
+            )).scalar_one()
+            assert cancelled.is_set()
+            assert current.status == "succeeded"
+            assert current.result == {"publication_verified": True}
+            admitted.set()
+            await db.commit()
+
+    competing = asyncio.create_task(competing_admission())
+    await asyncio.wait_for(attempted.wait(), timeout=1)
+    assert not admitted.is_set()
+    assert len(scopes) == 1
+    scopes[0].reschedule(asyncio.get_running_loop().time())
+    assert await asyncio.wait_for(running, timeout=1)
+    await asyncio.wait_for(competing, timeout=1)
+    assert cancelled.is_set() and admitted.is_set()

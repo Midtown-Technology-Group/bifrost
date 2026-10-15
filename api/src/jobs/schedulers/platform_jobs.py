@@ -47,6 +47,7 @@ HEARTBEAT_INTERVAL_SECONDS = 5
 RUNNER_TERMINATE_GRACE_SECONDS = 5
 RUNNER_RETRY_DELAY = timedelta(seconds=5)
 PLATFORM_JOB_IDLE_SECONDS = 2.0
+TERMINAL_PROJECTION_TIMEOUT_SECONDS = 5.0
 
 logger = logging.getLogger(__name__)
 
@@ -646,7 +647,14 @@ async def run_claimed_platform_job(claim: ClaimedPlatformJob) -> bool:
             # The child can commit its result and lose its lease before the
             # Redis projection completes. Reconcile after it has stopped, with
             # the row locked so a retry cannot race this terminal publication.
-            await publish_platform_job_update(job)
+            try:
+                async with asyncio.timeout(TERMINAL_PROJECTION_TIMEOUT_SECONDS):
+                    await publish_platform_job_update(job)
+            except TimeoutError:
+                logger.warning(
+                    "Terminal job notification reconciliation timed out",
+                    extra={"job_id": str(job.id)},
+                )
             return job.status == "succeeded"
 
     if ownership_ended:

@@ -41,6 +41,35 @@ ACTIVE_NOTIFICATION_TTL = 3600  # 1 hour for active (pending/running)
 COMPLETED_NOTIFICATION_TTL = 300  # 5 minutes after done
 
 
+# One existing Redis key: safe for clustered Redis and atomic even if a timed-out
+# writer reaches the server after a resumed attempt's newer projection. The
+# private revision field is ignored by the public DTO; generic updates retain it.
+PLATFORM_JOB_NOTIFICATION_UPDATE = """
+local raw = redis.call('GET', KEYS[1])
+if not raw then return false end
+local current = cjson.decode(raw)
+if type(current.metadata) ~= 'table' or current.metadata.job_id ~= ARGV[1] then
+    return false
+end
+local revision = tonumber(ARGV[2])
+local previous = current._platform_job_revision
+if previous ~= nil and (type(previous) ~= 'number' or previous >= revision) then
+    return false
+end
+local patch = cjson.decode(ARGV[3])
+for key, value in pairs(patch) do current[key] = value end
+current._platform_job_revision = revision
+current.updated_at = ARGV[4]
+local ttl = ARGV[5]
+if current.status == 'completed' or current.status == 'failed' or current.status == 'cancelled' then
+    ttl = ARGV[6]
+end
+local encoded = cjson.encode(current)
+redis.call('SETEX', KEYS[1], ttl, encoded)
+return encoded
+"""
+
+
 class NotificationService:
     """
     Service for managing ephemeral notifications.
@@ -198,9 +227,43 @@ class NotificationService:
         # Save updated notification
         await redis_client.setex(key, ttl, json.dumps(notification_dict))
 
-        # Parse and publish
-        notification = NotificationPublic.model_validate(notification_dict)
+        return await self._publish_updated_notification(
+            NotificationPublic.model_validate(notification_dict)
+        )
 
+    async def update_platform_job_notification(
+        self,
+        notification_id: str,
+        update: NotificationUpdate,
+        *,
+        job_id: str,
+        revision: int,
+    ) -> NotificationPublic | None:
+        """Atomically reject delayed/duplicate projections of an older job revision."""
+        if type(revision) is not int or revision < 0:
+            raise ValueError("Invalid platform job projection revision")
+        client = await self._get_redis()
+        raw = await client.eval(
+            PLATFORM_JOB_NOTIFICATION_UPDATE,
+            1,
+            f"{NOTIFICATION_KEY_PREFIX}{notification_id}",
+            job_id,
+            str(revision),
+            update.model_dump_json(exclude_unset=True),
+            datetime.now(timezone.utc).isoformat(),
+            str(ACTIVE_NOTIFICATION_TTL),
+            str(COMPLETED_NOTIFICATION_TTL),
+        )
+        if not raw:
+            return None
+        return await self._publish_updated_notification(
+            NotificationPublic.model_validate_json(raw)
+        )
+
+    async def _publish_updated_notification(
+        self, notification: NotificationPublic,
+    ) -> NotificationPublic:
+        notification_id = notification.id
         for_admins = await self._is_admin_notification(notification_id)
         logger.info(
             f"Publishing notification update: {notification_id} "
