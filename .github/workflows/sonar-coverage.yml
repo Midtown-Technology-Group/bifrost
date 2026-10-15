@@ -160,6 +160,10 @@ jobs:
         run: |
           set -euo pipefail
           ./test.sh stack up
+          source scripts/lib/test_helpers.sh
+          export COMPOSE_PROJECT_NAME="$(compute_project_name .)"
+          python3 api/scripts/capture_sonar_producers.py --compose-file "$COMPOSE_FILE" \
+            --output-dir "$SONAR_LOG_DIR" --phase started
           # Append the API tests to repository-tool coverage. Include slow unit
           # cases; affected-only reports are not this initial full denominator.
           ./test.sh unit -m "" --cov --cov-append --cov-branch --cov-config=/app/.coveragerc.sonar --cov-report=
@@ -169,7 +173,11 @@ jobs:
           ./test.sh e2e --cov --cov-append --cov-branch --cov-config=/app/.coveragerc.sonar --cov-report=
           source scripts/lib/test_helpers.sh
           export COMPOSE_PROJECT_NAME="$(compute_project_name .)"
+          python3 api/scripts/capture_sonar_producers.py --compose-file "$COMPOSE_FILE" \
+            --output-dir "$SONAR_LOG_DIR" --phase before-stop
           docker compose -f "$COMPOSE_FILE" stop api api-replica worker scheduler scheduler-fixtures
+          python3 api/scripts/capture_sonar_producers.py --compose-file "$COMPOSE_FILE" \
+            --output-dir "$SONAR_LOG_DIR" --phase after-stop
           docker compose -f "$COMPOSE_FILE" --profile test run --rm --no-deps --workdir /repo test-runner \
             python /app/scripts/combine_sonar_coverage.py
           # Virtual workflow filenames executed by tests are not repository
@@ -212,7 +220,9 @@ jobs:
           mkdir -p .sonar-evidence/diagnostics
           # Export can fail after creating private files. Transfer only these
           # existing regular outputs, even on failure, before host-side copies.
-          for private_file in .coverage.sonar-tracked sonar-runtime-coverage.json; do
+          for private_file in .coverage.sonar-tracked sonar-runtime-coverage.json \
+            sonar-runtime-producers-started.json sonar-runtime-producers-before-stop.json \
+            sonar-runtime-producers-after-stop.json; do
             file="$SONAR_LOG_DIR/$private_file"
             if [ -e "$file" ] || [ -L "$file" ]; then
               if [ ! -f "$file" ] || [ -L "$file" ]; then
@@ -222,6 +232,18 @@ jobs:
               sudo chown --no-dereference "$(id -u):$(id -g)" "$file"
             fi
           done
+          # A failed combiner retains its real runtime inputs before the
+          # disposable coverage volume is deleted. No report is synthesized.
+          runtime_shards="$SONAR_LOG_DIR/sonar-runtime-shards"
+          if [ -e "$runtime_shards" ] || [ -L "$runtime_shards" ]; then
+            test -d "$runtime_shards" && test ! -L "$runtime_shards"
+            sudo chown --no-dereference "$(id -u):$(id -g)" "$runtime_shards"
+            while IFS= read -r -d '' shard; do
+              test -f "$shard" && test ! -L "$shard"
+              sudo chown --no-dereference "$(id -u):$(id -g)" "$shard"
+            done < <(find "$runtime_shards" -mindepth 1 -maxdepth 1 -print0)
+            cp -R "$runtime_shards" .sonar-evidence/diagnostics/
+          fi
           if [ -f "$SONAR_LOG_DIR/test-results.xml" ]; then
             cp "$SONAR_LOG_DIR/test-results.xml" .sonar-evidence/diagnostics/api-unit-junit.xml
           fi
@@ -230,7 +252,8 @@ jobs:
           fi
           # Keep the filtering audit on every run; larger raw databases are
           # needed only when export or report validation fails.
-          files=(sonar-runtime-coverage.json)
+          files=(sonar-runtime-coverage.json sonar-runtime-producers-started.json
+            sonar-runtime-producers-before-stop.json sonar-runtime-producers-after-stop.json)
           if [ "$REPORT_STATUS" != success ]; then
             files+=(.coverage.sonar .coverage.sonar-tracked coverage-sonar.xml)
           fi
