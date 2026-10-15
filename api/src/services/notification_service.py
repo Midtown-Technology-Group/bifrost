@@ -243,7 +243,7 @@ class NotificationService:
         if type(revision) is not int or revision < 0:
             raise ValueError("Invalid platform job projection revision")
         client = await self._get_redis()
-        raw = await client.eval(
+        raw = await cast(Awaitable[str | None], client.eval(
             PLATFORM_JOB_NOTIFICATION_UPDATE,
             1,
             f"{NOTIFICATION_KEY_PREFIX}{notification_id}",
@@ -253,7 +253,7 @@ class NotificationService:
             datetime.now(timezone.utc).isoformat(),
             str(ACTIVE_NOTIFICATION_TTL),
             str(COMPLETED_NOTIFICATION_TTL),
-        )
+        ))
         if not raw:
             return None
         return await self._publish_updated_notification(
