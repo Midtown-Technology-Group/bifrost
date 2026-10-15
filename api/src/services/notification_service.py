@@ -53,9 +53,12 @@ if type(current.metadata) ~= 'table' or current.metadata.job_id ~= ARGV[1] then
 end
 local revision = tonumber(ARGV[2])
 local previous = current._platform_job_revision
-if previous ~= nil and (type(previous) ~= 'number' or previous >= revision) then
+if previous ~= nil and (type(previous) ~= 'number' or previous > revision) then
     return false
 end
+-- Reconcile a delivery interrupted after SETEX without rewriting this revision.
+-- Return persisted state, never the caller's potentially different patch.
+if previous == revision then return raw end
 local patch = cjson.decode(ARGV[3])
 for key, value in pairs(patch) do current[key] = value end
 current._platform_job_revision = revision
@@ -239,7 +242,7 @@ class NotificationService:
         job_id: str,
         revision: int,
     ) -> NotificationPublic | None:
-        """Atomically reject delayed/duplicate projections of an older job revision."""
+        """Reject stale state; redeliver the stored current revision after interrupted delivery."""
         if type(revision) is not int or revision < 0:
             raise ValueError("Invalid platform job projection revision")
         client = await self._get_redis()
