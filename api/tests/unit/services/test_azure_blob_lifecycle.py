@@ -153,8 +153,9 @@ async def test_partial_initialization_closes_resources(monkeypatch):
         raise RuntimeError("initialization failed")
 
     monkeypatch.setattr(AzureBlobStorageClient, "_ensure_client", fail)
+    storage = adapter()
     with pytest.raises(RuntimeError):
-        await adapter().head_bucket(Bucket="ignored")
+        await storage.head_bucket(Bucket="ignored")
     service.close.assert_awaited_once()
     credential.close.assert_awaited_once()
 
@@ -220,8 +221,9 @@ async def test_stream_completion_and_read_error_close_owner(clients, monkeypatch
         raise RuntimeError("download failed")
 
     monkeypatch.setattr(AzureBlobStorageClient, "get_object", fail)
+    storage = adapter()
     with pytest.raises(RuntimeError, match="download failed"):
-        await adapter().read_uploaded_file("test")
+        await storage.read_uploaded_file("test")
     assert len(clients) == 2
     assert_closed(clients)
 
