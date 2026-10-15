@@ -41,6 +41,7 @@ from sqlalchemy import delete, insert, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from src.jobs.platform.base import PlatformJobCancelled
 from src.models.contracts.events import EventCriteria
 from src.models.orm.agents import Agent, AgentRole
 from src.models.orm.events import (
@@ -230,7 +231,8 @@ async def _retry_idempotent(
 
     Raises :class:`SolutionFinalizeIncomplete` only if every attempt fails — a
     genuine storage outage, which a later deploy/sync still heals (the writes are
-    full-replace). Logs each retry so the blip is observable.
+    full-replace). Logs each retry so the blip is observable. Cancellation and
+    lease rejection propagate immediately without retry.
     """
     import asyncio
 
@@ -239,7 +241,10 @@ async def _retry_idempotent(
         try:
             await op()
             return
-        except Exception as exc:  # noqa: BLE001 - storage is the only failure here
+        except PlatformJobCancelled:
+            # Lease rejection/cancellation must never become another writer attempt.
+            raise
+        except Exception as exc:  # noqa: BLE001 - retry ordinary finalize failures
             last = exc
             if attempt < _FINALIZE_RETRIES:
                 logger.warning(

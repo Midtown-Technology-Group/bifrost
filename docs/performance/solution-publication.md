@@ -42,6 +42,12 @@ on normal exit, exceptions, and cancellation. No process-global client is added.
 Existing PlatformJob progress reports publication phases. Aggregate job log
 timings distinguish source storage, Redis cache work, app upload, activation,
 and cleanup. They contain categories and elapsed time, never source or secrets.
+Ordinary progress transport errors are non-fatal. Explicit cancellation and
+lease rejection remain stop signals through the reporter and finalize retry
+wrapper. A rejected activation-phase report must not retry the upload or reach
+activation, even if a subsequent report would succeed. Regression coverage
+exercises that composed call path, alongside ordinary telemetry errors and
+transient storage retry behavior.
 
 ## Development application acceptance
 

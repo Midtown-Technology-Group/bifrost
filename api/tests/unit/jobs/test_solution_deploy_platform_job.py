@@ -126,3 +126,40 @@ async def test_reviewed_package_uses_its_own_publication_and_recovery_handler(mo
     manual_deploy.assert_not_awaited()
     manual_install.assert_not_awaited()
     cleanup.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("signal", [PlatformJobCancelled, asyncio.CancelledError, RuntimeError])
+async def test_activation_progress_failure_preserves_control_signal_through_retry(monkeypatch, signal):
+    from src.services.solutions import deploy
+
+    context = AsyncMock()
+    # A retry could appear healthy; the first rejected lease must remain final.
+    context.report.side_effect = [signal(), None]
+    reporter = _SolutionDeployReporter(context, last_percent=90)
+    with deploy.solution_deploy_instrumentation(
+        deploy.SolutionDeployInstrumentation(progress_callback=reporter.progress)
+    ):
+        deployer = deploy.SolutionDeployer(AsyncMock())
+    activate, upload, sleep = AsyncMock(), AsyncMock(), AsyncMock()
+    monkeypatch.setattr(deployer, "_activate_compiled_dists", activate)
+    monkeypatch.setattr("src.services.solutions.app_build.SolutionAppBuilder.upload_deployment", upload)
+    monkeypatch.setattr(asyncio, "sleep", sleep)
+    item = deploy.CompiledSolutionAppDeployment(
+        app_id=uuid4(), solution_id=uuid4(), deployment_id=uuid4(),
+        expected_old_deployment_id=None, superseded_deployment_id=None,
+        dist={"index.html": b"app"}, runtime_pin={},
+    )
+    async def publish():
+        await deployer._upload_compiled_dists([item])
+
+    if signal is RuntimeError:
+        await deploy._retry_idempotent("upload apps", item.solution_id, publish)
+        activate.assert_awaited_once_with([item])
+    else:
+        with pytest.raises(signal):
+            await deploy._retry_idempotent("upload apps", item.solution_id, publish)
+        activate.assert_not_awaited()
+    upload.assert_awaited_once()
+    context.report.assert_awaited_once_with("Activating Solution applications", percent=95)
+    sleep.assert_not_awaited()
