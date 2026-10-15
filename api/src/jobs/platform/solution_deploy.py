@@ -19,6 +19,7 @@ from src.jobs.execution_policy import (
     platform_job_operations_policy,
 )
 from src.jobs.platform.base import (
+    PlatformJobCancelled,
     PlatformJobContext,
     PlatformJobDefinition,
     PlatformJobFailure,
@@ -53,7 +54,16 @@ class _SolutionDeployReporter:
         if bounded_percent == self.last_percent:
             return
         self.last_percent = bounded_percent
-        await self.context.report(phase, percent=bounded_percent)
+        try:
+            await self.context.report(phase, percent=bounded_percent)
+        except PlatformJobCancelled:
+            # A rejected lease/cancellation is a control signal, not telemetry.
+            raise
+        except Exception as exc:  # noqa: BLE001 - diagnostics must not abort publication
+            logger.warning(
+                "Failed to publish Solution deploy progress (%s)",
+                type(exc).__name__,
+            )
 
     async def timing(self, category: str, elapsed_ms: int) -> None:
         try:

@@ -1,10 +1,11 @@
+import asyncio
 from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
 
-from src.jobs.platform.base import PlatformJobFailure
+from src.jobs.platform.base import PlatformJobCancelled, PlatformJobFailure
 from src.jobs.platform.solution_deploy import (
     SolutionDeployPayload,
     _SolutionDeployReporter,
@@ -24,6 +25,16 @@ async def test_deploy_reporter_bounds_progress_and_tolerates_timing_failure():
     context.log.side_effect = RuntimeError("diagnostic transport unavailable")
     await reporter.timing("redis_module_cache", 12)
     context.log.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("signal", [PlatformJobCancelled, asyncio.CancelledError])
+async def test_deploy_progress_preserves_cancellation_and_lease_rejection(signal):
+    context = AsyncMock()
+    context.report.side_effect = signal
+    reporter = _SolutionDeployReporter(context)
+    with pytest.raises(signal):
+        await reporter.progress("Publishing", 70)
 
 
 @pytest.mark.asyncio
