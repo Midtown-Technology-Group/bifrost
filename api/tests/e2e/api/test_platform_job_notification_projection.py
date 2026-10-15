@@ -1,5 +1,6 @@
 """Real Redis version fences for delayed shared-job notification projections."""
 import asyncio
+import json
 from uuid import uuid4
 from unittest.mock import AsyncMock
 
@@ -72,4 +73,52 @@ async def test_same_revision_repairs_delivery_interrupted_after_persistence(monk
         assert await client.get(NOTIFICATION_KEY_PREFIX + notification.id) == stored
     finally:
         await client.delete(NOTIFICATION_KEY_PREFIX + notification.id, USER_NOTIFICATIONS_PREFIX + user_id)
+        await client.aclose()
+
+
+async def test_projection_preserves_json_values_and_concurrent_metadata(monkeypatch):
+    service = NotificationService()
+    monkeypatch.setattr(service, "_publish_notification", AsyncMock())
+    user_id, job_id = str(uuid4()), str(uuid4())
+    metadata = {"job_id": job_id, "empty": [], "large": 123456789012345678}
+    notification = await service.create_notification(
+        user_id=user_id,
+        request=NotificationCreate(category=NotificationCategory.SYSTEM, title="JSON fidelity fixture", metadata=metadata),
+    )
+    client = await service._get_redis()
+    key = NOTIFICATION_KEY_PREFIX + notification.id
+    original_eval = client.eval
+    calls = 0
+
+    async def concurrent_eval(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            # Another writer changes metadata after the service reads its snapshot.
+            current = json.loads(await client.get(key))
+            current["metadata"]["concurrent"] = {"empty": [], "large": 987654321098765432}
+            await client.set(key, json.dumps(current), keepttl=True)
+        return await original_eval(*args, **kwargs)
+
+    monkeypatch.setattr(client, "eval", concurrent_eval)
+    result = {"empty": [], "nested": [{"empty": []}], "large": 123456789012345678}
+    try:
+        updated = await service.update_platform_job_notification(
+            notification.id, NotificationUpdate(status=NotificationStatus.COMPLETED, result=result),
+            job_id=job_id, revision=2,
+        )
+        assert calls == 2
+        assert updated is not None and updated.result == result
+        current = await service.get_notification(notification.id)
+        assert current is not None and current.result == result
+        assert current.metadata == {**metadata, "concurrent": {"empty": [], "large": 987654321098765432}}
+        # Same-revision replay returns the persisted payload without rewriting it.
+        stored = await client.get(key)
+        replay = await service.update_platform_job_notification(
+            notification.id, NotificationUpdate(result={"different": True}), job_id=job_id, revision=2,
+        )
+        assert replay is not None and replay.result == result
+        assert await client.get(key) == stored
+    finally:
+        await client.delete(key, USER_NOTIFICATIONS_PREFIX + user_id)
         await client.aclose()

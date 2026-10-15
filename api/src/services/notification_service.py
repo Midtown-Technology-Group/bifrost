@@ -59,17 +59,11 @@ end
 -- Reconcile a delivery interrupted after SETEX without rewriting this revision.
 -- Return persisted state, never the caller's potentially different patch.
 if previous == revision then return raw end
-local patch = cjson.decode(ARGV[3])
-for key, value in pairs(patch) do current[key] = value end
-current._platform_job_revision = revision
-current.updated_at = ARGV[4]
-local ttl = ARGV[5]
-if current.status == 'completed' or current.status == 'failed' or current.status == 'cancelled' then
-    ttl = ARGV[6]
-end
-local encoded = cjson.encode(current)
-redis.call('SETEX', KEYS[1], ttl, encoded)
-return encoded
+-- Python preserves JSON types and precision. Reject its snapshot if any writer
+-- changed the value; the caller will read and merge again.
+if raw ~= ARGV[3] then return 0 end
+redis.call('SETEX', KEYS[1], ARGV[5], ARGV[4])
+return ARGV[4]
 """
 
 
@@ -246,22 +240,40 @@ class NotificationService:
         if type(revision) is not int or revision < 0:
             raise ValueError("Invalid platform job projection revision")
         client = await self._get_redis()
-        raw = await cast(Awaitable[str | None], client.eval(
-            PLATFORM_JOB_NOTIFICATION_UPDATE,
-            1,
-            f"{NOTIFICATION_KEY_PREFIX}{notification_id}",
-            job_id,
-            str(revision),
-            update.model_dump_json(exclude_unset=True),
-            datetime.now(timezone.utc).isoformat(),
-            str(ACTIVE_NOTIFICATION_TTL),
-            str(COMPLETED_NOTIFICATION_TTL),
-        ))
-        if not raw:
-            return None
-        return await self._publish_updated_notification(
-            NotificationPublic.model_validate_json(raw)
-        )
+        key = f"{NOTIFICATION_KEY_PREFIX}{notification_id}"
+        patch = json.loads(update.model_dump_json(exclude_unset=True))
+        for _ in range(8):
+            observed = await client.get(key)
+            if observed is None:
+                return None
+            notification = json.loads(observed)
+            notification.update(patch)
+            notification["_platform_job_revision"] = revision
+            notification["updated_at"] = datetime.now(timezone.utc).isoformat()
+            is_complete = notification["status"] in (
+                NotificationStatus.COMPLETED.value,
+                NotificationStatus.FAILED.value,
+                NotificationStatus.CANCELLED.value,
+            )
+            ttl = COMPLETED_NOTIFICATION_TTL if is_complete else ACTIVE_NOTIFICATION_TTL
+            raw = await cast(Awaitable[str | int | None], client.eval(
+                PLATFORM_JOB_NOTIFICATION_UPDATE,
+                1,
+                key,
+                job_id,
+                str(revision),
+                observed,
+                json.dumps(notification),
+                str(ttl),
+            ))
+            if isinstance(raw, int):
+                continue
+            if not raw:
+                return None
+            return await self._publish_updated_notification(
+                NotificationPublic.model_validate_json(raw)
+            )
+        raise RuntimeError("Platform job notification changed during every update attempt")
 
     async def _publish_updated_notification(
         self, notification: NotificationPublic,
