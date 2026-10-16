@@ -11,9 +11,11 @@ import json
 import logging
 import os
 from abc import ABC, abstractmethod
+from contextlib import asynccontextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, AsyncIterator
 
 import aio_pika
 from aio_pika import IncomingMessage
@@ -70,6 +72,54 @@ class DomainFailureHandled(ConsumerDeliveryError):
 
 class ConsumerShutdown(RetryableConsumerError):
     """Consumer is stopping and the message should be retried safely."""
+
+
+@dataclass
+class _ConsumerAdmissionLease:
+    """One handler's transferable share of process database capacity."""
+
+    semaphore: asyncio.Semaphore
+    acquired: bool = True
+    suspenders: int = 0
+
+
+_consumer_admission: ContextVar[_ConsumerAdmissionLease | None] = ContextVar(
+    "consumer_admission",
+    default=None,
+)
+
+
+@asynccontextmanager
+async def suspend_consumer_admission() -> AsyncIterator[None]:
+    """Yield this handler's slot while it waits for dependent broker work.
+
+    Child tasks inherit the current admission lease. The first concurrent
+    dependency wait releases it, and the last wait to finish reacquires it
+    before the parent can resume database-capable work. If cancellation wins
+    while reacquiring, the outer handler observes ``acquired=False`` and does
+    not release the semaphore twice.
+    """
+    admission = _consumer_admission.get()
+    if admission is None:
+        yield
+        return
+
+    admission.suspenders += 1
+    if admission.suspenders == 1 and admission.acquired:
+        admission.acquired = False
+        admission.semaphore.release()
+    try:
+        yield
+    finally:
+        admission.suspenders -= 1
+        if admission.suspenders == 0 and not admission.acquired:
+            await admission.semaphore.acquire()
+            if admission.suspenders == 0 and not admission.acquired:
+                admission.acquired = True
+            else:
+                # Another inherited task began waiting while this task was
+                # queued to resume, so keep the slot available to its child.
+                admission.semaphore.release()
 
 
 @dataclass(frozen=True)
@@ -300,8 +350,17 @@ class _AbstractConsumer(ABC):
         if self._admission_semaphore is None:
             await self.process_message(body)
             return
-        async with self._admission_semaphore:
+
+        await self._admission_semaphore.acquire()
+        admission = _ConsumerAdmissionLease(self._admission_semaphore)
+        token = _consumer_admission.set(admission)
+        try:
             await self.process_message(body)
+        finally:
+            _consumer_admission.reset(token)
+            if admission.acquired:
+                admission.acquired = False
+                self._admission_semaphore.release()
 
     @abstractmethod
     async def start(self) -> None:

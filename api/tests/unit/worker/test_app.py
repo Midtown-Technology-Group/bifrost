@@ -291,6 +291,11 @@ async def test_start_initializes_db_starts_consumers_and_waits_for_shutdown(
     monkeypatch.setattr(worker_app, "get_settings", lambda: settings)
     init_db = AsyncMock()
     monkeypatch.setattr(worker_app, "init_db", init_db)
+    require_schema = AsyncMock()
+    monkeypatch.setattr(
+        "src.services.execution_attempts.require_execution_operations_schema",
+        require_schema,
+    )
 
     worker = worker_app.Worker()
 
@@ -302,6 +307,7 @@ async def test_start_initializes_db_starts_consumers_and_waits_for_shutdown(
     await worker.start()
 
     init_db.assert_awaited_once()
+    require_schema.assert_awaited_once()
     assert worker.running is True
     assert worker._maintenance_task is None
 
@@ -313,6 +319,10 @@ async def test_start_cleans_up_partial_start_on_failure(
 ) -> None:
     monkeypatch.setattr(worker_app, "get_settings", lambda: settings)
     monkeypatch.setattr(worker_app, "init_db", AsyncMock())
+    monkeypatch.setattr(
+        "src.services.execution_attempts.require_execution_operations_schema",
+        AsyncMock(),
+    )
     worker = worker_app.Worker()
     cleanup = AsyncMock()
     worker._cleanup_after_failed_start = cleanup  # type: ignore[method-assign]
