@@ -34,7 +34,6 @@ import json
 import logging
 import os
 import signal
-import subprocess
 import sys
 import time
 import uuid
@@ -49,6 +48,7 @@ import psutil
 import redis.asyncio as redis
 
 from shared.execution_context import validate_execution_context
+from src.core.package_inventory import get_installed_packages as _get_installed_packages
 from src.config import get_settings
 from src.services.execution_admission import (
     AdmissionOutcome,
@@ -168,25 +168,6 @@ async def _kill_process_group_after_grace(process: asyncio.subprocess.Process) -
     await process.wait()
 
 
-def _get_installed_packages() -> list[dict[str, str]]:
-    """
-    Get list of installed packages via pip list.
-
-    Returns a list of dicts with 'name' and 'version' keys.
-    Used to populate the packages field in Redis pool registration.
-    """
-    try:
-        result = subprocess.run(
-            ["pip", "list", "--format=json"],
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-        if result.returncode == 0:
-            return json.loads(result.stdout)
-    except Exception as e:
-        logger.warning(f"Failed to get installed packages: {e}")
-    return []
 
 
 class ProcessState(Enum):
