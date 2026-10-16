@@ -15,8 +15,8 @@ A complete MVP still includes safe coexistence, unchanged consumers, security,
 reversible routing, observability and an evidence-based CONTINUE or STOP.
 
 Fresh fetch: platform `e42999395231ebc536711e5015422edfb75613a7`, workspace
-`f10b80e806bebc232247e4568f389de0857ed733`.
-The [latest boundary audit](rust-core-mvp-workspace-boundary-f10b80e8.json)
+`875182c8028227903c886b4ab660f92b745c63bc`.
+The [latest boundary audit](rust-core-mvp-workspace-boundary-875182c8.json)
 records authored source, forbidden-import/parse results and empty allowlist.
 Both prerequisite merges remain ancestors of these exact heads. Recheck these
 invariants when either baseline changes.

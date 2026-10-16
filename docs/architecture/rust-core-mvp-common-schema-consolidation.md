@@ -128,16 +128,22 @@ review (names are internal; this does not freeze a public profile):
   owner/artifact FK still binds accepted historical source and executable.
 - Add `runtime_workflow_live_links` as a link table, not a second lifecycle:
   session_id PK; execution_id, owner_incarnation_id, workflow_attempt_id,
-  claim_token, worker_incarnation_id NOT NULL. Its common composite FK is
-  `(session_id,execution_id,owner_incarnation_id,workflow_attempt_id)` to the
-  existing session identity, RESTRICT. Its native composite FK is
-  `(workflow_attempt_id,execution_id,claim_token,worker_incarnation_id)` to the
-  existing typed attempt identity, ON DELETE CASCADE. Create the referenced
-  native composite UNIQUE before it. Validate attempt_number at admission;
-  keep the accepted ordinal immutable in the grant. Only the live-link row
-  may cascade; no historical session or receipt points directly at a native
-  attempt with CASCADE. The guard denies native active-attempt removal before
-  trusted close/drain; installed external deletion policy remains unresolved.
+  claim_token, worker_incarnation_id NOT NULL, plus nullable native_attempt_id,
+  CHECK NULL or equal to historical workflow_attempt_id. Its common composite
+  FK is `(session_id,execution_id,owner_incarnation_id,workflow_attempt_id,
+  claim_token,worker_incarnation_id)` to the existing session fence, RESTRICT.
+  Its native composite FK is `(native_attempt_id,execution_id,claim_token,
+  worker_incarnation_id)` to the existing typed attempt identity, ON DELETE
+  SET NULL (native_attempt_id), supported by the repository's PostgreSQL 16.
+  Create the referenced native composite UNIQUE before it. Retain the link row
+  and its NULL detachment marker permanently; reject DELETE and reattachment.
+  A CASCADE-deleted link would permit resurrection if an open session's exact
+  native attempt/fence were recreated, so that earlier proposal is rejected.
+  New session and attached link must commit atomically. Validate attempt_number
+  at admission; keep the accepted ordinal immutable in the grant. The later
+  complete writer/drain guard must deny native active-attempt removal before
+  trusted close/drain; C1 storage alone does not supply it, and installed
+  external deletion policy remains unresolved.
 - Add nullable `live_deployment_id`, `live_workflow_id`, `live_solution_id` and
   `live_reviewed_by` to the existing artifact association. Each has its native
   scalar FK with ON DELETE SET NULL and CHECK NULL or equal to the matching
@@ -164,6 +170,21 @@ The earlier preview that partially nulls a composite historical identity is
 rejected. This representation still requires independent constraint/concurrency
 review before an apply-ready revision. Minimal historical IDs must not be
 mistaken for an approved retention policy for caller/result/resource payloads.
+
+The concrete C1 source candidate lives outside active Alembic discovery at
+`api/alembic/candidates/20261016_runtime_owner_links.py` in worktree
+`/home/thomas/src/bifrost-rust-common-owner-links`, branch
+`rust/common-owner-links-candidate`, revision candidate `3bf9de9699db8455444aa6f8e188907483f674ea`.
+Its three changed files are byte-identical to independently source-reviewed
+`af8c034daa437dcacbafd847a4ee678b7f877ec3`; the qualification branch replays
+only C1 onto current main, excluding the accumulated Rust experiment stack.
+It contains only artifact/owner/session/live-binding storage and offline DDL
+checks, not Start/report/grant/resource tables, runtime roles, admission or a
+retention policy. Its empty-only downgrade locks the four common tables and
+native attempt table before checking emptiness, requires read-committed
+isolation and refuses populated history. Those migration-owner locks do not
+grant a runtime coordinator table-lock authority. Source review, actual
+PostgreSQL tests and apply/role approval remain distinct gates.
 
 Native ancestor positives to retain: inactive-user deletion clears executed_by;
 user/CLI cascade clears cli_session_id; form purge clears form_id; workflow and
@@ -206,7 +227,7 @@ prepared, but that is not Python MVP completion or authority to change workspace
 
 Proposed order for NEW common mutations: source release shared fence -> native
 execution advisory fence -> Execution -> typed workflow attempt -> immutable
-common owner -> session -> ordered Start/admission/grant/operation/report/resource
+common owner -> session -> retained native live-link -> ordered Start/admission/grant/operation/report/resource
 rows. Use stable ID ordering for multirow siblings. Apply this consistently to
 Start/provision, close, Result, no-effect recovery and resource settlement; no
 transaction may perform vendor/network effects while holding these locks.
@@ -228,6 +249,14 @@ timeouts bound failure; they do not prove absence of deadlocks. Include implicit
 FK KEY SHARE, index uniqueness, trigger queries, cascade updates, table locks,
 source-release exclusive locks and pool transaction boundaries in the final
 wait graph. No blanket retry may turn unknown possible effects into replay.
+
+The first cancellation consumer now checks both historical and live fences at
+Rust source `5a5a67284be79d1f0a8c8f07c0e5b5bd6a966303`,
+`core-rs/crates/bifrost-db/src/common_session.rs`. It rejects a detached owner or
+link before any mutation; uncertain-commit reconciliation also rejects that
+state without granting retry permission. Independent source review accepted the
+delta. New native compilation and real PostgreSQL evidence are separate gates;
+the earlier 42bdefe24 checkpoint cannot qualify these changed predicates.
 
 Prototype writer guards grant SELECT on all public tables and DML on a finite
 fixture set. They authenticate session_user; Rust additionally checks current_user.
