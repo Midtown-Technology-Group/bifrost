@@ -6,6 +6,8 @@ from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
 import httpx
+from fastapi import FastAPI
+from httpx import AsyncClient as ASGIClient
 import pytest
 from sqlalchemy import delete
 
@@ -222,3 +224,99 @@ async def test_late_provider_response_does_not_revive_owner(async_session_factor
         await db.rollback()
         with pytest.raises(ValueError):
             await acquire(db, azure, replica, secrets.token_hex(32))
+
+
+@pytest.mark.parametrize("phase,removed", [("acquired", True), ("begun", True), ("grant-started", False)])
+async def test_unused_allocation_cleanup_requires_verified_absence(async_session_factory, owner_fixture, phase, removed):
+    from datetime import UTC, datetime
+    from sqlalchemy import select
+    from src.services.external_worker_scaling import reconcile_hosts
+
+    azure, replica, calls, _ = owner_fixture
+    async with async_session_factory() as db:
+        await acquire(db, azure, replica, secrets.token_hex(32))
+        state = await row(db, host_key(replica))
+        value = dict(state.value_json)
+        owner = value["vojeto_owner"]
+        assert isinstance(owner, dict)
+        value["vojeto_owner"] = {**owner, "phase": phase}
+        state.value_json = value
+        await db.commit()
+        await reconcile_hosts(db, azure, set())
+        await db.commit()
+        assert await db.scalar(select(SystemConfig.id).where(SystemConfig.key == host_key(replica))) is not None
+        state = await row(db, host_key(replica))
+        value = dict(state.value_json)
+        value.update(absent_since=datetime.now(UTC).timestamp() - 121,
+                     absence_observed_at=datetime.now(UTC).timestamp())
+        state.value_json = value
+        await db.commit()
+        await reconcile_hosts(db, azure, set())
+        await db.commit()
+        exists = await db.scalar(select(SystemConfig.id).where(SystemConfig.key == host_key(replica))) is not None
+        assert exists is not removed
+        assert not calls
+
+
+async def test_identity_http_protocol_commits_real_ownership(async_session_factory, owner_fixture):
+    """Actual DTO/router/services/DB, with only cloud identity/provider calls faked."""
+    from src.core.database import get_db
+    from src.routers.platform.external_workers import router
+
+    azure, replica, calls, code = owner_fixture
+    azure.settings.external_worker_scaling_enabled = True
+    azure.settings.external_worker_identity_enabled = True
+    azure.close = AsyncMock()
+    app = FastAPI()
+    app.include_router(router)
+
+    async def database():
+        async with async_session_factory() as db:
+            yield db
+
+    app.dependency_overrides[get_db] = database
+    # Preserve the original HTTP client class: the provider fixture replaces
+    # httpx.AsyncClient to direct Defined calls into its synthetic transport.
+    async with ASGIClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+        async def operation(name, **fields):
+            return await client.post("/api/platform/external-workers/identity",
+                                     headers={"Authorization": "Bearer synthetic"},
+                                     json={"operation": name, "replica": replica, **fields})
+
+        with patch("src.routers.platform.external_workers.get_settings", return_value=azure.settings), patch(
+            "src.routers.platform.external_workers.validate_settings"
+        ), patch("src.routers.platform.external_workers.verify_identity", new=AsyncMock()), patch(
+            "src.routers.platform.external_workers.Azure", return_value=azure
+        ):
+            acquired = await operation("acquire", attempt=secrets.token_hex(32))
+            assert acquired.status_code == 200
+            assert acquired.headers["cache-control"] == "no-store"
+            token = acquired.json()["token"]
+            assert acquired.json()["leaseMilliseconds"] == 60000
+            assert (await operation("release", token=token)).status_code == 403
+            assert (await operation("begin", token=token)).status_code == 200
+            granted = await operation("grant", token=token)
+            assert granted.status_code == 200
+            assert granted.json() == {"ok": True, "token": token, "code": code,
+                                      "hostID": "host-TEST", "networkID": "network-TEST"}
+            assert (await operation("grant", token=token)).status_code == 403
+            assert (await operation("bind", token=token, hostID="host-OTHER", networkID="network-TEST")).status_code == 403
+            assert (await operation("bind", token=token, hostID="host-TEST", networkID="network-TEST")).status_code == 200
+            checkpoint = secrets.token_bytes(64)
+            assert (await operation("checkpoint", token=token,
+                                    state=base64.b64encode(checkpoint).decode())).status_code == 200
+            async with async_session_factory() as db:
+                state = await row(db, host_key(replica))
+                owner = state.value_json["vojeto_owner"]
+                assert base64.b64decode(decrypt_secret(owner["checkpoint"])) == checkpoint
+                assert token not in str(state.value_json)
+                assert base64.b64encode(checkpoint).decode() not in str(state.value_json)
+            renewed = await operation("renew", token=token)
+            assert renewed.status_code == 200 and renewed.json()["leaseMilliseconds"] == 60000
+            assert (await operation("release", token=token)).status_code == 200
+            assert (await operation("renew", token=token)).status_code == 403
+            async with async_session_factory() as db:
+                state = await row(db, host_key(replica))
+                assert state.value_json["vojeto_owner"]["phase"] == "released"
+            assert calls.count(("POST", "/v2/host-and-enrollment-code")) == 1
+            assert azure.close.await_count == 11

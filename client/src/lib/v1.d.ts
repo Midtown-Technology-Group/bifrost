@@ -107,6 +107,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/platform/external-workers/identity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Identity Operation
+         * @description Global controller bookkeeping, authorized only by the fixed worker UAMI.
+         */
+        post: operations["externalworkers.identity"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -17894,7 +17914,7 @@ export interface components {
             client_id: string;
             /**
              * Client Secret
-             * @description OAuth client secret (optional for PKCE flow, required for client_credentials, will be stored securely in Key Vault)
+             * @description OAuth client secret (optional for public clients such as PKCE-enabled providers without a secret, required for client_credentials, will be stored securely in Key Vault)
              */
             client_secret?: string | null;
             /**
@@ -17927,7 +17947,7 @@ export interface components {
             audience?: string | null;
             /**
              * Provider Metadata
-             * @description Provider-specific OAuth behavior flags and metadata
+             * @description Provider-specific OAuth behavior flags and metadata (e.g. use_pkce, omit_token_exchange_scope, omit_authorization_scope)
              */
             provider_metadata?: {
                 [key: string]: unknown;
@@ -21105,6 +21125,35 @@ export interface components {
             authorized_organization_id: string | null;
             /** Is Active */
             is_active: boolean;
+        };
+        /**
+         * ExternalWorkerIdentityRequest
+         * @description Managed-identity broker contract; secrets never enter model repr.
+         */
+        ExternalWorkerIdentityRequest: {
+            /**
+             * Operation
+             * @enum {string}
+             */
+            operation: "acquire" | "begin" | "grant" | "bind" | "checkpoint" | "renew" | "release";
+            /** Replica */
+            replica: string;
+            /** Attempt */
+            attempt?: string | null;
+            /** Token */
+            token?: string | null;
+            /**
+             * Hostid
+             * @default
+             */
+            hostID: string;
+            /**
+             * Networkid
+             * @default
+             */
+            networkID: string;
+            /** State */
+            state?: string | null;
         };
         /**
          * FileChange
@@ -25984,7 +26033,7 @@ export interface components {
             audience?: string | null;
             /**
              * Provider Metadata
-             * @description Provider-specific OAuth behavior flags and metadata
+             * @description Provider-specific OAuth behavior flags and metadata (e.g. use_pkce, omit_token_exchange_scope, omit_authorization_scope)
              */
             provider_metadata?: {
                 [key: string]: unknown;
@@ -32583,7 +32632,7 @@ export interface components {
             audience?: string | null;
             /**
              * Provider Metadata
-             * @description Provider-specific OAuth behavior flags and metadata
+             * @description Provider-specific OAuth behavior flags and metadata (e.g. use_pkce, omit_token_exchange_scope, omit_authorization_scope)
              */
             provider_metadata?: {
                 [key: string]: unknown;
@@ -36607,6 +36656,43 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+        };
+    };
+    "externalworkers.identity": {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExternalWorkerIdentityRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
