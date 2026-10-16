@@ -43,30 +43,18 @@ it("retries initial loading and retains the name after a failed save", async () 
 	);
 	expect(name).toHaveValue("Updated");
 });
-it("retains failed password input and completes setting a password without a second profile fetch", async () => {
-	service.changePassword.mockRejectedValueOnce(
-		new Error("Synthetic rejection"),
-	);
-	const user = userEvent.setup();
+it("does not offer password enrollment to external-auth accounts", async () => {
 	render(<BasicInfo />);
-	const password = await screen.findByLabelText("Password", {
-		selector: "input",
-	});
-	const confirm = screen.getByLabelText("Confirm Password", {
-		selector: "input",
-	});
-	await user.type(password, "synthetic-example");
-	await user.type(confirm, "synthetic-example");
-	await user.click(screen.getByRole("button", { name: "Show password" }));
-	expect(password).toHaveAttribute("type", "text");
-	await user.click(screen.getByRole("button", { name: "Hide password" }));
-	await user.click(screen.getByRole("button", { name: "Set Password" }));
-	await screen.findByText("Synthetic rejection");
-	expect(password).toHaveValue("synthetic-example");
-	await user.click(screen.getByRole("button", { name: "Set Password" }));
-	await screen.findByLabelText("Current Password", { selector: "input" });
-	expect(password).toHaveValue("");
-	expect(service.getProfile).toHaveBeenCalledTimes(1);
+	expect(
+		await screen.findByText(
+			"This account uses an external sign-in method. Password enrollment is not available from profile settings.",
+		),
+	).toBeVisible();
+	expect(screen.queryByLabelText("New Password")).not.toBeInTheDocument();
+	expect(
+		screen.queryByRole("button", { name: "Set Password" }),
+	).not.toBeInTheDocument();
+	expect(service.changePassword).not.toHaveBeenCalled();
 });
 
 it("validates matching passwords and preserves the existing-password contract", async () => {
