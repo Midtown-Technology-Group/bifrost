@@ -888,8 +888,9 @@ async def test_resolve_role_names_fails_when_name_is_ambiguous():
         async def execute(self, _stmt):
             return Result()
 
+    db = Db()
     with pytest.raises(ValueError, match="ambiguous role name: Operator"):
-        await manifest_import._resolve_role_names(Db(), ["Operator"])
+        await manifest_import._resolve_role_names(db, ["Operator"])
 
 
 @pytest.mark.asyncio
@@ -1594,10 +1595,9 @@ def test_resolve_role_rejects_ambiguous_name_only_after_id_lookup():
     )[0]
     assert by_id.match_on == "id"
 
+    ambiguous_role = ManifestRole(id=EXISTING_ID, name="Operator")
     with pytest.raises(ValueError, match="ambiguous role name: Operator"):
-        resolver._resolve_role(
-            ManifestRole(id=EXISTING_ID, name="Operator"), cache
-        )
+        resolver._resolve_role(ambiguous_role, cache)
 
 
 @pytest.mark.asyncio
