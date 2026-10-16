@@ -10,14 +10,18 @@ from pydantic import BaseModel, Field
 class ProfileUpdate(BaseModel):
     """Request model for updating user profile."""
 
-    name: str | None = Field(default=None, min_length=1, max_length=255, description="Display name")
+    name: str | None = Field(
+        default=None, min_length=1, max_length=255, description="Display name"
+    )
 
 
 class PasswordChange(BaseModel):
-    """Request model for changing or setting password."""
+    """Request model for changing an existing password."""
 
-    current_password: str | None = Field(default=None, min_length=1, description="Current password (required if user has a password set)")
-    new_password: str = Field(..., min_length=8, description="New password (minimum 8 characters)")
+    current_password: str = Field(..., min_length=1, description="Current password")
+    new_password: str = Field(
+        ..., min_length=8, description="New password (minimum 8 characters)"
+    )
 
 
 class ProfileResponse(BaseModel):

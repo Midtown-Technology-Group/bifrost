@@ -1,0 +1,61 @@
+{
+  "fixture": {
+    "python_files": 45,
+    "unrelated_keys": 41500,
+    "rounds": 3
+  },
+  "measurement": "isolated real Redis; actual fork function bodies; metadata correctness and late-write fence passed; fixture cleanup zero keys",
+  "baseline_source": "225ea321e907587fdad3b1ff30d05dc02ee6bfba",
+  "candidate_source_sha256": {
+    "api/src/core/module_cache.py": "730de1476a0da4f78081f4bbeead4bf628ca7dd50ea0eb62e7f9d97033ec9239",
+    "api/src/core/module_cache_contract.py": "5ec198a1f5e58a94813c66cdb449dea1ef03cd1e776d7dcfd28387c9204b87ea"
+  },
+  "command_counter_limit": "Pipeline commands are not counted by the execute_command wrapper. Routine SCAN would be counted.",
+  "results": [
+    {
+      "event": "result",
+      "round": 1,
+      "variant": "fork-generations",
+      "seconds": 0.025830658999893785,
+      "commands": {
+        "SETEX": 45,
+        "SADD": 45
+      },
+      "command_seconds": {
+        "SETEX": 0.007091618000231392,
+        "SADD": 0.006422481000186053
+      },
+      "correctness": "passed"
+    },
+    {
+      "event": "result",
+      "round": 2,
+      "variant": "fork-generations",
+      "seconds": 0.022523678999959884,
+      "commands": {
+        "SETEX": 45,
+        "SADD": 45
+      },
+      "command_seconds": {
+        "SETEX": 0.006203476000109731,
+        "SADD": 0.005659330999378653
+      },
+      "correctness": "passed"
+    },
+    {
+      "event": "result",
+      "round": 3,
+      "variant": "fork-generations",
+      "seconds": 0.022947428000065884,
+      "commands": {
+        "SETEX": 45,
+        "SADD": 45
+      },
+      "command_seconds": {
+        "SETEX": 0.006114602000252489,
+        "SADD": 0.006034377000673885
+      },
+      "correctness": "passed"
+    }
+  ]
+}

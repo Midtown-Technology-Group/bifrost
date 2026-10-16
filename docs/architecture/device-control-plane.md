@@ -135,15 +135,19 @@ allow-list is the v1 scope vocabulary. `revoke` sets `enabled = false`;
 User permissions are the existing JSONB role permissions resolved the way
 `_user_has_permission` resolves them today. M0 names two keys:
 
-- **`can_execute_devices`** — create/cancel/read device jobs (create-level).
-- **`can_manage_config`** — device registry and control-key CRUD (org admin
-  surface). Platform superusers bypass all checks.
+- **`can_execute_devices`** — create/cancel/read device jobs (create-level),
+  and issue or rotate control-key secrets that delegate job creation.
+- **`can_manage_config`** — device registry plus control-key metadata and
+  revocation (org admin surface). Creating or rotating a control key requires
+  this permission **and** `can_execute_devices`. Platform superusers bypass all
+  checks.
 
 | Action | User JWT | Control key | Device key | Notes |
 | --- | --- | --- | --- | --- |
 | Create device, issue enrollment token, rotate device key, disable/enable | org member + `can_manage_config` | no | no | Raw material once |
 | `POST /api/devices/enroll` | no session; enrollment token only | no | no | CSRF-exempt exact path |
-| Control-key create/list/rotate/revoke | org member + `can_manage_config` | no | no | Scope = non-empty `device_ids` |
+| Control-key create/rotate (returns usable secret) | org member + `can_manage_config` **and** `can_execute_devices` | no | no | Scope = non-empty `device_ids`; credential delegation is at least as privileged as direct execution |
+| Control-key list/get/revoke | org member + `can_manage_config` | no | no | Metadata or privilege removal only; never returns a usable secret |
 | **Create job** `POST /api/devices/{id}/jobs` | org member + `can_execute_devices` | yes — device must be in `device_ids`, key enabled, unexpired, device `active` | no | Attribution always recorded (below) |
 | Cancel job | org member + `can_execute_devices` | no | no | Cooperative flag only |
 | Read job list/detail/logs (incl. script body) | org member + `can_execute_devices` | only jobs **it created** | **no** | Script body is create-level readable; the device principal's only script-body path is the fenced claim response for the job it holds |

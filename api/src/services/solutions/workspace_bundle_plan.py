@@ -242,11 +242,13 @@ def _comparable_snapshot(kind: str, snapshot: dict[str, Any], *, incoming: bool)
         # Package defaults only initialize new configs. Existing workspace
         # values are preserved unless the reviewer explicitly enters one.
         data.pop("value", None)
-    if kind == "agent":
+    if kind == "agent" and incoming:
         from src.core.system_agents import PLATFORM_ADMIN_SYSTEM_TOOLS
 
-        # The canonical indexer discards admin-only tools from package content.
-        # Compare that effective definition so a second preview converges.
+        # The canonical indexer discards admin-only tools from package content,
+        # so they cannot create a conflict or grant privilege. Do not erase them
+        # from the existing snapshot: their absence from the effective incoming
+        # definition is a reviewed revocation, not an unchanged agent.
         data["system_tools"] = [
             tool for tool in (data.get("system_tools") or [])
             if tool not in PLATFORM_ADMIN_SYSTEM_TOOLS
