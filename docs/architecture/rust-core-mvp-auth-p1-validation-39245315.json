@@ -1,0 +1,63 @@
+{
+  "repository": "Midtown-Technology-Group/bifrost",
+  "pr": 1018,
+  "head": "39245315e193e1d04886044677bf7a75bb8c6f1f",
+  "manual_ci": {
+    "run": 38947574111,
+    "status": "completed",
+    "conclusion": "success",
+    "literal_pre_pr": "success",
+    "backend_unit": "success",
+    "backend_e2e_shards": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "browser_e2e_shards": [
+      1,
+      2
+    ],
+    "mcp": "success",
+    "sonar_analysis": "skipped: workflow_dispatch on non-main branch is outside configured analysis condition; no manual-run Sonar gate claimed"
+  },
+  "unit_log": {
+    "job": 117140338572,
+    "sha256": "add0d0caa87070290f963fb8d4f14d97bb50fe1654ca9cd87b2851f2eca2d689",
+    "reported_passed": 14010,
+    "reported_skipped": 3,
+    "reported_deselected": 66,
+    "selected_auth_passes": {
+      "test_agent_admission_preserves_original_principal_authority": 12,
+      "test_chat_workflow_rejects_missing_authenticated_caller": 4,
+      "test_chat_workflow_preserves_callerless_scope_without_authority": 1
+    },
+    "junit_limit": "api-coverage artifact contains coverage.xml only; individual cases/counts verified in original job log, not represented as retained JUnit proof"
+  },
+  "unit_coverage_artifact": {
+    "id": 12069198122,
+    "sha256": "909b1ab931b0d3e860f8c8b0d3acac7cc34a603bb1550b8741f8aa44b7d9619d",
+    "digest_verified": true
+  },
+  "pre_pr_artifact": {
+    "id": 12069177147,
+    "sha256": "6044bc6a527a1a538583a219dd46bd6370fb7fe293458015a8b3745b86dfecbe",
+    "digest_verified": true,
+    "container_inventory_empty": true
+  },
+  "pr_ci": {
+    "run": 38947585397,
+    "status": "incomplete at observation",
+    "remaining": [
+      "backend E2E shard2",
+      "Sonar analysis/scope"
+    ],
+    "images": "all three candidates and signed candidate gate successful",
+    "mcp": "success",
+    "backend_unit": "success",
+    "browser_shards": "both successful"
+  },
+  "merge_authorized": false,
+  "deployment_authorized": false,
+  "prerequisite_full_acceptance": "pending PR-specific applicable gates; no full Rust parity implication"
+}

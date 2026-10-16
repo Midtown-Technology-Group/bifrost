@@ -53,10 +53,16 @@ This does not mean root independently repeated all Go tests or reviewed every
 implementation line. Nine completed same-binary cases and the tenth negative
 remain evidence for their exact candidate and isolated environment.
 
-AUTH-P1 manual CI 38947574111 has passed literal pre-PR and backend unit at the
-last observation; full PR/manual CI, images, shards, MCP and coverage were still
-incomplete. Required-check success is not full gate acceptance. Keep current
-run readback authoritative and retain old pull-limit failures at their old head.
+AUTH-P1 manual CI 38947574111 completed successfully: literal pre-PR, backend
+unit, all four backend E2E shards, both browser shards and MCP. The original
+unit-job log reports 14,010 passes (3 skipped, 66 deselected) and confirms the
+12 authority-admission, four missing-caller and callerless-positive cases. Its
+coverage artifact retains coverage XML, not JUnit. PR CI 38947585397 still has
+backend shard 2 and Sonar work outstanding at this observation; signed candidate
+images and the other listed test lanes passed. The
+[exact validation record](rust-core-mvp-auth-p1-validation-39245315.json)
+separates those statuses. Required-check success is not full gate acceptance.
+Keep live readback authoritative and retain old failures at their original head.
 
 ## Implementation baseline and compatibility gaps
 
