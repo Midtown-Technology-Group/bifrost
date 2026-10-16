@@ -1591,20 +1591,22 @@ class GitHubSyncService:
                 if not is_merge and not has_unmerged:
                     return ResolveResult(success=False, error="No conflicts to resolve")
 
-                # Apply resolutions
-                for cpath, resolution in safe_resolutions.items():
-                    try:
-                        if resolution == "ours":
-                            repo.git.checkout("--ours", "--", cpath)
-                        elif resolution == "theirs":
-                            repo.git.checkout("--theirs", "--", cpath)
-                        repo.git.add("--", cpath)
-                    except Exception:
-                        # DU/UD conflict — one side deleted, checkout fails
+                # Git interprets pathspec magic even after `--`. Keep these
+                # selected-file mutations literal for the full resolution loop.
+                with repo.git.custom_environment(GIT_LITERAL_PATHSPECS="1"):
+                    for cpath, resolution in safe_resolutions.items():
                         try:
-                            repo.git.rm("--", cpath)
-                        except Exception:
+                            if resolution == "ours":
+                                repo.git.checkout("--ours", "--", cpath)
+                            elif resolution == "theirs":
+                                repo.git.checkout("--theirs", "--", cpath)
                             repo.git.add("--", cpath)
+                        except Exception:
+                            # DU/UD conflict — one side deleted, checkout fails
+                            try:
+                                repo.git.rm("--", cpath)
+                            except Exception:
+                                repo.git.add("--", cpath)
 
                 # Complete the operation (merge commit is local)
                 if is_merge:
@@ -1690,24 +1692,27 @@ class GitHubSyncService:
                 repo = self._open_or_init(work_dir)
                 discarded = []
 
-                for path in safe_paths:
-                    file_path = resolved_paths[path]
-                    try:
-                        if repo.head.is_valid():
-                            try:
-                                # File exists in HEAD — restore it
-                                repo.git.checkout("HEAD", "--", path)
+                # Git interprets pathspec magic even after `--`. Keep these
+                # selected-file mutations literal for the full discard loop.
+                with repo.git.custom_environment(GIT_LITERAL_PATHSPECS="1"):
+                    for path in safe_paths:
+                        file_path = resolved_paths[path]
+                        try:
+                            if repo.head.is_valid():
+                                try:
+                                    # File exists in HEAD — restore it
+                                    repo.git.checkout("HEAD", "--", path)
+                                    discarded.append(path)
+                                    continue
+                                except Exception as e:
+                                    # Path isn't tracked in HEAD — fall through to delete branch
+                                    logger.debug(f"git checkout HEAD failed for {path}, falling back to unlink: {e}")
+                            # Untracked or not in HEAD — just delete
+                            if file_path.exists():
+                                file_path.unlink()
                                 discarded.append(path)
-                                continue
-                            except Exception as e:
-                                # Path isn't tracked in HEAD — fall through to delete branch
-                                logger.debug(f"git checkout HEAD failed for {path}, falling back to unlink: {e}")
-                        # Untracked or not in HEAD — just delete
-                        if file_path.exists():
-                            file_path.unlink()
-                            discarded.append(path)
-                    except Exception as e:
-                        logger.warning(f"Failed to discard {path}: {e}")
+                        except Exception as e:
+                            logger.warning(f"Failed to discard {path}: {e}")
 
                 # S3 sync up so other containers see the reverted files
                 await self.repo_manager.sync_up(work_dir)

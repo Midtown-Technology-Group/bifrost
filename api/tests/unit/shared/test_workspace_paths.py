@@ -58,3 +58,14 @@ def test_resolve_workspace_path_rejects_symlink_escape(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="remain within"):
         resolve_workspace_path(repository, "linked.txt")
+
+
+def test_resolve_workspace_path_rejects_symlink_to_git_metadata(tmp_path: Path) -> None:
+    repository = tmp_path / "repo"
+    git_metadata = repository / ".git"
+    git_metadata.mkdir(parents=True)
+    (git_metadata / "fixture").write_text("harmless metadata fixture")
+    (repository / "linked.txt").symlink_to(".git/fixture")
+
+    with pytest.raises(ValueError, match="Git internals"):
+        resolve_workspace_path(repository, "linked.txt")

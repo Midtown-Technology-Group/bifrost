@@ -36,7 +36,10 @@ def resolve_workspace_path(root: Path, path: str) -> Path:
     resolved = candidate.resolve(strict=False)
     if not resolved.is_relative_to(root_resolved):
         raise ValueError("workspace path must remain within the repository")
+    git_metadata = (root_resolved / ".git").resolve(strict=False)
+    if resolved == git_metadata or resolved.is_relative_to(git_metadata):
+        raise ValueError("workspace path cannot access Git internals")
     # Preserve the lexical leaf so unlink removes an allowed in-repository
     # symlink itself rather than its target. The resolved form is used only as
-    # the containment proof above.
+    # the containment and Git-metadata proof above.
     return candidate
