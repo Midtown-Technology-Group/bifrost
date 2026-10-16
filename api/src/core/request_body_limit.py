@@ -1,4 +1,4 @@
-"""ASGI request-body limits for routes which receive large multipart uploads."""
+"""ASGI request-body limits before JSON or multipart parsing."""
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
@@ -19,11 +19,20 @@ class _BodyTooLarge(Exception):
 
 
 class RouteBodyLimitMiddleware:
-    """Reject selected request bodies before multipart parsing can spool them."""
+    """Reject selected bodies before parsers allocate or spool their contents."""
 
-    def __init__(self, app: ASGIApp, *, limits: dict[tuple[str, str], int]) -> None:
+    def __init__(
+        self,
+        app: ASGIApp,
+        *,
+        limits: dict[tuple[str, str], int],
+        messages: dict[tuple[str, str], str] | None = None,
+        detail: str = "Request body exceeds the configured limit.",
+    ) -> None:
         self.app = app
         self.limits = limits
+        self.messages = messages or {}
+        self.detail = detail
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http":
@@ -36,7 +45,11 @@ class RouteBodyLimitMiddleware:
             return
 
         content_length = next(
-            (value for name, value in scope.get("headers", []) if name.lower() == b"content-length"),
+            (
+                value
+                for name, value in scope.get("headers", [])
+                if name.lower() == b"content-length"
+            ),
             None,
         )
         if content_length is not None:
@@ -64,10 +77,9 @@ class RouteBodyLimitMiddleware:
         except _BodyTooLarge:
             await self._reject(scope, receive, send)
 
-    @staticmethod
-    async def _reject(scope: Scope, receive: Receive, send: Send) -> None:
+    async def _reject(self, scope: Scope, receive: Receive, send: Send) -> None:
         response = JSONResponse(
             status_code=413,
-            content={"detail": "Solution archive exceeds the compressed upload limit."},
+            content={"detail": self.messages.get((scope["method"], scope["path"]), self.detail)},
         )
         await response(scope, receive, send)

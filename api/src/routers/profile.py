@@ -13,8 +13,8 @@ from fastapi.responses import Response
 from sqlalchemy import select, update
 
 from src.core.auth import CurrentUser
-from src.core.security import verify_password, get_password_hash
 from src.core.database import AsyncSession, get_db
+from src.core.security import get_password_hash, verify_password
 from src.models import PasswordChange, ProfileResponse, ProfileUpdate
 from src.models.orm.users import User
 
@@ -90,9 +90,7 @@ async def update_profile(
 
     # Update user
     await db.execute(
-        update(User)
-        .where(User.id == current_user.user_id)
-        .values(**update_values)
+        update(User).where(User.id == current_user.user_id).values(**update_values)
     )
     await db.commit()
 
@@ -245,8 +243,8 @@ async def delete_avatar(
 
 @router.post(
     "/password",
-    summary="Change or set password",
-    description="Change the authenticated user's password, or set one if they don't have one (passkey/OAuth users)",
+    summary="Change password",
+    description="Change the authenticated user's existing password",
     status_code=status.HTTP_204_NO_CONTENT,
 )
 async def change_password(
@@ -254,7 +252,7 @@ async def change_password(
     current_user: CurrentUser,
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> None:
-    """Change or set user's password."""
+    """Change a user's existing password."""
     # Load user to verify current password
     stmt = select(User).where(User.id == current_user.user_id)
     result = await db.execute(stmt)
@@ -266,18 +264,20 @@ async def change_password(
             detail="User not found",
         )
 
-    # If user has a password, require current_password and verify it
-    if user.hashed_password:
-        if not request.current_password:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Current password is required",
-            )
-        if not verify_password(request.current_password, user.hashed_password):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Current password is incorrect",
-            )
+    # Profile sessions cannot establish a new authentication method. Accounts
+    # provisioned through OAuth or passkeys must remain bound to that external
+    # credential unless a separate, verified recovery/enrollment flow is used.
+    if not user.hashed_password:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Password enrollment is not available from profile settings",
+        )
+
+    if not verify_password(request.current_password, user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Current password is incorrect",
+        )
 
     # Hash and update new password
     new_hashed = get_password_hash(request.new_password)
@@ -288,7 +288,4 @@ async def change_password(
     )
     await db.commit()
 
-    if user.hashed_password:
-        logger.info(f"Password changed for user {user.email}")
-    else:
-        logger.info(f"Password set for user {user.email}")
+    logger.info(f"Password changed for user {user.email}")
