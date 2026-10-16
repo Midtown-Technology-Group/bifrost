@@ -117,6 +117,25 @@ struct LockedSession<'a> {
     snapshot: Snapshot,
 }
 
+// Neither pooled connection settings nor temporary objects may choose which
+// authority/catalog/lifecycle objects are consulted. All application relations
+// are explicitly public-qualified; only built-in types/operators/functions use
+// this trusted path. SET LOCAL also works through transaction-pooling proxies.
+async fn prepare_transaction(tx: &mut Transaction<'_, Postgres>) -> Result<(), SessionError> {
+    for statement in [
+        "SET LOCAL search_path=pg_catalog,pg_temp",
+        "SET LOCAL statement_timeout='3s'",
+        "SET LOCAL lock_timeout='1s'",
+    ] {
+        sqlx::query(statement)
+            .persistent(false)
+            .execute(&mut **tx)
+            .await
+            .map_err(database_error)?;
+    }
+    Ok(())
+}
+
 async fn lock_running_session<'a>(
     pool: &'a PgPool,
     fence: &SessionFence,
@@ -125,31 +144,22 @@ async fn lock_running_session<'a>(
         return Err(SessionError::InvalidFence);
     }
     let mut tx = pool.begin().await.map_err(database_error)?;
-    for statement in [
-        "SET LOCAL statement_timeout='3s'",
-        "SET LOCAL lock_timeout='1s'",
-    ] {
-        sqlx::query(statement)
-            .persistent(false)
-            .execute(&mut *tx)
-            .await
-            .map_err(database_error)?;
-    }
+    prepare_transaction(&mut tx).await?;
     // The prototype login is intentionally explicit, not a caller-selectable role/GUC.
     // This creates/grants nothing and is not a production provisioning decision.
     let principal: bool = sqlx::query_scalar(
         "SELECT session_user = 'wex_core' AND current_user = session_user \
          AND NOT r.rolsuper AND NOT r.rolbypassrls AND NOT r.rolcreaterole \
          AND NOT r.rolcreatedb AND NOT r.rolreplication \
-         AND NOT EXISTS (SELECT 1 FROM pg_auth_members m WHERE m.member=r.oid) \
-         AND NOT EXISTS (SELECT 1 FROM pg_namespace n WHERE n.nspname='public' AND n.nspowner=r.oid) \
-         AND NOT EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace \
+         AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_auth_members m WHERE m.member=r.oid) \
+         AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_namespace n WHERE n.nspname='public' AND n.nspowner=r.oid) \
+         AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace \
                          WHERE n.nspname='public' AND c.relowner=r.oid) \
-         AND NOT EXISTS (SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace \
+         AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace \
                          WHERE n.nspname='public' AND p.proowner=r.oid) \
-         AND NOT EXISTS (SELECT 1 FROM pg_type t JOIN pg_namespace n ON n.oid=t.typnamespace \
+         AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_type t JOIN pg_catalog.pg_namespace n ON n.oid=t.typnamespace \
                          WHERE n.nspname='public' AND t.typowner=r.oid) \
-         FROM pg_roles r WHERE r.rolname=session_user",
+         FROM pg_catalog.pg_roles r WHERE r.rolname=session_user",
     ).persistent(false).fetch_one(&mut *tx).await.map_err(database_error)?;
     if !principal {
         return Err(SessionError::Rejected);
@@ -178,7 +188,7 @@ async fn lock_running_session<'a>(
     // Do not require current workflow/user live links to survive cancellation.
     // Their immutable admitted identity remains in the common owner/session.
     let status: String = sqlx::query_scalar(
-        "SELECT e.status::text FROM executions e JOIN runtime_execution_owners o \
+        "SELECT e.status::text FROM public.executions e JOIN public.runtime_execution_owners o \
          ON o.execution_id=e.id WHERE e.id=$1::text::uuid \
          AND o.owner_incarnation_id=$2::text::uuid FOR UPDATE OF e NOWAIT",
     )
@@ -190,7 +200,7 @@ async fn lock_running_session<'a>(
     .map_err(database_error)?
     .ok_or(SessionError::Rejected)?;
     let attempt = sqlx::query(
-        "SELECT id FROM workflow_execution_attempts WHERE id=$1::text::uuid \
+        "SELECT id FROM public.workflow_execution_attempts WHERE id=$1::text::uuid \
          AND execution_id=$2::text::uuid AND claim_token=$3::text::uuid \
          AND worker_incarnation_id=$4::text::uuid AND completed_at IS NULL \
          AND status='running' AND phase='execution' FOR UPDATE NOWAIT",
@@ -207,7 +217,7 @@ async fn lock_running_session<'a>(
         return Err(SessionError::Rejected);
     }
     let owner = sqlx::query(
-        "SELECT execution_id FROM runtime_execution_owners WHERE execution_id=$1::text::uuid \
+        "SELECT execution_id FROM public.runtime_execution_owners WHERE execution_id=$1::text::uuid \
          AND owner_incarnation_id=$2::text::uuid AND live_execution_id=execution_id \
          FOR UPDATE NOWAIT",
     )
@@ -221,7 +231,7 @@ async fn lock_running_session<'a>(
         return Err(SessionError::Rejected);
     }
     let session = sqlx::query(
-        "SELECT closed_at IS NOT NULL AS closed,close_reason FROM runtime_sessions \
+        "SELECT closed_at IS NOT NULL AS closed,close_reason FROM public.runtime_sessions \
          WHERE id=$1::text::uuid AND execution_id=$2::text::uuid \
          AND owner_incarnation_id=$3::text::uuid AND workflow_attempt_id=$4::text::uuid \
          AND claim_token=$5::text::uuid AND worker_incarnation_id=$6::text::uuid \
@@ -267,7 +277,7 @@ async fn lock_running_session<'a>(
         return Err(SessionError::Rejected);
     }
     let start = sqlx::query(
-        "SELECT id FROM runtime_starts WHERE session_id=$1::text::uuid \
+        "SELECT id FROM public.runtime_starts WHERE session_id=$1::text::uuid \
          AND execution_id=$2::text::uuid AND owner_incarnation_id=$3::text::uuid \
          AND workflow_attempt_id=$4::text::uuid ORDER BY id FOR UPDATE NOWAIT",
     )
@@ -283,7 +293,7 @@ async fn lock_running_session<'a>(
         return Err(SessionError::Rejected);
     }
     sqlx::query(
-        "SELECT id FROM runtime_admissions WHERE session_id=$1::text::uuid \
+        "SELECT id FROM public.runtime_admissions WHERE session_id=$1::text::uuid \
          ORDER BY purpose,id FOR UPDATE NOWAIT",
     )
     .bind(fence.session_id.as_str())
@@ -293,7 +303,7 @@ async fn lock_running_session<'a>(
     .map_err(database_error)?;
     let grants = sqlx::query(
         "SELECT revoked_at IS NOT NULL AS revoked,revocation_reason \
-         FROM workflow_runtime_sdk_grants WHERE runtime_session_id=$1::text::uuid \
+         FROM public.workflow_runtime_sdk_grants WHERE runtime_session_id=$1::text::uuid \
          ORDER BY id FOR UPDATE NOWAIT",
     )
     .bind(fence.session_id.as_str())
@@ -302,7 +312,7 @@ async fn lock_running_session<'a>(
     .await
     .map_err(database_error)?;
     let reports = sqlx::query(
-        "SELECT disposition,winner FROM runtime_report_receipts WHERE session_id=$1::text::uuid \
+        "SELECT disposition,winner FROM public.runtime_report_receipts WHERE session_id=$1::text::uuid \
          ORDER BY result_message_id FOR UPDATE NOWAIT",
     )
     .bind(fence.session_id.as_str())
@@ -358,7 +368,7 @@ pub async fn request_running_cancel(
         return Ok(CancelCommit::AlreadyCommitted);
     }
     let updated = sqlx::query(
-        "UPDATE executions SET status='Cancelling' WHERE id=$1::text::uuid AND status='Running'",
+        "UPDATE public.executions SET status='Cancelling' WHERE id=$1::text::uuid AND status='Running'",
     )
     .bind(fence.execution_id.as_str())
     .persistent(false)
@@ -369,7 +379,7 @@ pub async fn request_running_cancel(
         return Err(SessionError::Rejected);
     }
     let closed = sqlx::query(
-        "UPDATE runtime_sessions SET closed_at=clock_timestamp(),close_reason='cancel_requested' \
+        "UPDATE public.runtime_sessions SET closed_at=clock_timestamp(),close_reason='cancel_requested' \
          WHERE id=$1::text::uuid AND closed_at IS NULL",
     )
     .bind(fence.session_id.as_str())
@@ -381,7 +391,7 @@ pub async fn request_running_cancel(
         return Err(SessionError::Rejected);
     }
     sqlx::query(
-        "UPDATE workflow_runtime_sdk_grants SET revoked_at=clock_timestamp(), \
+        "UPDATE public.workflow_runtime_sdk_grants SET revoked_at=clock_timestamp(), \
          revocation_reason='session_closed' WHERE runtime_session_id=$1::text::uuid \
          AND revoked_at IS NULL",
     )
@@ -410,6 +420,57 @@ mod tests {
             grants: vec![],
             reports: vec![],
         }
+    }
+
+    // Uses only the ordinary isolated Alembic-migrated test database. No common
+    // schema, runtime role, credential or lifecycle admission is installed.
+    #[cfg(feature = "live-db")]
+    #[tokio::test]
+    async fn transaction_resists_temp_shadows() -> Result<(), Box<dyn std::error::Error>> {
+        let url = std::env::var("BIFROST_RUST_TEST_DATABASE_URL")
+            .map_err(|_| "live-db requires BIFROST_RUST_TEST_DATABASE_URL for an isolated Alembic-migrated database")?;
+        let config = crate::DatabaseConfig::new(&url, 1, std::time::Duration::from_secs(2))?;
+        let database = crate::Database::new(&config)?;
+        let mut tx = database.pool().begin().await?;
+        for statement in [
+            "SET LOCAL search_path=pg_temp,public,pg_catalog",
+            "CREATE TEMP TABLE pg_roles (shadow boolean) ON COMMIT DROP",
+            "CREATE TEMP TABLE executions (shadow boolean) ON COMMIT DROP",
+        ] {
+            sqlx::query(statement)
+                .persistent(false)
+                .execute(&mut *tx)
+                .await?;
+        }
+        // Establish that the hostile path actually resolves both shadow tables.
+        // A test that never reproduces masking cannot establish this boundary.
+        let shadowed: bool = sqlx::query_scalar(
+            "SELECT pg_catalog.to_regclass('pg_roles') = pg_catalog.to_regclass('pg_temp.pg_roles') \
+             AND pg_catalog.to_regclass('executions') = pg_catalog.to_regclass('pg_temp.executions')",
+        )
+        .persistent(false)
+        .fetch_one(&mut *tx)
+        .await?;
+        assert!(
+            shadowed,
+            "temporary shadow setup did not mask intended relations"
+        );
+        prepare_transaction(&mut tx).await?;
+        let trusted: bool = sqlx::query_scalar(
+            "SELECT pg_catalog.to_regclass('pg_roles') = pg_catalog.to_regclass('pg_catalog.pg_roles') \
+             AND pg_catalog.to_regclass('public.executions') IS NOT NULL \
+             AND pg_catalog.to_regclass('public.executions') <> pg_catalog.to_regclass('pg_temp.executions')",
+        )
+        .persistent(false)
+        .fetch_one(&mut *tx)
+        .await?;
+        assert!(
+            trusted,
+            "transaction did not retain trusted relation resolution"
+        );
+        tx.rollback().await?;
+        database.close().await;
+        Ok(())
     }
 
     #[test]
