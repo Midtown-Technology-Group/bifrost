@@ -36,7 +36,8 @@ class _Op:
 
 def test_duplicate_repo_paths_escape_log_control_characters() -> None:
     spec = importlib.util.spec_from_file_location("apps_repo_path_migration", MIGRATION)
-    assert spec is not None and spec.loader is not None
+    assert spec is not None
+    assert spec.loader is not None
     migration = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(migration)
     migration.op = _Op()
