@@ -40,6 +40,9 @@ pin=$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["artifact_i
 # A wrong pin must fail before a workload or Docker runtime can be admitted.
 if "$cli" inspect "$evidence/cold/native-bundle.tar" --sha256 "$(printf 'f%.0s' {1..64})" > "$evidence/wrong-pin.out" 2> "$evidence/wrong-pin.err"; then exit 1; fi
 [[ ! -s "$evidence/wrong-pin.out" ]]
+if "$cli" run "$evidence/cold/native-bundle.tar" --sha256 "$(printf 'f%.0s' {1..64})" --output "$evidence/wrong-pin-run" > "$evidence/wrong-run-pin.out" 2> "$evidence/wrong-run-pin.err"; then exit 1; fi
+[[ ! -s "$evidence/wrong-run-pin.out" ]]
+[[ -z "$(find "$evidence/wrong-pin-run" -mindepth 1 -print -quit)" ]]
 cp -a "$spike_root" "$scratch/edited"
 python3 - "$scratch/edited/internal/readiness/readiness.go" <<'PY'
 from pathlib import Path

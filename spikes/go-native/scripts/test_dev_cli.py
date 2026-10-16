@@ -5,6 +5,7 @@ import contextlib
 import io
 import json
 import pathlib
+import subprocess
 import tempfile
 import unittest
 from unittest import mock
@@ -15,6 +16,44 @@ from test_native_bundle import fixture
 
 
 class DeveloperBoundaryTests(unittest.TestCase):
+    def test_existing_image_is_borrowed_and_never_added_to_cleanup_registry(self):
+        with tempfile.TemporaryDirectory() as directory:
+            cache = pathlib.Path(directory)
+            docker = dev_cli.Docker(cache)
+            image = "sha256:" + "a" * 64
+            with mock.patch.object(docker, "command", return_value=image):
+                self.assertEqual(
+                    dev_cli.cached_image(docker, cache, "runtime", "FROM scratch\n"),
+                    image,
+                )
+            self.assertFalse((cache / "image-references.json").exists())
+
+    def test_created_image_is_owned_and_replacement_is_denied(self):
+        with tempfile.TemporaryDirectory() as directory:
+            cache = pathlib.Path(directory)
+            docker = dev_cli.Docker(cache)
+            image = "sha256:" + "a" * 64
+            with mock.patch.object(
+                docker,
+                "command",
+                side_effect=[subprocess.CalledProcessError(1, ["docker"]), "", image],
+            ):
+                self.assertEqual(
+                    dev_cli.cached_image(docker, cache, "runtime", "FROM scratch\n"),
+                    image,
+                )
+            self.assertEqual(
+                list(
+                    json.loads((cache / "image-references.json").read_text()).values()
+                ),
+                [image],
+            )
+            with (
+                mock.patch.object(docker, "command", return_value="sha256:" + "b" * 64),
+                self.assertRaises(dev_cli.Denied),
+            ):
+                dev_cli.cached_image(docker, cache, "runtime", "FROM scratch\n")
+
     def test_snapshot_binds_an_edit_and_refuses_source_links(self):
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)

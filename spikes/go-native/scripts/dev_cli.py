@@ -193,6 +193,9 @@ class Docker:
 def cached_image(docker, cache, kind, dockerfile):
     key = digest(dockerfile.encode())
     tag = f"bifrost-go-developer-{kind}:{key[:24]}"
+    registry = cache / "image-references.json"
+    references = json.loads(registry.read_text()) if registry.exists() else {}
+    created = False
     try:
         image = docker.command(["image", "inspect", tag, "--format", "{{.Id}}"])
     except subprocess.CalledProcessError:
@@ -202,11 +205,14 @@ def cached_image(docker, cache, kind, dockerfile):
                 ["build", "--tag", tag, directory], f"{kind}-image-build.txt"
             )
         image = docker.command(["image", "inspect", tag, "--format", "{{.Id}}"])
+        created = True
     docker.images[tag] = image
-    registry = cache / "image-references.json"
-    references = json.loads(registry.read_text()) if registry.exists() else {}
-    references[tag] = image
-    registry.write_text(json.dumps(references, indent=2) + "\n")
+    if tag in references and references[tag] != image:
+        raise Denied("developer cache image identity changed")
+    if created:
+        references[tag] = image
+        registry.write_text(json.dumps(references, indent=2) + "\n")
+    # An existing tag absent from this cache's registry is borrowed, not owned.
     return image
 
 
@@ -411,6 +417,8 @@ def build_or_test(args):
                         "output_schema_sha256": frozen / "schemas/output.json",
                     }.items():
                         evidence[field] = digest(path.read_bytes())
+                    if len(json.dumps(evidence).encode()) > 2 * 1024 * 1024:
+                        raise Denied("build evidence exceeds adapter bound")
                     write_json(output / "descriptor.json", evidence)
                     bundle = assemble(frozen, output)
                     shutil.copyfile(

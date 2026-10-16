@@ -1,5 +1,9 @@
 # Native Go authoring/build experiment (0.0.0-spike.2)
 
+The [Go developer CLI](../../docs/dev/go-developer-cli.md) provides isolated
+`test`, `build`, `inspect` and common-protocol local `run` commands for this module.
+Its local SDK fixtures add no control-plane admission or durable projection.
+
 For read-only inspection of an existing identified archive, see
 [Go artifact inspection](../../docs/dev/go-artifact-inspection.md). The command
 does not require a compiler or control-plane server.
