@@ -37,6 +37,23 @@ async def test_agents_run_waits_through_short_status_requests(monkeypatch):
     assert mod.agents.get_run.await_count == 2
 
 
+@pytest.mark.asyncio
+async def test_non_admin_wait_fetches_scoped_result_after_redacted_status(
+    monkeypatch,
+):
+    mod = _agents_module()
+    monkeypatch.setattr(
+        mod.agents,
+        "get_run",
+        AsyncMock(return_value=MagicMock(status="completed", output=None)),
+    )
+    get_result = AsyncMock(return_value={"text": "caller result"})
+    monkeypatch.setattr(mod.agents, "get_result", get_result)
+
+    assert await mod.agents.wait("run-redacted") == "caller result"
+    get_result.assert_awaited_once_with("run-redacted")
+
+
 def test_agents_polling_slows_as_run_ages():
     mod = _agents_module()
     assert mod._poll_interval(0) == 2.0

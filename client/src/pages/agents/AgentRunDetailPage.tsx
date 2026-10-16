@@ -13,6 +13,7 @@ import {
  */
 
 import { useAgentRunStepStore } from "@/stores/agentRunStepStore";
+import { usePlatformAdminGrant } from "@/hooks/usePlatformAdminGrant";
 import { AgentActivityWorkspace } from "./AgentActivityWorkspace";
 import { AgentRunOverviewFooter } from "./AgentRunOverviewFooter";
 import { copyToClipboard } from "@/lib/clipboard";
@@ -82,11 +83,8 @@ export function AgentRunDetailPage() {
 		runId: string;
 	}>();
 	const queryClient = useQueryClient();
-	const { isPlatformAdmin, hasRole } = useAuth();
-	const canViewRaw =
-		isPlatformAdmin ||
-		hasRole("Platform Admin") ||
-		hasRole("Platform Owner");
+	const { isPlatformAdmin } = useAuth();
+	const canViewRaw = usePlatformAdminGrant();
 	const location = useLocation();
 	const navigate = useNavigate();
 	const activeTab =
@@ -328,8 +326,12 @@ export function AgentRunDetailPage() {
 	useAgentRunUpdates({ agentId: owningAgentId, runId });
 
 	const verdict = ((run?.verdict as Verdict | undefined) ?? null) as Verdict;
-	const [noteDrafts, setNoteDrafts] = useState<ReadonlyMap<string, string>>(() => new Map());
-	const note = runId ? (noteDrafts.get(runId) ?? run?.verdict_note ?? "") : "";
+	const [noteDrafts, setNoteDrafts] = useState<ReadonlyMap<string, string>>(
+		() => new Map(),
+	);
+	const note = runId
+		? (noteDrafts.get(runId) ?? run?.verdict_note ?? "")
+		: "";
 	const setNote = (value: string) => {
 		if (runId)
 			setNoteDrafts((previous) => new Map(previous).set(runId, value));

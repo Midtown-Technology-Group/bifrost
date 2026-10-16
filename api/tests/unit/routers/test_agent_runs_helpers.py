@@ -228,6 +228,63 @@ async def test_get_agent_run_raises_404_when_run_not_visible(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("admin", [False, True])
+async def test_get_agent_run_result_allows_original_caller_or_admin(
+    monkeypatch: pytest.MonkeyPatch,
+    admin: bool,
+) -> None:
+    user = _user(has_platform_admin_grant=lambda: admin)
+    caller_user_id = str(uuid4()) if admin else str(user.user_id)
+    run = _run(caller_user_id=caller_user_id, output={"text": "private result"})
+    monkeypatch.setattr(
+        agent_runs,
+        "load_agent_run_for_user",
+        AsyncMock(return_value=run),
+    )
+
+    response = await agent_runs.get_agent_run_result(run.id, _FakeDb([]), user)
+
+    assert response.run_id == run.id
+    assert response.output == {"text": "private result"}
+
+
+@pytest.mark.asyncio
+async def test_get_agent_run_result_hides_visible_run_from_noncaller(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user = _user()
+    run = _run(caller_user_id=str(uuid4()))
+    monkeypatch.setattr(
+        agent_runs,
+        "load_agent_run_for_user",
+        AsyncMock(return_value=run),
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        await agent_runs.get_agent_run_result(run.id, _FakeDb([]), user)
+
+    assert exc.value.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_get_agent_run_result_rejects_nonterminal_run(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user = _user()
+    run = _run(caller_user_id=str(user.user_id), status="running")
+    monkeypatch.setattr(
+        agent_runs,
+        "load_agent_run_for_user",
+        AsyncMock(return_value=run),
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        await agent_runs.get_agent_run_result(run.id, _FakeDb([]), user)
+
+    assert exc.value.status_code == 409
+
+
+@pytest.mark.asyncio
 async def test_cancel_agent_run_takes_publication_lock_before_loading(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -16,7 +16,7 @@ from typing import Any, Literal
 
 from ._context import _execution_context
 from .client import get_client, raise_for_status_with_detail
-from .models import AgentRun, AgentRunHandle, AgentRunPending
+from .models import AgentRun, AgentRunHandle, AgentRunPending, AgentRunResult
 
 
 def _poll_interval(elapsed_seconds: float) -> float:
@@ -87,6 +87,20 @@ class agents:
             raise PermissionError(f"Access denied to agent run: {run_id}")
         raise_for_status_with_detail(response)
         return AgentRun.model_validate(response.json())
+
+    @staticmethod
+    async def get_result(run_id: str) -> dict[str, Any] | None:
+        """Fetch terminal output through the initiating-caller contract."""
+        client = get_client()
+        response = await client.engine_request(
+            "GET", f"/api/agent-runs/{run_id}/result"
+        )
+        if response.status_code == 404:
+            raise ValueError(f"Agent run result not found: {run_id}")
+        if response.status_code == 403:
+            raise PermissionError(f"Access denied to agent run result: {run_id}")
+        raise_for_status_with_detail(response)
+        return AgentRunResult.model_validate(response.json()).output
 
     @staticmethod
     async def run(
@@ -181,6 +195,8 @@ class agents:
 
             if run.status in {"completed", "budget_exceeded"}:
                 output = run.output
+                if output is None:
+                    output = await agents.get_result(run_id)
                 if not output_schema and isinstance(output, dict) and set(output) == {"text"}:
                     return output["text"]
                 if output_schema and isinstance(output, str):

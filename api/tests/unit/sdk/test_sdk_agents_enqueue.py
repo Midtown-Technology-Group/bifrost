@@ -97,3 +97,26 @@ async def test_get_run_translates_not_found(monkeypatch):
 
     with pytest.raises(ValueError, match="Agent run not found"):
         await mod.agents.get_run("missing")
+
+
+@pytest.mark.asyncio
+async def test_get_result_uses_caller_scoped_terminal_endpoint(monkeypatch):
+    mod = _agents_module()
+    response = MagicMock(status_code=200, is_success=True)
+    response.json.return_value = {
+        "run_id": "11111111-1111-1111-1111-111111111111",
+        "output": {"text": "caller result"},
+    }
+    client = MagicMock()
+    client.engine_request = AsyncMock(return_value=response)
+    monkeypatch.setattr(mod, "get_client", lambda: client)
+
+    result = await mod.agents.get_result(
+        "11111111-1111-1111-1111-111111111111"
+    )
+
+    assert result == {"text": "caller result"}
+    client.engine_request.assert_awaited_once_with(
+        "GET",
+        "/api/agent-runs/11111111-1111-1111-1111-111111111111/result",
+    )

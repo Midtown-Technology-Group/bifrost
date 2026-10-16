@@ -37,6 +37,7 @@ from src.models.contracts.agent_runs import (
     AgentRunEnqueueRequest,
     AgentRunEnqueueResponse,
     AgentRunListResponse,
+    AgentRunResultResponse,
     AgentRunRerunResponse,
     AgentRunResponse,
     AgentRunStepResponse,
@@ -57,7 +58,7 @@ from src.models.contracts.executions import AIUsagePublicSimple, AIUsageTotalsSi
 from src.models.orm.agent_run_verdict_history import AgentRunVerdictHistory
 from src.models.enums import AgentAccessLevel
 from src.models.orm.agents import Agent
-from src.models.orm.agent_runs import AgentRun
+from src.models.orm.agent_runs import AgentRun, AgentRunStep
 from src.models.orm.ai_usage import AIUsage
 from src.models.orm.summary_backfill_job import SummaryBackfillJob
 from src.core.redis_client import get_redis_client
@@ -163,6 +164,24 @@ def _run_to_response(
         started_at=run.started_at,
         completed_at=run.completed_at,
         parent_run_id=run.parent_run_id,
+    )
+
+
+def _step_to_response(
+    step: AgentRunStep,
+    *,
+    include_sensitive: bool,
+) -> AgentRunStepResponse:
+    """Project one stored run step through the raw-data grant."""
+    return AgentRunStepResponse(
+        id=step.id,
+        run_id=step.run_id,
+        step_number=step.step_number,
+        type=step.type,
+        content=step.content if include_sensitive else None,
+        tokens_used=step.tokens_used,
+        duration_ms=step.duration_ms,
+        created_at=step.created_at,
     )
 
 
@@ -636,7 +655,9 @@ async def get_agent_run(
         try:
             async with get_redis() as r:
                 stream_key = agent_run_steps_stream_key(str(run_id))
-                entries = await r.xrange(stream_key, min="-", max="+")  # type: ignore[misc]
+                entries = (
+                    await r.xrange(stream_key, min="-", max="+")  # type: ignore[misc]
+                ) or []
                 for _entry_id, data in entries:
                     content_raw = data.get("content", "{}")
                     content = json.loads(content_raw) if content_raw else None
@@ -656,25 +677,13 @@ async def get_agent_run(
             logger.warning(f"Failed to read steps from Redis for run {log_safe(run_id)}, falling back to DB")
             # Fall back to DB steps (may be empty if uncommitted)
             steps_response = [
-                AgentRunStepResponse(
-                    id=step.id, run_id=step.run_id, step_number=step.step_number,
-                    type=step.type,
-                    content=step.content if include_sensitive else None,
-                    tokens_used=step.tokens_used,
-                    duration_ms=step.duration_ms, created_at=step.created_at,
-                )
+                _step_to_response(step, include_sensitive=include_sensitive)
                 for step in run.steps
             ]
     else:
         # Completed — read from DB (steps are committed)
         steps_response = [
-            AgentRunStepResponse(
-                id=step.id, run_id=step.run_id, step_number=step.step_number,
-                type=step.type,
-                content=step.content if include_sensitive else None,
-                tokens_used=step.tokens_used,
-                duration_ms=step.duration_ms, created_at=step.created_at,
-            )
+            _step_to_response(step, include_sensitive=include_sensitive)
             for step in run.steps
         ]
 
@@ -722,6 +731,30 @@ async def get_agent_run(
         ai_usage=ai_usage_list,
         ai_totals=ai_totals_response,
     )
+
+
+@router.get("/{run_id}/result")
+async def get_agent_run_result(
+    run_id: UUID,
+    db: DbSession,
+    user: CurrentActiveUser,
+) -> AgentRunResultResponse:
+    """Return terminal output to its initiating caller without raw trace data."""
+    run = await load_agent_run_for_user(db, run_id, user)
+    is_original_caller = run is not None and run.caller_user_id == str(user.user_id)
+    if run is None or not (
+        is_original_caller or user.has_platform_admin_grant()
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Agent run {run_id} not found",
+        )
+    if run.status not in {"completed", "budget_exceeded"}:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Agent run {run_id} has no terminal result",
+        )
+    return AgentRunResultResponse(run_id=run.id, output=run.output)
 
 
 @router.post("/{run_id}/rerun")

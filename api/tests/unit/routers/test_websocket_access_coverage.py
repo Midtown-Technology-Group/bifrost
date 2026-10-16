@@ -515,6 +515,7 @@ async def test_websocket_connect_filters_initial_channels_without_accepting_file
     assert f"app:draft:{app_id}" in connected_channels
     assert f"app:live:{app_id}" in connected_channels
     assert f"agent-run:{run_id}" in connected_channels
+    assert hasattr(ws, "_agent_run_dispatcher")
     assert "agent-runs:org:" in " ".join(connected_channels)
     can_exec.assert_awaited_once_with(user, execution_id)
     can_app.assert_awaited_once_with(user, app_id)

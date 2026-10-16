@@ -339,6 +339,39 @@ def _make_file_dispatcher(websocket: WebSocket, user: UserPrincipal) -> Any:
     return dispatcher
 
 
+def _project_agent_run_message(
+    payload: dict[str, Any],
+    *,
+    include_sensitive: bool,
+) -> dict[str, Any]:
+    """Copy and fail-closed project one live run message for its recipient."""
+    projected = copy.deepcopy(payload)
+    if include_sensitive:
+        return projected
+    for field in ("input", "output", "summary_error"):
+        if field in projected:
+            projected[field] = None
+    step = projected.get("step")
+    if isinstance(step, dict) and "content" in step:
+        step["content"] = None
+    return projected
+
+
+def _make_agent_run_dispatcher(websocket: WebSocket, user: UserPrincipal) -> Any:
+    """Return a recipient-specific dispatcher for live run status and steps."""
+    include_sensitive = user.has_platform_admin_grant()
+
+    async def dispatcher(_channel_name: str, payload: dict[str, Any]) -> None:
+        await websocket.send_json(
+            _project_agent_run_message(
+                payload,
+                include_sensitive=include_sensitive,
+            )
+        )
+
+    return dispatcher
+
+
 async def _handle_table_message(
     websocket: WebSocket,
     user: UserPrincipal,
@@ -1232,6 +1265,11 @@ async def websocket_connect(
     # Populated by `_authorize_table_subscribe`; consulted by the dispatcher.
     websocket.state.table_subscriptions = {}
     websocket.state.file_subscriptions = {}
+    if user is not None:
+        websocket._agent_run_dispatcher = _make_agent_run_dispatcher(  # type: ignore[attr-defined]
+            websocket,
+            user,
+        )
 
     try:
         await manager.connect(websocket, allowed_channels)

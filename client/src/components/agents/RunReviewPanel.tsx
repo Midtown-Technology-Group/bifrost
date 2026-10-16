@@ -32,11 +32,12 @@ import { Input } from "@/components/ui/input";
 import { VariablesTreeView } from "@/components/ui/variables-tree-view";
 import { cn } from "@/lib/utils";
 import { formatDuration } from "@/lib/utils";
+import { useAuth } from "@/contexts/AuthContext";
 import {
 	createAgentRunNavigationState,
 	type AgentRunNavigationOrigin,
 } from "@/lib/agent-run-navigation";
-import { useAuth } from "@/contexts/AuthContext";
+import { usePlatformAdminGrant } from "@/hooks/usePlatformAdminGrant";
 import { SummaryRegenerationControl } from "./SummaryRegenerationControl";
 import type { components } from "@/lib/v1";
 
@@ -178,11 +179,8 @@ export function RunReviewPanel({
 	const maxActions = compact ? 3 : 4;
 	const visibleActions = fallbackActions.slice(0, maxActions);
 	const overflow = fallbackActions.length - visibleActions.length;
-	const { isPlatformAdmin, hasRole } = useAuth();
-	const canViewRaw =
-		isPlatformAdmin ||
-		hasRole("Platform Admin") ||
-		hasRole("Platform Owner");
+	const { isPlatformAdmin } = useAuth();
+	const canViewRaw = usePlatformAdminGrant();
 	const summaryStatus = run.summary_status;
 	const needsRegen = summaryStatus && summaryStatus !== "completed";
 
