@@ -1,0 +1,1358 @@
+{
+  "schema_version": 1,
+  "kind": "static-source-review-inventory",
+  "main": "e42999395231ebc536711e5015422edfb75613a7",
+  "limitations": [
+    "No application imports, SQL execution or installed-catalog observation.",
+    "AST definitions preserve source expressions; starred/generated constraints are not executed or expanded.",
+    "ORM inventory does not prove migration/catalog equivalence or runtime compatibility."
+  ],
+  "delta": {
+    "workflow_runtime_sdk_grants": {
+      "cred_columns": 35,
+      "go_columns": 38,
+      "go_only": [
+        "committed_start_id",
+        "owner_incarnation_id",
+        "start_message_id"
+      ],
+      "cred_only": []
+    },
+    "workflow_runtime_sdk_grant_operations": {
+      "cred_columns": 8,
+      "go_columns": 8,
+      "go_only": [],
+      "cred_only": []
+    }
+  },
+  "cred": {
+    "ref": "3918d608a2d497d1ca8424fd4229d191323e2d7a",
+    "path": "api/src/models/orm/runtime_sdk_grants.py",
+    "sha256": "3e4a3f9481e836cc64594d8a01f96d9683b5b555cef4eee672c60f3b09d3bd1a",
+    "tables": {
+      "workflow_runtime_sdk_grants": {
+        "columns": [
+          {
+            "name": "id",
+            "definition": "mapped_column(primary_key=True)",
+            "line": 22
+          },
+          {
+            "name": "schema_version",
+            "definition": "mapped_column(String(32), nullable=False)",
+            "line": 23
+          },
+          {
+            "name": "workflow_attempt_id",
+            "definition": "mapped_column(ForeignKey('workflow_execution_attempts.id', ondelete='CASCADE'), nullable=False)",
+            "line": 24
+          },
+          {
+            "name": "execution_id",
+            "definition": "mapped_column(nullable=False)",
+            "line": 27
+          },
+          {
+            "name": "attempt_number",
+            "definition": "mapped_column(Integer, nullable=False)",
+            "line": 28
+          },
+          {
+            "name": "claim_token_digest",
+            "definition": "mapped_column(String(64), nullable=False)",
+            "line": 29
+          },
+          {
+            "name": "worker_incarnation_id",
+            "definition": "mapped_column(nullable=False)",
+            "line": 30
+          },
+          {
+            "name": "supervisor_incarnation_id",
+            "definition": "mapped_column(nullable=False)",
+            "line": 31
+          },
+          {
+            "name": "runtime_session_id",
+            "definition": "mapped_column(nullable=False)",
+            "line": 32
+          },
+          {
+            "name": "started_at",
+            "definition": "mapped_column(DateTime(timezone=True), nullable=False)",
+            "line": 33
+          },
+          {
+            "name": "issued_at",
+            "definition": "mapped_column(DateTime(timezone=True), nullable=False)",
+            "line": 36
+          },
+          {
+            "name": "timeout_seconds",
+            "definition": "mapped_column(Integer, nullable=False)",
+            "line": 37
+          },
+          {
+            "name": "credential_deadline",
+            "definition": "mapped_column(DateTime(timezone=True), nullable=True)",
+            "line": 38
+          },
+          {
+            "name": "initial_access_expires_at",
+            "definition": "mapped_column(DateTime(timezone=True), nullable=False)",
+            "line": 41
+          },
+          {
+            "name": "caller_user_id",
+            "definition": "mapped_column(nullable=False)",
+            "line": 44
+          },
+          {
+            "name": "caller_organization_id",
+            "definition": "mapped_column(nullable=True)",
+            "line": 45
+          },
+          {
+            "name": "effective_organization_id",
+            "definition": "mapped_column(nullable=True)",
+            "line": 46
+          },
+          {
+            "name": "caller_email",
+            "definition": "mapped_column(String(320), nullable=False)",
+            "line": 47
+          },
+          {
+            "name": "caller_name",
+            "definition": "mapped_column(String(255), nullable=False)",
+            "line": 48
+          },
+          {
+            "name": "caller_admin",
+            "definition": "mapped_column(Integer, nullable=False)",
+            "line": 49
+          },
+          {
+            "name": "caller_provider",
+            "definition": "mapped_column(Integer, nullable=False)",
+            "line": 50
+          },
+          {
+            "name": "caller_external",
+            "definition": "mapped_column(Integer, nullable=False)",
+            "line": 51
+          },
+          {
+            "name": "caller_snapshot_digest",
+            "definition": "mapped_column(String(64), nullable=False)",
+            "line": 52
+          },
+          {
+            "name": "workflow_id",
+            "definition": "mapped_column(nullable=False)",
+            "line": 53
+          },
+          {
+            "name": "solution_install_id",
+            "definition": "mapped_column(nullable=False)",
+            "line": 54
+          },
+          {
+            "name": "source_kind",
+            "definition": "mapped_column(String(32), nullable=False)",
+            "line": 55
+          },
+          {
+            "name": "source_id",
+            "definition": "mapped_column(ForeignKey('solution_deployments.id', ondelete='CASCADE'), nullable=False)",
+            "line": 56
+          },
+          {
+            "name": "source_manifest_digest",
+            "definition": "mapped_column(String(71), nullable=False)",
+            "line": 59
+          },
+          {
+            "name": "source_resolution_digest",
+            "definition": "mapped_column(String(71), nullable=False)",
+            "line": 60
+          },
+          {
+            "name": "source_global_permission",
+            "definition": "mapped_column(Integer, nullable=False)",
+            "line": 61
+          },
+          {
+            "name": "source_digest",
+            "definition": "mapped_column(String(64), nullable=False)",
+            "line": 62
+          },
+          {
+            "name": "operations_digest",
+            "definition": "mapped_column(String(64), nullable=False)",
+            "line": 63
+          },
+          {
+            "name": "grant_digest",
+            "definition": "mapped_column(String(64), nullable=False)",
+            "line": 64
+          },
+          {
+            "name": "revoked_at",
+            "definition": "mapped_column(DateTime(timezone=True), nullable=True)",
+            "line": 65
+          },
+          {
+            "name": "revocation_reason",
+            "definition": "mapped_column(String(32), nullable=True)",
+            "line": 68
+          }
+        ],
+        "constraints": [
+          {
+            "definition": "UniqueConstraint('workflow_attempt_id', name='uq_runtime_sdk_grant_attempt')",
+            "line": 71
+          },
+          {
+            "definition": "UniqueConstraint('runtime_session_id', name='uq_runtime_sdk_grant_session')",
+            "line": 72
+          },
+          {
+            "definition": "CheckConstraint(\"schema_version = 'cred-p1/v1' AND source_kind = 'solution-deployment'\", name='ck_runtime_sdk_grant_schema')",
+            "line": 73
+          },
+          {
+            "definition": "CheckConstraint('attempt_number >= 1 AND timeout_seconds >= 0', name='ck_runtime_sdk_grant_numbers')",
+            "line": 77
+          },
+          {
+            "definition": "CheckConstraint('caller_admin IN (0,1) AND caller_provider IN (0,1) AND caller_external IN (0,1) AND source_global_permission IN (0,1)', name='ck_runtime_sdk_grant_flags')",
+            "line": 81
+          },
+          {
+            "definition": "CheckConstraint('((timeout_seconds = 0 AND credential_deadline IS NULL) OR (timeout_seconds > 0 AND credential_deadline IS NOT NULL AND initial_access_expires_at = credential_deadline))', name='ck_runtime_sdk_grant_deadline')",
+            "line": 85
+          },
+          {
+            "definition": "CheckConstraint(\"((revoked_at IS NULL AND revocation_reason IS NULL) OR (revoked_at IS NOT NULL AND revocation_reason IS NOT NULL AND revocation_reason IN ('session_closed','supervisor_replaced','explicit_revoke')))\", name='ck_runtime_sdk_grant_revocation')",
+            "line": 89
+          },
+          {
+            "definition": "CheckConstraint('octet_length(caller_email) <= 320 AND octet_length(caller_name) <= 255', name='ck_runtime_sdk_grant_text_bytes')",
+            "line": 93
+          },
+          {
+            "definition": "*tuple((CheckConstraint(f\"{column} ~ '^[0-9a-f]{{64}}$'\", name=f'ck_runtime_sdk_{column}') for column in ('claim_token_digest', 'caller_snapshot_digest', 'source_digest', 'operations_digest', 'grant_digest')))",
+            "line": 97
+          },
+          {
+            "definition": "*tuple((CheckConstraint(f\"{column} ~ '^sha256:[0-9a-f]{{64}}$'\", name=f'ck_runtime_sdk_{column}') for column in ('source_manifest_digest', 'source_resolution_digest')))",
+            "line": 109
+          },
+          {
+            "definition": "*tuple((CheckConstraint(f\"{column} IS NULL OR ({column} >= TIMESTAMPTZ '1970-01-01 00:00:00+00' AND {column} <= TIMESTAMPTZ '9999-12-31 23:59:59.999999+00')\", name=f'ck_runtime_sdk_time_{column}') for column in ('started_at', 'issued_at', 'credential_deadline', 'initial_access_expires_at', 'revoked_at')))",
+            "line": 118
+          }
+        ]
+      },
+      "workflow_runtime_sdk_grant_operations": {
+        "columns": [
+          {
+            "name": "grant_id",
+            "definition": "mapped_column(ForeignKey('workflow_runtime_sdk_grants.id', ondelete='CASCADE'), primary_key=True)",
+            "line": 137
+          },
+          {
+            "name": "ordinal",
+            "definition": "mapped_column(Integer, primary_key=True)",
+            "line": 141
+          },
+          {
+            "name": "operation",
+            "definition": "mapped_column(String(32), nullable=False)",
+            "line": 142
+          },
+          {
+            "name": "integration_name",
+            "definition": "mapped_column(String(255), nullable=False)",
+            "line": 143
+          },
+          {
+            "name": "scope_kind",
+            "definition": "mapped_column(String(16), nullable=False)",
+            "line": 144
+          },
+          {
+            "name": "scope_organization_id",
+            "definition": "mapped_column(nullable=True)",
+            "line": 145
+          },
+          {
+            "name": "resolved_organization_id",
+            "definition": "mapped_column(nullable=True)",
+            "line": 146
+          },
+          {
+            "name": "solution_install_id",
+            "definition": "mapped_column(nullable=True)",
+            "line": 147
+          }
+        ],
+        "constraints": [
+          {
+            "definition": "UniqueConstraint('grant_id', 'operation', name='uq_runtime_sdk_grant_operation')",
+            "line": 150
+          },
+          {
+            "definition": "CheckConstraint('ordinal >= 0 AND ordinal < 2', name='ck_runtime_sdk_operation_ordinal')",
+            "line": 153
+          },
+          {
+            "definition": "CheckConstraint(\"operation IN ('integration-get','mapping-get') AND scope_kind IN ('default','global','organization')\", name='ck_runtime_sdk_operation_kind')",
+            "line": 156
+          },
+          {
+            "definition": "CheckConstraint(\"((scope_kind = 'organization' AND scope_organization_id IS NOT NULL AND resolved_organization_id IS NOT NULL AND scope_organization_id = resolved_organization_id) OR (scope_kind != 'organization' AND scope_organization_id IS NULL)) AND (scope_kind != 'global' OR resolved_organization_id IS NULL)\", name='ck_runtime_sdk_operation_scope')",
+            "line": 160
+          },
+          {
+            "definition": "CheckConstraint(\"operation != 'mapping-get' OR solution_install_id IS NULL\", name='ck_runtime_sdk_operation_solution')",
+            "line": 164
+          },
+          {
+            "definition": "CheckConstraint('octet_length(integration_name) BETWEEN 1 AND 255', name='ck_runtime_sdk_operation_name_bytes')",
+            "line": 168
+          }
+        ]
+      }
+    }
+  },
+  "common_candidate": {
+    "ref": "56d1fb006d220b9dbb0747f1cca4def18677f918",
+    "path": "api/src/models/orm/runtime_execution.py",
+    "sha256": "61ebfc16c1e78a3d7df9a7ff2d65695abf214a9c1efbda64f24178c7be995f5b",
+    "tables": {
+      "runtime_resource_settlements": {
+        "columns": [
+          {
+            "name": "session_id",
+            "definition": "sa.Column('session_id', postgresql.UUID(), primary_key=True)",
+            "line": 18
+          },
+          {
+            "name": "execution_id",
+            "definition": "sa.Column('execution_id', postgresql.UUID(), nullable=False)",
+            "line": 19
+          },
+          {
+            "name": "owner_incarnation_id",
+            "definition": "sa.Column('owner_incarnation_id', postgresql.UUID(), nullable=False)",
+            "line": 20
+          },
+          {
+            "name": "workflow_attempt_id",
+            "definition": "sa.Column('workflow_attempt_id', postgresql.UUID(), nullable=False)",
+            "line": 21
+          },
+          {
+            "name": "raw_observation",
+            "definition": "sa.Column('raw_observation', sa.LargeBinary(), nullable=False)",
+            "line": 22
+          },
+          {
+            "name": "observation_sha256",
+            "definition": "sa.Column('observation_sha256', sa.String(64), nullable=False)",
+            "line": 23
+          },
+          {
+            "name": "created_at",
+            "definition": "sa.Column('created_at', sa.DateTime(timezone=True), nullable=False, server_default=sa.text('clock_timestamp()'))",
+            "line": 24
+          }
+        ],
+        "constraints": [
+          {
+            "definition": "sa.ForeignKeyConstraint(['session_id', 'execution_id', 'owner_incarnation_id', 'workflow_attempt_id'], ['runtime_sessions.id', 'runtime_sessions.execution_id', 'runtime_sessions.owner_incarnation_id', 'runtime_sessions.workflow_attempt_id'], name='fk_runtime_resource_session_identity', ondelete='RESTRICT')",
+            "line": 30
+          },
+          {
+            "definition": "sa.CheckConstraint(\"octet_length(raw_observation) BETWEEN 1 AND 65536 AND observation_sha256 = encode(sha256(raw_observation), 'hex')\", name='ck_runtime_resource_exact_bytes')",
+            "line": 46
+          }
+        ]
+      },
+      "runtime_deployment_artifacts": {
+        "columns": [
+          {
+            "name": "deployment_id",
+            "definition": "sa.Column('deployment_id', postgresql.UUID(), nullable=False)",
+            "line": 58
+          },
+          {
+            "name": "workflow_id",
+            "definition": "sa.Column('workflow_id', postgresql.UUID(), nullable=False)",
+            "line": 59
+          },
+          {
+            "name": "solution_id",
+            "definition": "sa.Column('solution_id', postgresql.UUID(), nullable=False)",
+            "line": 60
+          },
+          {
+            "name": "artifact_id",
+            "definition": "sa.Column('artifact_id', sa.String(71), nullable=False)",
+            "line": 61
+          },
+          {
+            "name": "runtime",
+            "definition": "sa.Column('runtime', sa.String(64), nullable=False)",
+            "line": 62
+          },
+          {
+            "name": "runtime_protocol",
+            "definition": "sa.Column('runtime_protocol', sa.String(64), nullable=False)",
+            "line": 63
+          },
+          {
+            "name": "artifact",
+            "definition": "sa.Column('artifact', postgresql.JSONB(), nullable=False)",
+            "line": 64
+          },
+          {
+            "name": "input_schema",
+            "definition": "sa.Column('input_schema', postgresql.JSONB(), nullable=False)",
+            "line": 65
+          },
+          {
+            "name": "output_schema",
+            "definition": "sa.Column('output_schema', postgresql.JSONB(), nullable=False)",
+            "line": 66
+          },
+          {
+            "name": "build_evidence_sha256",
+            "definition": "sa.Column('build_evidence_sha256', sa.String(64), nullable=False)",
+            "line": 67
+          },
+          {
+            "name": "source_sha256",
+            "definition": "sa.Column('source_sha256', sa.String(64), nullable=False)",
+            "line": 68
+          },
+          {
+            "name": "reviewed_by",
+            "definition": "sa.Column('reviewed_by', postgresql.UUID(), nullable=False)",
+            "line": 69
+          },
+          {
+            "name": "created_at",
+            "definition": "sa.Column('created_at', sa.DateTime(timezone=True), nullable=False, server_default=sa.text('NOW()'))",
+            "line": 70
+          }
+        ],
+        "constraints": [
+          {
+            "definition": "sa.PrimaryKeyConstraint('deployment_id', 'workflow_id')",
+            "line": 76
+          },
+          {
+            "definition": "sa.UniqueConstraint('deployment_id', 'workflow_id', 'artifact_id', name='uq_runtime_deployment_artifact_identity')",
+            "line": 77
+          },
+          {
+            "definition": "sa.ForeignKeyConstraint(['deployment_id', 'solution_id'], ['solution_deployments.id', 'solution_deployments.solution_id'], name='fk_runtime_artifact_deployment_solution', ondelete='RESTRICT')",
+            "line": 83
+          },
+          {
+            "definition": "sa.ForeignKeyConstraint(['workflow_id', 'solution_id'], ['workflows.id', 'workflows.solution_id'], name='fk_runtime_artifact_workflow_solution', ondelete='RESTRICT')",
+            "line": 89
+          },
+          {
+            "definition": "sa.ForeignKeyConstraint(['reviewed_by'], ['users.id'], ondelete='RESTRICT')",
+            "line": 95
+          },
+          {
+            "definition": "sa.CheckConstraint(\"artifact_id ~ '^sha256:[0-9a-f]{64}$'\", name='ck_runtime_artifact_id')",
+            "line": 96
+          },
+          {
+            "definition": "sa.CheckConstraint(\"source_sha256 ~ '^[0-9a-f]{64}$' AND build_evidence_sha256 ~ '^[0-9a-f]{64}$'\", name='ck_runtime_artifact_evidence_digests')",
+            "line": 99
+          },
+          {
+            "definition": "sa.CheckConstraint(\"runtime ~ '^[a-z][a-z0-9-]*/v[1-9][0-9]*$' AND runtime_protocol = 'bifrost.runtime/v1'\", name='ck_runtime_artifact_protocol')",
+            "line": 103
+          },
+          {
+            "definition": "sa.CheckConstraint(\"COALESCE(jsonb_typeof(artifact) = 'object' AND artifact->>'kind' = 'native-executable/v1' AND artifact->>'artifact_id' = artifact_id AND artifact->>'runtime_protocol' = runtime_protocol AND artifact->>'build_evidence_sha256' = build_evidence_sha256, FALSE)\", name='ck_runtime_artifact_descriptor_binding')",
+            "line": 107
+          },
+          {
+            "definition": "sa.CheckConstraint(\"jsonb_typeof(input_schema) = 'object' AND jsonb_typeof(output_schema) = 'object'\", name='ck_runtime_artifact_schema_objects')",
+            "line": 111
+          }
+        ]
+      },
+      "runtime_execution_owners": {
+        "columns": [
+          {
+            "name": "execution_id",
+            "definition": "sa.Column('execution_id', postgresql.UUID(), primary_key=True)",
+            "line": 122
+          },
+          {
+            "name": "owner_incarnation_id",
+            "definition": "sa.Column('owner_incarnation_id', postgresql.UUID(), nullable=False)",
+            "line": 123
+          },
+          {
+            "name": "workflow_id",
+            "definition": "sa.Column('workflow_id', postgresql.UUID(), nullable=False)",
+            "line": 124
+          },
+          {
+            "name": "deployment_id",
+            "definition": "sa.Column('deployment_id', postgresql.UUID(), nullable=False)",
+            "line": 125
+          },
+          {
+            "name": "artifact_id",
+            "definition": "sa.Column('artifact_id', sa.String(71), nullable=False)",
+            "line": 126
+          },
+          {
+            "name": "caller_snapshot",
+            "definition": "sa.Column('caller_snapshot', postgresql.JSONB(), nullable=False)",
+            "line": 127
+          },
+          {
+            "name": "caller_sha256",
+            "definition": "sa.Column('caller_sha256', sa.String(64), nullable=False)",
+            "line": 128
+          },
+          {
+            "name": "created_at",
+            "definition": "sa.Column('created_at', sa.DateTime(timezone=True), nullable=False, server_default=sa.text('NOW()'))",
+            "line": 129
+          }
+        ],
+        "constraints": [
+          {
+            "definition": "sa.UniqueConstraint('execution_id', 'owner_incarnation_id', 'caller_sha256', name='uq_runtime_owner_caller')",
+            "line": 135
+          },
+          {
+            "definition": "sa.UniqueConstraint('execution_id', 'owner_incarnation_id', name='uq_runtime_owner_identity')",
+            "line": 141
+          },
+          {
+            "definition": "sa.ForeignKeyConstraint(['execution_id', 'workflow_id', 'deployment_id'], ['executions.id', 'executions.workflow_id', 'executions.solution_deployment_id'], name='fk_runtime_owner_execution_source', ondelete='RESTRICT')",
+            "line": 144
+          },
+          {
+            "definition": "sa.ForeignKeyConstraint(['deployment_id', 'workflow_id', 'artifact_id'], ['runtime_deployment_artifacts.deployment_id', 'runtime_deployment_artifacts.workflow_id', 'runtime_deployment_artifacts.artifact_id'], name='fk_runtime_owner_accepted_artifact', ondelete='RESTRICT')",
+            "line": 154
+          },
+          {
+            "definition": "sa.CheckConstraint(\"jsonb_typeof(caller_snapshot) = 'object' AND caller_sha256 ~ '^[0-9a-f]{64}$'\", name='ck_runtime_owner_caller_snapshot')",
+            "line": 164
+          }
+        ]
+      },
+      "runtime_sessions": {
+        "columns": [
+          {
+            "name": "id",
+            "definition": "sa.Column('id', postgresql.UUID(), primary_key=True)",
+            "line": 175
+          },
+          {
+            "name": "execution_id",
+            "definition": "sa.Column('execution_id', postgresql.UUID(), nullable=False)",
+            "line": 176
+          },
+          {
+            "name": "owner_incarnation_id",
+            "definition": "sa.Column('owner_incarnation_id', postgresql.UUID(), nullable=False)",
+            "line": 177
+          },
+          {
+            "name": "workflow_attempt_id",
+            "definition": "sa.Column('workflow_attempt_id', postgresql.UUID(), nullable=False)",
+            "line": 178
+          },
+          {
+            "name": "claim_token",
+            "definition": "sa.Column('claim_token', postgresql.UUID(), nullable=False)",
+            "line": 179
+          },
+          {
+            "name": "claim_token_digest",
+            "definition": "sa.Column('claim_token_digest', sa.String(64), sa.Computed(\"encode(sha256(('16:cred-p1/claim/v1,36:' || claim_token::text || ',')::bytea), 'hex')\", persisted=True), nullable=False)",
+            "line": 180
+          },
+          {
+            "name": "worker_incarnation_id",
+            "definition": "sa.Column('worker_incarnation_id', postgresql.UUID(), nullable=False)",
+            "line": 189
+          },
+          {
+            "name": "supervisor_incarnation_id",
+            "definition": "sa.Column('supervisor_incarnation_id', postgresql.UUID(), nullable=False)",
+            "line": 190
+          },
+          {
+            "name": "runtime_incarnation_id",
+            "definition": "sa.Column('runtime_incarnation_id', postgresql.UUID(), nullable=False)",
+            "line": 191
+          },
+          {
+            "name": "channel_custody_sha256",
+            "definition": "sa.Column('channel_custody_sha256', sa.String(64), nullable=False)",
+            "line": 192
+          },
+          {
+            "name": "binding_sha256",
+            "definition": "sa.Column('binding_sha256', sa.String(64), nullable=False)",
+            "line": 193
+          },
+          {
+            "name": "prepare_id",
+            "definition": "sa.Column('prepare_id', postgresql.UUID(), nullable=False)",
+            "line": 194
+          },
+          {
+            "name": "prepare_sha256",
+            "definition": "sa.Column('prepare_sha256', sa.String(64), nullable=False)",
+            "line": 195
+          },
+          {
+            "name": "created_at",
+            "definition": "sa.Column('created_at', sa.DateTime(timezone=True), nullable=False, server_default=sa.text('NOW()'))",
+            "line": 196
+          },
+          {
+            "name": "closed_at",
+            "definition": "sa.Column('closed_at', sa.DateTime(timezone=True))",
+            "line": 202
+          },
+          {
+            "name": "close_reason",
+            "definition": "sa.Column('close_reason', sa.String(64))",
+            "line": 203
+          }
+        ],
+        "constraints": [
+          {
+            "definition": "sa.UniqueConstraint('workflow_attempt_id', name='uq_runtime_session_attempt')",
+            "line": 204
+          },
+          {
+            "definition": "sa.UniqueConstraint('id', 'claim_token_digest', 'worker_incarnation_id', 'supervisor_incarnation_id', name='uq_runtime_session_sdk_fence')",
+            "line": 205
+          },
+          {
+            "definition": "sa.UniqueConstraint('id', 'execution_id', 'owner_incarnation_id', 'workflow_attempt_id', name='uq_runtime_session_identity')",
+            "line": 212
+          },
+          {
+            "definition": "sa.ForeignKeyConstraint(['execution_id', 'owner_incarnation_id'], ['runtime_execution_owners.execution_id', 'runtime_execution_owners.owner_incarnation_id'], name='fk_runtime_session_owner', ondelete='RESTRICT')",
+            "line": 219
+          },
+          {
+            "definition": "sa.ForeignKeyConstraint(['workflow_attempt_id', 'execution_id', 'claim_token', 'worker_incarnation_id'], ['workflow_execution_attempts.id', 'workflow_execution_attempts.execution_id', 'workflow_execution_attempts.claim_token', 'workflow_execution_attempts.worker_incarnation_id'], name='fk_runtime_session_attempt_fence', ondelete='RESTRICT')",
+            "line": 228
+          },
+          {
+            "definition": "sa.CheckConstraint(\"channel_custody_sha256 ~ '^[0-9a-f]{64}$' AND binding_sha256 ~ '^[0-9a-f]{64}$' AND prepare_sha256 ~ '^[0-9a-f]{64}$'\", name='ck_runtime_session_digests')",
+            "line": 244
+          },
+          {
+            "definition": "sa.CheckConstraint(\"(closed_at IS NULL AND close_reason IS NULL) OR (closed_at IS NOT NULL AND closed_at >= created_at AND close_reason IS NOT NULL AND close_reason ~ '^[a-z][a-z0-9_-]{0,63}$')\", name='ck_runtime_session_close_shape')",
+            "line": 248
+          }
+        ]
+      },
+      "runtime_starts": {
+        "columns": [
+          {
+            "name": "id",
+            "definition": "sa.Column('id', postgresql.UUID(), primary_key=True)",
+            "line": 259
+          },
+          {
+            "name": "session_id",
+            "definition": "sa.Column('session_id', postgresql.UUID(), nullable=False)",
+            "line": 260
+          },
+          {
+            "name": "execution_id",
+            "definition": "sa.Column('execution_id', postgresql.UUID(), nullable=False)",
+            "line": 261
+          },
+          {
+            "name": "owner_incarnation_id",
+            "definition": "sa.Column('owner_incarnation_id', postgresql.UUID(), nullable=False)",
+            "line": 262
+          },
+          {
+            "name": "workflow_attempt_id",
+            "definition": "sa.Column('workflow_attempt_id', postgresql.UUID(), nullable=False)",
+            "line": 263
+          },
+          {
+            "name": "start_message_id",
+            "definition": "sa.Column('start_message_id', postgresql.UUID(), nullable=False)",
+            "line": 264
+          },
+          {
+            "name": "input_sha256",
+            "definition": "sa.Column('input_sha256', sa.String(64), nullable=False)",
+            "line": 265
+          },
+          {
+            "name": "context_sha256",
+            "definition": "sa.Column('context_sha256', sa.String(64), nullable=False)",
+            "line": 266
+          },
+          {
+            "name": "started_at",
+            "definition": "sa.Column('started_at', sa.DateTime(timezone=True), nullable=False)",
+            "line": 267
+          },
+          {
+            "name": "deadline_utc",
+            "definition": "sa.Column('deadline_utc', sa.DateTime(timezone=True))",
+            "line": 268
+          },
+          {
+            "name": "created_at",
+            "definition": "sa.Column('created_at', sa.DateTime(timezone=True), nullable=False, server_default=sa.text('NOW()'))",
+            "line": 269
+          }
+        ],
+        "constraints": [
+          {
+            "definition": "sa.UniqueConstraint('id', 'session_id', 'start_message_id', 'started_at', name='uq_runtime_start_clock')",
+            "line": 275
+          },
+          {
+            "definition": "sa.UniqueConstraint('session_id', name='uq_runtime_start_session')",
+            "line": 282
+          },
+          {
+            "definition": "sa.UniqueConstraint('id', 'session_id', 'start_message_id', name='uq_runtime_start_message_identity')",
+            "line": 283
+          },
+          {
+            "definition": "sa.ForeignKeyConstraint(['session_id', 'execution_id', 'owner_incarnation_id', 'workflow_attempt_id'], ['runtime_sessions.id', 'runtime_sessions.execution_id', 'runtime_sessions.owner_incarnation_id', 'runtime_sessions.workflow_attempt_id'], name='fk_runtime_start_session_identity', ondelete='RESTRICT')",
+            "line": 289
+          },
+          {
+            "definition": "sa.CheckConstraint(\"input_sha256 ~ '^[0-9a-f]{64}$' AND context_sha256 ~ '^[0-9a-f]{64}$'\", name='ck_runtime_start_input_context_digests')",
+            "line": 305
+          },
+          {
+            "definition": "sa.CheckConstraint('deadline_utc IS NULL OR deadline_utc > started_at', name='ck_runtime_start_deadline')",
+            "line": 309
+          }
+        ]
+      },
+      "runtime_report_receipts": {
+        "columns": [
+          {
+            "name": "session_id",
+            "definition": "sa.Column('session_id', postgresql.UUID(), primary_key=True)",
+            "line": 320
+          },
+          {
+            "name": "result_message_id",
+            "definition": "sa.Column('result_message_id', postgresql.UUID(), primary_key=True)",
+            "line": 321
+          },
+          {
+            "name": "committed_start_id",
+            "definition": "sa.Column('committed_start_id', postgresql.UUID(), nullable=False)",
+            "line": 322
+          },
+          {
+            "name": "start_message_id",
+            "definition": "sa.Column('start_message_id', postgresql.UUID(), nullable=False)",
+            "line": 323
+          },
+          {
+            "name": "raw_result_payload",
+            "definition": "sa.Column('raw_result_payload', sa.LargeBinary(), nullable=False)",
+            "line": 324
+          },
+          {
+            "name": "result_sha256",
+            "definition": "sa.Column('result_sha256', sa.String(64), nullable=False)",
+            "line": 325
+          },
+          {
+            "name": "decision_id",
+            "definition": "sa.Column('decision_id', postgresql.UUID(), nullable=False)",
+            "line": 326
+          },
+          {
+            "name": "disposition",
+            "definition": "sa.Column('disposition', sa.String(16), nullable=False)",
+            "line": 327
+          },
+          {
+            "name": "winner",
+            "definition": "sa.Column('winner', sa.String(16), nullable=False)",
+            "line": 328
+          },
+          {
+            "name": "created_at",
+            "definition": "sa.Column('created_at', sa.DateTime(timezone=True), nullable=False, server_default=sa.text('NOW()'))",
+            "line": 329
+          }
+        ],
+        "constraints": [
+          {
+            "definition": "sa.ForeignKeyConstraint(['committed_start_id', 'session_id', 'start_message_id'], ['runtime_starts.id', 'runtime_starts.session_id', 'runtime_starts.start_message_id'], name='fk_runtime_receipt_start_message', ondelete='RESTRICT')",
+            "line": 335
+          },
+          {
+            "definition": "sa.CheckConstraint(\"octet_length(raw_result_payload) BETWEEN 1 AND 16777216 AND result_sha256 = encode(sha256(raw_result_payload), 'hex')\", name='ck_runtime_receipt_exact_bytes')",
+            "line": 345
+          },
+          {
+            "definition": "sa.CheckConstraint(\"(disposition = 'accepted' AND winner = 'result') OR (disposition = 'retained' AND winner IN ('cancel','failure'))\", name='ck_runtime_receipt_disposition')",
+            "line": 349
+          }
+        ]
+      },
+      "workflow_runtime_sdk_grants": {
+        "columns": [
+          {
+            "name": "id",
+            "definition": "sa.Column('id', sa.Uuid(), primary_key=True)",
+            "line": 360
+          },
+          {
+            "name": "schema_version",
+            "definition": "sa.Column('schema_version', sa.String(32), nullable=False)",
+            "line": 361
+          },
+          {
+            "name": "workflow_attempt_id",
+            "definition": "sa.Column('workflow_attempt_id', sa.Uuid(), nullable=False)",
+            "line": 362
+          },
+          {
+            "name": "execution_id",
+            "definition": "sa.Column('execution_id', sa.Uuid(), nullable=False)",
+            "line": 363
+          },
+          {
+            "name": "attempt_number",
+            "definition": "sa.Column('attempt_number', sa.Integer(), nullable=False)",
+            "line": 364
+          },
+          {
+            "name": "claim_token_digest",
+            "definition": "sa.Column('claim_token_digest', sa.String(64), nullable=False)",
+            "line": 365
+          },
+          {
+            "name": "worker_incarnation_id",
+            "definition": "sa.Column('worker_incarnation_id', sa.Uuid(), nullable=False)",
+            "line": 366
+          },
+          {
+            "name": "supervisor_incarnation_id",
+            "definition": "sa.Column('supervisor_incarnation_id', sa.Uuid(), nullable=False)",
+            "line": 367
+          },
+          {
+            "name": "runtime_session_id",
+            "definition": "sa.Column('runtime_session_id', sa.Uuid(), nullable=False)",
+            "line": 368
+          },
+          {
+            "name": "started_at",
+            "definition": "sa.Column('started_at', sa.DateTime(timezone=True), nullable=False)",
+            "line": 369
+          },
+          {
+            "name": "issued_at",
+            "definition": "sa.Column('issued_at', sa.DateTime(timezone=True), nullable=False)",
+            "line": 370
+          },
+          {
+            "name": "timeout_seconds",
+            "definition": "sa.Column('timeout_seconds', sa.Integer(), nullable=False)",
+            "line": 371
+          },
+          {
+            "name": "credential_deadline",
+            "definition": "sa.Column('credential_deadline', sa.DateTime(timezone=True), nullable=True)",
+            "line": 372
+          },
+          {
+            "name": "initial_access_expires_at",
+            "definition": "sa.Column('initial_access_expires_at', sa.DateTime(timezone=True), nullable=False)",
+            "line": 373
+          },
+          {
+            "name": "caller_user_id",
+            "definition": "sa.Column('caller_user_id', sa.Uuid(), nullable=False)",
+            "line": 376
+          },
+          {
+            "name": "caller_organization_id",
+            "definition": "sa.Column('caller_organization_id', sa.Uuid(), nullable=True)",
+            "line": 377
+          },
+          {
+            "name": "effective_organization_id",
+            "definition": "sa.Column('effective_organization_id', sa.Uuid(), nullable=True)",
+            "line": 378
+          },
+          {
+            "name": "caller_email",
+            "definition": "sa.Column('caller_email', sa.String(320), nullable=False)",
+            "line": 379
+          },
+          {
+            "name": "caller_name",
+            "definition": "sa.Column('caller_name', sa.String(255), nullable=False)",
+            "line": 380
+          },
+          {
+            "name": "caller_admin",
+            "definition": "sa.Column('caller_admin', sa.Integer(), nullable=False)",
+            "line": 381
+          },
+          {
+            "name": "caller_provider",
+            "definition": "sa.Column('caller_provider', sa.Integer(), nullable=False)",
+            "line": 382
+          },
+          {
+            "name": "caller_external",
+            "definition": "sa.Column('caller_external', sa.Integer(), nullable=False)",
+            "line": 383
+          },
+          {
+            "name": "caller_snapshot_digest",
+            "definition": "sa.Column('caller_snapshot_digest', sa.String(64), nullable=False)",
+            "line": 384
+          },
+          {
+            "name": "workflow_id",
+            "definition": "sa.Column('workflow_id', sa.Uuid(), nullable=False)",
+            "line": 385
+          },
+          {
+            "name": "solution_install_id",
+            "definition": "sa.Column('solution_install_id', sa.Uuid(), nullable=False)",
+            "line": 386
+          },
+          {
+            "name": "source_kind",
+            "definition": "sa.Column('source_kind', sa.String(32), nullable=False)",
+            "line": 387
+          },
+          {
+            "name": "source_id",
+            "definition": "sa.Column('source_id', sa.Uuid(), nullable=False)",
+            "line": 388
+          },
+          {
+            "name": "source_manifest_digest",
+            "definition": "sa.Column('source_manifest_digest', sa.String(71), nullable=False)",
+            "line": 389
+          },
+          {
+            "name": "source_resolution_digest",
+            "definition": "sa.Column('source_resolution_digest', sa.String(71), nullable=False)",
+            "line": 390
+          },
+          {
+            "name": "source_global_permission",
+            "definition": "sa.Column('source_global_permission', sa.Integer(), nullable=False)",
+            "line": 391
+          },
+          {
+            "name": "source_digest",
+            "definition": "sa.Column('source_digest', sa.String(64), nullable=False)",
+            "line": 392
+          },
+          {
+            "name": "operations_digest",
+            "definition": "sa.Column('operations_digest', sa.String(64), nullable=False)",
+            "line": 393
+          },
+          {
+            "name": "grant_digest",
+            "definition": "sa.Column('grant_digest', sa.String(64), nullable=False)",
+            "line": 394
+          },
+          {
+            "name": "revoked_at",
+            "definition": "sa.Column('revoked_at', sa.DateTime(timezone=True), nullable=True)",
+            "line": 395
+          },
+          {
+            "name": "revocation_reason",
+            "definition": "sa.Column('revocation_reason', sa.String(32), nullable=True)",
+            "line": 396
+          },
+          {
+            "name": "owner_incarnation_id",
+            "definition": "sa.Column('owner_incarnation_id', sa.Uuid(), nullable=False)",
+            "line": 397
+          },
+          {
+            "name": "committed_start_id",
+            "definition": "sa.Column('committed_start_id', sa.Uuid(), nullable=False)",
+            "line": 398
+          },
+          {
+            "name": "start_message_id",
+            "definition": "sa.Column('start_message_id', sa.Uuid(), nullable=False)",
+            "line": 399
+          }
+        ],
+        "constraints": [
+          {
+            "definition": "sa.ForeignKeyConstraint(['execution_id', 'owner_incarnation_id', 'caller_snapshot_digest'], ['runtime_execution_owners.execution_id', 'runtime_execution_owners.owner_incarnation_id', 'runtime_execution_owners.caller_sha256'], name='fk_runtime_sdk_owner_caller', ondelete='RESTRICT')",
+            "line": 400
+          },
+          {
+            "definition": "sa.ForeignKeyConstraint(['committed_start_id', 'runtime_session_id', 'start_message_id', 'started_at'], ['runtime_starts.id', 'runtime_starts.session_id', 'runtime_starts.start_message_id', 'runtime_starts.started_at'], name='fk_runtime_sdk_start_clock', ondelete='RESTRICT')",
+            "line": 410
+          },
+          {
+            "definition": "sa.ForeignKeyConstraint(['workflow_attempt_id', 'execution_id', 'attempt_number'], ['workflow_execution_attempts.id', 'workflow_execution_attempts.execution_id', 'workflow_execution_attempts.attempt_number'], name='fk_runtime_sdk_attempt_number', ondelete='RESTRICT')",
+            "line": 426
+          },
+          {
+            "definition": "sa.UniqueConstraint('id', 'runtime_session_id', 'committed_start_id', 'start_message_id', 'operations_digest', 'initial_access_expires_at', name='uq_runtime_sdk_grant_admission_identity')",
+            "line": 436
+          },
+          {
+            "definition": "sa.UniqueConstraint('workflow_attempt_id', name='uq_runtime_sdk_grant_attempt')",
+            "line": 445
+          },
+          {
+            "definition": "sa.UniqueConstraint('runtime_session_id', name='uq_runtime_sdk_grant_session')",
+            "line": 446
+          },
+          {
+            "definition": "sa.UniqueConstraint('id', 'solution_install_id', name='uq_runtime_sdk_grant_install')",
+            "line": 447
+          },
+          {
+            "definition": "sa.CheckConstraint(\"schema_version = 'cred-p1/v1' AND source_kind = 'solution-deployment'\", name='ck_runtime_sdk_grant_schema')",
+            "line": 450
+          },
+          {
+            "definition": "sa.CheckConstraint('attempt_number >= 1 AND timeout_seconds >= 0', name='ck_runtime_sdk_grant_numbers')",
+            "line": 454
+          },
+          {
+            "definition": "sa.CheckConstraint('caller_admin IN (0,1) AND caller_provider IN (0,1) AND caller_external IN (0,1) AND source_global_permission IN (0,1)', name='ck_runtime_sdk_grant_flags')",
+            "line": 458
+          },
+          {
+            "definition": "sa.CheckConstraint('((timeout_seconds = 0 AND credential_deadline IS NULL) OR (timeout_seconds > 0 AND credential_deadline IS NOT NULL AND initial_access_expires_at = credential_deadline))', name='ck_runtime_sdk_grant_deadline')",
+            "line": 462
+          },
+          {
+            "definition": "sa.CheckConstraint(\"((revoked_at IS NULL AND revocation_reason IS NULL) OR (revoked_at IS NOT NULL AND revocation_reason IS NOT NULL AND revocation_reason IN ('session_closed','supervisor_replaced','explicit_revoke')))\", name='ck_runtime_sdk_grant_revocation')",
+            "line": 466
+          },
+          {
+            "definition": "sa.CheckConstraint('octet_length(caller_email) <= 320 AND octet_length(caller_name) <= 255', name='ck_runtime_sdk_grant_text_bytes')",
+            "line": 470
+          },
+          {
+            "definition": "*[sa.CheckConstraint(f\"{column} ~ '^[0-9a-f]{{64}}$'\", name=f'ck_runtime_sdk_{column}') for column in ('claim_token_digest', 'caller_snapshot_digest', 'source_digest', 'operations_digest', 'grant_digest')]",
+            "line": 474
+          },
+          {
+            "definition": "*[sa.CheckConstraint(f\"{column} ~ '^sha256:[0-9a-f]{{64}}$'\", name=f'ck_runtime_sdk_{column}') for column in ('source_manifest_digest', 'source_resolution_digest')]",
+            "line": 486
+          },
+          {
+            "definition": "*[sa.CheckConstraint(f\"{column} IS NULL OR ({column} >= TIMESTAMPTZ '1970-01-01 00:00:00+00' AND {column} <= TIMESTAMPTZ '9999-12-31 23:59:59.999999+00')\", name=f'ck_runtime_sdk_time_{column}') for column in ('started_at', 'issued_at', 'credential_deadline', 'initial_access_expires_at', 'revoked_at')]",
+            "line": 492
+          },
+          {
+            "definition": "sa.ForeignKeyConstraint(['runtime_session_id', 'claim_token_digest', 'worker_incarnation_id', 'supervisor_incarnation_id'], ['runtime_sessions.id', 'runtime_sessions.claim_token_digest', 'runtime_sessions.worker_incarnation_id', 'runtime_sessions.supervisor_incarnation_id'], name='fk_runtime_sdk_session_fence', ondelete='RESTRICT')",
+            "line": 505
+          },
+          {
+            "definition": "sa.ForeignKeyConstraint(['runtime_session_id', 'execution_id', 'owner_incarnation_id', 'workflow_attempt_id'], ['runtime_sessions.id', 'runtime_sessions.execution_id', 'runtime_sessions.owner_incarnation_id', 'runtime_sessions.workflow_attempt_id'], name='fk_runtime_sdk_session_identity', ondelete='RESTRICT')",
+            "line": 521
+          },
+          {
+            "definition": "sa.ForeignKeyConstraint(['committed_start_id', 'runtime_session_id', 'start_message_id'], ['runtime_starts.id', 'runtime_starts.session_id', 'runtime_starts.start_message_id'], name='fk_runtime_sdk_committed_start', ondelete='RESTRICT')",
+            "line": 537
+          },
+          {
+            "definition": "sa.ForeignKeyConstraint(['execution_id', 'workflow_id', 'source_id'], ['executions.id', 'executions.workflow_id', 'executions.solution_deployment_id'], name='fk_runtime_sdk_execution_source', ondelete='RESTRICT')",
+            "line": 547
+          },
+          {
+            "definition": "sa.ForeignKeyConstraint(['source_id', 'solution_install_id'], ['solution_deployments.id', 'solution_deployments.solution_id'], name='fk_runtime_sdk_source_install', ondelete='RESTRICT')",
+            "line": 557
+          },
+          {
+            "definition": "sa.CheckConstraint('issued_at >= started_at AND initial_access_expires_at > issued_at AND isfinite(initial_access_expires_at)', name='ck_runtime_sdk_finite_access')",
+            "line": 563
+          }
+        ]
+      },
+      "workflow_runtime_sdk_grant_operations": {
+        "columns": [
+          {
+            "name": "grant_id",
+            "definition": "sa.Column('grant_id', sa.Uuid(), sa.ForeignKey('workflow_runtime_sdk_grants.id', ondelete='RESTRICT'), primary_key=True)",
+            "line": 574
+          },
+          {
+            "name": "ordinal",
+            "definition": "sa.Column('ordinal', sa.Integer(), primary_key=True)",
+            "line": 580
+          },
+          {
+            "name": "operation",
+            "definition": "sa.Column('operation', sa.String(32), nullable=False)",
+            "line": 581
+          },
+          {
+            "name": "integration_name",
+            "definition": "sa.Column('integration_name', sa.String(255), nullable=False)",
+            "line": 582
+          },
+          {
+            "name": "scope_kind",
+            "definition": "sa.Column('scope_kind', sa.String(16), nullable=False)",
+            "line": 583
+          },
+          {
+            "name": "scope_organization_id",
+            "definition": "sa.Column('scope_organization_id', sa.Uuid(), nullable=True)",
+            "line": 584
+          },
+          {
+            "name": "resolved_organization_id",
+            "definition": "sa.Column('resolved_organization_id', sa.Uuid(), nullable=True)",
+            "line": 585
+          },
+          {
+            "name": "solution_install_id",
+            "definition": "sa.Column('solution_install_id', sa.Uuid(), nullable=True)",
+            "line": 586
+          }
+        ],
+        "constraints": [
+          {
+            "definition": "sa.ForeignKeyConstraint(['grant_id', 'solution_install_id'], ['workflow_runtime_sdk_grants.id', 'workflow_runtime_sdk_grants.solution_install_id'], name='fk_runtime_sdk_operation_install', ondelete='RESTRICT')",
+            "line": 587
+          },
+          {
+            "definition": "sa.UniqueConstraint('grant_id', 'operation', name='uq_runtime_sdk_grant_operation')",
+            "line": 596
+          },
+          {
+            "definition": "sa.CheckConstraint('ordinal >= 0 AND ordinal < 2', name='ck_runtime_sdk_operation_ordinal')",
+            "line": 599
+          },
+          {
+            "definition": "sa.CheckConstraint(\"operation IN ('integration-get','mapping-get') AND scope_kind IN ('default','global','organization')\", name='ck_runtime_sdk_operation_kind')",
+            "line": 602
+          },
+          {
+            "definition": "sa.CheckConstraint(\"((scope_kind = 'organization' AND scope_organization_id IS NOT NULL AND resolved_organization_id IS NOT NULL AND scope_organization_id = resolved_organization_id) OR (scope_kind != 'organization' AND scope_organization_id IS NULL)) AND (scope_kind != 'global' OR resolved_organization_id IS NULL)\", name='ck_runtime_sdk_operation_scope')",
+            "line": 606
+          },
+          {
+            "definition": "sa.CheckConstraint(\"operation != 'mapping-get' OR solution_install_id IS NULL\", name='ck_runtime_sdk_operation_solution')",
+            "line": 610
+          },
+          {
+            "definition": "sa.CheckConstraint('octet_length(integration_name) BETWEEN 1 AND 255', name='ck_runtime_sdk_operation_name_bytes')",
+            "line": 614
+          }
+        ]
+      },
+      "runtime_admissions": {
+        "columns": [
+          {
+            "name": "id",
+            "definition": "sa.Column('id', postgresql.UUID(), primary_key=True)",
+            "line": 625
+          },
+          {
+            "name": "purpose",
+            "definition": "sa.Column('purpose', sa.String(16), nullable=False)",
+            "line": 626
+          },
+          {
+            "name": "session_id",
+            "definition": "sa.Column('session_id', postgresql.UUID(), nullable=False)",
+            "line": 627
+          },
+          {
+            "name": "committed_start_id",
+            "definition": "sa.Column('committed_start_id', postgresql.UUID(), nullable=False)",
+            "line": 628
+          },
+          {
+            "name": "start_message_id",
+            "definition": "sa.Column('start_message_id', postgresql.UUID(), nullable=False)",
+            "line": 629
+          },
+          {
+            "name": "grant_id",
+            "definition": "sa.Column('grant_id', postgresql.UUID(), nullable=False)",
+            "line": 630
+          },
+          {
+            "name": "delivery_id",
+            "definition": "sa.Column('delivery_id', postgresql.UUID(), nullable=False)",
+            "line": 631
+          },
+          {
+            "name": "operations_digest",
+            "definition": "sa.Column('operations_digest', sa.String(64), nullable=False)",
+            "line": 632
+          },
+          {
+            "name": "expires_at",
+            "definition": "sa.Column('expires_at', sa.DateTime(timezone=True), nullable=False)",
+            "line": 633
+          },
+          {
+            "name": "provision_admission_id",
+            "definition": "sa.Column('provision_admission_id', postgresql.UUID())",
+            "line": 634
+          },
+          {
+            "name": "provision_purpose",
+            "definition": "sa.Column('provision_purpose', sa.String(16))",
+            "line": 635
+          },
+          {
+            "name": "frontier_sha256",
+            "definition": "sa.Column('frontier_sha256', sa.String(64), nullable=False)",
+            "line": 636
+          },
+          {
+            "name": "admitted_at",
+            "definition": "sa.Column('admitted_at', sa.DateTime(timezone=True), nullable=False)",
+            "line": 637
+          }
+        ],
+        "constraints": [
+          {
+            "definition": "sa.UniqueConstraint('session_id', 'purpose', name='uq_runtime_admission_purpose')",
+            "line": 638
+          },
+          {
+            "definition": "sa.UniqueConstraint('id', 'purpose', 'session_id', 'grant_id', 'delivery_id', name='uq_runtime_admission_delivery_identity')",
+            "line": 641
+          },
+          {
+            "definition": "sa.ForeignKeyConstraint(['grant_id', 'session_id', 'committed_start_id', 'start_message_id', 'operations_digest', 'expires_at'], ['workflow_runtime_sdk_grants.id', 'workflow_runtime_sdk_grants.runtime_session_id', 'workflow_runtime_sdk_grants.committed_start_id', 'workflow_runtime_sdk_grants.start_message_id', 'workflow_runtime_sdk_grants.operations_digest', 'workflow_runtime_sdk_grants.initial_access_expires_at'], name='fk_runtime_admission_exact_grant', ondelete='RESTRICT')",
+            "line": 649
+          },
+          {
+            "definition": "sa.ForeignKeyConstraint(['provision_admission_id', 'provision_purpose', 'session_id', 'grant_id', 'delivery_id'], ['runtime_admissions.id', 'runtime_admissions.purpose', 'runtime_admissions.session_id', 'runtime_admissions.grant_id', 'runtime_admissions.delivery_id'], name='fk_runtime_release_exact_provision', ondelete='RESTRICT')",
+            "line": 669
+          },
+          {
+            "definition": "sa.CheckConstraint(\"(purpose = 'provision' AND provision_admission_id IS NULL AND provision_purpose IS NULL) OR (purpose = 'release' AND provision_admission_id IS NOT NULL AND provision_purpose IS NOT NULL AND provision_purpose = 'provision')\", name='ck_runtime_admission_purpose')",
+            "line": 687
+          },
+          {
+            "definition": "sa.CheckConstraint(\"frontier_sha256 ~ '^[0-9a-f]{64}$' AND operations_digest ~ '^[0-9a-f]{64}$'\", name='ck_runtime_admission_digests')",
+            "line": 691
+          },
+          {
+            "definition": "sa.CheckConstraint('isfinite(admitted_at) AND isfinite(expires_at) AND admitted_at < expires_at', name='ck_runtime_admission_finite_budget')",
+            "line": 695
+          }
+        ]
+      }
+    }
+  },
+  "candidate_migrations": [
+    {
+      "path": "api/alembic/versions/20261009_runtime_deployment_artifacts.py",
+      "sha256": "caa38cb2a8a87c834bcc03bc76db5c33bf4b4856b641032a9f61b95744a49003",
+      "revision": "20261009_runtime_artifacts",
+      "down_revision": "20261006_mtg_upstream_sdk"
+    },
+    {
+      "path": "api/alembic/versions/20261010_runtime_admissions.py",
+      "sha256": "8e918a68b5432209ebf38b3ea99796dd1ec9d5955002c7aaaf2a73dbb6aef8da",
+      "revision": "20261010_runtime_admissions",
+      "down_revision": "20261010_runtime_grants"
+    },
+    {
+      "path": "api/alembic/versions/20261010_runtime_identity_fences.py",
+      "sha256": "52fb232d2dccccaaa8f9f19020074d570b29df6c9ad43b9ab9d83986cedfc33c",
+      "revision": "20261010_runtime_fences",
+      "down_revision": "20261010_runtime_admissions"
+    },
+    {
+      "path": "api/alembic/versions/20261010_runtime_owner_sessions.py",
+      "sha256": "81cd98f333b055da2ae5f5b6685a4c1af6c247a86c0676a694673bdee3c88ef7",
+      "revision": "20261010_runtime_sessions",
+      "down_revision": "20261009_runtime_artifacts"
+    },
+    {
+      "path": "api/alembic/versions/20261010_runtime_sdk_grants.py",
+      "sha256": "cf6c145754f74af0d8ced0aff4c9bdf1a69f7389c2cfef1a3d8f1b76d7d28917",
+      "revision": "20261010_runtime_grants",
+      "down_revision": "20261010_runtime_receipts"
+    },
+    {
+      "path": "api/alembic/versions/20261010_runtime_starts_receipts.py",
+      "sha256": "581a6e1378c4b394d86c7112eb4e51237aa870403d3706bf5e1d0e8bdfdd7d8f",
+      "revision": "20261010_runtime_receipts",
+      "down_revision": "20261010_runtime_sessions"
+    },
+    {
+      "path": "api/alembic/versions/20261011_runtime_resource_settlements.py",
+      "sha256": "bfb0563e12175c096fba986bcec76492660898f71c9f16897ee3eacbc1aa0dd1",
+      "revision": "20261011_runtime_resources",
+      "down_revision": "20261010_runtime_fences"
+    }
+  ],
+  "native_source_files": [
+    {
+      "path": "api/src/services/execution/poison.py",
+      "ref": "e42999395231ebc536711e5015422edfb75613a7",
+      "sha256": "475257e092968d3fb8b4963996867d6484fddfc75cf517372ed979ea4fc1810a"
+    },
+    {
+      "path": "api/src/services/execution/attempts.py",
+      "ref": "e42999395231ebc536711e5015422edfb75613a7",
+      "sha256": "82ed8abc28a1a51d17ddcdaeeabf9473468ef8474c172bb01e7bc5b66b067afa"
+    },
+    {
+      "path": "api/src/jobs/schedulers/execution_cleanup.py",
+      "ref": "e42999395231ebc536711e5015422edfb75613a7",
+      "sha256": "3a9be555b6998598074a18c4bbad720e5c648ce316f5fb984175759acf477204"
+    },
+    {
+      "path": "api/src/models/orm/executions.py",
+      "ref": "e42999395231ebc536711e5015422edfb75613a7",
+      "sha256": "34641a6fccfe1afd5fb393b806d77a10218872e2faea830121588d72e5a5c02d"
+    },
+    {
+      "path": "api/src/services/solution_source_accountability.py",
+      "ref": "e42999395231ebc536711e5015422edfb75613a7",
+      "sha256": "9210530251779962cff2e9459272daa4ebb6814c29cfe654b0563fec873e7ab4"
+    }
+  ]
+}

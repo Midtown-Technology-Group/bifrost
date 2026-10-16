@@ -53,16 +53,14 @@ This does not mean root independently repeated all Go tests or reviewed every
 implementation line. Nine completed same-binary cases and the tenth negative
 remain evidence for their exact candidate and isolated environment.
 
-AUTH-P1 manual CI 38947574111 completed successfully: literal pre-PR, backend
-unit, all four backend E2E shards, both browser shards and MCP. The original
-unit-job log reports 14,010 passes (3 skipped, 66 deselected) and confirms the
-12 authority-admission, four missing-caller and callerless-positive cases. Its
-coverage artifact retains coverage XML, not JUnit. PR CI 38947585397 still has
-backend shard 2 and Sonar work outstanding at this observation; signed candidate
-images and the other listed test lanes passed. The
-[exact validation record](rust-core-mvp-auth-p1-validation-39245315.json)
-separates those statuses. Required-check success is not full gate acceptance.
-Keep live readback authoritative and retain old failures at their original head.
+AUTH-P1 manual CI 38947574111 and PR CI 38947585397 completed successfully
+on the pinned candidate. All applicable image/test/security/quality lanes pass;
+original unit output reports 14,010 passes including all 17 selected AUTH cases.
+Authenticated Sonar task/analysis binding and two retained open maintainability
+findings are explicit in the
+[validation record](rust-core-mvp-auth-p1-validation-39245315.json).
+No Rust/runtime acceptance, merge or deployment follows from these CI results.
+The PR watch is stopped; common implementation preparation continues independently.
 
 ## Implementation baseline and compatibility gaps
 
@@ -113,12 +111,9 @@ column/constraint/policy/API differences, not a competing migration patch.
 
 ## Next work and dependency edges
 
-1. **G-COMPAT**, Go owner: return a reusable-component/gap map against this exact
-   record at `/home/thomas/src/bifrost-go-spike-artifacts/common-core-compatibility-20261016.md`
-   outside the frozen accepted packet. Include source file/symbol/migration,
-   exact demonstrated cases, limitations and proposed adapter impact. Cover
-   schema/grant collisions, RESTRICT/ancestor unlink, NEW-attempt retry,
-   lock interleaving and partial retirement. No code/evidence mutation or rerun.
+1. **G-COMPAT**, Go owner: mapping completed and integrated below; retained at `/home/thomas/src/bifrost-go-spike-artifacts/common-core-compatibility-20261016.md`
+   outside the frozen accepted packet. No duplicate mapping, acceptance rerun
+   or routine coordination message is required.
 2. **CP-CONSOLIDATE**, common owner: consume that map and current Python source;
    decide one schema/issuer/lock design, finite writer/read/unlink matrix and
    receipt/resource lifecycle. Prepare concrete migration/role/profile diffs
@@ -250,3 +245,27 @@ they do not qualify runtime integration. The accepted a475/56 packet remains
 fixed; G-ADAPT, shared migrations and capability expansion remain held. Common
 consolidation continues here without asking the Go owner to repeat accepted
 experiments. These are peer-reported results, not an independent runtime rerun.
+
+## Current common-owned implementation input
+
+[CP-CONSOLIDATE transformation packet](rust-core-mvp-common-schema-consolidation.md)
+now specifies the migration sequence, every grant binding disposition, native
+live-link versus historical-identity transformation, close-before-first-grant
+handling, issuer/renewal ownership and proposed combined transaction order.
+Its [source inventory](rust-core-mvp-common-schema-source-inventory.json) retains
+pinned column/constraint expressions and migration identities. It explicitly
+identifies the native-only artifact discriminator as incompatible with copying
+this schema wholesale into Python admission. No common migration or grant has
+been applied. Remaining review/authority/catalog gates are enumerated there.
+
+Freshly fetched workspace main is now
+`6689b218cb799b807c81d63ee77de9af27206509`; the
+[renewed boundary audit](rust-core-mvp-workspace-boundary-6689b218.json) finds
+2,451 authored committed Python files, zero forbidden imports/parse errors and
+an empty allowlist. Platform main remains e429. Both prerequisite merge commits
+remain ancestors of these fetched heads. Earlier baseline rows above retain
+their original evidence identity rather than being silently rewritten.
+
+Per Thomas's direction, the two owners now work independently. Only a concrete
+blocking dependency or interface decision warrants another peer message. This
+common source/constraint work does not require a Go acknowledgement.
