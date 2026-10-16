@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import hashlib
 import os
 import time
 from uuid import uuid4
@@ -58,7 +59,11 @@ async def _fresh_shared_redis():
 
 
 def _context_for(
-    function_name: str, file_path: str, engine_token: str, execution_id: str
+    function_name: str,
+    file_path: str,
+    engine_token: str,
+    execution_id: str,
+    content_hash: str,
 ) -> dict:
     return {
         "execution_id": execution_id,
@@ -79,6 +84,7 @@ def _context_for(
         "no_cache": True,
         "is_platform_admin": True,
         "engine_token": engine_token,
+        "content_hash": content_hash,
     }
 
 
@@ -176,8 +182,9 @@ class TestForkedColdImportOverSocket:
         )
         await db_session.commit()
 
+        entry_source = _entry_source(function_name, dep_module)
         await _seed_s3_only(dep_path, f"VALUE = 'socket-{tag}'\n")
-        await _seed_s3_only(entry_path, _entry_source(function_name, dep_module))
+        await _seed_s3_only(entry_path, entry_source)
 
         # Hard-disable HTTP for every forked child of this test: any module
         # fetch or SDK call that reaches HTTP fails with connection-refused,
@@ -192,7 +199,13 @@ class TestForkedColdImportOverSocket:
             global_repo_access=True,
             timeout_seconds=120,
         )
-        context = _context_for(function_name, entry_path, engine_token, execution_id)
+        context = _context_for(
+            function_name,
+            entry_path,
+            engine_token,
+            execution_id,
+            hashlib.sha256(entry_source.encode("utf-8")).hexdigest(),
+        )
 
         server = WorkerSdkHttpServer()
         await server.start()
@@ -293,7 +306,13 @@ async def {name}():
     monkeypatch.setenv("BIFROST_API_URL", "http://127.0.0.1:9")
     for key in ("BIFROST_ACCESS_TOKEN", "BIFROST_REFRESH_TOKEN"):
         monkeypatch.delenv(key, raising=False)
-    context = _context_for(name, path, token, str(attempt.id))
+    context = _context_for(
+        name,
+        path,
+        token,
+        str(attempt.id),
+        hashlib.sha256(source.encode("utf-8")).hexdigest(),
+    )
     context.pop("engine_token")
     context["is_platform_admin"] = False
     context["organization"] = {"id": str(org.id), "name": org.name, "is_active": True}
