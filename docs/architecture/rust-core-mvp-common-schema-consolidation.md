@@ -185,6 +185,11 @@ native attempt table before checking emptiness, requires read-committed
 isolation and refuses populated history. Those migration-owner locks do not
 grant a runtime coordinator table-lock authority. Source review, actual
 PostgreSQL tests and apply/role approval remain distinct gates.
+The unchanged normal CI workflow is qualifying this exact three-file branch in
+[run 38979851702, attempt 1](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/38979851702).
+It remains queued at this checkpoint. Scoped locked Ruff/format and diff checks
+pass; offline candidate tests and literal pre-PR have not yet run. No PR is
+opened before that gate, and no candidate DDL is applied by ordinary startup.
 
 Native ancestor positives to retain: inactive-user deletion clears executed_by;
 user/CLI cascade clears cli_session_id; form purge clears form_id; workflow and
@@ -255,8 +260,11 @@ Rust source `5a5a67284be79d1f0a8c8f07c0e5b5bd6a966303`,
 `core-rs/crates/bifrost-db/src/common_session.rs`. It rejects a detached owner or
 link before any mutation; uncertain-commit reconciliation also rejects that
 state without granting retry permission. Independent source review accepted the
-delta. New native compilation and real PostgreSQL evidence are separate gates;
-the earlier 42bdefe24 checkpoint cannot qualify these changed predicates.
+delta. The [updated supported source checkpoint](rust-core-mvp-common-session-checkpoint.json)
+qualifies this exact Rust tree: fmt, strict Clippy and all 36 default tests pass.
+No new live-binding SQL test ran; actual PostgreSQL evidence remains a separate
+gate. The earlier 42bdefe24 result is retained separately and does not qualify
+these changed predicates.
 
 Prototype writer guards grant SELECT on all public tables and DML on a finite
 fixture set. They authenticate session_user; Rust additionally checks current_user.

@@ -5,53 +5,57 @@
   "repository": "Midtown-Technology-Group/bifrost",
   "branch": "rust/common-session-close",
   "worktree": "/home/thomas/src/bifrost-rust-common-session-close",
-  "head": "42bdefe2442f3e7af37eb54172f922c540815c36",
+  "head": "5a5a67284be79d1f0a8c8f07c0e5b5bd6a966303",
   "base_main": "e42999395231ebc536711e5015422edfb75613a7",
   "qualified_rust_input": "9a5d74f44923adb98eff811d6b5b796fb75148b3",
-  "module_sha256": "66d57d1916da5613c1c929dd43fac94361922331cb8cc9c35bec7e7fa1dfceb6",
+  "module_sha256": "1599f52290ad235118d0e3bb2f45879e4d955300cc94fcaaf2a6df17467b90e9",
   "source_readback": {
-    "source_head": "42bdefe2442f3e7af37eb54172f922c540815c36",
-    "core_rs_tree": "5decf1a98c19334551d32c9bc74b4a6bfa218227",
+    "source_head": "5a5a67284be79d1f0a8c8f07c0e5b5bd6a966303",
+    "core_rs_tree": "c75c44dd3089a97e834dda8ee25468de3c32fa9b",
     "source_files": 40,
     "mismatches": [],
-    "manifest_sha256": "cc72437cfc46a37f33e6d48f403e4862bee1b1be926611c892d7a8ecb094f154"
+    "manifest_sha256": "ee358bebcd8fc769ec70b34593f3912f67823a6d17e5377de7fca6930d135950"
   },
   "supported_environment": {
     "host": "pve-t340.netbird.cloud",
     "vm_id": 101,
     "vm_name": "bifrost-platform-test-debian13-01",
     "architecture": "x86_64",
-    "guest_worktree": "/home/dev/bifrost-rust-common-session-close-00789",
-    "image": "bifrost-common-session-tools-00789",
-    "observed_image_id": "sha256:fbb2e06bf935e8f2df4ead32a5deba8e26bee9c885978158f6e3a4002bb6fe18",
+    "guest_worktree": "/home/dev/bifrost-rust-common-session-close-5a5a67284",
+    "image": "bifrost-common-session-tools-5a5a67284",
+    "observed_image_id": "sha256:c8174b0bcfc55f9b85ab7956d67f29002419b0ee25e2b4100804886c38f5bf49",
     "rustc": "1.98.1 (48a229cea 2026-09-01)",
     "cargo": "1.98.1 (797e8a9bc 2026-08-05)"
   },
   "invocation": {
     "transport": "authorized local Proxmox QEMU guest-exec into the dedicated test VM",
-    "guest_pid": 2234,
+    "guest_pid": 1463,
     "observed_exited": true,
     "observed_exitcode": 0,
-    "attempt": 1,
+    "attempt": 2,
     "docker_arguments": [
       "run",
       "--rm",
       "--name",
-      "bifrost-common-session-checks-00789",
+      "bifrost-common-session-checks-5a5a67284-2",
       "--label",
-      "bifrost.task=common-session-close-00789",
-      "--cpus=4",
-      "--memory=6g",
+      "bifrost.task=common-session-close-5a5a67284",
+      "--label",
+      "bifrost.source=5a5a67284be79d1f0a8c8f07c0e5b5bd6a966303",
+      "--label",
+      "bifrost.attempt=2",
+      "--cpus=2",
+      "--memory=4g",
       "--pids-limit=256",
       "--mount",
-      "type=bind,src=/home/dev/bifrost-rust-common-session-close-00789/core-rs,dst=/workspace/core-rs",
-      "bifrost-common-session-tools-00789",
+      "type=bind,src=/home/dev/bifrost-rust-common-session-close-5a5a67284/core-rs,dst=/workspace/core-rs",
+      "bifrost-common-session-tools-5a5a67284",
       "sh",
-      "-eu",
+      "-eux",
       "-c",
-      "cargo fmt --check && cargo clippy --locked --all-targets --all-features -- -D warnings && cargo test --locked --all"
+      "rustc -V; cargo -V; cargo fmt --check; cargo clippy --locked --all-targets --all-features -- -D warnings; cargo test --locked --all"
     ],
-    "provenance_limit": "Operator-retained record of the actual tool-dispatched guest-exec invocation and matching exit-status readback. Compiler log does not echo the commands, VM identity or attempt count; this is not independent signed runner attestation."
+    "provenance_limit": "Operator-retained guest-exec invocation and matching PID/exit readback. Shell trace echoes actual Rust commands and toolchain versions; VM/image/attempt and source custody additionally rely on operator receipt and file-hash readback, not independent signed runner attestation."
   },
   "results": {
     "format_check": "passed",
@@ -60,20 +64,20 @@
     "passed": 36,
     "failed": 0,
     "ignored": 0,
-    "new_cases": [
+    "module_snapshot_cases": [
       "common_session::tests::absent_grant_does_not_prevent_durable_cancellation",
       "common_session::tests::cancellation_observation_requires_all_committed_projections",
       "common_session::tests::fence_digests_reject_noncanonical_or_injected_values",
       "common_session::tests::unrelated_revocation_does_not_fabricate_cancellation",
       "common_session::tests::stale_or_partial_state_is_never_a_cancel_receipt"
-    ]
+    ],
+    "new_live_binding_SQL_cases_executed": false
   },
   "independent_sol_review": {
     "status": "scoped source ACCEPT",
-    "candidate": "42bdefe2442f3e7af37eb54172f922c540815c36",
-    "finding": "principal guard initially omitted public schema/function ownership",
-    "correction": "reject public schema/relation/function/type ownership and privileged/membership identities",
-    "proof_limit": "review verified source and 36 log-reported passes; command/VM/attempt metadata relies on invocation receipt"
+    "candidate": "5a5a67284be79d1f0a8c8f07c0e5b5bd6a966303",
+    "correction": "require owner live_execution_id and exact retained native live-link before mutation; execution/attempt/owner/session/live-link/tail NOWAIT order",
+    "proof_limit": "no reviewer execution; source checks passed in supported VM, actual SQL/concurrency/role and public parity unproved"
   },
   "scope": {
     "new_source": [
@@ -99,31 +103,102 @@
     "unchanged Python workflow, actual agent ownership and reversible routing"
   ],
   "cleanup": {
-    "initial_vm_state": "stopped",
-    "final_vm_state": "stopped",
-    "graceful_shutdown_exitcode": 0,
+    "initial_attempt_1_vm_state": "running; borrowed while pre-existing stack active",
+    "attempt_1_interruption": "pre-existing owner shut down VM; stopped state and missing old guest PID verified; failure log retained",
+    "recovery_initial_vm_state": "stopped; this task started VM",
+    "final_vm_state": "running; preserved new non-owned active stack",
+    "retained_owner_worktree": "/home/dev/row530-version-notice-marker",
+    "retained_compose_project": "bifrost-test-b0dcf21f",
+    "vm_cleanup_checkpoint": "do not shut down while another owner has an active stack; its ordinary lifecycle owns final VM shutdown",
     "task_containers": [],
     "task_image_tags": [],
     "task_source_and_guest_logs_removed": true,
-    "shared_build_cache": "preserved; no blanket image/layer/network/volume absence claim"
+    "shared_build_cache": "preserved; no blanket image/layer absence claim"
   },
   "logs": {
-    "checks.log": {
-      "path": "evidence/common-session-42bdefe24/checks.log.gz",
-      "raw_sha256": "d5c0a9a69a60e4b68502b1ea9d40175afc38a92122fea088278e60baf4f10dd4",
-      "gzip_sha256": "8b5837ede13acccae2a5153bffc245cb6b2ec8789a89d8cccbbf2969d3d469c8",
-      "raw_bytes": 22740
+    "1/checks.log": {
+      "path": "evidence/common-session-5a5a67284/attempt-1/checks.log.gz",
+      "raw_sha256": "866962a7ca381d5ee298500cfb9980b725429a94e671c881fc3238eadc32996e",
+      "gzip_sha256": "b12f588473557de7a2f579ca7df9c7f7f8a790e17a29a66bf20a2e8d28e9126f",
+      "raw_bytes": 12649
     },
-    "build.log": {
-      "path": "evidence/common-session-42bdefe24/build.log.gz",
-      "raw_sha256": "43266818683af16f06b7021c50865fff6e4fb39a3d07ddf3155ab19fe7872071",
-      "gzip_sha256": "c4208945d8633ee07bb1eab143f5c2d1f5da33631e81a9f3d9884c3cff395c9f",
-      "raw_bytes": 14689
+    "1/build.log": {
+      "path": "evidence/common-session-5a5a67284/attempt-1/build.log.gz",
+      "raw_sha256": "fdd56fe22cb39a95006ea7aca564e34d0461f23c2a27a891d0e41b7a6a8abb05",
+      "gzip_sha256": "987db8334392d3d78595b2d54b2eb60090e92704230eae49a329c8cf4fe04d74",
+      "raw_bytes": 1841
+    },
+    "1/disposition.json": {
+      "path": "evidence/common-session-5a5a67284/attempt-1/disposition.json.gz",
+      "raw_sha256": "857879a5e3ea0b27f31765bf4896499ddfe01955676458d4e37f8ce06f724022",
+      "gzip_sha256": "1dd5f49fc426fd9f76a165b6d65e8ec41f14a7b98e89a8e2c761e794ec621c67",
+      "raw_bytes": 700
+    },
+    "2/checks.log": {
+      "path": "evidence/common-session-5a5a67284/attempt-2/checks.log.gz",
+      "raw_sha256": "da05d6173e5360ce9c376de7732351759df648a2e895a6167a1fc8667d26d7c9",
+      "gzip_sha256": "c72fb01fc4262eaca60eb54ae4d915cb4eb417ab169255447f36e2db381776d2",
+      "raw_bytes": 17020
+    },
+    "2/checks.exit": {
+      "path": "evidence/common-session-5a5a67284/attempt-2/checks.exit.gz",
+      "raw_sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "gzip_sha256": "89ed3b723e0e40d8957a2df55fcb04d57b6d95fa665c5fe67b098df7f29694ae",
+      "raw_bytes": 2
+    },
+    "2/disposition.json": {
+      "path": "evidence/common-session-5a5a67284/attempt-2/disposition.json.gz",
+      "raw_sha256": "16d48f420416825da1f484ac394d4bfb4cbf6f4731c6a4185ec8ee70830ff667",
+      "gzip_sha256": "7daf251a8b4e1fddf896305e85cbbbc6f329941859ae9e4369d6cf3bbc3dc137",
+      "raw_bytes": 514
     }
   },
   "procedure_versions": {
     "mtg-engineering-flow": "2026-10-06.1",
     "mtg-skill-router": "2026-10-01.1",
     "cold_skill_package": "2026-10-09.1"
-  }
+  },
+  "previous_checkpoint": "evidence/common-session-42bdefe24/checkpoint.json",
+  "attempts": [
+    {
+      "head": "5a5a67284be79d1f0a8c8f07c0e5b5bd6a966303",
+      "attempt": 1,
+      "guest_pid": 52145,
+      "outcome": "interrupted by pre-existing VM owner shutdown; no test verdict",
+      "vm_stop_verified": true,
+      "old_guest_handle_after_restart": "Agent error: PID ld does not exist",
+      "checks_exit_file": "absent",
+      "logs": {
+        "checks.log": {
+          "bytes": 12649,
+          "sha256": "866962a7ca381d5ee298500cfb9980b725429a94e671c881fc3238eadc32996e"
+        },
+        "build.log": {
+          "bytes": 1841,
+          "sha256": "fdd56fe22cb39a95006ea7aca564e34d0461f23c2a27a891d0e41b7a6a8abb05"
+        }
+      },
+      "recovery": "one supported same-candidate source-check recovery after Docker boot, not a product/SQL campaign"
+    },
+    {
+      "head": "5a5a67284be79d1f0a8c8f07c0e5b5bd6a966303",
+      "attempt": 2,
+      "guest_pid": 1463,
+      "observed_exitcode": 0,
+      "passed": 36,
+      "failed": 0,
+      "ignored": 0,
+      "checks": {
+        "checks.log": {
+          "bytes": 17020,
+          "sha256": "da05d6173e5360ce9c376de7732351759df648a2e895a6167a1fc8667d26d7c9"
+        },
+        "checks.exit": {
+          "bytes": 2,
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        }
+      },
+      "qualification": "source/unit only; new module SQL not executed"
+    }
+  ]
 }

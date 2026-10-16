@@ -1,0 +1,129 @@
+{
+  "schema_version": 1,
+  "kind": "supported-source-and-unit-checkpoint",
+  "package": "R1/common-session-cancel-source",
+  "repository": "Midtown-Technology-Group/bifrost",
+  "branch": "rust/common-session-close",
+  "worktree": "/home/thomas/src/bifrost-rust-common-session-close",
+  "head": "42bdefe2442f3e7af37eb54172f922c540815c36",
+  "base_main": "e42999395231ebc536711e5015422edfb75613a7",
+  "qualified_rust_input": "9a5d74f44923adb98eff811d6b5b796fb75148b3",
+  "module_sha256": "66d57d1916da5613c1c929dd43fac94361922331cb8cc9c35bec7e7fa1dfceb6",
+  "source_readback": {
+    "source_head": "42bdefe2442f3e7af37eb54172f922c540815c36",
+    "core_rs_tree": "5decf1a98c19334551d32c9bc74b4a6bfa218227",
+    "source_files": 40,
+    "mismatches": [],
+    "manifest_sha256": "cc72437cfc46a37f33e6d48f403e4862bee1b1be926611c892d7a8ecb094f154"
+  },
+  "supported_environment": {
+    "host": "pve-t340.netbird.cloud",
+    "vm_id": 101,
+    "vm_name": "bifrost-platform-test-debian13-01",
+    "architecture": "x86_64",
+    "guest_worktree": "/home/dev/bifrost-rust-common-session-close-00789",
+    "image": "bifrost-common-session-tools-00789",
+    "observed_image_id": "sha256:fbb2e06bf935e8f2df4ead32a5deba8e26bee9c885978158f6e3a4002bb6fe18",
+    "rustc": "1.98.1 (48a229cea 2026-09-01)",
+    "cargo": "1.98.1 (797e8a9bc 2026-08-05)"
+  },
+  "invocation": {
+    "transport": "authorized local Proxmox QEMU guest-exec into the dedicated test VM",
+    "guest_pid": 2234,
+    "observed_exited": true,
+    "observed_exitcode": 0,
+    "attempt": 1,
+    "docker_arguments": [
+      "run",
+      "--rm",
+      "--name",
+      "bifrost-common-session-checks-00789",
+      "--label",
+      "bifrost.task=common-session-close-00789",
+      "--cpus=4",
+      "--memory=6g",
+      "--pids-limit=256",
+      "--mount",
+      "type=bind,src=/home/dev/bifrost-rust-common-session-close-00789/core-rs,dst=/workspace/core-rs",
+      "bifrost-common-session-tools-00789",
+      "sh",
+      "-eu",
+      "-c",
+      "cargo fmt --check && cargo clippy --locked --all-targets --all-features -- -D warnings && cargo test --locked --all"
+    ],
+    "provenance_limit": "Operator-retained record of the actual tool-dispatched guest-exec invocation and matching exit-status readback. Compiler log does not echo the commands, VM identity or attempt count; this is not independent signed runner attestation."
+  },
+  "results": {
+    "format_check": "passed",
+    "clippy": "passed",
+    "workspace_tests": "passed",
+    "passed": 36,
+    "failed": 0,
+    "ignored": 0,
+    "new_cases": [
+      "common_session::tests::absent_grant_does_not_prevent_durable_cancellation",
+      "common_session::tests::cancellation_observation_requires_all_committed_projections",
+      "common_session::tests::fence_digests_reject_noncanonical_or_injected_values",
+      "common_session::tests::unrelated_revocation_does_not_fabricate_cancellation",
+      "common_session::tests::stale_or_partial_state_is_never_a_cancel_receipt"
+    ]
+  },
+  "independent_sol_review": {
+    "status": "scoped source ACCEPT",
+    "candidate": "42bdefe2442f3e7af37eb54172f922c540815c36",
+    "finding": "principal guard initially omitted public schema/function ownership",
+    "correction": "reject public schema/relation/function/type ownership and privileged/membership identities",
+    "proof_limit": "review verified source and 36 log-reported passes; command/VM/attempt metadata relies on invocation receipt"
+  },
+  "scope": {
+    "new_source": [
+      "core-rs/crates/bifrost-db/src/common_session.rs",
+      "core-rs/crates/bifrost-db/src/lib.rs"
+    ],
+    "sql_executed_by_new_module": false,
+    "schema_or_roles_applied": false,
+    "new_endpoint_enabled": false,
+    "new_credential_issued": false,
+    "common_result_or_start_owned": false,
+    "mvp_accepted": false,
+    "merged": false,
+    "deployed": false
+  },
+  "held": [
+    "PostgreSQL/fence/principal/ownership-negative and failed-commit tests",
+    "cancel/result/issue/renew/ancestor concurrency",
+    "late first issuance after session close",
+    "public cancellation/error/authorization and committed-event parity",
+    "reviewed common schema/role application and live-link compatibility",
+    "literal pre-PR, normal CI and PR publication",
+    "unchanged Python workflow, actual agent ownership and reversible routing"
+  ],
+  "cleanup": {
+    "initial_vm_state": "stopped",
+    "final_vm_state": "stopped",
+    "graceful_shutdown_exitcode": 0,
+    "task_containers": [],
+    "task_image_tags": [],
+    "task_source_and_guest_logs_removed": true,
+    "shared_build_cache": "preserved; no blanket image/layer/network/volume absence claim"
+  },
+  "logs": {
+    "checks.log": {
+      "path": "evidence/common-session-42bdefe24/checks.log.gz",
+      "raw_sha256": "d5c0a9a69a60e4b68502b1ea9d40175afc38a92122fea088278e60baf4f10dd4",
+      "gzip_sha256": "8b5837ede13acccae2a5153bffc245cb6b2ec8789a89d8cccbbf2969d3d469c8",
+      "raw_bytes": 22740
+    },
+    "build.log": {
+      "path": "evidence/common-session-42bdefe24/build.log.gz",
+      "raw_sha256": "43266818683af16f06b7021c50865fff6e4fb39a3d07ddf3155ab19fe7872071",
+      "gzip_sha256": "c4208945d8633ee07bb1eab143f5c2d1f5da33631e81a9f3d9884c3cff395c9f",
+      "raw_bytes": 14689
+    }
+  },
+  "procedure_versions": {
+    "mtg-engineering-flow": "2026-10-06.1",
+    "mtg-skill-router": "2026-10-01.1",
+    "cold_skill_package": "2026-10-09.1"
+  }
+}
