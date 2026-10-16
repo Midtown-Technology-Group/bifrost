@@ -258,6 +258,35 @@ class TestAgentRouterCoverage:
             )
             is True
         )
+
+        cross_org = agents._agent_to_public(
+            agent,
+            allow_cross_org_tools=True,
+        )
+        assert cross_org.tool_ids == [
+            str(tool_id),
+            str(global_tool_id),
+            str(foreign_tool_id),
+        ]
+
+        redacted = agents._agent_to_public(
+            agent,
+            include_configuration=False,
+            allow_cross_org_tools=True,
+        )
+        assert redacted.system_prompt == ""
+        assert redacted.created_by is None
+        assert redacted.owner_email is None
+        assert redacted.tool_ids == []
+        assert redacted.delegated_agent_ids == []
+        assert redacted.role_ids == []
+        assert redacted.knowledge_sources == []
+        assert redacted.system_tools == []
+        assert redacted.mcp_connection_ids == []
+        assert redacted.llm_profile_id is None
+        assert redacted.llm_max_tokens is None
+        assert redacted.max_iterations is None
+        assert redacted.max_token_budget is None
         assert agents._logo_data_url(None, "image/png") is None
 
 
