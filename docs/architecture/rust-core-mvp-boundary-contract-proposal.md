@@ -1,5 +1,7 @@
 # Rust MVP boundary contract: review candidate
 
+Canonical next-work entrypoint: [common runtime reconciliation](rust-core-mvp-common-runtime-reconciliation.md). This draft is a design input, not authority for parallel schema or lock implementation.
+
 Status: **HOLD — not frozen, no builder release.** Source-derived proposal dated
 2026-10-09. Existing P0 framing remains unchanged. No migration, role, credential
 policy expansion or execution-profile change is approved by this document.

@@ -1,5 +1,7 @@
 # Workflow deletion/recovery contract — finite source decision
 
+Canonical next-work entrypoint: [common runtime reconciliation](rust-core-mvp-common-runtime-reconciliation.md). This draft is a design input, not authority for parallel schema or lock implementation.
+
 Pinned platform main e42999395231ebc536711e5015422edfb75613a7, inspected in AUTH worktree at 39245315e193e1d04886044677bf7a75bb8c6f1f. Date 2026-10-16; engineering-flow 2026-10-06.1. Prior structural SQL/report read. Source-only: no SQL execution, tests, runtime imports, CI, external writes, repository edits or agents. This dependency does not establish full workflow/agent ownership acceptance.
 
 ## Recommendation
