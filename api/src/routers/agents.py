@@ -253,38 +253,59 @@ def _agent_logo_url(agent: Agent) -> str | None:
     return None
 
 
-def _agent_to_public(agent: Agent) -> AgentPublic:
-    """Convert Agent ORM to AgentPublic with relationships."""
+def _agent_to_public(
+    agent: Agent, *, include_configuration: bool = True
+) -> AgentPublic:
+    """Convert an agent without disclosing configuration to non-managers."""
     valid_system_tool_ids = set(get_system_tool_ids())
 
     owner_email = None
-    if agent.owner_user_id and hasattr(agent, 'owner') and agent.owner:
+    if (
+        include_configuration
+        and agent.owner_user_id
+        and hasattr(agent, "owner")
+        and agent.owner
+    ):
         owner_email = agent.owner.email
 
     return AgentPublic(
         id=agent.id,
         name=agent.name,
         description=agent.description,
-        system_prompt=agent.system_prompt,
+        system_prompt=agent.system_prompt if include_configuration else "",
         channels=agent.channels,
         access_level=agent.access_level,
         organization_id=agent.organization_id,
         is_active=agent.is_active,
-        created_by=agent.created_by,
+        created_by=agent.created_by if include_configuration else None,
         created_at=agent.created_at,
         updated_at=agent.updated_at,
         owner_user_id=agent.owner_user_id,
         owner_email=owner_email,
-        tool_ids=[str(t.id) for t in agent.tools],
-        delegated_agent_ids=[str(a.id) for a in agent.delegated_agents],
-        role_ids=[str(r.id) for r in agent.roles],
-        knowledge_sources=agent.knowledge_sources or [],
-        system_tools=[t for t in (agent.system_tools or []) if t in valid_system_tool_ids],
-        mcp_connection_ids=sorted(str(c.id) for c in (agent.mcp_connections or [])),
-        llm_profile_id=agent.llm_profile_id,
-        llm_max_tokens=agent.llm_max_tokens,
-        max_iterations=agent.max_iterations,
-        max_token_budget=agent.max_token_budget,
+        tool_ids=[str(t.id) for t in agent.tools] if include_configuration else [],
+        delegated_agent_ids=(
+            [str(a.id) for a in agent.delegated_agents]
+            if include_configuration
+            else []
+        ),
+        role_ids=[str(r.id) for r in agent.roles] if include_configuration else [],
+        knowledge_sources=(
+            (agent.knowledge_sources or []) if include_configuration else []
+        ),
+        system_tools=(
+            [t for t in (agent.system_tools or []) if t in valid_system_tool_ids]
+            if include_configuration
+            else []
+        ),
+        mcp_connection_ids=(
+            sorted(str(c.id) for c in (agent.mcp_connections or []))
+            if include_configuration
+            else []
+        ),
+        llm_profile_id=agent.llm_profile_id if include_configuration else None,
+        llm_max_tokens=agent.llm_max_tokens if include_configuration else None,
+        max_iterations=agent.max_iterations if include_configuration else None,
+        max_token_budget=agent.max_token_budget if include_configuration else None,
         logo=_logo_data_url(
             agent.logo_thumbnail_data or agent.logo_data,
             agent.logo_thumbnail_content_type or agent.logo_content_type,
@@ -774,7 +795,10 @@ async def get_agent(
                 detail=f"Agent {agent_id} not found",
             )
 
-    return _agent_to_public(agent)
+    can_manage = user.is_platform_admin or (
+        access_level == "private" and agent.owner_user_id == user.user_id
+    )
+    return _agent_to_public(agent, include_configuration=can_manage)
 
 
 @router.put("/{agent_id}", **operation_route("agents.update"))

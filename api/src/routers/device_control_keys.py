@@ -1,9 +1,11 @@
 """Device-scoped control-key REST (M1.4 #832).
 
-Authorization follows the M0 matrix: registry operations require org
-membership plus ``can_manage_config`` (or platform superuser). Org scoping
-goes through ``resolve_org_filter`` + ``org_filter_clause`` — never inline
-comparisons. The raw key is returned exactly once from create/rotate.
+Authorization follows the M0 matrix: metadata/revocation operations require
+org membership plus ``can_manage_config`` (or platform superuser). Create and
+rotate additionally require ``can_execute_devices`` because they return a
+credential that can submit LocalSystem jobs. Org scoping goes through
+``resolve_org_filter`` + ``org_filter_clause`` — never inline comparisons.
+The raw key is returned exactly once from create/rotate.
 """
 
 from uuid import UUID
@@ -28,6 +30,7 @@ from src.services.device_control_keys import (
 )
 from src.services.devices import (
     DeviceOperationError,
+    require_device_control_key_issue_permission,
     require_device_manage_permission,
 )
 
@@ -47,7 +50,7 @@ async def create_control_key_route(
     user: CurrentUser,
 ) -> ControlKeyCreatedResponse | JSONResponse:
     try:
-        await require_device_manage_permission(ctx.db, user)
+        await require_device_control_key_issue_permission(ctx.db, user)
         row, raw = await create_control_key(ctx.db, user, body)
     except DeviceOperationError as exc:
         return exc.to_response()
@@ -108,7 +111,7 @@ async def rotate_control_key_endpoint(
     user: CurrentUser,
 ) -> ControlKeyKeyResponse | JSONResponse:
     try:
-        await require_device_manage_permission(ctx.db, user)
+        await require_device_control_key_issue_permission(ctx.db, user)
         row, raw = await rotate_control_key_route(ctx.db, user, key_id)
     except DeviceOperationError as exc:
         return exc.to_response()
