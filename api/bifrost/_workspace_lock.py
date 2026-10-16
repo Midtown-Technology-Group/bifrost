@@ -72,10 +72,15 @@ def _legacy_lock_path(workspace: pathlib.Path) -> pathlib.Path:
     )
 
 
-def _validate_private_directory(fd: int, path: pathlib.Path) -> None:
+def _validate_directory(fd: int, path: pathlib.Path) -> None:
     directory_stat = os.fstat(fd)
     if not stat.S_ISDIR(directory_stat.st_mode):
         raise NotADirectoryError(f"workspace lock directory is not a directory: {path}")
+
+
+def _validate_private_directory(fd: int, path: pathlib.Path) -> None:
+    _validate_directory(fd, path)
+    directory_stat = os.fstat(fd)
     if hasattr(os, "getuid") and directory_stat.st_uid != os.getuid():
         raise PermissionError(
             f"workspace lock directory is not owned by the current user: {path}"
@@ -83,11 +88,18 @@ def _validate_private_directory(fd: int, path: pathlib.Path) -> None:
     os.fchmod(fd, 0o700)
 
 
-def _open_posix_lock_file(path: pathlib.Path) -> IO[Any]:
+def _open_posix_lock_file(
+    path: pathlib.Path,
+    *,
+    shared_user_directory: bool = False,
+) -> IO[Any]:
     """Open a lock file relative to verified private directories.
 
     Directory descriptors plus ``O_NOFOLLOW`` keep an attacker from swapping a
-    checked path for a symlink between validation and open.
+    checked path for a symlink between validation and open. The legacy fence
+    lives below ``/tmp/bifrost``, which is also a cross-UID test-result mount;
+    that shared parent is type-checked but its permissions are not changed.
+    Its ``workspace-locks`` child and the lock file remain owner-only.
     """
     user_directory = path.parent.parent
     try:
@@ -102,7 +114,10 @@ def _open_posix_lock_file(path: pathlib.Path) -> IO[Any]:
     lock_directory_fd: int | None = None
     file_fd: int | None = None
     try:
-        _validate_private_directory(user_fd, user_directory)
+        if shared_user_directory:
+            _validate_directory(user_fd, user_directory)
+        else:
+            _validate_private_directory(user_fd, user_directory)
         try:
             os.mkdir(path.parent.name, mode=0o700, dir_fd=user_fd)
         except FileExistsError:
@@ -155,6 +170,12 @@ def _open_lock_file(path: pathlib.Path) -> IO[Any]:
             os.close(file_fd)
 
 
+def _open_legacy_lock_file(path: pathlib.Path) -> IO[Any]:
+    if os.name == "posix":
+        return _open_posix_lock_file(path, shared_user_directory=True)
+    return _open_lock_file(path)
+
+
 def _platform_lock(fh: IO[Any]) -> None:
     """Acquire an exclusive non-blocking lock on `fh`. Raises BlockingIOError
     if another process holds it."""
@@ -176,11 +197,16 @@ def _platform_lock(fh: IO[Any]) -> None:
         fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
 
 
-def _read_metadata(path: pathlib.Path) -> dict[str, Any]:
+def _read_metadata(
+    path: pathlib.Path,
+    *,
+    legacy: bool = False,
+) -> dict[str, Any]:
     """Read informational metadata from the lock file. Returns {} on any
     error — metadata is for the error message only, never for correctness."""
     try:
-        with _open_lock_file(path) as fh:
+        opener = _open_legacy_lock_file if legacy else _open_lock_file
+        with opener(path) as fh:
             return json.load(fh)
     except (OSError, json.JSONDecodeError):
         return {}
@@ -250,13 +276,13 @@ class WorkspaceLock:
             # so an upgrade cannot overlap an already-running old watch/sync,
             # and an old client cannot start while this client is active.
             if self.legacy_path != self.path:
-                self._legacy_fh = _open_lock_file(self.legacy_path)
+                self._legacy_fh = _open_legacy_lock_file(self.legacy_path)
                 try:
                     _platform_lock(self._legacy_fh)
                 except BlockingIOError:
                     raise WorkspaceLockError(
                         self.workspace,
-                        _read_metadata(self.legacy_path),
+                        _read_metadata(self.legacy_path, legacy=True),
                     )
 
             # Open read/write without truncation. If someone else holds the

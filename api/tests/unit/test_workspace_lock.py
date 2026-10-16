@@ -164,6 +164,30 @@ def test_lock_directory_and_file_are_owner_only(
     assert file_mode == 0o600
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX permission semantics")
+def test_legacy_fence_preserves_shared_result_root_permissions(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The migration fence must not privatize the cross-UID result mount."""
+    temp_root = tmp_path / "temp"
+    shared_result_root = temp_root / "bifrost"
+    shared_result_root.mkdir(parents=True)
+    shared_result_root.chmod(0o777)
+    monkeypatch.setattr(
+        _workspace_lock.tempfile, "gettempdir", lambda: str(temp_root)
+    )
+    ws = _make_workspace(tmp_path / "workspace")
+    legacy_path = _workspace_lock._legacy_lock_path(ws)
+
+    assert stat.S_IMODE(shared_result_root.stat().st_mode) == 0o777
+    with WorkspaceLock(ws, "watch"):
+        assert stat.S_IMODE(shared_result_root.stat().st_mode) == 0o777
+        assert stat.S_IMODE(legacy_path.parent.stat().st_mode) == 0o700
+        assert stat.S_IMODE(legacy_path.stat().st_mode) == 0o600
+    assert stat.S_IMODE(shared_result_root.stat().st_mode) == 0o777
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="POSIX flock semantics")
 def test_killed_holder_releases_lock(tmp_path: pathlib.Path) -> None:
     """Kernel cleans up the FD even on SIGKILL. After the holder dies, a new
