@@ -381,7 +381,27 @@ def create_app() -> FastAPI:
         RouteBodyLimitMiddleware,
         limits={
             ("POST", "/api/solutions/import-workspace/preview"): MAX_SOLUTION_ARCHIVE_BYTES,
+            ("POST", "/api/platform/external-workers/identity"): 4 << 20,
         },
+        messages={
+            ("POST", "/api/solutions/import-workspace/preview"): "Solution archive exceeds the compressed upload limit.",
+            ("POST", "/api/platform/external-workers/identity"): "Identity request exceeds body limit.",
+        },
+    )
+
+    # Reject oversized Codex credential imports before JSON parsing or token
+    # encryption. Field-level limits are enforced by the parser as a second
+    # boundary before repository persistence.
+    from src.services.codex_gateway.oauth import MAX_CODEX_AUTH_CACHE_IMPORT_BYTES
+    app.add_middleware(
+        RouteBodyLimitMiddleware,
+        limits={
+            (
+                "POST",
+                "/api/codex-gateway/oauth/import-auth-cache",
+            ): MAX_CODEX_AUTH_CACHE_IMPORT_BYTES,
+        },
+        detail="Codex auth cache request exceeds the import limit.",
     )
 
     # Add CSRF protection middleware

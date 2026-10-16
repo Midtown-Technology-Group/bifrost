@@ -4,10 +4,39 @@ import pytest
 
 from shared.form_runtime import (
     FormRuntimeValidationError,
+    FormUploadSizeError,
+    enforce_form_upload_size,
     form_capability_fingerprint,
     normalize_allowed_origins,
     validate_form_submission,
 )
+
+
+async def _chunks(*values: bytes):
+    for value in values:
+        yield value
+
+
+@pytest.mark.asyncio
+async def test_form_upload_size_accepts_only_the_exact_signed_byte_count():
+    accepted = [
+        chunk
+        async for chunk in enforce_form_upload_size(
+            _chunks(b"abc", b"", b"de"),
+            expected=5,
+        )
+    ]
+    assert accepted == [b"abc", b"de"]
+
+    with pytest.raises(FormUploadSizeError) as oversized:
+        async for _ in enforce_form_upload_size(_chunks(b"abc", b"def"), expected=5):
+            pass
+    assert oversized.value.actual == 6
+
+    with pytest.raises(FormUploadSizeError) as undersized:
+        async for _ in enforce_form_upload_size(_chunks(b"abc"), expected=5):
+            pass
+    assert undersized.value.actual == 3
 
 
 def _field(**overrides):
