@@ -207,3 +207,10 @@ uniqueness, Start/close and tombstone SQL for the workflow owner. It is a review
 proposal only. Ownership/schema/role/profile decisions remain held, including
 the explicit coordinator read/ANY-table-lock disposition. No new runtime SDK
 capabilities are bundled into that work.
+
+
+The [workflow schema review packet](rust-core-mvp-workflow-owner-schema-proposal.md)
+now makes the native FK, session and receipt constraints concrete. Its SQL has
+not been executed and is not migration history. Root holds its stronger
+one-session restriction and RESTRICT deletion behavior pending native
+recovery/deletion characterization; these cannot be assumed parity.
