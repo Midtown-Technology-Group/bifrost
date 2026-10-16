@@ -30,13 +30,17 @@ async def test_service_rejects_changed_source_before_execution(monkeypatch):
     monkeypatch.setattr(
         virtual_import, "remove_virtual_import_hook", lambda: removed.append(True)
     )
-    loaded = []
+    fetched = []
 
-    def load_source(**kwargs):
-        loaded.append(kwargs)
-        return lambda: None, None, None, "actual source"
+    def fetch_source(path):
+        fetched.append(path)
+        return {
+            "content": 'raise RuntimeError("service module sentinel executed")',
+            "path": path,
+            "hash": "cache-labelled-hash",
+        }
 
-    monkeypatch.setattr(worker, "_load_workspace_workflow", load_source)
+    monkeypatch.setattr(module_cache_sync, "get_module_sync", fetch_source)
     monkeypatch.setattr(
         "bifrost._service_runtime.install_service_credentials", credential_installs.append
     )
@@ -59,11 +63,12 @@ async def test_service_rejects_changed_source_before_execution(monkeypatch):
         },
     )
 
-    assert loaded[0]["workspace_generation"] == "current-generation"
-    assert asserted_generations == ["current-generation"]
+    assert fetched == ["workflows/service.py"]
+    assert asserted_generations == ["current-generation", "current-generation"]
     assert result["status"] == "Failed"
     assert result["error_type"] == "RuntimeError"
     assert "source integrity mismatch" in result["error_message"]
+    assert "service module sentinel executed" not in result["error_message"]
     execute.assert_not_awaited()
     assert removed == [True]
 

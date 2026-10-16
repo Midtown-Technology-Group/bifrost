@@ -147,10 +147,11 @@ async def test_run_execution_emits_worker_span(monkeypatch):
 async def test_repo_execution_rejects_untrusted_source(
     monkeypatch, content_hash, error_fragment
 ):
-    """Repo jobs fail closed when their digest is absent or stale."""
+    """Repo jobs reject a missing or stale pin before module execution."""
     fake_tracer = _FakeTracer()
     monkeypatch.setattr(worker, "tracer", fake_tracer)
     execute = AsyncMock()
+    untrusted_source = 'raise RuntimeError("module sentinel executed")'
 
     with (
         patch("bifrost.credentials.is_token_expired", return_value=False),
@@ -167,9 +168,16 @@ async def test_repo_execution_rejects_untrusted_source(
         patch("src.services.execution.virtual_import.install_virtual_import_hook"),
         patch("src.services.execution.virtual_import.remove_virtual_import_hook"),
         patch(
-            "src.services.execution.worker._load_workspace_workflow",
-            return_value=(lambda: None, None, None, "current source"),
+            "src.core.module_cache_sync.assert_workspace_generation"
         ),
+        patch(
+            "src.core.module_cache_sync.get_module_sync",
+            return_value={
+                "content": untrusted_source,
+                "path": "workflows/unpinned.py",
+                "hash": "cache-labelled-hash",
+            },
+        ) as get_module,
         patch("src.services.execution.engine.execute", new=execute),
     ):
         payload = await worker._run_execution(
@@ -192,6 +200,8 @@ async def test_repo_execution_rejects_untrusted_source(
     assert payload["status"] == ExecutionStatus.FAILED.value
     assert payload["error_type"] == "RuntimeError"
     assert error_fragment in payload["error_message"]
+    assert "module sentinel executed" not in payload["error_message"]
+    assert get_module.call_count == (0 if content_hash is None else 1)
     execute.assert_not_awaited()
 
 
