@@ -11,18 +11,22 @@ permissions:
 jobs:
   tooling:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Isolated Go tooling, package metadata and archive checks
         run: bash spikes/go-native/scripts/tooling-check.sh "$RUNNER_TEMP/go-tooling"
+      - name: Execute the isolated developer CLI loop
+        run: bash spikes/go-native/scripts/developer-loop-check.sh "$RUNNER_TEMP/go-developer-loop"
       - name: Retain source-bound tooling evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: go-developer-tools-${{ github.sha }}
-          path: ${{ runner.temp }}/go-tooling
+          path: |
+            ${{ runner.temp }}/go-tooling
+            ${{ runner.temp }}/go-developer-loop
           if-no-files-found: error
           retention-days: 14

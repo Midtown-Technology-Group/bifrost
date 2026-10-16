@@ -64,7 +64,7 @@ docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-
     /tmp/schema /fixture/output.go Output > /results/output.json' \
   > "$evidence_dir/go-tests.jsonl"
 cp "$scratch/results/input.json" "$scratch/results/output.json" "$evidence_dir/"
-python3 -B -m unittest discover -s "$spike_root/scripts" -p test_native_bundle.py \
+python3 -B -m unittest discover -s "$spike_root/scripts" -p 'test_*.py' \
   > "$evidence_dir/bundle-tests.txt" 2>&1
 python3 - "$evidence_dir" <<'PY'
 import json, pathlib, sys

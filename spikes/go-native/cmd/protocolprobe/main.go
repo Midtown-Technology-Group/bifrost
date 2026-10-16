@@ -50,7 +50,11 @@ func utcText(value time.Time) string {
 	return value.UTC().Truncate(time.Microsecond).Format(time.RFC3339Nano)
 }
 
-type fixture struct{ adapter, workflow, evidence, graph, inputSchema, outputSchema, vectors string }
+type fixture struct {
+	adapter, workflow, evidence, graph, inputSchema, outputSchema, vectors string
+	workflowSHA256, artifactID                                             string
+	descending                                                             bool
+}
 type observation struct {
 	Case                string                   `json:"case"`
 	Frames              []executionprofile.Frame `json:"frames"`
@@ -112,7 +116,7 @@ func runCase(f fixture, mode string) (observation, error) {
 	body["context"].(map[string]any)["effective_scope"] = scope
 	artifact := body["artifact"].(map[string]any)
 	childDigest, err := fileDigest(f.workflow)
-	if err != nil || childDigest != "5f9c912ec6055882e0d443378cb93bb87b58eb7ab2a49eb5e14d338d72865edd" {
+	if err != nil || childDigest != f.workflowSHA256 {
 		return result, rejected
 	}
 	adapterDigest, err := fileDigest(f.adapter)
@@ -142,6 +146,9 @@ func runCase(f fixture, mode string) (observation, error) {
 	// Fixture-local identity only; not an accepted deployment identity recipe.
 	artifactIdentity, _ := encode(map[string]any{"child": childDigest, "adapter": adapterDigest, "evidence": artifact["build_evidence_sha256"]})
 	artifactID := "sha256:" + digest(artifactIdentity)
+	if f.artifactID != "" {
+		artifactID = f.artifactID
+	}
 	artifact["artifact_id"] = artifactID
 	binding["artifact_id"] = artifactID
 	body["context"].(map[string]any)["artifact_id"] = artifactID
@@ -310,7 +317,11 @@ func runCase(f fixture, mode string) (observation, error) {
 			}
 			if mode == "missing" {
 				missing := output["missing_keys"].([]any)
-				if !reflect.DeepEqual(missing, []any{"alpha", "zeta"}) {
+				expected := []any{"alpha", "zeta"}
+				if f.descending {
+					expected = []any{"zeta", "alpha"}
+				}
+				if !reflect.DeepEqual(missing, expected) {
 					return result, rejected
 				}
 			}
@@ -363,6 +374,9 @@ func main() {
 	flag.StringVar(&f.inputSchema, "input-schema", "", "input schema")
 	flag.StringVar(&f.outputSchema, "output-schema", "", "output schema")
 	flag.StringVar(&f.vectors, "vectors", "", "published common structural vectors")
+	flag.StringVar(&f.workflowSHA256, "workflow-sha256", "5f9c912ec6055882e0d443378cb93bb87b58eb7ab2a49eb5e14d338d72865edd", "explicit expected local workflow digest")
+	flag.StringVar(&f.artifactID, "artifact-id", "", "pinned local bundle identity")
+	flag.BoolVar(&f.descending, "descending", false, "expect the edited readiness missing-key order")
 	out := flag.String("output", "", "retained public evidence path")
 	flag.Parse()
 	var observations []observation
