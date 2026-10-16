@@ -17,7 +17,14 @@
   "message_observed_in_target_at_position": 4082,
   "requested_work": "G-COMPAT source/evidence compatibility map",
   "reply_required": true,
-  "work_completion": "pending",
+  "work_completion": "completed: G-COMPAT mapping only",
   "handoff_package": "2026-10-09.1",
-  "engineering_flow": "2026-10-06.1"
+  "engineering_flow": "2026-10-06.1",
+  "response": {
+    "report_id": "G-COMPAT-20261016-01",
+    "artifact": "docs/architecture/rust-core-mvp-go-compatibility-20261016.md",
+    "sha256": "d00f7ce65925e4e1f12eae87c80f41c3522365a0675a5122cc3104f38be315c3",
+    "verification": "full map read, byte hash and column-set delta independently verified",
+    "scope": "mapping only; schema/runtime integration and G-ADAPT remain unaccepted"
+  }
 }

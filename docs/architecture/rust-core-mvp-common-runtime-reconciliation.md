@@ -135,5 +135,99 @@ its source-bound negative, existing custody and no-replay invariant.
 Contract version 1, report `COMMON-RUNTIME-RECONCILE-20261016-01`.
 Transport: T3 native thread send to the existing Go owner; explicit user
 coordination authorization only. Handoff skill package `2026-10-09.1`,
-engineering flow `2026-10-06.1`. G-COMPAT response pending. Commit and native
+engineering flow `2026-10-06.1`. G-COMPAT response received and integrated below. Commit and native
 submission receipt identify this exact record; receipt is not mapping completion.
+
+
+## Revision 2: G-COMPAT completed; consolidation direction
+
+Input report `G-COMPAT-20261016-01` completes the mapping assignment, not runtime
+or migration acceptance. The [exact received map](rust-core-mvp-go-compatibility-20261016.md)
+is retained byte-for-byte at SHA-256
+`d00f7ce65925e4e1f12eae87c80f41c3522365a0675a5122cc3104f38be315c3`.
+Its author is the existing Go owner; original artifact remains outside the
+frozen accepted packet. Root read the complete map and independently verified
+its hash and the ORM column-set delta without application imports: CRED 35,
+Go 38, with only owner_incarnation_id, committed_start_id and start_message_id
+added; both operation tables have the same eight column names. This does not
+qualify their differing constraints or issuer behavior.
+
+### SC-1: selected integration requirements
+
+These decisions select the next patch direction; they do not freeze the wire
+profile, authorize new grants, apply a migration or release G-ADAPT.
+
+1. **One common storage family.** Use the Go implementation's existing owner,
+   session, typed Start/report, provision/release admission and resource-fact
+   records as the extraction baseline. Preserve the 35 CRED grant fields and
+   explicit caller/source/operation/digest semantics, with the three common
+   owner/Start bindings. Retire the parallel runtime_workflow_* preview.
+   Typed receipt/FK enforcement and role/custody checks must move together;
+   matching model names or cred-p1/v1 is insufficient.
+2. **One Alembic continuation.** Source main at e429 contains 330 revisions and
+   one head, 20261012_work_delivery_started; the
+   [static graph receipt](rust-core-mvp-main-migration-graph-20261016.json)
+   has no unknown/missing parents or duplicate revision IDs. The scan reads
+   literal Assign and AnnAssign declarations; it is not an installed-database
+   observation or an executed Alembic run. Prepare the consolidated candidate
+   after that current main head. Neither duplicate table-creation chain is
+   imported wholesale; original prototype files/refs and proofs remain fixed.
+   If another prerequisite lands first, rebase onto actual authoritative
+   history and use explicit reviewed ALTER/constraint changes. Unexpected
+   installed objects/history fail preflight rather than silently accepting
+   an IF NOT EXISTS table with the wrong shape. Do not rewrite landed history
+   or create a parallel migration framework.
+3. **One capability policy and issuer path.** Keep dedicated purpose/audience,
+   immutable admitted caller/effective scope/source and non-upgrading expiry
+   rules. CRED's integration-get/mapping-get and applicable no-timeout renewal
+   positives remain their own reference requirements. Accepted Go execution
+   admits only workflow + organization + matching Solution + integration-get;
+   its adapter supports no mapping/OAuth/org override or renewal. The common
+   table enum does not widen that profile. Go needs no client/API change to
+   resolve the SQL collision. The real CRED accepting symbol is
+   load_runtime_sdk_ingress_authority; do not invent another ingress API.
+4. **Preserve native links and retry behavior.** Adapt common enforcement to
+   native form/user/CLI/workflow ancestor unlink while preserving accepted
+   historical caller/source identities. Review reviewer/user and source FKs,
+   not just execution FK deletion. Never solve compatibility by dropping
+   identity relationships without equivalent enforcement. One session per
+   typed attempt may coexist with policy-eligible NEW-attempt recovery after
+   proven no-effect preparation and trusted teardown. Verify attempt counting;
+   neither an absent Start row nor a missing ACK proves replay safety.
+5. **One combined authority/lock review.** Start with implemented Go lock and
+   writer mechanisms, then reconcile actual current native execution-first
+   poison/recovery, CRED attempt-first issuance, finite ancestor operations,
+   absent-grant close and all FK/trigger/index/table/advisory waits. Fixture
+   race cases are reusable evidence only for their unchanged source. They do
+   not settle current installed roles/catalog, coordinator read/ANY-table-lock
+   policy or production provisioning.
+6. **Partial cleanup stays a shared open requirement.** Preserve the accepted
+   tenth negative exactly. No durable resource fact, no final success and no
+   source release may be inferred from missing files, fixture disposal or
+   process exit. A new cleanup-recovery design needs explicit phase/custody
+   evidence; it is not a Go SDK repair or authority to replay/reassign owners.
+
+### Immediate CP-CONSOLIDATE work package
+
+Common owner owns one narrow source/constraint/authority patch packet. Owned
+paths are the common schema/decision records, the eventual additive Alembic
+revision, canonical common ORM/issuer adapters and the enumerated restricted
+writer tests; no Go consumer file is owned by this package. First make the exact
+migration and field/constraint/role transformation reviewable against current
+main and both pinned candidates. Do not combine workflow extraction or generic
+work delivery into that implementation PR.
+
+Required review matrix: every CRED column/operation and positive/negative policy;
+owner/session/Start/live-close binding; native ancestor unlink and attempt
+recovery; immutable report and resource facts; committed projection/event
+idempotency; effective roles and complete lock edges. Mark installed-catalog and
+payload-disposal unknowns explicitly. Hold authority/schema application until
+the exact required review/approval is satisfied. No guard, test expectation,
+SDK positive, tenancy rule or ambiguous-effect restriction may be weakened.
+
+The next Go implementation input will be a reviewed, versioned selected
+profile/provision/credential seam with explicit capability/scope/renewal and
+receipt effects, not this storage-plan revision. Until that artifact is ready,
+G-ADAPT receives no code-change instruction. The Go mapping is **complete**;
+it is not left pending or asked to duplicate the accepted experiment. Common
+consolidation remains owned here and continues independently.
