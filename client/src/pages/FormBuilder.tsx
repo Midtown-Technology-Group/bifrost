@@ -137,26 +137,25 @@ export function FormBuilder() {
 			setFields(schema.fields as FormField[]);
 		}
 
-		// Sync formInfo from existingForm (only if not already overridden by dialog save)
-		if (!formInfo) {
-			setFormInfo({
-				name: existingForm.name || "",
-				description: existingForm.description || "",
-				workflow_id: existingForm.workflow_id || "",
-				launch_workflow_id: existingForm.launch_workflow_id || "",
-				default_launch_params:
-					(existingForm.default_launch_params as Record<
-						string,
-						unknown
-					>) || {},
-				access_level:
-					(existingForm.access_level as
-						"authenticated" | "everyone" | "role_based") ||
-					"role_based",
-				role_ids: existingForm.role_ids ?? [],
-				organization_id: existingForm.organization_id ?? null,
-			});
-		}
+		// A route change reuses this component, so dialog edits from the previous
+		// form must never remain authoritative for the newly loaded identity.
+		setFormInfo({
+			name: existingForm.name || "",
+			description: existingForm.description || "",
+			workflow_id: existingForm.workflow_id || "",
+			launch_workflow_id: existingForm.launch_workflow_id || "",
+			default_launch_params:
+				(existingForm.default_launch_params as Record<
+					string,
+					unknown
+				>) || {},
+			access_level:
+				(existingForm.access_level as
+					"authenticated" | "everyone" | "role_based") ||
+				"role_based",
+			role_ids: existingForm.role_ids ?? [],
+			organization_id: existingForm.organization_id ?? null,
+		});
 	}
 
 	// Derive display values from formInfo (dialog-saved) or existingForm (server data)
