@@ -1,56 +1,61 @@
-name: Execution Reliability Gauntlet
+name: Search responsiveness diagnostic (experiment only)
 
 on:
   workflow_dispatch: {}
-  pull_request:
-    paths:
-      - ".github/workflows/execution-reliability-gauntlet.yml"
-      - "api/scripts/execution_reliability_gauntlet.py"
-      - "api/src/jobs/rabbitmq.py"
-      - "api/src/jobs/consumers/**"
-      - "api/src/services/execution/**"
-      - "api/src/services/execution_admission.py"
-      - "api/tests/unit/jobs/test_execution_reliability_gauntlet.py"
-      - "docker-compose.test.yml"
-      - "test.sh"
-  schedule:
-    - cron: "23 7 * * 3"
 
 permissions:
   contents: read
 
 concurrency:
-  group: execution-reliability-gauntlet-${{ github.ref }}
+  group: search-responsiveness-diagnostic-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  gauntlet:
-    name: Real-service delivery failure matrix
+  diagnose:
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-
-      - name: Run isolated execution reliability gauntlet
+      - name: Record source and boot isolated test stack
+        run: |
+          git rev-parse HEAD | tee /tmp/search-diagnostic-source.txt
+          ./test.sh stack up
+      - name: Isolated responsiveness workload with memory and host CPU evidence
         run: |
           set -o pipefail
-          ./test.sh stack up
-          ./test.sh reliability | tee /tmp/execution-reliability-gauntlet.log
-
-      - name: Upload reliability evidence
+          vmstat -t 1 > /tmp/search-isolated-vmstat.txt &
+          monitor=$!
+          (for i in $(seq 1 180); do date -u +%FT%T.%NZ; docker stats --no-stream --format '{{json .}}'; done) > /tmp/search-isolated-cpu.txt &
+          cpu_monitor=$!
+          trap 'kill "$monitor" "$cpu_monitor"; wait "$monitor" "$cpu_monitor" || true' EXIT
+          python3 scripts/benchmark_large_table_responses.py --label isolated --interval 0.5 --trace-out /tmp/search-isolated-memory.csv | tee /tmp/search-isolated.log
+      - name: Replay immediate predecessor files and responsiveness test in one session
+        if: ${{ !cancelled() }}
+        run: |
+          set -o pipefail
+          vmstat -t 1 > /tmp/search-replay-vmstat.txt &
+          host_monitor=$!
+          python3 scripts/memory_sampler.py --interval 0.5 --out /tmp/search-replay-memory.csv &
+          memory_monitor=$!
+          (for i in $(seq 1 180); do date -u +%FT%T.%NZ; docker stats --no-stream --format '{{json .}}'; done) > /tmp/search-replay-cpu.txt &
+          cpu_monitor=$!
+          trap 'kill "$host_monitor" "$memory_monitor" "$cpu_monitor"; wait "$host_monitor" "$memory_monitor" "$cpu_monitor" || true' EXIT
+          ./test.sh tests/e2e/platform/test_form_execute_solution_scope_e2e.py tests/e2e/platform/test_form_indexer.py tests/e2e/platform/test_large_table_response_memory.py -s -v --durations=0 | tee /tmp/search-replay.log
+      - name: Upload diagnostic evidence without changing the test threshold
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: execution-reliability-gauntlet-${{ github.run_id }}
+          name: search-responsiveness-${{ github.sha }}-${{ github.run_attempt }}
           path: |
-            /tmp/bifrost-*/execution-reliability-gauntlet.json
-            /tmp/execution-reliability-gauntlet.log
-          if-no-files-found: warn
+            /tmp/search-diagnostic-source.txt
+            /tmp/search-isolated*
+            /tmp/search-replay*
+            /tmp/bifrost-*/*.log
+            /tmp/bifrost-*/test-results.xml
+          if-no-files-found: error
           retention-days: 14
-
-      - name: Tear down isolated stack
+      - name: Tear down task-created test resources
         if: always()
         run: ./test.sh stack down
