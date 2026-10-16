@@ -70,6 +70,9 @@ class TestCLIKnowledgeSearchExternal:
         with patch(
             "src.services.embeddings.get_embedding_client",
             AsyncMock(return_value=_embedding_client()),
+        ), patch(
+            "src.routers.cli.accessible_knowledge_namespaces",
+            AsyncMock(return_value=None),
         ):
             await cli_knowledge_search(
                 CLIKnowledgeSearchRequest(query="q", fallback=fallback),

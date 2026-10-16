@@ -165,6 +165,11 @@ class TestCLIKnowledgeSearchAndDelete:
 
         with (
             patch.object(cli, "_resolve_sdk_org_id", AsyncMock(return_value=ORG_ID)),
+            patch.object(
+                cli,
+                "accessible_knowledge_namespaces",
+                AsyncMock(return_value=None),
+            ),
             patch(
                 "src.services.embeddings.get_embedding_client",
                 AsyncMock(return_value=embedder),
@@ -185,6 +190,65 @@ class TestCLIKnowledgeSearchAndDelete:
             metadata_filter={"kind": "runbook"},
             fallback=False,
         )
+
+    @pytest.mark.asyncio
+    async def test_search_intersects_requested_namespaces_with_role_grants(self):
+        db = _db()
+        repo = MagicMock()
+        repo.search = AsyncMock(return_value=[])
+        embedder = _embedding_client()
+        request = CLIKnowledgeSearchRequest(
+            query="runbook",
+            namespace=["allowed", "denied"],
+        )
+
+        with (
+            patch.object(cli, "_resolve_sdk_org_id", AsyncMock(return_value=ORG_ID)),
+            patch.object(
+                cli,
+                "accessible_knowledge_namespaces",
+                AsyncMock(return_value={"allowed"}),
+            ),
+            patch(
+                "src.services.embeddings.get_embedding_client",
+                AsyncMock(return_value=embedder),
+            ),
+            patch("src.repositories.knowledge.KnowledgeRepository", return_value=repo),
+        ):
+            assert await cli.cli_knowledge_search(request, _principal(), db) == []
+
+        assert repo.search.await_args.kwargs["namespace"] == ["allowed"]
+
+    @pytest.mark.asyncio
+    async def test_search_without_a_namespace_grant_short_circuits_services(self):
+        db = _db()
+        embedder_factory = AsyncMock()
+        repo_cls = MagicMock()
+        request = CLIKnowledgeSearchRequest(
+            query="secret",
+            namespace=["denied"],
+        )
+
+        with (
+            patch.object(cli, "_resolve_sdk_org_id", AsyncMock(return_value=ORG_ID)),
+            patch.object(
+                cli,
+                "accessible_knowledge_namespaces",
+                AsyncMock(return_value=set()),
+            ),
+            patch(
+                "src.services.embeddings.get_embedding_client",
+                embedder_factory,
+            ),
+            patch(
+                "src.repositories.knowledge.KnowledgeRepository",
+                repo_cls,
+            ),
+        ):
+            assert await cli.cli_knowledge_search(request, _principal(), db) == []
+
+        embedder_factory.assert_not_awaited()
+        repo_cls.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_delete_by_key_commits_deleted_count(self):
@@ -220,6 +284,11 @@ class TestCLIKnowledgeSearchAndDelete:
         with (
             patch.object(cli, "_is_external_user_db", AsyncMock(return_value=False)),
             patch.object(cli, "_resolve_sdk_org_id", AsyncMock(return_value=ORG_ID)),
+            patch.object(
+                cli,
+                "accessible_knowledge_namespaces",
+                AsyncMock(return_value=None),
+            ),
             patch("src.repositories.knowledge.KnowledgeRepository", return_value=repo),
         ):
             deleted = await cli.cli_knowledge_delete_namespace(
@@ -242,6 +311,35 @@ class TestCLIKnowledgeSearchAndDelete:
         repo.list_namespaces.assert_awaited_once_with(include_global=False)
 
     @pytest.mark.asyncio
+    async def test_list_namespaces_filters_rows_without_role_grants(self):
+        db = _db()
+        repo = MagicMock()
+        repo.list_namespaces = AsyncMock(
+            return_value=[
+                SimpleNamespace(namespace="allowed", scopes={"total": 1}),
+                SimpleNamespace(namespace="denied", scopes={"total": 2}),
+            ]
+        )
+
+        with (
+            patch.object(cli, "_is_external_user_db", AsyncMock(return_value=False)),
+            patch.object(cli, "_resolve_sdk_org_id", AsyncMock(return_value=ORG_ID)),
+            patch.object(
+                cli,
+                "accessible_knowledge_namespaces",
+                AsyncMock(return_value={"allowed"}),
+            ),
+            patch("src.repositories.knowledge.KnowledgeRepository", return_value=repo),
+        ):
+            result = await cli.cli_knowledge_list_namespaces(
+                scope=ORG_ID,
+                current_user=_principal(),
+                db=db,
+            )
+
+        assert [item.namespace for item in result] == ["allowed"]
+
+    @pytest.mark.asyncio
     async def test_get_returns_document_or_404(self):
         db = _db()
         repo = MagicMock()
@@ -259,6 +357,11 @@ class TestCLIKnowledgeSearchAndDelete:
 
         with (
             patch.object(cli, "_resolve_sdk_org_id", AsyncMock(return_value=None)),
+            patch.object(
+                cli,
+                "accessible_knowledge_namespaces",
+                AsyncMock(return_value=None),
+            ),
             patch("src.repositories.knowledge.KnowledgeRepository", return_value=repo),
         ):
             result = await cli.cli_knowledge_get(
@@ -274,6 +377,11 @@ class TestCLIKnowledgeSearchAndDelete:
         repo.get_by_key = AsyncMock(return_value=None)
         with (
             patch.object(cli, "_resolve_sdk_org_id", AsyncMock(return_value=None)),
+            patch.object(
+                cli,
+                "accessible_knowledge_namespaces",
+                AsyncMock(return_value=None),
+            ),
             patch("src.repositories.knowledge.KnowledgeRepository", return_value=repo),
         ):
             with pytest.raises(HTTPException) as exc:
@@ -285,3 +393,31 @@ class TestCLIKnowledgeSearchAndDelete:
                 )
 
         assert exc.value.status_code == status.HTTP_404_NOT_FOUND
+
+    @pytest.mark.asyncio
+    async def test_get_without_a_namespace_grant_hides_document_lookup(self):
+        db = _db()
+        repo_cls = MagicMock()
+
+        with (
+            patch.object(cli, "_resolve_sdk_org_id", AsyncMock(return_value=ORG_ID)),
+            patch.object(
+                cli,
+                "accessible_knowledge_namespaces",
+                AsyncMock(return_value=set()),
+            ),
+            patch(
+                "src.repositories.knowledge.KnowledgeRepository",
+                repo_cls,
+            ),
+        ):
+            with pytest.raises(HTTPException) as exc:
+                await cli.cli_knowledge_get(
+                    key="secret",
+                    namespace="denied",
+                    current_user=_principal(),
+                    db=db,
+                )
+
+        assert exc.value.status_code == status.HTTP_404_NOT_FOUND
+        repo_cls.assert_not_called()

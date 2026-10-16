@@ -40,6 +40,16 @@ async def test_platform_admin_role_has_unrestricted_namespace_access():
 
 
 @pytest.mark.asyncio
+async def test_delegated_engine_has_unrestricted_namespace_access():
+    session = AsyncMock()
+    user = _user()
+    user.engine_execution_id = uuid4()
+
+    assert await accessible_knowledge_namespaces(session, user) is None
+    session.execute.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_regular_user_namespaces_come_from_scoped_role_assignments():
     result = MagicMock()
     result.scalars.return_value.all.return_value = ["runbooks", "policies"]
