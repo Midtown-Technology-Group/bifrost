@@ -292,13 +292,16 @@ def build_or_test(args):
                     (compiler, "/compiler", True),
                     (objects, "/out", True),
                 ]
-                # Compiler/vet only; go test -c never runs application initializers.
-                commands = 'test -z "$(gofmt -l .)"; go vet ./...; for package in $(go list ./...); do go test -c -o /tmp/compiled.test "$package"; done'
+                # Time workflow compilation before vet/test compilation can warm
+                # a fresh cache. No artifact is published before all gates pass.
+                commands = 'test -z "$(gofmt -l .)"'
                 if args.command == "build":
                     commands += "; start=$(date +%s%N); go build -trimpath -buildvcs=false -o /out/workflow ./cmd/workflow; end=$(date +%s%N); echo $((end-start)) > /out/workflow-compile-ns.txt"
                     for name in ("adapter", "protocolprobe", "schema"):
                         commands += f"; go build -trimpath -buildvcs=false -o /out/{name} ./cmd/{name}"
                     commands += "; go mod graph > /out/module-graph.txt; go version > /out/toolchain.txt"
+                # Compiler/vet only; go test -c never runs application initializers.
+                commands += '; go vet ./...; for package in $(go list ./...); do go test -c -o /tmp/compiled.test "$package"; done'
                 docker.run(
                     IMAGE,
                     mounts,
