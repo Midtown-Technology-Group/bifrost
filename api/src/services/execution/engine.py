@@ -294,6 +294,44 @@ def _scrub_outputs(
     )
 
 
+def _scrub_execution_context(context: ExecutionContext) -> dict[str, Any]:
+    """Build the persisted public context without secret-bearing values."""
+    public_context = sanitize_execution_variables(context.to_public_dict())
+    secret_values = context._collect_secret_values()
+    if not secret_values:
+        return public_context
+    return _redact_secret_keys(
+        redact_secrets(public_context, secret_values),
+        secret_values,
+    )
+
+
+def _redact_secret_keys(value: Any, secret_values: set[str]) -> Any:
+    """Replace secret-bearing dictionary keys without losing colliding entries."""
+    if isinstance(value, dict):
+        occupied_keys = set(value)
+        scrubbed: dict[Any, Any] = {}
+        redacted_key_index = 1
+        for key, item in value.items():
+            safe_key = key
+            if isinstance(key, str) and redact_secrets(key, secret_values) != key:
+                while True:
+                    candidate = f"[REDACTED_KEY_{redacted_key_index}]"
+                    redacted_key_index += 1
+                    if candidate not in occupied_keys and candidate not in scrubbed:
+                        safe_key = candidate
+                        break
+            scrubbed[safe_key] = _redact_secret_keys(item, secret_values)
+        return scrubbed
+    if isinstance(value, list):
+        return [_redact_secret_keys(item, secret_values) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_redact_secret_keys(item, secret_values) for item in value)
+    if isinstance(value, set):
+        return {_redact_secret_keys(item, secret_values) for item in value}
+    return value
+
+
 async def execute(request: ExecutionRequest) -> ExecutionResult:
     """
     Unified execution engine for all code execution.
@@ -508,7 +546,7 @@ async def execute(request: ExecutionRequest) -> ExecutionResult:
             variables=scrubbed_vars or {},
             integration_calls=context._integration_calls,
             roi=roi_data,
-            execution_context=context.to_public_dict(),
+            execution_context=_scrub_execution_context(context),
             cached=False,
             cache_expires_at=cache_expires_at_str
         )
@@ -601,7 +639,7 @@ async def execute(request: ExecutionRequest) -> ExecutionResult:
             logs=scrubbed_logs or [],
             variables=scrubbed_vars or {},
             integration_calls=context._integration_calls,
-            execution_context=context.to_public_dict(),
+            execution_context=_scrub_execution_context(context),
             error_message=scrubbed_err,
             error_type=error_type
         )
@@ -647,7 +685,7 @@ async def execute(request: ExecutionRequest) -> ExecutionResult:
             logs=scrubbed_logs or [],
             variables=scrubbed_vars or {},
             integration_calls=context._integration_calls,
-            execution_context=context.to_public_dict(),
+            execution_context=_scrub_execution_context(context),
             error_message=scrubbed_err,
             error_type=type(e).__name__
         )
@@ -715,7 +753,7 @@ async def execute(request: ExecutionRequest) -> ExecutionResult:
             logs=scrubbed_logs or [],
             variables=scrubbed_vars or {},
             integration_calls=context._integration_calls,
-            execution_context=context.to_public_dict(),
+            execution_context=_scrub_execution_context(context),
             error_message=scrubbed_err,
             error_type=type(e).__name__
         )
