@@ -175,18 +175,19 @@ async def test_parameter_evidence_contract_preserves_preexisting_accepted_work(m
         assert pinned.parameters_schema == schema
         assert "workflow_parameters_schema_evidence" not in evidence
     else:
-        assert evidence["workflow_parameters_schema"] == schema
+        assert "workflow_parameters_schema" not in evidence
         assert pinned.parameters_schema is None
         assert pinned.legacy_parameters_schema == schema
         assert "workflow_parameters_schema_evidence" not in evidence
-        assert getattr(authoritative, "legacy_unversioned_schema", False) is True
+        assert authoritative.legacy_parameters_schema == schema
 
     historical = [dict(evidence)]
     if not versioned:
-        # The baseline producer included the unmarked schema. The next release
-        # omitted it. Neither historical representation carried the new
-        # compatibility marker.
+        # An earlier producer included the unmarked schema. The immediate
+        # predecessor omitted it, and new admissions retain that rollback-safe
+        # shape. Neither historical representation serialized compatibility data.
         with_schema = dict(evidence)
+        with_schema["workflow_parameters_schema"] = schema
         without_schema = dict(with_schema)
         without_schema.pop("workflow_parameters_schema")
         historical = [with_schema, without_schema]
@@ -204,12 +205,14 @@ async def test_parameter_evidence_contract_preserves_preexisting_accepted_work(m
         "type": "object",
         "properties": {"attempts": {"type": "integer", "default": True}},
     }
+    tampered_hash = sha256_digest(canonical_json(tampered))
+    deployment_id_text = str(deployment_id)
     with pytest.raises(DeploymentRuntimeError, match="immutable deployment manifest"):
         verify_runtime_evidence(
-            str(deployment_id),
+            deployment_id_text,
             tampered,
             tampered,
-            sha256_digest(canonical_json(tampered)),
+            tampered_hash,
             authoritative,
         )
 

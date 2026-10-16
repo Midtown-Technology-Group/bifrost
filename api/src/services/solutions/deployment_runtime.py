@@ -25,9 +25,11 @@ class DeploymentRuntimeError(RuntimeError):
 class _RuntimeEvidence(dict[str, Any]):
     """Queue evidence plus non-serialized reconstruction metadata."""
 
-    def __init__(self, *, legacy_unversioned_schema: bool = False) -> None:
+    def __init__(
+        self, *, legacy_parameters_schema: dict[str, Any] | None = None
+    ) -> None:
         super().__init__()
-        self.legacy_unversioned_schema = legacy_unversioned_schema
+        self.legacy_parameters_schema = legacy_parameters_schema
 
 
 def verify_runtime_evidence(
@@ -52,14 +54,17 @@ def verify_runtime_evidence(
         raise DeploymentRuntimeError("durable runtime evidence hash mismatch")
     if canonical_json(queued) == canonical_json(authoritative):
         return
-    # Two released queue producers disagreed about whether an unversioned
-    # manifest's informational parameter schema belonged in durable evidence.
-    # Preserve executions queued by either producer, but only for the explicit
-    # legacy reconstruction flag and only when every other immutable field is exact.
-    if getattr(authoritative, "legacy_unversioned_schema", False):
-        legacy = dict(authoritative)
-        without_schema = dict(legacy)
-        without_schema.pop("workflow_parameters_schema", None)
+    # Released queue producers disagreed about whether an unversioned manifest's
+    # informational parameter schema belonged in durable evidence. Preserve
+    # either historical shape, but only when authoritative reconstruction carries
+    # that exact schema privately and every serialized immutable field is exact.
+    legacy_parameters_schema = getattr(
+        authoritative, "legacy_parameters_schema", None
+    )
+    if legacy_parameters_schema is not None:
+        without_schema = dict(authoritative)
+        legacy = dict(without_schema)
+        legacy["workflow_parameters_schema"] = legacy_parameters_schema
         queued_json = canonical_json(queued)
         if queued_json in (canonical_json(legacy), canonical_json(without_schema)):
             return
@@ -97,7 +102,7 @@ class PinnedWorkflowRuntime:
 
     def queue_evidence(self) -> dict[str, Any]:
         evidence = _RuntimeEvidence(
-            legacy_unversioned_schema=self.legacy_parameters_schema is not None
+            legacy_parameters_schema=self.legacy_parameters_schema
         )
         evidence.update({
             "solution_id": str(self.solution_id),
@@ -123,13 +128,8 @@ class PinnedWorkflowRuntime:
         })
         if self.runtime_bounds is not None:
             evidence["workflow_runtime_bounds"] = self.runtime_bounds
-        evidence_schema = (
-            self.parameters_schema
-            if self.parameters_schema is not None
-            else self.legacy_parameters_schema
-        )
-        if evidence_schema is not None:
-            evidence["workflow_parameters_schema"] = evidence_schema
+        if self.parameters_schema is not None:
+            evidence["workflow_parameters_schema"] = self.parameters_schema
         return evidence
 
 
@@ -285,10 +285,10 @@ def _pin_from_deployment(
             require_legacy_registration_name(json.loads(canonical_json(definition)))
         except SolutionSourceRevisionError as exc:
             raise DeploymentRuntimeError(str(exc)) from exc
-    # The baseline producer included any dictionary schema. A later producer
-    # omitted unversioned schemas. Retain the immutable schema and mark only
-    # that legacy manifest shape so verification can accept either historical
-    # durable representation without weakening versioned evidence.
+    # An earlier producer included any dictionary schema; the immediate
+    # predecessor omitted unversioned schemas. Retain the immutable schema as
+    # private reconstruction metadata so verification accepts either historical
+    # record while new queue records remain rollback-compatible.
     raw_parameters_schema = definition.get("parameters_schema")
     parsed_parameters_schema = (
         json.loads(canonical_json(raw_parameters_schema))
