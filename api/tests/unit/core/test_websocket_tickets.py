@@ -7,7 +7,7 @@ from src.core.cache.keys import TTL_WEBSOCKET_TICKET
 
 class FakeRedis:
     def __init__(self) -> None:
-        self.values: dict[str, str] = {}
+        self.values: dict[str, str | bytes] = {}
         self.set_calls: list[tuple[str, str, int, bool]] = []
 
     async def set(self, key: str, value: str, *, ex: int, nx: bool) -> bool:
@@ -17,7 +17,7 @@ class FakeRedis:
         self.values[key] = value
         return True
 
-    async def getdel(self, key: str) -> str | None:
+    async def getdel(self, key: str) -> str | bytes | None:
         return self.values.pop(key, None)
 
 
@@ -44,7 +44,11 @@ async def test_ticket_is_hashed_short_lived_and_single_use(monkeypatch) -> None:
     assert value == "access.jwt"
     assert ttl == TTL_WEBSOCKET_TICKET
     assert nx is True
+    redis.values[key] = b"access.jwt"
     assert await websocket_tickets.consume_websocket_ticket(ticket) == "access.jwt"
+    assert await websocket_tickets.consume_websocket_ticket(ticket) is None
+
+    redis.values[key] = b"\xff"
     assert await websocket_tickets.consume_websocket_ticket(ticket) is None
 
 

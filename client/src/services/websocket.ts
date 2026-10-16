@@ -493,6 +493,7 @@ class WebSocketService {
 	private reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
 	private pingInterval: ReturnType<typeof setInterval> | null = null;
 	private userId: string | null = null;
+	private connectionGeneration = 0;
 
 	// Subscribers for different event types
 	private executionUpdateCallbacks = new Map<
@@ -585,6 +586,7 @@ class WebSocketService {
 	}
 
 	private async _connect(channels: string[]): Promise<void> {
+		const connectionGeneration = this.connectionGeneration;
 		try {
 			// Build WebSocket URL with channels
 			const protocol =
@@ -601,14 +603,18 @@ class WebSocketService {
 			const embedToken = getActiveToken();
 			if (embedToken && isEmbedToken(embedToken)) {
 				try {
-					params.set("ticket", await requestWebSocketTicket(embedToken));
+					const ticket = await requestWebSocketTicket(embedToken);
+					if (connectionGeneration !== this.connectionGeneration) return;
+					params.set("ticket", ticket);
 				} catch (error) {
+					if (connectionGeneration !== this.connectionGeneration) return;
 					// No socket exists yet, so onclose cannot schedule recovery.
 					if (this.retryCount < this.maxRetries && !this.reconnectTimeout) {
 						this.retryCount++;
 						const delay = Math.min(1000 * Math.pow(2, this.retryCount), 30000);
 						this.reconnectTimeout = setTimeout(() => {
 							this.reconnectTimeout = null;
+							if (connectionGeneration !== this.connectionGeneration) return;
 							void this.connect(channels).catch(() => {
 								// _connect logs the failure and schedules any remaining retry.
 							});
@@ -626,6 +632,7 @@ class WebSocketService {
 
 			// Set up WebSocket handlers
 			this.ws.onopen = () => {
+				if (connectionGeneration !== this.connectionGeneration) return;
 				this.retryCount = 0;
 				this.startPingInterval();
 				this.connectionStatusCallbacks.forEach((cb) => cb(true));
@@ -647,6 +654,7 @@ class WebSocketService {
 			};
 
 			this.ws.onclose = (event) => {
+				if (connectionGeneration !== this.connectionGeneration) return;
 				this.ws = null;
 				this.stopPingInterval();
 				this.connectionStatusCallbacks.forEach((cb) => cb(false));
@@ -660,6 +668,7 @@ class WebSocketService {
 					);
 					this.reconnectTimeout = setTimeout(async () => {
 						this.reconnectTimeout = null;
+						if (connectionGeneration !== this.connectionGeneration) return;
 						// If unauthorized (4001), refresh token before reconnecting
 						// Browser will send fresh cookie on next WebSocket handshake
 						if (event.code === 4001) {
@@ -701,6 +710,7 @@ class WebSocketService {
 				}
 			});
 		} catch (error) {
+			if (connectionGeneration !== this.connectionGeneration) return;
 			console.error(
 				`[WebSocket] Failed to connect: ${sanitizeLogText(error)}`,
 			);
@@ -1532,6 +1542,7 @@ class WebSocketService {
 	 * Disconnect from WebSocket
 	 */
 	async disconnect(): Promise<void> {
+		this.connectionGeneration++;
 		if (this.reconnectTimeout) {
 			clearTimeout(this.reconnectTimeout);
 			this.reconnectTimeout = null;

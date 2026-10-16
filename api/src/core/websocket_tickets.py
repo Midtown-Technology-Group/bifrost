@@ -45,4 +45,10 @@ async def consume_websocket_ticket(ticket: str) -> str | None:
     if key is None:
         return None
     async with get_redis() as redis:
-        return await redis.getdel(key)
+        access_token = await redis.getdel(key)
+    if isinstance(access_token, bytes):
+        try:
+            return access_token.decode("utf-8")
+        except UnicodeDecodeError:
+            return None
+    return access_token
