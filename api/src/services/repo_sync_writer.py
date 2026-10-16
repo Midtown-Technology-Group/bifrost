@@ -11,6 +11,7 @@ Skips silently when S3-compatible storage is not configured.
 from __future__ import annotations
 
 import logging
+from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -29,8 +30,13 @@ class RepoSyncWriter:
     Skips writes silently when S3-compatible storage is not configured.
     """
 
-    def __init__(self, db: AsyncSession):
+    def __init__(
+        self,
+        db: AsyncSession,
+        organization_id: UUID | str | None = None,
+    ):
         self.db = db
+        self.organization_id = organization_id
         self._settings = get_settings()
         self._file_index = FileIndexService(db, RepoStorage())
 
@@ -42,7 +48,10 @@ class RepoSyncWriter:
         """Generate manifest from DB and write split files to _repo/.bifrost/."""
         if not self._s3_available:
             return
-        manifest = await generate_manifest(self.db)
+        manifest = await generate_manifest(
+            self.db,
+            organization_id=self.organization_id,
+        )
         files = serialize_manifest_dir(manifest)
         for filename, content in files.items():
             await self._file_index.write(

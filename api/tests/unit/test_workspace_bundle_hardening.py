@@ -142,6 +142,8 @@ def _install_job_doubles(
     from src.jobs.platform import workspace_bundle_import as job_module
     import src.services.solutions.zip_install as zip_install
 
+    expected_organization_id = uuid4()
+
     class Storage:
         metadata = _job_metadata(payload)
 
@@ -211,8 +213,8 @@ def _install_job_doubles(
     class Writer:
         regenerate_calls = 0
 
-        def __init__(self, _db):
-            pass
+        def __init__(self, _db, *, organization_id):
+            assert organization_id == expected_organization_id
 
         async def regenerate_manifest(self):
             type(self).regenerate_calls += 1
@@ -247,6 +249,7 @@ def _install_job_doubles(
         def __init__(self, checkpoint=None, crash_after_db_commit=lose_after_db_commit):
             self.requested_by_user_id = "owner"
             self.requested_by_email = "owner@example.invalid"
+            self.organization_id = expected_organization_id
             self.job_id = uuid4()
             self.checkpoint = checkpoint
             self.crash_after_db_commit = crash_after_db_commit

@@ -5660,6 +5660,158 @@ class TestSyncPublicationOrdering:
         assert Repo(str(bare_repo)).commit("main").hexsha == before_remote
         assert sync_service._sync_up_calls == []
 
+    async def test_org_scoped_regenerate_and_confirmed_apply_preserve_other_scopes(
+        self,
+        db_session: AsyncSession,
+        sync_service,
+    ):
+        """A tenant Git round trip deletes only that tenant's absent rows."""
+        from src.models.orm.organizations import Organization
+
+        suffix = uuid4().hex[:8]
+        local_org = Organization(
+            id=uuid4(),
+            name=f"Git Scope Local {suffix}",
+            created_by="git-sync-test",
+        )
+        foreign_org = Organization(
+            id=uuid4(),
+            name=f"Git Scope Foreign {suffix}",
+            created_by="git-sync-test",
+        )
+        local_workflow = Workflow(
+            id=uuid4(),
+            name=f"Git Scope Local {suffix}",
+            function_name=f"git_scope_local_{suffix}",
+            path=f"workflows/git_sync_test_scope_local_{suffix}.py",
+            type="workflow",
+            organization_id=local_org.id,
+            solution_id=None,
+        )
+        foreign_workflow = Workflow(
+            id=uuid4(),
+            name=f"Git Scope Foreign {suffix}",
+            function_name=f"git_scope_foreign_{suffix}",
+            path=f"workflows/git_sync_test_scope_foreign_{suffix}.py",
+            type="workflow",
+            organization_id=foreign_org.id,
+            solution_id=None,
+        )
+        global_workflow = Workflow(
+            id=uuid4(),
+            name=f"Git Scope Global {suffix}",
+            function_name=f"git_scope_global_{suffix}",
+            path=f"workflows/git_sync_test_scope_global_{suffix}.py",
+            type="workflow",
+            organization_id=None,
+            solution_id=None,
+        )
+        local_org_id = local_org.id
+        local_workflow_id = local_workflow.id
+        local_workflow_path = local_workflow.path
+        foreign_workflow_id = foreign_workflow.id
+        global_workflow_id = global_workflow.id
+        global_workflow_path = global_workflow.path
+        db_session.add_all([
+            local_org,
+            foreign_org,
+            local_workflow,
+            foreign_workflow,
+            global_workflow,
+        ])
+        await db_session.commit()
+
+        sync_service.organization_id = local_org_id
+        local_source = (
+            "from bifrost import workflow\n\n"
+            f'@workflow(name="Git Scope Local {suffix}")\n'
+            f"def git_scope_local_{suffix}():\n"
+            "    return {}\n"
+        )
+        global_source = (
+            "from bifrost import workflow\n\n"
+            f'@workflow(name="Git Scope Global {suffix}")\n'
+            f"def git_scope_global_{suffix}():\n"
+            "    return {}\n"
+        )
+        write_entity_to_repo(
+            sync_service._persistent_dir,
+            local_workflow_path,
+            local_source,
+        )
+        write_entity_to_repo(
+            sync_service._persistent_dir,
+            global_workflow_path,
+            global_source,
+        )
+
+        seeded = await sync_service.desktop_commit("seed organization-scoped manifest")
+        assert seeded.success is True
+        initial_sync = await sync_service.desktop_sync(confirm_deletes=True)
+        assert initial_sync.success is True
+
+        db_session.expire_all()
+        foreign_before = await db_session.get(Workflow, foreign_workflow_id)
+        global_before = await db_session.get(Workflow, global_workflow_id)
+        assert foreign_before is not None
+        assert global_before is not None
+        foreign_snapshot = (
+            foreign_before.name,
+            foreign_before.function_name,
+            foreign_before.path,
+            foreign_before.is_active,
+            foreign_before.organization_id,
+        )
+        global_snapshot = (
+            global_before.name,
+            global_before.function_name,
+            global_before.path,
+            global_before.is_active,
+            global_before.organization_id,
+        )
+
+        remove_entity_from_repo(sync_service._persistent_dir, local_workflow_path)
+        removed = await sync_service.desktop_commit("remove local organization workflow")
+        assert removed.success is True
+
+        async with sync_service.repo_manager.lock() as work_dir:
+            repo = sync_service._open_or_init(work_dir)
+            plan = await sync_service.prepare_desktop_sync(work_dir, repo)
+            pending_ids = {change.entity_id for change in plan.pending_deletes}
+            assert str(local_workflow_id) in pending_ids
+            assert str(foreign_workflow_id) not in pending_ids
+            assert str(global_workflow_id) not in pending_ids
+
+            applied = await sync_service.apply_desktop_sync(
+                work_dir,
+                repo,
+                plan,
+                confirm_deletes=True,
+            )
+
+        assert applied.success is True
+        db_session.expire_all()
+        local_after = await db_session.get(Workflow, local_workflow_id)
+        foreign_after = await db_session.get(Workflow, foreign_workflow_id)
+        global_after = await db_session.get(Workflow, global_workflow_id)
+        assert local_after is None or local_after.is_active is False
+        assert foreign_after is not None
+        assert global_after is not None
+        assert (
+            foreign_after.name,
+            foreign_after.function_name,
+            foreign_after.path,
+            foreign_after.is_active,
+            foreign_after.organization_id,
+        ) == foreign_snapshot
+        assert (
+            global_after.name,
+            global_after.function_name,
+            global_after.path,
+            global_after.is_active,
+            global_after.organization_id,
+        ) == global_snapshot
+
     async def test_apply_rejects_a_stale_plan_before_publish(
         self,
         sync_service,
