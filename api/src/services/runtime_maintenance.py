@@ -17,7 +17,7 @@ from datetime import UTC, datetime
 from typing import Literal
 from uuid import UUID, uuid4
 
-from sqlalchemy import func, select, text
+from sqlalchemy import and_, func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.database import get_db_context
@@ -35,6 +35,7 @@ MAINTENANCE_CATEGORY = "runtime"
 MAINTENANCE_KEY = "maintenance"
 MAINTENANCE_LOCK = "bifrost:runtime-maintenance"
 MAINTENANCE_ROUTE_PREFIX = "/api/platform/runtime-maintenance"
+RETAINED_DISPATCH_MAINTENANCE_VERSION = 1
 _CACHE_SECONDS = 0.5
 
 
@@ -77,6 +78,7 @@ class RuntimeDrainCounts:
     platform_jobs: int
     scheduler_task_runs: int
     trigger_leases: int
+    retained_dispatch_reservations: int = 0
 
     @property
     def accepted_work(self) -> int:
@@ -250,13 +252,44 @@ async def runtime_drain_counts(db: AsyncSession) -> RuntimeDrainCounts:
             or 0
         )
 
+    # Scheduling reserves the immutable execution pin before any publication.
+    # These reservations survive a restart unchanged; they are not running work.
+    # Keep every published, claimed, ambiguous or due reservation in the drain.
+    retained_execution = select(Execution.id).where(
+        Execution.id == WorkflowExecutionAttempt.execution_id,
+        or_(
+            and_(
+                Execution.status == ExecutionStatus.SCHEDULED,
+                Execution.scheduled_at > func.clock_timestamp(),
+            ),
+            and_(
+                Execution.status == ExecutionStatus.CANCELLED,
+                Execution.completed_at.is_not(None),
+            ),
+        ),
+    ).exists()
+    retained_reservation = and_(
+        WorkflowExecutionAttempt.completed_at.is_(None),
+        WorkflowExecutionAttempt.status == "dispatching",
+        WorkflowExecutionAttempt.phase == "dispatch",
+        WorkflowExecutionAttempt.claim_token.is_(None),
+        WorkflowExecutionAttempt.published_at.is_(None),
+        WorkflowExecutionAttempt.claimed_at.is_(None),
+        WorkflowExecutionAttempt.started_at.is_(None),
+        WorkflowExecutionAttempt.worker_id.is_(None),
+        WorkflowExecutionAttempt.worker_incarnation_id.is_(None),
+        WorkflowExecutionAttempt.process_id.is_(None),
+        retained_execution,
+    ).is_(True)
     return RuntimeDrainCounts(
         work_deliveries=await count(
             WorkDelivery,
             WorkDelivery.status.in_(("queued", "claimed", "interrupted")),
         ),
         workflow_attempts=await count(
-            WorkflowExecutionAttempt, WorkflowExecutionAttempt.completed_at.is_(None)
+            WorkflowExecutionAttempt,
+            WorkflowExecutionAttempt.completed_at.is_(None),
+            ~retained_reservation,
         ),
         workflow_executions=await count(
             Execution,
@@ -287,6 +320,9 @@ async def runtime_drain_counts(db: AsyncSession) -> RuntimeDrainCounts:
             SchedulerLease,
             SchedulerLease.owner_id.is_not(None),
             SchedulerLease.lease_expires_at > func.clock_timestamp(),
+        ),
+        retained_dispatch_reservations=await count(
+            WorkflowExecutionAttempt, retained_reservation
         ),
     )
 

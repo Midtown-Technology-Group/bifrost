@@ -1,12 +1,15 @@
 """Durable runtime-maintenance fencing against real PostgreSQL."""
 
 import asyncio
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import pytest
 import pytest_asyncio
 from sqlalchemy import delete, select, text
+from src.models.enums import ExecutionStatus
 from src.models.orm.config import SystemConfig
+from src.models.orm.executions import Execution, WorkflowExecutionAttempt
 from src.models.orm.work_deliveries import WorkDelivery
 from src.services.runtime_maintenance import (
     MAINTENANCE_CATEGORY,
@@ -18,12 +21,97 @@ from src.services.runtime_maintenance import (
     enter_runtime_maintenance,
     exit_runtime_maintenance,
     read_runtime_maintenance_state,
+    runtime_drain_counts,
     seal_runtime_maintenance,
 )
 from src.services.scheduler_diagnostics import start_scheduler_run
 from src.services.work_delivery_store import claim_deliveries, enqueue_delivery
 
 pytestmark = [pytest.mark.e2e, pytest.mark.asyncio]
+
+
+@pytest.mark.parametrize(
+    ("execution_status", "scheduled_offset", "completed", "attempt_fields", "retained"),
+    [
+        (ExecutionStatus.SCHEDULED, 3600, False, {}, True),
+        (ExecutionStatus.CANCELLED, 3600, True, {}, True),
+        (ExecutionStatus.SCHEDULED, -60, False, {}, False),
+        (ExecutionStatus.SCHEDULED, None, False, {}, False),
+        (ExecutionStatus.CANCELLED, 3600, False, {}, False),
+        (ExecutionStatus.PENDING, 3600, False, {}, False),
+        (ExecutionStatus.RUNNING, 3600, False, {}, False),
+        (ExecutionStatus.SCHEDULED, 3600, False, {"worker_id": "uncertain-owner"}, False),
+        (ExecutionStatus.SCHEDULED, 3600, False, {"phase": "queue"}, False),
+        (ExecutionStatus.SCHEDULED, 3600, False,
+         {"status": "published", "phase": "queue", "published_at": "now"}, False),
+    ],
+)
+async def test_drain_distinguishes_retained_reservations_without_mutating_work(
+    db_session, execution_status, scheduled_offset, completed, attempt_fields, retained,
+) -> None:
+    now = datetime.now(UTC)
+    execution = Execution(
+        id=uuid4(), workflow_name="maintenance-reservation-regression",
+        executed_by_name="maintenance-test", status=execution_status,
+        scheduled_at=(now + timedelta(seconds=scheduled_offset)
+                      if scheduled_offset is not None else None),
+        completed_at=now if completed else None,
+        runtime_mode="deployment-v1", runtime_evidence_hash="sha256:" + "1" * 64,
+        parameters={"retained": "unchanged"},
+    )
+    db_session.add(execution)
+    await db_session.flush()
+    fields = {key: now if value == "now" else value for key, value in attempt_fields.items()}
+    attempt = WorkflowExecutionAttempt(
+        id=uuid4(), execution_id=execution.id, attempt_number=1,
+        **{"status": "dispatching", "phase": "dispatch", **fields},
+        runtime_mode=execution.runtime_mode,
+        runtime_evidence_hash=execution.runtime_evidence_hash,
+    )
+    before = await runtime_drain_counts(db_session)
+    db_session.add(attempt)
+    await db_session.flush()
+    original = {
+        type(row).__name__: {column.key: getattr(row, column.key) for column in row.__table__.columns}
+        for row in (execution, attempt)
+    }
+    after = await runtime_drain_counts(db_session)
+    assert after.workflow_attempts - before.workflow_attempts == (0 if retained else 1)
+    assert after.retained_dispatch_reservations - before.retained_dispatch_reservations == int(retained)
+    for row in (execution, attempt):
+        await db_session.refresh(row)
+        assert {column.key: getattr(row, column.key) for column in row.__table__.columns} == original[type(row).__name__]
+
+
+async def test_future_reservation_survives_seal_and_reopens_without_republication(db_session) -> None:
+    execution = Execution(
+        id=uuid4(), workflow_name="maintenance-retained-schedule",
+        executed_by_name="maintenance-test", status=ExecutionStatus.SCHEDULED,
+        scheduled_at=datetime.now(UTC) + timedelta(days=1),
+        runtime_mode="deployment-v1", runtime_evidence_hash="sha256:" + "2" * 64,
+    )
+    db_session.add(execution)
+    await db_session.flush()
+    attempt = WorkflowExecutionAttempt(
+        id=uuid4(), execution_id=execution.id, attempt_number=1,
+        status="dispatching", phase="dispatch",
+        runtime_mode=execution.runtime_mode, runtime_evidence_hash=execution.runtime_evidence_hash,
+    )
+    db_session.add(attempt)
+    await db_session.flush()
+    state = await enter_runtime_maintenance(
+        db_session, requested_by="release@example.com", reason="preserve scheduled pin",
+    )
+    sealed, counts = await seal_runtime_maintenance(db_session, generation=state.generation)
+    assert sealed.sealed and counts.drained
+    assert counts.retained_dispatch_reservations == 1
+    await exit_runtime_maintenance(db_session, generation=state.generation)
+    await db_session.refresh(execution)
+    await db_session.refresh(attempt)
+    assert execution.status == ExecutionStatus.SCHEDULED
+    assert execution.runtime_evidence_hash == "sha256:" + "2" * 64
+    assert attempt.completed_at is None and attempt.status == "dispatching"
+    assert attempt.published_at is None and attempt.claim_token is None
 
 
 @pytest_asyncio.fixture(autouse=True)
