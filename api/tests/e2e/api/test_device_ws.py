@@ -179,12 +179,14 @@ async def test_job_available_hint_reaches_subscribed_device(
 @pytest.mark.e2e
 @pytest.mark.asyncio
 @pytest.mark.parametrize("operation", ["rotate-key", "disable"])
+@pytest.mark.parametrize("unsubscribe_first", [False, True])
 async def test_device_authorization_change_closes_existing_connection(
     e2e_ws_url,
     e2e_client,
     platform_admin,
     org1,
     operation,
+    unsubscribe_first,
 ):
     device_id, key = _enroll(
         e2e_client,
@@ -200,6 +202,20 @@ async def test_device_authorization_change_closes_existing_connection(
     ) as ws:
         connected = await _recv(ws)
         assert connected["type"] == "connected"
+
+        if unsubscribe_first:
+            own_channel = f"device:{device_id}"
+            await ws.send(
+                json.dumps({
+                    "type": "unsubscribe",
+                    "channel": own_channel,
+                })
+            )
+            unsubscribed = await _recv(ws)
+            assert unsubscribed == {
+                "type": "unsubscribed",
+                "channel": own_channel,
+            }
 
         changed = e2e_client.post(
             f"/api/devices/{device_id}/{operation}",
