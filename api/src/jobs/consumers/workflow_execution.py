@@ -549,17 +549,6 @@ class WorkflowExecutionConsumer(BaseConsumer):
 
             await session.commit()
 
-        if changes_count > 0:
-            try:
-                from bifrost._sync import acknowledge_pending_changes
-
-                await acknowledge_pending_changes(execution_id)
-            except Exception as e:
-                logger.warning(
-                    "Failed to acknowledge committed pending changes for %s...: %s",
-                    execution_id[:8],
-                    e,
-                )
         durable_ms = (time.perf_counter() - completion_started) * 1000
 
         # Wake sync callers as soon as their result and buffered SDK writes are
@@ -648,7 +637,11 @@ class WorkflowExecutionConsumer(BaseConsumer):
         # Redis cleanup — no DB connection held
         try:
             from src.core.cache import cleanup_execution_cache
-            await cleanup_execution_cache(execution_id, preserve_logs=True)
+            await cleanup_execution_cache(
+                execution_id,
+                preserve_logs=True,
+                preserve_pending_changes=True,
+            )
         except Exception as e:
             logger.warning(f"Failed to cleanup cache for {execution_id[:8]}...: {e}")
 
@@ -906,18 +899,6 @@ class WorkflowExecutionConsumer(BaseConsumer):
 
             await session.commit()
 
-        if changes_count > 0:
-            try:
-                from bifrost._sync import acknowledge_pending_changes
-
-                await acknowledge_pending_changes(execution_id)
-            except Exception as e:
-                logger.warning(
-                    "Failed to acknowledge committed pending changes for %s...: %s",
-                    execution_id[:8],
-                    e,
-                )
-
         # A sync failure is just as latency-sensitive as a success. Wake the
         # caller once the authoritative failure is durable; aggregates and
         # terminal fan-out are derived follow-up work.
@@ -994,7 +975,11 @@ class WorkflowExecutionConsumer(BaseConsumer):
         # Redis cleanup — no DB connection held
         try:
             from src.core.cache import cleanup_execution_cache
-            await cleanup_execution_cache(execution_id, preserve_logs=True)
+            await cleanup_execution_cache(
+                execution_id,
+                preserve_logs=True,
+                preserve_pending_changes=True,
+            )
         except Exception as e:
             logger.warning(f"Failed to cleanup cache for {execution_id[:8]}...: {e}")
 
