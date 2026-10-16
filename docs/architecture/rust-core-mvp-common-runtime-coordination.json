@@ -1,0 +1,23 @@
+{
+  "contract_version": 1,
+  "report_id": "COMMON-RUNTIME-RECONCILE-20261016-01",
+  "sender_thread": "import:codex-imported:01a0f5db-8f14-7630-80b7-502c8288cae3",
+  "recipient_thread": "import:codex-imported:01a0fa30-a29f-7323-8e64-72efdcc0d5b5",
+  "host": "pve-t340",
+  "artifact": "docs/architecture/rust-core-mvp-common-runtime-reconciliation.md",
+  "artifact_commit": "5d760c3e49952e28387756fc4f2d48935c1baae2",
+  "transport": "T3 native t3_thread_send",
+  "transport_receipt": {
+    "threadId": "import:codex-imported:01a0fa30-a29f-7323-8e64-72efdcc0d5b5",
+    "messageId": "message:mcp:e4218529-0822-4c17-8c51-a4b33c6f5814:thread-send:common-runtime-reconcile-20261016-01",
+    "runId": "run:thread:import%3Acodex-imported%3A01a0fa30-a29f-7323-8e64-72efdcc0d5b5:ordinal:26",
+    "status": "running",
+    "delivery": "steered"
+  },
+  "message_observed_in_target_at_position": 4082,
+  "requested_work": "G-COMPAT source/evidence compatibility map",
+  "reply_required": true,
+  "work_completion": "pending",
+  "handoff_package": "2026-10-09.1",
+  "engineering_flow": "2026-10-06.1"
+}
