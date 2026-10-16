@@ -115,6 +115,7 @@ describe("EventsTable — populated", () => {
 		expect(open).toHaveBeenCalledWith(
 			"/event-sources/src-1/events/evt-1",
 			"_blank",
+			"noopener,noreferrer",
 		);
 	});
 

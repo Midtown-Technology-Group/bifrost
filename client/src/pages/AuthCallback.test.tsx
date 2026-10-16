@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { render, screen, waitFor } from "@testing-library/react";
 
+import { hashOAuthState } from "@/services/auth";
 import { AuthCallback } from "./AuthCallback";
 
 const loginWithOAuth = vi.fn();
@@ -17,9 +18,7 @@ vi.mock("@/contexts/OrgScopeContext", () => ({
 
 vi.mock("react-router", async () => {
 	const actual =
-		await vi.importActual<typeof import("react-router")>(
-			"react-router",
-		);
+		await vi.importActual<typeof import("react-router")>("react-router");
 	return {
 		...actual,
 		useNavigate: () => navigate,
@@ -40,9 +39,42 @@ describe("AuthCallback", () => {
 		sessionStorage.clear();
 	});
 
-	it("lets the server validate OAuth state when no browser state is stored", async () => {
+	it("rejects a callback when no browser OAuth state is stored", async () => {
 		const getItem = vi.spyOn(Storage.prototype, "getItem");
 		const removeItem = vi.spyOn(Storage.prototype, "removeItem");
+
+		render(
+			<MemoryRouter
+				initialEntries={[
+					"/auth/callback/microsoft?code=auth-code&state=server-state",
+				]}
+			>
+				<Routes>
+					<Route
+						path="/auth/callback/:provider"
+						element={<AuthCallback />}
+					/>
+				</Routes>
+			</MemoryRouter>,
+		);
+
+		expect(
+			await screen.findByText(
+				"This sign-in session is missing or expired. Please start sign-in again.",
+			),
+		).toBeTruthy();
+		expect(loginWithOAuth).not.toHaveBeenCalled();
+		expect(navigate).not.toHaveBeenCalled();
+		expect(getItem).toHaveBeenCalledWith("oauth_state");
+		expect(removeItem).toHaveBeenCalledWith("oauth_state");
+		expect(removeItem).toHaveBeenCalledWith("oauth_redirect_from");
+	});
+
+	it("exchanges the code only when the returned state matches", async () => {
+		sessionStorage.setItem(
+			"oauth_state",
+			await hashOAuthState("server-state"),
+		);
 
 		render(
 			<MemoryRouter
@@ -67,9 +99,6 @@ describe("AuthCallback", () => {
 			);
 		});
 		expect(navigate).toHaveBeenCalledWith("/", { replace: true });
-		expect(getItem).toHaveBeenCalledWith("oauth_state");
-		expect(removeItem).toHaveBeenCalledWith("oauth_state");
-		expect(removeItem).not.toHaveBeenCalledWith("oauth_provider");
 	});
 
 	it("rejects and clears a mismatched stored OAuth state", async () => {
