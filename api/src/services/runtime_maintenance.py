@@ -19,6 +19,7 @@ from uuid import UUID, uuid4
 
 from sqlalchemy import and_, func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql.elements import ColumnElement
 
 from src.core.database import get_db_context
 from src.models.enums import ExecutionStatus
@@ -245,13 +246,7 @@ async def enter_runtime_maintenance(
     return state
 
 
-async def runtime_drain_counts(db: AsyncSession) -> RuntimeDrainCounts:
-    async def count(model, *predicates) -> int:
-        return int(
-            await db.scalar(select(func.count()).select_from(model).where(*predicates))
-            or 0
-        )
-
+def retained_dispatch_reservation_predicate() -> ColumnElement[bool]:
     # Scheduling reserves the immutable execution pin before any publication.
     # These reservations survive a restart unchanged; they are not running work.
     # Keep every published, claimed, ambiguous or due reservation in the drain.
@@ -268,7 +263,7 @@ async def runtime_drain_counts(db: AsyncSession) -> RuntimeDrainCounts:
             ),
         ),
     ).exists()
-    retained_reservation = and_(
+    return and_(
         WorkflowExecutionAttempt.completed_at.is_(None),
         WorkflowExecutionAttempt.status == "dispatching",
         WorkflowExecutionAttempt.phase == "dispatch",
@@ -279,8 +274,21 @@ async def runtime_drain_counts(db: AsyncSession) -> RuntimeDrainCounts:
         WorkflowExecutionAttempt.worker_id.is_(None),
         WorkflowExecutionAttempt.worker_incarnation_id.is_(None),
         WorkflowExecutionAttempt.process_id.is_(None),
+        WorkflowExecutionAttempt.heartbeat_at.is_(None),
+        WorkflowExecutionAttempt.failure_code.is_(None),
+        WorkflowExecutionAttempt.failure_phase.is_(None),
         retained_execution,
     ).is_(True)
+
+
+async def runtime_drain_counts(db: AsyncSession) -> RuntimeDrainCounts:
+    async def count(model, *predicates) -> int:
+        return int(
+            await db.scalar(select(func.count()).select_from(model).where(*predicates))
+            or 0
+        )
+
+    retained_reservation = retained_dispatch_reservation_predicate()
     return RuntimeDrainCounts(
         work_deliveries=await count(
             WorkDelivery,

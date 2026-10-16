@@ -41,6 +41,8 @@ pytestmark = [pytest.mark.e2e, pytest.mark.asyncio]
         (ExecutionStatus.PENDING, 3600, False, {}, False),
         (ExecutionStatus.RUNNING, 3600, False, {}, False),
         (ExecutionStatus.SCHEDULED, 3600, False, {"worker_id": "uncertain-owner"}, False),
+        (ExecutionStatus.SCHEDULED, 3600, False, {"heartbeat_at": "now"}, False),
+        (ExecutionStatus.SCHEDULED, 3600, False, {"failure_code": "unknown_outcome"}, False),
         (ExecutionStatus.SCHEDULED, 3600, False, {"phase": "queue"}, False),
         (ExecutionStatus.SCHEDULED, 3600, False,
          {"status": "published", "phase": "queue", "published_at": "now"}, False),
