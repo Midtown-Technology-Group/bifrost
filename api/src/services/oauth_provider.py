@@ -544,8 +544,8 @@ async def build_token_refresh_context(
     token-bound fallback chain:
 
       1. the integration mapping directly linked to ``token.id``
-      2. the integration mapping for the explicit organization, or the
-         token's organization when no explicit organization is supplied
+      2. the integration mapping for the selected token's organization, or
+         the explicit organization when no token has been selected
       3. ``integration.default_entity_id`` (global tokens only)
       4. ``integration.entity_id`` (global tokens only)
 
@@ -561,8 +561,10 @@ async def build_token_refresh_context(
         token: Optional stored ``OAuthToken``. Its ID and organization bind
             tenant resolution for every flow; its refresh token is additionally
             required for authorization_code flows.
-        org_id: Optional organization context. When omitted, an organization
-            bound to ``token`` is still treated as tenant context.
+        org_id: Optional caller-authorized organization context. It supplies
+            credential scope only when no token has been selected; otherwise
+            the selected token's organization (including global ``None``) is
+            authoritative.
 
     Returns:
         A dict matching the shape ``refresh_oauth_token_http`` expects.
@@ -574,7 +576,11 @@ async def build_token_refresh_context(
     )
 
     token_org_id = token.organization_id if token is not None else None
-    effective_org_id = org_id if org_id is not None else token_org_id
+    # ``org_id`` proves which scope the caller was authorized to request. Once
+    # a token is selected, its stored organization is the credential scope.
+    # In particular, NULL is an intentional global scope rather than missing
+    # context that may be replaced by the caller's organization.
+    effective_org_id = token_org_id if token is not None else org_id
     tenant_context_mismatch = (
         token_org_id is not None
         and org_id is not None

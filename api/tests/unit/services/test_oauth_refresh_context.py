@@ -181,6 +181,43 @@ class TestBuildTokenRefreshContextEntityIdFallback:
         db.execute.assert_awaited_once()
 
     @pytest.mark.asyncio
+    async def test_selected_global_token_keeps_global_integration_default(self):
+        """Caller org authorization does not rescope a selected global token."""
+        from src.services.oauth_provider import build_token_refresh_context
+
+        provider = _make_provider(
+            integration_id=uuid4(),
+            token_url_defaults={"custom_key": "preserved"},
+        )
+        token = MagicMock()
+        token.id = uuid4()
+        token.organization_id = None
+        token.oauth_resource = None
+        token.encrypted_refresh_token = b"encrypted-refresh"
+        no_mapping = MagicMock()
+        no_mapping.scalar_one_or_none.return_value = None
+        integration_result = MagicMock()
+        integration_result.scalar_one_or_none.return_value = _make_integration(
+            default_entity_id="global-tenant"
+        )
+        db = AsyncMock()
+        db.execute = AsyncMock(side_effect=[no_mapping, integration_result])
+
+        td = await build_token_refresh_context(
+            db=db,
+            provider=provider,
+            token=token,
+            org_id=uuid4(),
+        )
+
+        assert td["token_url_defaults"] == {
+            "custom_key": "preserved",
+            "entity_id": "global-tenant",
+        }
+        assert td["context_error"] is None
+        assert db.execute.await_count == 2
+
+    @pytest.mark.asyncio
     async def test_tenant_token_without_mapping_fails_closed(self):
         """A tenant token cannot inherit a provider-wide entity_id default."""
         from src.services.oauth_provider import build_token_refresh_context
