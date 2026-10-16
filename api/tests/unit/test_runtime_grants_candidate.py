@@ -235,6 +235,23 @@ def test_c3_does_not_rebuild_c1_fences_or_enable_authority() -> None:
         )
 
 
+def test_operation_grant_and_optional_install_bindings_use_match_simple() -> None:
+    _, tables = _render()
+    actual = {
+        tuple(fk.column_keys): tuple(item.target_fullname for item in fk.elements)
+        for fk in tables[OPERATIONS].foreign_key_constraints
+    }
+    assert actual == {
+        ("grant_id",): ("public.workflow_runtime_sdk_grants.id",),
+        ("grant_id", "solution_install_id"): (
+            "public.workflow_runtime_sdk_grants.id",
+            "public.workflow_runtime_sdk_grants.solution_install_id",
+        ),
+    }
+    for fk in tables[OPERATIONS].foreign_key_constraints:
+        assert (fk.match or "SIMPLE") == "SIMPLE"
+
+
 class _DowngradeOp:
     def __init__(self, occupied: bool, isolation: str = "read committed"):
         self.occupied = occupied
