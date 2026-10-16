@@ -482,7 +482,9 @@ async def test_agent_admission_preserves_original_principal_authority(
         await agent_runs.execute_agent_run(AgentRunCreateRequest(agent_name="Agent"), db, user)
         db.rollback.assert_awaited_once()
     else:
-        await agent_runs.rerun_agent_run(uuid4(), db, user)
+        await agent_runs.rerun_agent_run(run_id, db, user)
+        if not admin:
+            db.execute.assert_awaited_once()
     kwargs = enqueue.await_args.kwargs
     assert kwargs["caller_user_id"] == str(user.user_id)
     assert kwargs["caller_is_superuser"] is admin
