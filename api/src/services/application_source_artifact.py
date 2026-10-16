@@ -11,6 +11,7 @@ from botocore.exceptions import ClientError
 
 from src.config import Settings, get_settings
 from src.services.application_deploy_storage import CHUNK_SIZE
+from src.services.file_storage.azure_blob_client import AzureBlobStorageClient
 from src.services.file_storage.s3_client import S3StorageClient
 
 APPLICATION_ARTIFACT_ROOT = "_application_artifacts"
@@ -21,8 +22,12 @@ class ApplicationSourceArtifactStorage:
 
     def __init__(self, settings: Settings | None = None):
         self._settings = settings or get_settings()
-        self._storage = S3StorageClient(self._settings)
-        self._bucket = self._settings.s3_bucket or ""
+        if self._settings.object_storage_provider == "azure_blob":
+            self._storage = AzureBlobStorageClient(self._settings)
+            self._bucket = self._settings.azure_blob_container or ""
+        else:
+            self._storage = S3StorageClient(self._settings)
+            self._bucket = self._settings.s3_bucket or ""
 
     @staticmethod
     def deployment_source_key(app_id: UUID | str, deployment_id: UUID | str) -> str:
@@ -87,12 +92,14 @@ class ApplicationSourceArtifactStorage:
         self, app_id: UUID | str, deployment_id: UUID | str
     ) -> bool:
         """Check that a retained source object exists before starting a response."""
-        async with self._storage.get_client() as s3:
+        async with self._storage.get_client() as client:
             try:
-                await s3.head_object(
+                await client.head_object(
                     Bucket=self._bucket,
                     Key=self.deployment_source_key(app_id, deployment_id),
                 )
+            except client.exceptions.NoSuchKey:
+                return False
             except ClientError as exc:
                 error = exc.response.get("Error", {})
                 if error.get("Code") in {"NoSuchKey", "404", "NotFound"}:

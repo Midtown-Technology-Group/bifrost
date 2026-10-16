@@ -11,7 +11,7 @@ import asyncio
 import hashlib
 import re
 from collections.abc import AsyncIterator, Awaitable, Callable, Iterable
-from contextlib import aclosing, asynccontextmanager
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from functools import wraps
 from types import SimpleNamespace
@@ -23,6 +23,39 @@ from src.config import Settings
 
 _P = ParamSpec("_P")
 _R = TypeVar("_R")
+
+_COPY_INITIAL_DELAY_SECONDS = 0.1
+_COPY_MAX_DELAY_SECONDS = 2.0
+_COPY_TIMEOUT_SECONDS = 60.0
+
+
+def canonical_etag(value: object) -> str | None:
+    """Return one opaque provider token, without a single surrounding quote pair.
+
+    Quotation marks are representation. The token is a concurrency credential,
+    not a content hash and not a stable object identity.
+    """
+    if value is None:
+        return None
+    token = str(value).strip()
+    if len(token) >= 2 and token.startswith('"') and token.endswith('"'):
+        return token[1:-1]
+    return token
+
+
+def wire_etag(value: object) -> str:
+    """Quote a canonical token the way Azure conditional headers require."""
+    token = canonical_etag(value)
+    if not token:
+        raise ValueError("Conditional write requires an ETag token")
+    return f'"{token}"'
+
+
+class AzureBlobCopyUnresolved(RuntimeError):
+    """The original copy id has no confirmed terminal state.
+
+    The destination may exist. This error is not evidence that it does not.
+    """
 
 
 def _owned_operation(
@@ -36,23 +69,73 @@ def _owned_operation(
     return run
 
 
-class _AsyncBody:
-    def __init__(self, content: bytes):
-        self._content = content
-        self._offset = 0
+class _StreamingBody:
+    """Read an object in caller-sized pieces without buffering it up front."""
 
-    async def __aenter__(self) -> _AsyncBody:
+    def __init__(self, chunks: AsyncIterator[bytes]):
+        self._iterator = chunks.__aiter__()
+        self._buffer = bytearray()
+        self._exhausted = False
+        self._closed = False
+        self._close_owner: Callable[[], Awaitable[None]] | None = None
+
+    def bind_owner(self, close_owner: Callable[[], Awaitable[None]]) -> None:
+        self._close_owner = close_owner
+
+    async def __aenter__(self) -> _StreamingBody:
         return self
 
     async def __aexit__(self, *_args: object) -> None:
-        return None
+        await self.close()
+
+    async def close(self) -> None:
+        if self._closed:
+            return
+        self._closed = True
+        aclose = getattr(self._iterator, "aclose", None)
+        if aclose is not None:
+            await aclose()
+        close_owner = self._close_owner
+        self._close_owner = None
+        if close_owner is not None:
+            await close_owner()
+
+    async def _pull(self) -> None:
+        if self._exhausted:
+            return
+        try:
+            chunk = await self._iterator.__anext__()
+        except StopAsyncIteration:
+            self._exhausted = True
+            return
+        if chunk:
+            self._buffer.extend(chunk)
 
     async def read(self, size: int = -1) -> bytes:
+        if size == 0 or (self._closed and not self._buffer):
+            return b""
         if size < 0:
-            size = len(self._content) - self._offset
-        chunk = self._content[self._offset : self._offset + size]
-        self._offset += len(chunk)
-        return chunk
+            parts = [bytes(self._buffer)]
+            self._buffer.clear()
+            while not self._exhausted:
+                await self._pull()
+                if self._buffer:
+                    parts.append(bytes(self._buffer))
+                    self._buffer.clear()
+            await self.close()
+            return b"".join(parts)
+        while len(self._buffer) < size and not self._exhausted:
+            await self._pull()
+        if not self._buffer:
+            if self._exhausted:
+                await self.close()
+            return b""
+        take = min(size, len(self._buffer))
+        result = bytes(self._buffer[:take])
+        del self._buffer[:take]
+        if self._exhausted and not self._buffer:
+            await self.close()
+        return result
 
 
 class _ListObjectsV2Paginator:
@@ -69,7 +152,7 @@ class _ListObjectsV2Paginator:
                     {
                         "Key": blob.name,
                         "Size": getattr(blob, "size", None),
-                        "ETag": str(getattr(blob, "etag", "") or "").strip('"'),
+                        "ETag": canonical_etag(getattr(blob, "etag", None)) or "",
                     }
                 ]
             }
@@ -86,6 +169,7 @@ class AzureBlobStorageClient:
         self.settings = settings
         self._operation_owned = False
         self._single_attempt = False
+        self._copy_timeout_seconds = _COPY_TIMEOUT_SECONDS
         self._credential = None
         self._service_client = None
         self._container_client = None
@@ -114,20 +198,20 @@ class AzureBlobStorageClient:
             return
         if not self.settings.azure_blob_configured:
             raise RuntimeError("Azure Blob storage not configured")
+        if self.settings.azure_blob_auth not in {"account_key", "default_credential"}:
+            raise RuntimeError(
+                f"Unsupported Azure Blob auth mode: {self.settings.azure_blob_auth}"
+            )
 
         from azure.storage.blob.aio import BlobServiceClient
 
         credential = None
         if self.settings.azure_blob_auth == "account_key":
             credential = self.settings.azure_blob_account_key
-        elif self.settings.azure_blob_auth == "default_credential":
+        else:
             from azure.identity.aio import DefaultAzureCredential
 
             credential = DefaultAzureCredential()
-        else:
-            raise RuntimeError(
-                f"Unsupported Azure Blob auth mode: {self.settings.azure_blob_auth}"
-            )
 
         self._credential = credential
         self._service_client = BlobServiceClient(
@@ -184,9 +268,18 @@ class AzureBlobStorageClient:
         list_kwargs: dict[str, Any] = {"name_starts_with": Prefix}
         if MaxKeys is not None:
             list_kwargs["results_per_page"] = MaxKeys
-        pager = self._container_client.list_blobs(**list_kwargs).by_page(
-            continuation_token=ContinuationToken,
-        )
+        if Delimiter:
+            # Hierarchical listing returns each direct child once. A flat
+            # name scan would both download every descendant and repeat a
+            # folder whose blobs cross a page boundary.
+            list_kwargs["delimiter"] = Delimiter
+            pager = self._container_client.walk_blobs(**list_kwargs).by_page(
+                continuation_token=ContinuationToken,
+            )
+        else:
+            pager = self._container_client.list_blobs(**list_kwargs).by_page(
+                continuation_token=ContinuationToken,
+            )
         try:
             page = await anext(pager)
         except StopAsyncIteration:
@@ -204,18 +297,16 @@ class AzureBlobStorageClient:
         next_token = getattr(pager, "continuation_token", None)
 
         for blob in blobs:
+            prefix = getattr(blob, "prefix", None)
+            if prefix:
+                common_prefixes.add(prefix)
+                continue
             name = blob.name
-            if Delimiter:
-                remainder = name[len(Prefix) :]
-                if Delimiter in remainder:
-                    folder = Prefix + remainder.split(Delimiter, 1)[0] + Delimiter
-                    common_prefixes.add(folder)
-                    continue
             contents.append(
                 {
                     "Key": name,
                     "Size": getattr(blob, "size", None),
-                    "ETag": str(getattr(blob, "etag", "") or "").strip('"'),
+                    "ETag": canonical_etag(getattr(blob, "etag", None)) or "",
                     "LastModified": getattr(blob, "last_modified", None),
                 }
             )
@@ -244,14 +335,19 @@ class AzureBlobStorageClient:
         IfMatch: str | None = None,
     ) -> None:
         del Bucket
+        if IfNoneMatch not in (None, "*") or (
+            IfMatch is not None and (not IfMatch or IfNoneMatch is not None)
+        ):
+            raise ValueError("Unsupported or conflicting object write preconditions")
         from azure.storage.blob import ContentSettings
 
-        if IfNoneMatch not in (None, "*") or (IfMatch is not None and (not IfMatch or IfNoneMatch is not None)):
-            raise ValueError("Unsupported or conflicting object write preconditions")
         conditions = {}
         if IfMatch is not None:
             from azure.core import MatchConditions
-            conditions = {"etag": IfMatch, "match_condition": MatchConditions.IfNotModified}
+            conditions = {
+                "etag": wire_etag(IfMatch),
+                "match_condition": MatchConditions.IfNotModified,
+            }
         await self._ensure_client()
         await self._container_client.upload_blob(
             name=Key,
@@ -309,52 +405,65 @@ class AzureBlobStorageClient:
         *,
         chunk_size: int = 8 * 1024 * 1024,
     ) -> AsyncIterator[bytes]:
-        """Keep the owned transport alive until stream consumption or closure."""
-        async with self.get_client() as client:
-            async with aclosing(client._iter_object_chunks(path, chunk_size=chunk_size)) as chunks:
-                async for chunk in chunks:
-                    yield chunk
-
-    async def _iter_object_chunks(
-        self,
-        path: str,
-        *,
-        chunk_size: int = 8 * 1024 * 1024,
-    ) -> AsyncIterator[bytes]:
-        """Yield one Azure Blob object in bounded chunks."""
+        """Yield one object through the shared ranged reader."""
         if chunk_size <= 0:
             raise ValueError("chunk_size must be greater than zero")
+        async with self.get_client() as client:
+            try:
+                response = await client.get_object(Bucket="", Key=path)
+            except self.exceptions.NoSuchKey as exc:
+                raise FileNotFoundError(f"File not found: {path}") from exc
+            body = response["Body"]
+            try:
+                while chunk := await body.read(chunk_size):
+                    yield chunk
+            finally:
+                await body.close()
 
-        from azure.core.exceptions import ResourceNotFoundError
-
-        await self._ensure_client()
-        try:
-            stream = await self._container_client.download_blob(path)
-        except ResourceNotFoundError as exc:
-            raise FileNotFoundError(f"File not found: {path}") from exc
-
-        async for chunk in stream.chunks():
-            for offset in range(0, len(chunk), chunk_size):
-                yield chunk[offset : offset + chunk_size]
-
-    @_owned_operation
     async def get_object(self, *, Bucket: str, Key: str, Range: str | None = None) -> dict[str, Any]:
         del Bucket
+        if self._operation_owned:
+            return await self._open_get_object(Key, Range)
+        client = AzureBlobStorageClient(self.settings)
+        client._operation_owned = True
+        client._single_attempt = self._single_attempt
+        try:
+            await client._ensure_client()
+            response = await client._open_get_object(Key, Range)
+        except Exception:
+            await client.close()
+            raise
+        response["Body"].bind_owner(client.close)
+        return response
+
+    async def _open_get_object(self, key: str, byte_range: str | None) -> dict[str, Any]:
         from azure.core.exceptions import ResourceNotFoundError
 
         await self._ensure_client()
-        options = {}
-        if Range is not None:
-            match = re.fullmatch(r"bytes=(\d+)-(\d+)", Range)
+        options: dict[str, Any] = {}
+        if byte_range is not None:
+            match = re.fullmatch(r"bytes=(\d+)-(\d+)", byte_range)
             if match is None or int(match[2]) < int(match[1]):
                 raise ValueError("Expected a bounded inclusive byte range")
             options = {"offset": int(match[1]), "length": int(match[2]) - int(match[1]) + 1}
         try:
-            stream = await self._container_client.download_blob(Key, **options)
-            return {"Body": _AsyncBody(await stream.readall()),
-                    "ETag": getattr(getattr(stream, "properties", None), "etag", None)}
+            stream = await self._container_client.download_blob(key, **options)
         except ResourceNotFoundError as exc:
-            raise self.exceptions.NoSuchKey(Key) from exc
+            raise self.exceptions.NoSuchKey(key) from exc
+
+        async def chunks() -> AsyncIterator[bytes]:
+            try:
+                async for chunk in stream.chunks():
+                    if chunk:
+                        yield chunk
+            finally:
+                await stream.close()
+
+        return {
+            "Body": _StreamingBody(chunks()),
+            "ETag": canonical_etag(getattr(getattr(stream, "properties", None), "etag", None))
+            or "",
+        }
 
     @_owned_operation
     async def delete_object(self, *, Bucket: str, Key: str) -> None:
@@ -383,7 +492,7 @@ class AzureBlobStorageClient:
         return SimpleNamespace(
             content_length=properties.size,
             content_type=properties.content_settings.content_type,
-            etag=str(properties.etag or "").strip('"'),
+            etag=canonical_etag(properties.etag) or "",
         )
 
     @_owned_operation
@@ -396,17 +505,82 @@ class AzureBlobStorageClient:
         copy_result = await dest_blob.start_copy_from_url(source_url)
         if copy_result.get("copy_status") == "success":
             return
+        copy_id = copy_result.get("copy_id")
+        if not isinstance(copy_id, str) or not copy_id:
+            raise AzureBlobCopyUnresolved(
+                f"Azure Blob copy for {Key!r} returned no copy id; the destination may exist"
+            )
+        await self._wait_for_copy(dest_blob, copy_id, Key)
 
-        for _ in range(30):
-            properties = await dest_blob.get_blob_properties()
-            copy_status = getattr(properties.copy, "status", None)
-            if copy_status == "success":
+    async def _wait_for_copy(self, dest_blob: Any, copy_id: str, key: str) -> None:
+        delay = _COPY_INITIAL_DELAY_SECONDS
+        waited = 0.0
+        while True:
+            observation = await self._observe_copy(dest_blob, copy_id)
+            if observation == "success":
                 return
-            if copy_status in {"failed", "aborted"}:
-                raise RuntimeError(f"Azure Blob copy {copy_status}: {properties.copy}")
-            await asyncio.sleep(0.5)
+            if observation in {"failed", "aborted"}:
+                raise RuntimeError(f"Azure Blob copy {observation}: {copy_id}")
+            if observation != "pending":
+                raise AzureBlobCopyUnresolved(
+                    f"Azure Blob copy {copy_id} for {key!r} lost its copy id; "
+                    "the destination may exist"
+                )
+            if waited >= self._copy_timeout_seconds:
+                await self._finish_copy_after_deadline(dest_blob, copy_id, key)
+                return
+            await asyncio.sleep(delay)
+            waited += delay
+            delay = min(delay * 2, _COPY_MAX_DELAY_SECONDS)
 
-        raise TimeoutError(f"Azure Blob copy did not complete for {Key!r}")
+    async def _finish_copy_after_deadline(self, dest_blob: Any, copy_id: str, key: str) -> None:
+        """Settle a deadline against the original copy id, then abort only that id."""
+        observation = await self._observe_copy(dest_blob, copy_id)
+        if observation == "success":
+            return
+        if observation == "failed":
+            raise RuntimeError(f"Azure Blob copy failed: {copy_id}")
+        if observation == "aborted":
+            raise TimeoutError(
+                f"Azure Blob copy {copy_id} for {key!r} was aborted after the deadline; "
+                "this does not prove the destination object is absent"
+            )
+        if observation == "pending":
+            try:
+                await dest_blob.abort_copy(copy_id)
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                observation = await self._observe_copy(dest_blob, copy_id)
+                if observation == "success":
+                    return
+                raise AzureBlobCopyUnresolved(
+                    f"Azure Blob copy {copy_id} for {key!r} could not be confirmed "
+                    "after the deadline; the destination may exist"
+                ) from exc
+            observation = await self._observe_copy(dest_blob, copy_id)
+            if observation == "success":
+                return
+            if observation == "aborted":
+                raise TimeoutError(
+                    f"Azure Blob copy {copy_id} for {key!r} was aborted after the deadline; "
+                    "this does not prove the destination object is absent"
+                )
+        raise AzureBlobCopyUnresolved(
+            f"Azure Blob copy {copy_id} for {key!r} ended without a confirmed outcome; "
+            "the destination may exist"
+        )
+
+    async def _observe_copy(self, dest_blob: Any, copy_id: str) -> str:
+        properties = await dest_blob.get_blob_properties()
+        copy = getattr(properties, "copy", None)
+        observed_id = getattr(copy, "id", None)
+        status = getattr(copy, "status", None)
+        if observed_id != copy_id:
+            return "indeterminate"
+        if status in {"success", "failed", "aborted", "pending"}:
+            return str(status)
+        return "indeterminate"
 
     async def _generate_blob_sas(
         self,
