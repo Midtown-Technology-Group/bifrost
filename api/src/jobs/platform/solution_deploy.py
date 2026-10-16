@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import tempfile
 import logging
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 from uuid import UUID
@@ -18,6 +19,7 @@ from src.jobs.execution_policy import (
     platform_job_operations_policy,
 )
 from src.jobs.platform.base import (
+    PlatformJobCancelled,
     PlatformJobContext,
     PlatformJobDefinition,
     PlatformJobFailure,
@@ -40,6 +42,44 @@ class SolutionDeployPayload(BaseModel):
     options: dict[str, Any]
 
 
+@dataclass
+class _SolutionDeployReporter:
+    """Throttle bounded deployment progress onto the shared job record."""
+
+    context: PlatformJobContext
+    last_percent: float = 0
+
+    async def progress(self, phase: str, percent: float) -> None:
+        bounded_percent = min(99, max(self.last_percent, percent))
+        if bounded_percent == self.last_percent:
+            return
+        self.last_percent = bounded_percent
+        try:
+            await self.context.report(phase, percent=bounded_percent)
+        except PlatformJobCancelled:
+            # A rejected lease/cancellation is a control signal, not telemetry.
+            raise
+        except Exception as exc:  # noqa: BLE001 - diagnostics must not abort publication
+            logger.warning(
+                "Failed to publish Solution deploy progress (%s)",
+                type(exc).__name__,
+            )
+
+    async def timing(self, category: str, elapsed_ms: int) -> None:
+        try:
+            await self.context.log(
+                "info",
+                "solution_deploy_timing",
+                f"Solution deploy {category} elapsed {elapsed_ms} ms",
+            )
+        except Exception as exc:  # noqa: BLE001 - diagnostics must not abort publication
+            logger.warning(
+                "Failed to publish Solution deploy timing category %s (%s)",
+                category,
+                type(exc).__name__,
+            )
+
+
 async def unresolved_solution_deploy(
     db: AsyncSession, solution_id: UUID, *, exclude_job_id: UUID | None = None,
 ) -> PlatformJob | None:
@@ -60,6 +100,9 @@ async def run_solution_deploy(
     payload: SolutionDeployPayload,
 ) -> dict:
     from src.routers.solutions import _run_deploy_job, _run_install_job
+    from src.services.solutions.deploy import (
+        SolutionDeployInstrumentation, solution_deploy_instrumentation,
+    )
 
     if payload.kind == "deliver_package":
         from src.jobs.platform.solution_package_delivery import run_solution_package_delivery
@@ -70,6 +113,10 @@ async def run_solution_deploy(
 
     storage = SolutionDeployJobStorage(payload.deploy_job_id)
     await context.report("Loading staged Solution input", percent=2)
+    reporter = _SolutionDeployReporter(context, last_percent=2)
+    instrumentation = SolutionDeployInstrumentation(
+        progress_callback=reporter.progress, timing_callback=reporter.timing,
+    )
     try:
         with tempfile.TemporaryDirectory(prefix="bifrost-solution-job-") as tmp:
             zip_path = Path(tmp) / "input.zip"
@@ -91,35 +138,37 @@ async def run_solution_deploy(
                     raise PlatformJobFailure(
                         "solution_not_found", "Solution install is missing."
                     )
-                await _run_deploy_job(
-                    payload.deploy_job_id,
-                    payload.install_id,
-                    zip_path,
-                    force=bool(payload.options.get("force", False)),
-                    candidate_id=candidate_id,
-                    accountability_organization_id=accountability_organization_id,
-                    # A from-repo install is created git-connected by the same
-                    # request that enqueues this first deploy; without the
-                    # exemption the one-writer refusal would deadlock creation.
-                    # Manual deploys (kind="deploy") stay refused.
-                    allow_connected_install=payload.kind == "install_from_repo",
-                )
+                with solution_deploy_instrumentation(instrumentation):
+                    await _run_deploy_job(
+                        payload.deploy_job_id,
+                        payload.install_id,
+                        zip_path,
+                        force=bool(payload.options.get("force", False)),
+                        candidate_id=candidate_id,
+                        accountability_organization_id=accountability_organization_id,
+                        # A from-repo install is created git-connected by the same
+                        # request that enqueues this first deploy; without the
+                        # exemption the one-writer refusal would deadlock creation.
+                        # Manual deploys (kind="deploy") stay refused.
+                        allow_connected_install=payload.kind == "install_from_repo",
+                    )
             else:
                 raw_org_id = payload.options.get("organization_id")
-                await _run_install_job(
-                    payload.deploy_job_id,
-                    zip_path,
-                    organization_id=UUID(raw_org_id) if raw_org_id else None,
-                    config_values=payload.options.get("config_values", {}),
-                    deployer_email=str(payload.options["deployer_email"]),
-                    force=bool(payload.options.get("force", False)),
-                    password=payload.options.get("password"),
-                    replace_secrets=bool(payload.options.get("replace_secrets", False)),
-                    replace_data=bool(payload.options.get("replace_data", False)),
-                    reactivate=bool(payload.options.get("reactivate", False)),
-                    candidate_id=candidate_id,
-                    accountability_organization_id=accountability_organization_id,
-                )
+                with solution_deploy_instrumentation(instrumentation):
+                    await _run_install_job(
+                        payload.deploy_job_id,
+                        zip_path,
+                        organization_id=UUID(raw_org_id) if raw_org_id else None,
+                        config_values=payload.options.get("config_values", {}),
+                        deployer_email=str(payload.options["deployer_email"]),
+                        force=bool(payload.options.get("force", False)),
+                        password=payload.options.get("password"),
+                        replace_secrets=bool(payload.options.get("replace_secrets", False)),
+                        replace_data=bool(payload.options.get("replace_data", False)),
+                        reactivate=bool(payload.options.get("reactivate", False)),
+                        candidate_id=candidate_id,
+                        accountability_organization_id=accountability_organization_id,
+                    )
         failure: PlatformJobFailure | None = None
         result: dict[str, Any] = {}
         async with get_db_context() as db:

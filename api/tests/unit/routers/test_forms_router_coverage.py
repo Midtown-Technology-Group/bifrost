@@ -316,11 +316,10 @@ async def test_bounded_upload_rejects_missing_invalid_and_wrong_form_capabilitie
     form_id = uuid4()
     request = _upload_request({"authorization": authorization})
 
-    with (
-        patch.object(forms, "decode_token", return_value=decoded_payload) as decode,
-        pytest.raises(HTTPException) as exc,
-    ):
-        await forms.upload_embed_form_content(form_id, request, AsyncMock())
+    db = AsyncMock()
+    with patch.object(forms, "decode_token", return_value=decoded_payload) as decode:
+        with pytest.raises(HTTPException) as exc:
+            await forms.upload_embed_form_content(form_id, request, db)
 
     assert exc.value.status_code == expected_status
     if not authorization:
@@ -347,16 +346,12 @@ async def test_bounded_upload_rejects_invalid_claims_and_declared_lengths(
     if content_length is not None:
         headers["content-length"] = content_length
     payload = _upload_payload(form_id, **payload_overrides)
+    request = _upload_request(headers, b"pdf")
+    db = AsyncMock()
 
-    with (
-        patch.object(forms, "decode_token", return_value=payload),
-        pytest.raises(HTTPException) as exc,
-    ):
-        await forms.upload_embed_form_content(
-            form_id,
-            _upload_request(headers, b"pdf"),
-            AsyncMock(),
-        )
+    with patch.object(forms, "decode_token", return_value=payload):
+        with pytest.raises(HTTPException) as exc:
+            await forms.upload_embed_form_content(form_id, request, db)
 
     assert exc.value.status_code == expected_status
 
@@ -372,6 +367,7 @@ async def test_bounded_upload_registers_exact_body_and_refuses_replay():
     reserve = AsyncMock(side_effect=[True, False])
     register = AsyncMock()
     request = _upload_request({"authorization": "Bearer valid"}, b"pdf")
+    replay_db = AsyncMock()
 
     with (
         patch.object(forms, "decode_token", return_value=payload),
@@ -385,7 +381,7 @@ async def test_bounded_upload_registers_exact_body_and_refuses_replay():
             AsyncMock(),
         )
         with pytest.raises(HTTPException) as replay:
-            await forms.upload_embed_form_content(form_id, request, AsyncMock())
+            await forms.upload_embed_form_content(form_id, request, replay_db)
 
     assert response.status_code == 204
     assert replay.value.status_code == 409
@@ -422,6 +418,8 @@ async def test_bounded_upload_cleans_storage_and_releases_failed_capability(
         delete_raw_from_s3=AsyncMock(),
     )
     release = AsyncMock()
+    request = _upload_request({"authorization": "Bearer valid"}, b"pdf")
+    db = AsyncMock()
 
     with (
         patch.object(forms, "decode_token", return_value=payload),
@@ -432,13 +430,9 @@ async def test_bounded_upload_cleans_storage_and_releases_failed_capability(
         ),
         patch.object(forms, "release_form_upload_capability", release),
         patch("src.services.file_storage.FileStorageService", return_value=storage),
-        pytest.raises(HTTPException) as exc,
     ):
-        await forms.upload_embed_form_content(
-            form_id,
-            _upload_request({"authorization": "Bearer valid"}, b"pdf"),
-            AsyncMock(),
-        )
+        with pytest.raises(HTTPException) as exc:
+            await forms.upload_embed_form_content(form_id, request, db)
 
     assert exc.value.status_code == expected_status
     storage.delete_raw_from_s3.assert_awaited_once_with(payload["storage_key"])
@@ -454,6 +448,8 @@ async def test_bounded_upload_cancellation_cleans_storage_and_remains_cancelled(
         delete_raw_from_s3=AsyncMock(),
     )
     release = AsyncMock()
+    request = _upload_request({"authorization": "Bearer valid"}, b"pdf")
+    db = AsyncMock()
 
     with (
         patch.object(forms, "decode_token", return_value=payload),
@@ -464,13 +460,9 @@ async def test_bounded_upload_cancellation_cleans_storage_and_remains_cancelled(
         ),
         patch.object(forms, "release_form_upload_capability", release),
         patch("src.services.file_storage.FileStorageService", return_value=storage),
-        pytest.raises(asyncio.CancelledError),
     ):
-        await forms.upload_embed_form_content(
-            form_id,
-            _upload_request({"authorization": "Bearer valid"}, b"pdf"),
-            AsyncMock(),
-        )
+        with pytest.raises(asyncio.CancelledError):
+            await forms.upload_embed_form_content(form_id, request, db)
 
     storage.delete_raw_from_s3.assert_awaited_once_with(payload["storage_key"])
     release.assert_awaited_once_with(payload["jti"])

@@ -27,6 +27,12 @@ class SyncError(Exception):
     pass
 
 
+async def acknowledge_pending_changes(execution_id: str) -> None:
+    """Delete buffered changes only after their database transaction commits."""
+    r = await get_shared_redis()
+    await r.delete(pending_changes_key(execution_id))
+
+
 async def flush_pending_changes(
     execution_id: str,
     session: "AsyncSession | None" = None,
@@ -36,8 +42,9 @@ async def flush_pending_changes(
 
     Args:
         execution_id: Execution ID to flush
-        session: Optional database session. If provided, uses it and
-                 caller is responsible for commit. If None, creates own session.
+        session: Optional database session. If provided, uses it and the caller
+                 must commit before calling :func:`acknowledge_pending_changes`.
+                 If None, creates and commits its own session before acknowledging.
 
     Returns:
         int: Number of changes applied
@@ -68,7 +75,8 @@ async def flush_pending_changes(
     for attempt in range(3):
         try:
             if session is not None:
-                # Use provided session (caller manages commit)
+                # The caller owns the transaction and acknowledges Redis only
+                # after its commit succeeds.
                 await _apply_all(session)
             else:
                 # Create own session
@@ -79,8 +87,15 @@ async def flush_pending_changes(
                     await _apply_all(db)
                     await db.commit()
 
-            await r.delete(redis_key)
-            logger.info(f"Flushed {len(changes)} changes for {execution_id}")
+            if session is None:
+                await acknowledge_pending_changes(execution_id)
+                logger.info(f"Flushed {len(changes)} changes for {execution_id}")
+            else:
+                logger.info(
+                    "Applied %s pending changes for %s; awaiting transaction commit",
+                    len(changes),
+                    execution_id,
+                )
             return len(changes)
         except Exception as e:
             if attempt == 2:
