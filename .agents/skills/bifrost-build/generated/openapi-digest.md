@@ -434,6 +434,7 @@
 | GET | `/api/platform/app-service/metrics` |
 | GET | `/api/platform/external-workers` |
 | POST | `/api/platform/external-workers/enroll` |
+| POST | `/api/platform/external-workers/identity` |
 | GET | `/api/platform/queue` |
 | GET | `/api/platform/runtime-maintenance` |
 | POST | `/api/platform/runtime-maintenance/enter` |
