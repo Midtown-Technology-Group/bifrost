@@ -1,6 +1,20 @@
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+
+import platformStyles from "@/index.css?inline";
+
+const APP_CONTAINMENT_STYLE: CSSProperties = {
+	position: "relative",
+	width: "100%",
+	height: "100%",
+	minWidth: 0,
+	minHeight: 0,
+	overflow: "hidden",
+	contain: "strict",
+	isolation: "isolate",
+	zIndex: 0,
+};
 
 const HOST_CONSTRAINTS: ReadonlyArray<readonly [string, string]> = [
 	["display", "block"],
@@ -20,17 +34,46 @@ const HOST_CONSTRAINTS: ReadonlyArray<readonly [string, string]> = [
 ];
 
 /**
- * Return the app's Shadow DOM root and pin its host inside the platform layout.
+ * Return the app's Shadow DOM root and give its host a predictable baseline.
  *
  * App stylesheets are authored by app developers and must not participate in
- * the platform document's cascade. Important inline constraints also prevent a
- * stylesheet's :host rule from turning the shadow host into a fixed overlay.
+ * the platform document's cascade. A stylesheet's important `:host` rules can
+ * outrank these outer inline declarations, so security containment belongs on
+ * AppContainmentBoundary, which the shadow stylesheet cannot select.
  */
 export function ensureIsolatedAppShadow(host: HTMLElement): ShadowRoot {
 	for (const [property, value] of HOST_CONSTRAINTS) {
 		host.style.setProperty(property, value, "important");
 	}
-	return host.shadowRoot ?? host.attachShadow({ mode: "open" });
+	const shadowRoot = host.shadowRoot ?? host.attachShadow({ mode: "open" });
+	ensurePlatformStyles(shadowRoot);
+	return shadowRoot;
+}
+
+/** Install the trusted platform component rules inside an isolated app root. */
+export function ensurePlatformStyles(shadowRoot: ShadowRoot): void {
+	if (shadowRoot.querySelector("style[data-bifrost-platform-stylesheet]")) {
+		return;
+	}
+	const style = document.createElement("style");
+	style.dataset.bifrostPlatformStylesheet = "true";
+	style.textContent = platformStyles;
+	shadowRoot.prepend(style);
+}
+
+/**
+ * Keep even adversarial `:host` CSS inside the platform-owned content region.
+ * This element stays outside the app shadow tree, so app CSS cannot select it.
+ */
+export function AppContainmentBoundary({ children }: { children: ReactNode }) {
+	return (
+		<div
+			data-bifrost-app-containment-boundary="true"
+			style={APP_CONTAINMENT_STYLE}
+		>
+			{children}
+		</div>
+	);
 }
 
 /**
@@ -46,6 +89,9 @@ export function AppStyleBoundary({
 }) {
 	const hostRef = useRef<HTMLDivElement>(null);
 	const [shadowRoot, setShadowRoot] = useState<ShadowRoot | null>(null);
+	const [isDark, setIsDark] = useState(() =>
+		document.documentElement.classList.contains("dark"),
+	);
 
 	useEffect(() => {
 		const host = hostRef.current;
@@ -53,25 +99,42 @@ export function AppStyleBoundary({
 		setShadowRoot(ensureIsolatedAppShadow(host));
 	}, []);
 
+	useEffect(() => {
+		const updateTheme = () =>
+			setIsDark(document.documentElement.classList.contains("dark"));
+		const observer = new MutationObserver(updateTheme);
+		observer.observe(document.documentElement, {
+			attributes: true,
+			attributeFilter: ["class"],
+		});
+		return () => observer.disconnect();
+	}, []);
+
 	return (
-		<div ref={hostRef} data-bifrost-app-style-boundary="true">
-			{shadowRoot
-				? createPortal(
-						<>
-							{stylesheetHref ? (
-								<link
-									rel="stylesheet"
-									href={stylesheetHref}
-									data-bifrost-app-stylesheet="true"
-								/>
-							) : null}
-							<div style={{ width: "100%", height: "100%" }}>
-								{children}
-							</div>
-						</>,
-						shadowRoot,
-					)
-				: null}
-		</div>
+		<AppContainmentBoundary>
+			<div ref={hostRef} data-bifrost-app-style-boundary="true">
+				{shadowRoot
+					? createPortal(
+							<>
+								{stylesheetHref ? (
+									<link
+										rel="stylesheet"
+										href={stylesheetHref}
+										data-bifrost-app-stylesheet="true"
+									/>
+								) : null}
+								<div
+									data-bifrost-app-root="true"
+									className={isDark ? "dark" : undefined}
+									style={{ width: "100%", height: "100%" }}
+								>
+									{children}
+								</div>
+							</>,
+							shadowRoot,
+						)
+					: null}
+			</div>
+		</AppContainmentBoundary>
 	);
 }

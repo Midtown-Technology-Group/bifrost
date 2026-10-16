@@ -97,6 +97,7 @@ beforeEach(() => {
 	appendedScripts = [];
 	localStorage.clear();
 	sessionStorage.clear();
+	document.documentElement.classList.remove("dark");
 	orgScopeState.scope = { type: "global", orgId: null };
 	delete window.__BIFROST_APP__;
 	delete window.__BIFROST_APP_MODULES__;
@@ -180,7 +181,22 @@ describe("StandaloneV2App", () => {
 		const [mountEl, bootstrap] = mount.mock.calls[0];
 		expect(mountEl).not.toBe(root);
 		expect(root.shadowRoot?.contains(mountEl)).toBe(true);
+		expect(
+			root.shadowRoot?.querySelector(
+				"style[data-bifrost-platform-stylesheet]",
+			),
+		).not.toBeNull();
+		expect(root.parentElement).toHaveAttribute(
+			"data-bifrost-app-containment-boundary",
+			"true",
+		);
+		expect(root.parentElement?.style.getPropertyValue("contain")).toBe(
+			"strict",
+		);
 		expect(root.style.getPropertyValue("contain")).toBe("strict");
+		expect(mountEl).not.toHaveClass("dark");
+		document.documentElement.classList.add("dark");
+		await waitFor(() => expect(mountEl).toHaveClass("dark"));
 		expect(root.style.getPropertyPriority("contain")).toBe("important");
 		expect(bootstrap).toMatchObject({
 			token: "tok-1",
