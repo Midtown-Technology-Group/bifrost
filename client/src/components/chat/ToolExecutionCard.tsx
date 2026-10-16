@@ -172,14 +172,14 @@ const statusConfig: Record<
  * Check if result is a CallToolResult structure and extract content.
  */
 function extractMcpContent(
-	result: unknown
+	result: unknown,
 ): { text: string; structured: unknown } | null {
 	if (!result || typeof result !== "object") {
 		return null;
 	}
 
 	const mcpResult = result as {
-		content?: Array<{ type: string; text?: string }>;
+		content?: unknown[];
 		structuredContent?: unknown;
 	};
 
@@ -190,7 +190,15 @@ function extractMcpContent(
 
 	// Extract text from TextContent blocks
 	const textContent = mcpResult.content
-		.filter((c) => c.type === "text" && typeof c.text === "string")
+		.filter(
+			(c): c is { type: "text"; text: string } =>
+				typeof c === "object" &&
+				c !== null &&
+				"type" in c &&
+				c.type === "text" &&
+				"text" in c &&
+				typeof c.text === "string",
+		)
 		.map((c) => c.text)
 		.join("\n");
 

@@ -111,7 +111,11 @@ describe("Roles", () => {
 
 		fireEvent.click(screen.getByText("Manage billing"), { ctrlKey: true });
 
-		expect(open).toHaveBeenCalledWith("/roles/role-1", "_blank");
+		expect(open).toHaveBeenCalledWith(
+			"/roles/role-1",
+			"_blank",
+			"noopener,noreferrer",
+		);
 	});
 
 	it("sends debounced search to the server and resets the page", async () => {

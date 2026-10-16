@@ -285,7 +285,8 @@ class TestListEventSources:
         assert result.structured_content["count"] == 2
         webhook, schedule = result.structured_content["sources"]
         assert webhook["adapter_name"] == "generic"
-        assert webhook["callback_url"] == f"/api/hooks/{webhook_id}"
+        assert webhook["callback_url"].startswith("http")
+        assert webhook["callback_url"].endswith(f"/api/hooks/{webhook_id}")
         assert webhook["subscription_count"] == 3
         assert schedule["cron_expression"] == "*/5 * * * *"
         assert schedule["timezone"] == "America/Indianapolis"
@@ -417,6 +418,214 @@ class TestCreateEventSource:
         assert is_error_result(result)
         assert result.structured_content["error"] == "Unknown webhook adapter: missing"
 
+    @pytest.mark.asyncio
+    async def test_adapter_requiring_integration_resolves_it(self, context):
+        """create_event_source resolves integration auth for adapters that need it."""
+        from src.services.mcp_server.tools.events import create_event_source
+
+        resolved_integration = SimpleNamespace(access_token="token")
+        fake_adapter = SimpleNamespace(
+            requires_integration="Microsoft",
+            subscribe=AsyncMock(
+                return_value=SimpleNamespace(
+                    external_id="ext-1", state={}, expires_at=None
+                )
+            ),
+        )
+        registry = MagicMock()
+        registry.get.return_value = fake_adapter
+        integration_id = str(uuid4())
+
+        with patch("src.core.database.get_db_context") as mock_db:
+            mock_session = AsyncMock()
+            mock_db.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+            mock_db.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            with patch(
+                "src.services.webhooks.registry.get_adapter_registry",
+                return_value=registry,
+            ), patch(
+                "src.services.webhooks.auth.build_webhook_integration_credentials",
+                new=AsyncMock(return_value=SimpleNamespace()),
+            ) as mock_build, patch(
+                "src.services.webhooks.auth.resolve_webhook_integration_auth",
+                new=AsyncMock(return_value=resolved_integration),
+            ):
+                result = await create_event_source(
+                    context,
+                    name="graph source",
+                    source_type="webhook",
+                    adapter_name="microsoft_graph",
+                    integration_id=integration_id,
+                )
+
+        assert not is_error_result(result)
+        assert "callback_url" in result.structured_content
+        mock_build.assert_awaited_once()
+        fake_adapter.subscribe.assert_awaited_once()
+        assert fake_adapter.subscribe.call_args.kwargs["integration"] is resolved_integration
+        callback_url = fake_adapter.subscribe.call_args.kwargs["callback_url"]
+        assert callback_url.startswith("http")
+        assert callback_url == result.structured_content["callback_url"]
+
+    @pytest.mark.asyncio
+    async def test_adapter_requiring_integration_without_id_returns_error(self, context):
+        """Missing integration_id is a caller error when the adapter requires one."""
+        from src.models.orm.events import EventSource
+        from src.services.mcp_server.tools.events import create_event_source
+
+        fake_adapter = SimpleNamespace(
+            requires_integration="Microsoft", subscribe=AsyncMock()
+        )
+        registry = MagicMock()
+        registry.get.return_value = fake_adapter
+
+        with patch("src.core.database.get_db_context") as mock_db:
+            mock_session = AsyncMock()
+            mock_db.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+            mock_db.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            with patch(
+                "src.services.webhooks.registry.get_adapter_registry",
+                return_value=registry,
+            ):
+                result = await create_event_source(
+                    context,
+                    name="graph source",
+                    source_type="webhook",
+                    adapter_name="microsoft_graph",
+                )
+
+        assert is_error_result(result)
+        assert "requires integration" in result.structured_content["error"]
+        fake_adapter.subscribe.assert_not_awaited()
+        # No rows may be flushed before validation: nothing persists on commit.
+        mock_session.flush.assert_not_awaited()
+        assert not any(
+            isinstance(call.args[0], EventSource)
+            for call in mock_session.add.mock_calls
+        )
+
+    @pytest.mark.asyncio
+    async def test_malformed_integration_id_returns_error_before_flush(self, context):
+        """A malformed integration_id is rejected before any source row exists."""
+        from src.models.orm.events import EventSource
+        from src.services.mcp_server.tools.events import create_event_source
+
+        fake_adapter = SimpleNamespace(
+            requires_integration="Microsoft", subscribe=AsyncMock()
+        )
+        registry = MagicMock()
+        registry.get.return_value = fake_adapter
+
+        with patch("src.core.database.get_db_context") as mock_db:
+            mock_session = AsyncMock()
+            mock_db.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+            mock_db.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            with patch(
+                "src.services.webhooks.registry.get_adapter_registry",
+                return_value=registry,
+            ):
+                result = await create_event_source(
+                    context,
+                    name="graph source",
+                    source_type="webhook",
+                    adapter_name="microsoft_graph",
+                    integration_id="not-a-uuid",
+                )
+
+        assert is_error_result(result)
+        assert "Invalid integration_id" in result.structured_content["error"]
+        fake_adapter.subscribe.assert_not_awaited()
+        mock_session.flush.assert_not_awaited()
+        assert not any(
+            isinstance(call.args[0], EventSource)
+            for call in mock_session.add.mock_calls
+        )
+
+    @pytest.mark.asyncio
+    async def test_adapter_without_integration_requirement_subscribes_without_it(
+        self, context
+    ):
+        """Adapters with no required integration intentionally subscribe with None."""
+        from src.services.mcp_server.tools.events import create_event_source
+
+        fake_adapter = SimpleNamespace(
+            requires_integration=None,
+            subscribe=AsyncMock(
+                return_value=SimpleNamespace(
+                    external_id="ext-1", state={}, expires_at=None
+                )
+            ),
+        )
+        registry = MagicMock()
+        registry.get.return_value = fake_adapter
+
+        with patch("src.core.database.get_db_context") as mock_db:
+            mock_session = AsyncMock()
+            mock_db.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+            mock_db.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            with patch(
+                "src.services.webhooks.registry.get_adapter_registry",
+                return_value=registry,
+            ):
+                result = await create_event_source(
+                    context,
+                    name="generic source",
+                    source_type="webhook",
+                )
+
+        assert not is_error_result(result)
+        fake_adapter.subscribe.assert_awaited_once()
+        assert fake_adapter.subscribe.call_args.kwargs["integration"] is None
+        assert fake_adapter.subscribe.call_args.kwargs["callback_url"].startswith(
+            "http"
+        )
+
+    @pytest.mark.asyncio
+    async def test_unresolvable_integration_returns_error(self, context):
+        """OAuth resolution failures surface as tool errors, not provider retries."""
+        from src.models.orm.events import EventSource
+        from src.services.mcp_server.tools.events import create_event_source
+
+        fake_adapter = SimpleNamespace(
+            requires_integration="Microsoft", subscribe=AsyncMock()
+        )
+        registry = MagicMock()
+        registry.get.return_value = fake_adapter
+
+        with patch("src.core.database.get_db_context") as mock_db:
+            mock_session = AsyncMock()
+            mock_db.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+            mock_db.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            with patch(
+                "src.services.webhooks.registry.get_adapter_registry",
+                return_value=registry,
+            ), patch(
+                "src.services.webhooks.auth.build_webhook_integration_credentials",
+                new=AsyncMock(side_effect=ValueError("Integration not found")),
+            ):
+                result = await create_event_source(
+                    context,
+                    name="graph source",
+                    source_type="webhook",
+                    adapter_name="microsoft_graph",
+                    integration_id=str(uuid4()),
+                )
+
+        assert is_error_result(result)
+        assert result.structured_content["error"] == "Integration not found"
+        fake_adapter.subscribe.assert_not_awaited()
+        # Resolution happens before any row is flushed: nothing persists.
+        mock_session.flush.assert_not_awaited()
+        assert not any(
+            isinstance(call.args[0], EventSource)
+            for call in mock_session.add.mock_calls
+        )
+
 
 class TestGetEventSource:
     """Tests for get_event_source tool."""
@@ -539,7 +748,8 @@ class TestGetEventSource:
         assert not is_error_result(result)
         data = result.structured_content
         assert data["adapter_name"] == "generic"
-        assert data["callback_url"] == f"/api/hooks/{source_id}"
+        assert data["callback_url"].startswith("http")
+        assert data["callback_url"].endswith(f"/api/hooks/{source_id}")
         assert data["integration_id"] == str(integration_id)
         assert data["external_id"] == "external-1"
         assert data["expires_at"] == expires_at.isoformat()
