@@ -19,7 +19,21 @@ func Extract(source, typeName string) (map[string]any, error) {
 	if err != nil {
 		return nil, errors.New("schema: invalid Go source")
 	}
+	return extractFile(f, typeName)
+}
+
+func extractFile(f *ast.File, typeName string) (map[string]any, error) {
+	types := map[string]bool{}
 	for _, decl := range f.Decls {
+		if group, ok := decl.(*ast.GenDecl); ok && group.Tok == token.TYPE {
+			for _, spec := range group.Specs {
+				t := spec.(*ast.TypeSpec)
+				if types[t.Name.Name] || t.Name.Name == "string" || t.Name.Name == "bool" {
+					return nil, errors.New("schema: ambiguous or shadowed type declaration")
+				}
+				types[t.Name.Name] = true
+			}
+		}
 		if method, ok := decl.(*ast.FuncDecl); ok && method.Recv != nil {
 			switch method.Name.Name {
 			case "MarshalJSON", "UnmarshalJSON", "MarshalText", "UnmarshalText":

@@ -63,8 +63,11 @@ stdin; output is JSON on stdout. `cmd/probe` launches an already-built executabl
 with an explicit environment. Neither wrapper is a production runtime protocol.
 The manifest is a design/build input and explicitly cannot register an entity.
 Schemas are explicit and checked against a constrained build-time AST extractor
-for single-file struct types containing strings, booleans and slices. Unsupported
-types, generics, serialization hooks and cross-file ambiguity fail explicitly.
+for struct types containing strings, booleans and slices. Input and output may
+live in separate files of an ordinary Go package. The extractor reads all files
+selected for Linux/amd64 without CGO and checks serialization hooks across that
+package. Unsupported types, generics, serialization hooks and ambiguous
+declarations fail explicitly. See [package schema discovery](../../docs/dev/go-package-schemas.md).
 Business constraints such as a nonempty name remain explicit schema/handler rules.
 The extractor's supported profile limits metadata inference, not the Go language;
 the current proof does not yet supply a general build command for arbitrary types.
