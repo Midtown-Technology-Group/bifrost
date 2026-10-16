@@ -211,7 +211,16 @@ async def test_integration_authorization_url_can_omit_scope_parameter(monkeypatc
         provider_metadata={"omit_authorization_scope": True},
     )
     _patch_repo(monkeypatch, oauth_provider=provider)
-    monkeypatch.setattr(integrations.secrets, "token_urlsafe", lambda length: "state-token")
+    monkeypatch.setattr(
+        integrations,
+        "encode_state",
+        lambda **_kwargs: ("state-token", "nonce-1"),
+    )
+    monkeypatch.setattr(
+        integrations,
+        "remember_nonce",
+        lambda nonce: _async_value(None),
+    )
 
     response = await integrations.get_oauth_authorization_url(
         INTEGRATION_ID,

@@ -450,3 +450,53 @@ class TestOAuthProviderRepositoryCascade:
         )
         assert await missing_repo.update_status("missing", "failed") is False
         assert await missing_repo.get_token("missing") is None
+
+    async def test_exact_provider_binding_never_reselects_global_fallback(
+        self, session, monkeypatch
+    ) -> None:
+        """Signed callbacks persist against the exact provider they authorized."""
+        from src.models.orm.oauth import OAuthProvider, OAuthToken
+
+        provider = OAuthProvider(
+            id=uuid4(),
+            organization_id=ORG_A,
+            provider_name="github",
+            display_name="GitHub",
+            oauth_flow_type="authorization_code",
+            client_id="org-client",
+            encrypted_client_secret=b"",
+            scopes=["repo"],
+            status="waiting_callback",
+            created_by="admin@example.com",
+        )
+        repo = OAuthProviderRepository(session, org_id=ORG_A, is_superuser=True)
+        cascade_lookup = AsyncMock(return_value=MagicMock(organization_id=None))
+        monkeypatch.setattr(repo, "get_by_connection_name", cascade_lookup)
+        monkeypatch.setattr(
+            "src.core.security.encrypt_secret",
+            lambda value: f"encrypted:{value}",
+        )
+        session.execute.return_value = _scalar_result(None)
+
+        token = await repo.store_token(
+            "github",
+            access_token="access",
+            refresh_token="refresh",
+            expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
+            scopes=["repo"],
+            provider=provider,
+        )
+
+        cascade_lookup.assert_not_awaited()
+        assert isinstance(token, OAuthToken)
+        assert token.provider_id == provider.id
+        assert token.organization_id == ORG_A
+        assert token.encrypted_access_token == b"encrypted:access"
+        assert provider.status == "completed"
+        session.add.assert_called_once_with(token)
+
+        assert await repo.update_status(
+            "github", "failed", "denied", provider=provider
+        ) is True
+        cascade_lookup.assert_not_awaited()
+        assert provider.status == "failed"

@@ -254,7 +254,12 @@ async def test_connection_authorize_pkce_adds_challenge_and_stores_verifier():
 
     with (
         patch.object(oauth_connections, "OAuthProviderRepository", return_value=repo),
-        patch.object(oauth_connections.secrets, "token_urlsafe", return_value="state-token"),
+        patch.object(
+            oauth_connections,
+            "encode_state",
+            return_value=("state-token", "nonce-1"),
+        ),
+        patch.object(oauth_connections, "remember_nonce", new=AsyncMock()),
         patch.object(
             oauth_connections,
             "get_url_resolution_defaults",
@@ -295,7 +300,12 @@ async def test_connection_authorize_without_pkce_sends_no_challenge():
 
     with (
         patch.object(oauth_connections, "OAuthProviderRepository", return_value=repo),
-        patch.object(oauth_connections.secrets, "token_urlsafe", return_value="state-token"),
+        patch.object(
+            oauth_connections,
+            "encode_state",
+            return_value=("state-token", "nonce-1"),
+        ),
+        patch.object(oauth_connections, "remember_nonce", new=AsyncMock()),
         patch.object(
             oauth_connections,
             "get_url_resolution_defaults",
@@ -321,7 +331,12 @@ async def test_integration_authorize_url_pkce_adds_challenge():
 
     with (
         patch.object(integrations, "IntegrationsRepository", return_value=repo),
-        patch.object(integrations.secrets, "token_urlsafe", return_value="state-token"),
+        patch.object(
+            integrations,
+            "encode_state",
+            return_value=("state-token", "nonce-1"),
+        ) as encode,
+        patch.object(integrations, "remember_nonce", new=AsyncMock()) as remember,
         patch.object(
             integrations, "store_pkce_verifier", new=AsyncMock()
         ) as store,
@@ -334,6 +349,8 @@ async def test_integration_authorize_url_pkce_adds_challenge():
     assert "code_challenge=" in result.authorization_url
     assert "code_challenge_method=S256" in result.authorization_url
     assert "code_verifier=" not in result.authorization_url
+    encode.assert_called_once_with(provider_id=provider.id)
+    remember.assert_awaited_once_with("nonce-1")
     store.assert_awaited_once()
     assert store.await_args.kwargs["state"] == "state-token"
 
@@ -460,6 +477,8 @@ async def test_callback_pkce_sends_stored_verifier():
         "provider_id": str(PROVIDER_ID),
         "mapping_id": None,
     }
+    ctx = _ctx()
+    ctx.db.get = AsyncMock(return_value=provider)
 
     with (
         patch(
@@ -469,6 +488,18 @@ async def test_callback_pkce_sends_stored_verifier():
         patch(
             "src.repositories.oauth.OAuthProviderRepository.store_token",
             new=AsyncMock(),
+        ),
+        patch(
+            "src.routers.oauth_connections.decode_state",
+            return_value={
+                "provider_id": str(PROVIDER_ID),
+                "mapping_id": None,
+                "nonce": "nonce-1",
+            },
+        ),
+        patch(
+            "src.routers.oauth_connections.consume_nonce",
+            new=AsyncMock(return_value=True),
         ),
         patch(
             "src.routers.oauth_connections.get_url_resolution_defaults",
@@ -492,7 +523,7 @@ async def test_callback_pkce_sends_stored_verifier():
         result = await oauth_connections.oauth_callback(
             connection_name="goto",
             request=_callback_request(),
-            ctx=_ctx(),
+            ctx=ctx,
             user=MagicMock(),
         )
 
@@ -506,11 +537,25 @@ async def test_callback_pkce_sends_stored_verifier():
 @pytest.mark.asyncio
 async def test_callback_pkce_replay_is_rejected():
     provider = _connection_provider(provider_metadata={"use_pkce": True})
+    ctx = _ctx()
+    ctx.db.get = AsyncMock(return_value=provider)
 
     with (
         patch(
             "src.repositories.oauth.OAuthProviderRepository.get_by_connection_name",
             new=AsyncMock(return_value=provider),
+        ),
+        patch(
+            "src.routers.oauth_connections.decode_state",
+            return_value={
+                "provider_id": str(PROVIDER_ID),
+                "mapping_id": None,
+                "nonce": "nonce-1",
+            },
+        ),
+        patch(
+            "src.routers.oauth_connections.consume_nonce",
+            new=AsyncMock(return_value=True),
         ),
         patch("src.core.security.decrypt_secret", return_value="decrypted-secret"),
         patch(
@@ -524,7 +569,6 @@ async def test_callback_pkce_replay_is_rejected():
         patch("src.routers.oauth_connections.CACHE_INVALIDATION_AVAILABLE", False),
     ):
         request = _callback_request()
-        ctx = _ctx()
         user = MagicMock()
         with pytest.raises(HTTPException) as exc_info:
             await oauth_connections.oauth_callback(
@@ -547,11 +591,25 @@ async def test_callback_pkce_binding_mismatch_is_rejected():
         "provider_id": str(PROVIDER_ID),
         "mapping_id": None,
     }
+    ctx = _ctx()
+    ctx.db.get = AsyncMock(return_value=provider)
 
     with (
         patch(
             "src.repositories.oauth.OAuthProviderRepository.get_by_connection_name",
             new=AsyncMock(return_value=provider),
+        ),
+        patch(
+            "src.routers.oauth_connections.decode_state",
+            return_value={
+                "provider_id": str(PROVIDER_ID),
+                "mapping_id": None,
+                "nonce": "nonce-1",
+            },
+        ),
+        patch(
+            "src.routers.oauth_connections.consume_nonce",
+            new=AsyncMock(return_value=True),
         ),
         patch("src.core.security.decrypt_secret", return_value="decrypted-secret"),
         patch(
@@ -565,7 +623,6 @@ async def test_callback_pkce_binding_mismatch_is_rejected():
         patch("src.routers.oauth_connections.CACHE_INVALIDATION_AVAILABLE", False),
     ):
         request = _callback_request()
-        ctx = _ctx()
         user = MagicMock()
         with pytest.raises(HTTPException) as exc_info:
             await oauth_connections.oauth_callback(
@@ -582,6 +639,8 @@ async def test_callback_pkce_binding_mismatch_is_rejected():
 @pytest.mark.asyncio
 async def test_callback_without_pkce_ignores_stray_verifier():
     provider = _connection_provider()
+    ctx = _ctx()
+    ctx.db.get = AsyncMock(return_value=provider)
 
     with (
         patch(
@@ -591,6 +650,18 @@ async def test_callback_without_pkce_ignores_stray_verifier():
         patch(
             "src.repositories.oauth.OAuthProviderRepository.store_token",
             new=AsyncMock(),
+        ),
+        patch(
+            "src.routers.oauth_connections.decode_state",
+            return_value={
+                "provider_id": str(PROVIDER_ID),
+                "mapping_id": None,
+                "nonce": "nonce-1",
+            },
+        ),
+        patch(
+            "src.routers.oauth_connections.consume_nonce",
+            new=AsyncMock(return_value=True),
         ),
         patch(
             "src.routers.oauth_connections.get_url_resolution_defaults",
@@ -622,7 +693,7 @@ async def test_callback_without_pkce_ignores_stray_verifier():
         result = await oauth_connections.oauth_callback(
             connection_name="goto",
             request=_callback_request(),
-            ctx=_ctx(),
+            ctx=ctx,
             user=MagicMock(),
         )
 
@@ -653,7 +724,13 @@ async def test_callback_per_mapping_pkce_links_token_to_mapping():
     }
 
     ctx = _ctx()
-    ctx.db.get = AsyncMock(return_value=mapping_row)
+    ctx.db.get = AsyncMock(
+        side_effect=lambda model, _row_id: (
+            provider
+            if model.__name__ == "OAuthProvider"
+            else mapping_row if model.__name__ == "IntegrationMapping" else None
+        )
+    )
 
     with (
         patch(
@@ -720,10 +797,20 @@ async def test_callback_per_mapping_pkce_links_token_to_mapping():
 async def test_callback_mapping_nonce_replay_rejected_before_storage():
     """A replayed per-mapping state is rejected before exchange or storage."""
     provider = _connection_provider()
-    mapping_row = SimpleNamespace(id=MAPPING_ID, organization_id=None)
+    mapping_row = SimpleNamespace(
+        id=MAPPING_ID,
+        integration_id=INTEGRATION_ID,
+        organization_id=None,
+    )
 
     ctx = _ctx()
-    ctx.db.get = AsyncMock(return_value=mapping_row)
+    ctx.db.get = AsyncMock(
+        side_effect=lambda model, _row_id: (
+            provider
+            if model.__name__ == "OAuthProvider"
+            else mapping_row if model.__name__ == "IntegrationMapping" else None
+        )
+    )
 
     with (
         patch(

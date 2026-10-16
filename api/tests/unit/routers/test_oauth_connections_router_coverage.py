@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
@@ -11,6 +11,7 @@ import pytest
 from fastapi import HTTPException
 from src.models.contracts.oauth import (
     CreateOAuthConnectionRequest,
+    OAuthCallbackRequest,
     UpdateOAuthConnectionRequest,
 )
 from src.routers import oauth_connections
@@ -143,6 +144,266 @@ async def test_create_connection_binds_provider_to_caller_org():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("has_global_fallback", [False, True])
+async def test_org_connection_round_trip_stays_on_signed_provider(
+    has_global_fallback,
+):
+    """Create → authorize → callback never reselects a same-name global row."""
+    org_id = uuid4()
+    provider_id = uuid4()
+    integration = SimpleNamespace(id=uuid4(), name="Halo")
+    query_result = MagicMock()
+    query_result.scalar_one_or_none.return_value = integration
+    ctx = _ctx(org_id=org_id)
+    ctx.db.execute.return_value = query_result
+    ctx.db.add.side_effect = lambda row: setattr(row, "id", provider_id)
+    repo = _repo(
+        get_by_connection_name_in_scope=None,
+        get_by_connection_name=None,
+        to_detail=_detail(connection_name="Halo"),
+        update_status=None,
+        store_token=SimpleNamespace(id=uuid4()),
+    )
+    request = CreateOAuthConnectionRequest(
+        integration_id=str(integration.id),
+        oauth_flow_type="authorization_code",
+        client_id="org-client",
+        client_secret="org-secret",
+        authorization_url="https://auth.example.test/authorize",
+        token_url="https://auth.example.test/token",
+        scopes="read",
+    )
+
+    with (
+        patch.object(oauth_connections, "OAuthProviderRepository", return_value=repo),
+        patch("src.core.security.encrypt_secret", return_value="encrypted"),
+        patch.object(oauth_connections, "CACHE_INVALIDATION_AVAILABLE", False),
+    ):
+        await oauth_connections.create_connection(request, ctx, MagicMock())
+
+    provider = ctx.db.add.call_args.args[0]
+    assert provider.organization_id == org_id
+    repo.get_by_connection_name.return_value = provider
+
+    with (
+        patch.object(oauth_connections, "OAuthProviderRepository", return_value=repo),
+        patch.object(
+            oauth_connections,
+            "encode_state",
+            return_value=("signed-state", "nonce-1"),
+        ),
+        patch.object(oauth_connections, "remember_nonce", new=AsyncMock()),
+        patch.object(
+            oauth_connections,
+            "get_url_resolution_defaults",
+            new=AsyncMock(return_value={}),
+        ),
+    ):
+        authorization = await oauth_connections.authorize_connection(
+            "Halo",
+            ctx,
+            MagicMock(),
+            redirect_uri="https://app.example.test/oauth/callback",
+        )
+
+    assert authorization.state == "signed-state"
+    repo.get_by_connection_name.reset_mock()
+    repo.get_by_connection_name.return_value = (
+        _provider(
+            provider_name="Halo",
+            organization_id=None,
+            integration_id=integration.id,
+        )
+        if has_global_fallback
+        else None
+    )
+    ctx.db.get = AsyncMock(return_value=provider)
+
+    with (
+        patch.object(oauth_connections, "OAuthProviderRepository", return_value=repo),
+        patch.object(
+            oauth_connections,
+            "decode_state",
+            return_value={
+                "provider_id": str(provider.id),
+                "mapping_id": None,
+                "nonce": "nonce-1",
+            },
+        ),
+        patch.object(
+            oauth_connections, "consume_nonce", new=AsyncMock(return_value=True)
+        ),
+        patch.object(
+            oauth_connections,
+            "consume_pkce_verifier",
+            new=AsyncMock(return_value=None),
+        ),
+        patch.object(
+            oauth_connections,
+            "get_url_resolution_defaults",
+            new=AsyncMock(return_value={}),
+        ),
+        patch.object(
+            oauth_connections,
+            "resolve_url_template",
+            return_value=provider.token_url,
+        ),
+        patch(
+            "src.services.oauth_provider.OAuthProviderClient.exchange_code_for_token",
+            new=AsyncMock(
+                return_value=(
+                    True,
+                    {
+                        "access_token": "access-token",
+                        "refresh_token": "refresh-token",
+                        "expires_at": datetime.now(timezone.utc)
+                        + timedelta(hours=1),
+                        "scope": "read",
+                    },
+                )
+            ),
+        ),
+        patch("src.core.security.decrypt_secret", return_value="org-secret"),
+        patch(
+            "src.services.events.builtins.emit_integration_connected",
+            new=AsyncMock(),
+        ),
+        patch.object(oauth_connections, "CACHE_INVALIDATION_AVAILABLE", False),
+    ):
+        result = await oauth_connections.oauth_callback(
+            "Halo",
+            OAuthCallbackRequest(
+                code="authorization-code",
+                state="signed-state",
+                redirect_uri="https://app.example.test/oauth/callback",
+            ),
+            ctx,
+            MagicMock(),
+        )
+
+    assert result.success is True
+    repo.get_by_connection_name.assert_not_awaited()
+    repo.store_token.assert_awaited_once()
+    assert repo.store_token.await_args.kwargs["provider"] is provider
+    assert repo.store_token.await_args.kwargs["connection_name"] == "Halo"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("state", "organization_id", "decode_error", "expected_detail"),
+    [
+        (None, None, None, "OAuth state is required"),
+        (
+            "unsigned-state",
+            None,
+            oauth_connections.OAuthStateError("invalid state"),
+            "Invalid or expired OAuth state",
+        ),
+        ("signed-state", "not-a-uuid", None, "Invalid organization_id"),
+    ],
+)
+async def test_callback_rejects_missing_invalid_or_unsigned_state(
+    state,
+    organization_id,
+    decode_error,
+    expected_detail,
+):
+    decode = MagicMock(side_effect=decode_error)
+    with (
+        patch.object(oauth_connections, "decode_state", decode),
+        pytest.raises(HTTPException) as exc_info,
+    ):
+        await oauth_connections.oauth_callback(
+            "halo",
+            OAuthCallbackRequest(
+                code="code",
+                state=state,
+                redirect_uri="https://app.test/cb",
+                organization_id=organization_id,
+            ),
+            _ctx(),
+            MagicMock(),
+        )
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail == expected_detail
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("case", "expected_detail"),
+    [
+        ("malformed_provider", "Invalid OAuth state binding"),
+        ("unknown_provider", "OAuth state references an unknown provider"),
+        ("wrong_connection", "OAuth state does not match this connection"),
+        (
+            "wrong_mapping",
+            "OAuth state does not match this integration mapping",
+        ),
+        (
+            "wrong_organization",
+            "OAuth state does not match the requested organization",
+        ),
+        ("missing_nonce", "OAuth state already used (replay rejected)"),
+    ],
+)
+async def test_callback_rejects_mismatched_signed_bindings(case, expected_detail):
+    org_id = uuid4()
+    provider = _provider(organization_id=org_id)
+    payload = {
+        "provider_id": str(provider.id),
+        "mapping_id": None,
+        "nonce": "nonce-1",
+    }
+    connection_name = provider.provider_name
+    organization_id = None
+    ctx = _ctx(org_id=org_id)
+
+    if case == "malformed_provider":
+        payload["provider_id"] = "not-a-uuid"
+    elif case == "unknown_provider":
+        ctx.db.get = AsyncMock(return_value=None)
+    elif case == "wrong_connection":
+        ctx.db.get = AsyncMock(return_value=provider)
+        connection_name = "another-provider"
+    elif case == "wrong_mapping":
+        payload["mapping_id"] = str(uuid4())
+        wrong_mapping = SimpleNamespace(
+            integration_id=uuid4(),
+            organization_id=org_id,
+        )
+        ctx.db.get = AsyncMock(side_effect=[provider, wrong_mapping])
+    elif case == "wrong_organization":
+        ctx.db.get = AsyncMock(return_value=provider)
+        organization_id = str(uuid4())
+    elif case == "missing_nonce":
+        payload["nonce"] = None
+        ctx.db.get = AsyncMock(return_value=provider)
+
+    with (
+        patch.object(oauth_connections, "decode_state", return_value=payload),
+        patch.object(
+            oauth_connections, "consume_nonce", new=AsyncMock(return_value=True)
+        ),
+        pytest.raises(HTTPException) as exc_info,
+    ):
+        await oauth_connections.oauth_callback(
+            connection_name,
+            OAuthCallbackRequest(
+                code="code",
+                state="signed-state",
+                redirect_uri="https://app.test/cb",
+                organization_id=organization_id,
+            ),
+            ctx,
+            MagicMock(),
+        )
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail == expected_detail
+
+
+@pytest.mark.asyncio
 async def test_update_connection_404_when_repo_cannot_find_connection():
     repo = _repo(update_connection=None)
     request = UpdateOAuthConnectionRequest(name="New Name")
@@ -182,7 +443,14 @@ async def test_authorize_connection_resolves_url_and_marks_waiting():
 
     with (
         patch.object(oauth_connections, "OAuthProviderRepository", return_value=repo),
-        patch.object(oauth_connections.secrets, "token_urlsafe", return_value="state-token"),
+        patch.object(
+            oauth_connections,
+            "encode_state",
+            return_value=("state-token", "nonce-1"),
+        ) as encode,
+        patch.object(
+            oauth_connections, "remember_nonce", new=AsyncMock()
+        ) as remember,
         patch.object(
             oauth_connections,
             "get_url_resolution_defaults",
@@ -209,6 +477,8 @@ async def test_authorize_connection_resolves_url_and_marks_waiting():
         url=provider.authorization_url,
         defaults={"tenant": "contoso"},
     )
+    encode.assert_called_once_with(provider_id=provider.id)
+    remember.assert_awaited_once_with("nonce-1")
     repo.update_status.assert_awaited_once_with(
         connection_name="halo",
         status="waiting_callback",
@@ -226,7 +496,12 @@ async def test_authorize_connection_can_omit_scope_parameter():
 
     with (
         patch.object(oauth_connections, "OAuthProviderRepository", return_value=repo),
-        patch.object(oauth_connections.secrets, "token_urlsafe", return_value="state-token"),
+        patch.object(
+            oauth_connections,
+            "encode_state",
+            return_value=("state-token", "nonce-1"),
+        ),
+        patch.object(oauth_connections, "remember_nonce", new=AsyncMock()),
         patch.object(
             oauth_connections,
             "get_url_resolution_defaults",

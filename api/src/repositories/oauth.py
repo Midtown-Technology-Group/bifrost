@@ -230,9 +230,11 @@ class OAuthProviderRepository(OrgScopedRepository[OAuthProvider]):
         connection_name: str,
         status: str,
         status_message: str | None = None,
+        *,
+        provider: OAuthProvider | None = None,
     ) -> bool:
-        """Update provider status."""
-        provider = await self.get_by_connection_name(connection_name)
+        """Update provider status, optionally binding to an exact provider."""
+        provider = provider or await self.get_by_connection_name(connection_name)
         if provider is None:
             return False
 
@@ -243,7 +245,10 @@ class OAuthProviderRepository(OrgScopedRepository[OAuthProvider]):
         return True
 
     async def get_token(
-        self, connection_name: str
+        self,
+        connection_name: str,
+        *,
+        provider: OAuthProvider | None = None,
     ) -> OAuthToken | None:
         """Get the token for a connection scoped to this repository's org_id.
 
@@ -251,7 +256,7 @@ class OAuthProviderRepository(OrgScopedRepository[OAuthProvider]):
         token scope explicitly. Use ``OAuthTokenRepository.get_org_level_for_provider``
         for the cascade-with-fallback variant.
         """
-        provider = await self.get_by_connection_name(connection_name)
+        provider = provider or await self.get_by_connection_name(connection_name)
         if provider is None:
             return None
 
@@ -275,11 +280,13 @@ class OAuthProviderRepository(OrgScopedRepository[OAuthProvider]):
         refresh_token: str | None,
         expires_at: datetime,
         scopes: list[str] | None = None,
+        *,
+        provider: OAuthProvider | None = None,
     ) -> OAuthToken | None:
-        """Persist a token for a connection. Updates existing or creates new."""
+        """Persist a token, optionally binding it to an exact signed provider."""
         from src.core.security import encrypt_secret
 
-        provider = await self.get_by_connection_name(connection_name)
+        provider = provider or await self.get_by_connection_name(connection_name)
         if provider is None:
             return None
 
@@ -287,7 +294,7 @@ class OAuthProviderRepository(OrgScopedRepository[OAuthProvider]):
         encrypted_refresh = (
             encrypt_secret(refresh_token).encode() if refresh_token else None
         )
-        existing_token = await self.get_token(connection_name)
+        existing_token = await self.get_token(connection_name, provider=provider)
 
         now = datetime.now(timezone.utc)
         if existing_token:
