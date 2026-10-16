@@ -1,0 +1,8 @@
+{
+  "head": "f10b80e806bebc232247e4568f389de0857ed733",
+  "files": 2452,
+  "internal_imports": [],
+  "parse_errors": [],
+  "allowlist_empty": true,
+  "scope": "committed blobs; current source-defined authored roots/exclusions plus solutions, google_ops_worker and top-level Python"
+}

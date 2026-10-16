@@ -2,6 +2,8 @@
 
 Canonical coordination and decision record, 2026-10-16. Status: source/evidence
 reconciliation, **not a schema/profile freeze or implementation release**.
+[Execution plan](rust-core-mvp-execution-plan.md) now owns milestone sequencing
+and the proposed persistent goal; this record retains shared interface decisions.
 This record supersedes the separate common-schema proposals as the next-work
 entrypoint. Do not build parallel lifecycle tables, locks or credential issuers.
 
