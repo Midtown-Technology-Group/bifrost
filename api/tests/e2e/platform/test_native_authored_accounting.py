@@ -342,10 +342,58 @@ async def test_solution_membership_fence_preserves_plain_reads_and_blocks_member
             await a.rollback()
 
 
+@pytest.fixture
+async def historical_convergence_db(async_engine, committed_delivery_db):
+    """Five replays need checkpoints free of ordinary automatic maintenance."""
+    option_query = text("SELECT option_value FROM pg_options_to_table("
+        "(SELECT reloptions FROM pg_class WHERE oid = 'solutions'::regclass)) "
+        "WHERE option_name = 'autovacuum_enabled'")
+    async with async_engine.connect() as connection:
+        assert await connection.scalar(text("SELECT current_database()")) == "bifrost_test"
+        original_option = await connection.scalar(option_query)
+
+    async def restore():
+        try:
+            # Release any test-owned fence before taking the DDL lock.
+            await committed_delivery_db.rollback()
+        finally:
+            # An assertion or cancelled query must not poison restoration.
+            async with async_engine.begin() as connection:
+                statement = "ALTER TABLE solutions RESET (autovacuum_enabled)"
+                if original_option is not None:
+                    statement = await connection.scalar(text(
+                        "SELECT format('ALTER TABLE solutions SET (autovacuum_enabled = %L)', "
+                        "CAST(:value AS text))"), {"value": original_option})
+                await connection.execute(text(statement))
+            async with async_engine.connect() as connection:
+                assert await connection.scalar(option_query) == original_option
+
+    try:
+        # This short DDL transaction serializes existing maintenance, then
+        # commits before seeding. No guard lock is held across delivery.
+        async with async_engine.begin() as connection:
+            await connection.execute(text("ALTER TABLE solutions SET (autovacuum_enabled = false)"))
+        async with async_engine.connect() as connection:
+            assert await connection.scalar(option_query) == "false"
+        yield committed_delivery_db
+    finally:
+        cleanup = asyncio.create_task(restore())
+        cancelled = False
+        # Shield and join cleanup even if teardown itself is cancelled.
+        while not cleanup.done():
+            try:
+                await asyncio.shield(cleanup)
+            except asyncio.CancelledError:
+                cancelled = True
+        cleanup.result()  # Propagate restoration failures before cancellation.
+        if cancelled:
+            raise asyncio.CancelledError
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("unprovable_prefix", [0, 100])
 async def test_alternating_install_replays_converge_on_immutable_historical_tranches(
-    committed_delivery_db, async_session_factory, platform_admin, monkeypatch, unprovable_prefix,
+    historical_convergence_db, async_session_factory, platform_admin, monkeypatch, unprovable_prefix,
 ):
     """Two installs must retain the same bounded history tranche until both prove it."""
     from contextlib import asynccontextmanager
@@ -365,7 +413,7 @@ async def test_alternating_install_replays_converge_on_immutable_historical_tran
     from src.services.solutions.deployment_storage import SOURCE_ARTIFACTS_ROOT
     from src.services.solutions.github_delivery_source import GitDeliveryIdentity
 
-    db = committed_delivery_db
+    db = historical_convergence_db
     head = uuid4().hex + uuid4().hex[:8]
     current_tree = uuid4().hex + uuid4().hex[:8]
     tracking_org_id = uuid4()
