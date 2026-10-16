@@ -129,6 +129,7 @@ async def token_rows(
                 .where(
                     OAuthToken.provider_id == provider.id,
                     OAuthToken.organization_id == org_id,
+                    OAuthToken.user_id.is_(None),
                 )
                 .order_by(
                     OAuthToken.expires_at.desc().nulls_last(),
