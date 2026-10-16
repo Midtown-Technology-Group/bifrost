@@ -1573,21 +1573,36 @@ def _extract_workflow_parameters(func: Any) -> list[dict[str, Any]]:
     return params
 
 
-def _redact_direct_output(value: str, execution_context: Any | None) -> str:
-    """Redact secrets registered by SDK calls from standalone CLI output."""
+def _redact_direct_output(value: Any, execution_context: Any | None) -> Any:
+    """Normalize CLI output and redact registered secrets from decoded strings."""
+    normalized = json.loads(json.dumps(value, default=str))
     if execution_context is None:
-        return value
+        return normalized
     try:
         secrets = execution_context._collect_secret_values()
     except (AttributeError, TypeError):
-        return value
-    for secret in sorted(
+        return normalized
+    redactions = sorted(
         (item for item in secrets if isinstance(item, str) and len(item) >= 4),
         key=len,
         reverse=True,
-    ):
-        value = value.replace(secret, "[REDACTED]")
-    return value
+    )
+
+    def redact_text(text: str) -> str:
+        for secret in redactions:
+            text = text.replace(secret, "[REDACTED]")
+        return text
+
+    def redact(item: Any) -> Any:
+        if isinstance(item, str):
+            return redact_text(item)
+        if isinstance(item, list):
+            return [redact(child) for child in item]
+        if isinstance(item, dict):
+            return {redact_text(key): redact(child) for key, child in item.items()}
+        return item
+
+    return redact(normalized)
 
 
 def _run_direct(
@@ -1716,9 +1731,11 @@ def _run_direct(
         source = pathlib.Path(workflow_file) if workflow_file is not None else None
         with local_resource_context(source, resource_recipe):
             result = asyncio.run(workflow_fn(**params))
-        serialized_result = _redact_direct_output(
-            json.dumps(result, indent=2 if verbose else None, default=str),
-            execution_context,
+        redacted_result = _redact_direct_output(result, execution_context)
+        serialized_result = json.dumps(
+            redacted_result,
+            indent=2 if verbose else None,
+            default=str,
         )
         if verbose:
             print(f"Result: {serialized_result}")

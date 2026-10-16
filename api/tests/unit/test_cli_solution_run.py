@@ -10,6 +10,7 @@ job and is covered by the table SDK tests; here we prove the import root.
 from __future__ import annotations
 
 import asyncio
+import json
 import pathlib
 import sys
 from types import SimpleNamespace
@@ -21,13 +22,24 @@ from bifrost.cli import handle_run
 
 
 @pytest.fixture
-def _restore_sys_path():
+def _restore_sys_path(tmp_path: pathlib.Path):
     before = list(sys.path)
     before_mods = set(sys.modules)
     yield
     sys.path[:] = before
+    root = tmp_path.resolve()
     for name in set(sys.modules) - before_mods:
-        sys.modules.pop(name, None)
+        module_file = getattr(sys.modules.get(name), "__file__", None)
+        if module_file is None:
+            continue
+        try:
+            is_solution_module = (
+                pathlib.Path(module_file).resolve().is_relative_to(root)
+            )
+        except (OSError, TypeError, ValueError):
+            is_solution_module = False
+        if is_solution_module:
+            sys.modules.pop(name, None)
 
 
 def test_bifrost_run_resolves_solution_local_import(
@@ -158,7 +170,8 @@ def test_run_direct_redacts_registered_secrets_from_results_and_errors(
 ):
     from bifrost._context import get_execution_context, register_secret
 
-    secret = "standalone-secret-value"
+    escaped_secret = 'päss"word\\line\nvalue'
+    error_secret = "standalone-error-secret"
 
     class Client:
         user = {"id": "user-1", "email": "dev@example.test", "name": "Dev"}
@@ -171,29 +184,46 @@ def test_run_direct_redacts_registered_secrets_from_results_and_errors(
 
     class StringableResult:
         def __str__(self):
-            return f"wrapped:{secret}"
+            return f"wrapped:{escaped_secret}"
 
     async def returns_secret():
-        register_secret(secret)
-        return {"direct": secret, "custom": StringableResult()}
+        register_secret(escaped_secret)
+        register_secret("1234")
+        register_secret("true")
+        return {
+            f"key:{escaped_secret}": escaped_secret,
+            "custom": StringableResult(),
+            "count": 1234,
+            "enabled": True,
+            "numeric_text": "1234",
+            "boolean_text": "true",
+        }
 
     async def raises_secret():
-        register_secret(secret)
-        raise RuntimeError(f"failed with {secret}")
+        register_secret(error_secret)
+        raise RuntimeError(f"failed with {error_secret}")
 
     monkeypatch.setattr(cli, "BifrostClient", ClientFactory)
 
     assert cli._run_direct("result", {"result": returns_secret}, {}) == 0
     result_output = capsys.readouterr().out
-    assert secret not in result_output
-    assert result_output.count("[REDACTED]") == 2
+    parsed = json.loads(result_output)
+    assert parsed == {
+        "key:[REDACTED]": "[REDACTED]",
+        "custom": "wrapped:[REDACTED]",
+        "count": 1234,
+        "enabled": True,
+        "numeric_text": "[REDACTED]",
+        "boolean_text": "[REDACTED]",
+    }
+    assert escaped_secret not in json.dumps(parsed, ensure_ascii=False)
 
     with pytest.raises(RuntimeError, match="No execution context found"):
         get_execution_context()
 
     assert cli._run_direct("error", {"error": raises_secret}, {}) == 1
     error_output = capsys.readouterr().err
-    assert secret not in error_output
+    assert error_secret not in error_output
     assert "failed with [REDACTED]" in error_output
 
 
