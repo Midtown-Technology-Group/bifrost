@@ -10,7 +10,7 @@
  * Outputs (stdout): comma-separated IDs to capture, suitable for
  * DOCS_CAPTURE_IDS. Empty string if nothing to do (also exit 0).
  */
-import { readFileSync, existsSync, realpathSync, lstatSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { execFileSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
@@ -61,19 +61,6 @@ export function pathChanged(repo, sinceSha, globs) {
   }
 }
 
-export function readCaptureManifest(docsRepo) {
-  const checkout = realpathSync(docsRepo);
-  if (!existsSync(resolve(checkout, ".git"))) {
-    throw new Error("docs repository must be a Git checkout");
-  }
-  const manifestPath = resolve(checkout, "screenshots.yaml");
-  const stat = lstatSync(manifestPath);
-  if (!stat.isFile() || stat.size > 1024 * 1024) {
-    throw new Error("capture manifest must be a regular file of at most 1 MiB");
-  }
-  return readFileSync(manifestPath, "utf8");
-}
-
 async function main() {
   const args = parseArgs(process.argv);
   const manifestPath = resolve(args.docsRepo, "screenshots.yaml");
@@ -82,7 +69,7 @@ async function main() {
     process.exit(1);
   }
   const { load: loadYaml } = await import("js-yaml");
-  const manifest = loadYaml(readCaptureManifest(args.docsRepo));
+  const manifest = loadYaml(readFileSync(manifestPath, "utf8"));
 
   // External entries (Azure portal, VSCode, etc.) are never candidates.
   const captureable = manifest.entries.filter((e) => !e.external);

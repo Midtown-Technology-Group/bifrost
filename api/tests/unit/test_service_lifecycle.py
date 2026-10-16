@@ -70,6 +70,31 @@ async def _ensure(db_session, org_id="org-scoped", **overrides):
     return definition, wf
 
 
+async def _cleanup_committed_service(
+    async_session_factory, *, service_id, workflow_id, organization_id
+):
+    """Remove rows created by tests that must commit across two sessions."""
+    from sqlalchemy import delete
+
+    from src.models.orm.organizations import Organization
+    from src.models.orm.services import ServiceDefinition
+    from src.models.orm.workflows import Workflow
+
+    async with async_session_factory() as cleanup:
+        await cleanup.execute(
+            delete(ServiceAttempt).where(ServiceAttempt.service_id == service_id)
+        )
+        await cleanup.execute(
+            delete(ServiceDefinition).where(ServiceDefinition.id == service_id)
+        )
+        await cleanup.execute(delete(Workflow).where(Workflow.id == workflow_id))
+        if organization_id is not None:
+            await cleanup.execute(
+                delete(Organization).where(Organization.id == organization_id)
+            )
+        await cleanup.commit()
+
+
 # --- Definitions ---
 
 
@@ -85,7 +110,8 @@ async def test_stop_serializes_claim_admission_before_attempt_scan(monkeypatch):
     definition = SimpleNamespace(id=uuid4(), desired_state="running")
 
     async def refresh(row, *, with_for_update):
-        assert row is definition and with_for_update is True
+        assert row is definition
+        assert with_for_update is True
         locked.set()
         await release_claim.wait()
 
@@ -254,7 +280,7 @@ async def test_claim_returns_none_when_nothing_eligible(db_session):
 @pytest.mark.asyncio
 async def test_second_claim_blocked_while_live(db_session):
     """A live attempt suppresses further claims for the same service."""
-    definition, _ = await _ensure(db_session)
+    _definition, _ = await _ensure(db_session)
     first = await service_lifecycle.claim_eligible_service(db_session, worker_id="w1")
     assert first is not None
     assert first.state == "starting"
@@ -326,8 +352,8 @@ async def test_concurrent_claims_yield_single_attempt(async_session_factory):
         from sqlalchemy import delete as sa_delete
 
         from src.models.orm.organizations import Organization
-        from src.models.orm.workflows import Workflow
         from src.models.orm.services import ServiceDefinition
+        from src.models.orm.workflows import Workflow
 
         async with async_session_factory() as cleanup:
             await cleanup.execute(
@@ -350,13 +376,147 @@ async def test_concurrent_claims_yield_single_attempt(async_session_factory):
             await cleanup.commit()
 
 
+@pytest.mark.asyncio
+async def test_stop_and_completion_share_definition_then_attempt_lock_order(
+    async_session_factory,
+):
+    """Two PostgreSQL sessions complete and stop without a lock inversion."""
+    import asyncio
+
+    from sqlalchemy import text
+
+    from src.models.orm.services import ServiceDefinition
+
+    async with async_session_factory() as setup:
+        definition, workflow = await _ensure(setup)
+        attempt = await service_lifecycle.claim_eligible_service(setup, worker_id="w1")
+        service_id = definition.id
+        workflow_id = workflow.id
+        organization_id = definition.organization_id
+        attempt_id = attempt.id
+        lease_token = attempt.lease_token
+        await setup.commit()
+
+    completion = None
+    try:
+        async with (
+            async_session_factory() as stop_db,
+            async_session_factory() as worker_db,
+            async_session_factory() as observer,
+        ):
+            locked_definition = (
+                await stop_db.execute(
+                    select(ServiceDefinition)
+                    .where(ServiceDefinition.id == service_id)
+                    .with_for_update()
+                )
+            ).scalar_one()
+            await stop_db.execute(text("SET LOCAL lock_timeout = '500ms'"))
+            worker_pid = await worker_db.scalar(text("SELECT pg_backend_pid()"))
+            completion = asyncio.create_task(
+                service_lifecycle.complete_attempt(
+                    worker_db,
+                    attempt_id=attempt_id,
+                    lease_token=lease_token,
+                    reason="requested",
+                )
+            )
+
+            # Wait until completion is blocked on the definition held above.
+            # Under the old attempt-first order it instead held the attempt
+            # while waiting here, and the stop below timed out as a deadlock.
+            for _ in range(100):
+                wait_type = await observer.scalar(
+                    text(
+                        "SELECT wait_event_type FROM pg_stat_activity "
+                        "WHERE pid = :pid"
+                    ),
+                    {"pid": worker_pid},
+                )
+                if wait_type == "Lock":
+                    break
+                assert not completion.done()
+                await asyncio.sleep(0.02)
+            else:
+                pytest.fail("completion did not reach the expected row-lock wait")
+
+            await service_lifecycle.stop_service(stop_db, locked_definition)
+            await stop_db.commit()
+            completed_definition = await asyncio.wait_for(completion, timeout=5)
+            await worker_db.commit()
+            assert completed_definition.id == service_id
+    finally:
+        if completion is not None:
+            if not completion.done():
+                completion.cancel()
+            await asyncio.gather(completion, return_exceptions=True)
+        await _cleanup_committed_service(
+            async_session_factory,
+            service_id=service_id,
+            workflow_id=workflow_id,
+            organization_id=organization_id,
+        )
+
+
+@pytest.mark.asyncio
+async def test_expiry_skips_definition_locked_by_stop(async_session_factory):
+    """A lease sweep never locks an attempt ahead of its definition."""
+    import asyncio
+
+    from src.models.orm.services import ServiceDefinition
+
+    async with async_session_factory() as setup:
+        definition, workflow = await _ensure(setup)
+        await service_lifecycle.claim_eligible_service(
+            setup, worker_id="w1", lease_ttl_seconds=-1
+        )
+        service_id = definition.id
+        workflow_id = workflow.id
+        organization_id = definition.organization_id
+        await setup.commit()
+
+    try:
+        async with (
+            async_session_factory() as stop_db,
+            async_session_factory() as sweep_db,
+        ):
+            locked_definition = (
+                await stop_db.execute(
+                    select(ServiceDefinition)
+                    .where(ServiceDefinition.id == service_id)
+                    .with_for_update()
+                )
+            ).scalar_one()
+
+            # SKIP LOCKED applies to the definition first. The former
+            # attempt-first sweep blocked here while holding the attempt.
+            assert (
+                await asyncio.wait_for(
+                    service_lifecycle.expire_leases(sweep_db), timeout=1
+                )
+                == 0
+            )
+            await service_lifecycle.stop_service(stop_db, locked_definition)
+            await stop_db.commit()
+
+            assert await service_lifecycle.expire_leases(sweep_db) == 1
+            await sweep_db.commit()
+    finally:
+        await _cleanup_committed_service(
+            async_session_factory,
+            service_id=service_id,
+            workflow_id=workflow_id,
+            organization_id=organization_id,
+        )
+
+
 # --- Fencing ---
 
 
 @pytest.mark.asyncio
 async def test_heartbeat_rejects_stale_token(db_session):
     """Wrong lease tokens fail heartbeat and completion."""
-    definition, _ = await _ensure(db_session)
+    _definition, _ = await _ensure(db_session)
     attempt = await service_lifecycle.claim_eligible_service(db_session, worker_id="w1")
 
     renewed = await service_lifecycle.heartbeat_attempt(
@@ -377,7 +537,7 @@ async def test_heartbeat_rejects_stale_token(db_session):
 @pytest.mark.asyncio
 async def test_ready_transitions_starting_to_running(db_session):
     """service.ready() moves the attempt to running exactly once."""
-    definition, _ = await _ensure(db_session)
+    _definition, _ = await _ensure(db_session)
     attempt = await service_lifecycle.claim_eligible_service(db_session, worker_id="w1")
 
     ready = await service_lifecycle.mark_attempt_ready(
@@ -586,7 +746,7 @@ async def test_expired_lease_fences_owner_writes(db_session):
     """An owner past lease expiry cannot renew, report, or complete."""
     from datetime import timedelta
 
-    definition, _ = await _ensure(db_session)
+    _definition, _ = await _ensure(db_session)
     attempt = await service_lifecycle.claim_eligible_service(
         db_session, worker_id="w1", lease_ttl_seconds=60
     )
@@ -614,7 +774,7 @@ async def test_expired_lease_fences_owner_writes(db_session):
 @pytest.mark.asyncio
 async def test_claim_requires_active_service_source(db_session):
     """Deactivated or converted sources are never claimable."""
-    definition, wf = await _ensure(db_session)
+    _definition, wf = await _ensure(db_session)
 
     wf.is_active = False
     await db_session.flush()
