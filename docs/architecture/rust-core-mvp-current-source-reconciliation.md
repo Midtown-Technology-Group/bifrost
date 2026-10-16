@@ -15,7 +15,11 @@ The current workspace audit inspected 2,449 committed authored Python files:
 no platform src/SQLAlchemy imports, no parse errors, explicit empty allowlist.
 Historical runtime results retain their original candidate pins.
 
-## What current main changes
+## Retained October 9 runtime findings
+
+These findings were derived from main `135a305811568362347e9d485ef992e9467f634f`.
+The October 16 checkpoint below records the verified later changes; do not
+treat the older analysis as complete reconciliation of every later source path.
 
 `api/src/services/execution/worker_sdk_http.py` mounts selected existing FastAPI
 route objects on a worker-owned Unix socket. The Python parent retains pooled
@@ -102,7 +106,7 @@ expanding verification infrastructure.
 ## Candidate and verification disposition
 
 Compile correction `75ac54c8ede0b083f7733f8fa17d457398a85d44` received
-independent source acceptance. Local integration of current main produced
+independent source acceptance. Local integration of October 9 main produced
 `9a5d74f44923adb98eff811d6b5b796fb75148b3`, tree
 `fadacb31fae48cba04aced8256fa29323bd0b73f`. Its sole conflict retained both
 main's BIFROST_TEST_UNIT_ONLY unit isolation and the candidate's incumbent
@@ -129,9 +133,9 @@ jobs; it supplies no test evidence. Both authorized transport experiments are
 consumed. Keep transport acceptance on HOLD; do not launch a third experiment
 or retrieve private child captures to invent a cause.
 
-AUTH-P1 current-main integration is candidate
-`8292784e5c5014d7fba4eb78c18d84798064ff68`, incorporating the platform head
-above. The ten approved authority source/test paths are unchanged by that main
+Historical October 9 AUTH-P1 integration is candidate
+`8292784e5c5014d7fba4eb78c18d84798064ff68`, incorporating
+`b031b9ca3a4fc50d6eb04dbfdf578fe8f009913d`. The ten approved authority source/test paths are unchanged by that main
 advance. Static parsing, qualified scoped Ruff and whitespace checks pass;
 the exact candidate is published to existing PR #1018. Supported PR CI
 [37991033951](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/37991033951)
