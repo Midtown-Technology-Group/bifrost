@@ -164,15 +164,17 @@ class TestListSdkWorkflows:
         assert names == ["reads-pin-org"]
 
     async def test_invalid_scope_raises_400(self, db_session):
+        admin = _admin()
         with pytest.raises(SdkExecutionReadError) as exc_info:
-            await list_sdk_workflows(db_session, _admin(), scope="nope")
+            await list_sdk_workflows(db_session, admin, scope="nope")
         assert exc_info.value.status_code == 400
 
     async def test_non_superuser_denied(self, db_session):
         org = await _seed_org(db_session)
+        user = _user(org.id)
         with pytest.raises(SdkExecutionReadError) as exc_info:
             await list_sdk_workflows(
-                db_session, _user(org.id), scope=None
+                db_session, user, scope=None
             )
         assert exc_info.value.status_code == 403
 
@@ -327,9 +329,10 @@ class TestListSdkExecutions:
         assert [e.execution_id for e in result] == [str(own.id)]
 
     async def test_invalid_scope_raises_422(self, db_session):
+        admin = _admin()
         with pytest.raises(SdkExecutionReadError) as exc_info:
             await list_sdk_executions(
-                db_session, _admin(), scope="not-a-scope"
+                db_session, admin, scope="not-a-scope"
             )
         assert exc_info.value.status_code == 422
 
@@ -419,15 +422,18 @@ class TestGetSdkExecution:
             db_session, "reads-denied-wf", user_id=owner.id, org_id=org.id
         )
 
+        stranger_user = _user(org.id, user_id=stranger.id)
         with pytest.raises(SdkExecutionReadError) as exc_info:
             await get_sdk_execution(
-                db_session, _user(org.id, user_id=stranger.id), row.id
+                db_session, stranger_user, row.id
             )
         assert exc_info.value.status_code == 403
 
     async def test_missing_raises_404(self, db_session):
+        admin = _admin()
+        execution_id = uuid4()
         with pytest.raises(SdkExecutionReadError) as exc_info:
-            await get_sdk_execution(db_session, _admin(), uuid4())
+            await get_sdk_execution(db_session, admin, execution_id)
         assert exc_info.value.status_code == 404
 
 
