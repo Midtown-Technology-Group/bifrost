@@ -545,6 +545,7 @@ services:
       target: ci
       args:
         VITE_BIFROST_VERSION: test
+    network_mode: none
     security_opt: ["no-new-privileges:true"]
     profiles:
       - client-check
