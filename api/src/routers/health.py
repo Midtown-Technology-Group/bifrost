@@ -72,7 +72,13 @@ class RabbitMQHealthConnection:
             return self.connection
 
     async def discard(self, connection: AbstractRobustConnection) -> None:
+        if self.connection is connection:
+            self.connection = None
+            self.url = None
         await connection.close()
+
+    def invalidate(self, connection: AbstractRobustConnection) -> None:
+        """Synchronously prevent a cancelled probe from reusing its connection."""
         if self.connection is connection:
             self.connection = None
             self.url = None
@@ -277,6 +283,11 @@ async def check_rabbitmq(settings: Settings) -> tuple[str, ComponentStatus]:
         try:
             channel = await connection.channel()
             await channel.close()
+        except asyncio.CancelledError:
+            # wait_for() cancels a timed-out probe. Do not await another
+            # operation on the potentially wedged connection before evicting it.
+            _rabbitmq_health_connection.invalidate(connection)
+            raise
         except Exception:
             await _rabbitmq_health_connection.discard(connection)
             raise

@@ -158,6 +158,10 @@ from src.services.solutions.export_jobs import (
     list_export_jobs,
     public_job,
 )
+from src.services.solutions.guard import (
+    SOLUTION_MANAGED_MESSAGE,
+    SolutionManagedWriteError,
+)
 
 if TYPE_CHECKING:
     from src.services.solutions.zip_install import PreviewResult
@@ -2498,7 +2502,16 @@ async def _run_deploy_job(
                         )
                         # Reconciliation owns only post-deploy evidence. Clear a
                         # potentially failed transaction without rolling back the
-                        # already committed Solution resources.
+                        # already committed Solution resources. Persist only safe
+                        # diagnostics: the error type plus the deploy-attempt
+                        # identity a retry uses to locate the stuck obligation
+                        # set. The guard error persists its fixed public wording
+                        # (never the exception's own text, which any raise site
+                        # could have constructed with operational detail);
+                        # anything else is logged server-side under the deploy
+                        # job id (returned as error_reference) instead of echoed.
+                        # The failed write never identified a single obligation,
+                        # so obligation_id is always null here.
                         try:
                             await db.rollback()
                         except Exception:  # noqa: BLE001 - preserve deploy truth
@@ -2506,10 +2519,26 @@ async def _run_deploy_job(
                                 "Solution deploy job %s accountability rollback failed",
                                 job_id,
                             )
+                        if isinstance(exc, SolutionManagedWriteError):
+                            error_detail: str | None = SOLUTION_MANAGED_MESSAGE
+                        else:
+                            error_detail = None
                         accountability = {
                             "state": "attention_required",
                             "reason": "post-deploy accountability reconciliation failed",
                             "error_type": type(exc).__name__,
+                            "error_detail": error_detail,
+                            "error_reference": str(job_id),
+                            "obligation_id": None,
+                            "solution_id": str(solution_id),
+                            "solution_slug": solution_slug,
+                            "deploy_job_id": str(job_id),
+                            "candidate_id": candidate_id,
+                            "accountability_organization_id": (
+                                str(accountability_organization_id)
+                                if accountability_organization_id is not None
+                                else None
+                            ),
                         }
                     else:
                         await db.commit()

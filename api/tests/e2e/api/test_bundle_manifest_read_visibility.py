@@ -1,6 +1,4 @@
-"""GET /api/applications/{app_id}/bundle-manifest must not trigger a
-_repo build/write for a non-bypass caller — it serves the existing
-manifest as-is (even if stale-schema) or 404s if none exists yet."""
+"""Draft app bundles are platform-admin-only control-plane artifacts."""
 
 import uuid
 
@@ -8,12 +6,10 @@ import pytest
 
 
 @pytest.mark.e2e
-class TestBundleManifestNonBypassNeverBuilds:
+class TestDraftBundleAuthorization:
     @pytest.fixture
-    def inline_app(self, e2e_client, platform_admin, org1, org1_user):
-        """Created by platform_admin scoped into org1 (application creation
-        is bypass-only), so org1_user's own read access against it is
-        unambiguous."""
+    def inline_app(self, e2e_client, platform_admin, org1):
+        """Create an org-scoped app whose draft bundle exists."""
         slug = f"bundle-manifest-rv-{uuid.uuid4().hex[:8]}"
         resp = e2e_client.post(
             "/api/applications",
@@ -28,85 +24,38 @@ class TestBundleManifestNonBypassNeverBuilds:
         assert resp.status_code == 201, resp.text
         app = resp.json()
         yield app
-        e2e_client.delete(f"/api/applications/{app['id']}", headers=platform_admin.headers)
-
-    @pytest.mark.asyncio
-    async def test_non_bypass_caller_gets_404_when_no_manifest_exists_yet(
-        self, e2e_client, org1_user, inline_app
-    ):
-        """No manifest built yet (inline_v1 apps auto-scaffold+build on
-        creation, so remove the auto-created one to reach this state): a
-        regular user must 404, never trigger the build themselves."""
-
-        from src.services.app_storage import AppStorageService
-
-        await AppStorageService().delete_preview_file(
-            inline_app["id"], "manifest.json"
+        e2e_client.delete(
+            f"/api/applications/{app['id']}", headers=platform_admin.headers
         )
 
+    @pytest.mark.parametrize(
+        "path",
+        [
+            "bundle-manifest?mode=draft",
+            "bundle-asset/manifest.json?mode=draft",
+        ],
+    )
+    def test_org_user_cannot_read_draft_bundle(
+        self, e2e_client, org1_user, inline_app, path
+    ):
+        """App read access does not grant access to executable draft artifacts."""
+        resp = e2e_client.get(
+            f"/api/applications/{inline_app['id']}/{path}",
+            headers=org1_user.headers,
+        )
+
+        assert resp.status_code == 403, resp.text
+        assert resp.json()["detail"] == "Platform admin privileges required"
+
+    def test_platform_admin_can_read_draft_manifest(
+        self, e2e_client, platform_admin, inline_app
+    ):
+        """The App Builder preview path remains available to platform admins."""
         resp = e2e_client.get(
             f"/api/applications/{inline_app['id']}/bundle-manifest",
-            headers=org1_user.headers,
+            headers=platform_admin.headers,
             params={"mode": "draft"},
         )
-        assert resp.status_code == 404, resp.text
 
-    @pytest.mark.asyncio
-    async def test_non_bypass_caller_gets_stale_manifest_as_is(
-        self, e2e_client, org1_user, inline_app
-    ):
-        """A stale-schema manifest already on disk is served unchanged —
-        no rebuild triggered by the regular caller's GET."""
-        import json
-
-        from src.services.app_storage import AppStorageService
-
-        stale_manifest = {
-            "schema_version": 1,  # older than current SCHEMA_VERSION
-            "entry": "STALE_SENTINEL.js",
-            "css": None,
-            "dependencies": {},
-        }
-
-        async def _write_stale():
-            """Write the obsolete preview manifest used to prove reads do not trigger a rebuild."""
-            await AppStorageService().write_preview_file(
-                inline_app["id"],
-                "manifest.json",
-                json.dumps(stale_manifest).encode(),
-            )
-
-        await _write_stale()
-
-        resp = e2e_client.get(
-            f"/api/applications/{inline_app['id']}/bundle-manifest",
-            headers=org1_user.headers,
-            params={"mode": "draft"},
-        )
         assert resp.status_code == 200, resp.text
-        assert resp.json()["entry"] == "STALE_SENTINEL.js"
-
-    @pytest.mark.parametrize("manifest_bytes", [b"{invalid", b"[]", b"null", b'"text"'])
-    @pytest.mark.asyncio
-    async def test_non_bypass_caller_gets_404_for_invalid_manifest_without_rebuild(
-        self, e2e_client, org1_user, inline_app, manifest_bytes
-    ):
-
-        """Return 404 for unreadable or non-object manifests without rebuilding them for regular callers."""
-        from src.services.app_storage import AppStorageService
-
-        storage = AppStorageService()
-        await storage.write_preview_file(
-            inline_app["id"], "manifest.json", manifest_bytes
-        )
-
-        resp = e2e_client.get(
-            f"/api/applications/{inline_app['id']}/bundle-manifest",
-            headers=org1_user.headers,
-            params={"mode": "draft"},
-        )
-
-        assert resp.status_code == 404, resp.text
-        assert await storage.read_file(
-            inline_app["id"], "preview", "manifest.json"
-        ) == manifest_bytes
+        assert resp.json()["mode"] == "preview"
