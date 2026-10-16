@@ -57,6 +57,7 @@ type fixture struct {
 }
 type observation struct {
 	Case                string                   `json:"case"`
+	Stage               string                   `json:"stage"`
 	Frames              []executionprofile.Frame `json:"frames"`
 	SDKCalls            int64                    `json:"sdk_calls"`
 	SDKCancelled        bool                     `json:"sdk_cancelled"`
@@ -66,7 +67,7 @@ type observation struct {
 }
 
 func runCase(f fixture, mode string) (observation, error) {
-	result := observation{Case: mode}
+	result := observation{Case: mode, Stage: "create-session-directory"}
 	base := map[string]int{"success": 1000, "success-again": 2000, "missing": 3000, "cancel-before-material": 4000, "cancel-running": 5000}[mode]
 	id := func(n int) string { return fixtureID(base + n) }
 	started := time.Now()
@@ -75,6 +76,7 @@ func runCase(f fixture, mode string) (observation, error) {
 		return result, rejected
 	}
 	defer os.RemoveAll(directory)
+	result.Stage = "read-vectors"
 	vectorBytes, err := os.ReadFile(f.vectors)
 	if err != nil {
 		return result, rejected
@@ -86,6 +88,7 @@ func runCase(f fixture, mode string) (observation, error) {
 	if json.Unmarshal(vectorBytes, &vectors) != nil {
 		return result, rejected
 	}
+	result.Stage = "decode-prepare-vector"
 	var prepare executionprofile.Frame
 	for _, v := range vectors {
 		if v.Name == "valid-Prepare" {
@@ -99,6 +102,7 @@ func runCase(f fixture, mode string) (observation, error) {
 	if prepare == nil {
 		return result, rejected
 	}
+	result.Stage = "bind-fixture"
 	body := prepare["body"].(map[string]any)
 	binding := body["binding"].(map[string]any)
 	for _, name := range []string{"execution_id", "attempt_id", "session_id", "runtime_incarnation_id"} {
@@ -115,10 +119,12 @@ func runCase(f fixture, mode string) (observation, error) {
 	binding["effective_scope"] = scope
 	body["context"].(map[string]any)["effective_scope"] = scope
 	artifact := body["artifact"].(map[string]any)
+	result.Stage = "verify-workflow"
 	childDigest, err := fileDigest(f.workflow)
 	if err != nil || childDigest != f.workflowSHA256 {
 		return result, rejected
 	}
+	result.Stage = "verify-adapter"
 	adapterDigest, err := fileDigest(f.adapter)
 	if err != nil {
 		return result, rejected
@@ -127,6 +133,7 @@ func runCase(f fixture, mode string) (observation, error) {
 	artifact["adapter_sha256"] = adapterDigest
 	artifact["sdk"] = map[string]any{"distribution": "github.com/midtown-technology-group/bifrost-go", "version": "0.0.0-spike.2"}
 	artifact["toolchain"] = map[string]any{"implementation": "go", "version": "go1.27.2"}
+	result.Stage = "stage-bundle-objects"
 	contents := map[string][]byte{}
 	for name, path := range map[string]string{"build-evidence.json": f.evidence, "module-graph.txt": f.graph, "input-schema.json": f.inputSchema, "output-schema.json": f.outputSchema} {
 		raw, err := os.ReadFile(path)
@@ -138,6 +145,7 @@ func runCase(f fixture, mode string) (observation, error) {
 			return result, rejected
 		}
 	}
+	result.Stage = "link-workflow"
 	if os.Symlink(f.workflow, filepath.Join(directory, "workflow")) != nil {
 		return result, rejected
 	}
@@ -162,9 +170,11 @@ func runCase(f fixture, mode string) (observation, error) {
 	}
 	workload["input"] = map[string]any{"integration_name": "Fixture", "required_keys": keys}
 	index, _ := encode(map[string]any{"version": "isolated-native-session-bundle/v1", "binding": binding, "artifact": artifact, "input_schema_sha256": digest(contents["input-schema.json"]), "output_schema_sha256": digest(contents["output-schema.json"])})
+	result.Stage = "write-session-index"
 	if os.WriteFile(filepath.Join(directory, "session-bundle.json"), index, 0600) != nil {
 		return result, rejected
 	}
+	result.Stage = "create-sdk-fixture"
 	var calls atomic.Int64
 	entered := make(chan struct{}, 1)
 	sdkCancelled := make(chan struct{}, 1)
@@ -194,6 +204,7 @@ func runCase(f fixture, mode string) (observation, error) {
 	cmd.Env = []string{"PATH=/nonexistent"}
 	cmd.Stderr = io.Discard
 	cmd.WaitDelay = 100 * time.Millisecond
+	result.Stage = "create-adapter-pipes"
 	parent, err := cmd.StdinPipe()
 	if err != nil {
 		return result, rejected
@@ -211,6 +222,7 @@ func runCase(f fixture, mode string) (observation, error) {
 	defer material.Close()
 	defer writer.Close()
 	cmd.ExtraFiles = []*os.File{material}
+	result.Stage = "start-adapter"
 	if cmd.Start() != nil {
 		return result, rejected
 	}
@@ -229,6 +241,7 @@ func runCase(f fixture, mode string) (observation, error) {
 		}
 		return frame, err
 	}
+	result.Stage = "read-offer"
 	offer, err := read()
 	if err != nil || offer.Frame["type"] != "Offer" {
 		return result, rejected
@@ -357,6 +370,7 @@ func runCase(f fixture, mode string) (observation, error) {
 			if (mode == "cancel-before-material" && result.SDKCalls != 0) || (mode != "cancel-before-material" && result.SDKCalls != 1) {
 				return result, rejected
 			}
+			result.Stage = "complete"
 			result.ElapsedMS = float64(time.Since(started)) / float64(time.Millisecond)
 			return result, nil
 		default:
