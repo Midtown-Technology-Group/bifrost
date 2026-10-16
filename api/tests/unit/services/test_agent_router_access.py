@@ -15,7 +15,7 @@ from src.models.orm.agents import Agent, AgentRole, Conversation
 from src.models.orm.organizations import Organization
 from src.models.orm.users import Role, User, UserRole
 from src.services.agent_executor import AgentExecutor
-from src.services.agent_router import AgentRouter
+from src.services.agent_router import AgentRouter, ROUTER_MAX_OUTPUT_TOKENS
 from src.services.llm import LLMResponse
 
 
@@ -239,6 +239,9 @@ async def test_route_message_handles_direct_empty_unknown_and_matched_llm_respon
 
         llm_client.complete = AsyncMock(return_value=LLMResponse(content="helpdesk"))
         assert await router.route_message("ticket help", [agent]) is agent  # type: ignore[list-item]
+        assert llm_client.complete.await_args.kwargs["max_tokens"] == (
+            ROUTER_MAX_OUTPUT_TOKENS
+        )
 
 
 @pytest.mark.asyncio

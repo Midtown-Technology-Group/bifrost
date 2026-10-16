@@ -216,6 +216,7 @@ harness.
 | `devices.rotate_device_key_endpoint` | — | — | — |
 | `externalworkers.enroll` | — | — | — |
 | `externalworkers.status` | — | — | — |
+| `externalworkers.identity` | — | — | — |
 | `files.preview_workspace_file_impact` | — | — | — |
 | `mcp.resolve_gateway_operation_receipt` | — | — | — |
 | `packages.get_package_installation_progress` | — | — | — |
