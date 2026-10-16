@@ -224,6 +224,7 @@ class AIModelService:
         profile_id: UUID | None = None,
         profile_name: str | None = None,
         assignment_key: AIModelAssignmentKey = "primary",
+        detect_transport: bool = True,
     ) -> LLMConfig:
         """Resolve a profile UUID or assignment key into decrypted runtime LLM config."""
         profile = await self._resolve_head_profile(
@@ -231,7 +232,9 @@ class AIModelService:
             profile_name=profile_name,
             assignment_key=assignment_key,
         )
-        return await self._config_for_profile(profile)
+        return await self._config_for_profile(
+            profile, detect_transport=detect_transport
+        )
 
     async def resolve_chain(
         self,
@@ -366,7 +369,9 @@ class AIModelService:
 
         return profile
 
-    async def _config_for_profile(self, profile: AIModelProfile) -> LLMConfig:
+    async def _config_for_profile(
+        self, profile: AIModelProfile, *, detect_transport: bool = True
+    ) -> LLMConfig:
         """Build the decrypted runtime config for one profile row."""
         from src.services.llm.base import LLMConfig
 
@@ -391,7 +396,7 @@ class AIModelService:
             # Models newer than the documented catalog carry a persisted
             # probed surface; only unmapped models pay for one probe, once.
             wire_api = profile.wire_api or opencode_go_known_wire_api(profile.model)
-            if wire_api is None:
+            if wire_api is None and detect_transport:
                 from src.services.opencode_go_detection import (
                     detect_opencode_go_wire_api,
                 )
@@ -414,7 +419,7 @@ class AIModelService:
             connection.provider == "openai"
             and connection.endpoint != PROVIDER_DEFAULT_ENDPOINTS["openai"]
         )
-        if detects_openai_transport and openai_transport is None:
+        if detect_transport and detects_openai_transport and openai_transport is None:
             from src.services.openai_transport_detection import (
                 detect_openai_transport,
             )
@@ -451,7 +456,11 @@ class AIModelService:
                     f"No API key configured for LLM provider connection '{connection.name}'. "
                     "Please configure the API key in System Settings > AI Configuration."
                 )
-        if detects_openai_transport and openai_transport is None:
+        if (
+            detect_transport
+            and detects_openai_transport
+            and openai_transport is None
+        ):
             openai_transport = await detect_openai_transport(
                 api_key=api_key,
                 endpoint=connection.endpoint,
@@ -630,6 +639,17 @@ class AIModelService:
         endpoint_provided: bool = False,
     ) -> AIProviderConnection:
         connection = await self.get_connection(connection_id)
+        next_provider = provider if provider is not None else connection.provider
+        next_endpoint = connection.endpoint
+        if provider is not None or endpoint_provided:
+            next_endpoint = self.normalize_endpoint(next_provider, endpoint)
+        if (
+            next_provider != connection.provider
+            or next_endpoint != connection.endpoint
+        ) and api_key is None:
+            raise ValueError(
+                "API key is required when changing a provider or endpoint"
+            )
         if name is not None:
             trimmed_name = name.strip()
             if not trimmed_name:
@@ -644,7 +664,7 @@ class AIModelService:
         if provider is not None:
             connection.provider = provider
         if provider is not None or endpoint_provided:
-            connection.endpoint = self.normalize_endpoint(connection.provider, endpoint)
+            connection.endpoint = next_endpoint
         if api_key is not None:
             connection.encrypted_api_key = self.encrypt_api_key(api_key)
         if transport_may_change:
