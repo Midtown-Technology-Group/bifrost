@@ -1,5 +1,9 @@
 # Native Go authoring/build experiment (0.0.0-spike.2)
 
+For read-only inspection of an existing identified archive, see
+[Go artifact inspection](../../docs/dev/go-artifact-inspection.md). The command
+does not require a compiler or control-plane server.
+
 Temporary Lane 4 spike. This module demonstrates an ordinary Go handler, a small
 public-HTTP capability client and an isolated native build/developer loop. It is
 not registered or deployed, does not issue runtime credentials, and does not

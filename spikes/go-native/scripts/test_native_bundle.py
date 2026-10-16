@@ -2,12 +2,15 @@
 
 import io
 import json
+import os
 import pathlib
+from contextlib import redirect_stderr, redirect_stdout
 import tarfile
 import tempfile
 import unittest
 
 from describe import scanner_configuration
+from inspect_bundle import expected_digest, inspect, main as inspect_main
 
 from native_bundle import (
     ORDER,
@@ -22,7 +25,9 @@ from native_bundle import (
 class ScannerEvidenceTests(unittest.TestCase):
     def test_reachable_finding_after_config_denies(self):
         raw = json.dumps({"config": {"scan_level": "symbol", "scan_mode": "source"}})
-        raw += "\n" + json.dumps({"finding": {"trace": [{"module": "stdlib", "function": "Do"}]}})
+        raw += "\n" + json.dumps(
+            {"finding": {"trace": [{"module": "stdlib", "function": "Do"}]}}
+        )
         with self.assertRaises(ValueError):
             scanner_configuration(raw)
 
@@ -79,6 +84,83 @@ def alternate_archive(entries, *, order=ORDER, change=None):
                 change(header)
             archive.addfile(header, io.BytesIO(entries[name]))
     return output.getvalue()
+
+
+class BundleInspectionTests(unittest.TestCase):
+    def test_inspection_preserves_archive_and_reports_only_byte_evidence(self):
+        entries = fixture()
+        # Unknown producer metadata is never echoed into the inspection report.
+        evidence = json.loads(entries["build-evidence.json"])
+        evidence["untrusted_note"] = "must-not-be-printed"
+        entries["build-evidence.json"] = json.dumps(evidence).encode()
+        blob = canonical_archive(entries)
+        with tempfile.TemporaryDirectory() as directory:
+            path = pathlib.Path(directory) / "bundle.tar"
+            path.write_bytes(blob)
+            report = inspect(path, digest(blob))
+            self.assertEqual(path.read_bytes(), blob)
+            self.assertEqual(list(path.parent.iterdir()), [path])
+        self.assertEqual(report["artifact_id"], "sha256:" + digest(blob))
+        self.assertEqual(report["workflow_sha256"], digest(entries["workflow"]))
+        self.assertEqual([item["path"] for item in report["entries"]], list(ORDER))
+        self.assertEqual(report["producer_authentication"], "not evaluated")
+        self.assertEqual(report["deployment_admission"], "not evaluated")
+        self.assertNotIn("must-not-be-printed", json.dumps(report))
+
+    def test_inspection_rejects_wrong_pin_and_rehashed_inconsistent_content(self):
+        entries = fixture()
+        blob = canonical_archive(entries)
+        with tempfile.TemporaryDirectory() as directory:
+            path = pathlib.Path(directory) / "bundle.tar"
+            path.write_bytes(blob)
+            with self.assertRaises(Rejected):
+                inspect(path, "f" * 64)
+            entries["workflow"] += b"changed"
+            changed = canonical_archive(entries)
+            path.write_bytes(changed)
+            with self.assertRaises(Rejected):
+                inspect(path, digest(changed))
+
+    def test_inspection_refuses_symlink_directory_and_fifo_without_open_wait(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = pathlib.Path(directory)
+            target = base / "bundle.tar"
+            target.write_bytes(canonical_archive(fixture()))
+            link = base / "link"
+            link.symlink_to(target)
+            fifo = base / "fifo"
+            os.mkfifo(fifo)
+            for path in (link, base, fifo):
+                with (
+                    self.subTest(path=path.name),
+                    self.assertRaises((Rejected, OSError)),
+                ):
+                    inspect(path, "a" * 64)
+
+    def test_digest_option_requires_an_explicit_canonical_pin(self):
+        import argparse
+
+        self.assertEqual(expected_digest("sha256:" + "a" * 64), "a" * 64)
+        self.assertEqual(expected_digest("b" * 64), "b" * 64)
+        for value in ("", "a" * 63, "A" * 64, "sha256:" + "z" * 64):
+            with (
+                self.subTest(value=value),
+                self.assertRaises(argparse.ArgumentTypeError),
+            ):
+                expected_digest(value)
+
+    def test_cli_failure_emits_no_partial_success_or_archive_metadata(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = pathlib.Path(directory) / "bundle.tar"
+            path.write_bytes(b"private malformed archive bytes")
+            output, errors = io.StringIO(), io.StringIO()
+            with redirect_stdout(output), redirect_stderr(errors):
+                status = inspect_main(
+                    [str(path), "--sha256", digest(path.read_bytes())]
+                )
+            self.assertEqual(status, 1)
+            self.assertEqual(output.getvalue(), "")
+            self.assertEqual(errors.getvalue(), "native bundle inspection rejected\n")
 
 
 class BundleRecipeTests(unittest.TestCase):
