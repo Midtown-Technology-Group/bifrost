@@ -375,6 +375,16 @@ async def historical_convergence_db(async_engine, committed_delivery_db):
             await connection.execute(text("ALTER TABLE solutions SET (autovacuum_enabled = false)"))
         async with async_engine.connect() as connection:
             assert await connection.scalar(option_query) == "false"
+        # Workers publish activity before selection; drain saved pre-disable work.
+        # End each observation's transaction for a fresh activity snapshot.
+        while True:
+            async with async_engine.connect() as connection:
+                workers = await connection.scalar(text(
+                    "SELECT EXISTS (SELECT 1 FROM pg_stat_activity "
+                    "WHERE datname = current_database() AND backend_type = 'autovacuum worker')"))
+            if not workers:
+                break
+            await asyncio.sleep(0.05)
         yield committed_delivery_db
     finally:
         cleanup = asyncio.create_task(restore())
