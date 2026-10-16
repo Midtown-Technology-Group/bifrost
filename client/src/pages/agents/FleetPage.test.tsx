@@ -462,7 +462,11 @@ it("opens an agent row in another tab without navigating the current page", asyn
 	fireEvent.mouseUp(screen.getByText("Triages support tickets"), {
 		button: 1,
 	});
-	expect(open).toHaveBeenCalledExactlyOnceWith("/agents/agent-1", "_blank");
+	expect(open).toHaveBeenCalledExactlyOnceWith(
+		"/agents/agent-1",
+		"_blank",
+		"noopener,noreferrer",
+	);
 	expect(screen.getByLabelText("location")).toHaveTextContent(/^\/$/);
 	open.mockRestore();
 });

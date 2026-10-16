@@ -54,6 +54,12 @@ from src.services.oauth_provider import (
     get_url_resolution_defaults,
     resolve_url_template,
 )
+from src.services.oauth_pkce import (
+    build_pkce_authorize_params,
+    generate_code_verifier,
+    provider_uses_pkce,
+    store_pkce_verifier,
+)
 from src.services.oauth_state import encode_state, remember_nonce
 from shared.logo_processing import (
     LogoProcessingError,
@@ -66,6 +72,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/integrations", tags=["Integrations"])
 
 REFRESH_FAILED_MESSAGE = "Refresh failed"
+BATCH_MAPPING_SAVE_FAILED_MESSAGE = "mapping could not be saved"
 
 
 def _logo_data_url(data: bytes | None, content_type: str | None) -> str | None:
@@ -1109,7 +1116,9 @@ async def upload_integration_logo(
 async def get_integration_logo(
     integration_id: UUID,
     ctx: Context,
+    user: CurrentSuperuser,
 ) -> Response:
+    """Serve an integration logo to admins, using immutable caching only for versioned thumbnails."""
     integration = (
         await ctx.db.execute(select(Integration).where(Integration.id == integration_id))
     ).scalar_one_or_none()
@@ -1505,28 +1514,48 @@ async def batch_upsert_mappings(
     errors: list[str] = []
 
     for item in request.mappings:
+        operation: str | None = None
         try:
-            existing = await repo.get_mapping_by_org(integration_id, item.organization_id)
-            if existing:
-                update_data = IntegrationMappingUpdate(
-                    entity_id=item.entity_id,
-                    entity_name=item.entity_name,
+            # A repository flush can fail and poison the outer session. Isolate
+            # every item in a savepoint so one invalid mapping rolls back only
+            # its own work and later items can still be committed.
+            async with ctx.db.begin_nested():
+                existing = await repo.get_mapping_by_org(
+                    integration_id, item.organization_id
                 )
-                await repo.update_mapping(
-                    integration_id, existing.id, update_data, updated_by=user.email
-                )
+                if existing:
+                    update_data = IntegrationMappingUpdate(
+                        entity_id=item.entity_id,
+                        entity_name=item.entity_name,
+                    )
+                    await repo.update_mapping(
+                        integration_id,
+                        existing.id,
+                        update_data,
+                        updated_by=user.email,
+                    )
+                    operation = "updated"
+                else:
+                    create_data = IntegrationMappingCreate(
+                        organization_id=item.organization_id,
+                        entity_id=item.entity_id,
+                        entity_name=item.entity_name,
+                    )
+                    await repo.create_mapping(
+                        create_data, integration_id, updated_by=user.email
+                    )
+                    operation = "created"
+            if operation == "updated":
                 updated += 1
             else:
-                create_data = IntegrationMappingCreate(
-                    organization_id=item.organization_id,
-                    entity_id=item.entity_id,
-                    entity_name=item.entity_name,
-                )
-                await repo.create_mapping(create_data, integration_id, updated_by=user.email)
                 created += 1
         except Exception as e:
-            errors.append(f"org {item.organization_id}: {str(e)}")
-            logger.error(f"Batch mapping error for org {item.organization_id}: {log_safe(e)}")
+            errors.append(
+                f"org {item.organization_id}: {BATCH_MAPPING_SAVE_FAILED_MESSAGE}"
+            )
+            logger.error(
+                f"Batch mapping error for org {log_safe(item.organization_id)}: {log_safe(e)}"
+            )
 
     await ctx.db.commit()
 
@@ -1621,6 +1650,23 @@ async def authorize_mapping(
     scopes_str = compute_authorization_request_scopes(provider)
     if scopes_str:
         params["scope"] = scopes_str
+
+    if provider_uses_pkce(provider):
+        code_verifier = generate_code_verifier()
+        params.update(build_pkce_authorize_params(code_verifier))
+        try:
+            await store_pkce_verifier(
+                state=state,
+                code_verifier=code_verifier,
+                redirect_uri=request.redirect_uri,
+                provider_id=provider.id,
+                mapping_id=mapping_id,
+            )
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Could not initiate PKCE flow (verifier storage unavailable)",
+            ) from e
 
     logger.info(
         f"Generated per-mapping OAuth authorization URL for mapping {log_safe(mapping_id)}, "
@@ -1937,6 +1983,22 @@ async def get_oauth_authorization_url(
     scopes_str = compute_authorization_request_scopes(oauth_provider)
     if scopes_str:
         params["scope"] = scopes_str
+
+    if provider_uses_pkce(oauth_provider):
+        code_verifier = generate_code_verifier()
+        params.update(build_pkce_authorize_params(code_verifier))
+        try:
+            await store_pkce_verifier(
+                state=state,
+                code_verifier=code_verifier,
+                redirect_uri=redirect_uri,
+                provider_id=oauth_provider.id,
+            )
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Could not initiate PKCE flow (verifier storage unavailable)",
+            ) from e
 
     authorization_url = append_query_params(oauth_provider.authorization_url, params)
 

@@ -24,12 +24,11 @@ from enum import Enum
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Path, status
+from shared.app_authorization import require_platform_admin
 
-from src.services.operation_catalog import operation_route
 from src.core.auth import Context, CurrentUser
 from src.core.exceptions import AccessDeniedError
 from src.core.log_safety import log_safe
-from src.services.solutions.guard import assert_entity_id_not_solution_managed
 from src.models.contracts.applications import (
     AppFileUpdate,
     AppRenderResponse,
@@ -40,14 +39,16 @@ from src.models.contracts.applications import (
 from src.models.orm.applications import Application
 from src.routers.applications import ApplicationRepository
 from src.services.app_storage import AppStorageService
-from src.services.repo_storage import RepoStorage
+from src.services.editor.file_filter import is_excluded_path
 from src.services.file_storage.service import get_file_storage_service
+from src.services.operation_catalog import operation_route
+from src.services.repo_storage import RepoStorage
+from src.services.solutions.guard import assert_entity_id_not_solution_managed
 from src.services.workspace_release_files import (
     WorkspaceReleaseFileView,
     active_workspace_release_file_view,
     reject_release_governed_paths,
 )
-from shared.app_authorization import require_platform_admin
 
 logger = logging.getLogger(__name__)
 
@@ -223,6 +224,25 @@ def validate_file_path(path: str) -> None:
             )
 
 
+def validate_app_source_path(path: str) -> None:
+    """Reject files that are not part of the editable App source surface."""
+    if is_excluded_path(path):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="File path is excluded from workspace operations",
+        )
+    validate_file_path(path)
+
+
+def is_allowed_app_source_path(path: str) -> bool:
+    """Return whether an object-store key may be exposed as App source."""
+    try:
+        validate_app_source_path(path)
+    except HTTPException:
+        return False
+    return True
+
+
 # =============================================================================
 # Helper Functions
 # =============================================================================
@@ -268,6 +288,29 @@ async def get_application_or_404(ctx: Context, app_id: UUID) -> Application:
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Application '{app_id}' not found",
         )
+
+
+async def get_application_for_write_or_404(ctx: Context, app_id: UUID) -> Application:
+    """Get application by UUID, enforcing write scope.
+
+    Read access (including the embed-token binding above) resolves exactly
+    as ``get_application_or_404``. Writing to an application's files
+    requires platform-admin authority, for
+    every application — own-org included. An embed principal has no
+    organization and no bypass flags, so it can never satisfy this rule —
+    embed tokens only ever get read access to app files.
+
+    Raises the identical 404 the read helper uses, so a caller cannot tell
+    "exists but no write access" apart from "does not exist".
+    """
+    app = await get_application_or_404(ctx, app_id)
+    is_bypass = ctx.user.is_platform_admin
+    if is_bypass:
+        return app
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail=f"Application '{app_id}' not found",
+    )
 
 
 class FileMode(str, Enum):
@@ -337,12 +380,15 @@ async def list_app_files(
     # Read source from S3 and compiled from _apps/
     files: list[SimpleFileResponse] = []
     for full_path in sorted(source_paths):
+        if not full_path.startswith(repo_prefix):
+            continue
         # Derive relative path by stripping the repo prefix
         rel_path = full_path[len(repo_prefix):]
-        if not rel_path:
-            continue
-        # Skip folder marker entries
-        if rel_path.endswith("/"):
+        if (
+            not rel_path
+            or rel_path.endswith("/")
+            or not is_allowed_app_source_path(rel_path)
+        ):
             continue
 
         # Source from S3 (_repo/)
@@ -386,11 +432,12 @@ async def read_app_file(
 ) -> SimpleFileResponse:
     """Read a single file by relative path.
 
-    Source content is read from the file_index (_repo/apps/{slug}/).
+    Source content is read from S3 (_repo/apps/{slug}/).
     Compiled content is read from _apps/{app_id}/{mode}/.
     The compiled field is only set when it differs from source.
     """
     app = await get_application_or_404(ctx, app_id)
+    validate_app_source_path(file_path)
     app_storage = AppStorageService()
 
     # Source from S3 (_repo/)
@@ -445,14 +492,14 @@ async def write_app_file(
     S3 _repo/ storage, file_index update, pubsub, and preview sync).
     """
     require_platform_admin(user)
-    app = await get_application_or_404(ctx, app_id)
+    app = await get_application_for_write_or_404(ctx, app_id)
     # Solution-managed app source is read-only on the platform — only deploy
     # may write it. The before_flush backstop can't see this: it writes to S3 +
     # file_index, never dirtying the Application ORM row. (criterion 6)
     await assert_entity_id_not_solution_managed(ctx.db, Application, app_id)
 
     # Validate path conventions
-    validate_file_path(file_path)
+    validate_app_source_path(file_path)
 
     prefix = _server_source_prefix(app)
     full_path = f"{prefix}{file_path}"
@@ -498,7 +545,7 @@ async def delete_app_file(
     file_index cleanup, pubsub, and preview sync).
     """
     require_platform_admin(user)
-    app = await get_application_or_404(ctx, app_id)
+    app = await get_application_for_write_or_404(ctx, app_id)
     # Read-only for solution-managed apps (S3 delete bypasses the ORM backstop).
     await assert_entity_id_not_solution_managed(ctx.db, Application, app_id)
     prefix = _server_source_prefix(app)
@@ -631,6 +678,8 @@ async def get_bundle_manifest(
 
     If no manifest exists yet, triggers a build and returns that one.
     """
+    if mode == FileMode.draft:
+        require_platform_admin(_user)
     app = await get_application_or_404(ctx, app_id)
     app_storage = AppStorageService()
     storage_mode = "preview" if mode == FileMode.draft else "live"
@@ -695,12 +744,13 @@ async def get_bundle_manifest(
         manifest_bytes = None
 
     needs_rebuild = manifest_bytes is None
+    parsed = None
     if manifest_bytes is not None:
         try:
             parsed = _json.loads(manifest_bytes)
         except (ValueError, TypeError):
             parsed = None
-        if parsed is None:
+        if not isinstance(parsed, dict):
             needs_rebuild = True
         else:
             existing_version = parsed.get("schema_version")
@@ -716,6 +766,21 @@ async def get_bundle_manifest(
                     "Publish the application to rebuild the live bundle."
                 ),
             )
+
+        if not ctx.user.is_platform_admin:
+            if not isinstance(parsed, dict):
+                raise HTTPException(status_code=404, detail="Bundle manifest not built yet")
+            m = parsed
+            return {
+                "entry": m.get("entry"),
+                "css": m.get("css"),
+                "base_url": f"/api/applications/{app_id}/bundle-asset",
+                "mode": storage_mode,
+                "dependencies": m.get("dependencies") or (app.dependencies or {}),
+                "migrated": False,
+                "organization_id": str(app.organization_id) if app.organization_id else None,
+                "app_model": app.app_model,
+            }
 
         repo_prefix = app.repo_prefix
         # Serialize migrate+rebuild across concurrent first-viewers so two
@@ -824,6 +889,8 @@ async def get_bundle_asset(
     """
     from fastapi.responses import Response
 
+    if mode == FileMode.draft:
+        require_platform_admin(_user)
     app = await get_application_or_404(ctx, app_id)
     app_storage = AppStorageService()
     storage_mode = "preview" if mode == FileMode.draft else "live"
@@ -953,7 +1020,7 @@ async def put_dependencies(
     Validates every package name and version, enforces the max-dependency limit.
     """
     require_platform_admin(user)
-    app = await get_application_or_404(ctx, app_id)
+    app = await get_application_for_write_or_404(ctx, app_id)
     # Dependencies are solution-owned metadata — read-only for managed apps.
     await assert_entity_id_not_solution_managed(ctx.db, Application, app_id)
 

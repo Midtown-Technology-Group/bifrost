@@ -34,11 +34,11 @@ RUN npm run build \
     && find dist -type d -exec chmod 755 {} + \
     && find dist -type f -exec chmod 644 {} +
 
-# Local/CI verification target: production build plus the same Node checks
-# required by the merge gate.
+# Local/CI verification target: builder already type-checks and bundles.
+# Run the remaining Node checks required by the merge gate once.
 FROM builder AS ci
 
-CMD ["sh", "-c", "npm run tsc && npm run lint && npm test"]
+CMD ["sh", "-c", "npm run lint && npm test"]
 
 # =============================================================================
 # Stage 3: Production with nginx

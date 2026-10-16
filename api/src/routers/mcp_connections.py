@@ -31,6 +31,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import delete, select
 from sqlalchemy.orm import joinedload
 
+from shared.scope_resolver import has_scope_bypass
 from src.config import get_settings
 from src.core.auth import Context
 from src.core.log_safety import log_safe
@@ -39,6 +40,7 @@ from src.models.contracts.external_mcp import (
     MCPConnectionPublic,
     MCPConnectionSummary,
     MCPConnectionToolPublic,
+    StreamableHttpUrl,
     UserMCPCredentialPublic,
 )
 from src.models.orm.external_mcp import MCPConnection, UserMCPCredential
@@ -84,7 +86,9 @@ class MCPConnectionCreateRequest(BaseModel):
     organization_id: UUID = Field(...)
     client_id: str = Field(..., min_length=1, max_length=512)
     client_secret: str = Field(..., min_length=1)
-    server_url_override: str | None = Field(default=None, max_length=2048)
+    server_url_override: StreamableHttpUrl | None = Field(
+        default=None, max_length=2048
+    )
     available_in_chat: bool = Field(default=False)
     available_to_autonomous: bool = Field(default=False)
 
@@ -94,7 +98,9 @@ class MCPConnectionUpdateRequest(BaseModel):
 
     client_id: str | None = Field(default=None, min_length=1, max_length=512)
     client_secret: str | None = Field(default=None, min_length=1)
-    server_url_override: str | None = Field(default=None, max_length=2048)
+    server_url_override: StreamableHttpUrl | None = Field(
+        default=None, max_length=2048
+    )
     available_in_chat: bool | None = Field(default=None)
     available_to_autonomous: bool | None = Field(default=None)
     service_oauth_token_id: UUID | None = Field(default=None)
@@ -193,18 +199,21 @@ async def _get_connection_or_404(
 def _enforce_can_write_org(ctx: Context, organization_id: UUID) -> None:
     """Org write scope check.
 
-    For v1, write access requires either platform admin OR membership in
-    the target org. We trust the frontend's admin-gating to keep this
-    permissive — Phase 5 will tighten with a role check if the role
-    lattice gains an explicit ``can_manage_mcp`` permission.
+    Every org-level MCP connection mutation (create/update/delete, tool
+    toggle, refresh tools, service-token connect) requires scope bypass
+    (platform admin or provider-org member) — own-org membership alone is
+    not sufficient. Per-user credential connect/disconnect under
+    ``/api/me/...`` is unaffected by this check.
     """
-    if ctx.user.is_platform_admin:
-        return
-    if ctx.org_id == organization_id:
+    del organization_id  # write scope no longer depends on the target org
+    if has_scope_bypass(
+        is_platform_admin=ctx.user.is_platform_admin,
+        is_provider_org=ctx.user.is_provider_org,
+    ):
         return
     raise HTTPException(
         status_code=status.HTTP_403_FORBIDDEN,
-        detail="Cannot manage MCP connections outside your organization",
+        detail="Only a platform admin or provider-org member can manage MCP connections",
     )
 
 

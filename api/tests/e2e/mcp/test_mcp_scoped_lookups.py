@@ -190,7 +190,7 @@ async def global_form(db_session: AsyncSession) -> AsyncGenerator[Form, None]:
         name="shared_form",
         description="A global form accessible to all orgs",
         workflow_id=None,
-        access_level="role_based",
+        access_level="authenticated",  # cascade-priority test, not access-level gating
         organization_id=None,  # Global
         is_active=True,
         created_by="test@example.com",
@@ -218,7 +218,7 @@ async def org_form(
         name="shared_form",  # Same name as global_form
         description="An org-specific form",
         workflow_id=None,
-        access_level="role_based",
+        access_level="authenticated",  # cascade-priority test, not access-level gating
         organization_id=test_org_id,  # Org-scoped
         is_active=True,
         created_by="test@example.com",
@@ -244,7 +244,7 @@ async def global_only_form(db_session: AsyncSession) -> AsyncGenerator[Form, Non
         name="unique_global_form",
         description="A global form with unique name",
         workflow_id=None,
-        access_level="role_based",
+        access_level="authenticated",  # cascade-priority test, not access-level gating
         organization_id=None,  # Global
         is_active=True,
         created_by="test@example.com",
