@@ -415,6 +415,64 @@ class TestWorkflowRepository:
         assert get_by_type.call_args_list[2].args == ("workflow",)
         assert get_by_type.call_args_list[2].kwargs == {"active_only": True}
 
+    @pytest.mark.parametrize(
+        ("active_only", "is_active"),
+        [(True, True), (False, False)],
+    )
+    async def test_get_by_type_applies_access_gate_for_each_activity_mode(
+        self,
+        mock_session,
+        active_only: bool,
+        is_active: bool,
+    ):
+        """Active and inactive catalogs both exclude unassigned workflows."""
+        assigned = MagicMock()
+        assigned.name = "assigned"
+        assigned.is_active = is_active
+        unassigned = MagicMock()
+        unassigned.name = "unassigned"
+        unassigned.is_active = is_active
+        query_result = MagicMock()
+        query_result.scalars.return_value.all.return_value = [assigned, unassigned]
+        mock_session.execute.return_value = query_result
+        repository = WorkflowRepository(
+            mock_session,
+            org_id=uuid4(),
+            user_id=uuid4(),
+            is_superuser=False,
+        )
+
+        with patch.object(
+            repository,
+            "_can_access_entity",
+            new=AsyncMock(side_effect=[True, False]),
+        ) as can_access:
+            result = await repository.get_by_type(
+                "tool",
+                active_only=active_only,
+            )
+
+        assert result == [assigned]
+        assert can_access.await_args_list == [call(assigned), call(unassigned)]
+
+    async def test_get_by_type_superuser_bypasses_per_row_role_checks(
+        self, repository, mock_session
+    ):
+        workflows = [MagicMock(name="first"), MagicMock(name="second")]
+        query_result = MagicMock()
+        query_result.scalars.return_value.all.return_value = workflows
+        mock_session.execute.return_value = query_result
+
+        with patch.object(
+            repository,
+            "_can_access_entity",
+            new_callable=AsyncMock,
+        ) as can_access:
+            result = await repository.get_by_type("tool", active_only=False)
+
+        assert result == workflows
+        can_access.assert_not_awaited()
+
     async def test_tool_listing_filters_inactive_rows_by_canonical_access_gate(
         self, mock_session
     ):
