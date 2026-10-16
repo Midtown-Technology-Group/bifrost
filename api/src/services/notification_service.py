@@ -41,6 +41,32 @@ ACTIVE_NOTIFICATION_TTL = 3600  # 1 hour for active (pending/running)
 COMPLETED_NOTIFICATION_TTL = 300  # 5 minutes after done
 
 
+# One existing Redis key: safe for clustered Redis and atomic even if a timed-out
+# writer reaches the server after a resumed attempt's newer projection. The
+# private revision field is ignored by the public DTO; generic updates retain it.
+PLATFORM_JOB_NOTIFICATION_UPDATE = """
+local raw = redis.call('GET', KEYS[1])
+if not raw then return false end
+local current = cjson.decode(raw)
+if type(current.metadata) ~= 'table' or current.metadata.job_id ~= ARGV[1] then
+    return false
+end
+local revision = tonumber(ARGV[2])
+local previous = current._platform_job_revision
+if previous ~= nil and (type(previous) ~= 'number' or previous > revision) then
+    return false
+end
+-- Reconcile a delivery interrupted after SETEX without rewriting this revision.
+-- Return persisted state, never the caller's potentially different patch.
+if previous == revision then return raw end
+-- Python preserves JSON types and precision. Reject its snapshot if any writer
+-- changed the value; the caller will read and merge again.
+if raw ~= ARGV[3] then return 0 end
+redis.call('SETEX', KEYS[1], ARGV[5], ARGV[4])
+return ARGV[4]
+"""
+
+
 class NotificationService:
     """
     Service for managing ephemeral notifications.
@@ -198,9 +224,61 @@ class NotificationService:
         # Save updated notification
         await redis_client.setex(key, ttl, json.dumps(notification_dict))
 
-        # Parse and publish
-        notification = NotificationPublic.model_validate(notification_dict)
+        return await self._publish_updated_notification(
+            NotificationPublic.model_validate(notification_dict)
+        )
 
+    async def update_platform_job_notification(
+        self,
+        notification_id: str,
+        update: NotificationUpdate,
+        *,
+        job_id: str,
+        revision: int,
+    ) -> NotificationPublic | None:
+        """Reject stale state; redeliver the stored current revision after interrupted delivery."""
+        if type(revision) is not int or revision < 0:
+            raise ValueError("Invalid platform job projection revision")
+        client = await self._get_redis()
+        key = f"{NOTIFICATION_KEY_PREFIX}{notification_id}"
+        patch = json.loads(update.model_dump_json(exclude_unset=True))
+        for _ in range(8):
+            observed = await client.get(key)
+            if observed is None:
+                return None
+            notification = json.loads(observed)
+            notification.update(patch)
+            notification["_platform_job_revision"] = revision
+            notification["updated_at"] = datetime.now(timezone.utc).isoformat()
+            is_complete = notification["status"] in (
+                NotificationStatus.COMPLETED.value,
+                NotificationStatus.FAILED.value,
+                NotificationStatus.CANCELLED.value,
+            )
+            ttl = COMPLETED_NOTIFICATION_TTL if is_complete else ACTIVE_NOTIFICATION_TTL
+            raw = await cast(Awaitable[str | int | None], client.eval(
+                PLATFORM_JOB_NOTIFICATION_UPDATE,
+                1,
+                key,
+                job_id,
+                str(revision),
+                observed,
+                json.dumps(notification),
+                str(ttl),
+            ))
+            if isinstance(raw, int):
+                continue
+            if not raw:
+                return None
+            return await self._publish_updated_notification(
+                NotificationPublic.model_validate_json(raw)
+            )
+        raise RuntimeError("Platform job notification changed during every update attempt")
+
+    async def _publish_updated_notification(
+        self, notification: NotificationPublic,
+    ) -> NotificationPublic:
+        notification_id = notification.id
         for_admins = await self._is_admin_notification(notification_id)
         logger.info(
             f"Publishing notification update: {notification_id} "

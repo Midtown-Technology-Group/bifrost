@@ -141,6 +141,69 @@ describe("useWebMcpTool", () => {
 		const signal = registerTool.mock.calls[0][1].signal as AbortSignal;
 		view.unmount();
 		expect(signal.aborted).toBe(true);
+		expect(() =>
+			registeredTool.execute(
+				{},
+				{ signal: new AbortController().signal },
+			),
+		).toThrow("WebMCP tool is no longer available");
+		expect(second).toHaveBeenCalledOnce();
+	});
+
+	it("revokes retained wrappers when the page registration is replaced", async () => {
+		const registerTool = installModelContext();
+		const first = vi.fn().mockResolvedValue("first");
+		const second = vi.fn().mockResolvedValue("second");
+
+		function Subject({
+			name,
+			execute,
+		}: {
+			name: string;
+			execute: WebMcpTool["execute"];
+		}) {
+			const tool = useMemo<WebMcpTool>(
+				() => ({
+					name,
+					description: "Act on this page.",
+					execute,
+				}),
+				[name, execute],
+			);
+			useWebMcpTool(tool);
+			return null;
+		}
+
+		const view = render(<Subject name="first-page" execute={first} />);
+		const retainedTool = registerTool.mock.calls[0][0] as WebMcpTool;
+
+		view.rerender(<Subject name="second-page" execute={second} />);
+		expect(registerTool).toHaveBeenCalledTimes(2);
+		expect(() =>
+			retainedTool.execute(
+				{},
+				{ signal: new AbortController().signal },
+			),
+		).toThrow("WebMCP tool is no longer available");
+		expect(first).not.toHaveBeenCalled();
+
+		const replacementTool = registerTool.mock.calls[1][0] as WebMcpTool;
+		await act(() =>
+			replacementTool.execute(
+				{},
+				{ signal: new AbortController().signal },
+			),
+		);
+		expect(second).toHaveBeenCalledOnce();
+
+		view.unmount();
+		expect(() =>
+			replacementTool.execute(
+				{},
+				{ signal: new AbortController().signal },
+			),
+		).toThrow("WebMCP tool is no longer available");
+		expect(second).toHaveBeenCalledOnce();
 	});
 
 	it("reports Permissions Policy and schema registration failures", async () => {

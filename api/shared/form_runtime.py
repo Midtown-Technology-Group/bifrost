@@ -7,6 +7,7 @@ import json
 import re
 import secrets
 from datetime import date, datetime, timezone
+from collections.abc import AsyncIterator
 from typing import Any, Awaitable, cast
 from urllib.parse import urlsplit
 
@@ -15,6 +16,34 @@ from email_validator import EmailNotValidError, validate_email
 DEFAULT_FORM_CONFIRMATION_MARKDOWN = "## Form submitted\n\nThank you!"
 MAX_FORM_CONFIRMATION_MARKDOWN_LENGTH = 20_000
 FORM_STARTUP_TTL_SECONDS = 30 * 60
+MAX_EMBED_UPLOAD_BYTES = 25 * 1024 * 1024
+
+
+class FormUploadSizeError(ValueError):
+    """Raised when an upload body does not match its signed byte count."""
+
+    def __init__(self, *, expected: int, actual: int):
+        super().__init__(f"Expected {expected} upload bytes, received {actual}")
+        self.expected = expected
+        self.actual = actual
+
+
+async def enforce_form_upload_size(
+    chunks: AsyncIterator[bytes],
+    *,
+    expected: int,
+) -> AsyncIterator[bytes]:
+    """Yield an upload only while its exact signed byte count is respected."""
+    actual = 0
+    async for chunk in chunks:
+        if not chunk:
+            continue
+        actual += len(chunk)
+        if actual > expected:
+            raise FormUploadSizeError(expected=expected, actual=actual)
+        yield chunk
+    if actual != expected:
+        raise FormUploadSizeError(expected=expected, actual=actual)
 
 
 class FormRuntimeValidationError(ValueError):
@@ -262,10 +291,34 @@ async def register_embed_upload(
 ) -> None:
     """Record one server-minted attachment reference for this form session."""
 
+    if not user.jti:
+        raise ValueError("Embed session is missing a session identifier")
+
+    await register_embed_upload_for_session(
+        session_jti=user.jti,
+        session_exp=user.token_exp,
+        path=path,
+        field_name=field_name,
+        content_type=content_type,
+        file_size=file_size,
+    )
+
+
+async def register_embed_upload_for_session(
+    *,
+    session_jti: str,
+    session_exp: int | None,
+    path: str,
+    field_name: str,
+    content_type: str,
+    file_size: int,
+) -> None:
+    """Record a byte-verified attachment for its originating embed session."""
+
     from src.core.cache.redis_client import get_redis
 
     now = int(datetime.now(timezone.utc).timestamp())
-    ttl = max(1, (user.token_exp or now + FORM_STARTUP_TTL_SECONDS) - now)
+    ttl = max(1, (session_exp or now + FORM_STARTUP_TTL_SECONDS) - now)
     record = json.dumps(
         {
             "field_name": field_name,
@@ -274,9 +327,36 @@ async def register_embed_upload(
         }
     )
     async with get_redis() as redis:
-        key = _upload_registry_key(user)
+        key = f"bifrost:form:uploads:{session_jti}"
         await cast(Awaitable[int], redis.hset(key, path, record))
         await redis.expire(key, ttl)
+
+
+def _upload_capability_key(jti: str) -> str:
+    return f"bifrost:form:upload-capability:{jti}"
+
+
+async def reserve_form_upload_capability(jti: str, expires_at: int) -> bool:
+    """Atomically reserve an upload capability so it cannot be replayed."""
+    from src.core.cache.redis_client import get_redis
+
+    now = int(datetime.now(timezone.utc).timestamp())
+    async with get_redis() as redis:
+        reserved = await redis.set(
+            _upload_capability_key(jti),
+            "reserved",
+            ex=max(1, expires_at - now),
+            nx=True,
+        )
+    return bool(reserved)
+
+
+async def release_form_upload_capability(jti: str) -> None:
+    """Release a failed upload reservation so the signed request can retry."""
+    from src.core.cache.redis_client import get_redis
+
+    async with get_redis() as redis:
+        await redis.delete(_upload_capability_key(jti))
 
 
 async def validate_embed_upload_references(

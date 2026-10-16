@@ -88,7 +88,11 @@ describe("DataTableRow row action guard", () => {
 		fireEvent.click(screen.getByText("Plain cell"), { ctrlKey: true });
 
 		expect(open).toHaveBeenCalledTimes(1);
-		expect(open).toHaveBeenCalledWith("/records/123", "_blank");
+		expect(open).toHaveBeenCalledWith(
+			"/records/123",
+			"_blank",
+			"noopener,noreferrer",
+		);
 		expect(onClick).not.toHaveBeenCalled();
 	});
 
@@ -104,7 +108,11 @@ describe("DataTableRow row action guard", () => {
 		fireEvent.click(row, { button: 1 });
 
 		expect(open).toHaveBeenCalledTimes(1);
-		expect(open).toHaveBeenCalledWith("/records/123", "_blank");
+		expect(open).toHaveBeenCalledWith(
+			"/records/123",
+			"_blank",
+			"noopener,noreferrer",
+		);
 		expect(onMouseUp).not.toHaveBeenCalled();
 		expect(onClick).not.toHaveBeenCalled();
 	});
@@ -120,6 +128,22 @@ describe("DataTableRow row action guard", () => {
 
 		expect(open).not.toHaveBeenCalled();
 		expect(onMouseUp).toHaveBeenCalledTimes(1);
+	});
+
+	it.each([
+		"javascript:alert(document.domain)",
+		"data:text/html,unsafe",
+		"https://attacker.example/phish",
+		"//attacker.example/phish",
+	])("refuses unsafe new-tab href %s", (href) => {
+		const open = vi.spyOn(window, "open").mockImplementation(() => null);
+		const { onClick, row } = renderClickableRow({ href });
+
+		fireEvent.click(screen.getByText("Plain cell"), { ctrlKey: true });
+		fireEvent.mouseUp(row, { button: 1 });
+
+		expect(open).not.toHaveBeenCalled();
+		expect(onClick).not.toHaveBeenCalled();
 	});
 
 	it("still calls caller mouseup for ordinary mouseup events", () => {
