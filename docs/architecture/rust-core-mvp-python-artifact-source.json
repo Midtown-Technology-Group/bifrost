@@ -1,0 +1,51 @@
+{
+  "kind": "static-source-inspection",
+  "ref": "e42999395231ebc536711e5015422edfb75613a7",
+  "sources": [
+    {
+      "path": "contracts/runtime/v1/language-neutral/artifact.schema.json",
+      "sha256": "5693ef0d4a82e7f53a6290b59b0726743bef58626b714f7206a71b51e20bb5bf"
+    },
+    {
+      "path": "contracts/runtime/v1/language-neutral/README.md",
+      "sha256": "766c6a916a955dbf412cbb2568847e53c22c0376a1a71f7a5ab440d2fd5c910a"
+    },
+    {
+      "path": "api/src/services/solutions/deployment_runtime.py",
+      "sha256": "3b1dd1102eb6e98ecd5758faf5d4f1c556e5a9c4893c724cefa6635a5cceb6a8"
+    },
+    {
+      "path": "api/src/services/execution/process_pool.py",
+      "sha256": "1612018885c4a8dab936d8c2508b7fec5b9b80b263bbc0de3f4e397faaa07f2b"
+    },
+    {
+      "path": "api/src/services/execution/requirements_setup_helper.py",
+      "sha256": "2c42df1c3e5535f5728bbb53845c6d467b2b656f0a440b34e8ec6085ff1b64e7"
+    },
+    {
+      "path": "api/src/services/execution/requirements_setup_result.py",
+      "sha256": "717be1dff0018073e2b372097aa9d0f352a26dc21e4d6c6d60a1b7c035d24c7a"
+    },
+    {
+      "path": "api/src/services/execution/simple_worker.py",
+      "sha256": "db604350755c232f43949ea6c630fdd84f97fb4507aeb30ff1b63e40cdd0e5fa"
+    },
+    {
+      "path": "api/src/services/execution/template_process.py",
+      "sha256": "9db6df36cac2becae050fd8bcf37a60b23b976fc60ba13723ca47e8b6d7f5991"
+    },
+    {
+      "path": "api/src/services/execution/virtual_import.py",
+      "sha256": "cb92436b8eee68fa4ddbb17310aaa2c0c16d448f5d729b90b7b30fc437364493"
+    },
+    {
+      "path": "api/Dockerfile",
+      "sha256": "d0e783bbe1ea6820ea25c14765f82bc8ebbe535274d37011a4e345dae9e0e166"
+    },
+    {
+      "path": "api/pyproject.toml",
+      "sha256": "1374dbcc1ed9728904812857170221bbf92716b75d432d6f2af2476736ef3264"
+    }
+  ],
+  "runtime_execution_performed": false
+}

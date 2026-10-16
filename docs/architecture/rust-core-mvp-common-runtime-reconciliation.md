@@ -252,6 +252,9 @@ experiments. These are peer-reported results, not an independent runtime rerun.
 now specifies the migration sequence, every grant binding disposition, native
 live-link versus historical-identity transformation, close-before-first-grant
 handling, issuer/renewal ownership and proposed combined transaction order.
+The [Python artifact admission input](rust-core-mvp-python-artifact-admission.md)
+reuses the interpreted descriptor already proposed in main and distinguishes
+source closure from the currently mutable installed dependency environment.
 Its [source inventory](rust-core-mvp-common-schema-source-inventory.json) retains
 pinned column/constraint expressions and migration identities. It explicitly
 identifies the native-only artifact discriminator as incompatible with copying

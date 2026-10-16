@@ -192,8 +192,11 @@ source into a native executable descriptor.
 The common header must bind runtime/profile, source manifest/resolution,
 artifact identity, protocol and build/materialization evidence. Runtime-specific
 validation stays a closed discriminator: preserve native-executable/v1 for Go;
-derive a separate Python descriptor from actual interpreter/dependency/import
-and accepted-deployment behavior before admitting Python. Rust consumes reviewed
+reuse the existing proposed interpreted-runtime/v1 branch and derive its real
+interpreter/dependency/import evidence before admitting Python. See the
+[Python admission input](rust-core-mvp-python-artifact-admission.md); it also
+identifies the native-only build-evidence JSON check that cannot be required
+of the closed interpreted object. Rust consumes reviewed
 registration, never imports Python to discover metadata. Neither this packet
 nor Go bounded acceptance freezes a new Python artifact schema. First extraction
 may retain Go-only artifact admission while the reviewed Python descriptor is
