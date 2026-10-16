@@ -1,6 +1,7 @@
 """Anthropic prompt-cache settings and adaptive endpoint behavior."""
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
@@ -126,7 +127,10 @@ def test_ambiguous_or_non_validation_errors_are_not_cache_rejections(error):
 
 
 @pytest.mark.asyncio
-async def test_persistence_is_fenced_to_the_resolved_profile_and_connection_revision():
+@pytest.mark.parametrize("revision_matches", [True, False])
+async def test_persistence_locks_profile_before_fencing_connection_revision(
+    revision_matches,
+):
     profile_id = uuid4()
     connection_id = uuid4()
     connection_updated_at = datetime.now(UTC)
@@ -140,8 +144,9 @@ async def test_persistence_is_fenced_to_the_resolved_profile_and_connection_revi
     )
 
     class Session:
-        statement = None
-        committed = False
+        def __init__(self):
+            self.statements = []
+            self.committed = False
 
         async def __aenter__(self):
             return self
@@ -150,11 +155,25 @@ async def test_persistence_is_fenced_to_the_resolved_profile_and_connection_revi
             return None
 
         async def execute(self, statement):
-            self.statement = statement
+            self.statements.append(statement)
+            return SimpleNamespace(one_or_none=lambda: profile)
+
+        async def scalar(self, statement):
+            self.statements.append(statement)
+            return (
+                connection_updated_at
+                if revision_matches
+                else connection_updated_at + timedelta(seconds=1)
+            )
 
         async def commit(self):
             self.committed = True
 
+    profile = SimpleNamespace(
+        id=profile_id,
+        connection_id=connection_id,
+        anthropic_prompt_cache_supported=None,
+    )
     session = Session()
     with patch(
         "src.core.database.get_session_factory",
@@ -162,18 +181,24 @@ async def test_persistence_is_fenced_to_the_resolved_profile_and_connection_revi
     ):
         await persist_prompt_cache_support(config, False)
 
-    assert session.statement is not None
-    compiled = session.statement.compile()
-    sql = " ".join(str(compiled).split())
-    params = compiled.params
+    assert len(session.statements) == (3 if revision_matches else 2)
+    profile_query = session.statements[0].compile()
+    sql = " ".join(str(profile_query).split())
+    params = profile_query.params
     assert "ai_model_profiles.model =" in sql
     assert "ai_model_profiles.connection_id =" in sql
-    assert "EXISTS (SELECT 1 FROM ai_provider_connections" in sql
-    assert "ai_provider_connections.updated_at =" in sql
+    assert "FOR UPDATE" in sql
+    assert "NOWAIT" in sql
     assert profile_id in params.values()
     assert connection_id in params.values()
-    assert connection_updated_at in params.values()
-    assert session.committed is True
+    revision_query = " ".join(str(session.statements[1].compile()).split())
+    assert "ai_provider_connections.updated_at" in revision_query
+    assert "ai_provider_connections.id =" in revision_query
+    if revision_matches:
+        update_query = session.statements[2].compile()
+        assert "UPDATE ai_model_profiles SET" in " ".join(str(update_query).split())
+        assert False in update_query.params.values()
+    assert session.committed is revision_matches
 
 
 @pytest.mark.asyncio

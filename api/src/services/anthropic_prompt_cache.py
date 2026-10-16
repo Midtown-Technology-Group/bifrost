@@ -7,7 +7,8 @@ from datetime import UTC, datetime
 from typing import TypeVar
 
 from pydantic_ai.exceptions import ModelHTTPError
-from sqlalchemy import update
+from sqlalchemy import select, update
+from sqlalchemy.exc import DBAPIError
 
 from src.services.llm.base import LLMConfig
 
@@ -55,29 +56,63 @@ async def persist_prompt_cache_support(config: LLMConfig, supported: bool) -> No
         return
     try:
         from src.core.database import get_session_factory
-        from src.models.orm.ai_models import AIModelProfile
+        from src.models.orm.ai_models import AIModelProfile, AIProviderConnection
 
         session_factory = get_session_factory()
         async with session_factory() as session:
-            statement = update(AIModelProfile).where(
-                AIModelProfile.id == config.model_profile_id,
-                AIModelProfile.model == config.model,
-                AIModelProfile.connection_id == config.provider_connection_id,
-                AIModelProfile.connection.has(
-                    updated_at=config.provider_connection_updated_at
-                ),
+            profile = (
+                await session.execute(
+                    select(
+                        AIModelProfile.id,
+                        AIModelProfile.connection_id,
+                        AIModelProfile.anthropic_prompt_cache_supported,
+                    )
+                    .where(
+                        AIModelProfile.id == config.model_profile_id,
+                        AIModelProfile.model == config.model,
+                        AIModelProfile.connection_id
+                        == config.provider_connection_id,
+                    )
+                    .with_for_update(of=AIModelProfile, nowait=True)
+                )
+                .one_or_none()
             )
+            if profile is None:
+                return
+
+            current_connection_revision = await session.scalar(
+                select(AIProviderConnection.updated_at).where(
+                    AIProviderConnection.id == profile.connection_id
+                )
+            )
+            if current_connection_revision != config.provider_connection_updated_at:
+                return
+
             if supported:
                 # An explicit rejection wins over a concurrent successful probe.
-                statement = statement.where(
-                    AIModelProfile.anthropic_prompt_cache_supported.is_(None)
+                if profile.anthropic_prompt_cache_supported is not None:
+                    return
+            await session.execute(
+                update(AIModelProfile)
+                .where(AIModelProfile.id == profile.id)
+                .values(
+                    anthropic_prompt_cache_supported=supported,
+                    updated_at=datetime.now(UTC),
                 )
-            statement = statement.values(
-                anthropic_prompt_cache_supported=supported,
-                updated_at=datetime.now(UTC),
             )
-            await session.execute(statement)
             await session.commit()
+    except DBAPIError as exc:
+        if getattr(exc.orig, "sqlstate", None) == "55P03":
+            logger.debug(
+                "Skipped contended Anthropic prompt-cache capability for model profile %s",
+                config.model_profile_id,
+            )
+            return
+        logger.warning(
+            "Could not persist Anthropic prompt-cache capability for model profile %s",
+            config.model_profile_id,
+            exc_info=True,
+        )
     except Exception:
         logger.warning(
             "Could not persist Anthropic prompt-cache capability for model profile %s",

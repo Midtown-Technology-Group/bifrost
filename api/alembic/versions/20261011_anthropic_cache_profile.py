@@ -1,7 +1,7 @@
 """Scope Anthropic prompt-cache capability to model profiles.
 
 Revision ID: 20261011_anthropic_cache_profile
-Revises: 20261006_mtg_upstream_sdk
+Revises: 20261012_work_delivery_started
 """
 
 from collections.abc import Sequence
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "20261011_anthropic_cache_profile"
-down_revision: str | None = "20261006_mtg_upstream_sdk"
+down_revision: str | None = "20261012_work_delivery_started"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
