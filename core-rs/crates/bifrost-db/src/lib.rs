@@ -1,5 +1,7 @@
 //! PostgreSQL primitives. Alembic owns schema creation and migration history.
 
+pub mod common_session;
+
 #[cfg(feature = "workflow-sql-parity")]
 pub mod workflow_numeric;
 
