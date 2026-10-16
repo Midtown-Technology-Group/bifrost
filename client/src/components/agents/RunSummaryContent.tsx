@@ -19,6 +19,7 @@ import { MarkdownContent } from "@/components/common/MarkdownContent";
 import type { components } from "@/lib/v1";
 
 import { SummaryPlaceholder } from "./SummaryPlaceholder";
+import { formatMetadataValue } from "./metadata";
 
 type AgentRun = components["schemas"]["AgentRunResponse"];
 
@@ -90,7 +91,9 @@ export function RunSummaryContent({
 	className,
 }: RunSummaryContentProps) {
 	const query = highlight?.trim().toLowerCase() ?? "";
-	const metadataEntries = Object.entries(run.metadata ?? {});
+	const metadataEntries = Object.entries(run.metadata ?? {}).map(
+		([key, value]) => [key, formatMetadataValue(value)] as const,
+	);
 	const rankedMetadata = query
 		? [...metadataEntries].sort((a, b) => {
 				const aHit =

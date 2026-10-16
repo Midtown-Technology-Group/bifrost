@@ -102,7 +102,7 @@ class TestRegenerateSummary:
                 select(AgentRun).where(AgentRun.id == failed_summary_run.id)
             )
         ).scalar_one()
-        assert refreshed.summary_status in {"pending", "generating", "done", "failed"}
+        assert refreshed.summary_status in {"pending", "generating", "completed", "failed"}
         assert refreshed.summary_error != "Previously failed for testing"
 
     async def test_non_admin_cannot_regenerate(

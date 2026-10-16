@@ -15,38 +15,42 @@ from uuid import uuid4
 
 import pytest
 from sqlalchemy.dialects import postgresql
-
-from src.core.metrics import _parse_org_uuid, _upsert_daily_metrics, update_daily_metrics
+from src.core.metrics import (
+    _parse_org_uuid,
+    _upsert_daily_metrics,
+    update_daily_metrics,
+)
 from src.models.enums import ExecutionStatus
 from src.services.execution.simple_worker import _capture_failure_metrics
 
 
-def test_capture_failure_metrics_reports_pss_growth(
+def test_capture_failure_metrics_reports_process_peak(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(
-        "src.services.execution.simple_worker._get_pss_bytes", lambda: 200 * 1024
-    )
+    monkeypatch.setattr("src.services.execution.simple_worker.sys.platform", "linux")
     monkeypatch.setattr(
         "src.services.execution.simple_worker.resource.getrusage",
         lambda _: SimpleNamespace(ru_maxrss=321, ru_utime=1.0, ru_stime=0.5),
     )
-    metrics = _capture_failure_metrics(100 * 1024)
+    metrics = _capture_failure_metrics()
 
-    assert metrics["peak_memory_bytes"] == 100 * 1024
+    assert metrics["peak_memory_bytes"] == 321 * 1024
     assert metrics["peak_process_rss_bytes"] == 321 * 1024
     assert metrics["cpu_total_seconds"] >= 0.0
 
 
-def test_capture_failure_metrics_uses_none_for_unknown_memory(
+def test_capture_failure_metrics_uses_macos_byte_units(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setattr("src.services.execution.simple_worker.sys.platform", "darwin")
     monkeypatch.setattr(
-        "src.services.execution.simple_worker._get_pss_bytes", lambda: 0
+        "src.services.execution.simple_worker.resource.getrusage",
+        lambda _: SimpleNamespace(ru_maxrss=321, ru_utime=1.0, ru_stime=0.5),
     )
-    metrics = _capture_failure_metrics(100 * 1024)
+    metrics = _capture_failure_metrics()
 
-    assert metrics["peak_memory_bytes"] is None
+    assert metrics["peak_memory_bytes"] == 321
+    assert metrics["peak_process_rss_bytes"] == 321
 
 
 def test_parse_org_uuid_accepts_bare_and_prefixed_forms() -> None:

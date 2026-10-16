@@ -225,6 +225,32 @@ async def test_history_orders_by_consistent_execution_timeline():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("start", "end"),
+    [
+        ("2026-07-05T10:00:00+02:00", "2026-07-05T08:00:00-02:00"),
+        ("2026-07-05T08:00:00Z", "2026-07-05T10:00:00Z"),
+        ("2026-07-05T08:00:00", "2026-07-05T10:00:00"),
+    ],
+)
+async def test_history_date_bounds_bind_naive_utc_instants(start, end):
+    db = SimpleNamespace(execute=AsyncMock(return_value=_DbResult(rows=[])))
+    repo = executions.ExecutionRepository(db)
+
+    await repo.list_executions(
+        user=SimpleNamespace(is_superuser=True, user_id=uuid4()),
+        org_id=None,
+        start_date=start,
+        end_date=end,
+        limit=25,
+    )
+
+    params = db.execute.await_args.args[0].compile().params
+    dates = {value for value in params.values() if isinstance(value, datetime)}
+    assert dates == {datetime(2026, 7, 5, 8), datetime(2026, 7, 5, 10)}
+
+
+@pytest.mark.asyncio
 async def test_list_executions_maps_invalid_scope_to_422():
     with patch.object(
         executions,

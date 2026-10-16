@@ -419,6 +419,8 @@ services:
       - ./api/tests:/app/tests:ro
       - ./docs/architecture/execution-operations.md:/app/docs/architecture/execution-operations.md:ro
       - ./scripts:/repo/scripts:ro
+      - ./.agents:/repo/.agents:ro
+      - ./.claude:/repo/.claude:ro
       - ./api/alembic:/app/alembic:ro
       - ./api/alembic.ini:/app/alembic.ini:ro
       - ./api/.coveragerc:/app/.coveragerc:ro

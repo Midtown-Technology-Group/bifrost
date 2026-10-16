@@ -165,10 +165,9 @@ def test_install_requirements_falls_back_and_records_per_package_failures(monkey
 
 
 @pytest.mark.asyncio
-async def test_execute_async_success_shapes_engine_result_and_pss_delta(monkeypatch):
+async def test_execute_async_success_preserves_engine_peak_memory(monkeypatch):
     context = {"solution_id": "solution-1", "solution_global_repo_access": True}
     calls: list[tuple[str, object]] = []
-    pss_values = iter([1000, 2500])
 
     monkeypatch.setattr(
         "src.core.module_cache_sync.set_solution_context",
@@ -186,7 +185,6 @@ async def test_execute_async_success_shapes_engine_result_and_pss_delta(monkeypa
         )
 
     monkeypatch.setattr(simple_worker, "_clear_workspace_modules", clear_modules)
-    monkeypatch.setattr(simple_worker, "_get_pss_bytes", lambda: next(pss_values))
 
     async def fake_run_execution(_execution_id, _context):
         return {
@@ -213,7 +211,7 @@ async def test_execute_async_success_shapes_engine_result_and_pss_delta(monkeypa
     assert result["success"] is True
     assert result["status"] == "Success"
     assert result["result"] == {"ok": True}
-    assert result["metrics"]["peak_memory_bytes"] == 1500
+    assert result["metrics"]["peak_memory_bytes"] == 999
     assert result["metrics"]["workspace_modules_cleared"] == 2
     assert result["metrics"]["workspace_generation_mismatch"] is True
     assert result["execution_context"]["workspace_generation"] == "generation-1"
@@ -234,7 +232,6 @@ async def test_execute_async_engine_exception_shapes_failure(monkeypatch):
             generation_mismatch=False,
         ),
     )
-    monkeypatch.setattr(simple_worker, "_get_pss_bytes", lambda: 0)
 
     async def fake_run_execution(_execution_id, _context):
         raise RuntimeError("engine boom")
@@ -268,6 +265,23 @@ def test_capture_resource_metrics_converts_linux_ru_maxrss(monkeypatch):
         "cpu_user_seconds": 1.2346,
         "cpu_system_seconds": 0.5,
         "cpu_total_seconds": 1.7346,
+    }
+
+
+def test_failure_metrics_report_process_high_water_rss(monkeypatch):
+    monkeypatch.setattr(simple_worker.sys, "platform", "linux")
+    monkeypatch.setattr(
+        simple_worker.resource,
+        "getrusage",
+        lambda _who: SimpleNamespace(ru_maxrss=16, ru_utime=2.0, ru_stime=0.25),
+    )
+
+    assert simple_worker._capture_failure_metrics() == {
+        "peak_memory_bytes": 16384,
+        "peak_process_rss_bytes": 16384,
+        "cpu_user_seconds": 2.0,
+        "cpu_system_seconds": 0.25,
+        "cpu_total_seconds": 2.25,
     }
 
 

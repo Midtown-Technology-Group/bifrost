@@ -287,6 +287,7 @@ class WorkerMetricPoint(BaseModel):
     """A single time-series data point for the memory chart."""
 
     group: str = Field(..., description="Formatted time bucket label")
+    bucket_start: datetime = Field(..., description="Exact UTC bucket start")
     worker_id: str = Field(..., description="Container/pool identifier")
     memory_current: int = Field(
         ...,

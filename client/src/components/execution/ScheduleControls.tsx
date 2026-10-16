@@ -34,6 +34,25 @@ function pickToIso(date: Date): string {
 	return date.toISOString();
 }
 
+function parseScheduledAt(value: string | undefined): Date | null {
+	if (!value) return null;
+	const calendarDate = /^(\d{4})-(\d{2})-(\d{2})(?:T|$)/.exec(value);
+	if (!calendarDate) return null;
+	const year = Number(calendarDate[1]);
+	const month = Number(calendarDate[2]);
+	const day = Number(calendarDate[3]);
+	if (
+		month < 1 ||
+		month > 12 ||
+		day < 1 ||
+		day > new Date(Date.UTC(year, month, 0)).getUTCDate()
+	) {
+		return null;
+	}
+	const parsed = new Date(value);
+	return Number.isFinite(parsed.getTime()) ? parsed : null;
+}
+
 function matchesDelay(
 	value: Schedule | null,
 	seconds: number,
@@ -46,11 +65,7 @@ function matchesDelay(
 function matchesTomorrow9Am(value: Schedule | null, now: Date): boolean {
 	if (!value || !value.scheduled_at) return false;
 	const target = computeTomorrow9Am(now);
-	try {
-		return new Date(value.scheduled_at).getTime() === target.getTime();
-	} catch {
-		return false;
-	}
+	return parseScheduledAt(value.scheduled_at)?.getTime() === target.getTime();
 }
 
 interface QuickPick {
@@ -78,7 +93,9 @@ const QUICK_PICKS: QuickPick[] = [
 	},
 	{
 		label: "Tomorrow 9 AM",
-		toSchedule: (now) => ({ scheduled_at: pickToIso(computeTomorrow9Am(now)) }),
+		toSchedule: (now) => ({
+			scheduled_at: pickToIso(computeTomorrow9Am(now)),
+		}),
 		isActive: (v, now) => matchesTomorrow9Am(v, now),
 	},
 ];
@@ -110,16 +127,13 @@ export function ScheduleControls({
 		onChange({ scheduled_at: pickToIso(date) });
 	};
 
-	const pickerValue = value?.scheduled_at
-		? new Date(value.scheduled_at)
-		: null;
+	const pickerValue = parseScheduledAt(value?.scheduled_at);
 
 	const minDate = new Date(now.getTime() + 60_000);
 	const maxDate = new Date(now.getTime() + MAX_DELAY_SECONDS * 1000);
 
 	const scheduledInPast =
-		value?.scheduled_at !== undefined &&
-		new Date(value.scheduled_at).getTime() < now.getTime();
+		pickerValue !== null && pickerValue.getTime() < now.getTime();
 
 	return (
 		<div className="flex flex-col gap-3">
@@ -170,10 +184,7 @@ export function ScheduleControls({
 
 					{scheduledInPast && (
 						<p
-							className={cn(
-								"text-sm text-destructive",
-								"mt-0.5",
-							)}
+							className={cn("text-sm text-destructive", "mt-0.5")}
 							role="alert"
 						>
 							Time is in the past
