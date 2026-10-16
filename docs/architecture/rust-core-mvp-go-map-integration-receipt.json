@@ -1,0 +1,14 @@
+{
+  "threadId": "import:codex-imported:01a0fa30-a29f-7323-8e64-72efdcc0d5b5",
+  "messageId": "message:mcp:e4218529-0822-4c17-8c51-a4b33c6f5814:thread-send:common-runtime-consolidate-20261016-02",
+  "runId": "run:thread:import%3Acodex-imported%3A01a0fa30-a29f-7323-8e64-72efdcc0d5b5:ordinal:27",
+  "status": "starting",
+  "delivery": "started",
+  "report_id": "COMMON-RUNTIME-CONSOLIDATE-20261016-02",
+  "reply_to": "G-COMPAT-20261016-01",
+  "canonical_commit": "5d2907a49b46db088f79a34ce5bd604c8445a015",
+  "target_observed_position": 4111,
+  "mapping_status": "complete; hash and structural column delta verified",
+  "g_adapt_status": "not released; selected wire/provision/credential seam pending",
+  "reply_required": false
+}
