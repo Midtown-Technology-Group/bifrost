@@ -397,9 +397,14 @@ async def reconcile_hosts(db: AsyncSession, azure: Azure, live: set[str]) -> Non
             host_id = value.get("host_id")
             if not host_id:
                 if not value.get("intent"):
-                    # Ownership may be acquired before any provider allocation.
-                    # No Defined host exists to delete; retain the fence until
-                    # an operator verifies the abandoned process is gone.
+                    # These phases precede the durable grant attempt and every
+                    # provider mutation. Continuous fresh platform absence is
+                    # still required before removing an abandoned allocation.
+                    owner = value.get("vojeto_owner")
+                    if isinstance(owner, dict) and owner.get("phase") in ("acquired", "begun"):
+                        await db.delete(state)
+                    # Unknown/uncertain phases retain their fence, including a
+                    # grant-started record without an allocation receipt.
                     continue
                 host_id = await find_intended_host(client, token, azure.settings, value["intent"])
                 if not host_id:

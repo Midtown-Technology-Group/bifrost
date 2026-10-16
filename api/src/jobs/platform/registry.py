@@ -10,6 +10,7 @@ from src.jobs.platform.application_sdk_update import (
     APPLICATION_SDK_UPDATE_DEFINITION,
 )
 from src.jobs.platform.base import PlatformJobDefinition
+from src.jobs.platform.device_peer_sessions import DEVICE_PEER_START_DEFINITION, DEVICE_PEER_REVOKE_DEFINITION
 from src.jobs.platform.embedding_reindex import EMBEDDING_REINDEX_DEFINITION
 from src.jobs.platform.git_operation import GIT_OPERATION_DEFINITION
 from src.jobs.platform.reimport import WORKSPACE_REIMPORT_DEFINITION
@@ -41,6 +42,8 @@ from src.jobs.platform.workspace_release_prepare import (
 )
 
 _DEFINITIONS = {
+    DEVICE_PEER_START_DEFINITION.job_type: DEVICE_PEER_START_DEFINITION,
+    DEVICE_PEER_REVOKE_DEFINITION.job_type: DEVICE_PEER_REVOKE_DEFINITION,
     SOLUTION_ACCOUNTABILITY_RECONCILE_DEFINITION.job_type: SOLUTION_ACCOUNTABILITY_RECONCILE_DEFINITION,
     APPLICATION_DEPLOY_DEFINITION.job_type: APPLICATION_DEPLOY_DEFINITION,
     APPLICATION_SDK_UPDATE_DEFINITION.job_type: APPLICATION_SDK_UPDATE_DEFINITION,
