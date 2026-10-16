@@ -14,7 +14,7 @@ are authorized by this division.
 | Workstream | Accountable existing owner | Immediate deliverable |
 | --- | --- | --- |
 | Common control plane | Rust MVP thread `import:codex-imported:01a0f5db-8f14-7630-80b7-502c8288cae3`, pve-t340 | Consolidated schema/authority/lock decisions; #1018 and existing gates; Python extraction/parity; native retry/delete/recovery compatibility; installed writer/catalog proof |
-| Go compatibility and developer experience | Go spike thread `import:codex-imported:01a0fa30-a29f-7323-8e64-72efdcc0d5b5`, pve-t340 | Compatibility/reuse map against this record first; Go SDK/runtime/build/local supervisor/manifest work only after the relevant common seam is settled and authorized |
+| Go compatibility and developer experience | Go spike thread `import:codex-imported:01a0fa30-a29f-7323-8e64-72efdcc0d5b5`, pve-t340 | G-COMPAT mapping complete; independent offline artifact-inspection tooling may proceed; runtime/SDK/provision/SQL adapters wait for the reviewed common seam |
 | Shared recovery requirement | Common-control-plane owner, with Go compatibility evidence | General partial-cleanup recovery with preserved identity and no replay; not a Go-specific workaround |
 
 This file has one editor: the common-control-plane owner. The Go owner returns
@@ -237,3 +237,16 @@ receipt effects, not this storage-plan revision. Until that artifact is ready,
 G-ADAPT receives no code-change instruction. The Go mapping is **complete**;
 it is not left pending or asked to duplicate the accepted experiment. Common
 consolidation remains owned here and continues independently.
+
+### Independent Go artifact tooling
+
+The existing Go owner reports commit `68f9b6cf5`, branch
+`spike/go-artifact-tools`, worktree `/home/thomas/src/bifrost-go-artifact-tools`.
+Its offline inspector wraps the existing archive verifier, requires an expected
+digest, bounds regular-file input, and reports immutable identities and inventory
+without extraction, execution, build, admission or credential issuance. Reported
+metadata checks and retained-archive inspection are developer-tool evidence only;
+they do not qualify runtime integration. The accepted a475/56 packet remains
+fixed; G-ADAPT, shared migrations and capability expansion remain held. Common
+consolidation continues here without asking the Go owner to repeat accepted
+experiments. These are peer-reported results, not an independent runtime rerun.

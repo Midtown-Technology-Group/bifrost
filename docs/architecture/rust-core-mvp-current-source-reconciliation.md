@@ -218,13 +218,28 @@ recovery/deletion characterization; these cannot be assumed parity.
 
 ## Current candidate verification update
 
-For `39245315e193e1d04886044677bf7a75bb8c6f1f`, manual CI 38947574111
-now reports successful literal pre-PR, backend unit, backend E2E shards 2/3
-and browser shard 1. Its remaining MCP, backend shards 1/4, browser shard 2
-and coverage work are incomplete at this observation; the full run is not
-accepted. ARM64 smoke, reliability and CodeQL also report success for the
-candidate. PR CI 38947585397 still has queued image producers. The four required
-checks passing is not a claim that the whole applicable gate set is complete.
+For `39245315e193e1d04886044677bf7a75bb8c6f1f`, both manual CI 38947574111
+and PR CI 38947585397 completed successfully. The literal pre-PR gate, all four
+backend E2E shards, both browser shards, MCP, unit tests and signed candidate
+images pass. ARM64, reliability and CodeQL also pass. Original manual unit logs
+report 14,010 passed, three skipped and 66 deselected, including all 17 selected
+AUTH regression cases. The coverage artifact contains no JUnit; case proof is
+from original job output, not invented XML. Historical failing candidates remain
+historical and are not qualified by these results.
+
+Authenticated Sonar readback binds exact head, project and PR to successful
+compute task AaFGnRnHUnbYVTaaeZUy and analysis
+13a31a40-680d-47fa-a8ab-e3b080a1a211. Gate OK, 5,401 indexed files, Python and
+JavaScript coverage imported, 93.1% new-code coverage, zero new security hotspots
+and zero duplication. Two open maintainability advisories remain: S3358 at
+agent_executor.py:1512 and S107 at execution/service.py:645. These are retained
+explicitly, with no issue suppression, status change or threshold/exclusion
+change; the latter would require a dispatch-interface redesign beyond this
+narrow prerequisite. Full identifiers and dispositions are in the
+[validation receipt](rust-core-mvp-auth-p1-validation-39245315.json).
+Manual non-main Sonar analysis is intentionally inapplicable under the existing
+workflow condition; actual PR Sonar ran successfully. No runtime reference,
+Rust mixed-writer parity, merge, deployment or vendor execution is implied.
 
 Pre-PR artifact 12069177147 was downloaded and verified against provider SHA-256
 `6044bc6a527a1a538583a219dd46bd6370fb7fe293458015a8b3745b86dfecbe`.

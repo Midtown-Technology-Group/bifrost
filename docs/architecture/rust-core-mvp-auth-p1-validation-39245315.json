@@ -47,17 +47,69 @@
   },
   "pr_ci": {
     "run": 38947585397,
-    "status": "incomplete at observation",
-    "remaining": [
-      "backend E2E shard2",
-      "Sonar analysis/scope"
-    ],
+    "status": "completed",
+    "remaining": [],
     "images": "all three candidates and signed candidate gate successful",
     "mcp": "success",
     "backend_unit": "success",
-    "browser_shards": "both successful"
+    "browser_shards": "both successful",
+    "conclusion": "success",
+    "backend_e2e_shards": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "sonar_analysis": "success"
   },
   "merge_authorized": false,
   "deployment_authorized": false,
-  "prerequisite_full_acceptance": "pending PR-specific applicable gates; no full Rust parity implication"
+  "prerequisite_full_acceptance": "Exact-head applicable CI and independent source review passed; PR remains open, no merge/deploy. Nominal agent/tool/SDK and Rust lifecycle reference acceptance remain separate.",
+  "sonar": {
+    "project": "Midtown-Technology-Group_bifrost",
+    "analyzed_sha": "39245315e193e1d04886044677bf7a75bb8c6f1f",
+    "check_run_id": 117204237038,
+    "ce_task": "AaFGnRnHUnbYVTaaeZUy",
+    "analysis_id": "13a31a40-680d-47fa-a8ab-e3b080a1a211",
+    "task_status": "SUCCESS",
+    "quality_gate": "OK",
+    "indexed_files": 5401,
+    "coverage_imports": [
+      "Python Cobertura",
+      "JavaScript coverage"
+    ],
+    "new_coverage_percent": 93.10344827586206,
+    "new_security_hotspots": 0,
+    "new_duplicated_lines_density_percent": 0,
+    "task_artifact": {
+      "id": 12076450799,
+      "sha256": "3f430d99ec59a4419bde71471132f519fb4e3cd8f71b2e9f49e16188765934b7",
+      "digest_verified": true
+    },
+    "open_findings": [
+      {
+        "key": "AaD4ZZMlEf_aNPJeOrTe",
+        "rule": "python:S3358",
+        "path": "api/src/services/agent_executor.py",
+        "line": 1512,
+        "type": "CODE_SMELL",
+        "severity": "MAJOR",
+        "impact": "MAINTAINABILITY/MEDIUM",
+        "disposition": "Retained open readability advisory on preserved caller-selection expression; no security defect reported by this finding."
+      },
+      {
+        "key": "AaD4ZZGpEf_aNPJeOrTd",
+        "rule": "python:S107",
+        "path": "api/src/services/execution/service.py",
+        "line": 645,
+        "type": "CODE_SMELL",
+        "severity": "MAJOR",
+        "impact": "MAINTAINABILITY/MEDIUM",
+        "disposition": "Retained open interface-size advisory; redesign of existing dispatch consumers is outside narrow AUTH-P1 propagation correction."
+      }
+    ],
+    "provider_issue_state_changed": false,
+    "thresholds_exclusions_or_gate_config_changed": false,
+    "evidence_limit": "Quality gate success with two open maintainability findings; not zero findings, runtime parity, merge authorization or production proof."
+  }
 }
