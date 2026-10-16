@@ -734,6 +734,43 @@ class TestImportHelpers:
         assert db.added == []
 
     @pytest.mark.asyncio
+    async def test_import_oauth_provider_preserves_metadata_omitted_by_older_export(self):
+        existing = SimpleNamespace(
+            provider_name="old",
+            display_name=None,
+            oauth_flow_type=None,
+            client_id=None,
+            encrypted_client_secret=None,
+            authorization_url=None,
+            token_url=None,
+            token_url_defaults=None,
+            redirect_uri=None,
+            scopes=None,
+            provider_metadata={"omit_token_exchange_scope": True},
+        )
+        integration = SimpleNamespace(
+            id=UUID("55555555-5555-5555-5555-555555555555"),
+            name="Demo",
+            oauth_provider=existing,
+        )
+        db = _FakeDb([])
+        result = ImportResult(entity_type="integrations")
+
+        await _import_oauth_provider(
+            db,
+            integration,
+            OAuthProviderExportItem(
+                provider_name="ninjaone",
+                client_id="client-1",
+                encrypted_client_secret="",
+            ),
+            source_secret_key=None,
+            result=result,
+        )
+
+        assert existing.provider_metadata == {"omit_token_exchange_scope": True}
+
+    @pytest.mark.asyncio
     async def test_import_oauth_provider_creates_new_provider_and_warns_on_bad_reencrypt(
         self,
         monkeypatch,

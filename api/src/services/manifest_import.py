@@ -2407,6 +2407,7 @@ class ManifestResolver:
         # Sync OAuth provider (structure only — client_secret never imported)
         if minteg.oauth_provider:
             op_data = minteg.oauth_provider
+            provider_metadata_supplied = "provider_metadata" in op_data.model_fields_set
             op_stmt = insert(OAuthProvider).values(
                 provider_name=op_data.provider_name,
                 display_name=op_data.display_name,
@@ -2434,7 +2435,11 @@ class ManifestResolver:
                     "token_url": op_data.token_url,
                     "token_url_defaults": op_data.token_url_defaults or {},
                     "scopes": op_data.scopes or [],
-                    "provider_metadata": op_data.provider_metadata or {},
+                    **(
+                        {"provider_metadata": op_data.provider_metadata or {}}
+                        if provider_metadata_supplied
+                        else {}
+                    ),
                     "redirect_uri": op_data.redirect_uri,
                     "updated_at": datetime.now(timezone.utc),
                 },
