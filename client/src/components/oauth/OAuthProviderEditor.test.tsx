@@ -145,6 +145,83 @@ describe("OAuthProviderEditor", () => {
 			}),
 		);
 	});
+	it("advertises PKCE only when the provider opts in", async () => {
+		const { user } = renderWithProviders(
+			<>
+				<OAuthProviderEditor
+					flowType="authorization_code"
+					onSubmit={vi.fn()}
+					formId="oauth-provider-form"
+				/>
+			</>,
+		);
+
+		// The secret help text must not advertise PKCE until opted in.
+		expect(
+			screen.queryByText(/leave empty for pkce/i),
+		).not.toBeInTheDocument();
+		expect(
+			screen.getByText(/only required if your provider issued/i),
+		).toBeInTheDocument();
+
+		await user.click(
+			screen.getByRole("checkbox", { name: /use pkce/i }),
+		);
+
+		expect(
+			screen.getByText(/leave empty for pkce/i),
+		).toBeInTheDocument();
+	});
+
+	it("submits the PKCE opt-in with the payload", async () => {
+		const onSubmit = vi.fn();
+		const { user } = renderWithProviders(
+			<>
+				<OAuthProviderEditor
+					flowType="authorization_code"
+					onSubmit={onSubmit}
+					formId="oauth-provider-form"
+				/>
+				<button type="submit" form="oauth-provider-form">
+					Save
+				</button>
+			</>,
+		);
+
+		await user.click(screen.getByRole("checkbox", { name: /use pkce/i }));
+		await user.type(screen.getByLabelText(/client id/i), "client-123");
+		await user.type(
+			screen.getByLabelText(/authorization url/i),
+			"https://auth.example.com",
+		);
+		await user.type(
+			screen.getByLabelText(/token url/i),
+			"https://token.example.com",
+		);
+		await user.click(screen.getByRole("button", { name: "Save" }));
+
+		expect(onSubmit).toHaveBeenCalledWith(
+			expect.objectContaining({ use_pkce: true }),
+		);
+	});
+
+	it("hides the PKCE opt-in for client credentials flows", async () => {
+		renderWithProviders(
+			<>
+				<OAuthProviderEditor
+					flowType="client_credentials"
+					flowTypeSwitchable={false}
+					onSubmit={vi.fn()}
+					formId="oauth-provider-form"
+				/>
+			</>,
+		);
+
+		expect(
+			screen.queryByRole("checkbox", { name: /use pkce/i }),
+		).not.toBeInTheDocument();
+	});
+
 	it("ignores a clipboard operation completing after unmount", async () => {
 		let finish!: (value: boolean) => void;
 		vi.mocked(copyToClipboard).mockImplementationOnce(() => new Promise<boolean>(resolve => { finish = resolve; }));

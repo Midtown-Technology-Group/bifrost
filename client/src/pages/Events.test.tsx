@@ -158,7 +158,11 @@ describe("Events page", () => {
 			ctrlKey: true,
 		});
 
-		expect(open).toHaveBeenCalledWith("/event-sources/source-1", "_blank");
+		expect(open).toHaveBeenCalledWith(
+			"/event-sources/source-1",
+			"_blank",
+			"noopener,noreferrer",
+		);
 	});
 
 	it("routes to the detail shell when a source id is present", () => {
