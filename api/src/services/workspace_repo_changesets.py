@@ -861,6 +861,48 @@ class WorkspaceRepoChangesetService:
         if self.commit_writer is None:  # guarded in plan construction as well
             raise ChangesetInvalid(COMMIT_WRITER_NOT_CONFIGURED)
 
+        if not plan.files:
+            dispositions = {
+                item.changeset_id: item for item in plan.response.changesets
+            }
+            for row in plan.rows:
+                disposition = dispositions[row.id]
+                current_validation = dict(row.validation or {})
+                row.validation = {
+                    **current_validation,
+                    "history_convergence": {
+                        "schema": GIT_CONVERGENCE_SCHEMA,
+                        "candidate_id": plan.response.candidate_id,
+                        "protected_main_source_sha": (
+                            plan.response.protected_main_source_sha
+                        ),
+                        "history_parent_sha": plan.response.history_head_sha,
+                        "commit_sha": plan.response.history_head_sha,
+                        "signature_state": "VALID",
+                        "operator": operator,
+                        "selected_changeset_ids": [
+                            str(value)
+                            for value in sorted(request.changeset_ids, key=str)
+                        ],
+                        "disposition": disposition.disposition,
+                        "reconciled_paths": disposition.reconciled_paths,
+                        "superseded_paths": disposition.superseded_paths,
+                    },
+                }
+                row.commit_sha = plan.response.history_head_sha
+                row.status = "committed"
+                row.error = None
+                row.failure_detail = None
+            await self.db.flush()
+            await self.db.commit()
+            return plan.response.model_copy(
+                update={
+                    "applied": True,
+                    "commit_sha": plan.response.history_head_sha,
+                    "signature_state": "VALID",
+                }
+            )
+
         effective_operator = operator
         if pending_retry:
             stored = cast(dict, selected_rows[0].failure_detail)
@@ -1101,36 +1143,40 @@ class WorkspaceRepoChangesetService:
                 raise ChangesetInvalid(
                     f"changeset {row.id} is not an activated recoverable Git closure"
                 )
-            source_mutations = [
-                item for item in row.mutations if item.get("operation") != "verify"
-            ]
-            if not source_mutations:
+            if not any(item.get("operation") != "verify" for item in row.mutations):
                 raise ChangesetInvalid(
                     f"changeset {row.id} has no source mutation to reconcile"
                 )
-            for item in source_mutations:
-                if item.get("operation") != "write":
+            for item in row.mutations:
+                operation = item.get("operation")
+                if operation not in {"write", "verify"}:
                     raise ChangesetInvalid(
-                        "history convergence currently accepts exact-byte writes only"
+                        "history convergence currently accepts exact-byte writes "
+                        "and verifications only"
                     )
                 path = str(item.get("path") or "")
                 content_base64 = item.get("content_base64")
                 after_hash = item.get("after_hash")
-                if not path or not content_base64 or not after_hash:
+                if (
+                    not path
+                    or not after_hash
+                    or (operation == "write" and not content_base64)
+                ):
                     raise ChangesetInvalid(
                         f"changeset {row.id} contains incomplete source evidence"
                     )
-                try:
-                    content = base64.b64decode(content_base64, validate=True)
-                except Exception as exc:
-                    raise ChangesetInvalid(
-                        f"changeset {row.id} contains invalid source evidence"
-                    ) from exc
-                if hashlib.sha256(content).hexdigest() != after_hash:
-                    raise ChangesetInvalid(
-                        f"changeset {row.id} source evidence hash does not match"
-                    )
-                total_source_bytes += len(content)
+                if operation == "write":
+                    try:
+                        content = base64.b64decode(content_base64, validate=True)
+                    except Exception as exc:
+                        raise ChangesetInvalid(
+                            f"changeset {row.id} contains invalid source evidence"
+                        ) from exc
+                    if hashlib.sha256(content).hexdigest() != after_hash:
+                        raise ChangesetInvalid(
+                            f"changeset {row.id} source evidence hash does not match"
+                        )
+                    total_source_bytes += len(content)
                 entries_by_path.setdefault(path, []).append((row, item))
 
         paths = tuple(sorted(entries_by_path))
@@ -1173,6 +1219,8 @@ class WorkspaceRepoChangesetService:
             reviewed_hash = reviewed.file_sha256.get(path)
             history_hash = history.file_sha256.get(path)
             entries = entries_by_path[path]
+            if all(item.get("operation") == "verify" for _row, item in entries):
+                total_source_bytes += len(raw or b"")
             matching = [
                 (row, item)
                 for row, item in entries
@@ -1236,13 +1284,16 @@ class WorkspaceRepoChangesetService:
                     )
                 )
 
+        if total_source_bytes > 5 * 1024 * 1024:
+            raise ChangesetInvalid(
+                "history convergence is limited to 5 MiB of selected source evidence"
+            )
+
         changeset_results: list[WorkspaceRepoGitConvergenceChangeset] = []
         for row in sorted(rows, key=lambda value: str(value.id)):
             reconciled_paths: list[str] = []
             superseded_paths: list[str] = []
             for item in row.mutations:
-                if item.get("operation") == "verify":
-                    continue
                 path = str(item["path"])
                 if item.get("after_hash") == desired_by_path[path]:
                     reconciled_paths.append(path)
@@ -1263,12 +1314,12 @@ class WorkspaceRepoChangesetService:
                 )
             )
 
-        if not files:
+        if history.signature_state != "VALID":
             diagnostics.append(
                 {
                     "severity": "error",
-                    "source": "no_op",
-                    "message": "selected paths are already present in production-live history",
+                    "source": "production_live_history",
+                    "message": "production-live history head is not a verified GitHub-signed commit",
                 }
             )
         payload = {
@@ -1378,10 +1429,8 @@ class WorkspaceRepoChangesetService:
         await self.db.commit()
         history_evidence: dict[str, object] | None = None
         try:
-            source_mutations = tuple(
-                item for item in row.mutations if item.get("operation") != "verify"
-            )
-            paths = tuple(sorted(str(item["path"]) for item in source_mutations))
+            closure_mutations = tuple(row.mutations)
+            paths = tuple(sorted(str(item["path"]) for item in closure_mutations))
             history = await self.commit_writer.inspect(paths)
             if history.signature_state != "VALID":
                 raise PlatformCommitError(
@@ -1392,16 +1441,42 @@ class WorkspaceRepoChangesetService:
             files: list[PlatformCommitFile] = []
             superseded_paths: list[str] = []
             divergent_paths: list[str] = []
-            for item in source_mutations:
+            for item in closure_mutations:
                 path = str(item["path"])
+                operation = item.get("operation")
                 before_hash = item.get("before_hash")
                 target_hash = (
-                    item.get("after_hash") if item.get("operation") == "write" else None
+                    item.get("after_hash") if operation in {"write", "verify"} else None
                 )
                 history_hash = history.file_sha256.get(path)
+                verified_content_base64: str | None = None
+                if operation == "verify":
+                    verified_content = await self._read_optional(path)
+                    verified_hash = (
+                        hashlib.sha256(verified_content).hexdigest()
+                        if verified_content is not None
+                        else None
+                    )
+                    if verified_content is None or verified_hash != target_hash:
+                        raise PlatformCommitError(
+                            f"verified workspace source changed before Git closure: {path}"
+                        )
+                    verified_content_base64 = base64.b64encode(
+                        verified_content
+                    ).decode()
                 if history_hash == target_hash:
                     disposition = "target"
                     superseded_paths.append(path)
+                elif operation == "verify" and history_hash is None:
+                    disposition = "verified"
+                    files.append(
+                        PlatformCommitFile(
+                            path=path,
+                            content_base64=verified_content_base64,
+                            expected_before_sha256=history_hash,
+                            expected_sha256=target_hash,
+                        )
+                    )
                 elif history_hash == before_hash:
                     disposition = "before"
                     files.append(

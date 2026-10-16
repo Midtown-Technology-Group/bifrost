@@ -19,7 +19,7 @@ export interface ProfileUpdate {
 }
 
 export interface PasswordChange {
-	current_password?: string | null;
+	current_password: string;
 	new_password: string;
 }
 
@@ -101,18 +101,18 @@ export function getAvatarUrl(): string {
 }
 
 /**
- * Change or set password
- * @param currentPassword - Required if user already has a password, null/undefined otherwise
+ * Change an existing password
+ * @param currentPassword - The user's current password
  * @param newPassword - The new password to set
  */
 export async function changePassword(
-	currentPassword: string | null | undefined,
+	currentPassword: string,
 	newPassword: string,
 ): Promise<void> {
-	const body: PasswordChange = { new_password: newPassword };
-	if (currentPassword) {
-		body.current_password = currentPassword;
-	}
+	const body: PasswordChange = {
+		current_password: currentPassword,
+		new_password: newPassword,
+	};
 
 	const response = await authFetch("/api/profile/password", {
 		method: "POST",

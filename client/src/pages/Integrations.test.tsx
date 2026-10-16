@@ -190,7 +190,11 @@ describe("Integrations", () => {
 		fireEvent.click(screen.getByRole("cell", { name: "OAuth configured" }), {
 			ctrlKey: true,
 		});
-		expect(open).toHaveBeenCalledWith("/integrations/int-1", "_blank");
+		expect(open).toHaveBeenCalledWith(
+			"/integrations/int-1",
+			"_blank",
+			"noopener,noreferrer",
+		);
 		expect(
 			screen.queryByRole("button", { name: /open slack/i }),
 		).not.toBeInTheDocument();
