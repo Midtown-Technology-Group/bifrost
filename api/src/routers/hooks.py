@@ -42,6 +42,9 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/hooks", tags=["Webhooks"])
 
+_WEBHOOK_PREAUTH_MIN_REQUESTS = 120
+_WEBHOOK_PREAUTH_MULTIPLIER = 10
+
 
 def _get_client_ip(request: Request) -> str | None:
     """Extract client IP from request, handling proxies."""
@@ -61,6 +64,18 @@ def _get_client_ip(request: Request) -> str | None:
 def _normalize_headers(headers: dict) -> dict[str, str]:
     """Normalize headers to lowercase keys."""
     return {k.lower(): v for k, v in headers.items()}
+
+
+def _rate_limit_response(event_source: object, exc: HTTPException) -> Response:
+    """Build the stable public response for either webhook ingress limiter."""
+    source_id = str(getattr(event_source, "id"))
+    body = json.dumps({"error": "rate_limit_exceeded", "source_id": source_id})
+    return Response(
+        content=body,
+        status_code=exc.status_code,
+        media_type="application/json",
+        headers=dict(exc.headers or {}),
+    )
 
 
 # Health endpoint MUST be defined before the wildcard /{source_id} route
@@ -135,31 +150,35 @@ async def receive_webhook(
         )
     event_source, webhook_source = resolved
 
-    # Per-source rate limiting — checked before any DB writes
+    # A high-water pre-auth bucket is scoped by source AND client IP. Invalid
+    # traffic can exhaust only its own bucket, never the shared source quota
+    # used by legitimate provider deliveries.
+    source_limiter: RateLimiter | None = None
     if (
         webhook_source.rate_limit_enabled
         and webhook_source.rate_limit_per_minute is not None
     ):
-        limiter = RateLimiter(
+        source_limiter = RateLimiter(
             max_requests=webhook_source.rate_limit_per_minute,
             window_seconds=webhook_source.rate_limit_window_seconds,
         )
+        preauth_limiter = RateLimiter(
+            max_requests=max(
+                _WEBHOOK_PREAUTH_MIN_REQUESTS,
+                webhook_source.rate_limit_per_minute
+                * _WEBHOOK_PREAUTH_MULTIPLIER,
+            ),
+            window_seconds=webhook_source.rate_limit_window_seconds,
+        )
         try:
-            # force=True bypasses the is_testing short-circuit so rate limiting
-            # is exercisable from unit tests; in production is_testing=False so
-            # the flag is a no-op.
-            await limiter.check("webhook_ingress", str(event_source.id), force=True)
+            await preauth_limiter.check(
+                "webhook_ingress_ip",
+                f"{event_source.id}:{source_ip or 'unknown'}",
+                force=True,
+            )
         except HTTPException as exc:
             if exc.status_code == status.HTTP_429_TOO_MANY_REQUESTS:
-                body = json.dumps(
-                    {"error": "rate_limit_exceeded", "source_id": str(event_source.id)}
-                )
-                return Response(
-                    content=body,
-                    status_code=exc.status_code,
-                    media_type="application/json",
-                    headers=dict(exc.headers or {}),
-                )
+                return _rate_limit_response(event_source, exc)
             raise
 
     webhook_request = WebhookRequest(
@@ -173,8 +192,26 @@ async def receive_webhook(
 
     processor = EventProcessor(db)
 
+    async def enforce_authenticated_source_quota() -> None:
+        """Charge shared quota only after the adapter accepts the request."""
+        if source_limiter is not None:
+            await source_limiter.check(
+                "webhook_ingress",
+                str(event_source.id),
+                force=True,
+            )
+
     try:
-        result = await processor.process_webhook(event_source, webhook_source, webhook_request)
+        result = await processor.process_webhook(
+            event_source,
+            webhook_source,
+            webhook_request,
+            before_delivery=enforce_authenticated_source_quota,
+        )
+    except HTTPException as exc:
+        if exc.status_code == status.HTTP_429_TOO_MANY_REQUESTS:
+            return _rate_limit_response(event_source, exc)
+        raise
     except Exception as e:
         logger.error("Error processing webhook: %s", log_safe(e), exc_info=True)  # noqa: G201
         # Return 500 but don't expose internal error details

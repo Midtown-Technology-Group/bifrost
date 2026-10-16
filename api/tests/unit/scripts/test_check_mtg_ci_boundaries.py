@@ -127,6 +127,21 @@ def test_codeowners_rejects_upstream_owner(tmp_path: Path):
     assert "@jackmusick" in violations[0]
 
 
+def test_codeowners_rejects_email_owner(tmp_path: Path):
+    owners = tmp_path / "CODEOWNERS"
+    owners.write_text(
+        "/api/ upstream-maintainer@example.com\n"
+        "/docs/ invalid-owner-token\n",
+        encoding="utf-8",
+    )
+
+    violations = check_codeowners(owners)
+
+    assert len(violations) == 1
+    assert "upstream-maintainer@example.com" in violations[0]
+    assert "explicit MTG username or team" in violations[0]
+
+
 def test_codeowners_ignores_comments_and_blanks(tmp_path: Path):
     owners = tmp_path / "CODEOWNERS"
     owners.write_text(

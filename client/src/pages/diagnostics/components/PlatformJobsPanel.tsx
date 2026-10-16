@@ -112,7 +112,7 @@ function statusClassName(status: string) {
 	return "";
 }
 
-function StatusIcon({ status }: { status: string }) {
+function StatusIcon({ status }: { readonly status: string }) {
 	if (status === "succeeded") return <CheckCircle2 className="h-3.5 w-3.5" />;
 	if (status === "failed" || status === "cancelled") {
 		return <AlertCircle className="h-3.5 w-3.5" />;
@@ -127,7 +127,7 @@ function StatusIcon({ status }: { status: string }) {
 	return <Clock3 className="h-3.5 w-3.5" />;
 }
 
-function BackendBadge({ backend }: { backend?: string | null }) {
+function BackendBadge({ backend }: { readonly backend?: string | null }) {
 	if (backend !== "kubernetes") return null;
 	return (
 		<Badge
@@ -157,8 +157,8 @@ function MemorySummary({
 	job,
 	availableMemoryBytes,
 }: {
-	job: ObservablePlatformJob;
-	availableMemoryBytes: number | null;
+	readonly job: ObservablePlatformJob;
+	readonly availableMemoryBytes: number | null;
 }) {
 	const required = job.memory_required_bytes;
 	const waitingForMemory =
@@ -198,7 +198,7 @@ function MemorySummary({
 }
 
 interface PlatformJobsPanelProps {
-	availableMemoryBytes: number | null;
+	readonly availableMemoryBytes: number | null;
 }
 
 export function PlatformJobsPanel({
@@ -897,9 +897,9 @@ function Detail({
 	value,
 	mono = false,
 }: {
-	label: string;
-	value: string;
-	mono?: boolean;
+	readonly label: string;
+	readonly value: string;
+	readonly mono?: boolean;
 }) {
 	return (
 		<div className="min-w-0">

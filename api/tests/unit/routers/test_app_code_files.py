@@ -8,7 +8,10 @@ import pytest
 from fastapi import HTTPException
 
 from src.routers import app_code_files
-from src.routers.app_code_files import standalone_v2_runtime_contract, validate_file_path
+from src.routers.app_code_files import (
+    standalone_v2_runtime_contract,
+    validate_file_path,
+)
 from src.services.workspace_release_files import WorkspaceReleasePathGoverned
 
 
@@ -45,14 +48,16 @@ def _release_view(*, governed: dict[str, bytes]):
 async def test_read_app_file_uses_verified_live_source_not_stale_repo(monkeypatch):
     app = _app()
     ctx = _ctx()
-    path = "apps/portal/workflow.py"
-    release_view = _release_view(governed={path: b"reviewed = True\n"})
+    path = "apps/portal/pages/index.tsx"
+    release_view = _release_view(governed={path: b"export default 'reviewed'\n"})
     repo = MagicMock()
     repo.read = AsyncMock(return_value=b"stale = True\n")
     app_storage = MagicMock()
     app_storage.read_file = AsyncMock(side_effect=FileNotFoundError)
 
-    monkeypatch.setattr(app_code_files, "get_application_or_404", AsyncMock(return_value=app))
+    monkeypatch.setattr(
+        app_code_files, "get_application_or_404", AsyncMock(return_value=app)
+    )
     monkeypatch.setattr(
         app_code_files,
         "active_workspace_release_file_view",
@@ -62,10 +67,10 @@ async def test_read_app_file_uses_verified_live_source_not_stale_repo(monkeypatc
     monkeypatch.setattr(app_code_files, "AppStorageService", lambda: app_storage)
 
     result = await app_code_files.read_app_file(
-        app.id, "workflow.py", ctx=ctx, _user=object()
+        app.id, "pages/index.tsx", ctx=ctx, _user=object()
     )
 
-    assert result.source == "reviewed = True\n"
+    assert result.source == "export default 'reviewed'\n"
     release_view.read.assert_awaited_once_with(path)
     repo.read.assert_not_awaited()
 
@@ -74,15 +79,19 @@ async def test_read_app_file_uses_verified_live_source_not_stale_repo(monkeypatc
 async def test_list_app_files_unions_live_paths_and_overlays_stale_repo(monkeypatch):
     app = _app()
     ctx = _ctx()
-    governed_path = "apps/portal/workflow.py"
-    release_view = _release_view(governed={governed_path: b"reviewed = True\n"})
+    governed_path = "apps/portal/pages/reviewed.tsx"
+    release_view = _release_view(
+        governed={governed_path: b"export default 'reviewed'\n"}
+    )
     repo = MagicMock()
     repo.list = AsyncMock(return_value=["apps/portal/pages/index.tsx"])
     repo.read = AsyncMock(return_value=b"export default function Page() {}")
     app_storage = MagicMock()
     app_storage.read_file = AsyncMock(side_effect=FileNotFoundError)
 
-    monkeypatch.setattr(app_code_files, "get_application_or_404", AsyncMock(return_value=app))
+    monkeypatch.setattr(
+        app_code_files, "get_application_or_404", AsyncMock(return_value=app)
+    )
     monkeypatch.setattr(
         app_code_files,
         "active_workspace_release_file_view",
@@ -95,9 +104,77 @@ async def test_list_app_files_unions_live_paths_and_overlays_stale_repo(monkeypa
 
     assert result.total == 2
     by_path = {row.path: row.source for row in result.files}
-    assert by_path["workflow.py"] == "reviewed = True\n"
+    assert by_path["pages/reviewed.tsx"] == "export default 'reviewed'\n"
     assert by_path["pages/index.tsx"] == "export default function Page() {}"
     release_view.read.assert_awaited_once_with(governed_path)
+
+
+@pytest.mark.asyncio
+async def test_list_app_files_excludes_non_source_object_store_keys(monkeypatch):
+    app = _app()
+    ctx = _ctx()
+    allowed_path = "apps/portal/pages/index.tsx"
+    blocked_paths = {
+        "apps/portal/app.yaml",
+        "apps/portal/.env",
+        "apps/portal/.env.local",
+        "apps/portal/assets/logo.png",
+        "apps/portal/node_modules/package/index.ts",
+        "apps/portal/private.txt",
+        "apps/other/pages/index.tsx",
+    }
+    release_secret = "apps/portal/components/.env"
+    release_view = _release_view(governed={release_secret: b"SECRET=release\n"})
+    repo = MagicMock()
+    repo.list = AsyncMock(return_value=[allowed_path, *sorted(blocked_paths)])
+    repo.read = AsyncMock(return_value=b"export default function Page() {}")
+    app_storage = MagicMock()
+    app_storage.read_file = AsyncMock(side_effect=FileNotFoundError)
+
+    monkeypatch.setattr(
+        app_code_files, "get_application_or_404", AsyncMock(return_value=app)
+    )
+    monkeypatch.setattr(
+        app_code_files,
+        "active_workspace_release_file_view",
+        AsyncMock(return_value=release_view),
+    )
+    monkeypatch.setattr(app_code_files, "RepoStorage", lambda: repo)
+    monkeypatch.setattr(app_code_files, "AppStorageService", lambda: app_storage)
+
+    result = await app_code_files.list_app_files(app.id, ctx=ctx, _user=object())
+
+    assert [row.path for row in result.files] == ["pages/index.tsx"]
+    repo.read.assert_awaited_once_with(allowed_path)
+    release_view.read.assert_not_awaited()
+    app_storage.read_file.assert_awaited_once_with(
+        str(app.id), "preview", "pages/index.tsx"
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "file_path",
+    [".env", ".env.local", "app.yaml", "assets/logo.png", "private.txt"],
+)
+async def test_read_app_file_rejects_non_source_paths(monkeypatch, file_path):
+    app = _app()
+    ctx = _ctx()
+    repo = MagicMock()
+    repo.read = AsyncMock()
+
+    monkeypatch.setattr(
+        app_code_files, "get_application_or_404", AsyncMock(return_value=app)
+    )
+    monkeypatch.setattr(app_code_files, "RepoStorage", lambda: repo)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await app_code_files.read_app_file(
+            app.id, file_path, ctx=ctx, _user=object()
+        )
+
+    assert exc_info.value.status_code == 400
+    repo.read.assert_not_awaited()
 
 
 @pytest.mark.asyncio

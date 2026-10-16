@@ -233,7 +233,7 @@ export function filterServiceLogs(
 }
 
 /** Last-exit reason with outcome severity (clean vs requested vs failure). */
-export function ExitBadge({ reason }: { reason: string }) {
+export function ExitBadge({ reason }: { readonly reason: string }) {
 	const clean = reason === "clean_return";
 	const requested =
 		reason === "requested" ||
@@ -282,7 +282,7 @@ export function ServiceDetailView({
 	onDateRangeChange,
 	streamingLogs,
 	isStreamConnected,
-}: ServiceDetailViewProps) {
+}: Readonly<ServiceDetailViewProps>) {
 	// Attempts live inside the timeline (start/ready/stop/exit are
 	// first-class system rows) alongside persisted log output plus the
 	// live tail: one continuous stream, oldest first. The panel applies
