@@ -2,7 +2,7 @@
 //!
 //! Adapted from the accepted common owner prototype at 56d1fb006d220b9dbb0747f1cca4def18677f918,
 //! spikes/go-native/owner-rs/src/lib.rs (AGPL-3.0-only). The original remains unchanged.
-//! This candidate changes lock order to execution-first and checks the full retained fence.
+//! This candidate uses execution-first locks and checks retained and live fences.
 //! It creates no schema, role, credential, process or event. Routing/admission must remain
 //! disabled until actual-schema mixed-writer and public cancellation/event parity pass.
 
@@ -208,7 +208,8 @@ async fn lock_running_session<'a>(
     }
     let owner = sqlx::query(
         "SELECT execution_id FROM runtime_execution_owners WHERE execution_id=$1::text::uuid \
-         AND owner_incarnation_id=$2::text::uuid FOR UPDATE NOWAIT",
+         AND owner_incarnation_id=$2::text::uuid AND live_execution_id=execution_id \
+         FOR UPDATE NOWAIT",
     )
     .bind(fence.execution_id.as_str())
     .bind(fence.owner_incarnation_id.as_str())
@@ -242,6 +243,29 @@ async fn lock_running_session<'a>(
     .await
     .map_err(database_error)?
     .ok_or(SessionError::Rejected)?;
+    // Historical fences survive native deletion. Require the separately retained
+    // live binding too: recreating a native UUID/fence cannot revive an old owner.
+    // This is C1 storage's internal contract, not an authorization to install it.
+    let live_link = sqlx::query(
+        "SELECT session_id FROM public.runtime_workflow_live_links \
+         WHERE session_id=$1::text::uuid AND execution_id=$2::text::uuid \
+         AND owner_incarnation_id=$3::text::uuid AND workflow_attempt_id=$4::text::uuid \
+         AND native_attempt_id=$4::text::uuid AND claim_token=$5::text::uuid \
+         AND worker_incarnation_id=$6::text::uuid FOR UPDATE NOWAIT",
+    )
+    .bind(fence.session_id.as_str())
+    .bind(fence.execution_id.as_str())
+    .bind(fence.owner_incarnation_id.as_str())
+    .bind(fence.attempt_id.as_str())
+    .bind(fence.claim_token.as_str())
+    .bind(fence.worker_incarnation_id.as_str())
+    .persistent(false)
+    .fetch_optional(&mut *tx)
+    .await
+    .map_err(database_error)?;
+    if live_link.is_none() {
+        return Err(SessionError::Rejected);
+    }
     let start = sqlx::query(
         "SELECT id FROM runtime_starts WHERE session_id=$1::text::uuid \
          AND execution_id=$2::text::uuid AND owner_incarnation_id=$3::text::uuid \
