@@ -9,8 +9,10 @@ apply a candidate from this directory.
 
 The owner-links draft is C1 storage only. The C2 starts/receipts draft adds typed
 Start and exact report evidence, including the Start clock key required by C3.
-Neither enables Start admission, Result finalization or replay. This continuation
-does not yet include grant/admission/resource records, restricted login/guard grants,
+C3 adds the closed CRED grant/operation records bound to retained owner, source,
+session and Start identity. These drafts do not enable admission, finalization,
+renewal or replay. This continuation does not yet include admission/resource records,
+restricted login/guard grants,
 ancestor-write exceptions or physical-drain admission. In particular, native
 FK detachment is not physical/source retirement, and PUBLIC revocation does not
 restrict a migration/table owner. It must not be installed as a complete writer
@@ -28,3 +30,13 @@ C2 preserves the prototype's immutable raw report bytes and 16 MiB storage
 bound. These are sensitive payloads, not an approved retention policy. No real
 payload ingestion is authorized by a storage draft; disposition and complete
 writer/admission enforcement remain required before enabling a runtime owner.
+
+C3 retains the original 35 grant fields and eight operation fields, adding only
+owner incarnation, committed Start and Start message IDs. Its reference fixture
+is pinned to CRED commit `3918d608a2d497d1ca8424fd4229d191323e2d7a`;
+policy expectations must not be rewritten to match a candidate. Permanent native
+grant FKs become immutable common-source/install/caller bindings. Attempt ordinal,
+live source/current caller eligibility and session-close/first-issuance races
+still require the complete C5 admission guard and existing CRED issuer adapter.
+No C3-alone application or new credential authority is authorized. The accepted
+Go consumer remains integration-get only; table enums do not expand its SDK.

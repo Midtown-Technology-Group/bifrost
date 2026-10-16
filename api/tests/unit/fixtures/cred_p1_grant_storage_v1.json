@@ -1,0 +1,261 @@
+{
+  "schema_version": 1,
+  "authority": {
+    "repository": "Midtown-Technology-Group/bifrost",
+    "commit": "3918d608a2d497d1ca8424fd4229d191323e2d7a",
+    "path": "api/alembic/versions/20261001_runtime_sdk_grants.py",
+    "source_sha256": "3f69791bdd7ff5bd8ea52cbd260cae0c321ac7d3d5028cf820ea2b9637e3d8fd"
+  },
+  "tables": {
+    "workflow_runtime_sdk_grants": {
+      "columns": {
+        "id": {
+          "type": "UUID",
+          "nullable": false,
+          "primary_key": true
+        },
+        "schema_version": {
+          "type": "VARCHAR(32)",
+          "nullable": false,
+          "primary_key": false
+        },
+        "workflow_attempt_id": {
+          "type": "UUID",
+          "nullable": false,
+          "primary_key": false
+        },
+        "execution_id": {
+          "type": "UUID",
+          "nullable": false,
+          "primary_key": false
+        },
+        "attempt_number": {
+          "type": "INTEGER",
+          "nullable": false,
+          "primary_key": false
+        },
+        "claim_token_digest": {
+          "type": "VARCHAR(64)",
+          "nullable": false,
+          "primary_key": false
+        },
+        "worker_incarnation_id": {
+          "type": "UUID",
+          "nullable": false,
+          "primary_key": false
+        },
+        "supervisor_incarnation_id": {
+          "type": "UUID",
+          "nullable": false,
+          "primary_key": false
+        },
+        "runtime_session_id": {
+          "type": "UUID",
+          "nullable": false,
+          "primary_key": false
+        },
+        "started_at": {
+          "type": "TIMESTAMP WITH TIME ZONE",
+          "nullable": false,
+          "primary_key": false
+        },
+        "issued_at": {
+          "type": "TIMESTAMP WITH TIME ZONE",
+          "nullable": false,
+          "primary_key": false
+        },
+        "timeout_seconds": {
+          "type": "INTEGER",
+          "nullable": false,
+          "primary_key": false
+        },
+        "credential_deadline": {
+          "type": "TIMESTAMP WITH TIME ZONE",
+          "nullable": true,
+          "primary_key": false
+        },
+        "initial_access_expires_at": {
+          "type": "TIMESTAMP WITH TIME ZONE",
+          "nullable": false,
+          "primary_key": false
+        },
+        "caller_user_id": {
+          "type": "UUID",
+          "nullable": false,
+          "primary_key": false
+        },
+        "caller_organization_id": {
+          "type": "UUID",
+          "nullable": true,
+          "primary_key": false
+        },
+        "effective_organization_id": {
+          "type": "UUID",
+          "nullable": true,
+          "primary_key": false
+        },
+        "caller_email": {
+          "type": "VARCHAR(320)",
+          "nullable": false,
+          "primary_key": false
+        },
+        "caller_name": {
+          "type": "VARCHAR(255)",
+          "nullable": false,
+          "primary_key": false
+        },
+        "caller_admin": {
+          "type": "INTEGER",
+          "nullable": false,
+          "primary_key": false
+        },
+        "caller_provider": {
+          "type": "INTEGER",
+          "nullable": false,
+          "primary_key": false
+        },
+        "caller_external": {
+          "type": "INTEGER",
+          "nullable": false,
+          "primary_key": false
+        },
+        "caller_snapshot_digest": {
+          "type": "VARCHAR(64)",
+          "nullable": false,
+          "primary_key": false
+        },
+        "workflow_id": {
+          "type": "UUID",
+          "nullable": false,
+          "primary_key": false
+        },
+        "solution_install_id": {
+          "type": "UUID",
+          "nullable": false,
+          "primary_key": false
+        },
+        "source_kind": {
+          "type": "VARCHAR(32)",
+          "nullable": false,
+          "primary_key": false
+        },
+        "source_id": {
+          "type": "UUID",
+          "nullable": false,
+          "primary_key": false
+        },
+        "source_manifest_digest": {
+          "type": "VARCHAR(71)",
+          "nullable": false,
+          "primary_key": false
+        },
+        "source_resolution_digest": {
+          "type": "VARCHAR(71)",
+          "nullable": false,
+          "primary_key": false
+        },
+        "source_global_permission": {
+          "type": "INTEGER",
+          "nullable": false,
+          "primary_key": false
+        },
+        "source_digest": {
+          "type": "VARCHAR(64)",
+          "nullable": false,
+          "primary_key": false
+        },
+        "operations_digest": {
+          "type": "VARCHAR(64)",
+          "nullable": false,
+          "primary_key": false
+        },
+        "grant_digest": {
+          "type": "VARCHAR(64)",
+          "nullable": false,
+          "primary_key": false
+        },
+        "revoked_at": {
+          "type": "TIMESTAMP WITH TIME ZONE",
+          "nullable": true,
+          "primary_key": false
+        },
+        "revocation_reason": {
+          "type": "VARCHAR(32)",
+          "nullable": true,
+          "primary_key": false
+        }
+      },
+      "checks": {
+        "ck_runtime_sdk_grant_schema": "schema_version = 'cred-p1/v1' AND source_kind = 'solution-deployment'",
+        "ck_runtime_sdk_grant_numbers": "attempt_number >= 1 AND timeout_seconds >= 0",
+        "ck_runtime_sdk_grant_flags": "caller_admin IN (0,1) AND caller_provider IN (0,1) AND caller_external IN (0,1) AND source_global_permission IN (0,1)",
+        "ck_runtime_sdk_grant_deadline": "((timeout_seconds = 0 AND credential_deadline IS NULL) OR (timeout_seconds > 0 AND credential_deadline IS NOT NULL AND initial_access_expires_at = credential_deadline))",
+        "ck_runtime_sdk_grant_revocation": "((revoked_at IS NULL AND revocation_reason IS NULL) OR (revoked_at IS NOT NULL AND revocation_reason IS NOT NULL AND revocation_reason IN ('session_closed','supervisor_replaced','explicit_revoke')))",
+        "ck_runtime_sdk_grant_text_bytes": "octet_length(caller_email) <= 320 AND octet_length(caller_name) <= 255",
+        "ck_runtime_sdk_claim_token_digest": "claim_token_digest ~ '^[0-9a-f]{64}$'",
+        "ck_runtime_sdk_caller_snapshot_digest": "caller_snapshot_digest ~ '^[0-9a-f]{64}$'",
+        "ck_runtime_sdk_source_digest": "source_digest ~ '^[0-9a-f]{64}$'",
+        "ck_runtime_sdk_operations_digest": "operations_digest ~ '^[0-9a-f]{64}$'",
+        "ck_runtime_sdk_grant_digest": "grant_digest ~ '^[0-9a-f]{64}$'",
+        "ck_runtime_sdk_source_manifest_digest": "source_manifest_digest ~ '^sha256:[0-9a-f]{64}$'",
+        "ck_runtime_sdk_source_resolution_digest": "source_resolution_digest ~ '^sha256:[0-9a-f]{64}$'",
+        "ck_runtime_sdk_time_started_at": "started_at IS NULL OR (started_at >= TIMESTAMPTZ '1970-01-01 00:00:00+00' AND started_at <= TIMESTAMPTZ '9999-12-31 23:59:59.999999+00')",
+        "ck_runtime_sdk_time_issued_at": "issued_at IS NULL OR (issued_at >= TIMESTAMPTZ '1970-01-01 00:00:00+00' AND issued_at <= TIMESTAMPTZ '9999-12-31 23:59:59.999999+00')",
+        "ck_runtime_sdk_time_credential_deadline": "credential_deadline IS NULL OR (credential_deadline >= TIMESTAMPTZ '1970-01-01 00:00:00+00' AND credential_deadline <= TIMESTAMPTZ '9999-12-31 23:59:59.999999+00')",
+        "ck_runtime_sdk_time_initial_access_expires_at": "initial_access_expires_at IS NULL OR (initial_access_expires_at >= TIMESTAMPTZ '1970-01-01 00:00:00+00' AND initial_access_expires_at <= TIMESTAMPTZ '9999-12-31 23:59:59.999999+00')",
+        "ck_runtime_sdk_time_revoked_at": "revoked_at IS NULL OR (revoked_at >= TIMESTAMPTZ '1970-01-01 00:00:00+00' AND revoked_at <= TIMESTAMPTZ '9999-12-31 23:59:59.999999+00')"
+      }
+    },
+    "workflow_runtime_sdk_grant_operations": {
+      "columns": {
+        "grant_id": {
+          "type": "UUID",
+          "nullable": false,
+          "primary_key": true
+        },
+        "ordinal": {
+          "type": "INTEGER",
+          "nullable": false,
+          "primary_key": true
+        },
+        "operation": {
+          "type": "VARCHAR(32)",
+          "nullable": false,
+          "primary_key": false
+        },
+        "integration_name": {
+          "type": "VARCHAR(255)",
+          "nullable": false,
+          "primary_key": false
+        },
+        "scope_kind": {
+          "type": "VARCHAR(16)",
+          "nullable": false,
+          "primary_key": false
+        },
+        "scope_organization_id": {
+          "type": "UUID",
+          "nullable": true,
+          "primary_key": false
+        },
+        "resolved_organization_id": {
+          "type": "UUID",
+          "nullable": true,
+          "primary_key": false
+        },
+        "solution_install_id": {
+          "type": "UUID",
+          "nullable": true,
+          "primary_key": false
+        }
+      },
+      "checks": {
+        "ck_runtime_sdk_operation_ordinal": "ordinal >= 0 AND ordinal < 2",
+        "ck_runtime_sdk_operation_kind": "operation IN ('integration-get','mapping-get') AND scope_kind IN ('default','global','organization')",
+        "ck_runtime_sdk_operation_scope": "((scope_kind = 'organization' AND scope_organization_id IS NOT NULL AND resolved_organization_id IS NOT NULL AND scope_organization_id = resolved_organization_id) OR (scope_kind != 'organization' AND scope_organization_id IS NULL)) AND (scope_kind != 'global' OR resolved_organization_id IS NULL)",
+        "ck_runtime_sdk_operation_solution": "operation != 'mapping-get' OR solution_install_id IS NULL",
+        "ck_runtime_sdk_operation_name_bytes": "octet_length(integration_name) BETWEEN 1 AND 255"
+      }
+    }
+  }
+}
