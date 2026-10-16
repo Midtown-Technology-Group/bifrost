@@ -1,7 +1,11 @@
 """Unit tests for typed embed access-token creation."""
 from uuid import uuid4
 
-from src.core.security import create_embed_access_token, decode_token
+from src.core.security import (
+    create_embed_access_token,
+    create_form_upload_token,
+    decode_token,
+)
 
 
 class TestEmbedAccessToken:
@@ -66,3 +70,40 @@ class TestEmbedAccessToken:
         assert payload["grant"] == "public"
         assert payload["name"] == "Public Form · Contact us"
         assert payload["capability_fingerprint"] == fingerprint
+
+    def test_public_form_display_name_is_bounded_for_execution_attribution(self):
+        display_name = "Public Form · " + "x" * 255
+        token = create_embed_access_token(
+            embed_kind="form",
+            grant="public",
+            resource_id=str(uuid4()),
+            org_id=str(uuid4()),
+            display_name=display_name,
+        )
+
+        payload = decode_token(token, expected_type="access")
+        assert payload is not None
+        assert payload["name"] == display_name[:255]
+        assert len(payload["name"]) == 255
+
+    def test_form_upload_capability_cannot_authenticate_as_an_access_token(self):
+        form_id = str(uuid4())
+        token = create_form_upload_token(
+            form_id=form_id,
+            org_id=str(uuid4()),
+            session_jti=str(uuid4()),
+            session_exp=2_000_000_000,
+            path=f"{form_id}/session/file/report.pdf",
+            storage_key=f"uploads/org/{form_id}/session/file/report.pdf",
+            field_name="attachment",
+            file_name="report.pdf",
+            content_type="application/pdf",
+            file_size=123,
+        )
+
+        assert decode_token(token, expected_type="access") is None
+        payload = decode_token(token, expected_type="form_upload")
+        assert payload is not None
+        assert payload["form_id"] == form_id
+        assert payload["file_size"] == 123
+        assert payload["jti"]

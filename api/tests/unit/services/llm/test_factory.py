@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
+from pydantic_ai.exceptions import UsageLimitExceeded
 
 from src.services.llm import factory
 from src.services.llm.base import LLMConfig
@@ -60,6 +61,26 @@ async def test_get_llm_config_hides_internal_resolution_errors(monkeypatch) -> N
 
     with pytest.raises(ValueError, match="Failed to resolve LLM configuration"):
         await factory.get_llm_config(object())  # type: ignore[arg-type]
+
+
+@pytest.mark.asyncio
+async def test_get_llm_configs_preserves_transport_probe_budget_exhaustion(
+    monkeypatch,
+) -> None:
+    exhausted = UsageLimitExceeded("transport probe exhausted the request budget")
+    resolve = AsyncMock(side_effect=exhausted)
+    monkeypatch.setattr(
+        factory,
+        "AIModelService",
+        lambda _session, **_kwargs: type(
+            "Service", (), {"resolve_chain": resolve}
+        )(),
+    )
+
+    with pytest.raises(UsageLimitExceeded) as raised:
+        await factory.get_llm_configs(object())  # type: ignore[arg-type]
+
+    assert raised.value is exhausted
 
 
 @pytest.mark.asyncio

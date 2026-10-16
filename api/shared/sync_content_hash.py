@@ -14,6 +14,8 @@ def normalize_line_endings(data: bytes) -> bytes:
     """Normalize CRLF to LF for text files. Binary files pass through unchanged."""
     if b"\x00" in data[:8192]:
         return data
+    if b"\r" not in data:
+        return data
     return data.replace(b"\r\n", b"\n")
 
 

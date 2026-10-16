@@ -44,6 +44,7 @@ def test_chat_artifact_tools_hide_unconfigured_media_generators() -> None:
 
 @pytest.mark.asyncio
 async def test_document_tool_reads_prior_workspace_image() -> None:
+    """Allow a document tool to resolve an authorized image already stored in its workspace."""
     conversation_id = uuid4()
     message_id = uuid4()
     user_id = uuid4()
@@ -100,8 +101,7 @@ async def test_document_tool_reads_prior_workspace_image() -> None:
         conversation_id,
         "Bluetick Portrait.png",
         user_id=user_id,
-        organization_id=user.organization_id,
-        is_platform_admin=False,
+        bypass=False,
     )
     render.assert_called_once()
     assert render.call_args.args[1] == {"Bluetick Portrait.png": b"png"}

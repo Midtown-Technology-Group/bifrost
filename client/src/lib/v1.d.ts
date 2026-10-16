@@ -107,6 +107,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/platform/external-workers/identity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Identity Operation
+         * @description Global controller bookkeeping, authorized only by the fixed worker UAMI.
+         */
+        post: operations["externalworkers.identity"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -2756,8 +2776,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Generate presigned URL for file upload
-         * @description Generate a presigned S3 URL for direct file upload. The file will be stored in the uploads folder.
+         * Authorize a file upload
+         * @description Authorize a bounded server upload for embed sessions or a direct storage upload for authenticated users.
          */
         post: operations["generate_upload_url_api_forms__form_id__upload_post"];
         delete?: never;
@@ -5078,6 +5098,63 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/devices/{device_id}/peer-sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Peer Session Route
+         * @description Authorize an isolated lighthouse lease for locally generated endpoint keys.
+         */
+        post: operations["create_peer_session_route_api_devices__device_id__peer_sessions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/devices/{device_id}/peer-sessions/{session_job_id}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Revoke Peer Session Route */
+        post: operations["revoke_peer_session_route_api_devices__device_id__peer_sessions__session_job_id__revoke_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/devices/{device_id}/peer-sessions/{session_job_id}/revoke/{job_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Peer Revoke Status Route
+         * @description Read only this session's cleanup receipt as its owner or an admin.
+         */
+        get: operations["get_peer_revoke_status_route_api_devices__device_id__peer_sessions__session_job_id__revoke__job_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/device-control-keys": {
         parameters: {
             query?: never;
@@ -6868,6 +6945,10 @@ export interface paths {
         /**
          * Get Accessible Tools
          * @description Get tools the current user can assign to their agents (via role intersection).
+         *
+         *     Role membership alone isn't org scope: also require the tool workflow
+         *     to be in the caller's own org or global, so a role grant on another
+         *     org's tool-type workflow never surfaces here.
          */
         get: operations["get_accessible_tools_api_agents_accessible_tools_get"];
         put?: never;
@@ -6888,6 +6969,10 @@ export interface paths {
         /**
          * Get Accessible Knowledge
          * @description Get knowledge sources the current user can assign to their agents.
+         *
+         *     Role membership alone isn't org scope: also require the namespace-role
+         *     grant itself to be global or the caller's own org, so a role grant
+         *     scoped to another org's namespace assignment never surfaces here.
          */
         get: operations["get_accessible_knowledge_api_agents_accessible_knowledge_get"];
         put?: never;
@@ -6909,7 +6994,11 @@ export interface paths {
          * Get Fleet Stats Endpoint
          * @description Fleet-wide agent run stats over the last ``window_days``.
          *
-         *     Superusers see cross-org totals; org users are scoped to their org.
+         *     Callers with a platform-admin grant see cross-org totals;
+         *     regular users are scoped to their own org, their own runs/chats, and
+         *     never see another user's private agent folded into the count. A
+         *     regular caller with no org never falls through to the platform-wide
+         *     view — they get an empty fleet instead.
          *     Route is registered before ``/{agent_id}`` so the literal ``stats``
          *     prefix is not parsed as a UUID.
          */
@@ -8223,7 +8312,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get integration logo */
+        /**
+         * Get integration logo
+         * @description Serve an integration logo to admins, using immutable caching only for versioned thumbnails.
+         */
         get: operations["get_integration_logo_api_integrations__integration_id__logo_get"];
         put?: never;
         /**
@@ -11935,7 +12027,10 @@ export interface paths {
          *     the application origin.
          */
         post: operations["upload_application_logo_api_applications__app_id__logo_post"];
-        /** Delete application logo */
+        /**
+         * Delete application logo
+         * @description Clear logo and thumbnail data after enforcing write scope and Solution immutability.
+         */
         delete: operations["delete_application_logo_api_applications__app_id__logo_delete"];
         options?: never;
         head?: never;
@@ -17819,7 +17914,7 @@ export interface components {
             client_id: string;
             /**
              * Client Secret
-             * @description OAuth client secret (optional for PKCE flow, required for client_credentials, will be stored securely in Key Vault)
+             * @description OAuth client secret (optional for public clients such as PKCE-enabled providers without a secret, required for client_credentials, will be stored securely in Key Vault)
              */
             client_secret?: string | null;
             /**
@@ -17852,7 +17947,7 @@ export interface components {
             audience?: string | null;
             /**
              * Provider Metadata
-             * @description Provider-specific OAuth behavior flags and metadata
+             * @description Provider-specific OAuth behavior flags and metadata (e.g. use_pkce, omit_token_exchange_scope, omit_authorization_scope)
              */
             provider_metadata?: {
                 [key: string]: unknown;
@@ -18892,6 +18987,46 @@ export interface components {
             text: string;
             /** Ts */
             ts?: string | null;
+        };
+        /**
+         * DevicePeerRevokeAccepted
+         * @description Receipt shared with the session owner without changing job ownership.
+         */
+        DevicePeerRevokeAccepted: {
+            /**
+             * Job Id
+             * Format: uuid
+             */
+            job_id: string;
+            status: components["schemas"]["PlatformJobStatus"];
+            /**
+             * Reused
+             * @default false
+             */
+            reused: boolean;
+            /** Notification Id */
+            notification_id?: string | null;
+            /** Status Url */
+            status_url: string;
+        };
+        /** DevicePeerSessionCreate */
+        DevicePeerSessionCreate: {
+            /**
+             * Request Id
+             * Format: uuid
+             */
+            request_id: string;
+            /** Operator Key */
+            operator_key: string;
+            /** Target Key */
+            target_key: string;
+            /** Destination */
+            destination: string;
+            /**
+             * Expires
+             * Format: date-time
+             */
+            expires: string;
         };
         /**
          * DevicePublic
@@ -20990,6 +21125,35 @@ export interface components {
             authorized_organization_id: string | null;
             /** Is Active */
             is_active: boolean;
+        };
+        /**
+         * ExternalWorkerIdentityRequest
+         * @description Managed-identity broker contract; secrets never enter model repr.
+         */
+        ExternalWorkerIdentityRequest: {
+            /**
+             * Operation
+             * @enum {string}
+             */
+            operation: "acquire" | "begin" | "grant" | "bind" | "checkpoint" | "renew" | "release";
+            /** Replica */
+            replica: string;
+            /** Attempt */
+            attempt?: string | null;
+            /** Token */
+            token?: string | null;
+            /**
+             * Hostid
+             * @default
+             */
+            hostID: string;
+            /**
+             * Networkid
+             * @default
+             */
+            networkID: string;
+            /** State */
+            state?: string | null;
         };
         /**
          * FileChange
@@ -25869,7 +26033,7 @@ export interface components {
             audience?: string | null;
             /**
              * Provider Metadata
-             * @description Provider-specific OAuth behavior flags and metadata
+             * @description Provider-specific OAuth behavior flags and metadata (e.g. use_pkce, omit_token_exchange_scope, omit_authorization_scope)
              */
             provider_metadata?: {
                 [key: string]: unknown;
@@ -32468,7 +32632,7 @@ export interface components {
             audience?: string | null;
             /**
              * Provider Metadata
-             * @description Provider-specific OAuth behavior flags and metadata
+             * @description Provider-specific OAuth behavior flags and metadata (e.g. use_pkce, omit_token_exchange_scope, omit_authorization_scope)
              */
             provider_metadata?: {
                 [key: string]: unknown;
@@ -36492,6 +36656,43 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+        };
+    };
+    "externalworkers.identity": {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExternalWorkerIdentityRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -45113,6 +45314,106 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DeviceJobPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_peer_session_route_api_devices__device_id__peer_sessions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                device_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DevicePeerSessionCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlatformJobAccepted"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revoke_peer_session_route_api_devices__device_id__peer_sessions__session_job_id__revoke_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                device_id: string;
+                session_job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DevicePeerRevokeAccepted"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_peer_revoke_status_route_api_devices__device_id__peer_sessions__session_job_id__revoke__job_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                device_id: string;
+                session_job_id: string;
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlatformJobPublic"];
                 };
             };
             /** @description Validation Error */

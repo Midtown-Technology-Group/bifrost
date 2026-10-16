@@ -26,7 +26,7 @@
 #   ./test.sh quality repo              Run local repository CI hygiene checks.
 #
 # Client tests:
-#   ./test.sh client unit               Vitest on the host (no stack).
+#   ./test.sh client unit               Vitest in the isolated client-check container.
 #   ./test.sh client e2e                Playwright in the stack's client container.
 #   ./test.sh client smoke              Critical zero-retry Playwright merge gate.
 #   ./test.sh client nightly            Full product Playwright (docs capture excluded).
@@ -81,9 +81,9 @@ PRE_PR_EVIDENCE_HELPER="$SCRIPT_DIR/scripts/lib/pre_pr_stage_evidence.py"
 PRE_PR_PLAN_FILE="$TEST_LOCK_DIR/pre-pr-affected-plan.json"
 PRE_PR_CONTEXT=""
 
-# Load .env.test for optional secrets (GitHub PAT, LLM keys, etc.). Since the
-# file is intentionally ignored, linked worktrees do not receive it from Git;
-# fall back to the primary checkout's copy when the worktree has none.
+# Give Docker Compose access to optional test secrets without exporting them
+# into this host shell. Since .env.test is intentionally ignored, linked
+# worktrees fall back to the primary checkout's copy when they have none.
 BIFROST_TEST_ENV_FILE="$SCRIPT_DIR/.env.test"
 if [ ! -f "$BIFROST_TEST_ENV_FILE" ]; then
     BIFROST_COMMON_GIT_DIR="$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
@@ -95,10 +95,12 @@ if [ ! -f "$BIFROST_TEST_ENV_FILE" ]; then
     fi
 fi
 if [ -f "$BIFROST_TEST_ENV_FILE" ]; then
-    set -a
-    # shellcheck disable=SC1091
-    source "$BIFROST_TEST_ENV_FILE"
-    set +a
+    if [ -n "${COMPOSE_ENV_FILES:-}" ]; then
+        COMPOSE_ENV_FILES="$COMPOSE_ENV_FILES,$BIFROST_TEST_ENV_FILE"
+    else
+        COMPOSE_ENV_FILES="$BIFROST_TEST_ENV_FILE"
+    fi
+    export COMPOSE_ENV_FILES
 fi
 
 # =============================================================================
@@ -535,7 +537,18 @@ cmd_mcp() {
     esac
 }
 
+prepare_mcp_conformance_image() {
+    require_stack_up
+    # The runner has a separate JavaScript graph from the Python API image.
+    docker compose -f "$COMPOSE_FILE" --profile test build mcp-conformance
+}
+
 mcp_conformance() {
+    prepare_mcp_conformance_image
+    run_mcp_conformance "$@"
+}
+
+run_mcp_conformance() {
     require_stack_up
     # Browser lanes use localhost for callbacks. Reconcile the backend
     # authority before the adapter sends its canonical Host and audience.
@@ -585,10 +598,6 @@ mcp_conformance() {
         sed 's/^/  /' "$resource_metadata_file" >&2
         exit 1
     fi
-
-    # This image is deliberately separate from the API image: the official
-    # JavaScript runner must not alter Bifrost's Python MCP dependency graph.
-    docker compose -f "$COMPOSE_FILE" --profile test build mcp-conformance
 
     # Force a new adapter process for every command so its two-hour test JWT is
     # freshly minted. The service has no host port and forwards to the real API.
@@ -659,8 +668,10 @@ mcp_conformance() {
 }
 
 client_unit() {
-    echo "Running vitest on host..."
-    (cd client && npm test "$@")
+    echo "Running vitest in the isolated client-check container..."
+    docker compose -f "$COMPOSE_FILE" --profile client-check build client-check-runner
+    docker compose -f "$COMPOSE_FILE" --profile client-check run --rm --no-deps \
+        client-check-runner npm test -- "$@"
 }
 
 client_ci_checks() {
@@ -671,9 +682,10 @@ client_ci_checks() {
 }
 
 client_quality_checks() {
+    # The ci target inherits the authoritative, type-checked production build.
     docker compose -f "$COMPOSE_FILE" --profile client-check build client-check-runner
     docker compose -f "$COMPOSE_FILE" --profile client-check run --rm --no-deps \
-        client-check-runner sh -c 'npm run tsc && npx eslint "$@"' sh "$@"
+        client-check-runner sh -c 'npx eslint "$@"' sh "$@"
 }
 
 client_unit_targets() {
@@ -696,6 +708,7 @@ candidate_action_pin_checks() {
 }
 
 repository_ci_checks() {
+    python3 scripts/lib/test_secret_env_isolation.py
     bash scripts/lib/test_stack_lock_test.sh
     python3 scripts/lib/pre_pr_stage_evidence_test.py
     bash scripts/lib/pre_pr_lanes_test.sh
@@ -981,7 +994,10 @@ run_scoped_pre_pr() {
         run_pre_pr_stage e2e cmd_e2e_targets "${e2e_targets[@]}"
     fi
     if [ "$(pre_pr_plan_lane mcp_conformance)" = "affected" ]; then
-        run_pre_pr_stage mcp mcp_conformance
+        # Build before freezing the stage's exact image identities. Conformance
+        # itself must not create or replace an image during the evidence window.
+        prepare_mcp_conformance_image
+        run_pre_pr_stage mcp run_mcp_conformance
     fi
     if [ "$(pre_pr_plan_lane client_unit)" = "affected" ]; then
         mapfile -t client_unit_targets < <(pre_pr_plan_targets unit_tests client)
