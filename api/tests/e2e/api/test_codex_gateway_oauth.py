@@ -1,7 +1,9 @@
 """E2E coverage for Codex Gateway upstream OAuth onboarding."""
 
-import pytest
 import httpx
+import pytest
+
+from src.services.codex_gateway.oauth import MAX_CODEX_AUTH_CACHE_IMPORT_BYTES
 
 
 @pytest.mark.e2e
@@ -11,6 +13,22 @@ class TestCodexGatewayOAuth:
             response = fresh_client.get("/api/codex-gateway/oauth/status")
 
         assert response.status_code == 401
+
+    def test_rejects_oversized_auth_cache_before_json_parsing(
+        self,
+        e2e_client,
+        org1_user,
+    ):
+        response = e2e_client.post(
+            "/api/codex-gateway/oauth/import-auth-cache",
+            headers=org1_user.headers,
+            content=b"{" + (b"x" * MAX_CODEX_AUTH_CACHE_IMPORT_BYTES) + b"}",
+        )
+
+        assert response.status_code == 413
+        assert response.json() == {
+            "detail": "Codex auth cache request exceeds the import limit."
+        }
 
     def test_connect_status_import_and_disconnect_flow(
         self,

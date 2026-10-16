@@ -63,3 +63,17 @@ consumer and obligation evidence.
 Rollback the platform image through its reviewed lane if readback fails. Keep
 Solution ownership and Live history intact; do not reassign a Solution workflow or
 manually settle Source debt to make preview pass.
+
+## Failed preview diagnostics
+
+A refused handoff still produces `workspace_promotion_preview_invalid` with
+`retryable: false`. Its message includes `invariant:` followed only by an
+allowlisted, authored reason. Closure, registration, runtime-byte, current Root
+contract and dependency checks annotate their failure stage without changing the
+underlying exception or validation. Unexpected provider or validation bodies are
+not copied into the public receipt; unclassified failures remain redacted.
+
+Read the existing job receipt before choosing a repair. A stage identifies the
+failed proof, not permission to skip it, replace ownership, manufacture a receipt,
+or replay a business workflow. Publish this diagnostic change through normal
+platform source/image gates before refreshing a failed production preview.
