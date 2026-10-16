@@ -330,8 +330,18 @@ async def test_resolve_app_does_not_interpolate_non_slug_ref_into_path() -> None
 
 
 @pytest.mark.asyncio
-async def test_resolve_app_rejects_malformed_direct_response() -> None:
-    client = FakeClient({"/api/applications/invoices": {"id": str(uuid4())}})
+@pytest.mark.parametrize(
+    "payload",
+    [
+        pytest.param({"id": str(uuid4())}, id="missing-slug"),
+        pytest.param({"id": str(uuid4()), "slug": "other-app"}, id="wrong-slug"),
+        pytest.param({"id": "not-a-uuid", "slug": "invoices"}, id="non-uuid-id"),
+    ],
+)
+async def test_resolve_app_rejects_malformed_direct_response(
+    payload: dict[str, str],
+) -> None:
+    client = FakeClient({"/api/applications/invoices": payload})
 
     with pytest.raises(RefResolutionError, match="Invalid application response"):
         await resolve_ref(client, "app", "invoices")
