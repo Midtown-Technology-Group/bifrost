@@ -57,6 +57,7 @@ def test_configure_sentry_uses_privacy_first_defaults():
     assert init_kwargs["traces_sample_rate"] == pytest.approx(0.0)
     assert init_kwargs["profile_session_sample_rate"] == pytest.approx(0.0)
     assert callable(init_kwargs["before_send"])
+    assert init_kwargs["before_send_transaction"] is init_kwargs["before_send"]
 
 
 def test_app_startup_configures_sentry_from_env(monkeypatch):
@@ -160,3 +161,52 @@ def test_before_send_scrubs_sensitive_request_data():
     assert request["data"]["safe"] == "value"
     assert scrubbed["extra"]["database_url"] == "[Filtered]"
     assert scrubbed["extra"]["workflow"]["name"] == "safe"
+
+
+def test_before_send_scrubs_oauth_and_embed_secrets_from_nested_urls():
+    event = {
+        "request": {
+            "url": (
+                "https://bifrost.example/api/mcp/oauth/callback"
+                "?code=oauth-code&state=signed-state&ok=1"
+            )
+        },
+        "breadcrumbs": {
+            "values": [
+                {
+                    "category": "httplib",
+                    "data": {
+                        "url": (
+                            "https://bifrost.example/embed/apps/example"
+                            "?hmac=embed-proof&theme=dark"
+                        )
+                    },
+                }
+            ]
+        },
+        "extra": {
+            "redirect_url": (
+                "https://provider.example/callback"
+                "?signature=request-signature&status_code=302"
+            ),
+            "fragment_url": "https://bifrost.example/app#embed_token=jwt-secret",
+            "status_code": 302,
+        },
+    }
+
+    scrubbed = sentry_core.before_send(event, hint={})
+
+    serialized = repr(scrubbed)
+    for secret in (
+        "oauth-code",
+        "signed-state",
+        "embed-proof",
+        "request-signature",
+        "jwt-secret",
+    ):
+        assert secret not in serialized
+    assert "ok=1" in scrubbed["request"]["url"]
+    assert "theme=dark" in scrubbed["breadcrumbs"]["values"][0]["data"]["url"]
+    assert "status_code=302" in scrubbed["extra"]["redirect_url"]
+    assert scrubbed["extra"]["status_code"] == 302
+    assert "oauth-code" in event["request"]["url"]

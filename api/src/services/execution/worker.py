@@ -663,6 +663,7 @@ async def run_service(
     attempt_id = str(service_cfg.get("attempt_id", context_data.get("execution_id")))
 
     from src.core.module_cache_sync import (
+        assert_workspace_generation,
         clear_solution_context,
         clear_workspace_generation_context,
         set_solution_context,
@@ -681,6 +682,9 @@ async def run_service(
 
     install_service_credentials(service_cfg.get("token", ""))
 
+    expected_workspace_generation = context_data.get("workspace_generation")
+    set_workspace_generation_context(expected_workspace_generation)
+
     _exec_solution_id = context_data.get("solution_id")
     if _exec_solution_id:
         set_solution_context(
@@ -692,8 +696,8 @@ async def run_service(
 
     owns_virtual_import_hook = False
     try:
-        workspace_refresh = clear_workspace_modules()
-        set_workspace_generation_context(workspace_refresh.generation)
+        clear_workspace_modules()
+        assert_workspace_generation(expected_workspace_generation)
         owns_virtual_import_hook = get_virtual_finder() is None
         install_virtual_import_hook()
 
@@ -730,7 +734,7 @@ async def run_service(
                 ) = _load_workspace_workflow(
                     file_path=file_path,
                     function_name=function_name,
-                    workspace_generation=workspace_refresh.generation,
+                    workspace_generation=expected_workspace_generation,
                 )
                 if not loaded_code:
                     load_error = (

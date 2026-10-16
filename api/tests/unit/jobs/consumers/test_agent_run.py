@@ -9,14 +9,36 @@ import pytest
 sys.modules.setdefault("resource", ModuleType("resource"))
 
 from src.jobs.consumers import agent_run  # noqa: E402
-from src.jobs.consumers.agent_run import AgentRunConsumer  # noqa: E402
+from src.jobs.consumers.agent_run import (  # noqa: E402
+    AgentRunConsumer,
+    _terminal_status_for_agent_result,
+)
+
+
+@pytest.mark.parametrize(
+    ("current_status", "result_status", "expected"),
+    [
+        ("running", "completed", "completed"),
+        ("running", "cancelled", "cancelled"),
+        ("cancelling", "completed", "cancelled"),
+        ("cancelling", "cancelled", "cancelled"),
+        ("timeout", "completed", None),
+        ("cancelled", "completed", None),
+    ],
+)
+def test_terminal_status_for_agent_result(
+    current_status: str,
+    result_status: str,
+    expected: str | None,
+) -> None:
+    assert _terminal_status_for_agent_result(current_status, result_status) == expected
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("status", "claimable"),
     [
-        ("scheduled", False),
+        ("scheduled", True),
         ("queued", True),
         ("running", False),
         ("completed", False),
@@ -61,7 +83,7 @@ async def test_durable_agent_run_claim_serializes_with_publisher(
 @pytest.mark.parametrize(
     ("status", "expected_status", "failed"),
     [
-        ("scheduled", "scheduled", False),
+        ("scheduled", "failed", True),
         ("queued", "failed", True),
         ("running", "running", False),
         ("completed", "completed", False),
