@@ -44,7 +44,7 @@ async def test_failed_repo_install_cleanup_commits_before_job_failure(monkeypatc
     projection = SolutionDeployJob(
         id=deploy_job_id,
         install_id=install_id,
-        status="failed",
+        status="running",
         error="manifest invalid",
     )
     orphan = Solution(id=install_id, slug="failed-install", name="Failed install")
@@ -83,7 +83,8 @@ async def test_failed_repo_install_cleanup_commits_before_job_failure(monkeypatc
     monkeypatch.setattr(
         "src.jobs.platform.solution_deploy.get_db_context", fake_db_context
     )
-    monkeypatch.setattr("src.routers.solutions._run_deploy_job", AsyncMock())
+    deploy = AsyncMock()
+    monkeypatch.setattr("src.routers.solutions._run_deploy_job", deploy)
 
     with pytest.raises(PlatformJobFailure, match="manifest invalid"):
         await run_solution_deploy(
@@ -98,9 +99,12 @@ async def test_failed_repo_install_cleanup_commits_before_job_failure(monkeypatc
         )
 
     assert transaction_committed is True
+    assert projection.status == "failed"
     assert projection.install_id is None
     db.flush.assert_awaited_once()
     db.delete.assert_awaited_once_with(orphan)
+    deploy.assert_awaited_once()
+    assert deploy.await_args.kwargs["defer_failure_until_cleanup"] is True
 
 
 @pytest.mark.asyncio

@@ -151,6 +151,11 @@ async def run_solution_deploy(
                         # exemption the one-writer refusal would deadlock creation.
                         # Manual deploys (kind="deploy") stay refused.
                         allow_connected_install=payload.kind == "install_from_repo",
+                        # Do not expose terminal failure to pollers until the
+                        # orphan cleanup below commits in the same transaction.
+                        defer_failure_until_cleanup=(
+                            payload.kind == "install_from_repo"
+                        ),
                     )
             else:
                 raw_org_id = payload.options.get("organization_id")
@@ -182,6 +187,8 @@ async def run_solution_deploy(
                     orphan = await db.get(Solution, payload.install_id)
                     if orphan is not None:
                         await db.delete(orphan)
+                    projection.status = "failed"
+                    projection.result = None
                 failure = PlatformJobFailure(
                     "solution_deploy_failed",
                     projection.error or "Solution deploy failed.",
