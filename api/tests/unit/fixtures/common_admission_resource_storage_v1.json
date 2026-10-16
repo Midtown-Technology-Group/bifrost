@@ -1,0 +1,224 @@
+{
+  "schema_version": 1,
+  "authority": {
+    "repository": "Midtown-Technology-Group/bifrost",
+    "commit": "56d1fb006d220b9dbb0747f1cca4def18677f918",
+    "sources": [
+      {
+        "path": "api/alembic/versions/20261010_runtime_admissions.py",
+        "source_sha256": "8e918a68b5432209ebf38b3ea99796dd1ec9d5955002c7aaaf2a73dbb6aef8da"
+      },
+      {
+        "path": "api/alembic/versions/20261011_runtime_resource_settlements.py",
+        "source_sha256": "bfb0563e12175c096fba986bcec76492660898f71c9f16897ee3eacbc1aa0dd1"
+      }
+    ]
+  },
+  "tables": {
+    "runtime_admissions": {
+      "columns": {
+        "id": {
+          "type": "UUID",
+          "nullable": false,
+          "primary_key": true,
+          "server_default": null
+        },
+        "purpose": {
+          "type": "VARCHAR(16)",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": null
+        },
+        "session_id": {
+          "type": "UUID",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": null
+        },
+        "committed_start_id": {
+          "type": "UUID",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": null
+        },
+        "start_message_id": {
+          "type": "UUID",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": null
+        },
+        "grant_id": {
+          "type": "UUID",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": null
+        },
+        "delivery_id": {
+          "type": "UUID",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": null
+        },
+        "operations_digest": {
+          "type": "VARCHAR(64)",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": null
+        },
+        "expires_at": {
+          "type": "TIMESTAMP WITH TIME ZONE",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": null
+        },
+        "provision_admission_id": {
+          "type": "UUID",
+          "nullable": true,
+          "primary_key": false,
+          "server_default": null
+        },
+        "provision_purpose": {
+          "type": "VARCHAR(16)",
+          "nullable": true,
+          "primary_key": false,
+          "server_default": null
+        },
+        "frontier_sha256": {
+          "type": "VARCHAR(64)",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": null
+        },
+        "admitted_at": {
+          "type": "TIMESTAMP WITH TIME ZONE",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": null
+        }
+      },
+      "checks": {
+        "ck_runtime_admission_purpose": "(purpose = 'provision' AND provision_admission_id IS NULL AND provision_purpose IS NULL) OR (purpose = 'release' AND provision_admission_id IS NOT NULL AND provision_purpose IS NOT NULL AND provision_purpose = 'provision')",
+        "ck_runtime_admission_digests": "frontier_sha256 ~ '^[0-9a-f]{64}$' AND operations_digest ~ '^[0-9a-f]{64}$'",
+        "ck_runtime_admission_finite_budget": "isfinite(admitted_at) AND isfinite(expires_at) AND admitted_at < expires_at"
+      },
+      "uniques": {
+        "uq_runtime_admission_purpose": [
+          "session_id",
+          "purpose"
+        ],
+        "uq_runtime_admission_delivery_identity": [
+          "id",
+          "purpose",
+          "session_id",
+          "grant_id",
+          "delivery_id"
+        ]
+      },
+      "foreign_keys": {
+        "fk_runtime_admission_exact_grant": {
+          "columns": [
+            "grant_id",
+            "session_id",
+            "committed_start_id",
+            "start_message_id",
+            "operations_digest",
+            "expires_at"
+          ],
+          "references": [
+            "workflow_runtime_sdk_grants.id",
+            "workflow_runtime_sdk_grants.runtime_session_id",
+            "workflow_runtime_sdk_grants.committed_start_id",
+            "workflow_runtime_sdk_grants.start_message_id",
+            "workflow_runtime_sdk_grants.operations_digest",
+            "workflow_runtime_sdk_grants.initial_access_expires_at"
+          ],
+          "ondelete": "RESTRICT"
+        },
+        "fk_runtime_release_exact_provision": {
+          "columns": [
+            "provision_admission_id",
+            "provision_purpose",
+            "session_id",
+            "grant_id",
+            "delivery_id"
+          ],
+          "references": [
+            "runtime_admissions.id",
+            "runtime_admissions.purpose",
+            "runtime_admissions.session_id",
+            "runtime_admissions.grant_id",
+            "runtime_admissions.delivery_id"
+          ],
+          "ondelete": "RESTRICT"
+        }
+      }
+    },
+    "runtime_resource_settlements": {
+      "columns": {
+        "session_id": {
+          "type": "UUID",
+          "nullable": false,
+          "primary_key": true,
+          "server_default": null
+        },
+        "execution_id": {
+          "type": "UUID",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": null
+        },
+        "owner_incarnation_id": {
+          "type": "UUID",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": null
+        },
+        "workflow_attempt_id": {
+          "type": "UUID",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": null
+        },
+        "raw_observation": {
+          "type": "BYTEA",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": null
+        },
+        "observation_sha256": {
+          "type": "VARCHAR(64)",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": null
+        },
+        "created_at": {
+          "type": "TIMESTAMP WITH TIME ZONE",
+          "nullable": false,
+          "primary_key": false,
+          "server_default": "clock_timestamp()"
+        }
+      },
+      "checks": {
+        "ck_runtime_resource_exact_bytes": "octet_length(raw_observation) BETWEEN 1 AND 65536 AND observation_sha256 = encode(sha256(raw_observation), 'hex')"
+      },
+      "uniques": {},
+      "foreign_keys": {
+        "fk_runtime_resource_session_identity": {
+          "columns": [
+            "session_id",
+            "execution_id",
+            "owner_incarnation_id",
+            "workflow_attempt_id"
+          ],
+          "references": [
+            "runtime_sessions.id",
+            "runtime_sessions.execution_id",
+            "runtime_sessions.owner_incarnation_id",
+            "runtime_sessions.workflow_attempt_id"
+          ],
+          "ondelete": "RESTRICT"
+        }
+      }
+    }
+  }
+}

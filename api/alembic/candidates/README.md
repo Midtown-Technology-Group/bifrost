@@ -10,9 +10,9 @@ apply a candidate from this directory.
 The owner-links draft is C1 storage only. The C2 starts/receipts draft adds typed
 Start and exact report evidence, including the Start clock key required by C3.
 C3 adds the closed CRED grant/operation records bound to retained owner, source,
-session and Start identity. These drafts do not enable admission, finalization,
-renewal or replay. This continuation does not yet include admission/resource records,
-restricted login/guard grants,
+session and Start identity. C4 adds exact provision/release and physical-resource
+records. These drafts do not enable admission, finalization, renewal or replay.
+This continuation does not yet include restricted login/guard grants,
 ancestor-write exceptions or physical-drain admission. In particular, native
 FK detachment is not physical/source retirement, and PUBLIC revocation does not
 restrict a migration/table owner. It must not be installed as a complete writer
@@ -40,3 +40,15 @@ live source/current caller eligibility and session-close/first-issuance races
 still require the complete C5 admission guard and existing CRED issuer adapter.
 No C3-alone application or new credential authority is authorized. The accepted
 Go consumer remains integration-get only; table enums do not expand its SDK.
+
+C4 preserves the common prototype's 13 admission fields and seven resource
+fields, exact composite grant/provision/session bindings, finite admission
+budget and bounded raw observation digest. A provision/release row records an
+execution-delivery decision. It is not a resource-cleanup receipt. A resource
+row additionally requires a retained closed session, but the database does not
+prove physical custody; only the original trusted observer may supply that fact
+under the complete C5 writer/admission guard. Terminal status, process exit,
+disconnect and missing files are insufficient. General partial-cleanup recovery
+remains unresolved; storage cannot authorize replay, inferred retirement or
+owner reassignment. Real payload retention, C1-C5 application and all runtime
+enablement remain held.
