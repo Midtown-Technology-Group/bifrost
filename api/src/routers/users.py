@@ -761,9 +761,13 @@ async def delete_user(
     # Try UUID first
     try:
         uuid_id = UUID(user_id)
-        result = await db.execute(select(UserORM).where(UserORM.id == uuid_id))
+        result = await db.execute(
+            select(UserORM).where(UserORM.id == uuid_id).with_for_update()
+        )
     except ValueError:
-        result = await db.execute(select(UserORM).where(UserORM.email == user_id))
+        result = await db.execute(
+            select(UserORM).where(UserORM.email == user_id).with_for_update()
+        )
 
     db_user = result.scalar_one_or_none()
 
