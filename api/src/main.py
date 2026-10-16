@@ -381,6 +381,11 @@ def create_app() -> FastAPI:
         RouteBodyLimitMiddleware,
         limits={
             ("POST", "/api/solutions/import-workspace/preview"): MAX_SOLUTION_ARCHIVE_BYTES,
+            ("POST", "/api/platform/external-workers/identity"): 4 << 20,
+        },
+        messages={
+            ("POST", "/api/solutions/import-workspace/preview"): "Solution archive exceeds the compressed upload limit.",
+            ("POST", "/api/platform/external-workers/identity"): "Identity request exceeds body limit.",
         },
     )
 
