@@ -4,7 +4,13 @@ from __future__ import annotations
 import pytest
 
 
-async def _run(middleware, *, headers=None, chunks=(b"",)) -> list[dict]:
+async def _run(
+    middleware,
+    *,
+    headers=None,
+    chunks=(b"",),
+    path="/api/solutions/import-workspace/preview",
+) -> list[dict]:
     sent: list[dict] = []
     messages = iter(chunks)
 
@@ -17,7 +23,7 @@ async def _run(middleware, *, headers=None, chunks=(b"",)) -> list[dict]:
 
     await middleware(
         {
-            "type": "http", "method": "POST", "path": "/api/solutions/import-workspace/preview",
+            "type": "http", "method": "POST", "path": path,
             "headers": headers or [],
         },
         receive,
@@ -65,3 +71,26 @@ async def test_route_body_limit_rejects_chunked_oversize_before_uploadfile_spool
 
     assert received == [b"12345"]
     assert sent[0]["status"] == 413
+
+
+@pytest.mark.asyncio
+async def test_route_body_limit_uses_route_specific_safe_error_detail() -> None:
+    from src.core.request_body_limit import RouteBodyLimitMiddleware
+
+    async def app(_scope, _receive, _send):
+        raise AssertionError("oversized request reached the application")
+
+    path = "/api/codex-gateway/oauth/import-auth-cache"
+    middleware = RouteBodyLimitMiddleware(
+        app,
+        limits={("POST", path): 10},
+        detail="Codex auth cache request exceeds the import limit.",
+    )
+    sent = await _run(
+        middleware,
+        headers=[(b"content-length", b"11")],
+        path=path,
+    )
+
+    assert sent[0]["status"] == 413
+    assert b"Codex auth cache request exceeds the import limit." in sent[1]["body"]

@@ -78,4 +78,40 @@ describe("useWorkflowMutation", () => {
 			expect(unsubscribe).toHaveBeenCalledOnce();
 		});
 	});
+
+	it("rejects CompletedWithErrors when the immediate reconciliation wins the race", async () => {
+		(apiClient.POST as Mock).mockResolvedValue({
+			data: { execution_id: "exec-error", status: "Running" },
+			error: undefined,
+		});
+		(getExecution as Mock).mockResolvedValue({
+			status: "CompletedWithErrors",
+			result: { success: false },
+			error_message: "Workflow reported failure",
+		});
+		const unsubscribe = vi.fn();
+		(subscribeToExecution as Mock).mockReturnValue(unsubscribe);
+
+		const { result } = renderHook(() =>
+			useWorkflowMutation<{ success: boolean }>("workflow-1"),
+		);
+
+		let executionPromise!: Promise<{ success: boolean }>;
+		act(() => {
+			executionPromise = result.current.execute();
+		});
+
+		await expect(executionPromise).rejects.toThrow(
+			"Workflow reported failure",
+		);
+		await waitFor(() => {
+			expect(result.current.data).toBeNull();
+			expect(result.current.isError).toBe(true);
+			expect(result.current.errorMessage).toBe(
+				"Workflow reported failure",
+			);
+			expect(result.current.isLoading).toBe(false);
+			expect(unsubscribe).toHaveBeenCalledOnce();
+		});
+	});
 });

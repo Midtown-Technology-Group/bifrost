@@ -162,6 +162,66 @@ def test_preview_recognizes_existing_scoped_definitions_and_remapped_references(
     assert preview.config_schemas[0]["requires_input"] is False
 
 
+def test_agent_preview_surfaces_existing_admin_tool_for_review() -> None:
+    from src.services.solutions.workspace_bundle_plan import (
+        SolutionPackageWorkspaceProjection,
+        WorkspaceBundlePlanner,
+    )
+    from src.services.solutions.zip_install import PreviewResult
+
+    source_id = UUID(int=21)
+    target_id = UUID(int=22)
+    projection = SolutionPackageWorkspaceProjection.from_preview(
+        PreviewResult(agents=[{
+            "id": str(source_id),
+            "name": "helper",
+            "system_tools": [],
+        }]),
+        preview_id=UUID(int=7),
+    )
+    agent = next(iter(projection.manifest.agents.values()))
+    existing = agent.model_dump(mode="json", exclude={"id"})
+    existing["system_tools"] = ["execute_workflow"]
+
+    preview = WorkspaceBundlePlanner(None, preview_id=UUID(int=7))._build_plan(
+        projection,
+        {("agent", ("helper",)): (target_id, existing, False)},
+        {},
+    ).preview
+
+    assert preview.items[0].classification == "conflict"
+
+
+def test_agent_preview_ignores_admin_tool_requested_by_package() -> None:
+    from src.services.solutions.workspace_bundle_plan import (
+        SolutionPackageWorkspaceProjection,
+        WorkspaceBundlePlanner,
+    )
+    from src.services.solutions.zip_install import PreviewResult
+
+    source_id = UUID(int=23)
+    target_id = UUID(int=24)
+    projection = SolutionPackageWorkspaceProjection.from_preview(
+        PreviewResult(agents=[{
+            "id": str(source_id),
+            "name": "helper",
+            "system_tools": ["execute_workflow"],
+        }]),
+        preview_id=UUID(int=7),
+    )
+    agent = next(iter(projection.manifest.agents.values()))
+    existing = agent.model_dump(mode="json", exclude={"id"})
+    existing["system_tools"] = []
+
+    preview = WorkspaceBundlePlanner(None, preview_id=UUID(int=7))._build_plan(
+        projection,
+        {("agent", ("helper",)): (target_id, existing, False)},
+        {},
+    ).preview
+
+    assert preview.items[0].classification == "unchanged"
+
+
 def test_table_preview_treats_the_import_seed_policy_as_unchanged() -> None:
     from bifrost.manifest import ManifestPolicy
     from shared.policies.probe import make_seed_admin_bypass

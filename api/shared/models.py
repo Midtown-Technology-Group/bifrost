@@ -1,10 +1,23 @@
 """Shared Pydantic models used by API routers and clients."""
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field, RootModel
+from pydantic import Base64Bytes, BaseModel, ConfigDict, Field, RootModel, SecretStr
+
+
+class ExternalWorkerIdentityRequest(BaseModel):
+    """Managed-identity broker contract; secrets never enter model repr."""
+
+    model_config = ConfigDict(extra="forbid")
+    operation: Literal["acquire", "begin", "grant", "bind", "checkpoint", "renew", "release"]
+    replica: str = Field(min_length=1, max_length=200, pattern=r"^[a-z0-9-]+$")
+    attempt: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    token: SecretStr | None = Field(default=None, max_length=4096, repr=False)
+    host_id: str = Field(default="", alias="hostID", max_length=128)
+    network_id: str = Field(default="", alias="networkID", max_length=128)
+    state: Base64Bytes | None = Field(default=None, max_length=2 << 20, repr=False)
 
 
 class ExternalIdentityCreateRequest(BaseModel):
