@@ -362,9 +362,10 @@ async def list_agents(
     - Platform admins see all agents
     - Users see AUTHENTICATED agents + ROLE_BASED agents assigned to their roles
     """
-    # Inactive records include soft-deleted agents. Only callers with an
-    # explicit platform-admin grant may enumerate them, regardless of the
-    # client-supplied active_only query value.
+    # Ordinary callers may not enumerate inactive shared agents, regardless
+    # of the client-supplied active_only value. Paused private agents remain
+    # visible to their owner in Fleet so the owner can reactivate them; chat
+    # discovery remains active-only. DELETE permanently removes the row.
     active_only = active_only or not user.has_platform_admin_grant()
 
     if discovery_only:
@@ -394,7 +395,10 @@ async def list_agents(
         agents = await repo.list_all_in_scope(filter_type, active_only=active_only)
     else:
         # Regular users use list_agents with built-in cascade + role-based access
-        agents = await repo.list_agents(active_only=active_only)
+        agents = await repo.list_agents(
+            active_only=active_only,
+            include_owned_inactive=not discovery_only,
+        )
 
     # Batch-compute dependency counts (tool count per agent)
     agent_ids = [a.id for a in agents]
@@ -787,10 +791,19 @@ async def get_agent(
             detail=f"Agent {agent_id} not found",
         )
 
-    # Inactive records include soft-deleted agents. Keep their existence and
-    # configuration hidden from ordinary callers even when a stale ID still
-    # passes the repository's organization/role access check.
-    if not agent.is_active and not user.has_platform_admin_grant():
+    access_level = getattr(agent.access_level, "value", agent.access_level)
+    is_private_owner = (
+        access_level == AgentAccessLevel.PRIVATE.value
+        and agent.owner_user_id == user.user_id
+    )
+
+    # Inactive shared agents stay hidden from ordinary callers. Owners retain
+    # access to paused private agents so they can inspect and reactivate them.
+    if (
+        not agent.is_active
+        and not user.has_platform_admin_grant()
+        and not is_private_owner
+    ):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Agent {agent_id} not found",
@@ -801,8 +814,10 @@ async def get_agent(
     # a provider-org non-admin. Private agents stay owner-only regardless —
     # only a true platform admin (narrow is_superuser) bypasses that,
     # matching the write path's "private" semantics.
-    access_level = getattr(agent.access_level, "value", agent.access_level)
-    if access_level == "private" and not user.has_platform_admin_grant():
+    if (
+        access_level == AgentAccessLevel.PRIVATE.value
+        and not user.has_platform_admin_grant()
+    ):
         if agent.owner_user_id != user.user_id:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -810,7 +825,8 @@ async def get_agent(
             )
 
     can_manage = user.is_platform_admin or (
-        access_level == "private" and agent.owner_user_id == user.user_id
+        access_level == AgentAccessLevel.PRIVATE.value
+        and agent.owner_user_id == user.user_id
     )
     return _agent_to_public(agent, include_configuration=can_manage)
 
