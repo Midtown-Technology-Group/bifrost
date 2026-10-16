@@ -22,16 +22,7 @@ jobs:
         run: |
           git rev-parse HEAD | tee /tmp/search-diagnostic-source.txt
           ./test.sh stack up
-      - name: Isolated responsiveness workload with memory and host CPU evidence
-        run: |
-          set -o pipefail
-          vmstat -t 1 > /tmp/search-isolated-vmstat.txt &
-          monitor=$!
-          (for i in $(seq 1 180); do date -u +%FT%T.%NZ; docker stats --no-stream --format '{{json .}}'; done) > /tmp/search-isolated-cpu.txt &
-          cpu_monitor=$!
-          trap 'kill "$monitor" "$cpu_monitor"; wait "$monitor" "$cpu_monitor" || true' EXIT
-          python3 scripts/benchmark_large_table_responses.py --label isolated --interval 0.5 --trace-out /tmp/search-isolated-memory.csv | tee /tmp/search-isolated.log
-      - name: Replay immediate predecessor files and responsiveness test in one session
+      - name: Replay all 43 historical prefix files with diagnostic stack watchdog
         if: ${{ !cancelled() }}
         run: |
           set -o pipefail
@@ -42,7 +33,8 @@ jobs:
           (for i in $(seq 1 180); do date -u +%FT%T.%NZ; docker stats --no-stream --format '{{json .}}'; done) > /tmp/search-replay-cpu.txt &
           cpu_monitor=$!
           trap 'kill "$host_monitor" "$memory_monitor" "$cpu_monitor"; wait "$host_monitor" "$memory_monitor" "$cpu_monitor" || true' EXIT
-          ./test.sh tests/e2e/platform/test_form_execute_solution_scope_e2e.py tests/e2e/platform/test_form_indexer.py tests/e2e/platform/test_large_table_response_memory.py -s -v --durations=0 | tee /tmp/search-replay.log
+          mapfile -t prefix_files < scripts/search-responsiveness-historical-prefix.txt
+          ./test.sh "${prefix_files[@]}" -s -v --durations=0 | tee /tmp/search-replay.log
       - name: Upload diagnostic evidence without changing the test threshold
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
