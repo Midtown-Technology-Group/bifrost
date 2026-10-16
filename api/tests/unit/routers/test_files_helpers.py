@@ -2182,6 +2182,7 @@ async def test_search_file_contents_delegates_and_maps_bad_request(monkeypatch):
         root_path,
         immutable_overlay=None,
         workspace_release_id=None,
+        deadline=None,
     ):
         calls.append(
             (
@@ -2249,6 +2250,7 @@ async def test_search_file_contents_overlays_verified_live_bytes(monkeypatch):
         root_path,
         immutable_overlay,
         workspace_release_id,
+        deadline,
     ):
         captured.update(
             root_path=root_path,
@@ -2937,3 +2939,21 @@ async def _async_false(*_args, **_kwargs):
 
 async def _async_unexpected(*_args, **_kwargs):
     raise AssertionError("unexpected async call")
+
+
+@pytest.mark.asyncio
+async def test_search_deadline_includes_live_source_loading(monkeypatch):
+    import asyncio
+
+    async def stalled_view(*args):
+        await asyncio.Future()
+
+    monkeypatch.setattr(files, "MAX_SEARCH_SECONDS", 0.0)
+    monkeypatch.setattr("src.services.workspace_release_files.active_workspace_release_file_view", stalled_view)
+    request = SimpleNamespace(query="needle")
+    context = _ctx(is_superuser=True)
+    user = SimpleNamespace(user_id=USER_ID)
+    with pytest.raises(HTTPException) as failure:
+        await files.search_file_contents(request, context, user, db="db")
+    assert failure.value.status_code == 400
+    assert failure.value.detail == "Search exceeded the request time budget"
