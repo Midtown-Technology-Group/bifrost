@@ -15,6 +15,7 @@ def _repository_root() -> Path:
 
 REPO_ROOT = _repository_root()
 CI_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "ci.yml"
+NOOP_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "ci-noop.yml"
 CODEQL_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "codeql.yml"
 NIGHTLY_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "nightly.yml"
 
@@ -23,6 +24,29 @@ def _load_workflow(path: Path) -> dict[str, Any]:
     loaded = yaml.load(path.read_text(), Loader=yaml.BaseLoader)
     assert isinstance(loaded, dict)
     return loaded
+
+
+def test_docs_only_prs_use_required_context_stubs_until_merge_queue() -> None:
+    ci = _load_workflow(CI_WORKFLOW)
+    noop = _load_workflow(NOOP_WORKFLOW)
+
+    ci_pull_request = ci["on"]["pull_request"]
+    noop_pull_request = noop["on"]["pull_request"]
+    assert ci_pull_request["paths-ignore"] == noop_pull_request["paths"]
+    assert ".github/workflows/**" not in ci_pull_request["paths-ignore"]
+
+    stub_contexts = {job["name"] for job in noop["jobs"].values()}
+    assert {
+        "Lint & Type Check",
+        "Unit Tests",
+        "E2E Tests",
+        "Candidate Images",
+    } <= stub_contexts
+
+    # Docs-only PRs skip ci.yml, but merge_group must stay unconditional so
+    # the exact queue candidate still receives real validation before main.
+    assert "paths" not in ci["on"]["merge_group"]
+    assert "paths-ignore" not in ci["on"]["merge_group"]
 
 
 def test_ci_supports_native_merge_groups_during_queue_cutover() -> None:
