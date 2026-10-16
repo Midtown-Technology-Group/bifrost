@@ -16056,7 +16056,7 @@
     "cli": 158,
     "manifest": 16,
     "mcp": 90,
-    "rest": 779,
+    "rest": 782,
     "sdk": 19
   },
   "schema_version": 1,
@@ -17906,6 +17906,27 @@
         "method": "GET",
         "operation_id": "",
         "path": "/api/dependencies/{entity_type}/{entity_id}",
+        "reason": "REST operation has not entered the canonical operation catalog yet.",
+        "status": "missing_surface"
+      },
+      {
+        "method": "POST",
+        "operation_id": "",
+        "path": "/api/devices/{device_id}/peer-sessions",
+        "reason": "REST operation has not entered the canonical operation catalog yet.",
+        "status": "missing_surface"
+      },
+      {
+        "method": "POST",
+        "operation_id": "",
+        "path": "/api/devices/{device_id}/peer-sessions/{session_job_id}/revoke",
+        "reason": "REST operation has not entered the canonical operation catalog yet.",
+        "status": "missing_surface"
+      },
+      {
+        "method": "GET",
+        "operation_id": "",
+        "path": "/api/devices/{device_id}/peer-sessions/{session_job_id}/revoke/{job_id}",
         "reason": "REST operation has not entered the canonical operation catalog yet.",
         "status": "missing_surface"
       },

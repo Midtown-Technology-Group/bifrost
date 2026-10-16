@@ -2776,8 +2776,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Generate presigned URL for file upload
-         * @description Generate a presigned S3 URL for direct file upload. The file will be stored in the uploads folder.
+         * Authorize a file upload
+         * @description Authorize a bounded server upload for embed sessions or a direct storage upload for authenticated users.
          */
         post: operations["generate_upload_url_api_forms__form_id__upload_post"];
         delete?: never;
@@ -5092,6 +5092,63 @@ export interface paths {
         put?: never;
         /** Cooperative cancel (user JWT only; no kill guarantee) */
         post: operations["devices.cancel_job_route"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/devices/{device_id}/peer-sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Peer Session Route
+         * @description Authorize an isolated lighthouse lease for locally generated endpoint keys.
+         */
+        post: operations["create_peer_session_route_api_devices__device_id__peer_sessions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/devices/{device_id}/peer-sessions/{session_job_id}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Revoke Peer Session Route */
+        post: operations["revoke_peer_session_route_api_devices__device_id__peer_sessions__session_job_id__revoke_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/devices/{device_id}/peer-sessions/{session_job_id}/revoke/{job_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Peer Revoke Status Route
+         * @description Read only this session's cleanup receipt as its owner or an admin.
+         */
+        get: operations["get_peer_revoke_status_route_api_devices__device_id__peer_sessions__session_job_id__revoke__job_id__get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -18930,6 +18987,46 @@ export interface components {
             text: string;
             /** Ts */
             ts?: string | null;
+        };
+        /**
+         * DevicePeerRevokeAccepted
+         * @description Receipt shared with the session owner without changing job ownership.
+         */
+        DevicePeerRevokeAccepted: {
+            /**
+             * Job Id
+             * Format: uuid
+             */
+            job_id: string;
+            status: components["schemas"]["PlatformJobStatus"];
+            /**
+             * Reused
+             * @default false
+             */
+            reused: boolean;
+            /** Notification Id */
+            notification_id?: string | null;
+            /** Status Url */
+            status_url: string;
+        };
+        /** DevicePeerSessionCreate */
+        DevicePeerSessionCreate: {
+            /**
+             * Request Id
+             * Format: uuid
+             */
+            request_id: string;
+            /** Operator Key */
+            operator_key: string;
+            /** Target Key */
+            target_key: string;
+            /** Destination */
+            destination: string;
+            /**
+             * Expires
+             * Format: date-time
+             */
+            expires: string;
         };
         /**
          * DevicePublic
@@ -45217,6 +45314,106 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DeviceJobPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_peer_session_route_api_devices__device_id__peer_sessions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                device_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DevicePeerSessionCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlatformJobAccepted"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revoke_peer_session_route_api_devices__device_id__peer_sessions__session_job_id__revoke_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                device_id: string;
+                session_job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DevicePeerRevokeAccepted"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_peer_revoke_status_route_api_devices__device_id__peer_sessions__session_job_id__revoke__job_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                device_id: string;
+                session_job_id: string;
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlatformJobPublic"];
                 };
             };
             /** @description Validation Error */
