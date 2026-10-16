@@ -214,3 +214,27 @@ now makes the native FK, session and receipt constraints concrete. Its SQL has
 not been executed and is not migration history. Root holds its stronger
 one-session restriction and RESTRICT deletion behavior pending native
 recovery/deletion characterization; these cannot be assumed parity.
+
+
+## Current candidate verification update
+
+For `39245315e193e1d04886044677bf7a75bb8c6f1f`, manual CI 38947574111
+now reports successful literal pre-PR, backend unit, backend E2E shards 2/3
+and browser shard 1. Its remaining MCP, backend shards 1/4, browser shard 2
+and coverage work are incomplete at this observation; the full run is not
+accepted. ARM64 smoke, reliability and CodeQL also report success for the
+candidate. PR CI 38947585397 still has queued image producers. The four required
+checks passing is not a claim that the whole applicable gate set is complete.
+
+Pre-PR artifact 12069177147 was downloaded and verified against provider SHA-256
+`6044bc6a527a1a538583a219dd46bd6370fb7fe293458015a8b3745b86dfecbe`.
+Its log binds the exact candidate and says the local PR gate passed; its
+post-cleanup container inventory is empty. Network/volume cleanup is not
+independently inferred from that inventory.
+
+The [deletion/recovery decision](rust-core-mvp-workflow-deletion-recovery-contract.md)
+corrects two old source findings: poison imports the typed workflow attempt
+under a local alias, and current source accounting already includes active typed
+workflow attempts. A still-live runtime session after logical terminal is a
+separate missing source consumer. Native ancestor unlink parity and proven
+pre-Start native retries must survive the eventual owner guards.

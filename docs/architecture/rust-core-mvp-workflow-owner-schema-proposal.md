@@ -27,7 +27,7 @@ Ordinary triggers do not guard SELECT or LOCK TABLE. Recommended minimal decisio
 ## Source lock graph and unknown edges
 
 - main services/workspace_release_projection.py:114-121 shared source advisory fence; execution/async_executor.py:222-227 acquires it before native admission pinning. async_executor.py:236 has event-delivery advisory acquisition; :387-419 locks execution then event delivery. Preserve actual event/delivery interleaving.
-- main execution/poison.py:60-94: workflow-execution advisory -> Execution FOR UPDATE -> require_delivery_ownership -> generic ExecutionAttempt FOR UPDATE. It is NOT the typed WorkflowExecutionAttempt. Do not rename this edge into a typed attempt proof.
+- main execution/poison.py:60-94: workflow-execution advisory -> Execution FOR UPDATE -> require_delivery_ownership -> typed WorkflowExecutionAttempt FOR UPDATE. The module imports WorkflowExecutionAttempt as ExecutionAttempt; this local alias must not be mistaken for the generic attempt table.
 - CRED3918 services/runtime_sdk_grants.py:119-156: typed WorkflowExecutionAttempt FOR UPDATE -> Execution SHARE NOWAIT -> SolutionDeployment SHARE NOWAIT -> Solution SHARE NOWAIT, populate_existing. Independent committed precheck and locked refresh at :243-280. CRED grant/session integration must preserve that private fence; source advisory if needed must be taken before attempt, never blocking after it.
 - Proposed session/receipt inserts follow native attempt fence; append-only tables do not eliminate FK key-share/index conflict locks. Close/grant/renew/SDK operation admission/report all need common fresh gate. Never lock session first then wait on native attempt. No DB locks across vendor effects/signing.
 - Full incumbent consumer/cleanup/poison/cancel/event/retention/ancestor FK and installed trigger/advisory catalog is incomplete. NOWAIT on CRED secondary rows does not prove table/advisory/FK waits cannot cycle. Missing edges block rollout and any claim that a global order has been proved.
@@ -49,3 +49,9 @@ permission checks. The next review must resolve those exact points and the
 complete writer/lock catalog before any Alembic revision or role change.
 
 SQL SHA-256: `2dbaffd23da015bdfbd6a301a933a0e8d6acc40508ed3ae2ac498e9ad623b32c`.
+
+
+The [deletion/recovery follow-up](rust-core-mvp-workflow-deletion-recovery-contract.md)
+supersedes the preview's blanket RESTRICT/one-session recommendations and
+corrects its typed-attempt alias finding. The SQL remains a historical structural
+preview, not an apply-ready or frozen migration.
