@@ -50,7 +50,12 @@ async def test_cached_preview_never_crosses_actor_or_organization_and_expiry_is_
 @pytest.mark.parametrize("branchless", ["empty", "invalid-head", "valid-other-branch", "refused"])
 def test_remote_branch_error_cannot_silently_select_another_nonempty_branch(tmp_path, branchless):
     service = object.__new__(sync.GitHubSyncService)
-    service._git_auth_env = {}
+    auth_env = {
+        "GIT_CONFIG_COUNT": "1",
+        "GIT_CONFIG_KEY_0": "http.https://github.com/.extraheader",
+        "GIT_CONFIG_VALUE_0": "Authorization: Basic opaque",
+    }
+    service._git_auth_env = auth_env
     destination = tmp_path / "clone"
     destination.mkdir()
     (destination / "partial").write_text("failed clone")
@@ -64,8 +69,13 @@ def test_remote_branch_error_cannot_silently_select_another_nonempty_branch(tmp_
             with pytest.raises(sync.GitConnectPreviewError):
                 service._clone_connect_remote(destination, "https://example.invalid/repo", "main")
     assert clone.call_args_list == [
-        call("https://example.invalid/repo", str(destination), branch="main"),
-        call("https://example.invalid/repo", str(destination)),
+        call(
+            "https://example.invalid/repo",
+            str(destination),
+            branch="main",
+            env=auth_env,
+        ),
+        call("https://example.invalid/repo", str(destination), env=auth_env),
     ]
     assert not (destination / "partial").exists()
 
