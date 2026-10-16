@@ -200,5 +200,20 @@
       },
       "qualification": "source/unit only; new module SQL not executed"
     }
-  ]
+  ],
+  "unqualified_successor": {
+    "head": "6d07e94fcb5f8028ed7d17f3725b282e488cf093",
+    "module_sha256": "828c38f47ddec7c4b84898611d4a929e2b76dd14ea74bb45e5014f2c952a710d",
+    "change": "transaction-local pg_catalog,pg_temp path before authority checks; explicit public/catalog relation qualification",
+    "review": "independent Sol scoped source ACCEPT; no runtime execution",
+    "live_test": "transaction_resists_temp_shadows; proves masking before preparation and trusted catalog/public resolution after; does not exercise full authority/cancellation SQL",
+    "checks": {
+      "diff_check": "passed",
+      "native_fmt_clippy_tests": "unexecuted for this changed head",
+      "live_db": "unexecuted"
+    },
+    "qualification": "older5a36-test result does not qualify this source; actual R1/C5/security/public parity gates unchanged",
+    "publication": "source branch pushed/read back; no PR before pre-PR qualification",
+    "schema_roles_or_runtime_enabled": false
+  }
 }

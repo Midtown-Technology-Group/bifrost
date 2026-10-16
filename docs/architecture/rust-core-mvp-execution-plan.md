@@ -76,36 +76,41 @@ files and interfaces before each implementation package; low-overlap delegation
 is allowed only under applicable authorization, with one accountable architect.
 
 Current acceptance status: R0 is a concrete but unapproved design input; R1–R4
-are unproved as integrated MVP behavior; R5 has no final decision. The
-[current R1 source checkpoint](rust-core-mvp-common-session-checkpoint.json) is
-local commit `5a5a67284be79d1f0a8c8f07c0e5b5bd6a966303`: an internal Rust
-cancellation/session-close/grant-revocation transaction adapted from the existing
-common prototype, with execution-first locks, stricter principal checks and the
-exact C1 native live binding. Independent Sol source review accepted both the
-ownership predicate and new detach/recreation protection. Supported VM source
-checks pass all 36 default tests, including five pure snapshot tests. The first
-run was interrupted by another owner's VM shutdown; logs and missing-handle
-evidence are retained, and one same-source recovery passed. No new module SQL,
-schema/roles, endpoint or event execution is
-qualified; this does not close R1 or the absent-grant issuance race. Existing
-unit/source/Go and prerequisite CI results remain separately scoped. Do not
-turn these milestone labels into new experiment allowances. R1 needs only the
-R0 decisions relevant to its transaction; Python packaging does not block
-independent approved persistence work.
+are unproved as integrated MVP behavior; R5 has no final decision. Current Rust
+cancellation source is `6d07e94fcb5f8028ed7d17f3725b282e488cf093`: an internal
+cancellation/session-close/grant-revocation transaction with execution-first
+locks, strict principal checks, exact native live binding and trusted SQL name
+resolution. Independent Sol source review accepted it. The new live-db test
+covers temporary-shadow resistance in transaction preparation, not full
+cancellation/authority SQL. The [R1 checkpoint](rust-core-mvp-common-session-checkpoint.json)
+retains supported fmt/strict Clippy/36-default-test results for predecessor
+`5a5a67284`; those do not qualify the changed head. Current native/live-db checks
+remain unexecuted. No Start/result ownership, public endpoint/event execution or
+complete first-issuance race proof is claimed. R1 needs the R0 decisions relevant
+to its transaction; Python packaging does not block independent approved
+persistence work.
 
-The [common storage checkpoint](rust-core-mvp-common-storage-checkpoint.json)
-now binds reviewed inactive C1/C2 source at `2f211ad2a18fb73fe69f983ea0c1ae0bc0d0cbbd`:
-owner/session/native links plus typed Start and exact report receipts. A normal
-supported test stack confirmed current-main schema and no applied candidate
-tables, then external VM shutdown interrupted its first offline test. The 26
-collected cases are unproved, not passed. Task resources were removed and VM101
-returned to stopped. Normal CI for this exact combined source is queued in run
-38981722180. Do not repeat the same uncoordinated VM qualification blindly or
-treat its legacy RabbitMQ configuration as PostgreSQL delivery evidence. While
-source qualification is queued, C3's exact closed CRED grant/session/Start
-bindings are the next independent implementation dependency; no second issuer,
-role grants, schema application or lifecycle acceptance is authorized by that
-source package.
+The [storage checkpoint](rust-core-mvp-common-storage-checkpoint.json) now binds
+independently source-reviewed inactive C1-C4 candidates. C3 at
+`b7922c9b640692afca5ce4a2ec48f8cdc4f71429` preserves closed CRED grant and
+operation policy through exact common identity. C4 follows at
+`f973411fee9cfc65995f9729f91eaf5c4d6701a1`, with provision/release and separate
+immutable physical-resource observation storage. Locked static checks pass;
+pytest/SQL remain unexecuted. Earlier supported qualification of C1/C2 confirmed
+current-main schema and absent candidate tables, then external VM shutdown
+interrupted the first offline test. No collected test is counted as passed.
+Task resources were removed and VM101 returned to stopped. Do not repeat the
+same uncoordinated VM qualification blindly or treat its legacy RabbitMQ
+configuration as PostgreSQL delivery evidence. Normal CI for exact composed
+C1-C4 source is queued in run 38983420259; parent runs cannot qualify this head.
+
+C5's complete restricted writer/admission guards and adapter lock order are the
+next common dependency before the bundled schema/authority decision. Existing
+CRED remains the one policy/issuer owner. No candidate DDL, role grant, new
+credential or runtime enablement is authorized by these source packages.
+Execution delivery release, logical close and a missing file cannot prove
+physical teardown. General partial-cleanup recovery and payload disposition
+remain explicit requirements rather than implied storage guarantees.
 
 ## First falsification checkpoint
 

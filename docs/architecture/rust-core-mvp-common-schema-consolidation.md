@@ -219,6 +219,25 @@ Use the separately qualified explicit PostgreSQL reference configuration for
 actual delivery/lifecycle acceptance. Do not introduce Rust RabbitMQ support or
 transfer this run to PostgreSQL durability claims.
 
+C3 is source-reviewed at `b7922c9b640692afca5ce4a2ec48f8cdc4f71429`, branch
+`rust/common-grants-candidate`: all 35 CRED grant and eight operation fields and
+checks remain, plus the three common owner/Start IDs. Its fixed reference fixture
+is pinned to CRED, not derived from the candidate. C4 follows it at
+`f973411fee9cfc65995f9729f91eaf5c4d6701a1`, branch
+`rust/common-admission-resource-candidate`: 13 provision/release fields and seven
+resource-observation fields preserve the pinned common mechanism. It binds the
+exact grant budget, provision identity and closed historical session. Independent
+source review accepted both; locked Ruff/format/diff checks pass. Pytest and SQL
+remain unexecuted. Normal [CI run 38983420259](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/38983420259)
+targets the exact composed C1-C4 source and is queued. Earlier parent runs
+cannot qualify this changed head. No candidate DDL, roles or runtime were enabled.
+
+Execution delivery release is not physical resource retirement. A closed session
+is necessary for a resource row but cannot prove custody, successful teardown or
+source release. C4 storage cannot resolve the retained partial-cleanup ambiguity
+or authorize replay/owner reassignment. Complete C5 enforcement, actual
+PostgreSQL proof and sensitive-payload disposition still gate application.
+
 Native ancestor positives to retain: inactive-user deletion clears executed_by;
 user/CLI cascade clears cli_session_id; form purge clears form_id; workflow and
 API-key deletion use existing SET NULL actions. Only exact OLD live parent to
@@ -283,16 +302,19 @@ FK KEY SHARE, index uniqueness, trigger queries, cascade updates, table locks,
 source-release exclusive locks and pool transaction boundaries in the final
 wait graph. No blanket retry may turn unknown possible effects into replay.
 
-The first cancellation consumer now checks both historical and live fences at
-Rust source `5a5a67284be79d1f0a8c8f07c0e5b5bd6a966303`,
+The first cancellation consumer checks both historical and live fences at
+Rust source `6d07e94fcb5f8028ed7d17f3725b282e488cf093`,
 `core-rs/crates/bifrost-db/src/common_session.rs`. It rejects a detached owner or
 link before any mutation; uncertain-commit reconciliation also rejects that
 state without granting retry permission. Independent source review accepted the
-delta. The [updated supported source checkpoint](rust-core-mvp-common-session-checkpoint.json)
-qualifies this exact Rust tree: fmt, strict Clippy and all 36 default tests pass.
-No new live-binding SQL test ran; actual PostgreSQL evidence remains a separate
-gate. The earlier 42bdefe24 result is retained separately and does not qualify
-these changed predicates.
+delta and the subsequent SQL-resolution correction: transaction-local
+`pg_catalog,pg_temp` before authority queries, with catalog/application relations
+qualified. The new live-db test reproduces temporary masking and checks the
+preparation boundary; it does not exercise full cancellation/authority SQL.
+The [source checkpoint](rust-core-mvp-common-session-checkpoint.json) retains
+fmt, strict Clippy and all 36 default tests for predecessor `5a5a67284`; those
+results do not qualify the changed current source. New native/live-db checks
+remain unexecuted. Actual PostgreSQL evidence remains a separate gate.
 
 Prototype writer guards grant SELECT on all public tables and DML on a finite
 fixture set. They authenticate session_user; Rust additionally checks current_user.

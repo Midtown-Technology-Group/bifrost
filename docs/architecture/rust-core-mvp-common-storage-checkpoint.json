@@ -134,5 +134,109 @@
     "mtg-engineering-flow": "2026-10-06.1",
     "github-pr-stewardship": "2026-10-06.1",
     "cold_skill_package": "2026-10-09.1"
+  },
+  "unqualified_successor": {
+    "package": "C3/closed-grant-storage/v1",
+    "head": "b7922c9b640692afca5ce4a2ec48f8cdc4f71429",
+    "branch": "rust/common-grants-candidate",
+    "worktree": "/home/thomas/src/bifrost-rust-common-grants",
+    "parent_candidate": "2f211ad2a18fb73fe69f983ea0c1ae0bc0d0cbbd",
+    "files_sha256": {
+      "api/alembic/candidates/20261016_runtime_sdk_grants.py": "17344bbb6a8ad159c42099bd1e8e2ecf6bbfee8a0a61403ed5f6cd801398c378",
+      "api/tests/unit/fixtures/cred_p1_grant_storage_v1.json": "ad8fc27ca53734e3ad5ef12877d6c6800ed294fc9898ef9378fc54a1e6314a8a",
+      "api/tests/unit/test_runtime_grants_candidate.py": "0864b8b3a78ea4d314d71bda4071387022ac77a7d6822d954558aa8893fb5e2f"
+    },
+    "cred_authority": {
+      "repository": "Midtown-Technology-Group/bifrost",
+      "commit": "3918d608a2d497d1ca8424fd4229d191323e2d7a",
+      "path": "api/alembic/versions/20261001_runtime_sdk_grants.py",
+      "source_sha256": "3f69791bdd7ff5bd8ea52cbd260cae0c321ac7d3d5028cf820ea2b9637e3d8fd"
+    },
+    "contract": {
+      "original_grant_fields": 35,
+      "added_grant_fields": [
+        "owner_incarnation_id",
+        "committed_start_id",
+        "start_message_id"
+      ],
+      "operation_fields": 8,
+      "original_grant_checks": 18,
+      "original_operation_checks": 5,
+      "policy_implementation": "existing CRED SelectedSDKPolicy/issuer remains authoritative",
+      "native_fk_adaptation": "immutable common owner/source/install/caller/session/Start FKs; live native ordinal/source/caller and close eligibility are C5 activation dependencies"
+    },
+    "review": {
+      "status": "scoped source ACCEPT; final operation-FK test delta ACCEPT",
+      "migration_review_head": "536090cf574f865c466e412e4198ff0b3a80543e",
+      "final_test_review_head": "b7922c9b640692afca5ce4a2ec48f8cdc4f71429",
+      "limit": "no reviewer imports/tests/SQL or authority to activate"
+    },
+    "checks": {
+      "locked_ruff": "passed0.15.12",
+      "ruff_format": "passed",
+      "git_diff_check": "passed",
+      "pytest": "unexecuted",
+      "sql": "unexecuted",
+      "ci_for_this_head": "not dispatched; queued parent CI does not qualify this source",
+      "literal_pre_pr": "unproved"
+    },
+    "activation": {
+      "candidate_ddl_applied": false,
+      "new_role_grants": false,
+      "issuer_adapter_enabled": false,
+      "new_credential_issued": false,
+      "runtime_enabled": false,
+      "mvp_accepted": false,
+      "merged": false,
+      "deployed": false
+    }
+  },
+  "next_candidate": {
+    "package": "C4/provision-resource-storage/v1",
+    "head": "f973411fee9cfc65995f9729f91eaf5c4d6701a1",
+    "branch": "rust/common-admission-resource-candidate",
+    "worktree": "/home/thomas/src/bifrost-rust-common-admission-resources",
+    "parent_candidate": "b7922c9b640692afca5ce4a2ec48f8cdc4f71429",
+    "files_sha256": {
+      "api/alembic/candidates/20261016_runtime_admissions_resources.py": "5590502c8ff801f01b2e87af4c2a6f8a4d3fd41331e1d44aacb9a423b3356e9d",
+      "api/tests/unit/fixtures/common_admission_resource_storage_v1.json": "093bbaba6d3537450cd1f340183c1bb8b338d7cd057c7800615368b26807ee82",
+      "api/tests/unit/test_runtime_admissions_resources_candidate.py": "5887f71a21a3217e0747fe1121065ee079d22688662b54c28ad3b03b683fdde9"
+    },
+    "reference": "56d1fb006d220b9dbb0747f1cca4def18677f918 admissions/resources migrations; fixture/source hashes retained in source branch",
+    "contract": {
+      "admission_columns": 13,
+      "resource_columns": 7,
+      "admission_grant_key_fields": 6,
+      "release_provision_key_fields": 5,
+      "resource_session_key_fields": 4,
+      "physical_proof": "closed session necessary, not sufficient; original trusted custody observer and complete writer guard required"
+    },
+    "review": "independent Sol scoped source ACCEPT; fixtures independently matched both pinned source migrations",
+    "checks": {
+      "locked_ruff": "passed0.15.12",
+      "ruff_format": "passed",
+      "git_diff_check": "passed",
+      "pytest": "unexecuted",
+      "sql": "unexecuted",
+      "literal_pre_pr": "unproved"
+    },
+    "ci": {
+      "id": 38983420259,
+      "attempt": 1,
+      "head": "f973411fee9cfc65995f9729f91eaf5c4d6701a1",
+      "status": "queued",
+      "purpose": "normal exact composed C1-C4 source/pre-PR qualification; not a stopped runtime campaign"
+    },
+    "activation": {
+      "candidate_ddl_applied": false,
+      "new_role_grants": false,
+      "credential_issued": false,
+      "runtime_enabled": false,
+      "physical_cleanup_proved": false,
+      "mvp_accepted": false,
+      "merged": false,
+      "deployed": false
+    },
+    "remaining": "complete C5 writer/admission and adapter order, actual SQL/concurrency/authority proof, payload disposition and unresolved partial-cleanup recovery"
   }
 }
