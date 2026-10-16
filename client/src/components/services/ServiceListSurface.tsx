@@ -88,7 +88,7 @@ export function formatObservedState(state: string): string {
 	return "Running";
 }
 
-function ObservedStateBadge({ state }: { state: string }) {
+function ObservedStateBadge({ state }: { readonly state: string }) {
 	if (state === "running") {
 		return (
 			<Badge
@@ -140,7 +140,7 @@ export function ServiceListSurface({
 	getDetailHref,
 	onAction,
 	emptySearchActive = false,
-}: ServiceListSurfaceProps) {
+}: Readonly<ServiceListSurfaceProps>) {
 	const navigate = useNavigate();
 
 	const openService = (service: ServiceListItem) => {

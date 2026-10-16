@@ -187,6 +187,9 @@
 | GET | `/api/devices/{device_id}/jobs/{job_id}` |
 | POST | `/api/devices/{device_id}/jobs/{job_id}/cancel` |
 | GET | `/api/devices/{device_id}/jobs/{job_id}/logs` |
+| POST | `/api/devices/{device_id}/peer-sessions` |
+| POST | `/api/devices/{device_id}/peer-sessions/{session_job_id}/revoke` |
+| GET | `/api/devices/{device_id}/peer-sessions/{session_job_id}/revoke/{job_id}` |
 | POST | `/api/devices/{device_id}/rotate-key` |
 | DELETE | `/api/endpoints/{workflow_id}` |
 | GET | `/api/endpoints/{workflow_id}` |
@@ -434,6 +437,7 @@
 | GET | `/api/platform/app-service/metrics` |
 | GET | `/api/platform/external-workers` |
 | POST | `/api/platform/external-workers/enroll` |
+| POST | `/api/platform/external-workers/identity` |
 | GET | `/api/platform/queue` |
 | GET | `/api/platform/runtime-maintenance` |
 | POST | `/api/platform/runtime-maintenance/enter` |
