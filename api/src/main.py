@@ -363,10 +363,13 @@ def create_app() -> FastAPI:
     # Middleware
     # ==========================================================================
 
-    # CORS for MCP OAuth discovery endpoints (/.well-known/*, /register, /authorize, /token)
-    # These routes are on FastAPI directly, not the MCP ASGI app which has its own CORS.
-    # Without this, browser-based MCP clients (e.g. MCP Inspector) can't read discovery responses.
-    app.add_middleware(MCPAuthCORSMiddleware)
+    # MCP OAuth discovery remains public to browser clients, ordinary REST
+    # routes honor only configured explicit origins, and the mounted MCP
+    # transport retains its own stricter CORS policy.
+    app.add_middleware(
+        MCPAuthCORSMiddleware,
+        allowed_origins=get_settings().cors_origins_list,
+    )
 
     # This route accepts multipart uploads.  The cap must run before
     # Starlette constructs UploadFile and spills a body to disk.
