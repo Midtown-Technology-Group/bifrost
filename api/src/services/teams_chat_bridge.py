@@ -44,7 +44,7 @@ async def teams_solution_id_for_event(db, event_id: UUID) -> UUID | None:
 async def emit_teams_chat_completion(run) -> None:
     """Notify the Teams Solution after a linked chat run reaches a terminal state."""
     event_id = (run.input or {}).get("teams_event_id")
-    if not event_id or run.status not in {
+    if run.trigger_type != "chat" or not event_id or run.status not in {
         "completed",
         "failed",
         "cancelled",
@@ -121,6 +121,7 @@ async def recover_teams_chat_completions(*, limit: int = 50) -> int:
                         )
                     ),
                     AgentRun.input.has_key("teams_event_id"),
+                    AgentRun.trigger_type == "chat",
                     ~AgentRun.run_metadata.has_key("teams_completion_emitted_at"),
                     AgentRun.completed_at < datetime.now(UTC) - timedelta(seconds=15),
                     AgentRun.completed_at > datetime.now(UTC) - timedelta(hours=24),

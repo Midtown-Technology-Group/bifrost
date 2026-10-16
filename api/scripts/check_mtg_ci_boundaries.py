@@ -245,6 +245,12 @@ def check_codeowners(path: Path) -> list[str]:
             if token.startswith("#"):
                 break
             if not token.startswith("@"):
+                if "@" in token:
+                    violations.append(
+                        f"{path}:{lineno}: CODEOWNERS names email owner {token}; "
+                        "email owners cannot be constrained to the MTG allowlist. "
+                        "Use an explicit MTG username or team."
+                    )
                 continue
             if token in ALLOWED_CODEOWNERS or token.startswith("@Midtown-Technology-Group/"):
                 continue

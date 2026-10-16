@@ -1,3 +1,4 @@
+import json
 from asyncio import sleep
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -346,3 +347,183 @@ def test_extract_gateway_key_prefers_openai_compatible_bearer_auth():
     assert extract_gateway_key(f"bearer {VALID_GATEWAY_KEY}", None) == VALID_GATEWAY_KEY
     assert extract_gateway_key(None, VALID_GATEWAY_KEY) == VALID_GATEWAY_KEY
     assert extract_gateway_key("Basic abc", None) is None
+
+
+class ProviderErrorUpstreamClient:
+    """Fake upstream that answers with a provider-side error response."""
+
+    def __init__(self, response):
+        self.response = response
+        self.requests = []
+
+    async def create_response(self, *, access_token, payload):
+        await sleep(0)
+        self.requests.append({"access_token": access_token, "payload": payload})
+        return self.response
+
+
+DECRYPTED_TOKEN_SENTINEL = "plain::encrypted-access-token"
+PROVIDER_RATE_LIMIT_BODY = {
+    "error": {
+        "message": "Rate limit reached for requests.",
+        "type": "rate_limit_error",
+        "param": None,
+        "code": "rate_limit_exceeded",
+    }
+}
+
+
+@pytest.mark.asyncio
+async def test_account_resolution_is_scoped_to_the_gateway_key_user(monkeypatch):
+    key = _key_record(allowed_models=["gpt-5.1-codex"])
+    account = _account_record(key.user_id)
+    repository = _repository(key_record=key, account_record=account)
+    upstream = FakeUpstreamClient()
+    monkeypatch.setattr(
+        "src.services.codex_gateway.runtime.decrypt_secret",
+        lambda encrypted: f"plain::{encrypted}",
+    )
+    runtime = CodexGatewayRuntime(repository=repository, upstream_client=upstream)
+
+    response = await runtime.create_response(
+        gateway_key=VALID_GATEWAY_KEY,
+        payload={"model": "gpt-5.1-codex", "input": "hello"},
+    )
+
+    assert response.status_code == 200
+    repository.get_active_gateway_key_by_plaintext.assert_awaited_once_with(
+        VALID_GATEWAY_KEY
+    )
+    repository.get_active_upstream_account_for_user.assert_awaited_once_with(
+        key.user_id
+    )
+    assert upstream.requests[0]["access_token"] == DECRYPTED_TOKEN_SENTINEL
+
+
+@pytest.mark.asyncio
+async def test_wrong_user_account_fails_closed_before_upstream_dispatch(monkeypatch):
+    """Defense in depth: a cross-user account never reaches the upstream client."""
+    key = _key_record(allowed_models=["gpt-5.1-codex"])
+    foreign_account = _account_record(uuid4())
+    repository = _repository(key_record=key, account_record=foreign_account)
+    upstream = FakeUpstreamClient()
+    monkeypatch.setattr(
+        "src.services.codex_gateway.runtime.decrypt_secret",
+        lambda encrypted: f"plain::{encrypted}",
+    )
+    runtime = CodexGatewayRuntime(repository=repository, upstream_client=upstream)
+
+    response = await runtime.create_response(
+        gateway_key=VALID_GATEWAY_KEY,
+        payload={"model": "gpt-5.1-codex"},
+    )
+
+    assert response.status_code == 403
+    assert response.body["error"]["code"] == "upstream_identity_mismatch"
+    assert upstream.requests == []
+    repository.create_request_log.assert_awaited_once()
+    log_kwargs = repository.create_request_log.call_args.kwargs
+    assert log_kwargs["policy_decision"] == "deny"
+    assert log_kwargs["denied_reason"] == "upstream_identity_mismatch"
+
+
+@pytest.mark.asyncio
+async def test_provider_error_status_and_body_pass_through_and_log_provider_code(
+    monkeypatch,
+):
+    key = _key_record(allowed_models=["gpt-5.1-codex"])
+    account = _account_record(key.user_id)
+    repository = _repository(key_record=key, account_record=account)
+    upstream = ProviderErrorUpstreamClient(
+        CodexGatewayUpstreamResponse(
+            status_code=429,
+            body=PROVIDER_RATE_LIMIT_BODY,
+            provider_error_code="rate_limit_exceeded",
+        )
+    )
+    monkeypatch.setattr(
+        "src.services.codex_gateway.runtime.decrypt_secret",
+        lambda encrypted: f"plain::{encrypted}",
+    )
+    runtime = CodexGatewayRuntime(repository=repository, upstream_client=upstream)
+
+    response = await runtime.create_response(
+        gateway_key=VALID_GATEWAY_KEY,
+        payload={"model": "gpt-5.1-codex"},
+    )
+
+    assert response.status_code == 429
+    assert response.body == PROVIDER_RATE_LIMIT_BODY
+    assert upstream.requests[0]["access_token"] == DECRYPTED_TOKEN_SENTINEL
+    repository.create_request_log.assert_awaited_once()
+    log_kwargs = repository.create_request_log.call_args.kwargs
+    assert log_kwargs["status_code"] == 429
+    assert log_kwargs["provider_error_code"] == "rate_limit_exceeded"
+    assert log_kwargs["policy_decision"] == "allow"
+    assert isinstance(log_kwargs["latency_ms"], int)
+
+
+@pytest.mark.asyncio
+async def test_secret_material_never_reaches_request_logs_or_client_response(
+    monkeypatch,
+):
+    key = _key_record(allowed_models=["gpt-5.1-codex"])
+    account = _account_record(key.user_id)
+    repository = _repository(key_record=key, account_record=account)
+    monkeypatch.setattr(
+        "src.services.codex_gateway.runtime.decrypt_secret",
+        lambda encrypted: f"plain::{encrypted}",
+    )
+    runtime = CodexGatewayRuntime(
+        repository=repository, upstream_client=FakeUpstreamClient()
+    )
+
+    response = await runtime.create_response(
+        gateway_key=VALID_GATEWAY_KEY,
+        payload={"model": "gpt-5.1-codex", "input": "prompt that must not be logged"},
+        source_ip="203.0.113.10",
+        client_user_agent="codex-cli",
+    )
+
+    assert response.status_code == 200
+    repository.create_request_log.assert_awaited_once()
+    log_kwargs = repository.create_request_log.call_args.kwargs
+    serialized_log = json.dumps(log_kwargs, default=str)
+    serialized_response = json.dumps(response.body, default=str)
+    for sensitive in (
+        DECRYPTED_TOKEN_SENTINEL,
+        account.encrypted_access_token,
+        VALID_GATEWAY_KEY,
+    ):
+        assert sensitive not in serialized_log
+        assert sensitive not in serialized_response
+    assert "prompt that must not be logged" not in serialized_log
+    metadata = log_kwargs["request_metadata"]
+    assert "prompt that must not be logged" not in json.dumps(metadata, default=str)
+    assert "sensitive_input_preview" not in metadata
+    assert "sensitive_output_preview" not in metadata
+
+
+@pytest.mark.asyncio
+async def test_unconfigured_upstream_fails_closed_without_leaking_token(monkeypatch):
+    key = _key_record(allowed_models=["gpt-5.1-codex"])
+    account = _account_record(key.user_id)
+    repository = _repository(key_record=key, account_record=account)
+    monkeypatch.setattr(
+        "src.services.codex_gateway.runtime.decrypt_secret",
+        lambda encrypted: f"plain::{encrypted}",
+    )
+    runtime = CodexGatewayRuntime(repository=repository)
+
+    response = await runtime.create_response(
+        gateway_key=VALID_GATEWAY_KEY,
+        payload={"model": "gpt-5.1-codex"},
+    )
+
+    assert response.status_code == 502
+    assert response.body["error"]["code"] == "upstream_not_configured"
+    repository.create_request_log.assert_awaited_once()
+    log_kwargs = repository.create_request_log.call_args.kwargs
+    assert log_kwargs["provider_error_code"] == "upstream_not_configured"
+    assert log_kwargs["policy_decision"] == "allow"
+    assert DECRYPTED_TOKEN_SENTINEL not in json.dumps(log_kwargs, default=str)
