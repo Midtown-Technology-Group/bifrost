@@ -50,6 +50,14 @@ class CompileResult:
     retryable: bool = False
 
 
+class TailwindGenerationError(RuntimeError):
+    """Tailwind failed, as distinct from a successful no-op generation."""
+
+    def __init__(self, message: str, *, retryable: bool = False) -> None:
+        super().__init__(message)
+        self.retryable = retryable
+
+
 class AppCompilerService:
     """Compile TSX/JSX source files via Node.js subprocess."""
 
@@ -281,7 +289,13 @@ class AppTailwindService:
         if not candidates:
             return None
 
-        return await AppTailwindService._invoke({"candidates": candidates})
+        try:
+            return await AppTailwindService._invoke({"candidates": candidates})
+        except TailwindGenerationError as error:
+            # This legacy preview helper has no structured failure channel.
+            # Bundled Apps use generate_css_pipeline(), which fails explicitly.
+            logger.warning("Tailwind CSS generation failed: %s", error)
+            return None
 
     @staticmethod
     async def generate_css_pipeline(
@@ -302,13 +316,14 @@ class AppTailwindService:
                 files are not loaded because they execute server-side JavaScript.
 
         Returns the generated CSS string (utilities + processed user CSS),
-        or None on failure.
+        or None only when there is no CSS work to perform. Generation failures
+        raise TailwindGenerationError so bundlers cannot publish CSS-less output.
         """
         try:
             candidates = AppTailwindService.extract_candidates(code_sources)
         except (TypeError, ValueError) as error:
             logger.warning("Tailwind CSS generation rejected: %s", error)
-            return None
+            raise TailwindGenerationError(str(error)) from error
         payload: dict[str, object] = {
             "candidates": candidates,
             "user_css": [
@@ -325,15 +340,14 @@ class AppTailwindService:
 
     @staticmethod
     async def _invoke(payload: dict[str, object]) -> str | None:
-        """Send a payload to tailwind.js, return the css or None on error."""
+        """Send a payload to tailwind.js; None means successful empty CSS."""
         input_data = json.dumps(payload)
         input_bytes = input_data.encode()
         if len(input_bytes) > TAILWIND_MAX_PAYLOAD_BYTES:
-            logger.warning(
-                "Tailwind payload exceeds the %d-byte limit",
-                TAILWIND_MAX_PAYLOAD_BYTES,
+            raise TailwindGenerationError(
+                "Tailwind payload exceeds the "
+                f"{TAILWIND_MAX_PAYLOAD_BYTES}-byte limit"
             )
-            return None
 
         try:
             try:
@@ -342,11 +356,11 @@ class AppTailwindService:
                     timeout=COMPILER_QUEUE_TIMEOUT_SECONDS,
                 )
             except TimeoutError:
-                logger.warning(
-                    "Tailwind capacity unavailable after %g seconds",
-                    COMPILER_QUEUE_TIMEOUT_SECONDS,
+                raise TailwindGenerationError(
+                    "Tailwind capacity unavailable after "
+                    f"{COMPILER_QUEUE_TIMEOUT_SECONDS:g} seconds",
+                    retryable=True,
                 )
-                return None
 
             try:
                 proc = await asyncio.create_subprocess_exec(
@@ -368,11 +382,11 @@ class AppTailwindService:
                     with suppress(ProcessLookupError):
                         proc.kill()
                     await proc.wait()
-                    logger.warning(
-                        "Tailwind CSS generation exceeded the %g-second limit",
-                        COMPILER_TIMEOUT_SECONDS,
+                    raise TailwindGenerationError(
+                        "Tailwind CSS generation exceeded the "
+                        f"{COMPILER_TIMEOUT_SECONDS:g}-second limit",
+                        retryable=True,
                     )
-                    return None
                 except asyncio.CancelledError:
                     with suppress(ProcessLookupError):
                         proc.kill()
@@ -386,26 +400,54 @@ class AppTailwindService:
             finally:
                 _COMPILER_SLOTS.release()
 
-            if proc.returncode != 0:
-                error_msg = stderr.decode().strip() or "tailwind.js exited with error"
-                logger.error(f"Tailwind CSS generation failed: {error_msg}")
-                return None
-
             if len(stdout) > TAILWIND_MAX_OUTPUT_BYTES:
-                logger.error("Tailwind CSS output exceeded its byte limit")
-                return None
+                raise TailwindGenerationError(
+                    "Tailwind CSS output exceeded its byte limit"
+                )
 
-            output = json.loads(stdout.decode())
+            try:
+                output = json.loads(stdout.decode())
+            except (UnicodeDecodeError, json.JSONDecodeError) as error:
+                error_msg = stderr.decode(errors="replace").strip()
+                raise TailwindGenerationError(
+                    error_msg or "Tailwind returned an invalid response",
+                    retryable=True,
+                ) from error
+
+            if not isinstance(output, dict):
+                raise TailwindGenerationError(
+                    "Tailwind returned an invalid response",
+                    retryable=True,
+                )
+
+            if proc.returncode != 0:
+                error_msg = (
+                    output.get("error")
+                    or stderr.decode(errors="replace").strip()
+                    or "tailwind.js exited with error"
+                )
+                raise TailwindGenerationError(str(error_msg))
+
             if output.get("error"):
-                logger.error(f"Tailwind CSS generation error: {output['error']}")
-                return None
+                raise TailwindGenerationError(str(output["error"]))
 
-            css = output.get("css", "")
+            css = output.get("css")
+            if css is not None and not isinstance(css, str):
+                raise TailwindGenerationError(
+                    "Tailwind returned an invalid CSS response",
+                    retryable=True,
+                )
             return css if css else None
 
         except FileNotFoundError:
-            logger.error("Node.js not found — cannot generate Tailwind CSS")
-            return None
-        except Exception:
-            logger.exception("Tailwind CSS generation failed")
-            return None
+            raise TailwindGenerationError(
+                "Node.js not available for Tailwind generation",
+                retryable=True,
+            ) from None
+        except TailwindGenerationError:
+            raise
+        except Exception as error:
+            raise TailwindGenerationError(
+                f"Tailwind CSS generation failed: {error}",
+                retryable=True,
+            ) from error

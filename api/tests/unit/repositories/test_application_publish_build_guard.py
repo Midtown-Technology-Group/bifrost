@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from types import MappingProxyType
+from types import MappingProxyType, SimpleNamespace
 from unittest.mock import AsyncMock
 from uuid import uuid4
 
@@ -8,7 +8,7 @@ import pytest
 
 from src.models.orm.applications import Application
 from src.repositories.applications import ApplicationRepository
-from src.services.app_bundler import BundleMessage, BundleResult
+from src.services.app_bundler import BundleMessage, BundleResult, BundlerService
 
 
 @pytest.mark.asyncio
@@ -59,6 +59,64 @@ async def test_failed_bundle_never_promotes_preview(
     promote.assert_not_awaited()
     await db_session.refresh(app)
     assert app.published_at is None
+
+
+@pytest.mark.asyncio
+async def test_tailwind_capacity_failure_never_replaces_preview_or_publishes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from src.services import app_bundler, app_compiler, app_storage
+
+    application = SimpleNamespace(
+        id=uuid4(),
+        repo_prefix="apps/capacity/",
+        dependencies={},
+        published_snapshot=None,
+        published_at=None,
+    )
+    repository = object.__new__(ApplicationRepository)
+    repository.session = AsyncMock()
+    repository.get = AsyncMock(return_value=application)
+
+    storage = SimpleNamespace(
+        write_preview_file=AsyncMock(),
+        publish=AsyncMock(),
+    )
+    run_esbuild = AsyncMock(side_effect=AssertionError("esbuild must not run"))
+
+    async def materialize(src_dir, _repo_prefix):
+        (src_dir / "_layout.tsx").write_text(
+            'export default () => <div className="flex" />;\n',
+            encoding="utf-8",
+        )
+        return ["_layout.tsx"]
+
+    async def capacity_build(app_id, repo_prefix, mode, dependencies):
+        bundler = BundlerService()
+        bundler._materialize_source = materialize
+        bundler._run_esbuild = run_esbuild
+        return (
+            await bundler.build(app_id, repo_prefix, mode, dependencies),
+            [],
+        )
+
+    monkeypatch.setattr(
+        app_compiler,
+        "_COMPILER_SLOTS",
+        app_compiler.asyncio.Semaphore(0),
+    )
+    monkeypatch.setattr(app_compiler, "COMPILER_QUEUE_TIMEOUT_SECONDS", 0.001)
+    monkeypatch.setattr(app_bundler, "AppStorageService", lambda: storage)
+    monkeypatch.setattr(app_storage, "AppStorageService", lambda: storage)
+    monkeypatch.setattr(app_bundler, "build_with_migrate", capacity_build)
+
+    with pytest.raises(ValueError, match="Tailwind capacity unavailable"):
+        await repository.publish(application.id, "dev@example.com")
+
+    storage.write_preview_file.assert_not_awaited()
+    storage.publish.assert_not_awaited()
+    run_esbuild.assert_not_awaited()
+    repository.session.flush.assert_not_awaited()
 
 
 @pytest.mark.asyncio

@@ -1,6 +1,10 @@
 import pytest
 from src.services import app_compiler
-from src.services.app_compiler import AppCompilerService, AppTailwindService
+from src.services.app_compiler import (
+    AppCompilerService,
+    AppTailwindService,
+    TailwindGenerationError,
+)
 
 
 @pytest.fixture
@@ -406,7 +410,8 @@ class TestAppTailwindService:
     ):
         monkeypatch.setattr(app_compiler, "TAILWIND_MAX_SOURCE_BYTES", 1)
 
-        assert await AppTailwindService.generate_css_pipeline(["large"], []) is None
+        with pytest.raises(TailwindGenerationError, match="1-byte limit"):
+            await AppTailwindService.generate_css_pipeline(["large"], [])
 
     @pytest.mark.asyncio
     async def test_tailwind_invoke_handles_process_and_payload_errors(self, monkeypatch):
@@ -418,7 +423,8 @@ class TestAppTailwindService:
             "create_subprocess_exec",
             nonzero_subprocess,
         )
-        assert await AppTailwindService._invoke({"candidates": ["flex"]}) is None
+        with pytest.raises(TailwindGenerationError, match="tailwind failed"):
+            await AppTailwindService._invoke({"candidates": ["flex"]})
 
         async def error_payload_subprocess(*_args, **_kwargs):
             return _FakeProcess(
@@ -432,7 +438,8 @@ class TestAppTailwindService:
             "create_subprocess_exec",
             error_payload_subprocess,
         )
-        assert await AppTailwindService._invoke({"candidates": ["grid"]}) is None
+        with pytest.raises(TailwindGenerationError, match="bad css"):
+            await AppTailwindService._invoke({"candidates": ["grid"]})
 
     @pytest.mark.asyncio
     async def test_tailwind_invoke_returns_css_or_none(self, monkeypatch):
@@ -470,7 +477,8 @@ class TestAppTailwindService:
             create_subprocess_exec,
         )
 
-        assert await AppTailwindService._invoke({"candidates": ["flex"]}) is None
+        with pytest.raises(TailwindGenerationError, match="payload exceeds"):
+            await AppTailwindService._invoke({"candidates": ["flex"]})
 
     @pytest.mark.asyncio
     async def test_tailwind_invoke_bounds_capacity_wait(self, monkeypatch):
@@ -489,7 +497,11 @@ class TestAppTailwindService:
             create_subprocess_exec,
         )
 
-        assert await AppTailwindService._invoke({"candidates": ["flex"]}) is None
+        with pytest.raises(
+            TailwindGenerationError, match="capacity unavailable"
+        ) as error:
+            await AppTailwindService._invoke({"candidates": ["flex"]})
+        assert error.value.retryable is True
 
     @pytest.mark.asyncio
     async def test_tailwind_invoke_rejects_oversized_output(self, monkeypatch):
@@ -507,7 +519,8 @@ class TestAppTailwindService:
             create_subprocess_exec,
         )
 
-        assert await AppTailwindService._invoke({"candidates": ["flex"]}) is None
+        with pytest.raises(TailwindGenerationError, match="output exceeded"):
+            await AppTailwindService._invoke({"candidates": ["flex"]})
 
     @pytest.mark.asyncio
     async def test_tailwind_invoke_times_out_and_reaps_node(self, monkeypatch):
@@ -531,7 +544,9 @@ class TestAppTailwindService:
             create_subprocess_exec,
         )
 
-        assert await AppTailwindService._invoke({"candidates": ["flex"]}) is None
+        with pytest.raises(TailwindGenerationError, match="exceeded") as error:
+            await AppTailwindService._invoke({"candidates": ["flex"]})
+        assert error.value.retryable is True
         assert process.killed is True
         assert process.waited is True
 
@@ -564,7 +579,11 @@ class TestAppTailwindService:
             "create_subprocess_exec",
             missing_node,
         )
-        assert await AppTailwindService._invoke({"candidates": ["flex"]}) is None
+        with pytest.raises(
+            TailwindGenerationError, match="Node.js not available"
+        ) as error:
+            await AppTailwindService._invoke({"candidates": ["flex"]})
+        assert error.value.retryable is True
 
         async def broken_spawn(*_args, **_kwargs):
             raise RuntimeError("spawn failed")
@@ -574,7 +593,9 @@ class TestAppTailwindService:
             "create_subprocess_exec",
             broken_spawn,
         )
-        assert await AppTailwindService._invoke({"candidates": ["flex"]}) is None
+        with pytest.raises(TailwindGenerationError, match="spawn failed") as error:
+            await AppTailwindService._invoke({"candidates": ["flex"]})
+        assert error.value.retryable is True
 
 
 class _FakeProcess:
