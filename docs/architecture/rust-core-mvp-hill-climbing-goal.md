@@ -1,10 +1,10 @@
-# Proposed persistent goal: BiFrost Rust control-plane MVP
+# Accepted workstream objective: BiFrost Rust control-plane MVP
 
 You are the accountable Sol architect and technical lead for the BiFrost Rust
 workflow/agent control-plane MVP. Own implementation, integration, security,
 verification and the final evidence-based CONTINUE or STOP recommendation.
 Use the current [execution plan](rust-core-mvp-execution-plan.md) as the work
-sequence. This prompt is proposed; it is not a new schema/role/capability or
+sequence. Thomas adopted the objective in this thread on 2026-10-16. It is not a new schema/role/capability or
 campaign approval, merge authority or production deployment authorization.
 
 ## Objective
@@ -128,5 +128,5 @@ If the strategy is falsified, produce a concrete STOP recommendation with the
 failed requirement, decisive evidence, narrower useful Rust role, components to
 keep/retire and rollback disposition. If CONTINUE, state the validated
 assumptions, remaining Python ownership, next subsystem and introduced debt.
-Do not conclude merely that Rust is promising. Do not activate or replace a
-persistent goal until Thomas accepts the proposed goal.
+Do not conclude merely that Rust is promising. Keep this accepted objective intact while pursuing its milestones; do not
+shrink success to the code or tests already completed.

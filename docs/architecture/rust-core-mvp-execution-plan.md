@@ -76,7 +76,15 @@ files and interfaces before each implementation package; low-overlap delegation
 is allowed only under applicable authorization, with one accountable architect.
 
 Current acceptance status: R0 is a concrete but unapproved design input; R1–R4
-are unproved as integrated MVP behavior; R5 has no final decision. Existing
+are unproved as integrated MVP behavior; R5 has no final decision. The
+[first R1 source checkpoint](rust-core-mvp-common-session-checkpoint.json) is
+local commit `42bdefe2442f3e7af37eb54172f922c540815c36`: an internal Rust
+cancellation/session-close/grant-revocation transaction adapted from the existing
+common prototype, with execution-first locks and stricter principal checks.
+Independent Sol source review accepted the repaired ownership predicate.
+Supported VM source checks pass all 36 default tests, including five new pure
+snapshot tests. No new module SQL, schema/roles, endpoint or event execution is
+qualified; this does not close R1 or the absent-grant issuance race. Existing
 unit/source/Go and prerequisite CI results remain separately scoped. Do not
 turn these milestone labels into new experiment allowances. R1 needs only the
 R0 decisions relevant to its transaction; Python packaging does not block
