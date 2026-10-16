@@ -37,9 +37,32 @@ stale token rejection, paused/expired owner refusal, legacy allocation rejection
 wrong-host binding, encrypted checkpoints, failed initial checkpoint, lost grant
 responses and late response expiry. Provider HTTP is synthetic in those tests.
 
-This first slice supplies service primitives and protects the legacy boundary.
-It does not expose an enabled HTTP protocol or ship the private Unix agent yet.
-Those adapters must enforce managed-identity authentication, bounded private
-requests, fixed consumer constraints and independent lease monitoring. Actual
-Defined compatibility, platform restart/termination and canary/rollback proof
-remain deployment acceptance gates. No production worker replacement is claimed.
+The HTTP adapter is `POST /api/platform/external-workers/identity`, enabled only
+when both `external_worker_scaling_enabled` and `external_worker_identity_enabled`
+are true. The identity flag defaults to false. Every request verifies the fixed
+managed principal and live app membership. No admin, user JWT or general ARM
+audience substitutes for the configured enrollment audience.
+
+The body contains `operation`, `replica`, and only the operation's allowed fields:
+`attempt` for acquire; `token` thereafter; `hostID`/`networkID` for bind; base64
+`state` for checkpoint. Unknown/mixed fields fail closed. The body is capped at
+4 MiB before JSON parsing and decoded checkpoints at 2 MiB. Successful responses
+are no-store. Token and checkpoint fields are excluded from model repr, and
+provider errors return closed messages. The broker request has an eight-second
+ceiling inside the local client's ten-second bound; slow/uncertain operations
+retain their durable fencing markers and cannot be blindly retried.
+
+Grant returns the one-time code, actual host and configured network. The private
+Unix agent supplies the separately reviewed address/range and route constraints,
+translates the portable wire format, obtains the deployment's managed token, and
+must not retry uncertain mutations or log bodies. No public portable package
+receives infrastructure endpoints, audiences, routes or resource IDs.
+
+Unused acquired/begun allocations can be removed only after the existing fresh
+continuous 120-second platform absence proof: those phases precede every remote
+provider mutation. Unknown or grant-started states without a receipt remain
+fenced. Host-bearing records retain ownership-verified deletion/readback.
+
+The private Unix agent and actual Defined compatibility, platform restart/
+termination and canary/rollback proof remain deployment acceptance gates. No
+production worker replacement is claimed.
