@@ -93,6 +93,20 @@ turn these milestone labels into new experiment allowances. R1 needs only the
 R0 decisions relevant to its transaction; Python packaging does not block
 independent approved persistence work.
 
+The [common storage checkpoint](rust-core-mvp-common-storage-checkpoint.json)
+now binds reviewed inactive C1/C2 source at `2f211ad2a18fb73fe69f983ea0c1ae0bc0d0cbbd`:
+owner/session/native links plus typed Start and exact report receipts. A normal
+supported test stack confirmed current-main schema and no applied candidate
+tables, then external VM shutdown interrupted its first offline test. The 26
+collected cases are unproved, not passed. Task resources were removed and VM101
+returned to stopped. Normal CI for this exact combined source is queued in run
+38981722180. Do not repeat the same uncoordinated VM qualification blindly or
+treat its legacy RabbitMQ configuration as PostgreSQL delivery evidence. While
+source qualification is queued, C3's exact closed CRED grant/session/Start
+bindings are the next independent implementation dependency; no second issuer,
+role grants, schema application or lifecycle acceptance is authorized by that
+source package.
+
 ## First falsification checkpoint
 
 R1 should answer a small hard question: can the common Rust owner and incumbent

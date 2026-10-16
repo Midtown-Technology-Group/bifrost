@@ -21,9 +21,9 @@ without importing application code or evaluating ORM/DDL expressions. Starred
 constraint generators remain source expressions, not executed expansions. ORM
 inventory does not prove installed schema or migration equivalence.
 
-Workspace main advanced to `6689b218cb799b807c81d63ee77de9af27206509`.
-The [new boundary audit](rust-core-mvp-workspace-boundary-6689b218.json) parsed
-2,451 committed authored Python files using the current gate's roots and
+Workspace main is `875182c8028227903c886b4ab660f92b745c63bc`.
+The [current boundary audit](rust-core-mvp-workspace-boundary-875182c8.json) parsed
+2,452 committed authored Python files using the current gate's roots and
 exclusions, plus Solution, google_ops_worker and top-level files. Zero src.* or
 SQLAlchemy imports, zero parse errors and an explicitly empty internal-import
 allowlist. This is source evidence, not a live workspace deployment claim.
@@ -185,11 +185,39 @@ native attempt table before checking emptiness, requires read-committed
 isolation and refuses populated history. Those migration-owner locks do not
 grant a runtime coordinator table-lock authority. Source review, actual
 PostgreSQL tests and apply/role approval remain distinct gates.
-The unchanged normal CI workflow is qualifying this exact three-file branch in
-[run 38979851702, attempt 1](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/38979851702).
-It remains queued at this checkpoint. Scoped locked Ruff/format and diff checks
-pass; offline candidate tests and literal pre-PR have not yet run. No PR is
-opened before that gate, and no candidate DDL is applied by ordinary startup.
+The C1-only [CI run 38979851702](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/38979851702)
+never began a test. Cancellation was requested after C2 produced a new combined
+candidate; provider readback still says queued, so cancellation is not claimed
+complete. No old status is transferred to changed source.
+
+C2 adds `api/alembic/candidates/20261016_runtime_starts_receipts.py` and its offline
+contract checks in `/home/thomas/src/bifrost-rust-common-start-receipts`, branch
+`rust/common-start-receipts-candidate`, exact `2f211ad2a18fb73fe69f983ea0c1ae0bc0d0cbbd`.
+It preserves prototype Start/report columns, defaults, byte/hash bounds and
+dispositions, adding the Start-clock key required by C3 and safe empty-only
+downgrade locks. Independent source review accepted it; C1 source is unchanged.
+The unchanged normal CI workflow is qualifying the combined source in
+[run 38981722180, attempt 1](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/38981722180).
+It is queued; no PR is opened before literal pre-PR passes.
+
+Supported-VM qualification booted a new isolated normal test stack at the current
+main Alembic head and verified all six candidate tables absent. It collected 26
+offline tests, but external VM shutdown terminated the first case before any
+verdict; API quality did not start. Do not count collection as a pass or retry
+this qualification blindly in the same uncoordinated VM lane. The
+[checkpoint](rust-core-mvp-common-storage-checkpoint.json) retains the exact
+source, commands, interruption and cleanup disposition. Locked Ruff/format and
+diff checks pass; candidate SQL execution, concurrency and lifecycle ownership
+remain unproved.
+
+The normal current-main test Compose file does not wire
+`BIFROST_TEST_WORK_DELIVERY_BACKEND`; the API's effective value was `rabbitmq`
+despite supplying that variable. Worker/scheduler runtime observation was
+interrupted by the test harness stopping them, so their effective values are not
+claimed. This is isolated source-qualification evidence, not deployed settings.
+Use the separately qualified explicit PostgreSQL reference configuration for
+actual delivery/lifecycle acceptance. Do not introduce Rust RabbitMQ support or
+transfer this run to PostgreSQL durability claims.
 
 Native ancestor positives to retain: inactive-user deletion clears executed_by;
 user/CLI cascade clears cli_session_id; form purge clears form_id; workflow and
@@ -281,8 +309,9 @@ functions, memberships, SECURITY DEFINER owners, search paths and bypass rights.
 
 CP-C1 owns the common schema extraction, adapters and finite restricted-writer
 verification. It does not own Go SDK/consumer code, generic delivery, agent/model
-execution, public SDK or Alembic framework migration. Before implementation,
-review the proposed live-link constraints, derive the Python descriptor and settle sensitive-payload
+execution, public SDK or Alembic framework migration. The inactive C1/C2 drafts
+make review concrete without applying schema or enabling an owner. Before
+application or owner activation, review the live-link constraints, derive the Python descriptor and settle sensitive-payload
 policy where required, installed catalog disposition and independent combined
 lock/security review. These are concrete remaining design/evidence gates, not
 permission for another runtime experiment or a policy waiver.

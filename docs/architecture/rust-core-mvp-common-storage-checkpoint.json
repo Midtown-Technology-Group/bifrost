@@ -1,0 +1,138 @@
+{
+  "schema_version": 1,
+  "kind": "inactive-common-storage-source-checkpoint",
+  "package": "C1-C2/storage-candidate/v1",
+  "repository": "Midtown-Technology-Group/bifrost",
+  "head": "2f211ad2a18fb73fe69f983ea0c1ae0bc0d0cbbd",
+  "base_main": "e42999395231ebc536711e5015422edfb75613a7",
+  "branch": "rust/common-start-receipts-candidate",
+  "worktree": "/home/thomas/src/bifrost-rust-common-start-receipts",
+  "extraction_source": "56d1fb006d220b9dbb0747f1cca4def18677f918",
+  "files_sha256": {
+    "api/alembic/candidates/20261016_runtime_owner_links.py": "3392b6fba016ac11935b2d270ee5dc913f5ef932d7fb5a69c3f5fe4614c64005",
+    "api/alembic/candidates/20261016_runtime_starts_receipts.py": "448ed6221288c957c03df9be435df2542e6da2c2bbd82f79cc2b86ec59560b78",
+    "api/alembic/candidates/README.md": "a7a8d28396ee63e1c937b4d0d3a0ab2517a542daebbaed34f6ea13f145ffea91",
+    "api/tests/unit/test_runtime_owner_links_candidate.py": "e0446c2be7fd4ba5bc2d6f188d4cef38f35cc19cc9d2d5d203833f04fb84aebc",
+    "api/tests/unit/test_runtime_receipts_candidate.py": "bef075c5f5732ceebd8175222f655c13947a53f6d866eb2d810fc0a8cf58929d"
+  },
+  "source_review": {
+    "status": "scoped ACCEPT",
+    "head": "2f211ad2a18fb73fe69f983ea0c1ae0bc0d0cbbd",
+    "c1_bytes": "unchanged from accepted af8c034daa437dcacbafd847a4ee678b7f877ec3",
+    "c2": "typed identities/defaults/digests/bounds/dispositions and Start-clock key; locked empty-only downgrade; no source blocker",
+    "limitations": "no reviewer imports/tests/SQL; C3-C5 and actual PostgreSQL/authority/retention remain held"
+  },
+  "static_checks": {
+    "ruff": "locked0.15.12 passed",
+    "ruff_format": "passed",
+    "git_diff_check": "passed"
+  },
+  "supported_attempt": {
+    "host": "pve-t340.netbird.cloud",
+    "vm_id": 101,
+    "vm_name": "bifrost-platform-test-debian13-01",
+    "guest_clone": "/home/dev/bifrost-rust-common-storage-2f211ad2a",
+    "compose_project": "bifrost-test-c55a1c69",
+    "source_custody": "fresh own Git clone at exact HEAD; five file hashes matched readback; no tracked changes before removal",
+    "initial_project_containers": [],
+    "initial_project_volumes": [],
+    "initial_project_networks": [],
+    "python": "3.14.7",
+    "pytest": "9.0.3",
+    "api_image_id": "sha256:d93df1ca2dc6c700faefcd1c749213263ff8ae26abe79dc9e2d0d1522d5c8b92",
+    "test_runner_image_id": "not independently captured before shutdown; no test-qualification claim",
+    "attempt": 1,
+    "up": {
+      "command": "BIFROST_TEST_WORK_DELIVERY_BACKEND=postgres ./test.sh stack up",
+      "guest_pid": 35000,
+      "observed_exitcode": 0
+    },
+    "tests": {
+      "command": "BIFROST_TEST_WORK_DELIVERY_BACKEND=postgres ./test.sh tests/unit/test_runtime_owner_links_candidate.py tests/unit/test_runtime_receipts_candidate.py -v",
+      "guest_pid": 64506,
+      "collected": 26,
+      "passed_established": false,
+      "outcome": "VM shutdown interrupted first case; no test summary/exit receipt",
+      "old_handle_after_boot": "Agent error: PID ld does not exist"
+    },
+    "quality": {
+      "command": "./test.sh quality api",
+      "status": "not reached"
+    },
+    "schema_readback": {
+      "alembic_head": "20261012_work_delivery_started",
+      "all_six_candidate_tables_absent": true
+    },
+    "delivery_configuration": {
+      "api_effective": "rabbitmq",
+      "worker_scheduler_effective": "unverified; harness stopped them during observation",
+      "requested_test_override": "not wired by current-main Compose; ineffective",
+      "scope": "isolated source qualification only, not production/deployed settings or PostgreSQL delivery evidence"
+    },
+    "diagnosis": "shared test VM was shut down externally despite an active isolated stack; do not repeat this run blindly in an uncoordinated lane"
+  },
+  "ci": [
+    {
+      "id": 38979851702,
+      "head": "3bf9de9699db8455444aa6f8e188907483f674ea",
+      "attempt": 1,
+      "status": "queued; cancellation requested, terminal cancellation not observed",
+      "tests_begun": false
+    },
+    {
+      "id": 38981722180,
+      "head": "2f211ad2a18fb73fe69f983ea0c1ae0bc0d0cbbd",
+      "attempt": 1,
+      "status": "queued",
+      "purpose": "fresh normal CI/pre-PR for changed composed C1+C2 source; not a retry of old candidate or stopped runtime campaign"
+    }
+  ],
+  "scope": {
+    "candidate_ddl_applied": false,
+    "new_role_grants": false,
+    "new_runtime_enabled": false,
+    "lifecycle_parity_proved": false,
+    "literal_pre_pr": "unproved",
+    "mvp_accepted": false,
+    "merged": false,
+    "deployed": false
+  },
+  "cleanup": {
+    "stack_down_guest_pid": 1467,
+    "stack_down_exitcode": 0,
+    "task_containers": [],
+    "task_volumes": [],
+    "task_networks": [],
+    "clone_and_guest_task_logs_removed": true,
+    "shared_images_and_cache": "preserved",
+    "other_running_containers_before_vm_shutdown": [],
+    "final_vm_state": "stopped"
+  },
+  "logs": {
+    "up": {
+      "path": "evidence/common-storage-2f211ad2a/up.log.gz",
+      "sha256": "b39e6e157941d1c578bf789686def7e22e0d3d7665b2d16947cc53304da5347b",
+      "bytes": 68341,
+      "gzip_sha256": "b4eb17f9187fa065cc71044857281bbe8b497e86f83259dce3e52bd9f462f279",
+      "credential_pattern_count": 0
+    },
+    "tests": {
+      "path": "evidence/common-storage-2f211ad2a/tests.log.gz",
+      "sha256": "6564fdeb1998392535ecc64cce2eae42225ba9d4703d6c6609c5d5e5bca7847b",
+      "bytes": 19360,
+      "gzip_sha256": "77e9515f196dc425aa58709dfeb863f8829da4236075919b6245063c8cc901ec",
+      "credential_pattern_count": 0
+    },
+    "down": {
+      "path": "evidence/common-storage-2f211ad2a/down.log.gz",
+      "sha256": "e10d9cf7c7522cb23b4cb7e522d1041c5ea454a7c9a7a09242b17527e5766a74",
+      "bytes": 2787,
+      "gzip_sha256": "537eb79889cee904e6508e82ebc8f100714a74e6254e9c6773f17835f14469fb"
+    }
+  },
+  "procedure_versions": {
+    "mtg-engineering-flow": "2026-10-06.1",
+    "github-pr-stewardship": "2026-10-06.1",
+    "cold_skill_package": "2026-10-09.1"
+  }
+}
