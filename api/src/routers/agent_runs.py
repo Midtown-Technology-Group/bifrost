@@ -107,6 +107,18 @@ async def _require_own_private_agent_run(
         )
 
 
+def _require_flagged_completed_run(run: AgentRun) -> None:
+    """Restrict flag-conversation work to completed thumbs-down runs."""
+    if run.status != "completed" or run.verdict != "down":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "Flag conversations are only available on completed runs "
+                "with a down verdict"
+            ),
+        )
+
+
 def _run_to_response(run: AgentRun) -> AgentRunResponse:
     """Convert AgentRun ORM to AgentRunResponse."""
     return AgentRunResponse(
@@ -923,6 +935,7 @@ async def get_flag_conversation(
             detail=f"Agent run {run_id} not found",
         )
     await _require_own_private_agent_run(db, user, run)
+    _require_flagged_completed_run(run)
 
     conv = await get_or_create_conversation(run_id, db)
     # Persist the created-empty conversation so subsequent GETs see the same id.
@@ -954,14 +967,7 @@ async def send_flag_message(
             detail=f"Agent run {run_id} not found",
         )
     await _require_own_private_agent_run(db, user, run)
-    if run.status != "completed":
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=(
-                "Flag conversations are only available on completed runs "
-                f"(current status: {run.status})"
-            ),
-        )
+    _require_flagged_completed_run(run)
 
     conv = await append_user_message_and_reply(run_id, request.content, db)
     return FlagConversationResponse(

@@ -18,14 +18,23 @@ SENSITIVE_KEYS = {
     "database_url",
     "dsn",
     "id_token",
+    "hmac",
     "jwt",
     "password",
     "refresh_token",
     "secret",
     "secret_key",
     "session",
+    "signature",
     "token",
     "x-api-key",
+}
+
+SENSITIVE_EXACT_KEYS = {
+    "code",
+    "oauth_code",
+    "oauth_state",
+    "state",
 }
 
 FILTERED = "[Filtered]"
@@ -33,26 +42,35 @@ FILTERED = "[Filtered]"
 
 def _is_sensitive_key(key: Any) -> bool:
     normalized = str(key).lower().replace("-", "_")
+    if normalized in SENSITIVE_EXACT_KEYS:
+        return True
     return any(sensitive.replace("-", "_") in normalized for sensitive in SENSITIVE_KEYS)
+
+
+def _scrub_parameters(value: str) -> tuple[str, bool]:
+    """Filter credential-bearing values from a URL query or fragment."""
+    parameters = []
+    changed = False
+    for key, parameter_value in parse_qsl(value, keep_blank_values=True):
+        if _is_sensitive_key(key):
+            parameters.append((key, FILTERED))
+            changed = True
+        else:
+            parameters.append((key, parameter_value))
+    return (urlencode(parameters), changed)
 
 
 def _scrub_url(value: str) -> str:
     parts = urlsplit(value)
-    if not parts.query:
+    if not parts.query and "=" not in parts.fragment:
         return value
 
-    query = []
-    changed = False
-    for key, query_value in parse_qsl(parts.query, keep_blank_values=True):
-        if _is_sensitive_key(key):
-            query.append((key, FILTERED))
-            changed = True
-        else:
-            query.append((key, query_value))
+    query, query_changed = _scrub_parameters(parts.query)
+    fragment, fragment_changed = _scrub_parameters(parts.fragment)
 
-    if not changed:
+    if not query_changed and not fragment_changed:
         return value
-    return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment))
+    return urlunsplit((parts.scheme, parts.netloc, parts.path, query, fragment))
 
 
 def _scrub(value: Any) -> Any:
@@ -65,6 +83,8 @@ def _scrub(value: Any) -> Any:
         return [_scrub(item) for item in value]
     if isinstance(value, tuple):
         return tuple(_scrub(item) for item in value)
+    if isinstance(value, str):
+        return _scrub_url(value)
     return value
 
 
@@ -110,6 +130,7 @@ def configure_sentry(settings: Any | None = None, sentry_sdk_module: Any | None 
             traces_sample_rate=getattr(settings, "sentry_traces_sample_rate", 0.0),
             profile_session_sample_rate=getattr(settings, "sentry_profiles_sample_rate", 0.0),
             before_send=before_send,
+            before_send_transaction=before_send,
         )
     except Exception:
         logger.warning("Sentry initialization failed; continuing without it", exc_info=True)
