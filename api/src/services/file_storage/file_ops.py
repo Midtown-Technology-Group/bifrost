@@ -418,6 +418,11 @@ class FileOperationsService:
         durable source, then require database authority to be retired before
         acknowledging success.  Presentation-only cleanup remains best effort.
         """
+        from src.services.editor.file_filter import validate_workspace_path
+
+        if validate_workspace_path(path) != path:
+            raise ValueError(f"Invalid workspace path: {path}")
+
         # The workspace generation barrier prevents new loads while this runs.
         # Invalidate first so a Redis failure leaves both source and database
         # authority unchanged instead of exposing cached deleted code.
@@ -425,6 +430,14 @@ class FileOperationsService:
 
         # Durable source deletion and database retirement are both required.
         await self._delete_from_s3(path)
+
+        # Invalidate again after durable removal. If the Redis writer lease and
+        # updating marker disappear while S3 deletion is in flight, a legitimate
+        # cold read can otherwise refill the old bytes under a fresh ready
+        # generation. With source now absent, this mandatory second fence clears
+        # that race refill even when barrier finalization later reports lease loss.
+        await self._invalidate_module_cache_if_python(path)
+
         await self._remove_metadata(path)
         await self._remove_from_search_index(path)
 

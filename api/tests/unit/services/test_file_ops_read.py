@@ -340,6 +340,22 @@ class TestDeleteFilePureBranches:
     """Verify delete authority fails closed while presentation cleanup does not."""
 
     @pytest.mark.asyncio
+    async def test_delete_file_rejects_git_metadata_before_storage(self):
+        """Retain the shared canonical path guard from the code-editor repair."""
+        from src.services.file_storage.file_ops import FileOperationsService
+
+        service = _service()
+        service._delete_from_s3 = AsyncMock()
+        service._delete_file_impl = FileOperationsService._delete_file_impl.__get__(
+            service
+        )
+
+        with pytest.raises(ValueError, match="excluded"):
+            await service._delete_file_impl(".git/objects/aa/bb")
+
+        service._delete_from_s3.assert_not_awaited()
+
+    @pytest.mark.asyncio
     async def test_delete_file_orders_critical_retirement_before_best_effort_cleanup(self):
         from src.services.file_storage.file_ops import FileOperationsService
 
@@ -383,8 +399,8 @@ class TestDeleteFilePureBranches:
         service._remove_from_search_index.assert_awaited_once_with("workflows/remove.py")
         service._handle_app_file_cleanup.assert_awaited_once_with("workflows/remove.py")
         service._remove_metadata.assert_awaited_once_with("workflows/remove.py")
-        service._invalidate_module_cache_if_python.assert_awaited_once_with("workflows/remove.py")
-        assert events == ["cache", "s3", "metadata", "index", "preview"]
+        assert service._invalidate_module_cache_if_python.await_count == 2
+        assert events == ["cache", "s3", "cache", "metadata", "index", "preview"]
         publish.assert_awaited_once_with(
             user_id="system",
             user_name="system",
@@ -431,7 +447,7 @@ class TestDeleteFilePureBranches:
         with pytest.raises(RuntimeError, match="database unavailable"):
             await service._delete_file_impl("workflows/remove.py")
 
-        service._invalidate_module_cache_if_python.assert_awaited_once()
+        assert service._invalidate_module_cache_if_python.await_count == 2
         service._delete_from_s3.assert_awaited_once()
         service._remove_from_search_index.assert_not_awaited()
         service._handle_app_file_cleanup.assert_not_awaited()
