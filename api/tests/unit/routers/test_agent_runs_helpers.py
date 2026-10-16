@@ -451,6 +451,7 @@ async def test_agent_admission_preserves_original_principal_authority(
     from fastapi import Response
     from src.core.principal import UserPrincipal
     from src.models.contracts.agent_runs import AgentRunEnqueueRequest
+    from src.models.enums import AgentAccessLevel
 
     user = UserPrincipal(
         user_id=uuid4(), email="caller@example.test", organization_id=uuid4(),
@@ -458,16 +459,23 @@ async def test_agent_admission_preserves_original_principal_authority(
         is_external=external, roles=["Explicit Tool Role"],
     )
     agent_id, run_id, target_org = uuid4(), uuid4(), uuid4()
-    agent = SimpleNamespace(id=agent_id, name="Agent", is_active=True)
+    agent = SimpleNamespace(
+        id=agent_id, name="Agent", is_active=True,
+        access_level=AgentAccessLevel.PRIVATE, owner_user_id=user.user_id,
+    )
     original = SimpleNamespace(
-        agent_id=agent_id, org_id=target_org, input={"original": True}, output_schema=None,
+        id=run_id, agent_id=agent_id, org_id=target_org,
+        input={"original": True}, output_schema=None,
     )
     monkeypatch.setattr(agent_runs, "get_executable_agent", AsyncMock(return_value=agent))
     monkeypatch.setattr(agent_runs, "load_agent_run_for_user", AsyncMock(return_value=original))
     enqueue = AsyncMock(return_value=str(run_id))
     monkeypatch.setattr(agent_runs, "enqueue_agent_run", enqueue)
     monkeypatch.setattr(agent_runs, "wait_for_agent_run_result", AsyncMock(return_value={"status": "completed"}))
-    db = SimpleNamespace(rollback=AsyncMock())
+    db = SimpleNamespace(
+        rollback=AsyncMock(),
+        execute=AsyncMock(return_value=SimpleNamespace(scalar_one_or_none=lambda: agent)),
+    )
     if route == "enqueue":
         await agent_runs.enqueue_agent_run_request(AgentRunEnqueueRequest(agent_name="Agent"), Response(), db, user)
     elif route == "execute":
