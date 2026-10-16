@@ -202,6 +202,85 @@ def test_git_identity_normalization_does_not_cross_workflow_org_scope():
     assert normalized.workflows["run"].id == WORKFLOW_ID
 
 
+def test_git_identity_normalization_uses_integration_key_when_name_is_omitted():
+    local_integration = "30303030-3030-3030-3030-303030303030"
+    current = Manifest(
+        integrations={
+            local_integration: ManifestIntegration(
+                id=local_integration,
+                name="NaturalKeyTestInteg",
+            )
+        }
+    )
+    opaque_value = {
+        INTEGRATION_ID: INTEGRATION_ID,
+        "nested": {"literal": INTEGRATION_ID},
+    }
+    incoming = Manifest(
+        integrations={
+            "NaturalKeyTestInteg": ManifestIntegration(
+                id=INTEGRATION_ID,
+                entity_id=INTEGRATION_ID,
+                default_entity_id=INTEGRATION_ID,
+                mappings=[
+                    ManifestIntegrationMapping(
+                        entity_id=INTEGRATION_ID,
+                    )
+                ],
+            )
+        },
+        configs={
+            CONFIG_ID: ManifestConfig(
+                id=CONFIG_ID,
+                integration_id=INTEGRATION_ID,
+                key="opaque",
+                value=opaque_value,
+            )
+        },
+    )
+
+    normalized = manifest_import.normalize_git_manifest_identities(incoming, current)
+
+    integration = normalized.integrations["NaturalKeyTestInteg"]
+    assert integration.id == local_integration
+    assert integration.entity_id == INTEGRATION_ID
+    assert integration.default_entity_id == INTEGRATION_ID
+    assert integration.mappings[0].entity_id == INTEGRATION_ID
+    assert normalized.configs[CONFIG_ID].integration_id == local_integration
+    assert normalized.configs[CONFIG_ID].value == opaque_value
+
+
+def test_git_identity_normalization_prefers_exact_id_before_ambiguous_natural_key():
+    current = Manifest(
+        organizations=[
+            ManifestOrganization(id=ORG_ID, name="Shared"),
+            ManifestOrganization(id=OTHER_ORG_ID, name="Shared"),
+        ]
+    )
+    incoming = Manifest(
+        organizations=[ManifestOrganization(id=ORG_ID, name="Shared")]
+    )
+
+    normalized = manifest_import.normalize_git_manifest_identities(incoming, current)
+
+    assert normalized.organizations[0].id == ORG_ID
+
+
+def test_git_identity_normalization_rejects_ambiguous_foreign_natural_key():
+    current = Manifest(
+        organizations=[
+            ManifestOrganization(id=ORG_ID, name="Shared"),
+            ManifestOrganization(id=OTHER_ORG_ID, name="Shared"),
+        ]
+    )
+    incoming = Manifest(
+        organizations=[ManifestOrganization(id=WORKFLOW_ID, name="Shared")]
+    )
+
+    with pytest.raises(ValueError, match="organization natural identity.*ambiguous"):
+        manifest_import.normalize_git_manifest_identities(incoming, current)
+
+
 def test_diff_collect_ignores_oauth_token_mapping_noise_and_cascades_configs():
     current = Manifest(
         organizations=[ManifestOrganization(id=ORG_ID, name="Midtown")],
@@ -1719,7 +1798,12 @@ async def test_git_deletions_normalize_portable_integration_ids(tmp_path, monkey
     })
     monkeypatch.setattr(manifest_import, "read_manifest_from_dir", lambda _: incoming)
     generate = AsyncMock(return_value=current)
+    include_retired = AsyncMock(return_value=current)
     monkeypatch.setattr("src.services.manifest_generator.generate_manifest", generate)
+    monkeypatch.setattr(
+        "src.services.manifest_generator.include_retired_git_identity_candidates",
+        include_retired,
+    )
     db = _SequenceDb()
 
     await manifest_import.ManifestResolver(db)._resolve_deletions(
@@ -1727,6 +1811,7 @@ async def test_git_deletions_normalize_portable_integration_ids(tmp_path, monkey
     )
 
     generate.assert_awaited_once_with(db)
+    include_retired.assert_awaited_once_with(db, current)
     integration_queries = [
         statement for statement in db.statements
         if "integrations.id NOT IN" in str(statement)

@@ -312,8 +312,8 @@ def normalize_git_manifest_identities(
     Git content may come from another environment, where the same natural
     entity has a different UUID.  Primary keys in this environment are durable
     authority and must never be rewritten from repository input.  Rewrite the
-    incoming graph instead, including every exact UUID reference and mapping
-    key, before diffing or applying it.
+    incoming graph instead, but only at declared entity and reference fields;
+    opaque manifest content may legitimately contain UUID-looking strings.
     """
     from pathlib import PurePosixPath
 
@@ -323,16 +323,25 @@ def normalize_git_manifest_identities(
     def remember(
         entity_type: str,
         source_id: str,
-        target_id: str | None,
+        target_ids: set[str],
         current_ids: set[str],
+        natural_key: object,
     ) -> None:
-        if target_id is None or source_id == target_id:
-            return
+        # An exact database identity is authoritative even when another row has
+        # the same natural key.  Let the normal uniqueness constraint reject an
+        # invalid rename instead of silently redirecting the manifest entity.
         if source_id in current_ids:
+            return
+        if not target_ids:
+            return
+        if len(target_ids) > 1:
             raise ValueError(
-                f"{entity_type} manifest id {source_id} already belongs to a "
-                "different database entity"
+                f"{entity_type} natural identity {natural_key!r} is ambiguous; "
+                f"it matches database ids {', '.join(sorted(target_ids))}"
             )
+        target_id = next(iter(target_ids))
+        if source_id == target_id:
+            return
         other_source = target_sources.get(target_id)
         if other_source is not None and other_source != source_id:
             raise ValueError(
@@ -349,11 +358,11 @@ def normalize_git_manifest_identities(
         target_sources[target_id] = source_id
 
     def index(values, key):
-        indexed = {}
+        indexed: dict[object, set[str]] = {}
         for item in values:
             natural = key(item)
             if natural is not None:
-                indexed[natural] = item.id
+                indexed.setdefault(natural, set()).add(item.id)
         return indexed
 
     def ids(values) -> set[str]:
@@ -362,12 +371,24 @@ def normalize_git_manifest_identities(
     current_orgs = index(current.organizations, lambda item: item.name)
     current_org_ids = ids(current.organizations)
     for item in incoming.organizations:
-        remember("organization", item.id, current_orgs.get(item.name), current_org_ids)
+        remember(
+            "organization",
+            item.id,
+            current_orgs.get(item.name, set()),
+            current_org_ids,
+            item.name,
+        )
 
     current_roles = index(current.roles, lambda item: item.name)
     current_role_ids = ids(current.roles)
     for item in incoming.roles:
-        remember("role", item.id, current_roles.get(item.name), current_role_ids)
+        remember(
+            "role",
+            item.id,
+            current_roles.get(item.name, set()),
+            current_role_ids,
+            item.name,
+        )
 
     def mapped(value: str | None) -> str | None:
         return id_map.get(value, value) if value is not None else None
@@ -380,17 +401,23 @@ def normalize_git_manifest_identities(
     for item in incoming.workflows.values():
         natural = (item.path, item.function_name, mapped(item.organization_id))
         remember(
-            "workflow", item.id, current_workflows.get(natural), current_workflow_ids
+            "workflow",
+            item.id,
+            current_workflows.get(natural, set()),
+            current_workflow_ids,
+            natural,
         )
 
     current_integrations = index(current.integrations.values(), lambda item: item.name)
     current_integration_ids = ids(current.integrations.values())
-    for item in incoming.integrations.values():
+    for key, item in incoming.integrations.items():
+        natural = item.name or key
         remember(
             "integration",
             item.id,
-            current_integrations.get(item.name),
+            current_integrations.get(natural, set()),
             current_integration_ids,
+            natural,
         )
 
     def app_slug(item) -> str | None:
@@ -401,7 +428,14 @@ def normalize_git_manifest_identities(
     current_apps = index(current.apps.values(), app_slug)
     current_app_ids = ids(current.apps.values())
     for item in incoming.apps.values():
-        remember("app", item.id, current_apps.get(app_slug(item)), current_app_ids)
+        natural = app_slug(item)
+        remember(
+            "app",
+            item.id,
+            current_apps.get(natural, set()),
+            current_app_ids,
+            natural,
+        )
 
     current_rules = index(
         current.policy_rules.values(),
@@ -410,7 +444,13 @@ def normalize_git_manifest_identities(
     current_rule_ids = ids(current.policy_rules.values())
     for item in incoming.policy_rules.values():
         natural = (item.name, item.domain, mapped(item.organization_id))
-        remember("policy rule", item.id, current_rules.get(natural), current_rule_ids)
+        remember(
+            "policy rule",
+            item.id,
+            current_rules.get(natural, set()),
+            current_rule_ids,
+            natural,
+        )
 
     current_tables = index(
         current.tables.values(), lambda item: (item.name, item.organization_id)
@@ -418,7 +458,13 @@ def normalize_git_manifest_identities(
     current_table_ids = ids(current.tables.values())
     for item in incoming.tables.values():
         natural = (item.name, mapped(item.organization_id))
-        remember("table", item.id, current_tables.get(natural), current_table_ids)
+        remember(
+            "table",
+            item.id,
+            current_tables.get(natural, set()),
+            current_table_ids,
+            natural,
+        )
 
     current_policies = index(
         current.file_policies.values(),
@@ -438,7 +484,11 @@ def normalize_git_manifest_identities(
             mapped(item.solution_id),
         )
         remember(
-            "file policy", item.id, current_policies.get(natural), current_policy_ids
+            "file policy",
+            item.id,
+            current_policies.get(natural, set()),
+            current_policy_ids,
+            natural,
         )
 
     current_claims = index(
@@ -447,7 +497,13 @@ def normalize_git_manifest_identities(
     current_claim_ids = ids(current.claims.values())
     for item in incoming.claims.values():
         natural = (item.name, mapped(item.organization_id))
-        remember("claim", item.id, current_claims.get(natural), current_claim_ids)
+        remember(
+            "claim",
+            item.id,
+            current_claims.get(natural, set()),
+            current_claim_ids,
+            natural,
+        )
 
     current_configs = index(
         current.configs.values(),
@@ -460,27 +516,115 @@ def normalize_git_manifest_identities(
             mapped(item.integration_id),
             mapped(item.organization_id),
         )
-        remember("config", item.id, current_configs.get(natural), current_config_ids)
+        remember(
+            "config",
+            item.id,
+            current_configs.get(natural, set()),
+            current_config_ids,
+            natural,
+        )
 
     if not id_map:
         return incoming
 
-    def rewrite(value):
-        if isinstance(value, dict):
-            return {
-                id_map.get(str(key), key): rewrite(item)
-                for key, item in value.items()
-            }
-        if isinstance(value, list):
-            return [rewrite(item) for item in value]
-        if isinstance(value, str):
-            return id_map.get(value, value)
-        return value
+    normalized = incoming.model_copy(deep=True)
 
-    payload = incoming.model_dump(
-        mode="json", by_alias=True, exclude_unset=True
-    )
-    return Manifest.model_validate(rewrite(payload))
+    for organization in normalized.organizations:
+        organization.id = id_map.get(organization.id, organization.id)
+    for role in normalized.roles:
+        role.id = id_map.get(role.id, role.id)
+
+    # Only these top-level entity types participate in natural-key matching
+    # above.  Re-key an ID-keyed collection only when its key is the entity's
+    # portable ID; author-friendly name keys remain unchanged.
+    for collection_name in (
+        "workflows",
+        "integrations",
+        "configs",
+        "claims",
+        "policy_rules",
+        "tables",
+        "file_policies",
+        "apps",
+    ):
+        collection = getattr(normalized, collection_name)
+        rewritten_collection = {}
+        for key, entity in collection.items():
+            source_id = entity.id
+            target_id = id_map.get(source_id, source_id)
+            entity.id = target_id
+            target_key = target_id if key == source_id else key
+            if target_key in rewritten_collection:
+                raise ValueError(
+                    f"multiple {collection_name} manifest entries resolve to key "
+                    f"{target_key}"
+                )
+            rewritten_collection[target_key] = entity
+        setattr(normalized, collection_name, rewritten_collection)
+
+    # These are the typed internal-reference slots in the manifest contract.
+    # In particular, Config.value, JSON schemas, prompts, provider metadata,
+    # webhook payloads, and external OAuth/entity IDs are intentionally opaque.
+    reference_fields = {
+        "organization_id",
+        "roles",
+        "workflow_id",
+        "launch_workflow_id",
+        "tool_ids",
+        "delegated_agent_ids",
+        "integration_id",
+        "list_entities_data_provider_id",
+        "webhook_integration_id",
+        "agent_id",
+    }
+
+    from pydantic import BaseModel
+
+    def rewrite_model_references(model: BaseModel) -> None:
+        for field_name in type(model).model_fields:
+            value = getattr(model, field_name)
+            if field_name in reference_fields:
+                if isinstance(value, str):
+                    target = id_map.get(value, value)
+                    if target != value:
+                        setattr(model, field_name, target)
+                elif isinstance(value, list):
+                    target = [
+                        id_map.get(item, item) if isinstance(item, str) else item
+                        for item in value
+                    ]
+                    if target != value:
+                        setattr(model, field_name, target)
+
+            if isinstance(value, BaseModel):
+                rewrite_model_references(value)
+            elif isinstance(value, list):
+                for item in value:
+                    if isinstance(item, BaseModel):
+                        rewrite_model_references(item)
+            elif isinstance(value, dict):
+                for item in value.values():
+                    if isinstance(item, BaseModel):
+                        rewrite_model_references(item)
+
+    rewrite_model_references(normalized)
+
+    # Form schemas are intentionally JSON, but data_provider_id is a declared
+    # workflow reference within their canonical field shape.
+    for form in normalized.forms.values():
+        fields = (form.form_schema or {}).get("fields")
+        if not isinstance(fields, list):
+            continue
+        for field in fields:
+            if not isinstance(field, dict):
+                continue
+            data_provider_id = field.get("data_provider_id")
+            if isinstance(data_provider_id, str):
+                field["data_provider_id"] = id_map.get(
+                    data_provider_id, data_provider_id
+                )
+
+    return normalized
 
 
 def _collect_removed_entity_ids(changes: list[dict[str, str]]) -> dict[str, set[str]]:
@@ -2022,10 +2166,17 @@ class ManifestResolver:
                 manifest = read_manifest_from_dir(work_dir / ".bifrost")
                 # Git input retains portable IDs on disk. Deletion accounting
                 # must use the same stable local graph as the import planner.
-                from src.services.manifest_generator import generate_manifest
+                from src.services.manifest_generator import (
+                    generate_manifest,
+                    include_retired_git_identity_candidates,
+                )
 
+                db_manifest = await generate_manifest(self.db)
+                identity_manifest = await include_retired_git_identity_candidates(
+                    self.db, db_manifest
+                )
                 manifest = normalize_git_manifest_identities(
-                    manifest, await generate_manifest(self.db)
+                    manifest, identity_manifest
                 )
             else:
                 raise ValueError("Either manifest or work_dir must be provided")

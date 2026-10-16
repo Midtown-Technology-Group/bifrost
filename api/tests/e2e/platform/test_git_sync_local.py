@@ -3330,7 +3330,7 @@ class TestPullUpsertNaturalKeys:
         working_clone,
     ):
         """When a workflow exists with (path, function_name) but a different ID,
-        the import should update the existing row's ID to match the manifest."""
+        prepare and apply preserve the existing local ID without a false delete."""
         # Create a workflow in the DB with ID_A
         id_a = uuid4()
         wf = Workflow(
@@ -3381,9 +3381,21 @@ class TestPullUpsertNaturalKeys:
         working_clone.index.commit("Add workflow with different ID")
         working_clone.remotes.origin.push("main")
 
-        # Pull — this should NOT raise IntegrityError
-        sync_result = await sync_service.desktop_sync(confirm_deletes=True)
-        assert sync_result.success, f"Sync failed: {sync_result.error}"
+        # Exercise the reviewed prepare -> confirmed apply boundary explicitly.
+        async with sync_service.repo_manager.lock() as work_dir:
+            repo = sync_service._open_or_init(work_dir)
+            plan = await sync_service.prepare_desktop_sync(work_dir, repo)
+            assert all(
+                change.entity_id != str(id_a)
+                for change in plan.pending_deletes
+            )
+            sync_result = await sync_service.apply_desktop_sync(
+                work_dir,
+                repo,
+                plan,
+                confirm_deletes=True,
+            )
+            assert sync_result.success, f"Sync failed: {sync_result.error}"
 
         # Verify: only one workflow row exists with the manifest's ID (id_b)
         result = await db_session.execute(
@@ -3404,7 +3416,7 @@ class TestPullUpsertNaturalKeys:
         working_clone,
     ):
         """When an integration exists with same name but different ID,
-        the import should update the existing row's ID to match the manifest."""
+        the import should preserve the existing local ID."""
         from src.models.orm.integrations import Integration
 
         # Create integration in DB with ID_A
