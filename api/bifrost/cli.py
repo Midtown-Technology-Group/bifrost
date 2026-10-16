@@ -2423,7 +2423,7 @@ Arguments:
   path                  Local file or directory to push (default: current directory)
 
 Options:
-  --mirror              Make target match source exactly (delete files not present locally)
+  --mirror              Make a directory target match source exactly (directory paths only)
   --validate            Validate after push (for apps)
   --force               Skip confirmation prompts
   --yes, -y             Non-interactive: take default actions, no TUI (alias of --force)
@@ -2467,6 +2467,14 @@ Examples:
         lock_target = resolved
     else:
         print(f"Error: {parsed.local_path} is not a valid file or directory", file=sys.stderr)
+        return 1
+
+    if single_file is not None and parsed.mirror:
+        print(
+            "Error: --mirror requires a directory; refusing to infer sibling "
+            "deletions from a single-file selection.",
+            file=sys.stderr,
+        )
         return 1
 
     from bifrost._solution_workspace import assert_not_solution_workspace
@@ -3790,8 +3798,17 @@ async def _sync_files(
     actions are uploads. Bidirectional and destructive mirror operations
     require a TTY or explicit non-interactive consent. When ``single_file`` is
     set, ``local_path`` may point at the file itself — the containing directory
-    is used as the sync root.
+    is used as the sync root. Mirror mode rejects a single-file selection
+    because one selected upload is not a complete local deletion inventory.
     """
+    if mirror and single_file is not None:
+        print(
+            "Error: --mirror requires a directory; refusing to infer sibling "
+            "deletions from a single-file selection.",
+            file=sys.stderr,
+        )
+        return 1
+
     if single_file is not None:
         # Single-file push: anchor the sync root at the file's containing
         # directory so prefix detection and repo keys stay correct whether

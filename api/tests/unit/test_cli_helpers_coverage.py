@@ -590,14 +590,14 @@ def test_push_sync_and_pull_dispatch_to_sync_files(monkeypatch, tmp_path):
     file_path = root / "main.py"
     file_path.write_text("print('ok')\n", encoding="utf-8")
 
-    assert cli.handle_push([str(file_path), "--mirror", "--validate", "--yes"]) == 41
+    assert cli.handle_push([str(root), "--mirror", "--validate", "--yes"]) == 41
     assert calls[-1][0] == "sync_files"
-    assert calls[-1][1] == str(file_path)
+    assert calls[-1][1] == str(root)
     assert calls[-1][2]["mirror"] is True
     assert calls[-1][2]["validate"] is True
     assert calls[-1][2]["force"] is True
     assert calls[-1][2]["client"] is client
-    assert calls[-1][2]["single_file"] == str(file_path)
+    assert calls[-1][2]["single_file"] is None
     assert calls[-1][2]["direction"] == "push"
 
     assert cli.handle_sync([str(root), "--mirror", "--validate", "--yes"]) == 42
@@ -606,6 +606,7 @@ def test_push_sync_and_pull_dispatch_to_sync_files(monkeypatch, tmp_path):
     assert calls[-1][2]["validate"] is True
     assert calls[-1][2]["force"] is True
     assert calls[-1][2]["client"] is client
+    assert calls[-1][2]["direction"] == "sync"
 
     assert cli.handle_pull([str(root), "--mirror", "--force"]) == 43
     assert calls[-1][1] == str(root)

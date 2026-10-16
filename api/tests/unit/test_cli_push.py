@@ -1,3 +1,5 @@
+import base64
+
 import pytest
 
 from bifrost import cli
@@ -33,6 +35,19 @@ def test_push_accepts_single_file(tmp_path, monkeypatch):
 def test_push_rejects_missing_path(tmp_path):
     rc = cli.handle_push([str(tmp_path / "does-not-exist.py")])
     assert rc == 1
+
+
+def test_push_rejects_single_file_mirror_before_auth(tmp_path, monkeypatch, capsys):
+    selected = tmp_path / "a.py"
+    selected.write_text("selected\n")
+
+    def unexpected_auth(**_kwargs):
+        raise AssertionError("invalid mirror scope must fail before authentication")
+
+    monkeypatch.setattr(cli.BifrostClient, "get_instance", unexpected_auth)
+
+    assert cli.handle_push([str(selected), "--mirror", "--yes"]) == 1
+    assert "refusing to infer sibling deletions" in capsys.readouterr().err
 
 
 def test_collect_push_files_single_file_root(tmp_path):
@@ -262,3 +277,144 @@ async def test_push_mirror_deletes_remote_only_files_without_pulling(
         for url, payload in client.calls
         if url == "/api/files/delete"
     ] == ["remote.py"]
+
+
+@pytest.mark.asyncio
+async def test_single_file_mirror_rejects_incomplete_deletion_inventory(
+    tmp_path, capsys
+):
+    selected = tmp_path / "a.py"
+    sibling = tmp_path / "b.py"
+    selected.write_text("selected\n")
+    sibling.write_text("sibling\n")
+
+    class NoNetworkClient:
+        def __init__(self):
+            self.calls = []
+
+        async def post(self, url, *args, **kwargs):
+            self.calls.append((url, kwargs.get("json")))
+            raise AssertionError("single-file mirror must fail before remote listing")
+
+    client = NoNetworkClient()
+    rc = await cli._sync_files(
+        str(selected),
+        mirror=True,
+        force=True,
+        client=client,
+        single_file=str(selected),
+        direction="push",
+    )
+
+    assert rc == 1
+    assert client.calls == []
+    assert sibling.read_text() == "sibling\n"
+    assert "refusing to infer sibling deletions" in capsys.readouterr().err
+
+
+@pytest.mark.asyncio
+async def test_push_direction_uploads_changed_local_file(tmp_path, monkeypatch):
+    changed = tmp_path / "changed.py"
+    changed.write_text("local changed\n")
+    monkeypatch.setattr(cli, "_resolve_is_tty", lambda: False)
+
+    class FakeResp:
+        def __init__(self, status_code, payload=None):
+            self.status_code = status_code
+            self._payload = payload or {}
+
+        def json(self):
+            return self._payload
+
+    class FakeClient:
+        def __init__(self):
+            self.calls = []
+
+        async def post(self, url, *args, **kwargs):
+            payload = kwargs.get("json")
+            self.calls.append((url, payload))
+            if url == "/api/files/list":
+                return FakeResp(200, {"files_metadata": [{
+                    "path": "changed.py",
+                    "etag": "different-server-hash",
+                    "last_modified": "2026-01-01T00:00:00+00:00",
+                }]})
+            if url == "/api/files/write":
+                return FakeResp(204)
+            if url == "/api/files/read":
+                raise AssertionError("push must not download changed files")
+            return FakeResp(200)
+
+    client = FakeClient()
+    assert await cli._sync_files(
+        str(tmp_path), client=client, direction="push"
+    ) == 0
+    assert [
+        payload["path"]
+        for url, payload in client.calls
+        if url == "/api/files/write"
+    ] == ["changed.py"]
+
+
+@pytest.mark.asyncio
+async def test_pull_direction_preserves_local_only_and_downloads_remote_files(
+    tmp_path, monkeypatch
+):
+    local_only = tmp_path / "local-only.py"
+    changed = tmp_path / "changed.py"
+    local_only.write_text("keep local\n")
+    changed.write_text("stale local\n")
+    monkeypatch.setattr(cli, "_resolve_is_tty", lambda: False)
+
+    class FakeResp:
+        def __init__(self, status_code, payload=None):
+            self.status_code = status_code
+            self._payload = payload or {}
+
+        def json(self):
+            return self._payload
+
+    class FakeClient:
+        def __init__(self):
+            self.calls = []
+
+        async def post(self, url, *args, **kwargs):
+            payload = kwargs.get("json")
+            self.calls.append((url, payload))
+            if url == "/api/files/list":
+                return FakeResp(200, {"files_metadata": [
+                    {
+                        "path": "changed.py",
+                        "etag": "different-server-hash",
+                        "last_modified": "2026-01-01T00:00:00+00:00",
+                    },
+                    {
+                        "path": "remote-only.py",
+                        "etag": "remote-only-hash",
+                        "last_modified": "2026-01-01T00:00:00+00:00",
+                    },
+                ]})
+            if url == "/api/files/read":
+                content = {
+                    "changed.py": b"fresh remote\n",
+                    "remote-only.py": b"remote only\n",
+                }[payload["path"]]
+                return FakeResp(200, {
+                    "content": base64.b64encode(content).decode("ascii")
+                })
+            if url in ("/api/files/write", "/api/files/delete"):
+                raise AssertionError("pull must not upload or delete local-only files")
+            return FakeResp(200)
+
+    client = FakeClient()
+    assert await cli._sync_files(
+        str(tmp_path), force=True, client=client, direction="pull"
+    ) == 0
+    assert local_only.read_text() == "keep local\n"
+    assert changed.read_text() == "fresh remote\n"
+    assert (tmp_path / "remote-only.py").read_text() == "remote only\n"
+    assert [
+        payload["path"]
+        for url, payload in client.calls
+        if url == "/api/files/read"
+    ] == ["changed.py", "remote-only.py"]
