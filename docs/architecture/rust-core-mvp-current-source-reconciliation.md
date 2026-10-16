@@ -1,17 +1,17 @@
 # Rust MVP: current-source reconciliation
 
-Checkpoint: 2026-10-09. This is an implementation decision record, not runtime
+Checkpoint: 2026-10-16. This is an implementation decision record, not runtime
 acceptance, a new credential policy, or deployment authorization.
 
 ## Source authority
 
-Platform main: `b031b9ca3a4fc50d6eb04dbfdf578fe8f009913d`.
-The latest main advance adds only the CRLF normalization fast path and its tests;
-it does not change runtime or authority interfaces.
-Workspace main: `ef3c41a0ceeb07fd61acfa9bcd2010d9921cc31a`.
+Platform main: `e42999395231ebc536711e5015422edfb75613a7`.
+This supersedes the October 9 source checkpoint. Runtime, authorization, worker
+ownership and dependency changes require fresh integration evidence.
+Workspace main: `0b70c082bfa1a3c65b1ead8661774dd5d4ae36a1`.
 Architecture amendment #1011 remains provisional at
 `93ec9421b23b0b4a1493ab45f15f55ded3377d2e`.
-The current workspace audit inspected 2,217 committed authored Python files:
+The current workspace audit inspected 2,449 committed authored Python files:
 no platform src/SQLAlchemy imports, no parse errors, explicit empty allowlist.
 Historical runtime results retain their original candidate pins.
 
@@ -170,3 +170,36 @@ manual pre-PR artifact has an empty container inventory after teardown; this
 alone does not prove network/volume cleanup. Original logs/run/combined-tree
 identities are retained; all failed gates remain blocking. No retry was
 dispatched without evidence the quota condition cleared.
+
+
+## October 16 implementation checkpoint
+
+AUTH-P1 #1018 now publishes exact candidate
+`39245315e193e1d04886044677bf7a75bb8c6f1f`, including current main above.
+The integration merged without conflicts. The only new AUTH change repairs a
+positive test fixture to satisfy main's real private-agent rerun ownership
+check; non-admin cases assert the actual ownership lookup executes. No guard,
+expectation, selector, retry or timeout was weakened. Independent Sol review
+accepted the final candidate; AST, locked scoped Ruff and whitespace pass.
+
+New [PR CI 38947585397](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/38947585397)
+and [manual CI 38947574111](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/38947574111)
+are queued for this exact head; manual CI includes literal `bash test.sh pre-pr`.
+These are new-source validation, not reruns that erase October 9 failures.
+They do not establish runtime evidence until the applicable checks execute.
+No local host tests, merge, deployment or vendor/model execution occurred.
+
+Current main also changes a previously documented coupling:
+`api/bifrost/_sync.py` now leaves caller-owned pending changes in Redis until
+explicit post-commit acknowledgement. Both workflow-consumer flush paths call
+`acknowledge_pending_changes` after their commit. The old unconditional
+"Redis deletion precedes caller commit" finding is historical, not a current
+source fact. Failed commit, failed acknowledgement, race/idempotency and
+Rust-owned event/receipt behavior still need their actual parity tests; this
+source correction does not qualify Rust mixed-writer operation.
+
+The next independent source packet prepares concrete native FK, receipt
+uniqueness, Start/close and tombstone SQL for the workflow owner. It is a review
+proposal only. Ownership/schema/role/profile decisions remain held, including
+the explicit coordinator read/ANY-table-lock disposition. No new runtime SDK
+capabilities are bundled into that work.
