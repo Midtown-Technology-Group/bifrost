@@ -238,8 +238,19 @@ class TestCLISessionHttpBranches:
         self,
     ) -> None:
         user = _user()
-        db = _db(execute_result=_scalar_result(None))
         session = _session(user_id=user.user_id)
+        execution = SimpleNamespace(session_id=None)
+        db = _db()
+
+        def reject_workflow_lookup(statement):
+            table_names = {
+                getattr(from_clause, "name", None)
+                for from_clause in statement.get_final_froms()
+            }
+            assert "workflows" not in table_names
+            return _scalar_result(execution)
+
+        db.execute = AsyncMock(side_effect=reject_workflow_lookup)
         repo = MagicMock()
         repo.get_session_for_user = AsyncMock(return_value=session)
         repo.set_pending = AsyncMock()
@@ -264,6 +275,8 @@ class TestCLISessionHttpBranches:
         assert result.status == "pending"
         execution_repo.create_execution.assert_awaited_once()
         assert execution_repo.create_execution.await_args.kwargs["workflow_id"] is None
+        db.execute.assert_awaited_once()
+        assert execution.session_id == session.id
 
 
 class TestCLISessionPendingAndResult:
