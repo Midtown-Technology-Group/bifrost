@@ -33,6 +33,7 @@ from src.models.orm.workflows import Workflow
 from src.services.workspace_release_registration_authority import (
     guard_workspace_registration_mutation,
 )
+from src.services.workspace_release_projection import acquire_workspace_release_lock
 
 logger = logging.getLogger(__name__)
 
@@ -95,9 +96,11 @@ class FunctionSignature:
 
 @dataclass(frozen=True)
 class WorkflowFileRecreation:
-    """Workflow row and integrity-checked source selected for recreation."""
+    """Immutable workflow identity and verified source selected for recreation."""
 
-    workflow: Workflow
+    workflow_id: UUID
+    path: str
+    content_hash: str
     code: str
 
 
@@ -277,7 +280,16 @@ class WorkflowOrphanService:
             ValueError: workflow not found, not orphaned, file/function missing,
                         uniqueness collision, or decorator type mismatch.
         """
-        wf = await self.db.get(Workflow, workflow_id)
+        # Load only after entering the same transaction fence used by release
+        # activation and recreation. A row fetched before this lock can be
+        # repointed by a concurrent administrator while this operation waits.
+        await acquire_workspace_release_lock(self.db, None)
+        wf = await self.db.get(
+            Workflow,
+            workflow_id,
+            populate_existing=True,
+            with_for_update=True,
+        )
         if not wf:
             raise ValueError(f"Workflow {workflow_id} not found")
         if not wf.is_orphaned:
@@ -366,19 +378,30 @@ class WorkflowOrphanService:
         This writes the workflow's code snapshot back to the filesystem at its
         last known path, then clears the orphaned flag.
 
-        Note: This method updates the workflow record but does NOT write to S3.
-        The caller should use FileStorageService.write_file() to persist the file.
+        Note: This method stages the workflow update but does NOT write to S3 or
+        commit. The caller must persist ``path``/``code`` and commit on this same
+        session so the workspace transaction fence covers the full operation.
 
         Args:
             workflow_id: UUID of the orphaned workflow
 
         Returns:
-            Updated Workflow and the integrity-checked code to write
+            Immutable workflow ID/path/hash/code selected under the transaction
+            fence
 
         Raises:
             ValueError: If workflow not found, not orphaned, or missing code/path
         """
-        wf = await self.db.get(Workflow, workflow_id)
+        # The row must be read after acquiring the transaction-scoped workspace
+        # fence. ``populate_existing`` prevents an earlier request guard lookup
+        # or identity-map entry from reintroducing pre-lock state.
+        await acquire_workspace_release_lock(self.db, None)
+        wf = await self.db.get(
+            Workflow,
+            workflow_id,
+            populate_existing=True,
+            with_for_update=True,
+        )
         if not wf:
             raise ValueError(f"Workflow {workflow_id} not found")
         if not wf.is_orphaned:
@@ -392,22 +415,32 @@ class WorkflowOrphanService:
             raise ValueError(
                 f"Workflow {workflow_id} is missing path for recreation"
             )
-        code = await self._get_code(wf.path)
+        source_path = wf.path
+        code = await self._get_code(source_path)
         if not code:
             raise ValueError(
                 f"Workflow {workflow_id} has no code in file_index for recreation"
             )
+        content_hash = hashlib.sha256(code.encode("utf-8")).hexdigest()
 
         # Mark as not orphaned - the actual file write is caller's responsibility
         wf.is_orphaned = False
         wf.updated_at = datetime.now(timezone.utc)
 
-        await self.db.commit()
-        await self.db.refresh(wf)
+        await self.db.flush()
 
-        logger.info(f"Marked workflow {log_safe(workflow_id)} for file recreation at {log_safe(wf.path)}")
+        logger.info(
+            "Staged workflow %s for file recreation at %s",
+            log_safe(workflow_id),
+            log_safe(source_path),
+        )
 
-        return WorkflowFileRecreation(workflow=wf, code=code)
+        return WorkflowFileRecreation(
+            workflow_id=wf.id,
+            path=source_path,
+            content_hash=content_hash,
+            code=code,
+        )
 
     async def deactivate_workflow(self, workflow_id: UUID) -> tuple[Workflow, int]:
         """

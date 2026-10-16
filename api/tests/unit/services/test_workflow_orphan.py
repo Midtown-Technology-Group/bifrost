@@ -706,11 +706,16 @@ class TestWorkflowOrphanCleanup:
         with patch.object(service, "_get_code", AsyncMock(return_value=_WORKFLOW_CODE)):
             result = await service.recreate_file(wf.id)
 
-        assert result.workflow is wf
+        assert result.workflow_id == wf.id
+        assert result.path == "workflows/recreate.py"
+        assert result.content_hash == hashlib.sha256(
+            _WORKFLOW_CODE.encode("utf-8")
+        ).hexdigest()
         assert result.code == _WORKFLOW_CODE
         assert wf.is_orphaned is False
-        db.commit.assert_awaited_once()
-        db.refresh.assert_awaited_once_with(wf)
+        db.flush.assert_awaited_once()
+        db.commit.assert_not_awaited()
+        db.refresh.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_recreate_file_rejects_invalid_states(self):
