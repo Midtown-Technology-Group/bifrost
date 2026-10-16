@@ -11,14 +11,17 @@ import pytest
 
 @pytest.fixture(scope="module")
 def control_key_role(e2e_client, platform_admin, org1_user, org2_user):
-    """Grant can_manage_config to both org users (control-key CRUD gate)."""
+    """Grant management plus execution authority to control-key issuers."""
     response = e2e_client.post(
         "/api/roles",
         headers=platform_admin.headers,
         json={
             "name": "E2E Control Key Managers",
             "description": "Granted by test_device_control_keys e2e",
-            "permissions": {"can_manage_config": True},
+            "permissions": {
+                "can_manage_config": True,
+                "can_execute_devices": True,
+            },
         },
     )
     assert response.status_code in (200, 201), response.text
@@ -150,6 +153,75 @@ def test_permission_denied_without_role(e2e_client, platform_admin, org1, non_ad
     )
     assert response.status_code == 403
     assert response.json()["error"]["code"] == "permission_denied"
+
+
+def test_manager_without_execution_cannot_issue_or_rotate_key(
+    e2e_client, platform_admin, org1, org1_user, non_admin_user, control_key_role
+):
+    role = e2e_client.post(
+        "/api/roles",
+        headers=platform_admin.headers,
+        json={
+            "name": "E2E Device Config Only",
+            "description": "Control-key delegation boundary",
+            "permissions": {"can_manage_config": True},
+        },
+    )
+    assert role.status_code in (200, 201), role.text
+    role_id = role.json()["id"]
+    assigned = e2e_client.post(
+        f"/api/roles/{role_id}/users",
+        headers=platform_admin.headers,
+        json={"user_ids": [str(non_admin_user.user_id)]},
+    )
+    assert assigned.status_code == 204, assigned.text
+
+    try:
+        device_id = _create_device(
+            e2e_client, platform_admin.headers, org1["id"], "ck-delegation"
+        )
+        denied_create = e2e_client.post(
+            "/api/device-control-keys",
+            headers=non_admin_user.headers,
+            json={"name": "no-execute", "device_ids": [device_id]},
+        )
+        assert denied_create.status_code == 403
+        assert denied_create.json()["error"]["code"] == "permission_denied"
+        assert "can_execute_devices" in denied_create.json()["error"]["message"]
+
+        issued = e2e_client.post(
+            "/api/device-control-keys",
+            headers=org1_user.headers,
+            json={"name": "admin-issued", "device_ids": [device_id]},
+        )
+        assert issued.status_code == 201, issued.text
+        key_id = issued.json()["control_key"]["id"]
+
+        denied_rotate = e2e_client.post(
+            f"/api/device-control-keys/{key_id}/rotate",
+            headers=non_admin_user.headers,
+        )
+        assert denied_rotate.status_code == 403
+        assert denied_rotate.json()["error"]["code"] == "permission_denied"
+
+        listing = e2e_client.get(
+            "/api/device-control-keys", headers=non_admin_user.headers
+        )
+        assert listing.status_code == 200
+        assert key_id in {row["id"] for row in listing.json()}
+
+        revoked = e2e_client.post(
+            f"/api/device-control-keys/{key_id}/revoke",
+            headers=non_admin_user.headers,
+        )
+        assert revoked.status_code == 200
+        assert revoked.json()["enabled"] is False
+    finally:
+        cleanup = e2e_client.delete(
+            f"/api/roles/{role_id}/users/{non_admin_user.user_id}",
+            headers=platform_admin.headers,
+        )
+        assert cleanup.status_code in (200, 204), cleanup.text
 
 
 def test_org_isolation(

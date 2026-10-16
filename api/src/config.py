@@ -64,6 +64,13 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
+    # Opt-in router lighthouse broker. Credential files are mounted from the
+    # deployment secret store; no caller can choose a launcher URL or TLS trust.
+    device_peer_launcher_url: str | None = None
+    device_peer_launcher_ca: str | None = None
+    device_peer_launcher_certificate: str | None = None
+    device_peer_launcher_key: str | None = None
+
     # ==========================================================================
     # Environment
     # ==========================================================================
@@ -126,6 +133,7 @@ class Settings(BaseSettings):
     )
 
     external_worker_scaling_enabled: bool = False
+    external_worker_identity_enabled: bool = False
     external_worker_app_resource_id: str = ""
     external_worker_max_replicas: int = Field(default=2, ge=1, le=10)
     external_worker_queue_account: str = ""
