@@ -5706,6 +5706,12 @@ class TestSyncPublicationOrdering:
             organization_id=None,
             solution_id=None,
         )
+        local_org_id = local_org.id
+        local_workflow_id = local_workflow.id
+        local_workflow_path = local_workflow.path
+        foreign_workflow_id = foreign_workflow.id
+        global_workflow_id = global_workflow.id
+        global_workflow_path = global_workflow.path
         db_session.add_all([
             local_org,
             foreign_org,
@@ -5715,7 +5721,7 @@ class TestSyncPublicationOrdering:
         ])
         await db_session.commit()
 
-        sync_service.organization_id = local_org.id
+        sync_service.organization_id = local_org_id
         local_source = (
             "from bifrost import workflow\n\n"
             f'@workflow(name="Git Scope Local {suffix}")\n'
@@ -5730,12 +5736,12 @@ class TestSyncPublicationOrdering:
         )
         write_entity_to_repo(
             sync_service._persistent_dir,
-            local_workflow.path,
+            local_workflow_path,
             local_source,
         )
         write_entity_to_repo(
             sync_service._persistent_dir,
-            global_workflow.path,
+            global_workflow_path,
             global_source,
         )
 
@@ -5745,8 +5751,8 @@ class TestSyncPublicationOrdering:
         assert initial_sync.success is True
 
         db_session.expire_all()
-        foreign_before = await db_session.get(Workflow, foreign_workflow.id)
-        global_before = await db_session.get(Workflow, global_workflow.id)
+        foreign_before = await db_session.get(Workflow, foreign_workflow_id)
+        global_before = await db_session.get(Workflow, global_workflow_id)
         assert foreign_before is not None
         assert global_before is not None
         foreign_snapshot = (
@@ -5764,7 +5770,7 @@ class TestSyncPublicationOrdering:
             global_before.organization_id,
         )
 
-        remove_entity_from_repo(sync_service._persistent_dir, local_workflow.path)
+        remove_entity_from_repo(sync_service._persistent_dir, local_workflow_path)
         removed = await sync_service.desktop_commit("remove local organization workflow")
         assert removed.success is True
 
@@ -5772,9 +5778,9 @@ class TestSyncPublicationOrdering:
             repo = sync_service._open_or_init(work_dir)
             plan = await sync_service.prepare_desktop_sync(work_dir, repo)
             pending_ids = {change.entity_id for change in plan.pending_deletes}
-            assert str(local_workflow.id) in pending_ids
-            assert str(foreign_workflow.id) not in pending_ids
-            assert str(global_workflow.id) not in pending_ids
+            assert str(local_workflow_id) in pending_ids
+            assert str(foreign_workflow_id) not in pending_ids
+            assert str(global_workflow_id) not in pending_ids
 
             applied = await sync_service.apply_desktop_sync(
                 work_dir,
@@ -5785,9 +5791,9 @@ class TestSyncPublicationOrdering:
 
         assert applied.success is True
         db_session.expire_all()
-        local_after = await db_session.get(Workflow, local_workflow.id)
-        foreign_after = await db_session.get(Workflow, foreign_workflow.id)
-        global_after = await db_session.get(Workflow, global_workflow.id)
+        local_after = await db_session.get(Workflow, local_workflow_id)
+        foreign_after = await db_session.get(Workflow, foreign_workflow_id)
+        global_after = await db_session.get(Workflow, global_workflow_id)
         assert local_after is None or local_after.is_active is False
         assert foreign_after is not None
         assert global_after is not None
