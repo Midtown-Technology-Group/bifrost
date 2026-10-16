@@ -877,15 +877,19 @@ async def refresh_modules_from_directory(work_dir: Path) -> int:
     Returns:
         Number of modules refreshed.
     """
-    python_files = list(work_dir.rglob("*.py"))
-    python_paths = [str(path.relative_to(work_dir)) for path in python_files]
+    python_modules: list[tuple[Path, str]] = []
+    for path in work_dir.rglob("*.py"):
+        relative_path = str(path.relative_to(work_dir))
+        if is_allowed_python_module_path(relative_path):
+            python_modules.append((path, relative_path))
+    python_paths = [relative_path for _path, relative_path in python_modules]
     count = 0
     async with workspace_source_update(
         reason="workspace_directory_refresh",
         changed_paths=python_paths,
         broadcast=True,
     ):
-        for py_file, rel_path in zip(python_files, python_paths, strict=True):
+        for py_file, rel_path in python_modules:
             content_bytes = py_file.read_bytes()
             try:
                 content_str = content_bytes.decode("utf-8")

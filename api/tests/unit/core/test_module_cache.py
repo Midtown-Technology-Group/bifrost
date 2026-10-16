@@ -7,6 +7,7 @@ Tests both async (module_cache.py) and sync (module_cache_sync.py) cache operati
 import asyncio
 import hashlib
 import json
+from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
@@ -478,6 +479,54 @@ class TestModuleCacheAsync:
         message = info.call_args.args[0]
         assert "\n" not in message
         assert "\\n" in message
+
+    async def test_refresh_directory_excludes_python_paths_before_cache_update(
+        self, mock_redis_client, tmp_path
+    ):
+        """Excluded Python files cannot fail or enter refresh reconciliation."""
+        allowed = tmp_path / "shared" / "allowed.py"
+        excluded = tmp_path / "node_modules" / "pkg" / "helper.py"
+        allowed.parent.mkdir(parents=True)
+        excluded.parent.mkdir(parents=True)
+        allowed.write_text("VALUE = 'allowed'\n")
+        excluded.write_text("VALUE = 'excluded'\n")
+
+        update: dict[str, object] = {}
+
+        @asynccontextmanager
+        async def capture_update(**kwargs):
+            update.update(kwargs)
+            yield
+
+        mock_client, mock_redis = mock_redis_client
+        with (
+            patch("src.core.module_cache.get_redis_client", return_value=mock_client),
+            patch(
+                "src.core.module_cache.workspace_source_update",
+                new=capture_update,
+            ),
+            patch(
+                "src.core.module_cache.invalidate_module_resolution_cache",
+                new=AsyncMock(),
+            ),
+        ):
+            from src.core.module_cache import refresh_modules_from_directory
+
+            count = await refresh_modules_from_directory(tmp_path)
+
+        assert count == 1
+        assert update == {
+            "reason": "workspace_directory_refresh",
+            "changed_paths": ["shared/allowed.py"],
+            "broadcast": True,
+        }
+        mock_client.setex.assert_awaited_once()
+        stored = json.loads(mock_client.setex.await_args.args[2])
+        assert stored["path"] == "shared/allowed.py"
+        assert stored["content"] == "VALUE = 'allowed'\n"
+        mock_redis.sadd.assert_awaited_once_with(
+            "bifrost:module:index", "shared/allowed.py"
+        )
 
     async def test_get_all_module_paths(self, mock_redis_client):
         """Test getting all cached module paths."""
