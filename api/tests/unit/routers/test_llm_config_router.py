@@ -15,6 +15,7 @@ from src.models.contracts.llm import (
     EmbeddingTestRequest,
 )
 from src.routers import llm_config
+from src.services.ai_model_service import AIModelService
 
 
 def _user(email: str = "admin@example.com") -> SimpleNamespace:
@@ -143,6 +144,60 @@ class TestModelCapabilityVerification:
             endpoint=saved.endpoint,
             api_key="saved-secret",
         )
+
+    @pytest.mark.asyncio
+    async def test_saved_opencode_key_rejects_denied_endpoint_without_discovery(
+        self,
+        db_session,
+    ):
+        service = AIModelService(db_session)
+        connection = await service.create_connection(
+            name=f"Denied OpenCode {uuid4().hex[:8]}",
+            provider="opencode_go",
+            api_key="saved-secret",
+            endpoint="http://127.0.0.1:8080/v1",
+        )
+        profile = await service.create_profile(
+            name=f"Denied OpenCode model {uuid4().hex[:8]}",
+            connection_id=connection.id,
+            model=f"unknown-{uuid4().hex}",
+            capabilities=None,
+            enabled_for_chat=True,
+        )
+        await service.set_assignment("primary", profile.id)
+        request = ModelCapabilityVerifyRequest(
+            provider="openai",
+            model=profile.model,
+            endpoint=None,
+            api_key=None,
+        )
+        detector = AsyncMock()
+
+        with (
+            patch(
+                "src.services.opencode_go_detection.detect_opencode_go_wire_api",
+                detector,
+            ),
+            patch(
+                "src.services.embeddings.url_safety.validate_embedding_endpoint",
+                side_effect=ValueError("private address"),
+            ),
+            patch(
+                "src.services.model_capabilities.verify_model_capabilities",
+                AsyncMock(),
+            ) as verify,
+            pytest.raises(HTTPException) as exc,
+        ):
+            await llm_config.verify_model_capability_support(
+                request,
+                db_session,
+                _user(),
+            )
+
+        assert exc.value.status_code == status.HTTP_400_BAD_REQUEST
+        assert "Provider endpoint rejected" in exc.value.detail
+        detector.assert_not_awaited()
+        verify.assert_not_awaited()
 
 
 class TestEmbeddingConfigEndpoints:

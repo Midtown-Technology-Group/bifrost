@@ -463,6 +463,7 @@ async def test_profile_and_connection_changes_clear_detected_transport(db_sessio
         connection.id,
         endpoint="https://two.example.test/v1",
         endpoint_provided=True,
+        api_key="sk-fresh",
     )
     assert updated.openai_transport is None
 
@@ -507,6 +508,7 @@ async def test_connection_transport_change_resets_cache_capability(db_session):
         connection.id,
         endpoint="https://two.example.test",
         endpoint_provided=True,
+        api_key="sk-fresh",
     )
 
     assert updated.anthropic_prompt_cache_supported is None

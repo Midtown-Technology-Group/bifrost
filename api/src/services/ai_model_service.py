@@ -396,7 +396,7 @@ class AIModelService:
             # Models newer than the documented catalog carry a persisted
             # probed surface; only unmapped models pay for one probe, once.
             wire_api = profile.wire_api or opencode_go_known_wire_api(profile.model)
-            if wire_api is None:
+            if wire_api is None and detect_transport:
                 from src.services.opencode_go_detection import (
                     detect_opencode_go_wire_api,
                 )
@@ -456,7 +456,11 @@ class AIModelService:
                     f"No API key configured for LLM provider connection '{connection.name}'. "
                     "Please configure the API key in System Settings > AI Configuration."
                 )
-        if detects_openai_transport and openai_transport is None:
+        if (
+            detect_transport
+            and detects_openai_transport
+            and openai_transport is None
+        ):
             openai_transport = await detect_openai_transport(
                 api_key=api_key,
                 endpoint=connection.endpoint,
