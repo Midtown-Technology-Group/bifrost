@@ -243,10 +243,7 @@ export function useWorkflowMutation<T = unknown>(
 
 						const pending = deferredMapRef.current.get(execId);
 						if (pending) {
-							if (
-								execution.status === "Success" ||
-								execution.status === "CompletedWithErrors"
-							) {
+							if (execution.status === "Success") {
 								const result = execution.result as T;
 								if (mountedRef.current) {
 									setData(result);

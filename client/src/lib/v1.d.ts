@@ -17857,7 +17857,7 @@ export interface components {
             client_id: string;
             /**
              * Client Secret
-             * @description OAuth client secret (optional for PKCE flow, required for client_credentials, will be stored securely in Key Vault)
+             * @description OAuth client secret (optional for public clients such as PKCE-enabled providers without a secret, required for client_credentials, will be stored securely in Key Vault)
              */
             client_secret?: string | null;
             /**
@@ -17890,7 +17890,7 @@ export interface components {
             audience?: string | null;
             /**
              * Provider Metadata
-             * @description Provider-specific OAuth behavior flags and metadata
+             * @description Provider-specific OAuth behavior flags and metadata (e.g. use_pkce, omit_token_exchange_scope, omit_authorization_scope)
              */
             provider_metadata?: {
                 [key: string]: unknown;
@@ -25936,7 +25936,7 @@ export interface components {
             audience?: string | null;
             /**
              * Provider Metadata
-             * @description Provider-specific OAuth behavior flags and metadata
+             * @description Provider-specific OAuth behavior flags and metadata (e.g. use_pkce, omit_token_exchange_scope, omit_authorization_scope)
              */
             provider_metadata?: {
                 [key: string]: unknown;
@@ -32535,7 +32535,7 @@ export interface components {
             audience?: string | null;
             /**
              * Provider Metadata
-             * @description Provider-specific OAuth behavior flags and metadata
+             * @description Provider-specific OAuth behavior flags and metadata (e.g. use_pkce, omit_token_exchange_scope, omit_authorization_scope)
              */
             provider_metadata?: {
                 [key: string]: unknown;

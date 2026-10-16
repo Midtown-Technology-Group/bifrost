@@ -55,8 +55,10 @@ def _requested_org_denied(context: Any, organization_id: str | None) -> ToolResu
 
 
 def _build_callback_url(source_id: UUID) -> str:
-    """Build callback URL path from event source ID."""
-    return f"/api/hooks/{source_id}"
+    """Build the externally reachable callback URL sent to webhook providers."""
+    from src.config import get_settings
+
+    return f"{get_settings().public_url.rstrip('/')}/api/hooks/{source_id}"
 
 
 def _source_in_scope(context: Any, source_org_id: UUID | None) -> bool:
@@ -197,6 +199,7 @@ async def create_event_source(
     """
     from src.models.enums import EventSourceType
     from src.models.orm.events import EventSource, EventSubscription, ScheduleSource, WebhookSource
+    from src.models.orm.workflows import Workflow
     from src.services.webhooks.registry import get_adapter_registry
 
     logger.info(f"MCP create_event_source called: name={name}, type={source_type}, workflow_id={workflow_id}")
@@ -238,8 +241,18 @@ async def create_event_source(
             # they may target any org, or global (organization_id omitted).
             org_uuid = UUID(organization_id) if organization_id else None
 
+            if workflow_id:
+                if await db.get(Workflow, UUID(workflow_id)) is None:
+                    return error_result(f"Workflow not found: {workflow_id}")
+                service_rejection = await _reject_service_target(db, workflow_id)
+                if service_rejection is not None:
+                    return service_rejection
+
             # Upsert logic: if workflow_id provided, check for existing matching source
             existing_source = None
+            adapter = None
+            integration = None
+            webhook_source = None
             if workflow_id:
                 query = (
                     select(EventSource)
@@ -265,6 +278,51 @@ async def create_event_source(
                 source = existing_source
                 callback_url = _build_callback_url(source.id) if source_type_enum == EventSourceType.WEBHOOK else None
             else:
+                # Validate the webhook adapter and resolve its integration
+                # auth BEFORE creating any rows. These error paths return
+                # before db.add/db.flush, so an unknown adapter, a missing
+                # integration, or unresolvable auth cannot leave a partial
+                # source behind when the session commits.
+                parsed_integration_id = None
+                if source_type_enum == EventSourceType.WEBHOOK:
+                    registry = get_adapter_registry()
+                    adapter = registry.get(adapter_name)
+                    if adapter_name and not adapter:
+                        return error_result(f"Unknown webhook adapter: {adapter_name}")
+                    if integration_id:
+                        try:
+                            parsed_integration_id = UUID(integration_id)
+                        except ValueError:
+                            return error_result(
+                                f"Invalid integration_id: {integration_id}. Must be a valid UUID."
+                            )
+                    # Resolve org-scoped integration auth when the adapter
+                    # requires it (mirrors the REST create path in
+                    # api/src/routers/events.py). Adapters without a
+                    # required integration intentionally subscribe with
+                    # integration=None.
+                    if adapter and adapter.requires_integration:
+                        if not parsed_integration_id:
+                            return error_result(
+                                f"Adapter '{adapter_name}' requires integration"
+                            )
+                        try:
+                            from src.services.webhooks.auth import (
+                                build_webhook_integration_credentials,
+                                resolve_webhook_integration_auth,
+                            )
+
+                            credentials = await build_webhook_integration_credentials(
+                                db,
+                                parsed_integration_id,
+                                org_uuid,
+                            )
+                            integration = await resolve_webhook_integration_auth(
+                                credentials
+                            )
+                        except ValueError as e:
+                            return error_result(str(e))
+
                 # Create base event source
                 source = EventSource(
                     name=name,
@@ -282,36 +340,16 @@ async def create_event_source(
 
                 # Handle webhook
                 if source_type_enum == EventSourceType.WEBHOOK:
-                    registry = get_adapter_registry()
-                    adapter = registry.get(adapter_name)
-                    if adapter_name and not adapter:
-                        return error_result(f"Unknown webhook adapter: {adapter_name}")
-
                     webhook_source = WebhookSource(
                         event_source_id=source.id,
                         adapter_name=adapter_name,
-                        integration_id=UUID(integration_id) if integration_id else None,
+                        integration_id=parsed_integration_id,
                         config=webhook_config or {},
                         created_at=now,
                         updated_at=now,
                     )
 
                     callback_url = _build_callback_url(source.id)
-
-                    if adapter:
-                        try:
-                            result = await adapter.subscribe(
-                                callback_url=callback_url,
-                                config=webhook_config or {},
-                                integration=None,  # TODO: load integration if needed
-                            )
-                            webhook_source.external_id = result.external_id
-                            webhook_source.state = result.state
-                            webhook_source.expires_at = result.expires_at
-                        except Exception as e:
-                            logger.error(f"Failed to subscribe webhook: {e}", exc_info=True)
-                            source.error_message = str(e)
-
                     db.add(webhook_source)
                     await db.flush()
 
@@ -331,9 +369,6 @@ async def create_event_source(
             # Auto-create subscription if workflow_id provided
             subscription_data = None
             if workflow_id:
-                service_rejection = await _reject_service_target(db, workflow_id)
-                if service_rejection is not None:
-                    return service_rejection
                 # Check if subscription already exists
                 existing_sub = await db.execute(
                     select(EventSubscription)
@@ -379,6 +414,63 @@ async def create_event_source(
                         "workflow_name": subscription.workflow.name if subscription.workflow else None,
                         "already_existed": False,
                     }
+
+            if adapter and webhook_source is not None:
+                # Finish local validation/subscription writes before exposing
+                # the callback to the provider's independent transaction.
+                source_id = source.id
+                await db.commit()
+                provider_result = None
+                try:
+                    provider_result = await adapter.subscribe(
+                        callback_url=callback_url,
+                        config=webhook_config or {},
+                        integration=integration,
+                    )
+                    webhook_source.external_id = provider_result.external_id
+                    webhook_source.state = provider_result.state
+                    webhook_source.expires_at = provider_result.expires_at
+                    # Keep metadata persistence inside the compensation boundary.
+                    await db.commit()
+                except Exception as e:
+                    logger.exception("Failed to finalize provider subscription")
+                    await db.rollback()
+                    cleanup_error = None
+                    if provider_result is not None:
+                        try:
+                            await adapter.unsubscribe(
+                                external_id=provider_result.external_id,
+                                state=provider_result.state,
+                                integration=integration,
+                            )
+                        except Exception as unsubscribe_error:
+                            logger.exception("Failed to compensate provider subscription")
+                            cleanup_error = unsubscribe_error
+                    # Rollback expires ORM objects; reload the durable rows.
+                    source = await db.get(EventSource, source_id)
+                    if source is not None:
+                        if cleanup_error is None:
+                            await db.delete(source)
+                        else:
+                            # Retain provider identity for an explicit cleanup
+                            # instead of losing the only record of the orphan.
+                            retained_webhook = await db.scalar(
+                                select(WebhookSource).where(
+                                    WebhookSource.event_source_id == source_id
+                                )
+                            )
+                            if retained_webhook is not None and provider_result is not None:
+                                retained_webhook.external_id = provider_result.external_id
+                                retained_webhook.state = provider_result.state
+                                retained_webhook.expires_at = provider_result.expires_at
+                            source.is_active = False
+                            source.error_message = "Provider subscription cleanup required"
+                        await db.commit()
+                    if cleanup_error is not None:
+                        return error_result(
+                            f"Failed to finalize provider subscription; cleanup required for source {source_id}"
+                        )
+                    return error_result(f"Failed to create provider subscription: {e}")
 
             response: dict[str, Any] = {
                 "id": str(source.id),

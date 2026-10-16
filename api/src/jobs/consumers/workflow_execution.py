@@ -515,6 +515,7 @@ class WorkflowExecutionConsumer(BaseConsumer):
                     )
 
             # Flush pending changes and logs (Redis read + DB write in same session)
+            changes_count = 0
             try:
                 from bifrost._sync import flush_pending_changes
                 changes_count = await flush_pending_changes(execution_id, session=session)
@@ -542,6 +543,18 @@ class WorkflowExecutionConsumer(BaseConsumer):
             logs_flushed_ms = (time.perf_counter() - completion_started) * 1000
 
             await session.commit()
+
+        if changes_count > 0:
+            try:
+                from bifrost._sync import acknowledge_pending_changes
+
+                await acknowledge_pending_changes(execution_id)
+            except Exception as e:
+                logger.warning(
+                    "Failed to acknowledge committed pending changes for %s...: %s",
+                    execution_id[:8],
+                    e,
+                )
         durable_ms = (time.perf_counter() - completion_started) * 1000
 
         # Wake sync callers as soon as their result and buffered SDK writes are
@@ -850,6 +863,7 @@ class WorkflowExecutionConsumer(BaseConsumer):
                         f"Failed to update event delivery for {execution_id[:8]}...: {e}"
                     )
 
+            changes_count = 0
             try:
                 from bifrost._sync import flush_pending_changes
                 changes_count = await flush_pending_changes(execution_id, session=session)
@@ -875,6 +889,18 @@ class WorkflowExecutionConsumer(BaseConsumer):
                     )
 
             await session.commit()
+
+        if changes_count > 0:
+            try:
+                from bifrost._sync import acknowledge_pending_changes
+
+                await acknowledge_pending_changes(execution_id)
+            except Exception as e:
+                logger.warning(
+                    "Failed to acknowledge committed pending changes for %s...: %s",
+                    execution_id[:8],
+                    e,
+                )
 
         # A sync failure is just as latency-sensitive as a success. Wake the
         # caller once the authoritative failure is durable; aggregates and
@@ -1499,6 +1525,7 @@ class WorkflowExecutionConsumer(BaseConsumer):
             # Build context for worker process
             context_data = {
                 "execution_id": execution_id,
+                "created_at": pending.get("created_at"),
                 "workflow_id": workflow_id,
                 "name": workflow_name,
                 "function_name": workflow_function_name,  # For exec_from_db()
