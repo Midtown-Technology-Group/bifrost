@@ -2438,18 +2438,41 @@ class ManifestResolver:
                 )
             ).scalar_one_or_none()
             if provider_id is None:
-                provider_id = (
+                orphan = (
                     await self.db.execute(
-                        sa_update(OAuthProvider)
+                        select(OAuthProvider)
                         .where(
                             OAuthProvider.organization_id.is_(None),
                             OAuthProvider.provider_name == op_data.provider_name,
-                            OAuthProvider.integration_id.is_(None),
                         )
-                        .values(integration_id=integ_id, **provider_updates)
-                        .returning(OAuthProvider.id)
+                        .with_for_update()
                     )
                 ).scalar_one_or_none()
+                if orphan is not None:
+                    from src.services.oauth_provider_identity import (
+                        assert_oauth_provider_reusable,
+                        merged_portable_oauth_values,
+                    )
+
+                    assert_oauth_provider_reusable(
+                        orphan,
+                        provider_updates,
+                        provider_name=op_data.provider_name,
+                        integration_name=integ_name,
+                    )
+                    reattach_updates = merged_portable_oauth_values(
+                        orphan, provider_updates
+                    )
+                    await self.db.execute(
+                        sa_update(OAuthProvider)
+                        .where(OAuthProvider.id == orphan.id)
+                        .values(
+                            integration_id=integ_id,
+                            updated_at=datetime.now(timezone.utc),
+                            **reattach_updates,
+                        )
+                    )
+                    provider_id = orphan.id
 
             if provider_id is None:
                 op_stmt = insert(OAuthProvider).values(
