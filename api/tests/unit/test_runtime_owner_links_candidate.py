@@ -54,13 +54,24 @@ def test_offline_ddl_creates_one_common_family_and_no_writer_grants() -> None:
     assert "workflow_runtime_sdk_grants" not in sql
 
 
-def test_native_cascade_can_remove_only_live_association() -> None:
+def test_native_delete_clears_only_pointer_and_retains_unlink_marker() -> None:
     sql = _upgrade_sql()
     assert (
-        "FOREIGN KEY(workflow_attempt_id, execution_id, claim_token, worker_incarnation_id) "
+        "FOREIGN KEY (native_attempt_id, execution_id, claim_token, worker_incarnation_id) "
         "REFERENCES public.workflow_execution_attempts "
-        "(id, execution_id, claim_token, worker_incarnation_id) ON DELETE CASCADE"
+        "(id, execution_id, claim_token, worker_incarnation_id) "
+        "ON DELETE SET NULL (native_attempt_id)"
     ) in sql
+    assert "ON DELETE CASCADE" not in sql
+    assert "native_attempt_id IS NULL OR native_attempt_id = workflow_attempt_id" in sql
+    assert "retain runtime native unlink marker" in sql
+    assert "runtime live link cannot reparent or reattach" in sql
+    assert "OLD.native_attempt_id IS NOT NULL AND NEW.native_attempt_id IS NULL" in sql
+    assert "WHERE id=OLD.native_attempt_id" in sql
+    assert "new live link requires native attempt" in sql
+    assert (
+        "WHERE session_id=NEW.id AND native_attempt_id=NEW.workflow_attempt_id" in sql
+    )
     assert (
         "FOREIGN KEY(session_id, execution_id, owner_incarnation_id, workflow_attempt_id, "
         "claim_token, worker_incarnation_id) REFERENCES public.runtime_sessions "
@@ -131,17 +142,22 @@ def test_interpreted_descriptor_does_not_require_native_only_json_field() -> Non
 
 
 class _DowngradeOp:
-    def __init__(self, occupied: bool):
+    def __init__(self, occupied: bool, isolation: str = "read committed"):
         self.occupied = occupied
+        self.isolation = isolation
         self.dropped: list[str] = []
+        self.statements: list[str] = []
 
     def get_bind(self):
         return self
 
-    def execute(self, _statement):
+    def execute(self, statement):
+        self.statements.append(str(statement))
         return self
 
     def scalar_one(self):
+        if self.statements[-1] == "SHOW transaction_isolation":
+            return self.isolation
         return self.occupied
 
     def drop_table(self, table, *, schema):
@@ -166,12 +182,31 @@ def test_empty_downgrade_uses_reverse_dependency_order() -> None:
     op = _DowngradeOp(occupied=False)
     scope["downgrade"].__globals__["op"] = op
     scope["downgrade"]()
+    assert op.statements[0] == "SHOW transaction_isolation"
+    assert op.statements[1] == (
+        "LOCK TABLE public.workflow_execution_attempts, "
+        "public.runtime_deployment_artifacts, public.runtime_execution_owners, "
+        "public.runtime_sessions, public.runtime_workflow_live_links "
+        "IN ACCESS EXCLUSIVE MODE NOWAIT"
+    )
+    assert op.statements[2].startswith("SELECT EXISTS ")
     assert op.dropped == [
         "runtime_workflow_live_links",
         "runtime_sessions",
         "runtime_execution_owners",
         "runtime_deployment_artifacts",
     ]
+
+
+@pytest.mark.parametrize("isolation", ["repeatable read", "serializable", "unknown"])
+def test_downgrade_rejects_potentially_stale_snapshot(isolation: str) -> None:
+    scope = _scope()
+    op = _DowngradeOp(occupied=False, isolation=isolation)
+    scope["downgrade"].__globals__["op"] = op
+    with pytest.raises(RuntimeError, match="requires read committed isolation"):
+        scope["downgrade"]()
+    assert op.statements == ["SHOW transaction_isolation"]
+    assert not op.dropped
 
 
 def test_guard_functions_do_not_bundle_multiple_prepared_ddl_commands() -> None:

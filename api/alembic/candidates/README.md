@@ -14,3 +14,10 @@ FK detachment is not physical/source retirement, and PUBLIC revocation does not
 restrict a migration/table owner. It must not be installed as a complete writer
 or retention policy. The whole approved common continuation and matching tests
 are required before any runtime owner is enabled.
+
+Native attempt deletion clears only `native_attempt_id` on the retained live-link
+row. That NULL marker cannot be deleted or reattached, even if a native UUID and
+its original fence are recreated. Historical session/fence fields stay intact.
+The column-targeted `SET NULL` uses the repository's PostgreSQL 16 contract.
+An empty-only downgrade requires read-committed isolation and migration-owner
+table locks before checking emptiness; these are not runtime coordinator grants.

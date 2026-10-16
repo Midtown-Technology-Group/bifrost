@@ -249,6 +249,11 @@ def upgrade() -> None:
         sa.Column("workflow_attempt_id", postgresql.UUID(), nullable=False),
         sa.Column("claim_token", postgresql.UUID(), nullable=False),
         sa.Column("worker_incarnation_id", postgresql.UUID(), nullable=False),
+        sa.Column("native_attempt_id", postgresql.UUID(), nullable=True),
+        sa.CheckConstraint(
+            "native_attempt_id IS NULL OR native_attempt_id = workflow_attempt_id",
+            name="ck_runtime_live_native_attempt",
+        ),
         sa.ForeignKeyConstraint(
             [
                 "session_id",
@@ -269,22 +274,22 @@ def upgrade() -> None:
             name="fk_runtime_live_common_fence",
             ondelete="RESTRICT",
         ),
-        sa.ForeignKeyConstraint(
-            [
-                "workflow_attempt_id",
-                "execution_id",
-                "claim_token",
-                "worker_incarnation_id",
-            ],
-            [
-                "public.workflow_execution_attempts.id",
-                "public.workflow_execution_attempts.execution_id",
-                "public.workflow_execution_attempts.claim_token",
-                "public.workflow_execution_attempts.worker_incarnation_id",
-            ],
-            name="fk_runtime_live_native_fence",
-            ondelete="CASCADE",
-        ),
+        schema="public",
+    )
+    # PostgreSQL's column-targeted SET NULL preserves the immutable fence and
+    # the link row. Its NULL pointer is a permanent native-unlink marker.
+    # https://www.postgresql.org/docs/16/ddl-constraints.html#DDL-CONSTRAINTS-FK
+    op.execute("""
+ALTER TABLE public.runtime_workflow_live_links
+ ADD CONSTRAINT fk_runtime_live_native_fence
+ FOREIGN KEY (native_attempt_id, execution_id, claim_token, worker_incarnation_id)
+ REFERENCES public.workflow_execution_attempts (id, execution_id, claim_token, worker_incarnation_id)
+ ON DELETE SET NULL (native_attempt_id)
+""")
+    op.create_index(
+        "ix_runtime_live_native_attempt",
+        "runtime_workflow_live_links",
+        ["native_attempt_id"],
         schema="public",
     )
     _install_identity_guards()
@@ -424,12 +429,12 @@ CREATE FUNCTION public.guard_runtime_live_link_identity() RETURNS trigger
 LANGUAGE plpgsql SET search_path = pg_catalog AS $$
 BEGIN
     IF TG_OP = 'DELETE' THEN
-        IF EXISTS (SELECT 1 FROM public.workflow_execution_attempts WHERE id=OLD.workflow_attempt_id) THEN
-            RAISE EXCEPTION 'live native attempt still exists' USING ERRCODE='23514';
-        END IF;
-        RETURN OLD;
+        RAISE EXCEPTION 'retain runtime native unlink marker' USING ERRCODE='23514';
     END IF;
     IF TG_OP = 'INSERT' THEN
+        IF NEW.native_attempt_id IS DISTINCT FROM NEW.workflow_attempt_id THEN
+            RAISE EXCEPTION 'new live link requires native attempt' USING ERRCODE='23514';
+        END IF;
         PERFORM 1 FROM public.runtime_sessions s JOIN public.runtime_execution_owners o
           ON o.execution_id=s.execution_id AND o.owner_incarnation_id=s.owner_incarnation_id
           JOIN public.workflow_execution_attempts a ON a.id=s.workflow_attempt_id
@@ -442,8 +447,14 @@ BEGIN
             RAISE EXCEPTION 'live link requires current open native fence' USING ERRCODE='23514';
         END IF;
     END IF;
-    IF TG_OP = 'UPDATE' AND to_jsonb(NEW) IS DISTINCT FROM to_jsonb(OLD) THEN
-        RAISE EXCEPTION 'runtime live link cannot reparent' USING ERRCODE='23514';
+    IF TG_OP = 'UPDATE' THEN
+        IF (to_jsonb(NEW)-'native_attempt_id') IS DISTINCT FROM (to_jsonb(OLD)-'native_attempt_id') OR
+           (NEW.native_attempt_id IS DISTINCT FROM OLD.native_attempt_id AND
+            NOT (OLD.native_attempt_id IS NOT NULL AND NEW.native_attempt_id IS NULL AND
+                 NOT EXISTS (SELECT 1 FROM public.workflow_execution_attempts
+                             WHERE id=OLD.native_attempt_id))) THEN
+            RAISE EXCEPTION 'runtime live link cannot reparent or reattach' USING ERRCODE='23514';
+        END IF;
     END IF;
     RETURN NEW;
 END $$;
@@ -459,7 +470,8 @@ REVOKE ALL ON FUNCTION public.guard_runtime_live_link_identity() FROM PUBLIC;
 CREATE FUNCTION public.require_runtime_session_live_link() RETURNS trigger
 LANGUAGE plpgsql SET search_path = pg_catalog AS $$
 BEGIN
-    IF NOT EXISTS (SELECT 1 FROM public.runtime_workflow_live_links WHERE session_id=NEW.id) THEN
+    IF NOT EXISTS (SELECT 1 FROM public.runtime_workflow_live_links
+                   WHERE session_id=NEW.id AND native_attempt_id=NEW.workflow_attempt_id) THEN
         RAISE EXCEPTION 'new runtime session requires atomic native live link' USING ERRCODE='23514';
     END IF;
     RETURN NULL;
@@ -478,6 +490,20 @@ REVOKE ALL ON FUNCTION public.require_runtime_session_live_link() FROM PUBLIC;
 def downgrade() -> None:
     # Removing identity history is not a traffic rollback. Refuse populated stores.
     bind = op.get_bind()
+    # A pre-existing repeatable-read snapshot could hide rows committed before
+    # these locks. Alembic's usual read-committed transaction takes a fresh
+    # snapshot for the emptiness query after all writers have been excluded.
+    isolation = bind.execute(sa.text("SHOW transaction_isolation")).scalar_one()
+    if isolation != "read committed":
+        raise RuntimeError("Common runtime downgrade requires read committed isolation")
+    bind.execute(
+        sa.text(
+            "LOCK TABLE public.workflow_execution_attempts, "
+            "public.runtime_deployment_artifacts, public.runtime_execution_owners, "
+            "public.runtime_sessions, public.runtime_workflow_live_links "
+            "IN ACCESS EXCLUSIVE MODE NOWAIT"
+        )
+    )
     occupied = bind.execute(
         sa.text(
             "SELECT EXISTS (SELECT 1 FROM public.runtime_deployment_artifacts) OR "
