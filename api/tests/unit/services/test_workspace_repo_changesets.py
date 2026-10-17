@@ -1374,6 +1374,13 @@ async def test_git_closure_cancellation_persists_recovery_evidence_and_reraises(
     row = await svc.begin(WorkspaceRepoChangesetBegin(scope="features"), uuid4())
     stored = svc.rows.items[row.id]
     stored.status = "activated"
+    candidate_commit_sha = "c" * 40 if cancelled_during == "inspect" else None
+    if candidate_commit_sha:
+        stored.failure_detail = {
+            "phase": "git_closure",
+            "state": "failed",
+            "commit_sha": candidate_commit_sha,
+        }
     stored.mutations = [
         {
             "path": path,
@@ -1401,8 +1408,23 @@ async def test_git_closure_cancellation_persists_recovery_evidence_and_reraises(
     assert persisted.failure_detail["cancelled"] is True
     assert persisted.failure_detail["cancelled_during"] == cancelled_during
     assert persisted.failure_detail["activation_preserved"] is True
+    if candidate_commit_sha:
+        assert persisted.failure_detail["commit_sha"] == candidate_commit_sha
     assert svc.db.commits == 2
     mark_dirty.assert_awaited_once_with()
+
+    if candidate_commit_sha:
+        retry_writer = RecordingWriter(history_hashes={path: before_hash})
+        svc.commit_writer = retry_writer
+        retried = await svc.retry_git_closure(
+            row.id,
+            WorkspaceRepoActivateRequest(push=True),
+            "retrying-operator",
+        )
+        assert retried.status == "activated"
+        assert "recorded Git candidate" in retried.failure_detail["message"]
+        assert retried.failure_detail["commit_sha"] == candidate_commit_sha
+        assert retry_writer.requests == []
 
 
 @pytest.mark.asyncio

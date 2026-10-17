@@ -1366,6 +1366,7 @@ class WorkspaceRepoChangesetService:
             )
             or request.protected_main_source_sha,
         }
+        candidate_commit_sha = prior_failure.get("commit_sha")
         if self.commit_writer is None:
             row.error = COMMIT_WRITER_NOT_CONFIGURED
             row.failure_detail = {
@@ -1374,6 +1375,8 @@ class WorkspaceRepoChangesetService:
                 "activation_preserved": True,
                 "provenance": provenance,
             }
+            if candidate_commit_sha:
+                row.failure_detail["commit_sha"] = str(candidate_commit_sha)
             await self.db.flush()
             await self.db.commit()
             await _mark_unclosed_activation_dirty()
@@ -1381,7 +1384,6 @@ class WorkspaceRepoChangesetService:
 
         # Leave a durable pending marker before Git. If persisting the outcome
         # later fails, the active workspace is still explicit and reconcilable.
-        candidate_commit_sha = prior_failure.get("commit_sha")
         row.failure_detail = {
             "phase": "git_closure",
             "state": "pending",
@@ -1517,6 +1519,8 @@ class WorkspaceRepoChangesetService:
             }
             if history_evidence is not None:
                 row.failure_detail["history"] = history_evidence
+            if candidate_commit_sha:
+                row.failure_detail["commit_sha"] = str(candidate_commit_sha)
             await self.db.flush()
             await self.db.commit()
             await _mark_unclosed_activation_dirty()
@@ -1534,12 +1538,14 @@ class WorkspaceRepoChangesetService:
             }
             if history_evidence is not None:
                 row.failure_detail["history"] = history_evidence
-            commit_sha = (
+            recorded_commit_sha = (
                 exc.commit_sha if isinstance(exc, PlatformCommitError) else None
             )
-            if commit_sha:
-                row.commit_sha = commit_sha
-                row.failure_detail["commit_sha"] = commit_sha
+            if recorded_commit_sha:
+                row.commit_sha = recorded_commit_sha
+            preserved_commit_sha = recorded_commit_sha or candidate_commit_sha
+            if preserved_commit_sha:
+                row.failure_detail["commit_sha"] = str(preserved_commit_sha)
             await self.db.flush()
             await self.db.commit()
             await _mark_unclosed_activation_dirty()
