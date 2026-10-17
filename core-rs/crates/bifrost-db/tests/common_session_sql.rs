@@ -47,14 +47,14 @@ impl Fixture {
         let path = std::env::var_os("BIFROST_COMMON_CANCEL_TEST_FIXTURE")
             .map(PathBuf::from)
             .ok_or("common SQL test requires its fresh private fixture file")?;
-        let metadata = std::fs::metadata(&path)
-            .map_err(|_| "common SQL test fixture is unavailable")?;
+        let metadata =
+            std::fs::metadata(&path).map_err(|_| "common SQL test fixture is unavailable")?;
         if !metadata.is_file() || metadata.len() > 8192 {
             return Err("common SQL test fixture must be a bounded regular file".into());
         }
         let bytes = std::fs::read(path).map_err(|_| "common SQL test fixture read failed")?;
-        let fixture: Self = serde_json::from_slice(&bytes)
-            .map_err(|_| "common SQL test fixture is invalid")?;
+        let fixture: Self =
+            serde_json::from_slice(&bytes).map_err(|_| "common SQL test fixture is invalid")?;
         if fixture.schema != "bifrost.common-cancel-fixture/v1" {
             return Err("common SQL test fixture version differs".into());
         }
@@ -228,13 +228,12 @@ async fn no_grant_cancel_preserves_fences_and_commits() -> TestResult<()> {
     // The Rust entrypoint check above is not evidence of database writer
     // exclusion. Exercise direct incumbent DML too, and never print its error.
     let mut foreign_writer = incumbent.pool().begin().await?;
-    let foreign_update = sqlx::query(
-        "UPDATE public.executions SET status='Cancelling' WHERE id=$1::text::uuid",
-    )
-    .bind(fence.execution_id.as_str())
-    .persistent(false)
-    .execute(&mut *foreign_writer)
-    .await;
+    let foreign_update =
+        sqlx::query("UPDATE public.executions SET status='Cancelling' WHERE id=$1::text::uuid")
+            .bind(fence.execution_id.as_str())
+            .persistent(false)
+            .execute(&mut *foreign_writer)
+            .await;
     let forbidden = foreign_update
         .as_ref()
         .err()
