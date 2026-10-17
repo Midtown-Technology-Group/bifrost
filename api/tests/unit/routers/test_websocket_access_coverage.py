@@ -600,7 +600,10 @@ async def test_websocket_connect_unsubscribe_resolves_table_and_file_subscriptio
         disconnect=Mock(),
     )
 
-    async def connect_without_reset(_websocket, _channels):
+    async def connect_without_reset(
+        _websocket, _channels, *, revocation_channels=()
+    ):
+        assert revocation_channels == ()
         _websocket.state.table_subscriptions = {
             table_id: {"channel_name": f"table:{table_id}"}
         }
