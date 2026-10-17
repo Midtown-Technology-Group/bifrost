@@ -184,7 +184,8 @@ def test_run_direct_redacts_registered_secrets_from_results_and_errors(
     from bifrost._context import get_execution_context, register_secret
 
     escaped_secret = 'päss"word\\line\nvalue'
-    error_secret = "standalone-error-secret"
+    error_secret = "standalone\nerror-secret"
+    offline_secret = "offline\nsecret-value"
 
     class Client:
         user = {"id": "user-1", "email": "dev@example.test", "name": "Dev"}
@@ -206,6 +207,9 @@ def test_run_direct_redacts_registered_secrets_from_results_and_errors(
         return {
             f"key:{escaped_secret}": escaped_secret,
             "custom": StringableResult(),
+            "json_encoded": json.dumps(escaped_secret),
+            "json_unicode": json.dumps(escaped_secret, ensure_ascii=False),
+            "repr_encoded": repr(escaped_secret),
             "count": 1234,
             "enabled": True,
             "numeric_text": "1234",
@@ -214,7 +218,15 @@ def test_run_direct_redacts_registered_secrets_from_results_and_errors(
 
     async def raises_secret():
         register_secret(error_secret)
-        raise RuntimeError(f"failed with {error_secret}")
+        raise KeyError(error_secret)
+
+    async def returns_offline_secret():
+        register_secret(offline_secret)
+        return {"token": json.dumps(offline_secret)}
+
+    async def raises_offline_secret():
+        register_secret(offline_secret)
+        raise KeyError(offline_secret)
 
     monkeypatch.setattr(cli, "BifrostClient", ClientFactory)
 
@@ -224,6 +236,9 @@ def test_run_direct_redacts_registered_secrets_from_results_and_errors(
     assert parsed == {
         "key:[REDACTED]": "[REDACTED]",
         "custom": "wrapped:[REDACTED]",
+        "json_encoded": "[REDACTED]",
+        "json_unicode": "[REDACTED]",
+        "repr_encoded": "[REDACTED]",
         "count": 1234,
         "enabled": True,
         "numeric_text": "[REDACTED]",
@@ -237,7 +252,36 @@ def test_run_direct_redacts_registered_secrets_from_results_and_errors(
     assert cli._run_direct("error", {"error": raises_secret}, {}) == 1
     error_output = capsys.readouterr().err
     assert error_secret not in error_output
-    assert "failed with [REDACTED]" in error_output
+    assert repr(error_secret) not in error_output
+    assert json.dumps(error_secret)[1:-1] not in error_output
+    assert "[REDACTED]" in error_output
+
+    class OfflineClientFactory:
+        @staticmethod
+        def get_instance(require_auth=True):
+            raise RuntimeError("offline")
+
+    monkeypatch.setattr(cli, "BifrostClient", OfflineClientFactory)
+
+    assert cli._run_direct(
+        "offline-result", {"offline-result": returns_offline_secret}, {}
+    ) == 0
+    offline_result = capsys.readouterr().out
+    assert json.loads(offline_result) == {"token": "[REDACTED]"}
+    assert offline_secret not in offline_result
+    assert json.dumps(offline_secret)[1:-1] not in offline_result
+
+    with pytest.raises(RuntimeError, match="No execution context found"):
+        get_execution_context()
+
+    assert cli._run_direct(
+        "offline-error", {"offline-error": raises_offline_secret}, {}
+    ) == 1
+    offline_error = capsys.readouterr().err
+    assert offline_secret not in offline_error
+    assert repr(offline_secret) not in offline_error
+    assert json.dumps(offline_secret)[1:-1] not in offline_error
+    assert "[REDACTED]" in offline_error
 
 
 def test_run_direct_fetches_org_context_and_sets_solution_context(monkeypatch, capsys, tmp_path):

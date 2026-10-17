@@ -1582,11 +1582,24 @@ def _redact_direct_output(value: Any, execution_context: Any | None) -> Any:
         secrets = execution_context._collect_secret_values()
     except (AttributeError, TypeError):
         return normalized
-    redactions = sorted(
-        (item for item in secrets if isinstance(item, str) and len(item) >= 4),
-        key=len,
-        reverse=True,
-    )
+    redaction_variants: set[str] = set()
+    for secret in secrets:
+        if not isinstance(secret, str) or len(secret) < 4:
+            continue
+        redaction_variants.add(secret)
+        for encoded in (
+            json.dumps(secret),
+            json.dumps(secret, ensure_ascii=False),
+            repr(secret),
+        ):
+            redaction_variants.add(encoded)
+            if (
+                len(encoded) >= 2
+                and encoded[0] == encoded[-1]
+                and encoded[0] in {'"', "'"}
+            ):
+                redaction_variants.add(encoded[1:-1])
+    redactions = sorted(redaction_variants, key=len, reverse=True)
 
     def redact_text(text: str) -> str:
         for secret in redactions:
@@ -1632,6 +1645,7 @@ def _run_direct(
     import uuid
 
     execution_context: Any | None = None
+    workflow_fn = workflows[selected_workflow]
 
     # Try to authenticate for SDK features (knowledge, ai, etc.)
     # but don't require it — standalone mode can run without API access
@@ -1717,10 +1731,25 @@ def _run_direct(
             return 1
         # Standalone mode works without auth — fall through to local workflow execution.
 
+    if execution_context is None:
+        from bifrost._context import set_execution_context
+        from bifrost._execution_context import ExecutionContext
+
+        execution_context = ExecutionContext(
+            user_id="cli-user",
+            email="",
+            name="CLI User",
+            scope="GLOBAL",
+            organization=None,
+            is_platform_admin=False,
+            is_function_key=False,
+            execution_id=f"standalone-{uuid.uuid4()}",
+            workflow_name=selected_workflow,
+        )
+        set_execution_context(execution_context)
+
     if verbose:
         print(f"Running in standalone mode: {selected_workflow}")
-
-    workflow_fn = workflows[selected_workflow]
 
     started_at = time.monotonic()
     try:
