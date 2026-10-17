@@ -137,6 +137,8 @@ class ServiceClaimLoop:
         """Renew leases, drain ready reports, mirror stops, rotate tokens."""
         import time as _time
 
+        from sqlalchemy import select
+
         now = _time.monotonic()
         if now - self._last_beat < self.beat_interval_seconds:
             return
@@ -145,8 +147,40 @@ class ServiceClaimLoop:
         from src.models.orm.services import ServiceDefinition
         from src.services import service_lifecycle as lifecycle
 
-        for attempt_key in list(self._owned):
-            owned = self._owned[attempt_key]
+        owned_attempts = sorted(
+            self._owned.values(),
+            key=lambda owned: (str(owned.service_id), str(owned.attempt_id)),
+        )
+        if not owned_attempts:
+            return
+
+        # One beat uses one transaction for every locally owned attempt. Lock
+        # every definition before any attempt so later heartbeat/ready writes
+        # and ServiceLog FK checks cannot recreate an Attempt -> Definition
+        # edge against completion/stop's Definition -> Attempt order.
+        service_ids = sorted(
+            {owned.service_id for owned in owned_attempts}, key=str
+        )
+        definitions = {
+            definition.id: definition
+            for definition in (
+                await db.execute(
+                    select(ServiceDefinition)
+                    .where(ServiceDefinition.id.in_(service_ids))
+                    .order_by(ServiceDefinition.id)
+                    .with_for_update()
+                )
+            )
+            .scalars()
+            .all()
+        }
+
+        for owned in owned_attempts:
+            attempt_key = str(owned.attempt_id)
+            # Completion can remove local ownership while this transaction is
+            # waiting for the ordered definition locks.
+            if self._owned.get(attempt_key) is not owned:
+                continue
             try:
                 attempt = await lifecycle.heartbeat_attempt(
                     db,
@@ -161,7 +195,7 @@ class ServiceClaimLoop:
                 await self._drop_ownership(owned)
                 continue
 
-            definition = await db.get(ServiceDefinition, owned.service_id)
+            definition = definitions.get(owned.service_id)
             if await self._enforce_startup_grace(db, owned, attempt, definition):
                 continue
             await self._drain_ready(db, owned)
