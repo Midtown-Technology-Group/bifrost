@@ -125,7 +125,11 @@ def consumer():
         patch("src.jobs.consumers.agent_run.get_session_factory"),
         patch("src.jobs.consumers.agent_run.BaseConsumer.__init__", return_value=None),
     ):
-        mock_settings.return_value = MagicMock(max_concurrency=2)
+        mock_settings.return_value = MagicMock(
+            max_concurrency=2,
+            database_pool_size=1,
+            database_max_overflow=2,
+        )
         instance = AgentRunConsumer()
         instance._postgres = None
         return instance

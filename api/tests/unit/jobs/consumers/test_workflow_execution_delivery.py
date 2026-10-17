@@ -138,6 +138,8 @@ def test_workflow_prefetch_count_is_capped_by_process_capacity() -> None:
         {
             "max_concurrency": 20,
             "max_workers": 5,
+            "database_pool_size": 10,
+            "database_max_overflow": 0,
         },
     )()
 
@@ -152,6 +154,8 @@ def test_workflow_prefetch_count_keeps_lower_global_concurrency() -> None:
         {
             "max_concurrency": 3,
             "max_workers": 10,
+            "database_pool_size": 10,
+            "database_max_overflow": 0,
         },
     )()
 
@@ -166,10 +170,27 @@ def test_workflow_prefetch_count_has_minimum_of_one() -> None:
         {
             "max_concurrency": 0,
             "max_workers": 0,
+            "database_pool_size": 0,
+            "database_max_overflow": 0,
         },
     )()
 
     assert workflow_prefetch_count(settings) == 1
+
+
+def test_workflow_prefetch_count_is_capped_by_database_capacity() -> None:
+    settings = type(
+        "Settings",
+        (),
+        {
+            "max_concurrency": 10,
+            "max_workers": 10,
+            "database_pool_size": 1,
+            "database_max_overflow": 2,
+        },
+    )()
+
+    assert workflow_prefetch_count(settings) == 3
 
 
 @pytest.mark.asyncio
