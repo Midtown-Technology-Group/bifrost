@@ -1,0 +1,31 @@
+[package]
+name = "bifrost-db"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[features]
+live-db = []
+common-session-sql = []
+workflow-sql-parity = []
+
+[dependencies]
+bifrost-contracts.workspace = true
+bifrost-domain.workspace = true
+sqlx.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+serde.workspace = true
+serde_json = { version = "=1.0.151", features = ["raw_value"] }
+
+[[example]]
+name = "workflow_sql_vectors"
+required-features = ["workflow-sql-parity"]

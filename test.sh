@@ -12,6 +12,7 @@
 #   ./test.sh unit                      Same as above.
 #   ./test.sh e2e-smoke                 PR-gating backend e2e smoke tests.
 #   ./test.sh e2e                       Backend e2e tests.
+#   ./test.sh rust bootstrap            Rust checks against the native migrated DB.
 #   ./test.sh all                       All backend tests, including slow tests.
 #   ./test.sh reliability               Real-service execution reliability gauntlet.
 #   ./test.sh tests/path/... [args]     Pass through to pytest.
@@ -427,6 +428,18 @@ cmd_unit_targets() { BIFROST_TEST_UNIT_ONLY=1 run_pytest "$@" -m "not slow" -v; 
 cmd_unit_all() { BIFROST_TEST_UNIT_ONLY=1 run_pytest tests/ --ignore=tests/e2e/ -v "$@"; }
 cmd_e2e()  { run_pytest tests/e2e/ -v "$@"; }
 cmd_e2e_targets() { run_pytest "$@" -v; }
+cmd_rust() {
+    if [ "${1:-}" != "bootstrap" ] || [ "$#" -ne 1 ]; then
+        echo "Usage: ./test.sh rust bootstrap" >&2
+        return 1
+    fi
+    require_stack_up
+    local checks_image="${COMPOSE_PROJECT_NAME}-rust-checks"
+    docker build --target checks -f core-rs/Dockerfile -t "$checks_image" core-rs
+    docker run --rm --network "${COMPOSE_PROJECT_NAME}_default" \
+        -e BIFROST_RUST_TEST_DATABASE_URL=postgresql://bifrost:bifrost_test@pgbouncer:5432/bifrost_test \
+        "$checks_image" cargo test --locked --all --features live-db
+}
 cmd_all()  { run_pytest tests/ -v "$@"; }
 cmd_reliability() {
     require_stack_up
@@ -1149,6 +1162,7 @@ case "$1" in
     coverage) shift; cmd_coverage "$@" ;;
     e2e-smoke) shift; cmd_e2e_smoke "$@" ;;
     e2e) shift; cmd_e2e "$@" ;;
+    rust) shift; cmd_rust "$@" ;;
     all) shift; cmd_all "$@" ;;
     reliability) shift; cmd_reliability "$@" ;;
     quality) shift; cmd_quality "$@" ;;

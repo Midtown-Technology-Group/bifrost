@@ -1,5 +1,18 @@
 # Unapproved migration candidates
 
+The composed R1 source adds `runtime_principals_prepare.sql` and
+`runtime_principals_grants.sql` as **inactive review inputs**. No script loads
+them. Preparation requires a new disposable PostgreSQL16 cluster, the exact
+native revision and absent proposed roles. It creates four NOLOGIN identities,
+not credentials. Its explicit isolated-only ambient disposition revokes PUBLIC
+CONNECT/TEMPORARY on bifrost_test and CREATE on public; this is a new approval
+item, not permission for automatic revocation elsewhere. No arbitrary function,
+extension or default ACL is altered. After approved complete C1-C5 Alembic
+application, the grants file supplies exactly the finite JSON ACLs. It does
+not activate logins, assume effective PUBLIC closure, repair an installed
+catalog or qualify the full Python backend. All application/authority holds
+below remain in effect.
+
 These files are review inputs, not a second migration history. Alembic discovers
 `alembic/versions` only; no runtime imports or startup hooks consume this folder.
 Unit tests may compile candidate SQL offline without applying it. Move an exact
