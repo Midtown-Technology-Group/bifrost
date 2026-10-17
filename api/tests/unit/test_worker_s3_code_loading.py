@@ -261,6 +261,43 @@ class TestWorkerCodeLoadingBranches:
 
         assert reached_else
 
+    def test_matching_entry_source_hash_reaches_module_loader(self):
+        from src.services.execution.worker import _load_workspace_workflow
+
+        source = "x = 1"
+        expected_hash = hashlib.sha256(source.encode("utf-8")).hexdigest()
+        loaded = MagicMock()
+
+        with (
+            patch("src.core.module_cache_sync.assert_workspace_generation"),
+            patch(
+                "src.core.module_cache_sync.get_module_sync",
+                return_value={
+                    "content": source,
+                    "path": "workflows/test.py",
+                    "hash": "cache-labelled-hash",
+                },
+            ),
+            patch(
+                "src.services.execution.module_loader.load_workflow_from_db",
+                return_value=(loaded, None, None),
+            ) as load_workflow,
+        ):
+            result = _load_workspace_workflow(
+                file_path="workflows/test.py",
+                function_name="run",
+                workspace_generation="generation-1",
+                expected_content_hash=expected_hash,
+            )
+
+        assert result == (loaded, None, None, source)
+        load_workflow.assert_called_once_with(
+            code=source,
+            path="workflows/test.py",
+            function_name="run",
+            workspace_generation="generation-1",
+        )
+
     def test_generation_is_validated_before_entry_source_loading(self):
         from src.core.module_cache_sync import WorkspaceGenerationChangedError
         from src.services.execution.worker import _load_workspace_workflow

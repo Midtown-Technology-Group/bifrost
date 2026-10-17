@@ -17,6 +17,7 @@ credentials and source context are active, but before workspace code loads.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 import resource
@@ -32,6 +33,10 @@ from src.services.execution.draft_limits import enforce_draft_output_limit
 
 logger = logging.getLogger(__name__)
 tracer = trace.get_tracer(__name__)
+
+
+class _SourceIntegrityError(RuntimeError):
+    """Raised before executable source is passed to the module loader."""
 
 
 def _set_process_engine_credentials(context_data: dict[str, Any]) -> bool:
@@ -145,8 +150,9 @@ def _load_workspace_workflow(
     file_path: str,
     function_name: str,
     workspace_generation: str | None,
+    expected_content_hash: str | None = None,
 ) -> tuple[Any, Any, str | None, str | None]:
-    """Load one entry workflow only while its pinned generation remains current."""
+    """Verify and load one entry workflow from its pinned generation."""
     from src.core.module_cache_sync import (
         assert_workspace_generation,
         get_module_sync,
@@ -159,6 +165,13 @@ def _load_workspace_workflow(
         return None, None, None, None
 
     loaded_code = cached["content"]
+    if expected_content_hash:
+        actual_hash = hashlib.sha256(loaded_code.encode("utf-8")).hexdigest()
+        if actual_hash != str(expected_content_hash).removeprefix("sha256:"):
+            raise _SourceIntegrityError(
+                f"source integrity mismatch for {file_path}"
+            )
+
     workflow_func, metadata, load_error = load_workflow_from_db(
         code=loaded_code,
         path=file_path,
@@ -347,9 +360,18 @@ async def _run_execution(execution_id: str, context_data: dict[str, Any]) -> dic
             file_path = context_data.get("file_path")
             load_error: str | None = None
             loaded_code: str | None = None
+            content_hash = context_data.get("content_hash")
+            if (
+                context_data.get("runtime_mode") in {"legacy", "repo-v1"}
+                and not context_data.get("solution_id")
+                and not content_hash
+            ):
+                raise RuntimeError(
+                    f"_repo source integrity pin missing for {file_path}"
+                )
 
-            # Load code from Redis→S3 _repo/ cache (same path as module imports).
-            # Consumer provides metadata only; worker is self-sufficient for code loading.
+            # Verify raw Redis→S3 source before the module loader can execute
+            # module-level statements.
             if function_name and file_path:
                 try:
                     (
@@ -363,6 +385,7 @@ async def _run_execution(execution_id: str, context_data: dict[str, Any]) -> dic
                         workspace_generation=context_data.get(
                             "workspace_generation"
                         ),
+                        expected_content_hash=content_hash,
                     )
                     if loaded_code:
                         logger.info(
@@ -373,6 +396,8 @@ async def _run_execution(execution_id: str, context_data: dict[str, Any]) -> dic
                             f"Workflow code not found in cache or S3: "
                             f"function_name={function_name}, file_path={file_path}"
                         )
+                except _SourceIntegrityError as e:
+                    raise RuntimeError(str(e)) from e
                 except Exception as e:
                     logger.error(f"Failed to load workflow from cache: {e}")
                     load_error = f"Cache load failed: {e}"
@@ -383,19 +408,6 @@ async def _run_execution(execution_id: str, context_data: dict[str, Any]) -> dic
                     f"function_name={function_name}, "
                     f"file_path={file_path}"
                 )
-
-            # Validate content hash if pinned at dispatch time
-            content_hash = context_data.get("content_hash")
-            if content_hash and loaded_code:
-                import hashlib
-
-                actual_hash = hashlib.sha256(
-                    loaded_code.encode("utf-8")
-                ).hexdigest()
-                if actual_hash != str(content_hash).removeprefix("sha256:"):
-                    raise RuntimeError(
-                        f"deployment source integrity mismatch for {file_path}"
-                    )
 
             from src.core.module_cache_sync import assert_workspace_generation
 
@@ -735,12 +747,15 @@ async def run_service(
                     file_path=file_path,
                     function_name=function_name,
                     workspace_generation=expected_workspace_generation,
+                    expected_content_hash=context_data.get("content_hash"),
                 )
                 if not loaded_code:
                     load_error = (
                         f"Service code not found in cache or S3: "
                         f"function_name={function_name}, file_path={file_path}"
                     )
+            except _SourceIntegrityError as e:
+                raise RuntimeError(str(e)) from e
             except Exception as e:
                 load_error = f"Cache load failed: {e}"
         else:
@@ -748,16 +763,6 @@ async def run_service(
                 f"Missing required fields for service execution: "
                 f"function_name={function_name}, file_path={file_path}"
             )
-
-        content_hash = context_data.get("content_hash")
-        if content_hash and loaded_code:
-            import hashlib
-
-            actual_hash = hashlib.sha256(loaded_code.encode("utf-8")).hexdigest()
-            if actual_hash != str(content_hash).removeprefix("sha256:"):
-                raise RuntimeError(
-                    f"service source integrity mismatch for {file_path}"
-                )
 
         if service_func is None:
             return _service_result(
