@@ -103,6 +103,9 @@ class DeveloperBoundaryTests(unittest.TestCase):
             argv = call.call_args.args[0]
             self.assertIn("--network", argv)
             self.assertEqual(argv[argv.index("--network") + 1], "none")
+            # A new workdir in an empty image inherits root-owned mode 0755
+            # unless the tmpfs mode is explicit; a nonroot supervisor needs /tmp.
+            self.assertIn("mode=1777", argv[argv.index("--tmpfs") + 1])
             self.assertIn("type=bind,src=/private/bundle,dst=/bundle,readonly", argv)
             self.assertNotIn("/compiler", " ".join(argv))
             self.assertNotIn("/modules", " ".join(argv))

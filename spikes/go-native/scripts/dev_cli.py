@@ -142,7 +142,7 @@ class Docker:
             "--cpus",
             "2",
             "--tmpfs",
-            "/tmp:rw,exec,nosuid,nodev,size=1g",
+            "/tmp:rw,exec,nosuid,nodev,size=1g,mode=1777",
             "--workdir",
             workdir,
         ]
