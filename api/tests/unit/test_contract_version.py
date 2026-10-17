@@ -379,7 +379,8 @@ EXPECTED_CONTRACT_FINGERPRINT = (
     # `run_as` and ignore the echo. Fingerprint refreshed only.
     # Solution local development context request/response (2026-10-16).
     # ADDITIVE: new capability endpoint; existing DTOs are unchanged.
-    "ae7ca09d8ae214ad7c8caea128a1f8a05bbd23f9670a9f722e97a1115eba18de"
+    # Combined with the compatible audit-surface description in PR #992.
+    "f125e5eabe3cfa97bdbc32df27de98e6b7afef584de9974fe0753915669b5571"
 )
 
 

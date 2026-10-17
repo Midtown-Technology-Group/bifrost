@@ -176,6 +176,7 @@ async def test_context_header_validates_subject_signature_expiry_and_membership(
     assert ctx.dev_solution_id == str(solution.id)
     assert ctx.solution_id == str(solution.id)
     assert ctx.app_id == str(solution_entity_id(solution.id, manifest_app_id))
+    assert principal.policy_authorities == frozenset()
 
     signature = issued.token.rsplit(".", 1)[1]
     forged = issued.token.rsplit(".", 1)[0] + "." + (
@@ -220,6 +221,8 @@ async def test_context_header_validates_subject_signature_expiry_and_membership(
 @pytest.mark.asyncio
 async def test_context_revalidates_canonical_admin_install_and_cross_install_ingress(db_session, monkeypatch) -> None:
     principal = await _admin(db_session, stored_admin=True)
+    # Revocation must leave another active human Platform Admin in place.
+    await _admin(db_session, stored_admin=True)
     solution = await _active_solution(db_session, principal.organization_id)
     target = await _active_solution(db_session, principal.organization_id)
     target.allow_inbound_access = False
