@@ -19,6 +19,7 @@ from src.models.contracts.agents import ToolInfo
 from src.models.enums import AgentAccessLevel
 from src.models.orm.agents import Agent
 from src.routers.tools import get_system_tools
+from src.services.agent_tool_scope import agent_scope_allows_tool
 from src.services.mcp_server.config_service import MCPConfig, MCPConfigService
 
 logger = logging.getLogger(__name__)
@@ -332,6 +333,14 @@ class MCPToolAccessService:
 
         infos: list[ToolInfo] = []
         for workflow in agent.tools or []:
+            if not agent_scope_allows_tool(
+                agent,
+                workflow,
+                # WorkflowRepository applies the caller's authoritative org
+                # scope below; this first gate rejects inactive/non-tools.
+                allow_cross_org=True,
+            ):
+                continue
             workflow_id = str(workflow.id)
             if workflow_id in seen_tool_ids:
                 continue

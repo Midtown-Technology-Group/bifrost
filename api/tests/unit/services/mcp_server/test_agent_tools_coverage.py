@@ -61,7 +61,14 @@ def _agent_detail(**overrides):
         created_by="creator@example.com",
         created_at=now,
         updated_at=now,
-        tools=[SimpleNamespace(id=uuid4())],
+        tools=[
+            SimpleNamespace(
+                id=uuid4(),
+                is_active=True,
+                type="tool",
+                organization_id=None,
+            )
+        ],
         delegated_agents=[SimpleNamespace(id=uuid4())],
         roles=[SimpleNamespace(id=uuid4())],
         knowledge_sources=["kb"],

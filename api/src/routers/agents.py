@@ -57,6 +57,7 @@ from src.repositories.agents import AgentRepository
 from src.services.solutions.guard import assert_not_solution_managed
 from src.routers.tools import get_system_tool_ids
 from src.services.agent_stats import get_agent_stats, get_agent_stats_batch, get_fleet_stats
+from src.services.agent_tool_scope import agent_scope_allows_tool as _agent_scope_allows_tool
 from src.services.workflow_role_service import sync_agent_roles_to_workflows
 
 logger = logging.getLogger(__name__)
@@ -254,9 +255,12 @@ def _agent_logo_url(agent: Agent) -> str | None:
 
 
 def _agent_to_public(
-    agent: Agent, *, include_configuration: bool = True
+    agent: Agent,
+    *,
+    include_configuration: bool = True,
+    allow_cross_org_tools: bool = False,
 ) -> AgentPublic:
-    """Convert an agent without disclosing configuration to non-managers."""
+    """Convert an agent while enforcing disclosure and tool-scope policy."""
     valid_system_tool_ids = set(get_system_tool_ids())
 
     owner_email = None
@@ -282,7 +286,19 @@ def _agent_to_public(
         updated_at=agent.updated_at,
         owner_user_id=agent.owner_user_id,
         owner_email=owner_email,
-        tool_ids=[str(t.id) for t in agent.tools] if include_configuration else [],
+        tool_ids=(
+            [
+                str(tool.id)
+                for tool in agent.tools
+                if _agent_scope_allows_tool(
+                    agent,
+                    tool,
+                    allow_cross_org=allow_cross_org_tools,
+                )
+            ]
+            if include_configuration
+            else []
+        ),
         delegated_agent_ids=(
             [str(a.id) for a in agent.delegated_agents]
             if include_configuration
@@ -619,7 +635,10 @@ async def create_agent(
     # Commit before returning: get_db only commits during dependency teardown,
     # which runs after the response is sent, so a client acting on the 201
     # could miss the new row (POST /api/chat/conversations -> 404).
-    response = _agent_to_public(agent)
+    response = _agent_to_public(
+        agent,
+        allow_cross_org_tools=user.has_platform_admin_grant(),
+    )
     await db.commit()
     return response
 
@@ -798,7 +817,11 @@ async def get_agent(
     can_manage = user.is_platform_admin or (
         access_level == "private" and agent.owner_user_id == user.user_id
     )
-    return _agent_to_public(agent, include_configuration=can_manage)
+    return _agent_to_public(
+        agent,
+        include_configuration=can_manage,
+        allow_cross_org_tools=user.has_platform_admin_grant(),
+    )
 
 
 @router.put("/{agent_id}", **operation_route("agents.update"))
@@ -1048,7 +1071,10 @@ async def update_agent(
     # Sync agent roles to referenced workflows (tools) - additive
     await sync_agent_roles_to_workflows(db, agent, assigned_by=user.email)
 
-    return _agent_to_public(agent)
+    return _agent_to_public(
+        agent,
+        allow_cross_org_tools=user.has_platform_admin_grant(),
+    )
 
 
 @router.delete("/{agent_id}", status_code=status.HTTP_204_NO_CONTENT, **operation_route("agents.delete"))
@@ -1161,7 +1187,10 @@ async def promote_agent(
         .where(Agent.id == agent_id)
     )
     agent = result.scalar_one()
-    return _agent_to_public(agent)
+    return _agent_to_public(
+        agent,
+        allow_cross_org_tools=user.has_platform_admin_grant(),
+    )
 
 
 # =============================================================================
@@ -1260,6 +1289,11 @@ async def get_agent_tools(
             "category": t.category,
         }
         for t in agent.tools
+        if _agent_scope_allows_tool(
+            agent,
+            t,
+            allow_cross_org=user.has_platform_admin_grant(),
+        )
     ]
 
 

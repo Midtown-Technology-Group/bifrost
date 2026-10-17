@@ -1941,7 +1941,11 @@ class SolutionDeployer:
             ma = ManifestAgent.model_validate({**magent, "id": str(agent_id)})
             content = _agent_content_from_manifest(ma)
             try:
-                await indexer.index_agent(f"agents/{agent_id}.agent.yaml", content)
+                await indexer.index_agent(
+                    f"agents/{agent_id}.agent.yaml",
+                    content,
+                    organization_id=solution.organization_id,
+                )
             except ValueError as exc:
                 raise SolutionDeployConflict(
                     f"agent {agent_id}: {exc}"

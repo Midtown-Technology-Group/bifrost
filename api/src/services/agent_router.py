@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from src.core.log_safety import log_safe
 from src.models.orm import Agent
 from src.repositories.agents import AgentRepository
+from src.services.agent_tool_scope import agent_scope_allows_tool
 from src.services.llm import get_llm_client, LLMMessage
 
 logger = logging.getLogger(__name__)
@@ -99,7 +100,7 @@ class AgentRouter:
         # Get tool names for this agent
         tool_names = []
         for tool in agent.tools:
-            if tool.is_active and tool.type == "tool":
+            if agent_scope_allows_tool(agent, tool):
                 tool_names.append(tool.name)
 
         # Build capability strings

@@ -291,7 +291,7 @@ class TestAgentBindingsDeploy:
         wf_id = uuid.uuid4()
         db.add(Workflow(
             id=wf_id, name="tool_wf", function_name="run", path="workflows/t.py",
-            type="workflow", organization_id=None, solution_id=None, is_active=True,
+            type="tool", organization_id=None, solution_id=None, is_active=True,
         ))
         await db.flush()
 
