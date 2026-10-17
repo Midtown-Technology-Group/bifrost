@@ -29,15 +29,28 @@ def _restore_sys_path(tmp_path: pathlib.Path):
     sys.path[:] = before
     root = tmp_path.resolve()
     for name in set(sys.modules) - before_mods:
-        module_file = getattr(sys.modules.get(name), "__file__", None)
-        if module_file is None:
-            continue
-        try:
-            is_solution_module = (
-                pathlib.Path(module_file).resolve().is_relative_to(root)
-            )
-        except (OSError, TypeError, ValueError):
-            is_solution_module = False
+        module = sys.modules.get(name)
+        module_paths: list[str | pathlib.Path] = []
+        module_file = getattr(module, "__file__", None)
+        if module_file is not None:
+            module_paths.append(module_file)
+
+        # PEP 420 namespace packages have no __file__. Their search locations
+        # are the only durable evidence that the import came from this Solution.
+        module_paths.extend(getattr(module, "__path__", ()) or ())
+        spec = getattr(module, "__spec__", None)
+        module_paths.extend(
+            getattr(spec, "submodule_search_locations", ()) or ()
+        )
+
+        is_solution_module = False
+        for module_path in module_paths:
+            try:
+                if pathlib.Path(module_path).resolve().is_relative_to(root):
+                    is_solution_module = True
+                    break
+            except (OSError, TypeError, ValueError):
+                continue
         if is_solution_module:
             sys.modules.pop(name, None)
 
