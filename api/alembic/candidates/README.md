@@ -164,6 +164,10 @@ selected same-database SQL qualification. Nothing loads or applies it at service
 startup. It does not qualify the complete Python API/worker/scheduler or a
 production connection change. Core has no users/source table privileges. Its
 finite native/common writes remain subject to every owner/identity/drain guard.
+The two test logins have explicit CONNECT to bifrost_test; all four identities
+have public-schema USAGE. Neither custodian needs database CONNECT. No identity
+gets schema CREATE or database TEMP/CREATE through this proposal; do not rely on
+ambient PUBLIC grants for these application access prerequisites.
 UPDATE on immutable Start/admission/receipt key columns exists only because
 PostgreSQL row locking requires an UPDATE privilege; existing guards still reject
 actual mutation. Both actual restricted logins must be exercised directly and

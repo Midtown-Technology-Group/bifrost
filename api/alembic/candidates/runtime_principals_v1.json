@@ -14,6 +14,16 @@
       "replication": false,
       "bypass_rls": false,
       "memberships": [],
+      "database_acl": {
+        "bifrost_test": [
+          "CONNECT"
+        ]
+      },
+      "schema_acl": {
+        "public": [
+          "USAGE"
+        ]
+      },
       "table_acl": {
         "public.executions": [
           "SELECT",
@@ -158,6 +168,16 @@
       "replication": false,
       "bypass_rls": false,
       "memberships": [],
+      "database_acl": {
+        "bifrost_test": [
+          "CONNECT"
+        ]
+      },
+      "schema_acl": {
+        "public": [
+          "USAGE"
+        ]
+      },
       "table_acl": {
         "public.executions": [
           "SELECT",
@@ -287,6 +307,12 @@
       "replication": false,
       "bypass_rls": false,
       "memberships": [],
+      "database_acl": {},
+      "schema_acl": {
+        "public": [
+          "USAGE"
+        ]
+      },
       "table_acl": {
         "public.runtime_sessions": [
           "SELECT"
@@ -427,6 +453,12 @@
       "replication": false,
       "bypass_rls": false,
       "memberships": [],
+      "database_acl": {},
+      "schema_acl": {
+        "public": [
+          "USAGE"
+        ]
+      },
       "table_acl": {},
       "column_acl": {
         "public.users": {

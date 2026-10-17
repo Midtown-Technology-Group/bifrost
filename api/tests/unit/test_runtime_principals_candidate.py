@@ -63,6 +63,17 @@ def test_artifact_locker_is_the_only_proposed_user_key_update_authority() -> Non
     assert core["owns_functions"] == []
 
 
+def test_connection_and_schema_access_do_not_depend_on_ambient_public_grants() -> None:
+    for role in PROFILE["roles"].values():
+        assert role["schema_acl"] == {"public": ["USAGE"]}
+        expected = (
+            {"bifrost_test": ["CONNECT"]}
+            if role["can_login_after_explicit_activation"]
+            else {}
+        )
+        assert role["database_acl"] == expected
+
+
 def test_lifecycle_custodian_stays_read_only_with_full_session_row_access() -> None:
     guard = PROFILE["roles"]["runtime_lifecycle_guard"]
     assert guard["can_login_after_explicit_activation"] is False
