@@ -1595,6 +1595,12 @@ async def _execute_workflow_with_trace(
             with tracer.start_as_current_span(
                 "bifrost.workflow.execute",
                 attributes=span_attributes,
+                # Workflow exceptions can contain credentials, customer data,
+                # or request payloads. Export only the bounded status and error
+                # type attributes set below, never the automatic exception
+                # message or stacktrace event.
+                record_exception=False,
+                set_status_on_exception=False,
             ) as span:
                 try:
                     # Run the workflow directly - isolation is provided by subprocess
