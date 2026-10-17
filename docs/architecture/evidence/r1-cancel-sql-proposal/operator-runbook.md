@@ -1,0 +1,488 @@
+# R1-CANCEL-SQL/v1: held operator procedure
+
+**Review input; do not execute before explicit isolated SQL approval.**
+This uses one new disposable PostgreSQL database, two synthetic cohorts and
+two actual restricted logins. It launches no workflow/runtime, signs no SDK
+token and changes no deployed service. A passing cancellation test does not
+complete R1's Rust Start/result requirement.
+
+## Target and preflight
+
+Run on VM101 `bifrost-platform-test-debian13-01`, reached through the existing
+authorized management lane on `pve-t340.netbird.cloud`. Inspect VM/other task
+activity read-only before starting it. Do not stop another owner's work.
+The approved packet commit is a required input, never a moving branch default.
+Record that commit, source/overlay trees, image IDs and phase receipts privately.
+Run the blocks in the same effective-root operator shell; its recorded resource
+identities must remain available for the final comparison, not reconstructed
+from names after an interruption.
+
+```sh
+set -euo pipefail
+set +x
+set -o noclobber
+umask 077
+test "$(id -u)" = 0
+: "${R1_PACKET_COMMIT:?exact reviewed and approved packet commit required}"
+[[ "$R1_PACKET_COMMIT" =~ ^[0-9a-f]{40}$ ]]
+R1_PROJECT=bifrost-r1-cancel-a6b5cb7ae
+R1_SOURCE=/home/dev/bifrost-r1-cancel-a6b5cb7ae
+R1_PACKET_SOURCE=/home/dev/bifrost-r1-cancel-packet-a6b5cb7ae
+export R1_PRIVATE_DIR=/home/dev/bifrost-r1-cancel-private-a6b5cb7ae
+R1_VERIFIED=/home/dev/bifrost-rust-r1-f75da956b
+export R1_SOURCE R1_PACKET_SOURCE
+R1_PY_IMAGE=sha256:61a673bed47dc94554d9b31121628be2e164bd01599bfbdb0281d3a4b4a619cc
+R1_RS_IMAGE=sha256:0dc3dbe0d1868cc15a45b22cdb685ad1bb30ab80b4789ec96405bc4df5fb0891
+
+test "$(git -C "$R1_VERIFIED" rev-parse HEAD)" = 560e3decd7a18200809edb9bf9a078ede5d06ea5
+r1_git_status="$(git -C "$R1_VERIFIED" status --porcelain)"
+test -z "$r1_git_status"
+for path in "$R1_SOURCE" "$R1_PACKET_SOURCE" "$R1_PRIVATE_DIR"; do
+    test ! -e "$path"
+    test ! -L "$path"
+done
+r1_containers="$(docker ps -aq --filter label=com.docker.compose.project="$R1_PROJECT")"
+r1_oneoffs="$(docker ps -aq --filter label=bifrost.r1.project="$R1_PROJECT")"
+r1_volumes="$(docker volume ls -q --filter label=com.docker.compose.project="$R1_PROJECT")"
+r1_networks="$(docker network ls -q --filter label=com.docker.compose.project="$R1_PROJECT")"
+test -z "$r1_containers"
+test -z "$r1_oneoffs"
+test -z "$r1_volumes"
+test -z "$r1_networks"
+# Successful full listings distinguish absence from a daemon/query error.
+r1_volume_names="$(docker volume ls --format '{{.Name}}')"
+r1_network_names="$(docker network ls --format '{{.Name}}')"
+for volume in "${R1_PROJECT}_data" "$R1_PROJECT-cargo" "$R1_PROJECT-target"; do
+    if grep -Fxq -- "$volume" <<< "$r1_volume_names"; then
+        printf 'R1 resource already exists; stop without adopting it\n' >&2
+        exit 1
+    fi
+done
+if grep -Fxq -- "${R1_PROJECT}_component" <<< "$r1_network_names"; then
+    printf 'R1 network already exists; stop without adopting it\n' >&2
+    exit 1
+fi
+docker image inspect "$R1_PY_IMAGE" "$R1_RS_IMAGE" >/dev/null
+R1_PG_IMAGE_ID="$(docker image inspect --format '{{.Id}}' pgvector/pgvector@sha256:7b822b0aac60967beb1ea5e576b8602c94c300a157d187f385ae3e0da199b90a)"
+R1_POOL_IMAGE_ID="$(docker image inspect --format '{{.Id}}' edoburu/pgbouncer@sha256:85d1e38593617af1b5f7f285e97d407e56c29939683cc7cfe4c8f6dc19f1268b)"
+```
+
+Both image IDs were observed during supported source qualification. Verify
+their retained identities; a missing image stops for a pinned rebuild and new
+readback, never substitution with a mutable latest tag. Check available disk
+before the bounded build. No shared prune. Obtain the approved packet commit
+through an ordinary fetch, clone the two fresh checkouts without hardlinks,
+and require exact identities before continuing:
+
+```sh
+git -C "$R1_VERIFIED" fetch origin "$R1_PACKET_COMMIT"
+(umask 022
+ git clone --local --no-hardlinks --no-checkout "$R1_VERIFIED" "$R1_SOURCE"
+ git -C "$R1_SOURCE" checkout --detach 560e3decd7a18200809edb9bf9a078ede5d06ea5)
+(umask 022
+ git clone --local --no-hardlinks --no-checkout "$R1_VERIFIED" "$R1_PACKET_SOURCE"
+ git -C "$R1_PACKET_SOURCE" checkout --detach "$R1_PACKET_COMMIT")
+r1_git_status="$(git -C "$R1_SOURCE" status --porcelain)"
+test -z "$r1_git_status"
+r1_packet_status="$(git -C "$R1_PACKET_SOURCE" status --porcelain)"
+test -z "$r1_packet_status"
+R1_PACKET="$R1_PACKET_SOURCE/docs/architecture/evidence/r1-cancel-sql-proposal"
+```
+
+## Private inputs and bounded containers
+
+Use the effective-root operator shell established above for the entire
+procedure, including Docker CLI env-file reads; do not sudo only the generator.
+After approval only, this creates fresh *test* passwords and settings, not
+platform credentials. Every write is exclusive; no existing path is adopted.
+The UID1000 fixture producer owns its private output directory. PgBouncer's
+separate UID70 directory is inaccessible to that producer. Parent directories
+stay private. No generated bytes are printed or committed.
+
+```sh
+python3 - <<'PY'
+import os, re, secrets
+from pathlib import Path
+
+root = Path(os.environ['R1_PRIVATE_DIR'])
+root.mkdir(mode=0o700)
+os.chown(root, 1000, 1000)
+pool = root / 'pool'
+pool.mkdir(mode=0o700)
+os.chown(pool, 70, 70)
+
+def write(name, data, owner=0):
+    fd = os.open(root / name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    with os.fdopen(fd, 'w') as stream:
+        os.fchown(stream.fileno(), owner, owner)
+        stream.write(data)
+        stream.flush()
+        os.fsync(stream.fileno())
+
+native, core, incumbent, settings = [secrets.token_hex(32) for _ in range(4)]
+assert len({native, core, incumbent, settings}) == 4
+assert all(re.fullmatch('[0-9a-f]{64}', x) for x in (native, core, incumbent, settings))
+write('native-password', native + '\n')
+write('core-password', core + '\n')
+write('incumbent-password', incumbent + '\n')
+write('pool/users.txt', f'"wex_core" "{core}"\n"wex_incumbent" "{incumbent}"\n', 70)
+native_url = f'postgresql://bifrost:{native}@postgres:5432/bifrost_test'
+native_async_url = native_url.replace('postgresql://', 'postgresql+asyncpg://', 1)
+common = f'BIFROST_ENVIRONMENT=testing\nBIFROST_SECRET_KEY={settings}\n'
+write('native.env', common +
+      f'BIFROST_DATABASE_URL={native_async_url}\nBIFROST_DATABASE_URL_SYNC={native_url}\n'
+      f'BIFROST_COMMON_NATIVE_TEST_DATABASE_URL={native_url}\n')
+for transport, host in [('direct', 'postgres'), ('pooled', 'pool')]:
+    restricted = (
+        f'BIFROST_COMMON_CORE_TEST_DATABASE_URL=postgresql://wex_core:{core}@{host}:5432/bifrost_test\n'
+        f'BIFROST_COMMON_INCUMBENT_TEST_DATABASE_URL=postgresql://wex_incumbent:{incumbent}@{host}:5432/bifrost_test\n'
+    )
+    write(transport + '.env', common +
+          f'BIFROST_COMMON_NATIVE_TEST_DATABASE_URL={native_url}\n'
+          + restricted +
+          f'BIFROST_COMMON_CANCEL_TEST_FIXTURE=/private/{transport}-common.json\n')
+    write(transport + '-rust.env', restricted +
+          'BIFROST_COMMON_CANCEL_TEST_FIXTURE=/private/fixture.json\n')
+PY
+install -o 70 -g 70 -m 0600 "$R1_PACKET/pgbouncer.ini" "$R1_PRIVATE_DIR/pool/pgbouncer.ini"
+
+r1_compose() {
+    docker compose -p "$R1_PROJECT" -f "$R1_PACKET/compose.yml" "$@"
+}
+r1_python() {
+    r1_env="$1"; shift
+    docker run --rm --label "bifrost.r1.project=$R1_PROJECT" --cpus 2 --memory 2g --pids-limit 128 --user 1000:1000 \
+      --network "${R1_PROJECT}_component" --env-file "$R1_PRIVATE_DIR/$r1_env.env" \
+      --mount "type=bind,src=$R1_SOURCE/api,dst=/app,readonly" \
+      --mount "type=bind,src=$R1_PRIVATE_DIR,dst=/private" \
+      --workdir /app --entrypoint /usr/local/bin/python "$R1_PY_IMAGE" "$@"
+}
+r1_psql() {
+    r1_compose exec -T postgres psql --no-psqlrc --quiet -v ON_ERROR_STOP=1 -U bifrost -d bifrost_test "$@"
+}
+```
+
+Only the fixed component services are started. Keep stdout/stderr and exit
+status for each phase in separate private files. Shell failure stops the
+procedure; never wrap a mutating phase in a retry or automatic teardown trap.
+
+## Link the actual Rust test without SQL credentials
+
+Create the two task-only build caches after the absent-name checks. The build
+has ordinary dependency-download networking, **no environment file or private
+mount**, and cannot reach the isolated component network. The eventual test
+uses the same source/cache with `--offline` on the internal network only.
+
+```sh
+docker volume create --label "bifrost.r1.project=$R1_PROJECT" "$R1_PROJECT-cargo" >/dev/null
+docker volume create --label "bifrost.r1.project=$R1_PROJECT" "$R1_PROJECT-target" >/dev/null
+for volume in "$R1_PROJECT-cargo" "$R1_PROJECT-target"; do
+    r1_label="$(docker volume inspect --format '{{index .Labels "bifrost.r1.project"}}' "$volume")"
+    test "$r1_label" = "$R1_PROJECT"
+done
+R1_CARGO_CREATED="$(docker volume inspect --format '{{.CreatedAt}}' "$R1_PROJECT-cargo")"
+R1_TARGET_CREATED="$(docker volume inspect --format '{{.CreatedAt}}' "$R1_PROJECT-target")"
+printf '%s\n' "$R1_CARGO_CREATED" > "$R1_PRIVATE_DIR/cargo-created.txt"
+printf '%s\n' "$R1_TARGET_CREATED" > "$R1_PRIVATE_DIR/target-created.txt"
+docker run --rm --label "bifrost.r1.project=$R1_PROJECT" --cpus 2 --memory 4g --pids-limit 256 \
+  --env CARGO_BUILD_JOBS=2 --env CARGO_TARGET_DIR=/cargo-target \
+  --mount "type=bind,src=$R1_SOURCE/core-rs,dst=/workspace/core-rs,readonly" \
+  --mount "type=volume,src=$R1_PROJECT-cargo,dst=/usr/local/cargo" \
+  --mount "type=volume,src=$R1_PROJECT-target,dst=/cargo-target" \
+  --workdir /workspace/core-rs "$R1_RS_IMAGE" \
+  cargo test --locked -p bifrost-db --features common-session-sql \
+    --test common_session_sql --no-run
+```
+
+## Native history, then the one Alembic continuation
+
+```sh
+r1_compose up -d --wait postgres
+R1_PG_CONTAINER_ID="$(docker inspect --format '{{.Id}}' "${R1_PROJECT}-postgres-1")"
+R1_DATA_CREATED="$(docker volume inspect --format '{{.CreatedAt}}' "${R1_PROJECT}_data")"
+R1_NETWORK_ID="$(docker network inspect --format '{{.Id}}' "${R1_PROJECT}_component")"
+printf '%s\n' "$R1_PG_CONTAINER_ID" > "$R1_PRIVATE_DIR/postgres-container-id.txt"
+printf '%s\n' "$R1_DATA_CREATED" > "$R1_PRIVATE_DIR/data-created.txt"
+printf '%s\n' "$R1_NETWORK_ID" > "$R1_PRIVATE_DIR/network-id.txt"
+printf '%s\n' "$R1_PG_IMAGE_ID" "$R1_POOL_IMAGE_ID" "$R1_PY_IMAGE" "$R1_RS_IMAGE" \
+  > "$R1_PRIVATE_DIR/image-ids.txt"
+r1_verify_component() {
+    r1_meta="$(docker inspect --format '{{.Id}}:{{.Image}}:{{index .Config.Labels "com.docker.compose.project"}}' "${R1_PROJECT}-postgres-1")"
+    test "$r1_meta" = "$R1_PG_CONTAINER_ID:$R1_PG_IMAGE_ID:$R1_PROJECT"
+    r1_meta="$(docker volume inspect --format '{{.CreatedAt}}:{{index .Labels "com.docker.compose.project"}}:{{index .Labels "com.docker.compose.volume"}}' "${R1_PROJECT}_data")"
+    test "$r1_meta" = "$R1_DATA_CREATED:$R1_PROJECT:data"
+    r1_meta="$(docker network inspect --format '{{.Id}}:{{.Internal}}:{{index .Labels "com.docker.compose.project"}}' "${R1_PROJECT}_component")"
+    test "$r1_meta" = "$R1_NETWORK_ID:true:$R1_PROJECT"
+}
+r1_verify_component
+docker run --rm --label "bifrost.r1.project=$R1_PROJECT" --user 1000:1000 --network "${R1_PROJECT}_component" \
+  --env-file "$R1_PRIVATE_DIR/native.env" \
+  --mount "type=bind,src=$R1_SOURCE/api,dst=/app,readonly" \
+  --workdir /app --entrypoint /usr/local/bin/alembic "$R1_PY_IMAGE" \
+  upgrade 20261012_work_delivery_started
+r1_psql < "$R1_PACKET/installed-catalog.sql" > "$R1_PRIVATE_DIR/native-catalog.jsonl"
+r1_python native -m tests.helpers.common_cancel_fixture_driver native \
+  --native-principal bifrost --destination /private/direct-native.json
+r1_python native -m tests.helpers.common_cancel_fixture_driver native \
+  --native-principal bifrost --destination /private/pooled-native.json
+r1_psql < "$R1_SOURCE/api/alembic/candidates/runtime_principals_prepare.sql"
+r1_psql < "$R1_PACKET/installed-catalog.sql" > "$R1_PRIVATE_DIR/principal-baseline-catalog.jsonl"
+```
+
+Now, and only after both native producers succeeded and their committed
+identities were read back, copy the eight files specified by the packet's
+activation JSON to its `target` paths in this disposable source checkout.
+Require absent targets, source SHA256/blob/mode matches, and no other changes.
+Stage exactly those targets; `git write-tree` must equal
+`1613bbc35ddbc2a3074fbdb2e63bf38dc5969561`. Record all eight hashes and the
+tree receipt. This is the reviewed overlay, not a new migration history.
+
+```sh
+python3 - <<'PY_OVERLAY'
+import hashlib, json, os, stat, subprocess
+from pathlib import Path
+
+repo = Path(os.environ['R1_SOURCE'])
+recipe = json.loads((Path(os.environ['R1_PACKET_SOURCE']) /
+                    'docs/architecture/rust-core-mvp-r1-activation-overlay.json').read_text())
+def git(*args):
+    return subprocess.check_output(['git', '-C', str(repo), *args], text=True).strip()
+assert git('rev-parse', 'HEAD') == recipe['base_commit'] == '560e3decd7a18200809edb9bf9a078ede5d06ea5'
+assert not git('status', '--porcelain')
+assert recipe['expected_overlay_tree'] == '1613bbc35ddbc2a3074fbdb2e63bf38dc5969561'
+assert len(recipe['copies']) == 8
+# Validate every copy before writing any active path.
+for item in recipe['copies']:
+    source, target = repo / item['source'], repo / item['target']
+    assert source.parent == repo / 'api/alembic/candidates'
+    assert target.parent == repo / 'api/alembic/versions'
+    assert source.name == target.name and item['mode'] == '100644'
+    assert stat.S_ISREG(source.lstat().st_mode)
+    assert hashlib.sha256(source.read_bytes()).hexdigest() == item['sha256']
+    assert git('rev-parse', 'HEAD:' + item['source']) == item['git_blob']
+    assert not os.path.lexists(target)
+for item in recipe['copies']:
+    fd = os.open(repo / item['target'], os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o644)
+    with os.fdopen(fd, 'wb') as stream:
+        os.fchmod(stream.fileno(), 0o644)
+        stream.write((repo / item['source']).read_bytes())
+        stream.flush()
+        os.fsync(stream.fileno())
+subprocess.run(['git', '-C', str(repo), 'add', '--',
+                *[item['target'] for item in recipe['copies']]], check=True)
+assert git('write-tree') == recipe['expected_overlay_tree']
+print('Exact eight-file overlay tree verified; no SQL applied by this copy step')
+PY_OVERLAY
+```
+
+```sh
+docker run --rm --label "bifrost.r1.project=$R1_PROJECT" --user 1000:1000 --network "${R1_PROJECT}_component" \
+  --env-file "$R1_PRIVATE_DIR/native.env" \
+  --mount "type=bind,src=$R1_SOURCE/api,dst=/app,readonly" \
+  --workdir /app --entrypoint /usr/local/bin/alembic "$R1_PY_IMAGE" \
+  upgrade 20261016_runtime_source_drain
+r1_psql < "$R1_SOURCE/api/alembic/candidates/runtime_principals_grants.sql"
+r1_psql < "$R1_PACKET/installed-catalog.sql" > "$R1_PRIVATE_DIR/common-catalog.jsonl"
+```
+
+## Mandatory installed-authority review before passwords/LOGIN
+
+All four roles remain NOLOGIN. Freeze writes while comparing the complete
+successful capture with the exact source/profile and both native captures. The
+post-role/pre-C5 capture includes effective ambient privileges for all four
+NOLOGIN identities; the earlier capture cannot, because those roles are absent.
+An
+independent Sol reviewer and the accountable architect must record findings
+against hashes of the actual outputs. A green revision marker is insufficient.
+
+| Compare | Required disposition |
+| --- | --- |
+| Cluster/connection | Same task project, PostgreSQL16 pinned image, `bifrost_test`, native superuser, exact one common head; no older/shared DB adopted. |
+| Role attributes/membership | Exactly the four new identities, inactive/nonprivileged flags, zero memberships in either direction, expected timeouts/search paths, no DB-wide or role+DB override. |
+| Explicit ACLs | Exact finite JSON profile at every table, column, sequence and application function; no extra grant option. Core has no users/source DML or source reads. |
+| Ownership/definers | Only reviewed common functions owned by the two fixed custodians; no native ownership, definer substitution, mutable search path or unexpected owned object. |
+| Native/common structure | Exact tables/columns/types/defaults/checks/keys/FK actions/triggers/functions and existing native constraints; all expected indexes live, ready and valid; no unexpected RLS/inheritance/rules. |
+| Ambient privileges | Explicitly assess PUBLIC/default/extension ACLs, every other database/schema, languages and PUBLIC-executable functions against the native image baseline. No unexplained new authority. |
+| Trigger bypass | No `session_replication_role` SET or ALTER SYSTEM privilege, parameter ACL/membership path, bypass-RLS or equivalent new route around guards. Ordinary USERSET timeouts remain adjustable, an acknowledged isolated-profile limitation. |
+| Concessions | Whole-table cross-owner reads and row/table-lock privileges listed in the profile are intentional for this finite trusted SQL test, not production isolation or a runtime-child role. |
+
+Stock PostgreSQL PUBLIC builtins and access to its otherwise empty maintenance
+databases are **not silently included in the application ACL profile**. List
+their actual effective permissions and native-image provenance explicitly in
+the review; unexpected function/extension/default or other-database authority
+stops before LOGIN. Do not blanket-revoke or add privileges to obtain a pass.
+Any required profile change needs a new source review and authority decision.
+
+## Password setup and finite test-login admission
+
+After the installed review passes, use built-in psql `\password` while both
+roles remain NOLOGIN. It encrypts client-side before sending SQL. No plaintext
+password interpolation, argv, xtrace or public logs. Private input generation
+above checks distinct 64-hex values. Keep the two independent command receipts.
+
+```sh
+for role in wex_core wex_incumbent; do
+    case "$role" in
+      wex_core) r1_password_file="$R1_PRIVATE_DIR/core-password" ;;
+      wex_incumbent) r1_password_file="$R1_PRIVATE_DIR/incumbent-password" ;;
+    esac
+    { cat "$r1_password_file"; cat "$r1_password_file"; } |
+      r1_compose exec -T -e 'PGOPTIONS=-c password_encryption=scram-sha-256' postgres \
+        psql --no-psqlrc --quiet -v ON_ERROR_STOP=1 -U bifrost -d bifrost_test \
+          --command "\\password $role"
+done
+R1_TEST_LOGIN_EXPIRY="$(date -u -d '+110 minutes' '+%Y-%m-%dT%H:%M:%SZ')"
+r1_compose exec -T -e "R1_TEST_LOGIN_EXPIRY=$R1_TEST_LOGIN_EXPIRY" postgres \
+  psql --no-psqlrc --quiet -v ON_ERROR_STOP=1 -U bifrost -d bifrost_test \
+  < "$R1_PACKET/activate-test-logins.sql"
+r1_compose --profile pooled up -d --wait pool
+r1_verify_component
+R1_POOL_CONTAINER_ID="$(docker inspect --format '{{.Id}}' "${R1_PROJECT}-pool-1")"
+printf '%s\n' "$R1_POOL_CONTAINER_ID" > "$R1_PRIVATE_DIR/pool-container-id.txt"
+r1_meta="$(docker inspect --format '{{.Image}}:{{index .Config.Labels "com.docker.compose.project"}}' "${R1_PROJECT}-pool-1")"
+test "$r1_meta" = "$R1_POOL_IMAGE_ID:$R1_PROJECT"
+```
+
+Any uncertain password/login command stops; do not resend it. Read back only
+role flags/expiry and whether SCRAM exists, never raw verifiers. Before fixtures,
+authenticate each login directly and through the pool with the corresponding
+private env file; require the actual server `session_user=current_user`, expected
+role, `bifrost_test`, nonprivileged flags, READ COMMITTED and unchanged fences.
+Do not substitute native superuser `SET ROLE` or infer identity from a URL.
+
+```sh
+for transport in direct pooled; do
+    r1_python "$transport" -c '
+import asyncio
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import create_async_engine
+from sqlalchemy.pool import NullPool
+from tests.helpers.common_cancel_fixture_driver import _url
+
+async def main():
+    for variable, expected in (
+        ("BIFROST_COMMON_CORE_TEST_DATABASE_URL", "wex_core"),
+        ("BIFROST_COMMON_INCUMBENT_TEST_DATABASE_URL", "wex_incumbent"),
+    ):
+        engine = create_async_engine(_url(variable, expected), poolclass=NullPool,
+                                     isolation_level="READ COMMITTED", echo=False, hide_parameters=True)
+        try:
+            async with engine.connect() as db:
+                await db.execute(text("SET TRANSACTION READ ONLY"))
+                ok = await db.scalar(text("""
+                    SELECT current_database()=:database AND session_user=:expected
+                      AND current_user=session_user AND r.rolcanlogin AND NOT r.rolinherit
+                      AND NOT r.rolsuper AND NOT r.rolbypassrls AND NOT r.rolcreaterole
+                      AND NOT r.rolcreatedb AND NOT r.rolreplication
+                      AND isfinite(r.rolvaliduntil) AND r.rolvaliduntil > clock_timestamp()
+                      AND current_setting(:isolation_setting)=:isolation
+                      AND NOT has_database_privilege(r.oid,current_database(),:create_privilege)
+                      AND NOT has_database_privilege(r.oid,current_database(),:temp_privilege)
+                      AND NOT has_schema_privilege(r.oid,:schema,:create_privilege)
+                      AND NOT has_parameter_privilege(r.oid,:parameter,:set_privilege)
+                      AND NOT has_parameter_privilege(r.oid,:parameter,:alter_privilege)
+                      AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_auth_members m
+                                      WHERE m.member=r.oid OR m.roleid=r.oid)
+                    FROM pg_catalog.pg_roles r WHERE r.rolname=session_user
+                """), dict(database="bifrost_test", expected=expected, isolation_setting="transaction_isolation",
+                           isolation="read committed", schema="public", create_privilege="CREATE",
+                           temp_privilege="TEMPORARY", parameter="session_replication_role",
+                           set_privilege="SET", alter_privilege="ALTER SYSTEM"))
+                if ok is not True:
+                    raise ValueError("rejected")
+        finally:
+            await engine.dispose()
+try:
+    asyncio.run(main())
+except Exception:
+    raise SystemExit("R1 authenticated read rejected; preserve original evidence") from None
+print("Two actual restricted identities verified")
+'
+done
+```
+
+## Consume distinct cohorts and preserve outcomes
+
+For each transport, run the common producer once with that transport's core
+URL. Its native connection remains direct for readback. Then run exactly the
+named Rust test on the internal network with the same transport env/fixture:
+
+```sh
+for transport in direct pooled; do
+    r1_python "$transport" -m tests.helpers.common_cancel_fixture_driver common \
+      --native-principal bifrost --native-seed "/private/$transport-native.json" \
+      --destination "/private/$transport-common.json"
+    docker run --rm --label "bifrost.r1.project=$R1_PROJECT" --cpus 2 --memory 4g --pids-limit 256 \
+      --network "${R1_PROJECT}_component" --env-file "$R1_PRIVATE_DIR/$transport-rust.env" \
+      --env CARGO_BUILD_JOBS=2 --env CARGO_TARGET_DIR=/cargo-target \
+      --mount "type=bind,src=$R1_SOURCE/core-rs,dst=/workspace/core-rs,readonly" \
+      --mount "type=bind,src=$R1_PRIVATE_DIR/$transport-common.json,dst=/private/fixture.json,readonly" \
+      --mount "type=volume,src=$R1_PROJECT-cargo,dst=/usr/local/cargo" \
+      --mount "type=volume,src=$R1_PROJECT-target,dst=/cargo-target" \
+      --workdir /workspace/core-rs "$R1_RS_IMAGE" \
+      cargo test --offline --locked -p bifrost-db --features common-session-sql \
+        --test common_session_sql no_grant_cancel_preserves_fences_and_commits -- --exact
+done
+```
+
+Retain independent committed readback for both cohorts and exact source, input,
+binary/image and output digests. No reset/reopen/retry or new cohort after an
+unexplained failure. A failed first transport stops before the second. Native
+and common `.pending` files are immutable evidence, not permission to retry.
+
+## Cleanup and shutdown
+
+First preserve private outputs/raw receipts on the accountable host and publish
+only sanitized outcomes/hashes. Reconcile every uncertain producer/SQL commit
+against its original IDs. Fixture teardown creates no physical-resource fact;
+both synthetic roots stay Cancelling, attempts incomplete and source pinned.
+If uncertainty remains, retain the task DB/volume and owner explicitly; never
+automatically destroy it on shell exit. Expiry alone does not close sessions.
+
+After both transport tests and committed readbacks succeed, ensure all task
+one-off containers are terminal and remove only this project/data volume and
+the two specifically owned caches. Every use/removal checks successful metadata
+queries, ownership labels and the originally recorded IDs/creation times.
+Rust receives only its two restricted DSNs and single fixture file; the native
+owner URL, settings key and private directory are not mounted into that test.
+
+```sh
+r1_oneoffs="$(docker ps -aq --filter label=bifrost.r1.project="$R1_PROJECT")"
+test -z "$r1_oneoffs"
+r1_verify_component
+r1_meta="$(docker inspect --format '{{.Id}}:{{.Image}}:{{index .Config.Labels "com.docker.compose.project"}}' "${R1_PROJECT}-pool-1")"
+test "$r1_meta" = "$R1_POOL_CONTAINER_ID:$R1_POOL_IMAGE_ID:$R1_PROJECT"
+for volume in "$R1_PROJECT-cargo" "$R1_PROJECT-target"; do
+    r1_label="$(docker volume inspect --format '{{index .Labels "bifrost.r1.project"}}' "$volume")"
+    test "$r1_label" = "$R1_PROJECT"
+done
+r1_created="$(docker volume inspect --format '{{.CreatedAt}}' "$R1_PROJECT-cargo")"
+test "$r1_created" = "$R1_CARGO_CREATED"
+r1_created="$(docker volume inspect --format '{{.CreatedAt}}' "$R1_PROJECT-target")"
+test "$r1_created" = "$R1_TARGET_CREATED"
+r1_compose --profile pooled down --volumes --remove-orphans
+docker volume rm "$R1_PROJECT-cargo" "$R1_PROJECT-target"
+r1_containers="$(docker ps -aq --filter label=com.docker.compose.project="$R1_PROJECT")"
+r1_oneoffs="$(docker ps -aq --filter label=bifrost.r1.project="$R1_PROJECT")"
+r1_volumes="$(docker volume ls -q --filter label=com.docker.compose.project="$R1_PROJECT")"
+r1_networks="$(docker network ls -q --filter label=com.docker.compose.project="$R1_PROJECT")"
+test -z "$r1_containers"
+test -z "$r1_oneoffs"
+test -z "$r1_volumes"
+test -z "$r1_networks"
+r1_cache_names="$(docker volume ls -q --filter label=bifrost.r1.project="$R1_PROJECT")"
+test -z "$r1_cache_names"
+```
+
+An earlier stopped phase may not have created all these resources. Do not run
+the full success cleanup blindly or reconstruct missing receipts from names.
+Retain the task DB/resources with this workstream's owner while reconciling the
+original phase. Use its saved creation receipts to prepare only the applicable
+removals after uncertainty is resolved; unresolved outcomes stay retained.
+
+Destroy private generated passwords/env/pool auth files only after evidence is
+retained and every admitted session/container is gone. Preserve retained fixture
+and intent evidence privately. Do not reuse private files or source overlay for
+another campaign. Leave unrelated resources/images alone. Shut down VM101 only
+after fresh readback establishes no other active owner's work, using the normal
+management procedure; read back stopped state. No force-stop or global prune.

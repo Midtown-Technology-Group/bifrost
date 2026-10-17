@@ -5,11 +5,24 @@ the next persistence dependency, not completion of R1, workflow acceptance or
 permission to activate a runtime. The [execution plan](rust-core-mvp-execution-plan.md)
 retains actual Rust Start/result ownership as R1's exit.
 
+The independently source-reviewed [operator procedure](evidence/r1-cancel-sql-proposal/operator-runbook.md)
+now supplies the exact private-input, source-overlay, build, authentication,
+test and cleanup commands. Its SHA256 is
+`9322bea3681afaecd19cbdc8df0bdbac36cab422ef4ef4ea23e2f50b3439cd86`.
+The operator procedure is complete. Its fixture namespace defect now has
+native PostgreSQL red/green evidence: both original cases fail on 361c92c7d
+and both pass on the explicit-public repair at 560e3decd. All 154 selected tests
+also pass with zero skips. Final literal `./test.sh pre-pr` passed on the same
+clean source.
+The packet is ready for the explicit isolated authority decision; normal CI
+remains pending and no gate is waived. The operator commands have not been
+executed. Source acceptance is not installed-authority or runtime acceptance, and publication grants no permission to apply it.
+
 ## Exact candidate and scope
 
 Repository `Midtown-Technology-Group/bifrost`, branch `rust/r1-sql-candidate`,
-clean published commit `a6b5cb7aea87cea48a7b531bd5c7a2d1cbfd3e09`, tree
-`c52b47495cc1b1d921a7f65082e01832b5f7cd7d`, based on main
+clean published commit `560e3decd7a18200809edb9bf9a078ede5d06ea5`, tree
+`eb76ed5304f3438d88981d3eb5f9d23d8e85f020`, based on main
 `e42999395231ebc536711e5015422edfb75613a7`.
 Local worktree: `/home/thomas/src/bifrost-rust-r1-sql-candidate`.
 
@@ -25,7 +38,7 @@ writer/fixture input is `9f45e57e8f95354a4a230033f6e59b3970b33b4a`.
 
 | Input | SHA256 |
 | --- | --- |
-| `api/tests/helpers/common_cancel_fixture.py` | `9f366712def6b166aeffdd4680ee963e04a7e46d41c8aeaae1dcb9af15e6052c` |
+| `api/tests/helpers/common_cancel_fixture.py` | `32073afff69076285e981c11c87c335dd8ea5bc215872f8493f97276743235dd` |
 | `api/tests/helpers/common_cancel_fixture_driver.py` | `5456ff71425aaef87e6bb9a0cc16546bbbf482c6a554954bbd9fd11420c52eea` |
 | `api/alembic/candidates/runtime_principals_v1.json` | `712a06a9b21ee00912221b0625e881fe92131a297834db175bca4ff04ddd16e7` |
 | `api/alembic/candidates/runtime_principals_prepare.sql` | `e4069f4722ef424821c7225fce93b78f05c8be6160a83bb291a61bcc213b7068` |
@@ -39,7 +52,7 @@ No reviewer imports, tests, SQL or Cargo execution are claimed. Locked Ruff
 qualification is separate and must bind its actual candidate/environment.
 
 Supported source checks use VM101 `bifrost-platform-test-debian13-01`, guest
-checkout `/home/dev/bifrost-rust-r1-f75da956b` (now fast-forwarded to a6b5cb7ae),
+checkout `/home/dev/bifrost-rust-r1-f75da956b` (now fast-forwarded to 560e3decd),
 Compose project `bifrost-test-0290298a`. Initial source-only attempts retained
 two diagnosed checkout failures (missing origin/main tracking ref, then root
 umask preventing uid1000 from reading public source) and the actual Rust fmt
@@ -58,7 +71,51 @@ Independently reviewed a6b5cb7ae narrows that assertion to conditional table
 creation, preserving role checks and table/key/order/FK assertions. On a6b,
 all 154 selected tests passed with zero skips. Its Rust tree is unchanged;
 final-source literal pre-PR passed with exit 0. Normal CI38993723523
-and Rust Core38993725274 were dispatched once for a6b and remain pending.
+and Rust Core38993725274 for a6b completed cancelled, superseded by the
+fixture repair. No tests began and no green evidence is transferred. The CI
+aggregate's `always()` condition survived ordinary cancellation; one documented
+force-cancel completed the obsolete CI run. No workflow/threshold was changed.
+
+Final source review found one schema-less ORM INSERT under the core's trusted
+`pg_catalog,pg_temp` path. Diagnostic 361c92c7d added two native-only database
+cases without changing that behavior: missing-public resolution raised
+UndefinedTable and a temporary shadow left the real table empty. Both failed
+as predicted. The independently source-accepted repair 560e3decd uses a bound
+`public.workflow_execution_attempts` INSERT, preserves claim fields and
+transaction order, and relies on native policy/creation defaults. It does not
+add public to the search path or grant authority. Both identical cases pass
+(2 passed, zero skipped; 3.08s), with call times below 0.3s; setup dominates.
+Original red log/JUnit and corrected green evidence are preserved privately.
+The first fixed-source run stopped at collection because root's checkout
+umask made the replaced file 0600; after inspecting the mode, that public
+source file was restored to 0644. This is a diagnosed checkout repair, not a
+behavioral failure waiver. The final selected suite passes all 154 tests with
+zero skips (10.981s).
+Final literal pre-PR passed (exit 0) after a diagnosed GitHub action-pin API
+rate limit;
+its original failure is retained. A fresh failed-endpoint probe returned 200
+and the API reported available capacity before one unchanged-source recovery.
+Its full log is SHA256
+`b57f75866335a6d3fb16df3aaf7fc4058693a89b04ca27bbf41c3eecb050a6f3`.
+API quality and generated-contract checks passed. The trusted comprehensive
+fallback defers full API unit/E2E, client unit/E2E and MCP conformance to
+required CI; those suites are not claimed passed. Normal CI38996089958 and
+Rust Core38996091192 are queued at exact560, attempt1, with no duplicate run.
+No common DDL/role/login is covered by these native-only tests.
+
+Final Docker readback found the earlier native/selected-test image e68c331e
+absent after pre-PR rebuilt the shared test tag. The held procedure now pins
+actual final pre-PR image `61a673bed47dc94554d9b31121628be2e164bd01599bfbdb0281d3a4b4a619cc`,
+exported in the successful log and retained as
+`bifrost-r1-sql-python-560e3decd:qualified`. That image passed API quality and
+generated-schema checks with the exact source mounted. Native2/selected154
+remain evidence of their actual e68 image runs; no new61a native run is
+invented. Dependency/build inputs did not change. The final image-only binding
+received independent source acceptance. Rust tool image0dc remains retained.
+The ordinary native project was removed with verified zero task containers,
+networks and volumes; no common component was ever started. Fresh other-
+activity checks were empty, then VM101 was gracefully shut down and read back
+stopped. No unrelated stopped containers/volumes were removed.
 
 ## Required ordering
 
@@ -84,8 +141,8 @@ credential switch is part of this experiment.
    historical rewrite or second migration ledger. The independently source-
    accepted [activation recipe](rust-core-mvp-r1-activation-overlay.json) binds
    all eight source/target blobs and revision links. Rebinding that identical
-   migration input to the reviewed a6b test-only repair yields exact overlay
-   tree `3ca13fba4fa0cb35f3c9cad06f2a41aacff62256`. This tree was
+   migration input to the reviewed 560e3decd fixture repair yields exact overlay
+   tree `1613bbc35ddbc2a3074fbdb2e63bf38dc5969561`. This tree was
    computed with a temporary Git index only; no active migration file was
    written and no overlay was applied.
 4. Apply only the finite grants SQL. Keep all four roles NOLOGIN. Capture and
@@ -103,6 +160,9 @@ credential switch is part of this experiment.
    SET/ALTER SYSTEM rights), not only DDL text. Successful
    exit, complete output, target/image provenance and independent comparison
    are required; this is a capture, not an automatic authority validator.
+   Capture again after NOLOGIN role preparation and before C5 so the final
+   installed comparison has a real four-role ambient baseline. The original
+   roles-absent native capture alone cannot establish their effective ACLs.
 5. Only after that gate and its approved activation procedure, enable the two
    restricted test logins. Prove genuine `session_user=current_user` for each
    through direct PostgreSQL and supported transaction pooling. Custodians stay
@@ -159,9 +219,24 @@ and finite expiry of at most two hours. Built-in `psql \password` must set
 SCRAM secrets while roles remain NOLOGIN; plaintext is never interpolated into
 SQL. The activation file accepts only expiry and checks stored SCRAM format.
 Expiry does not terminate existing sessions. Pool transaction mode does not
-run `DISCARD ALL` by default; neither is a cleanup or isolation proof. Custodians stay NOLOGIN. These files do not supply
-approval, generate inputs or qualify effective authority; exact setup, private
-input handling, installed-catalog comparison and cleanup remain prerequisites.
+run `DISCARD ALL` by default; neither is a cleanup or isolation proof. Custodians
+stay NOLOGIN. The procedure creates task-only caches and a new component named
+`bifrost-r1-cancel-a6b5cb7ae`; it does not reuse the native source-validation
+stack. It requires effective root before creating paths, successful Docker
+metadata queries and exact resource receipts, then checks ownership again
+before use/removal. Rust receives no native-owner URL, settings key or private
+directory. Dependency fetch/link has no credentials; credential-bearing tests
+run offline on the internal component network. Actual application of these
+steps remains held pending approval and then installed-catalog reconciliation.
+
+The previous native catalog contains `plpgsql` 1.0 and `vector` 0.8.7, with
+zero SECURITY DEFINER functions among 3,420 recorded functions. This narrows
+the expected baseline for comparison; it does not qualify new common definers
+or privileges. The finite application profile denies CREATE/TEMP on
+`bifrost_test`. Stock PUBLIC builtin rights and maintenance-database access
+must be explicitly listed and assessed as isolated trusted-test concessions;
+they are not a production principal profile or an assumption of tenant safety.
+Unexpected authority stops before LOGIN, without automatic revokes or grants.
 
 The producer preserves an immutable sibling `.pending` intent synced before
 SQL. Final publication stages and syncs bytes, then links without replacement.
@@ -186,13 +261,17 @@ proof. Dispose of this wholly synthetic database only after failure/uncertainty
 is reconciled and evidence is retained; database teardown is not a product
 resource-settlement event.
 
-Execution is not yet ready: installed-catalog comparison, private test-login
-activation and bounded component setup/cleanup commands still need concrete
-review. The activation recipe and capture source are reviewed; a native-only
-PostgreSQL 16.15 syntax smoke completed with exit 0 and 7,687 JSON records at
+The procedure, private-input generation, source-overlay recipe, capture,
+component/pool setup, finite login admission and cleanup now have independent
+source acceptance. Eleven shell blocks and three embedded Python snippets
+parse; that is static evidence, not an execution pass. A native-only PostgreSQL
+16.15 capture smoke completed with exit 0 and 7,687 JSON records at
 native head `20261012_work_delivery_started`, with all four proposed roles and
 common relations absent. It does not qualify installed common authority.
-No permission request or acceptance is implied by this packet draft. CRED's
+Current source CI remains unqualified and must still receive its normal disposition;
+this packet waives no CI or acceptance gate. Isolated schema/role/login apply
+requires explicit approval, then the documented installed review before LOGIN.
+CRED's
 separate least-authority adapter, real Rust Start/result, Python workflow,
 agent lifecycle, event/public parity and reversible routing remain outside
 this dependency test and unproved.

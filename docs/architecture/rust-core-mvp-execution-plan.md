@@ -15,8 +15,8 @@ A complete MVP still includes safe coexistence, unchanged consumers, security,
 reversible routing, observability and an evidence-based CONTINUE or STOP.
 
 Fresh fetch: platform `e42999395231ebc536711e5015422edfb75613a7`, workspace
-`629ae5cbbd1700f0e677d09430db242793fb9ec8`.
-The [latest boundary audit](rust-core-mvp-workspace-boundary-629ae5cb.json)
+`8a2a441afcee3fc8a1bb3f74deb07440da5a86d0`.
+The [latest boundary audit](rust-core-mvp-workspace-boundary-8a2a441a.json)
 records 2,459 authored Python files, zero forbidden imports/parse errors and an
 empty allowlist.
 Both prerequisite merges remain ancestors of these exact heads. Recheck these
@@ -105,23 +105,35 @@ is behind the explicit `common-session-sql` test feature. Independent source
 review accepted the repaired assertions. Compilation now passes; actual common
 SQL remains unproved. The [isolated packet draft](rust-core-mvp-r1-cancel-sql-packet.md)
 now composes current-main guards, reviewed two-stage fixture production and
-the Rust test on one source candidate, `a6b5cb7ae`. The producer preloads native
+the Rust test on one source candidate, `560e3decd`. The producer preloads native
 deployment history before source guards, then uses genuine core for common
 writes. Its immutable private intent survives final-publication failure.
 Independent source review accepted the producer, finite inactive role SQL and
 explicit driver. Supported checks exposed and corrected checkout setup errors
-and Rust formatting defects without weakening checks. Final literal pre-PR,
-fmt, strict all-feature Clippy and 36 default Rust tests passed on VM101.
-All 41 Rust input files match source13744851d; a6b changes only an offline
-Python test, leaving the Rust tree identical. The opt-in SQL test was compiled
-but not executed. On final a6b, 154 selected Python tests passed with no skips
-after an independently reviewed assertion repair; the original153pass/1fail
-result is retained. Final a6b pre-PR also passed; normal CI remains pending.
+and Rust formatting defects without weakening checks. Pinned fmt, strict
+all-feature Clippy and 36 default Rust tests passed on VM101 at source
+13744851d. Its exact Rust tree and all 41 inputs remain unchanged at
+560e3decd; the opt-in common SQL test was compiled but not executed. Earlier
+a6b selected154/pre-PR passes and original failures remain source-bound.
+Final source inspection found one unqualified fixture attempt INSERT under the
+core trusted search path. On native PostgreSQL, the original361 source fails
+both missing-public and temp-shadow cases; reviewed560 explicitly names the
+native public table without broadening the path. The same two cases now pass,
+as do all 154 selected tests, with zero skips. This is native fixture evidence,
+not common cancellation/role qualification. Final literal pre-PR also passed
+after a preserved, diagnosed GitHub action-pin API rate-limit failure; one unchanged-source recovery followed a successful
+exact endpoint probe and available quota. No credentials or gates changed.
+The trusted comprehensive fallback retains broader suites as required CI,
+not local passes.
+Normal CI38996089958 and Rust Core38996091192 were dispatched once for560 and
+remain unqualified; obsoletea6b runs are terminal cancelled, not green.
 The exact eight-file activation recipe and read-only catalog capture are
 independently source-accepted. A native-only PostgreSQL 16.15 catalog smoke
-passed with no common relations or proposed roles installed. Actual installed
-common authority comparison, private login activation and component cleanup
-procedures still gate isolated execution. This dependency does not complete R1's
+passed with no common relations or proposed roles installed. The complete independently source-reviewed
+[operator procedure](evidence/r1-cancel-sql-proposal/operator-runbook.md) now
+settles private inputs, exact activation, restricted authentication and bounded
+cleanup. Explicit isolated authority approval and actual installed-catalog
+reconciliation still gate SQL/login execution. This dependency does not complete R1's
 Start/result exit or qualify unchanged Python/agent execution.
 
 The [storage checkpoint](rust-core-mvp-common-storage-checkpoint.json) now binds
@@ -137,18 +149,22 @@ interrupted the first offline test. No collected test is counted as passed.
 That task's resources were removed and VM101 returned to stopped. Do not repeat the
 same uncoordinated VM qualification blindly or treat its legacy RabbitMQ
 configuration as PostgreSQL delivery evidence. Historical run 38983420259 and
-its parent runs cannot qualify current composed source. The current VM101
-validation stack was removed after evidence collection. Fresh readback showed
-no running containers or other active test processes; VM101 was then shut down
-and independently read back as stopped. Source, private evidence and the pinned
-task toolchain image remain as owned cache for the next approved experiment.
+its parent runs cannot qualify current composed source. The previous a6b VM101 validation stack was removed after evidence collection,
+and the guest was read back stopped. This cycle restarted the same tagged test
+VM for native-only361/560 namespace and final source qualification, with task
+ownership of project `bifrost-test-0290298a` and eventual cleanup/shutdown.
+No common schema, SQL role/login or runtime was activated. After final checks,
+this task project was removed and independent readback found zero containers,
+networks and volumes. A fresh other-activity check was empty; VM101 was then
+gracefully shut down and read back stopped. Source/private evidence and pinned
+Python61a/Rust0dc tool images remain owned cache.
 
 C5-A/B1 now implement native writer exclusion, exact ancestor/sanitation
 exceptions and close/late-grant serialization. Source-reviewed B2/B3 add all
 common writers, open live Start/admission fences, historical source accounting
 and destructive-drain checks. The
 [writer checkpoint](rust-core-mvp-common-writer-checkpoint.json) identifies
-exact `51dd6c3e4` source acceptance and current composed candidatea6b5cb7ae.
+exact `51dd6c3e4` source acceptance and current composed candidate560e3decd.
 Superseded CI38988901890 was cancelled without tests; it supplies no pass.
 All new PostgreSQL behavior remains unexecuted; source review does not qualify
 physical custody, implicit lock/cascade races, public errors or the post-commit
@@ -168,7 +184,8 @@ The existing one-issuer direction remains valid, but its least-authority SQL
 principal, source row-lock privileges and exact ORM projections require a
 concrete separate disposition. No new role is approved or implemented.
 
-The next finite package prepares the R1 no-grant fixture/qualification packet;
+With final560 pre-PR passed, the next finite action is the bounded
+isolated authority decision for the R1 no-grant fixture/qualification packet;
 the CRED authority gap independently gates R2. Keep R1's selected persistence experiment separate
 from R2's interpreter/physical-resource acceptance; do not make production
 catalog access a prerequisite for an approved disposable SQL test.

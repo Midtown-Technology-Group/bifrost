@@ -1,8 +1,8 @@
 {
   "schema": "bifrost.r1-isolated-activation-proposal/v1",
   "status": "review-only-unapproved",
-  "base_commit": "a6b5cb7aea87cea48a7b531bd5c7a2d1cbfd3e09",
-  "expected_overlay_tree": "3ca13fba4fa0cb35f3c9cad06f2a41aacff62256",
+  "base_commit": "560e3decd7a18200809edb9bf9a078ede5d06ea5",
+  "expected_overlay_tree": "1613bbc35ddbc2a3074fbdb2e63bf38dc5969561",
   "native_head": "20261012_work_delivery_started",
   "common_head": "20261016_runtime_source_drain",
   "operation": "Add exact copies of eight reviewed candidate blobs to the existing versions directory in the approved disposable SQL checkout only. Preserve original candidates. One ordinary Alembic history; no stamp/manual Operations replay/new migration framework.",
