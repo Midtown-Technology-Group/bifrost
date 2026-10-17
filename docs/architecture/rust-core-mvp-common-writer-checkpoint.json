@@ -110,8 +110,8 @@
     "cold_skill_package": "2026-10-09.1"
   },
   "workspace_boundary": {
-    "head": "0bec57e53477553d10b11a70d12cb859c465515f",
-    "audit": "rust-core-mvp-workspace-boundary-0bec57e5.json",
+    "head": "3df127b2e6ed9251a1e6752bfe7c020a3cce5232",
+    "audit": "rust-core-mvp-workspace-boundary-3df127b2.json",
     "files": 2459,
     "internal_imports": 0,
     "parse_errors": 0,
@@ -465,7 +465,57 @@
     "head": "6e56a72affdb828f3249e320f704c666ce775298",
     "reference_main": "e42999395231ebc536711e5015422edfb75613a7",
     "record": "rust-core-mvp-cred-main-integration.md",
-    "status": "Separate native CRED prerequisite: independent source review, reference/drift detection, supported local tests, literal pre-PR and actual frontend access proof passed; PR published, hosted CI queued. Resources cleaned, VM101 stopped.",
+    "status": "Historical source-bound snapshot6e56: local source/reference/drift/credential/HTTP/pre-PR and frontend qualification passed. Superseded by separately recorded4d query package; not current-head CI evidence.",
     "limits": "No common C1-C5 schema/roles/test logins/issuer adapter activated; R1-CANCEL-SQL/v1 remains held. Not Rust lifecycle or runtime acceptance."
+  },
+  "credential_query_boundary": {
+    "package": "CP-C5-D/query/v1",
+    "pr": 1037,
+    "head": "4d55403a29f35d522d0d51c7cd27869428d451a9",
+    "reference_main": "e42999395231ebc536711e5015422edfb75613a7",
+    "record": "rust-core-mvp-cred-bounded-read.md",
+    "implementation_sha256": "c30b76d44169dbd4dfb513fff5bc6cbe24c1fff7975fcd797006867e79a59e8e",
+    "test_sha256": "95f4e5e959e41b9a01004067978cdabbe048298419adccba98cdba45c7e50087",
+    "review": "Independent Sol scoped SOURCE ACCEPT; separate private probe review accepted cleanup/sanitized wrapper with SQL echo disabled before imports",
+    "native_tests": {
+      "red": {
+        "head": "e30f95841583dc3b1b0820621516991820d2a592",
+        "failed": 5,
+        "errors": 0,
+        "skipped": 0
+      },
+      "green": {
+        "unique_passed": 307,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "junit_sha256": "dfda4f6d6c8f5b9b869e8eba538446a1757b2efaa5758e61029d1a24daad5446"
+      }
+    },
+    "pre_pr": "Literal supported clean4d pre-pr exit0; trusted planner defers comprehensive suites to normal CI",
+    "live_frontend": {
+      "url": "http://localhost:38273",
+      "cases_passed": 8,
+      "transport": "actual httpx via inspected frontend, not unchanged SDK client claim",
+      "receipt_sha256": "e3caaf51cf3933cada555ab005559ba72c618ae1ecf9b1fd00586f97b73876b1"
+    },
+    "normal_ci": {
+      "id": 39001167280,
+      "status": "pending at publication",
+      "conclusion": null
+    },
+    "codeql": {
+      "id": 39001167277,
+      "status": "queued at publication",
+      "conclusion": null
+    },
+    "resource_disposition": "Task stacks and captured anonymous volumes removed; baseline143 containers/2567 volumes preserved. Six prior and six current owned image tags retired using exact producer/reference exclusion, no prune. Pinned Python/Rust and shared Go cache retained. VM101 gracefully stopped.",
+    "limitations": [
+      "Empty populated-dependency fixture; retained relationship SELECT is not actual restricted-principal closure proof",
+      "Regex emitted-query observer is not SQL ACL enforcement",
+      "No common issuer role or binding adapter implemented; broad native factory unchanged",
+      "No common C1-C5 schema/roles/test logins activated; R1-CANCEL-SQL/v1 held",
+      "No Rust Start/result, unchanged Python workflow or agent runtime acceptance"
+    ]
   }
 }

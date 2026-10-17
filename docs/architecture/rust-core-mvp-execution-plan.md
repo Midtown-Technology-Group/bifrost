@@ -15,8 +15,8 @@ A complete MVP still includes safe coexistence, unchanged consumers, security,
 reversible routing, observability and an evidence-based CONTINUE or STOP.
 
 Fresh fetch: platform `e42999395231ebc536711e5015422edfb75613a7`, workspace
-`0bec57e53477553d10b11a70d12cb859c465515f`.
-The [latest boundary audit](rust-core-mvp-workspace-boundary-0bec57e5.json)
+`3df127b2e6ed9251a1e6752bfe7c020a3cce5232`.
+The [latest boundary audit](rust-core-mvp-workspace-boundary-3df127b2.json)
 records 2,459 authored Python files, zero forbidden imports/parse errors and an
 empty allowlist.
 Both prerequisite merges remain ancestors of these exact heads. Recheck these
@@ -27,11 +27,13 @@ REST readback: #1011 is open at
 AUTH-P1 #1018 is open/unmerged at
 `39245315e193e1d04886044677bf7a75bb8c6f1f`, with exact-head source review and
 applicable CI evidence complete in its validation receipt. CRED-P1 #1037 remains
-open/unmerged at `6e56a72affdb828f3249e320f704c666ce775298` after
-[current-main integration](rust-core-mvp-cred-main-integration.md). That
-separate prerequisite preserves main's execution/provider/admin SDK guard;
-supported reference, drift-detection, credential/HTTP, pre-PR and live proxy
-checks passed, with resources cleaned and VM101 stopped. Normal CI is queued.
+open/unmerged at `4d55403a29f35d522d0d51c7cd27869428d451a9` after
+[current-main integration](rust-core-mvp-cred-main-integration.md) and the
+[bounded-read correction](rust-core-mvp-cred-bounded-read.md). That separate
+prerequisite preserves main's execution/provider/admin SDK guard. On exact4d,
+307 unique selected native tests, literal pre-PR and eight real frontend HTTP
+cases pass. All owned resources are removed and VM101 is stopped. Normal CI
+39001167280 and CodeQL39001167277 are pending; prior-head passes do not transfer.
 Passing #1018 does not establish CRED integration or Rust parity. Do not require
 merging prerequisites to test an explicitly composed, pinned isolated candidate;
 never treat that candidate as deployed or main. GraphQL was rate-limited during
@@ -184,9 +186,14 @@ gate a SQL experiment. This is not a full Python backend credential profile.
 
 CP-C5-D source review rejected reusing the core SQL factory for the trusted
 Python credential issuer: it would confer native lifecycle write authority.
-The existing one-issuer direction remains valid, but its least-authority SQL
-principal, source row-lock privileges and exact ORM projections require a
-concrete separate disposition. No new role is approved or implemented.
+The existing one-issuer direction remains valid. CP-C5-D/query/v1 now bounds
+native/source/current-caller ORM projections while preserving dependency loading,
+locks and policy; five real-query positives fail before the fix and pass after it.
+Its existing CRED/HTTP tests and frontend proof pass. This is not SQL privilege
+enforcement: the fixture has no populated dependency edges and the observer is
+not an ACL test. The least-authority credential principal, source row-lock
+privileges and common binding/lock adapter still require a concrete separately
+approved disposition. No new role is approved or implemented.
 
 With final560 pre-PR passed, the next finite action is the bounded
 isolated authority decision for the R1 no-grant fixture/qualification packet;
