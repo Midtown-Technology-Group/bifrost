@@ -52,6 +52,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.core.principal import UserPrincipal
 from src.models.contracts.events import EmitEventRequest, EmitEventResponse
 
+
 class EventEmissionError(Exception):
     """Transport-neutral emission failure with an HTTP-style status.
 
@@ -148,13 +149,13 @@ async def emit_topic_event(
         raise EventEmissionError(400, str(exc)) from exc
 
     organization_id: UUID | None = None
-    if request.scope and request.scope != "GLOBAL":
+    if request.scope and request.scope.casefold() != "global":
         try:
             organization_id = UUID(request.scope)
         except ValueError:
             raise EventEmissionError(
                 400,
-                f"Invalid scope: must be a UUID or 'GLOBAL', got '{request.scope}'",
+                f"Invalid scope: must be a UUID or 'global', got '{request.scope}'",
             ) from None
 
     if service_caller:
