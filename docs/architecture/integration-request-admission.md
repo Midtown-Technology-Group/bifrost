@@ -1,7 +1,10 @@
 # Integration request admission
 
 `integrations.request_slot(name, scope)` bounds one HTTP attempt across all workers.
-The server resolves SDK scope and the integration identity. It reads the optional
+The server resolves SDK scope and the integration identity. The acquire and release
+routes admit only signed execution credentials or platform/provider bypass users;
+ordinary user sessions cannot reserve global capacity. Execution SDK calls use the
+worker's private Unix socket when available. The server reads the optional
 `request_concurrency_limit` from integration-level defaults. Only platform admins
 can change those defaults; organization overrides do not alter admission policy.
 An unset setting preserves existing behavior. Explicit values must be integers
@@ -13,9 +16,11 @@ are not coordinated. This is cooperative admission for participating clients,
 not a sandbox for arbitrary vendor effects or a guarantee about external clients.
 
 Acquisition is atomic and uses Redis time. Tokens belong to the authenticated
-principal and expire after 60 seconds. Retrying acquisition with the same token
-returns its remaining lease without extending it. The SDK bounds waiting to
-90 seconds, polls at intervals of at least 3 seconds, and never retries the vendor
+principal and expire after 60 seconds. Each authenticated execution or bypass
+principal may hold only one live token for an integration, while distinct
+principals still share the integration's global limit. Retrying acquisition with
+the same token returns its remaining lease without extending it. The SDK bounds
+waiting to 90 seconds, polls at intervals of at least 3 seconds, and never retries the vendor
 operation. Admission POSTs disable transient 5xx retries; their authenticated SDK
 transport can make at most three HTTP calls: the initial request, one auth refresh,
 and its retry. An optional `reserve_http_calls` callback reserves that maximum
