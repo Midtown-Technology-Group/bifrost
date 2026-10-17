@@ -20,6 +20,7 @@ from typing import Any
 # Standalone bifrost SDK package import.
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
+import click
 import pytest
 
 from bifrost.dto_flags import (  # noqa: E402
@@ -27,6 +28,7 @@ from bifrost.dto_flags import (  # noqa: E402
     DTO_FIELD_ALIASES,
     DTO_REF_LOOKUPS,
     assemble_body,
+    assemble_cli_body,
     load_dict_value,
 )
 from src.models.contracts.agents import AgentCreate, AgentUpdate  # noqa: E402
@@ -379,7 +381,7 @@ async def test_dict_field_loaded_from_at_file(tmp_path: pathlib.Path) -> None:
     schema_path = tmp_path / "schema.yaml"
     schema_path.write_text("fields: []\n", encoding="utf-8")
     resolver = _resolver()
-    body = await assemble_body(
+    body = await assemble_cli_body(
         FormCreate,
         _parsed(
             FormCreate,
@@ -392,6 +394,29 @@ async def test_dict_field_loaded_from_at_file(tmp_path: pathlib.Path) -> None:
         resolver=resolver,  # type: ignore[arg-type]
     )
     assert body["form_schema"] == {"fields": []}
+
+
+@pytest.mark.asyncio
+async def test_shared_assembler_rejects_server_side_file_references(
+    tmp_path: pathlib.Path,
+) -> None:
+    schema_path = tmp_path / "secret.json"
+    schema_path.write_text('{"secret": "must-not-be-read"}', encoding="utf-8")
+    resolver = _resolver()
+
+    with pytest.raises(click.BadParameter, match="only available in the local CLI"):
+        await assemble_body(
+            FormCreate,
+            _parsed(
+                FormCreate,
+                {
+                    "name": "F",
+                    "workflow_id": "MyWorkflow",
+                    "form_schema": f"@{schema_path}",
+                },
+            ),
+            resolver=resolver,  # type: ignore[arg-type]
+        )
 
 
 # ---------------------------------------------------------------------------

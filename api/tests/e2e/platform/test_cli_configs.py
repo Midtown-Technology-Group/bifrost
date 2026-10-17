@@ -95,6 +95,40 @@ class TestCliConfigs:
         finally:
             _cleanup_config(e2e_client, platform_admin, config_id)
 
+    def test_set_without_type_preserves_existing_secret(
+        self, cli_client, _invoke, e2e_client, platform_admin
+    ) -> None:
+        """An ordinary value rotation must not downgrade secret storage."""
+        key = f"cli_secret_rotate_{uuid4().hex[:8]}"
+        created = e2e_client.post(
+            "/api/config",
+            headers=platform_admin.headers,
+            json={
+                "key": key,
+                "value": "first-secret",
+                "type": "secret",
+                "description": "keep this description",
+            },
+        )
+        assert created.status_code == 201, created.text
+        config_id = str(created.json()["id"])
+
+        try:
+            result = _invoke(["--json", "set", key, "--value", "second-secret"])
+            assert result.exit_code == 0, result.output
+            updated = json.loads(result.output)
+            assert str(updated["id"]) == config_id
+            assert updated["type"] == "secret"
+            assert updated["description"] == "keep this description"
+
+            listed = e2e_client.get(
+                "/api/config", headers=platform_admin.headers
+            )
+            row = next(item for item in listed.json() if item["id"] == config_id)
+            assert row["value"] == "[SECRET]"
+        finally:
+            _cleanup_config(e2e_client, platform_admin, config_id)
+
     def test_delete_secret_requires_confirm(
         self, cli_client, _invoke, e2e_client, platform_admin
     ) -> None:

@@ -7,7 +7,7 @@ Implements Task 5b of the CLI mutation surface plan:
 * ``bifrost roles create`` → ``POST /api/roles`` (body from
   :class:`RoleCreate`)
 * ``bifrost roles update <ref>`` → ``PATCH /api/roles/{uuid}`` (body from
-  :class:`RoleUpdate`; unset flags omitted by :func:`assemble_body`)
+  :class:`RoleUpdate`; unset flags omitted by :func:`assemble_cli_body`)
 * ``bifrost roles delete <ref>`` → ``DELETE /api/roles/{uuid}``
 
 Flags are generated from the DTOs via :func:`build_cli_flags`. Since
@@ -26,7 +26,7 @@ from bifrost.client import BifrostClient
 from bifrost.dto_flags import (
     DTO_EXCLUDES,
     DTO_REF_LOOKUPS,
-    assemble_body,
+    assemble_cli_body,
     build_cli_flags,
 )
 from bifrost.refs import RefResolver
@@ -101,7 +101,7 @@ async def create_role(
     **fields: Any,
 ) -> None:
     """Create a new role."""
-    body = await assemble_body(RoleCreate, fields, resolver=resolver)
+    body = await assemble_cli_body(RoleCreate, fields, resolver=resolver)
     response = await client.post("/api/roles", json=body)
     response.raise_for_status()
     output_result(response.json(), ctx=ctx)
@@ -127,7 +127,7 @@ async def update_role(
     :class:`RefResolver`; ambiguous names fail loudly with the candidate list.
     """
     role_uuid = await resolver.resolve("role", ref)
-    body = await assemble_body(RoleUpdate, fields, resolver=resolver)
+    body = await assemble_cli_body(RoleUpdate, fields, resolver=resolver)
     response = await client.patch(f"/api/roles/{role_uuid}", json=body)
     response.raise_for_status()
     output_result(response.json(), ctx=ctx)

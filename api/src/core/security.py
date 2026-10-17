@@ -289,6 +289,7 @@ def create_embed_access_token(
     embed_kind: Literal["app", "form"],
     grant: Literal["hmac", "public"],
     resource_id: str,
+    resource_slug: str | None = None,
     org_id: str | None,
     display_name: str | None = None,
     verified_context: dict[str, str] | None = None,
@@ -313,6 +314,8 @@ def create_embed_access_token(
         "roles": ["EmbedUser"],
     }
     data[f"{embed_kind}_id"] = resource_id
+    if resource_slug is not None:
+        data[f"{embed_kind}_slug"] = resource_slug
     if display_name is not None:
         # Embed identities flow into Execution.executed_by_name (varchar(255)).
         data["name"] = display_name[:EMBED_DISPLAY_NAME_MAX_LENGTH]

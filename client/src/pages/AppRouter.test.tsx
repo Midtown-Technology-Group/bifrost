@@ -58,6 +58,19 @@ function renderRoute(preview = false) {
 		{ initialEntries: ["/apps/sample"] },
 	);
 }
+
+function renderEmbedRoute(path = "/embedded/apps/hmac/sample/reports") {
+	state.embed = true;
+	return renderWithProviders(
+		<Routes>
+			<Route
+				path="/embedded/apps/hmac/:applicationId/*"
+				element={<AppRouter />}
+			/>
+		</Routes>,
+		{ initialEntries: [path] },
+	);
+}
 it("retries unavailable app metadata without mounting a broken app", async () => {
 	state.query.mockReturnValue({
 		error: new Error("failed"),
@@ -112,13 +125,20 @@ it("leaves standalone apps full-page", () => {
 		screen.queryByRole("region", { name: "App chrome" }),
 	).not.toBeInTheDocument();
 });
+it("passes the dedicated embed base path to app runtimes", () => {
+	renderEmbedRoute();
+	expect(state.shell).toHaveBeenCalledWith(
+		expect.objectContaining({
+			runtimeBasePath: "/embedded/apps/hmac/sample",
+		}),
+	);
+});
 it("does not offer host navigation to an embedded user in an unavailable app", () => {
-	state.embed = true;
 	state.query.mockReturnValue({
 		error: new Error("failed"),
 		refetch: state.refetch,
 	});
-	renderRoute();
+	renderEmbedRoute();
 	expect(
 		screen.getByRole("button", { name: "Try again" }),
 	).toBeInTheDocument();

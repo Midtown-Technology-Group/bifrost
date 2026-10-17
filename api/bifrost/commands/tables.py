@@ -7,7 +7,7 @@ Implements Task 5i of the CLI mutation surface plan:
 * ``bifrost tables create`` → ``POST /api/tables`` (body from
   :class:`TableCreate`)
 * ``bifrost tables update <ref>`` → ``PATCH /api/tables/{uuid}`` (body from
-  :class:`TableUpdate`; unset flags omitted by :func:`assemble_body`)
+  :class:`TableUpdate`; unset flags omitted by :func:`assemble_cli_body`)
 * ``bifrost tables delete <ref>`` → ``DELETE /api/tables/{uuid}``
 
 ``--schema`` and ``--policies`` accept either a JSON literal or a
@@ -35,7 +35,7 @@ from bifrost.client import BifrostClient
 from bifrost.dto_flags import (
     DTO_EXCLUDES,
     DTO_REF_LOOKUPS,
-    assemble_body,
+    assemble_cli_body,
     build_cli_flags,
 )
 from bifrost.org_target import org_option, resolve_org_target
@@ -122,7 +122,7 @@ async def create_table(
     table to the caller's org, ``--global`` makes it global, ``--org
     <id|name>`` scopes it to that org.
     """
-    body = await assemble_body(TableCreate, fields, resolver=resolver)
+    body = await assemble_cli_body(TableCreate, fields, resolver=resolver)
     target = await resolve_org_target(org, is_global, resolver)
     if target.is_set:
         body["organization_id"] = target.organization_id
@@ -164,7 +164,7 @@ async def update_table(
     current_resp.raise_for_status()
     current_name = current_resp.json().get("name")
 
-    body = await assemble_body(TableUpdate, fields, resolver=resolver)
+    body = await assemble_cli_body(TableUpdate, fields, resolver=resolver)
 
     new_name = body.get("name")
     if new_name is not None and current_name is not None and new_name != current_name:

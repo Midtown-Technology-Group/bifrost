@@ -114,6 +114,7 @@ def test_configs_omit_is_home(monkeypatch):
     assert res.exit_code == 0
     _, body, _ = sent["post"]
     assert "organization_id" not in body
+    assert "type" not in body
 
 
 def test_configs_global_via_flag(monkeypatch):
@@ -156,13 +157,27 @@ def test_configs_organization_synonym(monkeypatch):
 
 
 def test_configs_set_omit_is_home(monkeypatch):
-    """`set` upsert: omit -> HOME (no organization_id on the POST body)."""
+    """`set` omits scope and type so the server preserves an existing row."""
     from bifrost.commands.configs import configs_group
 
     sent, res = _run(monkeypatch, configs_group, ["set", "K", "--value", "v"])
     assert res.exit_code == 0
     _, body, _ = sent["post"]
     assert "organization_id" not in body
+    assert "type" not in body
+
+
+def test_configs_set_sends_explicit_type(monkeypatch):
+    from bifrost.commands.configs import configs_group
+
+    sent, res = _run(
+        monkeypatch,
+        configs_group,
+        ["set", "K", "--value", "v", "--type", "secret"],
+    )
+    assert res.exit_code == 0
+    _, body, _ = sent["post"]
+    assert body["type"] == "secret"
 
 
 def test_configs_set_global(monkeypatch):

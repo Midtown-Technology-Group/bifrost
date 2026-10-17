@@ -43,7 +43,10 @@ class SetConfigRequest(BaseModel):
     """Request model for setting config"""
     key: str = Field(..., pattern=r"^[a-zA-Z0-9_]+$")
     value: str = Field(..., description="Config value. For SECRET type, this will be encrypted before storage.")
-    type: ConfigType
+    type: ConfigType | None = Field(
+        default=None,
+        description="Config type. Omit on upsert to preserve an existing type; new configs default to string.",
+    )
     description: str | None = Field(default=None, description="Optional description of this config entry")
     organization_id: UUID | None = Field(default=None, description="Organization ID. Null for global config.")
 

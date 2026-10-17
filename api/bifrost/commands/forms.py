@@ -8,7 +8,7 @@ parity follow-up:
 * ``bifrost forms create`` → ``POST /api/forms`` (body from
   :class:`FormCreate`)
 * ``bifrost forms update <ref>`` → ``PATCH /api/forms/{uuid}`` (body from
-  :class:`FormUpdate`; unset flags omitted by :func:`assemble_body`)
+  :class:`FormUpdate`; unset flags omitted by :func:`assemble_cli_body`)
 * ``bifrost forms delete <ref>`` → ``DELETE /api/forms/{uuid}``
 
 Ref-lookup fields surface as user-friendly flags:
@@ -31,7 +31,7 @@ from bifrost.client import BifrostClient
 from bifrost.dto_flags import (
     DTO_EXCLUDES,
     DTO_REF_LOOKUPS,
-    assemble_body,
+    assemble_cli_body,
     build_cli_flags,
 )
 from bifrost.org_target import org_option, resolve_org_target
@@ -116,7 +116,7 @@ async def create_form(
     form to the caller's org, ``--global`` makes it global, ``--org
     <id|name>`` scopes it to that org.
     """
-    body = await assemble_body(FormCreate, fields, resolver=resolver)
+    body = await assemble_cli_body(FormCreate, fields, resolver=resolver)
     target = await resolve_org_target(org, is_global, resolver)
     if target.is_set:
         body["organization_id"] = target.organization_id
@@ -153,7 +153,7 @@ async def update_form(
     unchanged, since omitting org sends no ``organization_id``).
     """
     form_uuid = await resolver.resolve("form", ref)
-    body = await assemble_body(FormUpdate, fields, resolver=resolver)
+    body = await assemble_cli_body(FormUpdate, fields, resolver=resolver)
     target = await resolve_org_target(org, is_global, resolver)
     if target.is_set:
         body["organization_id"] = target.organization_id

@@ -348,6 +348,58 @@ class TestConfigScoping:
         # Cleanup
         _delete_config(e2e_client, platform_admin.headers, response.json()["id"])
 
+    def test_upsert_preserves_secret_metadata_and_same_key_other_org(
+        self, e2e_client, platform_admin, org1, org2
+    ):
+        """An omitted type/description preserves only the targeted org row."""
+        key = "e2e_scoped_secret_upsert"
+        created = []
+        try:
+            for org, description in ((org1, "org one"), (org2, "org two")):
+                response = e2e_client.post(
+                    "/api/config",
+                    headers=platform_admin.headers,
+                    json={
+                        "key": key,
+                        "value": f"secret-{org['id']}",
+                        "type": "secret",
+                        "description": description,
+                        "organization_id": org["id"],
+                    },
+                )
+                assert response.status_code == 201, response.text
+                created.append(response.json())
+
+            updated = e2e_client.post(
+                "/api/config",
+                headers=platform_admin.headers,
+                json={
+                    "key": key,
+                    "value": "replacement-secret",
+                    "organization_id": org1["id"],
+                },
+            )
+            assert updated.status_code == 201, updated.text
+            payload = updated.json()
+            assert payload["id"] == created[0]["id"]
+            assert payload["type"] == "secret"
+            assert payload["description"] == "org one"
+
+            org2_list = e2e_client.get(
+                "/api/config",
+                params={"scope": org2["id"]},
+                headers=platform_admin.headers,
+            )
+            assert org2_list.status_code == 200, org2_list.text
+            untouched = next(row for row in org2_list.json() if row["key"] == key)
+            assert untouched["id"] == created[1]["id"]
+            assert untouched["type"] == "secret"
+            assert untouched["description"] == "org two"
+            assert untouched["value"] == "[SECRET]"
+        finally:
+            for config in created:
+                _delete_config(e2e_client, platform_admin.headers, config["id"])
+
 
 @pytest.mark.e2e
 class TestConfigScopeFiltering:

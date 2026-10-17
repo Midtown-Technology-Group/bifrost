@@ -24,7 +24,7 @@ from bifrost.client import BifrostClient
 from bifrost.dto_flags import (
     DTO_EXCLUDES,
     DTO_REF_LOOKUPS,
-    assemble_body,
+    assemble_cli_body,
     build_cli_flags,
 )
 from bifrost.org_target import org_option, resolve_org_target
@@ -153,7 +153,7 @@ async def create_policy_rule(
 
     Org targeting follows the unified ``--org`` standard.
     """
-    body = await assemble_body(PolicyRuleCreate, fields, resolver=resolver)
+    body = await assemble_cli_body(PolicyRuleCreate, fields, resolver=resolver)
     target = await resolve_org_target(org, is_global, resolver)
     if target.is_set:
         body["organization_id"] = target.organization_id
@@ -189,7 +189,7 @@ async def update_policy_rule(
     ``DOMAIN`` is 'file' or 'table'. ``NAME`` is the rule's name.
     Unset flags are omitted; the server preserves existing values.
     """
-    body = await assemble_body(PolicyRuleUpdate, fields, resolver=resolver)
+    body = await assemble_cli_body(PolicyRuleUpdate, fields, resolver=resolver)
     params: dict[str, str] = {}
     if scope is not None:
         params["organization_id"] = scope

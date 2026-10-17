@@ -258,23 +258,28 @@ def load_dict_value(raw: str | None) -> dict[str, Any] | None:
     """
     if raw is None:
         return None
+    try:
+        if raw.startswith("@"):
+            path = Path(raw[1:])
+            text = path.read_text(encoding="utf-8")
+            # YAML is a JSON superset — load YAML for both ``.yaml`` and ``.json``.
+            loaded = yaml.safe_load(text)
+        else:
+            loaded = json.loads(raw)
+    except (OSError, UnicodeError, json.JSONDecodeError, yaml.YAMLError) as exc:
+        raise click.BadParameter(f"could not load object value: {exc}") from exc
     if raw.startswith("@"):
-        path = Path(raw[1:])
-        text = path.read_text(encoding="utf-8")
-        # YAML is a JSON superset — load YAML for both ``.yaml`` and ``.json``.
-        loaded = yaml.safe_load(text)
         if not isinstance(loaded, dict):
             raise click.BadParameter(
                 f"file {path} must contain a JSON/YAML object, got "
                 f"{type(loaded).__name__}"
             )
         return loaded
-    parsed = json.loads(raw)
-    if not isinstance(parsed, dict):
+    if not isinstance(loaded, dict):
         raise click.BadParameter(
-            f"value must be a JSON object, got {type(parsed).__name__}"
+            f"value must be a JSON object, got {type(loaded).__name__}"
         )
-    return parsed
+    return loaded
 
 
 # ---------------------------------------------------------------------------
@@ -474,8 +479,9 @@ async def assemble_body(
     *,
     resolver: RefResolver,
     field_aliases: dict[str, str] | None = None,
+    allow_file_references: bool = False,
 ) -> dict[str, Any]:
-    """Build the REST request payload from parsed CLI / MCP arguments.
+    """Build a REST payload without granting server-side filesystem access.
 
     - Drops keys whose value is ``None`` or an empty tuple (unset flags).
     - Resolves ref-lookup fields via ``resolver`` (UUIDs pass straight
@@ -531,6 +537,8 @@ async def assemble_body(
             continue
 
         if _is_dict(annotation) and isinstance(value, str):
+            if value.startswith("@") and not allow_file_references:
+                raise click.BadParameter("@file references are only available in the local CLI")
             body[name] = load_dict_value(value)
             continue
 
@@ -547,12 +555,30 @@ async def assemble_body(
     return body
 
 
+async def assemble_cli_body(
+    model_cls: type,
+    parsed_args: dict[str, Any],
+    *,
+    resolver: RefResolver,
+    field_aliases: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    """Build a local CLI payload, including explicitly requested ``@file`` values."""
+    return await assemble_body(
+        model_cls,
+        parsed_args,
+        resolver=resolver,
+        field_aliases=field_aliases,
+        allow_file_references=True,
+    )
+
+
 __all__ = [
     "DTO_EXCLUDES",
     "DTO_FIELD_ALIASES",
     "DTO_REF_LOOKUPS",
     "RefKind",
     "assemble_body",
+    "assemble_cli_body",
     "build_cli_flags",
     "load_dict_value",
 ]

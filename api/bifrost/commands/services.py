@@ -6,7 +6,7 @@ out; the REST surface below is e2e-proven and platform-admin only):
 * ``bifrost services list`` → ``GET /api/services`` (``--limit``/``--offset``)
 * ``bifrost services get <ref>`` → ``GET /api/services/{uuid}``
 * ``bifrost services update <ref>`` → ``PATCH /api/services/{uuid}`` (body from
-  :class:`ServicePolicyUpdate`; unset flags omitted by :func:`assemble_body`)
+  :class:`ServicePolicyUpdate`; unset flags omitted by :func:`assemble_cli_body`)
 * ``bifrost services start|stop|restart|enable|disable <ref>`` →
   ``POST /api/services/{uuid}/{action}``
 * ``bifrost services attempts <ref>`` → ``GET /api/services/{uuid}/attempts``
@@ -40,7 +40,7 @@ from bifrost.contracts import ServicePolicyUpdate
 from bifrost.dto_flags import (
     DTO_EXCLUDES,
     DTO_REF_LOOKUPS,
-    assemble_body,
+    assemble_cli_body,
     build_cli_flags,
 )
 from bifrost.refs import RefResolver
@@ -139,7 +139,7 @@ async def update_service(
     from the payload so only the supplied fields are patched.
     """
     service_uuid = await resolver.resolve("service", ref)
-    body = await assemble_body(ServicePolicyUpdate, fields, resolver=resolver)
+    body = await assemble_cli_body(ServicePolicyUpdate, fields, resolver=resolver)
     response = await client.patch(f"/api/services/{service_uuid}", json=body)
     response.raise_for_status()
     output_result(response.json(), ctx=ctx)
