@@ -205,6 +205,23 @@ class TestWorkflowRepository:
         assert len(result) == 1
         assert result[0].endpoint_enabled is True
 
+    async def test_endpoint_lookup_requires_active_owning_solution(
+        self, repository, mock_session, mock_workflow
+    ):
+        """Managed endpoint lookup excludes inactive or missing Solution installs."""
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = mock_workflow
+        mock_session.execute.return_value = mock_result
+
+        result = await repository.get_endpoint_workflow_by_id(mock_workflow.id)
+
+        assert result is mock_workflow
+        statement = mock_session.execute.await_args.args[0]
+        sql = str(statement.compile(compile_kwargs={"literal_binds": True}))
+        assert "LEFT OUTER JOIN solutions" in sql
+        assert "workflows.solution_id IS NULL" in sql
+        assert "solutions.status = 'active'" in sql
+
     async def test_count_active(self, repository, mock_session):
         """Test counting active workflows."""
         mock_result = MagicMock()

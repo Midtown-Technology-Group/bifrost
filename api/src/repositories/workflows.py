@@ -30,7 +30,7 @@ from sqlalchemy.orm import selectinload
 
 from src.core.log_safety import log_safe
 from src.core.org_filter import OrgFilterType
-from src.models import Workflow
+from src.models import Solution, Workflow
 from src.models.orm.workflow_roles import WorkflowRole
 from src.repositories.org_scoped import OrgScopedRepository
 
@@ -586,10 +586,17 @@ class WorkflowRepository(OrgScopedRepository[Workflow]):
         """
         result = await self.session.execute(
             select(Workflow)
+            .outerjoin(Solution, Workflow.solution_id == Solution.id)
             .where(Workflow.id == workflow_id)
             .where(Workflow.endpoint_enabled.is_(True))
             .where(Workflow.is_active.is_(True))
             .where(Workflow.type != "service")
+            .where(
+                or_(
+                    Workflow.solution_id.is_(None),
+                    Solution.status == "active",
+                )
+            )
         )
         return result.scalar_one_or_none()
 
@@ -612,10 +619,17 @@ class WorkflowRepository(OrgScopedRepository[Workflow]):
         """
         result = await self.session.execute(
             select(Workflow)
+            .outerjoin(Solution, Workflow.solution_id == Solution.id)
             .where(Workflow.name == name)
             .where(Workflow.endpoint_enabled.is_(True))
             .where(Workflow.is_active.is_(True))
             .where(Workflow.type != "service")
+            .where(
+                or_(
+                    Workflow.solution_id.is_(None),
+                    Solution.status == "active",
+                )
+            )
         )
         workflows = list(result.scalars().all())
 
