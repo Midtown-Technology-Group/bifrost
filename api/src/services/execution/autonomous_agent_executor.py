@@ -1433,7 +1433,7 @@ class AutonomousAgentExecutor:
         try:
             # Brief DB session scoped to the tool call
             async with self._session_factory() as db:
-                context = MCPContext(
+                context = MCPContext.for_internal_execution(
                     user_id=(
                         str(self._caller_user_id)
                         if self._caller_user_id

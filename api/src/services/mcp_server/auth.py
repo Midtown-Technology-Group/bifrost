@@ -799,6 +799,12 @@ class BifrostAuthProvider(AuthProvider):
                 "is_external": payload.get("is_external", False),
                 "org_id": payload.get("org_id"),
                 "roles": role_names,  # Role names for MCP tool filtering
+                # Private FastMCP context evidence used for the explicit
+                # MCP-resource-token to REST-token exchange. These values are
+                # still revalidated against the signed token before exchange.
+                "mcp": True,
+                "scope": MCP_SCOPE,
+                "resource": self.resource,
             },
         )
 
