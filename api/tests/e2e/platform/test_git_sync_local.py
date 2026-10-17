@@ -3464,14 +3464,10 @@ class TestPullUpsertNaturalKeys:
         bare_repo,
         working_clone,
     ):
-        """Regression for #148: integration UUID rewrite + existing config_schema rows
-        must not collide with the FK ON UPDATE CASCADE-migrated rows.
+        """A portable UUID must not replace an existing integration identity.
 
-        Pre-fix: prefetch cache is keyed on the OLD integration_id. After the
-        upsert rewrites the integration's id, the cascade migrates the schema
-        rows to the new id, but the cache lookup at the new id returns {},
-        the loop falls through to INSERT, and hits a unique violation on
-        (integration_id, key).
+        The existing schema rows must remain attached to the local integration,
+        and the foreign manifest UUID must not acquire duplicate schema rows.
         """
         from src.models.orm.integrations import Integration, IntegrationConfigSchema
 
@@ -3517,7 +3513,7 @@ class TestPullUpsertNaturalKeys:
         sync_result = await sync_service.desktop_sync(confirm_deletes=True)
         assert sync_result.success, f"Sync failed: {sync_result.error}"
 
-        # Integration now has id_b and exactly the two schema rows under id_b.
+        # The local integration identity and its two schema rows are preserved.
         integ_rows = (await db_session.execute(
             select(Integration).where(Integration.name == "CascadeSchemaInteg")
         )).scalars().all()
@@ -3530,13 +3526,13 @@ class TestPullUpsertNaturalKeys:
             ).order_by(IntegrationConfigSchema.position)
         )).scalars().all()
         assert [c.key for c in cs_rows] == ["api_key", "region"]
-        # No orphan rows under id_a
-        orphans = (await db_session.execute(
+        # No duplicate rows are created under the foreign manifest identity.
+        foreign_rows = (await db_session.execute(
             select(IntegrationConfigSchema).where(
-                IntegrationConfigSchema.integration_id == id_a
+                IntegrationConfigSchema.integration_id == id_b
             )
         )).scalars().all()
-        assert orphans == []
+        assert foreign_rows == []
 
     async def test_integration_import_with_different_id_and_mapping(
         self,
