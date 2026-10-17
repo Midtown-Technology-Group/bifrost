@@ -13,7 +13,6 @@ from alembic.operations import Operations
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 
-
 pytestmark = pytest.mark.e2e
 
 MIGRATION_PATH = (
@@ -56,6 +55,7 @@ async def _prepare_pre_migration_schema(connection, schema: str) -> None:
             provider_name TEXT NOT NULL,
             organization_id UUID,
             integration_id UUID,
+            client_id TEXT NOT NULL,
             encrypted_client_secret BYTEA NOT NULL,
             created_at TIMESTAMPTZ NOT NULL,
             updated_at TIMESTAMPTZ NOT NULL,
@@ -143,15 +143,17 @@ async def test_populated_upgrade_preserves_credentials_and_repoints_references(
                 text("""
                     INSERT INTO oauth_providers (
                         id, provider_name, organization_id, integration_id,
-                        encrypted_client_secret, created_at, updated_at
+                        client_id, encrypted_client_secret, created_at, updated_at
                     ) VALUES
-                    (:survivor, 'shared', NULL, NULL, :secret, NOW(), NOW()),
-                    (:duplicate, 'shared', NULL, :integration, :empty, NOW(), NOW())
+                    (:survivor, 'shared', NULL, NULL, :client_id, :secret, NOW(), NOW()),
+                    (:duplicate, 'shared', NULL, :integration, :placeholder, :empty, NOW(), NOW())
                 """),
                 {
                     "survivor": survivor_id,
                     "duplicate": duplicate_id,
                     "integration": integration_id,
+                    "client_id": "configured-client",
+                    "placeholder": "__NEEDS_SETUP__",
                     "secret": b"configured-secret",
                     "empty": b"",
                 },
@@ -176,7 +178,7 @@ async def test_populated_upgrade_preserves_credentials_and_repoints_references(
                 (
                     await connection.execute(
                         text("""
-                    SELECT id, integration_id, encrypted_client_secret
+                    SELECT id, integration_id, client_id, encrypted_client_secret
                     FROM oauth_providers
                 """)
                     )
@@ -188,6 +190,7 @@ async def test_populated_upgrade_preserves_credentials_and_repoints_references(
                 {
                     "id": survivor_id,
                     "integration_id": integration_id,
+                    "client_id": "configured-client",
                     "encrypted_client_secret": b"configured-secret",
                 }
             ]
@@ -229,16 +232,17 @@ async def test_ambiguous_upgrade_rolls_back_without_deleting_providers(
                 text("""
                     INSERT INTO oauth_providers (
                         id, provider_name, organization_id, integration_id,
-                        encrypted_client_secret, created_at, updated_at
+                        client_id, encrypted_client_secret, created_at, updated_at
                     ) VALUES
-                    (:first_id, 'ambiguous', NULL, :first_integration, :empty, NOW(), NOW()),
-                    (:second_id, 'ambiguous', NULL, :second_integration, :empty, NOW(), NOW())
+                    (:first_id, 'ambiguous', NULL, :first_integration, :placeholder, :empty, NOW(), NOW()),
+                    (:second_id, 'ambiguous', NULL, :second_integration, :placeholder, :empty, NOW(), NOW())
                 """),
                 {
                     "first_id": uuid4(),
                     "second_id": uuid4(),
                     "first_integration": first_integration,
                     "second_integration": second_integration,
+                    "placeholder": "__NEEDS_SETUP__",
                     "empty": b"",
                 },
             )
@@ -246,6 +250,50 @@ async def test_ambiguous_upgrade_rolls_back_without_deleting_providers(
             savepoint = await connection.begin_nested()
             try:
                 with pytest.raises(DBAPIError, match="global OAuth provider names"):
+                    await connection.run_sync(_run_upgrade, _load_migration())
+            finally:
+                await savepoint.rollback()
+
+            assert (
+                await connection.scalar(text("SELECT count(*) FROM oauth_providers"))
+                == 2
+            )
+            assert not await _index_uses_nulls_not_distinct(connection, schema)
+        finally:
+            await transaction.rollback()
+
+
+@pytest.mark.asyncio
+async def test_multiple_configured_identities_roll_back_without_deleting_providers(
+    async_engine,
+) -> None:
+    schema = f"oauth_dedupe_configured_{uuid4().hex}"
+    async with async_engine.connect() as connection:
+        transaction = await connection.begin()
+        try:
+            await _prepare_pre_migration_schema(connection, schema)
+            await connection.execute(
+                text("""
+                    INSERT INTO oauth_providers (
+                        id, provider_name, organization_id, integration_id,
+                        client_id, encrypted_client_secret, created_at, updated_at
+                    ) VALUES
+                    (:first_id, 'configured', NULL, NULL, 'client-a', :first_secret, NOW(), NOW()),
+                    (:second_id, 'configured', NULL, NULL, 'client-b', :second_secret, NOW(), NOW())
+                """),
+                {
+                    "first_id": uuid4(),
+                    "second_id": uuid4(),
+                    "first_secret": b"secret-a",
+                    "second_secret": b"secret-b",
+                },
+            )
+
+            savepoint = await connection.begin_nested()
+            try:
+                with pytest.raises(
+                    DBAPIError, match="multiple configured identities"
+                ):
                     await connection.run_sync(_run_upgrade, _load_migration())
             finally:
                 await savepoint.rollback()

@@ -5,10 +5,12 @@ Tests CRUD operations for integrations and integration mappings.
 Tests OAuth configuration and authorization endpoints.
 """
 
+from uuid import uuid4
+
 import pytest
 import pytest_asyncio
-from uuid import uuid4
 from src.models.orm import OAuthProvider
+
 from tests.fixtures.auth import auth_headers, create_test_jwt
 
 
@@ -453,8 +455,9 @@ class TestIntegrationOAuth:
         # Create OAuth provider directly in database
         from uuid import UUID
         integration_id = UUID(integration["id"])
+        provider_name = f"test_provider_{uuid4().hex[:8]}"
         oauth_provider = OAuthProvider(
-            provider_name="test_provider",
+            provider_name=provider_name,
             display_name="Test OAuth Provider",
             oauth_flow_type="authorization_code",
             client_id="test-client-id",
@@ -462,7 +465,7 @@ class TestIntegrationOAuth:
             authorization_url="https://provider.example.com/authorize",
             token_url="https://provider.example.com/token",
             scopes=["read", "write"],
-            redirect_uri="/api/oauth/callback/test_provider",
+            redirect_uri=f"/api/oauth/callback/{provider_name}",
             integration_id=integration_id,
         )
         db_session.add(oauth_provider)

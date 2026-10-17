@@ -42,6 +42,24 @@ def upgrade() -> None:
                     RAISE EXCEPTION
                         'global OAuth provider names are attached to multiple integrations; resolve before upgrade';
                 END IF;
+
+                IF EXISTS (
+                    SELECT 1
+                    FROM oauth_providers provider
+                    WHERE provider.organization_id IS NULL
+                    GROUP BY provider.provider_name
+                    HAVING COUNT(*) FILTER (
+                        WHERE
+                            OCTET_LENGTH(provider.encrypted_client_secret) > 0
+                            OR (
+                                NULLIF(BTRIM(provider.client_id), '') IS NOT NULL
+                                AND provider.client_id <> '__NEEDS_SETUP__'
+                            )
+                    ) > 1
+                ) THEN
+                    RAISE EXCEPTION
+                        'global OAuth provider name has multiple configured identities; resolve before upgrade';
+                END IF;
             END
             $$;
             """
@@ -65,11 +83,15 @@ def upgrade() -> None:
                         ORDER BY
                             (
                                 OCTET_LENGTH(provider.encrypted_client_secret) > 0
-                                OR EXISTS (
-                                    SELECT 1
-                                    FROM oauth_tokens token
-                                    WHERE token.provider_id = provider.id
+                                OR (
+                                    NULLIF(BTRIM(provider.client_id), '') IS NOT NULL
+                                    AND provider.client_id <> '__NEEDS_SETUP__'
                                 )
+                            ) DESC,
+                            EXISTS (
+                                SELECT 1
+                                FROM oauth_tokens token
+                                WHERE token.provider_id = provider.id
                             ) DESC,
                             (provider.integration_id IS NOT NULL) DESC,
                             provider.updated_at DESC,

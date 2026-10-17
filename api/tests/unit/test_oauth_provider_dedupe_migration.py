@@ -47,6 +47,12 @@ def test_upgrade_preserves_references_and_enforces_null_aware_key(monkeypatch):
 
     sql = "\n".join(statements)
     assert "COUNT(DISTINCT integration_id)" in sql
+    assert "multiple configured identities" in sql
+    assert "provider.client_id <> '__NEEDS_SETUP__'" in sql
+    ranking_sql = next(
+        statement for statement in statements if "CREATE TEMPORARY TABLE" in statement
+    )
+    assert ranking_sql.index("OCTET_LENGTH") < ranking_sql.index("EXISTS")
     assert "UPDATE oauth_tokens" in sql
     assert "UPDATE mcp_servers" in sql
     assert "DELETE FROM oauth_tokens" not in sql
