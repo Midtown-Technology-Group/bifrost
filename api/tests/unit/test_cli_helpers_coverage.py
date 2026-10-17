@@ -10,13 +10,9 @@ import pytest
 from bifrost import cli
 
 
-def test_hash_helpers_normalize_text_but_not_binary_bytes():
-    assert cli._normalize_line_endings(b"a\r\nb\r\n") == b"a\nb\n"
-    binary = b"a\x00\r\nb"
-    assert cli._normalize_line_endings(binary) == binary
-
+def test_hash_helpers_preserve_exact_bytes():
     assert cli._etag_md5(b"abc") == "900150983cd24fb0d6963f7d28e17f72"
-    assert cli._hash_for_cache(b"a\r\nb\r\n") == cli._etag_md5(b"a\nb\n")
+    assert cli._hash_for_cache(b"a\r\nb\r\n") == cli._etag_md5(b"a\r\nb\r\n")
 
 
 def test_path_and_tty_helpers(monkeypatch, tmp_path):
@@ -89,7 +85,7 @@ def test_repo_prefix_and_server_path_helpers(monkeypatch, tmp_path):
             cli._safe_server_rel_path(unsafe, "apps/demo")
 
 
-def test_collect_push_files_applies_prefix_ignore_and_line_normalization(tmp_path):
+def test_collect_push_files_applies_prefix_ignore_and_preserves_bytes(tmp_path):
     root = tmp_path / "repo"
     root.mkdir()
     (root / ".git").mkdir()
@@ -102,7 +98,7 @@ def test_collect_push_files_applies_prefix_ignore_and_line_normalization(tmp_pat
 
     assert skipped == 0
     assert files == {
-        "apps/demo/main.py": base64.b64encode(b"print('ok')\n").decode("ascii")
+        "apps/demo/main.py": base64.b64encode(b"print('ok')\r\n").decode("ascii")
     }
 
     one_file, skipped = cli._collect_push_files(
@@ -112,7 +108,7 @@ def test_collect_push_files_applies_prefix_ignore_and_line_normalization(tmp_pat
     )
     assert skipped == 0
     assert one_file == {
-        "apps/demo/main.py": base64.b64encode(b"print('ok')\n").decode("ascii")
+        "apps/demo/main.py": base64.b64encode(b"print('ok')\r\n").decode("ascii")
     }
 
 
