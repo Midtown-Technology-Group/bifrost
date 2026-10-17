@@ -480,10 +480,18 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Install action pin scanner dependency
+        run: python -m pip install --disable-pip-version-check --no-deps --require-hashes -r .github/requirements/action-pin-scanner.lock
+
       - name: Check GitHub Action pins
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: python3 api/scripts/check_github_action_pins.py --verify-versions
+        run: python api/scripts/check_github_action_pins.py --verify-versions
 
       - name: Check MTG CI boundaries
         run: python3 api/scripts/check_mtg_ci_boundaries.py
@@ -511,12 +519,6 @@ jobs:
           python3 scripts/ci/test_occupancy_report.py
           python3 scripts/ci/test_enforce_closure.py
           python3 scripts/ci/enforce_closure.py --mode report
-
-      - name: Set up Python
-        if: needs.affected-test-plan.outputs.api_quality_mode != 'skip'
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          python-version: "3.12"
 
       # Create .venv at the repo root so pyrightconfig.json's
       # `venvPath: ..` + `venv: .venv` resolves the same way locally and in CI.

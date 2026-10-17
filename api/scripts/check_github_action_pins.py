@@ -8,13 +8,15 @@ import json
 import os
 import re
 import sys
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 
+import yaml
+from yaml.nodes import MappingNode, Node, ScalarNode, SequenceNode
 
 WORKFLOW_SUFFIXES = {".yml", ".yaml"}
 VERSION_COMMENT_RE = re.compile(r"#\s*(?P<version>v[0-9][^\s#]*)\s*$")
@@ -31,32 +33,62 @@ class Violation:
         return f"{self.path}:{self.line_number}: {self.reason}: {self.action}"
 
 
-def _strip_inline_comment(value: str) -> str:
-    quote: str | None = None
-    for index, char in enumerate(value):
-        if char in {"'", '"'}:
-            if quote == char:
-                quote = None
-            elif quote is None:
-                quote = char
-        elif char == "#" and quote is None:
-            return value[:index].strip()
-    return value.strip()
+@dataclass(frozen=True)
+class ActionReference:
+    path: Path
+    line_number: int
+    action: str
+    source_line: str
 
 
-def _strip_optional_quotes(value: str) -> str:
-    if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
-        return value[1:-1].strip()
-    return value
+def _action_references(path: Path) -> tuple[list[ActionReference], Violation | None]:
+    source = path.read_text(encoding="utf-8")
+    source_lines = source.splitlines()
+    references: list[ActionReference] = []
 
+    try:
+        documents = list(yaml.compose_all(source, Loader=yaml.SafeLoader))
+    except yaml.YAMLError as exc:
+        mark = getattr(exc, "problem_mark", None)
+        line_number = mark.line + 1 if mark is not None else 1
+        return references, Violation(
+            path,
+            line_number,
+            "<invalid YAML>",
+            "workflow could not be parsed as YAML",
+        )
 
-def _parse_uses_value(line: str) -> str | None:
-    stripped = line.strip()
-    if stripped.startswith("-"):
-        stripped = stripped[1:].lstrip()
-    if not stripped.startswith("uses:"):
-        return None
-    return stripped.removeprefix("uses:").strip()
+    pending: list[Node] = [document for document in documents if document is not None]
+    visited: set[int] = set()
+    while pending:
+        node = pending.pop()
+        if id(node) in visited:
+            continue
+        visited.add(id(node))
+
+        if isinstance(node, MappingNode):
+            for key_node, value_node in node.value:
+                if isinstance(key_node, ScalarNode) and key_node.value == "uses":
+                    line_number = value_node.start_mark.line + 1
+                    if isinstance(value_node, ScalarNode):
+                        source_line = (
+                            source_lines[line_number - 1]
+                            if line_number <= len(source_lines)
+                            else ""
+                        )
+                        references.append(
+                            ActionReference(
+                                path,
+                                line_number,
+                                value_node.value.strip(),
+                                source_line,
+                            )
+                        )
+                pending.extend((key_node, value_node))
+        elif isinstance(node, SequenceNode):
+            pending.extend(node.value)
+
+    return sorted(references, key=lambda reference: reference.line_number), None
 
 
 def _is_full_sha(ref: str) -> bool:
@@ -70,17 +102,23 @@ def _is_local_or_non_github_action(action: str) -> bool:
 def find_unpinned_actions(paths: list[Path]) -> list[Violation]:
     violations: list[Violation] = []
     for path in _iter_workflow_files(paths):
-        for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
-            raw_action = _parse_uses_value(line)
-            if raw_action is None:
-                continue
-
-            action = _strip_optional_quotes(_strip_inline_comment(raw_action))
+        references, parse_violation = _action_references(path)
+        if parse_violation is not None:
+            violations.append(parse_violation)
+        for reference in references:
+            action = reference.action
             if _is_local_or_non_github_action(action):
                 continue
 
             if "@" not in action:
-                violations.append(Violation(path, line_number, action, "external action is not pinned"))
+                violations.append(
+                    Violation(
+                        path,
+                        reference.line_number,
+                        action,
+                        "external action is not pinned",
+                    )
+                )
                 continue
 
             ref = action.rsplit("@", 1)[1]
@@ -88,7 +126,7 @@ def find_unpinned_actions(paths: list[Path]) -> list[Violation]:
                 violations.append(
                     Violation(
                         path,
-                        line_number,
+                        reference.line_number,
                         action,
                         "external action must use a full 40-character commit SHA",
                     )
@@ -105,14 +143,11 @@ def find_mismatched_action_versions(
     violations: list[Violation] = []
     resolved: dict[tuple[str, str], str] = {}
     for path in _iter_workflow_files(paths):
-        for line_number, line in enumerate(
-            path.read_text(encoding="utf-8").splitlines(), start=1
-        ):
-            raw_action = _parse_uses_value(line)
-            if raw_action is None:
-                continue
-
-            action = _strip_optional_quotes(_strip_inline_comment(raw_action))
+        references, parse_violation = _action_references(path)
+        if parse_violation is not None:
+            violations.append(parse_violation)
+        for reference in references:
+            action = reference.action
             if _is_local_or_non_github_action(action) or "@" not in action:
                 continue
 
@@ -120,12 +155,12 @@ def find_mismatched_action_versions(
             if not _is_full_sha(pinned_sha):
                 continue
 
-            version_match = VERSION_COMMENT_RE.search(line)
+            version_match = VERSION_COMMENT_RE.search(reference.source_line)
             if not version_match:
                 violations.append(
                     Violation(
                         path,
-                        line_number,
+                        reference.line_number,
                         action,
                         "SHA-pinned external action needs a readable version comment",
                     )
@@ -146,7 +181,7 @@ def find_mismatched_action_versions(
                 violations.append(
                     Violation(
                         path,
-                        line_number,
+                        reference.line_number,
                         action,
                         f"could not resolve {repository}@{version}: {exc}",
                     )
@@ -157,7 +192,7 @@ def find_mismatched_action_versions(
                 violations.append(
                     Violation(
                         path,
-                        line_number,
+                        reference.line_number,
                         action,
                         (
                             f"{repository}@{version} resolves to {resolved_sha}, "
@@ -232,6 +267,7 @@ def main(argv: list[str] | None = None) -> int:
                 resolve_github_action_version,
             )
         )
+    violations = list(dict.fromkeys(violations))
     if not violations:
         return 0
 

@@ -28,6 +28,44 @@ def test_flags_external_actions_without_full_sha(tmp_path: Path) -> None:
     ]
 
 
+def test_flags_yaml_uses_keys_with_alternate_spacing(tmp_path: Path) -> None:
+    workflow = tmp_path / "workflow.yml"
+    workflow.write_text(
+        'steps:\n  - uses : actions/checkout@v6\n  - "uses" : owner/action@main\n',
+        encoding="utf-8",
+    )
+
+    violations = check_github_action_pins.find_unpinned_actions([workflow])
+
+    assert [(violation.line_number, violation.action) for violation in violations] == [
+        (2, "actions/checkout@v6"),
+        (3, "owner/action@main"),
+    ]
+
+
+def test_ignores_uses_text_inside_run_block(tmp_path: Path) -> None:
+    workflow = tmp_path / "workflow.yml"
+    workflow.write_text(
+        "steps:\n  - run: |\n      printf '%s\\n' 'uses: owner/action@main'\n",
+        encoding="utf-8",
+    )
+
+    violations = check_github_action_pins.find_unpinned_actions([workflow])
+
+    assert violations == []
+
+
+def test_flags_invalid_yaml_instead_of_skipping_scan(tmp_path: Path) -> None:
+    workflow = tmp_path / "workflow.yml"
+    workflow.write_text("steps:\n  - uses: [\n", encoding="utf-8")
+
+    violations = check_github_action_pins.find_unpinned_actions([workflow])
+
+    assert len(violations) == 1
+    assert violations[0].action == "<invalid YAML>"
+    assert violations[0].reason == "workflow could not be parsed as YAML"
+
+
 def test_allows_sha_pinned_local_and_docker_actions(tmp_path: Path) -> None:
     workflow = tmp_path / "workflow.yml"
     workflow.write_text(
