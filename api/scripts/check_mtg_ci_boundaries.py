@@ -88,6 +88,13 @@ CI_IMAGE_CONSUMER_JOBS = (
     "test-client-e2e",
 )
 CACHE_PULL_STEP = "Pull CI image caches before checkout"
+CI_IMAGE_PUBLISH_JOB = "publish-ci-test-images"
+CI_IMAGE_BUILD_STEPS = (
+    "Build API CI test image without registry credentials",
+    "Build client CI test image without registry credentials",
+    "Build Playwright CI test image without registry credentials",
+)
+CI_IMAGE_PUBLISH_STEP = "Publish fixed CI test image references"
 
 
 def _repo_root() -> Path:
@@ -223,6 +230,98 @@ def _check_image_consumer_job(
     return failures
 
 
+def _check_image_publisher_job(
+    *, workflow_path: Path, block: list[str]
+) -> list[str]:
+    """Keep package-write credentials out of PR-controlled image builds."""
+    location = f"{workflow_path}:{CI_IMAGE_PUBLISH_JOB}"
+    checkout = _named_step(block, "Checkout repository")
+    builds = [_named_step(block, name) for name in CI_IMAGE_BUILD_STEPS]
+    publish = _named_step(block, CI_IMAGE_PUBLISH_STEP)
+    if checkout is None or any(build is None for build in builds) or publish is None:
+        return [
+            f"{location}: image publication requires credential-free checkout and "
+            "build steps followed by one fixed-reference publish step."
+        ]
+
+    checkout_index, checkout_step = checkout
+    typed_builds = [build for build in builds if build is not None]
+    publish_index, publish_step = publish
+    failures: list[str] = []
+    if not (
+        checkout_index
+        < typed_builds[0][0]
+        < typed_builds[1][0]
+        < typed_builds[2][0]
+        < publish_index
+    ):
+        failures.append(
+            f"{location}: checkout and every untrusted image build must finish before "
+            "registry authentication and publication."
+        )
+
+    if not any(line.strip() == "persist-credentials: false" for line in checkout_step):
+        failures.append(f"{location}: checkout must set persist-credentials: false.")
+
+    for name, (_, build_step) in zip(CI_IMAGE_BUILD_STEPS, typed_builds, strict=True):
+        build_text = "\n".join(build_step)
+        if "load: true" not in build_text or "push: false" not in build_text:
+            failures.append(
+                f"{location}:{name}: untrusted image builds must load locally and must not push."
+            )
+        if "GHCR_TOKEN" in build_text or "GITHUB_TOKEN" in build_text:
+            failures.append(
+                f"{location}:{name}: package credentials must not reach untrusted image builds."
+            )
+
+    publish_text = "\n".join(publish_step)
+    if not any(
+        line.strip()
+        == "GHCR_TOKEN: ${{ secrets.GHCR_TOKEN || secrets.GITHUB_TOKEN }}"
+        for line in publish_step
+    ):
+        failures.append(
+            f"{location}: only the final fixed-reference publish step may receive the package token."
+        )
+    required_commands = ("docker logout", "docker login", "docker push")
+    if any(command not in publish_text for command in required_commands):
+        failures.append(
+            f"{location}: the fixed-reference publish step must login, push, and logout inline."
+        )
+    elif not (
+        publish_text.index("docker logout")
+        < publish_text.index("docker login")
+        < publish_text.index("docker push")
+    ):
+        failures.append(
+            f"{location}: logout cleanup must be armed before registry login and pushes."
+        )
+    for required in (
+        '[[ "$GITHUB_SHA" =~ ^[0-9a-f]{40}$ ]]',
+        'for image in "$CI_API_TEST_IMAGE" "$CI_CLIENT_TEST_IMAGE" "$CI_PLAYWRIGHT_TEST_IMAGE"',
+        'remote_ref="$REGISTRY/$image:sha-$GITHUB_SHA"',
+    ):
+        if required not in publish_text:
+            failures.append(
+                f"{location}: the publish step must validate and use fixed exact-SHA image refs."
+            )
+            break
+
+    if any(
+        line.strip().startswith("- name:") for line in block[publish_index + 1 :]
+    ):
+        failures.append(
+            f"{location}: no step may run after the package-authenticated publish step."
+        )
+    for offset, line in enumerate(block):
+        if ("GHCR_TOKEN" in line or "secrets.GITHUB_TOKEN" in line) and offset < publish_index:
+            failures.append(
+                f"{location}: line {offset + 1} exposes a package credential before "
+                "the fixed-reference publish step."
+            )
+    return failures
+
+
 def check_ci_image_token_boundaries(ci_path: Path, sonar_path: Path) -> list[str]:
     """Keep package credentials out of checked-out pull-request code."""
     failures: list[str] = []
@@ -258,6 +357,22 @@ def check_ci_image_token_boundaries(ci_path: Path, sonar_path: Path) -> list[str
                     block=parsed[1],
                     expected_token=expected_token,
                     checkout_name=checkout_name,
+                )
+            )
+    if ci_path.exists():
+        publisher = _job_block(
+            ci_path.read_text(encoding="utf-8").splitlines(),
+            CI_IMAGE_PUBLISH_JOB,
+        )
+        if publisher is None:
+            failures.append(
+                f"{ci_path}:{CI_IMAGE_PUBLISH_JOB}: required image publisher job is missing"
+            )
+        else:
+            failures.extend(
+                _check_image_publisher_job(
+                    workflow_path=ci_path,
+                    block=publisher[1],
                 )
             )
     return failures

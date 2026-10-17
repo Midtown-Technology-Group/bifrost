@@ -90,6 +90,30 @@ def test_ci_test_image_consumers_use_the_exact_published_tag() -> None:
         "github.event.pull_request.head.repo.full_name == github.repository"
         in jobs["publish-ci-test-images"]["if"]
     )
+    publish_steps = jobs["publish-ci-test-images"]["steps"]
+    checkout_index, publisher_checkout = next(
+        (index, step)
+        for index, step in enumerate(publish_steps)
+        if step["name"] == "Checkout repository"
+    )
+    build_indexes = [
+        index
+        for index, step in enumerate(publish_steps)
+        if step["name"].startswith("Build ")
+        and step["name"].endswith(" without registry credentials")
+    ]
+    publish_index, fixed_publish = next(
+        (index, step)
+        for index, step in enumerate(publish_steps)
+        if step["name"] == "Publish fixed CI test image references"
+    )
+    assert publisher_checkout["with"]["persist-credentials"] is False
+    assert checkout_index < min(build_indexes) < max(build_indexes) < publish_index
+    assert fixed_publish["env"]["GHCR_TOKEN"] == (
+        "${{ secrets.GHCR_TOKEN || secrets.GITHUB_TOKEN }}"
+    )
+    assert "docker logout" in fixed_publish["run"]
+    assert "remote_ref=\"$REGISTRY/$image:sha-$GITHUB_SHA\"" in fixed_publish["run"]
     for job_name in image_jobs:
         assert set(jobs[job_name]["needs"]) == {
             "affected-test-plan",
@@ -141,15 +165,27 @@ def test_feature_branch_dispatch_cannot_overwrite_main_ci_test_images() -> None:
     ci = _load_yaml(".github/workflows/ci.yml")
     publish_steps = ci["jobs"]["publish-ci-test-images"]["steps"]
     image_steps = [
-        step for step in publish_steps if step["name"].startswith("Build and push")
+        step
+        for step in publish_steps
+        if step["name"].startswith("Build ")
+        and step["name"].endswith(" without registry credentials")
     ]
 
     assert len(image_steps) == 3
     for step in image_steps:
         tags = step["with"]["tags"]
-        assert "github.ref == 'refs/heads/main'" in tags
-        assert ":main" in tags
+        assert step["with"]["load"] is True
+        assert step["with"]["push"] is False
         assert ":sha-${{ github.sha }}" in tags
+        assert "REGISTRY" not in tags
+
+    fixed_publish = next(
+        step
+        for step in publish_steps
+        if step["name"] == "Publish fixed CI test image references"
+    )
+    assert 'if [ "$GITHUB_REF" = "refs/heads/main" ]' in fixed_publish["run"]
+    assert 'main_ref="$REGISTRY/$image:main"' in fixed_publish["run"]
 
 
 def test_playwright_suite_has_no_retries_or_skipped_tests() -> None:

@@ -11,6 +11,14 @@ from scripts.check_mtg_ci_boundaries import (
 )
 
 
+def _mutate_ci_image_publisher(original: str, old: str, new: str) -> str:
+    start = original.index("  publish-ci-test-images:\n")
+    end = original.index("\n  lint:\n", start)
+    publisher = original[start:end]
+    assert old in publisher
+    return original[:start] + publisher.replace(old, new, 1) + original[end:]
+
+
 def test_resolve_workflow_path_rejects_paths_outside_repo():
     outside = _repo_root().parent / "outside.yml"
     with pytest.raises(ValueError, match="must stay within"):
@@ -85,6 +93,98 @@ def test_ci_image_checkout_credentials_must_not_persist(tmp_path: Path):
     )
 
     assert any("persist-credentials: false" in item for item in violations)
+
+
+def test_ci_image_publisher_checkout_credentials_must_not_persist(tmp_path: Path):
+    root = _repo_root()
+    original = (root / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    mutated = tmp_path / "ci.yml"
+    mutated.write_text(
+        _mutate_ci_image_publisher(
+            original,
+            "        with:\n          persist-credentials: false\n",
+            "",
+        ),
+        encoding="utf-8",
+    )
+
+    violations = check_ci_image_token_boundaries(
+        mutated,
+        root / ".github/workflows/sonar-coverage.yml",
+    )
+
+    assert any("checkout must set persist-credentials: false" in item for item in violations)
+
+
+@pytest.mark.parametrize(
+    ("old", "new", "expected"),
+    (
+        (
+            "          load: true\n          push: false\n",
+            "          load: true\n          push: true\n",
+            "must load locally and must not push",
+        ),
+        (
+            "      - name: Build API CI test image without registry credentials\n",
+            "      - name: Build API CI test image without registry credentials\n"
+            "        env:\n"
+            "          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n",
+            "package credentials must not reach untrusted image builds",
+        ),
+        (
+            "          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN || secrets.GITHUB_TOKEN }}",
+            "          GHCR_TOKEN: unavailable",
+            "only the final fixed-reference publish step may receive the package token",
+        ),
+        (
+            "          trap 'docker logout \"$REGISTRY\" >/dev/null 2>&1 || true' EXIT\n",
+            "",
+            "must login, push, and logout inline",
+        ),
+    ),
+)
+def test_ci_image_publisher_rejects_credential_and_order_regressions(
+    tmp_path: Path,
+    old: str,
+    new: str,
+    expected: str,
+):
+    root = _repo_root()
+    original = (root / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    mutated = tmp_path / "ci.yml"
+    mutated.write_text(
+        _mutate_ci_image_publisher(original, old, new),
+        encoding="utf-8",
+    )
+
+    violations = check_ci_image_token_boundaries(
+        mutated,
+        root / ".github/workflows/sonar-coverage.yml",
+    )
+
+    assert any(expected in item for item in violations)
+
+
+def test_ci_image_publisher_must_be_the_final_job_step(tmp_path: Path):
+    root = _repo_root()
+    original = (root / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    mutated = tmp_path / "ci.yml"
+    mutated.write_text(
+        _mutate_ci_image_publisher(
+            original,
+            "          done\n",
+            "          done\n\n      - name: Run checked-out code after publication\n"
+            "        run: bash api/scripts/unsafe.sh\n",
+        ),
+        encoding="utf-8",
+    )
+
+    violations = check_ci_image_token_boundaries(
+        mutated,
+        root / ".github/workflows/sonar-coverage.yml",
+    )
+
+    assert any("no step may run after" in item for item in violations)
 
 
 def test_ci_image_authentication_must_precede_checkout(tmp_path: Path):
