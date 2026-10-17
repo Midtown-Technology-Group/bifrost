@@ -288,13 +288,10 @@ def test_two_installs_same_path_resolve_own_workflow_via_app_scope(
     assert header_b["result"] == {"marker": "bbb"}, header_b
 
 
-def test_workflow_404_includes_scope_diagnostics(
+def test_workflow_404_redacts_scope_diagnostics(
     e2e_client, platform_admin, orgbound_install,
 ):
-    """A scope-resolution miss must identify itself: the 404 detail carries the
-    ref and the derived install scope, so a dropped/wrong scope reads as
-    `derived_solution_scope: null` instead of a mystery 404 (drive lesson —
-    the unscoped courtesy fallback masked scope loss for a whole POC day)."""
+    """A scope-resolution miss must not reflect the derived install identity."""
     headers = platform_admin.headers
     app_a = orgbound_install["app_id"]
 
@@ -305,10 +302,8 @@ def test_workflow_404_includes_scope_diagnostics(
     )
     assert resp.status_code == 404, resp.text
     detail = resp.json()["detail"]
-    assert detail["workflow_ref"] == "workflows/nonexistent.py::nope"
-    assert "not found" in detail["message"]
-    # Header-scoped caller: the derived install scope is present (a UUID).
-    assert detail["derived_solution_scope"], detail
+    assert detail == "Workflow not found"
+    assert app_a not in resp.text
 
 
 def test_admin_resolves_orgbound_install_path_ref_cross_org(
