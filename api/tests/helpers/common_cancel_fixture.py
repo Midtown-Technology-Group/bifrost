@@ -17,6 +17,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import tempfile
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -77,23 +78,53 @@ class FixturePreparationError(ValueError):
 
 @contextmanager
 def _private_output(path: Path, pending: dict):
-    # O_EXCL refuses existing files/symlinks before any database mutation.
     # The caller owns the containing private directory and its mount/custody.
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
-    with os.fdopen(fd, "w", encoding="utf-8") as output:
-        os.fchmod(output.fileno(), 0o600)
+    # Reserve immutable intent and sync its directory BEFORE database mutation.
+    # lexists semantics also refuse dangling symlinks at the final path.
+    if os.path.lexists(path):
+        raise FileExistsError("fixture output already exists")
+    pending_path = path.with_name(path.name + ".pending")
+    fd = os.open(
+        pending_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600
+    )
+    with os.fdopen(fd, "w", encoding="utf-8") as intent:
+        os.fchmod(intent.fileno(), 0o600)
+        json.dump(pending, intent, sort_keys=True)
+        intent.write("\n")
+        intent.flush()
+        os.fsync(intent.fileno())
+    _sync_directory(path.parent)
 
-        def write(document: dict) -> None:
-            output.seek(0)
-            json.dump(document, output, sort_keys=True)
-            output.write("\n")
-            output.truncate()
-            output.flush()
-            os.fsync(output.fileno())
+    def publish(document: dict) -> None:
+        # Stage on the same filesystem, then publish atomically WITHOUT replacing
+        # any existing name. Never overwrite/delete the pending recovery record.
+        fd, staging_name = tempfile.mkstemp(prefix=".fixture-", dir=path.parent)
+        staging = Path(staging_name)
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as output:
+                os.fchmod(output.fileno(), 0o600)
+                json.dump(document, output, sort_keys=True)
+                output.write("\n")
+                output.flush()
+                os.fsync(output.fileno())
+            os.link(staging, path)
+            _sync_directory(path.parent)
+        finally:
+            staging.unlink()
+        _sync_directory(path.parent)
 
-        write(pending)
-        # Exceptions preserve this private pending record, not a valid fixture.
-        yield write
+    # A post-link sync failure can leave final bytes despite a failed producer.
+    # Presence alone NEVER proves success: require successful producer completion
+    # plus the packet's independent DB/catalog readback. Preserve both on failure.
+    yield publish
+
+
+def _sync_directory(path: Path) -> None:
+    fd = os.open(path, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
 
 
 async def _identity(db: AsyncSession, expected: str) -> None:
