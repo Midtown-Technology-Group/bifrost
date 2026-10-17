@@ -1,6 +1,9 @@
 //! PostgreSQL primitives. Alembic owns schema creation and migration history.
 
 pub mod common_session;
+// Inactive persistence seam; enabling this feature is not runtime/SQL approval.
+#[cfg(feature = "common-start-candidate")]
+pub mod workflow_start;
 
 #[cfg(feature = "workflow-sql-parity")]
 pub mod workflow_numeric;

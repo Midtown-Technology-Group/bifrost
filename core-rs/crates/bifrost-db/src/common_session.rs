@@ -51,7 +51,7 @@ pub enum CancelCommit {
     AlreadyCommitted,
 }
 
-fn database_error(error: sqlx::Error) -> SessionError {
+pub(crate) fn database_error(error: sqlx::Error) -> SessionError {
     match error
         .as_database_error()
         .and_then(|value| value.code())
@@ -62,7 +62,7 @@ fn database_error(error: sqlx::Error) -> SessionError {
     }
 }
 
-fn digest(value: &str) -> bool {
+pub(crate) fn digest(value: &str) -> bool {
     value.len() == 64
         && value
             .bytes()
@@ -136,10 +136,10 @@ async fn prepare_transaction(tx: &mut Transaction<'_, Postgres>) -> Result<(), S
     Ok(())
 }
 
-async fn lock_running_session<'a>(
+pub(crate) async fn begin_fenced_core_transaction<'a>(
     pool: &'a PgPool,
     fence: &SessionFence,
-) -> Result<LockedSession<'a>, SessionError> {
+) -> Result<Transaction<'a, Postgres>, SessionError> {
     if !digest(&fence.binding_sha256) || !digest(&fence.channel_custody_sha256) {
         return Err(SessionError::InvalidFence);
     }
@@ -185,6 +185,14 @@ async fn lock_running_session<'a>(
     if !execution_lock {
         return Err(SessionError::Contended);
     }
+    Ok(tx)
+}
+
+async fn lock_running_session<'a>(
+    pool: &'a PgPool,
+    fence: &SessionFence,
+) -> Result<LockedSession<'a>, SessionError> {
+    let mut tx = begin_fenced_core_transaction(pool, fence).await?;
     // Do not require current workflow/user live links to survive cancellation.
     // Their immutable admitted identity remains in the common owner/session.
     let status: String = sqlx::query_scalar(

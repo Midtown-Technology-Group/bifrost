@@ -9,6 +9,8 @@ publish.workspace = true
 [features]
 live-db = []
 common-session-sql = []
+common-start-candidate = []
+common-start-sql = ["common-start-candidate"]
 workflow-sql-parity = []
 
 [dependencies]
