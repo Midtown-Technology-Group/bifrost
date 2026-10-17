@@ -12,8 +12,8 @@
  */
 import { readFileSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
-import { execSync } from "node:child_process";
-import * as yaml from "js-yaml";
+import { execFileSync } from "node:child_process";
+import { pathToFileURL } from "node:url";
 
 function parseArgs(argv) {
   const out = { full: false };
@@ -38,16 +38,20 @@ function parseArgs(argv) {
   return out;
 }
 
-function pathChanged(repo, sinceSha, globs) {
+export function pathChanged(repo, sinceSha, globs) {
   if (!sinceSha) return true; // never captured before
   if (!globs || !globs.length) return true; // no globs = always recapture
+  if (!/^[0-9a-f]{40}$/i.test(sinceSha)) return true;
   try {
-    execSync("git rev-parse --verify " + sinceSha, { cwd: repo, stdio: "ignore" });
+    execFileSync("/usr/bin/git", ["rev-parse", "--verify", `${sinceSha}^{commit}`], {
+      cwd: repo,
+      stdio: "ignore",
+    });
   } catch {
     return true; // unknown sha — treat as changed
   }
   try {
-    execSync(`git diff --quiet ${sinceSha} HEAD -- ${globs.map((g) => `'${g}'`).join(" ")}`, {
+    execFileSync("/usr/bin/git", ["diff", "--quiet", sinceSha, "HEAD", "--", ...globs], {
       cwd: repo,
       stdio: "ignore",
     });
@@ -57,14 +61,15 @@ function pathChanged(repo, sinceSha, globs) {
   }
 }
 
-function main() {
+async function main() {
   const args = parseArgs(process.argv);
   const manifestPath = resolve(args.docsRepo, "screenshots.yaml");
   if (!existsSync(manifestPath)) {
     console.error(`manifest not found at ${manifestPath}`);
     process.exit(1);
   }
-  const manifest = yaml.load(readFileSync(manifestPath, "utf8"));
+  const { load: loadYaml } = await import("js-yaml");
+  const manifest = loadYaml(readFileSync(manifestPath, "utf8"));
 
   // External entries (Azure portal, VSCode, etc.) are never candidates.
   const captureable = manifest.entries.filter((e) => !e.external);
@@ -93,4 +98,6 @@ function main() {
   process.stdout.write(candidates.join(","));
 }
 
-main();
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  await main();
+}
