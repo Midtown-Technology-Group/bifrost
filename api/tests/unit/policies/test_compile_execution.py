@@ -126,24 +126,21 @@ async def test_exec_eq_int_matches_only_matching_number(db_session: AsyncSession
 
 @pytest.mark.asyncio
 async def test_exec_lt_int_executes_and_orders_numerics(db_session: AsyncSession):
-    """`{lt: [{row: count}, 10]}` must execute (no error) and order numerics.
+    """`{lt: [{row: count}, 10]}` orders only numeric row values.
 
-    The critical property — and the whole point of this fix — is that the
-    query EXECUTES against Postgres. The original `data->>'count' < 10`
-    (text-vs-int) raised. The JSONB-compare form `data->'count' < '10'::jsonb`
-    runs cleanly.
-
-    For type mismatches in row data (e.g. `count = "five"`), JSONB's cross-
-    type ordering kicks in — Postgres orders by type tag, not the underlying
-    value. This isn't "silent false" the way `eq` is, but it never raises,
-    which is what matters for security policy enforcement. The pure-Python
-    evaluator does return silent-false on `lt` type mismatches (see
-    evaluate.py:_eval_op), but the compiler matches Postgres semantics here
-    rather than introducing per-row `jsonb_typeof` guards on the hot path.
+    PostgreSQL defines cross-type JSONB ordering, but policy comparisons do
+    not. Strings, booleans, objects, arrays, and null must all fail closed
+    rather than matching a numeric policy literal.
     """
     rows = [
         {"count": 5, "label": "below"},
         {"count": 15, "label": "above"},
+        {"count": "five", "label": "string-mismatch"},
+        {"count": True, "label": "boolean-mismatch"},
+        {"count": {"nested": 1}, "label": "object-mismatch"},
+        {"count": [1], "label": "array-mismatch"},
+        {"count": None, "label": "null-mismatch"},
+        {"label": "missing-field"},
     ]
     table = await _seed_table_with_rows(db_session, rows)
 
@@ -155,6 +152,49 @@ async def test_exec_lt_int_executes_and_orders_numerics(db_session: AsyncSession
     by_id = {doc_id: data for doc_id, data in fetched.all()}
     matched_labels = {by_id[doc_id]["label"] for doc_id in matched_ids}
     assert matched_labels == {"below"}
+
+
+@pytest.mark.asyncio
+async def test_exec_gt_int_row_uses_same_type_guard(db_session: AsyncSession):
+    """The scalar-on-left shape must reject cross-type JSONB values too."""
+    rows = [
+        {"count": 5, "label": "below"},
+        {"count": 15, "label": "above"},
+        {"count": "five", "label": "string-mismatch"},
+        {"count": False, "label": "boolean-mismatch"},
+    ]
+    table = await _seed_table_with_rows(db_session, rows)
+
+    matched_ids = await _run(db_session, table, {"gt": [10, {"row": "count"}]})
+
+    fetched = await db_session.execute(
+        select(Document.id, Document.data).where(Document.table_id == table.id)
+    )
+    by_id = {doc_id: data for doc_id, data in fetched.all()}
+    matched_labels = {by_id[doc_id]["label"] for doc_id in matched_ids}
+    assert matched_labels == {"below"}
+
+
+@pytest.mark.asyncio
+async def test_exec_lt_string_rejects_non_string_json_values(db_session: AsyncSession):
+    rows = [
+        {"status": "alpha", "label": "before"},
+        {"status": "zeta", "label": "after"},
+        {"status": 1, "label": "number-mismatch"},
+        {"status": False, "label": "boolean-mismatch"},
+    ]
+    table = await _seed_table_with_rows(db_session, rows)
+
+    matched_ids = await _run(
+        db_session, table, {"lt": [{"row": "status"}, "review"]}
+    )
+
+    fetched = await db_session.execute(
+        select(Document.id, Document.data).where(Document.table_id == table.id)
+    )
+    by_id = {doc_id: data for doc_id, data in fetched.all()}
+    matched_labels = {by_id[doc_id]["label"] for doc_id in matched_ids}
+    assert matched_labels == {"before"}
 
 
 # --- Real-world shape: shared_read_in_org ---------------------------------
