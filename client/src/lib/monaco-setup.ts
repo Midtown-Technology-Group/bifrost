@@ -3,7 +3,12 @@
  * Ensures all language features (comments, formatting, etc.) are properly loaded
  */
 import { loader } from "@monaco-editor/react";
-import type * as Monaco from "monaco-editor";
+import * as Monaco from "monaco-editor";
+import EditorWorker from "monaco-editor/editor/editor.worker.js?worker";
+import JsonWorker from "monaco-editor/language/json/json.worker.js?worker";
+import CssWorker from "monaco-editor/language/css/css.worker.js?worker";
+import HtmlWorker from "monaco-editor/language/html/html.worker.js?worker";
+import TypeScriptWorker from "monaco-editor/language/typescript/ts.worker.js?worker";
 import { useWorkflowsStore } from "@/stores/workflowsStore";
 
 let setupComplete = false;
@@ -25,12 +30,19 @@ export function getCurrentFilePath() {
 export function configureMonaco() {
 	if (setupComplete) return;
 
-	// Configure Monaco loader to use CDN or local worker files
-	loader.config({
-		paths: {
-			vs: "https://cdn.jsdelivr.net/npm/monaco-editor@0.54.0/min/vs",
+	// Use the locked editor and workers served by this application.
+	self.MonacoEnvironment = {
+		getWorker(_moduleId, label) {
+			if (label === "json") return new JsonWorker();
+			if (["css", "scss", "less"].includes(label)) return new CssWorker();
+			if (["html", "handlebars", "razor"].includes(label)) return new HtmlWorker();
+			if (["typescript", "javascript"].includes(label)) return new TypeScriptWorker();
+			return new EditorWorker();
 		},
-	});
+	};
+	// Retain the model inspection surface exposed by the previous AMD loader.
+	Object.assign(window, { monaco: Monaco });
+	loader.config({ monaco: Monaco });
 
 	setupComplete = true;
 }
@@ -106,22 +118,7 @@ export async function initializeMonaco(monaco: typeof Monaco) {
 
 	// Configure TypeScript/JavaScript compiler options to support JSX/TSX
 	// Use jsx: React (1) for classic transform which doesn't require jsx runtime import
-	// Note: Using type assertion as monaco.languages.typescript types are marked deprecated
-	// but the runtime API still works
-	const ts = monaco.languages.typescript as typeof monaco.languages.typescript & {
-		typescriptDefaults: {
-			setCompilerOptions: (options: Record<string, unknown>) => void;
-			setDiagnosticsOptions: (options: Record<string, unknown>) => void;
-		};
-		javascriptDefaults: {
-			setCompilerOptions: (options: Record<string, unknown>) => void;
-			setDiagnosticsOptions: (options: Record<string, unknown>) => void;
-		};
-		ScriptTarget: { ESNext: number };
-		ModuleResolutionKind: { NodeJs: number };
-		ModuleKind: { ESNext: number };
-		JsxEmit: { React: number };
-	};
+	const ts = monaco.typescript;
 
 	ts.typescriptDefaults.setCompilerOptions({
 		target: ts.ScriptTarget.ESNext,
