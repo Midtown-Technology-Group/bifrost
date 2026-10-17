@@ -879,6 +879,21 @@ async def test_resolve_role_names_fails_unknown_role_without_creation():
 
 
 @pytest.mark.asyncio
+async def test_resolve_role_names_fails_when_name_is_ambiguous():
+    class Result:
+        def all(self):
+            return [(uuid4(), "Operator"), (uuid4(), "Operator")]
+
+    class Db:
+        async def execute(self, _stmt):
+            return Result()
+
+    db = Db()
+    with pytest.raises(ValueError, match="ambiguous role name: Operator"):
+        await manifest_import._resolve_role_names(db, ["Operator"])
+
+
+@pytest.mark.asyncio
 async def test_resolve_ref_field_updates_scalar_and_list_portable_refs(caplog):
     resolver = manifest_import.ManifestResolver(AsyncMock())
     resolved = {
@@ -1252,6 +1267,7 @@ async def test_prefetch_existing_entities_builds_all_resolver_caches():
     assert cache["org_by_name"] == {"Midtown": org_uuid}
     assert cache["role_ids"] == {UUID(ROLE_ID)}
     assert cache["role_by_name"] == {"Operator": UUID(ROLE_ID)}
+    assert cache["ambiguous_role_names"] == set()
     assert cache["wf_ids"] == {workflow_uuid}
     assert cache["wf_by_natural"] == {("workflows/tickets.py", "run"): workflow_uuid}
     assert cache["integ_ids"] == {integration_uuid}
@@ -1275,6 +1291,31 @@ async def test_prefetch_existing_entities_builds_all_resolver_caches():
     assert cache["claim_ids"] == {claim_uuid}
     assert cache["claim_by_natural"] == {("allowed_campus_ids", org_uuid): claim_uuid}
     assert len(db.statements) == 12
+
+
+@pytest.mark.asyncio
+async def test_prefetch_existing_entities_records_duplicate_role_names():
+    role_ids = (uuid4(), uuid4())
+    db = _SequenceDb(
+        _RowsResult([]),
+        _RowsResult([(role_ids[0], "Operator"), (role_ids[1], "Operator")]),
+        _RowsResult([]),
+        _RowsResult([]),
+        _ScalarRowsResult([]),
+        _ScalarRowsResult([]),
+        _RowsResult([]),
+        _RowsResult([]),
+        _RowsResult([]),
+        _RowsResult([]),
+        _RowsResult([]),
+        _RowsResult([]),
+    )
+
+    cache = await manifest_import.ManifestResolver(db)._prefetch_existing_entities()
+
+    assert cache["role_ids"] == set(role_ids)
+    assert cache["role_by_name"] == {}
+    assert cache["ambiguous_role_names"] == {"Operator"}
 
 
 class _ManifestClaim:
@@ -1538,6 +1579,25 @@ def test_resolve_role_uses_id_name_then_insert_paths():
     assert name_op.values == {"id": UUID(EXISTING_ID), "name": "Operator"}
     assert insert_op.match_on == "id"
     assert insert_op.values == {"name": "New role", "created_by": "git-sync"}
+
+
+def test_resolve_role_rejects_ambiguous_name_only_after_id_lookup():
+    resolver = manifest_import.ManifestResolver(_SequenceDb())
+    role_id = UUID(ROLE_ID)
+    cache = {
+        "role_ids": {role_id},
+        "role_by_name": {},
+        "ambiguous_role_names": {"Operator"},
+    }
+
+    by_id = resolver._resolve_role(
+        ManifestRole(id=ROLE_ID, name="Operator"), cache
+    )[0]
+    assert by_id.match_on == "id"
+
+    ambiguous_role = ManifestRole(id=EXISTING_ID, name="Operator")
+    with pytest.raises(ValueError, match="ambiguous role name: Operator"):
+        resolver._resolve_role(ambiguous_role, cache)
 
 
 @pytest.mark.asyncio
