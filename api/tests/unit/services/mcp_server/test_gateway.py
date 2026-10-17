@@ -7,17 +7,23 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
+from sqlalchemy import func, select
 
 from src.models.orm.agents import Agent
+from src.models.orm.operation_receipts import OperationReceipt
+from src.services import operation_receipts as receipt_service
 from src.services.llm import ToolDefinition
 from src.services.mcp_server.config_service import MCPConfig
 from src.services.mcp_server.gateway import (
     AgentToolSnapshot,
+    GATEWAY_OPERATION_RECEIPT_NAMESPACE,
     GatewayError,
+    MAX_GATEWAY_OPERATION_RECEIPTS_PER_CALLER,
     MCPAgentGatewayService,
     ResolvedGatewayTool,
 )
 from src.services.operation_receipts import (
+    OperationReceiptCapacityError,
     OperationReceiptClaim,
     OperationReceiptDisposition,
 )
@@ -812,6 +818,110 @@ def _receipt_claim(
 
 
 @pytest.mark.asyncio
+async def test_invalid_new_operation_is_rejected_before_receipt_admission(
+    async_session_factory,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = MCPAgentGatewayService(_context())
+    agent = _agent()
+    tool = _resolved_tool()
+    snapshot = AgentToolSnapshot(agent=agent, tools=[tool])
+    claim = AsyncMock()
+
+    @asynccontextmanager
+    async def test_db_context():
+        async with async_session_factory() as session:
+            try:
+                yield session
+                await session.commit()
+            except Exception:
+                await session.rollback()
+                raise
+
+    monkeypatch.setattr(receipt_service, "get_db_context", test_db_context)
+
+    with (
+        patch.object(
+            service,
+            "get_agent_snapshot",
+            new=AsyncMock(return_value=snapshot),
+        ),
+        patch(
+            "src.services.mcp_server.gateway.claim_operation_receipt",
+            new=claim,
+        ),
+    ):
+        with pytest.raises(GatewayError) as exc_info:
+            await service.execute_agent_tool(
+                str(agent.id),
+                tool.tool_ref,
+                {"ticket_id": "not-an-integer"},
+                operation_id="invalid-new-operation",
+            )
+
+    assert exc_info.value.code == "INVALID_ARGUMENTS"
+    assert exc_info.value.details["agent_id"] == str(agent.id)
+    assert exc_info.value.details["tool_ref"] == tool.tool_ref
+    assert exc_info.value.details["tool_name"] == tool.definition.name
+    assert exc_info.value.details["source"] == tool.source
+    claim.assert_not_awaited()
+    async with async_session_factory() as db:
+        receipt_count = (
+            await db.execute(
+                select(func.count())
+                .select_from(OperationReceipt)
+                .where(
+                    OperationReceipt.namespace
+                    == GATEWAY_OPERATION_RECEIPT_NAMESPACE
+                )
+            )
+        ).scalar_one()
+    assert receipt_count == 0
+
+
+@pytest.mark.asyncio
+async def test_receipt_capacity_rejects_new_operation_without_dispatch() -> None:
+    service = MCPAgentGatewayService(_context())
+    agent = _agent()
+    tool = _resolved_tool()
+    snapshot = AgentToolSnapshot(agent=agent, tools=[tool])
+
+    with (
+        patch.object(
+            service,
+            "get_agent_snapshot",
+            new=AsyncMock(return_value=snapshot),
+        ),
+        patch.object(service, "_dispatch", new_callable=AsyncMock) as dispatch,
+        patch(
+            "src.services.mcp_server.gateway.claim_operation_receipt",
+            new=AsyncMock(
+                side_effect=OperationReceiptCapacityError(
+                    limit=MAX_GATEWAY_OPERATION_RECEIPTS_PER_CALLER
+                )
+            ),
+        ),
+    ):
+        with pytest.raises(GatewayError) as exc_info:
+            await service.execute_agent_tool(
+                str(agent.id),
+                tool.tool_ref,
+                {"ticket_id": 42},
+                operation_id="new-operation-at-capacity",
+            )
+
+    assert exc_info.value.code == "OPERATION_RECEIPT_CAPACITY_EXCEEDED"
+    assert exc_info.value.details == {
+        "receipt_limit": MAX_GATEWAY_OPERATION_RECEIPTS_PER_CALLER,
+        "agent_id": str(agent.id),
+        "tool_ref": tool.tool_ref,
+        "tool_name": tool.definition.name,
+        "source": tool.source,
+    }
+    dispatch.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("source", "task_requested", "dispatch_result"),
     [
@@ -843,6 +953,7 @@ async def test_operation_receipt_replays_every_gateway_source_once(
     snapshot = AgentToolSnapshot(agent=agent, tools=[tool])
     owner = _receipt_claim(OperationReceiptDisposition.OWNER)
     claim = AsyncMock(return_value=owner)
+    read_existing = AsyncMock()
     complete = AsyncMock()
     record_handle = AsyncMock()
     dispatch = AsyncMock(return_value=dispatch_result)
@@ -857,6 +968,10 @@ async def test_operation_receipt_replays_every_gateway_source_once(
         patch(
             "src.services.mcp_server.gateway.claim_operation_receipt",
             new=claim,
+        ),
+        patch(
+            "src.services.mcp_server.gateway.read_operation_receipt_by_scope",
+            new=read_existing,
         ),
         patch(
             "src.services.mcp_server.gateway.complete_operation_receipt_success",
@@ -874,10 +989,12 @@ async def test_operation_receipt_replays_every_gateway_source_once(
             operation_id="stable-operation",
             task_requested=task_requested,
         )
-        claim.return_value = _receipt_claim(
+        completed = _receipt_claim(
             OperationReceiptDisposition.SUCCEEDED,
             response=first,
         )
+        claim.return_value = completed
+        read_existing.return_value = completed
         # An already completed operation must replay even after the live
         # contract changes to reject its original arguments.
         tool.definition.parameters.clear()
@@ -895,11 +1012,15 @@ async def test_operation_receipt_replays_every_gateway_source_once(
     assert second == first
     dispatch.assert_awaited_once()
     complete.assert_awaited_once()
-    assert claim.await_count == 2
+    claim.assert_awaited_once()
+    read_existing.assert_awaited_once()
     assert (
-        claim.await_args_list[0].kwargs["request_fingerprint"]
-        == claim.await_args_list[1].kwargs["request_fingerprint"]
+        claim.await_args.kwargs["max_receipts_per_admission_key"]
+        == MAX_GATEWAY_OPERATION_RECEIPTS_PER_CALLER
     )
+    admission_key = claim.await_args.kwargs["admission_key"]
+    assert len(admission_key) == 64
+    assert str(service.context.user_id) not in admission_key
 
 
 @pytest.mark.asyncio

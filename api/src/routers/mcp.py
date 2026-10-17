@@ -112,6 +112,7 @@ def _raise_gateway_http_error(exc: Exception) -> NoReturn:
         "OPERATION_ID_REUSED": status.HTTP_409_CONFLICT,
         "OPERATION_IN_PROGRESS_OR_UNKNOWN": status.HTTP_409_CONFLICT,
         "OPERATION_RESULT_EXPIRED": status.HTTP_409_CONFLICT,
+        "OPERATION_RECEIPT_CAPACITY_EXCEEDED": status.HTTP_429_TOO_MANY_REQUESTS,
     }.get(exc.code, status.HTTP_500_INTERNAL_SERVER_ERROR)
     raise HTTPException(status_code=status_code, detail=exc.as_dict()) from exc
 
