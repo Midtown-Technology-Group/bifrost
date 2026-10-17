@@ -8,6 +8,7 @@ import pytest
 
 from src.core.cache.data_provider_cache import (
     TTL_DATA_PROVIDER,
+    DataProviderCacheIdentity,
     acquire_compute_lock,
     cache_result,
     compute_param_hash,
@@ -19,33 +20,116 @@ from src.core.cache.data_provider_cache import (
 )
 
 
+ORG_IDENTITY = DataProviderCacheIdentity(
+    organization_id="org-123",
+    provider_id="provider-123",
+    principal_id="user-123",
+)
+GLOBAL_IDENTITY = DataProviderCacheIdentity(
+    organization_id=None,
+    provider_id="provider-123",
+    principal_id="user-123",
+)
+
+
 class TestKeyGeneration:
     """Tests for cache key generation functions."""
 
     def test_data_provider_cache_key_with_org(self):
         """Key includes org scope when org_id provided."""
-        key = data_provider_cache_key("org-123", "get_users", "abc123")
-        assert key == "bifrost:org:org-123:dp:get_users:abc123"
+        key = data_provider_cache_key(ORG_IDENTITY, "abc123")
+        assert key == (
+            "bifrost:org:org-123:dp:provider-123:principal:user-123:abc123"
+        )
 
     def test_data_provider_cache_key_global(self):
         """Key uses global scope when org_id is None."""
-        key = data_provider_cache_key(None, "get_users", "abc123")
-        assert key == "bifrost:global:dp:get_users:abc123"
+        key = data_provider_cache_key(GLOBAL_IDENTITY, "abc123")
+        assert key == (
+            "bifrost:global:dp:provider-123:principal:user-123:abc123"
+        )
 
     def test_data_provider_cache_key_global_string(self):
         """Key uses global scope when org_id is 'GLOBAL'."""
-        key = data_provider_cache_key("GLOBAL", "get_users", "abc123")
-        assert key == "bifrost:global:dp:get_users:abc123"
+        identity = DataProviderCacheIdentity(
+            organization_id="GLOBAL",
+            provider_id="provider-123",
+            principal_id="user-123",
+        )
+        key = data_provider_cache_key(identity, "abc123")
+        assert key == (
+            "bifrost:global:dp:provider-123:principal:user-123:abc123"
+        )
 
     def test_data_provider_lock_key_with_org(self):
         """Lock key includes org scope."""
-        key = data_provider_lock_key("org-123", "get_users", "abc123")
-        assert key == "bifrost:org:org-123:dp:get_users:abc123:lock"
+        key = data_provider_lock_key(ORG_IDENTITY, "abc123")
+        assert key == (
+            "bifrost:org:org-123:dp:provider-123:principal:user-123:abc123:lock"
+        )
 
     def test_data_provider_lock_key_global(self):
         """Lock key uses global scope when org_id is None."""
-        key = data_provider_lock_key(None, "get_users", "abc123")
-        assert key == "bifrost:global:dp:get_users:abc123:lock"
+        key = data_provider_lock_key(GLOBAL_IDENTITY, "abc123")
+        assert key == (
+            "bifrost:global:dp:provider-123:principal:user-123:abc123:lock"
+        )
+
+    def test_cache_key_partitions_same_name_providers_by_immutable_id(self):
+        """Same-name providers cannot share a cache namespace."""
+        other_provider = DataProviderCacheIdentity(
+            organization_id="org-123",
+            provider_id="provider-456",
+            principal_id="user-123",
+        )
+
+        assert data_provider_cache_key(ORG_IDENTITY, "abc123") != (
+            data_provider_cache_key(other_provider, "abc123")
+        )
+
+    def test_cache_key_partitions_execution_tenants(self):
+        """The same provider and caller cannot share results across tenants."""
+        other_tenant = DataProviderCacheIdentity(
+            organization_id="org-456",
+            provider_id="provider-123",
+            principal_id="user-123",
+        )
+
+        assert data_provider_cache_key(ORG_IDENTITY, "abc123") != (
+            data_provider_cache_key(other_tenant, "abc123")
+        )
+
+    def test_cache_key_partitions_callers_by_effective_principal(self):
+        """Authorized callers cannot receive each other's cached results."""
+        other_principal = DataProviderCacheIdentity(
+            organization_id="org-123",
+            provider_id="provider-123",
+            principal_id="user-456",
+        )
+
+        assert data_provider_cache_key(ORG_IDENTITY, "abc123") != (
+            data_provider_cache_key(other_principal, "abc123")
+        )
+
+    @pytest.mark.parametrize(
+        ("provider_id", "principal_id", "missing_field"),
+        [
+            ("", "user-123", "provider_id"),
+            ("provider-123", "", "principal_id"),
+        ],
+    )
+    def test_cache_identity_rejects_missing_security_partition(
+        self,
+        provider_id,
+        principal_id,
+        missing_field,
+    ):
+        with pytest.raises(ValueError, match=missing_field):
+            DataProviderCacheIdentity(
+                organization_id="org-123",
+                provider_id=provider_id,
+                principal_id=principal_id,
+            )
 
 
 class TestComputeParamHash:
@@ -94,7 +178,7 @@ class TestGetCachedResult:
             mock_get_redis.return_value.__aenter__ = AsyncMock(return_value=mock_redis)
             mock_get_redis.return_value.__aexit__ = AsyncMock(return_value=None)
 
-            result = await get_cached_result("org-123", "get_users", {"id": 1})
+            result = await get_cached_result(ORG_IDENTITY, {"id": 1})
             assert result is None
 
     @pytest.mark.asyncio
@@ -113,7 +197,7 @@ class TestGetCachedResult:
             mock_get_redis.return_value.__aenter__ = AsyncMock(return_value=mock_redis)
             mock_get_redis.return_value.__aexit__ = AsyncMock(return_value=None)
 
-            result = await get_cached_result("org-123", "get_users", {"id": 1})
+            result = await get_cached_result(ORG_IDENTITY, {"id": 1})
             assert result is not None
             assert result["data"] == {"users": [1, 2, 3]}
 
@@ -134,7 +218,7 @@ class TestGetCachedResult:
             mock_get_redis.return_value.__aenter__ = AsyncMock(return_value=mock_redis)
             mock_get_redis.return_value.__aexit__ = AsyncMock(return_value=None)
 
-            result = await get_cached_result("org-123", "get_users", {"id": 1})
+            result = await get_cached_result(ORG_IDENTITY, {"id": 1})
             assert result is None
             mock_redis.delete.assert_called_once()
 
@@ -153,7 +237,7 @@ class TestCacheResult:
             mock_get_redis.return_value.__aexit__ = AsyncMock(return_value=None)
 
             result = {"users": [1, 2, 3]}
-            expires_at = await cache_result("org-123", "get_users", {"id": 1}, result, 300)
+            expires_at = await cache_result(ORG_IDENTITY, {"id": 1}, result, 300)
 
             mock_redis.setex.assert_called_once()
             call_args = mock_redis.setex.call_args
@@ -172,7 +256,7 @@ class TestCacheResult:
             mock_get_redis.return_value.__aenter__ = AsyncMock(return_value=mock_redis)
             mock_get_redis.return_value.__aexit__ = AsyncMock(return_value=None)
 
-            await cache_result("org-123", "get_users", None, {"data": 1})
+            await cache_result(ORG_IDENTITY, None, {"data": 1})
 
             call_args = mock_redis.setex.call_args
             assert call_args[0][1] == TTL_DATA_PROVIDER
@@ -191,7 +275,7 @@ class TestInvalidateDataProvider:
             mock_get_redis.return_value.__aenter__ = AsyncMock(return_value=mock_redis)
             mock_get_redis.return_value.__aexit__ = AsyncMock(return_value=None)
 
-            await invalidate_data_provider("org-123", "get_users", {"id": 1})
+            await invalidate_data_provider(ORG_IDENTITY, {"id": 1})
             mock_redis.delete.assert_called_once()
 
     @pytest.mark.asyncio
@@ -199,8 +283,8 @@ class TestInvalidateDataProvider:
         """Invalidates all cached results for a data provider."""
         mock_redis = AsyncMock()
         mock_redis.scan = AsyncMock(return_value=(0, [
-            "bifrost:org:org-123:dp:get_users:abc123",
-            "bifrost:org:org-123:dp:get_users:def456",
+            "bifrost:org:org-123:dp:provider-123:principal:user-123:abc123",
+            "bifrost:org:org-123:dp:provider-123:principal:user-123:def456",
         ]))
         mock_redis.delete = AsyncMock(return_value=2)
 
@@ -208,7 +292,7 @@ class TestInvalidateDataProvider:
             mock_get_redis.return_value.__aenter__ = AsyncMock(return_value=mock_redis)
             mock_get_redis.return_value.__aexit__ = AsyncMock(return_value=None)
 
-            await invalidate_data_provider("org-123", "get_users", None)
+            await invalidate_data_provider(ORG_IDENTITY, None)
             mock_redis.scan.assert_called()
             mock_redis.delete.assert_called()
 
@@ -226,7 +310,7 @@ class TestStampedeProtection:
             mock_get_redis.return_value.__aenter__ = AsyncMock(return_value=mock_redis)
             mock_get_redis.return_value.__aexit__ = AsyncMock(return_value=None)
 
-            acquired = await acquire_compute_lock("org-123", "get_users", {"id": 1})
+            acquired = await acquire_compute_lock(ORG_IDENTITY, {"id": 1})
             assert acquired is True
             mock_redis.set.assert_called_once()
             # Verify nx=True (only set if not exists)
@@ -243,7 +327,7 @@ class TestStampedeProtection:
             mock_get_redis.return_value.__aenter__ = AsyncMock(return_value=mock_redis)
             mock_get_redis.return_value.__aexit__ = AsyncMock(return_value=None)
 
-            acquired = await acquire_compute_lock("org-123", "get_users", {"id": 1})
+            acquired = await acquire_compute_lock(ORG_IDENTITY, {"id": 1})
             assert acquired is False
 
     @pytest.mark.asyncio
@@ -256,5 +340,5 @@ class TestStampedeProtection:
             mock_get_redis.return_value.__aenter__ = AsyncMock(return_value=mock_redis)
             mock_get_redis.return_value.__aexit__ = AsyncMock(return_value=None)
 
-            await release_compute_lock("org-123", "get_users", {"id": 1})
+            await release_compute_lock(ORG_IDENTITY, {"id": 1})
             mock_redis.delete.assert_called_once()

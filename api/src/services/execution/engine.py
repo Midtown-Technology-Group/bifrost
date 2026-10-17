@@ -26,7 +26,11 @@ from src.sdk.context import Caller, ExecutionContext, Organization
 from src.sdk.error_handling import WorkflowError
 from src.sdk.errors import UserError, WorkflowExecutionException
 from src.models.enums import ExecutionStatus
-from src.core.cache import get_cached_data_provider, cache_data_provider_result
+from src.core.cache import (
+    DataProviderCacheIdentity,
+    cache_data_provider_result,
+    get_cached_data_provider,
+)
 from src.core.error_messages import format_exception_message
 from src.core.execution_variable_safety import sanitize_execution_variables
 from src.core.secret_string import redact_secrets
@@ -129,6 +133,7 @@ class ExecutionRequest:
 
     # Function name (for display/logging purposes)
     name: str | None = None              # Function name (from metadata)
+    workflow_id: str | None = None       # Immutable workflow/data-provider ID
 
     # Tags for execution type (e.g., ["workflow"], ["data_provider"])
     tags: list[str] = field(default_factory=list)
@@ -202,6 +207,19 @@ class ExecutionResult:
     # Data provider specific
     cached: bool = False
     cache_expires_at: str | None = None
+
+
+def _data_provider_cache_identity(
+    request: ExecutionRequest,
+) -> DataProviderCacheIdentity:
+    """Build the cache namespace from resolved execution authorization facts."""
+    if not request.workflow_id:
+        raise ValueError("Data provider caching requires an immutable workflow_id")
+    return DataProviderCacheIdentity(
+        organization_id=(request.organization.id if request.organization else None),
+        provider_id=request.workflow_id,
+        principal_id=request.caller.user_id,
+    )
 
 
 def _coerce_params_to_type_hints(func: Any, params: dict[str, Any]) -> dict[str, Any]:
@@ -361,6 +379,11 @@ async def execute(request: ExecutionRequest) -> ExecutionResult:
     is_script = False
     script_source: str | None = None
     is_data_provider = "data_provider" in request.tags
+    data_provider_cache_identity = (
+        _data_provider_cache_identity(request)
+        if is_data_provider and request.cache_ttl_seconds > 0
+        else None
+    )
 
     if request.func and request.code:
         raise ValueError(
@@ -442,12 +465,10 @@ async def execute(request: ExecutionRequest) -> ExecutionResult:
     try:
         with redirect_stdout(stdout_capture), redirect_stderr(stderr_capture):
             # Check Redis cache for data providers
-            if is_data_provider and not request.no_cache:
-                org_id = request.organization.id if request.organization else None
+            if data_provider_cache_identity is not None and not request.no_cache:
                 cached_result = await get_cached_data_provider(
-                    org_id,
-                    request.name or "",
-                    request.parameters
+                    data_provider_cache_identity,
+                    request.parameters,
                 )
                 if cached_result:
                     return _build_cached_result(
@@ -475,14 +496,12 @@ async def execute(request: ExecutionRequest) -> ExecutionResult:
             )
 
             # Cache result to Redis if data provider
-            if is_data_provider and request.cache_ttl_seconds > 0:
-                org_id = request.organization.id if request.organization else None
+            if data_provider_cache_identity is not None:
                 expires_at = await cache_data_provider_result(
-                    org_id,
-                    request.name or "",
+                    data_provider_cache_identity,
                     request.parameters,
                     result,
-                    request.cache_ttl_seconds
+                    request.cache_ttl_seconds,
                 )
                 cache_expires_at_str = expires_at.isoformat()
 
