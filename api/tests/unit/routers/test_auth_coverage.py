@@ -1,3 +1,4 @@
+import json
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
@@ -27,6 +28,26 @@ class _Redis:
         self.scan_match = match
         for key in self._keys:
             yield key
+
+
+class _CliRedis:
+    def __init__(self, value, *, ttl=240, eval_result=None):
+        self.value = value
+        self.ttl_value = ttl
+        self.eval_result = eval_result
+        self.eval_calls = []
+
+    async def get(self, key):
+        self.get_key = key
+        return self.value
+
+    async def ttl(self, key):
+        self.ttl_key = key
+        return self.ttl_value
+
+    async def eval(self, *args):
+        self.eval_calls.append(args)
+        return self.eval_result
 
 
 def _principal(**overrides):
@@ -106,15 +127,70 @@ def test_validate_cli_redirect_uri_rejects_unsafe_targets(redirect_uri, detail):
     assert detail in exc.value.detail
 
 
-def test_cli_redirect_with_params_preserves_existing_query_separator():
-    response = auth._cli_redirect_with_params(
+def test_cli_redirect_url_with_params_preserves_existing_query_separator():
+    redirect_url = auth._cli_redirect_url_with_params(
         "http://127.0.0.1:8787/callback?existing=1",
         "code=abc&state=xyz",
     )
 
-    assert response.headers["location"] == (
+    assert redirect_url == (
         "http://127.0.0.1:8787/callback?existing=1&code=abc&state=xyz"
     )
+
+
+@pytest.mark.asyncio
+async def test_cli_authorization_inspection_keeps_transaction_pending():
+    redis = _CliRedis(
+        json.dumps(
+            {
+                "status": "pending",
+                "redirect_uri": "http://127.0.0.1:8787/callback",
+            }
+        )
+    )
+
+    with patch.object(auth, "get_shared_redis", new=AsyncMock(return_value=redis)):
+        result = await auth.inspect_cli_native_auth("tx-1", _principal())
+
+    assert result.transaction_id == "tx-1"
+    assert result.redirect_uri == "http://127.0.0.1:8787/callback"
+    assert result.expires_in == 240
+    assert redis.eval_calls == []
+
+
+@pytest.mark.asyncio
+async def test_cli_authorization_confirmation_mints_callback_after_consent():
+    redis = _CliRedis(
+        None,
+        eval_result=json.dumps(
+            {
+                "redirect_uri": "http://127.0.0.1:8787/callback",
+                "state": "state-1",
+            }
+        ),
+    )
+    principal = _principal()
+    user_repository = SimpleNamespace(
+        get_by_id=AsyncMock(return_value=SimpleNamespace(is_active=True))
+    )
+
+    with (
+        patch.object(auth, "get_shared_redis", new=AsyncMock(return_value=redis)),
+        patch.object(auth, "UserRepository", return_value=user_repository),
+        patch.object(auth.secrets, "token_urlsafe", return_value="consent-code"),
+    ):
+        result = await auth.authorize_cli_native_auth(
+            auth.CliNativeAuthAuthorizeRequest(transaction_id="tx-1"),
+            principal,
+            AsyncMock(),
+        )
+
+    assert result.redirect_url.startswith(
+        "http://127.0.0.1:8787/callback?code=consent-code"
+    )
+    assert "state=state-1" in result.redirect_url
+    assert "transaction_id=tx-1" in result.redirect_url
+    assert redis.eval_calls[0][2] == auth._cli_native_auth_key("tx-1")
 
 
 def test_hash_and_device_user_code_helpers_format_values():

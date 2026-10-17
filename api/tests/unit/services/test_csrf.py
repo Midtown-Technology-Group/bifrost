@@ -76,6 +76,9 @@ class TestCsrfExemptPaths:
     def test_device_token_exempt(self):
         assert "/auth/device/token" in CSRF_EXEMPT_PATHS
 
+    def test_cli_authorization_confirmation_requires_csrf(self):
+        assert "/auth/cli/authorize" not in CSRF_EXEMPT_PATHS
+
     def test_health_exempt(self):
         assert "/health" in CSRF_EXEMPT_PATHS
 

@@ -189,6 +189,11 @@ const UsageReports = lazyWithReload(() =>
 const DevicePage = lazyWithReload(() =>
 	import("@/pages/DevicePage").then((m) => ({ default: m.DevicePage })),
 );
+const CliAuthorizePage = lazyWithReload(() =>
+	import("@/pages/CliAuthorizePage").then((m) => ({
+		default: m.CliAuthorizePage,
+	})),
+);
 const Tables = lazyWithReload(() =>
 	import("@/pages/Tables").then((m) => ({ default: m.Tables })),
 );
@@ -321,6 +326,7 @@ const routeElements = (
 
 		{/* Device authorization - requires auth, handles redirect internally */}
 		<Route path="device" element={<DevicePage />} />
+		<Route path="cli/authorize" element={<CliAuthorizePage />} />
 
 		{/* OAuth Callback - Public (no auth, no layout) */}
 		<Route
