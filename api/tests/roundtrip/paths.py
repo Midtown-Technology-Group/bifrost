@@ -182,10 +182,6 @@ EXTRA_FIELD_POLICY: dict[tuple[str, str], str] = {
     # row content drops, and deploy re-resolves the UUIDs from the bundle.
     ("ManifestForm", "workflow_path"): "transport: workflow natural ref (capture.py:580)",
     ("ManifestForm", "workflow_function_name"): "transport: workflow natural ref (capture.py:581)",
-    # Agent: max_run_timeout is an Agent ORM column (agents.py:76) capture emits
-    # (capture.py:610) that ManifestAgent does not name.  Deploy now stamps it
-    # (deploy.py _upsert_agents, mirroring max_iterations) so it round-trips.
-    ("ManifestAgent", "max_run_timeout"): "transport: agent column, deploy-stamped (capture.py:610)",
 }
 
 

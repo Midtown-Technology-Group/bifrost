@@ -12,6 +12,7 @@ import os
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+from bifrost.agent_limits import bounded_agent_run_timeout
 from sqlalchemy import and_, delete, func, select, text
 
 from src.core.database import get_session_factory
@@ -22,10 +23,11 @@ from src.core.pubsub import (
     publish_history_update,
 )
 from src.core.redis_client import get_redis_client
+from src.models import Execution as ExecutionModel
+from src.models import ExecutionLog
 from src.models.contracts.agents import ChatStreamChunk
 from src.models.orm.agent_runs import AgentRun
 from src.models.orm.agents import Agent
-from src.models import Execution as ExecutionModel, ExecutionLog
 from src.models.orm.executions import WorkflowExecutionAttempt as ExecutionAttempt
 from src.models.orm.workflows import Workflow
 from src.services.execution_attempts import transition_execution_attempt
@@ -37,7 +39,6 @@ SCHEDULED_TIMEOUT_MINUTES = 24 * 60  # Leave a full day for deferred recovery
 RUNNING_TIMEOUT_MINUTES = 30  # If RUNNING for 30+ minutes, worker likely crashed
 CANCELLING_TIMEOUT_MINUTES = 3  # If CANCELLING for 3+ minutes, worker failed to cancel
 RESTART_ORPHAN_GRACE_SECONDS = 120
-DEFAULT_AGENT_RUN_TIMEOUT_SECONDS = 30 * 60
 AGENT_RUN_TIMEOUT_GRACE_SECONDS = 5 * 60
 
 
@@ -657,10 +658,7 @@ async def cleanup_stuck_executions() -> dict[str, Any]:
 
 def _agent_run_timeout_seconds(agent: Agent | None) -> int:
     """Return the configured timeout for an agent, falling back to the shared default."""
-    configured = getattr(agent, "max_run_timeout", None)
-    if configured is not None and configured > 0:
-        return configured
-    return DEFAULT_AGENT_RUN_TIMEOUT_SECONDS
+    return int(bounded_agent_run_timeout(getattr(agent, "max_run_timeout", None)))
 
 
 async def _cleanup_stale_agent_runs(now: datetime) -> dict[str, Any]:
