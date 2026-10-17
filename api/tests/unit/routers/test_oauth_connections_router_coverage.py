@@ -309,20 +309,23 @@ async def test_callback_rejects_missing_invalid_or_unsigned_state(
     expected_detail,
 ):
     decode = MagicMock(side_effect=decode_error)
+    request = OAuthCallbackRequest(
+        code="code",
+        state=state,
+        redirect_uri="https://app.test/cb",
+        organization_id=organization_id,
+    )
+    ctx = _ctx()
+    response = MagicMock()
     with (
         patch.object(oauth_connections, "decode_state", decode),
         pytest.raises(HTTPException) as exc_info,
     ):
         await oauth_connections.oauth_callback(
             "halo",
-            OAuthCallbackRequest(
-                code="code",
-                state=state,
-                redirect_uri="https://app.test/cb",
-                organization_id=organization_id,
-            ),
-            _ctx(),
-            MagicMock(),
+            request,
+            ctx,
+            response,
         )
 
     assert exc_info.value.status_code == 400
@@ -380,6 +383,13 @@ async def test_callback_rejects_mismatched_signed_bindings(case, expected_detail
         payload["nonce"] = None
         ctx.db.get = AsyncMock(return_value=provider)
 
+    request = OAuthCallbackRequest(
+        code="code",
+        state="signed-state",
+        redirect_uri="https://app.test/cb",
+        organization_id=organization_id,
+    )
+    response = MagicMock()
     with (
         patch.object(oauth_connections, "decode_state", return_value=payload),
         patch.object(
@@ -389,14 +399,9 @@ async def test_callback_rejects_mismatched_signed_bindings(case, expected_detail
     ):
         await oauth_connections.oauth_callback(
             connection_name,
-            OAuthCallbackRequest(
-                code="code",
-                state="signed-state",
-                redirect_uri="https://app.test/cb",
-                organization_id=organization_id,
-            ),
+            request,
             ctx,
-            MagicMock(),
+            response,
         )
 
     assert exc_info.value.status_code == 400
