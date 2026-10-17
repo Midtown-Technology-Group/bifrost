@@ -13,6 +13,7 @@ import ast
 import hashlib
 import json
 from pathlib import Path
+import re
 import subprocess
 
 
@@ -70,8 +71,17 @@ def route_dependencies(source: str) -> list[dict[str, object]]:
     return rows
 
 
-def git(*args: str) -> str:
-    return subprocess.check_output(["git", *args], cwd=REPO_ROOT).decode("utf-8")
+def resolve_base_ref(base_ref: str) -> str:
+    """Resolve a single commit expression without allowing Git option injection."""
+    if not base_ref or base_ref.startswith("-") or any(char.isspace() for char in base_ref):
+        raise ValueError("The base must be one non-option Git commit reference")
+    resolved = subprocess.check_output(
+        ["git", "rev-parse", "--verify", "--end-of-options", f"{base_ref}^{{commit}}"],
+        cwd=REPO_ROOT,
+    ).decode("utf-8").strip()
+    if re.fullmatch(r"[0-9a-f]{40}", resolved) is None:
+        raise ValueError("Git did not return one complete commit SHA")
+    return resolved
 
 
 def main() -> int:
@@ -79,15 +89,21 @@ def main() -> int:
     parser.add_argument("--base-ref", required=True)
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
-    base_sha = git("rev-parse", args.base_ref).strip()
-    files = git("ls-tree", "-r", "--name-only", base_sha, "api/src/routers", "api/shared", "api/src/main.py").splitlines()
+    base_sha = resolve_base_ref(args.base_ref)
+    files = subprocess.check_output(
+        ["git", "ls-tree", "-r", "--name-only", base_sha, "--",
+         "api/src/routers", "api/shared", "api/src/main.py"],
+        cwd=REPO_ROOT,
+    ).decode("utf-8").splitlines()
     proof_files: list[dict[str, object]] = []
     proof: dict[str, object] = {"base_sha": base_sha, "files": proof_files}
     failures = []
     for relative in files:
         if not relative.endswith(".py"):
             continue
-        before = git("show", f"{base_sha}:{relative}").replace("\r\n", "\n")
+        before = subprocess.check_output(
+            ["git", "show", "--no-ext-diff", f"{base_sha}:{relative}", "--"], cwd=REPO_ROOT,
+        ).decode("utf-8").replace("\r\n", "\n")
         path = REPO_ROOT / relative
         after = path.read_text(encoding="utf-8") if path.is_file() else ""
         if before == after:
