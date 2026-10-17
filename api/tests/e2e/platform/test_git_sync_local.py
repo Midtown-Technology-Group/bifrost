@@ -3330,7 +3330,7 @@ class TestPullUpsertNaturalKeys:
         working_clone,
     ):
         """When a workflow exists with (path, function_name) but a different ID,
-        the import should update the existing row's ID to match the manifest."""
+        prepare and apply preserve the existing local ID without a false delete."""
         # Create a workflow in the DB with ID_A
         id_a = uuid4()
         wf = Workflow(
@@ -3381,9 +3381,21 @@ class TestPullUpsertNaturalKeys:
         working_clone.index.commit("Add workflow with different ID")
         working_clone.remotes.origin.push("main")
 
-        # Pull — this should NOT raise IntegrityError
-        sync_result = await sync_service.desktop_sync(confirm_deletes=True)
-        assert sync_result.success, f"Sync failed: {sync_result.error}"
+        # Exercise the reviewed prepare -> confirmed apply boundary explicitly.
+        async with sync_service.repo_manager.lock() as work_dir:
+            repo = sync_service._open_or_init(work_dir)
+            plan = await sync_service.prepare_desktop_sync(work_dir, repo)
+            assert all(
+                change.entity_id != str(id_a)
+                for change in plan.pending_deletes
+            )
+            sync_result = await sync_service.apply_desktop_sync(
+                work_dir,
+                repo,
+                plan,
+                confirm_deletes=True,
+            )
+            assert sync_result.success, f"Sync failed: {sync_result.error}"
 
         # Verify: only one workflow row exists with the manifest's ID (id_b)
         result = await db_session.execute(
@@ -3394,7 +3406,7 @@ class TestPullUpsertNaturalKeys:
         )
         rows = result.scalars().all()
         assert len(rows) == 1, f"Expected 1 workflow row, got {len(rows)}"
-        assert rows[0].id == id_b, f"Expected manifest ID {id_b}, got {rows[0].id}"
+        assert rows[0].id == id_a, f"Expected stable local ID {id_a}, got {rows[0].id}"
 
     async def test_integration_import_with_different_id(
         self,
@@ -3404,7 +3416,7 @@ class TestPullUpsertNaturalKeys:
         working_clone,
     ):
         """When an integration exists with same name but different ID,
-        the import should update the existing row's ID to match the manifest."""
+        the import should preserve the existing local ID."""
         from src.models.orm.integrations import Integration
 
         # Create integration in DB with ID_A
@@ -3443,7 +3455,7 @@ class TestPullUpsertNaturalKeys:
         )
         rows = result.scalars().all()
         assert len(rows) == 1, f"Expected 1 integration, got {len(rows)}"
-        assert rows[0].id == id_b, f"Expected manifest ID {id_b}, got {rows[0].id}"
+        assert rows[0].id == id_a, f"Expected stable local ID {id_a}, got {rows[0].id}"
 
     async def test_integration_import_with_different_id_and_config_schema(
         self,
@@ -3452,14 +3464,10 @@ class TestPullUpsertNaturalKeys:
         bare_repo,
         working_clone,
     ):
-        """Regression for #148: integration UUID rewrite + existing config_schema rows
-        must not collide with the FK ON UPDATE CASCADE-migrated rows.
+        """A portable UUID must not replace an existing integration identity.
 
-        Pre-fix: prefetch cache is keyed on the OLD integration_id. After the
-        upsert rewrites the integration's id, the cascade migrates the schema
-        rows to the new id, but the cache lookup at the new id returns {},
-        the loop falls through to INSERT, and hits a unique violation on
-        (integration_id, key).
+        The existing schema rows must remain attached to the local integration,
+        and the foreign manifest UUID must not acquire duplicate schema rows.
         """
         from src.models.orm.integrations import Integration, IntegrationConfigSchema
 
@@ -3505,26 +3513,26 @@ class TestPullUpsertNaturalKeys:
         sync_result = await sync_service.desktop_sync(confirm_deletes=True)
         assert sync_result.success, f"Sync failed: {sync_result.error}"
 
-        # Integration now has id_b and exactly the two schema rows under id_b.
+        # The local integration identity and its two schema rows are preserved.
         integ_rows = (await db_session.execute(
             select(Integration).where(Integration.name == "CascadeSchemaInteg")
         )).scalars().all()
         assert len(integ_rows) == 1
-        assert integ_rows[0].id == id_b
+        assert integ_rows[0].id == id_a
 
         cs_rows = (await db_session.execute(
             select(IntegrationConfigSchema).where(
-                IntegrationConfigSchema.integration_id == id_b
+                IntegrationConfigSchema.integration_id == id_a
             ).order_by(IntegrationConfigSchema.position)
         )).scalars().all()
         assert [c.key for c in cs_rows] == ["api_key", "region"]
-        # No orphan rows under id_a
-        orphans = (await db_session.execute(
+        # No duplicate rows are created under the foreign manifest identity.
+        foreign_rows = (await db_session.execute(
             select(IntegrationConfigSchema).where(
-                IntegrationConfigSchema.integration_id == id_a
+                IntegrationConfigSchema.integration_id == id_b
             )
         )).scalars().all()
-        assert orphans == []
+        assert foreign_rows == []
 
     async def test_integration_import_with_different_id_and_mapping(
         self,
@@ -3580,7 +3588,7 @@ class TestPullUpsertNaturalKeys:
 
         m_rows = (await db_session.execute(
             select(IntegrationMapping).where(
-                IntegrationMapping.integration_id == id_b
+                IntegrationMapping.integration_id == id_a
             )
         )).scalars().all()
         assert len(m_rows) == 1
@@ -3651,14 +3659,15 @@ class TestPullUpsertNaturalKeys:
         cfg_rows = (await db_session.execute(
             select(Config).where(
                 Config.key == "api_url",
-                Config.integration_id == id_b,
+                Config.integration_id == id_a,
             )
         )).scalars().all()
-        assert len(cfg_rows) == 1, f"Expected 1 config row under integ id_b, got {len(cfg_rows)}"
+        assert len(cfg_rows) == 1, f"Expected 1 config row under local integration, got {len(cfg_rows)}"
+        assert cfg_rows[0].id == cfg_id
         assert cfg_rows[0].value == {"value": "https://new.example.com"}
-        # And nothing left under the old integ id (CASCADE moved them all)
+        # Portable IDs must not create duplicate parent or config rows.
         orphans = (await db_session.execute(
-            select(Config).where(Config.integration_id == id_a)
+            select(Config).where(Config.integration_id == id_b)
         )).scalars().all()
         assert orphans == []
 
@@ -3724,7 +3733,7 @@ class TestPullUpsertNaturalKeys:
         )
         rows = result.scalars().all()
         assert len(rows) == 1, f"Expected 1 app, got {len(rows)}"
-        assert rows[0].id == id_b, f"Expected manifest ID {id_b}, got {rows[0].id}"
+        assert rows[0].id == id_a, f"Expected stable local ID {id_a}, got {rows[0].id}"
 
     async def test_config_import_with_different_id(
         self,
@@ -3795,7 +3804,7 @@ class TestPullUpsertNaturalKeys:
         )
         rows = result.scalars().all()
         assert len(rows) == 1, f"Expected 1 config, got {len(rows)}"
-        assert rows[0].id == id_b, f"Expected manifest ID {id_b}, got {rows[0].id}"
+        assert rows[0].id == id_a, f"Expected stable local ID {id_a}, got {rows[0].id}"
 
     async def test_event_subscription_import_with_different_id(
         self,
@@ -4092,9 +4101,9 @@ class TestOrgImport:
         assert result.success
 
         row = (await db_session.execute(
-            select(Organization).where(Organization.id == new_id)
+            select(Organization).where(Organization.id == old_id)
         )).scalar_one_or_none()
-        assert row is not None, "Org should have new ID"
+        assert row is not None, "Org should preserve its local ID"
         assert row.name == "SharedOrg"
 
     async def test_org_preserves_domain(
@@ -4278,7 +4287,7 @@ class TestRoleImport:
     async def test_update_role_by_name_new_id(
         self, db_session: AsyncSession, sync_service, working_clone,
     ):
-        """Role exists by name, different UUID → ID updated."""
+        """Role exists by name, different UUID → local ID preserved."""
         from src.models.orm.users import Role
 
         old_id = uuid4()
@@ -4300,7 +4309,7 @@ class TestRoleImport:
         assert result.success
 
         row = (await db_session.execute(
-            select(Role).where(Role.id == new_id)
+            select(Role).where(Role.id == old_id)
         )).scalar_one_or_none()
         assert row is not None
         assert row.name == "SharedRole"
