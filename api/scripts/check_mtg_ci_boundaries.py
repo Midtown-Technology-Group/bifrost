@@ -220,9 +220,11 @@ def _check_image_consumer_job(
         )
 
     for offset, line in enumerate(block):
-        if ("GITHUB_TOKEN" in line or "github.token" in line) and not (
-            pull_index <= offset < checkout_index
-        ):
+        if (
+            "GHCR_TOKEN" in line
+            or "GITHUB_TOKEN" in line
+            or "github.token" in line
+        ) and not (pull_index <= offset < checkout_index):
             failures.append(
                 f"{location}: line {offset + 1} exposes the GitHub token outside "
                 "the pre-checkout cache pull."
@@ -307,14 +309,16 @@ def _check_image_publisher_job(
             )
             break
 
-    if any(
-        line.strip().startswith("- name:") for line in block[publish_index + 1 :]
-    ):
+    if any(line.startswith("      - ") for line in block[publish_index + 1 :]):
         failures.append(
             f"{location}: no step may run after the package-authenticated publish step."
         )
     for offset, line in enumerate(block):
-        if ("GHCR_TOKEN" in line or "secrets.GITHUB_TOKEN" in line) and offset < publish_index:
+        if (
+            "GHCR_TOKEN" in line
+            or "secrets.GITHUB_TOKEN" in line
+            or "github.token" in line
+        ) and offset < publish_index:
             failures.append(
                 f"{location}: line {offset + 1} exposes a package credential before "
                 "the fixed-reference publish step."

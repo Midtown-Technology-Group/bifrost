@@ -70,6 +70,29 @@ def test_ci_image_token_after_checkout_is_rejected(tmp_path: Path):
     assert any("outside the pre-checkout cache pull" in item for item in violations)
 
 
+def test_ci_image_job_level_ghcr_token_is_rejected(tmp_path: Path):
+    root = _repo_root()
+    original = (root / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    mutated = tmp_path / "ci.yml"
+    mutated.write_text(
+        original.replace(
+            "  test-unit:\n",
+            "  test-unit:\n"
+            "    env:\n"
+            "      PACKAGE_TOKEN: ${{ secrets.GHCR_TOKEN }}\n",
+            1,
+        ),
+        encoding="utf-8",
+    )
+
+    violations = check_ci_image_token_boundaries(
+        mutated,
+        root / ".github/workflows/sonar-coverage.yml",
+    )
+
+    assert any("outside the pre-checkout cache pull" in item for item in violations)
+
+
 def test_ci_image_checkout_credentials_must_not_persist(tmp_path: Path):
     root = _repo_root()
     original = (root / ".github/workflows/ci.yml").read_text(encoding="utf-8")
@@ -185,6 +208,51 @@ def test_ci_image_publisher_must_be_the_final_job_step(tmp_path: Path):
     )
 
     assert any("no step may run after" in item for item in violations)
+
+
+def test_ci_image_publisher_rejects_unnamed_step_after_publish(tmp_path: Path):
+    root = _repo_root()
+    original = (root / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    mutated = tmp_path / "ci.yml"
+    mutated.write_text(
+        _mutate_ci_image_publisher(
+            original,
+            "          done\n",
+            "          done\n\n"
+            "      - run: bash api/scripts/unsafe.sh\n",
+        ),
+        encoding="utf-8",
+    )
+
+    violations = check_ci_image_token_boundaries(
+        mutated,
+        root / ".github/workflows/sonar-coverage.yml",
+    )
+
+    assert any("no step may run after" in item for item in violations)
+
+
+def test_ci_image_publisher_rejects_job_level_github_token(tmp_path: Path):
+    root = _repo_root()
+    original = (root / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    mutated = tmp_path / "ci.yml"
+    mutated.write_text(
+        _mutate_ci_image_publisher(
+            original,
+            "  publish-ci-test-images:\n",
+            "  publish-ci-test-images:\n"
+            "    env:\n"
+            "      PACKAGE_TOKEN: ${{ github.token }}\n",
+        ),
+        encoding="utf-8",
+    )
+
+    violations = check_ci_image_token_boundaries(
+        mutated,
+        root / ".github/workflows/sonar-coverage.yml",
+    )
+
+    assert any("before the fixed-reference publish step" in item for item in violations)
 
 
 def test_ci_image_authentication_must_precede_checkout(tmp_path: Path):
