@@ -56,14 +56,13 @@ import {
 import { getErrorMessage } from "@/lib/api-error";
 import { formatRelativeTime } from "@/lib/utils";
 import { useAuthorization } from "@/services/authorization";
-import { useAuth } from "@/contexts/AuthContext";
 
 import { AuditPagination } from "./AuditPagination";
 import { AccessCheckAggregates } from "./AccessCheckAggregates";
 import { AccessCheckRecords } from "./AccessCheckRecords";
 import { AuditPageLayout } from "./AuditPageLayout";
 
-/** Report-only checks that would have been denied. */
+/** Failed actual and historical report-only checks. */
 const WOULD_DENY = { action: "access.check", outcome: "failure" } as const;
 /** The `key` (and filter value) of a group whose entries have no value. */
 const NONE = "none";
@@ -108,7 +107,8 @@ function StopChip({
 	return (
 		<span className="inline-flex items-center gap-1.5 rounded-full bg-[var(--bf-warning-soft)] px-2 py-0.5 text-xs font-medium text-[var(--bf-warning)]">
 			<TriangleAlert aria-hidden="true" className="size-3.5 shrink-0" />
-			{labelled && "Would Stop Here · "}
+			{labelled &&
+				(trace.enforced ? "Stopped Here · " : "Would Stop Here · ")}
 			{stepTitle(step.label)}
 		</span>
 	);
@@ -238,7 +238,7 @@ function GroupList({
 					<DataTableHead>{heading}</DataTableHead>
 					<DataTableHead className="text-right">Checks</DataTableHead>
 					<DataTableHead>Last Seen</DataTableHead>
-					<DataTableHead>Would Stop Here</DataTableHead>
+					<DataTableHead>Decision Point</DataTableHead>
 				</DataTableRow>
 			</DataTableHeader>
 			<DataTableBody>
@@ -351,7 +351,7 @@ function CheckList({
 					<DataTableHead>Time</DataTableHead>
 					<DataTableHead>Run User</DataTableHead>
 					<DataTableHead>Resource Type</DataTableHead>
-					<DataTableHead>Would Stop Here</DataTableHead>
+					<DataTableHead>Decision Point</DataTableHead>
 				</DataTableRow>
 			</DataTableHeader>
 			<DataTableBody>
@@ -435,7 +435,7 @@ function CheckResults({
 			<EmptyState
 				icon={ShieldCheck}
 				title="No Checks in This Group"
-				description="None of the recorded would-deny checks are in this group now."
+				description="No denied or report-only failed checks are in this group."
 			/>
 		);
 	return (
@@ -544,7 +544,6 @@ export function AccessChecksPage() {
 	const groupBy = current.value;
 	const groupKey = params.get("key");
 	const desktop = useMediaQuery("(min-width: 1280px)");
-	const { isPlatformAdmin } = useAuth();
 	const authorization = useAuthorization();
 
 	const groupsQuery = useAuditGroups(groupBy, WOULD_DENY);
@@ -588,14 +587,7 @@ export function AccessChecksPage() {
 		groupBy === GROUPINGS[0].value ? "" : `?group_by=${groupBy}`;
 
 	return (
-		<AuditPageLayout
-			view="access-checks"
-			views={
-				isPlatformAdmin
-					? ["activity", "access-checks"]
-					: ["access-checks"]
-			}
-		>
+		<AuditPageLayout view="access-checks">
 			<div className="shrink-0 space-y-4">
 				{groupKey ? (
 					<div className="space-y-1">
@@ -617,7 +609,7 @@ export function AccessChecksPage() {
 						</h2>
 						{openGroup && (
 							<p className="text-sm text-muted-foreground">
-								{openGroup.count} would-deny{" "}
+								{openGroup.count} failed{" "}
 								{openGroup.count === 1 ? "check" : "checks"}
 							</p>
 						)}
@@ -679,8 +671,8 @@ export function AccessChecksPage() {
 					) : groups.length === 0 ? (
 						<EmptyState
 							icon={ShieldCheck}
-							title="No Would-Deny Checks"
-							description="Every recorded check would have been allowed."
+							title="No Failed Access Checks"
+							description="No denied or report-only failed checks match these filters."
 						/>
 					) : (
 						<GroupList

@@ -22,12 +22,10 @@ function shouldRestoreTabFocus(state: unknown, view: AuditView) {
 
 export function AuditPageLayout({
 	view,
-	views = ["activity", "access-checks"],
 	actions,
 	children,
 }: {
 	view: AuditView;
-	views?: AuditView[];
 	actions?: ReactNode;
 	children: ReactNode;
 }) {
@@ -62,7 +60,6 @@ export function AuditPageLayout({
 				value={view}
 				onValueChange={(nextView) => {
 					const nextAuditView = nextView as AuditView;
-					if (!views.includes(nextAuditView)) return;
 					const restoreFocus = keyboardTabNavigation.current;
 					keyboardTabNavigation.current = false;
 					navigate(auditRoutes[nextAuditView], {
@@ -85,28 +82,20 @@ export function AuditPageLayout({
 						].includes(event.key);
 					}}
 				>
-					{views.includes("activity") && (
-						<TabsTrigger
-							ref={view === "activity" ? selectedTab : undefined}
-							value="activity"
-							className="min-h-11 px-4"
-						>
-							Activity
-						</TabsTrigger>
-					)}
-					{views.includes("access-checks") && (
-						<TabsTrigger
-							ref={
-								view === "access-checks"
-									? selectedTab
-									: undefined
-							}
-							value="access-checks"
-							className="min-h-11 px-4"
-						>
-							Access Checks
-						</TabsTrigger>
-					)}
+					<TabsTrigger
+						ref={view === "activity" ? selectedTab : undefined}
+						value="activity"
+						className="min-h-11 px-4"
+					>
+						Activity
+					</TabsTrigger>
+					<TabsTrigger
+						ref={view === "access-checks" ? selectedTab : undefined}
+						value="access-checks"
+						className="min-h-11 px-4"
+					>
+						Access Checks
+					</TabsTrigger>
 				</TabsList>
 				<TabsContent
 					value={view}

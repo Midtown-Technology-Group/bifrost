@@ -50,10 +50,6 @@ vi.mock("@/services/authorization", () => ({
 	useAuthorization: () => ({ canAnywhere: () => lists.readable }),
 }));
 
-vi.mock("@/contexts/AuthContext", () => ({
-	useAuth: () => ({ isPlatformAdmin: false }),
-}));
-
 import { AccessChecksPage } from "./AccessChecksPage";
 
 function stopping(key: string, label: string): AccessStep[] {
@@ -189,7 +185,7 @@ describe("AccessChecksPage", () => {
 		expect(second).toHaveTextContent("No Workflow");
 		expect(second).toHaveTextContent("Permission");
 		expect(
-			screen.getByRole("columnheader", { name: "Would Stop Here" }),
+			screen.getByRole("columnheader", { name: "Decision Point" }),
 		).toBeVisible();
 	});
 
@@ -212,9 +208,11 @@ describe("AccessChecksPage", () => {
 		audit.groups.mockReturnValue(query({ entries: [], groups: [] }));
 		renderPage();
 
-		expect(screen.getByText("No Would-Deny Checks")).toBeVisible();
+		expect(screen.getByText("No Failed Access Checks")).toBeVisible();
 		expect(
-			screen.getByText("Every recorded check would have been allowed."),
+			screen.getByText(
+				"No denied or report-only failed checks match these filters.",
+			),
 		).toBeVisible();
 	});
 
@@ -304,6 +302,41 @@ describe("AccessChecksPage", () => {
 		await waitFor(() => expect(search()).toBe("?group_by=organization"));
 	});
 
+	it("selects another recorded check inside the same inspector", async () => {
+		const grouped = audit.list.getMockImplementation()!;
+		const other = {
+			...sample,
+			id: "event-other",
+			timestamp: "2026-10-17T12:30:00Z",
+			operation_id: "tables.query",
+		};
+		audit.list.mockImplementation((params: { aggregate?: string }) =>
+			params.aggregate
+				? grouped(params)
+				: query({ entries: [sample, other], continuation_token: null }),
+		);
+		const { user } = renderPage(
+			"/audit/access-checks?group_by=workflow&key=wf-1",
+		);
+		await user.click(
+			screen.getByRole("button", { name: "Open 12 Recorded Checks" }),
+		);
+		const dialog = within(
+			screen.getByRole("dialog", { name: "Access Check" }),
+		);
+		const times = within(dialog.getByRole("list", { name: "Check Times" }));
+		await user.click(times.getAllByRole("button")[1]);
+		expect(
+			dialog.getByText("Operation", { selector: "dt" })
+				.nextElementSibling,
+		).toHaveTextContent("tables.query");
+		expect(times.getAllByRole("button")[1]).toHaveAttribute(
+			"aria-pressed",
+			"true",
+		);
+		expect(screen.getAllByRole("dialog")).toHaveLength(1);
+	});
+
 	it("names workflows and identities' organizations for someone who can't list either", async () => {
 		lists.readable = false;
 		const { user } = renderPage();
@@ -372,7 +405,7 @@ describe("AccessChecksPage", () => {
 			screen.queryByRole("columnheader", { name: "# Checks" }),
 		).not.toBeInTheDocument();
 		expect(
-			screen.getByRole("columnheader", { name: "Would Stop Here" }),
+			screen.getByRole("columnheader", { name: "Decision Point" }),
 		).toBeVisible();
 	});
 });

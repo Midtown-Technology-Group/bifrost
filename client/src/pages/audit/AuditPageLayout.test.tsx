@@ -84,21 +84,6 @@ describe("AuditPageLayout", () => {
 		).toBeVisible();
 	});
 
-	it("hides the activity tab when only access checks is permitted", () => {
-		renderWithProviders(
-			<AuditPageLayout view="access-checks" views={["access-checks"]}>
-				<p>Access checks content</p>
-			</AuditPageLayout>,
-		);
-
-		expect(
-			screen.queryByRole("tab", { name: "Activity" }),
-		).not.toBeInTheDocument();
-		expect(
-			screen.getByRole("tab", { name: "Access Checks" }),
-		).toHaveAttribute("aria-selected", "true");
-	});
-
 	it("keeps keyboard focus on the selected tab after route navigation", async () => {
 		const { user } = renderWithProviders(
 			<Routes>
