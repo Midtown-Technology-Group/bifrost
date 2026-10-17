@@ -132,7 +132,9 @@ def test_full_storage_chain_has_reference_keys_before_dependents_and_no_roles() 
         "operations_digest, initial_access_expires_at)"
     ) in sql
     assert "CREATE ROLE" not in sql and "GRANT " not in sql
-    assert "IF NOT EXISTS" not in sql
+    # Reject silently adopted tables, while preserving the fail-closed role
+    # prerequisite in C1's DO block (IF NOT EXISTS (...) THEN RAISE).
+    assert "CREATE TABLE IF NOT EXISTS" not in sql
     _, tables = _render()
     assert all(
         element.target_fullname.startswith("public.")
