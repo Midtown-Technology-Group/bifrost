@@ -24,6 +24,22 @@ from bifrost._logging import (
     close_thread_redis,
     clear_sequence_counter,
 )
+from src.core.cache.keys import TTL_EXECUTION_LOGS
+
+
+def _sync_log_pipeline(redis: MagicMock, entry_id: str) -> MagicMock:
+    pipeline = MagicMock()
+    pipeline.execute.return_value = [entry_id, True]
+    redis.pipeline.return_value.__enter__.return_value = pipeline
+    return pipeline
+
+
+def _async_log_pipeline(redis: AsyncMock, entry_id: str) -> MagicMock:
+    pipeline = MagicMock()
+    pipeline.execute = AsyncMock(return_value=[entry_id, True])
+    redis.pipeline = MagicMock()
+    redis.pipeline.return_value.__aenter__.return_value = pipeline
+    return pipeline
 
 
 class TestMetadataSerialization:
@@ -58,7 +74,7 @@ class TestAppendLogToStream:
 
         with patch("bifrost._logging._get_sync_redis") as mock_get_redis:
             mock_redis = MagicMock()
-            mock_redis.xadd.return_value = "1234567890-0"
+            pipeline = _sync_log_pipeline(mock_redis, "1234567890-0")
             mock_get_redis.return_value = mock_redis
 
             entry_id = append_log_to_stream(
@@ -69,10 +85,13 @@ class TestAppendLogToStream:
             )
 
             assert entry_id == "1234567890-0"
-            mock_redis.xadd.assert_called_once()
+            pipeline.xadd.assert_called_once()
+            pipeline.expire.assert_called_once_with(
+                f"bifrost:logs:{exec_id}", TTL_EXECUTION_LOGS
+            )
 
             # Verify the call arguments
-            call_args = mock_redis.xadd.call_args
+            call_args = pipeline.xadd.call_args
             stream_key = call_args[0][0]
             entry = call_args[0][1]
 
@@ -88,7 +107,7 @@ class TestAppendLogToStream:
 
         with patch("bifrost._logging._get_sync_redis") as mock_get_redis:
             mock_redis = MagicMock()
-            mock_redis.xadd.return_value = "1234567890-0"
+            pipeline = _sync_log_pipeline(mock_redis, "1234567890-0")
             mock_get_redis.return_value = mock_redis
 
             entry_id = append_log_to_stream(
@@ -98,7 +117,7 @@ class TestAppendLogToStream:
             )
 
             assert entry_id is not None
-            call_args = mock_redis.xadd.call_args
+            call_args = pipeline.xadd.call_args
             entry = call_args[0][1]
             assert entry["execution_id"] == str(exec_uuid)
 
@@ -106,7 +125,7 @@ class TestAppendLogToStream:
         """Normalizes log level to uppercase."""
         with patch("bifrost._logging._get_sync_redis") as mock_get_redis:
             mock_redis = MagicMock()
-            mock_redis.xadd.return_value = "1234567890-0"
+            pipeline = _sync_log_pipeline(mock_redis, "1234567890-0")
             mock_get_redis.return_value = mock_redis
 
             append_log_to_stream(
@@ -115,7 +134,7 @@ class TestAppendLogToStream:
                 message="Warning message",
             )
 
-            call_args = mock_redis.xadd.call_args
+            call_args = pipeline.xadd.call_args
             entry = call_args[0][1]
             assert entry["level"] == "WARNING"
 
@@ -123,7 +142,7 @@ class TestAppendLogToStream:
         """Handles None metadata by serializing to empty object."""
         with patch("bifrost._logging._get_sync_redis") as mock_get_redis:
             mock_redis = MagicMock()
-            mock_redis.xadd.return_value = "1234567890-0"
+            pipeline = _sync_log_pipeline(mock_redis, "1234567890-0")
             mock_get_redis.return_value = mock_redis
 
             append_log_to_stream(
@@ -133,7 +152,7 @@ class TestAppendLogToStream:
                 metadata=None,
             )
 
-            call_args = mock_redis.xadd.call_args
+            call_args = pipeline.xadd.call_args
             entry = call_args[0][1]
             assert entry["metadata"] == "{}"
 
@@ -141,7 +160,8 @@ class TestAppendLogToStream:
         """Returns None and resets connection on error."""
         with patch("bifrost._logging._get_sync_redis") as mock_get_redis:
             mock_redis = MagicMock()
-            mock_redis.xadd.side_effect = Exception("Connection failed")
+            pipeline = _sync_log_pipeline(mock_redis, "unused")
+            pipeline.execute.side_effect = Exception("Connection failed")
             mock_get_redis.return_value = mock_redis
 
             with patch("bifrost._logging._local") as mock_local:
@@ -271,7 +291,7 @@ class TestAsyncLogFunctions:
 
         with patch("src.core.cache.get_redis") as mock_get_redis:
             mock_redis = AsyncMock()
-            mock_redis.xadd.return_value = "async-entry-id"
+            pipeline = _async_log_pipeline(mock_redis, "async-entry-id")
             mock_get_redis.return_value.__aenter__.return_value = mock_redis
 
             entry_id = await append_log_to_stream_async(
@@ -281,13 +301,17 @@ class TestAsyncLogFunctions:
             )
 
             assert entry_id == "async-entry-id"
+            pipeline.expire.assert_called_once_with(
+                f"bifrost:logs:{exec_id}", TTL_EXECUTION_LOGS
+            )
 
     @pytest.mark.asyncio
     async def test_append_log_to_stream_async_handles_error(self):
         """Async version returns None on error."""
         with patch("src.core.cache.get_redis") as mock_get_redis:
             mock_redis = AsyncMock()
-            mock_redis.xadd.side_effect = Exception("Async error")
+            pipeline = _async_log_pipeline(mock_redis, "unused")
+            pipeline.execute.side_effect = Exception("Async error")
             mock_get_redis.return_value.__aenter__.return_value = mock_redis
 
             entry_id = await append_log_to_stream_async(

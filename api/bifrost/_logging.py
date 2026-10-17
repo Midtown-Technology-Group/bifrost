@@ -25,7 +25,7 @@ from uuid import UUID
 
 import redis as redis_sync
 
-from src.core.cache.keys import execution_logs_stream_key
+from src.core.cache.keys import TTL_EXECUTION_LOGS, execution_logs_stream_key
 from src.core.log_safety import log_safe
 
 logger = logging.getLogger(__name__)
@@ -120,9 +120,15 @@ def append_log_to_stream(
 
     try:
         r = _get_sync_redis()
-        # XADD with automatic ID generation (*)
-        # MAXLEN ~ 10000 keeps stream bounded (approximate trimming)
-        entry_id: str = r.xadd(stream_key, entry, maxlen=10000)  # type: ignore[misc]
+        # The transaction prevents a process failure between creating a stream
+        # and assigning its retention bound. MAXLEN limits entries per stream;
+        # expiry also bounds empty stream metadata after acknowledgements.
+        with r.pipeline(transaction=True) as pipeline:
+            pipeline.xadd(stream_key, entry, maxlen=10000)
+            pipeline.expire(stream_key, TTL_EXECUTION_LOGS)
+            entry_id, expiry_applied = pipeline.execute()
+        if not expiry_applied:
+            raise RuntimeError("Failed to apply execution log stream expiry")
         return entry_id
     except Exception as e:
         logger.warning(f"Failed to append log to stream: {e}")
@@ -329,7 +335,12 @@ async def append_log_to_stream_async(
 
     try:
         async with get_redis() as r:
-            entry_id = await r.xadd(stream_key, entry, maxlen=10000)  # type: ignore[misc]
+            async with r.pipeline(transaction=True) as pipeline:
+                pipeline.xadd(stream_key, entry, maxlen=10000)
+                pipeline.expire(stream_key, TTL_EXECUTION_LOGS)
+                entry_id, expiry_applied = await pipeline.execute()
+            if not expiry_applied:
+                raise RuntimeError("Failed to apply execution log stream expiry")
             return entry_id
     except Exception as e:
         logger.warning(f"Failed to append log to stream (async): {e}")
