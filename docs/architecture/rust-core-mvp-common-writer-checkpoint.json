@@ -88,7 +88,7 @@
   },
   "remaining": [
     "Approve finite isolated principal/lock/read authority, reconcile effective installed catalog and qualify genuine direct/pool logins; proposed ACL source is complete but unapplied. Finish matching adapter order, remaining native cascade positives and exact maintenance policy.",
-    "CRED common issuer/renewal/ingress adapter, exact report/projection enforcement and trusted physical-observation admission.",
+    "Least-authority credential-writer disposition (never reuse core lifecycle factory), CRED common issuer/renewal/ingress adapter, exact report/projection enforcement and trusted physical-observation admission.",
     "Actual supported PostgreSQL wrong-writer, source/cancel/admission/retirement contention, RLS, FK/cascade, public errors, Python redaction, failed/unknown commit and S3 post-commit proof.",
     "Pre-session resource/proof boundary: unresolved no-session owners stay pinned; no retirement inferred from missing session/Start/native history/files. No new retirement table introduced.",
     "Selected Python artifact/profile and sensitive-payload disposition; general partial-cleanup recovery remains unresolved.",
@@ -116,5 +116,20 @@
     "parse_errors": 0,
     "allowlist_empty": true,
     "prerequisite_ancestry": "#1001/#1112 reverified on exact fetched heads"
+  },
+  "credential_adapter_disposition": {
+    "package": "CP-C5-D/authority-source-review",
+    "reference_head": "3918d608a2d497d1ca8424fd4229d191323e2d7a",
+    "source_path": "api/src/services/runtime_sdk_grants.py",
+    "source_sha256": "267205ba18c6f13705f50ca1f84a4157418de4854d26c4e08fc1bfa4abce5451",
+    "rejected": "Giving trusted Python CRED issuer a wex_core factory confers native lifecycle DML authority; helper intent does not constrain session_user authority.",
+    "source_findings": [
+      "Source SHARE NOWAIT requires locking privilege as well as SELECT.",
+      "ORM implicitly loads dependency and unrelated Solution connection/file-location rows; preserve dependencies and bound the query projection.",
+      "SERIALIZABLE READONLY ingress must not call READCOMMITTED-only actor helper."
+    ],
+    "direction": "Preserve the one trusted Python CRED policy/issuer; separately review a least-authority credential writer and exact common binding/lock adapter. No new role authorized or implemented.",
+    "does_not_block": "Source preparation of R1 no-grant cancellation SQL dependency test; not credential or full R1 acceptance.",
+    "review": "independent Sol source review; no SQL/runtime evidence"
   }
 }

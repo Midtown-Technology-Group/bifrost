@@ -90,6 +90,20 @@ complete first-issuance race proof is claimed. R1 needs the R0 decisions relevan
 to its transaction; Python packaging does not block independent approved
 persistence work.
 
+The next cancellation dependency test is now executable Rust test source at
+`3c66dc70a58a8be1758a535c6b47c1147df71f6e`,
+`core-rs/crates/bifrost-db/tests/common_session_sql.rs`; the operation module
+itself remains byte-identical to `6d07e94f`. It requires actual core/incumbent
+logins and committed synthetic Rust/Python fixtures on one database. It tests
+the real cancellation function, wrong actor/binding, direct wrong-owner DML,
+an incumbent-owned write positive, advisory contention, fresh committed
+readback and internal reconciliation. Incumbent must observe the same Running
+to Cancelling transition. It creates no schema, roles, grants or fixture and
+is behind the explicit `common-session-sql` test feature. Independent source
+review accepted the repaired assertions; compilation and actual SQL remain
+unproved. A reviewed fixture producer and isolated application packet are the
+next prerequisite. This dependency does not complete R1's Start/result exit.
+
 The [storage checkpoint](rust-core-mvp-common-storage-checkpoint.json) now binds
 independently source-reviewed inactive C1-C4 candidates. C3 at
 `b7922c9b640692afca5ce4a2ec48f8cdc4f71429` preserves closed CRED grant and
@@ -122,12 +136,18 @@ before source acceptance. No roles, grants or schema were applied; effective
 installed ACLs, genuine direct/pool logins and read/lock-authority approval still
 gate a SQL experiment. This is not a full Python backend credential profile.
 
-The next finite package closes the matching CRED adapter order and the exact
-R1 qualification packet. Keep R1's selected persistence experiment separate
+CP-C5-D source review rejected reusing the core SQL factory for the trusted
+Python credential issuer: it would confer native lifecycle write authority.
+The existing one-issuer direction remains valid, but its least-authority SQL
+principal, source row-lock privileges and exact ORM projections require a
+concrete separate disposition. No new role is approved or implemented.
+
+The next finite package prepares the R1 no-grant fixture/qualification packet;
+the CRED authority gap independently gates R2. Keep R1's selected persistence experiment separate
 from R2's interpreter/physical-resource acceptance; do not make production
 catalog access a prerequisite for an approved disposable SQL test.
 CRED's common adapter and report/projection enforcement
-remain required before the bundled schema/authority decision. No candidate DDL,
+remain required for R2; no-issuer R1 tests cannot qualify them. No candidate DDL,
 role grant, credential or runtime enablement is authorized by source acceptance.
 No-session owners stay pinned until an explicit pre-session resource/proof
 boundary is established; general partial-cleanup and payload disposition remain

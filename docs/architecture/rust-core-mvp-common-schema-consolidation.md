@@ -103,6 +103,47 @@ renewal, request admission, close and cancellation must all observe the same
 closed session and exact committed grant/Start before any SDK effect is admitted.
 Already admitted remote effects do not become undone by later revocation.
 
+### Credential SQL authority: rejected shortcut
+
+Independent CP-C5-D source review rejected giving the existing Python CRED
+issuer a `wex_core` factory. This is a concrete authority conflict, not an
+objection to retaining the trusted Python credential service: core can write
+native lifecycle rows, and the guards authenticate session_user rather than
+helper intent. It would violate the credential-custodian boundary of closed
+grant operations and exact locked reads. No such factory or credential was
+installed. CRED remains pinned at
+`3918d608a2d497d1ca8424fd4229d191323e2d7a` (open/unmerged #1037).
+
+The exact source consumer is `api/src/services/runtime_sdk_grants.py`:
+`_read_work(lock=True)` locks the typed attempt first, then Execution,
+SolutionDeployment and Solution using SHARE NOWAIT. SELECT alone cannot
+supply those row locks. ORM selection also loads deployment dependencies and
+Solution connection_schema/file_locations. The common adapter must preserve
+dependency validation while suppressing unrelated eager loads or selecting the
+exact needed projection. Do not solve that query fan-out with broad grants.
+
+Recommend a separately reviewed credential-writer principal restricted to grant
+creation/operations and monotonic revocation, exact common/native reads and
+required row locking. It must not create/close sessions, Start, native lifecycle
+projections, reports, admissions or resource facts. Core still owns cancellation
+and atomic close/revoke. This recommendation is **not an approved fifth role**;
+the four-role SQL proposal remains unchanged. The concrete role/guard/adapter
+diff and effective lock privileges require an explicit authority disposition.
+Do not merely add another actor enum value: every native/source/common guard
+must explicitly deny its unauthorized paths, with incumbent/core positives and
+issuer escape negatives. No second policy implementation or issuer is added.
+
+After that disposition, preserve independent committed common Start reads,
+execution-first locked revalidation, the exact three added grant bindings and
+the existing policy/digest semantics. Initial issuance, renewal and ingress
+must all use the shared common binding validation. SERIALIZABLE READONLY
+ingress must not call the READCOMMITTED-only actor helper; its snapshot/close
+linearization requires separate race proof. No locks span remote effects.
+
+This blocks R2 credential integration, not preparation of the independent R1
+no-grant cancellation SQL test. That dependency test cannot qualify initial
+issuance, Rust Start/result ownership or a complete workflow lifecycle.
+
 ## Native links, historical identity and sensitive evidence
 
 Preserve existing common table names and logical identities. Do not introduce

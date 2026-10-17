@@ -202,18 +202,94 @@
     }
   ],
   "unqualified_successor": {
-    "head": "6d07e94fcb5f8028ed7d17f3725b282e488cf093",
+    "head": "3c66dc70a58a8be1758a535c6b47c1147df71f6e",
     "module_sha256": "828c38f47ddec7c4b84898611d4a929e2b76dd14ea74bb45e5014f2c952a710d",
-    "change": "transaction-local pg_catalog,pg_temp path before authority checks; explicit public/catalog relation qualification",
-    "review": "independent Sol scoped source ACCEPT; no runtime execution",
+    "change": "Existing trusted SQL-resolution correction plus opt-in actual PostgreSQL cancellation test; no production operation change.",
+    "review": "independent Sol scoped SOURCE ACCEPT at 3c66dc70; initial8ff same-fixture DSN finding repaired; wrong-owner denial now paired with same-column incumbent write positive",
     "live_test": "transaction_resists_temp_shadows; proves masking before preparation and trusted catalog/public resolution after; does not exercise full authority/cancellation SQL",
     "checks": {
       "diff_check": "passed",
-      "native_fmt_clippy_tests": "unexecuted for this changed head",
-      "live_db": "unexecuted"
+      "native_fmt_clippy_tests": "unexecuted for current changed head; normal Rust Core workflow38989827530 attempt1 queued",
+      "live_db": "unexecuted",
+      "git_diff_check": "passed",
+      "common_session_sql": "unexecuted; schema/principals and fixture/application packet held"
     },
     "qualification": "older5a36-test result does not qualify this source; actual R1/C5/security/public parity gates unchanged",
-    "publication": "source branch pushed/read back; no PR before pre-PR qualification",
-    "schema_roles_or_runtime_enabled": false
+    "publication": "exact source branch pushed/read back at3c66dc70; no PR before pre-PR qualification",
+    "schema_roles_or_runtime_enabled": false,
+    "operation_module_input": "6d07e94fcb5f8028ed7d17f3725b282e488cf093; operation module byte-identical",
+    "new_sql_test": {
+      "path": "core-rs/crates/bifrost-db/tests/common_session_sql.rs",
+      "sha256": "2e6d9e50dcf3b8c6c0016908f7755207c15dc0ad2729ed157da889c1e590ea3c",
+      "feature": "common-session-sql",
+      "command": "cargo test --locked --manifest-path core-rs/Cargo.toml -p bifrost-db --features common-session-sql --test common_session_sql no_grant_cancel_preserves_fences_and_commits -- --exact",
+      "environment_keys": [
+        "BIFROST_COMMON_CORE_TEST_DATABASE_URL",
+        "BIFROST_COMMON_INCUMBENT_TEST_DATABASE_URL",
+        "BIFROST_COMMON_CANCEL_TEST_FIXTURE"
+      ],
+      "fixture_schema": "bifrost.common-cancel-fixture/v1",
+      "fixture_fields": [
+        "schema",
+        "execution_id",
+        "incumbent_execution_id",
+        "owner_incarnation_id",
+        "attempt_id",
+        "claim_token",
+        "worker_incarnation_id",
+        "session_id",
+        "supervisor_incarnation_id",
+        "runtime_incarnation_id",
+        "binding_sha256",
+        "channel_custody_sha256"
+      ],
+      "fixture_requirement": "One committed Rust Running owner/typed attempt/open session/live-link/exact Start with zero grants/admissions/reports/resources; separate Python-owned Running execution. Private claim never printed. Distinct fresh fixtures for direct and pooled runs; no reset/reopen.",
+      "observations": [
+        "Rust internal entrypoint rejects incumbent principal",
+        "direct incumbent status UPDATE succeeds on Python-owned row and rolls back",
+        "same UPDATE on Rust-owned row must42501 and rolls back",
+        "valid-but-wrong binding rejected",
+        "concurrent execution advisory fence rejects without mutation",
+        "actual Rust transaction commits Cancelling+cancel_requested close with zero grants",
+        "fresh core read and incumbent read observe committed transition",
+        "internal observe/replay adds no projections"
+      ],
+      "limits": "Unexecuted test source. Fixture producer and composed installed-catalog packet unfinished. No unknown-commit, FK/row-lock race, full Python parity, event, source-collector, credential, Start/result or physical proof. Final fixture stays Cancelling with incomplete attempt and zero resources; teardown separately owned.",
+      "activation": "No schema/role/credential/fixture/runtime setup performed; explicit isolated application approval still required."
+    },
+    "files_sha256": {
+      "core-rs/crates/bifrost-db/Cargo.toml": "58fdc03663c9f253aad435ed338031f25ace958ea5507db8aabc772ee0db50f6",
+      "core-rs/crates/bifrost-db/tests/common_session_sql.rs": "2e6d9e50dcf3b8c6c0016908f7755207c15dc0ad2729ed157da889c1e590ea3c"
+    },
+    "ci": {
+      "id": 38989827530,
+      "head": "3c66dc70a58a8be1758a535c6b47c1147df71f6e",
+      "attempt": 1,
+      "status": "queued",
+      "tests_begun": false,
+      "scope": "Unchanged supported Rust Core workflow; native checks/bootstrap only. It does not install common schema/principals or enable common-session-sql execution.",
+      "jobs": [
+        {
+          "id": 117269512953,
+          "name": "Rust formatting, lint and tests",
+          "status": "queued"
+        },
+        {
+          "id": 117269512983,
+          "name": "Rust security and license policy",
+          "status": "queued"
+        },
+        {
+          "id": 117269513103,
+          "name": "Rust cold production image",
+          "status": "queued"
+        },
+        {
+          "id": 117269513271,
+          "name": "Rust migrated schema and PgBouncer",
+          "status": "queued"
+        }
+      ]
+    }
   }
 }
