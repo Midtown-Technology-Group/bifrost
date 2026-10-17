@@ -739,7 +739,15 @@ def test_start_spawns_npm_via_resolved_path(tmp_path: Path, monkeypatch):
     assert len(spawned) == 2
     for argv in spawned:
         assert argv[0] == npm_path, f"npm spawn used {argv[0]!r}, not the which() result"
-    assert checked_ports == [3000, 3001]
+    assert checked_ports == [3000, 3001, 3001]
+    assert spawned[1][-6:] == [
+        "--",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "3001",
+        "--strictPort",
+    ]
 
 
 def test_start_public_url_does_not_change_same_origin_browser_transport(tmp_path: Path, monkeypatch):
@@ -852,7 +860,7 @@ def test_start_public_url_does_not_change_same_origin_browser_transport(tmp_path
         "port": 3000,
         "proxy_origin": "http://devbox.test:3000",
     }
-    assert checked_ports == [3000, 3001]
+    assert checked_ports == [3000, 3001, 3001]
     # The app must target the browser-visible local proxy so requests keep the
     # install-scoping and local-workflow behavior supplied by that proxy.
     assert popen_envs[0]["BIFROST_API_URL"] == "http://devbox.test:3000"
@@ -1166,12 +1174,15 @@ def test_wait_for_vite_fails_fast_when_process_dies(monkeypatch):
         _wait_for_vite(_DeadProc(), port=1)
 
 
-def test_wait_for_vite_returns_when_port_accepts():
+def test_wait_for_vite_returns_when_spawned_process_owns_listener():
+    import os
     import socket
 
     from bifrost.commands.solution import _wait_for_vite
 
     class _LiveProc:
+        pid = os.getpid()
+
         def poll(self):
             return None
 
@@ -1186,6 +1197,7 @@ def test_wait_for_vite_returns_when_port_accepts():
 
 
 def test_wait_for_vite_times_out_with_clean_error():
+    import os
     import socket
 
     import click
@@ -1194,6 +1206,8 @@ def test_wait_for_vite_times_out_with_clean_error():
     from bifrost.commands.solution import _wait_for_vite
 
     class _LiveProc:
+        pid = os.getpid()
+
         def poll(self):
             return None
 
@@ -1203,8 +1217,34 @@ def test_wait_for_vite_times_out_with_clean_error():
     port = probe.getsockname()[1]
     probe.close()
 
-    with _pytest.raises(click.ClickException, match="did not start listening"):
+    with _pytest.raises(click.ClickException, match="child-owned listener"):
         _wait_for_vite(_LiveProc(), port=port, timeout=0.6)
+
+
+def test_wait_for_vite_rejects_listener_owned_by_another_process():
+    import socket
+    import subprocess
+    import sys
+
+    import click
+    import pytest as _pytest
+
+    from bifrost.commands.solution import _wait_for_vite
+
+    server = socket.socket()
+    server.bind(("127.0.0.1", 0))
+    server.listen(1)
+    port = server.getsockname()[1]
+    unrelated_child = subprocess.Popen(
+        [sys.executable, "-c", "import time; time.sleep(10)"]
+    )
+    try:
+        with _pytest.raises(click.ClickException, match="child-owned listener"):
+            _wait_for_vite(unrelated_child, port=port, timeout=0.6)
+    finally:
+        unrelated_child.terminate()
+        unrelated_child.wait(timeout=5)
+        server.close()
 
 
 def test_terminate_windows_tree_taskkills_the_whole_tree(monkeypatch):
@@ -1423,6 +1463,42 @@ def test_start_port_conflict_is_reported_before_any_npm_work(tmp_path, monkeypat
     assert result.exit_code == 1
     assert "already in use" in result.output
     assert spawned == []  # no npm install happened
+
+
+def test_start_rechecks_vite_port_after_npm_install(tmp_path, monkeypatch):
+    """A process claiming Vite's port during install must prevent its spawn."""
+    import click
+
+    subprocess = _start_workspace(tmp_path, monkeypatch)
+    npm_runs: list[list[str]] = []
+    popen_calls: list[list[str]] = []
+    checked_ports: list[int] = []
+
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        lambda argv, **kwargs: npm_runs.append(list(argv)),
+    )
+    monkeypatch.setattr(
+        subprocess,
+        "Popen",
+        lambda argv, **kwargs: popen_calls.append(list(argv)),
+    )
+
+    def _port_check(port):
+        checked_ports.append(port)
+        if checked_ports == [3000, 3001, 3001]:
+            raise click.ClickException(f"Port {port} is already in use")
+
+    monkeypatch.setattr("bifrost.commands.solution._ensure_port_free", _port_check)
+
+    result = CliRunner().invoke(solution_group, ["start"])
+
+    assert result.exit_code == 1
+    assert "Port 3001 is already in use" in result.output
+    assert checked_ports == [3000, 3001, 3001]
+    assert npm_runs and npm_runs[0][1] == "install"
+    assert popen_calls == []
 
 
 def test_start_help_documents_stable_preview_origin():
