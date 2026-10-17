@@ -71,6 +71,7 @@ class Executions:
         limit: int = 50,
         *,
         workflow_id: str | None = None,
+        scope: str | None = None,
         exclude_local: bool | None = None,
         continuation_token: str | None = None,
     ) -> ExecutionList:
@@ -82,6 +83,9 @@ class Executions:
 
         Args:
             workflow_id: Filter by workflow UUID (optional)
+            scope: Filter to an organization UUID or global scope (optional).
+                Organization users remain pinned to their authorized scope;
+                the server validates this value.
             workflow_name: Filter by workflow name (optional)
             status: Filter by status (optional)
             start_date: Filter by start date in ISO format (optional)
@@ -124,6 +128,8 @@ class Executions:
 
         # Build query parameters
         params = {}
+        if scope is not None:
+            params["scope"] = scope
         if workflow_id:
             params["workflow_id"] = workflow_id
         elif workflow_name:
