@@ -158,6 +158,25 @@ async def _case(make_work, *, external=False, token_url=None):
         user = await db.get(User, caller.caller_user_id)
         original_external = user.is_external
         user.is_external = external
+        # A distinct existing provider fixture supplies legacy bypass positives.
+        # Never upgrade the ordinary runtime caller or its immutable grant.
+        provider = await db.get(User, work.cohort.users[1])
+        provider_org = await db.get(Organization, work.cohort.provider_organization_id)
+        _require(
+            provider is not None
+            and provider_org is not None
+            and provider.organization_id == provider_org.id
+            and provider_org.is_provider
+            and not provider.is_superuser
+            and not provider.is_external,
+            "Expected independent provider fixture absent",
+        )
+        provider_identity = {
+            "user_id": provider.id,
+            "organization_id": provider.organization_id,
+            "email": provider.email,
+            "name": provider.name,
+        }
         db.add(Role(id=role_id, name=role_name, created_by="synthetic-hr"))
         db.add(
             Integration(
@@ -263,6 +282,18 @@ async def _case(make_work, *, external=False, token_url=None):
                 "roles": [role_name],
             }
         )
+        provider_token = create_access_token(
+            {
+                "sub": str(provider_identity["user_id"]),
+                "email": provider_identity["email"],
+                "name": provider_identity["name"],
+                "org_id": str(provider_identity["organization_id"]),
+                "is_superuser": False,
+                "is_external": False,
+                "is_provider_org": True,
+                "roles": [],
+            }
+        )
         yield {
             "work": work,
             "caller": caller,
@@ -270,6 +301,8 @@ async def _case(make_work, *, external=False, token_url=None):
             "bundle": bundle,
             "reference": reference,
             "human_token": human_token,
+            "provider_token": provider_token,
+            "provider": provider_identity,
             "integration_id": integration_id,
             "mapping_id": mapping_id,
             "provider_id": provider_id,
@@ -304,20 +337,20 @@ async def _case(make_work, *, external=False, token_url=None):
 
 async def _sdk(case, api_url, operation, *, human=False):
     caller, work = case["caller"], case["work"]
-    token = case["human_token"] if human else case["bundle"].access_token
+    token = case["provider_token"] if human else case["bundle"].access_token
     client = BifrostClient(api_url=api_url, access_token=token)
     context = ExecutionContext(
-        user_id=str(caller.caller_user_id),
-        email=caller.caller_email,
-        name=caller.caller_name,
+        user_id=str(case["provider"]["user_id"] if human else caller.caller_user_id),
+        email=case["provider"]["email"] if human else caller.caller_email,
+        name=case["provider"]["name"] if human else caller.caller_name,
         scope=str(caller.effective_organization_id),
         organization=SDKOrganization(
             id=str(caller.effective_organization_id), name="Synthetic HR org"
         ),
         is_platform_admin=False,
         is_function_key=False,
-        is_external=caller.caller_external,
-        is_provider_org=False,
+        is_external=False if human else caller.caller_external,
+        is_provider_org=human,
         execution_id=str(work.start.execution_id),
         solution_id=str(work.cohort.source.solution_install_id),
     )
@@ -340,12 +373,15 @@ async def _sdk(case, api_url, operation, *, human=False):
 
 def _profile(payload, case, operation, *, human=False):
     _require(isinstance(payload, dict), "Expected SDK profile absent")
-    external = human and case["caller"].caller_external
-    expected = {"org_value": "org-value", "org_secret": case["org_secret"]}
-    if not external:
-        expected["global_value"] = "global-value"
-        if operation == "get" or human:
-            expected["global_secret"] = case["global_secret"]
+    # Positive human cases use the distinct non-admin provider, never the
+    # ordinary/external caller. Those callers are denied before reads below.
+    expected = {
+        "org_value": "org-value",
+        "org_secret": case["org_secret"],
+        "global_value": "global-value",
+    }
+    if operation == "get" or human:
+        expected["global_secret"] = case["global_secret"]
     _require(
         payload.get("config") == expected,
         "Engine/human/external config profile changed",
@@ -357,15 +393,12 @@ def _profile(payload, case, operation, *, human=False):
     )
     if operation == "get":
         oauth = payload.get("oauth")
-        if external:
-            _require(oauth is None, "Human external caller obtained global OAuth")
-        else:
-            _require(
-                isinstance(oauth, dict)
-                and oauth.get("client_secret") == "synthetic-client-secret"
-                and oauth.get("access_token") == case["stored_token"],
-                "Stored synthetic OAuth profile changed",
-            )
+        _require(
+            isinstance(oauth, dict)
+            and oauth.get("client_secret") == "synthetic-client-secret"
+            and oauth.get("access_token") == case["stored_token"],
+            "Stored synthetic OAuth profile changed",
+        )
         _require(
             payload.get("config_secret_keys") == ["global_secret", "org_secret"],
             "Secret schema metadata changed",
@@ -449,8 +482,36 @@ async def _oauth_state(case, *, refreshed_token=None):
         }
 
 
+async def _ordinary_denied(case, api_url, operation, records, *, token=None):
+    """Current-main 403 must precede config reads and OAuth effects."""
+    before_reads, before_oauth = len(records), await _oauth_state(case)
+    body = {
+        "name": case["name"],
+        "scope": str(case["caller"].effective_organization_id),
+    }
+    if operation == "get":
+        body["solution"] = str(case["work"].cohort.source.solution_install_id)
+    async with httpx.AsyncClient(
+        base_url=api_url, trust_env=False, follow_redirects=False
+    ) as client:
+        response = await client.post(
+            f"/api/sdk/integrations/{operation}",
+            json=body,
+            headers={"Authorization": f"Bearer {token or case['human_token']}"},
+        )
+    assert response.status_code == 403
+    assert response.json() == {
+        "detail": "Execution credentials or platform access required"
+    }
+    assert len(records) == before_reads
+    _require(
+        await _oauth_state(case) == before_oauth,
+        "Denied ordinary read changed OAuth state",
+    )
+
+
 @pytest.mark.parametrize("external", [False, True])
-async def test_actual_sdk_engine_and_direct_human_profiles_actor_and_anonymous_isolation(
+async def test_actual_sdk_runtime_provider_profiles_and_ordinary_anonymous_denial(
     make_work, monkeypatch, external
 ):
     principals = []
@@ -460,6 +521,8 @@ async def test_actual_sdk_engine_and_direct_human_profiles_actor_and_anonymous_i
             monkeypatch.setattr(
                 ingress, "get_session_factory", lambda: case["work"].cohort.factory
             )
+            for operation in ("get", "get_mapping"):
+                await _ordinary_denied(case, api_url, operation, records)
             for human in (False, True):
                 for operation in ("get", "get_mapping"):
                     before = len(records)
@@ -469,12 +532,13 @@ async def test_actual_sdk_engine_and_direct_human_profiles_actor_and_anonymous_i
                     assert len(records) == before + 1
                     actor, user, session = records[-1]
                     expected_id = (
-                        case["caller"].caller_user_id if human else UUID(ENGINE_USER_ID)
+                        case["provider"]["user_id"] if human else UUID(ENGINE_USER_ID)
                     )
                     assert actor.user_id == expected_id
-                    assert (
-                        actor.organization_id
-                        == case["caller"].effective_organization_id
+                    assert actor.organization_id == (
+                        case["provider"]["organization_id"]
+                        if human
+                        else case["caller"].effective_organization_id
                     )
                     assert actor.source == "http"
                     assert user.user_id == str(expected_id)
@@ -575,19 +639,19 @@ async def test_actual_http_closed_keys_precedence_and_concurrent_actor_contexts(
                     cookie_only.json() == {"detail": "Invalid runtime SDK credential"},
                     "Cookie-only dedicated renewal parsed absent JSON",
                 )
-                ordinary = {
-                    "Authorization": f"Bearer {case['human_token']}",
+                legacy_provider = {
+                    "Authorization": f"Bearer {case['provider_token']}",
                     "Cookie": f"access_token={bundle.access_token}",
                     "X-Bifrost-Watch-Session": "synthetic-watch",
                 }
                 response = await client.post(
                     "/api/sdk/integrations/get",
                     json={**body, "extra": True},
-                    headers=ordinary,
+                    headers=legacy_provider,
                 )
                 assert response.status_code == 200
                 _profile(response.json(), case, "get", human=True)
-                assert records[-1][0].user_id == case["caller"].caller_user_id
+                assert records[-1][0].user_id == case["provider"]["user_id"]
                 assert records[-1][2] == "synthetic-watch"
                 before = len(records)
                 responses = await asyncio.gather(
@@ -600,7 +664,7 @@ async def test_actual_http_closed_keys_precedence_and_concurrent_actor_contexts(
                         },
                     ),
                     client.post(
-                        "/api/sdk/integrations/get", json=body, headers=ordinary
+                        "/api/sdk/integrations/get", json=body, headers=legacy_provider
                     ),
                 )
                 assert all(response.status_code == 200 for response in responses)
@@ -610,7 +674,7 @@ async def test_actual_http_closed_keys_precedence_and_concurrent_actor_contexts(
                     (actor.user_id, session) for actor, _user, session in observed
                 } == {
                     (UUID(ENGINE_USER_ID), None),
-                    (case["caller"].caller_user_id, "synthetic-watch"),
+                    (case["provider"]["user_id"], "synthetic-watch"),
                 }
 
 
@@ -619,6 +683,7 @@ async def test_actual_sdk_template_oauth_recovery_commits_existing_engine_profil
     make_work, monkeypatch, external
 ):
     """Finite synthetic provider; no live vendor or vendor confinement claim."""
+    records = _observe_reads(monkeypatch)
     provider_app = FastAPI()
     exchanges = []
     refreshed_token = f"synthetic-recovered-{uuid4().hex}"
@@ -650,6 +715,9 @@ async def test_actual_sdk_template_oauth_recovery_commits_existing_engine_profil
                 monkeypatch.setattr(
                     ingress, "get_session_factory", lambda: case["work"].cohort.factory
                 )
+                for operation in ("get", "get_mapping"):
+                    await _ordinary_denied(case, api_url, operation, records)
+                assert exchanges == []
                 for human in (False, True):
                     before = await _oauth_state(case, refreshed_token=refreshed_token)
                     count = len(exchanges)
@@ -670,41 +738,33 @@ async def test_actual_sdk_template_oauth_recovery_commits_existing_engine_profil
                         human=human,
                     )
                     after = await _oauth_state(case, refreshed_token=refreshed_token)
-                    if human and external:
-                        _require(
-                            after == before and len(exchanges) == count,
-                            "Human external read changed global OAuth state",
-                        )
-                    else:
-                        _require(
-                            len(exchanges) == count + 1,
-                            "Expected one finite synthetic OAuth exchange",
-                        )
-                        _require(
-                            after["token_id"] == before["token_id"]
-                            and after["token_ids"] == before["token_ids"]
-                            and after["cipher_digest"] != before["cipher_digest"]
-                            and after["refreshed_matches"]
-                            and not after["stored_matches"],
-                            "OAuth recovery did not update only the existing cascaded token",
-                        )
-                        _require(
-                            after["provider_status"]
-                            == after["token_status"]
-                            == "completed"
-                            and after["provider_message"] is None
-                            and after["token_message"] is None
-                            and after["provider_refresh"] >= started
-                            and after["token_refresh"] >= started
-                            and started + timedelta(minutes=59)
-                            <= after["expires"]
-                            <= datetime.now(UTC) + timedelta(hours=1)
-                            and after["scopes"] == ("synthetic.read",),
-                            "OAuth recovery state/timestamps/scopes were not committed",
-                        )
+                    _require(
+                        len(exchanges) == count + 1,
+                        "Expected one finite synthetic OAuth exchange",
+                    )
+                    _require(
+                        after["token_id"] == before["token_id"]
+                        and after["token_ids"] == before["token_ids"]
+                        and after["cipher_digest"] != before["cipher_digest"]
+                        and after["refreshed_matches"]
+                        and not after["stored_matches"],
+                        "OAuth recovery did not update only the existing cascaded token",
+                    )
+                    _require(
+                        after["provider_status"] == after["token_status"] == "completed"
+                        and after["provider_message"] is None
+                        and after["token_message"] is None
+                        and after["provider_refresh"] >= started
+                        and after["token_refresh"] >= started
+                        and started + timedelta(minutes=59)
+                        <= after["expires"]
+                        <= datetime.now(UTC) + timedelta(hours=1)
+                        and after["scopes"] == ("synthetic.read",),
+                        "OAuth recovery state/timestamps/scopes were not committed",
+                    )
 
 
-async def test_actual_http_signed_oversized_reserved_denial_and_large_ordinary_positive(
+async def test_actual_http_oversized_reserved_and_ordinary_denial_with_provider_positive(
     make_work, monkeypatch
 ):
     records = _observe_reads(monkeypatch)
@@ -719,17 +779,34 @@ async def test_actual_http_signed_oversized_reserved_denial_and_large_ordinary_p
                 "solution": str(case["work"].cohort.source.solution_install_id),
             }
             settings = get_settings()
-            human = jwt.decode(
+            ordinary = jwt.decode(
                 case["human_token"],
                 settings.secret_key,
                 algorithms=[settings.algorithm],
                 audience=settings.jwt_audience,
                 issuer=settings.jwt_issuer,
             )
-            human["synthetic_padding"] = "x" * 5000
+            ordinary["synthetic_padding"] = "x" * 5000
+            await _ordinary_denied(
+                case,
+                api_url,
+                "get",
+                records,
+                token=jwt.encode(
+                    ordinary, settings.secret_key, algorithm=settings.algorithm
+                ),
+            )
+            legacy_claims = jwt.decode(
+                case["provider_token"],
+                settings.secret_key,
+                algorithms=[settings.algorithm],
+                audience=settings.jwt_audience,
+                issuer=settings.jwt_issuer,
+            )
+            legacy_claims["synthetic_padding"] = "x" * 5000
             async with httpx.AsyncClient(base_url=api_url, trust_env=False) as client:
                 large = jwt.encode(
-                    human, settings.secret_key, algorithm=settings.algorithm
+                    legacy_claims, settings.secret_key, algorithm=settings.algorithm
                 )
                 response = await client.post(
                     "/api/sdk/integrations/get",
@@ -739,7 +816,7 @@ async def test_actual_http_signed_oversized_reserved_denial_and_large_ordinary_p
                 assert response.status_code == 200
                 _profile(response.json(), case, "get", human=True)
                 for marker in ("purpose", "audience"):
-                    claims = dict(human)
+                    claims = dict(legacy_claims)
                     claims.update(
                         {"purpose": "workflow-runtime-sdk/v1"}
                         if marker == "purpose"
