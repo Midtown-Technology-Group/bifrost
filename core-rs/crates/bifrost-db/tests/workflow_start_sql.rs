@@ -89,14 +89,14 @@ impl Fixtures {
         let path = std::env::var_os("BIFROST_COMMON_START_TEST_FIXTURES")
             .map(PathBuf::from)
             .ok_or("common Start test requires its fresh private fixtures")?;
-        let metadata = std::fs::symlink_metadata(&path)
-            .map_err(|_| "common Start fixture unavailable")?;
+        let metadata =
+            std::fs::symlink_metadata(&path).map_err(|_| "common Start fixture unavailable")?;
         if !metadata.is_file() || metadata.len() > 65536 {
             return Err("common Start fixture must be a bounded regular file".into());
         }
         let bytes = std::fs::read(path).map_err(|_| "common Start fixture read failed")?;
-        let value: Self = serde_json::from_slice(&bytes)
-            .map_err(|_| "common Start fixture invalid")?;
+        let value: Self =
+            serde_json::from_slice(&bytes).map_err(|_| "common Start fixture invalid")?;
         if value.schema != "bifrost.common-start-sql-fixtures/v1"
             || value.finite.execution_id == value.no_timeout.execution_id
             || value.finite.attempt_id == value.no_timeout.attempt_id
@@ -120,9 +120,15 @@ async fn database(variable: &str, principal: &str) -> TestResult<Database> {
          AND current_user=session_user AND NOT r.rolsuper AND NOT r.rolbypassrls \
          AND NOT r.rolcreaterole AND NOT r.rolcreatedb AND NOT r.rolreplication \
          FROM pg_catalog.pg_roles r WHERE r.rolname=session_user",
-    ).bind(principal).persistent(false).fetch_one(db.pool()).await
-        .map_err(|_| "common Start test restricted login unverified")?;
-    if !actual { return Err("common Start test requires genuine restricted login".into()); }
+    )
+    .bind(principal)
+    .persistent(false)
+    .fetch_one(db.pool())
+    .await
+    .map_err(|_| "common Start test restricted login unverified")?;
+    if !actual {
+        return Err("common Start test requires genuine restricted login".into());
+    }
     Ok(db)
 }
 
@@ -142,8 +148,13 @@ async fn native_state(pool: &PgPool, c: &Cohort) -> TestResult<NativeState> {
           a.completed_at IS NOT NULL AS completed \
          FROM public.executions e JOIN public.workflow_execution_attempts a ON a.execution_id=e.id \
          WHERE e.id=$1::text::uuid AND a.id=$2::text::uuid",
-    ).bind(c.execution_id.as_str()).bind(c.attempt_id.as_str()).persistent(false)
-        .fetch_one(pool).await.map_err(|_| "common Start native state unavailable")?;
+    )
+    .bind(c.execution_id.as_str())
+    .bind(c.attempt_id.as_str())
+    .persistent(false)
+    .fetch_one(pool)
+    .await
+    .map_err(|_| "common Start native state unavailable")?;
     Ok(NativeState {
         status: row.try_get("status")?,
         phase: row.try_get("phase")?,
@@ -162,7 +173,11 @@ fn changed_uuid(value: &CanonicalUuid) -> TestResult<CanonicalUuid> {
 async fn verify() -> TestResult<()> {
     let fixtures = Fixtures::read()?;
     let core = database("BIFROST_COMMON_CORE_TEST_DATABASE_URL", "wex_core").await?;
-    let incumbent = database("BIFROST_COMMON_INCUMBENT_TEST_DATABASE_URL", "wex_incumbent").await?;
+    let incumbent = database(
+        "BIFROST_COMMON_INCUMBENT_TEST_DATABASE_URL",
+        "wex_incumbent",
+    )
+    .await?;
     let a = &fixtures.finite;
     let b = &fixtures.no_timeout;
     let before_a = native_state(core.pool(), a).await?;
@@ -175,8 +190,14 @@ async fn verify() -> TestResult<()> {
     }
     let fence = a.fence();
     let intent = a.intent();
-    assert_eq!(observe_prepared_workflow_start(core.pool(), &fence, &intent).await?, StartObservation::NotRetained);
-    assert_eq!(commit_prepared_workflow_start(incumbent.pool(), &fence, &intent).await, Err(SessionError::Rejected));
+    assert_eq!(
+        observe_prepared_workflow_start(core.pool(), &fence, &intent).await?,
+        StartObservation::NotRetained
+    );
+    assert_eq!(
+        commit_prepared_workflow_start(incumbent.pool(), &fence, &intent).await,
+        Err(SessionError::Rejected)
+    );
     for altered in [0, 1, 2] {
         let mut wrong = a.fence();
         match altered {
@@ -184,7 +205,10 @@ async fn verify() -> TestResult<()> {
             1 => wrong.owner_incarnation_id = changed_uuid(&wrong.owner_incarnation_id)?,
             _ => wrong.session_id = changed_uuid(&wrong.session_id)?,
         }
-        assert_eq!(commit_prepared_workflow_start(core.pool(), &wrong, &intent).await, Err(SessionError::Rejected));
+        assert_eq!(
+            commit_prepared_workflow_start(core.pool(), &wrong, &intent).await,
+            Err(SessionError::Rejected)
+        );
         assert_eq!(native_state(core.pool(), a).await?, before_a);
     }
     // Force the shared execution fence to be held by a separate transaction;
@@ -192,9 +216,16 @@ async fn verify() -> TestResult<()> {
     let mut blocker = core.pool().begin().await?;
     let acquired: bool = sqlx::query_scalar(
         "SELECT pg_try_advisory_xact_lock(hashtext('bifrost:workflow-execution:' || $1))",
-    ).bind(fence.execution_id.as_str()).persistent(false).fetch_one(&mut *blocker).await?;
+    )
+    .bind(fence.execution_id.as_str())
+    .persistent(false)
+    .fetch_one(&mut *blocker)
+    .await?;
     assert!(acquired);
-    assert_eq!(commit_prepared_workflow_start(core.pool(), &fence, &intent).await, Err(SessionError::Contended));
+    assert_eq!(
+        commit_prepared_workflow_start(core.pool(), &fence, &intent).await,
+        Err(SessionError::Contended)
+    );
     blocker.rollback().await?;
     assert_eq!(native_state(core.pool(), a).await?, before_a);
     // These contenders may serialize; exactly one commits. The deterministic
@@ -208,9 +239,15 @@ async fn verify() -> TestResult<()> {
         (Ok(win), Err(loss)) | (Err(loss), Ok(win)) => (win, loss),
         _ => return Err("common Start race did not produce one winner".into()),
     };
-    assert!(matches!(loser, SessionError::Rejected | SessionError::Contended));
+    assert!(matches!(
+        loser,
+        SessionError::Rejected | SessionError::Contended
+    ));
     assert!(winner.remaining_run_ms.is_some_and(|ms| ms > 0));
-    assert_eq!(observe_prepared_workflow_start(core.pool(), &fence, &intent).await?, StartObservation::Retained);
+    assert_eq!(
+        observe_prepared_workflow_start(core.pool(), &fence, &intent).await?,
+        StartObservation::Retained
+    );
     let after = native_state(core.pool(), a).await?;
     assert_eq!(after.status, "Running");
     assert_eq!(after.attempt_status, "running");
@@ -218,26 +255,47 @@ async fn verify() -> TestResult<()> {
     assert!(after.started_clock_matches && !after.completed);
     // Fresh incumbent read proves the same committed native database projection.
     assert_eq!(native_state(incumbent.pool(), a).await?, after);
-    assert_eq!(commit_prepared_workflow_start(core.pool(), &fence, &intent).await, Err(SessionError::Rejected));
+    assert_eq!(
+        commit_prepared_workflow_start(core.pool(), &fence, &intent).await,
+        Err(SessionError::Rejected)
+    );
     let mut drift = a.intent();
     drift.context_json = "{\"drift\":true}".into();
-    assert_eq!(observe_prepared_workflow_start(core.pool(), &fence, &drift).await, Err(SessionError::Rejected));
+    assert_eq!(
+        observe_prepared_workflow_start(core.pool(), &fence, &drift).await,
+        Err(SessionError::Rejected)
+    );
 
     // Deliberate global Start-ID collision happens AFTER native updates. The
     // INSERT must fail and the entire native transition must roll back.
     let mut collision = b.intent();
     collision.committed_start_id = a.committed_start_id.clone();
-    assert_eq!(commit_prepared_workflow_start(core.pool(), &b.fence(), &collision).await, Err(SessionError::Unavailable));
+    assert_eq!(
+        commit_prepared_workflow_start(core.pool(), &b.fence(), &collision).await,
+        Err(SessionError::Unavailable)
+    );
     assert_eq!(native_state(core.pool(), b).await?, before_b);
-    assert_eq!(observe_prepared_workflow_start(core.pool(), &b.fence(), &b.intent()).await?, StartObservation::NotRetained);
+    assert_eq!(
+        observe_prepared_workflow_start(core.pool(), &b.fence(), &b.intent()).await?,
+        StartObservation::NotRetained
+    );
     // The failed collision was a definite pre-commit rejection, never an ACK/
     // spawn ambiguity. Only this synthetic test then uses its original valid ID.
     let unlimited = commit_prepared_workflow_start(core.pool(), &b.fence(), &b.intent()).await?;
     assert_eq!(unlimited.remaining_run_ms, None);
     assert_eq!(native_state(incumbent.pool(), b).await?.status, "Running");
-    assert_eq!(request_running_cancel(core.pool(), &fence).await?, CancelCommit::Committed);
-    assert_eq!(observe_prepared_workflow_start(core.pool(), &fence, &intent).await?, StartObservation::Retained);
-    assert_eq!(commit_prepared_workflow_start(core.pool(), &fence, &intent).await, Err(SessionError::Rejected));
+    assert_eq!(
+        request_running_cancel(core.pool(), &fence).await?,
+        CancelCommit::Committed
+    );
+    assert_eq!(
+        observe_prepared_workflow_start(core.pool(), &fence, &intent).await?,
+        StartObservation::Retained
+    );
+    assert_eq!(
+        commit_prepared_workflow_start(core.pool(), &fence, &intent).await,
+        Err(SessionError::Rejected)
+    );
     core.close().await;
     incumbent.close().await;
     Ok(())
@@ -246,5 +304,8 @@ async fn verify() -> TestResult<()> {
 #[tokio::test]
 async fn native_start_atomicity_fencing_race_and_reconciliation() {
     // A fixture/driver exception must never print private claims or SQL params.
-    assert!(verify().await.is_ok(), "common Start SQL verification failed; retain private fixture/database, no retry");
+    assert!(
+        verify().await.is_ok(),
+        "common Start SQL verification failed; retain private fixture/database, no retry"
+    );
 }

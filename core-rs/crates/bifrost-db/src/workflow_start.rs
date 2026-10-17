@@ -39,8 +39,15 @@ impl PreparedStartIntent {
             || self.start_message_id == self.prepare_message_id
             || self.input_json.is_empty()
             || self.context_json.is_empty()
-            || self.input_json.len().saturating_add(self.context_json.len()) > MAX_FRAME_BYTES
-            || self.deadline_utc.as_ref().is_some_and(|v| v.is_empty() || v.len() > 64)
+            || self
+                .input_json
+                .len()
+                .saturating_add(self.context_json.len())
+                > MAX_FRAME_BYTES
+            || self
+                .deadline_utc
+                .as_ref()
+                .is_some_and(|v| v.is_empty() || v.len() > 64)
         {
             return Err(SessionError::InvalidFence);
         }
@@ -107,10 +114,16 @@ async fn lock_prepared_session<'a>(
     intent.validate()?;
     let mut tx = begin_fenced_core_transaction(pool, fence).await?;
     sqlx::query("SET LOCAL TIME ZONE 'UTC'")
-        .persistent(false).execute(&mut *tx).await.map_err(database_error)?;
+        .persistent(false)
+        .execute(&mut *tx)
+        .await
+        .map_err(database_error)?;
     // The common writer guard requires READ COMMITTED, including fresh trigger reads.
     let isolation: String = sqlx::query_scalar("SHOW transaction_isolation")
-        .persistent(false).fetch_one(&mut *tx).await.map_err(database_error)?;
+        .persistent(false)
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(database_error)?;
     if isolation != "read committed" {
         return Err(SessionError::Rejected);
     }
@@ -122,10 +135,18 @@ async fn lock_prepared_session<'a>(
          AND e.workflow_id=o.workflow_id AND e.solution_deployment_id=o.deployment_id \
          AND e.parameters=$3::text::jsonb AND ($4 OR e.status::text='Pending') \
          FOR UPDATE OF e NOWAIT",
-    ).bind(fence.execution_id.as_str()).bind(fence.owner_incarnation_id.as_str())
-        .bind(&intent.input_json).bind(observing).persistent(false)
-        .fetch_optional(&mut *tx).await.map_err(database_error)?;
-    if execution.is_none() { return Err(SessionError::Rejected); }
+    )
+    .bind(fence.execution_id.as_str())
+    .bind(fence.owner_incarnation_id.as_str())
+    .bind(&intent.input_json)
+    .bind(observing)
+    .persistent(false)
+    .fetch_optional(&mut *tx)
+    .await
+    .map_err(database_error)?;
+    if execution.is_none() {
+        return Err(SessionError::Rejected);
+    }
     let attempt = sqlx::query(
         "SELECT id FROM public.workflow_execution_attempts WHERE id=$1::text::uuid \
          AND execution_id=$2::text::uuid AND claim_token=$3::text::uuid \
@@ -135,7 +156,9 @@ async fn lock_prepared_session<'a>(
     ).bind(fence.attempt_id.as_str()).bind(fence.execution_id.as_str())
         .bind(fence.claim_token.as_str()).bind(fence.worker_incarnation_id.as_str())
         .bind(observing).persistent(false).fetch_optional(&mut *tx).await.map_err(database_error)?;
-    if attempt.is_none() { return Err(SessionError::Rejected); }
+    if attempt.is_none() {
+        return Err(SessionError::Rejected);
+    }
     let owner = sqlx::query(
         "SELECT execution_id FROM public.runtime_execution_owners WHERE execution_id=$1::text::uuid \
          AND owner_incarnation_id=$2::text::uuid AND live_execution_id=execution_id \
@@ -143,7 +166,9 @@ async fn lock_prepared_session<'a>(
     ).bind(fence.execution_id.as_str()).bind(fence.owner_incarnation_id.as_str())
         .bind(&intent.artifact_id).persistent(false)
         .fetch_optional(&mut *tx).await.map_err(database_error)?;
-    if owner.is_none() { return Err(SessionError::Rejected); }
+    if owner.is_none() {
+        return Err(SessionError::Rejected);
+    }
     // Core has no user/source-table reader. Immutable accepted artifact identity
     // and its still-attached native FKs are checked under its NOWAIT row lock.
     // Admission's source/manifest/schema review remains a caller prerequisite.
@@ -155,9 +180,16 @@ async fn lock_prepared_session<'a>(
           AND a.live_deployment_id=a.deployment_id AND a.live_workflow_id=a.workflow_id \
           AND a.live_solution_id=a.solution_id AND a.live_reviewed_by=a.reviewed_by \
          FOR UPDATE OF a NOWAIT",
-    ).bind(fence.execution_id.as_str()).bind(fence.owner_incarnation_id.as_str())
-        .persistent(false).fetch_optional(&mut *tx).await.map_err(database_error)?;
-    if artifact.is_none() { return Err(SessionError::Rejected); }
+    )
+    .bind(fence.execution_id.as_str())
+    .bind(fence.owner_incarnation_id.as_str())
+    .persistent(false)
+    .fetch_optional(&mut *tx)
+    .await
+    .map_err(database_error)?;
+    if artifact.is_none() {
+        return Err(SessionError::Rejected);
+    }
     let session = sqlx::query(
         "SELECT id FROM public.runtime_sessions WHERE id=$1::text::uuid \
          AND execution_id=$2::text::uuid AND owner_incarnation_id=$3::text::uuid \
@@ -173,18 +205,29 @@ async fn lock_prepared_session<'a>(
         .bind(&fence.binding_sha256).bind(&fence.channel_custody_sha256)
         .bind(intent.prepare_message_id.as_str()).bind(&intent.prepare_sha256).bind(observing)
         .persistent(false).fetch_optional(&mut *tx).await.map_err(database_error)?;
-    if session.is_none() { return Err(SessionError::Rejected); }
+    if session.is_none() {
+        return Err(SessionError::Rejected);
+    }
     let live = sqlx::query(
         "SELECT session_id FROM public.runtime_workflow_live_links \
          WHERE session_id=$1::text::uuid AND execution_id=$2::text::uuid \
           AND owner_incarnation_id=$3::text::uuid AND workflow_attempt_id=$4::text::uuid \
           AND native_attempt_id=$4::text::uuid AND claim_token=$5::text::uuid \
           AND worker_incarnation_id=$6::text::uuid FOR UPDATE NOWAIT",
-    ).bind(fence.session_id.as_str()).bind(fence.execution_id.as_str())
-        .bind(fence.owner_incarnation_id.as_str()).bind(fence.attempt_id.as_str())
-        .bind(fence.claim_token.as_str()).bind(fence.worker_incarnation_id.as_str())
-        .persistent(false).fetch_optional(&mut *tx).await.map_err(database_error)?;
-    if live.is_none() { return Err(SessionError::Rejected); }
+    )
+    .bind(fence.session_id.as_str())
+    .bind(fence.execution_id.as_str())
+    .bind(fence.owner_incarnation_id.as_str())
+    .bind(fence.attempt_id.as_str())
+    .bind(fence.claim_token.as_str())
+    .bind(fence.worker_incarnation_id.as_str())
+    .persistent(false)
+    .fetch_optional(&mut *tx)
+    .await
+    .map_err(database_error)?;
+    if live.is_none() {
+        return Err(SessionError::Rejected);
+    }
     Ok(LockedPreparedSession { tx })
 }
 
@@ -198,9 +241,15 @@ async fn lock_later_rows(
         "SELECT id FROM public.workflow_runtime_sdk_grants WHERE runtime_session_id=$1::text::uuid ORDER BY id FOR UPDATE NOWAIT",
         "SELECT result_message_id FROM public.runtime_report_receipts WHERE session_id=$1::text::uuid ORDER BY result_message_id FOR UPDATE NOWAIT",
     ] {
-        let rows = sqlx::query(query).bind(fence.session_id.as_str()).persistent(false)
-            .fetch_all(&mut **tx).await.map_err(database_error)?;
-        if require_empty && !rows.is_empty() { return Err(SessionError::Rejected); }
+        let rows = sqlx::query(query)
+            .bind(fence.session_id.as_str())
+            .persistent(false)
+            .fetch_all(&mut **tx)
+            .await
+            .map_err(database_error)?;
+        if require_empty && !rows.is_empty() {
+            return Err(SessionError::Rejected);
+        }
     }
     Ok(())
 }
@@ -220,7 +269,9 @@ pub async fn commit_prepared_workflow_start(
         "SELECT id FROM public.runtime_starts WHERE session_id=$1::text::uuid ORDER BY id FOR UPDATE NOWAIT",
     ).bind(fence.session_id.as_str()).persistent(false)
         .fetch_all(&mut *locked.tx).await.map_err(database_error)?;
-    if !starts.is_empty() { return Err(SessionError::Rejected); }
+    if !starts.is_empty() {
+        return Err(SessionError::Rejected);
+    }
     lock_later_rows(&mut locked.tx, fence, true).await?;
     let clock = sqlx::query(
         "SELECT now::text AS started_at, \
@@ -236,19 +287,35 @@ pub async fn commit_prepared_workflow_start(
     let root = sqlx::query(
         "UPDATE public.executions SET status='Running',started_at=$2::text::timestamptz \
          WHERE id=$1::text::uuid AND control_owner='rust' AND status::text='Pending'",
-    ).bind(fence.execution_id.as_str()).bind(&started_at).persistent(false)
-        .execute(&mut *locked.tx).await.map_err(database_error)?;
-    if root.rows_affected()!=1 { return Err(SessionError::Rejected); }
+    )
+    .bind(fence.execution_id.as_str())
+    .bind(&started_at)
+    .persistent(false)
+    .execute(&mut *locked.tx)
+    .await
+    .map_err(database_error)?;
+    if root.rows_affected() != 1 {
+        return Err(SessionError::Rejected);
+    }
     let attempt = sqlx::query(
         "UPDATE public.workflow_execution_attempts SET status='running',phase='execution', \
           started_at=$2::text::timestamptz,heartbeat_at=$2::text::timestamptz \
          WHERE id=$1::text::uuid AND execution_id=$3::text::uuid AND claim_token=$4::text::uuid \
           AND worker_incarnation_id=$5::text::uuid AND status='claimed' AND phase='claim' \
           AND started_at IS NULL AND completed_at IS NULL",
-    ).bind(fence.attempt_id.as_str()).bind(&started_at).bind(fence.execution_id.as_str())
-        .bind(fence.claim_token.as_str()).bind(fence.worker_incarnation_id.as_str())
-        .persistent(false).execute(&mut *locked.tx).await.map_err(database_error)?;
-    if attempt.rows_affected()!=1 { return Err(SessionError::Rejected); }
+    )
+    .bind(fence.attempt_id.as_str())
+    .bind(&started_at)
+    .bind(fence.execution_id.as_str())
+    .bind(fence.claim_token.as_str())
+    .bind(fence.worker_incarnation_id.as_str())
+    .persistent(false)
+    .execute(&mut *locked.tx)
+    .await
+    .map_err(database_error)?;
+    if attempt.rows_affected() != 1 {
+        return Err(SessionError::Rejected);
+    }
     // Native Running and exact attempt clock precede this guarded INSERT.
     let start = sqlx::query(
         "INSERT INTO public.runtime_starts \
@@ -263,8 +330,14 @@ pub async fn commit_prepared_workflow_start(
         .bind(&intent.input_json).bind(&intent.context_json).bind(&started_at)
         .bind(intent.deadline_utc.as_deref()).persistent(false)
         .execute(&mut *locked.tx).await.map_err(database_error)?;
-    if start.rows_affected()!=1 { return Err(SessionError::Rejected); }
-    locked.tx.commit().await.map_err(|_| SessionError::UnknownCommit)?;
+    if start.rows_affected() != 1 {
+        return Err(SessionError::Rejected);
+    }
+    locked
+        .tx
+        .commit()
+        .await
+        .map_err(|_| SessionError::UnknownCommit)?;
     Ok(CommittedWorkflowStart {
         committed_start_id: intent.committed_start_id.clone(),
         start_message_id: intent.start_message_id.clone(),
@@ -282,7 +355,7 @@ pub async fn observe_prepared_workflow_start(
     fence: &SessionFence,
     intent: &PreparedStartIntent,
 ) -> Result<StartObservation, SessionError> {
-    let mut locked=lock_prepared_session(pool,fence,intent,true).await?;
+    let mut locked = lock_prepared_session(pool, fence, intent, true).await?;
     let start = sqlx::query(
         "SELECT s.id::text AS id,s.start_message_id::text AS message, \
           e.status::text AS execution_status,a.status AS attempt_status, \
@@ -293,10 +366,16 @@ pub async fn observe_prepared_workflow_start(
          FROM public.runtime_starts s JOIN public.executions e ON e.id=s.execution_id \
           JOIN public.workflow_execution_attempts a ON a.id=s.workflow_attempt_id \
          WHERE s.session_id=$1::text::uuid ORDER BY s.id FOR UPDATE OF s NOWAIT",
-    ).bind(fence.session_id.as_str()).bind(&intent.input_json).bind(&intent.context_json)
-        .bind(intent.deadline_utc.as_deref()).persistent(false)
-        .fetch_optional(&mut *locked.tx).await.map_err(database_error)?;
-    lock_later_rows(&mut locked.tx,fence,start.is_none()).await?;
+    )
+    .bind(fence.session_id.as_str())
+    .bind(&intent.input_json)
+    .bind(&intent.context_json)
+    .bind(intent.deadline_utc.as_deref())
+    .persistent(false)
+    .fetch_optional(&mut *locked.tx)
+    .await
+    .map_err(database_error)?;
+    lock_later_rows(&mut locked.tx, fence, start.is_none()).await?;
     let observation = match start {
         Some(row) => RetainedStart {
             id: row.try_get("id").map_err(database_error)?,
@@ -304,7 +383,8 @@ pub async fn observe_prepared_workflow_start(
             consistent_payload_and_clock: row.try_get("matches").map_err(database_error)?,
             execution_status: row.try_get("execution_status").map_err(database_error)?,
             attempt_status: row.try_get("attempt_status").map_err(database_error)?,
-        }.observation(intent)?,
+        }
+        .observation(intent)?,
         None => {
             // Absence must be internally consistent; it is still not retry authority.
             let untouched:bool=sqlx::query_scalar(
@@ -315,7 +395,9 @@ pub async fn observe_prepared_workflow_start(
                  WHERE e.id=$1::text::uuid AND a.id=$2::text::uuid AND s.id=$3::text::uuid",
             ).bind(fence.execution_id.as_str()).bind(fence.attempt_id.as_str()).bind(fence.session_id.as_str())
                 .persistent(false).fetch_one(&mut *locked.tx).await.map_err(database_error)?;
-            if !untouched { return Err(SessionError::Rejected); }
+            if !untouched {
+                return Err(SessionError::Rejected);
+            }
             StartObservation::NotRetained
         }
     };
@@ -341,7 +423,8 @@ mod tests {
     }
 
     #[test]
-    fn retained_start_rejects_pre_start_projection_but_survives_terminal_or_cancel() -> Result<(), Box<dyn std::error::Error>> {
+    fn retained_start_rejects_pre_start_projection_but_survives_terminal_or_cancel()
+    -> Result<(), Box<dyn std::error::Error>> {
         let intent = intent()?;
         for (root, attempt, expected) in [
             ("Running", "running", true),
@@ -381,7 +464,8 @@ mod tests {
     }
 
     #[test]
-    fn persistence_seam_rejects_ambiguous_or_malformed_json() -> Result<(), Box<dyn std::error::Error>> {
+    fn persistence_seam_rejects_ambiguous_or_malformed_json()
+    -> Result<(), Box<dyn std::error::Error>> {
         let mut value = intent()?;
         value.validate()?;
         for malformed in ["", "not JSON", "[]", "null", "{\"a\":1,\"a\":2}"] {
