@@ -323,11 +323,7 @@ class TestAgentBindingsDeploy:
 
 @pytest.mark.e2e
 class TestAgentScalarAndMCPDeploy:
-    """Codex: deploy must persist the agent's manifest scalars (max_iterations,
-    max_token_budget) AND sync its mcp_connection_ids junction. The AgentIndexer
-    omits all three, so without deploy stamping them a redeploy silently drops
-    them — they are deploy-owned for a solution-managed agent (read-only outside
-    deploy)."""
+    """Deploy must persist validated agent limits and MCP connection grants."""
 
     async def _install(self, db) -> Solution:
         sol = Solution(
@@ -377,6 +373,7 @@ class TestAgentScalarAndMCPDeploy:
             agents=[{
                 "id": aid, "name": "a", "system_prompt": "hi",
                 "max_iterations": 7, "max_token_budget": 12345,
+                "max_run_timeout": 600,
                 "mcp_connection_ids": [str(conn_a.id)],
             }],
         ))
@@ -385,6 +382,7 @@ class TestAgentScalarAndMCPDeploy:
         agent = await db.get(Agent, agent_id)
         assert agent.max_iterations == 7
         assert agent.max_token_budget == 12345
+        assert agent.max_run_timeout == 600
         granted = set((await db.execute(
             _select(AgentMCPConnection.connection_id).where(
                 AgentMCPConnection.agent_id == agent_id
@@ -399,6 +397,7 @@ class TestAgentScalarAndMCPDeploy:
             agents=[{
                 "id": aid, "name": "a", "system_prompt": "hi",
                 "max_iterations": 3, "max_token_budget": 999,
+                "max_run_timeout": 900,
                 "mcp_connection_ids": [str(conn_b.id)],
             }],
         ))
@@ -406,6 +405,7 @@ class TestAgentScalarAndMCPDeploy:
         await db.refresh(agent)
         assert agent.max_iterations == 3
         assert agent.max_token_budget == 999
+        assert agent.max_run_timeout == 900
         granted2 = set((await db.execute(
             _select(AgentMCPConnection.connection_id).where(
                 AgentMCPConnection.agent_id == agent_id

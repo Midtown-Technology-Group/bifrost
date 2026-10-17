@@ -22,10 +22,11 @@ from uuid import UUID
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from bifrost.field_classes import FieldClass, classify
-from bifrost.manifest_codec import Destination, EntityCodec, ImportFields
+from bifrost.agent_limits import validate_agent_run_timeout
 from bifrost.contracts.events import EventCriteria
 from bifrost.contracts.workflows import ExecutionRetryPolicy
+from bifrost.field_classes import FieldClass, classify
+from bifrost.manifest_codec import Destination, EntityCodec, ImportFields
 
 logger = logging.getLogger(__name__)
 
@@ -359,8 +360,8 @@ class ManifestAgent(EntityCodec, BaseModel):
       tool_ids/delegated_agent_ids/knowledge_sources/system_tools/mcp_connection_ids/
       llm_profile/llm_max_tokens (non-empty lists only, drop-none scalars) — fed to AgentIndexer.
     The importers resolve id/name/system_prompt on the metadata row and re-stamp
-    access_level/max_iterations/max_token_budget (+ the max_run_timeout transport
-    extra) directly AFTER the indexer; that direct-set + re-stamp is
+    access_level/max_iterations/max_token_budget/max_run_timeout directly AFTER
+    the indexer; that direct-set + re-stamp is
     orchestration-owned (manifest_import/deploy), NOT sourced from this method.
     """
     id: str = Field(description="Agent UUID", **classify(FieldClass.IDENTITY, import_owner="direct"))
@@ -411,6 +412,16 @@ class ManifestAgent(EntityCodec, BaseModel):
     # reflects their primary classification (indexer); the re-stamp is orchestration.
     max_iterations: int | None = Field(default=None, description="Max LLM iterations for autonomous runs", **classify(FieldClass.CONTENT, import_owner="indexer"))
     max_token_budget: int | None = Field(default=None, description="Max token budget for autonomous runs", **classify(FieldClass.CONTENT, import_owner="indexer"))
+    max_run_timeout: int | None = Field(
+        default=None,
+        description="Maximum autonomous run duration in seconds (1-1800)",
+        **classify(FieldClass.CONTENT, import_owner="indexer"),
+    )
+
+    @field_validator("max_run_timeout", mode="before")
+    @classmethod
+    def _validate_max_run_timeout(cls, value: object) -> object:
+        return validate_agent_run_timeout(value)
 
     @classmethod
     def from_row(
@@ -449,6 +460,7 @@ class ManifestAgent(EntityCodec, BaseModel):
             llm_max_tokens=agent.llm_max_tokens,
             max_iterations=agent.max_iterations,
             max_token_budget=agent.max_token_budget,
+            max_run_timeout=getattr(agent, "max_run_timeout", None),
         )
 
     def to_orm_values(self, dest: "Destination") -> "ImportFields":
@@ -460,10 +472,9 @@ class ManifestAgent(EntityCodec, BaseModel):
           EXACTLY matches _agent_content_from_manifest.
         direct: id, name, system_prompt — the scalar fields resolved directly by
           _resolve_agent before the indexer runs.
-        restamp: access_level, max_iterations, max_token_budget — applied AFTER the
-          indexer by both _index_agents_from_manifest and _upsert_agents.
-          max_run_timeout is a transport extra (not a model field) — callers read it
-          from the bundle dict key directly (deploy.py _upsert_agents).
+        restamp: access_level, max_iterations, max_token_budget, max_run_timeout —
+          applied AFTER the indexer by both _index_agents_from_manifest and
+          _upsert_agents.
         """
         indexer: dict = {"id": self.id, "name": self.name or ""}
         if self.description is not None:
@@ -490,12 +501,14 @@ class ManifestAgent(EntityCodec, BaseModel):
             indexer["max_iterations"] = self.max_iterations
         if self.max_token_budget is not None:
             indexer["max_token_budget"] = self.max_token_budget
+        if self.max_run_timeout is not None:
+            indexer["max_run_timeout"] = self.max_run_timeout
 
         # Agent import is INDEXER-ONLY: the importers (manifest_import
         # _resolve_agent/_index_agents_from_manifest, deploy _upsert_agents) feed
         # indexer_content to the AgentIndexer, then resolve id/name/system_prompt on
-        # the metadata row and re-stamp access_level/max_iterations/max_token_budget
-        # (and the max_run_timeout transport extra) directly AFTER the indexer. That
+        # the metadata row and re-stamp access_level/max_iterations/max_token_budget/
+        # max_run_timeout directly AFTER the indexer. That
         # direct-set + re-stamp is orchestration-owned — it is NOT sourced from this
         # method — so direct/restamp stay empty rather than expose an
         # authoritative-looking surface nothing consumes.

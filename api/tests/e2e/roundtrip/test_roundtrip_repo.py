@@ -318,7 +318,7 @@ async def seed_agent(db: AsyncSession, work_dir: Path) -> str:
         llm_max_tokens=2048,
         max_iterations=11,
         max_token_budget=22222,
-        max_run_timeout=777,  # NOT a ManifestAgent field — does not travel via _repo
+        max_run_timeout=777,
         organization_id=None,
         created_by="roundtrip@test.local",
     ))
