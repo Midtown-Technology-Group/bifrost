@@ -21,6 +21,21 @@ depends_on = None
 
 
 def upgrade() -> None:
+    # Provisioning is separately held. This narrow NOLOGIN role owns only the
+    # fixed artifact guard, preserving parent NOWAIT locks without granting a
+    # runtime login UPDATE on users or source tables.
+    op.execute("""
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles r
+        WHERE r.rolname='runtime_artifact_lock_guard' AND NOT r.rolcanlogin
+            AND NOT r.rolinherit AND NOT r.rolsuper AND NOT r.rolbypassrls
+            AND NOT r.rolcreaterole AND NOT r.rolcreatedb AND NOT r.rolreplication
+            AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_auth_members m
+                WHERE m.member=r.oid OR m.roleid=r.oid)) THEN
+        RAISE EXCEPTION 'reviewed isolated artifact lock custodian required';
+    END IF;
+END $$;
+""")
     op.create_unique_constraint(
         "uq_workflow_attempt_runtime_fence",
         "workflow_execution_attempts",
@@ -305,8 +320,18 @@ ALTER TABLE public.runtime_workflow_live_links
 def _install_identity_guards() -> None:
     op.execute("""
 CREATE FUNCTION public.guard_runtime_artifact_identity() RETURNS trigger
-LANGUAGE plpgsql SET search_path = pg_catalog AS $$
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = pg_catalog,pg_temp AS $$
 BEGIN
+    IF TG_TABLE_SCHEMA <> 'public' OR TG_TABLE_NAME <> 'runtime_deployment_artifacts' OR
+       session_user NOT IN ('wex_core','wex_incumbent') OR
+       current_user <> 'runtime_artifact_lock_guard' THEN
+        RAISE EXCEPTION 'artifact guard context denied' USING ERRCODE='42501';
+    END IF;
+    IF EXISTS (SELECT 1 FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n
+        ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relrowsecurity
+        AND c.relname IN ('solution_deployments','workflows','users','solutions')) THEN
+        RAISE EXCEPTION 'unqualified artifact parent read policy' USING ERRCODE='42501';
+    END IF;
     IF TG_OP = 'DELETE' THEN
         RAISE EXCEPTION 'retain accepted runtime artifact identity' USING ERRCODE='23514';
     END IF;
@@ -342,6 +367,9 @@ BEGIN
     END IF;
     RETURN NEW;
 END $$;
+""")
+    op.execute("""
+ALTER FUNCTION public.guard_runtime_artifact_identity() OWNER TO runtime_artifact_lock_guard;
 """)
     op.execute("""
 CREATE TRIGGER runtime_artifact_identity BEFORE INSERT OR UPDATE OR DELETE

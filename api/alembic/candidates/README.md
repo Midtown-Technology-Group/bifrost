@@ -158,3 +158,45 @@ Post-commit S3 sweep, per-install Python write locking, indirect dependency
 retention, native UUID reuse, SQL maintenance, actual lock/cascade/error behavior
 and source-admission races still need supported integration proof. These drafts
 do not establish deletion compliance or permit schema/role/runtime activation.
+
+C5-C's `runtime_principals_v1.json` is an explicit, unapproved ACL proposal for
+selected same-database SQL qualification. Nothing loads or applies it at service
+startup. It does not qualify the complete Python API/worker/scheduler or a
+production connection change. Core has no users/source table privileges. Its
+finite native/common writes remain subject to every owner/identity/drain guard.
+UPDATE on immutable Start/admission/receipt key columns exists only because
+PostgreSQL row locking requires an UPDATE privilege; existing guards still reject
+actual mutation. Both actual restricted logins must be exercised directly and
+through the supported pool. No runtime child or SDK process receives SQL access.
+
+The artifact identity guard now runs as a separate, fixed NOLOGIN/NOINHERIT
+`runtime_artifact_lock_guard`. Its unchanged d/w/u/s NOWAIT query needs only
+SELECT of parent identity columns and UPDATE(id) on those four parents. Those
+privileges belong solely to that non-login custodian, not the coordinator or
+the existing read-only `runtime_lifecycle_guard`. The function checks its exact
+trigger/caller/owner context, rejects filtered parent reads, contains no dynamic
+SQL or DML, pins its search path, and has no PUBLIC execution grant. The role
+must have no memberships in either direction, native ownership or other owned
+function. C1 now refuses to start without that separately approved custodian.
+This preserves reviewer-row contention behavior; removing u would introduce a
+later implicit-FK wait instead. See PostgreSQL's
+[row-lock privilege requirement](https://www.postgresql.org/docs/16/sql-select.html)
+and [SECURITY DEFINER requirements](https://www.postgresql.org/docs/16/sql-createfunction.html).
+
+This is a new held authority proposal, not permission to create the custodian,
+grant its key privileges or enable either login. Before any approved isolated
+application, prepare roles without login, install the complete reviewed guard
+chain, verify the effective catalog, and only then admit approved SQL tests with
+actual restricted logins. Do not switch an existing deployment's credentials.
+No clause permits broad ALL TABLES/SEQUENCES/FUNCTIONS grants. Effective PUBLIC,
+column/default/extension/function privileges and ownership must be reconciled
+against the actual installed schema; this static file cannot prove them.
+
+Cross-owner SELECT and the row/table locks implied by permitted privileges
+remain explicit approval decisions. Row triggers cannot establish table-lock
+isolation; role timeout defaults are operational bounds, not protection against
+a hostile role changing USERSET settings. Parent/FK/index/table waits still
+need actual contention proof. New required SQL outside the listed ACL stops
+qualification for review rather than widening it automatically. CRED's common
+issuer, remaining native cascade positives, resource custody, payload policy
+and complete application/backend parity remain independently held.

@@ -54,6 +54,30 @@ def test_offline_ddl_creates_one_common_family_and_no_writer_grants() -> None:
     assert "workflow_runtime_sdk_grants" not in sql
 
 
+def test_artifact_parent_nowait_does_not_require_user_update_on_runtime_login() -> None:
+    sql = _upgrade_sql()
+    assert "reviewed isolated artifact lock custodian required" in sql
+    assert "NOT r.rolcanlogin" in sql and "NOT r.rolinherit" in sql
+    assert "m.member=r.oid OR m.roleid=r.oid" in sql
+    guard = sql.split("CREATE FUNCTION public.guard_runtime_artifact_identity()", 1)[
+        1
+    ].split("END $$", 1)[0]
+    assert "VOLATILE SECURITY DEFINER SET search_path = pg_catalog,pg_temp" in guard
+    assert "current_user <> 'runtime_artifact_lock_guard'" in guard
+    assert "session_user NOT IN ('wex_core','wex_incumbent')" in guard
+    assert "unqualified artifact parent read policy" in guard
+    assert "FOR UPDATE OF d,w,u,s NOWAIT" in guard
+    assert "UPDATE public." not in guard and "INSERT INTO" not in guard
+    assert (
+        "ALTER FUNCTION public.guard_runtime_artifact_identity() OWNER TO runtime_artifact_lock_guard"
+        in sql
+    )
+    assert (
+        "REVOKE ALL ON FUNCTION public.guard_runtime_artifact_identity() FROM PUBLIC"
+        in sql
+    )
+
+
 def test_native_delete_clears_only_pointer_and_retains_unlink_marker() -> None:
     sql = _upgrade_sql()
     assert (

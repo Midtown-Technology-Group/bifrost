@@ -1,0 +1,539 @@
+{
+  "schema": "bifrost.common-sql-qualification-proposal/v1",
+  "status": "review-only-unapproved",
+  "scope": "Selected native workflow SQL on one task-owned disposable PostgreSQL16 cluster; not full Python backend, runtime profile, production or general agent SQL authority.",
+  "source_baseline": "baae7e1aeba9566676255f443fef5cc38565d1eb",
+  "database": "bifrost_test",
+  "roles": {
+    "wex_core": {
+      "can_login_after_explicit_activation": true,
+      "inherit": false,
+      "superuser": false,
+      "create_role": false,
+      "create_database": false,
+      "replication": false,
+      "bypass_rls": false,
+      "memberships": [],
+      "table_acl": {
+        "public.executions": [
+          "SELECT",
+          "INSERT",
+          "UPDATE",
+          "DELETE"
+        ],
+        "public.workflow_execution_attempts": [
+          "SELECT",
+          "INSERT",
+          "UPDATE",
+          "DELETE"
+        ],
+        "public.execution_logs": [
+          "SELECT",
+          "INSERT"
+        ],
+        "public.ai_usage": [
+          "SELECT",
+          "INSERT"
+        ],
+        "public.event_deliveries": [
+          "SELECT",
+          "INSERT",
+          "UPDATE"
+        ],
+        "public.execution_attempts": [
+          "SELECT",
+          "INSERT",
+          "UPDATE"
+        ],
+        "public.execution_lifecycle_events": [
+          "SELECT",
+          "INSERT"
+        ],
+        "public.runtime_deployment_artifacts": [
+          "SELECT",
+          "INSERT"
+        ],
+        "public.runtime_execution_owners": [
+          "SELECT",
+          "INSERT"
+        ],
+        "public.runtime_sessions": [
+          "SELECT",
+          "INSERT"
+        ],
+        "public.runtime_workflow_live_links": [
+          "SELECT",
+          "INSERT"
+        ],
+        "public.runtime_starts": [
+          "SELECT",
+          "INSERT"
+        ],
+        "public.runtime_report_receipts": [
+          "SELECT",
+          "INSERT"
+        ],
+        "public.workflow_runtime_sdk_grants": [
+          "SELECT",
+          "INSERT"
+        ],
+        "public.workflow_runtime_sdk_grant_operations": [
+          "SELECT",
+          "INSERT"
+        ],
+        "public.runtime_admissions": [
+          "SELECT",
+          "INSERT"
+        ],
+        "public.runtime_resource_settlements": [
+          "SELECT",
+          "INSERT"
+        ]
+      },
+      "column_acl": {
+        "public.runtime_deployment_artifacts": {
+          "UPDATE": [
+            "live_deployment_id",
+            "live_workflow_id",
+            "live_solution_id",
+            "live_reviewed_by"
+          ]
+        },
+        "public.runtime_execution_owners": {
+          "UPDATE": [
+            "live_execution_id"
+          ]
+        },
+        "public.runtime_sessions": {
+          "UPDATE": [
+            "closed_at",
+            "close_reason"
+          ]
+        },
+        "public.runtime_workflow_live_links": {
+          "UPDATE": [
+            "native_attempt_id"
+          ]
+        },
+        "public.runtime_starts": {
+          "UPDATE": [
+            "id"
+          ]
+        },
+        "public.runtime_admissions": {
+          "UPDATE": [
+            "id"
+          ]
+        },
+        "public.workflow_runtime_sdk_grants": {
+          "UPDATE": [
+            "revoked_at",
+            "revocation_reason"
+          ]
+        },
+        "public.runtime_report_receipts": {
+          "UPDATE": [
+            "result_message_id"
+          ]
+        }
+      },
+      "sequence_acl": {
+        "public.execution_logs_id_seq": [
+          "USAGE"
+        ],
+        "public.ai_usage_id_seq": [
+          "USAGE"
+        ]
+      },
+      "function_acl": {},
+      "owns_functions": [],
+      "owns_native_relations": []
+    },
+    "wex_incumbent": {
+      "can_login_after_explicit_activation": true,
+      "inherit": false,
+      "superuser": false,
+      "create_role": false,
+      "create_database": false,
+      "replication": false,
+      "bypass_rls": false,
+      "memberships": [],
+      "table_acl": {
+        "public.executions": [
+          "SELECT",
+          "INSERT",
+          "UPDATE",
+          "DELETE"
+        ],
+        "public.workflow_execution_attempts": [
+          "SELECT",
+          "INSERT",
+          "UPDATE",
+          "DELETE"
+        ],
+        "public.execution_logs": [
+          "SELECT",
+          "INSERT",
+          "UPDATE",
+          "DELETE"
+        ],
+        "public.ai_usage": [
+          "SELECT",
+          "INSERT",
+          "UPDATE",
+          "DELETE"
+        ],
+        "public.event_deliveries": [
+          "SELECT",
+          "INSERT",
+          "UPDATE",
+          "DELETE"
+        ],
+        "public.execution_attempts": [
+          "SELECT",
+          "INSERT",
+          "UPDATE",
+          "DELETE"
+        ],
+        "public.execution_lifecycle_events": [
+          "SELECT",
+          "INSERT",
+          "UPDATE",
+          "DELETE"
+        ],
+        "public.users": [
+          "SELECT",
+          "UPDATE",
+          "DELETE"
+        ],
+        "public.workflows": [
+          "SELECT",
+          "UPDATE",
+          "DELETE"
+        ],
+        "public.forms": [
+          "SELECT",
+          "UPDATE",
+          "DELETE"
+        ],
+        "public.messages": [
+          "SELECT",
+          "UPDATE",
+          "DELETE"
+        ],
+        "public.cli_sessions": [
+          "SELECT",
+          "UPDATE",
+          "DELETE"
+        ],
+        "public.event_sources": [
+          "SELECT",
+          "UPDATE",
+          "DELETE"
+        ],
+        "public.solutions": [
+          "SELECT",
+          "UPDATE",
+          "DELETE"
+        ],
+        "public.solution_deployments": [
+          "SELECT",
+          "UPDATE",
+          "DELETE"
+        ],
+        "public.organizations": [
+          "SELECT"
+        ],
+        "public.roles": [
+          "SELECT"
+        ],
+        "public.user_roles": [
+          "SELECT"
+        ],
+        "public.audit_logs": [
+          "SELECT",
+          "INSERT"
+        ]
+      },
+      "column_acl": {
+        "public.organizations": {
+          "UPDATE": [
+            "is_active"
+          ]
+        }
+      },
+      "sequence_acl": {
+        "public.execution_logs_id_seq": [
+          "USAGE"
+        ],
+        "public.ai_usage_id_seq": [
+          "USAGE"
+        ]
+      },
+      "function_acl": {
+        "public.runtime_undrained_sources()": [
+          "EXECUTE"
+        ]
+      },
+      "owns_functions": [],
+      "owns_native_relations": []
+    },
+    "runtime_lifecycle_guard": {
+      "can_login_after_explicit_activation": false,
+      "inherit": false,
+      "superuser": false,
+      "create_role": false,
+      "create_database": false,
+      "replication": false,
+      "bypass_rls": false,
+      "memberships": [],
+      "table_acl": {
+        "public.runtime_sessions": [
+          "SELECT"
+        ]
+      },
+      "column_acl": {
+        "public.executions": {
+          "SELECT": [
+            "id",
+            "control_owner",
+            "organization_id",
+            "status",
+            "runtime_mode",
+            "workflow_id",
+            "solution_deployment_id"
+          ]
+        },
+        "public.runtime_execution_owners": {
+          "SELECT": [
+            "execution_id",
+            "owner_incarnation_id",
+            "live_execution_id",
+            "workflow_id",
+            "deployment_id"
+          ]
+        },
+        "public.execution_attempts": {
+          "SELECT": [
+            "id",
+            "logical_job_type",
+            "logical_job_id",
+            "completed_at"
+          ]
+        },
+        "public.execution_lifecycle_events": {
+          "SELECT": [
+            "logical_job_type",
+            "logical_job_id"
+          ]
+        },
+        "public.event_deliveries": {
+          "SELECT": [
+            "execution_id"
+          ]
+        },
+        "public.users": {
+          "SELECT": [
+            "id"
+          ]
+        },
+        "public.cli_sessions": {
+          "SELECT": [
+            "id"
+          ]
+        },
+        "public.forms": {
+          "SELECT": [
+            "id",
+            "is_active",
+            "solution_id"
+          ]
+        },
+        "public.workflows": {
+          "SELECT": [
+            "id"
+          ]
+        },
+        "public.messages": {
+          "SELECT": [
+            "id"
+          ]
+        },
+        "public.organizations": {
+          "SELECT": [
+            "id"
+          ]
+        },
+        "public.runtime_deployment_artifacts": {
+          "SELECT": [
+            "deployment_id",
+            "workflow_id",
+            "solution_id"
+          ]
+        },
+        "public.runtime_workflow_live_links": {
+          "SELECT": [
+            "session_id",
+            "native_attempt_id"
+          ]
+        },
+        "public.workflow_execution_attempts": {
+          "SELECT": [
+            "id",
+            "execution_id",
+            "claim_token",
+            "worker_incarnation_id",
+            "status",
+            "phase",
+            "completed_at",
+            "started_at"
+          ]
+        },
+        "public.workflow_runtime_sdk_grants": {
+          "SELECT": [
+            "id",
+            "runtime_session_id",
+            "execution_id",
+            "revoked_at"
+          ]
+        },
+        "public.runtime_resource_settlements": {
+          "SELECT": [
+            "session_id"
+          ]
+        }
+      },
+      "sequence_acl": {},
+      "function_acl": {},
+      "owns_functions": [
+        "public.runtime_workflow_actor()",
+        "public.guard_runtime_native_writer()",
+        "public.guard_runtime_owner_birth()",
+        "public.guard_runtime_close_grant_writer()",
+        "public.require_runtime_closed_grants()",
+        "public.guard_runtime_common_writer()",
+        "public.runtime_owner_undrained(uuid)",
+        "public.runtime_undrained_sources()",
+        "public.guard_runtime_source_drain()"
+      ],
+      "owns_native_relations": []
+    },
+    "runtime_artifact_lock_guard": {
+      "can_login_after_explicit_activation": false,
+      "inherit": false,
+      "superuser": false,
+      "create_role": false,
+      "create_database": false,
+      "replication": false,
+      "bypass_rls": false,
+      "memberships": [],
+      "table_acl": {},
+      "column_acl": {
+        "public.users": {
+          "SELECT": [
+            "id"
+          ],
+          "UPDATE": [
+            "id"
+          ]
+        },
+        "public.solutions": {
+          "SELECT": [
+            "id"
+          ],
+          "UPDATE": [
+            "id"
+          ]
+        },
+        "public.workflows": {
+          "SELECT": [
+            "id",
+            "solution_id"
+          ],
+          "UPDATE": [
+            "id"
+          ]
+        },
+        "public.solution_deployments": {
+          "SELECT": [
+            "id",
+            "solution_id"
+          ],
+          "UPDATE": [
+            "id"
+          ]
+        }
+      },
+      "sequence_acl": {},
+      "function_acl": {},
+      "owns_functions": [
+        "public.guard_runtime_artifact_identity()"
+      ],
+      "owns_native_relations": []
+    }
+  },
+  "role_defaults": {
+    "statement_timeout": "3s",
+    "lock_timeout": "1s",
+    "wex_core_search_path": "pg_catalog,pg_temp",
+    "wex_incumbent_search_path": "pg_catalog,public,pg_temp",
+    "timeouts_are_not_hostile_role_security_limits": true
+  },
+  "default_denials": {
+    "native_object_ownership": true,
+    "schema_create": true,
+    "database_create": true,
+    "database_temporary": true,
+    "table_privileges": [
+      "TRUNCATE",
+      "REFERENCES",
+      "TRIGGER"
+    ],
+    "sequence_privileges": [
+      "SELECT",
+      "UPDATE"
+    ],
+    "grant_options": true,
+    "role_membership_either_direction": true,
+    "runtime_child_sql_identity": true
+  },
+  "held_decisions": [
+    "Exact role creation/ACL application and authenticated direct/PgBouncer testing require separate explicit approval; no script applies this JSON.",
+    "Listed table SELECT includes other owners and organizations inside trusted server SQL principals; this is not API tenancy proof or an untrusted-runtime grant.",
+    "Permitted table/column privileges can also permit locks beyond individual owned rows; ordinary row triggers do not establish table-lock isolation. No blanket lock-safety claim.",
+    "The artifact NOLOGIN custodian has UPDATE(id) only to preserve fixed NOWAIT row locks. It must have no login/memberships/other function or native ownership.",
+    "Existing effective PUBLIC/extension/function/default privileges require exact installed-catalog disposition, not automatic inheritance or blanket revocation.",
+    "Selected incumbent ACLs cannot qualify the full Python API/worker/scheduler startup or every existing operation; no deployment DSN switch is authorized.",
+    "CRED issuer/renewal/ingress SQL authority remains separately closed; no issuer or SDK SQL role is created here."
+  ],
+  "required_catalog_evidence": [
+    "Actual session_user=current_user for both restricted logins through direct PostgreSQL and supported transaction pooling.",
+    "Exact roles/flags/defaults, membership in either direction, database/schema/table/type/function ownership, schema/database effective privileges.",
+    "Effective table AND every column ACL, sequences, grant options, defaults, PUBLIC and extension/function capabilities; deny unexplained extras.",
+    "Exact Alembic/schema/constraints/keys/FK actions, trigger enabled/order/deferrability and function owner/body/search_path/security/volatility fingerprints.",
+    "No RLS or unsupported inheritance/partition/function edges that could hide source or ownership rows.",
+    "Row-lock positives and user/source direct mutation negatives under genuine logins; cross-owner writes, role/DDL/credential access and custody bypass negatives.",
+    "Original stopped primer/catalog campaigns remain stopped; their prior receipts do not qualify this changed common candidate."
+  ],
+  "stop_conditions": [
+    "An unlisted relation/column/function/sequence is required: report the source consumer and review the exact addition; never grant ALL TABLES/SEQUENCES/FUNCTIONS.",
+    "Installed schema or effective authority differs: stop before enabling a writer; do not adopt or repair it automatically."
+  ],
+  "rust_consumer": {
+    "commit": "6d07e94fcb5f8028ed7d17f3725b282e488cf093",
+    "path": "core-rs/crates/bifrost-db/src/common_session.rs",
+    "sha256": "828c38f47ddec7c4b84898611d4a929e2b76dd14ea74bb45e5014f2c952a710d",
+    "required_for_update_relations": [
+      "public.executions",
+      "public.workflow_execution_attempts",
+      "public.runtime_execution_owners",
+      "public.runtime_sessions",
+      "public.runtime_workflow_live_links",
+      "public.runtime_starts",
+      "public.runtime_admissions",
+      "public.workflow_runtime_sdk_grants",
+      "public.runtime_report_receipts"
+    ],
+    "qualification": "source input only; changed Rust head native checks and SQL execution remain unproved"
+  }
+}
