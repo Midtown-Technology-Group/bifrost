@@ -7,6 +7,7 @@ does not claim runtime execution, issuance, or a populated integration read.
 
 from uuid import uuid4
 
+import httpx
 import pytest
 
 from src.core.security import create_access_token
@@ -27,7 +28,7 @@ pytestmark = pytest.mark.e2e
     ids=["anonymous", "ordinary", "external", "admin", "provider"],
 )
 def test_sdk_reads_preserve_execution_or_bypass_access(
-    e2e_client, operation, flags, expected_status
+    e2e_api_url, operation, flags, expected_status
 ):
     headers = {}
     if flags is not None:
@@ -44,11 +45,15 @@ def test_sdk_reads_preserve_execution_or_bypass_access(
             }
         )
         headers["Authorization"] = f"Bearer {token}"
-    response = e2e_client.post(
-        f"/api/sdk/integrations/{operation}",
-        json={"name": f"nonexistent-sdk-access-{uuid4()}"},
-        headers=headers,
-    )
+    # Own the cookie jar; unrelated E2E logins cannot authenticate anonymous.
+    with httpx.Client(
+        base_url=e2e_api_url, trust_env=False, follow_redirects=False
+    ) as client:
+        response = client.post(
+            f"/api/sdk/integrations/{operation}",
+            json={"name": f"nonexistent-sdk-access-{uuid4()}"},
+            headers=headers,
+        )
     assert response.status_code == expected_status
     if expected_status == 401:
         assert response.json() == {"detail": "Not authenticated"}
