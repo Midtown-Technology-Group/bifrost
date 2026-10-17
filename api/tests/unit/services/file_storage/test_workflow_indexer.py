@@ -10,6 +10,7 @@ from uuid import uuid4
 import pytest
 from sqlalchemy import Update
 
+from bifrost.workflow_parameters import WorkflowParameterSchemaError
 from src.services.file_storage.indexers.workflow import WorkflowIndexer
 
 
@@ -291,7 +292,11 @@ def test_annotation_helpers_cover_attributes_and_non_literal_options() -> None:
     assert isinstance(unresolved_function, ast.FunctionDef)
     unresolved_literal = unresolved_function.args.args[0].annotation
     assert unresolved_literal is not None
-    assert indexer._annotation_to_json_schema(unresolved_literal) == {}
+    with pytest.raises(
+        WorkflowParameterSchemaError,
+        match="Literal annotations require statically resolvable members",
+    ):
+        indexer._annotation_to_json_schema(unresolved_literal)
     empty_optional = ast.Subscript(
         value=ast.Name(id="Optional"),
         slice=ast.Tuple(elts=[]),
