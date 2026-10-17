@@ -30,7 +30,8 @@ async def test_wait_cancels_inflight_result_read_and_resumes_same_run(monkeypatc
     pending = await asyncio.wait_for(
         module.agents.run("fixture", timeout=0.03), timeout=1
     )
-    assert reading.is_set() and cleaned.is_set()
+    assert reading.is_set()
+    assert cleaned.is_set()
     assert pending.run_id == "accepted-run"
     assert pending.reason == "wait_timeout"
     get_run.side_effect = None
@@ -86,6 +87,7 @@ async def test_polling_and_final_response_share_one_remaining_budget(monkeypatch
     )
     assert budgets == pytest.approx([0.03, 0.01])
     assert cleaned.is_set(), "in-flight response cleanup must complete before returning"
-    assert pending.run_id == "accepted-run" and pending.last_known_status == "running"
+    assert pending.run_id == "accepted-run"
+    assert pending.last_known_status == "running"
     assert requests == ["accepted-run", "accepted-run"]
     enqueue.assert_awaited_once()

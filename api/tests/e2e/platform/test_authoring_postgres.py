@@ -27,7 +27,8 @@ async def test_populated_upgrade_preserves_credentials_references_and_rollback()
             / "alembic/versions/20260601_promote_mis_stamped_global_oauth_tokens.py"
         )
         spec = importlib.util.spec_from_file_location("author_token_migration", path)
-        assert spec and spec.loader
+        assert spec is not None
+        assert spec.loader is not None
         migration = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(migration)
 
@@ -100,15 +101,17 @@ async def test_populated_upgrade_preserves_credentials_references_and_rollback()
 
         # A failed conflicting-identity transaction must preserve the populated
         # credential rows. PostgreSQL enforces the actual PK/FK constraints.
-        with pytest.raises(IntegrityError):
-            async with engine.begin() as connection:
-                await connection.execute(
-                    text("DELETE FROM oauth_tokens WHERE id=:id"), {"id": token}
-                )
-                await connection.execute(
-                    text(
-                        "INSERT INTO oauth_tokens SELECT * FROM oauth_tokens WHERE id=:id"
-                    ),
-                    {"id": global_token},
-                )
+        async with engine.connect() as connection:
+            transaction = await connection.begin()
+            await connection.execute(
+                text("DELETE FROM oauth_tokens WHERE id=:id"), {"id": token}
+            )
+            conflict = text(
+                "INSERT INTO oauth_tokens SELECT * FROM oauth_tokens WHERE id=:id"
+            )
+            try:
+                with pytest.raises(IntegrityError):
+                    await connection.execute(conflict, {"id": global_token})
+            finally:
+                await transaction.rollback()
         assert await snapshot() == before

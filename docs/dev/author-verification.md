@@ -170,8 +170,11 @@ order-sensitive pairs, FK cycles, or external service behavior.
 ## Receipt
 
 Each run writes a unique `author-verification/<id>/receipt.json` under this
-worktree's Git metadata. `--plan` runs nothing and earns no evidence. Backend
-JUnit is copied into that receipt directory before another invocation can
+worktree's Git metadata. `--plan` runs nothing and earns no evidence. The entry
+point rejects option-like base refs before Git resolution. Backend
+JUnit is read from the runner directory supplied by `test.sh`, using descriptors
+that reject symlinks, hard links, unexpected owners and writable report files,
+then copied into that receipt directory before another invocation can
 replace it. Client commands currently require their native report for named
 cases/skips; the receipt records that as a gap. Skipped backend cases produce an incomplete result and a nonzero exit. Exit zero
 means the selected commands completed, never that deferred gates passed.

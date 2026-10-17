@@ -56,12 +56,6 @@ if [ "${1:-}" = "kubernetes" ]; then
     exec "$SCRIPT_DIR/scripts/kubernetes/local-kind.sh" "$@"
 fi
 
-# The author orchestrator calls test.sh per lane; each child owns its normal lock.
-if [ "${1:-}" = "author" ]; then
-    shift
-    exec python3 "$SCRIPT_DIR/api/scripts/author_verify.py" "$@"
-fi
-
 # shellcheck source=scripts/lib/test_helpers.sh
 source "$SCRIPT_DIR/scripts/lib/test_helpers.sh"
 
@@ -70,6 +64,13 @@ export COMPOSE_PROJECT_NAME
 COMPOSE_PROJECT_NAME="$(compute_project_name .)"
 
 LOG_DIR="/tmp/bifrost-$COMPOSE_PROJECT_NAME"
+# Pass the runner's actual report directory, independent of Python's TMPDIR.
+# Each child test.sh invocation still owns its normal lane lock.
+if [[ "${1:-}" == "author" ]]; then
+    shift
+    export BIFROST_AUTHOR_REPORT_DIR="$LOG_DIR"
+    exec python3 "$SCRIPT_DIR/api/scripts/author_verify.py" "$@"
+fi
 mkdir -p "$LOG_DIR"
 # Pre-create the fixture subdir the api container bind-mounts (install/preview-repo
 # e2e tests stage file:// git repos here). Creating it host-side first means Docker

@@ -57,7 +57,8 @@ async def test_heartbeat_log_flush_and_completion_commit_without_fk_deadlock(
             attempt = await lifecycle.claim_eligible_service(
                 db, worker_id="author-fixture"
             )
-            assert attempt is not None and attempt.service_id == definition.id
+            assert attempt is not None
+            assert attempt.service_id == definition.id
             service_id, attempt_id, lease_token = (
                 definition.id,
                 attempt.id,
@@ -105,19 +106,20 @@ async def test_heartbeat_log_flush_and_completion_commit_without_fk_deadlock(
                 count, cursor = await service_log_flush.flush_attempt_logs(
                     beat, service_id, attempt_id
                 )
-                assert count == 1 and cursor is not None, (
-                    "log persistence failed inside heartbeat transaction"
-                )
+                assert count == 1, "log persistence failed inside heartbeat transaction"
+                assert cursor is not None
                 await beat.commit()
             assert pending.done()
             assert await service_log_flush.store_log_cursor(attempt_id, cursor)
 
         async with async_session_factory() as check:
             terminal = await check.get(ServiceAttempt, attempt_id)
-            assert terminal is not None and terminal.state == "stopped"
+            assert terminal is not None
+            assert terminal.state == "stopped"
             assert terminal.stopped_at is not None
             definition = await check.get(ServiceDefinition, service_id)
-            assert definition is not None and definition.blocked_reason == "policy"
+            assert definition is not None
+            assert definition.blocked_reason == "policy"
             logs = (
                 (
                     await check.execute(
