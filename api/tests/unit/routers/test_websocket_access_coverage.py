@@ -4,7 +4,8 @@ from unittest.mock import AsyncMock, Mock, patch
 from uuid import uuid4
 
 import pytest
-
+from fastapi import Response
+from fastapi.security import HTTPAuthorizationCredentials
 from src.core.principal import UserPrincipal
 from src.jobs.consumers import agent_run as agent_run_consumer
 from src.routers import websocket as ws_mod
@@ -85,7 +86,6 @@ def test_parse_channels_accepts_strings_objects_and_rejects_invalid_specs():
             {"name": "files:workspace:docs", "scope": 42},
         ]
     )
-
     assert [spec.name for spec in specs] == [
         "conversation:abc",
         "table:customers",
@@ -100,6 +100,45 @@ def test_parse_channels_accepts_strings_objects_and_rejects_invalid_specs():
 
     with pytest.raises(ws_mod.WSError, match="invalid filter"):
         ws_mod._parse_channels([{"name": "table:bad", "filter": {"unknown": []}}])
+
+
+@pytest.mark.asyncio
+async def test_create_websocket_ticket_exchanges_validated_bearer() -> None:
+    http_response = Response()
+    credentials = HTTPAuthorizationCredentials(
+        scheme="Bearer",
+        credentials="access-token",
+    )
+    with patch.object(
+        ws_mod,
+        "issue_websocket_ticket",
+        AsyncMock(return_value="a" * 43),
+    ) as issue:
+        response = await ws_mod.create_websocket_ticket(
+            http_response,
+            _user(),
+            credentials,
+        )
+
+    assert response == {"ticket": "a" * 43}
+    assert http_response.headers["cache-control"] == "no-store"
+    issue.assert_awaited_once_with("access-token")
+
+
+@pytest.mark.asyncio
+async def test_websocket_connect_rejects_legacy_token_query_before_auth() -> None:
+    ws = _QueuedWebSocket()
+    ws.query_params = {"token": "access.jwt"}
+    with (
+        patch.object(ws_mod, "get_current_user_ws", AsyncMock()) as user_auth,
+        patch.object(ws_mod, "get_device_principal_ws", AsyncMock()) as device_auth,
+    ):
+        await ws_mod.websocket_connect(ws, channels=[])
+
+    ws.accept.assert_awaited_once()
+    ws.close.assert_awaited_once_with(code=4001, reason="Unauthorized")
+    user_auth.assert_not_awaited()
+    device_auth.assert_not_awaited()
 
 
 def test_file_channel_scope_and_path_helpers_cover_access_boundaries():

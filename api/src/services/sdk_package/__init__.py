@@ -37,6 +37,7 @@ _SDK_SOURCE_FILES = (
     "use-table.ts",
     "use-infinite-table.ts",
     "ws-client.ts",
+    "websocket-auth.ts",
     "use-workflow.ts",
     "use-workflow-hooks.ts",
     "execution-stream.ts",

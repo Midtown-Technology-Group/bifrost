@@ -79,6 +79,7 @@ def test_app_embed_retains_legacy_app_and_execution_surfaces():
     claims = _app_claims()
     assert embed_request_allowed("GET", "/api/applications/app-slug", claims)
     assert embed_request_allowed("POST", "/api/workflows/execute", claims)
+    assert embed_request_allowed("POST", "/ws/ticket", claims)
     assert embed_request_allowed(
         "GET", "/api/executions/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", claims
     )
@@ -95,6 +96,17 @@ def test_app_embed_cannot_use_any_form_runtime_surface():
     )
     for method, path in denied:
         assert not embed_request_allowed(method, path, claims), (method, path)
+
+
+def test_ticket_admission_is_app_only_and_exact():
+    for claims in (_form_claims(), _form_claims("hmac"), {"embed": True}):
+        assert not embed_request_allowed("POST", "/ws/ticket", claims)
+    for method, path in (
+        ("GET", "/ws/ticket"),
+        ("POST", "/ws/ticket/extra"),
+        ("POST", "/ws/connect"),
+    ):
+        assert not embed_request_allowed(method, path, _app_claims())
 
 
 def _form_token() -> str:

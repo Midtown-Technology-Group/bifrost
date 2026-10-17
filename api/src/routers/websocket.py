@@ -11,31 +11,45 @@ from dataclasses import dataclass
 from typing import Annotated, Any, cast
 from uuid import UUID
 
-from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+    Query,
+    Response,
+    WebSocket,
+    WebSocketDisconnect,
+    status,
+)
+from fastapi.security import HTTPAuthorizationCredentials
 from pydantic import ValidationError
+from shared.claims.preresolve import preresolve_for_policies
+from shared.policies.probe import is_subscribe_authorized
+from shared.policies.subscription import decide_visibility_change
+from shared.policy_rules import (
+    PolicyRuleDomainMismatch,
+    PolicyRuleNotFound,
+    resolve_policy_refs,
+)
+from shared.role_cache import get_user_roles
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
-from shared.claims.preresolve import preresolve_for_policies
-from shared.policies.probe import is_subscribe_authorized
-from shared.policy_rules import PolicyRuleDomainMismatch, PolicyRuleNotFound, resolve_policy_refs
-from src.repositories.policy_rule import PolicyRuleRepository
-from shared.policies.subscription import decide_visibility_change
-from shared.role_cache import get_user_roles
-from src.core.auth import get_current_user_ws
-from src.core.exceptions import AccessDeniedError
-from src.core.principal import UserPrincipal
+from src.core.auth import CurrentUser, bearer_scheme, get_current_user_ws
 from src.core.database import get_db_context
+from src.core.exceptions import AccessDeniedError
 from src.core.log_safety import log_safe
+from src.core.principal import UserPrincipal
 from src.core.pubsub import manager
+from src.core.websocket_tickets import issue_websocket_ticket
 from src.models import Conversation, Execution
-from src.models.contracts.policies import Expr, TablePolicies
-from src.models.contracts.policies import FileAction
+from src.models.contracts.policies import Expr, FileAction, TablePolicies
 from src.models.orm import Agent
 from src.models.orm.cli import CLISession
-from src.repositories.applications import ApplicationRepository
 from src.models.orm.devices import DEVICE_STATUS_ACTIVE, Device
 from src.models.orm.tables import Table as TableOrm
+from src.repositories.applications import ApplicationRepository
+from src.repositories.policy_rule import PolicyRuleRepository
 from src.services.agent_run_access import load_agent_run_for_user
 from src.services.audit import emit_file_policy_deny, emit_table_policy_deny
 from src.services.audit_context import ActorContext
@@ -1012,6 +1026,29 @@ async def can_access_agent_run(user: UserPrincipal, run_id: str) -> bool:
 router = APIRouter(prefix="/ws", tags=["WebSocket"])
 
 
+@router.post("/ticket")
+async def create_websocket_ticket(
+    response: Response,
+    _user: CurrentUser,
+    credentials: Annotated[
+        HTTPAuthorizationCredentials | None,
+        Depends(bearer_scheme),
+    ],
+) -> dict[str, str]:
+    """Exchange a validated bearer token for a single-use WebSocket ticket."""
+
+    # Cookie-authenticated sockets already send their HttpOnly access cookie.
+    # Requiring an explicit bearer credential here both avoids CSRF concerns
+    # and limits tickets to clients that truly cannot authenticate the upgrade.
+    if credentials is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Bearer token required",
+        )
+    response.headers["Cache-Control"] = "no-store"
+    return {"ticket": await issue_websocket_ticket(credentials.credentials)}
+
+
 async def get_device_principal_ws(websocket: WebSocket) -> Device | None:
     """Resolve a device principal from the Authorization header only.
 
@@ -1065,16 +1102,17 @@ async def websocket_connect(
             ...payload
         }
     """
-    # M0 freeze (feedback #6): device credentials are header-only — a
-    # device_key (or any other credential) in the query string is rejected
-    # before any authentication attempt. (getattr: test doubles for this
-    # endpoint may not model query_params; real connections always have it.)
-    if "device_key" in (getattr(websocket, "query_params", None) or {}):
+    # Long-lived credentials are header/cookie-only. Reject legacy query
+    # credentials before every authentication path so a valid device header,
+    # cookie, or ticket cannot mask a client that still leaks one in its URL.
+    # (getattr: test doubles may not model query_params.)
+    query_params = getattr(websocket, "query_params", None) or {}
+    if "device_key" in query_params or "token" in query_params:
         await websocket.accept()
         await websocket.close(code=4001, reason="Unauthorized")
         return
 
-    # Authenticate via header (query params not supported for security)
+    # Authenticate via cookie/header or a short-lived, single-use ticket.
     user = await get_current_user_ws(websocket)
     device = None
     if not user:

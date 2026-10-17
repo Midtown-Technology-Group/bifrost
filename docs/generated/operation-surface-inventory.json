@@ -16056,7 +16056,7 @@
     "cli": 158,
     "manifest": 16,
     "mcp": 90,
-    "rest": 782,
+    "rest": 783,
     "sdk": 19
   },
   "schema_version": 1,
@@ -20461,6 +20461,13 @@
         "method": "POST",
         "operation_id": "",
         "path": "/token",
+        "reason": "REST operation has not entered the canonical operation catalog yet.",
+        "status": "missing_surface"
+      },
+      {
+        "method": "POST",
+        "operation_id": "",
+        "path": "/ws/ticket",
         "reason": "REST operation has not entered the canonical operation catalog yet.",
         "status": "missing_surface"
       }

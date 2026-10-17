@@ -43,6 +43,153 @@ describe("webSocketService security hardening", () => {
 		expect(warnSpy).toHaveBeenCalledWith("[WS] Notification received");
 		expect(warnSpy.mock.calls[0]).toHaveLength(1);
 	});
+
+	it("uses a one-time ticket rather than an embed JWT in the socket URL", async () => {
+		const payload = btoa(JSON.stringify({ embed: true }));
+		const embedToken = `header.${payload}.signature`;
+		const ticket = "a".repeat(43);
+		sessionStorage.setItem("bifrost_embed_token", embedToken);
+		const fetchImpl = vi.fn().mockResolvedValue({
+			ok: true,
+			status: 200,
+			json: async () => ({ ticket }),
+		});
+		vi.stubGlobal("fetch", fetchImpl);
+
+		class MockWebSocket {
+			static urls: string[] = [];
+			onopen: (() => void) | null = null;
+			onmessage: (() => void) | null = null;
+			onerror: (() => void) | null = null;
+			onclose: (() => void) | null = null;
+
+			constructor(url: string) {
+				MockWebSocket.urls.push(url);
+			}
+
+			addEventListener(type: string, listener: () => void): void {
+				if (type === "open") queueMicrotask(listener);
+			}
+		}
+		vi.stubGlobal("WebSocket", MockWebSocket);
+		const service = webSocketService as unknown as {
+			_connect(channels: string[]): Promise<void>;
+			ws: WebSocket | null;
+		};
+
+		try {
+			await service._connect([]);
+			const url = new URL(MockWebSocket.urls[0]);
+			expect(url.searchParams.get("ticket")).toBe(ticket);
+			expect(url.searchParams.has("token")).toBe(false);
+			expect(url.toString()).not.toContain(embedToken);
+			expect(fetchImpl).toHaveBeenCalledWith(
+				"/ws/ticket",
+				expect.objectContaining({
+					headers: expect.objectContaining({
+						Authorization: `Bearer ${embedToken}`,
+					}),
+				}),
+			);
+		} finally {
+			service.ws = null;
+			sessionStorage.removeItem("bifrost_embed_token");
+			vi.unstubAllGlobals();
+		}
+	});
+
+	it("retries ticket acquisition with the original channels", async () => {
+		vi.useFakeTimers();
+		const payload = btoa(JSON.stringify({ embed: true }));
+		sessionStorage.setItem("bifrost_embed_token", `header.${payload}.signature`);
+		vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("ticket unavailable")));
+		vi.spyOn(console, "error").mockImplementation(() => {});
+		const service = webSocketService as unknown as {
+			_connect(channels: string[]): Promise<void>;
+			retryCount: number;
+		};
+		service.retryCount = 0;
+		const connect = vi.spyOn(webSocketService, "connect").mockResolvedValue();
+		try {
+			await expect(service._connect(["execution:original"])).rejects.toThrow(
+				"ticket unavailable",
+			);
+			await vi.advanceTimersByTimeAsync(2000);
+			expect(connect).toHaveBeenCalledWith(["execution:original"]);
+		} finally {
+			await webSocketService.disconnect();
+			service.retryCount = 0;
+			sessionStorage.removeItem("bifrost_embed_token");
+			vi.unstubAllGlobals();
+			vi.useRealTimers();
+		}
+	});
+
+	it.each(["resolve", "reject"] as const)(
+		"disconnect invalidates a pending ticket request that later %ss",
+		async (outcome) => {
+			vi.useFakeTimers();
+			const payload = btoa(JSON.stringify({ embed: true }));
+			sessionStorage.setItem(
+				"bifrost_embed_token",
+				`header.${payload}.signature`,
+			);
+			let resolveTicket!: (response: Response) => void;
+			let rejectTicket!: (error: Error) => void;
+			const ticketRequest = new Promise<Response>((resolve, reject) => {
+				resolveTicket = resolve;
+				rejectTicket = reject;
+			});
+			const fetchImpl = vi.fn().mockReturnValue(ticketRequest);
+			vi.stubGlobal("fetch", fetchImpl);
+			class MockWebSocket {
+				static urls: string[] = [];
+
+				constructor(url: string) {
+					MockWebSocket.urls.push(url);
+				}
+
+				addEventListener(type: string, listener: () => void): void {
+					if (type === "open") queueMicrotask(listener);
+				}
+			}
+			vi.stubGlobal("WebSocket", MockWebSocket);
+			const service = webSocketService as unknown as {
+				_connect(channels: string[]): Promise<void>;
+				retryCount: number;
+			};
+			service.retryCount = 0;
+			const reconnect = vi
+				.spyOn(webSocketService, "connect")
+				.mockResolvedValue();
+
+			try {
+				const pending = service._connect(["execution:cancelled"]);
+				expect(fetchImpl).toHaveBeenCalledOnce();
+				await webSocketService.disconnect();
+				if (outcome === "resolve") {
+					resolveTicket({
+						ok: true,
+						status: 200,
+						json: async () => ({ ticket: "a".repeat(43) }),
+					} as Response);
+				} else {
+					rejectTicket(new Error("ticket unavailable"));
+				}
+
+				await expect(pending).resolves.toBeUndefined();
+				await vi.advanceTimersByTimeAsync(4000);
+				expect(MockWebSocket.urls).toHaveLength(0);
+				expect(reconnect).not.toHaveBeenCalled();
+			} finally {
+				await webSocketService.disconnect();
+				service.retryCount = 0;
+				sessionStorage.removeItem("bifrost_embed_token");
+				vi.unstubAllGlobals();
+				vi.useRealTimers();
+			}
+		},
+	);
 });
 
 describe("platform-job WebSocket contract", () => {

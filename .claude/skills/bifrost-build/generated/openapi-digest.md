@@ -766,3 +766,4 @@
 | GET | `/health/live` |
 | GET | `/health/ready` |
 | POST | `/v1/responses` |
+| POST | `/ws/ticket` |
