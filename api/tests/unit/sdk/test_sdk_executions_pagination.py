@@ -91,3 +91,23 @@ async def test_list_preserves_legacy_workflow_name_filter(monkeypatch):
         "/api/executions",
         params={"workflow_name": "legacy-name", "limit": 10},
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("scope", ["org-alpha", "global", ""])
+async def test_list_forwards_explicit_scope_for_server_validation(monkeypatch, scope):
+    module = importlib.import_module("bifrost.executions")
+    response = MagicMock()
+    response.json.return_value = {"executions": [], "continuation_token": None}
+    client = MagicMock()
+    client.engine_request = AsyncMock(return_value=response)
+    monkeypatch.setattr(module, "get_client", lambda: client)
+    monkeypatch.setattr(module, "raise_for_status_with_detail", MagicMock())
+
+    await module.executions.list(scope=scope)
+
+    client.engine_request.assert_awaited_once_with(
+        "GET",
+        "/api/executions",
+        params={"scope": scope, "limit": 50},
+    )
