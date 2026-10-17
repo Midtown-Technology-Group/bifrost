@@ -72,11 +72,17 @@ def _owned_operation(
 class _StreamingBody:
     """Read an object in caller-sized pieces without buffering it up front."""
 
-    def __init__(self, chunks: AsyncIterator[bytes]):
+    def __init__(
+        self,
+        chunks: AsyncIterator[bytes],
+        *,
+        close_stream: Callable[[], Awaitable[None]] | None = None,
+    ):
         self._iterator = chunks.__aiter__()
         self._buffer = bytearray()
         self._exhausted = False
         self._closed = False
+        self._close_stream = close_stream
         self._close_owner: Callable[[], Awaitable[None]] | None = None
 
     def bind_owner(self, close_owner: Callable[[], Awaitable[None]]) -> None:
@@ -95,6 +101,10 @@ class _StreamingBody:
         aclose = getattr(self._iterator, "aclose", None)
         if aclose is not None:
             await aclose()
+        close_stream = self._close_stream
+        self._close_stream = None
+        if close_stream is not None:
+            await close_stream()
         close_owner = self._close_owner
         self._close_owner = None
         if close_owner is not None:
@@ -124,7 +134,9 @@ class _StreamingBody:
                     self._buffer.clear()
             await self.close()
             return b"".join(parts)
-        while len(self._buffer) < size and not self._exhausted:
+        # Return the next available bytes. Waiting to fill ``size`` would stall
+        # a caller when the service has already delivered a shorter chunk.
+        if not self._buffer and not self._exhausted:
             await self._pull()
         if not self._buffer:
             if self._exhausted:
@@ -452,15 +464,12 @@ class AzureBlobStorageClient:
             raise self.exceptions.NoSuchKey(key) from exc
 
         async def chunks() -> AsyncIterator[bytes]:
-            try:
-                async for chunk in stream.chunks():
-                    if chunk:
-                        yield chunk
-            finally:
-                await stream.close()
+            async for chunk in stream.chunks():
+                if chunk:
+                    yield chunk
 
         return {
-            "Body": _StreamingBody(chunks()),
+            "Body": _StreamingBody(chunks(), close_stream=stream.close),
             "ETag": canonical_etag(getattr(getattr(stream, "properties", None), "etag", None))
             or "",
         }

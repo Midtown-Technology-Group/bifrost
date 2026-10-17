@@ -20,11 +20,15 @@ def clients(monkeypatch):
         client._credential = SimpleNamespace(close=AsyncMock())
 
         async def chunks():
-            yield b"first"
-            await asyncio.Event().wait()
+            hang = getattr(client, "_stream_hang", False)
+            yield b"first" if hang else b"content"
+            if hang:
+                await asyncio.Event().wait()
 
         stream = SimpleNamespace(
-            readall=AsyncMock(return_value=b"content"), chunks=chunks
+            readall=AsyncMock(return_value=b"content"),
+            chunks=chunks,
+            close=AsyncMock(),
         )
 
         async def blobs(**_kwargs):
@@ -176,14 +180,15 @@ async def test_concurrent_operations_have_independent_clients(clients):
 @pytest.mark.asyncio
 async def test_stream_early_close_keeps_client_until_consumed(clients):
     stream = adapter().iter_object_chunks("test")
-    assert await anext(stream) == b"first"
+    assert await anext(stream) == b"content"
     clients[0][1].close.assert_not_awaited()
     await stream.aclose()
     assert_closed(clients)
 
 
 @pytest.mark.asyncio
-async def test_stream_cancellation_closes_client(clients):
+async def test_stream_cancellation_closes_client(clients, monkeypatch):
+    monkeypatch.setattr(AzureBlobStorageClient, "_stream_hang", True, raising=False)
     received = asyncio.Event()
 
     async def consume():
@@ -208,12 +213,8 @@ async def test_service_close_failure_still_closes_credential(clients):
 
 @pytest.mark.asyncio
 async def test_stream_completion_and_read_error_close_owner(clients, monkeypatch):
-    async def complete(self, key, chunk_size):
-        yield b"complete"
-
-    monkeypatch.setattr(AzureBlobStorageClient, "_iter_object_chunks", complete)
     assert [chunk async for chunk in adapter().iter_object_chunks("test")] == [
-        b"complete"
+        b"content"
     ]
     assert_closed(clients)
 

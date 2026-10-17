@@ -702,7 +702,7 @@ async def test_chunked_object_round_trip_is_streamed_and_hashed(monkeypatch) -> 
     assert uploaded["content"] == b"abcdef"
     assert uploaded["overwrite"] is True
     assert uploaded["content_settings"].content_type == "application/zip"
-    assert downloaded == [b"abc", b"def"]
+    assert downloaded == [b"abc", b"de", b"f"]
 
 
 @pytest.mark.asyncio
