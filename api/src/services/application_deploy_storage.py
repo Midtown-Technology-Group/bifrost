@@ -9,6 +9,7 @@ from pathlib import Path
 from uuid import UUID
 
 from src.config import Settings, get_settings
+from src.services.file_storage.azure_blob_client import AzureBlobStorageClient
 from src.services.file_storage.s3_client import S3StorageClient
 
 APP_DEPLOY_INPUT_ROOT = "_application_deploy_jobs"
@@ -29,8 +30,12 @@ class ApplicationDeployStorage:
     def __init__(self, job_id: UUID | str, settings: Settings | None = None):
         self.job_id = str(job_id)
         self._settings = settings or get_settings()
-        self._storage = S3StorageClient(self._settings)
-        self._bucket = self._settings.s3_bucket or ""
+        if self._settings.object_storage_provider == "azure_blob":
+            self._storage = AzureBlobStorageClient(self._settings)
+            self._bucket = self._settings.azure_blob_container or ""
+        else:
+            self._storage = S3StorageClient(self._settings)
+            self._bucket = self._settings.s3_bucket or ""
         self.key = f"{APP_DEPLOY_INPUT_ROOT}/{self.job_id}/input.zip"
 
     async def write_path(self, path: Path) -> tuple[str, int]:

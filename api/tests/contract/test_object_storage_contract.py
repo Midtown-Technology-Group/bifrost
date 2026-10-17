@@ -24,6 +24,8 @@ import pytest
 import pytest_asyncio
 from botocore.exceptions import ClientError
 
+from src.services.file_storage.azure_blob_client import canonical_etag, wire_etag
+
 
 @dataclass(frozen=True)
 class StoredObject:
@@ -40,6 +42,10 @@ class ObjectStat:
     etag: str
 
 
+class _PreconditionFailed(Exception):
+    """Reference-fake conditional write rejection. Production keeps provider errors."""
+
+
 class ObjectStorageContract(Protocol):
     async def put(
         self,
@@ -48,7 +54,12 @@ class ObjectStorageContract(Protocol):
         *,
         content_type: str | None = None,
         metadata: dict[str, str] | None = None,
+        if_match: str | None = None,
+        if_none_match: str | None = None,
     ) -> None:
+        raise NotImplementedError
+
+    def iter_chunks(self, key: str, *, chunk_size: int) -> AsyncIterator[bytes]:
         raise NotImplementedError
 
     async def get(
@@ -105,7 +116,18 @@ class InMemoryObjectStorage:
         *,
         content_type: str | None = None,
         metadata: dict[str, str] | None = None,
+        if_match: str | None = None,
+        if_none_match: str | None = None,
     ) -> None:
+        if if_none_match not in (None, "*") or (
+            if_match is not None and if_none_match is not None
+        ):
+            raise ValueError("Unsupported or conflicting object write preconditions")
+        current = self._etags.get(key)
+        if if_none_match == "*" and current is not None:
+            raise _PreconditionFailed(key)
+        if if_match is not None and current != canonical_etag(if_match):
+            raise _PreconditionFailed(key)
         self._version += 1
         self._objects[key] = StoredObject(
             body=body,
@@ -113,6 +135,13 @@ class InMemoryObjectStorage:
             metadata=dict(metadata or {}),
         )
         self._etags[key] = f"fake-etag-{self._version}"
+
+    async def iter_chunks(self, key: str, *, chunk_size: int) -> AsyncIterator[bytes]:
+        if chunk_size <= 0:
+            raise ValueError("chunk_size must be greater than zero")
+        body = self._objects[key].body
+        for start in range(0, len(body), chunk_size):
+            yield body[start : start + chunk_size]
 
     async def get(
         self, key: str, *, byte_range: tuple[int, int] | None = None
@@ -153,8 +182,9 @@ class InMemoryObjectStorage:
         page_size: int | None = None,
     ) -> tuple[list[str], list[str]]:
         keys = sorted(k for k in self._objects if k.startswith(prefix))
-        if page_size is not None:
-            keys = keys[:page_size]
+        if page_size is not None and page_size <= 0:
+            raise ValueError("page_size must be greater than zero")
+        # page_size is the service page size. The contract result includes every page.
         if delimiter is None:
             return keys, []
 
@@ -241,7 +271,13 @@ class S3ObjectStorage:
         *,
         content_type: str | None = None,
         metadata: dict[str, str] | None = None,
+        if_match: str | None = None,
+        if_none_match: str | None = None,
     ) -> None:
+        if if_none_match not in (None, "*") or (
+            if_match is not None and if_none_match is not None
+        ):
+            raise ValueError("Unsupported or conflicting object write preconditions")
         put_args: dict[str, Any] = {
             "Bucket": self._bucket,
             "Key": self._object_key(key),
@@ -250,9 +286,25 @@ class S3ObjectStorage:
         }
         if content_type:
             put_args["ContentType"] = content_type
+        if if_match is not None:
+            put_args["IfMatch"] = wire_etag(if_match)
+        if if_none_match is not None:
+            put_args["IfNoneMatch"] = "*"
 
         async with self._client() as client:
             await client.put_object(**put_args)
+
+    async def iter_chunks(self, key: str, *, chunk_size: int) -> AsyncIterator[bytes]:
+        if chunk_size <= 0:
+            raise ValueError("chunk_size must be greater than zero")
+        async with self._client() as client:
+            response = await client.get_object(
+                Bucket=self._bucket, Key=self._object_key(key)
+            )
+            body = response["Body"]
+            async with body:
+                while chunk := await body.read(chunk_size):
+                    yield chunk
 
     async def get(
         self, key: str, *, byte_range: tuple[int, int] | None = None
@@ -286,7 +338,7 @@ class S3ObjectStorage:
             size=response["ContentLength"],
             content_type=response.get("ContentType"),
             metadata=dict(response.get("Metadata") or {}),
-            etag=str(response.get("ETag", "")).strip('"'),
+            etag=canonical_etag(response.get("ETag")) or "",
         )
 
     async def copy(self, source_key: str, dest_key: str) -> None:
@@ -311,28 +363,38 @@ class S3ObjectStorage:
         delimiter: str | None = None,
         page_size: int | None = None,
     ) -> tuple[list[str], list[str]]:
-        list_args: dict[str, Any] = {
-            "Bucket": self._bucket,
-            "Prefix": self._object_key(prefix),
-        }
-        if delimiter:
-            list_args["Delimiter"] = delimiter
-        if page_size:
-            list_args["MaxKeys"] = page_size
-
+        files: list[str] = []
+        folders: list[str] = []
+        continuation_token = None
         async with self._client() as client:
-            response = await client.list_objects_v2(**list_args)
-
-        files = [
-            self._logical_key(item["Key"])
-            for item in response.get("Contents", [])
-            if item["Key"] != self._object_key(prefix)
-        ]
-        folders = [
-            self._logical_key(item["Prefix"])
-            for item in response.get("CommonPrefixes", [])
-        ]
-        return sorted(files), sorted(folders)
+            while True:
+                list_args: dict[str, Any] = {
+                    "Bucket": self._bucket,
+                    "Prefix": self._object_key(prefix),
+                }
+                if delimiter:
+                    list_args["Delimiter"] = delimiter
+                if page_size:
+                    list_args["MaxKeys"] = page_size
+                if continuation_token:
+                    list_args["ContinuationToken"] = continuation_token
+                response = await client.list_objects_v2(**list_args)
+                files.extend(
+                    self._logical_key(item["Key"])
+                    for item in response.get("Contents", [])
+                    if item["Key"] != self._object_key(prefix)
+                )
+                folders.extend(
+                    self._logical_key(item["Prefix"])
+                    for item in response.get("CommonPrefixes", [])
+                )
+                if not response.get("IsTruncated"):
+                    break
+                next_token = response.get("NextContinuationToken")
+                if not next_token or next_token == continuation_token:
+                    break
+                continuation_token = next_token
+        return sorted(set(files)), sorted(set(folders))
 
     async def signed_get_url(self, key: str, *, expires_in: int = 600) -> str:
         async with self._client() as client:
@@ -419,15 +481,44 @@ class AzureBlobObjectStorage:
         *,
         content_type: str | None = None,
         metadata: dict[str, str] | None = None,
+        if_match: str | None = None,
+        if_none_match: str | None = None,
     ) -> None:
+        from azure.core import MatchConditions
         from azure.storage.blob import ContentSettings
 
+        if if_none_match not in (None, "*") or (
+            if_match is not None and if_none_match is not None
+        ):
+            raise ValueError("Unsupported or conflicting object write preconditions")
+        conditions: dict[str, Any] = {}
+        if if_match is not None:
+            conditions = {
+                "etag": wire_etag(if_match),
+                "match_condition": MatchConditions.IfNotModified,
+            }
         await self._blob(key).upload_blob(
             body,
-            overwrite=True,
+            overwrite=if_none_match != "*",
             content_settings=ContentSettings(content_type=content_type),
             metadata=metadata or {},
+            **conditions,
         )
+
+    async def iter_chunks(self, key: str, *, chunk_size: int) -> AsyncIterator[bytes]:
+        if chunk_size <= 0:
+            raise ValueError("chunk_size must be greater than zero")
+        stream = await self._blob(key).download_blob()
+        buffer = bytearray()
+        async for piece in stream.chunks():
+            if not piece:
+                continue
+            buffer.extend(piece)
+            while len(buffer) >= chunk_size:
+                yield bytes(buffer[:chunk_size])
+                del buffer[:chunk_size]
+        if buffer:
+            yield bytes(buffer)
 
     async def get(
         self, key: str, *, byte_range: tuple[int, int] | None = None
@@ -452,7 +543,7 @@ class AzureBlobObjectStorage:
             size=properties.size,
             content_type=properties.content_settings.content_type,
             metadata=dict(properties.metadata or {}),
-            etag=str(properties.etag or "").strip('"'),
+            etag=canonical_etag(properties.etag) or "",
         )
 
     async def copy(self, source_key: str, dest_key: str) -> None:
@@ -492,28 +583,35 @@ class AzureBlobObjectStorage:
     ) -> tuple[list[str], list[str]]:
         files: list[str] = []
         folders: list[str] = []
-
-        if delimiter:
-            pages = self._container.walk_blobs(
-                name_starts_with=self._object_key(prefix),
-                delimiter=delimiter,
-                results_per_page=page_size,
-            ).by_page()
-        else:
-            pages = self._container.list_blobs(
-                name_starts_with=self._object_key(prefix),
-                results_per_page=page_size,
-            ).by_page()
-
-        async for page in pages:
+        continuation_token = None
+        while True:
+            if delimiter:
+                pager = self._container.walk_blobs(
+                    name_starts_with=self._object_key(prefix),
+                    delimiter=delimiter,
+                    results_per_page=page_size,
+                ).by_page(continuation_token=continuation_token)
+            else:
+                pager = self._container.list_blobs(
+                    name_starts_with=self._object_key(prefix),
+                    results_per_page=page_size,
+                ).by_page(continuation_token=continuation_token)
+            try:
+                page = await anext(pager)
+            except StopAsyncIteration:
+                break
             async for item in page:
-                if hasattr(item, "prefix"):
-                    folders.append(self._logical_key(item.prefix))
+                prefix_name = getattr(item, "prefix", None)
+                if prefix_name:
+                    folders.append(self._logical_key(prefix_name))
                 else:
                     files.append(self._logical_key(item.name))
-            break
+            next_token = getattr(pager, "continuation_token", None)
+            if not next_token or next_token == continuation_token:
+                break
+            continuation_token = next_token
 
-        return sorted(files), sorted(folders)
+        return sorted(set(files)), sorted(set(folders))
 
     async def _generate_blob_sas(
         self,
@@ -710,6 +808,24 @@ def _is_reference_fake(object_storage: ObjectStorageContract) -> bool:
     return isinstance(object_storage, InMemoryObjectStorage)
 
 
+def _precondition_failed(exc: Exception) -> bool:
+    if isinstance(exc, _PreconditionFailed):
+        return True
+    response = getattr(exc, "response", None)
+    if isinstance(response, dict):
+        status = response.get("ResponseMetadata", {}).get("HTTPStatusCode")
+        code = response.get("Error", {}).get("Code")
+    else:
+        status = getattr(exc, "status_code", None)
+        code = getattr(exc, "error_code", None)
+    return status in {409, 412} and code in {
+        "PreconditionFailed",
+        "ConditionalRequestConflict",
+        "ConditionNotMet",
+        "BlobAlreadyExists",
+    }
+
+
 @pytest.mark.asyncio
 async def test_round_trips_small_text_binary_prefixes_and_metadata(
     object_storage: ObjectStorageContract,
@@ -738,6 +854,23 @@ async def test_round_trips_small_text_binary_prefixes_and_metadata(
     assert stat.content_type == "text/plain"
     assert stat.metadata == {"source": "contract", "durable": "true"}
     assert stat.etag
+    assert stat.etag == canonical_etag(stat.etag)
+
+
+@pytest.mark.asyncio
+async def test_iter_chunks_keeps_each_read_bounded(
+    object_storage: ObjectStorageContract,
+) -> None:
+    body = b"abcdefghijklmnopqrstuvwxyz"
+    await object_storage.put("uploads/form-1/chunks.bin", body)
+    chunks: list[bytes] = []
+    async for chunk in object_storage.iter_chunks(
+        "uploads/form-1/chunks.bin", chunk_size=4
+    ):
+        assert 0 < len(chunk) <= 4
+        chunks.append(chunk)
+    assert b"".join(chunks) == body
+    assert len(chunks) > 1
 
 
 @pytest.mark.asyncio
@@ -759,6 +892,21 @@ async def test_overwrite_delete_head_and_range_read(
     assert second_stat.size == 10
     assert second_stat.content_type == "text/csv"
     assert second_stat.etag != first_stat.etag
+    assert second_stat.etag == canonical_etag(second_stat.etag)
+
+    await object_storage.put(
+        "uploads/form-1/report.csv",
+        b"replaced",
+        if_match=second_stat.etag,
+    )
+    with pytest.raises(Exception) as stale:
+        await object_storage.put(
+            "uploads/form-1/report.csv",
+            b"rejected",
+            if_match=first_stat.etag,
+        )
+    assert _precondition_failed(stale.value)
+    assert await object_storage.get("uploads/form-1/report.csv") == b"replaced"
 
     await object_storage.delete("uploads/form-1/report.csv")
     with pytest.raises(KeyError):
@@ -778,10 +926,11 @@ async def test_list_pagination_and_delimiter_semantics(
     ):
         await object_storage.put(key, b"fixture")
 
-    first_page, _ = await object_storage.list("_repo/apps/", page_size=2)
-    assert first_page == [
+    files, _folders = await object_storage.list("_repo/apps/", page_size=2)
+    assert files == [
         "_repo/apps/app-1/components/card.tsx",
         "_repo/apps/app-1/index.tsx",
+        "_repo/apps/app-2/index.tsx",
     ]
 
     files, folders = await object_storage.list("uploads/form-1/", delimiter="/")

@@ -82,6 +82,45 @@ async def test_bad_staged_bundle_is_removed_after_integrity_failure(tmp_path) ->
 
 
 @pytest.mark.asyncio
+async def test_preview_delete_removes_each_object_without_batch_delete() -> None:
+    from src.services.solutions.workspace_bundle_storage import WorkspaceBundleStorage
+
+    class Client:
+        def __init__(self) -> None:
+            self.deleted: list[tuple[str, str]] = []
+
+        async def list_objects_v2(self, **_kwargs):
+            return {
+                "Contents": [{"Key": "preview/package.zip"}, {"Key": "preview/preview.json"}],
+                "IsTruncated": False,
+            }
+
+        async def delete_object(self, *, Bucket, Key):
+            self.deleted.append((Bucket, Key))
+
+        async def delete_objects(self, **_kwargs):
+            raise AssertionError("preview cleanup must not require S3 batch delete")
+
+    client = Client()
+
+    class Storage:
+        @asynccontextmanager
+        async def get_client(self):
+            yield client
+
+    storage = WorkspaceBundleStorage(uuid4())
+    storage._storage = Storage()
+    storage._bucket = "azure-container"
+
+    await storage.delete()
+
+    assert client.deleted == [
+        ("azure-container", "preview/package.zip"),
+        ("azure-container", "preview/preview.json"),
+    ]
+
+
+@pytest.mark.asyncio
 async def test_large_bundle_staging_keeps_rss_and_chunk_size_bounded(tmp_path) -> None:
     """A 40 MiB upload is read as 8 MiB chunks, never as one archive buffer."""
     from src.services.solutions.workspace_bundle_storage import CHUNK_SIZE, WorkspaceBundleStorage
@@ -146,6 +185,7 @@ async def test_expired_preview_with_active_job_is_retained_for_retry(monkeypatch
         yield Db()
 
     class Settings:
+        object_storage_provider = "s3"
         s3_bucket = "test"
 
     monkeypatch.setattr(storage_module, "get_settings", Settings)
