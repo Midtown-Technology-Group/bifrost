@@ -7,7 +7,7 @@ import logging
 import subprocess
 import sys
 
-from packaging.requirements import Requirement
+from packaging.requirements import InvalidRequirement, Requirement
 from packaging.utils import canonicalize_name
 
 from src.services.execution.requirements_setup_result import RequirementsInstallResult
@@ -44,7 +44,15 @@ def _update_requirements_status(result: RequirementsInstallResult) -> None:
         result.requirements_installed = 0
         return
 
-    required = {_requirement_name(line) for line in _parse_requirement_lines(content)}
+    required: set[str] = set()
+    for line in _parse_requirement_lines(content):
+        try:
+            required.add(_requirement_name(line))
+        except InvalidRequirement:
+            logger.debug(
+                "[pool] Skipping non-distribution requirements target in status count: %s",
+                line,
+            )
     result.requirements_total = len(required)
 
     installed = {canonicalize_name(p["name"]) for p in _get_installed_packages()}

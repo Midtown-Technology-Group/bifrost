@@ -46,6 +46,11 @@ _INSTALLABLE_REQUIREMENT_PREFIXES = (
     "--requirement ",
     "--requirement=",
 )
+_NESTED_REQUIREMENT_PREFIXES = (
+    "-r ",
+    "--requirement ",
+    "--requirement=",
+)
 
 
 def _parse_requirement_lines(content: str) -> list[str]:
@@ -89,6 +94,11 @@ def _requirement_install_args(requirement: str) -> list[str]:
         if requirement.startswith(equals_prefix):
             return [flag, requirement[len(equals_prefix) :].strip()]
     return [requirement]
+
+
+def _is_nested_requirement(requirement: str) -> bool:
+    """Return whether a target can import run-global pip policy."""
+    return requirement.startswith(_NESTED_REQUIREMENT_PREFIXES)
 
 
 def _pip_install(args: list[str]) -> "subprocess.CompletedProcess[str]":
@@ -160,8 +170,23 @@ def install_requirements() -> RequirementsInstallResult:
             except OSError as e:
                 logger.debug(f"[pool] could not remove temp requirements file {temp_path}: {e}")
 
-    # Fallback: install each requirement on its own so one bad package only
-    # fails itself.
+    # A nested file can carry run-global security policy such as
+    # --require-hashes, constraints, indexes, or binary selection. Replaying
+    # its path in a separate pip process would relax that policy for sibling
+    # targets, so a failed batch containing any nested source must fail closed.
+    if any(_is_nested_requirement(pkg) for pkg in packages):
+        error = (
+            "per-package fallback disabled because a nested requirements source "
+            "may contain run-global pip policy"
+        )
+        result.failed.extend(
+            FailedPackage(package=package, error=error) for package in packages
+        )
+        logger.error("[pool] %s", error)
+        return result
+
+    # Fallback: install each independent requirement on its own so one bad
+    # package only fails itself.
     for pkg in packages:
         try:
             single = _pip_install([*options, *_requirement_install_args(pkg)])

@@ -172,7 +172,12 @@ def test_install_requirements_does_not_skip_editable_only_file(monkeypatch):
 
     def fake_pip_install(args: list[str]):
         calls.append(args)
-        return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
+        return subprocess.CompletedProcess(
+            args,
+            1 if len(calls) == 1 else 0,
+            stdout="",
+            stderr="batch failed" if len(calls) == 1 else "",
+        )
 
     monkeypatch.setattr(simple_worker, "_pip_install", fake_pip_install)
 
@@ -180,15 +185,17 @@ def test_install_requirements_does_not_skip_editable_only_file(monkeypatch):
 
     assert result.attempted == [editable]
     assert result.installed == [editable]
-    assert calls and calls[0][0] == "-r"
+    assert calls[0][0] == "-r"
+    assert calls[1] == ["-e", "git+https://example.test/package.git@v1#egg=package"]
 
 
-def test_editable_and_nested_sources_use_valid_fallback_argv(monkeypatch):
-    editable = "--editable=git+https://example.test/package.git@v1#egg=package"
-    nested = "--requirement shared.txt"
+def test_nested_policy_source_disables_relaxed_fallback(monkeypatch, tmp_path):
+    nested = tmp_path / "policy.txt"
+    nested.write_text("--require-hashes\n", encoding="utf-8")
+    nested_target = f"--requirement={nested}"
     monkeypatch.setattr(
         "src.core.requirements_cache.get_requirements_sync",
-        lambda: f"{editable}\n{nested}\n",
+        lambda: f"{nested_target}\nsample==1\n",
     )
     calls: list[list[str]] = []
 
@@ -196,7 +203,7 @@ def test_editable_and_nested_sources_use_valid_fallback_argv(monkeypatch):
         calls.append(args)
         return subprocess.CompletedProcess(
             args,
-            1 if args[0] == "-r" and len(calls) == 1 else 0,
+            1,
             stdout="",
             stderr="batch failed",
         )
@@ -205,11 +212,13 @@ def test_editable_and_nested_sources_use_valid_fallback_argv(monkeypatch):
 
     result = simple_worker.install_requirements()
 
-    assert result.ok is True
-    assert calls[1:] == [
-        ["--editable", "git+https://example.test/package.git@v1#egg=package"],
-        ["--requirement", "shared.txt"],
+    assert result.ok is False
+    assert calls == [["-r", calls[0][1]]]
+    assert [failure.package for failure in result.failed] == [
+        nested_target,
+        "sample==1",
     ]
+    assert all("run-global pip policy" in failure.error for failure in result.failed)
 
 
 @pytest.mark.asyncio
