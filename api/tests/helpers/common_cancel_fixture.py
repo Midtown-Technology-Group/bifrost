@@ -178,6 +178,35 @@ async def _clock(db: AsyncSession) -> datetime:
     return now
 
 
+async def _insert_claimed_attempt(
+    db: AsyncSession,
+    *,
+    execution_id: UUID,
+    attempt_id: UUID,
+    claim_token: UUID,
+    worker_incarnation_id: UUID,
+    now: datetime,
+) -> None:
+    """Insert the selected fixture's native claim on its existing transaction."""
+    db.add(
+        WorkflowExecutionAttempt(
+            id=attempt_id,
+            execution_id=execution_id,
+            attempt_number=1,
+            claim_token=claim_token,
+            status="claimed",
+            phase="claim",
+            worker_id="synthetic-sql-fixture",
+            worker_incarnation_id=worker_incarnation_id,
+            published_at=now,
+            claimed_at=now,
+            heartbeat_at=now,
+            runtime_mode="deployment-v1",
+        )
+    )
+    await db.flush()
+
+
 async def _native_evidence(db: AsyncSession, seed: dict[str, UUID]) -> dict:
     deployment = await db.get(SolutionDeployment, seed["deployment_id"])
     solution = await db.get(Solution, seed["solution_id"])
@@ -475,23 +504,14 @@ async def _seed_common_running(
                 values,
             )
             now = await _clock(db)
-            db.add(
-                WorkflowExecutionAttempt(
-                    id=identifiers["attempt_id"],
-                    execution_id=seed["execution_id"],
-                    attempt_number=1,
-                    claim_token=identifiers["claim_token"],
-                    status="claimed",
-                    phase="claim",
-                    worker_id="synthetic-sql-fixture",
-                    worker_incarnation_id=identifiers["worker_incarnation_id"],
-                    published_at=now,
-                    claimed_at=now,
-                    heartbeat_at=now,
-                    runtime_mode="deployment-v1",
-                )
+            await _insert_claimed_attempt(
+                db,
+                execution_id=seed["execution_id"],
+                attempt_id=identifiers["attempt_id"],
+                claim_token=identifiers["claim_token"],
+                worker_incarnation_id=identifiers["worker_incarnation_id"],
+                now=now,
             )
-            await db.flush()
             caller = {
                 "caller_user_id": str(seed["user_id"]),
                 "caller_organization_id": str(seed["organization_id"]),
