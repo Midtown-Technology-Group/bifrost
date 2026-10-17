@@ -7,6 +7,8 @@ from urllib.parse import urlparse
 
 import pytest
 
+from tests.e2e.conftest import write_and_register
+
 
 def _compute_hmac(params: dict[str, str], secret: str) -> str:
     message = "&".join(f"{k}={v}" for k, v in sorted(params.items()))
@@ -61,11 +63,41 @@ class TestEmbedWorkflowExecution:
         yield {
             "app": app,
             "embed_token": embed_token,
+            "raw_secret": raw_secret,
             "verified_params": params,
         }
 
         # Cleanup
         e2e_client.delete(f"/api/applications/{app['id']}", headers=platform_admin.headers)
+
+    @pytest.fixture
+    def recovery_workflow(self, e2e_client, platform_admin):
+        suffix = uuid.uuid4().hex[:8]
+        function_name = f"embed_recovery_{suffix}"
+        path = f"{function_name}.py"
+        workflow = write_and_register(
+            e2e_client,
+            platform_admin.headers,
+            path,
+            (
+                "from bifrost import workflow\n\n"
+                f"@workflow(name='{function_name}')\n"
+                f"async def {function_name}(marker: str):\n"
+                "    return {'marker': marker}\n"
+            ),
+            function_name,
+        )
+        access_update = e2e_client.patch(
+            f"/api/workflows/{workflow['id']}",
+            headers=platform_admin.headers,
+            json={"access_level": "everyone"},
+        )
+        assert access_update.status_code == 200, access_update.text
+        yield workflow
+        e2e_client.delete(
+            f"/api/files/editor?path={path}",
+            headers=platform_admin.headers,
+        )
 
     def test_embed_token_authenticates_workflow_execute(self, e2e_client, embed_session):
         """An embed token should be accepted by the workflow execute endpoint.
@@ -84,6 +116,51 @@ class TestEmbedWorkflowExecution:
         # Should get 404 (workflow not found) rather than 401/403 (unauthorized)
         assert r.status_code != 401, f"Embed token rejected as unauthorized: {r.text}"
         assert r.status_code != 403, f"Embed token rejected as forbidden: {r.text}"
+
+    def test_execution_recovery_is_bound_to_exact_embed_session(
+        self,
+        e2e_client,
+        embed_session,
+        recovery_workflow,
+    ):
+        params = embed_session["verified_params"]
+        hmac_val = _compute_hmac(params, embed_session["raw_secret"])
+        second_bootstrap = e2e_client.get(
+            f"/embed/apps/{embed_session['app']['slug']}",
+            params={**params, "hmac": hmac_val},
+            follow_redirects=False,
+        )
+        assert second_bootstrap.status_code == 302, second_bootstrap.text
+        second_token = _extract_token_from_redirect(second_bootstrap)
+        assert second_token != embed_session["embed_token"]
+
+        execution_id = str(uuid.uuid4())
+        payload = {
+            "workflow_id": recovery_workflow["id"],
+            "app_id": embed_session["app"]["id"],
+            "input_data": {"marker": "same-input"},
+            "sync": True,
+        }
+
+        def submit(token: str):
+            return e2e_client.post(
+                "/api/workflows/execute",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "X-Bifrost-Execution-ID": execution_id,
+                },
+                json=payload,
+            )
+
+        initial = submit(embed_session["embed_token"])
+        same_session = submit(embed_session["embed_token"])
+        other_same_org_session = submit(second_token)
+
+        assert initial.status_code == 200, initial.text
+        assert same_session.status_code == 200, same_session.text
+        assert same_session.json()["execution_id"] == execution_id
+        assert other_same_org_session.status_code == 403, other_same_org_session.text
+        assert "Access denied to this execution" in other_same_org_session.text
 
     def test_embed_token_cannot_access_admin_endpoints(self, e2e_client, embed_session):
         """Embed tokens should be blocked from admin endpoints by EmbedScopeMiddleware."""

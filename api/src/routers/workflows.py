@@ -893,6 +893,33 @@ async def execute_workflow(
             detail=str(exc),
         ) from exc
 
+    if effective_user.embed and not effective_user.jti:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Embed token missing session identifier",
+        )
+
+    from src.services.execution.submission_recovery import (
+        EmbedExecutionRecoveryDeniedError,
+        ExecutionSubmissionConflictError,
+        assert_execution_bound_to_embed_session,
+        bind_execution_to_embed_session,
+        recover_execution_submission,
+    )
+
+    async def bind_embed_execution(
+        response: WorkflowExecutionResponse,
+    ) -> WorkflowExecutionResponse:
+        """Scope a persisted app-embed execution to its exact token session."""
+
+        if effective_user.embed and not request.transient:
+            assert effective_user.jti is not None
+            await bind_execution_to_embed_session(
+                effective_user.jti,
+                response.execution_id,
+            )
+        return response
+
     # Resolve org scope for workflow lookup — follows the same pattern as
     # configs, tables, etc. Superusers can pass org_id to search that org;
     # regular users always use their own org.
@@ -1071,11 +1098,6 @@ async def execute_workflow(
                     "workflow execution"
                 ),
             )
-        from src.services.execution.submission_recovery import (
-            ExecutionSubmissionConflictError,
-            recover_execution_submission,
-        )
-
         try:
             recovered = await recover_execution_submission(
                 db,
@@ -1092,6 +1114,18 @@ async def execute_workflow(
                 detail=str(exc),
             ) from exc
         if recovered is not None:
+            if effective_user.embed:
+                assert effective_user.jti is not None
+                try:
+                    await assert_execution_bound_to_embed_session(
+                        effective_user.jti,
+                        execution_request_id,
+                    )
+                except EmbedExecutionRecoveryDeniedError as exc:
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail=str(exc),
+                    ) from exc
             return recovered
 
     # Scheduled execution: normalize delay_seconds -> scheduled_at and insert row.
@@ -1118,12 +1152,14 @@ async def execute_workflow(
             is_external=exec_is_external,
             execution_id=execution_request_id,
         )
-        return WorkflowExecutionResponse(
-            execution_id=str(exec_id),
-            workflow_id=str(workflow.id),
-            workflow_name=workflow.name,
-            status=ExecutionStatus.SCHEDULED,
-            scheduled_at=scheduled_at,
+        return await bind_embed_execution(
+            WorkflowExecutionResponse(
+                execution_id=str(exec_id),
+                workflow_id=str(workflow.id),
+                workflow_name=workflow.name,
+                status=ExecutionStatus.SCHEDULED,
+                scheduled_at=scheduled_at,
+            )
         )
 
     # Build shared context for execution.
@@ -1214,13 +1250,15 @@ async def execute_workflow(
                 dispatch_metadata=dispatch_metadata,
                 org_id_override=request.org_id,
             )
-            return WorkflowExecutionResponse(
-                execution_id=result.execution_id,
-                workflow_id=str(workflow.id),
-                workflow_name=workflow.name,
-                status=result.status,
-                result=result.result,
-                is_transient=request.transient,
+            return await bind_embed_execution(
+                WorkflowExecutionResponse(
+                    execution_id=result.execution_id,
+                    workflow_id=str(workflow.id),
+                    workflow_name=workflow.name,
+                    status=result.status,
+                    result=result.result,
+                    is_transient=request.transient,
+                )
             )
         elif workflow:
             # Execute workflow by ID
@@ -1283,7 +1321,7 @@ async def execute_workflow(
                 duration_ms=result.duration_ms,
             )
 
-        return result
+        return await bind_embed_execution(result)
 
     except WorkflowNotFoundError as e:
         raise HTTPException(

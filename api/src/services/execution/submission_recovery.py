@@ -6,12 +6,44 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.core.cache.keys import TTL_EMBED_EXECUTION, embed_execution_key
+from src.core.cache.redis_client import get_redis
 from src.models.contracts.executions import WorkflowExecutionResponse
 from src.models.orm.executions import Execution
 
 
 class ExecutionSubmissionConflictError(ValueError):
     """Raised when a submission identity is reused for different work."""
+
+
+class EmbedExecutionRecoveryDeniedError(PermissionError):
+    """Raised when an embed session tries to recover another session's work."""
+
+
+async def bind_execution_to_embed_session(
+    session_jti: str,
+    execution_id: UUID | str,
+) -> None:
+    """Record the embed session that may read or recover an execution."""
+
+    async with get_redis() as redis:
+        await redis.setex(
+            embed_execution_key(session_jti, str(execution_id)),
+            TTL_EMBED_EXECUTION,
+            "1",
+        )
+
+
+async def assert_execution_bound_to_embed_session(
+    session_jti: str,
+    execution_id: UUID | str,
+) -> None:
+    """Reject recovery unless this exact embed session created the execution."""
+
+    async with get_redis() as redis:
+        bound = await redis.exists(embed_execution_key(session_jti, str(execution_id)))
+    if not bound:
+        raise EmbedExecutionRecoveryDeniedError("Access denied to this execution")
 
 
 async def recover_execution_submission(
