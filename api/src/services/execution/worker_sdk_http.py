@@ -185,12 +185,12 @@ EXECUTION_ROUTE_METHODS: dict[str, frozenset[str]] = {
 }
 
 # The SDK agent-run facade routes, selected from
-# ``src.routers.agent_runs`` by path AND method. ``/api/agent-runs/{run_id}``
-# owns only the detail GET here; the rerun/cancel/verdict/flag siblings are
-# separate paths and stay on the API.
+# ``src.routers.agent_runs`` by path AND method. The detail and caller-scoped
+# result GETs support SDK polling; mutation/review siblings stay on the API.
 AGENT_RUN_ROUTE_METHODS: dict[str, frozenset[str]] = {
     "/api/agent-runs/enqueue": frozenset({"POST"}),
     "/api/agent-runs/{run_id}": frozenset({"GET"}),
+    "/api/agent-runs/{run_id}/result": frozenset({"GET"}),
 }
 
 # The SDK event route, selected from ``src.routers.events`` by path AND
@@ -449,9 +449,8 @@ def build_worker_sdk_app() -> Any:
     )
 
     # The SDK agent-run routes are selected by (path, method) from their real
-    # router. ``/api/agent-runs/{run_id}`` is the detail GET; the rerun,
-    # cancel, verdict, and flag-conversation siblings live on child paths and
-    # stay on the API.
+    # router. The detail and caller-result GETs are explicit; the rerun,
+    # cancel, verdict, and flag-conversation siblings stay on the API.
     for route in agent_runs_router.routes:
         wanted = AGENT_RUN_ROUTE_METHODS.get(
             getattr(route, "path", None), frozenset()

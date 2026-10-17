@@ -9,6 +9,7 @@ import type { components } from "@/lib/v1";
 type Run = components["schemas"]["AgentRunDetailResponse"];
 export function AgentActivityWorkspace({
 	run,
+	canViewRaw,
 	focused = false,
 	expanded = false,
 	onFocusedChange,
@@ -16,12 +17,14 @@ export function AgentActivityWorkspace({
 	...timelineProps
 }: {
 	run: Run;
+	canViewRaw: boolean;
 	focused?: boolean;
 	expanded?: boolean;
 	onFocusedChange?: (focused: boolean) => void;
 	onInspectionChange?: (inspecting: boolean) => void;
 } & Omit<ComponentProps<typeof Timeline>, "steps">) {
 	const [advanced, setAdvanced] = useState(false);
+	const showAdvanced = canViewRaw && advanced;
 	const heading = (
 		<div className="flex min-w-0 items-center gap-2">
 			<h2 className="flex items-center gap-2 text-sm font-medium">
@@ -50,18 +53,20 @@ export function AgentActivityWorkspace({
 					{focused ? "Show overview" : "Focus activity"}
 				</Button>
 			) : null}
-			<Button
-				variant={advanced ? "secondary" : "ghost"}
-				aria-pressed={advanced}
-				onClick={() => {
-					onInspectionChange?.(false);
-					setAdvanced(!advanced);
-				}}
-				className="min-h-11 shrink-0 text-xs"
-			>
-				<Code2 className="size-4" />
-				Advanced
-			</Button>
+			{canViewRaw ? (
+				<Button
+					variant={advanced ? "secondary" : "ghost"}
+					aria-pressed={advanced}
+					onClick={() => {
+						onInspectionChange?.(false);
+						setAdvanced(!advanced);
+					}}
+					className="min-h-11 shrink-0 text-xs"
+				>
+					<Code2 className="size-4" />
+					Advanced
+				</Button>
+			) : null}
 		</div>
 	);
 	return (
@@ -71,10 +76,10 @@ export function AgentActivityWorkspace({
 			className={cn(
 				"flex min-w-0 flex-col lg:min-h-0",
 				(focused || expanded) && "lg:min-h-0 lg:flex-1",
-				advanced && "gap-3",
+				showAdvanced && "gap-3",
 			)}
 		>
-			{advanced ? (
+			{showAdvanced ? (
 				<div
 					className="min-w-0 lg:min-h-0 lg:flex-1 lg:overflow-auto"
 					role="region"

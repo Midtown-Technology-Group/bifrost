@@ -61,7 +61,7 @@ def _run(**overrides):
 def test_run_to_response_maps_agent_run_fields() -> None:
     run = _run()
 
-    response = agent_runs._run_to_response(run)
+    response = agent_runs._run_to_response(run, include_sensitive=True)
 
     assert response.id == run.id
     assert response.agent_id == run.agent_id
@@ -69,6 +69,18 @@ def test_run_to_response_maps_agent_run_fields() -> None:
     assert response.metadata == {"service": "helpdesk"}
     assert response.verdict == "up"
     assert response.parent_run_id is None
+    assert response.input == run.input
+    assert response.output == run.output
+
+
+def test_run_to_response_redacts_raw_payloads_by_default() -> None:
+    response = agent_runs._run_to_response(
+        _run(summary_status="failed", summary_error="private traceback")
+    )
+
+    assert response.input is None
+    assert response.output is None
+    assert response.summary_error is None
 
 
 def test_run_to_response_handles_missing_agent_and_metadata() -> None:
@@ -160,7 +172,12 @@ async def test_list_agent_runs_rejects_invalid_filter_inputs(
 async def test_list_agent_runs_applies_filters_and_returns_paginated_runs(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    run = _run(status="running", verdict=None)
+    run = _run(
+        status="running",
+        verdict=None,
+        summary_status="failed",
+        summary_error="private traceback",
+    )
     db = _FakeDb([2, [run]])
     monkeypatch.setattr(agent_runs, "apply_agent_run_access", lambda query, user: query)
 
@@ -182,6 +199,9 @@ async def test_list_agent_runs_applies_filters_and_returns_paginated_runs(
 
     assert response.total == 2
     assert [item.id for item in response.items] == [run.id]
+    assert response.items[0].input is None
+    assert response.items[0].output is None
+    assert response.items[0].summary_error is None
     assert len(db.queries) == 2
 
 
@@ -205,6 +225,63 @@ async def test_get_agent_run_raises_404_when_run_not_visible(
 
     assert exc.value.status_code == 404
     assert exc.value.detail == f"Agent run {run_id} not found"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("admin", [False, True])
+async def test_get_agent_run_result_allows_original_caller_or_admin(
+    monkeypatch: pytest.MonkeyPatch,
+    admin: bool,
+) -> None:
+    user = _user(has_platform_admin_grant=lambda: admin)
+    caller_user_id = str(uuid4()) if admin else str(user.user_id)
+    run = _run(caller_user_id=caller_user_id, output={"text": "private result"})
+    monkeypatch.setattr(
+        agent_runs,
+        "load_agent_run_for_user",
+        AsyncMock(return_value=run),
+    )
+
+    response = await agent_runs.get_agent_run_result(run.id, _FakeDb([]), user)
+
+    assert response.run_id == run.id
+    assert response.output == {"text": "private result"}
+
+
+@pytest.mark.asyncio
+async def test_get_agent_run_result_hides_visible_run_from_noncaller(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user = _user()
+    run = _run(caller_user_id=str(uuid4()))
+    monkeypatch.setattr(
+        agent_runs,
+        "load_agent_run_for_user",
+        AsyncMock(return_value=run),
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        await agent_runs.get_agent_run_result(run.id, _FakeDb([]), user)
+
+    assert exc.value.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_get_agent_run_result_rejects_nonterminal_run(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user = _user()
+    run = _run(caller_user_id=str(user.user_id), status="running")
+    monkeypatch.setattr(
+        agent_runs,
+        "load_agent_run_for_user",
+        AsyncMock(return_value=run),
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        await agent_runs.get_agent_run_result(run.id, _FakeDb([]), user)
+
+    assert exc.value.status_code == 409
 
 
 @pytest.mark.asyncio
@@ -234,7 +311,11 @@ async def test_cancel_agent_run_takes_publication_lock_before_loading(
 async def test_get_agent_run_returns_completed_run_with_db_steps_and_child_runs(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    run = _run(steps=[_step(step_number=1), _step(step_number=2)])
+    run = _run(
+        summary_status="failed",
+        summary_error="private traceback",
+        steps=[_step(step_number=1), _step(step_number=2)],
+    )
     child_id = uuid4()
     child = SimpleNamespace(
         id=child_id,
@@ -266,6 +347,42 @@ async def test_get_agent_run_returns_completed_run_with_db_steps_and_child_runs(
     assert [step.step_number for step in response.steps] == [1, 2]
     assert response.ai_usage is None
     assert response.ai_totals is None
+    assert response.input is None
+    assert response.output is None
+    assert response.summary_error is None
+    assert response.steps[0].content is None
+
+
+@pytest.mark.asyncio
+async def test_get_agent_run_includes_sensitive_data_for_platform_admin(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run = _run(
+        summary_status="failed",
+        summary_error="provider traceback",
+        steps=[_step(content={"tool_result": "private"})],
+    )
+    db = _FakeDb([[], []])
+
+    async def fake_load_agent_run_for_user(*args, **kwargs):
+        return run
+
+    monkeypatch.setattr(
+        agent_runs,
+        "load_agent_run_for_user",
+        fake_load_agent_run_for_user,
+    )
+
+    response = await agent_runs.get_agent_run(
+        run.id,
+        db,
+        _user(has_platform_admin_grant=lambda: True),
+    )
+
+    assert response.input == run.input
+    assert response.output == run.output
+    assert response.summary_error == "provider traceback"
+    assert response.steps[0].content == {"tool_result": "private"}
 
 
 @pytest.mark.asyncio

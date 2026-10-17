@@ -152,6 +152,13 @@ class AgentRunHandle(BaseModel):
     status: Literal["queued"] = "queued"
 
 
+class AgentRunResult(BaseModel):
+    """Caller-scoped terminal agent output."""
+
+    run_id: str
+    output: dict | None = None
+
+
 class AgentRunPending(BaseModel):
     """The SDK wait ended before an agent run's result was observed."""
 

@@ -61,6 +61,7 @@
 | POST | `/api/agent-runs/{run_id}/flag-conversation/message` |
 | POST | `/api/agent-runs/{run_id}/regenerate-summary` |
 | POST | `/api/agent-runs/{run_id}/rerun` |
+| GET | `/api/agent-runs/{run_id}/result` |
 | DELETE | `/api/agent-runs/{run_id}/verdict` |
 | POST | `/api/agent-runs/{run_id}/verdict` |
 | GET | `/api/agents` |

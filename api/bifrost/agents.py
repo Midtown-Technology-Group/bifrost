@@ -16,7 +16,7 @@ from typing import Any, Literal
 
 from ._context import _execution_context
 from .client import get_client, raise_for_status_with_detail
-from .models import AgentRun, AgentRunHandle, AgentRunPending
+from .models import AgentRun, AgentRunHandle, AgentRunPending, AgentRunResult
 
 
 def _poll_interval(elapsed_seconds: float) -> float:
@@ -89,6 +89,20 @@ class agents:
         return AgentRun.model_validate(response.json())
 
     @staticmethod
+    async def get_result(run_id: str) -> dict[str, Any] | None:
+        """Fetch terminal output through the initiating-caller contract."""
+        client = get_client()
+        response = await client.engine_request(
+            "GET", f"/api/agent-runs/{run_id}/result"
+        )
+        if response.status_code == 404:
+            raise ValueError(f"Agent run result not found: {run_id}")
+        if response.status_code == 403:
+            raise PermissionError(f"Access denied to agent run result: {run_id}")
+        raise_for_status_with_detail(response)
+        return AgentRunResult.model_validate(response.json()).output
+
+    @staticmethod
     async def run(
         agent_name: str,
         input: dict[str, Any] | None = None,
@@ -145,12 +159,16 @@ class agents:
         if workflow_deadline is not None and workflow_deadline.tzinfo is None:
             raise ValueError("workflow_deadline must include a timezone")
 
-        last_status: Literal["queued", "running", "cancelling"] | None = None
-        while True:
-            remaining: float | None = None
+        def remaining_wait_budget() -> tuple[
+            float | None,
+            Literal["wait_timeout", "workflow_deadline"],
+        ]:
+            remaining = (
+                wait_deadline - time.monotonic()
+                if wait_deadline is not None
+                else None
+            )
             reason: Literal["wait_timeout", "workflow_deadline"] = "wait_timeout"
-            if wait_deadline is not None:
-                remaining = wait_deadline - time.monotonic()
             if workflow_deadline is not None:
                 workflow_remaining = (
                     workflow_deadline - datetime.now(timezone.utc)
@@ -158,6 +176,11 @@ class agents:
                 if remaining is None or workflow_remaining < remaining:
                     remaining = workflow_remaining
                     reason = "workflow_deadline"
+            return remaining, reason
+
+        last_status: Literal["queued", "running", "cancelling"] | None = None
+        while True:
+            remaining, reason = remaining_wait_budget()
 
             if remaining is not None and remaining <= 0:
                 return AgentRunPending(
@@ -181,6 +204,27 @@ class agents:
 
             if run.status in {"completed", "budget_exceeded"}:
                 output = run.output
+                if output is None:
+                    remaining, reason = remaining_wait_budget()
+                    if remaining is not None and remaining <= 0:
+                        return AgentRunPending(
+                            run_id=run_id,
+                            last_known_status=None,
+                            reason=reason,
+                        )
+                    try:
+                        if remaining is None:
+                            output = await agents.get_result(run_id)
+                        else:
+                            output = await asyncio.wait_for(
+                                agents.get_result(run_id), timeout=remaining
+                            )
+                    except asyncio.TimeoutError:
+                        return AgentRunPending(
+                            run_id=run_id,
+                            last_known_status=None,
+                            reason=reason,
+                        )
                 if not output_schema and isinstance(output, dict) and set(output) == {"text"}:
                     return output["text"]
                 if output_schema and isinstance(output, str):
@@ -203,12 +247,7 @@ class agents:
             # Recompute the remaining budget after every request, so the sleep
             # cannot consume the workflow's return margin.
             sleep_for = _poll_interval(time.monotonic() - started_waiting)
-            if wait_deadline is not None:
-                sleep_for = min(sleep_for, max(0, wait_deadline - time.monotonic()))
-            if workflow_deadline is not None:
-                sleep_for = min(
-                    sleep_for,
-                    max(0, (workflow_deadline - datetime.now(timezone.utc)).total_seconds()
-                        - workflow_return_margin),
-                )
+            remaining, _reason = remaining_wait_budget()
+            if remaining is not None:
+                sleep_for = min(sleep_for, max(0, remaining))
             await asyncio.sleep(sleep_for)

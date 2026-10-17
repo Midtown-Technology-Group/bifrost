@@ -162,8 +162,8 @@ class ConnectionManager:
     async def _send_local(self, channel: str, message: dict[str, Any]) -> None:
         """Send message to local WebSocket connections.
 
-        For policy-filtered channels (`table:` and `files:`), the connection
-        MUST have a per-message dispatcher attached by the websocket router.
+        For recipient-filtered channels (`table:`, `files:`, and `agent-run:`),
+        the connection MUST have a per-message dispatcher attached by the websocket router.
         The dispatcher receives the raw message and decides what, if anything,
         to deliver to the client.
         """
@@ -182,7 +182,12 @@ class ConnectionManager:
         dead_connections = set()
         is_table_channel = channel.startswith("table:")
         is_file_channel = channel.startswith("files:")
-        message_json = json.dumps(message) if not (is_table_channel or is_file_channel) else None
+        is_agent_run_channel = channel.startswith("agent-run:")
+        message_json = (
+            json.dumps(message)
+            if not (is_table_channel or is_file_channel or is_agent_run_channel)
+            else None
+        )
 
         for websocket in self.connections[channel]:
             try:
@@ -193,6 +198,11 @@ class ConnectionManager:
                     await dispatcher(channel, message)
                 elif is_file_channel:
                     dispatcher = getattr(websocket, "_file_dispatcher", None)
+                    if dispatcher is None:
+                        continue
+                    await dispatcher(channel, message)
+                elif is_agent_run_channel:
+                    dispatcher = getattr(websocket, "_agent_run_dispatcher", None)
                     if dispatcher is None:
                         continue
                     await dispatcher(channel, message)
@@ -548,7 +558,7 @@ async def replay_chat_run_events(
     stream_key = chat_run_events_stream_key(conversation_id_str)
     events: list[dict[str, Any]] = []
     async with get_redis() as redis:
-        entries = await redis.xrange(stream_key, min="-", max="+")
+        entries = await redis.xrange(stream_key, min="-", max="+") or []
     for _entry_id, data in entries:
         raw = data.get("event")
         if not raw:

@@ -6712,8 +6712,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Change or set password
-         * @description Change the authenticated user's password, or set one if they don't have one (passkey/OAuth users)
+         * Change password
+         * @description Change the authenticated user's existing password
          */
         post: operations["change_password_api_profile_password_post"];
         delete?: never;
@@ -7276,6 +7276,26 @@ export interface paths {
          * @description Get agent run detail with steps.
          */
         get: operations["get_agent_run_api_agent_runs__run_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent-runs/{run_id}/result": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Agent Run Result
+         * @description Return terminal output to its initiating caller without raw trace data.
+         */
+        get: operations["get_agent_run_result_api_agent_runs__run_id__result_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -12072,7 +12092,7 @@ export interface paths {
          * Read a single app file
          * @description Read a single file by relative path.
          *
-         *     Source content is read from the file_index (_repo/apps/{slug}/).
+         *     Source content is read from S3 (_repo/apps/{slug}/).
          *     Compiled content is read from _apps/{app_id}/{mode}/.
          *     The compiled field is only set when it differs from source.
          */
@@ -14444,6 +14464,21 @@ export interface components {
             completed_at?: string | null;
             /** Parent Run Id */
             parent_run_id?: string | null;
+        };
+        /**
+         * AgentRunResultResponse
+         * @description Caller-scoped terminal output without the raw run trace.
+         */
+        AgentRunResultResponse: {
+            /**
+             * Run Id
+             * Format: uuid
+             */
+            run_id: string;
+            /** Output */
+            output?: {
+                [key: string]: unknown;
+            } | null;
         };
         /** AgentRunStepResponse */
         AgentRunStepResponse: {
@@ -26864,14 +26899,14 @@ export interface components {
         };
         /**
          * PasswordChange
-         * @description Request model for changing or setting password.
+         * @description Request model for changing an existing password.
          */
         PasswordChange: {
             /**
              * Current Password
-             * @description Current password (required if user has a password set)
+             * @description Current password
              */
-            current_password?: string | null;
+            current_password: string;
             /**
              * New Password
              * @description New password (minimum 8 characters)
@@ -49292,6 +49327,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AgentRunDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_agent_run_result_api_agent_runs__run_id__result_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentRunResultResponse"];
                 };
             };
             /** @description Validation Error */
