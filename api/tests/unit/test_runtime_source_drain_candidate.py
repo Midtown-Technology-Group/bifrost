@@ -70,7 +70,10 @@ def test_source_mutation_guard_preserves_status_updates_and_native_policy() -> N
     sql = _sql()
     assert sql.count("CREATE TRIGGER runtime_00_source_drain BEFORE ") == 4
     assert "coordinator cannot mutate native source" in sql
-    assert "IF TG_OP='UPDATE' THEN RETURN NEW; END IF;" in sql
+    update_branch = sql.split("IF TG_OP='UPDATE' THEN", 1)[1].split("END IF;", 1)[0]
+    assert "RETURN NEW;" in update_branch
+    assert "pg_try_advisory" not in update_branch
+    assert "runtime_owner_undrained" not in update_branch
     assert "runtime source has undrained obligations" in sql
     assert "retain native history until runtime drain" in sql
     assert "pg_try_advisory_xact_lock(hashtext('bifrost:workspace-release'))" in sql
