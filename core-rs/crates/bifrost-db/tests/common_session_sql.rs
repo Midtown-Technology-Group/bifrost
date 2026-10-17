@@ -30,6 +30,7 @@ type TestResult<T> = Result<T, Box<dyn std::error::Error>>;
 struct Fixture {
     schema: String,
     execution_id: CanonicalUuid,
+    incumbent_execution_id: CanonicalUuid,
     owner_incarnation_id: CanonicalUuid,
     attempt_id: CanonicalUuid,
     claim_token: CanonicalUuid,
@@ -42,7 +43,7 @@ struct Fixture {
 }
 
 impl Fixture {
-    fn read() -> TestResult<SessionFence> {
+    fn read() -> TestResult<(SessionFence, CanonicalUuid)> {
         let path = std::env::var_os("BIFROST_COMMON_CANCEL_TEST_FIXTURE")
             .map(PathBuf::from)
             .ok_or("common SQL test requires its fresh private fixture file")?;
@@ -57,7 +58,7 @@ impl Fixture {
         if fixture.schema != "bifrost.common-cancel-fixture/v1" {
             return Err("common SQL test fixture version differs".into());
         }
-        Ok(SessionFence {
+        let fence = SessionFence {
             execution_id: fixture.execution_id,
             owner_incarnation_id: fixture.owner_incarnation_id,
             attempt_id: fixture.attempt_id,
@@ -68,7 +69,8 @@ impl Fixture {
             runtime_incarnation_id: fixture.runtime_incarnation_id,
             binding_sha256: fixture.binding_sha256,
             channel_custody_sha256: fixture.channel_custody_sha256,
-        })
+        };
+        Ok((fence, fixture.incumbent_execution_id))
     }
 }
 
@@ -166,7 +168,7 @@ async fn incumbent_execution_state(
 
 #[tokio::test]
 async fn no_grant_cancel_preserves_fences_and_commits() -> TestResult<()> {
-    let mut fence = Fixture::read()?;
+    let (mut fence, incumbent_execution_id) = Fixture::read()?;
     let (config, core) = database("BIFROST_COMMON_CORE_TEST_DATABASE_URL", "wex_core").await?;
     let (_, incumbent) = database(
         "BIFROST_COMMON_INCUMBENT_TEST_DATABASE_URL",
@@ -203,6 +205,22 @@ async fn no_grant_cancel_preserves_fences_and_commits() -> TestResult<()> {
         observe_running_cancel(core.pool(), &fence).await?,
         CancelObservation::NotCommitted,
     );
+    // A missing native UPDATE privilege must not impersonate a working owner
+    // guard. Exercise the same column through the actual incumbent login on
+    // its separate committed Python-owned Running fixture, then roll back.
+    let mut incumbent_writer = incumbent.pool().begin().await?;
+    let touched: String = sqlx::query_scalar(
+        "UPDATE public.executions SET status=status \
+         WHERE id=$1::text::uuid AND control_owner='python' AND status='Running' \
+         RETURNING id::text",
+    )
+    .bind(incumbent_execution_id.as_str())
+    .persistent(false)
+    .fetch_one(&mut *incumbent_writer)
+    .await
+    .map_err(|_| "incumbent-owned native write positive failed")?;
+    assert_eq!(touched, incumbent_execution_id.as_str());
+    incumbent_writer.rollback().await?;
     assert_eq!(
         request_running_cancel(incumbent.pool(), &fence).await,
         Err(SessionError::Rejected),
