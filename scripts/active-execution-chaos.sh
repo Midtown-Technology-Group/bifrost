@@ -8,7 +8,7 @@ source "$SCRIPT_DIR/scripts/lib/test_helpers.sh"
 export COMPOSE_PROJECT_NAME
 COMPOSE_PROJECT_NAME="$(compute_project_name .)"
 COMPOSE_FILE="docker-compose.test.yml"
-LOG_DIR="/tmp/bifrost-$COMPOSE_PROJECT_NAME"
+LOG_DIR="${LOG_DIR:-$(compute_test_results_dir .)}"
 READY_PATH="$LOG_DIR/active-execution-chaos-ready.json"
 ENABLED_PATH="$LOG_DIR/active-execution-chaos-enabled"
 

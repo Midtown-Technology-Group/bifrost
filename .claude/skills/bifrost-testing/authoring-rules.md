@@ -102,8 +102,8 @@ Before adding an expensive case:
    setup dominates. Record the old and new summed case time when replacing
    coverage; distinguish that sum from suite and shard wall time. To locate
    hotspots in a full JUnit result, run
-   `python3 api/scripts/report_test_costs.py /tmp/bifrost-<project>/test-results.xml`
-   on the host; `./test.sh stack status` prints the project name.
+   `python3 api/scripts/report_test_costs.py <results-dir>/test-results.xml`
+   on the host; `./test.sh stack status` prints the private results directory.
 4. In the PR description, name the retained full-path test and the lower-level
    tests covering edge cases. Explain any extra full job whose value is not
    evident from the assertion. Do not add a fixed test-to-source map or a
@@ -133,8 +133,8 @@ All via `./test.sh`. Never `pytest` or `npx vitest` / `npx playwright` directly 
 
 ## Debugging failing tests
 
-- Logs: `/tmp/bifrost-<project>/*.log` per service, per worktree.
-- JUnit XML on the host: `/tmp/bifrost-<project>/test-results.xml`.
+- Logs: `<results-dir>/*.log` per service, per worktree.
+- JUnit XML on the host: `<results-dir>/test-results.xml`.
 - For an intermittent E2E failure, do not assume the test is harmless or that state pollution is the only cause. Prior Bifrost flakes have exposed both leaked state and real product races. Capture the exposing order/load, run the test alone, then recreate the exposing condition and classify the cause from evidence.
 - Do not add retries, raise timeouts, skip the test, or rerun until green. After fixing a concrete cause, repetition is useful only to validate that fix under the previously failing condition.
 - If the E2E test is trying to prove many edge cases or implementation details, simplify it to the one stable integration or user contract and move the remaining assertions to unit/component tests. Delete obsolete or duplicate coverage when another named test preserves its only useful signal.
