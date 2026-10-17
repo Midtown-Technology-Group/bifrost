@@ -18,6 +18,7 @@ from src.services.workspace_release_files import WorkspaceReleasePathGoverned
 def _app():
     return SimpleNamespace(
         id=uuid4(),
+        dependencies={},
         repo_path="apps/portal",
         repo_prefix="apps/portal/",
         slug="portal",
@@ -150,6 +151,45 @@ async def test_list_app_files_excludes_non_source_object_store_keys(monkeypatch)
     app_storage.read_file.assert_awaited_once_with(
         str(app.id), "preview", "pages/index.tsx"
     )
+
+
+@pytest.mark.asyncio
+async def test_render_app_does_not_cache_cssless_tailwind_capacity_failure(
+    monkeypatch,
+):
+    from src.services import app_compiler
+
+    app = _app()
+    app_storage = MagicMock()
+    app_storage.get_render_cache = AsyncMock(return_value=None)
+    app_storage.list_files = AsyncMock(return_value=["index.js"])
+    app_storage.read_file = AsyncMock(
+        return_value=b'export default { className: "flex" }'
+    )
+    app_storage.set_render_cache = AsyncMock()
+
+    monkeypatch.setattr(
+        app_code_files,
+        "get_application_or_404",
+        AsyncMock(return_value=app),
+    )
+    monkeypatch.setattr(app_code_files, "AppStorageService", lambda: app_storage)
+    monkeypatch.setattr(
+        app_compiler,
+        "_COMPILER_SLOTS",
+        app_compiler.asyncio.Semaphore(0),
+    )
+    monkeypatch.setattr(app_compiler, "COMPILER_QUEUE_TIMEOUT_SECONDS", 0.001)
+
+    with pytest.raises(HTTPException) as error:
+        await app_code_files.render_app(
+            app.id,
+            ctx=_ctx(),
+            _user=object(),
+        )
+
+    assert error.value.status_code == 503
+    app_storage.set_render_cache.assert_not_awaited()
 
 
 @pytest.mark.asyncio

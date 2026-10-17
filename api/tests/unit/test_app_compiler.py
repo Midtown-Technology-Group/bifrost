@@ -173,6 +173,7 @@ export default function Page() {
             "Compilation batch exceeds the 1-file limit"
         }
         assert all(result.retryable is False for result in results)
+        assert all(result.blocks_preview_sync is True for result in results)
 
     @pytest.mark.asyncio
     async def test_compile_batch_rejects_non_text_source(self, compiler):
@@ -365,7 +366,8 @@ class TestAppTailwindService:
 
     @pytest.mark.asyncio
     async def test_generate_css_rejects_non_text_source(self):
-        assert await AppTailwindService.generate_css([b"not text"]) is None
+        with pytest.raises(TailwindGenerationError, match="must be text"):
+            await AppTailwindService.generate_css([b"not text"])
 
     @pytest.mark.asyncio
     async def test_generate_css_invokes_tailwind_for_candidates(self, monkeypatch):
@@ -376,6 +378,17 @@ class TestAppTailwindService:
         monkeypatch.setattr(AppTailwindService, "_invoke", fake_invoke)
 
         assert await AppTailwindService.generate_css(['const c = "flex"']) == ".flex{}"
+
+    @pytest.mark.asyncio
+    async def test_generate_css_propagates_capacity_failure(self, monkeypatch):
+        async def fail_invoke(_payload):
+            raise TailwindGenerationError("capacity unavailable", retryable=True)
+
+        monkeypatch.setattr(AppTailwindService, "_invoke", fail_invoke)
+
+        with pytest.raises(TailwindGenerationError) as error:
+            await AppTailwindService.generate_css(['const c = "flex"'])
+        assert error.value.retryable is True
 
     @pytest.mark.asyncio
     async def test_generate_css_pipeline_invokes_for_user_css_without_candidates(

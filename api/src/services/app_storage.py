@@ -38,8 +38,19 @@ PUBLISH_COPY_CONCURRENCY = 16
 PUBLICATION_INTENT_SCHEMA = "bifrost.application-publication-intent/v1"
 
 
-class RetryablePreviewSyncError(RuntimeError):
+class PreviewSyncError(RuntimeError):
     """Preview compilation failed before storage could be safely updated."""
+
+    def __init__(self, message: str, *, retryable: bool) -> None:
+        super().__init__(message)
+        self.retryable = retryable
+
+
+class RetryablePreviewSyncError(PreviewSyncError):
+    """Preview compilation failed for a transient infrastructure reason."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message, retryable=True)
 
 
 def _precondition_rejected(error: Exception) -> bool:
@@ -217,6 +228,19 @@ class AppStorageService:
                     for rel, content in ts_files
                 ]
                 results = await compiler.compile_batch(batch_input)
+
+                blocking_errors = [
+                    f"{result.path}: {result.error}"
+                    for result in results
+                    if not result.success
+                    and getattr(result, "blocks_preview_sync", False)
+                ]
+                if blocking_errors:
+                    raise PreviewSyncError(
+                        "Preview compilation rejected: "
+                        + "; ".join(blocking_errors),
+                        retryable=False,
+                    )
 
                 retryable_errors = [
                     f"{result.path}: {result.error}"

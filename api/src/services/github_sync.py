@@ -1474,8 +1474,10 @@ class GitHubSyncService:
                     publication_plan.checkpoint_id
                 )
         except Exception as error:
+            retryable = getattr(error, "retryable", True)
             logger.warning(
-                "Workspace publication failed after import; retaining local dirty state for retry: %s",
+                "Workspace publication failed after import; retryable=%s: %s",
+                retryable,
                 error,
             )
             return SyncResult(
@@ -1485,8 +1487,8 @@ class GitHubSyncService:
                 entities_imported=entities_imported,
                 entity_changes=all_entity_changes,
                 error=str(error),
-                retryable=True,
-                retry_plan=publication_plan,
+                retryable=retryable,
+                retry_plan=publication_plan if retryable else None,
             )
 
         logger.info(
@@ -1874,7 +1876,7 @@ class GitHubSyncService:
         Reads the manifest to find app entries, derives the source directory
         from each app's path, and copies files to the preview store.
         """
-        from src.services.app_storage import AppStorageService
+        from src.services.app_storage import AppStorageService, PreviewSyncError
 
         bifrost_dir = work_dir / ".bifrost"
         manifest = read_manifest_from_dir(bifrost_dir)
@@ -1908,8 +1910,10 @@ class GitHubSyncService:
         failures = [result for result in results if isinstance(result, BaseException)]
         if failures:
             details = "; ".join(str(failure) for failure in failures)
-            raise RuntimeError(
-                f"Failed to sync {len(failures)} app preview(s): {details}"
+            retryable = all(getattr(failure, "retryable", True) for failure in failures)
+            raise PreviewSyncError(
+                f"Failed to sync {len(failures)} app preview(s): {details}",
+                retryable=retryable,
             ) from failures[0]
 
     # -----------------------------------------------------------------

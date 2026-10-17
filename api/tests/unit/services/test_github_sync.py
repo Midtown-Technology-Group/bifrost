@@ -7,6 +7,7 @@ Tests the GitHubSyncService data models and exceptions.
 import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import AsyncMock
 
@@ -784,6 +785,7 @@ class TestGitHubSyncAppPreviews:
         self, tmp_path, monkeypatch
     ):
         from bifrost.manifest import Manifest, ManifestApp
+        from src.services.app_storage import PreviewSyncError
         from src.services.github_sync import GitHubSyncService
 
         calls: list[tuple[str, str]] = []
@@ -827,21 +829,131 @@ class TestGitHubSyncAppPreviews:
             }
         )
 
-        fake_module = type("Module", (), {"AppStorageService": FakeAppStorage})
+        fake_module = type(
+            "Module",
+            (),
+            {
+                "AppStorageService": FakeAppStorage,
+                "PreviewSyncError": PreviewSyncError,
+            },
+        )
         monkeypatch.setitem(sys.modules, "src.services.app_storage", fake_module)
         monkeypatch.setattr("src.services.github_sync.read_manifest_from_dir", lambda _: manifest)
 
         service = object.__new__(GitHubSyncService)
         service.repo_manager = type("RepoManager", (), {"_settings": object()})()
 
-        with pytest.raises(RuntimeError, match="storage down"):
+        with pytest.raises(PreviewSyncError, match="storage down") as error:
             await service._sync_app_previews(tmp_path)
+        assert error.value.retryable is True
 
         assert calls == [
             ("app-ok", "apps/ok"),
             ("app-warning", "apps/warning"),
             ("app-error", "apps/error"),
         ]
+
+    @pytest.mark.asyncio
+    async def test_sync_app_previews_preserves_terminal_failure_classification(
+        self, tmp_path, monkeypatch
+    ):
+        from bifrost.manifest import Manifest, ManifestApp
+        from src.services.app_storage import PreviewSyncError
+        from src.services.github_sync import GitHubSyncService
+
+        class FakeAppStorage:
+            def __init__(self, _settings):
+                pass
+
+            async def sync_preview_compiled(self, _app_id, _source_dir):
+                raise PreviewSyncError("compiler input limit", retryable=False)
+
+        manifest = Manifest(
+            apps={
+                "app-limit": ManifestApp(
+                    id="app-limit",
+                    name="Limit",
+                    slug="limit",
+                    path="apps/limit",
+                ),
+            }
+        )
+        fake_module = type(
+            "Module",
+            (),
+            {
+                "AppStorageService": FakeAppStorage,
+                "PreviewSyncError": PreviewSyncError,
+            },
+        )
+        monkeypatch.setitem(sys.modules, "src.services.app_storage", fake_module)
+        monkeypatch.setattr(
+            "src.services.github_sync.read_manifest_from_dir",
+            lambda _: manifest,
+        )
+
+        service = object.__new__(GitHubSyncService)
+        service.repo_manager = type("RepoManager", (), {"_settings": object()})()
+
+        with pytest.raises(PreviewSyncError, match="compiler input limit") as error:
+            await service._sync_app_previews(tmp_path)
+        assert error.value.retryable is False
+
+
+@pytest.mark.asyncio
+async def test_apply_desktop_sync_with_terminal_preview_rejection_is_not_retryable(
+    tmp_path, monkeypatch
+):
+    from src.models.contracts.github import PushResult, WorkspaceSyncPlan
+    from src.services.app_storage import PreviewSyncError
+    from src.services.github_sync import GitHubSyncService
+
+    service = object.__new__(GitHubSyncService)
+    service.db = object()
+    service.repo_manager = SimpleNamespace(
+        sync_up=AsyncMock(),
+        delete_workspace_checkpoint=AsyncMock(),
+    )
+    service._do_push = lambda *_args: PushResult(
+        success=True,
+        commit_sha="head",
+        pushed_commits=1,
+    )
+    service._sync_app_previews = AsyncMock(
+        side_effect=PreviewSyncError("compiler input limit", retryable=False)
+    )
+
+    repo = SimpleNamespace(
+        head=SimpleNamespace(
+            is_valid=lambda: True,
+            commit=SimpleNamespace(hexsha="head"),
+        )
+    )
+    plan = WorkspaceSyncPlan(
+        merge_sha="head",
+        workspace_fingerprint="fingerprint",
+        db_applied=True,
+    )
+    monkeypatch.setattr(
+        "src.services.github_sync._workspace_fingerprint",
+        lambda _work_dir: "fingerprint",
+    )
+    monkeypatch.setattr(
+        "src.core.module_cache.refresh_modules_from_directory",
+        AsyncMock(),
+    )
+
+    result = await service.apply_desktop_sync(
+        tmp_path,
+        repo,
+        plan,
+        confirm_deletes=False,
+    )
+
+    assert result.success is False
+    assert result.retryable is False
+    assert result.retry_plan is None
+    assert result.error == "compiler input limit"
 
 
 class TestGitHubSyncCloneOrInit:

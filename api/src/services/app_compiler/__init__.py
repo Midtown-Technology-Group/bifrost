@@ -48,6 +48,7 @@ class CompileResult:
     default_export: str | None = None
     named_exports: list[str] = field(default_factory=list)
     retryable: bool = False
+    blocks_preview_sync: bool = False
 
 
 class TailwindGenerationError(RuntimeError):
@@ -63,7 +64,11 @@ class AppCompilerService:
 
     @staticmethod
     def _failure_results(
-        files: list[dict], error: str, *, retryable: bool = False
+        files: list[dict],
+        error: str,
+        *,
+        retryable: bool = False,
+        blocks_preview_sync: bool = False,
     ) -> list[CompileResult]:
         """Return one stable failure result for each requested input file."""
         return [
@@ -72,6 +77,7 @@ class AppCompilerService:
                 success=False,
                 error=error,
                 retryable=retryable,
+                blocks_preview_sync=blocks_preview_sync,
             )
             for item in files
         ]
@@ -115,7 +121,11 @@ class AppCompilerService:
 
         validation_error = self._validate_batch(files)
         if validation_error:
-            return self._failure_results(files, validation_error)
+            return self._failure_results(
+                files,
+                validation_error,
+                blocks_preview_sync=True,
+            )
 
         input_data = json.dumps({"files": files})
 
@@ -274,7 +284,9 @@ class AppTailwindService:
     async def generate_css(sources: list[str]) -> str | None:
         """Extract candidates from sources and generate Tailwind CSS.
 
-        Returns the generated CSS string, or None on failure.
+        Returns the generated CSS string, or None when there are no candidates.
+        Generation failures raise TailwindGenerationError so render callers
+        cannot cache a successful CSS-less response.
 
         Candidates-only mode: produces utility CSS for the class names
         found in `sources`. Does NOT process user CSS files — see
@@ -285,17 +297,11 @@ class AppTailwindService:
             candidates = AppTailwindService.extract_candidates(sources)
         except (TypeError, ValueError) as error:
             logger.warning("Tailwind CSS generation rejected: %s", error)
-            return None
+            raise TailwindGenerationError(str(error)) from error
         if not candidates:
             return None
 
-        try:
-            return await AppTailwindService._invoke({"candidates": candidates})
-        except TailwindGenerationError as error:
-            # This legacy preview helper has no structured failure channel.
-            # Bundled Apps use generate_css_pipeline(), which fails explicitly.
-            logger.warning("Tailwind CSS generation failed: %s", error)
-            return None
+        return await AppTailwindService._invoke({"candidates": candidates})
 
     @staticmethod
     async def generate_css_pipeline(
