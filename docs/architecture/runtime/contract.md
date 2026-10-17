@@ -21,7 +21,7 @@ static binding documents. The eventual delivery transport must authenticate its
 recipient, prevent disclosure, and enforce server-side bounds and revocation.
 
 For Go, spawn tenant code only after permission, including all package variable
-initializers. Deno and .NET likewise prepare accepted files without evaluating
+initializers. Future JavaScript isolates and .NET likewise prepare accepted files without evaluating
 imports/static constructors; Python preparation must not import tenant modules.
 Different process arrangements remain possible only if they preserve this same
 transition. Runtime sandbox permissions supplement server-side authorization.
@@ -71,9 +71,12 @@ observations; conflicting duplicates fail closed. Exactly one final projection
 wins; transport receipts correlate to that durable decision, not mere parsing.
 Lost acknowledgement, Stopped or process disappearance never proves safe replay.
 
-The precise full-profile frame names, wire bounds, deadline conversion,
-backpressure/drop rules, receipt storage and cancellation transaction ordering
-remain review gates. Static validation must never be described as those proofs.
+The additive [execution-profile proposal](execution-profile.md) now specifies
+frame names, wire bounds, correlations, receipt bytes and concurrency semantics.
+Its canonical [identity binding](identity-binding.md) preserves original caller
+provenance separately from effective scope. These are review candidates, not a
+frozen protocol or implemented authority. Actual deadline/custody, receipt storage
+and owner transaction integration remain acceptance gates.
 
 ## SDK and execution-plane boundary
 
@@ -97,8 +100,9 @@ execution remains a separate execution plane.
    runtimes with an ordered HTTP oracle, secret checks and no-network preflight.
 5. Prove owner transactions, cancellation/result races, closed/wrong sessions,
    lost ACK, descendant cleanup and mechanical writer exclusion before release.
-6. Freeze reviewed interfaces only after Python/Go acceptance; independently
-   implement Deno and then .NET without changing lifecycle authority.
+6. Freeze reviewed interfaces only after Python/Go acceptance; independent .NET
+   and future JavaScript isolate consumers retain the same lifecycle authority.
+   Deno is not a planned primary target.
 
 No new production runtime, credentials, lifecycle owner, deployment or endpoint
 change is part of this foundation. Existing #1011 restrictions remain in force.

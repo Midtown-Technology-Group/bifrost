@@ -152,6 +152,23 @@ jobs:
             pytest "${targets[@]}" -o 'python_files=test_*.py *_test.py' -o cache_dir=/tmp/sonar-pytest-cache \
             --cov --cov-branch --cov-config=/repo/api/.coveragerc.sonar --cov-report= \
             --junitxml=/tmp/bifrost/sonar-repository-junit.xml
+      - name: Collect runtime contract vector coverage
+        run: |
+          set -euo pipefail
+          source scripts/lib/test_helpers.sh
+          export COMPOSE_PROJECT_NAME="$(compute_project_name .)"
+          # These standalone checks live outside scripts/ and are exercised by
+          # lint. Append their coverage to the same exact-source evidence before
+          # API collection; synthetic vectors remain proposal-only proof.
+          for check in \
+            contracts/runtime/v1/language-neutral/check.py \
+            contracts/runtime/v1/language-neutral/test_check.py \
+            contracts/runtime/v1/execution-profile/check.py \
+            contracts/runtime/v1/execution-profile/test_boundary.py; do
+            docker compose -f "$COMPOSE_FILE" --profile test run --rm --no-deps \
+              --user "$(id -u):$(id -g)" --workdir /repo --env PYTHONPATH=/repo test-runner \
+              coverage run --append --rcfile=/repo/api/.coveragerc.sonar "$check"
+          done
       - name: Collect comprehensive Python coverage
         env:
           BIFROST_SKIP_BUILD: "1"
