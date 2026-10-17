@@ -52,3 +52,17 @@ disconnect and missing files are insufficient. General partial-cleanup recovery
 remains unresolved; storage cannot authorize replay, inferred retirement or
 owner reassignment. Real payload retention, C1-C5 application and all runtime
 enablement remain held.
+
+C5-A drafts native wrong-writer enforcement, not a complete C5 install. Only
+Execution gains a control-plane owner marker; retained common history keeps
+descendant classification after native deletion. Existing child FKs, cascades
+and unrelated Python associations are not replaced. Both the actual generic
+attempt and declared logical tuple govern Rust-touching lifecycle events.
+The native CLI link is `session_id`. Exact ancestor NULL transitions and the
+existing public terminal-payload redaction are explicit incumbent exceptions;
+the redaction service takes the execution advisory fence before its row locks.
+Common close/issue/drain enforcement, remaining cascade/delete paths, finite
+privileges/roles, installed catalog, actual race tests and payload disposition
+remain required. Multi-parent agent ownership is not admitted by this workflow
+draft and must be extended and qualified in R4. No fixture-wide read or table-lock
+concession is authorized. Do not apply C5-A by itself.

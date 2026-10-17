@@ -324,8 +324,13 @@ async def test_real_queries_pin_provider_token_and_execution_scope(monkeypatch):
     assert "oauth_tokens.provider_id =" in statement
     monkeypatch.setattr(service, "audit_admin", AsyncMock())
     db.execute.return_value.scalar_one_or_none.return_value = None
+    redaction_start = len(db.execute.await_args_list)
     with pytest.raises(service.AdminOperationError):
         await service.redact_execution(db, principal(), uuid4(), p.organization_id)
+    redaction_calls = db.execute.await_args_list[redaction_start:]
+    assert len(redaction_calls) == 2
+    assert "pg_advisory_xact_lock" in str(redaction_calls[0].args[0])
+    assert "FOR UPDATE" in str(redaction_calls[1].args[0])
     statement = str(db.execute.await_args.args[0])
     assert "executions.organization_id =" in statement
     assert "executions.id =" in statement
@@ -481,9 +486,14 @@ async def test_redaction_resolves_and_pins_target_scope_without_payload_read(
     result = await service.redact_execution(db, principal(), execution.id)
     assert result.redacted
     statements = [str(call.args[0]) for call in db.execute.await_args_list]
-    assert statements[0].startswith("SELECT executions.organization_id")
-    assert "executions.id =" in statements[0] and "FOR UPDATE" in statements[0]
-    assert "executions.organization_id" in statements[1]
+    assert statements[0] == (
+        "SELECT pg_catalog.pg_advisory_xact_lock("
+        "pg_catalog.hashtext('bifrost:workflow-execution:' || :execution_id))"
+    )
+    assert db.execute.await_args_list[0].args[1] == {"execution_id": str(execution.id)}
+    assert statements[1].startswith("SELECT executions.organization_id")
+    assert "executions.id =" in statements[1] and "FOR UPDATE" in statements[1]
+    assert "executions.organization_id" in statements[2]
     assert (
         service.emit_audit.await_args.kwargs["actor_override"].organization_id == org_id
     )

@@ -13,7 +13,7 @@ from bifrost.admin_models import (
     OAuthRecoveryResult,
     OAuthTokenMetadata,
 )
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.principal import UserPrincipal
@@ -341,6 +341,16 @@ async def redact_execution(
     scope: str | UUID | None = None,
 ) -> ExecutionRedactionResult:
     org_id = authorize_admin(user, scope if scope is not None else "global")
+    # Match lifecycle writers' execution fence before taking any Execution row
+    # lock. Redaction retains its existing auth, terminal-state and audit rules;
+    # it must not invert the Rust/native cancellation and recovery lock order.
+    await db.execute(
+        text(
+            "SELECT pg_catalog.pg_advisory_xact_lock("
+            "pg_catalog.hashtext('bifrost:workflow-execution:' || :execution_id))"
+        ),
+        {"execution_id": str(execution_id)},
+    )
     if scope is None:
         # Resolve scope inside the privileged action; never fetch sensitive
         # execution payloads into workspace code merely to discover its org.

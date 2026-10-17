@@ -4,8 +4,8 @@ from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import pytest
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, text
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 from src.core.principal import UserPrincipal
 from src.models.enums import ExecutionStatus
 from src.models.orm.executions import Execution
@@ -63,7 +63,7 @@ async def test_oauth_reconciliation_and_diagnostics_never_cross_token_org(
 
 
 async def test_execution_redaction_exact_target_scope_and_audit(
-    db_session: AsyncSession, seed_user: User
+    db_session: AsyncSession, seed_user: User, async_engine: AsyncEngine
 ):
     from src.models.orm.audit import AuditLog
 
@@ -127,3 +127,19 @@ async def test_execution_redaction_exact_target_scope_and_audit(
         for audit in audits
     )
     assert "target" not in str([audit.details for audit in audits])
+
+    # A separate PostgreSQL transaction must observe the same execution fence,
+    # without waiting or needing visibility of this test's uncommitted rows.
+    # This fails against the prior row-lock-only redaction implementation.
+    fence = text(
+        "SELECT pg_catalog.pg_try_advisory_xact_lock("
+        "pg_catalog.hashtext('bifrost:workflow-execution:' || :execution_id))"
+    )
+    target_id = str(target.id)
+    async with async_engine.connect() as competing:
+        assert not await competing.scalar(fence, {"execution_id": target_id})
+        await competing.rollback()
+    await db_session.rollback()
+    async with async_engine.connect() as competing:
+        assert await competing.scalar(fence, {"execution_id": target_id})
+        await competing.rollback()
