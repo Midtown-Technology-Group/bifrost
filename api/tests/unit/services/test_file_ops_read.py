@@ -313,6 +313,59 @@ class TestWriteFileBehavior:
         assert result.available_replacements == replacements
 
     @pytest.mark.asyncio
+    async def test_syntax_error_with_decorator_text_uses_full_metadata_path(self):
+        from src.services.file_storage.file_ops import FileOperationsService
+
+        s3 = MagicMock()
+        s3.put_object = AsyncMock()
+        db = MagicMock()
+        db.execute = AsyncMock()
+        db.flush = AsyncMock()
+        diagnostics = MagicMock()
+        diagnostics.clear_diagnostic_notification = AsyncMock()
+        extract_metadata = AsyncMock(
+            return_value=(b"@workflow(\ndef broken(:\n", False, False, [], [], [], {}),
+        )
+        service = _service(
+            db=db,
+            settings=SimpleNamespace(s3_bucket="workspace-bucket"),
+            _s3_client=_S3ClientFactory(s3),
+            _diagnostics=diagnostics,
+            _compute_hash=MagicMock(return_value="hash"),
+            _guess_content_type=MagicMock(return_value="text/x-python"),
+            _extract_metadata=extract_metadata,
+        )
+        service._find_app_by_path = AsyncMock(return_value=None)
+        service.write_file = FileOperationsService.write_file.__get__(service)
+        service._write_file_impl = FileOperationsService._write_file_impl.__get__(service)
+
+        detection = SimpleNamespace(
+            ast_tree=None,
+            content_str="@workflow(\ndef broken(:\n",
+            syntax_error="invalid syntax",
+        )
+        with (
+            patch(
+                "src.services.editor.file_filter.is_excluded_path", return_value=False
+            ),
+            patch(
+                "src.services.file_storage.entity_detector.detect_python_entity_type_with_ast",
+                return_value=detection,
+            ),
+            patch(
+                "src.services.file_storage.file_ops.set_module", new_callable=AsyncMock
+            ),
+        ):
+            await service.write_file(
+                "workflows/broken.py",
+                b"@workflow(\ndef broken(:\n",
+                skip_dirty_flag=True,
+            )
+
+        assert extract_metadata.await_args.kwargs["cached_ast"] is None
+        assert extract_metadata.await_args.kwargs["cached_content_str"] is None
+
+    @pytest.mark.asyncio
     async def test_record_signed_upload_metadata_indexes_placeholder(self):
         from src.services.file_storage.file_ops import FileOperationsService
 

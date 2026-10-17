@@ -982,7 +982,7 @@ Options:
   --workflow TEXT       workflow ref (UUID or name) for workflow_id.
   --agent TEXT          agent ref (UUID or name) for agent_id.
   --event-type TEXT     event_type
-  --criteria TEXT       criteria
+  --criteria TEXT       criteria as JSON literal or @path to a YAML/JSON file.
   --input-mapping TEXT  input_mapping as JSON literal or @path to a YAML/JSON
                         file.
   --json                Emit JSON instead of human-readable output.
@@ -1047,7 +1047,8 @@ Usage: events update-subscription [OPTIONS] SOURCE_REF SUBSCRIPTION_ID
 
 Options:
   --event-type TEXT               event_type
-  --criteria TEXT                 criteria
+  --criteria TEXT                 criteria as JSON literal or @path to a
+                                  YAML/JSON file.
   --is-active / --no-is-active    is_active (tri-state; omit to leave
                                   unchanged).
   --input-mapping TEXT            input_mapping as JSON literal or @path to a

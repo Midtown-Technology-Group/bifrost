@@ -151,6 +151,78 @@ class TestUnresolvedRefNotifications:
             # Should not create when existing
             mock_service.create_notification.assert_not_called()
 
+    @pytest.mark.asyncio
+    async def test_same_basename_paths_use_distinct_notification_titles(
+        self, diagnostics_service
+    ):
+        with patch(
+            "src.services.file_storage.diagnostics.get_notification_service"
+        ) as mock_get_service:
+            mock_service = MagicMock()
+            mock_service.find_admin_notification_by_title = AsyncMock(return_value=None)
+            mock_service.create_notification = AsyncMock()
+            mock_get_service.return_value = mock_service
+
+            await diagnostics_service.scan_for_unresolved_refs(
+                "apps/a/index.tsx", "app_file", ["workflows/missing.py::run"]
+            )
+            await diagnostics_service.scan_for_unresolved_refs(
+                "apps/b/index.tsx", "app_file", ["workflows/missing.py::run"]
+            )
+
+        titles = [
+            call.kwargs["title"]
+            for call in mock_service.find_admin_notification_by_title.await_args_list
+            if "[" in call.kwargs["title"]
+        ]
+        assert len(set(titles)) == 2
+        assert all("index.tsx" in title for title in titles)
+
+    @pytest.mark.asyncio
+    async def test_clear_finds_matching_legacy_notification(self, diagnostics_service):
+        path = "apps/my-app/pages/index.tsx"
+        legacy = SimpleNamespace(
+            id="legacy-notification",
+            metadata={"file_path": path},
+        )
+        with patch(
+            "src.services.file_storage.diagnostics.get_notification_service"
+        ) as mock_get_service:
+            service = MagicMock()
+            service.find_admin_notification_by_title = AsyncMock(
+                side_effect=[None, legacy]
+            )
+            service.dismiss_notification = AsyncMock()
+            mock_get_service.return_value = service
+
+            await diagnostics_service.clear_unresolved_refs_notification(path)
+
+        service.dismiss_notification.assert_awaited_once_with(
+            "legacy-notification", user_id="system"
+        )
+
+    @pytest.mark.asyncio
+    async def test_clear_keeps_other_paths_legacy_notification(self, diagnostics_service):
+        legacy = SimpleNamespace(
+            id="other-notification",
+            metadata={"file_path": "apps/other/index.tsx"},
+        )
+        with patch(
+            "src.services.file_storage.diagnostics.get_notification_service"
+        ) as mock_get_service:
+            service = MagicMock()
+            service.find_admin_notification_by_title = AsyncMock(
+                side_effect=[None, legacy]
+            )
+            service.dismiss_notification = AsyncMock()
+            mock_get_service.return_value = service
+
+            await diagnostics_service.clear_unresolved_refs_notification(
+                "apps/my-app/index.tsx"
+            )
+
+        service.dismiss_notification.assert_not_awaited()
+
 
 class TestSdkAndFileDiagnosticNotifications:
     """Behavior tests for SDK and file diagnostic notification lifecycles."""
