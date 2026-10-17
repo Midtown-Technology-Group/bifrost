@@ -8,7 +8,7 @@ in ``test_cli_version_check.py`` for the cases that changed):
   upgrade message, for every command.
 * **Gate 2 — build drift (SOFT).** ``contract_version`` matches but the build
   ``version`` differs → a one-line stderr notice, deduped per (url, version) via
-  a temp-dir marker. Never exits.
+  a per-user cache marker. Never exits.
 * **Old server (no ``contract_version``).** Cannot verify the contract → soft
   stderr warning, never exits. (Replaces the old hard version-string exit, which
   was a rollout footgun.)
@@ -34,8 +34,10 @@ def _isolate_state(tmp_path, monkeypatch):
     from bifrost.credentials import _reset_persistent_backend_for_tests
 
     _reset_persistent_backend_for_tests()
-    # Notice dedupe writes to the OS temp dir; isolate it per test.
-    monkeypatch.setattr("tempfile.gettempdir", lambda: str(tmp_path))
+    # Notice dedupe writes to the per-user cache; isolate it per test.
+    monkeypatch.setattr(
+        "bifrost._version_notice.user_cache_path", lambda _app: tmp_path
+    )
     yield
     _reset_persistent_backend_for_tests()
     import os
