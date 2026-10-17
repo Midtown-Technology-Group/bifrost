@@ -15,6 +15,7 @@ import pytest
 from bifrost.refs import (
     AmbiguousRefError,
     RefNotFoundError,
+    RefResolutionError,
     resolve_ref,
 )
 
@@ -301,6 +302,49 @@ async def test_resolve_app_by_name_fallback() -> None:
         }
     )
     assert await resolve_ref(client, "app", "Invoices App") == app_id
+    assert client.calls == ["/api/applications"]
+
+
+@pytest.mark.asyncio
+async def test_resolve_app_does_not_interpolate_non_slug_ref_into_path() -> None:
+    app_id = str(uuid4())
+    crafted_name = "../../organizations"
+    client = FakeClient(
+        {
+            "/api/applications": {
+                "applications": [
+                    {
+                        "id": app_id,
+                        "slug": "safe-app",
+                        "name": crafted_name,
+                        "organization_id": None,
+                    }
+                ],
+                "total": 1,
+            }
+        }
+    )
+
+    assert await resolve_ref(client, "app", crafted_name) == app_id
+    assert client.calls == ["/api/applications"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "payload",
+    [
+        pytest.param({"id": str(uuid4())}, id="missing-slug"),
+        pytest.param({"id": str(uuid4()), "slug": "other-app"}, id="wrong-slug"),
+        pytest.param({"id": "not-a-uuid", "slug": "invoices"}, id="non-uuid-id"),
+    ],
+)
+async def test_resolve_app_rejects_malformed_direct_response(
+    payload: dict[str, str],
+) -> None:
+    client = FakeClient({"/api/applications/invoices": payload})
+
+    with pytest.raises(RefResolutionError, match="Invalid application response"):
+        await resolve_ref(client, "app", "invoices")
 
 
 @pytest.mark.asyncio
