@@ -31,12 +31,24 @@ import subprocess
 import sys
 import textwrap
 import time
+from types import SimpleNamespace
 
 import pytest
 from bifrost import _workspace_lock
 from bifrost._workspace_lock import WorkspaceLock, WorkspaceLockError
 
 API_ROOT = pathlib.Path(__file__).resolve().parents[2]
+
+
+class _WindowsOSProxy:
+    """Exercise the Windows branch without changing the process-wide OS module."""
+
+    name = "nt"
+
+    def __getattr__(self, name: str) -> object:
+        if name == "getuid":
+            raise AttributeError(name)
+        return getattr(os, name)
 
 
 def _make_workspace(tmp_path: pathlib.Path) -> pathlib.Path:
@@ -162,6 +174,135 @@ def test_lock_directory_and_file_are_owner_only(
 
     assert directory_mode == 0o700
     assert file_mode == 0o600
+
+
+def test_windows_lock_path_uses_user_scoped_temp_directory(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Windows locks stay below the current user's TEMP directory."""
+    temp_root = tmp_path / "temp"
+    monkeypatch.setattr(_workspace_lock, "os", _WindowsOSProxy())
+    monkeypatch.setattr(
+        _workspace_lock.tempfile, "gettempdir", lambda: str(temp_root)
+    )
+
+    lock_path = _workspace_lock._lock_path(tmp_path / "workspace")
+
+    assert lock_path.parent == temp_root / "bifrost" / "workspace-locks"
+
+
+def test_windows_lock_open_rejects_symlink_without_clobbering_target(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The Windows fallback must reject a predictable lock-file symlink."""
+    lock_path = tmp_path / "locks" / "workspace.lock"
+    lock_path.parent.mkdir()
+    target = tmp_path / "target.txt"
+    target.write_text("do not overwrite", encoding="utf-8")
+    lock_path.symlink_to(target)
+    monkeypatch.setattr(_workspace_lock, "os", _WindowsOSProxy())
+
+    with pytest.raises(OSError, match="must not be a symlink"):
+        _workspace_lock._open_lock_file(lock_path)
+
+    assert target.read_text(encoding="utf-8") == "do not overwrite"
+
+
+def test_windows_legacy_lock_open_tightens_modes_and_round_trips(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The Windows fallback keeps its directory and lock file owner-only."""
+    lock_path = tmp_path / "locks" / "workspace.lock"
+    lock_path.parent.mkdir()
+    lock_path.parent.chmod(0o777)
+    monkeypatch.setattr(_workspace_lock, "os", _WindowsOSProxy())
+
+    with _workspace_lock._open_legacy_lock_file(lock_path) as lock_file:
+        lock_file.write("holder")
+        lock_file.seek(0)
+        assert lock_file.read() == "holder"
+
+    assert stat.S_IMODE(lock_path.parent.stat().st_mode) == 0o700
+    assert stat.S_IMODE(lock_path.stat().st_mode) == 0o600
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX descriptor semantics")
+def test_posix_directory_validation_rejects_regular_file(
+    tmp_path: pathlib.Path,
+) -> None:
+    """Descriptor validation must reject a non-directory lock root."""
+    regular_file = tmp_path / "not-a-directory"
+    regular_file.write_text("content", encoding="utf-8")
+    file_fd = os.open(regular_file, os.O_RDONLY)
+    try:
+        with pytest.raises(NotADirectoryError):
+            _workspace_lock._validate_directory(file_fd, regular_file)
+    finally:
+        os.close(file_fd)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX ownership semantics")
+def test_posix_private_directory_rejects_different_owner(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A private lock directory cannot be accepted from another uid."""
+    directory_fd = os.open(tmp_path, os.O_RDONLY | os.O_DIRECTORY)
+    real_fstat = os.fstat
+
+    def mismatched_owner(fd: int) -> object:
+        result = real_fstat(fd)
+        return SimpleNamespace(
+            st_mode=result.st_mode,
+            st_uid=os.getuid() + 1,
+        )
+
+    monkeypatch.setattr(_workspace_lock.os, "fstat", mismatched_owner)
+    try:
+        with pytest.raises(PermissionError, match="not owned"):
+            _workspace_lock._validate_private_directory(directory_fd, tmp_path)
+    finally:
+        os.close(directory_fd)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX FIFO semantics")
+def test_posix_lock_open_rejects_non_regular_file(
+    tmp_path: pathlib.Path,
+) -> None:
+    """A FIFO at the predictable filename is rejected and its fd is closed."""
+    lock_path = tmp_path / "private" / "workspace-locks" / "workspace.lock"
+    lock_path.parent.mkdir(parents=True)
+    os.mkfifo(lock_path)
+
+    with pytest.raises(OSError, match="not a regular file"):
+        _workspace_lock._open_posix_lock_file(lock_path)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX ownership semantics")
+def test_posix_lock_open_rejects_different_file_owner(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A lock file owned by another uid is rejected before metadata writes."""
+    lock_path = tmp_path / "private" / "workspace-locks" / "workspace.lock"
+    real_fstat = os.fstat
+
+    def mismatched_file_owner(fd: int) -> object:
+        result = real_fstat(fd)
+        if stat.S_ISREG(result.st_mode):
+            return SimpleNamespace(
+                st_mode=result.st_mode,
+                st_uid=os.getuid() + 1,
+            )
+        return result
+
+    monkeypatch.setattr(_workspace_lock.os, "fstat", mismatched_file_owner)
+
+    with pytest.raises(PermissionError, match="not owned"):
+        _workspace_lock._open_posix_lock_file(lock_path)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="POSIX permission semantics")
