@@ -127,7 +127,6 @@ def test_comprehensive_plan_still_runs_changed_regression(monkeypatch, tmp_path)
 def test_runner_does_not_credit_stale_junit_or_successful_exit_without_cases(
     monkeypatch, tmp_path
 ):
-    from types import SimpleNamespace
 
     monkeypatch.setattr(
         author.subprocess, "run", lambda *args, **kwargs: SimpleNamespace(returncode=0)
@@ -172,8 +171,6 @@ def test_unit_neighbors_and_integration_have_separate_runner_lifecycles(
 def test_runner_rejects_stale_report_and_failed_case_even_with_exit_zero(
     monkeypatch, tmp_path
 ):
-    import os
-    from types import SimpleNamespace
 
     monkeypatch.setenv("BIFROST_AUTHOR_REPORT_DIR", str(tmp_path / "bifrost-fixture"))
     report = tmp_path / "bifrost-fixture" / "test-results.xml"
@@ -223,7 +220,6 @@ def test_source_contracts_always_select_generated_checks(
 def test_runner_marks_provider_key_skip_incomplete_even_with_exit_zero(
     monkeypatch, tmp_path
 ):
-    from types import SimpleNamespace
 
     monkeypatch.setenv("BIFROST_AUTHOR_REPORT_DIR", str(tmp_path / "bifrost-fixture"))
     report = tmp_path / "bifrost-fixture" / "test-results.xml"
@@ -247,9 +243,6 @@ def test_runner_marks_provider_key_skip_incomplete_even_with_exit_zero(
 @pytest.mark.parametrize("prefix", [None, "", "author-review"])
 def test_receipt_reads_junit_from_configured_project(monkeypatch, tmp_path, prefix):
     import hashlib
-    import json
-    import sys
-    from types import SimpleNamespace
 
     if prefix is None:
         monkeypatch.delenv("BIFROST_PROJECT_PREFIX", raising=False)
