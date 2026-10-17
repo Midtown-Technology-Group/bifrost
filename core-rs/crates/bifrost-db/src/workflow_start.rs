@@ -346,7 +346,7 @@ mod tests {
         for (root, attempt, expected) in [
             ("Running", "running", true),
             ("Cancelling", "running", true),
-            ("Success", "success", true),
+            ("Success", "succeeded", true),
             ("Failed", "failed", true),
             ("Pending", "running", false),
             ("Running", "claimed", false),

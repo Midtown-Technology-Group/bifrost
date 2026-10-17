@@ -187,7 +187,18 @@ async fn verify() -> TestResult<()> {
         assert_eq!(commit_prepared_workflow_start(core.pool(), &wrong, &intent).await, Err(SessionError::Rejected));
         assert_eq!(native_state(core.pool(), a).await?, before_a);
     }
-    // Two genuine contenders; no dual Start. A contended loser is not retried.
+    // Force the shared execution fence to be held by a separate transaction;
+    // the candidate must return Contended without any native projection write.
+    let mut blocker = core.pool().begin().await?;
+    let acquired: bool = sqlx::query_scalar(
+        "SELECT pg_try_advisory_xact_lock(hashtext('bifrost:workflow-execution:' || $1))",
+    ).bind(fence.execution_id.as_str()).persistent(false).fetch_one(&mut *blocker).await?;
+    assert!(acquired);
+    assert_eq!(commit_prepared_workflow_start(core.pool(), &fence, &intent).await, Err(SessionError::Contended));
+    blocker.rollback().await?;
+    assert_eq!(native_state(core.pool(), a).await?, before_a);
+    // These contenders may serialize; exactly one commits. The deterministic
+    // fence-contention case above supplies the forced-overlap observation.
     let (one, two) = tokio::join!(
         commit_prepared_workflow_start(core.pool(), &fence, &intent),
         commit_prepared_workflow_start(core.pool(), &fence, &intent)
