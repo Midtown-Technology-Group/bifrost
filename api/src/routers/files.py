@@ -59,6 +59,7 @@ from src.services.audit import emit_file_policy_deny
 from src.services.editor.search import search_files_db
 from src.services.file_backend import get_backend
 from src.services.file_storage import FileStorageService
+from shared.file_access import file_mutation_conflict_detail
 from shared.role_cache import get_user_roles
 
 # Watch session TTL — must be > CLI heartbeat interval (WATCH_HEARTBEAT_SECONDS in bifrost.cli)
@@ -581,31 +582,6 @@ async def _require_file_policy(
             scope=scope,
             solution_id=solution_id,
         )
-
-
-async def _file_mutation_conflict_detail(
-    ctx: Context,
-    *,
-    location: str,
-    scope: str | None,
-    path: str,
-    solution_id: UUID | None,
-    readable_detail: dict[str, object],
-) -> dict[str, object]:
-    """Return conflict metadata only when the caller may read the file."""
-    if await _authorize_file_policy(
-        ctx,
-        action="read",
-        location=location,
-        scope=scope,
-        path=path,
-        solution_id=solution_id,
-    ):
-        return readable_detail
-    return {
-        "reason": "precondition_failed",
-        "message": "File mutation precondition failed.",
-    }
 
 
 async def _require_declared_solution_file_location(
@@ -1521,63 +1497,22 @@ async def write_file(
                 effective_scope,
                 request.mode,
             )
-            if request.create_only and current_stat.exists:
+            conflict = await file_mutation_conflict_detail(
+                ctx,
+                _authorize_file_policy,
+                current_stat,
+                request.location,
+                effective_scope,
+                request.path,
+                solution_id,
+                create_only=request.create_only,
+                expected_version=request.expected_version,
+            )
+            if conflict is not None:
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
-                    detail=await _file_mutation_conflict_detail(
-                        ctx,
-                        location=request.location,
-                        scope=effective_scope,
-                        path=request.path,
-                        solution_id=solution_id,
-                        readable_detail={
-                            "reason": "file_exists",
-                            "path": request.path,
-                            "message": "File already exists; read it before replacing it.",
-                            "current_version": current_stat.version,
-                            "current_last_modified": current_stat.last_modified,
-                            "current_updated_by": current_stat.updated_by,
-                        },
-                    ),
+                    detail=conflict,
                 )
-            if request.expected_version is not None:
-                if not current_stat.exists:
-                    raise HTTPException(
-                        status_code=status.HTTP_409_CONFLICT,
-                        detail=await _file_mutation_conflict_detail(
-                            ctx,
-                            location=request.location,
-                            scope=effective_scope,
-                            path=request.path,
-                            solution_id=solution_id,
-                            readable_detail={
-                                "reason": "file_missing",
-                                "path": request.path,
-                                "expected_version": request.expected_version,
-                                "message": "File no longer exists.",
-                            },
-                        ),
-                    )
-                if current_stat.version != request.expected_version:
-                    raise HTTPException(
-                        status_code=status.HTTP_409_CONFLICT,
-                        detail=await _file_mutation_conflict_detail(
-                            ctx,
-                            location=request.location,
-                            scope=effective_scope,
-                            path=request.path,
-                            solution_id=solution_id,
-                            readable_detail={
-                                "reason": "version_conflict",
-                                "path": request.path,
-                                "expected_version": request.expected_version,
-                                "current_version": current_stat.version,
-                                "message": "File changed after it was read.",
-                                "current_last_modified": current_stat.last_modified,
-                                "current_updated_by": current_stat.updated_by,
-                            },
-                        ),
-                    )
 
         if request.binary:
             content = base64.b64decode(request.content)
@@ -1760,42 +1695,20 @@ async def delete_file(
                 effective_scope,
                 request.mode,
             )
-            if not current_stat.exists:
+            conflict = await file_mutation_conflict_detail(
+                ctx,
+                _authorize_file_policy,
+                current_stat,
+                request.location,
+                effective_scope,
+                request.path,
+                solution_id,
+                expected_version=request.expected_version,
+            )
+            if conflict is not None:
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
-                    detail=await _file_mutation_conflict_detail(
-                        ctx,
-                        location=request.location,
-                        scope=effective_scope,
-                        path=request.path,
-                        solution_id=solution_id,
-                        readable_detail={
-                            "reason": "file_missing",
-                            "path": request.path,
-                            "expected_version": request.expected_version,
-                            "message": "File no longer exists.",
-                        },
-                    ),
-                )
-            if current_stat.version != request.expected_version:
-                raise HTTPException(
-                    status_code=status.HTTP_409_CONFLICT,
-                    detail=await _file_mutation_conflict_detail(
-                        ctx,
-                        location=request.location,
-                        scope=effective_scope,
-                        path=request.path,
-                        solution_id=solution_id,
-                        readable_detail={
-                            "reason": "version_conflict",
-                            "path": request.path,
-                            "expected_version": request.expected_version,
-                            "current_version": current_stat.version,
-                            "message": "File changed after it was read.",
-                            "current_last_modified": current_stat.last_modified,
-                            "current_updated_by": current_stat.updated_by,
-                        },
-                    ),
+                    detail=conflict,
                 )
         await backend.delete(request.path, request.location, scope=effective_scope)
         if request.mode == "cloud":
