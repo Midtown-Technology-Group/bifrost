@@ -6,9 +6,8 @@ from uuid import uuid4
 
 import pytest
 from fastapi import HTTPException, Request
-
-from src.models.enums import ExecutionStatus
 from src.core.org_filter import OrgFilterType
+from src.models.enums import ExecutionStatus
 from src.routers import executions
 
 
@@ -222,6 +221,29 @@ async def test_history_orders_by_consistent_execution_timeline():
     query = str(db.execute.await_args.args[0])
     assert "coalesce(executions.started_at, executions.scheduled_at, executions.completed_at, executions.created_at) DESC" in query
     assert "executions.id DESC" in query
+
+
+@pytest.mark.asyncio
+async def test_legacy_history_cursor_restarts_without_an_impossible_null_filter():
+    db = SimpleNamespace(execute=AsyncMock(return_value=_DbResult(rows=[])))
+    repo = executions.ExecutionRepository(db)
+    user = SimpleNamespace(is_superuser=True, user_id=uuid4())
+
+    rows, token = await repo.list_executions(
+        user=user,
+        org_id=None,
+        limit=25,
+        cursor=(None, uuid4()),
+    )
+
+    assert rows == []
+    assert token is None
+    query = str(db.execute.await_args.args[0])
+    assert (
+        "coalesce(executions.started_at, executions.scheduled_at, "
+        "executions.completed_at, executions.created_at) IS NULL"
+        not in query
+    )
 
 
 @pytest.mark.asyncio
