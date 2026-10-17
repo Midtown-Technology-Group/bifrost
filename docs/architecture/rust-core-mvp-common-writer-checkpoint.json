@@ -110,9 +110,9 @@
     "cold_skill_package": "2026-10-09.1"
   },
   "workspace_boundary": {
-    "head": "3df127b2e6ed9251a1e6752bfe7c020a3cce5232",
-    "audit": "rust-core-mvp-workspace-boundary-3df127b2.json",
-    "files": 2459,
+    "head": "41ceed881295ad5601afb003e089d331f60074a4",
+    "audit": "rust-core-mvp-workspace-boundary-41ceed88.json",
+    "files": 2460,
     "internal_imports": 0,
     "parse_errors": 0,
     "allowlist_empty": true,
@@ -517,5 +517,36 @@
       "No common C1-C5 schema/roles/test logins activated; R1-CANCEL-SQL/v1 held",
       "No Rust Start/result, unchanged Python workflow or agent runtime acceptance"
     ]
+  },
+  "workflow_start_source": {
+    "package": "R1-START/source/v1",
+    "head": "6793d750ee7ddd96b60dde2e6b59da412cd07c88",
+    "base": "560e3decd7a18200809edb9bf9a078ede5d06ea5",
+    "branch": "rust/workflow-start-transaction",
+    "record": "rust-core-mvp-workflow-start-source.md",
+    "implementation_sha256": "d5584c52be9815597dd57a5b4df95185fd7c572b5c139a28394f0e60260c5ae8",
+    "sql_acceptance_source_sha256": "8cb44ed13d3c099fcbb56c893eb356b9d56061d5effe44d2235ed0477e805cab",
+    "default_enabled": false,
+    "review": "Independent Sol scoped SOURCE ACCEPT exact6793; no reviewer execution",
+    "source_checks": {
+      "fmt": 0,
+      "clippy_all_targets_all_features": 0,
+      "default_tests_passed": 36,
+      "candidate_library_tests_passed": 7,
+      "candidate_overlap": 5,
+      "unique_source_tests": 38,
+      "common_sql_executed": false,
+      "source_manifest_sha256": "ee1b50497cf370f1158ac919eb59b55fe3074825a305aa15cff9d09ce5785416"
+    },
+    "sql_acceptance": "Compiled only; requires separate prepared fixture producer and exact authority. Frozen cancellation procedure cannot supply prepared fixtures.",
+    "remaining": [
+      "Actual installed-schema/principal/cancellation acceptance",
+      "Prepared fixture producer and coordinator full wire/source/schema/custody/deadline validation",
+      "Actual Rust Start SQL, result ownership, runtime consumer and routing/rollback acceptance"
+    ],
+    "resources": "Two owned labelled build-cache volumes removed;143 containers/2583 baseline volumes preserved, including16 unattributed earlier anonymous volumes; pinned images retained; VM101 stopped",
+    "authority": "Frozen560 cancellation source and held runbook unchanged. No SQL/role/login/runtime or expanded experiment activated.",
+    "pr": null,
+    "publication_gate": "Source branch only; final pre-PR/hostedCI/liveSQL gates remain before implementation PR acceptance."
   }
 }

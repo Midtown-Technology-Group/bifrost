@@ -15,9 +15,9 @@ A complete MVP still includes safe coexistence, unchanged consumers, security,
 reversible routing, observability and an evidence-based CONTINUE or STOP.
 
 Fresh fetch: platform `e42999395231ebc536711e5015422edfb75613a7`, workspace
-`3df127b2e6ed9251a1e6752bfe7c020a3cce5232`.
-The [latest boundary audit](rust-core-mvp-workspace-boundary-3df127b2.json)
-records 2,459 authored Python files, zero forbidden imports/parse errors and an
+`41ceed881295ad5601afb003e089d331f60074a4`.
+The [latest boundary audit](rust-core-mvp-workspace-boundary-41ceed88.json)
+records 2,460 authored Python files, zero forbidden imports/parse errors and an
 empty allowlist.
 Both prerequisite merges remain ancestors of these exact heads. Recheck these
 invariants when either baseline changes.
@@ -97,6 +97,16 @@ ownership, public endpoint/event execution or
 complete first-issuance race proof is claimed. R1 needs the R0 decisions relevant
 to its transaction; Python packaging does not block independent approved
 persistence work.
+
+Separately, [R1-START/source/v1](rust-core-mvp-workflow-start-source.md) now
+implements atomic native Running/Start and uncertain-commit observation at
+`6793d750ee7ddd96b60dde2e6b59da412cd07c88`. It uses the common guard's exact
+update-before-Start order and excludes the unfinished admission seam from default
+builds. Independent source review, supported fmt/strict all-feature Clippy and38
+unique source tests pass; its opt-in actual SQL acceptance test compiles only.
+A reviewed prepared-fixture producer and the coordinator/wire/custody/deadline
+validation seam remain necessary. No SQL, runtime, Rust result ownership or
+expanded R1 cancellation authority follows from this source package.
 
 The next cancellation dependency test is now executable Rust test source at
 `3c66dc70a58a8be1758a535c6b47c1147df71f6e`,

@@ -194,6 +194,13 @@ Sol/Codex authored these changes; no human DCO/sign-off is asserted. Existing
 repository contribution authorization/provenance and all review/CI gates remain.
 
 
+Subsequent Rust-source task readback found16 additional anonymous volumes,
+created during the earlier qualification interval but without proven owner/project
+identity. They are retained explicitly. The cleanup claim above is confined to
+captured project resources and preservation of the original baseline; it is not
+proof that every unlabeled volume has been attributed or removed. See the
+[current source task disposition](rust-core-mvp-workflow-start-source.md).
+
 ## Acceptance and stop conditions
 
 Run the five positive query checks against real SQL, then the existing credential,
