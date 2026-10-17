@@ -73,6 +73,10 @@ after acquiring its execution fences, rejecting delete/recreate changes. Guard
 functions are explicitly VOLATILE and require READ COMMITTED so checks use
 fresh snapshots; see [PostgreSQL's volatility contract](https://www.postgresql.org/docs/16/xfunc-volatility.html).
 Runtime isolation/profile compatibility and the actual replacement race still
-need supported PostgreSQL proof. A replayed result receipt must never restore
+need supported PostgreSQL proof. Generic-attempt and lifecycle-event DML also
+share the ordered `bifrost:execution-attempt-identity:<uuid>` try-advisory fence
+for both OLD/NEW IDs, including non-workflow and missing parents. Execution
+fences alone cannot protect those polymorphic FK targets. Include this edge
+and implicit FK/row/index waits in the complete lock review. A replayed result receipt must never restore
 native payloads cleared by the public redaction operation; native sanitation
 and retained common evidence are separate contracts.

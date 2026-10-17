@@ -182,6 +182,7 @@ def _install_native_guard() -> None:
             bound_owner text; native_org uuid; retained boolean;
             actual_type text; actual_job uuid; actual_found boolean;
             rechecked_type text; rechecked_job uuid; rechecked_found boolean;
+            attempt_bindings uuid[]; attempt_identity uuid;
             rust_touched boolean := FALSE; python_touched boolean := FALSE;
         BEGIN
             IF TG_TABLE_SCHEMA <> 'public' OR TG_TABLE_NAME NOT IN
@@ -197,6 +198,20 @@ def _install_native_guard() -> None:
                 previous := previous - 'runtime_owner_id';
                 proposed := proposed - 'runtime_owner_id';
             END IF;
+            -- A polymorphic or absent generic attempt has no workflow fence.
+            -- Protect its row identity before choosing any execution fences so
+            -- deletion/recreation cannot substitute the FK target afterward.
+            IF TG_TABLE_NAME = 'execution_attempts' THEN
+                attempt_bindings := ARRAY[(previous->>'id')::uuid,(proposed->>'id')::uuid];
+            ELSIF TG_TABLE_NAME = 'execution_lifecycle_events' THEN
+                attempt_bindings := ARRAY[(previous->>'attempt_id')::uuid,(proposed->>'attempt_id')::uuid];
+            END IF;
+            FOR attempt_identity IN SELECT DISTINCT value FROM unnest(attempt_bindings) AS t(value)
+                WHERE value IS NOT NULL ORDER BY value LOOP
+                IF NOT pg_try_advisory_xact_lock(hashtext('bifrost:execution-attempt-identity:' || attempt_identity::text)) THEN
+                    RAISE EXCEPTION 'lifecycle attempt identity contended' USING ERRCODE='55P03';
+                END IF;
+            END LOOP;
             FOREACH facts IN ARRAY ARRAY[previous,proposed] LOOP
                 IF facts IS NULL THEN CONTINUE; END IF;
                 actual_parent := NULL;
