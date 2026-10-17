@@ -1277,19 +1277,51 @@ def get_modules_sync(paths: list[str]) -> dict[str, CachedModule | None]:
         resolved: dict[str, CachedModule | None] = {}
         expected_generation = workspace_generation_for_import()
         for (path, storage_path), data in zip(candidates, values, strict=True):
-            if path in resolved or not data:
+            if path in resolved:
                 continue
-            module = json.loads(data)
-            if not storage_path.startswith(
+
+            immutable_module = storage_path.startswith(
                 (f"{SOLUTIONS_ROOT}/", f"{WORKSPACE_RELEASES_ROOT}/")
-            ) and not _cached_module_matches_generation(module, expected_generation):
-                continue
-            _verify_immutable_module_hash(path, module)
-            resolved[path] = module
+            )
+            module: CachedModule | None = None
+            if data:
+                try:
+                    cached = json.loads(data)
+                except (TypeError, json.JSONDecodeError):
+                    cached = None
+                if isinstance(cached, dict):
+                    if immutable_module:
+                        try:
+                            _verify_immutable_module_hash(path, cached)
+                        except RuntimeError:
+                            pass
+                        else:
+                            module = cached
+                    elif _cached_module_matches_generation(
+                        cached, expected_generation
+                    ):
+                        _require_workspace_generation(
+                            expected_generation,
+                            message=(
+                                "workspace source generation changed during "
+                                "module batch fallback"
+                            ),
+                        )
+                        module = cached
+
+            # A lower-priority cache hit cannot outrank a higher-priority
+            # candidate that is merely cold in Redis. Exhaust the current
+            # candidate's API/object-storage tiers before advancing.
+            if module is None:
+                module = _resolve_module_candidate(
+                    client, path=path, storage_path=storage_path
+                )
+            if module is not None:
+                resolved[path] = module
 
         for path in ordered_paths:
             if path not in resolved:
-                resolved[path] = get_module_sync(path)
+                resolved[path] = None
         return resolved
     except redis.RedisError as exc:
         logger.warning("Redis error fetching module batch: %s", exc)

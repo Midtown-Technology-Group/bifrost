@@ -94,6 +94,111 @@ class TestGetModuleSyncFromCache:
         )
         mock_redis.get.assert_not_called()
 
+    def test_worker_batch_prefers_cold_solution_module_over_cached_global(self):
+        """A lower-priority cache hit must not bypass the solution source."""
+        from src.core.module_cache_sync import (
+            clear_solution_context,
+            get_modules_sync,
+            set_solution_context,
+        )
+
+        global_content = "source = 'global'"
+        global_module = {
+            "content": global_content,
+            "path": "modules/a.py",
+            "hash": hashlib.sha256(global_content.encode()).hexdigest(),
+            "generation": "generation-1",
+        }
+        solution_module = {
+            "content": "source = 'solution'",
+            "path": "modules/a.py",
+            "hash": hashlib.sha256(b"source = 'solution'").hexdigest(),
+        }
+
+        set_solution_context("solution-1", global_repo_access=True)
+        try:
+            with (
+                patch(
+                    "src.core.module_cache_sync._get_sync_redis"
+                ) as mock_redis_factory,
+                patch(
+                    "src.core.module_cache_sync._get_engine_client",
+                    return_value=None,
+                ),
+                patch(
+                    "src.core.module_cache_sync._fetch_module_from_api",
+                    return_value=solution_module,
+                ) as fetch_from_api,
+            ):
+                mock_redis = MagicMock()
+                mock_redis.mget.return_value = [None, json.dumps(global_module)]
+                mock_redis.get.return_value = None
+                mock_redis_factory.return_value = mock_redis
+
+                result = get_modules_sync(["modules/a.py"])
+
+            assert result == {"modules/a.py": solution_module}
+            fetch_from_api.assert_called_once_with(
+                "_solutions/solution-1/modules/a.py"
+            )
+        finally:
+            clear_solution_context()
+
+    def test_worker_batch_uses_cached_global_after_solution_fully_misses(self):
+        """The global cache remains the fallback after all solution tiers miss."""
+        from src.core.module_cache_sync import (
+            clear_solution_context,
+            get_modules_sync,
+            set_solution_context,
+        )
+
+        global_content = "source = 'global'"
+        global_module = {
+            "content": global_content,
+            "path": "modules/a.py",
+            "hash": hashlib.sha256(global_content.encode()).hexdigest(),
+            "generation": "generation-1",
+        }
+
+        set_solution_context("solution-1", global_repo_access=True)
+        try:
+            with (
+                patch(
+                    "src.core.module_cache_sync._get_sync_redis"
+                ) as mock_redis_factory,
+                patch(
+                    "src.core.module_cache_sync._get_engine_client",
+                    return_value=None,
+                ),
+                patch(
+                    "src.core.module_cache_sync._fetch_module_from_api",
+                    return_value=None,
+                ) as fetch_from_api,
+                patch(
+                    "src.core.module_cache_sync._get_object_storage_module",
+                    return_value=None,
+                ) as fetch_from_storage,
+            ):
+                mock_redis = MagicMock()
+                mock_redis.mget.return_value = [None, json.dumps(global_module)]
+                mock_redis.get.return_value = None
+                mock_redis_factory.return_value = mock_redis
+
+                result = get_modules_sync(["modules/a.py"])
+
+            assert result == {"modules/a.py": global_module}
+            mock_redis.get.assert_called_once_with(
+                "bifrost:module:_solutions/solution-1/modules/a.py"
+            )
+            fetch_from_api.assert_called_once_with(
+                "_solutions/solution-1/modules/a.py"
+            )
+            fetch_from_storage.assert_called_once_with(
+                "_solutions/solution-1/modules/a.py"
+            )
+        finally:
+            clear_solution_context()
+
     def test_cache_miss_returns_none(self):
         """When both Redis and S3 miss, should return None."""
         from src.core.module_cache_sync import get_module_sync
