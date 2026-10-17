@@ -5,7 +5,6 @@ worker identity replaces pool startup; no Redis, broker, child or runtime runs.
 The dedicated queue prevents unrelated workers from consuming these test rows.
 """
 
-from contextlib import asynccontextmanager
 from dataclasses import replace
 from datetime import timedelta
 from types import SimpleNamespace
@@ -38,12 +37,9 @@ async def claim_case(async_session_factory, monkeypatch):
     queue = f"workflow-claim-seam-{uuid4()}"
     delivery_id = None
 
-    @asynccontextmanager
-    async def db_context():
-        async with async_session_factory() as db:
-            yield db
-
-    monkeypatch.setattr(database, "get_db_context", db_context)
+    # Keep production get_db_context's success commit and exception rollback.
+    # Only its connection factory changes to this real native test database.
+    monkeypatch.setattr(database, "get_session_factory", lambda: async_session_factory)
     # Only the two identity fields used by the actual admission method exist.
     # Calling a pool/runtime method here must fail, rather than start a process.
     consumer = object.__new__(WorkflowExecutionConsumer)
