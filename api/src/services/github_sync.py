@@ -1474,8 +1474,10 @@ class GitHubSyncService:
                     publication_plan.checkpoint_id
                 )
         except Exception as error:
+            retryable = getattr(error, "retryable", True)
             logger.warning(
-                "Workspace publication failed after import; retaining local dirty state for retry: %s",
+                "Workspace publication failed after import; retryable=%s: %s",
+                retryable,
                 error,
             )
             return SyncResult(
@@ -1485,8 +1487,8 @@ class GitHubSyncService:
                 entities_imported=entities_imported,
                 entity_changes=all_entity_changes,
                 error=str(error),
-                retryable=True,
-                retry_plan=publication_plan,
+                retryable=retryable,
+                retry_plan=publication_plan if retryable else None,
             )
 
         logger.info(
@@ -1874,7 +1876,7 @@ class GitHubSyncService:
         Reads the manifest to find app entries, derives the source directory
         from each app's path, and copies files to the preview store.
         """
-        from src.services.app_storage import AppStorageService
+        from src.services.app_storage import AppStorageService, PreviewSyncError
 
         bifrost_dir = work_dir / ".bifrost"
         manifest = read_manifest_from_dir(bifrost_dir)
@@ -1887,17 +1889,14 @@ class GitHubSyncService:
         app_storage = AppStorageService(self.repo_manager._settings)
 
         async def _sync_one_app(mapp_id: str, source_dir: str) -> None:
-            try:
-                synced, compile_errors = await app_storage.sync_preview_compiled(
-                    mapp_id, source_dir
+            synced, compile_errors = await app_storage.sync_preview_compiled(
+                mapp_id, source_dir
+            )
+            logger.info(f"Synced {synced} compiled preview files for app {mapp_id}")
+            if compile_errors:
+                logger.warning(
+                    f"Compile errors for app {mapp_id}: {compile_errors}"
                 )
-                logger.info(f"Synced {synced} compiled preview files for app {mapp_id}")
-                if compile_errors:
-                    logger.warning(
-                        f"Compile errors for app {mapp_id}: {compile_errors}"
-                    )
-            except Exception as e:
-                logger.warning(f"Failed to sync preview for app {mapp_id}: {e}")
 
         # Process all apps concurrently
         preview_tasks = []
@@ -1907,7 +1906,15 @@ class GitHubSyncService:
             except ValueError as exc:
                 logger.warning("Skipping unsafe app preview path: %s", exc)
 
-        await asyncio.gather(*preview_tasks)
+        results = await asyncio.gather(*preview_tasks, return_exceptions=True)
+        failures = [result for result in results if isinstance(result, BaseException)]
+        if failures:
+            details = "; ".join(str(failure) for failure in failures)
+            retryable = all(getattr(failure, "retryable", True) for failure in failures)
+            raise PreviewSyncError(
+                f"Failed to sync {len(failures)} app preview(s): {details}",
+                retryable=retryable,
+            ) from failures[0]
 
     # -----------------------------------------------------------------
     # Reimport from repo (no git operations)
