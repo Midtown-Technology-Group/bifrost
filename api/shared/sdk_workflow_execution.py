@@ -421,11 +421,19 @@ async def execute_sdk_workflow(
             # tracked execution row to navigate to — returning a synthetic
             # execution_id would 404 the history detail page.
             if request.transient and workflow.cache_ttl_seconds > 0:
-                from src.core.cache import get_cached_data_provider
+                from src.core.cache import (
+                    DataProviderCacheIdentity,
+                    get_cached_data_provider,
+                )
 
                 cached_result = await get_cached_data_provider(
-                    str(execution_org_id) if execution_org_id else None,
-                    workflow.name,
+                    DataProviderCacheIdentity(
+                        organization_id=(
+                            str(execution_org_id) if execution_org_id else None
+                        ),
+                        provider_id=str(workflow.id),
+                        principal_id=exec_user_id,
+                    ),
                     request.input_data,
                 )
                 if cached_result:
