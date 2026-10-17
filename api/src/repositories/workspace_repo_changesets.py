@@ -1,5 +1,6 @@
 """Persistence boundary for workspace _repo changesets."""
 
+from datetime import timedelta
 from uuid import UUID
 
 from sqlalchemy import and_, func, or_, select
@@ -7,7 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.orm.workspace_repo_changesets import WorkspaceRepoChangeset
 
-RETRYABLE_GIT_FAILURE_STATES = ("failed", "not_configured", "pending")
+RETRYABLE_GIT_FAILURE_STATES = ("failed", "not_configured")
+GIT_CLOSURE_PENDING_STALE_AFTER = timedelta(minutes=15)
 
 
 class WorkspaceRepoChangesetRepository:
@@ -52,7 +54,14 @@ class WorkspaceRepoChangesetRepository:
             select(WorkspaceRepoChangeset)
             .where(
                 WorkspaceRepoChangeset.organization_id == organization_id,
-                failure_state.in_(RETRYABLE_GIT_FAILURE_STATES),
+                or_(
+                    failure_state.in_(RETRYABLE_GIT_FAILURE_STATES),
+                    and_(
+                        failure_state == "pending",
+                        WorkspaceRepoChangeset.updated_at
+                        <= func.now() - GIT_CLOSURE_PENDING_STALE_AFTER,
+                    ),
+                ),
                 or_(
                     and_(
                         WorkspaceRepoChangeset.status == "activated",
