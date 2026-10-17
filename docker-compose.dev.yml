@@ -49,6 +49,7 @@ services:
     environment:
       BIFROST_ENVIRONMENT: development
       BIFROST_SECRET_KEY: ${BIFROST_SECRET_KEY:-dev-secret-key-change-in-production-must-be-32-chars}
+      BIFROST_FERNET_SALT: ${BIFROST_FERNET_SALT:-bifrost_secrets_v1}
       BIFROST_DATABASE_URL: postgresql+asyncpg://bifrost:${POSTGRES_PASSWORD:-bifrost_dev}@postgres:5432/bifrost
       BIFROST_DATABASE_URL_SYNC: postgresql://bifrost:${POSTGRES_PASSWORD:-bifrost_dev}@postgres:5432/bifrost
     volumes:
@@ -72,6 +73,7 @@ services:
       BIFROST_DEBUG: ${BIFROST_DEBUG:-true}
       BIFROST_WORK_DELIVERY_BACKEND: ${BIFROST_WORK_DELIVERY_BACKEND:-rabbitmq}
       BIFROST_SECRET_KEY: ${BIFROST_SECRET_KEY:-dev-secret-key-change-in-production-must-be-32-chars}
+      BIFROST_FERNET_SALT: ${BIFROST_FERNET_SALT:-bifrost_secrets_v1}
       BIFROST_DATABASE_URL: postgresql+asyncpg://bifrost:${POSTGRES_PASSWORD:-bifrost_dev}@pgbouncer:5432/bifrost
       BIFROST_DATABASE_URL_SYNC: postgresql://bifrost:${POSTGRES_PASSWORD:-bifrost_dev}@pgbouncer:5432/bifrost
       BIFROST_RABBITMQ_URL: amqp://bifrost:${RABBITMQ_PASSWORD:-bifrost_dev}@rabbitmq:5672/
@@ -109,6 +111,7 @@ services:
       BIFROST_ENVIRONMENT: development
       BIFROST_WORK_DELIVERY_BACKEND: ${BIFROST_WORK_DELIVERY_BACKEND:-rabbitmq}
       BIFROST_SECRET_KEY: ${BIFROST_SECRET_KEY:-dev-secret-key-change-in-production-must-be-32-chars}
+      BIFROST_FERNET_SALT: ${BIFROST_FERNET_SALT:-bifrost_secrets_v1}
       BIFROST_DATABASE_URL: postgresql+asyncpg://bifrost:${POSTGRES_PASSWORD:-bifrost_dev}@pgbouncer:5432/bifrost
       BIFROST_DATABASE_URL_SYNC: postgresql://bifrost:${POSTGRES_PASSWORD:-bifrost_dev}@pgbouncer:5432/bifrost
       BIFROST_RABBITMQ_URL: amqp://bifrost:${RABBITMQ_PASSWORD:-bifrost_dev}@rabbitmq:5672/
@@ -134,6 +137,7 @@ services:
       BIFROST_ENVIRONMENT: development
       BIFROST_WORK_DELIVERY_BACKEND: ${BIFROST_WORK_DELIVERY_BACKEND:-rabbitmq}
       BIFROST_SECRET_KEY: ${BIFROST_SECRET_KEY:-dev-secret-key-change-in-production-must-be-32-chars}
+      BIFROST_FERNET_SALT: ${BIFROST_FERNET_SALT:-bifrost_secrets_v1}
       BIFROST_DATABASE_URL: postgresql+asyncpg://bifrost:${POSTGRES_PASSWORD:-bifrost_dev}@pgbouncer:5432/bifrost
       BIFROST_DATABASE_URL_SYNC: postgresql://bifrost:${POSTGRES_PASSWORD:-bifrost_dev}@pgbouncer:5432/bifrost
       BIFROST_RABBITMQ_URL: amqp://bifrost:${RABBITMQ_PASSWORD:-bifrost_dev}@rabbitmq:5672/

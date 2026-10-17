@@ -55,8 +55,8 @@ async def test_desktop_commit_regenerates_manifest_before_staging():
 
 
 @pytest.mark.asyncio
-async def test_reimport_regenerates_manifest_and_reindexes_workflows():
-    """reimport_from_repo() should regenerate manifest and re-run workflow indexer."""
+async def test_reimport_preserves_repo_manifest_and_reindexes_workflows():
+    """reimport_from_repo() must import the checked-out manifest unchanged."""
     from src.services.github_sync import GitHubSyncService
 
     mock_db = AsyncMock()
@@ -94,6 +94,37 @@ async def test_reimport_regenerates_manifest_and_reindexes_workflows():
 
         result = await service.reimport_from_repo()
 
-        mock_regen.assert_called_once()
+        mock_regen.assert_not_called()
         mock_reindex.assert_called_once()
         assert result == 5
+
+
+@pytest.mark.asyncio
+async def test_import_rejects_unsafe_manifest_paths_before_source_reads(
+    tmp_path, monkeypatch
+):
+    """The real import boundary rejects traversal before any entity work."""
+    from bifrost.manifest import Manifest, ManifestWorkflow
+    from src.services.github_sync import GitHubSyncService
+
+    manifest = Manifest(
+        workflows={
+            "unsafe": ManifestWorkflow(
+                id="11111111-1111-1111-1111-111111111111",
+                name="unsafe",
+                path="../outside.py",
+                function_name="unsafe",
+            )
+        }
+    )
+    monkeypatch.setattr(
+        "src.services.github_sync.read_manifest_from_dir", lambda _: manifest
+    )
+
+    service = GitHubSyncService.__new__(GitHubSyncService)
+    service.db = AsyncMock()
+
+    with pytest.raises(ValueError, match="Unsafe manifest path"):
+        await service._import_all_entities(tmp_path)
+
+    service.db.execute.assert_not_awaited()

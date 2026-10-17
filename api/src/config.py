@@ -394,6 +394,11 @@ class Settings(BaseSettings):
         description="Secret key for JWT signing and encryption (BIFROST_SECRET_KEY env var required)",
         min_length=32,
     )
+    fernet_salt: str = Field(
+        default="bifrost_secrets_v1",
+        description="HKDF salt used for encrypted application secrets",
+        min_length=1,
+    )
 
     algorithm: str = Field(default="HS256", description="JWT signing algorithm")
 

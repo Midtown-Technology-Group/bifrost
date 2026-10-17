@@ -15779,6 +15779,11 @@ export interface components {
             replace_existing: boolean;
             /** Source Secret Key */
             source_secret_key?: string | null;
+            /**
+             * Source Fernet Salt
+             * @default bifrost_secrets_v1
+             */
+            source_fernet_salt: string;
             /** Target Organization Id */
             target_organization_id?: string | null;
         };
@@ -15793,6 +15798,11 @@ export interface components {
             replace_existing: boolean;
             /** Source Secret Key */
             source_secret_key?: string | null;
+            /**
+             * Source Fernet Salt
+             * @default bifrost_secrets_v1
+             */
+            source_fernet_salt: string;
             /** Target Organization Id */
             target_organization_id?: string | null;
         };
@@ -15807,6 +15817,11 @@ export interface components {
             replace_existing: boolean;
             /** Source Secret Key */
             source_secret_key?: string | null;
+            /**
+             * Source Fernet Salt
+             * @default bifrost_secrets_v1
+             */
+            source_fernet_salt: string;
             /** Target Organization Id */
             target_organization_id?: string | null;
         };

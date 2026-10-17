@@ -125,6 +125,7 @@ services:
       BIFROST_DATABASE_URL_SYNC: postgresql://bifrost:bifrost_test@postgres:5432/bifrost_test
       BIFROST_REDIS_URL: redis://redis:6379/0
       BIFROST_SECRET_KEY: test-secret-key-for-e2e-testing-must-be-32-chars
+      BIFROST_FERNET_SALT: bifrost_secrets_v1
       BIFROST_ENVIRONMENT: testing
     volumes:
       - ./api/src:/app/src:ro
@@ -152,6 +153,7 @@ services:
       BIFROST_RABBITMQ_URL: amqp://bifrost:bifrost_test@rabbitmq:5672/
       BIFROST_REDIS_URL: redis://redis:6379/0
       BIFROST_SECRET_KEY: test-secret-key-for-e2e-testing-must-be-32-chars
+      BIFROST_FERNET_SALT: bifrost_secrets_v1
       BIFROST_ENVIRONMENT: testing
       # Backend MCP hosts/audiences use the internal API; browser lanes select
       # the loopback client proxy for callbacks before resetting their stack.
@@ -237,6 +239,7 @@ services:
       BIFROST_REDIS_URL: redis://redis:6379/0
       MCP_ENCRYPTED_TUNNEL_HOSTS: scheduler-fixtures
       BIFROST_SECRET_KEY: test-secret-key-for-e2e-testing-must-be-32-chars
+      BIFROST_FERNET_SALT: bifrost_secrets_v1
       BIFROST_ENVIRONMENT: testing
       # Exercise the same claim/beat transitions without production idle intervals.
       BIFROST_SERVICE_CLAIM_INTERVAL_SECONDS: "1"
@@ -297,6 +300,7 @@ services:
       BIFROST_RABBITMQ_URL: amqp://bifrost:bifrost_test@rabbitmq:5672/
       BIFROST_REDIS_URL: redis://redis:6379/0
       BIFROST_SECRET_KEY: test-secret-key-for-e2e-testing-must-be-32-chars
+      BIFROST_FERNET_SALT: bifrost_secrets_v1
       BIFROST_ENVIRONMENT: testing
       BIFROST_DEFERRED_EXECUTION_PROMOTER_INTERVAL_SECONDS: "2"
       # S3-compatible object storage
@@ -374,6 +378,7 @@ services:
       BIFROST_RABBITMQ_URL: amqp://bifrost:bifrost_test@rabbitmq:5672/
       BIFROST_REDIS_URL: redis://redis:6379/0
       BIFROST_SECRET_KEY: test-secret-key-for-e2e-testing-must-be-32-chars
+      BIFROST_FERNET_SALT: bifrost_secrets_v1
       BIFROST_ENVIRONMENT: testing
       BIFROST_ALLOW_REGISTRATION: "true"
       # S3-compatible object storage

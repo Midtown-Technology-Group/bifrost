@@ -14,6 +14,7 @@ Stateless — no DB or S3 dependency.
 from __future__ import annotations
 
 import logging
+import re
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, Literal
@@ -28,6 +29,26 @@ from bifrost.contracts.events import EventCriteria
 from bifrost.contracts.workflows import ExecutionRetryPolicy
 
 logger = logging.getLogger(__name__)
+
+_WINDOWS_DRIVE_PATH = re.compile(r"^[A-Za-z]:")
+
+
+def _validate_repo_relative_path(path: str) -> str | None:
+    """Return an error for paths that can escape or ambiguously address the repo."""
+    if not path:
+        return "must not be empty"
+    if "\x00" in path:
+        return "must not contain NUL bytes"
+    if path.startswith("/") or _WINDOWS_DRIVE_PATH.match(path):
+        return "must be relative to the repository root"
+    if "\\" in path:
+        return "must use forward slashes"
+    parts = path.split("/")
+    if any(part in {"", ".", ".."} for part in parts):
+        return "must not contain empty, '.' or '..' path segments"
+    if parts[0] in {".git", ".bifrost"}:
+        return "must not target repository metadata"
+    return None
 
 
 def _execution_retry_policy(value: object) -> ExecutionRetryPolicy:
@@ -1703,6 +1724,17 @@ def validate_manifest(manifest: Manifest) -> list[str]:
     """
     errors: list[str] = []
 
+    path_entries = [
+        *(('Workflow', wf.name or wf.id, wf.path) for wf in manifest.workflows.values()),
+        *(('Form', form.name or form.id, form.path) for form in manifest.forms.values() if form.path),
+        *(('Agent', agent.name or agent.id, agent.path) for agent in manifest.agents.values() if agent.path),
+        *(('App', app.name or app.id, app.path) for app in manifest.apps.values()),
+    ]
+    for entity_type, label, path in path_entries:
+        path_error = _validate_repo_relative_path(path)
+        if path_error:
+            errors.append(f"{entity_type} '{label}' path '{path}' {path_error}")
+
     org_ids = {org.id for org in manifest.organizations}
     role_ids = {role.id for role in manifest.roles}
     wf_ids = {wf.id for wf in manifest.workflows.values()}
@@ -1875,14 +1907,21 @@ def get_all_paths(manifest: Manifest) -> set[str]:
     regenerated under the inline-content layout — those entries are skipped.
     """
     paths: set[str] = set()
+
+    def add_path(path: str) -> None:
+        error = _validate_repo_relative_path(path)
+        if error:
+            raise ValueError(f"Unsafe manifest path '{path}': {error}")
+        paths.add(path)
+
     for wf in manifest.workflows.values():
-        paths.add(wf.path)
+        add_path(wf.path)
     for form in manifest.forms.values():
         if form.path:
-            paths.add(form.path)
+            add_path(form.path)
     for agent in manifest.agents.values():
         if agent.path:
-            paths.add(agent.path)
+            add_path(agent.path)
     for app in manifest.apps.values():
-        paths.add(app.path)
+        add_path(app.path)
     return paths

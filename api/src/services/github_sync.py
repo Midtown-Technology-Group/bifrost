@@ -60,6 +60,7 @@ if TYPE_CHECKING:
 from bifrost.manifest import (
     Manifest,
     get_all_entity_ids,
+    get_all_paths,
     read_manifest_from_dir,
 )
 from src.services.manifest_import import (
@@ -1769,6 +1770,11 @@ class GitHubSyncService:
         bifrost_dir = work_dir / ".bifrost"
         manifest = read_manifest_from_dir(bifrost_dir)
 
+        # Fail before diffing, resolving, or reading any manifest-declared
+        # source path. Repository manifests are untrusted import input, and a
+        # traversal/absolute/internal path must never reach ``work_dir / path``.
+        get_all_paths(manifest)
+
         has_entities = (
             manifest.organizations or manifest.roles
             or manifest.workflows or manifest.forms or manifest.agents or manifest.apps
@@ -1922,9 +1928,6 @@ class GitHubSyncService:
         Returns count of entities imported.
         """
         async with self.repo_manager.checkout() as work_dir:
-            # Regenerate manifest from current DB state
-            await self._regenerate_manifest_to_dir(self.db, work_dir)
-
             # Import entities atomically with savepoint
             async with self.db.begin_nested():
                 count, _changes, _ = await self._import_all_entities(work_dir)

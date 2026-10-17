@@ -17,6 +17,16 @@ depends_on = None
 
 
 def upgrade() -> None:
+    # Preserve legacy workflow source before removing its columns. The file_index
+    # migration immediately precedes this one, so this also repairs databases
+    # upgraded through the original empty-table migration sequence.
+    op.execute(sa.text("""
+        INSERT INTO file_index (path, content, content_hash, updated_at)
+        SELECT path, code, code_hash, COALESCE(updated_at, NOW())
+        FROM workflows
+        WHERE path IS NOT NULL AND code IS NOT NULL
+        ON CONFLICT (path) DO NOTHING
+    """))
     op.drop_column("workflows", "code")
     op.drop_column("workflows", "code_hash")
 
@@ -24,3 +34,10 @@ def upgrade() -> None:
 def downgrade() -> None:
     op.add_column("workflows", sa.Column("code_hash", sa.String(64), nullable=True))
     op.add_column("workflows", sa.Column("code", sa.Text(), nullable=True))
+    op.execute(sa.text("""
+        UPDATE workflows
+        SET code = file_index.content,
+            code_hash = file_index.content_hash
+        FROM file_index
+        WHERE workflows.path = file_index.path
+    """))

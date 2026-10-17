@@ -142,6 +142,14 @@ describe("ImportDialog", () => {
 		fireEvent.change(getFileInput(), {
 			target: { files: [file] },
 		});
+		await user.type(
+			await screen.findByLabelText("Source Secret Key"),
+			"source-secret",
+		);
+		await user.type(
+			screen.getByLabelText("Source Fernet Salt"),
+			"custom-salt",
+		);
 
 		mockImportAll.mockResolvedValueOnce({
 			entity_type: "all",
@@ -162,6 +170,8 @@ describe("ImportDialog", () => {
 			file,
 			expect.objectContaining({
 				replaceExisting: true,
+				sourceSecretKey: "source-secret",
+				sourceFernetSalt: "custom-salt",
 			}),
 		);
 		expect(mockToast.success).toHaveBeenCalledWith("Import completed");

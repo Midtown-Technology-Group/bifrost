@@ -124,6 +124,7 @@ services:
     environment:
       BIFROST_ENVIRONMENT: development
       BIFROST_SECRET_KEY: ${BIFROST_SECRET_KEY:?Use debug.sh}
+      BIFROST_FERNET_SALT: ${BIFROST_FERNET_SALT:-bifrost_secrets_v1}
       BIFROST_DATABASE_URL: postgresql+asyncpg://bifrost:${POSTGRES_PASSWORD_URLENCODED:?Use debug.sh}@postgres:5432/bifrost
       BIFROST_DATABASE_URL_SYNC: postgresql://bifrost:${POSTGRES_PASSWORD_URLENCODED:?Use debug.sh}@postgres:5432/bifrost
       BIFROST_REDIS_URL: redis://redis:6379/0
@@ -154,6 +155,7 @@ services:
       BIFROST_ENVIRONMENT: development
       BIFROST_DEBUG: "true"
       BIFROST_SECRET_KEY: ${BIFROST_SECRET_KEY:?Use debug.sh}
+      BIFROST_FERNET_SALT: ${BIFROST_FERNET_SALT:-bifrost_secrets_v1}
       BIFROST_DATABASE_URL: postgresql+asyncpg://bifrost:${POSTGRES_PASSWORD_URLENCODED:?Use debug.sh}@pgbouncer:5432/bifrost
       BIFROST_DATABASE_URL_SYNC: postgresql://bifrost:${POSTGRES_PASSWORD_URLENCODED:?Use debug.sh}@pgbouncer:5432/bifrost
       BIFROST_RABBITMQ_URL: amqp://bifrost:bifrost_debug@rabbitmq:5672/
@@ -227,6 +229,7 @@ services:
     environment:
       BIFROST_ENVIRONMENT: development
       BIFROST_SECRET_KEY: ${BIFROST_SECRET_KEY:?Use debug.sh}
+      BIFROST_FERNET_SALT: ${BIFROST_FERNET_SALT:-bifrost_secrets_v1}
       BIFROST_DATABASE_URL: postgresql+asyncpg://bifrost:${POSTGRES_PASSWORD_URLENCODED:?Use debug.sh}@pgbouncer:5432/bifrost
       BIFROST_DATABASE_URL_SYNC: postgresql://bifrost:${POSTGRES_PASSWORD_URLENCODED:?Use debug.sh}@pgbouncer:5432/bifrost
       BIFROST_RABBITMQ_URL: amqp://bifrost:bifrost_debug@rabbitmq:5672/
@@ -287,6 +290,7 @@ services:
     environment:
       BIFROST_ENVIRONMENT: development
       BIFROST_SECRET_KEY: ${BIFROST_SECRET_KEY:?Use debug.sh}
+      BIFROST_FERNET_SALT: ${BIFROST_FERNET_SALT:-bifrost_secrets_v1}
       BIFROST_DATABASE_URL: postgresql+asyncpg://bifrost:${POSTGRES_PASSWORD_URLENCODED:?Use debug.sh}@pgbouncer:5432/bifrost
       BIFROST_DATABASE_URL_SYNC: postgresql://bifrost:${POSTGRES_PASSWORD_URLENCODED:?Use debug.sh}@pgbouncer:5432/bifrost
       BIFROST_RABBITMQ_URL: amqp://bifrost:bifrost_debug@rabbitmq:5672/

@@ -33,6 +33,16 @@ it("supports Enter commit and explains why sync is disabled", async () => {
 		screen.getByRole("button", { name: "Commit changes" }),
 	).toBeDisabled();
 });
+it("allows pushing outgoing commits while unrelated worktree changes remain", async () => {
+	const user = userEvent.setup();
+	const p = props();
+	render(<SourceControlActions {...p} commitsBehind={0} />);
+	await user.click(screen.getByRole("button", { name: "Sync origin" }));
+	expect(p.onSync).toHaveBeenCalledTimes(1);
+	expect(
+		screen.queryByText("Commit your changes before syncing."),
+	).not.toBeInTheDocument();
+});
 it("keeps normal commit controls out of conflict mode and gates merge completion", async () => {
 	const user = userEvent.setup();
 	const p = props();
