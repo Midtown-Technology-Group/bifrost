@@ -96,8 +96,9 @@ def test_from_row_preserves_cache_including_zero(ttl):
 
 @pytest.mark.parametrize("invalid", [-1, 86401, True, False, "0", "600", 0.5])
 def test_cache_requires_a_bounded_integer(invalid):
+    entry = workflow_entry(cache_ttl_seconds=invalid)
     with pytest.raises(ValidationError):
-        ManifestWorkflow.model_validate(workflow_entry(cache_ttl_seconds=invalid))
+        ManifestWorkflow.model_validate(entry)
 
 
 @pytest.mark.parametrize("extra,current_ttl,changed", CACHE_COMPARISON_CASES)
