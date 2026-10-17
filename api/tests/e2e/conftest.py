@@ -168,7 +168,11 @@ def e2e_client():
 
     Provides a configured httpx client for making requests to the API.
     """
-    with httpx.Client(base_url=E2E_API_URL, timeout=60.0) as client:
+    # Expire idle sockets before Uvicorn's five-second keepalive boundary.
+    # Sharing the same expiry races a server close against the next fixture
+    # write. Discard the idle connection; never retry an uncertain PUT/POST.
+    with httpx.Client(base_url=E2E_API_URL, timeout=60.0,
+                      limits=httpx.Limits(keepalive_expiry=1.0)) as client:
         yield _E2EClient(client)
 
 

@@ -39,15 +39,16 @@ import sys
 import time
 import uuid
 from contextlib import suppress
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from enum import Enum
 from queue import Empty
-from typing import Any, Awaitable, Callable
+from typing import TYPE_CHECKING, Any, Awaitable, Callable
 
 import psutil
 import redis.asyncio as redis
 
+from shared.execution_context import validate_execution_context
 from src.config import get_settings
 from src.services.execution_admission import (
     AdmissionOutcome,
@@ -60,10 +61,14 @@ from src.services.execution.fault_injection import (
 from src.core.cache.keys import TTL_ACTIVE_EXECUTION, active_execution_key
 from src.core.redis_client import ActiveExecution
 from src.models.contracts.notifications import NotificationCategory, NotificationCreate, NotificationStatus
+from src.services.execution.cpu_sampler import CPUSampler, get_clock_ticks
 from src.services.execution.memory_monitor import get_cgroup_memory, has_sufficient_memory_cgroup
 from src.services.execution.requirements_setup_result import RequirementsInstallResult
 from src.services.notification_service import get_notification_service
 from src.services.execution.template_process import TemplateProcess
+
+if TYPE_CHECKING:
+    from src.services.execution.worker_sdk_http import WorkerSdkHttpServer
 
 logger = logging.getLogger(__name__)
 
@@ -334,9 +339,12 @@ class ProcessHandle:
     result_reader_fd: int | None = None
     result_callback_failed: bool = False
     result_callback_diagnostics: dict[str, Any] | None = None
+    result_callback_lock: asyncio.Lock = field(default_factory=asyncio.Lock, repr=False)
     # Set for supervised service children (which live in service_processes).
     # None for one-shot workflow children.
     service: ServiceInfo | None = None
+    # CPU/RSS sampler for workflow children. None for service children.
+    cpu_sampler: CPUSampler | None = None
 
     @property
     def is_alive(self) -> bool:
@@ -519,6 +527,11 @@ class ProcessPoolManager:
         # Template process for fork-based workers
         self._template: TemplateProcess | None = None
 
+        # Worker-local engine SDK HTTP server (Gate A). Serves the existing
+        # SDK routes on a private Unix socket; children send ordinary HTTP
+        # requests to it. None until start(), None again after stop().
+        self._sdk_http: WorkerSdkHttpServer | None = None
+
         # Serializes drain_and_restart_template so concurrent package
         # installs don't race — the second call waits for the first to
         # finish rather than trying to fork while the template is down.
@@ -637,6 +650,10 @@ class ProcessPoolManager:
         ensure the pool has been started (and therefore _start_template
         has completed) before invoking this method.
 
+        Each child receives the worker-local engine SDK Unix socket path
+        (when the pool serves one) and makes ordinary HTTP requests over it;
+        no SDK/import/stream channel descriptors are created or returned.
+
         Returns:
             ProcessHandle for the new forked worker. State starts at BUSY
             because every fork is claimed by the routing caller.
@@ -658,6 +675,9 @@ class ProcessPoolManager:
         child_pid, work_queue, result_queue = self._template.fork(
             worker_id=process_id,
             persistent=False,
+            sdk_socket_path=(
+                self._sdk_http.socket_path if self._sdk_http is not None else None
+            ),
         )
 
         handle = ProcessHandle(
@@ -719,6 +739,21 @@ class ProcessPoolManager:
 
         # Start template process (loads deps, ready to fork)
         await self._start_template()
+
+        # Start the worker-local engine SDK HTTP server before any fork so
+        # every child is handed the socket path. The worker parent owns the
+        # pooled DB engine and the protected credentials; children make
+        # ordinary HTTP requests over this private socket instead of the
+        # network API.
+        from src.services.execution.worker_sdk_http import WorkerSdkHttpServer
+
+        sdk_http = WorkerSdkHttpServer()
+        try:
+            await sdk_http.start()
+        except BaseException:
+            await sdk_http.stop()
+            raise
+        self._sdk_http = sdk_http
 
         # Register in Redis
         await self._register_worker()
@@ -810,7 +845,8 @@ class ProcessPoolManager:
                         "duration_ms": int(exec_info.elapsed_seconds * 1000),
                         "attempt_token": exec_info.attempt_token,
                         "sync": exec_info.active_execution["sync"],
-                    }
+                    },
+                    handle=handle,
                 )
                 if not handle.result_reported:
                     failed_surrenders.append(exec_info.execution_id)
@@ -831,6 +867,12 @@ class ProcessPoolManager:
         if self._template is not None:
             self._template.shutdown()
             self._template = None
+
+        # Stop serving the worker-local SDK socket and remove it. Children
+        # are already dead, so no request can be in flight.
+        if self._sdk_http is not None:
+            await self._sdk_http.stop()
+            self._sdk_http = None
 
         # Unregister from Redis
         await self._unregister_worker()
@@ -945,6 +987,10 @@ class ProcessPoolManager:
         diagnostics, then sent with the execution ID to the forked child over
         its private work pipe.
 
+        The parent-owned context identity is validated before any side
+        effect: a malformed identity fails the dispatch loudly instead of
+        forking a child.
+
         Args:
             execution_id: Unique identifier for the execution
             context: Execution context sent to the child and retained in Redis
@@ -958,6 +1004,8 @@ class ProcessPoolManager:
         timeout = execution_timeout_from_context(
             context, self.execution_timeout_seconds
         )
+        # Fail closed before the Redis write or fork.
+        validate_execution_context(context)
 
         # Write context to Redis
         await self._write_context_to_redis(execution_id, context)
@@ -1040,14 +1088,25 @@ class ProcessPoolManager:
             # returns a handle already in BUSY.
             handle = self._fork_process()
 
+        started_at = datetime.now(timezone.utc)
+        context["workflow_deadline"] = (
+            (started_at + timedelta(seconds=timeout)).isoformat()
+            if timeout > 0 else None
+        )
         handle.current_execution = ExecutionInfo(
             execution_id=execution_id,
-            started_at=datetime.now(timezone.utc),
+            started_at=started_at,
             timeout_seconds=timeout,
             active_execution=active_execution,
             attempt_token=attempt_token,
         )
         handle.result_reported = False
+        if handle.pid is not None:
+            handle.cpu_sampler = CPUSampler(
+                pid=handle.pid,
+                clock_ticks=get_clock_ticks(),
+            )
+            handle.cpu_sampler.set_baseline(time.monotonic())
 
         if attempt_token:
             from src.services.execution.attempts import mark_attempt_running_token
@@ -1136,6 +1195,9 @@ class ProcessPoolManager:
                 on its next tick).
             MemoryError: Memory pressure rejects the fork.
         """
+        # Fail closed before forking, as with executions.
+        validate_execution_context(context)
+
         settings = get_settings()
         if not has_sufficient_memory_cgroup(threshold=settings.memory_pressure_threshold):
             raise MemoryError(
@@ -1156,6 +1218,9 @@ class ProcessPoolManager:
                 lease_token=lease_token,
                 graceful_shutdown_seconds=graceful_shutdown_seconds,
             )
+            # Service children are not workflow executions; CPU sampling is
+            # scoped to workflow children only.
+            handle.cpu_sampler = None
             # Service children live under service-slot accounting, not the
             # workflow pool.
             del self.processes[handle.id]
@@ -1313,6 +1378,7 @@ class ProcessPoolManager:
 
                 await self._check_timeouts()
                 await self._check_process_health()
+                self._sample_resources()
 
                 # Periodic stale queue cleanup
                 now = _time.monotonic()
@@ -1329,6 +1395,32 @@ class ProcessPoolManager:
             await asyncio.sleep(1.0)
 
         logger.info("Monitor loop stopped")
+
+    def _sample_resources(self) -> None:
+        """Sample CPU and RSS for BUSY workflow children.
+
+        Runs synchronously inside the monitor loop. A /proc read per running
+        child per second is acceptable; missing or unreadable entries are
+        ignored so telemetry never blocks completion.
+        """
+        now = time.monotonic()
+        for handle in self.processes.values():
+            if handle.state != ProcessState.BUSY:
+                continue
+            if handle.service is not None:
+                continue
+            sampler = handle.cpu_sampler
+            if sampler is None:
+                if handle.pid is None:
+                    continue
+                sampler = CPUSampler(pid=handle.pid, clock_ticks=get_clock_ticks())
+                sampler.set_baseline(now)
+                handle.cpu_sampler = sampler
+                continue
+            try:
+                sampler.sample(now)
+            except Exception as e:
+                logger.debug(f"Resource sample failed for {handle.id}: {e}")
 
     async def _check_timeouts(self) -> None:
         """
@@ -1401,6 +1493,25 @@ class ProcessPoolManager:
                 pass
             handle.process.join(timeout=1)
 
+    def _attach_resource_peaks(self, handle: ProcessHandle, result: dict[str, Any]) -> None:
+        """Attach this execution's sampled CPU and process memory peaks."""
+        sampler = handle.cpu_sampler
+        if sampler is None:
+            return
+        # A final sample captures short runs that finish between monitor ticks.
+        sampler.sample(time.monotonic())
+        if sampler.peak_cpu_cores is None and sampler.peak_process_rss_bytes is None:
+            return
+        metrics = result.setdefault("metrics", {})
+        if isinstance(metrics, dict):
+            if sampler.peak_cpu_cores is not None:
+                metrics["peak_cpu_cores"] = sampler.peak_cpu_cores
+            if sampler.peak_process_rss_bytes is not None:
+                metrics["peak_process_rss_bytes"] = max(
+                    metrics.get("peak_process_rss_bytes") or 0,
+                    sampler.peak_process_rss_bytes,
+                )
+
     async def _report_timeout(self, handle: ProcessHandle) -> None:
         """
         Report a timeout to the result callback.
@@ -1424,7 +1535,8 @@ class ProcessPoolManager:
                 "duration_ms": int(exec_info.elapsed_seconds * 1000),
                 "attempt_token": exec_info.attempt_token,
                 "sync": exec_info.active_execution["sync"],
-            }
+            },
+            handle=handle,
         )
 
     async def _cancel_listener_loop(self) -> None:
@@ -1800,7 +1912,8 @@ class ProcessPoolManager:
                 "duration_ms": int(exec_info.elapsed_seconds * 1000),
                 "attempt_token": exec_info.attempt_token,
                 "sync": exec_info.active_execution["sync"],
-            }
+            },
+            handle=handle,
         )
 
     async def _report_shutdown(self, handle: ProcessHandle) -> None:
@@ -1814,18 +1927,16 @@ class ProcessPoolManager:
         exec_info = handle.current_execution
         if self.on_result is None or exec_info is None:
             return
-        handle.result_reported = True
-        try:
-            await self.on_result(exec_info.attach_transport_metadata({
-                "type": "result",
-                "execution_id": exec_info.execution_id,
-                "success": False,
-                "error": "Execution interrupted by worker shutdown",
-                "error_type": "WorkerShutdown",
-                "duration_ms": int(exec_info.elapsed_seconds * 1000),
-            }))
-        except Exception as e:
-            logger.exception(f"Error reporting shutdown interruption: {e}")
+        result = exec_info.attach_transport_metadata({
+            "type": "result",
+            "execution_id": exec_info.execution_id,
+            "success": False,
+            "error": "Execution interrupted by worker shutdown",
+            "error_type": "WorkerShutdown",
+            "duration_ms": int(exec_info.elapsed_seconds * 1000),
+        })
+        result["attempt_token"] = exec_info.attempt_token
+        handle.result_reported = await self._deliver_result(result, handle=handle)
 
     async def _check_process_health(self) -> None:
         """
@@ -2023,7 +2134,8 @@ class ProcessPoolManager:
                 "execution_context": {
                     "result_persistence_failure": handle.result_callback_diagnostics
                 } if handle.result_callback_failed and handle.result_callback_diagnostics else None,
-            }
+            },
+            handle=handle,
         )
 
     async def _report_crash(self, handle: ProcessHandle) -> None:
@@ -2058,7 +2170,8 @@ class ProcessPoolManager:
                 "duration_ms": int(exec_info.elapsed_seconds * 1000),
                 "attempt_token": exec_info.attempt_token,
                 "sync": exec_info.active_execution["sync"],
-            }
+            },
+            handle=handle,
         )
 
     async def _deliver_result(
@@ -2074,25 +2187,32 @@ class ProcessPoolManager:
 
         if self.on_result is None:
             return False
-        for attempt in range(3):
-            try:
-                await self.on_result(result)
-                if handle is not None:
-                    handle.result_callback_diagnostics = None
-                return True
-            except Exception as exc:
-                if handle is not None:
-                    handle.result_callback_diagnostics = {
-                        "exception_class": type(exc).__name__[:80],
-                        "phase": "terminal_callback",
-                        "attempt_count": attempt + 1,
-                    }
-                logger.exception(
-                    "Result callback attempt %s/3 failed: %s", attempt + 1, exc
-                )
-                if attempt < 2:
-                    await asyncio.sleep(0.1 * (2**attempt))
-        return False
+        lock = handle.result_callback_lock if handle is not None else asyncio.Lock()
+        async with lock:
+            if handle is not None:
+                if handle.result_reported:
+                    return True
+                self._attach_resource_peaks(handle, result)
+            for attempt in range(3):
+                try:
+                    await self.on_result(result)
+                    if handle is not None:
+                        handle.result_callback_diagnostics = None
+                        handle.result_reported = True
+                    return True
+                except Exception as exc:
+                    if handle is not None:
+                        handle.result_callback_diagnostics = {
+                            "exception_class": type(exc).__name__[:80],
+                            "phase": "terminal_callback",
+                            "attempt_count": attempt + 1,
+                        }
+                    logger.exception(
+                        "Result callback attempt %s/3 failed: %s", attempt + 1, exc
+                    )
+                    if attempt < 2:
+                        await asyncio.sleep(0.1 * (2**attempt))
+            return False
 
     def _register_result_reader(self, handle: ProcessHandle) -> None:
         """Wake immediately when a one-shot child's result pipe is readable."""
@@ -2237,6 +2357,7 @@ class ProcessPoolManager:
         result: dict[str, Any],
     ) -> None:
         """Forward a service attempt outcome and free its service slot."""
+        self._unregister_result_reader(handle)
         callback_already_owned = handle.result_reported
         handle.result_reported = True
         handle.current_execution = None

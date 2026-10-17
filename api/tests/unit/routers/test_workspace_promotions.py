@@ -35,6 +35,7 @@ def _user():
         user_id=uuid4(),
         email="operator@example.test",
         name="Operator",
+        is_engine_token=False,
     )
 
 
@@ -209,6 +210,20 @@ def _retire_request() -> WorkspaceLiveRetireRequest:
         reason="retire production Live for rollback",
         acknowledgement="retire-live-workspace-release",
     )
+
+
+@pytest.mark.asyncio
+async def test_retirement_rejects_execution_transport_authority(monkeypatch) -> None:
+    service = MagicMock(side_effect=AssertionError("execution tokens cannot retire Live"))
+    monkeypatch.setattr(workspace_promotions, "WorkspaceReleaseRetirementService", service)
+    user = _user()
+    user.is_engine_token = True
+    with pytest.raises(HTTPException) as exc_info:
+        await workspace_promotions.retire_workspace_release(
+            _retire_request(), _ctx(), SimpleNamespace(), user
+        )
+    assert exc_info.value.status_code == 403
+    service.assert_not_called()
 
 
 @pytest.mark.asyncio

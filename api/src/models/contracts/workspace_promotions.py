@@ -406,6 +406,80 @@ class WorkspaceReleaseLockRetryRequest(BaseModel):
     failed_job_id: UUID
 
 
+class WorkflowRetirementNativeReference(BaseModel):
+    entity_type: str
+    id: str
+    organization_id: UUID | None
+    solution_id: UUID | None
+    reference_type: str | None = None
+
+
+class WorkflowRetirementConsumerInventory(BaseModel):
+    schema_version: Literal["bifrost.workflow-retirement-consumers/v1"]
+    native_callers: list[WorkflowRetirementNativeReference] = Field(max_length=8192)
+    accepted_work: list[WorkflowRetirementNativeReference] = Field(max_length=8192)
+    application_inventory_digest: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+    application_source_dist_review_required: Literal[True] = True
+    inventory_digest: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+
+
+class WorkspaceLiveRetirementRegistration(BaseModel):
+    """One Root row matching the existing retirement guard, including inactive rows."""
+
+    workflow_id: UUID
+    organization_id: UUID | None
+    path: str
+    function_name: str
+    is_active: bool
+    matched_by: list[Literal["governed_path", "effective_registration"]]
+    registration_hash: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+    retirement_evidence_id: str | None = Field(default=None, pattern=r"^sha256:[0-9a-f]{64}$")
+    consumer_inventory: WorkflowRetirementConsumerInventory
+
+
+class WorkspaceRegistrationRetirementReview(BaseModel):
+    """Exact obsolete row, with a separately reviewed external caller census.
+
+    Native inventory cannot prove absence of indirect Python, App or external
+    callers. The supplied review is a human cutover gate, never inferred from
+    a zero native caller count or from repository evidence alone.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    workflow_id: UUID
+    expected_registration_hash: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+    expected_consumer_inventory_digest: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+    reviewed_external_callers_digest: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+    review_reference: str = Field(min_length=1, max_length=2000)
+    reason: str = Field(min_length=1, max_length=2000)
+
+    @model_validator(mode="after")
+    def validate_review(self):
+        if not self.review_reference.strip() or not self.reason.strip():
+            raise ValueError("retirement requires a review reference and reason")
+        return self
+
+
+class WorkspaceLiveRetirementInventory(BaseModel):
+    """A bounded read-only census, never an authorization to retire Live."""
+
+    schema_version: Literal["bifrost.workspace-release-retirement-inventory/v1"] = (
+        "bifrost.workspace-release-retirement-inventory/v1"
+    )
+    read_only: Literal[True] = True
+    state: Literal["live", "retired"] = "live"
+    observed_at: datetime
+    release_row_id: UUID
+    release_id: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+    artifact_id: UUID
+    organization_id: UUID
+    governed_manifest_id: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+    history_locked: bool
+    loose_registrations: list[WorkspaceLiveRetirementRegistration] = Field(max_length=1000)
+    unresolved_source_obligations: dict[str, int]
+
+
 class WorkspaceLiveRetireRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -414,11 +488,17 @@ class WorkspaceLiveRetireRequest(BaseModel):
     governed_manifest_id: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
     reason: str = Field(min_length=1, max_length=2000)
     acknowledgement: str
+    obsolete_registrations: list[WorkspaceRegistrationRetirementReview] = Field(
+        default_factory=list, max_length=1000,
+    )
 
     @model_validator(mode="after")
     def validate_acknowledgement(self):
         if self.acknowledgement != "retire-live-workspace-release":
             raise ValueError("acknowledgement must be retire-live-workspace-release")
+        ids = [item.workflow_id for item in self.obsolete_registrations]
+        if len(set(ids)) != len(ids):
+            raise ValueError("obsolete registration identities must be unique")
         return self
 
 

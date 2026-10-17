@@ -244,6 +244,14 @@ def _pin_from_deployment(
     )
     entity = _resolve_workflow_entity(resolution, workflow_id)
     definition = entity.definition
+    if "legacy_registration_name_evidence" in definition:
+        from src.services.solutions.source_revision import (
+            SolutionSourceRevisionError, require_legacy_registration_name,
+        )
+        try:
+            require_legacy_registration_name(json.loads(canonical_json(definition)))
+        except SolutionSourceRevisionError as exc:
+            raise DeploymentRuntimeError(str(exc)) from exc
     # Older manifests may carry parameter metadata, but their accepted work did
     # not include it in queue evidence. Only a new immutable contract opts in;
     # deploying this code must preserve those existing durable evidence hashes.

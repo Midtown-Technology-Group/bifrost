@@ -372,6 +372,8 @@ async def test_get_object_reads_download_stream_into_async_body(monkeypatch) -> 
     )
 
     class FakeStream:
+        properties = SimpleNamespace(etag='"raw-etag"')
+
         async def readall(self):
             return b"blob-bytes"
 
@@ -386,6 +388,7 @@ async def test_get_object_reads_download_stream_into_async_body(monkeypatch) -> 
     response = await client.get_object(Bucket="ignored", Key="docs/readme.txt")
 
     assert await response["Body"].read() == b"blob-bytes"
+    assert response["ETag"] == '"raw-etag"'
 
     response = await client.get_object(Bucket="ignored", Key="docs/readme.txt")
     async with response["Body"] as body:
@@ -920,3 +923,44 @@ async def test_download_response_headers_are_signed_through_storage_service(
         assert query["skoid"] == [key.signed_oid]
     else:
         client._service_client.get_user_delegation_key.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_conditional_put_preserves_exact_etag_and_match_condition(monkeypatch):
+    from azure.core import MatchConditions
+    client = _owned_client(_settings())
+    client._container_client = SimpleNamespace(upload_blob=AsyncMock())
+    await client.put_object(Bucket="ignored", Key="manifest.json", Body=b"manifest", IfMatch='"etag-1"')
+    options = client._container_client.upload_blob.await_args.kwargs
+    assert options["etag"] == '"etag-1"'
+    assert options["match_condition"] == MatchConditions.IfNotModified
+    assert options["overwrite"] is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("conditions", [{"IfMatch": ""}, {"IfNoneMatch": "other"}, {"IfMatch": "etag", "IfNoneMatch": "*"}])
+async def test_invalid_write_preconditions_do_not_reach_storage(conditions):
+    client = _owned_client(_settings())
+    client._container_client = SimpleNamespace(upload_blob=AsyncMock())
+    with pytest.raises(ValueError, match="preconditions"):
+        await client.put_object(Bucket="ignored", Key="manifest.json", Body=b"manifest", **conditions)
+    client._container_client.upload_blob.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("single_attempt", [False, True])
+async def test_publication_owner_disables_sdk_retries_and_preserves_nested_owner(monkeypatch, single_attempt):
+    created = []
+    class Service:
+        def __init__(self, account_url, **kwargs):
+            created.append(kwargs)
+        def get_container_client(self, name):
+            return SimpleNamespace(get_container_properties=AsyncMock(return_value={}))
+        async def close(self):
+            pass
+
+    _install_azure_blob_aio(monkeypatch, Service)
+    async with AzureBlobStorageClient(_settings()).get_client(single_attempt=single_attempt) as client:
+        assert await client.head_bucket(Bucket="files") == {}
+        assert len(created) == 1
+    assert created == [{"credential":"key", **({"retry_total": 0} if single_attempt else {})}]

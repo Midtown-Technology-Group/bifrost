@@ -8,8 +8,9 @@ from uuid import UUID, uuid4
 import pytest
 from fastapi.exceptions import RequestValidationError
 from fastapi.testclient import TestClient
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError as PydanticValidationError
 from sqlalchemy.exc import IntegrityError, OperationalError
+from sqlalchemy.exc import NoResultFound
 
 os.environ.setdefault("BIFROST_SECRET_KEY", "test-secret-key-for-main-app-unit-tests")
 
@@ -205,7 +206,11 @@ async def test_combined_lifespan_yields_without_mcp_lifespan(monkeypatch):
     assert yielded is True
 
 
-def _add_context_probe_route(captured: dict[str, Any]) -> str:
+def _add_context_probe_route(captured: dict[str, Any]) -> tuple[Any, str]:
+    from fastapi import FastAPI
+    from src.core.app_wiring import install_request_context_middleware
+    app = FastAPI()
+    install_request_context_middleware(app)
     path = f"/__unit/context/{uuid4().hex}"
 
     async def probe():
@@ -220,9 +225,8 @@ def _add_context_probe_route(captured: dict[str, Any]) -> str:
         )
         return {"ok": True}
 
-    main.app.add_api_route(path, probe, methods=["GET"])
-    main.app.router.routes.insert(0, main.app.router.routes.pop())
-    return path
+    app.add_api_route(path, probe, methods=["GET"])
+    return app, path
 
 
 def test_request_context_middleware_sets_user_session_and_audit_actor(
@@ -240,9 +244,9 @@ def test_request_context_middleware_sets_user_session_and_audit_actor(
         },
     )
     captured: dict[str, Any] = {}
-    path = _add_context_probe_route(captured)
+    app, path = _add_context_probe_route(captured)
 
-    response = TestClient(main.app).get(
+    response = TestClient(app).get(
         path,
         headers={
             "Authorization": "Bearer access-token",
@@ -281,9 +285,9 @@ def test_request_context_middleware_accepts_cookie_token_with_bad_uuid_claims(
         },
     )
     captured: dict[str, Any] = {}
-    path = _add_context_probe_route(captured)
+    app, path = _add_context_probe_route(captured)
 
-    client = TestClient(main.app)
+    client = TestClient(app)
     client.cookies.set("access_token", "cookie-token")
     response = client.get(path, headers={"User-Agent": "cookie-agent"})
 
@@ -306,9 +310,9 @@ def test_request_context_middleware_clears_context_after_decode_failure(
 
     monkeypatch.setattr("src.core.security.decode_token", fail_decode)
     captured: dict[str, Any] = {}
-    path = _add_context_probe_route(captured)
+    app, path = _add_context_probe_route(captured)
 
-    response = TestClient(main.app).get(
+    response = TestClient(app).get(
         path,
         headers={
             "Authorization": "Bearer broken-token",
@@ -490,10 +494,10 @@ async def test_request_validation_exception_handler_summarizes_fields():
 async def test_pydantic_validation_exception_handler_returns_field_details():
     handler = cast(
         Callable[[Any, Exception], Awaitable[Any]],
-        main.app.exception_handlers[main.PydanticValidationError],
+        main.app.exception_handlers[PydanticValidationError],
     )
     request = SimpleNamespace(method="POST", url=SimpleNamespace(path="/widgets"))
-    with pytest.raises(main.PydanticValidationError) as raised:
+    with pytest.raises(PydanticValidationError) as raised:
         _WidgetModel(count="many")
 
     response = await handler(request, raised.value)
@@ -540,11 +544,11 @@ async def test_integrity_exception_handler_classifies_constraint_errors(
 async def test_no_result_exception_handler_returns_not_found():
     handler = cast(
         Callable[[Any, Exception], Awaitable[Any]],
-        main.app.exception_handlers[main.NoResultFound],
+        main.app.exception_handlers[NoResultFound],
     )
     request = SimpleNamespace(method="GET", url=SimpleNamespace(path="/widgets/1"))
 
-    response = await handler(request, main.NoResultFound("missing"))
+    response = await handler(request, NoResultFound("missing"))
 
     assert response.status_code == 404
     assert b'"error":"not_found"' in response.body

@@ -397,6 +397,54 @@ it("preserves loaded role assignments in an existing-form patch without additive
 	expect(mockAssignRolesToForm).not.toHaveBeenCalled();
 });
 
+it("replaces dialog metadata when the edit route loads a different form", async () => {
+	const update = vi.fn().mockResolvedValue({ id: "form-2" });
+	mockUseUpdateForm.mockReturnValue({
+		mutateAsync: update,
+		isPending: false,
+	});
+	const { rerender, user } = renderWithProviders(<FormBuilder />);
+
+	await user.click(
+		screen.getByRole("button", { name: "Configure test form" }),
+	);
+
+	mockParams.mockReturnValue({ formId: "form-2" });
+	mockUseForm.mockReturnValue({
+		data: {
+			id: "form-2",
+			name: "Restricted intake",
+			description: "Second form",
+			workflow_id: "wf-2",
+			launch_workflow_id: null,
+			launch_workflow_parameters: [],
+			form_schema: {
+				fields: [{ name: "summary", label: "Summary", type: "text" }],
+			},
+			is_solution_managed: false,
+			access_level: "authenticated",
+			organization_id: "org-1",
+			default_launch_params: {},
+			role_ids: [],
+		},
+	});
+	rerender(<FormBuilder />);
+
+	await user.click(screen.getByRole("button", { name: "Save" }));
+
+	expect(update).toHaveBeenCalledWith(
+		expect.objectContaining({
+			params: { path: { form_id: "form-2" } },
+			body: expect.objectContaining({
+				name: "Restricted intake",
+				workflow_id: "wf-2",
+				access_level: "authenticated",
+				organization_id: "org-1",
+			}),
+		}),
+	);
+});
+
 it("returns to the originating solution after saving from a solution route", async () => {
 	mockLocation.mockReturnValue({ search: "?from=solution:solution-1" });
 	const update = vi.fn().mockResolvedValue({ id: "form-1" });

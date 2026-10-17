@@ -860,15 +860,22 @@ async def test_cancelling_worker_stops_active_child(
 @pytest.mark.asyncio
 async def test_settings_concurrency_override_replaces_policy_default(
     db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from src.jobs.platform.application_deploy import (
         ApplicationDeployPayload,
     )
     from src.services.kubernetes_execution import KubernetesExecutionService
 
+    # Claiming commits the remaining rows too. Keep them unavailable to the
+    # real stack scheduler while advancing only this test's eligibility clock.
+    available_at = datetime.now(timezone.utc) + timedelta(days=1)
+    claim_time = available_at + timedelta(days=1)
+    job_ids = []
+
     async def _enqueue_deploy() -> None:
         app_id = uuid4()
-        await enqueue_platform_job(
+        job, _ = await enqueue_platform_job(
             db_session,
             APPLICATION_DEPLOY_DEFINITION,
             ApplicationDeployPayload(
@@ -886,31 +893,236 @@ async def test_settings_concurrency_override_replaces_policy_default(
             title="Deploying Test",
             action_url=None,
         )
-
-    await db_session.execute(delete(PlatformJob))
-    await _enqueue_deploy()
-    await _enqueue_deploy()
+        job.available_at = available_at
+        job_ids.append(job.id)
+        await db_session.flush()
 
     service = KubernetesExecutionService(db_session)
-    await service.set_job_type_concurrency(
-        "application.deploy", 2, updated_by="test"
-    )
+    try:
+        await db_session.execute(delete(PlatformJob))
+        await _enqueue_deploy()
+        await _enqueue_deploy()
+        # Wall-clock claims cannot consume this test's queued jobs.
+        assert await scheduler.claim_platform_job() is None
+        monkeypatch.setattr(scheduler, "_now", lambda: claim_time)
+        await service.set_job_type_concurrency(
+            "application.deploy", 2, updated_by="test"
+        )
 
-    assert await scheduler.claim_platform_job() is not None
-    assert await scheduler.claim_platform_job() is not None
+        first = await scheduler.claim_platform_job()
+        second = await scheduler.claim_platform_job()
+        assert first is not None and second is not None
+        assert {first.id, second.id} == set(job_ids)
 
-    await db_session.execute(delete(PlatformJob))
-    await _enqueue_deploy()
-    await _enqueue_deploy()
-    await service.set_job_type_concurrency(
-        "application.deploy", 1, updated_by="test"
-    )
+        await db_session.execute(delete(PlatformJob).where(PlatformJob.id.in_(job_ids)))
+        await _enqueue_deploy()
+        await _enqueue_deploy()
+        await service.set_job_type_concurrency(
+            "application.deploy", 1, updated_by="test"
+        )
 
-    assert await scheduler.claim_platform_job() is not None
-    assert await scheduler.claim_platform_job() is None
+        claim = await scheduler.claim_platform_job()
+        assert claim is not None and claim.id in job_ids[-2:]
+        assert await scheduler.claim_platform_job() is None
+    finally:
+        # Claims commit settings and rows. Restore them even when an assertion
+        # fails, so the round-trip settings test cannot inherit this override.
+        await db_session.rollback()
+        await db_session.execute(delete(PlatformJob).where(PlatformJob.id.in_(job_ids)))
+        await service.set_job_type_concurrency(
+            "application.deploy", None, updated_by="test"
+        )
+        await db_session.commit()
 
-    # Restore the code default so later suites see a pristine state.
-    await service.set_job_type_concurrency(
-        "application.deploy", None, updated_by="test"
-    )
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "terminal_status", ["succeeded", "failed", "cancelled", "requires_action"]
+)
+@pytest.mark.parametrize("exits_cleanly", [False, True])
+async def test_parent_reconciles_terminal_projection_after_child_stops(
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    terminal_status: str,
+    exits_cleanly: bool,
+) -> None:
+    """A terminal DB commit must survive child loss before its Redis write."""
+    job = await _queued_job(db_session)
+    claim = await scheduler.claim_platform_job()
+    assert claim is not None
+    job.status = terminal_status
+    job.lease_token = None
+    job.lease_owner = None
+    job.lease_expires_at = None
+    job.heartbeat_at = None
+    job.completed_at = datetime.now(timezone.utc)
+    job.revision += 1
     await db_session.commit()
+
+    class Child:
+        returncode = None
+
+        async def wait(self):
+            if exits_cleanly:
+                self.returncode = 0
+                return 0
+            return await asyncio.Future()
+
+    child = Child()
+
+    async def terminate(process):
+        assert process is child
+        child.returncode = -15
+
+    monkeypatch.setattr(
+        scheduler.asyncio, "create_subprocess_exec", AsyncMock(return_value=child)
+    )
+    monkeypatch.setattr(scheduler, "HEARTBEAT_INTERVAL_SECONDS", 0.001)
+    monkeypatch.setattr(scheduler, "_terminate_runner", terminate)
+    published = []
+
+    async def project(current):
+        assert child.returncode is not None
+        published.append((current.id, current.status, current.revision))
+
+    monkeypatch.setattr(scheduler, "publish_platform_job_update", project)
+    loss = AsyncMock()
+    monkeypatch.setattr(scheduler, "_handle_runner_loss", loss)
+    assert await scheduler.run_claimed_platform_job(claim) is (terminal_status == "succeeded")
+    assert published == [(job.id, terminal_status, job.revision)]
+    loss.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("new_status", ["waiting", "queued", "running"])
+async def test_lost_old_lease_does_not_project_or_mutate_successor(
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    new_status: str,
+) -> None:
+    job = await _queued_job(db_session)
+    claim = await scheduler.claim_platform_job()
+    assert claim is not None
+    job.status = new_status
+    replacement_token = uuid4() if new_status == "running" else None
+    job.lease_token = replacement_token
+    if replacement_token is None:
+        job.lease_owner = None
+        job.lease_expires_at = None
+        job.heartbeat_at = None
+    job.revision += 1
+    await db_session.commit()
+
+    class Child:
+        returncode = None
+
+        async def wait(self):
+            await asyncio.Future()
+
+    child = Child()
+
+    async def terminate(process):
+        child.returncode = -15
+
+    monkeypatch.setattr(
+        scheduler.asyncio, "create_subprocess_exec", AsyncMock(return_value=child)
+    )
+    monkeypatch.setattr(scheduler, "HEARTBEAT_INTERVAL_SECONDS", 0.001)
+    monkeypatch.setattr(scheduler, "_terminate_runner", terminate)
+    project = AsyncMock()
+    loss = AsyncMock()
+    monkeypatch.setattr(scheduler, "publish_platform_job_update", project)
+    monkeypatch.setattr(scheduler, "_handle_runner_loss", loss)
+    assert await scheduler.run_claimed_platform_job(claim)
+    project.assert_not_awaited()
+    loss.assert_not_awaited()
+    await db_session.refresh(job)
+    assert job.status == new_status
+    assert job.lease_token == replacement_token
+
+
+@pytest.mark.asyncio
+async def test_terminal_projection_timeout_releases_lock_for_competing_retry(
+    async_session_factory: async_sessionmaker[AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    jobs = await _future_jobs(async_session_factory, 1)
+    job_id = jobs[0].id
+    async with async_session_factory() as db:
+        job = await db.get(PlatformJob, job_id)
+        assert job is not None
+        job.status = "succeeded"
+        job.completed_at = datetime.now(timezone.utc)
+        job.result = {"publication_verified": True}
+        await db.commit()
+
+    @asynccontextmanager
+    async def independent_context() -> AsyncGenerator[AsyncSession, None]:
+        async with async_session_factory() as db:
+            try:
+                yield db
+                await db.commit()
+            except BaseException:
+                await db.rollback()
+                raise
+
+    monkeypatch.setattr(scheduler, "get_db_context", independent_context)
+    entered = asyncio.Event()
+    cancelled = asyncio.Event()
+
+    async def stalled_projection(job):
+        entered.set()
+        try:
+            await asyncio.Future()
+        finally:
+            cancelled.set()
+
+    monkeypatch.setattr(scheduler, "publish_platform_job_update", stalled_projection)
+    # Use the real timeout scope but trigger expiry only once the independent
+    # competitor is queued; no wall-clock race or sleep decides the assertion.
+    original_timeout = asyncio.timeout
+    scopes = []
+
+    def controlled_timeout(seconds):
+        assert seconds == scheduler.TERMINAL_PROJECTION_TIMEOUT_SECONDS
+        scope = original_timeout(None)
+        scopes.append(scope)
+        return scope
+
+    monkeypatch.setattr(scheduler.asyncio, "timeout", controlled_timeout)
+
+    class ExitedChild:
+        returncode = 0
+
+    monkeypatch.setattr(
+        scheduler.asyncio, "create_subprocess_exec", AsyncMock(return_value=ExitedChild())
+    )
+    claim = scheduler.ClaimedPlatformJob(
+        id=job_id, lease_token=uuid4(), timeout_seconds=60, hard_memory_ratio=0.95,
+    )
+    running = asyncio.create_task(scheduler.run_claimed_platform_job(claim))
+    await asyncio.wait_for(entered.wait(), timeout=1)
+    attempted = asyncio.Event()
+    admitted = asyncio.Event()
+
+    async def competing_admission():
+        async with async_session_factory() as db:
+            attempted.set()
+            from sqlalchemy import select
+            current = (await db.execute(
+                select(PlatformJob).where(PlatformJob.id == job_id).with_for_update()
+            )).scalar_one()
+            assert cancelled.is_set()
+            assert current.status == "succeeded"
+            assert current.result == {"publication_verified": True}
+            admitted.set()
+            await db.commit()
+
+    competing = asyncio.create_task(competing_admission())
+    await asyncio.wait_for(attempted.wait(), timeout=1)
+    assert not admitted.is_set()
+    assert len(scopes) == 1
+    scopes[0].reschedule(asyncio.get_running_loop().time())
+    assert await asyncio.wait_for(running, timeout=1)
+    await asyncio.wait_for(competing, timeout=1)
+    assert cancelled.is_set() and admitted.is_set()

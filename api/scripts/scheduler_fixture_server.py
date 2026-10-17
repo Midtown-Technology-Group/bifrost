@@ -6,6 +6,7 @@ providers while remaining entirely inside the debug/test Compose network.
 
 from __future__ import annotations
 
+import html
 import json
 import shutil
 import signal
@@ -15,7 +16,6 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlencode, urlparse
-
 
 ROOT = Path(tempfile.gettempdir()) / "bifrost-scheduler-fixtures"
 WORK_REPO = ROOT / "solution-update-work"
@@ -254,9 +254,14 @@ class FixtureHandler(BaseHTTPRequestHandler):
     server_version = "BifrostSchedulerFixture/1.0"
 
     def _json(self, status: int, payload: object) -> None:
-        body = json.dumps(payload).encode()
+        # Preserve JSON values while preventing HTML interpretation by clients
+        # that ignore the content type of an error or reflected fixture value.
+        escaped = html.escape(json.dumps(payload), quote=False)
+        body = (escaped.replace("&lt;", "\\u003c").replace("&gt;", "\\u003e")
+                .replace("&amp;", "\\u0026")).encode()
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
+        self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
@@ -364,9 +369,12 @@ class FixtureHandler(BaseHTTPRequestHandler):
             if request.get("model") == "issue-890-agent":
                 time.sleep(0.05)
             if request.get("stream") is True:
-                body_bytes = encode_sse_events(chat_completion_stream_events(request))
+                body_bytes = (encode_sse_events(chat_completion_stream_events(request))
+                              .replace(b"<", b"\\u003c").replace(b">", b"\\u003e")
+                              .replace(b"&", b"\\u0026"))
                 self.send_response(200)
                 self.send_header("Content-Type", "text/event-stream")
+                self.send_header("X-Content-Type-Options", "nosniff")
                 self.send_header("Cache-Control", "no-cache")
                 self.send_header("Connection", "keep-alive")
                 self.send_header("Content-Length", str(len(body_bytes)))

@@ -1,4 +1,4 @@
-#:schema https://raw.githubusercontent.com/immanuwell/dockerfile-roast/5fbb9b5638e602796436f82fa683a290cc576c7a/schemas/droast.schema.json
+#:schema https://raw.githubusercontent.com/MTG-Thomas/dockerfile-roast/23ea8bf7c9d3ee65d6a0ccec3d76d4566591ad3c/schemas/droast.schema.json
 
 # Ring 0 is advisory: CI supplies --no-fail while findings are classified.
 # Keep the policy unsuppressed so analyzer limitations and accepted risks remain visible.

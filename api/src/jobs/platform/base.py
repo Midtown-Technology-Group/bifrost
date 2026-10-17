@@ -129,6 +129,7 @@ class PlatformJobDefinition:
     encrypt_payload: bool = False
     display_name: str | None = None
     description: str | None = None
+    readback_checkpoint_schema: str | None = None
 
     def __post_init__(self) -> None:
         from src.jobs.execution_policy import validate_platform_job_definition

@@ -6,13 +6,17 @@ from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
+from sqlalchemy.exc import IntegrityError
 
+from src.models.orm.workflows import Workflow
 from src.services.workflow_registration import (
     WorkspaceRegistrationCandidate,
     WorkflowRegistrationConflict,
+    add_workflow_registration,
     apply_workspace_registration_plan,
     list_active_workspace_workflows,
     plan_workspace_registrations,
+    resolve_workflow_registration_id,
     workspace_workflow_lookup_statement,
 )
 from src.services.workspace_release_registration_authority import (
@@ -103,7 +107,7 @@ async def test_plan_reports_create_and_preserve_in_stable_order():
         function_name="zeta",
     )
     db = SimpleNamespace(
-        execute=AsyncMock(side_effect=[_result(None), _result(existing)])
+        execute=AsyncMock(side_effect=[_result(None), _result(None), _result(existing)])
     )
 
     actions, diagnostics = await plan_workspace_registrations(
@@ -353,3 +357,118 @@ async def test_apply_rejects_changed_active_state(
             ],
             authority=WorkspaceRegistrationMutationAuthority.RELEASE_ACTIVATION,
         )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("requested", ["omitted", "retired", "fresh"])
+async def test_plan_rejects_retired_exact_registration_instead_of_reactivation_or_remint(requested):
+    retired = SimpleNamespace(id=uuid4(), is_active=False, organization_id=None,
+        path="features\\obsolete.py", function_name="run", retirement_evidence={})
+    requested_id = None if requested == "omitted" else str(retired.id if requested == "retired" else uuid4())
+    db = SimpleNamespace(execute=AsyncMock(return_value=_result(retired)))
+    actions, diagnostics = await plan_workspace_registrations(db, uuid4(), [
+        WorkspaceRegistrationCandidate(path=retired.path, function_name=retired.function_name,
+            workflow_type="workflow", name="Obsolete", requested_id=requested_id),
+    ])
+    assert actions == []
+    assert diagnostics[0]["source"] == "registry_identity"
+    assert "permanently retired" in diagnostics[0]["message"]
+    db.execute.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("planned_action", ["reactivate", "preserve", "create"])
+async def test_apply_rejects_retirement_that_occurred_after_preview_before_any_mutation(planned_action):
+    retired = SimpleNamespace(id=uuid4(), is_active=False, organization_id=None,
+        path="features\\obsolete.py", function_name="run", name="Original name",
+        type="workflow", retirement_evidence={})
+    db = SimpleNamespace(execute=AsyncMock(return_value=_result(retired)), flush=AsyncMock())
+    with pytest.raises(WorkflowRegistrationConflict, match="permanently retired"):
+        await apply_workspace_registration_plan(db, uuid4(), [{
+            "action": planned_action, "path": retired.path, "function_name": "run",
+            "type": "tool", "name": "Replacement", "requested_id": None,
+        }], authority=WorkspaceRegistrationMutationAuthority.RELEASE_ACTIVATION)
+    assert retired.is_active is False and retired.name == "Original name" and retired.type == "workflow"
+    db.flush.assert_not_awaited()
+    sql = str(db.execute.await_args.args[0].compile(compile_kwargs={"literal_binds": True}))
+    assert "FOR UPDATE" in sql
+
+
+@pytest.mark.asyncio
+async def test_portable_retired_uuid_is_rejected_from_stored_owner_even_for_another_path():
+    retired = SimpleNamespace(id=uuid4(), path="features\\obsolete.py", function_name="run",
+        retirement_evidence={})
+    execute = AsyncMock(return_value=_result(retired))
+    with pytest.raises(WorkflowRegistrationConflict, match="permanently retired"):
+        await resolve_workflow_registration_id(SimpleNamespace(execute=execute), str(retired.id), None)
+    assert execute.await_args.args[0].get_execution_options()["populate_existing"] is True
+
+
+@pytest.mark.asyncio
+async def test_distinct_canonical_registration_survives_a_retired_backslash_duplicate():
+    survivor = SimpleNamespace(id=uuid4(), is_active=True, organization_id=None,
+        path="features/obsolete.py", function_name="run", name="Surviving registration",
+        type="workflow", retirement_evidence=None)
+    db = SimpleNamespace(execute=AsyncMock(return_value=_result(survivor)), flush=AsyncMock())
+    actions, diagnostics = await plan_workspace_registrations(db, uuid4(), [
+        WorkspaceRegistrationCandidate(path=survivor.path, function_name="run",
+            workflow_type="workflow", name=survivor.name),
+    ])
+    assert diagnostics == [] and actions[0]["action"] == "preserve"
+    applied = await apply_workspace_registration_plan(db, uuid4(), actions,
+        authority=WorkspaceRegistrationMutationAuthority.RELEASE_ACTIVATION)
+    assert applied[0]["workflow_id"] == str(survivor.id) and survivor.is_active is True
+    for call in db.execute.await_args_list:
+        sql = str(call.args[0].compile(compile_kwargs={"literal_binds": True}))
+        assert "workflows.path = 'features/obsolete.py'" in sql
+        assert "replace(" not in sql and "ltrim(" not in sql
+
+
+@pytest.mark.asyncio
+async def test_remint_collision_reads_retained_exact_identity_and_reports_retirement():
+    retired = SimpleNamespace(id=uuid4(), path="features\\obsolete.py", function_name="run",
+        retirement_evidence={})
+    replacement = Workflow(id=uuid4(), path=retired.path, function_name="run", name="New UUID",
+        organization_id=None, solution_id=None, is_active=True)
+    db = _RegistrationDB()
+    db.execute = AsyncMock(side_effect=[_result(None), _result(retired)])
+    db.flush = AsyncMock(side_effect=IntegrityError("INSERT workflows", {}, RuntimeError("duplicate key")))
+    with pytest.raises(WorkflowRegistrationConflict, match="permanently retired"):
+        await add_workflow_registration(db, replacement, None)
+    sql = str(db.execute.await_args.args[0].compile(compile_kwargs={"literal_binds": True}))
+    assert "workflows.path = 'features\\obsolete.py'" in sql
+    assert "workflows.solution_id IS NULL" in sql
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("candidate_path", [
+    "features/obsolete.py", "/features/obsolete.py", "\\features\\obsolete.py",
+])
+async def test_plan_rejects_fresh_uuid_alias_when_no_exact_row_exists(candidate_path):
+    organization_id = uuid4()
+    retired = SimpleNamespace(id=uuid4(), path="features\\obsolete.py", function_name="run",
+        organization_id=organization_id, retirement_evidence={})
+    execute = AsyncMock(side_effect=[_result(None), _result(retired)])
+    actions, diagnostics = await plan_workspace_registrations(SimpleNamespace(execute=execute),
+        organization_id, [WorkspaceRegistrationCandidate(path=candidate_path,
+            function_name="run", workflow_type="workflow", name="Fresh UUID alias")])
+    assert actions == [] and "permanently retired" in diagnostics[0]["message"]
+    sql = str(execute.await_args.args[0].compile(compile_kwargs={"literal_binds": True}))
+    assert "ltrim(replace(workflows.path," in sql and "= 'features/obsolete.py'" in sql
+    assert "workflows.function_name = 'run'" in sql
+    assert str(organization_id).replace("-", "") in sql.replace("-", "")
+
+
+@pytest.mark.asyncio
+async def test_add_registration_rejects_alias_remint_before_insert():
+    retired = SimpleNamespace(id=uuid4(), path="features\\obsolete.py", function_name="run",
+        organization_id=None, retirement_evidence={})
+    fresh = Workflow(id=uuid4(), path="/features/obsolete.py", function_name="run",
+        organization_id=None, solution_id=None, name="Fresh alias", is_active=True)
+    execute = AsyncMock(return_value=_result(retired))
+    db = SimpleNamespace(execute=execute, begin_nested=AsyncMock(), add=AsyncMock(), flush=AsyncMock())
+    with pytest.raises(WorkflowRegistrationConflict, match="permanently retired"):
+        await add_workflow_registration(db, fresh, None)
+    db.begin_nested.assert_not_called()
+    db.add.assert_not_called()
+    db.flush.assert_not_awaited()

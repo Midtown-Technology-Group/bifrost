@@ -7,13 +7,15 @@ from uuid import uuid4
 
 import pytest
 
-from src.services.solution_source_accountability import SourceConsumer, completion_for_source, supersession_for_source, has_untracked_root_reads
+from src.services.solution_source_accountability import AppSourceConsumer, SourceConsumer, completion_for_source, supersession_for_source, has_untracked_root_reads
 
 NOW = datetime(2026, 10, 1, tzinfo=UTC)
 SHA, TREE, HASH = "a" * 40, "b" * 40, "c" * 64
 PATH = "features/fixture.py"
 RECIPE = "config/solution-delivery/fixture.json"
 REGISTRY = "config/solution-delivery/installations.json"
+APP_PATH = "apps/fixture/page.tsx"
+APP_RECIPE = "config/app-delivery/fixture.json"
 
 
 def record(paths=None, **changes):
@@ -160,3 +162,112 @@ def test_registry_requires_each_exact_install_scope_recipe_and_current_commit():
     assert decide(declaration, [first, second]) is not None
     assert decide(declaration, [first, replace(second, organization_id=None)]) is None
     assert decide(declaration, [first, replace(second, proof={**second.proof, "commit_sha": "f" * 40})]) is None
+
+
+def test_solution_receipt_cannot_settle_registry_with_unproven_app_enrollment():
+    registry = {"path": REGISTRY, "target": "production", "installations": {
+        "install": {"organization_id": None, "recipe_path": RECIPE}},
+        "application_recipes": ["config/app-delivery/fixture.json"]}
+    current = consumer(proof={**consumer().proof, "control_hashes": {REGISTRY: HASH},
+        "installation_registry": registry})
+    assert decide(record({REGISTRY: HASH}), [current]) is None
+    # The existing Solution-only completion remains supported.
+    registry.pop("application_recipes")
+    assert decide(record({REGISTRY: HASH}), [current]) is not None
+
+
+def app_consumer(**changes):
+    return replace(AppSourceConsumer("app", "original-publication", "org", "sha256:" + "d" * 64,
+        "sha256:" + "e" * 64, {"entry.js": "sha256:" + "f" * 64},
+        {APP_PATH: {"page.tsx": HASH}}, {"commit_sha": SHA, "tree_sha": TREE,
+            "artifact_digest": "sha256:" + "e" * 64, "recipe_path": APP_RECIPE,
+            "control_hashes": {APP_RECIPE: HASH}}), **changes)
+
+
+def test_app_completion_preserves_original_publication_and_compiled_runtime_identity():
+    evidence = decide(record({APP_PATH: HASH, APP_RECIPE: HASH}), [app_consumer()])
+    assert evidence["schema_version"] == "bifrost.package-owned-source-completion/v1"
+    binding = evidence["paths"][APP_PATH]["consumers"][0]
+    assert binding["publication_job_id"] == "original-publication"
+    assert binding["compiled_output_sha256"] == {"entry.js": "sha256:" + "f" * 64}
+    assert binding["authored_source_sha256"] == {"page.tsx": HASH}
+    assert "solution_id" not in binding and "deployment_id" not in binding
+    anchor = evidence["paths"][APP_RECIPE]["protected_git_anchors"][0]
+    assert anchor["runtime_pin_hash"] == app_consumer().runtime_pin_hash
+    assert "receipt_id" not in anchor and "deployment_id" not in anchor
+
+
+def test_solution_resource_copy_cannot_replace_app_publication():
+    resource = consumer(sources={APP_PATH: {"copied.tsx": HASH}})
+    assert decide(record({APP_PATH: HASH}), [resource]) is None
+    old = app_consumer(proof={**app_consumer().proof, "commit_sha": "f" * 40})
+    assert decide(record({APP_PATH: HASH}), [resource, old]) is None
+
+
+@pytest.mark.parametrize("fault", ["changed_bytes", "missing_recipe", "old_commit", "old_tree", "not_admitting"])
+def test_app_debt_stays_open_without_exact_publication_proof(fault):
+    current = app_consumer()
+    if fault == "changed_bytes":
+        current = replace(current, sources={APP_PATH: {"page.tsx": "f" * 64}})
+    elif fault == "missing_recipe":
+        current = replace(current, proof={**current.proof, "control_hashes": {}})
+    elif fault in {"old_commit", "old_tree"}:
+        field = "commit_sha" if fault == "old_commit" else "tree_sha"
+        current = replace(current, proof={**current.proof, field: "f" * 40})
+    else:
+        current = replace(current, admission=False)
+    assert decide(record({APP_PATH: HASH, APP_RECIPE: HASH}), [current]) is None
+
+
+def mixed_consumers():
+    registry = {"path": REGISTRY, "target": "production", "installations": {
+        "install": {"organization_id": None, "recipe_path": RECIPE, "package_subpaths": []}},
+        "application_recipes": [APP_RECIPE]}
+    first = consumer(proof={**consumer().proof, "control_hashes": {RECIPE: HASH, REGISTRY: HASH},
+        "installation_registry": registry})
+    app_registry = {**registry, "installations": {
+        key: {field: value[field] for field in ("organization_id", "recipe_path")}
+        for key, value in registry["installations"].items()}}
+    second = app_consumer(proof={**app_consumer().proof,
+        "control_hashes": {APP_RECIPE: HASH, REGISTRY: HASH}, "package_registry_requirements": app_registry})
+    return first, second
+
+
+def test_registry_needs_all_solution_and_app_targets_at_the_same_protected_commit():
+    first, second = mixed_consumers()
+    declaration = record({REGISTRY: HASH})
+    assert decide(declaration, [first]) is None
+    assert decide(declaration, [second]) is None
+    assert decide(declaration, [first, second]) is not None
+    assert decide(record(), [first]) is not None  # App work does not block an unrelated Solution path.
+    assert decide(declaration, [first, replace(second, proof={**second.proof, "tree_sha": "f" * 40})]) is None
+
+
+@pytest.mark.parametrize("fault", ["scope", "target", "recipe", "registry_hash", "missing_app"])
+def test_mixed_registry_cannot_borrow_proof_from_another_scope_or_target(fault):
+    first, second = mixed_consumers()
+    required = second.proof["package_registry_requirements"]
+    if fault == "scope":
+        required["installations"]["install"]["organization_id"] = "org"
+    elif fault == "target":
+        required["target"] = "canary"
+    elif fault == "recipe":
+        second = replace(second, proof={**second.proof, "recipe_path": "config/app-delivery/other.json"})
+    elif fault == "registry_hash":
+        second = replace(second, proof={**second.proof, "control_hashes": {REGISTRY: "f" * 64}})
+    else:
+        required["application_recipes"].append("config/app-delivery/missing.json")
+    assert decide(record({REGISTRY: HASH}), [first, second]) is None
+
+
+def test_app_revert_supersession_requires_verified_ancestry_and_distinct_original_job():
+    latest = app_consumer(proof={**app_consumer().proof, "commit_sha": "e" * 40,
+        "ancestor_commit_shas": [SHA]})
+    old = record({APP_PATH: HASH})
+    evidence = supersession_for_source(old, [latest], loose_hashes={}, uncertain_loose=False, verified_at=NOW)
+    assert evidence["schema_version"] == "bifrost.package-owned-source-supersession/v1"
+    assert evidence["ancestor_attestation_publication_job_id"] == "original-publication"
+    assert "ancestor_attestation_deployment_id" not in evidence
+    assert evidence["readback"]["source_commit_sha"] == "e" * 40
+    unknown = replace(latest, proof={**latest.proof, "ancestor_commit_shas": []})
+    assert supersession_for_source(old, [unknown], loose_hashes={}, uncertain_loose=False, verified_at=NOW) is None

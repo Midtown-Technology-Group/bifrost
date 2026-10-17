@@ -38,6 +38,7 @@ async def test_batch_upsert_rolls_back_and_409s_on_guarded_count_mismatch(monkey
         name="bulk_race",
         organization_id=None,
         solution_id=None,
+        access=None,
     )
     db = _FakeDb()
     user = UserPrincipal(
@@ -103,6 +104,7 @@ async def test_batch_documents_invalidates_table_once_after_commit(monkeypatch):
         name="batch_events",
         organization_id=None,
         solution_id=None,
+        access=None,
     )
     db = _FakeDb()
     user = UserPrincipal(
@@ -198,6 +200,7 @@ async def test_batch_documents_does_not_invalidate_for_conflict_only_no_change(m
         name="batch_no_change",
         organization_id=None,
         solution_id=None,
+        access=None,
     )
     db = _FakeDb()
     user = UserPrincipal(
@@ -268,6 +271,7 @@ async def test_batch_delete_documents_invalidates_table_once_after_commit(monkey
         name="batch_delete_events",
         organization_id=None,
         solution_id=None,
+        access=None,
     )
     db = _FakeDb()
     user = UserPrincipal(
@@ -368,6 +372,7 @@ async def test_batch_delete_documents_does_not_invalidate_noop(monkeypatch):
         name="batch_delete_noop",
         organization_id=None,
         solution_id=None,
+        access=None,
     )
     db = _FakeDb()
     user = UserPrincipal(

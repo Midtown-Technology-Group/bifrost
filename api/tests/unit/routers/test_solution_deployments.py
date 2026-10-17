@@ -193,10 +193,11 @@ async def test_github_identity_cannot_read_admin_pointer_or_supply_uploaded_byte
         prefix = f"/api/solutions/{uuid4()}/deployments"
         response = await client.get(prefix + "/active", headers={"Authorization": "Bearer " + token})
         assert response.status_code == 401
-        for operation in ("candidate", "preflight", "activate"):
-            response = await client.post(prefix + f"/{uuid4()}/workflow-revision/{operation}",
-                headers={"Authorization": "Bearer " + token}, json=_workflow_revision_request().model_dump(mode="json"))
-            assert response.status_code == 401
+        for family in ("workflow-revision", "initial-workflow", "repo-workflow-adoption"):
+            for operation in ("candidate", "preflight", "activate"):
+                response = await client.post(prefix + f"/{uuid4()}/{family}/{operation}",
+                    headers={"Authorization": "Bearer " + token}, json=_workflow_revision_request().model_dump(mode="json"))
+                assert response.status_code == 401
         response = await client.post(prefix + "/github-source", headers={
             "Authorization": "Bearer " + token, "X-GitHub-Job-Token": "ephemeral-job-token"}, json={
             "source_commit_sha": "a" * 40, "ci_run_id": 1, "ci_run_attempt": 1,
@@ -247,6 +248,9 @@ def test_solution_deployment_openapi_exposes_minimal_cs_surface():
     assert set(paths[f"{item}/initial-workflow/candidate"]) >= {"post"}
     assert set(paths[f"{item}/initial-workflow/preflight"]) >= {"post"}
     assert set(paths[f"{item}/initial-workflow/activate"]) >= {"post"}
+    assert set(paths[f"{item}/repo-workflow-adoption/candidate"]) >= {"post"}
+    assert set(paths[f"{item}/repo-workflow-adoption/preflight"]) >= {"post"}
+    assert set(paths[f"{item}/repo-workflow-adoption/activate"]) >= {"post"}
     create_schema = paths[base]["post"]["requestBody"]["content"]["application/json"][
         "schema"
     ]

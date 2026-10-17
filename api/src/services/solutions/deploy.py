@@ -24,19 +24,24 @@ and are added in their sub-plans.
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
+import hashlib
 import logging
 from pathlib import Path
+from time import perf_counter
 from typing import TYPE_CHECKING, Any
 from uuid import UUID, uuid4, uuid5
 
 from pydantic import ValidationError
 from sqlalchemy import delete, insert, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
+from src.jobs.platform.base import PlatformJobCancelled
 from src.models.contracts.events import EventCriteria
 from src.models.orm.agents import Agent, AgentRole
 from src.models.orm.events import (
@@ -63,6 +68,50 @@ logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from src.services.application_sdk_status import CurrentApplicationSdkMetadata
+    from src.services.solutions.package_git_source import VerifiedSolutionPackageSource
+
+SolutionDeployProgressCallback = Callable[[str, float], Awaitable[None]]
+SolutionDeployTimingCallback = Callable[[str, int], Awaitable[None]]
+
+
+@dataclass(frozen=True)
+class SolutionDeployInstrumentation:
+    """Optional bounded observation hooks for one deploy execution.
+
+    The deployer uses this only to surface coarse progress and aggregate,
+    operator-safe timings. It never changes deploy control flow or persistence.
+    """
+
+    progress_callback: SolutionDeployProgressCallback | None = None
+    timing_callback: SolutionDeployTimingCallback | None = None
+
+    async def report(self, phase: str, percent: float) -> None:
+        if self.progress_callback is not None:
+            await self.progress_callback(phase, percent)
+
+    async def record_timing(self, category: str, elapsed_seconds: float) -> None:
+        if self.timing_callback is not None:
+            elapsed_ms = round(elapsed_seconds * 1000)
+            await self.timing_callback(category, elapsed_ms)
+
+
+_deploy_instrumentation: ContextVar[SolutionDeployInstrumentation | None] = ContextVar(
+    "solution_deploy_instrumentation", default=None
+)
+
+
+@contextmanager
+def solution_deploy_instrumentation(
+    instrumentation: SolutionDeployInstrumentation,
+):
+    """Scope optional observation hooks to one Solution deploy call chain."""
+
+    token = _deploy_instrumentation.set(instrumentation)
+    try:
+        yield
+    finally:
+        _deploy_instrumentation.reset(token)
+
 
 def _decode_logo(
     label: str, b64: str | None, content_type: str | None
@@ -182,7 +231,8 @@ async def _retry_idempotent(
 
     Raises :class:`SolutionFinalizeIncomplete` only if every attempt fails — a
     genuine storage outage, which a later deploy/sync still heals (the writes are
-    full-replace). Logs each retry so the blip is observable.
+    full-replace). Logs each retry so the blip is observable. Cancellation and
+    lease rejection propagate immediately without retry.
     """
     import asyncio
 
@@ -191,7 +241,10 @@ async def _retry_idempotent(
         try:
             await op()
             return
-        except Exception as exc:  # noqa: BLE001 - storage is the only failure here
+        except PlatformJobCancelled:
+            # Lease rejection/cancellation must never become another writer attempt.
+            raise
+        except Exception as exc:  # noqa: BLE001 - retry ordinary finalize failures
             last = exc
             if attempt < _FINALIZE_RETRIES:
                 logger.warning(
@@ -228,9 +281,25 @@ class CompiledSolutionAppDeployment:
     expected_old_deployment_id: UUID | None
     superseded_deployment_id: UUID | None
     dist: dict[str, bytes]
+    runtime_pin: dict[str, Any]
     sdk_metadata: CurrentApplicationSdkMetadata | None = None
     source_built: bool = False
     source_available: bool = False
+
+
+@dataclass(frozen=True)
+class PreparedSolutionDeployment:
+    """Transaction-local inputs for publication through the existing deployer.
+
+    The complete source bundle, remapped entity projection and compiled outputs
+    are retained so a reviewed package worker can stage them before committing
+    any publication pointer.
+    This is not durable intent, a runtime receipt, or permission to publish.
+    """
+
+    source_bundle: SolutionBundle = field(repr=False)
+    bundle: SolutionBundle = field(repr=False)
+    compiled_apps: tuple[CompiledSolutionAppDeployment, ...] = field(repr=False)
 
 
 @dataclass
@@ -263,6 +332,11 @@ class DeployResult:
     roles_created: list[str] = field(default_factory=list)
     finalize_s3: Callable[[], Awaitable[None]] = field(
         default=_noop_finalize, compare=False, repr=False
+    )
+    # Append without changing existing positional arguments or public counters.
+    # Raw source and compiled outputs are excluded from repr/equality transport.
+    prepared: PreparedSolutionDeployment | None = field(
+        default=None, compare=False, repr=False
     )
 
 
@@ -321,6 +395,7 @@ class SolutionDeployer:
 
     def __init__(self, db: AsyncSession):
         self.db = db
+        self._instrumentation = _deploy_instrumentation.get()
         # Accumulates role names auto-created during this deploy (see
         # _resolve_roles). Surfaced on DeployResult.roles_created.
         self._created_roles: set[str] = set()
@@ -331,6 +406,190 @@ class SolutionDeployer:
         force: bool = False,
         file_mode: str = "replace",
         source_artifact: bytes | Path | None = None,
+    ) -> DeployResult:
+        # Manual/legacy callers never obtain permission to replace an active
+        # immutable runtime. Only the reviewed package preparation entry below
+        # accepts an exact existing deployment as its base.
+        return await self._prepare_bundle(bundle, force, file_mode, source_artifact)
+
+    async def prepare_reviewed_package(
+        self,
+        source: VerifiedSolutionPackageSource,
+        *,
+        expected_active_deployment_id: UUID | None,
+        expected_controls_digest: str,
+    ) -> PreparedSolutionDeployment:
+        """Prepare the complete Git package in the caller's transaction.
+
+        This does not commit, upload, activate, or return the legacy mutable
+        finalizer. The package worker must stage immutable bytes and join the
+        Solution and App pointer switches in the same transaction. Existing
+        controls/resources are retained; deliberate control changes require a
+        separate reviewed contract, not a force switch.
+        """
+        import tempfile
+
+        from bifrost.solution_package_delivery import review_solution_package_source
+        from bifrost.workspace_release import canonical_digest
+        from src.services.solutions.package_controls import (
+            capture_package_controls,
+            require_preserved_package_controls,
+        )
+        from src.services.solutions.zip_install import _build_bundle, _parse_workspace, _safe_extract
+
+        evidence = source.evidence()
+        proof = evidence["package"]
+        prefix = source.authored.repo_subpath + "/"
+        modes = {item.path.removeprefix(prefix): item.mode for item in source.authored.source_files}
+        verified = review_solution_package_source(
+            proof["reviewed_recipe"], source.authored.files, modes,
+            source_commit_sha=source.authored.commit_sha,
+            source_tree_sha=source.authored.tree_sha,
+        )
+        if (
+            canonical_digest(evidence) != source.artifact_digest or verified != proof
+            or hashlib.sha256(source.source_archive).hexdigest() != proof["source_archive_sha256"]
+        ):
+            raise SolutionDeployConflict("Reviewed package source evidence differs")
+        sid = UUID(proof["solution_id"])
+        # A savepoint also rolls back metadata/role/shell preparation if the
+        # post-prepare control comparison fails and an outer caller catches it.
+        async with self.db.begin_nested():
+            solution = await self.db.scalar(
+                select(Solution).where(Solution.id == sid).with_for_update()
+                .execution_options(populate_existing=True)
+            )
+            if solution is None or (
+                str(solution.organization_id) if solution.organization_id is not None else None
+            ) != proof["organization_id"]:
+                raise SolutionDeployConflict("Reviewed package target/scope differs")
+            if solution.active_deployment_id != expected_active_deployment_id:
+                raise SolutionDeployConflict("Reviewed package base deployment changed")
+            before = await capture_package_controls(self.db, sid)
+            if canonical_digest(before) != expected_controls_digest:
+                raise SolutionDeployConflict("Reviewed package installed controls changed")
+            previous_workflows = list((await self.db.scalars(select(Workflow).where(
+                Workflow.solution_id == sid).options(selectinload(Workflow.roles)))).all())
+            previous_parameters = {row.id: row.parameters_schema for row in previous_workflows}
+            legacy_rows = [row for row in previous_workflows if isinstance(row.parameters_schema, list)]
+            if legacy_rows:
+                # Legacy list DTOs cannot prove a complete call contract. Read
+                # the existing install's actual source before preparing any
+                # replacement, using the same compiler as reviewed adoption.
+                from bifrost.solution_delivery_review import WorkflowRecipeError, compile_workflow_parameters
+                from src.services.file_storage.indexers.workflow import WorkflowIndexer
+
+                indexer = WorkflowIndexer(self.db)
+                immutable = solution.execution_runtime_mode == "deployment-v1"
+                resolution = None
+                immutable_storage = None
+                if immutable:
+                    from src.repositories.solution_deployments import SolutionDeploymentRepository
+                    from src.services.solutions.deployment_manifest import validate_runtime_closure
+                    from src.services.solutions.deployment_storage import SolutionDeploymentStorage
+
+                    base = await SolutionDeploymentRepository(self.db).get_runtime_closure(
+                        solution.active_deployment_id, solution.organization_id, sid,
+                    ) if solution.active_deployment_id else None
+                    if base is None or base.state != "active":
+                        raise SolutionDeployConflict("Legacy parameter runtime base is not active")
+                    try:
+                        manifest, resolution = validate_runtime_closure(
+                            base.compiled_manifest, base.resolution_map, base.dependencies,
+                            expected_manifest_hash=base.compiled_manifest_hash,
+                            expected_resolution_hash=base.resolution_map_hash,
+                        )
+                    except ValueError as exc:
+                        raise SolutionDeployConflict("Legacy parameter runtime closure differs") from exc
+                    immutable_storage = SolutionDeploymentStorage(sid, base.id)
+                    if await immutable_storage.read_compiled_manifest() != manifest.canonical_bytes():
+                        raise SolutionDeployConflict("Legacy parameter stored manifest differs")
+                elif solution.execution_runtime_mode != "repo-v1" or solution.active_deployment_id is not None:
+                    raise SolutionDeployConflict("Legacy parameter runtime mode/pointer differs")
+                storage = SolutionStorage(sid)
+                legacy_files: dict[str, bytes] = {}
+                for row in legacy_rows:
+                    try:
+                        entity = None
+                        if resolution is not None:
+                            from src.services.solutions.source_revision import _require_registration
+
+                            entity = next((item for item in resolution.workflows.values()
+                                           if item.resolved_id == row.id), None)
+                            if entity is None:
+                                raise ValueError("Legacy parameter runtime registration is missing")
+                            _require_registration(row, entity, allow_inactive=True)
+                        if row.path not in legacy_files:
+                            if resolution is None:
+                                legacy_files[row.path] = await storage.read(row.path,
+                                    max_bytes=10 * 1024 * 1024 - sum(len(raw) for raw in legacy_files.values()))
+                            else:
+                                from src.services.solutions.deployment_manifest import sha256_digest
+
+                                assert immutable_storage is not None
+                                reference = resolution.sources.get(row.path)
+                                if reference is None or reference.object_key != immutable_storage.runtime_prefix + row.path:
+                                    raise ValueError("Legacy parameter source reference differs")
+                                raw = await immutable_storage.read_runtime_file(row.path,
+                                    max_bytes=10 * 1024 * 1024 - sum(len(raw) for raw in legacy_files.values()))
+                                if sha256_digest(raw) != reference.content_hash:
+                                    raise ValueError("Legacy parameter immutable source differs")
+                                legacy_files[row.path] = raw
+                            if sum(len(raw) for raw in legacy_files.values()) > 10 * 1024 * 1024:
+                                raise SolutionDeployConflict("Legacy parameter source exceeds its review bound")
+                        previous_parameters[row.id] = compile_workflow_parameters(
+                            legacy_files[row.path], row.function_name, path=row.path, indexer=indexer,
+                        )
+                        if entity is not None:
+                            from src.services.solutions.deployment_manifest import canonical_json
+
+                            if canonical_json(previous_parameters[row.id]) != canonical_json(entity.definition.get("parameters_schema")):
+                                raise ValueError("Legacy parameter compiled contract differs from active runtime")
+                    except (FileNotFoundError, ValueError, WorkflowRecipeError) as exc:
+                        raise SolutionDeployConflict("Legacy workflow source cannot prove its parameter contract") from exc
+            with tempfile.TemporaryDirectory(prefix="bifrost-package-prepare-") as directory:
+                workspace = Path(directory)
+                _safe_extract(source.source_archive, directory)
+                preview = _parse_workspace(workspace)
+                if preview.requires_password or preview.slug != solution.slug:
+                    raise SolutionDeployConflict("Reviewed package identity or secret tier differs")
+                bundle = _build_bundle(solution, preview, workspace)
+                result = await self._prepare_bundle(
+                    bundle, source_artifact=source.source_archive,
+                    expected_active_deployment_id=expected_active_deployment_id,
+                    allow_reviewed_version_revert=True,
+                    reviewed_parameters=True,
+                )
+            await self.db.flush()
+            from src.services.solutions.workflow_revision import require_compatible_parameters
+            current_parameters = {identity: parameters for identity, parameters in (await self.db.execute(select(
+                Workflow.id, Workflow.parameters_schema,
+            ).where(Workflow.solution_id == sid))).all()}
+            for identity, parameters in previous_parameters.items():
+                if not isinstance(parameters, dict) or not isinstance(current_parameters.get(identity), dict):
+                    raise SolutionDeployConflict("Legacy workflow parameters require reviewed adoption before package delivery")
+                try:
+                    require_compatible_parameters(parameters, current_parameters[identity])
+                except ValueError as exc:
+                    raise SolutionDeployConflict(str(exc)) from exc
+            try:
+                require_preserved_package_controls(before, await capture_package_controls(self.db, sid))
+            except ValueError as exc:
+                raise SolutionDeployConflict(str(exc)) from exc
+            if result.prepared is None:
+                raise SolutionDeployConflict("Reviewed package preparation is incomplete")
+            return result.prepared
+
+    async def _prepare_bundle(
+        self,
+        bundle: SolutionBundle,
+        force: bool = False,
+        file_mode: str = "replace",
+        source_artifact: bytes | Path | None = None,
+        *,
+        expected_active_deployment_id: UUID | None = None,
+        allow_reviewed_version_revert: bool = False,
+        reviewed_parameters: bool = False,
     ) -> DeployResult:
         """Full-replace this install from ``bundle`` — DB phase + app COMPILE.
 
@@ -362,7 +621,7 @@ class SolutionDeployer:
             .where(Solution.id == sid)
             .with_for_update()
         )
-        if active_deployment_id is not None:
+        if active_deployment_id != expected_active_deployment_id:
             raise SolutionDeployConflict(
                 "Solution has an active immutable deployment; stage and review a "
                 "successor deployment before changing its workflows"
@@ -398,7 +657,11 @@ class SolutionDeployer:
         # ── Downgrade gate (Task 20) — before ANY writes ─────────────────────
         # An older bundle (both versions PEP 440-ordered) is refused unless
         # forced. Unparseable/absent versions are unordered and never block.
-        if not force and _is_downgrade(bundle.version, solution.version):
+        # Current protected Main is the publication authority for the reviewed
+        # package path, including a reviewed source revert with a lower version.
+        # This exemption affects only version ordering; CAS, scope, resource and
+        # control checks remain required. Manual deployment keeps its force gate.
+        if not force and not allow_reviewed_version_revert and _is_downgrade(bundle.version, solution.version):
             raise SolutionDowngradeBlocked(
                 f"bundle version {bundle.version} is older than installed "
                 f"{solution.version}; re-run with force to downgrade"
@@ -425,7 +688,7 @@ class SolutionDeployer:
             raise SolutionWorkflowNameMismatch("\n".join(name_errors))
 
         # ── DB-only phase (validates + reconciles; rolls back cleanly) ───────
-        await self._upsert_workflows(solution, rb.workflows, rb.python_files)
+        await self._upsert_workflows(solution, rb.workflows, rb.python_files, reviewed_parameters=reviewed_parameters)
         await self._upsert_claims(solution, rb.claims)
         await self._upsert_tables(solution, rb.tables)
         builds = await self._upsert_apps(solution, rb.apps)
@@ -495,7 +758,13 @@ class SolutionDeployer:
 
         # ── COMPILE app dists to memory NOW (pre-commit) — a vite/npm failure
         #    raises here and rolls back the whole deploy, no S3 touched. ───────
-        compiled = await self._compile_app_dists(builds)
+        from src.services.solutions.app_runtime import source_archive_sha256
+
+        await self._report_phase("Compiling Solution applications", 50)
+        compiled = await self._compile_app_dists(
+            builds,
+            source_sha256=source_archive_sha256(source_artifact) if builds else "",
+        )
 
         # ── S3 phase, DEFERRED until after the caller's commit (cheap PUTs) ───
         # Every step is FULL-REPLACE (idempotent), so a transient storage blip is
@@ -505,21 +774,41 @@ class SolutionDeployer:
         # install runnable. Only an outage that survives all retries raises
         # SolutionFinalizeIncomplete — and even then a later deploy/sync heals it.
         async def _finalize_s3() -> None:
-            await _retry_idempotent(
-                "store source artifact", sid,
-                lambda: self._write_source_artifact(sid, source_artifact),
+            await self._report_phase("Storing Solution source archive", 67)
+            await self._timed(
+                "store_source_artifact",
+                lambda: _retry_idempotent(
+                    "store source artifact",
+                    sid,
+                    lambda: self._write_source_artifact(sid, source_artifact),
+                ),
             )
-            await _retry_idempotent(
-                "write python source", sid,
-                lambda: self._write_python(sid, rb.python_files),
+            await self._report_phase("Publishing Solution Python source", 70)
+            await self._timed(
+                "write_python_source",
+                lambda: _retry_idempotent(
+                    "write python source",
+                    sid,
+                    lambda: self._write_python(sid, rb.python_files),
+                ),
             )
-            await _retry_idempotent(
-                "upload app dists", sid,
-                lambda: self._upload_compiled_dists(compiled),
+            await self._report_phase("Uploading Solution applications", 90)
+            await self._timed(
+                "upload_app_dists",
+                lambda: _retry_idempotent(
+                    "upload app dists",
+                    sid,
+                    lambda: self._upload_compiled_dists(compiled),
+                ),
             )
-            await _retry_idempotent(
-                "sweep stale dist", sid,
-                lambda: self._delete_stale_app_dist(stale_app_dist),
+            await self._report_phase("Cleaning obsolete Solution artifacts", 97)
+            await self._timed(
+                "sweep_stale_dist",
+                lambda: _retry_idempotent(
+                    "sweep stale dist",
+                    sid,
+                    lambda: self._delete_stale_app_dist(stale_app_dist),
+                ),
             )
             # ── Bundle file sidecars (O1: no mirror-delete) ───────────────────
             # Write each sidecar that carries content_bytes.  Files absent from
@@ -529,7 +818,8 @@ class SolutionDeployer:
             # file (user may have modified it).
             if bundle.solution_files:
                 await _retry_idempotent(
-                    "write bundle file sidecars", sid,
+                    "write bundle file sidecars",
+                    sid,
                     lambda: self._write_bundle_files(
                         sid, bundle.solution_files, file_mode
                     ),
@@ -552,8 +842,29 @@ class SolutionDeployer:
             claims_deleted=claim_deleted,
             integrations_shell_created=shells_created,
             roles_created=sorted(self._created_roles),
+            prepared=PreparedSolutionDeployment(
+                source_bundle=bundle, bundle=rb, compiled_apps=tuple(compiled)
+            ),
             finalize_s3=_finalize_s3,
         )
+
+    async def _report_phase(self, phase: str, percent: float) -> None:
+        if self._instrumentation is not None:
+            await self._instrumentation.report(phase, percent)
+
+    async def _timed(
+        self,
+        category: str,
+        operation: Callable[[], Awaitable[None]],
+    ) -> None:
+        started_at = perf_counter()
+        try:
+            await operation()
+        finally:
+            if self._instrumentation is not None:
+                await self._instrumentation.record_timing(
+                    category, perf_counter() - started_at
+                )
 
     @staticmethod
     def _apply_readme(solution: Solution, bundle: Any) -> None:
@@ -817,36 +1128,51 @@ class SolutionDeployer:
             await storage.write(source_zip)
 
     async def _write_python(self, sid: UUID, python_files: dict[str, str]) -> None:
-        """Full-replace this install's Python source and keep the module cache
-        consistent.
-
-        get_module_sync reads Redis (keyed by the _solutions/{id}/ storage path)
-        BEFORE S3, so a plain S3 write would leave stale bytes cached for the
-        24h TTL and removed files would still resolve. So: write-through each
-        bundle file to Redis with fresh content, and delete (S3 + Redis) any
-        prior solution file absent from the new bundle (Codex P1).
-        """
+        """Full-replace source and cache using one operation-owned transport."""
         from src.core.module_cache import invalidate_module, set_module
 
-        storage = SolutionStorage(sid)
+        timings = {"runtime_source_storage": 0.0, "redis_module_cache": 0.0}
 
-        # Prior state: every file currently under this install's prefix.
-        prior = set(await storage.list(""))
-        new_rel = set(python_files.keys())
+        async def measure(
+            category: str, operation: Callable[[], Awaitable[Any]]
+        ) -> Any:
+            started_at = perf_counter()
+            try:
+                return await operation()
+            finally:
+                timings[category] += perf_counter() - started_at
 
-        for rel_path, content in python_files.items():
-            content_hash = await storage.write(rel_path, content.encode("utf-8"))
-            storage_key = storage._key(rel_path)  # _solutions/{id}/<rel>
-            # Write-through so the next execution reads the new bytes, not the
-            # 24h-TTL cache. Only .py files are import-cached.
-            if rel_path.endswith(".py"):
-                await set_module(storage_key, content, content_hash)
-
-        # Remove files dropped from the bundle (full replace of source).
-        for rel_path in prior - new_rel:
-            await storage.delete(rel_path)
-            if rel_path.endswith(".py"):
-                await invalidate_module(storage._key(rel_path))
+        try:
+            async with SolutionStorage(sid).operation() as storage:
+                prior = set(
+                    await measure("runtime_source_storage", lambda: storage.list(""))
+                )
+                new_rel = set(python_files)
+                for rel_path, content in python_files.items():
+                    content_hash = await measure(
+                        "runtime_source_storage",
+                        lambda: storage.write(rel_path, content.encode("utf-8")),
+                    )
+                    if rel_path.endswith(".py"):
+                        await measure(
+                            "redis_module_cache",
+                            lambda: set_module(
+                                storage._key(rel_path), content, content_hash
+                            ),
+                        )
+                for rel_path in prior - new_rel:
+                    await measure(
+                        "runtime_source_storage", lambda: storage.delete(rel_path)
+                    )
+                    if rel_path.endswith(".py"):
+                        await measure(
+                            "redis_module_cache",
+                            lambda: invalidate_module(storage._key(rel_path)),
+                        )
+        finally:
+            if self._instrumentation is not None:
+                for category, elapsed_seconds in timings.items():
+                    await self._instrumentation.record_timing(category, elapsed_seconds)
 
     # ── 2. Entity upserts (stamp solution_id + inherited scope) ──────────────
     async def _upsert_workflows(
@@ -854,6 +1180,8 @@ class SolutionDeployer:
         solution: Solution,
         workflows: list[dict[str, Any]],
         python_files: dict[str, str] | None = None,
+        *,
+        reviewed_parameters: bool = False,
     ) -> None:
         from bifrost.manifest import ManifestWorkflow
         from bifrost.manifest_codec import Destination
@@ -898,11 +1226,17 @@ class SolutionDeployer:
             if not isinstance(source, (str, bytes)):
                 source = source_files.get(mwf_model.path)
             if isinstance(source, (str, bytes)):
-                inferred_parameters = indexer.extract_parameters_from_source(
-                    source,
-                    mwf_model.function_name,
-                    path=mwf_model.path,
-                )
+                if reviewed_parameters:
+                    from bifrost.solution_delivery_review import compile_workflow_parameters
+
+                    inferred_parameters = compile_workflow_parameters(
+                        source.encode() if isinstance(source, str) else source,
+                        mwf_model.function_name, path=mwf_model.path, indexer=indexer,
+                    )
+                else:
+                    inferred_parameters = indexer.extract_parameters_from_source(
+                        source, mwf_model.function_name, path=mwf_model.path,
+                    )
                 if inferred_parameters is not None:
                     values["parameters_schema"] = inferred_parameters
             # Safe now: the id is either absent or already this install's.
@@ -1257,7 +1591,7 @@ class SolutionDeployer:
         return builds
 
     async def _compile_app_dists(
-        self, builds: list[dict[str, Any]]
+        self, builds: list[dict[str, Any]], *, source_sha256: str
     ) -> list[CompiledSolutionAppDeployment]:
         """PRE-COMMIT: compile each app's dist to memory (npm install + vite
         build, or a shipped prebuilt dist). This is the failure-prone step — a
@@ -1271,6 +1605,7 @@ class SolutionDeployer:
 
         from src.services.application_sdk_status import current_sdk_metadata
         from src.services.solutions.app_build import SolutionAppBuilder
+        from src.services.solutions.app_runtime import compiled_app_runtime_pin
 
         if not builds:
             return []
@@ -1319,6 +1654,14 @@ class SolutionDeployer:
                     expected_old_deployment_id=expected_old,
                     superseded_deployment_id=expected_old,
                     dist=dist,
+                    runtime_pin=compiled_app_runtime_pin(
+                        solution_id=b["solution_id"],
+                        application_id=b["app_id"],
+                        deployment_id=deployment_id,
+                        source_sha256=source_sha256,
+                        outputs=dist,
+                        source_built=source_built,
+                    ),
                     sdk_metadata=current_metadata if source_built else None,
                     source_built=source_built,
                     source_available={"package.json", "index.html"}.issubset(src_bytes),
@@ -1355,18 +1698,20 @@ class SolutionDeployer:
                     )
             raise
         try:
-            await self._activate_compiled_dists(compiled)
+            await self._report_phase("Activating Solution applications", 95)
+            await self._timed(
+                "app_activation_db", lambda: self._activate_compiled_dists(compiled)
+            )
         except Exception:
-            for item in compiled:
-                try:
-                    await builder.delete_deployment(item.app_id, item.deployment_id)
-                except Exception:  # noqa: BLE001 - best-effort cleanup before retry
-                    logger.warning(
-                        "failed to delete unactivated app deployment %s for app %s",
-                        item.deployment_id,
-                        item.app_id,
-                        exc_info=True,
-                    )
+            # The transaction may have committed before its acknowledgement was
+            # lost. Deleting these immutable outputs could remove the now-active
+            # App. Retain them for independent pointer/byte readback; an exception
+            # is not proof that activation rolled back.
+            logger.warning(
+                "Solution App activation outcome is unresolved; retaining uploaded "
+                "deployments for readback",
+                exc_info=True,
+            )
             raise
         for item in compiled:
             old = item.superseded_deployment_id
@@ -1391,71 +1736,88 @@ class SolutionDeployer:
         rebuild advanced the pointer since the DB reconciliation phase.
         """
         async with _solution_app_activation_db_context() as db:
-            app_ids = [item.app_id for item in compiled]
-            rows = (
-                await db.execute(
-                    select(
-                        Application.id,
-                        Application.solution_id,
-                        Application.active_deployment_id,
-                    ).where(Application.id.in_(app_ids))
+            await self._activate_compiled_dists_in_transaction(db, compiled)
+
+    async def _activate_compiled_dists_in_transaction(
+        self,
+        db: AsyncSession,
+        compiled: list[CompiledSolutionAppDeployment],
+    ) -> None:
+        """Apply the existing all-App CAS inside the caller's transaction.
+
+        A reviewed full-package worker can move the Solution pointer in this
+        same transaction after staging and verifying every immutable artifact.
+        This method never commits, uploads, or authorizes a package by itself.
+        Ordinary deploys keep their existing fresh-transaction wrapper above.
+        """
+        if not compiled:
+            return
+        app_ids = [item.app_id for item in compiled]
+        rows = (
+            await db.execute(
+                select(
+                    Application.id,
+                    Application.solution_id,
+                    Application.active_deployment_id,
+                ).where(Application.id.in_(app_ids))
+            )
+        ).all()
+        by_id = {row[0]: row for row in rows}
+        if len(by_id) != len(app_ids):
+            raise SolutionFinalizeIncomplete("solution app disappeared before activation")
+
+        solution_ids = {row[1] for row in rows}
+        if len(solution_ids) != 1:
+            raise SolutionFinalizeIncomplete("solution app ownership changed before activation")
+        solution_id = next(iter(solution_ids))
+        expected_solution_ids = {item.solution_id for item in compiled}
+        if solution_ids != expected_solution_ids:
+            raise SolutionFinalizeIncomplete("solution app ownership changed before activation")
+
+        for item in compiled:
+            row = by_id[item.app_id]
+            active = row[2]
+            if active == item.deployment_id:
+                continue
+            if active != item.expected_old_deployment_id:
+                raise SolutionFinalizeIncomplete(
+                    f"app {item.app_id} active deployment changed before activation"
                 )
-            ).all()
-            by_id = {row[0]: row for row in rows}
-            if len(by_id) != len(app_ids):
-                raise SolutionFinalizeIncomplete("solution app disappeared before activation")
 
-            solution_ids = {row[1] for row in rows}
-            if len(solution_ids) != 1:
-                raise SolutionFinalizeIncomplete("solution app ownership changed before activation")
-            solution_id = next(iter(solution_ids))
-            expected_solution_ids = {item.solution_id for item in compiled}
-            if solution_ids != expected_solution_ids:
-                raise SolutionFinalizeIncomplete("solution app ownership changed before activation")
-
-            for item in compiled:
-                row = by_id[item.app_id]
-                active = row[2]
-                if active == item.deployment_id:
-                    continue
-                if active != item.expected_old_deployment_id:
-                    raise SolutionFinalizeIncomplete(
-                        f"app {item.app_id} active deployment changed before activation"
+        now = datetime.now(timezone.utc)
+        for item in compiled:
+            meta = item.sdk_metadata
+            values = {
+                "active_deployment_id": item.deployment_id,
+                "deployed_at": now,
+                "sdk_package_version": meta.package_version if meta else None,
+                "sdk_fingerprint": meta.fingerprint if meta else None,
+                "sdk_contract_version": meta.contract_version if meta else None,
+                "sdk_built_at": now if meta else None,
+                "published_snapshot": {
+                    "deployed_by": "solution",
+                    "app_model": "standalone_v2",
+                    "sdk_source_available": item.source_available,
+                    "runtime_pin": item.runtime_pin,
+                },
+            }
+            result = await db.execute(
+                update(Application)
+                .where(
+                    Application.id == item.app_id,
+                    Application.solution_id == solution_id,
+                    (
+                        Application.active_deployment_id
+                        == item.expected_old_deployment_id
                     )
-
-            now = datetime.now(timezone.utc)
-            for item in compiled:
-                meta = item.sdk_metadata
-                values = {
-                    "active_deployment_id": item.deployment_id,
-                    "deployed_at": now,
-                    "sdk_package_version": meta.package_version if meta else None,
-                    "sdk_fingerprint": meta.fingerprint if meta else None,
-                    "sdk_contract_version": meta.contract_version if meta else None,
-                    "sdk_built_at": now if meta else None,
-                    "published_snapshot": {
-                        "deployed_by": "solution",
-                        "app_model": "standalone_v2",
-                        "sdk_source_available": item.source_available,
-                    },
-                }
-                result = await db.execute(
-                    update(Application)
-                    .where(
-                        Application.id == item.app_id,
-                        Application.solution_id == solution_id,
-                        (
-                            Application.active_deployment_id
-                            == item.expected_old_deployment_id
-                        )
-                        | (Application.active_deployment_id == item.deployment_id),
-                    )
-                    .values(**values)
+                    | (Application.active_deployment_id == item.deployment_id),
                 )
-                if result.rowcount != 1:
-                    raise SolutionFinalizeIncomplete(
-                        f"app {item.app_id} active deployment changed before activation"
-                    )
+                .values(**values)
+            )
+            if result.rowcount != 1:
+                raise SolutionFinalizeIncomplete(
+                    f"app {item.app_id} active deployment changed before activation"
+                )
 
     async def _delete_stale_app_dist(self, app_ids: set[UUID]) -> None:
         """S3 phase: delete the dist artifacts of apps reconciled away."""

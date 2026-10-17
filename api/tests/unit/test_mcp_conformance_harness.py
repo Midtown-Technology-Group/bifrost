@@ -67,10 +67,14 @@ def test_compose_and_test_runner_use_the_pinned_official_image() -> None:
     assert "^HTTP/1.1 401 Unauthorized$" in test_script
     assert "^www-authenticate: Bearer .*resource_metadata=" in test_script
     assert "grep -q '\"mcp:access\"'" in test_script
-    conformance_function = test_script.split("mcp_conformance() {", 1)[1].split(
+    conformance_entrypoint = test_script.split("\nmcp_conformance() {", 1)[1].split(
         "\n}\n", 1
     )[0]
-    assert "chmod 777" not in conformance_function
+    assert conformance_entrypoint.split() == ["prepare_mcp_conformance_image", "run_mcp_conformance", '"$@"']
+    conformance_function = test_script.split("\nrun_mcp_conformance() {", 1)[1].split(
+        "\n}\n", 1
+    )[0]
+    assert "chmod 777" not in conformance_entrypoint + conformance_function
     assert '--user "$(id -u):$(id -g)" mcp-conformance' in test_script
     assert "summarize_results.py" in conformance_function
     assert "conformance-junit.xml" in conformance_function

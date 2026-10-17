@@ -6,6 +6,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from fastapi.responses import JSONResponse
 
+from src.services.operation_catalog import operation_route
 from shared.models import CodexGatewayResponsesRequest
 
 from src.core.auth import CurrentActiveUser
@@ -97,7 +98,7 @@ def _oauth_account_response(record) -> CodexGatewayOAuthAccountRecord:
     "/api/codex-gateway/keys",
     response_model=CodexGatewayKeyCreateResponse,
     status_code=status.HTTP_201_CREATED,
-    operation_id="create_codex_gateway_key",
+    **operation_route("codexgateway.create_gateway_key"),
 )
 async def create_gateway_key(
     payload: CodexGatewayKeyCreateRequest,
@@ -146,7 +147,7 @@ async def create_gateway_key(
 @router.get(
     "/api/codex-gateway/keys",
     response_model=CodexGatewayKeyListResponse,
-    operation_id="list_codex_gateway_keys",
+    **operation_route("codexgateway.list_gateway_keys"),
 )
 async def list_gateway_keys(
     current_user: CurrentActiveUser,
@@ -164,7 +165,7 @@ async def list_gateway_keys(
 @router.delete(
     "/api/codex-gateway/keys/{key_id}",
     response_model=CodexGatewayKeyRecord,
-    operation_id="revoke_codex_gateway_key",
+    **operation_route("codexgateway.revoke_gateway_key"),
 )
 async def revoke_gateway_key(
     key_id: UUID,
@@ -196,7 +197,7 @@ async def revoke_gateway_key(
 
 @router.get(
     "/api/codex-gateway/oauth/status",
-    operation_id="get_codex_gateway_oauth_status",
+    **operation_route("codexgateway.get_oauth_status"),
 )
 async def get_oauth_status(
     current_user: CurrentActiveUser,
@@ -216,7 +217,7 @@ async def get_oauth_status(
 
 @router.post(
     "/api/codex-gateway/oauth/connect",
-    operation_id="start_codex_gateway_oauth_connect",
+    **operation_route("codexgateway.start_oauth_connect"),
 )
 async def start_oauth_connect(
     _current_user: CurrentActiveUser,
@@ -226,7 +227,7 @@ async def start_oauth_connect(
 
 @router.post(
     "/api/codex-gateway/oauth/import-auth-cache",
-    operation_id="import_codex_gateway_oauth_auth_cache",
+    **operation_route("codexgateway.import_oauth_auth_cache"),
 )
 async def import_oauth_auth_cache(
     payload: CodexGatewayOAuthImportRequest,
@@ -274,7 +275,7 @@ async def import_oauth_auth_cache(
 
 @router.delete(
     "/api/codex-gateway/oauth",
-    operation_id="disconnect_codex_gateway_oauth",
+    **operation_route("codexgateway.disconnect_oauth_account"),
 )
 async def disconnect_oauth_account(
     current_user: CurrentActiveUser,
@@ -303,9 +304,9 @@ async def disconnect_oauth_account(
 
 @router.post(
     "/api/v1/responses",
-    operation_id="create_codex_gateway_response_api",
+    **operation_route("codexgateway.create_response.post"),
 )
-@router.post("/v1/responses", operation_id="create_codex_gateway_response")
+@router.post("/v1/responses", **operation_route("codexgateway.create_response"))
 async def create_response(
     request: Request,
     payload: CodexGatewayResponsesRequest,

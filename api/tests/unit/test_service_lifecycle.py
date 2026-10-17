@@ -238,6 +238,7 @@ async def test_second_claim_blocked_while_live(db_session):
 async def test_concurrent_claims_yield_single_attempt(async_session_factory):
     """Two workers racing claim exactly one attempt (SKIP LOCKED + index)."""
     import asyncio
+    from datetime import timedelta
 
     async with async_session_factory() as setup:
         definition, wf = await _ensure(setup)
@@ -245,22 +246,36 @@ async def test_concurrent_claims_yield_single_attempt(async_session_factory):
         definition_id = definition.id
         workflow_id = wf.id
         org_id = definition.organization_id
+        # The stack's real worker also claims committed rows. Keep this service
+        # in backoff for wall-clock claimants; only the two test claimants use
+        # the explicit eligibility clock below.
+        claim_time = service_lifecycle._now() + timedelta(days=1)
+        definition.restart_eligible_at = claim_time
         await setup.commit()
 
     try:
+        async with async_session_factory() as background:
+            assert await service_lifecycle.claim_eligible_service(
+                background, worker_id="background-probe"
+            ) is None
+            await background.rollback()
+
         async def try_claim(worker_id):
             async with async_session_factory() as session:
                 try:
                     attempt = await service_lifecycle.claim_eligible_service(
-                        session, worker_id=worker_id
+                        session, worker_id=worker_id, now=claim_time
                     )
                     await session.commit()
                     return attempt.id if attempt else None
-                except Exception:
+                except service_lifecycle.ServiceClaimConflict:
                     await session.rollback()
                     return "conflict"
 
-        results = await asyncio.gather(try_claim("w1"), try_claim("w2"))
+        async with asyncio.TaskGroup() as claims:
+            first = claims.create_task(try_claim("w1"))
+            second = claims.create_task(try_claim("w2"))
+        results = [first.result(), second.result()]
         assert sorted([r is not None and r != "conflict" for r in results]) == [False, True]
 
         from sqlalchemy import func as sa_func
@@ -272,6 +287,10 @@ async def test_concurrent_claims_yield_single_attempt(async_session_factory):
                 )
             )
             assert total == 1
+            owner = await check.scalar(
+                select(ServiceAttempt.worker_id).where(ServiceAttempt.service_id == service_id)
+            )
+            assert owner in {"w1", "w2"}
     finally:
         # Committed rows survive db_session rollback: remove them so later
         # files (e.g. claim-loop completion counts) see a clean table.

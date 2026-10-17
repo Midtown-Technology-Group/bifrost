@@ -1,12 +1,20 @@
 // Run from any directory after installing client dependencies. See fixtures.md.
 const path = require('node:path');
 const fs = require('node:fs');
-const {chromium,expect}=require(path.resolve(__dirname, '../../../client/node_modules/@playwright/test'));
-const baseUrl = process.env.BIFROST_REVIEW_URL;
-const authPath = process.env.BIFROST_REVIEW_AUTH;
-const outputDir = process.env.BIFROST_REVIEW_OUTPUT || '/tmp/bifrost-design-review';
-if (!baseUrl || !authPath) throw new Error('Set BIFROST_REVIEW_URL and BIFROST_REVIEW_AUTH to an isolated preview and its Playwright storage-state file.');
-fs.mkdirSync(outputDir, {recursive:true});
+const os = require('node:os');
+function reviewConfig(env = process.env) {
+ const baseUrl = env.BIFROST_REVIEW_URL;
+ const authPath = env.BIFROST_REVIEW_AUTH;
+ if (!baseUrl || !authPath) throw new Error('Set BIFROST_REVIEW_URL and BIFROST_REVIEW_AUTH to an isolated preview and its Playwright storage-state file.');
+ const outputDir = env.BIFROST_REVIEW_OUTPUT || fs.mkdtempSync(path.join(os.tmpdir(), 'bifrost-design-review-'));
+ fs.mkdirSync(outputDir, {recursive:true, mode:0o700});
+ if (fs.lstatSync(outputDir).isSymbolicLink() || (fs.statSync(outputDir).mode & 0o077) !== 0) throw new Error('Review output must be a private directory, not a symlink.');
+ return {baseUrl, authPath, outputDir};
+}
+module.exports = {reviewConfig};
+if (require.main === module) {
+ const {baseUrl, authPath, outputDir} = reviewConfig();
+ const {chromium,expect}=require(path.resolve(__dirname, '../../../client/node_modules/@playwright/test'));
 (async()=>{const b=await chromium.launch();try{for(const theme of ['light','dark'])for(const width of [320,1440]){
  const c=await b.newContext({storageState:authPath,viewport:{width,height:800},reducedMotion:'reduce'});await c.addInitScript(t=>{localStorage.setItem('theme',t);localStorage.removeItem('bifrost.automigrate-dismissed.cold-review');},theme);const p=await c.newPage();let manifests=0;
  await p.route('**/api/applications/cold-review/bundle-manifest?*',r=>{manifests++;return r.fulfill({json:{entry:'entry.js',css:null,base_url:'/api/applications/cold-review/bundle-asset',dependencies:{},app_model:'inline_v1',migrated:true,organization_id:null}});});
@@ -20,3 +28,5 @@ fs.mkdirSync(outputDir, {recursive:true});
  await dispatch('entry.js');await expect(p.getByRole('button',{name:'Dismiss build errors'})).toHaveCount(0);await expect(p.getByLabel('Cold draft')).toHaveValue('Keep my unsaved draft');await p.evaluate(()=>window.mountCold());await expect.poll(()=>manifests).toBe(2);await expect(p.getByLabel('Cold draft')).toHaveValue('Initial');await expect(p.getByRole('button',{name:'Dismiss runtime update notice'})).toHaveCount(0);
  console.log(theme,width,'unprepared real import, failed hot import preserves draft, success clears, migration dismissal persists per app');await c.storageState({path:authPath});await c.close();
 }}finally{await b.close();}})().catch(error=>{console.error(String(error.stack).split('\n').filter(line=>line.includes('bundle-cold-check.cjs')).join('\n'));console.error('Cold bundle verification failed');process.exitCode=1});
+
+}

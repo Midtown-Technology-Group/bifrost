@@ -302,7 +302,8 @@ async def test_client_context_caches_and_properties(monkeypatch):
     class SyncHTTP:
         headers = {"Authorization": "Bearer token"}
 
-        def get(self, path):
+        def request(self, method, path, **kwargs):
+            assert method == "GET"
             calls.append(path)
             return httpx.Response(
                 200,

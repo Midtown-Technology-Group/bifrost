@@ -48,6 +48,10 @@ def artifact_store(monkeypatch):
         deployment_api,
         initial_workflow_install,
         resource_delivery,
+        reviewed_workflow_artifact,
+        repo_workflow_adoption,
+        source_revision,
+        workflow_revision,
     )
 
     objects: dict[tuple[str, str], bytes] = {}
@@ -93,7 +97,9 @@ def artifact_store(monkeypatch):
         async def read_compiled_manifest(self):
             return await self._read("manifest")
 
-    for module in (deployment_api, initial_workflow_install, resource_delivery):
+    for module in (deployment_api, initial_workflow_install, resource_delivery,
+                   reviewed_workflow_artifact, repo_workflow_adoption,
+                   source_revision, workflow_revision):
         monkeypatch.setattr(module, "SolutionDeploymentStorage", Storage)
     return objects
 
@@ -222,6 +228,35 @@ async def test_initial_recipe_rejects_inactive_global_uuid_collision(db_session,
         await _stage_initial(
             db_session, platform_admin, None, artifact_store, occupy_uuid=True,
         )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("existing", ["active_workflow", "inactive_workflow", "table"])
+async def test_initial_install_stays_closed_to_populated_solution(
+    db_session, platform_admin, artifact_store, existing,
+):
+    """An adoption seam must not turn initial install into a populated-install writer."""
+    from src.models.orm.tables import Table
+    from src.services.solutions.source_revision import SolutionSourceRevisionConflict
+
+    solution, service, request, _staged, deployment_id, _workflow_id, _path = await _stage_initial(
+        db_session, platform_admin, None, artifact_store,
+    )
+    if existing == "table":
+        entity = Table(name="Retained data", solution_id=solution.id)
+    else:
+        entity = Workflow(
+            name="Retained registration", function_name="retained",
+            path="features/retained.py", solution_id=solution.id,
+            is_active=existing == "active_workflow",
+        )
+    db_session.add(entity)
+    await db_session.flush()
+
+    with pytest.raises(SolutionSourceRevisionConflict, match="installed .* entities"):
+        await service.inspect(solution.id, deployment_id, request)
+    assert solution.active_deployment_id is None
+    assert await db_session.get(type(entity), entity.id) is entity
 
 
 @pytest.mark.asyncio

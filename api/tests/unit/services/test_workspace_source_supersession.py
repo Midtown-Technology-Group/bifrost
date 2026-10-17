@@ -165,10 +165,17 @@ async def test_supersession_rejects_changed_live_pointer(monkeypatch):
         "global_resource",
         "resource_hash",
         "resource_removed",
+        "unknown_marker",
     ],
 )
+@pytest.mark.parametrize("marker", [
+    "bifrost.workspace-live-handoff/v1",
+    "bifrost.solution-source-revision/v1",
+    "bifrost.repo-workflow-adoption/v1",
+    "bifrost.solution-workflow-revision/v1",
+])
 async def test_supersession_checks_active_reviewed_solution_runtime(
-    monkeypatch, defect
+    monkeypatch, defect, marker
 ):
     deployment_id = uuid4()
     source_hash = "c" * 64
@@ -198,7 +205,7 @@ async def test_supersession_checks_active_reviewed_solution_runtime(
             if defect == "stale_deployment"
             else datetime.now(UTC)
         ),
-        validation_result={"schema_version": "bifrost.workspace-live-handoff/v1"},
+        validation_result={"schema_version": "unreviewed" if defect == "unknown_marker" else marker},
         compiled_manifest={},
         resolution_map={},
         dependencies=[],

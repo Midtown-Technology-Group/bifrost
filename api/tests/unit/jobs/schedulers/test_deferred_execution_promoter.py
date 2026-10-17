@@ -14,6 +14,7 @@ from src.models.orm.executions import Execution
 PATH_PUBLISH = "src.jobs.schedulers.deferred_execution_promoter._publish_scheduled_once"
 PATH_DB_CTX = "src.jobs.schedulers.deferred_execution_promoter.get_db_context"
 PATH_DATETIME = "src.jobs.schedulers.deferred_execution_promoter.datetime"
+PATH_CAPACITY = "src.jobs.schedulers.deferred_execution_promoter._capacity_aware_batch_limit"
 
 
 def _new_scheduled(when: datetime) -> Execution:
@@ -122,6 +123,7 @@ async def test_promotes_due_rows(db_session):
     with (
         patch(PATH_DB_CTX, return_value=_DbCtx(db_session)),
         patch(PATH_DATETIME) as promoter_datetime,
+        patch(PATH_CAPACITY, new=AsyncMock(return_value=5)),
         patch(PATH_PUBLISH, new=AsyncMock(return_value=True)) as pub,
     ):
         promoter_datetime.now.return_value = now + timedelta(hours=2)
@@ -151,6 +153,7 @@ async def test_leaves_future_rows(db_session):
 
     with (
         patch(PATH_DB_CTX, return_value=_DbCtx(db_session)),
+        patch(PATH_CAPACITY, new=AsyncMock(return_value=5)),
         patch(PATH_PUBLISH, new=AsyncMock(return_value=True)) as pub,
     ):
         promoted, failed = await promote_due_executions()
@@ -174,6 +177,7 @@ async def test_skips_cancelled_rows(db_session):
 
     with (
         patch(PATH_DB_CTX, return_value=_DbCtx(db_session)),
+        patch(PATH_CAPACITY, new=AsyncMock(return_value=5)),
         patch(PATH_PUBLISH, new=AsyncMock(return_value=True)),
     ):
         promoted, _ = await promote_due_executions()
@@ -196,6 +200,7 @@ async def test_publish_failure_leaves_row_scheduled(db_session):
     with (
         patch(PATH_DB_CTX, return_value=_DbCtx(db_session)),
         patch(PATH_DATETIME) as promoter_datetime,
+        patch(PATH_CAPACITY, new=AsyncMock(return_value=5)),
         patch(PATH_PUBLISH, new=AsyncMock(side_effect=RuntimeError("rabbit down"))),
     ):
         promoter_datetime.now.return_value = now + timedelta(hours=2)

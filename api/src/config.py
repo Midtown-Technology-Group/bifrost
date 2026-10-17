@@ -15,6 +15,8 @@ from pydantic import Field, SecretStr, computed_field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from src.core.solution_delivery_policy import SolutionGitDeliveryPolicy
+from src.core.application_delivery_policy import InlineAppGitDeliveryPolicy
+from src.core.solution_package_delivery_policy import SolutionPackageGitDeliveryPolicy
 
 
 def default_temp_location() -> str:
@@ -45,6 +47,14 @@ class Settings(BaseSettings):
             "declaration OIDC; absent disables automated Solution delivery."
         ),
     )
+    inline_app_git_delivery_policy: InlineAppGitDeliveryPolicy | None = Field(
+        default=None,
+        description="Reviewed existing inline App publication enrollment; absent disables Git delivery.",
+    )
+    solution_package_git_delivery_policy: SolutionPackageGitDeliveryPolicy | None = Field(
+        default=None,
+        description="Reviewed complete Solution package enrollment; absent disables package delivery.",
+    )
 
     model_config = SettingsConfigDict(
         env_prefix="BIFROST_",
@@ -53,6 +63,13 @@ class Settings(BaseSettings):
         case_sensitive=False,
         extra="ignore",
     )
+
+    # Opt-in router lighthouse broker. Credential files are mounted from the
+    # deployment secret store; no caller can choose a launcher URL or TLS trust.
+    device_peer_launcher_url: str | None = None
+    device_peer_launcher_ca: str | None = None
+    device_peer_launcher_certificate: str | None = None
+    device_peer_launcher_key: str | None = None
 
     # ==========================================================================
     # Environment
@@ -116,6 +133,7 @@ class Settings(BaseSettings):
     )
 
     external_worker_scaling_enabled: bool = False
+    external_worker_identity_enabled: bool = False
     external_worker_app_resource_id: str = ""
     external_worker_max_replicas: int = Field(default=2, ge=1, le=10)
     external_worker_queue_account: str = ""

@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import defer, selectinload
 
 # Import existing Pydantic models for API compatibility
+from src.services.operation_catalog import operation_route
 from src.models import (
     ExecutionStatus,
     ExecutionsListResponse,
@@ -870,6 +871,7 @@ class ExecutionRepository:
     response_model=ExecutionsListResponse,
     summary="List workflow executions",
     description="List workflow executions with filtering and pagination",
+    **operation_route("executions.list"),
 )
 async def list_executions(
     ctx: Context,
@@ -1069,6 +1071,7 @@ async def list_logs(
     response_model=WorkflowExecution,
     summary="Get execution details",
     description="Get detailed information about a specific execution",
+    **operation_route("executions.get"),
 )
 async def get_execution(
     execution_id: UUID,

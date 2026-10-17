@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "device-control-plane/error.schema.json",
   "title": "Device control-plane structured error",
-  "description": "Structured error envelope for device control-plane HTTP routes. Workspace maps code device_busy to a UserError (never a silent queue or Ninja fallback). Shape is frozen for epic #818 / M0.2 #828. additionalProperties:false is intentional: new codes and new optional fields are additive, but they must be declared in this file when introduced (validators reject undeclared fields); existing fields may not change meaning.",
+  "description": "Structured error envelope for device control-plane HTTP routes. Workspace maps code device_busy to a UserError (never a silent queue or Ninja fallback). Shape is frozen for epic #818 / M0.2 #828, with approved additive delta #1060 (optional cancel_url recovery reference on device_busy). additionalProperties:false is intentional: new codes and new optional fields are additive, but they must be declared in this file when introduced (validators reject undeclared fields); existing fields may not change meaning.",
   "type": "object",
   "additionalProperties": false,
   "required": ["error"],
@@ -40,6 +40,10 @@
           "type": "string",
           "format": "uuid",
           "description": "Required when code is device_busy: the id of the active job holding the device. Optional elsewhere."
+        },
+        "cancel_url": {
+          "type": "string",
+          "description": "Additive recovery reference (#1060): absolute path of the cooperative cancel endpoint for the blocking job, e.g. /api/devices/{device_id}/jobs/{job_id}/cancel. Present when code is device_busy and job_id is known; optional elsewhere."
         }
       }
     }

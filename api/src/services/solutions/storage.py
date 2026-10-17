@@ -17,6 +17,10 @@ from __future__ import annotations
 
 import hashlib
 import logging
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+from copy import copy
+from typing import Any
 from uuid import UUID
 
 from src.config import Settings, get_settings
@@ -33,6 +37,7 @@ class SolutionStorage:
         self.solution_id = str(solution_id)
         self.prefix = f"{SOLUTIONS_ROOT}/{self.solution_id}/"
         self._settings = settings or get_settings()
+        self._operation_client: Any | None = None
         if self._settings.object_storage_provider == "azure_blob":
             from src.services.file_storage.azure_blob_client import (
                 AzureBlobStorageClient,
@@ -51,8 +56,25 @@ class SolutionStorage:
                 f"{self._settings.object_storage_provider}"
             )
 
-    def _get_client(self):
-        return self._storage.get_client()
+    @asynccontextmanager
+    async def _get_client(self):
+        if self._operation_client is not None:
+            yield self._operation_client
+        else:
+            async with self._storage.get_client() as client:
+                yield client
+
+    @asynccontextmanager
+    async def operation(self) -> AsyncIterator[SolutionStorage]:
+        """Share one transport within a publication, without changing other callers.
+
+        The returned view borrows this operation's client. Separate operations
+        retain independent ownership, including when they use the same storage.
+        """
+        async with self._get_client() as client:
+            scoped = copy(self)
+            scoped._operation_client = client
+            yield scoped
 
     def _key(self, path: str) -> str:
         """Convert a relative path to an S3 key under this install's prefix."""
@@ -66,13 +88,24 @@ class SolutionStorage:
             await client.put_object(Bucket=self._bucket, Key=key, Body=content)
             return content_hash
 
-    async def read(self, path: str) -> bytes:
+    async def read(self, path: str, *, max_bytes: int | None = None) -> bytes:
         """Read a file from this install's prefix."""
+        if max_bytes is not None and (type(max_bytes) is not int or max_bytes < 0):
+            raise ValueError("Solution source byte bound is invalid")
         async with self._get_client() as client:
             key = self._key(path)
-            response = await client.get_object(Bucket=self._bucket, Key=key)
+            kwargs = {"Range": f"bytes=0-{max_bytes}"} if max_bytes is not None else {}
+            response = await client.get_object(Bucket=self._bucket, Key=key, **kwargs)
             body = response["Body"]
-            return await body.read()
+            if max_bytes is None:
+                return await body.read()
+            from src.services.solutions.deployment_storage import SolutionDeploymentStorage
+
+            async with body:
+                content = await SolutionDeploymentStorage._read_bounded(body, max_bytes + 1)
+            if len(content) > max_bytes:
+                raise ValueError("Solution source exceeds its byte bound")
+            return content
 
     async def delete(self, path: str) -> None:
         """Delete a file from this install's prefix."""

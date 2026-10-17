@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -12,6 +13,10 @@ from src.models.contracts.solutions import SolutionRepoPreviewRequest
 from src.models.orm.platform_jobs import PlatformJob
 from src.models.orm.solution_deploy_jobs import SolutionDeployJob
 from src.models.orm.solutions import Solution
+from src.services.solutions.guard import (
+    SOLUTION_MANAGED_MESSAGE,
+    SolutionManagedWriteError,
+)
 from src.routers.solutions import (
     _enqueue_solution_deploy_job,
     _run_deploy_job,
@@ -45,6 +50,8 @@ async def test_deploy_rejects_sdk_conflict_before_staging(monkeypatch):
     app_id = uuid4()
 
     class DB:
+        scalar = AsyncMock(return_value=None)
+
         def add(self, _projection):
             pass
 
@@ -150,6 +157,31 @@ async def test_deploy_job_rejects_candidate_changed_during_staging(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("kind", ["deploy", "install_from_repo", "deliver_package"])
+async def test_unresolved_package_blocks_another_solution_writer(monkeypatch, kind):
+    install_id = uuid4()
+    row = PlatformJob(id=uuid4(), job_type="solution.deploy", status="requires_action")
+    db = SimpleNamespace(commit=AsyncMock())
+    enqueue, staging = AsyncMock(), AsyncMock()
+    monkeypatch.setattr("src.routers.solutions._lock_solution_operation", AsyncMock())
+    monkeypatch.setattr("src.routers.solutions._active_solution_sdk_update_exists", AsyncMock(return_value=False))
+    monkeypatch.setattr("src.routers.solutions.unresolved_solution_deploy", AsyncMock(return_value=row))
+    monkeypatch.setattr("src.routers.solutions.enqueue_platform_job", enqueue)
+    monkeypatch.setattr("src.routers.solutions.SolutionDeployJobStorage.write_bytes", staging)
+    with pytest.raises(HTTPException) as stopped:
+        await _enqueue_solution_deploy_job(
+            db, kind=kind, install_id=install_id, organization_id=None,
+            requested_by_user_id=uuid4(), requested_by_email="admin@example.com", requested_by_name="Admin",
+            input_bytes=b"another archive", options={},
+        )
+    assert stopped.value.status_code == 409
+    assert "original reviewed package" in stopped.value.detail
+    enqueue.assert_not_awaited()
+    staging.assert_not_awaited()
+    db.commit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_run_deploy_job_does_not_start_after_job_is_terminal(
     tmp_path, monkeypatch
 ):
@@ -180,17 +212,35 @@ async def test_run_deploy_job_does_not_start_after_job_is_terminal(
     assert not zip_path.exists()
 
 
+_SENSITIVE_ERROR_TEXT = (
+    "asyncpg query failed: password='s3cr3t-p@ss' host=db.internal port=5432"
+)
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    ("reconcile_error", "rollback_error"),
+    ("reconcile_error", "rollback_error", "expected_detail"),
     [
-        (None, None),
-        (RuntimeError("readback failed"), None),
-        (RuntimeError("readback failed"), RuntimeError("rollback failed")),
+        (None, None, None),
+        (RuntimeError("readback failed"), None, None),
+        (RuntimeError("readback failed"), RuntimeError("rollback failed"), None),
+        (RuntimeError(_SENSITIVE_ERROR_TEXT), None, None),
+        (
+            SolutionManagedWriteError(SOLUTION_MANAGED_MESSAGE),
+            None,
+            SOLUTION_MANAGED_MESSAGE,
+        ),
+        (
+            SolutionManagedWriteError(
+                "managed write refused: password='s3cr3t-p@ss' host=db.internal"
+            ),
+            None,
+            SOLUTION_MANAGED_MESSAGE,
+        ),
     ],
 )
 async def test_deploy_accountability_runs_after_storage_finalize(
-    tmp_path, monkeypatch, reconcile_error, rollback_error
+    tmp_path, monkeypatch, reconcile_error, rollback_error, expected_detail
 ):
     events: list[str] = []
     job = SolutionDeployJob(id=uuid4(), install_id=uuid4(), status="queued")
@@ -302,8 +352,21 @@ async def test_deploy_accountability_runs_after_storage_finalize(
         assert accountability == {
             "state": "attention_required",
             "reason": "post-deploy accountability reconciliation failed",
-            "error_type": "RuntimeError",
+            "error_type": type(reconcile_error).__name__,
+            "error_detail": expected_detail,
+            "error_reference": str(job.id),
+            "obligation_id": None,
+            "solution_id": str(solution.id),
+            "solution_slug": "reviewed-solution",
+            "deploy_job_id": str(job.id),
+            "candidate_id": "sha256:" + "a" * 64,
+            "accountability_organization_id": str(solution.organization_id),
         }
+        if str(reconcile_error) != expected_detail:
+            # Exception text must never reach the job result unless it is
+            # exactly the persisted fixed wording — even when a guard error
+            # carries operational detail like credentials.
+            assert str(reconcile_error) not in json.dumps(accountability)
         assert events.count("commit") == 1
         assert events.count("rollback") == 1
         assert events.index("rollback") > events.index("reconcile")

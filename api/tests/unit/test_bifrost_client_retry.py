@@ -41,6 +41,13 @@ def _make_client(
         headers={"Authorization": f"Bearer {client._access_token}"},
         transport=httpx.MockTransport(handler),
     )
+    # Bypassing __init__ means the engine-local transport slots must be set
+    # explicitly: close() and install_access_token() read them.
+    client._engine_http = None
+    client._engine_http_loop = None
+    client._engine_http_path = None
+    client._engine_sync_http = None
+    client._engine_sync_http_path = None
     client._context = None
     return client
 
@@ -118,6 +125,13 @@ def _make_fixed_client(
         headers={"Authorization": f"Bearer {client._access_token}"},
         transport=httpx.MockTransport(handler),
     )
+    # Bypassing __init__ means the engine-local transport slots must be set
+    # explicitly: close() and install_access_token() read them.
+    client._engine_http = None
+    client._engine_http_loop = None
+    client._engine_http_path = None
+    client._engine_sync_http = None
+    client._engine_sync_http_path = None
     client._context = None
     return client
 
@@ -145,6 +159,25 @@ async def test_async_post_does_not_retry_on_503(force_no_refresh):
     client = _make_fixed_client(handler)
     try:
         response = await client.post("/api/things")
+        assert response.status_code == 503
+        assert len(calls) == 1
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("method", ["GET", "PUT", "DELETE"])
+async def test_async_workflow_execution_endpoint_is_never_retried(
+    force_no_refresh, method
+):
+    """Workflow execution routes are side-effectful regardless of HTTP verb."""
+    handler, calls = _seq_handler([503])
+    client = _make_fixed_client(handler)
+    try:
+        response = await client.request(
+            method,
+            "/api/endpoints/00000000-0000-0000-0000-000000000001",
+        )
         assert response.status_code == 503
         assert len(calls) == 1
     finally:
@@ -285,6 +318,22 @@ def test_sync_post_does_not_retry_on_503(force_no_refresh):
     client = _make_fixed_client(handler)
     try:
         response = client.post_sync("/api/things")
+        assert response.status_code == 503
+        assert len(calls) == 1
+    finally:
+        client._sync_http.close()
+
+
+@pytest.mark.parametrize("method", ["GET", "PUT", "DELETE"])
+def test_sync_workflow_execution_endpoint_is_never_retried(force_no_refresh, method):
+    """Sync callers preserve the first ambiguous workflow response too."""
+    handler, calls = _seq_handler([503])
+    client = _make_fixed_client(handler)
+    try:
+        response = client._request_with_refresh_sync(
+            method,
+            "/api/endpoints/00000000-0000-0000-0000-000000000001",
+        )
         assert response.status_code == 503
         assert len(calls) == 1
     finally:

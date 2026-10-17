@@ -54,6 +54,7 @@ async def test_indexer_enriches_registered_workflow():
 
     mock_db = AsyncMock()
     existing_wf = MagicMock()
+    existing_wf.retirement_evidence = None
     existing_wf.id = uuid4()
     existing_wf.is_active = True
     existing_wf.endpoint_enabled = False
@@ -68,7 +69,9 @@ async def test_indexer_enriches_registered_workflow():
     mock_result = MagicMock()
     mock_result.scalar_one_or_none.return_value = existing_wf
     mock_result.scalar_one.return_value = existing_wf
+    mock_result.rowcount = 1
     mock_db.execute.return_value = mock_result
+    mock_db.scalar.return_value = None
 
     indexer = WorkflowIndexer(mock_db)
 
@@ -91,6 +94,7 @@ async def test_indexer_reactivates_inactive_workflow():
 
     mock_db = AsyncMock()
     existing_wf = MagicMock()
+    existing_wf.retirement_evidence = None
     existing_wf.id = uuid4()
     existing_wf.is_active = False  # Deactivated workflow
     existing_wf.endpoint_enabled = False
@@ -104,7 +108,9 @@ async def test_indexer_reactivates_inactive_workflow():
     mock_result = MagicMock()
     mock_result.scalar_one_or_none.return_value = existing_wf
     mock_result.scalar_one.return_value = existing_wf
+    mock_result.rowcount = 1
     mock_db.execute.return_value = mock_result
+    mock_db.scalar.return_value = None
 
     indexer = WorkflowIndexer(mock_db)
     await indexer.index_python_file("workflows/existing.py", SAMPLE_WORKFLOW.encode())

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 from datetime import UTC, datetime
 from uuid import UUID
 
@@ -24,34 +23,19 @@ from src.repositories.solution_deployments import SolutionDeploymentRepository
 from src.services.file_storage.indexers.workflow import WorkflowIndexer
 from src.services.solutions.deployment_api import SolutionDeploymentAPIService
 from src.services.solutions.deployment_manifest import (
-    CompiledDeploymentManifest,
-    DeploymentGitProvenance,
     DeploymentResolutionMap,
-    DeploymentSource,
     RuntimeEntityDefinition,
-    RuntimeResourceResolution,
-    RuntimeSourceResolution,
-    canonical_json,
-    sha256_digest,
-    validate_runtime_closure,
 )
-from src.services.solutions.deployment_storage import (
-    SolutionDeploymentStorage,
-    deployment_runtime_prefix,
-    deployment_source_artifact_key,
-)
+from src.services.solutions.deployment_storage import SolutionDeploymentStorage
 from src.services.solutions.live_handoff_preflight import (
     WorkspaceLiveHandoffPreflightConflict,
     _require_empty_solution_install,
 )
-from src.services.solutions.live_handoff_source import (
-    LiveHandoffSourceError,
-    source_archive,
-    source_closure,
-)
-from src.services.solutions.resource_delivery import (
-    read_deployment_resources,
-    validate_resource_files,
+from src.services.solutions.reviewed_workflow_artifact import (
+    build_reviewed_artifact,
+    compile_reviewed_workflows,
+    inspect_reviewed_artifact,
+    write_reviewed_artifact,
 )
 from src.services.solutions.shared_table_bindings import (
     SharedTableBindingError,
@@ -60,14 +44,14 @@ from src.services.solutions.shared_table_bindings import (
 from src.services.solutions.source_revision import (
     SolutionSourceRevisionConflict,
     SolutionSourceRevisionError,
-    _archive_files,
 )
 from src.services.solutions.workflow_revision import project_workflow_registrations
 from src.services.solutions.workflow_revision_recipe import (
     ReviewedWorkflowRecipe,
-    WorkflowRecipeError,
-    compile_workflow_registrations,
 )
+
+
+_INITIAL_MARKER = "bifrost.initial-reviewed-workflow-install/v1"
 
 
 class InitialWorkflowInstallService:
@@ -85,50 +69,11 @@ class InitialWorkflowInstallService:
         solution = await self._require_empty_solution(solution_id, lock=True)
         entities = await self._compile(solution, body.reviewed_recipe, files, resources)
         storage = SolutionDeploymentStorage(solution_id, deployment_id)
-        sources = {
-            path: RuntimeSourceResolution(
-                object_key=f"{storage.runtime_prefix}{path}", content_hash=sha256_digest(content)
-            ) for path, content in files.items()
-        }
-        resource_map = {
-            path: RuntimeResourceResolution(
-                object_key=f"{storage.runtime_prefix}_resources/{path}",
-                content_hash=sha256_digest(content), size_bytes=len(content),
-            ) for path, content in resources.items()
-        }
-        resolution = DeploymentResolutionMap(
-            workflows=entities, sources=sources,
-            shared_tables=body.reviewed_recipe.shared_tables, root_file_bindings=body.reviewed_recipe.root_file_bindings, resources=resource_map,
+        manifest, resolution = build_reviewed_artifact(
+            solution_id, deployment_id, body.reviewed_recipe, files, resources,
+            entities, body.source_commit_sha, _INITIAL_MARKER,
         )
-        hashes = {path: item.content_hash for path, item in {**sources, **resource_map}.items()}
-        manifest = CompiledDeploymentManifest(
-            solution_id=solution_id, deployment_id=deployment_id,
-            bundle_hash=sha256_digest(canonical_json({
-                "schema_version": "bifrost.initial-reviewed-workflow-install/v1",
-                "reviewed_recipe": body.reviewed_recipe.model_dump(mode="json"),
-                "source_commit_sha": body.source_commit_sha, "source_hashes": hashes,
-            })),
-            resolution_map_hash=sha256_digest(canonical_json(resolution)),
-            source=DeploymentSource(
-                artifact_key=storage.source_artifact_key,
-                runtime_prefix=storage.runtime_prefix,
-            ), workflows=entities, shared_tables=resolution.shared_tables, root_file_bindings=resolution.root_file_bindings,
-            resources=resource_map,
-            git=DeploymentGitProvenance(commit_sha=body.source_commit_sha),
-        )
-        await storage.write_source_artifact(source_archive(files), idempotent=True)
-        slots = asyncio.Semaphore(16)
-
-        async def upload(path: str, content: bytes) -> None:
-            async with slots:
-                await storage.write_runtime_file(path, content, idempotent=True)
-
-        await asyncio.gather(*(upload(path, content) for path, content in files.items()))
-        if resources:
-            await storage.write_resources_artifact(source_archive(resources), idempotent=True)
-            await asyncio.gather(*(
-                upload("_resources/" + path, content) for path, content in resources.items()
-            ))
+        await write_reviewed_artifact(storage, files, resources)
         await SolutionDeploymentAPIService(self.db).create_ready_draft(
             solution_id, created_by,
             SolutionDeploymentCreate(
@@ -153,73 +98,12 @@ class InitialWorkflowInstallService:
             raise SolutionSourceRevisionError("initial workflow candidate is not ready")
         if deployment.base_deployment_id is not None or deployment.parent_deployment_id is not None:
             raise SolutionSourceRevisionError("initial workflow candidate must have no base or parent")
-        try:
-            manifest, resolution = validate_runtime_closure(
-                deployment.compiled_manifest, deployment.resolution_map,
-                deployment.dependencies,
-                expected_manifest_hash=deployment.compiled_manifest_hash,
-                expected_resolution_hash=deployment.resolution_map_hash,
-            )
-        except ValueError as exc:
-            raise SolutionSourceRevisionError("initial workflow candidate closure is invalid") from exc
         recipe = request.reviewed_recipe
-        if recipe.solution_id != solution_id:
-            raise SolutionSourceRevisionError("workflow recipe belongs to another install")
-        if (manifest.solution_id != solution_id or manifest.deployment_id != deployment_id
-                or manifest.source.artifact_key != deployment_source_artifact_key(solution_id, deployment_id)
-                or manifest.source.runtime_prefix != deployment_runtime_prefix(solution_id, deployment_id)
-                or deployment.source_artifact_key != manifest.source.artifact_key
-                or deployment.runtime_storage_prefix != manifest.source.runtime_prefix
-                or manifest.agents or manifest.forms or manifest.events or manifest.applications
-                or manifest.tables or manifest.file_locations or manifest.config_requirements
-                or manifest.connections or manifest.dependencies):
-            raise SolutionSourceRevisionError("candidate is not a workflow-only initial deployment")
-        if manifest.git.commit_sha is None or deployment.git_commit_sha != manifest.git.commit_sha:
-            raise SolutionSourceRevisionError("initial candidate has no reviewed source commit")
-        files = _archive_files(
-            await SolutionDeploymentStorage(solution_id, deployment_id).read_source_artifact(),
-            set(resolution.sources),
+        manifest, resolution = await inspect_reviewed_artifact(
+            solution_id, deployment_id, deployment, recipe, WorkflowIndexer(self.db),
+            _INITIAL_MARKER,
         )
-        resources = await read_deployment_resources(solution_id, deployment_id, resolution)
-        validate_resource_files(recipe, resources, files)
-        try:
-            closure = source_closure(
-                files, {item.path for item in recipe.workflows},
-                has_table_bindings=bool(recipe.shared_tables),
-                has_root_file_bindings=bool(recipe.root_file_bindings),
-                has_resource_bindings=bool(recipe.resources),
-            )
-            desired = compile_workflow_registrations(recipe, files, WorkflowIndexer(self.db))
-        except (WorkflowRecipeError, LiveHandoffSourceError) as exc:
-            raise SolutionSourceRevisionError(str(exc)) from exc
-        if set(closure) != set(files):
-            raise SolutionSourceRevisionError("recipe differs from complete source dependency closure")
-        if (desired != resolution.workflows or recipe.shared_tables != resolution.shared_tables
-                or recipe.root_file_bindings != resolution.root_file_bindings
-                or manifest.workflows != resolution.workflows
-                or manifest.shared_tables != resolution.shared_tables):
-            raise SolutionSourceRevisionConflict("candidate differs from reviewed recipe")
-        storage = SolutionDeploymentStorage(solution_id, deployment_id)
-        if await storage.read_compiled_manifest() != manifest.canonical_bytes():
-            raise SolutionSourceRevisionError("stored initial manifest differs from candidate")
-        for path, content in files.items():
-            source = resolution.sources[path]
-            if (source.object_key != f"{storage.runtime_prefix}{path}"
-                    or sha256_digest(content) != source.content_hash
-                    or await storage.read_runtime_file(path) != content):
-                raise SolutionSourceRevisionError("source archive or runtime bytes differ from reviewed evidence")
-        for path, resource in resolution.resources.items():
-            if resource.object_key != f"{storage.runtime_prefix}_resources/{path}":
-                raise SolutionSourceRevisionError("resource storage reference is not canonical")
-        if manifest.bundle_hash != sha256_digest(canonical_json({
-            "schema_version": "bifrost.initial-reviewed-workflow-install/v1",
-            "reviewed_recipe": recipe.model_dump(mode="json"),
-            "source_commit_sha": manifest.git.commit_sha,
-            "source_hashes": {path: item.content_hash for path, item in {
-                **resolution.sources, **resolution.resources,
-            }.items()},
-        })):
-            raise SolutionSourceRevisionError("candidate bundle hash differs from reviewed recipe")
+        desired = resolution.workflows
         await require_shared_tables(
             self.db, recipe.shared_tables, solution_organization_id=solution.organization_id,
         )
@@ -249,7 +133,7 @@ class InitialWorkflowInstallService:
                 raise SolutionSourceRevisionError("a reviewed workflow role is missing")
         hashes = {path: item.content_hash for path, item in {**resolution.sources, **resolution.resources}.items()}
         evidence = {
-            "schema_version": "bifrost.initial-reviewed-workflow-install/v1",
+            "schema_version": _INITIAL_MARKER,
             "solution_id": str(solution_id), "deployment_id": str(deployment_id),
             "organization_id": str(solution.organization_id) if solution.organization_id else None,
             "pointer": None, "runtime_mode": solution.execution_runtime_mode,
@@ -284,7 +168,7 @@ class InitialWorkflowInstallService:
         resolution = DeploymentResolutionMap.model_validate(candidate.resolution_map)
         await project_workflow_registrations(self.db, solution_id, resolution.workflows, set())
         marker = {
-            "schema_version": "bifrost.initial-reviewed-workflow-install/v1",
+            "schema_version": _INITIAL_MARKER,
             "preflight_evidence_id": inspected.evidence_id,
             "workflow_ids": [str(value) for value in inspected.workflow_ids],
             "source_hashes": inspected.source_hashes,
@@ -338,19 +222,7 @@ class InitialWorkflowInstallService:
     ) -> dict[str, RuntimeEntityDefinition]:
         if recipe.solution_id != solution.id:
             raise SolutionSourceRevisionError("workflow recipe belongs to another install")
-        validate_resource_files(recipe, resources, files)
-        try:
-            closure = source_closure(
-                files, {item.path for item in recipe.workflows},
-                has_table_bindings=bool(recipe.shared_tables),
-                has_root_file_bindings=bool(recipe.root_file_bindings),
-                has_resource_bindings=bool(recipe.resources),
-            )
-            desired = compile_workflow_registrations(recipe, files, WorkflowIndexer(self.db))
-        except (WorkflowRecipeError, LiveHandoffSourceError) as exc:
-            raise SolutionSourceRevisionError(str(exc)) from exc
-        if set(closure) != set(files):
-            raise SolutionSourceRevisionError("recipe differs from complete source dependency closure")
+        desired = compile_reviewed_workflows(recipe, files, resources, WorkflowIndexer(self.db))
         if not desired:
             raise SolutionSourceRevisionError("initial recipe must register at least one workflow")
         if any(item.definition.get("type") != "workflow" for item in desired.values()):

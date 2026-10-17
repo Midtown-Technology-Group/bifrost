@@ -68,6 +68,52 @@ except ImportError as e:
 BIFROST_ICON_URL = "https://bifrostintegrations.blob.core.windows.net/public/logo.svg"
 BIFROST_WEBSITE_URL = "https://docs.gobifrost.com"
 
+# Keep legacy workflow-result parsing within the same budget used by MCP client
+# results. The structural limits prevent compact, deeply nested or high-node
+# payloads from turning a modest byte string into disproportionate Python work.
+_MAX_WORKFLOW_RESULT_JSON_BYTES = 250_000
+_MAX_WORKFLOW_RESULT_JSON_DEPTH = 64
+_MAX_WORKFLOW_RESULT_JSON_NODES = 50_000
+
+
+class _WorkflowResultJsonLimitError(ValueError):
+    """Raised when a legacy workflow JSON result exceeds parsing limits."""
+
+
+def _parse_bounded_workflow_result_json(raw_result: str) -> Any:
+    """Parse and structurally validate a legacy workflow JSON result."""
+    # The code-point check is allocation-free and rejects oversized ASCII
+    # input before UTF-8 encoding. The byte check handles multibyte text.
+    if len(raw_result) > _MAX_WORKFLOW_RESULT_JSON_BYTES:
+        raise _WorkflowResultJsonLimitError(
+            "Workflow JSON result exceeds the 250,000-byte parsing limit."
+        )
+    if len(raw_result.encode("utf-8")) > _MAX_WORKFLOW_RESULT_JSON_BYTES:
+        raise _WorkflowResultJsonLimitError(
+            "Workflow JSON result exceeds the 250,000-byte parsing limit."
+        )
+
+    parsed = json.loads(raw_result)
+    pending: list[tuple[Any, int]] = [(parsed, 0)]
+    node_count = 0
+    while pending:
+        value, depth = pending.pop()
+        node_count += 1
+        if node_count > _MAX_WORKFLOW_RESULT_JSON_NODES:
+            raise _WorkflowResultJsonLimitError(
+                "Workflow JSON result exceeds the 50,000-node parsing limit."
+            )
+        if depth > _MAX_WORKFLOW_RESULT_JSON_DEPTH:
+            raise _WorkflowResultJsonLimitError(
+                "Workflow JSON result exceeds the 64-level nesting limit."
+            )
+        if isinstance(value, dict):
+            pending.extend((item, depth + 1) for item in value.values())
+        elif isinstance(value, list):
+            pending.extend((item, depth + 1) for item in value)
+
+    return parsed
+
 
 # =============================================================================
 # Workflow Tool Name Mapping
@@ -598,11 +644,16 @@ if HAS_FASTMCP:
                 # Parse JSON string if needed (legacy workflow returns)
                 if isinstance(result, str):
                     try:
-                        parsed = json.loads(result)
+                        parsed = await asyncio.to_thread(
+                            _parse_bounded_workflow_result_json,
+                            result,
+                        )
                         result = parsed
                     except json.JSONDecodeError:
                         # Plain string result - return as success
                         return success_result(result, {"result": result})
+                    except (_WorkflowResultJsonLimitError, RecursionError) as e:
+                        return error_result(str(e))
 
                 from pydantic import BaseModel
 
@@ -640,12 +691,7 @@ if HAS_FASTMCP:
                                     artifact = await artifact_service.get_authorized(
                                         UUID(ref.id),
                                         user_id=UUID(str(context.user_id)),
-                                        organization_id=(
-                                            UUID(str(context.org_id))
-                                            if context.org_id
-                                            else None
-                                        ),
-                                        is_platform_admin=context.is_platform_admin,
+                                        bypass=context.is_platform_admin,
                                     )
                                 except (ArtifactAccessError, ValueError):
                                     return error_result(

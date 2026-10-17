@@ -1,14 +1,14 @@
 """Private closed workflow SDK grants, without source permissions.
 
 Revision ID: 20261001_runtime_sdk_grants
-Revises: 20261001_solution_src_account
+Revises: 20261012_work_delivery_started
 """
 
 import sqlalchemy as sa
 from alembic import op
 
 revision = "20261001_runtime_sdk_grants"
-down_revision = "20261001_solution_src_account"
+down_revision = "20261012_work_delivery_started"
 branch_labels = None
 depends_on = None
 

@@ -2,11 +2,8 @@
 
 TDD: these tests were written before the implementation.
 
-Note on DB isolation: each test commits data to its own DB session.
-process_schedule_sources queries ALL active SCHEDULE sources, so leaked
-rows from prior tests may be visible. Assertions use per-source Event
-counts rather than the global results["events_created"] counter, except
-for skipped_overlap which is source-specific enough to be trustworthy.
+Each test owns an outer transaction. Scheduler commits release savepoints,
+so the live scheduler cannot see the unit fixtures and teardown removes them.
 """
 
 from datetime import datetime, timezone
@@ -14,7 +11,9 @@ from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
 import pytest
+import pytest_asyncio
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.enums import EventDeliveryStatus, EventSourceType, EventStatus, ScheduleOverlapPolicy
 from src.models.orm.events import Event, EventDelivery, EventSource, EventSubscription, ScheduleSource
@@ -26,6 +25,23 @@ PATH_SUB_REPO = "src.jobs.schedulers.cron_scheduler.EventSubscriptionRepository"
 PATH_PROCESSOR = "src.services.events.processor.EventProcessor"
 # is_cron_expression_valid is imported inside the function body; patch the source module
 PATH_IS_VALID = "src.services.cron_parser.is_cron_expression_valid"
+
+
+@pytest_asyncio.fixture
+async def db_session(async_engine):
+    """Keep internal scheduler commits isolated from sibling processes/tests."""
+    async with async_engine.connect() as connection:
+        outer = await connection.begin()
+        async with AsyncSession(
+            bind=connection,
+            expire_on_commit=False,
+            join_transaction_mode="create_savepoint",
+        ) as session:
+            try:
+                yield session
+            finally:
+                await session.rollback()
+                await outer.rollback()
 
 
 class _DbCtx:
@@ -131,6 +147,18 @@ async def _events_for_source(db_session, source_id) -> list[Event]:
         await db_session.execute(select(Event).where(Event.event_source_id == source_id))
     ).scalars().all()
     return list(rows)
+
+
+@pytest.mark.asyncio
+async def test_committed_schedule_fixture_is_invisible_to_other_sessions(db_session, async_engine):
+    """The live scheduler must not see a unit fixture after an internal commit."""
+    source, schedule, subscription = _make_source_and_subscription()
+    db_session.add_all((source, schedule, subscription))
+    await db_session.commit()
+
+    assert await db_session.get(EventSource, source.id) is source
+    async with AsyncSession(async_engine) as observer:
+        assert await observer.get(EventSource, source.id) is None
 
 
 @pytest.mark.asyncio

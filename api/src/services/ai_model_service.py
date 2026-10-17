@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
@@ -24,8 +25,15 @@ from src.models.orm.ai_models import (
     AIModelProfile,
     AIProviderConnection,
 )
+from src.services.opencode_go import (
+    OPENCODE_GO_DEFAULT_ENDPOINT,
+    opencode_go_anthropic_endpoint,
+    opencode_go_extra_headers,
+    opencode_go_known_wire_api,
+)
 
 if TYPE_CHECKING:
+    from src.services.openai_transport_detection import OpenAITransportProbe
     from src.services.embeddings.base import EmbeddingConfig
     from src.services.llm.base import LLMConfig
     from src.services.provider_catalog_service import (
@@ -41,6 +49,7 @@ PROVIDER_DEFAULT_ENDPOINTS: dict[AIProviderKind, str] = {
     "anthropic": "https://api.anthropic.com",
     "google": "https://generativelanguage.googleapis.com",
     "openrouter": OPENROUTER_DEFAULT_ENDPOINT,
+    "opencode_go": OPENCODE_GO_DEFAULT_ENDPOINT,
 }
 ASSIGNMENT_KEYS: tuple[AIModelAssignmentKey, ...] = (
     "primary",
@@ -75,9 +84,17 @@ class ModelProfileMergeResult:
 class AIModelService:
     """Manage named provider connections, reusable profiles, and global assignments."""
 
-    def __init__(self, session: AsyncSession):
+    def __init__(
+        self,
+        session: AsyncSession,
+        *,
+        before_transport_probe: Callable[[], None] | None = None,
+        record_transport_probe: Callable[[OpenAITransportProbe], None] | None = None,
+    ):
         self.session = session
         self.settings = get_settings()
+        self.before_transport_probe = before_transport_probe
+        self.record_transport_probe = record_transport_probe
 
     def _get_fernet(self) -> Fernet:
         key_bytes = self.settings.secret_key.encode()[:32].ljust(32, b"0")
@@ -190,7 +207,7 @@ class AIModelService:
         return PROVIDER_DEFAULT_ENDPOINTS[provider]
 
     def client_provider(self, provider: AIProviderKind) -> str:
-        if provider in ("openrouter", "openai_compatible"):
+        if provider in ("openrouter", "openai_compatible", "opencode_go"):
             return "openai"
         return provider
 
@@ -355,6 +372,8 @@ class AIModelService:
 
         connection = profile.connection
         provider = self.client_provider(connection.provider)
+        endpoint = connection.endpoint
+        openai_transport = profile.openai_transport
         if provider not in ("openai", "anthropic", "google"):
             raise ValueError(f"Unsupported LLM provider '{connection.provider}'.")
 
@@ -365,7 +384,32 @@ class AIModelService:
                 "Please configure the API key in System Settings > AI Configuration."
             )
 
-        openai_transport = profile.openai_transport
+        if connection.provider == "opencode_go":
+            # The Go catalog spreads models across three wire surfaces; route
+            # each model to the one its catalog entry documents. The Messages
+            # surface needs the Anthropic client and its own base URL.
+            # Models newer than the documented catalog carry a persisted
+            # probed surface; only unmapped models pay for one probe, once.
+            wire_api = profile.wire_api or opencode_go_known_wire_api(profile.model)
+            if wire_api is None:
+                from src.services.opencode_go_detection import (
+                    detect_opencode_go_wire_api,
+                )
+
+                wire_api = await detect_opencode_go_wire_api(
+                    api_key=api_key,
+                    endpoint=connection.endpoint,
+                    model=profile.model,
+                )
+                profile.wire_api = wire_api
+                profile.updated_at = datetime.now(timezone.utc)
+                await self.session.flush()
+            if wire_api == "messages":
+                provider = "anthropic"
+                endpoint = opencode_go_anthropic_endpoint(endpoint)
+            else:
+                openai_transport = wire_api
+
         detects_openai_transport = connection.provider == "openai_compatible" or (
             connection.provider == "openai"
             and connection.endpoint != PROVIDER_DEFAULT_ENDPOINTS["openai"]
@@ -375,10 +419,45 @@ class AIModelService:
                 detect_openai_transport,
             )
 
+            # Serialize first-time detection with profile/connection updates.
+            # The caller commits immediately after resolution; a concurrent
+            # resolver then refreshes this row under the lock and reuses the
+            # stored result instead of issuing another billable probe.
+            locked_profile = (
+                (
+                    await self.session.execute(
+                        select(AIModelProfile)
+                        .options(selectinload(AIModelProfile.connection))
+                        .where(AIModelProfile.id == profile.id)
+                        .with_for_update(of=AIModelProfile)
+                        .execution_options(populate_existing=True)
+                    )
+                )
+                .scalars()
+                .one()
+            )
+            profile = locked_profile
+            connection = profile.connection
+            provider = self.client_provider(connection.provider)
+            endpoint = connection.endpoint
+            openai_transport = profile.openai_transport
+            detects_openai_transport = connection.provider == "openai_compatible" or (
+                connection.provider == "openai"
+                and connection.endpoint != PROVIDER_DEFAULT_ENDPOINTS["openai"]
+            )
+            api_key = self.decrypt_api_key(connection.encrypted_api_key)
+            if not api_key:
+                raise ValueError(
+                    f"No API key configured for LLM provider connection '{connection.name}'. "
+                    "Please configure the API key in System Settings > AI Configuration."
+                )
+        if detects_openai_transport and openai_transport is None:
             openai_transport = await detect_openai_transport(
                 api_key=api_key,
                 endpoint=connection.endpoint,
                 model=profile.model,
+                before_request=self.before_transport_probe,
+                record_probe=self.record_transport_probe,
             )
             profile.openai_transport = openai_transport
             profile.updated_at = datetime.now(timezone.utc)
@@ -388,7 +467,7 @@ class AIModelService:
             provider=provider,
             model=profile.model,
             api_key=api_key,
-            endpoint=connection.endpoint,
+            endpoint=endpoint,
             openai_transport=openai_transport,
             provider_connection_id=connection.id,
             anthropic_prompt_cache_supported=connection.anthropic_prompt_cache_supported,
@@ -573,7 +652,7 @@ class AIModelService:
             await self.session.execute(
                 update(AIModelProfile)
                 .where(AIModelProfile.connection_id == connection.id)
-                .values(openai_transport=None)
+                .values(openai_transport=None, wire_api=None)
             )
         connection.updated_at = datetime.now(timezone.utc)
         await self.session.flush()
@@ -722,12 +801,14 @@ class AIModelService:
             await self.get_connection(connection_id)
             profile.connection_id = connection_id
             profile.openai_transport = None
+            profile.wire_api = None
         if model is not None:
             trimmed_model = model.strip()
             if not trimmed_model:
                 raise ValueError("Model id is required")
             profile.model = trimmed_model
             profile.openai_transport = None
+            profile.wire_api = None
         if capabilities_provided:
             profile.capabilities = (
                 capabilities.model_dump(mode="json") if capabilities else None
@@ -966,7 +1047,14 @@ class AIModelService:
         provider = self.client_provider(config.provider)
         endpoint = self.normalize_endpoint(config.provider, config.endpoint)
         if provider == "openai":
-            return await service.list_openai(config.api_key, endpoint)
+            extra_headers = (
+                opencode_go_extra_headers()
+                if config.provider == "opencode_go"
+                else None
+            )
+            return await service.list_openai(
+                config.api_key, endpoint, extra_headers=extra_headers
+            )
         if provider == "anthropic":
             return await service.list_anthropic(config.api_key, endpoint)
         if provider == "google":

@@ -4,10 +4,20 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 const { prepareAppBundle } = vi.hoisted(() => ({
 	prepareAppBundle: vi.fn().mockResolvedValue(undefined),
 }));
+const { authFetch } = vi.hoisted(() => ({
+	authFetch: vi.fn(),
+}));
 
 vi.mock("@/components/jsx-app/BundledAppShell", () => ({
 	prepareAppBundle,
 }));
+
+vi.mock("@/lib/api-client", async () => {
+	const actual = await vi.importActual<typeof import("@/lib/api-client")>(
+		"@/lib/api-client",
+	);
+	return { ...actual, authFetch };
+});
 
 import { queryClient } from "@/lib/queryClient";
 import {
@@ -30,7 +40,33 @@ describe("detail route loaders", () => {
 	afterEach(() => {
 		vi.restoreAllMocks();
 		prepareAppBundle.mockClear();
+		authFetch.mockReset();
 		vi.unstubAllGlobals();
+	});
+
+	it("rejects preview loading before application or draft bundle reads for non-admins", async () => {
+		authFetch.mockResolvedValue(
+			new Response(JSON.stringify({ is_superuser: false }), {
+				status: 200,
+			}),
+		);
+		const ensure = vi.spyOn(queryClient, "ensureQueryData");
+		const request = new Request("http://localhost/apps/portal/preview");
+
+		const result = applicationDetailLoader(true)({
+			params: { applicationId: "portal", "*": "" },
+			request,
+			url: new URL(request.url),
+			pattern: "/apps/:applicationId/preview/*",
+			context: new RouterContextProvider(),
+		});
+
+		await expect(result).rejects.toMatchObject({ status: 403 });
+		expect(authFetch).toHaveBeenCalledWith("/auth/me", {
+			signal: request.signal,
+		});
+		expect(ensure).not.toHaveBeenCalled();
+		expect(prepareAppBundle).not.toHaveBeenCalled();
 	});
 
 	it("waits for agent metadata and its primary image", async () => {
@@ -103,6 +139,11 @@ it("does not replace newer application detail with a card snapshot", () => {
 it.each([false, true])(
 	"only prepares unpublished apps in preview mode (%s)",
 	async (preview) => {
+		authFetch.mockResolvedValue(
+			new Response(JSON.stringify({ is_superuser: true }), {
+				status: 200,
+			}),
+		);
 		vi.spyOn(queryClient, "ensureQueryData").mockResolvedValue({
 			id: "unpublished",
 			slug: "unpublished",

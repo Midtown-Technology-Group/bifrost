@@ -36,11 +36,12 @@ def _context(*, admin: bool = False, org_id=None) -> MCPContext:
     )
 
 
-def _context_without_org() -> MCPContext:
+def _context_without_org(*, admin: bool = False) -> MCPContext:
+    """Build an MCP principal without tenant scope, optionally granting platform-admin authority."""
     return MCPContext(
         user_id=str(uuid4()),
         org_id=None,
-        is_platform_admin=False,
+        is_platform_admin=admin,
         user_email="user@example.com",
         user_name="Test User",
     )
@@ -222,6 +223,7 @@ async def test_get_app_validates_selector_and_wraps_storage_errors():
 
 @pytest.mark.asyncio
 async def test_update_app_updates_metadata_and_publishes_draft_notice():
+    """Persist authorized app metadata changes and publish the draft update notice."""
     app = _app(name="Old", description="Before")
     db = _Db([_ScalarResult(app)])
 
@@ -231,7 +233,7 @@ async def test_update_app_updates_metadata_and_publishes_draft_notice():
         patch.object(apps, "publish_app_draft_update", new=AsyncMock()) as publish,
     ):
         result = await apps.update_app(
-            _context(),
+            _context(admin=True),
             str(app.id),
             name="New",
             description="After",
@@ -246,9 +248,10 @@ async def test_update_app_updates_metadata_and_publishes_draft_notice():
 
 @pytest.mark.asyncio
 async def test_update_app_reports_missing_noop_and_solution_managed():
+    """Distinguish missing apps, empty updates, and immutable Solution-managed apps."""
     missing_db = _Db([_ScalarResult(None)])
     with patch.object(apps, "get_tool_db", _tool_db(missing_db)):
-        missing = await apps.update_app(_context(), str(uuid4()), name="New")
+        missing = await apps.update_app(_context(admin=True), str(uuid4()), name="New")
 
     noop_app = _app()
     noop_db = _Db([_ScalarResult(noop_app)])
@@ -256,7 +259,7 @@ async def test_update_app_reports_missing_noop_and_solution_managed():
         patch.object(apps, "get_tool_db", _tool_db(noop_db)),
         patch("src.services.solutions.guard.is_solution_managed", return_value=False),
     ):
-        noop = await apps.update_app(_context(), str(noop_app.id))
+        noop = await apps.update_app(_context(admin=True), str(noop_app.id))
 
     managed_app = _app(solution_id=uuid4())
     managed_db = _Db([_ScalarResult(managed_app)])
@@ -264,7 +267,7 @@ async def test_update_app_reports_missing_noop_and_solution_managed():
         patch.object(apps, "get_tool_db", _tool_db(managed_db)),
         patch("src.services.solutions.guard.is_solution_managed", return_value=True),
     ):
-        managed = await apps.update_app(_context(), str(managed_app.id), name="New")
+        managed = await apps.update_app(_context(admin=True), str(managed_app.id), name="New")
 
     assert "Application not found" in missing.structured_content["error"]
     assert noop.structured_content["error"] == "No updates specified"
@@ -273,7 +276,8 @@ async def test_update_app_reports_missing_noop_and_solution_managed():
 
 @pytest.mark.asyncio
 async def test_update_app_validates_id_and_shapes_repository_errors():
-    bad_id = await apps.update_app(_context(), "not-a-uuid", name="New")
+    """Validate application identifiers and translate repository failures into MCP errors."""
+    bad_id = await apps.update_app(_context(admin=True), "not-a-uuid", name="New")
 
     app = _app()
     db = _Db([_ScalarResult(app)])
@@ -282,7 +286,7 @@ async def test_update_app_validates_id_and_shapes_repository_errors():
         patch("src.services.solutions.guard.is_solution_managed", return_value=False),
         patch.object(db, "commit", new=AsyncMock(side_effect=RuntimeError("commit failed"))),
     ):
-        failed = await apps.update_app(_context(), str(app.id), name="New")
+        failed = await apps.update_app(_context(admin=True), str(app.id), name="New")
 
     assert "Invalid app_id format" in bad_id.structured_content["error"]
     assert "Error updating app" in failed.structured_content["error"]
@@ -358,6 +362,7 @@ async def test_get_app_dependencies_reports_empty_and_missing_apps():
 
 @pytest.mark.asyncio
 async def test_update_app_dependencies_validates_and_invalidates_cache():
+    """Validate dependency updates and invalidate the application cache after mutation."""
     app = _app(dependencies=None)
     db = _Db([_ScalarResult(app)])
     storage = MagicMock()
@@ -369,7 +374,7 @@ async def test_update_app_dependencies_validates_and_invalidates_cache():
         patch("src.services.app_storage.AppStorageService", return_value=storage),
     ):
         result = await apps.update_app_dependencies(
-            _context(org_id=app.organization_id),
+            _context(admin=True, org_id=app.organization_id),
             str(app.id),
             {"recharts": "~2.12.7"},
         )
@@ -382,13 +387,14 @@ async def test_update_app_dependencies_validates_and_invalidates_cache():
 
 @pytest.mark.asyncio
 async def test_update_app_dependencies_rejects_invalid_inputs_and_managed_apps():
+    """Reject invalid dependency updates and changes to Solution-managed applications."""
     app_id = str(uuid4())
     too_many = {f"pkg{i}": "1.0.0" for i in range(21)}
 
-    bad_id = await apps.update_app_dependencies(_context(), "not-a-uuid", {})
-    too_many_result = await apps.update_app_dependencies(_context(), app_id, too_many)
-    bad_name = await apps.update_app_dependencies(_context(), app_id, {"Bad Name": "1.0.0"})
-    bad_version = await apps.update_app_dependencies(_context(), app_id, {"pkg": "latest"})
+    bad_id = await apps.update_app_dependencies(_context(admin=True), "not-a-uuid", {})
+    too_many_result = await apps.update_app_dependencies(_context(admin=True), app_id, too_many)
+    bad_name = await apps.update_app_dependencies(_context(admin=True), app_id, {"Bad Name": "1.0.0"})
+    bad_version = await apps.update_app_dependencies(_context(admin=True), app_id, {"pkg": "latest"})
 
     managed_app = _app(solution_id=uuid4())
     managed_db = _Db([_ScalarResult(managed_app)])
@@ -396,7 +402,7 @@ async def test_update_app_dependencies_rejects_invalid_inputs_and_managed_apps()
         patch.object(apps, "get_tool_db", _tool_db(managed_db)),
         patch("src.services.solutions.guard.is_solution_managed", return_value=True),
     ):
-        managed = await apps.update_app_dependencies(_context(), str(managed_app.id), {})
+        managed = await apps.update_app_dependencies(_context(admin=True), str(managed_app.id), {})
 
     assert "Invalid app_id format" in bad_id.structured_content["error"]
     assert "Too many dependencies" in too_many_result.structured_content["error"]
@@ -407,15 +413,16 @@ async def test_update_app_dependencies_rejects_invalid_inputs_and_managed_apps()
 
 @pytest.mark.asyncio
 async def test_create_app_validates_scope_org_and_stale_source():
-    no_name = await apps.create_app(_context(), "")
-    bad_scope = await apps.create_app(_context(), "Portal", scope="tenant")
+    """Validate application creation scope, organization references, and stale source conflicts."""
+    no_name = await apps.create_app(_context(admin=True), "")
+    bad_scope = await apps.create_app(_context(admin=True), "Portal", scope="tenant")
     bad_org = await apps.create_app(
-        _context_without_org(),
+        _context_without_org(admin=True),
         "Portal",
         organization_id="not-a-uuid",
     )
     missing_org = await apps.create_app(
-        _context_without_org(),
+        _context_without_org(admin=True),
         "Portal",
         scope="organization",
     )
@@ -427,7 +434,7 @@ async def test_create_app_validates_scope_org_and_stale_source():
             new=AsyncMock(side_effect=ValueError("Source files already exist")),
         ),
     ):
-        stale = await apps.create_app(_context(), "Customer Portal")
+        stale = await apps.create_app(_context(admin=True), "Customer Portal")
 
     assert no_name.structured_content["error"] == "name is required"
     assert bad_scope.structured_content["error"] == "scope must be 'global' or 'organization'"
@@ -474,6 +481,7 @@ async def test_create_app_scaffolds_global_app_and_detects_duplicates():
 
 @pytest.mark.asyncio
 async def test_create_app_shapes_scaffold_storage_errors():
+    """Translate application scaffolding and source-storage failures into MCP error responses."""
     db = _Db([_RowsResult([])])
     file_storage = MagicMock()
     file_storage.write_file = AsyncMock(side_effect=RuntimeError("repo write failed"))
@@ -483,7 +491,7 @@ async def test_create_app_shapes_scaffold_storage_errors():
         patch("src.routers.applications.ensure_no_stale_app_source", new=AsyncMock()),
         patch("src.services.file_storage.FileStorageService", return_value=file_storage),
     ):
-        failed = await apps.create_app(_context(), "Customer Portal")
+        failed = await apps.create_app(_context(admin=True), "Customer Portal")
 
     assert db.flushed is True
     assert db.committed is False
@@ -635,16 +643,17 @@ async def test_push_files_rejects_governed_delete_prefix_before_any_write(monkey
 
 @pytest.mark.asyncio
 async def test_push_files_counts_unchanged_created_deleted_and_compile_warnings():
+    """Report file push changes and compiler warnings without miscounting unchanged files."""
     app = _app(repo_path="apps/portal")
     unchanged_hash = "hash-present"
     db = _Db([
         _ScalarRowsResult([app]),
-        _ScalarResult(unchanged_hash),
-        _ScalarResult(None),
         _RowsResult([
             ("apps/portal/pages/old.tsx",),
             ("apps/portal/pages/index.tsx",),
         ]),
+        _ScalarResult(unchanged_hash),
+        _ScalarResult(None),
     ])
     file_storage = MagicMock()
     file_storage.write_file = AsyncMock()
@@ -670,7 +679,7 @@ async def test_push_files_counts_unchanged_created_deleted_and_compile_warnings(
         patch("src.services.app_storage.AppStorageService", return_value=app_storage),
     ):
         result = await apps.push_files(
-            _context(),
+            _context(admin=True),
             {
                 "apps/portal/README.md": "same",
                 "apps/portal/pages/new.tsx": "export default function New() {}",
@@ -689,15 +698,16 @@ async def test_push_files_counts_unchanged_created_deleted_and_compile_warnings(
 
 @pytest.mark.asyncio
 async def test_push_files_counts_updates_and_surfaces_write_delete_errors():
+    """Count updated files and surface storage failures during writes or deletions."""
     app = _app(repo_path="apps/portal")
     db = _Db([
         _ScalarRowsResult([app]),
-        _ScalarResult("old-hash"),
-        _ScalarResult(None),
         _RowsResult([
             ("apps/portal/pages/delete-me.tsx",),
             ("apps/portal/pages/write-fail.tsx",),
         ]),
+        _ScalarResult("old-hash"),
+        _ScalarResult(None),
     ])
     file_storage = MagicMock()
     file_storage.write_file = AsyncMock(side_effect=[None, RuntimeError("write denied")])
@@ -718,7 +728,7 @@ async def test_push_files_counts_updates_and_surfaces_write_delete_errors():
         patch("src.services.app_storage.AppStorageService", return_value=app_storage),
     ):
         result = await apps.push_files(
-            _context(),
+            _context(admin=True),
             {
                 "apps/portal/pages/index.tsx": "export default function Index() {}",
                 "apps/portal/pages/write-fail.tsx": "export default function Bad() {}",
@@ -812,12 +822,13 @@ async def test_validate_app_reports_invalid_missing_and_repository_errors():
 
 @pytest.mark.asyncio
 async def test_get_and_update_app_dependencies_validate_missing_and_remove_all():
-    missing_selector = await apps.get_app_dependencies(_context())
-    bad_id = await apps.get_app_dependencies(_context(), app_id="not-a-uuid")
+    """Validate dependency lookups and support removing the complete dependency set."""
+    missing_selector = await apps.get_app_dependencies(_context(admin=True))
+    bad_id = await apps.get_app_dependencies(_context(admin=True), app_id="not-a-uuid")
 
     missing_db = _Db([_ScalarResult(None)])
     with patch.object(apps, "get_tool_db", _tool_db(missing_db)):
-        missing_app = await apps.update_app_dependencies(_context(), str(uuid4()), {})
+        missing_app = await apps.update_app_dependencies(_context(admin=True), str(uuid4()), {})
 
     app = _app(dependencies={"dayjs": "^1.11.0"})
     db = _Db([_ScalarResult(app)])
@@ -828,7 +839,7 @@ async def test_get_and_update_app_dependencies_validate_missing_and_remove_all()
         patch("src.services.solutions.guard.is_solution_managed", return_value=False),
         patch("src.services.app_storage.AppStorageService", return_value=storage),
     ):
-        removed = await apps.update_app_dependencies(_context(), str(app.id), {})
+        removed = await apps.update_app_dependencies(_context(admin=True), str(app.id), {})
 
     assert missing_selector.structured_content["error"] == "Either app_id or app_slug is required"
     assert "Invalid app_id format" in bad_id.structured_content["error"]
@@ -860,3 +871,30 @@ async def test_get_app_schema_and_register_tools_expose_app_tool_metadata():
     assert registered_ids == [tool_id for tool_id, _name, _description in apps.TOOLS]
     assert dict((tool_id, func) for func, tool_id, _description, _ctx in registered)["push_files"] is apps.push_files
     assert all(item[3] is get_context for item in registered)
+
+
+@pytest.mark.asyncio
+async def test_regular_user_cannot_mutate_own_org_app_or_source():
+    """Deny regular callers application metadata and source writes within their own organization."""
+    ctx = _context()
+    app = _app(organization_id=ctx.org_id, dependencies={"dayjs": "^1.11.0"})
+    db = _Db([_ScalarResult(app), _ScalarResult(app), _ScalarRowsResult([app])])
+    storage = MagicMock()
+    storage.write_file = AsyncMock()
+    with (
+        patch.object(apps, "get_tool_db", _tool_db(db)),
+        patch("src.services.solutions.guard.is_solution_managed", return_value=False),
+        patch("src.services.file_storage.FileStorageService", return_value=storage),
+    ):
+        updated = await apps.update_app(ctx, str(app.id), name="Changed")
+        dependencies = await apps.update_app_dependencies(ctx, str(app.id), {})
+        pushed = await apps.push_files(ctx, {"apps/portal/pages/index.tsx": "changed"})
+        created = await apps.create_app(ctx, "New")
+    assert "Application not found" in updated.structured_content["error"]
+    assert "Application not found" in dependencies.structured_content["error"]
+    assert "permission" in pushed.structured_content["error"]
+    assert "platform admin or provider-org" in created.structured_content["error"]
+    assert app.name == "Portal"
+    assert app.dependencies == {"dayjs": "^1.11.0"}
+    assert db.committed is False
+    storage.write_file.assert_not_awaited()

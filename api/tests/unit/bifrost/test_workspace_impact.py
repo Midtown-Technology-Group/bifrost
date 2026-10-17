@@ -11,6 +11,17 @@ from bifrost.workspace_impact import (
 )
 
 
+def test_package_initializer_change_reaches_submodule_importers() -> None:
+    graph = analyze_workspace_impact({
+        "workflows/run.py": b"from modules.extensions.api import VALUE\n",
+        "modules/extensions/__init__.py": b"VALUE = 1\n",
+        "modules/extensions/api.py": b"VALUE = 2\n",
+    })
+    assert transitive_distances("modules/extensions/__init__.py", reverse_edges(graph.edges)) == {
+        "modules/extensions/__init__.py": 0, "workflows/run.py": 1,
+    }
+
+
 def test_analysis_combines_import_and_registry_reverse_edges() -> None:
     workflow_id = "11111111-2222-3333-4444-555555555555"
     files = {

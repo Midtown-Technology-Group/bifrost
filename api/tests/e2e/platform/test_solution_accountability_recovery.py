@@ -11,15 +11,21 @@ import uuid
 import zipfile
 
 import pytest
-from sqlalchemy import delete
+from sqlalchemy import delete, func, select
 
 from src.core.security import decrypt_secret, encrypt_secret
+from src.models.orm.applications import Application
 from src.models.orm.platform_jobs import PlatformJob
+from src.models.orm.solution_deploy_jobs import SolutionDeployJob
+from src.models.orm.solution_deployments import SolutionDeployment
+from src.models.orm.solutions import Solution
 from src.models.orm.workspace_promotions import (
     SolutionDeployObligation,
     WorkspaceSourceRelease,
 )
 from src.services.solution_deploy_obligations import solution_source_content_id
+from src.services.solutions.app_build import SolutionAppBuilder
+from src.services.solutions.deploy import solution_entity_id
 from src.services.solutions.source_artifact import SolutionSourceArtifactStorage
 from src.services.solutions.storage import SolutionStorage
 from tests.e2e.platform.conftest import wait_for_deploy
@@ -41,12 +47,14 @@ async def _wait_for_platform_job(e2e_client, headers, job_id):
     return body
 
 
+@pytest.mark.parametrize("with_source_app", [False, True])
 async def test_recovery_releases_obligation_without_redeploying(
     e2e_client,
     platform_admin,
     org1,
     org1_user,
     db_session,
+    with_source_app,
 ):
     headers = platform_admin.headers
     slug = f"accountability-{uuid.uuid4().hex[:8]}"
@@ -74,6 +82,26 @@ async def test_recovery_releases_obligation_without_redeploying(
             ),
             "workflows/main.py": source,
         }
+        portable_app_id = uuid.uuid4()
+        if with_source_app:
+            files.update(
+                {
+                    ".bifrost/apps.yaml": (
+                        f"apps:\n  {portable_app_id}:\n    id: {portable_app_id}\n"
+                        f"    name: {slug}\n    slug: {slug}\n    path: apps/example\n"
+                        "    app_model: standalone_v2\n    access_level: authenticated\n"
+                    ),
+                    "apps/example/index.html": '<html><body><div id="app"></div><script type="module" src="/src/main.js"></script></body></html>',
+                    "apps/example/src/main.js": 'document.getElementById("app").textContent = "Source-built proof";',
+                    "apps/example/package.json": json.dumps(
+                        {
+                            "name": "source-accounting-fixture",
+                            "private": True,
+                            "devDependencies": {"vite": "8.2.2"},
+                        }
+                    ),
+                }
+            )
         buffer = io.BytesIO()
         with zipfile.ZipFile(buffer, "w") as archive:
             for path, content in files.items():
@@ -152,10 +180,45 @@ async def test_recovery_releases_obligation_without_redeploying(
             return response.json()
 
         before = read_solution()
+        app = None
+        builder = None
+        app_before = None
+        app_outputs_before = None
+        if with_source_app:
+            app = await db_session.get(
+                Application, solution_entity_id(solution_id, portable_app_id)
+            )
+            assert app is not None and app.active_deployment_id is not None
+            assert app.published_snapshot["runtime_pin"]["build_mode"] == "source"
+            app_before = (app.active_deployment_id, app.published_snapshot)
+            builder = SolutionAppBuilder()
+            app_outputs_before = {
+                path: await builder.read_dist(
+                    app.id, path, deployment_id=app.active_deployment_id
+                )
+                for path in await builder.list_dist(
+                    app.id, deployment_id=app.active_deployment_id
+                )
+            }
         storage = SolutionStorage(solution_id)
         runtime_before = {
             path: await storage.read(path) for path in await storage.list()
         }
+        deploy_job_ids_before = set(
+            await db_session.scalars(
+                select(SolutionDeployJob.id).where(
+                    SolutionDeployJob.install_id == solution_id
+                )
+            )
+        )
+        deployment_count_before = await db_session.scalar(
+            select(func.count())
+            .select_from(SolutionDeployment)
+            .where(SolutionDeployment.solution_id == solution_id)
+        )
+        active_deployment_before = (
+            await db_session.get(Solution, solution_id)
+        ).active_deployment_id
         route = f"/api/solutions/{solution_id}/deploy-jobs/{deploy_job_id}/reconcile"
         forbidden = e2e_client.post(route, headers=org1_user.headers)
         assert forbidden.status_code == 403, forbidden.text
@@ -179,11 +242,69 @@ async def test_recovery_releases_obligation_without_redeploying(
             == accountability["evidence_id"]
         )
         assert obligation.resolved_at is not None
+
+        # A retry must be idempotent: same evidence and obligation, with no
+        # new deploy job, no new deployment history, and no activation change.
+        recovered_again = e2e_client.post(route, headers=headers)
+        assert recovered_again.status_code == 202, recovered_again.text
+        again = await _wait_for_platform_job(
+            e2e_client, headers, recovered_again.json()["job_id"]
+        )
+        assert again["job_type"] == "solution.deploy.reconcile"
+        again_accountability = again["result"]["source_release_accountability"]
+        assert again_accountability["state"] == "released", again
+        assert again_accountability["obligation_id"] == str(obligation.id)
+        assert (
+            again_accountability["evidence_id"] == accountability["evidence_id"]
+        )
+        await db_session.refresh(obligation)
+        assert obligation.disposition == "released"
+        assert obligation.deploy_job_id == deploy_job_id
+        assert obligation.candidate_id == candidate_id
+        assert set(
+            await db_session.scalars(
+                select(SolutionDeployJob.id).where(
+                    SolutionDeployJob.install_id == solution_id
+                )
+            )
+        ) == (set(deploy_job_ids_before) | {deploy_job_id})
+        assert (
+            await db_session.scalar(
+                select(func.count())
+                .select_from(SolutionDeployment)
+                .where(SolutionDeployment.solution_id == solution_id)
+            )
+        ) == deployment_count_before
+        solution_row = await db_session.get(Solution, solution_id)
+        await db_session.refresh(solution_row)
+        assert solution_row.active_deployment_id == active_deployment_before
+
         assert read_solution() == before
         assert await SolutionSourceArtifactStorage(solution_id).read() == artifact
         assert {
             path: await storage.read(path) for path in await storage.list()
         } == runtime_before
+        repeated = e2e_client.post(route, headers=headers)
+        assert repeated.status_code == 202, repeated.text
+        repeated_body = await _wait_for_platform_job(
+            e2e_client, headers, repeated.json()["job_id"]
+        )
+        assert (
+            repeated_body["result"]["source_release_accountability"]["evidence_id"]
+            == accountability["evidence_id"]
+        )
+        if with_source_app:
+            assert app is not None and builder is not None
+            await db_session.refresh(app)
+            assert (app.active_deployment_id, app.published_snapshot) == app_before
+            assert {
+                path: await builder.read_dist(
+                    app.id, path, deployment_id=app.active_deployment_id
+                )
+                for path in await builder.list_dist(
+                    app.id, deployment_id=app.active_deployment_id
+                )
+            } == app_outputs_before
     finally:
         await db_session.rollback()
         await db_session.execute(

@@ -18,7 +18,7 @@ services:
     environment:
       POSTGRES_DB: bifrost
       POSTGRES_USER: bifrost
-      POSTGRES_PASSWORD: bifrost_debug
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Use debug.sh to initialize local credentials}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -34,7 +34,7 @@ services:
       DB_PORT: 5432
       DB_NAME: bifrost
       DB_USER: bifrost
-      DB_PASSWORD: bifrost_debug
+      DB_PASSWORD: ${POSTGRES_PASSWORD:?Use debug.sh to initialize local credentials}
       POOL_MODE: transaction
       MAX_CLIENT_CONN: 1000
       DEFAULT_POOL_SIZE: 20
@@ -88,6 +88,8 @@ services:
 
   seaweedfs:
     image: chrislusf/seaweedfs:latest
+    # Its default admin gRPC port 33646 can collide with an ephemeral port.
+    command: ["mini", "-dir=/data", "-admin.port=12646"]
     environment:
       AWS_ACCESS_KEY_ID: bifrost
       AWS_SECRET_ACCESS_KEY: ${SEAWEEDFS_SECRET_KEY}
@@ -121,9 +123,9 @@ services:
         BIFROST_VERSION: ${BIFROST_VERSION:-debug}
     environment:
       BIFROST_ENVIRONMENT: development
-      BIFROST_SECRET_KEY: ${BIFROST_SECRET_KEY:-dev-secret-key-change-in-production-must-be-32-chars}
-      BIFROST_DATABASE_URL: postgresql+asyncpg://bifrost:bifrost_debug@postgres:5432/bifrost
-      BIFROST_DATABASE_URL_SYNC: postgresql://bifrost:bifrost_debug@postgres:5432/bifrost
+      BIFROST_SECRET_KEY: ${BIFROST_SECRET_KEY:?Use debug.sh}
+      BIFROST_DATABASE_URL: postgresql+asyncpg://bifrost:${POSTGRES_PASSWORD_URLENCODED:?Use debug.sh}@postgres:5432/bifrost
+      BIFROST_DATABASE_URL_SYNC: postgresql://bifrost:${POSTGRES_PASSWORD_URLENCODED:?Use debug.sh}@postgres:5432/bifrost
       BIFROST_REDIS_URL: redis://redis:6379/0
     volumes:
       - ./api/src:/app/src:ro
@@ -151,9 +153,9 @@ services:
     environment:
       BIFROST_ENVIRONMENT: development
       BIFROST_DEBUG: "true"
-      BIFROST_SECRET_KEY: ${BIFROST_SECRET_KEY:-dev-secret-key-change-in-production-must-be-32-chars}
-      BIFROST_DATABASE_URL: postgresql+asyncpg://bifrost:bifrost_debug@pgbouncer:5432/bifrost
-      BIFROST_DATABASE_URL_SYNC: postgresql://bifrost:bifrost_debug@pgbouncer:5432/bifrost
+      BIFROST_SECRET_KEY: ${BIFROST_SECRET_KEY:?Use debug.sh}
+      BIFROST_DATABASE_URL: postgresql+asyncpg://bifrost:${POSTGRES_PASSWORD_URLENCODED:?Use debug.sh}@pgbouncer:5432/bifrost
+      BIFROST_DATABASE_URL_SYNC: postgresql://bifrost:${POSTGRES_PASSWORD_URLENCODED:?Use debug.sh}@pgbouncer:5432/bifrost
       BIFROST_RABBITMQ_URL: amqp://bifrost:bifrost_debug@rabbitmq:5672/
       BIFROST_REDIS_URL: redis://redis:6379/0
       BIFROST_S3_BUCKET: bifrost-local
@@ -179,6 +181,7 @@ services:
       BIFROST_KUBERNETES_BUILD_SERVICE_ACCOUNT: ${BIFROST_KUBERNETES_BUILD_SERVICE_ACCOUNT:-}
       BIFROST_KUBERNETES_BUILD_JOB_TYPES: ${BIFROST_KUBERNETES_BUILD_JOB_TYPES:-application.deploy,application.sdk_update}
       EMBEDDING_ALLOWED_HOSTS: scheduler-fixtures
+      MCP_ENCRYPTED_TUNNEL_HOSTS: scheduler-fixtures
       BIFROST_DEFAULT_USER_EMAIL: ${BIFROST_DEFAULT_USER_EMAIL:-dev@localhost}
       BIFROST_DEFAULT_USER_PASSWORD: ${BIFROST_DEFAULT_USER_PASSWORD:-}
       BIFROST_WEBAUTHN_RP_ID: ${BIFROST_WEBAUTHN_RP_ID:-localhost}
@@ -223,9 +226,9 @@ services:
         BIFROST_VERSION: ${BIFROST_VERSION:-debug}
     environment:
       BIFROST_ENVIRONMENT: development
-      BIFROST_SECRET_KEY: ${BIFROST_SECRET_KEY:-dev-secret-key-change-in-production-must-be-32-chars}
-      BIFROST_DATABASE_URL: postgresql+asyncpg://bifrost:bifrost_debug@pgbouncer:5432/bifrost
-      BIFROST_DATABASE_URL_SYNC: postgresql://bifrost:bifrost_debug@pgbouncer:5432/bifrost
+      BIFROST_SECRET_KEY: ${BIFROST_SECRET_KEY:?Use debug.sh}
+      BIFROST_DATABASE_URL: postgresql+asyncpg://bifrost:${POSTGRES_PASSWORD_URLENCODED:?Use debug.sh}@pgbouncer:5432/bifrost
+      BIFROST_DATABASE_URL_SYNC: postgresql://bifrost:${POSTGRES_PASSWORD_URLENCODED:?Use debug.sh}@pgbouncer:5432/bifrost
       BIFROST_RABBITMQ_URL: amqp://bifrost:bifrost_debug@rabbitmq:5672/
       BIFROST_REDIS_URL: redis://redis:6379/0
       BIFROST_S3_BUCKET: bifrost-local
@@ -283,11 +286,12 @@ services:
         BIFROST_VERSION: ${BIFROST_VERSION:-debug}
     environment:
       BIFROST_ENVIRONMENT: development
-      BIFROST_SECRET_KEY: ${BIFROST_SECRET_KEY:-dev-secret-key-change-in-production-must-be-32-chars}
-      BIFROST_DATABASE_URL: postgresql+asyncpg://bifrost:bifrost_debug@pgbouncer:5432/bifrost
-      BIFROST_DATABASE_URL_SYNC: postgresql://bifrost:bifrost_debug@pgbouncer:5432/bifrost
+      BIFROST_SECRET_KEY: ${BIFROST_SECRET_KEY:?Use debug.sh}
+      BIFROST_DATABASE_URL: postgresql+asyncpg://bifrost:${POSTGRES_PASSWORD_URLENCODED:?Use debug.sh}@pgbouncer:5432/bifrost
+      BIFROST_DATABASE_URL_SYNC: postgresql://bifrost:${POSTGRES_PASSWORD_URLENCODED:?Use debug.sh}@pgbouncer:5432/bifrost
       BIFROST_RABBITMQ_URL: amqp://bifrost:bifrost_debug@rabbitmq:5672/
       BIFROST_REDIS_URL: redis://redis:6379/0
+      MCP_ENCRYPTED_TUNNEL_HOSTS: scheduler-fixtures
       BIFROST_S3_BUCKET: bifrost-local
       BIFROST_S3_ENDPOINT_URL: http://seaweedfs:8333
       # Browser-reachable S3 origin: presigned URLs get rewritten to /s3/...

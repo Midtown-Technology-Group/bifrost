@@ -51,6 +51,7 @@ def workspace_workflow_lookup_statement(
         .order_by(WorkflowORM.organization_id.is_(None).asc(), WorkflowORM.id.asc())
         .limit(1)
         .options(selectinload(WorkflowORM.roles))
+        .execution_options(autoflush=False, populate_existing=True)
     )
     return statement.with_for_update() if for_update else statement
 
@@ -105,6 +106,7 @@ def _planned_action(existing: WorkflowORM | None) -> str:
     """Describe the registry mutation implied by the current row state."""
     if existing is None:
         return "create"
+    _assert_registration_not_retired(existing)
     return "preserve" if existing.is_active else "reactivate"
 
 
@@ -140,6 +142,10 @@ async def plan_workspace_registrations(
             requested_id = await resolve_workflow_registration_id(
                 db, candidate.requested_id, existing
             )
+            if existing is None:
+                await _assert_no_retired_alias_remint(
+                    db, candidate.path, candidate.function_name, organization_id,
+                )
         except (WorkflowRegistrationIdInvalid, WorkflowRegistrationConflict) as exc:
             diagnostics.append(
                 {
@@ -190,7 +196,7 @@ async def apply_workspace_registration_plan(
     applied: list[dict] = []
     for action in actions:
         existing = await find_workspace_workflow(
-            db, organization_id, action["path"], action["function_name"]
+            db, organization_id, action["path"], action["function_name"], for_update=True,
         )
         _assert_registration_plan_current(action, existing)
         try:
@@ -231,6 +237,7 @@ def _assert_registration_plan_current(
     action: dict, existing: WorkflowORM | None
 ) -> None:
     """Reject activation when registry state changed after preview."""
+    _assert_registration_not_retired(existing)
     expected_action = action.get("action")
     ref = f"{action['path']}::{action['function_name']}"
     if expected_action == "create" and existing is not None:
@@ -259,12 +266,37 @@ class WorkflowRegistrationConflict(ValueError):
     """A requested workflow identity conflicts with an existing registration."""
 
 
+def _assert_registration_not_retired(workflow: WorkflowORM | None) -> None:
+    if workflow is not None and getattr(workflow, "retirement_evidence", None) is not None:
+        raise WorkflowRegistrationConflict(
+            f"Workflow UUID {workflow.id} ({workflow.path}::{workflow.function_name}) "
+            "was permanently retired and cannot be reactivated or recreated"
+        )
+
+
+async def _assert_no_retired_alias_remint(
+    db: AsyncSession, path: str, function_name: str, organization_id: UUID | None,
+) -> None:
+    """A new Root UUID cannot bypass retirement by spelling the same path differently."""
+    normalized = path.replace("\\", "/").lstrip("/")
+    result = await db.execute(select(WorkflowORM).where(
+        WorkflowORM.retirement_evidence.is_not(None), WorkflowORM.solution_id.is_(None),
+        WorkflowORM.organization_id == organization_id,
+        WorkflowORM.function_name == function_name,
+        func.ltrim(func.replace(WorkflowORM.path, "\\", "/"), "/") == normalized,
+    ).order_by(WorkflowORM.id).limit(1).execution_options(
+        autoflush=False, populate_existing=True,
+    ))
+    _assert_registration_not_retired(result.scalar_one_or_none())
+
+
 async def resolve_workflow_registration_id(
     db: AsyncSession,
     requested_id: str | None,
     existing_workflow: WorkflowORM | None,
 ) -> UUID | None:
     """Validate an optional portable ID and reject known ownership conflicts."""
+    _assert_registration_not_retired(existing_workflow)
     if requested_id is None:
         return None
 
@@ -282,8 +314,10 @@ async def resolve_workflow_registration_id(
             f"{existing_workflow.id}, not {workflow_id}"
         )
 
-    result = await db.execute(select(WorkflowORM).where(WorkflowORM.id == workflow_id))
+    result = await db.execute(select(WorkflowORM).where(WorkflowORM.id == workflow_id)
+        .execution_options(autoflush=False, populate_existing=True))
     owner = result.scalar_one_or_none()
+    _assert_registration_not_retired(owner)
     if owner and (not existing_workflow or owner.id != existing_workflow.id):
         raise WorkflowRegistrationConflict(
             f"Workflow UUID {workflow_id} is already used by "
@@ -298,6 +332,11 @@ async def add_workflow_registration(
     requested_workflow_id: UUID | None,
 ) -> None:
     """Insert inside a savepoint and translate identity races into conflicts."""
+    _assert_registration_not_retired(workflow)
+    if workflow.solution_id is None:
+        await _assert_no_retired_alias_remint(
+            db, workflow.path, workflow.function_name, workflow.organization_id,
+        )
     try:
         async with db.begin_nested():
             db.add(workflow)
@@ -311,6 +350,7 @@ async def add_workflow_registration(
                 select(WorkflowORM).where(WorkflowORM.id == requested_workflow_id)
             )
             owner = result.scalar_one_or_none()
+            _assert_registration_not_retired(owner)
             if owner:
                 raise WorkflowRegistrationConflict(
                     f"Workflow UUID {requested_workflow_id} is already used by "
@@ -325,6 +365,7 @@ async def add_workflow_registration(
             )
         )
         owner = result.scalar_one_or_none()
+        _assert_registration_not_retired(owner)
         if owner:
             raise WorkflowRegistrationConflict(
                 f"Workflow '{workflow.function_name}' in {workflow.path} is "

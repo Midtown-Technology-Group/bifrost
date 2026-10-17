@@ -104,15 +104,21 @@ async def test_create_busy_and_observation(
     assert "claim_token" not in job  # fencing secrets stay agent-only
     job_id = job["id"]
 
-    # Busy: second create → structured 409 device_busy with the blocker id.
+    # Busy: second create → structured 409 device_busy with the blocker id
+    # and the additive (#1060) actionable recovery reference.
     busy = e2e_client.post(
         f"/api/devices/{device_id}/jobs",
         headers=org1_user.headers,
         json=_job_body(),
     )
     assert busy.status_code == 409, busy.text
-    assert busy.json()["error"]["code"] == "device_busy"
-    assert busy.json()["error"]["job_id"] == job_id
+    error = busy.json()["error"]
+    assert error["code"] == "device_busy"
+    assert error["job_id"] == job_id
+    # Old-client fields unchanged (additive delta only).
+    assert error["message"] == "device already has an active job"
+    assert error["retryable"] is False
+    assert error["cancel_url"] == f"/api/devices/{device_id}/jobs/{job_id}/cancel"
 
     # Detail: create-level read includes the script body.
     detail = e2e_client.get(
@@ -366,13 +372,15 @@ async def test_cooperative_cancel_loop(
     )
     assert claim.status_code == 204  # cancelled job is not claimable
 
-    # Idempotent-ish terminal guard: second cancel → job_terminal.
+    # Idempotent cancel (#1060): second cancel of the cancelled job replays
+    # the same success shape instead of 409 job_terminal.
     again = e2e_client.post(
         f"/api/devices/{device_id}/jobs/{job_id}/cancel",
         headers=org1_user.headers,
     )
-    assert again.status_code == 409
-    assert again.json()["error"]["code"] == "job_terminal"
+    assert again.status_code == 200, again.text
+    assert again.json()["status"] == "cancelled"
+    assert again.json()["cancel_state"] == "converged"
 
     # --- Phase 2: running cancel is cooperative (flag + heartbeat + result).
     created2 = e2e_client.post(
@@ -405,9 +413,11 @@ async def test_cooperative_cancel_loop(
         headers=org1_user.headers,
     )
     assert running_cancel.status_code == 200, running_cancel.text
-    # Running cancels are cooperative: status stays running, flag is set.
+    # Running cancels are cooperative: status stays running, flag is set,
+    # and cancel_state signals convergence is pending (#1060).
     assert running_cancel.json()["status"] == "running"
     assert running_cancel.json()["cancel_requested_at"] is not None
+    assert running_cancel.json()["cancel_state"] == "requested"
 
     hb = e2e_client.post(
         "/api/device/heartbeat",
@@ -427,6 +437,21 @@ async def test_cooperative_cancel_loop(
     await db_session.refresh(row)
     assert row.status == "cancelled"
     assert row.cancel_requested_at is not None
+
+    # Converged (#1060): observation now reports cancel_state=converged, and
+    # a repeated cancel replays the same success shape.
+    observed = e2e_client.get(
+        f"/api/devices/{device_id}/jobs/{job2_id}", headers=org1_user.headers
+    )
+    assert observed.status_code == 200
+    assert observed.json()["cancel_state"] == "converged"
+    replay = e2e_client.post(
+        f"/api/devices/{device_id}/jobs/{job2_id}/cancel",
+        headers=org1_user.headers,
+    )
+    assert replay.status_code == 200, replay.text
+    assert replay.json()["status"] == "cancelled"
+    assert replay.json()["cancel_state"] == "converged"
 
     # Control keys never cancel (M0 matrix).
     ck = e2e_client.post(

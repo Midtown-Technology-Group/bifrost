@@ -1,16 +1,11 @@
 """E2E matrix: MCP tool-access decisions across (caller × agent × workflow).
 
-This file is the durable regression surface for the "platform admin should see
-every tool attached to an agent they can access" bug. It runs against the real
-test stack — DB, API, workers — so it also catches anything that routes through
-``AgentScopeMCPMiddleware`` / ``ToolFilterMiddleware`` or shared workflow
-registration.
+This file exercises access to attached tools through the real MCP HTTP route,
+including listing and execution. Each case registers only its target workflow.
 
 The matrix is deliberately table-driven: each row names a concrete
 (caller, agent_org, workflow_variant) combination and declares whether the
-workflow should appear in the agent's MCP tool list. The pytest id makes
-failures self-describing in CI output — "the admin + cross-org role-gated
-row flipped" instead of a nameless -1/+1 count diff.
+workflow can be listed and called. The pytest id names the affected row.
 
 Workflow variants modelled:
 
@@ -24,24 +19,22 @@ Workflow variants modelled:
 Callers modelled:
 
 * ``platform_admin`` — is_superuser=True (from conftest)
-* ``org_a_user`` — reuses ``platform_admin``'s org; not used for admin cases
+* ``org_a_user`` — a non-admin caller with role_x in Org A
 
-For now, the matrix focuses on the admin → cross-org scenarios. Non-admin rows
-are included as regression anchors to prove the fix does not widen non-admin
-visibility.
+Non-admin rows prove the admin bypass does not widen user visibility.
 """
 
 from __future__ import annotations
 
 import logging
 import uuid
+from sqlalchemy.ext.asyncio import AsyncSession
 from collections.abc import AsyncIterator, Iterator
 from dataclasses import dataclass
 from typing import Any
 
 import pytest
 import pytest_asyncio
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from tests.e2e.conftest import E2E_API_URL
 from tests.fixtures.auth import create_test_jwt
@@ -379,9 +372,9 @@ def org_b(org2) -> dict:
 
 @pytest_asyncio.fixture
 async def seeded_agent_with_tools(
-    e2e_client, platform_admin, role_x, org_a, org_b
+    request, e2e_client, platform_admin, role_x, org_a, org_b
 ) -> AsyncIterator[dict[str, Any]]:
-    """Create one agent per-test with all seven workflow variants attached.
+    """Create only the workflow variant exercised by this HTTP scenario.
 
     Uses a fresh uuid-suffixed agent + fresh workflows per test to keep the
     stack clean under state-reset semantics of ``./test.sh``. On teardown we
@@ -390,9 +383,16 @@ async def seeded_agent_with_tools(
     """
     admin_headers = platform_admin.headers
 
-    # 1) Create the seven workflows.
+    # Singleton cases pass the fixture's target directly. Matrix cases use
+    # their named row; discovery passes None and needs only the agent.
+    variant_key = (
+        request.param
+        if hasattr(request, "param")
+        else request.node.callspec.params["variant_key"]
+    )
+    assert variant_key is None or any(v.key == variant_key for v in VARIANTS)
     workflows_by_key: dict[str, dict] = {}
-    for variant in VARIANTS:
+    for variant in (v for v in VARIANTS if v.key == variant_key):
         target_org = (
             org_a["id"] if variant.in_org == "A"
             else org_b["id"] if variant.in_org == "B"
@@ -419,7 +419,7 @@ async def seeded_agent_with_tools(
             )
         workflows_by_key[variant.key] = wf
 
-    # 2) Create an Org A agent (access_level=authenticated) and attach every tool.
+    # Create an Org A agent with the one workflow needed for this case.
     tool_ids = [wf["id"] for wf in workflows_by_key.values()]
     agent_resp = e2e_client.post(
         "/api/agents",
@@ -858,8 +858,7 @@ class TestMcpToolAccessMatrix:
                 break
         assert registered_tool_name is not None, (
             f"tools/list did not return the expected workflow for variant="
-            f"{variant_key}. The list test should have caught this — "
-            f"investigate that first. Candidates: {candidate_names}, "
+            f"{variant_key}. Candidates: {candidate_names}, "
             f"returned: {[t.get('name') for t in list_payload['result'].get('tools', [])]}."
         )
 
@@ -1034,6 +1033,7 @@ class TestMcpToolAccessMatrix:
             f"Content: {content_text[:300]}"
         )
 
+    @pytest.mark.parametrize("seeded_agent_with_tools", ["org_b_role_gated"], indirect=True)
     async def test_provider_org_user_can_list_and_call_cross_org_role_tool(
         self,
         seeded_agent_with_tools: dict[str, Any],
@@ -1088,6 +1088,7 @@ class TestMcpToolAccessMatrix:
         )
         assert "ok" in content_text, content_text
 
+    @pytest.mark.parametrize("seeded_agent_with_tools", [None], indirect=True)
     async def test_provider_gateway_discovery_requires_explicit_scope_or_target(
         self,
         seeded_agent_with_tools: dict[str, Any],
@@ -1187,6 +1188,7 @@ class TestMcpToolAccessMatrix:
         assert "agents" in explicit_data, explicit_data
         assert explicit_data["agents"][0]["id"] == agent["id"]
 
+    @pytest.mark.parametrize("seeded_agent_with_tools", ["org_b_role_gated"], indirect=True)
     async def test_customer_org_platform_admin_cannot_list_or_call_cross_org_tool(
         self,
         seeded_agent_with_tools: dict[str, Any],

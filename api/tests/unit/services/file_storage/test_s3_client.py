@@ -110,3 +110,24 @@ async def test_put_object_from_chunks_uses_single_put_for_small_stream() -> None
             "ContentType": "text/plain",
         }
     ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("single_attempt", [False, True])
+async def test_publication_client_disables_sdk_retries_only_when_requested(monkeypatch, single_attempt):
+    from src.services.file_storage import s3_client as module
+
+    created = []
+    class Session:
+        @asynccontextmanager
+        async def create_client(self, *args, **kwargs):
+            created.append(kwargs)
+            yield object()
+
+    monkeypatch.setattr(module, "_get_shared_session", lambda: Session())
+    async with S3StorageClient(_settings()).get_client(single_attempt=single_attempt):
+        pass
+    if single_attempt:
+        assert created[0]["config"].retries == {"total_max_attempts": 1}
+    else:
+        assert "config" not in created[0]

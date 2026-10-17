@@ -9,10 +9,11 @@ import ast
 import logging
 from datetime import datetime, timezone
 from typing import Any
+
+from bifrost.workflow_parameters import WorkflowParameterCompiler
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from bifrost.workflow_parameters import WorkflowParameterCompiler
 from src.core.log_safety import log_safe
 from src.models import Workflow
 
@@ -173,6 +174,11 @@ class WorkflowIndexer(WorkflowParameterCompiler):
                         )
                         continue
 
+                    if getattr(existing_workflow, "retirement_evidence", None) is not None:
+                        # Retained Source is historical data, not authority to
+                        # reopen a registration after the Live cutover.
+                        continue
+
                     workflow_uuid = existing_workflow.id
 
                     # Get workflow name from decorator or function name
@@ -201,6 +207,12 @@ class WorkflowIndexer(WorkflowParameterCompiler):
                     # that Slice 3 compares at launch. Rows converting away
                     # from service keep history but are parked.
                     if workflow_type == "service" or existing_workflow.type == "service":
+                        # A prefetched row may predate retirement. Check and
+                        # lock persisted state before service lifecycle writes.
+                        marker = await self.db.scalar(select(Workflow.retirement_evidence)
+                            .where(Workflow.id == workflow_uuid).with_for_update())
+                        if marker is not None:
+                            continue
                         from src.services.service_lifecycle import (
                             note_source_revision,
                             sync_definition_for_registration,
@@ -263,10 +275,14 @@ class WorkflowIndexer(WorkflowParameterCompiler):
                     # Enrich existing record with content-derived fields
                     stmt = (
                         update(Workflow)
-                        .where(Workflow.id == workflow_uuid)
+                        .where(Workflow.id == workflow_uuid, Workflow.retirement_evidence.is_(None))
                         .values(**update_values)
                     )
-                    await self.db.execute(stmt)
+                    updated = await self.db.execute(stmt)
+                    if updated.rowcount == 0:
+                        # Retirement won the race with stale prefetch. Preserve
+                        # the transaction and avoid endpoint/cache writes.
+                        continue
                     logger.debug(f"Enriched workflow: {log_safe(workflow_name)} ({log_safe(function_name)}) from {log_safe(path)}")
 
                     # Re-fetch to get merged DB values (decorator + API settings)
@@ -325,6 +341,9 @@ class WorkflowIndexer(WorkflowParameterCompiler):
                         )
                         continue
 
+                    if getattr(existing_dp, "retirement_evidence", None) is not None:
+                        continue
+
                     parameters_schema = self._extract_parameters_from_ast(
                         node, enum_definitions=enum_definitions
                     )
@@ -366,10 +385,12 @@ class WorkflowIndexer(WorkflowParameterCompiler):
 
                     stmt = (
                         update(Workflow)
-                        .where(Workflow.id == existing_dp.id)
+                        .where(Workflow.id == existing_dp.id, Workflow.retirement_evidence.is_(None))
                         .values(**dp_update_values)
                     )
-                    await self.db.execute(stmt)
+                    updated = await self.db.execute(stmt)
+                    if updated.rowcount == 0:
+                        continue
                     logger.debug(f"Enriched data provider: {log_safe(provider_name)} ({log_safe(function_name)}) from {log_safe(path)}")
 
         # Note: workspace_files update removed — file_index is the sole search index.
@@ -386,8 +407,8 @@ class WorkflowIndexer(WorkflowParameterCompiler):
             workflow: The Workflow ORM model that was just indexed
         """
         try:
-            from src.services.openapi_endpoints import refresh_workflow_endpoint
             from src.main import app
+            from src.services.openapi_endpoints import refresh_workflow_endpoint
 
             refresh_workflow_endpoint(app, workflow)
             logger.info(f"Refreshed endpoint for workflow: {log_safe(workflow.name)}")

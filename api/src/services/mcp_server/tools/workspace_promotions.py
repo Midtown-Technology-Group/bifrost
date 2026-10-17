@@ -27,6 +27,7 @@ async def retire_workspace_release(
     expected_release_id: str | None = None,
     expected_artifact_id: str | None = None,
     governed_manifest_id: str | None = None,
+    obsolete_registrations: list[dict[str, Any]] | None = None,
 ) -> ToolResult:
     """Retire the global Live Workspace release — ``POST /live/retire``.
 
@@ -40,6 +41,10 @@ async def retire_workspace_release(
         return error_result(
             f"acknowledgement must be exactly {RETIRE_LIVE_ACKNOWLEDGEMENT}"
         )
+    if obsolete_registrations is not None and not all((
+        expected_release_id, expected_artifact_id, governed_manifest_id,
+    )):
+        return error_result("obsolete registration retirement requires explicit Live identity fields")
     if not expected_release_id or not expected_artifact_id or not governed_manifest_id:
         status_code, live = await call_rest(
             context, "GET", "/api/workspace-promotions/live"
@@ -66,17 +71,20 @@ async def retire_workspace_release(
     if not expected_release_id or not expected_artifact_id or not governed_manifest_id:
         return error_result("could not resolve the Live release identity")
 
+    request: dict[str, Any] = {
+        "expected_release_id": expected_release_id,
+        "expected_artifact_id": expected_artifact_id,
+        "governed_manifest_id": governed_manifest_id,
+        "reason": reason,
+        "acknowledgement": acknowledgement,
+    }
+    if obsolete_registrations is not None:
+        request["obsolete_registrations"] = obsolete_registrations
     status_code, body = await call_rest(
         context,
         "POST",
         "/api/workspace-promotions/live/retire",
-        json_body={
-            "expected_release_id": expected_release_id,
-            "expected_artifact_id": expected_artifact_id,
-            "governed_manifest_id": governed_manifest_id,
-            "reason": reason,
-            "acknowledgement": acknowledgement,
-        },
+        json_body=request,
     )
     if status_code not in (200, 201):
         return error_result(
@@ -89,7 +97,17 @@ async def retire_workspace_release(
     )
 
 
+async def inspect_workspace_release_retirement(context: Any) -> ToolResult:
+    """Read native retirement inventory; external caller review remains required."""
+    status_code, body = await call_rest(context, "GET",
+        "/api/workspace-promotions/live/retirement-inventory")
+    if status_code != 200 or not isinstance(body, dict):
+        return error_result(f"retirement inventory failed: HTTP {status_code}", {"body": body})
+    return success_result("Live retirement inventory (read only)", body)
+
+
 TOOLS = [
+    ("inspect_workspace_release_retirement", "Inspect Live Retirement", "Read the Live retirement inventory."),
     (
         "retire_workspace_release",
         "Retire Workspace Release",
@@ -104,7 +122,8 @@ def register_tools(mcp: Any, get_context_fn: Any) -> None:
         register_tool_with_context,
     )
 
-    tool_funcs = {"retire_workspace_release": retire_workspace_release}
+    tool_funcs = {"retire_workspace_release": retire_workspace_release,
+                  "inspect_workspace_release_retirement": inspect_workspace_release_retirement}
 
     for tool_id, _name, description in TOOLS:
         register_tool_with_context(

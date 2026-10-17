@@ -3,9 +3,10 @@ Device-job lost watchdog schedule
 
 Wraps :func:`src.services.device_jobs.sweep_device_jobs` so the server
 watchdog that owns terminal ``lost`` transitions actually runs. The service
-function defines the frozen M0 semantics (90s activity-silence threshold,
-``timeout_seconds + 60s`` backstop); this module only acquires the database
-session and reports a bounded summary for scheduler diagnostics.
+function defines the semantics (90s activity-silence threshold,
+``timeout_seconds + 60s`` backstop, and the #1059 dead-device claim release
+gated on ``DEVICE_HEARTBEAT_LOST_SECONDS``); this module only acquires the
+database session and reports a bounded summary for scheduler diagnostics.
 """
 
 import logging
@@ -37,7 +38,16 @@ async def sweep_lost_device_jobs() -> ScheduledTaskOutcome:
     )
     if stats["lost_silence"] or stats["lost_backstop"]:
         logger.warning(
-            "device_jobs_lost_watchdog transitioned running job(s) to lost",
+            "device_jobs_lost_watchdog transitioned job(s) to lost",
+            extra={"task_id": "device_jobs_lost_sweep", **stats},
+        )
+    if stats["stale_claimed_reclaimable"]:
+        # Additive signal (#1059): a lease-expired claim that claim_next has
+        # not reclaimed on a heartbeat-fresh device — normally transient (the
+        # next agent poll reclaims it), persistently visible when an agent is
+        # alive but not running jobs.
+        logger.warning(
+            "device_jobs_watchdog stale claim(s) awaiting claim_next reclaim",
             extra={"task_id": "device_jobs_lost_sweep", **stats},
         )
     return ScheduledTaskOutcome(summary=summary)

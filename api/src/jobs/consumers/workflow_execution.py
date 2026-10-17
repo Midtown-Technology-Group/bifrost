@@ -515,6 +515,7 @@ class WorkflowExecutionConsumer(BaseConsumer):
                     )
 
             # Flush pending changes and logs (Redis read + DB write in same session)
+            changes_count = 0
             try:
                 from bifrost._sync import flush_pending_changes
                 changes_count = await flush_pending_changes(execution_id, session=session)
@@ -542,6 +543,18 @@ class WorkflowExecutionConsumer(BaseConsumer):
             logs_flushed_ms = (time.perf_counter() - completion_started) * 1000
 
             await session.commit()
+
+        if changes_count > 0:
+            try:
+                from bifrost._sync import acknowledge_pending_changes
+
+                await acknowledge_pending_changes(execution_id)
+            except Exception as e:
+                logger.warning(
+                    "Failed to acknowledge committed pending changes for %s...: %s",
+                    execution_id[:8],
+                    e,
+                )
         durable_ms = (time.perf_counter() - completion_started) * 1000
 
         # Wake sync callers as soon as their result and buffered SDK writes are
@@ -850,6 +863,7 @@ class WorkflowExecutionConsumer(BaseConsumer):
                         f"Failed to update event delivery for {execution_id[:8]}...: {e}"
                     )
 
+            changes_count = 0
             try:
                 from bifrost._sync import flush_pending_changes
                 changes_count = await flush_pending_changes(execution_id, session=session)
@@ -875,6 +889,18 @@ class WorkflowExecutionConsumer(BaseConsumer):
                     )
 
             await session.commit()
+
+        if changes_count > 0:
+            try:
+                from bifrost._sync import acknowledge_pending_changes
+
+                await acknowledge_pending_changes(execution_id)
+            except Exception as e:
+                logger.warning(
+                    "Failed to acknowledge committed pending changes for %s...: %s",
+                    execution_id[:8],
+                    e,
+                )
 
         # A sync failure is just as latency-sensitive as a success. Wake the
         # caller once the authoritative failure is durable; aggregates and
@@ -1490,11 +1516,16 @@ class WorkflowExecutionConsumer(BaseConsumer):
                 delegated_is_superuser=pending.get("is_platform_admin", False),
                 delegated_is_provider_org=pending.get("is_provider_org", False),
                 delegated_is_external=pending.get("is_external", False),
+                caller_user_id=str(user_id) if user_id else None,
+                caller_organization_id=str(org_id) if org_id else None,
+                caller_email=user_email,
+                caller_name=user_name,
             )
 
             # Build context for worker process
             context_data = {
                 "execution_id": execution_id,
+                "created_at": pending.get("created_at"),
                 "workflow_id": workflow_id,
                 "name": workflow_name,
                 "function_name": workflow_function_name,  # For exec_from_db()
@@ -1772,8 +1803,10 @@ class WorkflowExecutionConsumer(BaseConsumer):
         """Fail confirmed work whose required Redis context disappeared.
 
         Taking the publisher's advisory transaction lock prevents observing
-        SCHEDULED while a confirmed publication is still advancing to PENDING.
-        Unconfirmed SCHEDULED and terminal rows remain untouched.
+        SCHEDULED while a live publisher is still advancing to PENDING. Once
+        this broker delivery owns the lock, either SCHEDULED or PENDING is
+        confirmed work: SCHEDULED means the publisher died after broker
+        confirmation but before committing its state transition.
         """
         from src.core.database import get_db_context
         from src.models.enums import ExecutionStatus
@@ -1796,7 +1829,10 @@ class WorkflowExecutionConsumer(BaseConsumer):
             await require_delivery_ownership(db)
             if execution is None:
                 return None
-            if execution.status == ExecutionStatus.PENDING:
+            if execution.status in {
+                ExecutionStatus.SCHEDULED,
+                ExecutionStatus.PENDING,
+            }:
                 attempt = await db.scalar(
                     select(ExecutionAttempt)
                     .where(
@@ -1826,9 +1862,11 @@ class WorkflowExecutionConsumer(BaseConsumer):
 
         The publisher holds the same advisory transaction lock through broker
         confirmation and its SCHEDULED -> PENDING transition. A fast consumer
-        therefore waits for that transaction, then advances only PENDING to
-        RUNNING. SCHEDULED means publication was not durably confirmed; any
-        other state is a redelivery or an already-finished execution.
+        therefore waits for that transaction. Once the consumer owns the lock,
+        the broker delivery itself confirms publication: PENDING is the normal
+        path and SCHEDULED recovers a publisher that died after confirmation
+        but before commit. Any other state is a redelivery or an already-
+        finished execution.
 
         Rows are absent for legacy inline-code dispatch, which retains its
         existing Redis-first creation path.
@@ -1852,9 +1890,18 @@ class WorkflowExecutionConsumer(BaseConsumer):
             await require_delivery_ownership(db)
             if execution is None:
                 return ""
-            if execution.status != ExecutionStatus.PENDING:
+            if execution.status not in {
+                ExecutionStatus.SCHEDULED,
+                ExecutionStatus.PENDING,
+            }:
                 return None
-            from src.services.execution.attempts import create_claimed_attempt
+            from src.services.execution.attempts import (
+                create_claimed_attempt,
+                mark_attempt_published,
+            )
+
+            if execution.status == ExecutionStatus.SCHEDULED:
+                await mark_attempt_published(db, execution)
 
             claim = await create_claimed_attempt(
                 db,

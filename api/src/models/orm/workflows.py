@@ -9,7 +9,18 @@ table in migration 20260103_000000.
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, Numeric, String, Text, text
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    Numeric,
+    String,
+    Text,
+    text,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -72,6 +83,11 @@ class Workflow(Base):
     parameters_schema: Mapped[dict | list] = mapped_column(JSONB, default=[])
     tags: Mapped[list] = mapped_column(JSONB, default=[])
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    # Internal, terminal disposition of an existing registration. Never portable
+    # manifest content or a public workflow metadata mutation field.
+    retirement_evidence: Mapped[dict | None] = mapped_column(
+        JSONB(none_as_null=True), nullable=True, default=None,
+    )
     is_orphaned: Mapped[bool] = mapped_column(Boolean, default=False)
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
 
@@ -157,6 +173,13 @@ class Workflow(Base):
     )
 
     __table_args__ = (
+        CheckConstraint(
+            "retirement_evidence IS NULL OR "
+            "(is_active IS FALSE AND solution_id IS NULL AND "
+            "endpoint_enabled IS FALSE AND public_endpoint IS FALSE AND "
+            "api_key_enabled IS FALSE)",
+            name="ck_workflow_retirement_terminal",
+        ),
         Index(
             "ix_workflows_api_key_hash",
             "api_key_hash",

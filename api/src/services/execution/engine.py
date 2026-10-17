@@ -4,6 +4,7 @@ Single source of truth for all code execution (workflows, scripts, data provider
 """
 
 import asyncio
+import dis
 import inspect
 import json
 import logging
@@ -134,6 +135,7 @@ class ExecutionRequest:
 
     # Execution settings
     timeout_seconds: int = 1800          # Default 30 minutes
+    workflow_deadline: datetime | None = None
     cache_ttl_seconds: int = 300         # For data providers
 
     # Parameters
@@ -292,6 +294,44 @@ def _scrub_outputs(
     )
 
 
+def _scrub_execution_context(context: ExecutionContext) -> dict[str, Any]:
+    """Build the persisted public context without secret-bearing values."""
+    public_context = sanitize_execution_variables(context.to_public_dict())
+    secret_values = context._collect_secret_values()
+    if not secret_values:
+        return public_context
+    return _redact_secret_keys(
+        redact_secrets(public_context, secret_values),
+        secret_values,
+    )
+
+
+def _redact_secret_keys(value: Any, secret_values: set[str]) -> Any:
+    """Replace secret-bearing dictionary keys without losing colliding entries."""
+    if isinstance(value, dict):
+        occupied_keys = set(value)
+        scrubbed: dict[Any, Any] = {}
+        redacted_key_index = 1
+        for key, item in value.items():
+            safe_key = key
+            if isinstance(key, str) and redact_secrets(key, secret_values) != key:
+                while True:
+                    candidate = f"[REDACTED_KEY_{redacted_key_index}]"
+                    redacted_key_index += 1
+                    if candidate not in occupied_keys and candidate not in scrubbed:
+                        safe_key = candidate
+                        break
+            scrubbed[safe_key] = _redact_secret_keys(item, secret_values)
+        return scrubbed
+    if isinstance(value, list):
+        return [_redact_secret_keys(item, secret_values) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_redact_secret_keys(item, secret_values) for item in value)
+    if isinstance(value, set):
+        return {_redact_secret_keys(item, secret_values) for item in value}
+    return value
+
+
 async def execute(request: ExecutionRequest) -> ExecutionResult:
     """
     Unified execution engine for all code execution.
@@ -362,6 +402,8 @@ async def execute(request: ExecutionRequest) -> ExecutionResult:
         is_external=request.is_external,
         is_function_key=False,  # Engine executions are not function key based
         execution_id=request.execution_id,
+        workflow_deadline=request.workflow_deadline,
+        workflow_timeout_seconds=request.timeout_seconds,
         workflow_name=request.name or "",  # Workflow/script name for context
         public_url=get_settings().public_url,
         startup=request.startup,  # Launch workflow results (from form execution)
@@ -504,7 +546,7 @@ async def execute(request: ExecutionRequest) -> ExecutionResult:
             variables=scrubbed_vars or {},
             integration_calls=context._integration_calls,
             roi=roi_data,
-            execution_context=context.to_public_dict(),
+            execution_context=_scrub_execution_context(context),
             cached=False,
             cache_expires_at=cache_expires_at_str
         )
@@ -597,7 +639,7 @@ async def execute(request: ExecutionRequest) -> ExecutionResult:
             logs=scrubbed_logs or [],
             variables=scrubbed_vars or {},
             integration_calls=context._integration_calls,
-            execution_context=context.to_public_dict(),
+            execution_context=_scrub_execution_context(context),
             error_message=scrubbed_err,
             error_type=error_type
         )
@@ -643,7 +685,7 @@ async def execute(request: ExecutionRequest) -> ExecutionResult:
             logs=scrubbed_logs or [],
             variables=scrubbed_vars or {},
             integration_calls=context._integration_calls,
-            execution_context=context.to_public_dict(),
+            execution_context=_scrub_execution_context(context),
             error_message=scrubbed_err,
             error_type=type(e).__name__
         )
@@ -711,7 +753,7 @@ async def execute(request: ExecutionRequest) -> ExecutionResult:
             logs=scrubbed_logs or [],
             variables=scrubbed_vars or {},
             integration_calls=context._integration_calls,
-            execution_context=context.to_public_dict(),
+            execution_context=_scrub_execution_context(context),
             error_message=scrubbed_err,
             error_type=type(e).__name__
         )
@@ -1425,15 +1467,23 @@ async def _execute_workflow_with_trace(
 
     exception_to_raise = None
 
-    # Set up trace function to capture variables on return or exception
+    # A coroutine emits a trace "return" whenever an await suspends it, and
+    # normal await completion can emit a StopIteration "exception". Capturing
+    # locals at either point repeatedly serializes large SDK request values.
+    # The outer exception handler captures locals from the traceback on real
+    # failures, so this trace only needs the final return instruction.
     def trace_func(frame, event, arg):
         # Trace the workflow function OR script's main() function
         # Scripts wrap their code in an async main() function
         if frame.f_code.co_name not in (func_name, 'main'):
             return None
 
-        # Capture variables when returning or raising exception
-        if event in ('return', 'exception'):
+        if (
+            event == 'return'
+            and frame.f_lasti >= 0
+            and dis.opname[frame.f_code.co_code[frame.f_lasti]]
+            in ('RETURN_VALUE', 'RETURN_CONST')
+        ):
             capture_variables_from_locals(frame.f_locals)
 
         return trace_func

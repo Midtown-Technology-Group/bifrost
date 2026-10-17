@@ -64,8 +64,10 @@ async function policyEditorText(page: Page, modelPath: string) {
 		const model = monaco?.editor
 			?.getModels?.()
 			.find((item) => item.uri.path.endsWith(targetPath));
-		if (!model) throw new Error(`${targetPath} Monaco model not found`);
-		return model.getValue();
+		// The toolbar can be used before Monaco's asynchronous loader mounts
+		// its model. Keep the existing content assertion polling until then;
+		// a missing model must still fail that assertion at its normal deadline.
+		return model?.getValue() ?? "";
 	}, modelPath);
 }
 
@@ -176,9 +178,17 @@ test.describe("Policy rule reference mode", () => {
 		await expect(
 			fileDetails.getByRole("list", { name: "Policy rules" }),
 		).toContainText(fileRuleLabel);
-		await fileDetails
-			.getByRole("switch", { name: "Advanced", exact: true })
-			.click();
+		// Selecting a rule updates the summary before the picker exit finishes.
+		// Wait for its DOM to leave before clicking a different control.
+		await expect(
+			page.getByRole("listbox", { includeHidden: true }),
+		).toBeHidden();
+		const advanced = fileDetails.getByRole("switch", {
+			name: "Advanced",
+			exact: true,
+		});
+		await advanced.click();
+		await expect(advanced).toBeChecked();
 		await expect(
 			fileDetails.getByRole("textbox", {
 				name: "file-policies.yaml",
