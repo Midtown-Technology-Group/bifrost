@@ -1,5 +1,5 @@
-import importlib
 import hashlib
+import importlib
 import json
 from types import SimpleNamespace
 from typing import Any, cast
@@ -186,6 +186,10 @@ def test_list_blob_modules_returns_python_paths(monkeypatch):
         SimpleNamespace(name="_repo/modules/a.py"),
         SimpleNamespace(name="_repo/modules/readme.md"),
         SimpleNamespace(name="_repo/workflows/b.py"),
+        SimpleNamespace(name="_repo/venv/hidden.py"),
+        SimpleNamespace(name="_repo/__pycache__/stale.py"),
+        SimpleNamespace(name="_repo/node_modules/dependency.py"),
+        SimpleNamespace(name="_repo/../escape.py"),
     ]
     monkeypatch.setattr(module_cache_sync, "_get_blob_container_client", lambda: client)
 
@@ -193,6 +197,27 @@ def test_list_blob_modules_returns_python_paths(monkeypatch):
         "modules/a.py",
         "workflows/b.py",
     }
+
+
+def test_list_s3_modules_excludes_non_workspace_python_paths(monkeypatch):
+    module_cache_sync = _module_cache_sync()
+    paginator = MagicMock()
+    paginator.paginate.return_value = [
+        {
+            "Contents": [
+                {"Key": "_repo/modules/a.py"},
+                {"Key": "_repo/.git/hooks/payload.py"},
+                {"Key": "_repo/.venv/lib/dependency.py"},
+                {"Key": "_repo/env/activate.py"},
+            ]
+        }
+    ]
+    client = MagicMock()
+    client.get_paginator.return_value = paginator
+    monkeypatch.setenv("BIFROST_S3_BUCKET", "bucket")
+    monkeypatch.setattr(module_cache_sync, "_get_s3_client", lambda: client)
+
+    assert module_cache_sync._list_s3_modules() == {"modules/a.py"}
 
 
 def test_solution_has_submodules_uses_s3_when_solution_context_active(monkeypatch):
@@ -554,6 +579,26 @@ def test_deployment_namespace_comes_from_pinned_source_manifest_not_mutable_inst
         module_cache_sync.clear_solution_context()
 
 
+def test_deployment_namespace_ignores_excluded_only_manifest_descendants():
+    module_cache_sync = _module_cache_sync()
+    solution_id = str(uuid4())
+    deployment_id = str(uuid4())
+    module_cache_sync.set_solution_context(
+        solution_id,
+        False,
+        runtime_storage_prefix=f"_solutions/{solution_id}/{deployment_id}/",
+        source_hashes={
+            "modules/node_modules/blocked.py": "sha256:" + "a" * 64,
+        },
+    )
+    try:
+        result = module_cache_sync.resolve_module_sync("modules")
+        assert result.kind == "not_found"
+        assert result.path == "modules"
+    finally:
+        module_cache_sync.clear_solution_context()
+
+
 @pytest.mark.parametrize(
     ("source_path", "import_name", "kind"),
     [
@@ -727,7 +772,11 @@ def test_get_module_index_sync_repopulates_from_api_then_storage(monkeypatch):
     monkeypatch.setattr(
         module_cache_sync,
         "_fetch_module_index_from_api",
-        lambda: {"modules/a.py", "workflows/b.py"},
+        lambda: {
+            "modules/a.py",
+            "workflows/b.py",
+            "venv/hidden.py",
+        },
     )
 
     assert module_cache_sync.get_module_index_sync() == {
@@ -748,7 +797,7 @@ def test_get_module_index_sync_repopulates_from_api_then_storage(monkeypatch):
     monkeypatch.setattr(
         module_cache_sync,
         "_list_object_storage_modules",
-        lambda: {"modules/storage.py"},
+        lambda: {"modules/storage.py", "node_modules/dependency.py"},
     )
 
     assert module_cache_sync.get_module_index_sync() == {"modules/storage.py"}
@@ -762,7 +811,61 @@ def test_get_module_index_sync_accepts_current_byte_generation(monkeypatch):
     module_cache_sync = _module_cache_sync()
     redis_client = MagicMock()
     redis_client.get.return_value = b"generation-1"
-    redis_client.smembers.return_value = {b"modules/current.py"}
+    redis_client.smembers.return_value = {
+        b"modules/current.py",
+        b"__pycache__/stale.py",
+    }
     monkeypatch.setattr(module_cache_sync, "_get_sync_redis", lambda: redis_client)
 
     assert module_cache_sync.get_module_index_sync() == {"modules/current.py"}
+
+
+def test_get_module_sync_rejects_excluded_path_before_cache_or_storage(monkeypatch):
+    module_cache_sync = _module_cache_sync()
+    redis_client = MagicMock()
+    monkeypatch.setattr(module_cache_sync, "_get_sync_redis", lambda: redis_client)
+
+    assert module_cache_sync.get_module_sync("venv/hidden.py") is None
+    redis_client.get.assert_not_called()
+
+
+def test_resolver_rejects_excluded_result_from_cache_or_older_api(monkeypatch):
+    module_cache_sync = _module_cache_sync()
+    excluded = module_cache_sync.ModuleResolution(
+        kind="module",
+        path="node_modules/security_payload.py",
+        content="RAISED = True",
+        hash="hash",
+        storage_path="node_modules/security_payload.py",
+    )
+    assert (
+        module_cache_sync._module_resolution_from_cached_source(
+            kind="module",
+            path=excluded.path,
+            storage_path=excluded.storage_path,
+            raw_module=json.dumps(
+                {"content": excluded.content, "hash": excluded.hash}
+            ),
+        )
+        is None
+    )
+
+    monkeypatch.setattr(
+        module_cache_sync,
+        "_get_cached_module_resolution",
+        lambda _name: None,
+    )
+    monkeypatch.setattr(
+        module_cache_sync,
+        "_get_exact_scoped_module",
+        lambda _name: None,
+    )
+    monkeypatch.setattr(
+        module_cache_sync,
+        "_fetch_module_resolution_from_api",
+        lambda _name: excluded,
+    )
+
+    result = module_cache_sync.resolve_module_sync("node_modules.security_payload")
+    assert result.kind == "not_found"
+    assert result.path == "node_modules/security_payload"
