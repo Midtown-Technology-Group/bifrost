@@ -1,6 +1,7 @@
 """SDK wait deadlines and unrelated HTTP timeout plumbing."""
 from __future__ import annotations
 
+import asyncio
 import importlib
 import sys
 from datetime import datetime, timedelta, timezone
@@ -52,6 +53,75 @@ async def test_non_admin_wait_fetches_scoped_result_after_redacted_status(
 
     assert await mod.agents.wait("run-redacted") == "caller result"
     get_result.assert_awaited_once_with("run-redacted")
+
+
+@pytest.mark.asyncio
+async def test_result_fetch_respects_wait_timeout_and_can_resume(monkeypatch):
+    mod = _agents_module()
+    enqueue = AsyncMock(return_value=MagicMock(run_id="run-redacted"))
+    monkeypatch.setattr(mod.agents, "enqueue", enqueue)
+    monkeypatch.setattr(
+        mod.agents,
+        "get_run",
+        AsyncMock(return_value=MagicMock(status="completed", output=None)),
+    )
+
+    async def delayed_result(_run_id):
+        await asyncio.Event().wait()
+
+    get_result = AsyncMock(side_effect=delayed_result)
+    monkeypatch.setattr(mod.agents, "get_result", get_result)
+
+    pending = await mod.agents.run("Foo", timeout=0.05)
+
+    assert pending.run_id == "run-redacted"
+    assert pending.reason == "wait_timeout"
+    assert pending.last_known_status is None
+    get_result.assert_awaited_once_with("run-redacted")
+
+    resumed_result = AsyncMock(return_value={"text": "caller result"})
+    monkeypatch.setattr(mod.agents, "get_result", resumed_result)
+
+    assert await mod.agents.wait(pending.run_id, timeout=1.0) == "caller result"
+    resumed_result.assert_awaited_once_with("run-redacted")
+    enqueue.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_result_fetch_preserves_exhausted_workflow_return_margin(monkeypatch):
+    mod = _agents_module()
+    base = datetime(2026, 10, 17, tzinfo=timezone.utc)
+    clock = iter((base, base + timedelta(seconds=0.2)))
+
+    class AdvancingDateTime:
+        @classmethod
+        def now(cls, tz=None):
+            assert tz is timezone.utc
+            return next(clock)
+
+    monkeypatch.setattr(mod, "datetime", AdvancingDateTime)
+    monkeypatch.setattr(
+        mod.agents,
+        "get_run",
+        AsyncMock(return_value=MagicMock(status="completed", output=None)),
+    )
+    get_result = AsyncMock()
+    monkeypatch.setattr(mod.agents, "get_result", get_result)
+    token = mod._execution_context.set(
+        SimpleNamespace(
+            workflow_deadline=base + timedelta(seconds=9.1),
+            workflow_timeout_seconds=60,
+        )
+    )
+    try:
+        pending = await mod.agents.wait("run-terminal")
+    finally:
+        mod._execution_context.reset(token)
+
+    assert pending.run_id == "run-terminal"
+    assert pending.reason == "workflow_deadline"
+    assert pending.last_known_status is None
+    get_result.assert_not_awaited()
 
 
 def test_agents_polling_slows_as_run_ages():
