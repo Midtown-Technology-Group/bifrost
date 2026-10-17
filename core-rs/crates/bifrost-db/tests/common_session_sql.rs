@@ -175,7 +175,11 @@ async fn no_grant_cancel_preserves_fences_and_commits() -> TestResult<()> {
     .await?;
     assert_eq!(
         incumbent_execution_state(incumbent.pool(), &fence).await?,
-        (fence.execution_id.as_str().into(), "rust".into(), "Running".into()),
+        (
+            fence.execution_id.as_str().to_owned(),
+            "rust".to_owned(),
+            "Running".to_owned(),
+        ),
     );
     let before = state(core.pool(), &fence).await?;
     assert_eq!(
@@ -261,7 +265,11 @@ async fn no_grant_cancel_preserves_fences_and_commits() -> TestResult<()> {
     // qualify mixed access merely by rejecting the incumbent before any read.
     assert_eq!(
         incumbent_execution_state(incumbent.pool(), &fence).await?,
-        (fence.execution_id.as_str().into(), "rust".into(), "Cancelling".into()),
+        (
+            fence.execution_id.as_str().to_owned(),
+            "rust".to_owned(),
+            "Cancelling".to_owned(),
+        ),
     );
     assert_eq!(
         after,
