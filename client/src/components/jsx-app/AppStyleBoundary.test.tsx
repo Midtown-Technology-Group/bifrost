@@ -26,7 +26,7 @@ describe("AppStyleBoundary", () => {
 		style.dataset.testDocumentStylesheet = "true";
 		style.textContent = `
 			:root { --app-color: red; }
-			html.dark { --app-color: blue; }
+			html.dark, :root[data-theme="dim"]:not(.paused) { --app-color: blue; }
 			body > main { padding: 1rem; }
 			.body, [data-label="body"] { color: green; }
 			@media (min-width: 1px) { :is(:root, body) { margin: 0; } }
@@ -38,7 +38,9 @@ describe("AppStyleBoundary", () => {
 
 		const rules = Array.from(style.sheet.cssRules);
 		expect((rules[0] as CSSStyleRule).selectorText).toBe(":host");
-		expect((rules[1] as CSSStyleRule).selectorText).toBe(":host.dark");
+		expect((rules[1] as CSSStyleRule).selectorText).toBe(
+			':host(.dark), :host([data-theme="dim"]:not(.paused))',
+		);
 		expect((rules[2] as CSSStyleRule).selectorText).toBe(
 			'[data-bifrost-app-mount="true"] > main',
 		);

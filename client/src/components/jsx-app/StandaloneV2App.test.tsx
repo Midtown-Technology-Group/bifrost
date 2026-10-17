@@ -312,14 +312,20 @@ describe("StandaloneV2App", () => {
 		await finishModuleLoad("styled", mount);
 		expect(mount).not.toHaveBeenCalled();
 
-		const appStylesheet = finishStylesheetLoad("styled");
+		const appStylesheet = finishStylesheetLoad(
+			"styled",
+			":root { --standalone-root-token: red; } html.dark { --standalone-root-token: blue; } body { margin: 0; }",
+		);
 		await waitFor(() => expect(mount).toHaveBeenCalledTimes(1));
-		expect(
-			(appStylesheet.cssRules[0] as CSSStyleRule).selectorText,
-		).toBe(":host");
-		expect(
-			(appStylesheet.cssRules[1] as CSSStyleRule).selectorText,
-		).toBe('[data-bifrost-app-mount="true"]');
+		expect((appStylesheet.cssRules[0] as CSSStyleRule).selectorText).toBe(
+			":host",
+		);
+		expect((appStylesheet.cssRules[1] as CSSStyleRule).selectorText).toBe(
+			":host(.dark)",
+		);
+		expect((appStylesheet.cssRules[2] as CSSStyleRule).selectorText).toBe(
+			'[data-bifrost-app-mount="true"]',
+		);
 	});
 
 	it("recovers a stale JavaScript asset from a fresh manifest without reloading", async () => {

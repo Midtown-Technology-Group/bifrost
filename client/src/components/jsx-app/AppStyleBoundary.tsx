@@ -37,12 +37,70 @@ const APP_MOUNT_SELECTOR = '[data-bifrost-app-mount="true"]';
 const DOCUMENT_ROOT_SELECTOR =
 	/(^|[\s>+~,(])(:root|html|body)(?=$|[\s>+~.#:[,)])/g;
 
+function documentRootQualifierEnd(selector: string, start: number): number {
+	let index = start;
+	let brackets = 0;
+	let parentheses = 0;
+	let quote: "'" | '"' | null = null;
+	while (index < selector.length) {
+		const character = selector[index];
+		if (character === "\\") {
+			index += 2;
+			continue;
+		}
+		if (quote) {
+			if (character === quote) quote = null;
+			index += 1;
+			continue;
+		}
+		if (character === "'" || character === '"') {
+			quote = character;
+			index += 1;
+			continue;
+		}
+		if (character === "[") brackets += 1;
+		else if (character === "]") brackets -= 1;
+		else if (character === "(") parentheses += 1;
+		else if (character === ")") {
+			if (parentheses === 0) break;
+			parentheses -= 1;
+		} else if (
+			brackets === 0 &&
+			parentheses === 0 &&
+			(/[\s>+~,]/.test(character) ||
+				(character === ":" && selector[index + 1] === ":"))
+		) {
+			break;
+		}
+		index += 1;
+	}
+	return index;
+}
+
 function isolatedDocumentSelector(selector: string): string {
-	return selector.replace(
-		DOCUMENT_ROOT_SELECTOR,
-		(_match: string, prefix: string, root: string) =>
-			`${prefix}${root === "body" ? APP_MOUNT_SELECTOR : ":host"}`,
-	);
+	let isolated = "";
+	let cursor = 0;
+	DOCUMENT_ROOT_SELECTOR.lastIndex = 0;
+	for (
+		let match = DOCUMENT_ROOT_SELECTOR.exec(selector);
+		match;
+		match = DOCUMENT_ROOT_SELECTOR.exec(selector)
+	) {
+		const [matched, prefix, root] = match;
+		const rootEnd = match.index + matched.length;
+		const qualifierEnd = documentRootQualifierEnd(selector, rootEnd);
+		const qualifiers = selector.slice(rootEnd, qualifierEnd);
+		const replacement =
+			root === "body"
+				? `${APP_MOUNT_SELECTOR}${qualifiers}`
+				: qualifiers
+					? `:host(${qualifiers})`
+					: ":host";
+		isolated += selector.slice(cursor, match.index) + prefix + replacement;
+		cursor = qualifierEnd;
+		DOCUMENT_ROOT_SELECTOR.lastIndex = qualifierEnd;
+	}
+	return isolated + selector.slice(cursor);
 }
 
 /**
@@ -57,12 +115,15 @@ export function adaptDocumentStylesheetForShadowRoot(
 		for (const rule of Array.from(rules)) {
 			if (rule.type === CSSRule.STYLE_RULE) {
 				const styleRule = rule as CSSStyleRule;
-				const isolated = isolatedDocumentSelector(styleRule.selectorText);
+				const isolated = isolatedDocumentSelector(
+					styleRule.selectorText,
+				);
 				if (isolated !== styleRule.selectorText) {
 					styleRule.selectorText = isolated;
 				}
 			}
-			const nested = (rule as CSSRule & { cssRules?: CSSRuleList }).cssRules;
+			const nested = (rule as CSSRule & { cssRules?: CSSRuleList })
+				.cssRules;
 			if (nested) visit(nested);
 		}
 	};

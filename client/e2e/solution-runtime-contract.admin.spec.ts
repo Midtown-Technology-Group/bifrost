@@ -97,8 +97,11 @@ const STYLE_CSS = `:root {
   --standalone-root-color: rgb(12 34 56);
   --radius: 13px;
 }
-.dark {
+html.dark {
   --standalone-root-color: rgb(56 34 12);
+}
+:root.dark {
+  --radius: 21px;
 }
 body {
   --standalone-body-spacing: 17px;
@@ -367,19 +370,29 @@ test.describe("deployed solution runtime contract", () => {
 		await expect(styleProbe).toHaveCSS("border-radius", "13px");
 		await expect(styleProbe).toHaveCSS("padding-left", "17px");
 		expect(
-			await page.locator("html").evaluate((root) =>
-				getComputedStyle(root).getPropertyValue("--standalone-root-color"),
-			),
+			await page
+				.locator("html")
+				.evaluate((root) =>
+					getComputedStyle(root).getPropertyValue(
+						"--standalone-root-color",
+					),
+				),
 		).toBe("");
 		await page.getByRole("button", { name: "Toggle theme" }).click();
 		await expect(styleProbe).toHaveCSS("color", "rgb(56, 34, 12)");
+		await expect(styleProbe).toHaveCSS("border-radius", "21px");
 		expect(
-			await page.locator("header").evaluate((header) =>
-				getComputedStyle(header).getPropertyValue("--standalone-root-color"),
-			),
+			await page
+				.locator("header")
+				.evaluate((header) =>
+					getComputedStyle(header).getPropertyValue(
+						"--standalone-root-color",
+					),
+				),
 		).toBe("");
 		await page.getByRole("button", { name: "Toggle theme" }).click();
 		await expect(styleProbe).toHaveCSS("color", "rgb(12, 34, 56)");
+		await expect(styleProbe).toHaveCSS("border-radius", "13px");
 
 		// Solution-managed forms remain read-only, but their environment-owned
 		// sharing controls are available directly from the Solution contents.
