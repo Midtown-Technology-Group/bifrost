@@ -6,6 +6,7 @@ Provides endpoints for monitoring application health.
 
 import asyncio
 from collections.abc import Awaitable, Hashable
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from time import monotonic
 from typing import Any, cast
@@ -183,7 +184,14 @@ _rabbitmq_health_connection = RabbitMQHealthConnection()
 _redis_health_connection = RedisHealthConnection()
 _s3_health_client = S3HealthClient()
 _readiness_cache_lock = asyncio.Lock()
-_readiness_cache: tuple[float, dict[str, ComponentStatus]] | None = None
+
+
+@dataclass(slots=True)
+class _ReadinessCacheState:
+    snapshot: tuple[float, dict[str, ComponentStatus]] | None = None
+
+
+_readiness_cache = _ReadinessCacheState()
 
 
 class HealthCheck(BaseModel):
@@ -356,8 +364,7 @@ async def build_health_components(
 
 def clear_readiness_cache() -> None:
     """Discard the process-local readiness snapshot."""
-    global _readiness_cache
-    _readiness_cache = None
+    _readiness_cache.snapshot = None
 
 
 def _copy_components(
@@ -371,21 +378,23 @@ async def get_cached_health_components(
     settings: Settings,
 ) -> dict[str, ComponentStatus]:
     """Single-flight dependency checks and reuse their short-lived result."""
-    global _readiness_cache
-    cache = _readiness_cache
+    cache = _readiness_cache.snapshot
     now = monotonic()
     if cache is not None and now < cache[0]:
         return _copy_components(cache[1])
 
     async with _readiness_cache_lock:
-        cache = _readiness_cache
+        cache = _readiness_cache.snapshot
         now = monotonic()
         if cache is not None and now < cache[0]:
             return _copy_components(cache[1])
 
         components = await build_health_components(db, settings)
         snapshot = _copy_components(components)
-        _readiness_cache = (monotonic() + READINESS_CACHE_SECONDS, snapshot)
+        _readiness_cache.snapshot = (
+            monotonic() + READINESS_CACHE_SECONDS,
+            snapshot,
+        )
         return _copy_components(snapshot)
 
 
