@@ -688,7 +688,6 @@ async def oauth_callback(
     # Every integration-level and per-mapping authorize flow carries the exact
     # provider in signed state. Reject invalid state instead of downgrading to a
     # name lookup, which could reselect a same-name global fallback.
-    org_id = requested_org_id
     mapping_id_from_state: UUID | None = None
     if not request.state:
         raise HTTPException(
@@ -721,14 +720,13 @@ async def oauth_callback(
         )
 
     connection_matches_provider = connection_name == provider.provider_name
-    if provider.integration_id is not None:
+    if provider.integration_id is not None and not connection_matches_provider:
         try:
             connection_matches_provider = (
-                connection_matches_provider
-                or UUID(connection_name) == provider.integration_id
+                UUID(connection_name) == provider.integration_id
             )
         except ValueError:
-            pass
+            connection_matches_provider = False
     if not connection_matches_provider:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
