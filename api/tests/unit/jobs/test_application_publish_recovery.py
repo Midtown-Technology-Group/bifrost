@@ -19,7 +19,11 @@ from tests.unit.services.test_application_git_source import app_policy
 def setup(monkeypatch):
     app = SimpleNamespace(id=uuid4(), organization_id=None, app_model="inline_v1", solution_id=None,
                           published_snapshot=None, published_at=None)
-    db = SimpleNamespace(get=AsyncMock(return_value=app), flush=AsyncMock(), commit=AsyncMock())
+    actor = SimpleNamespace(id=uuid4(), organization_id=uuid4(), is_active=True,
+                            is_superuser=False, is_external=False)
+    user_repo = SimpleNamespace(get_by_id=AsyncMock(return_value=actor))
+    db = SimpleNamespace(get=AsyncMock(return_value=app), flush=AsyncMock(), commit=AsyncMock(),
+                         actor=actor, user_repo=user_repo)
     @asynccontextmanager
     async def context():
         yield db
@@ -30,12 +34,63 @@ def setup(monkeypatch):
     monkeypatch.setattr(jobs, "get_db_context", context)
     monkeypatch.setattr(jobs, "publication_controls_hash", AsyncMock(return_value="sha256:" + "a" * 64))
     monkeypatch.setattr(jobs, "AppStorageService", lambda: storage)
-    monkeypatch.setattr(jobs, "ApplicationRepository", lambda *_args, **_kwargs: SimpleNamespace(publish=publisher))
+    application_repo = SimpleNamespace(get=AsyncMock(return_value=app), publish=publisher)
+    db.application_repo = application_repo
+    monkeypatch.setattr(jobs, "UserRepository", lambda *_args, **_kwargs: user_repo)
+    monkeypatch.setattr(jobs, "resolve_provider_org_claim", AsyncMock(return_value=True))
+    monkeypatch.setattr(jobs, "ApplicationRepository", lambda *_args, **_kwargs: application_repo)
     monkeypatch.setattr(jobs, "publish_app_published", AsyncMock())
     intent = {"schema_version": "bifrost.application-publication-intent/v1", "application_id": str(app.id),
               "expected_live_etag": None, "controls_hash": "sha256:" + "a" * 64,
               "artifact_hashes": {"entry.js": "sha256:" + "b" * 64, "manifest.json": "sha256:" + "c" * 64}}
     return app, db, storage, publisher, intent
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("revocation", ["missing", "inactive", "bypass", "access"])
+async def test_job_rechecks_current_publish_authority_before_any_effect(setup, revocation):
+    from src.jobs.platform.base import PlatformJobFailure
+
+    app, db, storage, publisher, _intent = setup
+    if revocation == "missing":
+        db.user_repo.get_by_id.return_value = None
+    elif revocation == "inactive":
+        db.actor.is_active = False
+    elif revocation == "bypass":
+        jobs.resolve_provider_org_claim.return_value = False
+    else:
+        db.application_repo.get.return_value = None
+
+    with pytest.raises(PlatformJobFailure) as error:
+        await jobs.run_application_publish(
+            _context(), jobs.ApplicationPublishPayload(application_id=app.id)
+        )
+    assert error.value.code == "application_publish_permission_revoked"
+    publisher.assert_not_awaited()
+    storage.verify_publication.assert_not_awaited()
+    db.flush.assert_not_awaited()
+    db.commit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_job_rechecks_authority_again_at_publication_boundary(setup):
+    from src.jobs.platform.base import PlatformJobFailure
+
+    app, db, storage, publisher, _intent = setup
+
+    async def revoke_before_effect(*_args, **kwargs):
+        jobs.resolve_provider_org_claim.return_value = False
+        await kwargs["before_publication"]()
+
+    publisher.side_effect = revoke_before_effect
+    with pytest.raises(PlatformJobFailure) as error:
+        await jobs.run_application_publish(
+            _context(), jobs.ApplicationPublishPayload(application_id=app.id)
+        )
+    assert error.value.code == "application_publish_permission_revoked"
+    storage.verify_publication.assert_not_awaited()
+    db.flush.assert_not_awaited()
+    db.commit.assert_not_awaited()
 
 
 def _context(intent=None):
