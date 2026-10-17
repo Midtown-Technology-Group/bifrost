@@ -1,13 +1,17 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
-
 from src.models.enums import ExecutionStatus
+from src.services.execution import submission_recovery
 from src.services.execution.submission_recovery import (
+    EmbedExecutionRecoveryDeniedError,
     ExecutionSubmissionConflictError,
+    assert_execution_bound_to_embed_session,
+    bind_execution_to_embed_session,
     recover_execution_submission,
 )
 
@@ -41,6 +45,59 @@ def _execution(**overrides):
     }
     data.update(overrides)
     return SimpleNamespace(**data)
+
+
+class _RedisContext:
+    def __init__(self, redis):
+        self.redis = redis
+
+    async def __aenter__(self):
+        return self.redis
+
+    async def __aexit__(self, *_args):
+        return None
+
+
+@pytest.mark.asyncio
+async def test_binds_execution_to_exact_embed_session(monkeypatch) -> None:
+    redis = SimpleNamespace(setex=AsyncMock())
+    monkeypatch.setattr(
+        submission_recovery,
+        "get_redis",
+        lambda: _RedisContext(redis),
+    )
+    execution_id = uuid4()
+
+    await bind_execution_to_embed_session("session-a", execution_id)
+
+    redis.setex.assert_awaited_once_with(
+        f"bifrost:embed:exec:session-a:{execution_id}",
+        86400,
+        "1",
+    )
+
+
+@pytest.mark.asyncio
+async def test_recovery_requires_exact_embed_session_binding(monkeypatch) -> None:
+    redis = SimpleNamespace(exists=AsyncMock(side_effect=[1, 0]))
+    monkeypatch.setattr(
+        submission_recovery,
+        "get_redis",
+        lambda: _RedisContext(redis),
+    )
+    execution_id = uuid4()
+
+    await assert_execution_bound_to_embed_session("session-a", execution_id)
+    with pytest.raises(
+        EmbedExecutionRecoveryDeniedError,
+        match="Access denied",
+    ):
+        await assert_execution_bound_to_embed_session("session-b", execution_id)
+
+    assert [call.args[0] for call in redis.exists.await_args_list] == [
+        f"bifrost:embed:exec:session-a:{execution_id}",
+        f"bifrost:embed:exec:session-b:{execution_id}",
+    ]
 
 
 @pytest.mark.asyncio
