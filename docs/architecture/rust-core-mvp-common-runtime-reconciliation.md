@@ -264,9 +264,9 @@ this schema wholesale into Python admission. No common migration or grant has
 been applied. Remaining review/authority/catalog gates are enumerated there.
 
 Freshly fetched workspace main is now
-`6689b218cb799b807c81d63ee77de9af27206509`; the
-[renewed boundary audit](rust-core-mvp-workspace-boundary-6689b218.json) finds
-2,451 authored committed Python files, zero forbidden imports/parse errors and
+`eae7d3b4a337213f90c127bcb9e3eabe7516984d`; the
+[renewed boundary audit](rust-core-mvp-workspace-boundary-eae7d3b4.json) finds
+2,452 authored committed Python files, zero forbidden imports/parse errors and
 an empty allowlist. Platform main remains e429. Both prerequisite merge commits
 remain ancestors of these fetched heads. Earlier baseline rows above retain
 their original evidence identity rather than being silently rewritten.

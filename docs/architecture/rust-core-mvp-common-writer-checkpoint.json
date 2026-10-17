@@ -1,0 +1,81 @@
+{
+  "schema_version": 1,
+  "kind": "inactive-common-writer-source-checkpoint",
+  "package": "C5-A+B1/writer-close-grant/v1",
+  "repository": "Midtown-Technology-Group/bifrost",
+  "head": "c287db444c6780555dad10b713c9b6bb14cb0c6e",
+  "base_main": "e42999395231ebc536711e5015422edfb75613a7",
+  "branch": "rust/common-writer-enforcement-candidate",
+  "worktree": "/home/thomas/src/bifrost-rust-common-writer-enforcement",
+  "files_sha256": {
+    "api/alembic/candidates/20261016_runtime_native_writers.py": "96324c7bd2c4c6fbad16900c2bb9e2e91640463241d3b91c5f5cced50e01419e",
+    "api/tests/unit/test_runtime_native_writers_candidate.py": "8e1afd9d69cda90b0476950a6eafebdbc6074322a39eebcbf3bf36b77f988c6e",
+    "api/alembic/candidates/20261016_runtime_close_grants.py": "a43ad4e3965652dbbf1671443e25c3ac2349dde4f83e4e2ad6053fafd0f35a43",
+    "api/tests/unit/test_runtime_close_grants_candidate.py": "c811185a6a73bc8acbedd38c55191e3d2f74ec4033b8414f27cee827c56f2342",
+    "api/src/services/workspace_admin.py": "5bf45d696cb3dd40ff9aa9ecc6ec172eb36179d06149942c149d68875d391b84",
+    "api/tests/unit/test_workspace_admin.py": "b28981077b0b538cf5c75de6ff9308a732f7094884be0dee265f5829d877586a",
+    "api/tests/unit/test_workspace_admin_persistence.py": "c4215a0ed7572c62726cb5247f72762e02248c0a2e65c61eb23cb2ed7ec6f59b"
+  },
+  "source_review": {
+    "status": "scoped SOURCE ACCEPT",
+    "head": "c287db444c6780555dad10b713c9b6bb14cb0c6e",
+    "reviewer": "independent Sol common_session_source_review",
+    "fixed_findings": [
+      "Actual generic-attempt binding replacement protected by shared OLD/NEW generic identity try-fences, including absent/nonworkflow parent.",
+      "Read-only custodian uses no row-lock UPDATE privilege.",
+      "Fail-closed RLS qualification covers all ten common authority tables, preventing filtered active-grant reads."
+    ],
+    "limits": "No imports/tests/SQL; source acceptance only. Full implicit wait graph, cascades, remaining common guards, catalog/profile, CRED adapter, physical custody, retention and agent extension remain held."
+  },
+  "contracts": {
+    "native": "One immutable Execution owner marker, retained historical class, exact ancestor NULL and public terminal sanitation exceptions; actual+declared lifecycle event parent checks.",
+    "python_adapter": "Existing terminal redaction takes native execution advisory before Execution row locks; existing auth, organization scope, status, sentinel and audit behavior preserved in source.",
+    "close_grant": "Authenticated session/grant/operation writes share native execution try-fence; permanent close denies late first grant/operations; deferred final-row check rejects closed session with active grant; no implicit credential issue/revoke.",
+    "source": "No child owner columns or replacement native FKs. Common close is not physical retirement or replay permission.",
+    "credential_policy": "CRED SelectedSDKPolicy and existing issuer/ingress remain one authority; common adapter not implemented or enabled. Go accepted consumer capability unchanged."
+  },
+  "checks": {
+    "locked_ruff": "passed0.15.12",
+    "ruff_format": "passed",
+    "git_diff_check": "passed",
+    "pytest": "unexecuted",
+    "candidate_sql": "unexecuted",
+    "actual_races": "unexecuted",
+    "literal_pre_pr": "unproved",
+    "live_python_redaction": "unproved"
+  },
+  "ci": {
+    "dispatch": "normal ci.yml accepted once; provider readback bound exact head and run",
+    "old_head": "ecc555324bd014568414f63a76de6e6b30f37802",
+    "old_run": 38985914661,
+    "old_status": "queued; cancellation requested, terminal cancellation not observed",
+    "old_tests_begun": false,
+    "qualification_limit": "Normal CI runs offline candidate checks and native Python tests, not candidate DDL application or C5 races.",
+    "id": 38986409037,
+    "head": "c287db444c6780555dad10b713c9b6bb14cb0c6e",
+    "attempt": 1,
+    "status": "pending",
+    "tests_begun": false
+  },
+  "remaining": [
+    "Remaining common source/Start/report/admission/resource writers and source/physical drain enforcement.",
+    "CRED common issuer/renewal/ingress adapter and finite authenticated principal/catalog decisions.",
+    "Actual supported PostgreSQL contention, wrong-writer, RLS, cascade, redaction and commit-failure proof.",
+    "Selected Python artifact/runtime profile and sensitive-payload disposition.",
+    "Actual Rust-owned Start/result lifecycle, unchanged Python workflow then agent, coexistence and routing rollback."
+  ],
+  "activation": {
+    "candidate_ddl_applied": false,
+    "new_role_grants": false,
+    "credential_issued": false,
+    "runtime_enabled": false,
+    "mvp_accepted": false,
+    "merged": false,
+    "deployed": false
+  },
+  "procedure_versions": {
+    "mtg-engineering-flow": "2026-10-06.1",
+    "github-pr-stewardship": "2026-10-06.1",
+    "cold_skill_package": "2026-10-09.1"
+  }
+}

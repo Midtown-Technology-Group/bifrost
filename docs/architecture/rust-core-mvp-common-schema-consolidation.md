@@ -21,8 +21,8 @@ without importing application code or evaluating ORM/DDL expressions. Starred
 constraint generators remain source expressions, not executed expansions. ORM
 inventory does not prove installed schema or migration equivalence.
 
-Workspace main is `875182c8028227903c886b4ab660f92b745c63bc`.
-The [current boundary audit](rust-core-mvp-workspace-boundary-875182c8.json) parsed
+Workspace main is `eae7d3b4a337213f90c127bcb9e3eabe7516984d`.
+The [current boundary audit](rust-core-mvp-workspace-boundary-eae7d3b4.json) parsed
 2,452 committed authored Python files using the current gate's roots and
 exclusions, plus Solution, google_ops_worker and top-level files. Zero src.* or
 SQLAlchemy imports, zero parse errors and an explicitly empty internal-import
@@ -238,8 +238,36 @@ source release. C4 storage cannot resolve the retained partial-cleanup ambiguity
 or authorize replay/owner reassignment. Complete C5 enforcement, actual
 PostgreSQL proof and sensitive-payload disposition still gate application.
 
+C5-A adds native ownership guards at independently reviewed
+`ecc555324bd014568414f63a76de6e6b30f37802`, followed by the common-read RLS
+qualification correction in the current writer candidate. Only Execution gains
+owner metadata; children retain native FKs and derive class from live root or
+retained owner history. Generic attempt identity fences protect both declared
+and actual lifecycle-event parents, including absent/non-workflow UUID reuse.
+The exact public terminal-payload sanitation exception remains available to
+Python; its service now takes the execution advisory fence before row locks.
+Future Result replay must not rehydrate sanitized native payloads from receipts.
+
+C5-B1 follows with authenticated session/grant/operation writes under that same
+execution try-fence. Closed sessions deny late first grant/operation insertion;
+a deferred final-row constraint requires existing grants revoked before close
+can commit. It supplies no CRED policy, issuer, renewal or ingress replacement.
+The [writer checkpoint](rust-core-mvp-common-writer-checkpoint.json) identifies
+exact source, review status and unexecuted checks. Current source
+`c287db444c6780555dad10b713c9b6bb14cb0c6e` has independent scoped source
+acceptance, including the RLS fix: filtered common reads fail closed rather than
+hiding active grants. Normal [CI run 38986409037](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/38986409037)
+is pending for that exact head. Cancellation was requested for predecessor
+run 38985914661; terminal cancellation is not observed. Neither has begun a
+test. No candidate SQL or role grant has been applied.
+
+Complete source/admission/drain guards, the CRED common adapter, finite
+principals/installed catalog, actual concurrency/cascade evidence, payload
+policy and the agent extension remain required. Neither A nor B1 is a complete
+C5 application packet or proof of Rust-owned lifecycle execution.
+
 Native ancestor positives to retain: inactive-user deletion clears executed_by;
-user/CLI cascade clears cli_session_id; form purge clears form_id; workflow and
+user/CLI cascade clears session_id; form purge clears form_id; workflow and
 API-key deletion use existing SET NULL actions. Only exact OLD live parent to
 NEW NULL transitions, with all other protected fields unchanged, may use the
 ancillary detach exception. No arbitrary incumbent UPDATE of Rust lifecycle,

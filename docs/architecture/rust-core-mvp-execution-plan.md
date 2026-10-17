@@ -15,8 +15,8 @@ A complete MVP still includes safe coexistence, unchanged consumers, security,
 reversible routing, observability and an evidence-based CONTINUE or STOP.
 
 Fresh fetch: platform `e42999395231ebc536711e5015422edfb75613a7`, workspace
-`875182c8028227903c886b4ab660f92b745c63bc`.
-The [latest boundary audit](rust-core-mvp-workspace-boundary-875182c8.json)
+`eae7d3b4a337213f90c127bcb9e3eabe7516984d`.
+The [latest boundary audit](rust-core-mvp-workspace-boundary-eae7d3b4.json)
 records authored source, forbidden-import/parse results and empty allowlist.
 Both prerequisite merges remain ancestors of these exact heads. Recheck these
 invariants when either baseline changes.
@@ -104,8 +104,12 @@ same uncoordinated VM qualification blindly or treat its legacy RabbitMQ
 configuration as PostgreSQL delivery evidence. Normal CI for exact composed
 C1-C4 source is queued in run 38983420259; parent runs cannot qualify this head.
 
-C5's complete restricted writer/admission guards and adapter lock order are the
-next common dependency before the bundled schema/authority decision. Existing
+C5-A now implements native writer exclusion and exact ancestor/sanitation
+exceptions; C5-B1 adds common close/late-grant serialization. The
+[writer checkpoint](rust-core-mvp-common-writer-checkpoint.json) separates
+source review from unexecuted SQL and exact-candidate CI. C5 remains incomplete:
+source/admission/drain, CRED adapter, finite writer/catalog and actual races
+still precede the bundled schema/authority decision. Existing
 CRED remains the one policy/issuer owner. No candidate DDL, role grant, new
 credential or runtime enablement is authorized by these source packages.
 Execution delivery release, logical close and a missing file cannot prove
