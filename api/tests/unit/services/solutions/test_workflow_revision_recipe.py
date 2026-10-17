@@ -113,6 +113,15 @@ def test_function_local_bindings_do_not_shadow_the_module_decorator():
     compile_source("from bifrost import workflow\ndef helper():\n workflow = 'local'\n return workflow\n@workflow\nasync def run(): pass")
 
 
+def test_comprehension_local_binding_does_not_shadow_module_decorator():
+    compile_source(
+        "from bifrost import workflow\n"
+        "items = [workflow for workflow in range(3)]\n"
+        "@workflow\n"
+        "async def run(): pass"
+    )
+
+
 def test_named_literal_scalar_defaults_are_carried_without_importing_source():
     entity = compile_source('''from bifrost import workflow
 DEFAULT_MAX_TENANTS: int = 10

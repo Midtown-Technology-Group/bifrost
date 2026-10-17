@@ -314,6 +314,25 @@ def require_adoption_parameters(old: dict[str, Any], new: dict[str, Any], *,
     raise WorkflowRecipeError("adoption cannot change the installed source parameter contract")
 
 
+def _evaluated_comprehension_target_parts(target: ast.expr) -> list[ast.expr]:
+    """Return target subexpressions that Python evaluates instead of binding."""
+    if isinstance(target, ast.Name):
+        return []
+    if isinstance(target, ast.Starred):
+        return _evaluated_comprehension_target_parts(target.value)
+    if isinstance(target, ast.Tuple | ast.List):
+        return [
+            part
+            for item in target.elts
+            for part in _evaluated_comprehension_target_parts(item)
+        ]
+    if isinstance(target, ast.Attribute):
+        return [target.value]
+    if isinstance(target, ast.Subscript):
+        return [target.value, target.slice]
+    return [child for child in ast.iter_child_nodes(target) if isinstance(child, ast.expr)]
+
+
 def require_executable_bindings(tree: ast.Module) -> tuple[dict[str, str], set[str]]:
     bindings: dict[str, str] = {}
     modules: set[str] = set()
@@ -359,6 +378,33 @@ def require_executable_bindings(tree: ast.Module) -> tuple[dict[str, str], set[s
                 pending.append(statement.returns)
         elif isinstance(statement, ast.ClassDef):
             pending.extend([*statement.decorator_list, *statement.bases, *statement.keywords])
+        elif isinstance(statement, ast.ListComp | ast.SetComp | ast.GeneratorExp):
+            # Comprehension targets are local to their implicit function scope
+            # in Python 3. Their expressions can still contain a named
+            # expression that rebinds the enclosing module, so inspect every
+            # value/condition and evaluated target subexpressions, but not the
+            # comprehension-local binding names themselves.
+            pending.append(statement.elt)
+            pending.extend(
+                child
+                for generator in statement.generators
+                for child in (
+                    generator.iter,
+                    *generator.ifs,
+                    *_evaluated_comprehension_target_parts(generator.target),
+                )
+            )
+        elif isinstance(statement, ast.DictComp):
+            pending.extend((statement.key, statement.value))
+            pending.extend(
+                child
+                for generator in statement.generators
+                for child in (
+                    generator.iter,
+                    *generator.ifs,
+                    *_evaluated_comprehension_target_parts(generator.target),
+                )
+            )
         elif not isinstance(statement, ast.Lambda):
             pending.extend(ast.iter_child_nodes(statement))
     if any(count != 1 for count in imported.values()):
