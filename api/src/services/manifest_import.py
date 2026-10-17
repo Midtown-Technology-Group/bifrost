@@ -1897,7 +1897,8 @@ class ManifestResolver:
         present_sub_uuids: list[UUID] = []
         for mes in manifest.events.values():
             for msub in mes.subscriptions:
-                present_sub_uuids.append(UUID(msub.id))
+                if msub.has_well_formed_target():
+                    present_sub_uuids.append(UUID(msub.id))
         present_org_uuids = [UUID(m.id) for m in manifest.organizations]
         present_role_uuids = [UUID(m.id) for m in manifest.roles]
 
@@ -3233,6 +3234,12 @@ class ManifestResolver:
         # workflow_id may be a UUID string, a path::function_name portable ref, or a name
         for msub in mes.subscriptions:
             target_type = getattr(msub, "target_type", "workflow") or "workflow"
+
+            if not msub.has_well_formed_target():
+                logger.warning(
+                    f"Event subscription {msub.id}: invalid {target_type!r} target, skipping"
+                )
+                continue
 
             wf_id: UUID | None = None
             agent_id: UUID | None = None
