@@ -15,7 +15,7 @@ from typing import Any
 from types import SimpleNamespace
 from uuid import UUID
 
-from sqlalchemy import exists, or_, select
+from sqlalchemy import exists, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -316,6 +316,27 @@ async def _verified_delivery_proof(db: AsyncSession, deployment: Any, manifest: 
     return proof
 
 
+async def _common_runtime_pins(db: AsyncSession) -> list[UUID]:
+    """Read the installed common contract, never silently adopt a partial store.
+
+    No common schema is the current-main Python-only state. Once either common
+    identity exists, both must be installed; missing permissions or a collector
+    failure propagates and cannot manufacture an empty consumer inventory.
+    Caller holds the existing exclusive workspace-release/accounting fence.
+    """
+    catalog = (await db.execute(text(
+        "SELECT pg_catalog.to_regclass('public.runtime_execution_owners') IS NOT NULL AS owners, "
+        "pg_catalog.to_regprocedure('public.runtime_undrained_sources()') IS NOT NULL AS collector"
+    ))).mappings().one()
+    if not catalog["owners"] and not catalog["collector"]:
+        return []
+    if not catalog["owners"] or not catalog["collector"]:
+        raise UnprovenSourceConsumers("Common runtime source inventory is only partially installed")
+    return list((await db.scalars(text(
+        "SELECT DISTINCT deployment_id FROM public.runtime_undrained_sources() ORDER BY deployment_id"
+    ))).all())
+
+
 async def _collect_consumers(db: AsyncSession, policy: SolutionGitDeliveryPolicy) -> tuple[list[PackageSourceConsumer], dict[str, str], bool]:
     from src.services.application_source_accountability import prepare_app_accounting, verify_app_accounting
 
@@ -429,7 +450,7 @@ async def _collect_consumers(db: AsyncSession, policy: SolutionGitDeliveryPolicy
             expected_scope=solution.organization_id)
     # Superseded dependency/accepted pins remain real consumers until drained.
     accepted_attempt = exists(select(ExecutionAttempt.id).where(
-        ExecutionAttempt.logical_job_type == "workflow",
+        ExecutionAttempt.logical_job_type.in_(("workflow", "workflow_execution")),
         ExecutionAttempt.logical_job_id == Execution.id,
         ExecutionAttempt.completed_at.is_(None)))
     accepted_workflow_attempt = exists(select(WorkflowExecutionAttempt.id).where(
@@ -441,6 +462,12 @@ async def _collect_consumers(db: AsyncSession, policy: SolutionGitDeliveryPolicy
     for identity in pins:
         if identity is not None:
             await visit(identity, admission=False)
+    # Retained owners outlive current native links/history. An open, unassigned
+    # or not physically settled common owner still pins its historical source.
+    # visit() validates the deployment/provenance and recursively follows exact
+    # dependency pins; a missing source fails closed rather than disappearing.
+    for identity in await _common_runtime_pins(db):
+        await visit(identity, admission=False)
     loose = list((await db.scalars(select(Workflow).where(Workflow.solution_id.is_(None),
         Workflow.is_active.is_(True)).order_by(Workflow.id).with_for_update())).all())
     loose_hashes: dict[str, str] = {}

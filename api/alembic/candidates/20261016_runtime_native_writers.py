@@ -195,6 +195,9 @@ def _install_native_guard() -> None:
                 RAISE EXCEPTION 'unknown lifecycle relation' USING ERRCODE='42501';
             END IF;
             actor := public.runtime_workflow_actor();
+            IF actor='rust' AND NOT pg_try_advisory_xact_lock_shared(hashtext('bifrost:workspace-release')) THEN
+                RAISE EXCEPTION 'runtime native source admission contended' USING ERRCODE='55P03';
+            END IF;
             IF TG_OP <> 'INSERT' THEN previous := to_jsonb(OLD); END IF;
             IF TG_OP <> 'DELETE' THEN proposed := to_jsonb(NEW); END IF;
             -- Generated columns are not populated in BEFORE NEW records.

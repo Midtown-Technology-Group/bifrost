@@ -130,3 +130,31 @@ Do not add a new retirement table or infer no-effect solely from those absences.
 Actual SQL/lock/cascade/RLS/terminal-admission and mixed-writer proof, the CRED
 adapter, original resource-custody observer, finite privileges and schema/profile
 approval remain held before this continuation can be applied.
+
+C5-B3 supplies the historical source collector and destructive-drain guards.
+Common owner deployment IDs remain consumers when sessions are open, lack a
+qualified physical observation, or were never assigned a session. Native
+nonterminal work and incomplete typed/generic attempts also pin; both generic
+workflow aliases are included. Current native links or active-install membership
+do not decide whether a common pin exists. Python reuses its existing exact
+deployment/provenance/dependency readback, failing closed on missing source.
+The service recognizes the current-main state where neither common owner store
+nor collector exists. A partial install, permission failure or collector error
+cannot become an empty successful inventory. Installed catalog qualification
+must separately authenticate the complete schema/functions/owners/privileges;
+object presence alone does not qualify a runtime profile.
+
+All Rust native writes now share the source fence with common writes. The
+collector and destructive source removal take its exclusive try form. Root or
+typed-attempt retirement requires the common owner fully drained; source UPDATE
+retains Python's native status-only uninstall/activation behavior, while Rust
+has no source-write exception. Native deployment immutability and all C1-C4
+constraints remain enabled. Qualified resource observations still require the
+original trusted observer; this draft does not establish that custody path.
+No-session owners cannot be retired on a terminal flag or missing-row inference.
+Their eventual release remains a concrete pre-session resource/proof decision.
+
+Post-commit S3 sweep, per-install Python write locking, indirect dependency
+retention, native UUID reuse, SQL maintenance, actual lock/cascade/error behavior
+and source-admission races still need supported integration proof. These drafts
+do not establish deletion compliance or permit schema/role/runtime activation.
