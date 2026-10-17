@@ -98,19 +98,20 @@ complete first-issuance race proof is claimed. R1 needs the R0 decisions relevan
 to its transaction; Python packaging does not block independent approved
 persistence work.
 
-Separately, [R1-START/source/v1](rust-core-mvp-workflow-start-source.md) now
-implements atomic native Running/Start and uncertain-commit observation at
-`6793d750ee7ddd96b60dde2e6b59da412cd07c88`. It uses the common guard's exact
-update-before-Start order and excludes the unfinished admission seam from default
-builds. Independent source review, supported fmt/strict all-feature Clippy and38
-unique source tests pass; its opt-in actual SQL acceptance test compiles only.
-The [prepared-fixture follow-on](rust-core-mvp-workflow-start-fixture.md),
-[PR #1320](https://github.com/Midtown-Technology-Group/bifrost/pull/1320) at
-`74bfef3e046bedf94f3c757fe17660fbc51c5976`, is source-reviewed. Its native
-timeout 30/0 tests pass; final Docker checks and literal pre-PR pass. Common-stage
-fixture production and actual Start SQL remain unexecuted. The full coordinator
-wire/source/schema/custody/deadline validation seam remains necessary. No SQL, runtime, Rust result ownership or
-expanded R1 cancellation authority follows from this source package.
+Separately, [R1-START/source/v1](rust-core-mvp-workflow-start-source.md) and
+[its corrected prepared-fixture follow-on](rust-core-mvp-workflow-start-fixture.md#native-claim-integration-correction)
+are [PR #1320](https://github.com/Midtown-Technology-Group/bifrost/pull/1320) at
+`30d36a6d40ed235716d5e5e6c9959662046a2159`. Real PostgreSQL characterization
+confirms native claim exposes Running while the typed attempt remains claimed
+with null start clocks. The inactive Start source now preserves that projection
+and atomically commits native clocks, typed execution and immutable Start.
+Independent source review, Docker fmt/strict all-feature Clippy/38 unique Rust
+tests, 44 native/helper cases and literal pre-PR pass. Actual common SQL acceptance
+only compiles. Complete coordinator wire/source/schema/custody/deadline validation
+and current delivery admission authority remain necessary. The source-only core proposal
+does not grant WorkDelivery access; a typed claim is not a transport lease. No common SQL/runtime activation,
+result ownership or expanded R1 cancellation authority follows. Earlier 6793/74
+results remain historical and do not qualify changed source.
 
 The next cancellation dependency test is now executable Rust test source at
 `3c66dc70a58a8be1758a535c6b47c1147df71f6e`,

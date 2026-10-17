@@ -6,7 +6,7 @@ qualified**. The frozen cancellation experiment is a separate dependency.
 
 Follow-on [prepared fixture and final source qualification](rust-core-mvp-workflow-start-fixture.md)
 is now [PR #1320](https://github.com/Midtown-Technology-Group/bifrost/pull/1320)
-at 74bfef3e0. The rest of this record retains its original 6793 source/evidence
+at `30d36a6d4`, including the native claim integration correction. The rest of this record retains its original 6793 source/evidence
 snapshot; new Dockerfile/pre-PR/native fixture evidence is recorded separately.
 No common SQL or runtime activation follows.
 

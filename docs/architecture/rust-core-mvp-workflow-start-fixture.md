@@ -4,6 +4,11 @@ Package `R1-START/fixture-source/v1`, 2026-10-17. This extends the
 [inactive Rust Start source](rust-core-mvp-workflow-start-source.md). It does
 not qualify actual Start SQL, runtime admission, Rust result ownership or the MVP.
 
+Current follow-on source is `30d36a6d40ed235716d5e5e6c9959662046a2159`; see
+[the native claim integration correction](#native-claim-integration-correction).
+The earlier `74bfef3e0` source/results below remain historical. Its Pending-root
+fixture assumption is superseded; no previous check is transferred to new code.
+
 ## Source and review boundary
 
 Platform main is `e42999395231ebc536711e5015422edfb75613a7`; workspace main is
@@ -158,3 +163,118 @@ Codex/Sol authored the source with independent Sol review. Existing Go Start
 source attribution and AGPL-3.0-only provenance remain in the Rust implementation;
 no accepted Go source/evidence was modified. Procedures: engineering flow and PR
 stewardship 2026-10-06.1; router 2026-10-01.1; package 2026-10-09.1-b3560edd5d13f1a7.
+
+## Native claim integration correction
+
+Current [PR #1320](https://github.com/Midtown-Technology-Group/bifrost/pull/1320)
+head `30d36a6d40ed235716d5e5e6c9959662046a2159`, still based on frozen 560.
+This correction preserves the existing public projection; no runtime API change
+or activation follows. Platform main e429 and workspace a8d3f9e0 remain unchanged
+from the earlier exact fetched/audited baseline.
+
+Source inspection found that
+`api/src/jobs/consumers/workflow_execution.py:_claim_durable_execution` commits
+Execution Running while the typed attempt is claimed/claim and both native
+start clocks are null. The existing Rust domain claim plan also returns logical
+Running. The earlier Start primitive and synthetic cohort instead required
+Pending, so those individually qualified components did not compose. No common
+SQL or runtime had been activated with that assumption.
+
+The corrected inactive operation requires the native Running/null-clock root
+and claimed/null-clock typed attempt. It preserves the root status and commits
+its first clock, typed execution phase/clock and immutable Start in one database
+transaction. No-Start observation uses the same native precondition; absence
+still grants no replay, spawn, replacement or owner-transfer authority. Synthetic
+producer readback and opt-in SQL initial/rollback/clock assertions now match it.
+No public SDK/runtime/workspace accommodation, migration or privilege changed.
+
+The new `api/tests/e2e/platform/test_workflow_delivery_admission.py` has five
+real-PostgreSQL cases: Pending/Scheduled claim to Running/claimed with no start
+clocks and ordinal 1; duplicate no new attempt/clock rewrite; expired/wrong-token
+rejection without mutation; active-attempt failure rolling back the transport
+started marker. It calls the real native admission method and production
+commit/rollback context. Only the connection factory and inert pool identity are
+selected for the test. Independent review found and repaired an initial wrapper
+that omitted production's post-yield commit before any test execution. No pool,
+broker, child or workflow executes. These are ordinary native claim fixtures,
+not deployment/tenant/SDK or selected Solution-runtime acceptance.
+
+Independent Sol scoped SOURCE ACCEPT exact `30d36a6d4`; no reviewer execution. GitHub
+[COMMENT review 5556354178](https://github.com/Midtown-Technology-Group/bifrost/pull/1320#pullrequestreview-5556354178)
+also references exact `30d36a6d4` and finds no confirmed introduced defect. It was
+published through MTG-Thomas and signed Eddie; infer no personal human approval,
+SQL permission or activation from this account/signature.
+
+Supported VM101 checkout `/home/dev/bifrost-rust-start-claim-30d36a6d4`, project
+`bifrost-test-8d51481e`, passed the actual Docker `checks` target, 44 selected
+native/helper cases, and fresh literal `BIFROST_FORCE_PORT=1 ./test.sh pre-pr`.
+The selected command adds the five new cases and existing workflow recovery /
+stale-handler fencing cases to the earlier 34. All 44 identities are unique with
+zero failures/errors/skips. All 38 unique Rust source tests pass (43 executions
+including five overlaps), fmt and strict all-target/all-feature Clippy pass;
+common SQL acceptance only compiles. Repository/client/API-quality/generated
+pre-PR stages are complete for exact `30d36a6d4`. Its comprehensive plan leaves broader
+suites to required hosted CI. PVE performed no application imports/tests/Cargo.
+
+The exact focused command was:
+
+```sh
+./test.sh tests/unit/test_common_start_fixture.py \
+  tests/unit/test_common_cancel_fixture.py \
+  tests/unit/test_common_cancel_fixture_driver.py \
+  tests/e2e/platform/test_common_cancel_fixture_native.py \
+  tests/e2e/platform/test_common_start_fixture_native.py \
+  tests/e2e/platform/test_workflow_delivery_admission.py \
+  tests/e2e/platform/test_postgres_work_delivery.py::test_workflow_recovery_obeys_durable_domain_outcome \
+  tests/e2e/platform/test_postgres_work_delivery.py::test_recovery_resumes_unstarted_claim_and_fences_old_handler \
+  -q --no-cov
+```
+
+All 44 committed Rust inputs and six changed Python inputs match guest hashes.
+The six native reference implementation/model files are byte-identical to
+main e429; unchanged Python remains the oracle. Private raw receipts are under
+`/home/thomas/src/bifrost-rust-mvp-artifacts/start-claim-30d36a6d4`.
+
+| Exact30d evidence | SHA256 |
+| --- | --- |
+| Docker Rust checks | `08e01f840fc5849f20599ba5be9dcf5d822e61544afe266c53f6c946b264771d` |
+| Selected 44 JUnit | `90e7b5cb6933770dd5e1b00b49c2abb1e986d40ac67edfc0a1d910493ba6d7b1` |
+| Literal pre-PR | `30122f12b8fb3548655085279505f097bb25f2d4b17803982e363e50afbe30f4` |
+| Source qualification | `885237e8a162024b148dbfd02b6f1000665b2435c212d1f718338842b96f6b29` |
+| Guest evidence manifest | `ee79d8f6a78ed6eadbe476726c35f642dc9390f976a3935e6c6cf677d7350cf6` |
+| Cleanup | `116a5a4079746ecd4dab637b8d5bb3d129b80ba90e754ec2c6cfcff1eb18b48a` |
+
+Old 74 CI 39004360577/Rust 39004362524 received one normal cancellation each and
+are terminal cancelled. Two Rust jobs had started before cancellation; no result
+is carried to changed source or treated as a failure waiver. Metadata is retained.
+After verifying no current-head campaign existed, normal supported manual
+[CI 39005963999](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/39005963999)
+and [Rust 39005965484](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/39005965484)
+were accepted once, attempt 1/exact `30d36a6d4`, queued at readback. No workflow, selector,
+threshold, test expectation or required-gate changes. No hosted-CI pass claimed.
+
+Cleanup captured 20 container-create mount receipts with zero misses; resource
+exclusion readback found no baseline project overlap. Normal stack down and
+identity-checked remaining-volume cleanup restored exactly 143 stopped containers
+and 2,583 volumes. Pinned R1 Python/Rust and qualified 38 images, shared Go cache,
+and the 16 previously unattributed baseline volumes remain preserved. The checked
+Rust image alone was retired with producer-digest verification and `--no-prune`.
+No running containers/named build-test processes remained. VM101 was gracefully
+shut down and independently verified stopped; private shutdown readback is retained.
+
+Transport authority remains a separate blocking interface. Native claim locks
+execution/domain before checking its current WorkDelivery token/expiry and
+setting transport started in the same transaction, then claims the typed attempt.
+The current four-role R1 core proposal does not grant work_deliveries access;
+effective installed authority remains unverified. A typed claim and a prior HTTP/worker check cannot replace this gate.
+A future selected-workflow admission adapter must preserve its authority, binding,
+renewal/interruption and transaction order before any runtime callsite; no generic
+delivery rewrite or extra privilege is authorized here. Cancellation/historical
+observation must still work after transport ownership expires, so do not impose
+a blanket live-lease requirement on every common operation.
+
+Frozen R1 source 560/runbook 9322 remain unchanged and its approval question remains
+pending. This source correction does not expand that request to Start, delivery
+privileges, SDK issuance or a runtime experiment. Common SQL/roles/logins, actual
+Rust Start/result, unchanged workflow/agent execution, events, physical retirement
+and routing rollback remain unproved. No MVP decision, merge or deployment.

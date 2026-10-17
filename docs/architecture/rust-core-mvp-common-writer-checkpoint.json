@@ -548,7 +548,7 @@
     "authority": "Frozen560 cancellation source and held runbook unchanged. No SQL/role/login/runtime or expanded experiment activated.",
     "pr": null,
     "publication_gate": "Source branch only; final pre-PR/hostedCI/liveSQL gates remain before implementation PR acceptance.",
-    "follow_on_qualification": "rust-core-mvp-workflow-start-fixture.md; source/test PR1320 at74, original6793 evidence remains historical"
+    "follow_on_qualification": "Historical 6793; latest native claim projection correction at 30d36a6d4 in rust-core-mvp-workflow-start-fixture.md, PR1320"
   },
   "workflow_start_fixture_source": {
     "package": "R1-START/fixture-source/v1",
@@ -595,6 +595,56 @@
       "status": "requested once after non-default-base automatic skip; acceptance pending",
       "comment": 6229908763,
       "head": "74bfef3e046bedf94f3c757fe17660fbc51c5976"
+    },
+    "follow_on_qualification": "Historical 74bfef3e0; current corrected source 30d36a6d4 and evidence below"
+  },
+  "workflow_start_native_claim_seam": {
+    "package": "R1-START/native-claim-seam/v1",
+    "pr": 1320,
+    "head": "30d36a6d40ed235716d5e5e6c9959662046a2159",
+    "base": "560e3decd7a18200809edb9bf9a078ede5d06ea5",
+    "record": "rust-core-mvp-workflow-start-fixture.md#native-claim-integration-correction",
+    "finding": "Native claim commits logical Running with typed claimed/claim and null clocks; old synthetic Pending precondition was incompatible. Existing domain claim plan also returns Running.",
+    "correction": "Preserve native public status; Start commits root/typed clocks, typed execution and immutable Start, with strict null/unfinished initial clocks. No-Start observation and synthetic producer agree.",
+    "review": "Independent Sol scoped SOURCE ACCEPT exact 30d36a6d4 after test transaction-wrapper fidelity repair; no reviewer execution. GitHub COMMENT 5556354178 exact 30d36a6d4, no human/activation approval inferred.",
+    "checks": {
+      "docker_checks": 0,
+      "literal_pre_pr": 0,
+      "rust_unique_tests": 38,
+      "native_unique_tests": 44,
+      "new_native_cases": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "matched_rust_inputs": 44,
+      "matched_python_inputs": 6,
+      "native_reference_files_equal_main": 6,
+      "common_sql_executed": false,
+      "source_qualification_sha256": "885237e8a162024b148dbfd02b6f1000665b2435c212d1f718338842b96f6b29"
+    },
+    "ci": {
+      "normal": 39005963999,
+      "rust": 39005965484,
+      "head": "30d36a6d40ed235716d5e5e6c9959662046a2159",
+      "attempt": 1,
+      "status": "queued at readback",
+      "superseded_74_runs": [
+        39004360577,
+        39004362524
+      ],
+      "old_disposition": "one normal cancellation each, terminal cancelled; two old Rust jobs had started; no check transferred or failure waived"
+    },
+    "remaining_interface": "Same-transaction selected-workflow delivery admission and exact binding; current core has no work_deliveries privilege. No extra authority implemented/approved. Cancellation/observation cannot require a live delivery lease.",
+    "cleanup": "Exact143 containers/2583 baseline volumes, including16 prior unattributed volumes, preserved; pinned images retained, task resources absent, VM101 gracefully stopped.",
+    "authority": "Frozen560 and runbook9322 unchanged; pending approval not broadened.",
+    "activation": {
+      "common_sql": false,
+      "roles_logins_grants": false,
+      "actual_start_sql": false,
+      "runtime": false,
+      "mvp_accepted": false,
+      "merged": false,
+      "deployed": false
     }
   }
 }

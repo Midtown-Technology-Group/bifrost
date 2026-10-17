@@ -384,6 +384,16 @@ rows. Use stable ID ordering for multirow siblings. Apply this consistently to
 Start/provision, close, Result, no-effect recovery and resource settlement; no
 transaction may perform vendor/network effects while holding these locks.
 
+Delivery-driven claim/admission also preserves the native edge Execution ->
+current WorkDelivery token/expiry lock -> typed attempt. The
+[native claim correction](rust-core-mvp-workflow-start-fixture.md#native-claim-integration-correction)
+characterizes that boundary on real PostgreSQL. The source-only core privilege proposal does not
+grant this transport store; effective installed authority remains unverified; the exact selected-workflow authority/binding
+adapter remains unimplemented and unapproved. Cancellation and historical
+observation must not acquire a blanket live-lease prerequisite. No additional
+privilege, generic delivery migration or extension of the held R1 SQL trial is
+settled by this minimum ordering requirement.
+
 This is a proposed adapter order, not a claim all current writers use it:
 
 | Current source | Actual edge / required adaptation |
