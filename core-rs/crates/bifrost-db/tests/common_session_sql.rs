@@ -144,6 +144,26 @@ async fn state(pool: &PgPool, fence: &SessionFence) -> TestResult<State> {
     })
 }
 
+async fn incumbent_execution_state(
+    pool: &PgPool,
+    fence: &SessionFence,
+) -> TestResult<(String, String, String)> {
+    let row = sqlx::query(
+        "SELECT id::text AS id,control_owner,status::text AS status \
+         FROM public.executions WHERE id=$1::text::uuid",
+    )
+    .bind(fence.execution_id.as_str())
+    .persistent(false)
+    .fetch_one(pool)
+    .await
+    .map_err(|_| "incumbent cannot observe the same native fixture")?;
+    Ok((
+        row.try_get("id")?,
+        row.try_get("control_owner")?,
+        row.try_get("status")?,
+    ))
+}
+
 #[tokio::test]
 async fn no_grant_cancel_preserves_fences_and_commits() -> TestResult<()> {
     let mut fence = Fixture::read()?;
@@ -153,6 +173,10 @@ async fn no_grant_cancel_preserves_fences_and_commits() -> TestResult<()> {
         "wex_incumbent",
     )
     .await?;
+    assert_eq!(
+        incumbent_execution_state(incumbent.pool(), &fence).await?,
+        (fence.execution_id.as_str().into(), "rust".into(), "Running".into()),
+    );
     let before = state(core.pool(), &fence).await?;
     assert_eq!(
         before,
@@ -179,6 +203,25 @@ async fn no_grant_cancel_preserves_fences_and_commits() -> TestResult<()> {
         request_running_cancel(incumbent.pool(), &fence).await,
         Err(SessionError::Rejected),
     );
+    // The Rust entrypoint check above is not evidence of database writer
+    // exclusion. Exercise direct incumbent DML too, and never print its error.
+    let mut foreign_writer = incumbent.pool().begin().await?;
+    let foreign_update = sqlx::query(
+        "UPDATE public.executions SET status='Cancelling' WHERE id=$1::text::uuid",
+    )
+    .bind(fence.execution_id.as_str())
+    .persistent(false)
+    .execute(&mut *foreign_writer)
+    .await;
+    let forbidden = foreign_update
+        .as_ref()
+        .err()
+        .and_then(sqlx::Error::as_database_error)
+        .and_then(|error| error.code())
+        .as_deref()
+        == Some("42501");
+    assert!(forbidden, "incumbent native lifecycle DML was not denied");
+    foreign_writer.rollback().await?;
     let original_binding = fence.binding_sha256.clone();
     fence.binding_sha256 = if original_binding == "0".repeat(64) {
         "1".repeat(64)
@@ -214,6 +257,12 @@ async fn no_grant_cancel_preserves_fences_and_commits() -> TestResult<()> {
     // identity map or the transaction that performed the mutation as evidence.
     let reader = Database::new(&config)?;
     let after = state(reader.pool(), &fence).await?;
+    // A different database or clone with the same database/login names cannot
+    // qualify mixed access merely by rejecting the incumbent before any read.
+    assert_eq!(
+        incumbent_execution_state(incumbent.pool(), &fence).await?,
+        (fence.execution_id.as_str().into(), "rust".into(), "Cancelling".into()),
+    );
     assert_eq!(
         after,
         State {
