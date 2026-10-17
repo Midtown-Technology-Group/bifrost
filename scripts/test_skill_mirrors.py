@@ -1,11 +1,11 @@
 """Repository discovery contracts without Docker or model calls."""
-from pathlib import Path
 import importlib.util
 import io
 import os
 import sys
 import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 from scripts import check_skill_mirrors as guard
@@ -30,10 +30,15 @@ class DiscoveryTests(unittest.TestCase):
             agent = {"id": "test-agent", "name": "Test agent"}
             argv = ["pack.py", "test-agent", "--skill-source", str(skill),
                     "--out", str(output), "--auth", "None", "--bifrost-host", "example.invalid"]
-            with patch.object(pack, "get_agent", return_value=agent), patch.object(pack.sys, "argv", argv), patch.object(pack.sys, "stdout", io.StringIO()):
-                self.assertEqual(pack.main(), 0)
+            with (
+                patch.object(pack, "get_agent", return_value=agent),
+                patch.object(pack.sys, "argv", argv),
+                patch.object(pack.sys, "stdout", io.StringIO()),
+                self.assertRaisesRegex(RuntimeError, "lowercase kebab-case slug"),
+            ):
+                pack.main()
             self.assertEqual(sentinel.read_text(), "preserve")
-            self.assertTrue((output / "victim-cowork.zip").is_file())
+            self.assertFalse((output / "victim-cowork.zip").exists())
 
     def test_sync_preflight_preserves_local_deletion(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -41,9 +46,12 @@ class DiscoveryTests(unittest.TestCase):
             relative = ".agents/skills/debug/SKILL.md"
             expected = {".agents/skills": {"debug/SKILL.md": (b"canonical", False)}}
             listing = f"100644 blob abc123\t{relative}\n"
-            with patch.object(guard, "REPO", repo), patch.object(guard, "_expected_mirrors", return_value=expected):
-                with patch.object(guard.subprocess, "check_output", return_value=listing):
-                    errors = guard._preflight_sync()
+            with (
+                patch.object(guard, "REPO", repo),
+                patch.object(guard, "_expected_mirrors", return_value=expected),
+                patch.object(guard.subprocess, "check_output", return_value=listing),
+            ):
+                errors = guard._preflight_sync()
             self.assertEqual(errors, [f"locally deleted mirror file; preserve and reconcile: {relative}"])
             self.assertFalse((repo / relative).exists())
 
