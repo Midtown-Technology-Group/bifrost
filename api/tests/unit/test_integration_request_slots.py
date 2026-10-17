@@ -1,10 +1,12 @@
 """Request admission must fail closed without replaying vendor operations."""
 import importlib
 from unittest.mock import AsyncMock
+from uuid import UUID
 
 import httpx
 import pytest
 
+from src.services import integration_request_slots as slots
 from src.services.integration_request_slots import validate_limit
 
 sdk = importlib.import_module("bifrost.integrations")
@@ -30,7 +32,7 @@ def response(**overrides):
 @pytest.fixture
 def client(monkeypatch):
     client = AsyncMock()
-    client.post.return_value = response()
+    client.engine_request.return_value = response()
     monkeypatch.setattr(sdk, "get_client", lambda: client)
     monkeypatch.setattr(sdk, "resolve_scope", lambda scope: scope)
     return client
@@ -42,10 +44,11 @@ async def test_success_releases_exact_owner_token(client):
     async with sdk.integrations.request_slot("Example", scope="global"):
         operations.append("sent")
     assert operations == ["sent"]
-    assert client.post.await_count == 2
-    acquire, release = client.post.await_args_list
-    assert acquire.args[0].endswith("/acquire")
-    assert release.args[0].endswith("/release")
+    assert client.engine_request.await_count == 2
+    acquire, release = client.engine_request.await_args_list
+    assert acquire.args[0] == release.args[0] == "POST"
+    assert acquire.args[1].endswith("/acquire")
+    assert release.args[1].endswith("/release")
     assert acquire.kwargs["json"] == release.kwargs["json"]
 
 
@@ -54,20 +57,20 @@ async def test_transport_error_retains_lease_and_does_not_retry(client):
     with pytest.raises(RuntimeError, match="uncertain"):
         async with sdk.integrations.request_slot("Example"):
             raise RuntimeError("uncertain")
-    assert client.post.await_count == 1
+    assert client.engine_request.await_count == 1
 
 
 @pytest.mark.asyncio
 async def test_release_failure_does_not_turn_success_into_replay_candidate(client):
-    client.post.side_effect = [response(), RuntimeError("Redis unavailable")]
+    client.engine_request.side_effect = [response(), RuntimeError("Redis unavailable")]
     async with sdk.integrations.request_slot("Example"):
         pass
-    assert client.post.await_count == 2
+    assert client.engine_request.await_count == 2
 
 
 @pytest.mark.asyncio
 async def test_admission_failure_never_enters_vendor_body(client):
-    client.post.side_effect = RuntimeError("unavailable")
+    client.engine_request.side_effect = RuntimeError("unavailable")
     entered = False
     with pytest.raises(RuntimeError, match="unavailable"):
         async with sdk.integrations.request_slot("Example"):
@@ -77,11 +80,11 @@ async def test_admission_failure_never_enters_vendor_body(client):
 
 @pytest.mark.asyncio
 async def test_full_pool_wait_is_bounded(client):
-    client.post.return_value = response(acquired=False, lease_remaining_seconds=0)
+    client.engine_request.return_value = response(acquired=False, lease_remaining_seconds=0)
     with pytest.raises(TimeoutError):
         async with sdk.integrations.request_slot("Example", wait_timeout=0.01):
             pytest.fail("must not enter")
-    assert client.post.await_count == 1
+    assert client.engine_request.await_count == 1
 
 
 @pytest.mark.asyncio
@@ -90,12 +93,12 @@ async def test_request_wall_clock_timeout_retains_lease(client):
     with pytest.raises(TimeoutError):
         async with sdk.integrations.request_slot("Example", request_timeout=0.01):
             await asyncio.sleep(1)
-    assert client.post.await_count == 1
+    assert client.engine_request.await_count == 1
 
 
 @pytest.mark.asyncio
 async def test_elapsed_lease_does_not_start_request(client):
-    client.post.return_value = response(lease_remaining_seconds=1)
+    client.engine_request.return_value = response(lease_remaining_seconds=1)
     with pytest.raises(TimeoutError, match="expired"):
         async with sdk.integrations.request_slot("Example"):
             pytest.fail("must not enter")
@@ -103,10 +106,10 @@ async def test_elapsed_lease_does_not_start_request(client):
 
 @pytest.mark.asyncio
 async def test_unconfigured_integration_does_not_release(client):
-    client.post.return_value = response(enabled=False, lease_remaining_seconds=0)
+    client.engine_request.return_value = response(enabled=False, lease_remaining_seconds=0)
     async with sdk.integrations.request_slot("Example"):
         pass
-    assert client.post.await_count == 1
+    assert client.engine_request.await_count == 1
 
 
 @pytest.mark.asyncio
@@ -115,7 +118,7 @@ async def test_reserves_auth_refresh_bound_for_every_admission_post(client):
     async with sdk.integrations.request_slot("Example", reserve_http_calls=reserved.append):
         pass
     assert reserved == [3, 3]
-    assert all(call.kwargs["retry_safe"] is False for call in client.post.await_args_list)
+    assert all(call.kwargs["retry_safe"] is False for call in client.engine_request.await_args_list)
 
 
 @pytest.mark.asyncio
@@ -125,7 +128,7 @@ async def test_exhausted_admission_budget_prevents_http_call(client):
     with pytest.raises(RuntimeError, match="budget exhausted"):
         async with sdk.integrations.request_slot("Example", reserve_http_calls=reserve):
             pytest.fail("must not enter")
-    client.post.assert_not_awaited()
+    client.engine_request.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -137,7 +140,18 @@ async def test_release_budget_exhaustion_preserves_success(client):
         remaining[0] -= calls
     async with sdk.integrations.request_slot("Example", reserve_http_calls=reserve):
         pass
-    assert client.post.await_count == 1
+    assert client.engine_request.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_slot_owner_must_match_authenticated_principal():
+    with pytest.raises(ValueError, match="authenticated principal"):
+        await slots.acquire(
+            UUID("00000000-0000-0000-0000-000000000001"),
+            "another-principal:token",
+            "principal",
+            1,
+        )
 
 
 @pytest.mark.asyncio
@@ -154,8 +168,11 @@ async def test_sdk_post_transport_and_refresh_bound(monkeypatch, retry_safe, att
     concrete._access_token = "test-token"
     concrete._get_async_client = lambda: transport
     concrete._refresh_and_update = AsyncMock(return_value=True)
+    monkeypatch.setattr(client_module, "_engine_socket_path", None)
     monkeypatch.setattr(client_module.asyncio, "sleep", AsyncMock())
-    result = await concrete.post("/api/sdk/integrations/request-slot/acquire", retry_safe=retry_safe)
+    result = await concrete.engine_request(
+        "POST", "/api/sdk/integrations/request-slot/acquire", retry_safe=retry_safe,
+    )
     assert result.status_code == 503
     assert transport.post.await_count == 2 * attempts
     assert concrete._refresh_and_update.await_count == attempts

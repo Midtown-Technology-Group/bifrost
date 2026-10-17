@@ -6,7 +6,7 @@ import pytest
 
 
 @pytest.mark.e2e
-def test_shared_integration_admission_and_owner_release(e2e_client, platform_admin, org1):
+def test_one_principal_cannot_monopolize_shared_admission(e2e_client, platform_admin, org1):
     headers = platform_admin.headers
     name = f"slots-{uuid4().hex}"
     created = e2e_client.post("/api/integrations", headers=headers, json={"name": name})
@@ -33,9 +33,9 @@ def test_shared_integration_admission_and_owner_release(e2e_client, platform_adm
         with ThreadPoolExecutor(max_workers=4) as pool:
             results = list(pool.map(acquire, bodies))
         winners = [body for body, result in zip(bodies, results) if result["acquired"]]
-        assert len(winners) == 2
+        assert len(winners) == 1
         assert all(result["enabled"] for result in results)
-        # Retrying one acquire is idempotent and does not consume a third slot.
+        # Retrying the winning token is idempotent and does not add a lease.
         assert acquire(winners[0])["acquired"]
         stranger = {"name": name, "scope": "global", "token": str(uuid4())}
         released = e2e_client.post("/api/sdk/integrations/request-slot/release", headers=headers, json=stranger)
@@ -65,15 +65,15 @@ async def test_expired_token_cannot_release_new_owner():
     integration_id = uuid4()
     key = f"bifrost:integration-request-slots:{integration_id}"
     try:
-        acquired, _ = await slots.acquire(integration_id, "expired-owner", 1)
+        acquired, _ = await slots.acquire(integration_id, "expired-owner:token", "expired-owner", 1)
         assert acquired
         async with get_redis() as redis:
             # Expire the precise token without wall-clock sleeps.
-            await redis.zadd(key, {"expired-owner": 1})
-        acquired, _ = await slots.acquire(integration_id, "new-owner", 1)
+            await redis.zadd(key, {"expired-owner:token": 1})
+        acquired, _ = await slots.acquire(integration_id, "new-owner:token", "new-owner", 1)
         assert acquired
-        await slots.release(integration_id, "expired-owner")
-        acquired, _ = await slots.acquire(integration_id, "third-owner", 1)
+        await slots.release(integration_id, "expired-owner:token")
+        acquired, _ = await slots.acquire(integration_id, "third-owner:token", "third-owner", 1)
         assert not acquired
     finally:
         async with get_redis() as redis:
@@ -92,12 +92,31 @@ async def test_admission_polling_reuses_api_redis_pool(monkeypatch):
     monkeypatch.setattr(redis_client.redis, "from_url", factory)
     integration_id = uuid4()
     try:
-        assert (await slots.acquire(integration_id, "owner", 1))[0]
-        assert not (await slots.acquire(integration_id, "contender", 1))[0]
-        await slots.release(integration_id, "owner")
-        assert (await slots.acquire(integration_id, "contender", 1))[0]
-        await slots.release(integration_id, "contender")
+        assert (await slots.acquire(integration_id, "owner:token", "owner", 1))[0]
+        assert not (await slots.acquire(integration_id, "contender:token", "contender", 1))[0]
+        await slots.release(integration_id, "owner:token")
+        assert (await slots.acquire(integration_id, "contender:token", "contender", 1))[0]
+        await slots.release(integration_id, "contender:token")
         # Repeated API polls must not create/close a TLS connection per request.
         factory.assert_called_once()
     finally:
         await redis_client.close_shared_redis()
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_principal_cap_preserves_global_limit_for_distinct_callers():
+    from src.core.cache import get_redis
+    from src.services import integration_request_slots as slots
+
+    integration_id = uuid4()
+    key = f"bifrost:integration-request-slots:{integration_id}"
+    try:
+        assert (await slots.acquire(integration_id, "principal-a:one", "principal-a", 2))[0]
+        assert not (await slots.acquire(integration_id, "principal-a:two", "principal-a", 2))[0]
+        assert (await slots.acquire(integration_id, "principal-b:one", "principal-b", 2))[0]
+        assert not (await slots.acquire(integration_id, "principal-c:one", "principal-c", 2))[0]
+        assert (await slots.acquire(integration_id, "principal-a:one", "principal-a", 2))[0]
+    finally:
+        async with get_redis() as redis:
+            await redis.delete(key)
