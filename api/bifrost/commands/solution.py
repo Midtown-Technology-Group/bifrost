@@ -2895,14 +2895,34 @@ def _build_deploy_zip(
     patterns = [p for p in DEFAULT_IGNORE_PATTERNS if p != ".bifrost/"]
     patterns.append(".bifrost/secrets.enc")
     ignore_spec = pathspec.GitIgnoreSpec.from_lines(patterns)
+    try:
+        workspace_root = workspace.resolve(strict=True)
+    except OSError as exc:
+        raise click.ClickException("solution workspace is unavailable") from exc
     entries: dict[str, bytes] = {}
     for path in workspace.rglob("*"):
-        if not path.is_file():
-            continue
         rel = path.relative_to(workspace).as_posix()
-        if ignore_spec.match_file(rel):
+        # Check both spellings so ignored directory symlinks (for example an
+        # entire node_modules tree) remain ignored without dereferencing them.
+        if ignore_spec.match_file(rel) or ignore_spec.match_file(f"{rel}/"):
             continue
-        entries[rel] = path.read_bytes()
+        if path.is_symlink():
+            raise click.ClickException(
+                f"refusing symlink in solution deploy workspace: {rel}"
+            )
+        try:
+            resolved = path.resolve(strict=True)
+        except OSError as exc:
+            raise click.ClickException(
+                f"solution deploy path is unavailable: {rel}"
+            ) from exc
+        if not resolved.is_relative_to(workspace_root):
+            raise click.ClickException(
+                f"refusing path outside solution deploy workspace: {rel}"
+            )
+        if not resolved.is_file():
+            continue
+        entries[rel] = resolved.read_bytes()
 
     for rel, content in extra_text_files.items():
         rel_path = pathlib.PurePosixPath(rel)
