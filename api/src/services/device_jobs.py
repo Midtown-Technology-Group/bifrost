@@ -24,7 +24,7 @@ from datetime import datetime, timedelta, timezone
 from uuid import UUID, uuid4
 
 from fastapi import status
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -61,9 +61,9 @@ from src.services.devices import DeviceOperationError
 logger = logging.getLogger(__name__)
 
 # Log batch bounds (M0 log-batch contract).
-LOG_ENTRY_MAX_CHARS = 65536
+LOG_ENTRY_MAX_BYTES = 65536
 LOG_BATCH_MAX_ENTRIES = 512
-LOG_BATCH_MAX_CHARS = 1024 * 1024
+LOG_BATCH_MAX_BYTES = 1024 * 1024
 
 
 def _busy(active: DeviceJob | None) -> DeviceOperationError:
@@ -572,7 +572,7 @@ async def append_logs(
             "payload_too_large",
             f"log batch exceeds {LOG_BATCH_MAX_ENTRIES} entries",
         )
-    total_chars = 0
+    total_bytes = 0
     seen: set[int] = set()
     for entry in entries:
         seq = entry.get("seq")
@@ -597,18 +597,19 @@ async def append_logs(
                 "invalid_parameter",
                 "entry stream must be stdout or stderr",
             )
-        if len(text) > LOG_ENTRY_MAX_CHARS:
+        text_bytes = len(text.encode("utf-8"))
+        if text_bytes > LOG_ENTRY_MAX_BYTES:
             raise DeviceOperationError(
                 status.HTTP_413_CONTENT_TOO_LARGE,
                 "payload_too_large",
-                f"log entry exceeds {LOG_ENTRY_MAX_CHARS} characters",
+                f"log entry exceeds {LOG_ENTRY_MAX_BYTES} UTF-8 bytes",
             )
-        total_chars += len(text)
-    if total_chars > LOG_BATCH_MAX_CHARS:
+        total_bytes += text_bytes
+    if total_bytes > LOG_BATCH_MAX_BYTES:
         raise DeviceOperationError(
             status.HTTP_413_CONTENT_TOO_LARGE,
             "payload_too_large",
-            f"log batch exceeds {LOG_BATCH_MAX_CHARS} characters",
+            f"log batch exceeds {LOG_BATCH_MAX_BYTES} UTF-8 bytes",
         )
 
     job = await _locked_job(db, job_id)
@@ -629,7 +630,18 @@ async def append_logs(
     )
     existing = {row.seq: row for row in existing_result.scalars().all()}
 
+    # The locked job row serializes all appenders, so this aggregate and the
+    # inserts below form one authoritative cumulative cap check. PostgreSQL's
+    # octet_length measures stored UTF-8 bytes rather than Python characters.
+    stored_bytes_result = await db.execute(
+        select(func.coalesce(func.sum(func.octet_length(DeviceJobLog.text)), 0)).where(
+            DeviceJobLog.job_id == job_id
+        )
+    )
+    stored_bytes = int(stored_bytes_result.scalar_one())
+
     inserted: list[DeviceJobLog] = []
+    pending_entries: list[dict] = []
     highest = job.log_sequence or 0
     for entry in sorted(entries, key=lambda e: e["seq"]):
         seq = entry["seq"]
@@ -644,6 +656,18 @@ async def append_logs(
                     f"seq {seq} was already accepted with different content",
                 )
             continue
+        pending_entries.append(entry)
+
+    new_bytes = sum(len(entry["text"].encode("utf-8")) for entry in pending_entries)
+    if new_bytes and stored_bytes + new_bytes > job.max_output_bytes:
+        raise DeviceOperationError(
+            status.HTTP_413_CONTENT_TOO_LARGE,
+            "payload_too_large",
+            f"job log output exceeds max_output_bytes ({job.max_output_bytes} bytes)",
+        )
+
+    for entry in pending_entries:
+        seq = entry["seq"]
         row = DeviceJobLog(
             job_id=job_id,
             seq=seq,
