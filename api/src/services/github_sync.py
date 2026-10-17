@@ -12,14 +12,17 @@ Key principles:
 """
 
 import asyncio
+import base64
 import hashlib
 import logging
 import shutil
 import subprocess
 import tempfile
+import urllib.parse
+from collections.abc import Mapping
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, Mapping
+from typing import TYPE_CHECKING, Literal
 from uuid import uuid4
 
 import yaml
@@ -46,8 +49,8 @@ if TYPE_CHECKING:
     from src.models.contracts.github import (
         AbortMergeResult,
         CommitResult,
-        DiscardResult,
         DiffResult,
+        DiscardResult,
         FetchResult,
         PullResult,
         PushResult,
@@ -62,6 +65,7 @@ from bifrost.manifest import (
     get_all_entity_ids,
     read_manifest_from_dir,
 )
+
 from src.services.manifest_import import (
     ManifestResolver,
     _collect_removed_entity_ids,
@@ -354,20 +358,50 @@ class GitHubSyncService:
         settings: Settings | None = None,
     ):
         self.db = db
-        self.repo_url = repo_url
+        self.repo_url, self._git_auth_env = self._separate_git_credentials(repo_url)
         self.branch = branch
         self.repo_manager = GitRepoManager(settings or get_settings())
         self._resolver = ManifestResolver(db)
 
     @staticmethod
+    def _separate_git_credentials(repo_url: str) -> tuple[str, dict[str, str]]:
+        """Remove GitHub credentials from a remote URL and return ephemeral Git auth."""
+        parsed = urllib.parse.urlsplit(repo_url)
+        if parsed.hostname != "github.com" or parsed.username != "x-access-token":
+            return repo_url, {}
+
+        token = urllib.parse.unquote(parsed.password or "")
+        clean_url = urllib.parse.urlunsplit(
+            (parsed.scheme, parsed.hostname, parsed.path, parsed.query, parsed.fragment)
+        )
+        basic = base64.b64encode(f"x-access-token:{token}".encode()).decode()
+        return clean_url, {
+            "GIT_CONFIG_COUNT": "1",
+            "GIT_CONFIG_KEY_0": "http.https://github.com/.extraheader",
+            "GIT_CONFIG_VALUE_0": f"Authorization: Basic {basic}",
+        }
+
+    @property
+    def _git_auth_kwargs(self) -> dict[str, dict[str, str]]:
+        """Return GitPython keyword arguments only when credentials are present."""
+        environment = getattr(self, "_git_auth_env", {})
+        return {"env": environment} if environment else {}
+
+    @staticmethod
     def _connect_preview_key(token: str) -> str:
         return f"{_GIT_CONNECT_PREVIEW_KEY_PREFIX}{token}"
 
-    @staticmethod
-    def _clone_connect_remote(destination: Path, repository_url: str, branch: str) -> GitRepo | None:
+    def _clone_connect_remote(
+        self, destination: Path, repository_url: str, branch: str
+    ) -> GitRepo | None:
         """Clone the reviewed remote branch, treating an empty remote as an empty tree."""
         try:
-            repo = GitRepo.clone_from(repository_url, str(destination), branch=branch)
+            repo = GitRepo.clone_from(
+                repository_url,
+                str(destination),
+                branch=branch,
+                **self._git_auth_kwargs,
+            )
         except Exception as exc:
             message = str(exc).lower()
             if "empty repository" in message:
@@ -380,7 +414,9 @@ class GitHubSyncService:
                 if destination.exists():
                     shutil.rmtree(destination)
                 try:
-                    fallback = GitRepo.clone_from(repository_url, str(destination))
+                    fallback = GitRepo.clone_from(
+                        repository_url, str(destination), **self._git_auth_kwargs
+                    )
                 except Exception as fallback_exc:
                     if "empty repository" in str(fallback_exc).lower():
                         return None
@@ -652,7 +688,7 @@ class GitHubSyncService:
 
         remote_exists = True
         try:
-            repo.remotes.origin.fetch(self.branch)
+            repo.remotes.origin.fetch(self.branch, **self._git_auth_kwargs)
         except Exception as e:
             err_str = str(e).lower()
             if "not found" in err_str or "empty" in err_str or "couldn't find remote ref" in err_str:
@@ -875,7 +911,7 @@ class GitHubSyncService:
         await _progress("Fetching remote...")
         remote_exists = True
         try:
-            repo.remotes.origin.fetch(self.branch)
+            repo.remotes.origin.fetch(self.branch, **self._git_auth_kwargs)
         except Exception as e:
             err_str = str(e).lower()
             if "not found" in err_str or "empty" in err_str or "couldn't find remote ref" in err_str:
@@ -926,7 +962,7 @@ class GitHubSyncService:
         # Count ahead before push
         ahead = 0
         try:
-            repo.remotes.origin.fetch(self.branch)
+            repo.remotes.origin.fetch(self.branch, **self._git_auth_kwargs)
             ahead = int(repo.git.rev_list("--count", f"origin/{self.branch}..HEAD"))
         except Exception:
             ahead = int(repo.git.rev_list("--count", "HEAD"))
@@ -935,7 +971,9 @@ class GitHubSyncService:
             return PushResult(success=True, pushed_commits=0)
 
         # Push
-        push_infos = repo.remotes.origin.push(refspec=f"HEAD:{self.branch}")
+        push_infos = repo.remotes.origin.push(
+            refspec=f"HEAD:{self.branch}", **self._git_auth_kwargs
+        )
 
         from git.remote import PushInfo
         for pi in push_infos:
@@ -977,7 +1015,7 @@ class GitHubSyncService:
         """
         remote_ref = f"origin/{self.branch}"
         try:
-            repo.remotes.origin.fetch(self.branch)
+            repo.remotes.origin.fetch(self.branch, **self._git_auth_kwargs)
             commits_behind = int(repo.git.rev_list("--count", f"HEAD..{remote_ref}"))
         except Exception as exc:
             error_text = str(exc).lower()
@@ -1967,6 +2005,7 @@ class GitHubSyncService:
                     self.repo_url,
                     str(clone_dir),
                     branch=self.branch,
+                    **self._git_auth_kwargs,
                 )
                 # Move .git/ to the target
                 shutil.move(str(clone_dir / ".git"), str(target / ".git"))
