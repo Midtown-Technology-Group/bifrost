@@ -71,4 +71,6 @@ def mark_notified(api_url: str, server_version: str) -> None:
             try:
                 temporary_marker.unlink(missing_ok=True)
             except OSError:
+                # Cleanup is best-effort after the original notice write failed;
+                # leaving a private cache file is safer than masking that failure.
                 pass
