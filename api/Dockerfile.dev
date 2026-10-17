@@ -132,8 +132,9 @@ COPY assets/ /app/assets/
 RUN chmod -R a+rX /app/assets
 RUN chmod 755 /entrypoint.sh
 
-# Don't switch to bifrost here - entrypoint handles user switching
-# This allows the entrypoint to fix volume permissions when needed
+# Default to the unprivileged runtime identity. Compose services that need
+# startup ownership repair must opt into root; the entrypoint drops them back.
+USER bifrost
 ENTRYPOINT ["/entrypoint.sh"]
 
 # Environment variables
