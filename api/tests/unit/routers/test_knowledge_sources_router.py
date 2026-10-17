@@ -76,6 +76,9 @@ def _user(**overrides):
         "is_superuser": True,
         "is_provider_org": False,
         "is_external": False,
+        "roles": [],
+        "embed": False,
+        "engine_execution_id": None,
     }
     values.update(overrides)
     return SimpleNamespace(**values)

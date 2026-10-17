@@ -449,6 +449,20 @@ class TestExternalKnowledgeDenied:
         )
         assert resp.status_code == 403, resp.text
 
+    def test_external_denied_sdk_knowledge_get(
+        self, e2e_client, external_user, global_kb_doc
+    ):
+        resp = e2e_client.get(
+            "/api/sdk/knowledge/get",
+            headers=external_user.headers,
+            params={
+                "namespace": global_kb_doc["namespace"],
+                "key": "global-secret",
+                "scope": "global",
+            },
+        )
+        assert resp.status_code == 403, resp.text
+
     def test_normal_user_without_namespace_grant_cannot_list_global_doc(
         self, e2e_client, org1_user, global_kb_doc
     ):
