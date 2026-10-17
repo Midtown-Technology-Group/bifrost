@@ -3,12 +3,44 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
 
 from src.services.file_storage import service as service_module
 from src.services.file_storage.service import _SCOPE_SKIP, _scope_to_org_id
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("operation", ["upload", "download"])
+@pytest.mark.parametrize("expires_in", [0, 601])
+async def test_presigned_url_service_rejects_ttl_outside_revocation_bound(
+    operation: str,
+    expires_in: int,
+) -> None:
+    storage = SimpleNamespace(
+        generate_presigned_upload_url=AsyncMock(),
+        generate_presigned_download_url=AsyncMock(),
+    )
+    service = service_module.FileStorageService.__new__(service_module.FileStorageService)
+    service._s3_storage = storage
+
+    with pytest.raises(ValueError, match="between 1 and 600 seconds"):
+        if operation == "upload":
+            await service.generate_presigned_upload_url(
+                "uploads/a.txt",
+                "text/plain",
+                expires_in,
+            )
+        else:
+            await service.generate_presigned_download_url(
+                "uploads/a.txt",
+                expires_in,
+            )
+
+    storage.generate_presigned_upload_url.assert_not_awaited()
+    storage.generate_presigned_download_url.assert_not_awaited()
 
 
 def test_scope_to_org_id_maps_workspace_and_global_to_unscoped_metadata() -> None:

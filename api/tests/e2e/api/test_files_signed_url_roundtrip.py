@@ -64,11 +64,11 @@ class TestSignedUrlRoundTrip:
             platform_admin.headers,
             path,
             "workspace",
-            expires_in=604800,
+            expires_in=600,
         )
         assert sign.status_code == 200, f"sign failed: {sign.text}"
         signed = sign.json()
-        assert signed["expires_in"] == 604800
+        assert signed["expires_in"] == 600
         assert signed["path"] == f"_repo/{path}", (
             f"workspace sign should target _repo/, got {signed['path']}"
         )
@@ -170,6 +170,23 @@ class TestSignedUrlRoundTrip:
 
 @pytest.mark.e2e
 class TestSignedUrlValidation:
+    @pytest.mark.parametrize("method", ["GET", "PUT"])
+    def test_long_lived_direct_storage_capabilities_are_rejected(
+        self, e2e_client, platform_admin, method
+    ):
+        response = e2e_client.post(
+            "/api/files/signed-url",
+            headers=platform_admin.headers,
+            json={
+                "path": "x.txt",
+                "method": method,
+                "location": "uploads",
+                "expires_in": 601,
+            },
+        )
+        assert response.status_code == 422
+        assert "url" not in response.json()
+
     def test_reserved_prefix_location_rejected(self, e2e_client, platform_admin):
         r = e2e_client.post(
             "/api/files/signed-url",

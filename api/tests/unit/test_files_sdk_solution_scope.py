@@ -166,7 +166,7 @@ async def test_file_sdk_forwards_signed_url_expiration(monkeypatch):
             return {
                 "url": "https://example.invalid/signed",
                 "path": "finance/abc/x.txt",
-                "expires_in": 604800,
+                "expires_in": 600,
             }
 
     class FakeClient:
@@ -181,8 +181,8 @@ async def test_file_sdk_forwards_signed_url_expiration(monkeypatch):
         "x.txt",
         location="finance",
         method="GET",
-        expires_in=604800,
+        expires_in=600,
     )
 
-    assert captured_json["expires_in"] == 604800
-    assert result["expires_in"] == 604800
+    assert captured_json["expires_in"] == 600
+    assert result["expires_in"] == 600
