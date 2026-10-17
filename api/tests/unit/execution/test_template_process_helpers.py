@@ -334,9 +334,16 @@ def test_template_process_shutdown_kills_process_that_stays_alive() -> None:
 
 
 def test_run_forked_child_reports_success_with_rss(monkeypatch) -> None:
+    events = []
+
+    class OrderedResultConnection(FakeConnection):
+        def send(self, item):
+            events.append("send")
+            super().send(item)
+
     context = {"organization_id": "org-1"}
     work_recv = FakeConnection(items=[("exec-12345678", context)], poll_result=True)
-    result_send = FakeConnection()
+    result_send = OrderedResultConnection()
     simple_worker = types.SimpleNamespace(
         _execute_sync=Mock(
             return_value={
@@ -354,12 +361,19 @@ def test_run_forked_child_reports_success_with_rss(monkeypatch) -> None:
     monkeypatch.setitem(sys.modules, "src.services.execution.simple_worker", simple_worker)
     monkeypatch.setitem(sys.modules, "bifrost._logging", logging_module)
 
-    _run_forked_child(work_recv, result_send, "worker-1", persistent=False)
+    _run_forked_child(
+        work_recv,
+        result_send,
+        "worker-1",
+        persistent=False,
+        before_result=lambda: events.append("flush"),
+    )
 
     simple_worker._execute_sync.assert_called_once_with(
         "exec-12345678", "worker-1", context
     )
     logging_module.clear_sequence_counter.assert_called_once_with("exec-12345678")
+    assert events == ["flush", "send"]
     assert result_send.sent == [
         {
             "execution_id": "exec-12345678",
@@ -371,16 +385,30 @@ def test_run_forked_child_reports_success_with_rss(monkeypatch) -> None:
 
 
 def test_run_forked_child_sends_error_result_for_execution_failure(monkeypatch) -> None:
+    events = []
+
+    class OrderedResultConnection(FakeConnection):
+        def send(self, item):
+            events.append("send")
+            super().send(item)
+
     work_recv = FakeConnection(items=[("exec-failure", {})], poll_result=True)
-    result_send = FakeConnection()
+    result_send = OrderedResultConnection()
     simple_worker = types.SimpleNamespace(
         _execute_sync=Mock(side_effect=ValueError("boom")),
     )
 
     monkeypatch.setitem(sys.modules, "src.services.execution.simple_worker", simple_worker)
 
-    _run_forked_child(work_recv, result_send, "worker-err", persistent=False)
+    _run_forked_child(
+        work_recv,
+        result_send,
+        "worker-err",
+        persistent=False,
+        before_result=lambda: events.append("flush"),
+    )
 
+    assert events == ["flush", "send"]
     assert result_send.sent == [
         {
             "execution_id": "exec-failure",
