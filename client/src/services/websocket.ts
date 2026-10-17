@@ -585,6 +585,44 @@ class WebSocketService {
 		}
 	}
 
+	private scheduleTicketRetry(
+		channels: string[],
+		connectionGeneration: number,
+	): void {
+		if (this.retryCount >= this.maxRetries || this.reconnectTimeout) return;
+
+		this.retryCount++;
+		const delay = Math.min(1000 * Math.pow(2, this.retryCount), 30000);
+		this.reconnectTimeout = setTimeout(() => {
+			this.reconnectTimeout = null;
+			if (connectionGeneration !== this.connectionGeneration) return;
+			void this.connect(channels).catch(() => {
+				// _connect logs the failure and schedules any remaining retry.
+			});
+		}, delay);
+	}
+
+	private async addEmbedTicket(
+		params: URLSearchParams,
+		channels: string[],
+		connectionGeneration: number,
+	): Promise<boolean> {
+		const embedToken = getActiveToken();
+		if (!embedToken || !isEmbedToken(embedToken)) return true;
+
+		try {
+			const ticket = await requestWebSocketTicket(embedToken);
+			if (connectionGeneration !== this.connectionGeneration) return false;
+			params.set("ticket", ticket);
+			return true;
+		} catch (error) {
+			if (connectionGeneration !== this.connectionGeneration) return false;
+			// No socket exists yet, so onclose cannot schedule recovery.
+			this.scheduleTicketRetry(channels, connectionGeneration);
+			throw error;
+		}
+	}
+
 	private async _connect(channels: string[]): Promise<void> {
 		const connectionGeneration = this.connectionGeneration;
 		try {
@@ -600,29 +638,12 @@ class WebSocketService {
 			// Browser WebSockets cannot set Authorization headers. Embed sessions
 			// exchange their bearer token over HTTPS for an opaque, single-use
 			// ticket so the long-lived JWT never enters a URL or access log.
-			const embedToken = getActiveToken();
-			if (embedToken && isEmbedToken(embedToken)) {
-				try {
-					const ticket = await requestWebSocketTicket(embedToken);
-					if (connectionGeneration !== this.connectionGeneration) return;
-					params.set("ticket", ticket);
-				} catch (error) {
-					if (connectionGeneration !== this.connectionGeneration) return;
-					// No socket exists yet, so onclose cannot schedule recovery.
-					if (this.retryCount < this.maxRetries && !this.reconnectTimeout) {
-						this.retryCount++;
-						const delay = Math.min(1000 * Math.pow(2, this.retryCount), 30000);
-						this.reconnectTimeout = setTimeout(() => {
-							this.reconnectTimeout = null;
-							if (connectionGeneration !== this.connectionGeneration) return;
-							void this.connect(channels).catch(() => {
-								// _connect logs the failure and schedules any remaining retry.
-							});
-						}, delay);
-					}
-					throw error;
-				}
-			}
+			const shouldConnect = await this.addEmbedTicket(
+				params,
+				channels,
+				connectionGeneration,
+			);
+			if (!shouldConnect) return;
 
 			const wsUrl = `${protocol}//${host}/ws/connect?${params.toString()}`;
 
