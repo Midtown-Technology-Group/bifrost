@@ -264,7 +264,10 @@ async fn no_grant_cancel_preserves_fences_and_commits() -> TestResult<()> {
     .persistent(false)
     .fetch_one(&mut *blocker)
     .await?;
-    assert!(locked, "a different writer already owns the fresh test fixture");
+    assert!(
+        locked,
+        "a different writer already owns the fresh test fixture"
+    );
     assert_eq!(
         request_running_cancel(core.pool(), &fence).await,
         Err(SessionError::Contended),
