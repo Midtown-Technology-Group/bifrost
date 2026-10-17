@@ -1408,6 +1408,8 @@ async def test_activation_closure_preserves_activation_for_other_history_bytes(
 async def test_git_commit_failure_preserves_activation_with_recovery_evidence(
     monkeypatch,
 ):
+    mark_dirty = AsyncMock(side_effect=RuntimeError("redis unavailable"))
+    monkeypatch.setattr("src.core.repo_dirty.mark_repo_dirty", mark_dirty)
     writer = RecordingWriter(
         error=RuntimeError("git commit failed"),
         history_hashes={"features/a.txt": hashlib.sha256(b"a").hexdigest()},
@@ -1462,12 +1464,118 @@ async def test_git_commit_failure_preserves_activation_with_recovery_evidence(
         "plan_id": None,
         "protected_main_source_sha": None,
     }
+    mark_dirty.assert_awaited_once_with()
+
+
+@pytest.mark.asyncio
+async def test_missing_writer_cancellation_persists_failure_before_reraise(
+    monkeypatch,
+):
+    mark_dirty = AsyncMock(side_effect=asyncio.CancelledError)
+    monkeypatch.setattr("src.core.repo_dirty.mark_repo_dirty", mark_dirty)
+    svc = service()
+    row = await svc.begin(WorkspaceRepoChangesetBegin(scope="features"), uuid4())
+    svc.rows.items[row.id].status = "activated"
+
+    with pytest.raises(asyncio.CancelledError):
+        await svc._complete_git_closure(
+            row.id,
+            WorkspaceRepoActivateRequest(
+                commit_message="release source",
+                push=True,
+            ),
+            operator="tester",
+        )
+
+    persisted = await svc.get(row.id)
+    assert persisted.error == "verified GitHub App commit writer is not configured"
+    assert persisted.failure_detail["phase"] == "git_closure"
+    assert persisted.failure_detail["state"] == "not_configured"
+    assert persisted.failure_detail["activation_preserved"] is True
+    assert svc.db.commits == 1
+    mark_dirty.assert_awaited_once_with()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("cancelled_during", ["inspect", "write"])
+async def test_git_closure_cancellation_persists_recovery_evidence_and_reraises(
+    monkeypatch,
+    cancelled_during,
+):
+    path = "features/a.txt"
+    before_hash = hashlib.sha256(b"a").hexdigest()
+    after_hash = hashlib.sha256(b"A").hexdigest()
+    writer = RecordingWriter(history_hashes={path: before_hash})
+    if cancelled_during == "inspect":
+        writer.inspect = AsyncMock(side_effect=asyncio.CancelledError)
+    else:
+        writer.write = AsyncMock(side_effect=asyncio.CancelledError)
+    mark_dirty = AsyncMock()
+    monkeypatch.setattr("src.core.repo_dirty.mark_repo_dirty", mark_dirty)
+    svc = service({path: b"A"})
+    svc.commit_writer = writer
+    row = await svc.begin(WorkspaceRepoChangesetBegin(scope="features"), uuid4())
+    stored = svc.rows.items[row.id]
+    stored.status = "activated"
+    candidate_commit_sha = "c" * 40 if cancelled_during == "inspect" else None
+    if candidate_commit_sha:
+        stored.failure_detail = {
+            "phase": "git_closure",
+            "state": "failed",
+            "commit_sha": candidate_commit_sha,
+        }
+    stored.mutations = [
+        {
+            "path": path,
+            "operation": "write",
+            "before_hash": before_hash,
+            "after_hash": after_hash,
+            "content_base64": base64.b64encode(b"A").decode(),
+        }
+    ]
+
+    with pytest.raises(asyncio.CancelledError):
+        await svc._complete_git_closure(
+            row.id,
+            WorkspaceRepoActivateRequest(
+                commit_message="release source",
+                push=True,
+            ),
+            operator="tester",
+        )
+
+    persisted = await svc.get(row.id)
+    assert persisted.error == f"Git closure cancelled during {cancelled_during}"
+    assert persisted.failure_detail["phase"] == "git_closure"
+    assert persisted.failure_detail["state"] == "failed"
+    assert persisted.failure_detail["cancelled"] is True
+    assert persisted.failure_detail["cancelled_during"] == cancelled_during
+    assert persisted.failure_detail["activation_preserved"] is True
+    if candidate_commit_sha:
+        assert persisted.failure_detail["commit_sha"] == candidate_commit_sha
+    assert svc.db.commits == 2
+    mark_dirty.assert_awaited_once_with()
+
+    if candidate_commit_sha:
+        retry_writer = RecordingWriter(history_hashes={path: before_hash})
+        svc.commit_writer = retry_writer
+        retried = await svc.retry_git_closure(
+            row.id,
+            WorkspaceRepoActivateRequest(push=True),
+            "retrying-operator",
+        )
+        assert retried.status == "activated"
+        assert "recorded Git candidate" in retried.failure_detail["message"]
+        assert retried.failure_detail["commit_sha"] == candidate_commit_sha
+        assert retry_writer.requests == []
 
 
 @pytest.mark.asyncio
 async def test_retry_git_closure_after_writer_configuration_skips_activation(
     monkeypatch,
 ):
+    mark_dirty = AsyncMock()
+    monkeypatch.setattr("src.core.repo_dirty.mark_repo_dirty", mark_dirty)
     svc = WorkspaceRepoChangesetService(
         FakeDB(),
         uuid4(),
@@ -1511,6 +1619,7 @@ async def test_retry_git_closure_after_writer_configuration_skips_activation(
     assert failed.failure_detail["state"] == "not_configured"
     assert failed.failure_detail["provenance"]["commit_message"] == "release source"
     assert CountingStorage.writes == 1
+    mark_dirty.assert_awaited_once_with()
 
     retry_writer = RecordingWriter(
         result=PlatformCommitResult(
