@@ -316,6 +316,17 @@ test.describe("Apps Preview — auto-migration", () => {
 						name: "Legacy included controls",
 					});
 					await expect(controls).toBeVisible();
+					const legacyDialogButton = controls.getByRole("button", {
+						name: "Open legacy dialog",
+					});
+					await expect(legacyDialogButton).toHaveCSS(
+						"height",
+						"40px",
+					);
+					await expect(legacyDialogButton).toHaveCSS(
+						"padding-left",
+						"16px",
+					);
 					await controls
 						.getByRole("checkbox", { name: "Notify owner" })
 						.check();
@@ -331,9 +342,7 @@ test.describe("Apps Preview — auto-migration", () => {
 					await expect(
 						controls.getByLabel("Selected region"),
 					).toHaveText("west");
-					await controls
-						.getByRole("button", { name: "Open legacy dialog" })
-						.click();
+					await legacyDialogButton.click();
 					const dialog = page.getByRole("dialog", {
 						name: "Legacy confirmation",
 					});

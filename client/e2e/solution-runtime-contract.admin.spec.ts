@@ -53,9 +53,14 @@ const mark = (id, txt) => {
   d.dataset.testid = id;
   d.textContent = txt;
   el.appendChild(d);
+  return d;
 };
 (async () => {
   try {
+    const styleProbe = mark("standalone-root-style", "styled");
+    styleProbe.style.color = "var(--standalone-root-color)";
+    styleProbe.style.borderRadius = "var(--radius)";
+    styleProbe.style.paddingLeft = "var(--standalone-body-spacing)";
     const wf = await call("/api/workflows/execute", {
       method: "POST",
       body: JSON.stringify({ workflow_id: "workflows/runtime.py::main", sync: true }),
@@ -88,7 +93,21 @@ const mark = (id, txt) => {
 })();
 `;
 
-const INDEX_HTML = `<!doctype html><html><body><div id="root"></div><script type="module" src="/dist/main.js"></script></body></html>`;
+const STYLE_CSS = `:root {
+  --standalone-root-color: rgb(12 34 56);
+  --radius: 13px;
+}
+html.dark {
+  --standalone-root-color: rgb(56 34 12);
+}
+:root.dark {
+  --radius: 21px;
+}
+body {
+  --standalone-body-spacing: 17px;
+}`;
+
+const INDEX_HTML = `<!doctype html><html><head><link rel="stylesheet" href="/dist/main.css"></head><body><div id="root"></div><script type="module" src="/dist/main.js"></script></body></html>`;
 
 // ---------------------------------------------------------------------------
 // Minimal store-only zip writer (same approach as
@@ -250,6 +269,7 @@ function workspaceZip(): Buffer {
 						dist_files: {
 							"index.html": INDEX_HTML,
 							"main.js": ENTRY_JS,
+							"main.css": STYLE_CSS,
 						},
 					},
 				},
@@ -334,6 +354,45 @@ test.describe("deployed solution runtime contract", () => {
 		});
 		await expect(page.getByTestId("table-result")).toHaveText(/rows:[1-9]/);
 		await expect(page.getByTestId("file-result")).toHaveText("ok");
+
+		// The unchanged standalone-document stylesheet is retargeted inside the
+		// shadow root: :root tokens, body baseline, and theme updates remain app-
+		// local and do not leak into the platform document.
+		const styleProbe = page.getByTestId("standalone-root-style");
+		if (
+			await page
+				.locator("html")
+				.evaluate((root) => root.classList.contains("dark"))
+		) {
+			await page.getByRole("button", { name: "Toggle theme" }).click();
+		}
+		await expect(styleProbe).toHaveCSS("color", "rgb(12, 34, 56)");
+		await expect(styleProbe).toHaveCSS("border-radius", "13px");
+		await expect(styleProbe).toHaveCSS("padding-left", "17px");
+		expect(
+			await page
+				.locator("html")
+				.evaluate((root) =>
+					getComputedStyle(root).getPropertyValue(
+						"--standalone-root-color",
+					),
+				),
+		).toBe("");
+		await page.getByRole("button", { name: "Toggle theme" }).click();
+		await expect(styleProbe).toHaveCSS("color", "rgb(56, 34, 12)");
+		await expect(styleProbe).toHaveCSS("border-radius", "21px");
+		expect(
+			await page
+				.locator("header")
+				.evaluate((header) =>
+					getComputedStyle(header).getPropertyValue(
+						"--standalone-root-color",
+					),
+				),
+		).toBe("");
+		await page.getByRole("button", { name: "Toggle theme" }).click();
+		await expect(styleProbe).toHaveCSS("color", "rgb(12, 34, 56)");
+		await expect(styleProbe).toHaveCSS("border-radius", "13px");
 
 		// Solution-managed forms remain read-only, but their environment-owned
 		// sharing controls are available directly from the Solution contents.

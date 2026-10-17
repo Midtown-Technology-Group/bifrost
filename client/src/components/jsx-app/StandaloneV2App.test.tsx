@@ -39,7 +39,6 @@ function props(entry: string) {
 }
 
 let appendedScripts: HTMLScriptElement[] = [];
-let appendedStylesheets: HTMLLinkElement[] = [];
 
 function moduleScript(entry: string): HTMLScriptElement {
 	const script = appendedScripts.find((candidate) =>
@@ -50,11 +49,39 @@ function moduleScript(entry: string): HTMLScriptElement {
 }
 
 function stylesheet(name: string): HTMLLinkElement {
-	const link = appendedStylesheets.find((candidate) =>
-		candidate.href.endsWith(`assets/${name}.css`),
-	);
+	const link = Array.from(
+		document.querySelectorAll<HTMLElement>(
+			'[data-testid="solution-v2-app-root"]',
+		),
+	)
+		.flatMap((host) =>
+			Array.from(
+				host.shadowRoot?.querySelectorAll<HTMLLinkElement>(
+					'link[rel="stylesheet"]',
+				) ?? [],
+			),
+		)
+		.find((candidate) => candidate.href.endsWith(`assets/${name}.css`));
 	if (!link) throw new Error(`No stylesheet found for ${name}`);
 	return link;
+}
+
+function finishStylesheetLoad(
+	name: string,
+	css = ":root { --standalone-root-token: red; } body { margin: 0; }",
+): CSSStyleSheet {
+	const style = document.createElement("style");
+	style.dataset.testStandaloneStylesheet = "true";
+	style.textContent = css;
+	document.head.appendChild(style);
+	if (!style.sheet) throw new Error("Test stylesheet did not parse");
+	const link = stylesheet(name);
+	Object.defineProperty(link, "sheet", {
+		configurable: true,
+		value: style.sheet,
+	});
+	act(() => link.dispatchEvent(new Event("load")));
+	return style.sheet;
 }
 
 function manifest(entry: string, css: string | null = null) {
@@ -86,9 +113,9 @@ async function finishModuleLoad(
 
 beforeEach(() => {
 	appendedScripts = [];
-	appendedStylesheets = [];
 	localStorage.clear();
 	sessionStorage.clear();
+	document.documentElement.classList.remove("dark");
 	orgScopeState.scope = { type: "global", orgId: null };
 	delete window.__BIFROST_APP__;
 	delete window.__BIFROST_APP_MODULES__;
@@ -103,10 +130,6 @@ beforeEach(() => {
 				appendedScripts.push(node);
 				return node;
 			}
-			if (node instanceof HTMLLinkElement) {
-				appendedStylesheets.push(node);
-				return node;
-			}
 			return appendChild(node) as T;
 		},
 	);
@@ -116,6 +139,9 @@ afterEach(() => {
 	vi.restoreAllMocks();
 	delete window.__BIFROST_APP__;
 	delete window.__BIFROST_APP_MODULES__;
+	document
+		.querySelectorAll("style[data-test-standalone-stylesheet]")
+		.forEach((style) => style.remove());
 });
 
 describe("StandaloneV2App", () => {
@@ -135,11 +161,12 @@ describe("StandaloneV2App", () => {
 		);
 		expect(script.src).not.toMatch(/[?&](m|mode|import)=/);
 
-		const stylesheet = appendedStylesheets[0];
-		expect(stylesheet.href).toBe(
+		const cssLink = stylesheet("main");
+		expect(cssLink.href).toBe(
 			`${window.location.origin}/api/applications/app-1/dist/assets/main.css`,
 		);
-		expect(stylesheet.href).not.toContain("?");
+		expect(cssLink.href).not.toContain("?");
+		expect(document.head.contains(cssLink)).toBe(false);
 	});
 
 	it("shows opening status while the standalone bundle is bootstrapping", async () => {
@@ -173,7 +200,27 @@ describe("StandaloneV2App", () => {
 		await finishModuleLoad("bootstrap", mount);
 		await waitFor(() => expect(mount).toHaveBeenCalledTimes(1));
 		const [mountEl, bootstrap] = mount.mock.calls[0];
-		expect(mountEl).toBe(root);
+		expect(mountEl).not.toBe(root);
+		expect(root.shadowRoot?.contains(mountEl)).toBe(true);
+		expect(
+			root.shadowRoot?.querySelector(
+				"style[data-bifrost-platform-stylesheet]",
+			),
+		).not.toBeNull();
+		expect(root.parentElement).toHaveAttribute(
+			"data-bifrost-app-containment-boundary",
+			"true",
+		);
+		expect(root.parentElement?.style.getPropertyValue("contain")).toBe(
+			"strict",
+		);
+		expect(root.style.getPropertyValue("contain")).toBe("strict");
+		expect(mountEl).not.toHaveClass("dark");
+		expect(root).not.toHaveClass("dark");
+		document.documentElement.classList.add("dark");
+		await waitFor(() => expect(mountEl).toHaveClass("dark"));
+		expect(root).toHaveClass("dark");
+		expect(root.style.getPropertyPriority("contain")).toBe("important");
 		expect(bootstrap).toMatchObject({
 			token: "tok-1",
 			basename: "/apps/dash",
@@ -265,8 +312,20 @@ describe("StandaloneV2App", () => {
 		await finishModuleLoad("styled", mount);
 		expect(mount).not.toHaveBeenCalled();
 
-		act(() => stylesheet("styled").dispatchEvent(new Event("load")));
+		const appStylesheet = finishStylesheetLoad(
+			"styled",
+			":root { --standalone-root-token: red; } html.dark { --standalone-root-token: blue; } body { margin: 0; }",
+		);
 		await waitFor(() => expect(mount).toHaveBeenCalledTimes(1));
+		expect((appStylesheet.cssRules[0] as CSSStyleRule).selectorText).toBe(
+			":host",
+		);
+		expect((appStylesheet.cssRules[1] as CSSStyleRule).selectorText).toBe(
+			":host(.dark)",
+		);
+		expect((appStylesheet.cssRules[2] as CSSStyleRule).selectorText).toBe(
+			'[data-bifrost-app-mount="true"]',
+		);
 	});
 
 	it("recovers a stale JavaScript asset from a fresh manifest without reloading", async () => {
@@ -317,7 +376,7 @@ describe("StandaloneV2App", () => {
 		act(() => stylesheet("stale-css").dispatchEvent(new Event("error")));
 
 		await finishModuleLoad("fresh-css", freshMount);
-		act(() => stylesheet("fresh-css").dispatchEvent(new Event("load")));
+		finishStylesheetLoad("fresh-css");
 
 		await waitFor(() => expect(freshMount).toHaveBeenCalledTimes(1));
 		expect(oldMount).not.toHaveBeenCalled();
@@ -473,9 +532,11 @@ describe("StandaloneV2App", () => {
 		const script = appendedScripts.find((candidate) =>
 			candidate.src.endsWith("assets/legacy-strict.js"),
 		)!;
-		expect(
-			document.body.contains(window.__BIFROST_APP__?.mountEl ?? null),
-		).toBe(true);
+		const legacyMount = window.__BIFROST_APP__?.mountEl;
+		expect(legacyMount).toBeTruthy();
+		const legacyRoot = legacyMount?.getRootNode();
+		expect(legacyRoot).toBeInstanceOf(ShadowRoot);
+		expect((legacyRoot as ShadowRoot).host.isConnected).toBe(true);
 		window.__BIFROST_APP__?.registerUnmount(teardown);
 		act(() => script.dispatchEvent(new Event("load")));
 		await act(async () => Promise.resolve());
