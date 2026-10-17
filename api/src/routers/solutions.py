@@ -2397,6 +2397,7 @@ async def _run_deploy_job(
     candidate_id: str = "",
     accountability_organization_id: UUID | None = None,
     allow_connected_install: bool = False,
+    defer_failure_until_cleanup: bool = False,
 ) -> None:
     """Execute the deploy under a fresh session (background task).
 
@@ -2411,6 +2412,11 @@ async def _run_deploy_job(
     the install row is created git-connected by the same request that enqueues
     this job, so the one-writer refusal below would deadlock creation. Manual
     deploys to connected installs stay refused (auto-pull is their only writer).
+
+    ``defer_failure_until_cleanup`` keeps a failed from-repo install nonterminal
+    until its platform-job adapter removes the orphaned install. Otherwise a
+    polling client can observe ``failed`` and list the install before the cleanup
+    transaction commits.
     """
     from src.core.database import get_db_context
     from src.services.solutions.zip_install import (
@@ -2440,6 +2446,16 @@ async def _run_deploy_job(
 
     async def _set_phase(phase: str) -> None:
         await _set_status("running", result={"phase": phase})
+
+    async def _set_failure(error: str) -> None:
+        if defer_failure_until_cleanup:
+            await _set_status(
+                "running",
+                error=error,
+                result={"phase": "rolling back failed install"},
+            )
+            return
+        await _set_status("failed", error)
 
     if not await _set_status("running"):
         _cleanup_file(zip_path)
@@ -2567,17 +2583,15 @@ async def _run_deploy_job(
             timeout=DEPLOY_JOB_TIMEOUT_SECONDS,
         )
     except TimeoutError:
-        await _set_status("failed", DEPLOY_JOB_TIMEOUT_ERROR)
+        await _set_failure(DEPLOY_JOB_TIMEOUT_ERROR)
     except SolutionWriteLockHeld:
-        await _set_status(
-            "failed",
+        await _set_failure(
             "A deploy is already in progress for this install; retry shortly.",
         )
     except SolutionFinalizeIncomplete:
         # Storage failed every retry (a real outage). The DB is committed and the
         # deploy is full-replace + idempotent, so re-running heals it.
-        await _set_status(
-            "failed",
+        await _set_failure(
             "Deploy committed but storage was unavailable after retries. "
             "Re-run the deploy to complete it (it is idempotent).",
         )
@@ -2589,10 +2603,10 @@ async def _run_deploy_job(
     ) as exc:
         # Caller errors (downgrade without force, invalid bundle, workflow-name
         # mismatch). Surfaced as the job error string for the poller to read.
-        await _set_status("failed", str(exc))
+        await _set_failure(str(exc))
     except Exception:  # noqa: BLE001 — capture any deploy failure onto the job
         logger.exception("Solution deploy job %s failed", job_id)
-        await _set_status("failed", "Deploy failed unexpectedly; see server logs.")
+        await _set_failure("Deploy failed unexpectedly; see server logs.")
     else:
         await _set_status("succeeded", result=deploy_result)
     finally:

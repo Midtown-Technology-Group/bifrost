@@ -87,20 +87,35 @@ class TestAuditLogEmission:
         ]
         assert matching, "Expected an organization.create audit event"
 
-    def test_login_failure_emits_event(self, e2e_client):
+    def test_login_failure_emits_event(self, e2e_client, platform_admin):
         """Failed login attempts with an unknown user should be recorded."""
+        email = f"no-such-user-{uuid4().hex}@gobifrost.dev"
         resp = e2e_client.post(
             "/auth/login",
             data={
-                "username": "no-such-user@gobifrost.dev",
+                "username": email,
                 "password": "wrongpassword",
             },
         )
         assert resp.status_code == 401
 
-        # Can't list without platform admin; that's covered elsewhere. Here we
-        # just verify the request was accepted by the server (audit write
-        # happens in the same session).
+        listed = e2e_client.get(
+            "/api/audit",
+            headers=platform_admin.headers,
+            params={"action": "auth.login.failed", "search": email},
+        )
+        assert listed.status_code == 200, listed.text
+        matching = [
+            entry
+            for entry in listed.json()["entries"]
+            if entry["action"] == "auth.login.failed"
+            and entry["details"] == {
+                "email": email,
+                "reason": "user_not_found",
+            }
+        ]
+        assert matching, "Expected the failed-login audit event to survive the 401"
+        assert matching[0]["outcome"] == "failure"
 
     def test_outcome_filter(self, e2e_client, platform_admin):
         resp = e2e_client.get(
