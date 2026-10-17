@@ -1,6 +1,7 @@
 """The event/execution link must be committed before a fast worker completes."""
 
 import asyncio
+import hashlib
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from uuid import UUID, uuid4
@@ -18,6 +19,7 @@ from src.models.orm import (
     EventSource,
     EventSubscription,
     Execution,
+    FileIndex,
     Workflow,
 )
 from src.services.events import processor as events
@@ -44,9 +46,26 @@ async def linked_event(async_session_factory):
         uuid4() for _ in range(5)
     ]
     name = f"event_link_{uuid4().hex}"
+    workflow_path = f"{name}.py"
+    workflow_source = f"async def {name}():\n    return None\n"
     async with async_session_factory() as db:
         db.add(
-            Workflow(id=workflow_id, name=name, function_name=name, path=f"{name}.py")
+            Workflow(
+                id=workflow_id,
+                name=name,
+                function_name=name,
+                path=workflow_path,
+            )
+        )
+        db.add(
+            FileIndex(
+                path=workflow_path,
+                content=workflow_source,
+                content_hash=hashlib.sha256(
+                    workflow_source.encode("utf-8")
+                ).hexdigest(),
+                updated_by="event-link-test",
+            )
         )
         db.add(
             EventSource(
@@ -86,6 +105,9 @@ async def linked_event(async_session_factory):
         async with async_session_factory() as db:
             await db.execute(
                 delete(Execution).where(Execution.workflow_id == workflow_id)
+            )
+            await db.execute(
+                delete(FileIndex).where(FileIndex.path == workflow_path)
             )
             await db.execute(delete(Workflow).where(Workflow.id == workflow_id))
             await db.commit()

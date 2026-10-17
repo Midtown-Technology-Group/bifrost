@@ -1244,6 +1244,7 @@ class WorkflowExecutionConsumer(BaseConsumer):
             runtime_storage_prefix: str | None = None
             workspace_release_id: str | None = None
             workspace_release_source_hashes: dict[str, str] | None = None
+            workspace_generation: str | None = None
             runtime_max_duration_seconds: int | None = None
             runtime_max_output_bytes: int | None = None
 
@@ -1282,6 +1283,7 @@ class WorkflowExecutionConsumer(BaseConsumer):
                 runtime_storage_prefix = workflow_data["runtime_storage_prefix"]
                 workspace_release_source_hashes = workflow_data["source_hashes"]
                 workspace_release_id = workflow_data["draft_runtime_id"]
+                workspace_generation = workspace_release_id
                 runtime_max_duration_seconds = timeout_seconds
                 runtime_max_output_bytes = workflow_data["max_output_bytes"]
             elif not is_script and workflow_id:
@@ -1335,6 +1337,7 @@ class WorkflowExecutionConsumer(BaseConsumer):
                         except WorkspaceReleaseRuntimeError as exc:
                             raise WorkflowNotFoundError(str(exc)) from exc
                         workspace_release_id = workflow_data["workspace_release_id"]
+                        workspace_generation = workspace_release_id
                         workspace_release_source_hashes = workflow_data[
                             "workspace_release_source_hashes"
                         ]
@@ -1391,16 +1394,64 @@ class WorkflowExecutionConsumer(BaseConsumer):
                             runtime_max_output_bytes = deployment_bounds[
                                 "max_output_bytes"
                             ]
+                    elif runtime_mode == "repo-v1":
+                        from src.models.orm.executions import Execution
+                        from src.services.execution.repo_runtime import (
+                            RepoRuntimeError,
+                            pin_repo_workflow_runtime,
+                            verify_repo_runtime_evidence,
+                            workflow_data_from_repo_evidence,
+                        )
+
+                        try:
+                            async with get_db_context() as db:
+                                execution = await db.get(
+                                    Execution, UUID(execution_id)
+                                )
+                                if (
+                                    execution is None
+                                    or execution.runtime_mode != "repo-v1"
+                                ):
+                                    raise RepoRuntimeError(
+                                        "repo execution is missing its durable source pin"
+                                    )
+                                evidence = verify_repo_runtime_evidence(
+                                    pending.get("runtime_evidence"),
+                                    execution.runtime_evidence,
+                                    execution.runtime_evidence_hash,
+                                )
+                                current_workflow_data = (
+                                    await get_workflow_for_execution(
+                                        workflow_id, db=db
+                                    )
+                                )
+                                if current_workflow_data.get("solution_id"):
+                                    current_pin = await pin_repo_workflow_runtime(db, workflow_id)
+                                    current_workflow_data["content_hash"] = current_pin.source_hash
+                            workflow_data = workflow_data_from_repo_evidence(
+                                current_workflow_data,
+                                evidence,
+                                str(workflow_id),
+                            )
+                        except RepoRuntimeError as exc:
+                            raise WorkflowNotFoundError(str(exc)) from exc
+                        workspace_generation = workflow_data[
+                            "workspace_generation"
+                        ]
                     else:
-                        # Compatibility boundary: newly enqueued Solution work is
-                        # always pinned above, so a null deployment here is either
-                        # `_repo` or a pre-migration pending/scheduled execution.
-                        if runtime_mode not in {"legacy", "repo-v1"}:
+                        # Pre-pin mutable executions cannot safely choose source
+                        # after queue admission. Preserve delivery/result handling
+                        # during rollout, but leave the hash absent so the child
+                        # rejects the source before compilation or execution.
+                        if runtime_mode != "legacy":
                             raise WorkflowNotFoundError(
-                                "modern Solution execution is missing deployment pin"
+                                "workflow execution has an unknown runtime mode"
                             )
                         async with get_db_context() as db:
-                            workflow_data = await get_workflow_for_execution(workflow_id, db=db)
+                            workflow_data = await get_workflow_for_execution(
+                                workflow_id, db=db
+                            )
+                        workflow_data["content_hash"] = None
                     workflow_name = workflow_data["name"]
                     workflow_function_name = workflow_data["function_name"]
                     file_path = workflow_data["path"]  # Used for __file__ injection and Redis/S3 loading
@@ -1565,7 +1616,7 @@ class WorkflowExecutionConsumer(BaseConsumer):
                     runtime_storage_prefix if workspace_release_id else None
                 ),
                 "workspace_release_source_hashes": workspace_release_source_hashes,
-                "workspace_generation": workspace_release_id,
+                "workspace_generation": workspace_generation,
                 "runtime_mode": runtime_mode,
                 "runtime_max_duration_seconds": runtime_max_duration_seconds,
                 "runtime_max_output_bytes": runtime_max_output_bytes,
