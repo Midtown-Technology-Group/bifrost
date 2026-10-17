@@ -176,25 +176,61 @@ async def run_solution_deploy(
                     )
         failure: PlatformJobFailure | None = None
         result: dict[str, Any] = {}
-        async with get_db_context() as db:
-            projection = await db.get(SolutionDeployJob, payload.deploy_job_id)
-            if projection is None:
-                raise PlatformJobFailure("deploy_job_missing", "Deploy job is missing.")
-            if projection.status != "succeeded":
-                if payload.kind == "install_from_repo" and payload.install_id:
-                    projection.install_id = None
-                    await db.flush()
-                    orphan = await db.get(Solution, payload.install_id)
-                    if orphan is not None:
-                        await db.delete(orphan)
-                    projection.status = "failed"
-                    projection.result = None
-                failure = PlatformJobFailure(
-                    "solution_deploy_failed",
-                    projection.error or "Solution deploy failed.",
+        try:
+            async with get_db_context() as db:
+                projection = await db.get(SolutionDeployJob, payload.deploy_job_id)
+                if projection is None:
+                    raise PlatformJobFailure("deploy_job_missing", "Deploy job is missing.")
+                if projection.status != "succeeded":
+                    failure = PlatformJobFailure(
+                        "solution_deploy_failed",
+                        projection.error or "Solution deploy failed.",
+                    )
+                    if payload.kind == "install_from_repo" and payload.install_id:
+                        projection.install_id = None
+                        await db.flush()
+                        orphan = await db.get(Solution, payload.install_id)
+                        if orphan is not None:
+                            await db.delete(orphan)
+                        projection.status = "failed"
+                        projection.result = None
+                else:
+                    result = projection.result or {}
+        except Exception as cleanup_error:
+            if (
+                failure is None
+                or payload.kind != "install_from_repo"
+                or payload.install_id is None
+            ):
+                raise
+            logger.exception(
+                "Failed to clean up orphaned Solution install for deploy job %s",
+                payload.deploy_job_id,
+            )
+            try:
+                # The cleanup transaction rolled back its status update. Use a
+                # separate transaction to keep the polling projection terminal;
+                # retain install_id because orphan deletion did not commit.
+                async with get_db_context() as recovery_db:
+                    recovery_projection = await recovery_db.get(
+                        SolutionDeployJob, payload.deploy_job_id
+                    )
+                    if recovery_projection is None:
+                        raise PlatformJobFailure(
+                            "deploy_job_missing", "Deploy job is missing."
+                        )
+                    if recovery_projection.status != "succeeded":
+                        recovery_projection.status = "failed"
+                        recovery_projection.error = (
+                            recovery_projection.error or failure.message
+                        )
+                        recovery_projection.result = None
+            except Exception:  # noqa: BLE001 - preserve the original deploy failure
+                logger.exception(
+                    "Failed to terminalize Solution deploy job %s after cleanup error",
+                    payload.deploy_job_id,
                 )
-            else:
-                result = projection.result or {}
+            raise failure from cleanup_error
         # The failed install cleanup above must commit before the platform job
         # reports failure. Raising inside get_db_context would roll the delete
         # back and leave an orphan that blocks a retry with the same slug.

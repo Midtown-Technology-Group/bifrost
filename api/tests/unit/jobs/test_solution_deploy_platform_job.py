@@ -108,6 +108,97 @@ async def test_failed_repo_install_cleanup_commits_before_job_failure(monkeypatc
 
 
 @pytest.mark.asyncio
+async def test_failed_repo_install_terminalizes_projection_when_cleanup_rolls_back(
+    monkeypatch,
+):
+    deploy_job_id = uuid4()
+    install_id = uuid4()
+    cleanup_projection = SolutionDeployJob(
+        id=deploy_job_id,
+        install_id=install_id,
+        status="running",
+        error="manifest invalid",
+    )
+    recovery_projection = SolutionDeployJob(
+        id=deploy_job_id,
+        install_id=install_id,
+        status="running",
+        error="manifest invalid",
+        result={"phase": "rolling back failed install"},
+    )
+    orphan = Solution(id=install_id, slug="failed-install", name="Failed install")
+
+    class CleanupDB:
+        flush = AsyncMock()
+        delete = AsyncMock()
+
+        async def get(self, model, row_id):  # noqa: ANN001, ANN201
+            if model is SolutionDeployJob and row_id == deploy_job_id:
+                return cleanup_projection
+            if model is Solution and row_id == install_id:
+                return orphan
+            return None
+
+    class RecoveryDB:
+        async def get(self, model, row_id):  # noqa: ANN001, ANN201
+            if model is SolutionDeployJob and row_id == deploy_job_id:
+                return recovery_projection
+            return None
+
+    cleanup_db = CleanupDB()
+    recovery_db = RecoveryDB()
+    transaction_count = 0
+    recovery_committed = False
+
+    @asynccontextmanager
+    async def fake_db_context():
+        nonlocal transaction_count, recovery_committed
+        transaction_count += 1
+        if transaction_count == 1:
+            yield cleanup_db
+            raise RuntimeError("cleanup commit failed")
+        yield recovery_db
+        recovery_committed = True
+
+    context = AsyncMock()
+    context.job_id = deploy_job_id
+    monkeypatch.setattr(
+        "src.jobs.platform.solution_deploy.SolutionDeployJobStorage.copy_to_path",
+        AsyncMock(return_value=1),
+    )
+    monkeypatch.setattr(
+        "src.jobs.platform.solution_deploy.SolutionDeployJobStorage.delete",
+        AsyncMock(),
+    )
+    monkeypatch.setattr(
+        "src.jobs.platform.solution_deploy.get_db_context", fake_db_context
+    )
+    monkeypatch.setattr("src.routers.solutions._run_deploy_job", AsyncMock())
+
+    with pytest.raises(PlatformJobFailure, match="manifest invalid") as failed:
+        await run_solution_deploy(
+            context,
+            SolutionDeployPayload(
+                deploy_job_id=deploy_job_id,
+                kind="install_from_repo",
+                install_id=install_id,
+                input_sha256="a" * 64,
+                options={},
+            ),
+        )
+
+    assert failed.value.code == "solution_deploy_failed"
+    assert transaction_count == 2
+    assert recovery_committed is True
+    assert recovery_projection.status == "failed"
+    assert recovery_projection.error == "manifest invalid"
+    assert recovery_projection.result is None
+    assert recovery_projection.install_id == install_id
+    cleanup_db.flush.assert_awaited_once()
+    cleanup_db.delete.assert_awaited_once_with(orphan)
+
+
+@pytest.mark.asyncio
 async def test_reviewed_package_uses_its_own_publication_and_recovery_handler(monkeypatch):
     job_id, install_id = uuid4(), uuid4()
     payload = SolutionDeployPayload(

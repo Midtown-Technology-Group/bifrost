@@ -1,5 +1,6 @@
 """Failed password logins must retain their audit event across request denial."""
 
+from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 from uuid import uuid4
@@ -15,7 +16,10 @@ from src.routers import auth
     "reason,status", [("user_not_found", 401), ("no_password", 401),
                       ("wrong_password", 401), ("inactive", 403)]
 )
-async def test_failed_login_commits_audit_before_denial(monkeypatch, reason, status):
+@pytest.mark.parametrize("audit_commit_fails", [False, True])
+async def test_failed_login_commits_audit_before_denial(
+    monkeypatch, reason, status, audit_commit_fails
+):
     user = SimpleNamespace(
         id=uuid4(), email="person@example.test",
         hashed_password=None if reason == "no_password" else "password-hash",
@@ -31,14 +35,24 @@ async def test_failed_login_commits_audit_before_denial(monkeypatch, reason, sta
     events = []
 
     async def audit(_db, event, **fields):
+        assert _db is audit_db
         events.append((event, fields))
 
     async def commit():
         assert len(events) == 1
+        if audit_commit_fails:
+            raise RuntimeError("audit database unavailable")
         events.append("committed")
 
+    audit_db = SimpleNamespace(commit=AsyncMock(side_effect=commit))
+
+    @asynccontextmanager
+    async def audit_session():
+        yield audit_db
+
     monkeypatch.setattr(auth, "emit_audit", audit)
-    db = SimpleNamespace(commit=AsyncMock(side_effect=commit))
+    monkeypatch.setattr(auth, "get_session_factory", lambda: audit_session)
+    db = SimpleNamespace(commit=AsyncMock())
     with pytest.raises(HTTPException) as denied:
         await auth.login(
             Response(),
@@ -50,5 +64,9 @@ async def test_failed_login_commits_audit_before_denial(monkeypatch, reason, sta
     assert events[0][0] == "auth.login.failed"
     assert events[0][1]["details"] == {"email": user.email, "reason": reason}
     assert events[0][1]["resource_id"] == (None if reason == "user_not_found" else user.id)
-    assert events[-1] == "committed"
-    db.commit.assert_awaited_once()
+    if audit_commit_fails:
+        assert len(events) == 1
+    else:
+        assert events[-1] == "committed"
+    audit_db.commit.assert_awaited_once()
+    db.commit.assert_not_awaited()
