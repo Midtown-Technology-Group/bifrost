@@ -237,8 +237,15 @@ async def _seed_native_history(
     *,
     expected_principal: str,
     destination: Path,
+    timeout_seconds: int = 30,
 ) -> None:
-    """Prepare only native parents/Python positive before common DDL exists."""
+    """Prepare only native parents/Python positive before common DDL exists.
+
+    The original cancellation caller retains30. The separate Start fixture uses
+    only the existing native30/0 timeout cases; no generic policy is introduced.
+    """
+    if type(timeout_seconds) is not int or timeout_seconds not in {0, 30}:
+        raise FixturePreparationError("fixture timeout must be native30 or0")
     if not expected_principal or expected_principal in {
         "wex_core",
         "wex_incumbent",
@@ -298,7 +305,7 @@ async def _seed_native_history(
                     path="fixture.py",
                     solution_id=seed["solution_id"],
                     organization_id=seed["organization_id"],
-                    timeout_seconds=30,
+                    timeout_seconds=timeout_seconds,
                 )
             )
             await db.flush()
@@ -313,7 +320,7 @@ async def _seed_native_history(
                     "name": f"sql-cancel-{suffix}",
                     "function_name": "run",
                     "path": "fixture.py",
-                    "timeout_seconds": 30,
+                    "timeout_seconds": timeout_seconds,
                     "type": "workflow",
                 },
             )
