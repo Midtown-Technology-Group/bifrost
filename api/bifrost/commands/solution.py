@@ -3660,8 +3660,23 @@ def start_cmd(
     # child, and a plain terminate() of `npm` orphans `vite` (it keeps the port
     # bound). Killing the group reaps both. (POSIX; Windows falls back to a plain
     # terminate of the npm process.)
+    # Re-check after the potentially long npm install. This gives an operator a
+    # clean error when another process claimed the port during installation;
+    # the child-owned listener proof in _wait_for_vite closes the remaining
+    # check-to-bind race.
+    _ensure_port_free(vite_port)
     vite_proc = subprocess.Popen(
-        [npm, "run", "dev", "--", "--port", str(vite_port), "--strictPort"],
+        [
+            npm,
+            "run",
+            "dev",
+            "--",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            str(vite_port),
+            "--strictPort",
+        ],
         cwd=chosen.app_dir, env=vite_env,
         start_new_session=True,
     )
@@ -4236,8 +4251,8 @@ def _ensure_port_free(port: int) -> None:
     An orphaned dev server from a previous run holding the port makes the new
     child die under ``--strictPort`` while readiness probes happily connect to
     the LEFTOVER — `start` would silently serve the stale app (live-drive
-    finding). Checking before the spawn is deterministic; probing after it is
-    a race against npm's cold start.
+    finding). The caller checks before installation and immediately before the
+    spawn; process-tree ownership proof then closes the remaining bind race.
     """
     import socket
 
@@ -4253,15 +4268,39 @@ def _ensure_port_free(port: int) -> None:
     )
 
 
-def _wait_for_vite(proc: "subprocess.Popen", port: int, timeout: float = 60.0) -> None:
-    """Block until the Vite child accepts TCP connections; fail fast if it dies.
+def _vite_process_owns_listener(proc: "subprocess.Popen", port: int) -> bool:
+    """Return whether npm or one of its descendants owns Vite's listener.
 
-    ``--strictPort`` makes Vite exit when its port is taken; without this
-    check the proxy serves unexplained 502s while the only clue scrolls past
-    in npm output (issue #460). ``_ensure_port_free`` ran before the spawn,
-    so a connect success here can only be our child.
+    A successful TCP connection is not ownership proof: another local process
+    can bind the checked port while npm installs dependencies or before Vite's
+    ``--strictPort`` bind attempt. Inspecting only the spawned process tree
+    fails closed when a connection cannot be attributed to that tree.
     """
-    import socket
+    import psutil
+
+    try:
+        root = psutil.Process(proc.pid)
+        processes = [root, *root.children(recursive=True)]
+    except (psutil.AccessDenied, psutil.NoSuchProcess, psutil.ZombieProcess):
+        return False
+
+    for process in processes:
+        try:
+            connections = process.net_connections(kind="tcp")
+        except (psutil.AccessDenied, psutil.NoSuchProcess, psutil.ZombieProcess):
+            continue
+        for connection in connections:
+            if connection.status != psutil.CONN_LISTEN or not connection.laddr:
+                continue
+            listener_host = getattr(connection.laddr, "ip", connection.laddr[0])
+            listener_port = getattr(connection.laddr, "port", connection.laddr[1])
+            if listener_host == "127.0.0.1" and listener_port == port:
+                return True
+    return False
+
+
+def _wait_for_vite(proc: "subprocess.Popen", port: int, timeout: float = 60.0) -> None:
+    """Block until the spawned npm/Vite tree owns the expected listener."""
 
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
@@ -4271,14 +4310,12 @@ def _wait_for_vite(proc: "subprocess.Popen", port: int, timeout: float = 60.0) -
                 f"The app dev server (vite) exited with code {code} before "
                 f"serving — see its output above."
             )
-        try:
-            with socket.create_connection(("127.0.0.1", port), timeout=0.5):
-                return
-        except OSError:
-            time.sleep(0.25)
+        if _vite_process_owns_listener(proc, port) and proc.poll() is None:
+            return
+        time.sleep(0.25)
     raise click.ClickException(
-        f"vite did not start listening on port {port} within {int(timeout)}s — "
-        "see its output above."
+        f"vite did not establish a child-owned listener on 127.0.0.1:{port} "
+        f"within {int(timeout)}s — see its output above."
     )
 
 
