@@ -7,10 +7,8 @@ from shared.policies.compile import compile_to_sql
 from shared.policies.evaluate import evaluate
 from src.models.contracts.policies import Expr
 
-
 # Reuse the FakeUser shape from test_evaluate
 from tests.unit.policies.test_evaluate import FakeUser
-
 
 # Each case is (expr_dict, row_dict, user_kwargs, expected_bool)
 CASES = [
@@ -51,6 +49,11 @@ CASES = [
     ({"gt": [2, 3]}, {}, {}, False),
     ({"gte": [2, 2]}, {}, {}, True),
     ({"gte": [1, 2]}, {}, {}, False),
+    # Mixed JSON scalar types fail closed in both evaluator and SQL compiler.
+    ({"lt": [{"row": "x"}, 10]}, {"x": "5"}, {}, False),
+    ({"lt": [{"row": "x"}, "10"]}, {"x": 5}, {}, False),
+    ({"lt": [{"row": "x"}, 10]}, {"x": True}, {}, False),
+    ({"gt": [10, {"row": "x"}]}, {"x": False}, {}, False),
     # Nested row path
     ({"is_null": {"row": "a.b.c"}}, {"a": {"b": {"c": "v"}}}, {}, False),
     ({"is_null": {"row": "a.b.c"}}, {"a": {}}, {}, True),

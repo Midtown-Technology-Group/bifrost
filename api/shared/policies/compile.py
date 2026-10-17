@@ -8,15 +8,14 @@ parameterized literals against the `documents` table.
 
 from __future__ import annotations
 
+import json
 from typing import Any
 from uuid import UUID
-
-import json
 
 from sqlalchemy import and_ as sa_and
 from sqlalchemy import cast as sa_cast
 from sqlalchemy import false as sa_false
-from sqlalchemy import literal
+from sqlalchemy import func, literal
 from sqlalchemy import not_ as sa_not
 from sqlalchemy import or_ as sa_or
 from sqlalchemy import true as sa_true
@@ -229,12 +228,61 @@ def _is_jsonb_scalar(value: Any) -> bool:
     return isinstance(value, (bool, int, float)) and not isinstance(value, str)
 
 
-def _compile_ordered_comparison(op: str, value: Any, user: Any) -> ColumnElement:
-    left, right = _compile_comparison_operands(value[0], value[1], user)
-    if op == "eq":
-        return left == right
-    if op == "neq":
-        return left != right
+def _compile_type_safe_jsonb_ordering(
+    op: str, left_node: Any, right_node: Any, user: Any
+) -> ColumnElement | None:
+    """Compile JSONB row ordering with a matching scalar-type guard.
+
+    PostgreSQL defines a total ordering across JSONB types, so an unguarded
+    comparison can make (for example) a string row value compare as less than
+    a numeric policy literal. Policy ordering is type-safe instead: strings,
+    numbers, and booleans compare only within their own JSON scalar domains.
+    """
+    left_row = _row_reference(left_node)
+    right_row = _row_reference(right_node)
+
+    if left_row is not None and right_row is None:
+        type_guard = _jsonb_ordering_type_guard(left_row, right_node, user)
+        if type_guard is not None:
+            jsonb_col, scalar_type = type_guard
+            left, right = _compile_comparison_operands(left_node, right_node, user)
+            return sa_and(
+                func.jsonb_typeof(jsonb_col) == literal(scalar_type),
+                _apply_ordering(op, left, right),
+            )
+    if right_row is not None and left_row is None:
+        type_guard = _jsonb_ordering_type_guard(right_row, left_node, user)
+        if type_guard is not None:
+            jsonb_col, scalar_type = type_guard
+            left, right = _compile_comparison_operands(left_node, right_node, user)
+            return sa_and(
+                func.jsonb_typeof(jsonb_col) == literal(scalar_type),
+                _apply_ordering(op, left, right),
+            )
+    return None
+
+
+def _jsonb_ordering_type_guard(
+    row_name: str, scalar_node: Any, user: Any
+) -> tuple[ColumnElement, str] | None:
+    scalar = _resolve_to_scalar(scalar_node, user)
+    if isinstance(scalar, str):
+        scalar_type = "string"
+    elif isinstance(scalar, bool):
+        scalar_type = "boolean"
+    elif isinstance(scalar, (int, float)):
+        scalar_type = "number"
+    else:
+        return None
+    jsonb_col = _resolve_row_to_jsonb(row_name)
+    if jsonb_col is None:
+        return None
+    return jsonb_col, scalar_type
+
+
+def _apply_ordering(
+    op: str, left: ColumnElement, right: ColumnElement
+) -> ColumnElement:
     if op == "lt":
         return left < right
     if op == "lte":
@@ -242,6 +290,22 @@ def _compile_ordered_comparison(op: str, value: Any, user: Any) -> ColumnElement
     if op == "gt":
         return left > right
     return left >= right
+
+
+def _compile_ordered_comparison(op: str, value: Any, user: Any) -> ColumnElement:
+    if op in ("lt", "lte", "gt", "gte"):
+        type_safe_ordering = _compile_type_safe_jsonb_ordering(
+            op, value[0], value[1], user
+        )
+        if type_safe_ordering is not None:
+            return type_safe_ordering
+
+    left, right = _compile_comparison_operands(value[0], value[1], user)
+    if op == "eq":
+        return left == right
+    if op == "neq":
+        return left != right
+    return _apply_ordering(op, left, right)
 
 
 def _compile_in(value: Any, user: Any) -> ColumnElement:
