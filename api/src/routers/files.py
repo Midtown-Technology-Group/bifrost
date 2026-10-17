@@ -535,19 +535,11 @@ async def _deny_file_policy(
         solution_id=solution_id,
     )
     await ctx.db.commit()
-    # A policy denial must identify its scope inputs (no user/token data —
-    # every field is caller-supplied or derived from it): a scope-loss bug
-    # reads as solution_id=null instead of a bare "Forbidden".
+    # The durable audit row above retains server-side scope diagnostics. Do not
+    # reflect install, tenant, or path identifiers across the denial boundary.
     raise HTTPException(
         status_code=status.HTTP_403_FORBIDDEN,
-        detail={
-            "message": "File policy denied",
-            "action": action,
-            "location": location,
-            "path": path,
-            "scope": scope,
-            "solution_id": str(solution_id) if solution_id else None,
-        },
+        detail="File policy denied",
     )
 
 

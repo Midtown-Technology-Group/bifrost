@@ -588,18 +588,41 @@ async def test_execute_workflow_rejects_inline_code_for_non_admin() -> None:
 async def test_execute_workflow_maps_missing_and_denied_workflow() -> None:
     user = _exec_user()
     missing_repo = _WorkflowRepo(workflow=None)
+    context_solution_id = uuid4()
+    request_app_id = uuid4()
+    derived_solution_scope = uuid4()
+    ctx = _ctx(user)
+    ctx.solution_id = str(context_solution_id)
 
-    with patch("src.repositories.WorkflowRepository", return_value=missing_repo):
+    with (
+        patch("src.repositories.WorkflowRepository", return_value=missing_repo),
+        patch.object(
+            workflows,
+            "derive_execution_solution_scope",
+            AsyncMock(return_value=derived_solution_scope),
+        ),
+        patch.object(
+            workflows,
+            "solution_allows_global",
+            AsyncMock(return_value=False),
+        ),
+    ):
         with pytest.raises(HTTPException) as exc:
             await workflows.execute_workflow(
-                WorkflowExecutionRequest(workflow_id="missing"),
-                _ctx(user),
+                WorkflowExecutionRequest(
+                    workflow_id="missing",
+                    app_id=str(request_app_id),
+                ),
+                ctx,
                 _Db(),
                 user,
             )
 
     assert exc.value.status_code == status.HTTP_404_NOT_FOUND
-    assert exc.value.detail["message"] == "Workflow 'missing' not found"
+    assert exc.value.detail == "Workflow not found"
+    assert str(context_solution_id) not in str(exc.value.detail)
+    assert str(request_app_id) not in str(exc.value.detail)
+    assert str(derived_solution_scope) not in str(exc.value.detail)
 
     from src.repositories import AccessDeniedError
 
