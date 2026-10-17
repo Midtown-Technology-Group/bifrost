@@ -37,7 +37,7 @@ READ_COLUMNS = {
     "solution_deployment_dependencies": {
         "deployment_id", "dependency_solution_id", "dependency_deployment_id", "resolved_bundle_hash",
     },
-    "solutions": {"id", "organization_id", "status", "allow_outbound_access"},
+    "solutions": {"id", "organization_id", "status", "global_repo_access"},
     "users": {"id", "organization_id", "is_active", "is_superuser", "is_external"},
     "organizations": {"id", "is_active", "is_provider"},
     "roles": {"id", "name"},
