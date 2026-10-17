@@ -127,6 +127,19 @@ async def run(max_tenants: int = DEFAULT_MAX_TENANTS, *, mode: str = DEFAULT_MOD
     assert "required" not in schema
 
 
+def test_reviewed_recipe_rejects_unresolved_literal_parameter_members():
+    with pytest.raises(
+        WorkflowRecipeError,
+        match="Literal annotations require statically resolvable members",
+    ):
+        compile_source(
+            "from bifrost import workflow\n"
+            "from typing import Literal\n"
+            "@workflow\n"
+            "async def run(mode: Literal[DEFAULT_MODE]): pass"
+        )
+
+
 @pytest.mark.parametrize("before,after", [
     ("DEFAULT_LIMIT = get_limit()", ""),
     ("DEFAULT_LIMIT = 10\nDEFAULT_LIMIT = 20", ""),

@@ -24,7 +24,10 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from bifrost.workspace_effects import normalize_workflow_bounds, normalize_workflow_effects
 from bifrost.contracts.workflows import ExecutionRetryPolicy
-from bifrost.workflow_parameters import WorkflowParameterCompiler
+from bifrost.workflow_parameters import (
+    WorkflowParameterCompiler,
+    WorkflowParameterSchemaError,
+)
 
 WORKFLOW_PARAMETERS_SCHEMA_CONTRACT = "bifrost.workflow-parameters-schema/v1"
 DELIVERY_REVIEW_CONTRACT = "bifrost.solution-delivery-review/v2"
@@ -260,7 +263,10 @@ def _entrypoint_parameters(source: bytes, tree: ast.Module,
     defaults = {arg.arg: _parameter_default(default, tree, node)
         for arg, default in [*zip(node.args.args, positional_defaults),
                              *zip(node.args.kwonlyargs, node.args.kw_defaults)] if default is not None}
-    parameters = indexer.extract_parameters_from_source(source, node.name, path=path)
+    try:
+        parameters = indexer.extract_parameters_from_source(source, node.name, path=path)
+    except WorkflowParameterSchemaError as exc:
+        raise WorkflowRecipeError(str(exc)) from exc
     if parameters is None:
         raise WorkflowRecipeError("Workflow parameter schema cannot be inferred")
     for parameter_name, value in defaults.items():
