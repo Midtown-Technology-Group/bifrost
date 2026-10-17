@@ -70,7 +70,7 @@
     "id": 38988901890,
     "head": "51dd6c3e4a4270d80f2679f650c1515f94f934a4",
     "attempt": 1,
-    "status": "pending",
+    "status": "completed",
     "tests_begun": false,
     "superseded_run": {
       "id": 38987661027,
@@ -84,7 +84,8 @@
       "head": "ecc555324bd014568414f63a76de6e6b30f37802",
       "status": "queued; cancellation requested earlier, terminal cancellation not observed"
     },
-    "qualification_limit": "Normal CI runs offline candidate and native Python tests, not candidate DDL application, new guards/source functions, real restricted logins or C5 races."
+    "qualification_limit": "Normal CI runs offline candidate and native Python tests, not candidate DDL application, new guards/source functions, real restricted logins or C5 races.",
+    "conclusion": "cancelled; superseded by reviewed fixture/composed source, no tests begun"
   },
   "remaining": [
     "Approve finite isolated principal/lock/read authority, reconcile effective installed catalog and qualify genuine direct/pool logins; proposed ACL source is complete but unapplied. Finish matching adapter order, remaining native cascade positives and exact maintenance policy.",
@@ -109,9 +110,9 @@
     "cold_skill_package": "2026-10-09.1"
   },
   "workspace_boundary": {
-    "head": "e85e3c8b1fa90c08e0ac2db23d711b24b1b30df2",
-    "audit": "rust-core-mvp-workspace-boundary-e85e3c8b.json",
-    "files": 2452,
+    "head": "629ae5cbbd1700f0e677d09430db242793fb9ec8",
+    "audit": "rust-core-mvp-workspace-boundary-629ae5cb.json",
+    "files": 2459,
     "internal_imports": 0,
     "parse_errors": 0,
     "allowlist_empty": true,
@@ -131,5 +132,189 @@
     "direction": "Preserve the one trusted Python CRED policy/issuer; separately review a least-authority credential writer and exact common binding/lock adapter. No new role authorized or implemented.",
     "does_not_block": "Source preparation of R1 no-grant cancellation SQL dependency test; not credential or full R1 acceptance.",
     "review": "independent Sol source review; no SQL/runtime evidence"
+  },
+  "fixture_producer": {
+    "head": "9f45e57e8f95354a4a230033f6e59b3970b33b4a",
+    "source": "api/tests/helpers/common_cancel_fixture.py",
+    "sha256": "9f366712def6b166aeffdd4680ee963e04a7e46d41c8aeaae1dcb9af15e6052c",
+    "review": "independent Sol scoped SOURCE ACCEPT after P2 pending-overwrite repair; no SQL/tests executed by reviewer",
+    "contract": "Two explicit stages: native deployment repository/Python positive before guards, common cohort through genuine core after separately approved C1-C5/catalog. No fallback DSN/DDL/roles/issuer/runtime. Immutable 0600 sibling intent is file+directory synced before SQL; separately staged final uses atomic no-overwrite link. Producer failure remains unqualified even if final bytes exist.",
+    "pending_failure": "Preserve private intent/final bytes and database; no automatic write retry/reset/reopen.",
+    "synthetic_limit": "Fixture Start/artifact/hashes are not actual Rust Start, runtime, physical custody or SDK proof.",
+    "normal_ci": {
+      "id": 38990832190,
+      "head": "9f45e57e8f95354a4a230033f6e59b3970b33b4a",
+      "status": "completed",
+      "conclusion": "cancelled; replaced by composed source validation, no tests begun"
+    }
+  },
+  "composed_r1_source": {
+    "head": "a6b5cb7aea87cea48a7b531bd5c7a2d1cbfd3e09",
+    "tree": "c52b47495cc1b1d921a7f65082e01832b5f7cd7d",
+    "rust_tree": "5e6f7bbc467b51d2f8979bf8385a2d020472d7ac",
+    "branch": "rust/r1-sql-candidate",
+    "worktree": "/home/thomas/src/bifrost-rust-r1-sql-candidate",
+    "packet": "rust-core-mvp-r1-cancel-sql-packet.md",
+    "source_review": "SQL/bootstrap c4c32dc7 and explicit fixture driver f75da956b: independent Sol scoped SOURCE ACCEPT. 13744851d applies complete pinned formatter output to the existing Rust SQL test; operation module unchanged. Independent Sol source-accepted a6b test-only repair narrows the conditional-DDL assertion while retaining role validation, count/key/order/FK checks.",
+    "inputs": "Current-main C1-C5/writer/fixture source plus existing Rust tree from3c66; only minimal native Rust bootstrap function added to current test.sh. No stopped experimental workflow imported.",
+    "inactive_sql": {
+      "api/alembic/candidates/runtime_principals_prepare.sql": "e4069f4722ef424821c7225fce93b78f05c8be6160a83bb291a61bcc213b7068",
+      "api/alembic/candidates/runtime_principals_grants.sql": "cf4ebd9c6b9b7322391995ed09cf0b5cc3fd02296e8d131abba7a0fc421b46cd"
+    },
+    "scope": "Inactive preparation of four NOLOGIN identities + finite exact JSON grants, not activation. Explicit isolated-only PUBLIC CONNECT/TEMP on bifrost_test and public CREATE disposition is an approval item. No arbitrary function/extension/default ACL repair, credentials/login, common DDL or runtime enabled.",
+    "fixture_driver": {
+      "path": "api/tests/helpers/common_cancel_fixture_driver.py",
+      "sha256": "5456ff71425aaef87e6bb9a0cc16546bbbf482c6a554954bbd9fd11420c52eea",
+      "contract": "Explicit test DB/host/password-present/principal DSNs; READ COMMITTED/NullPool/noecho/hide_parameters; engine disposal; sanitized failure/no retry."
+    },
+    "supported_checks": {
+      "host": "pve-t340.netbird.cloud",
+      "vm_id": 101,
+      "vm_name": "bifrost-platform-test-debian13-01",
+      "guest_worktree": "/home/dev/bifrost-rust-r1-f75da956b",
+      "compose_project": "bifrost-test-0290298a",
+      "private_results": "/home/dev/common-r1-f75da956b-source-evidence",
+      "previous_failures": [
+        "f75 pre-PR setup: missing origin/main fetch tracking ref; before tests",
+        "f75 pre-PR setup: umask077 root-owned source unreadable by uid1000 quality container; quality not executed",
+        "f75 Rust: cargo fmt --check rejected test formatting; clippy/tests did not run",
+        "967 Rust: partial formatter repair still failed; full supported pinned formatter output applied at137; original logs retained",
+        "137 scoped Python:153pass/1fail; blanket IF NOT EXISTS assertion rejected legitimate C1 role-precondition SELECT. Corrected at a6b to reject CREATE TABLE IF NOT EXISTS; independent review accepted, no DDL/authority behavior changed."
+      ],
+      "repairs": "Explicit main refspec; public task-owned checkout traversal/read modes; complete formatter-only source137. No expectations waived.",
+      "pre_pr": {
+        "guest_pid": 149633,
+        "status": "passed; QGA terminalexit0, wrapperexit0 and inspected full log",
+        "source": "a6b5cb7aea87cea48a7b531bd5c7a2d1cbfd3e09",
+        "command": "./test.sh pre-pr",
+        "log_sha256": "70c6407425d007bcbe6228e6f29698cc78a356ece056b215ae7f10c7f02347b7"
+      },
+      "rust": {
+        "guest_pid": 65735,
+        "status": "passed; wrapper exit0 and complete log inspected; QGA handle later absent, not restarted",
+        "command": "cargo fmt --check; cargo clippy --locked --all-targets --all-features -- -D warnings; cargo test --locked --all",
+        "source": "13744851d8f758146767de52852b74767fc386de",
+        "rust_tree": "5e6f7bbc467b51d2f8979bf8385a2d020472d7ac",
+        "tests_passed": 36,
+        "tests_failed": 0,
+        "tests_ignored": 0,
+        "actual_common_sql_tests_executed": 0,
+        "log_sha256": "1c2b756672b6a4d188fad75614b90d79d3249def813b9503077bb713cb4e881b",
+        "tool_image": "sha256:0dc3dbe0d1868cc15a45b22cdb685ad1bb30ab80b4789ec96405bc4df5fb0891",
+        "source_custody": "All41 tracked Rust input files verified before/after private-copy bind mount against final137 source manifest. Operator evidence; not signed independent CI attestation.",
+        "limits": "2CPU/4GiB/256pids/CARGO_BUILD_JOBS2; private formatted copy mounted over pinned toolchain image; opt-in common-session-sql test compiled under all-feature Clippy but not executed.",
+        "retained_for_current_head": "Exact unchanged core-rs tree5e6f7bbc and all tracked Rust inputs; a6b modifies only one offline Python test assertion. No rerun or whole-candidate CI pass inferred."
+      },
+      "pytest": {
+        "guest_pid": 141901,
+        "status": "passed; QGA terminalexit0, wrapperexit0 and JUnit inspected",
+        "source": "a6b5cb7aea87cea48a7b531bd5c7a2d1cbfd3e09",
+        "tests": 154,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "seconds": 12.63,
+        "scope": "15 selected fixture/driver/profile/candidate/native-consumer unit files",
+        "log_sha256": "a0ba120673220b142bd3f8488bfa2356399e7ba2e8169f13b1f504d0c37a914f",
+        "junit_sha256": "00c311a301d088a275c7ffcfa441f376a23e46304e75136d080cad4e66b8cf1d",
+        "command_prefix": "BIFROST_SKIP_BUILD=1 ./test.sh",
+        "reuse": "Existing native API dev image/dependencies unchanged; standard runner mounts current api/tests/src/candidates. Only test assertion changed. Normal state reset used on native-only test DB, never on common admitted cohort."
+      },
+      "candidate_sql": "unexecuted",
+      "native_catalog_smoke": {
+        "status": "passed; private output and exit0 inspected",
+        "source_sha256": "7819c8b83809c1959ff0b4e9633a80a662ba73c9a81636aa5194fa8be93ca32a",
+        "output_sha256": "0b0ef4da64095eed01d52e7be1ec0335f189ad9814f6c6de08679dc75fff7b92",
+        "records": 7687,
+        "server_version_num": "160015",
+        "native_head": "20261012_work_delivery_started",
+        "proposed_roles": 0,
+        "common_relations": 0,
+        "limit": "READONLY PostgreSQL16 syntax/catalog shape smoke only; not installed common authority, role/login or actual lifecycle SQL qualification.",
+        "guest_pid": 168548,
+        "source_head": "a6b5cb7aea87cea48a7b531bd5c7a2d1cbfd3e09",
+        "note": "New parameter-ACL queries syntax-smoked. Empty proposed-role/parameter-grant rows on native DB produce same output digest as prior capture; no installed common-parameter authority qualification inferred."
+      },
+      "previous_pre_pr": {
+        "guest_pid": 96252,
+        "status": "passed; wrapper exit0 and inspected complete log; QGA terminal receipt observed before later PID expiration",
+        "source": "13744851d8f758146767de52852b74767fc386de",
+        "command": "./test.sh pre-pr",
+        "log_sha256": "fe50c155337aff6b575a701173c4a948d16b337d72e5eebd686497f45239c383"
+      },
+      "cleanup": {
+        "status": "verified teardown and VM101 stopped",
+        "guest_pid": 171525,
+        "wrapper_exit": 0,
+        "log_sha256": "22cd90ce4228ad35cdeb947695fe97906b71e8a1f9828cc551777ee2e5ad13c0",
+        "compose_project": "bifrost-test-0290298a",
+        "containers": 0,
+        "volumes": 0,
+        "networks": 0,
+        "other_activity": "Fresh docker ps empty and no non-system user/test processes before graceful shutdown; unrelated stopped containers/volumes/caches preserved.",
+        "vm_readback": "qm status101: stopped after normal qm shutdown --timeout30; no force stop",
+        "retained": "Task source checkout/private evidence and pinned toolchain image0dc3dbe0 retained as owner-managed cache for next approved SQL work; no active common component/schema/login/runtime."
+      }
+    },
+    "ci": [
+      {
+        "id": 38993723523,
+        "name": "CI",
+        "status": "pending",
+        "attempt": 1,
+        "head": "a6b5cb7aea87cea48a7b531bd5c7a2d1cbfd3e09"
+      },
+      {
+        "id": 38993725274,
+        "name": "Rust Core",
+        "status": "queued",
+        "attempt": 1,
+        "head": "a6b5cb7aea87cea48a7b531bd5c7a2d1cbfd3e09"
+      }
+    ],
+    "packet_status": "Source qualification complete locally (pre-PR,154 selected Python tests; retained exact Rust tree fmt/strictClippy/36tests); normal CI pending. Activation recipe, catalog capture, component/pool/login source accepted and unapplied. Full private-input/setup/cleanup commands and installed-catalog comparison still needed before requesting isolated SQL approval. No common SQL/runtime acceptance.",
+    "activation_recipe": {
+      "path": "rust-core-mvp-r1-activation-overlay.json",
+      "sha256": "b8d49ccd9fe7c26e84d7623e555621cf831c706b0a5e0192c32be398dfe823fa",
+      "overlay_tree": "3ca13fba4fa0cb35f3c9cad06f2a41aacff62256",
+      "review": "Eight identical reviewed source/target migration blobs; recipe base rebased arithmetically to source-accepted a6b test-only repair using temporary index. No active path/SQL written."
+    },
+    "catalog_capture": {
+      "path": "evidence/r1-cancel-sql-proposal/installed-catalog.sql",
+      "sha256": "7819c8b83809c1959ff0b4e9633a80a662ba73c9a81636aa5194fa8be93ca32a",
+      "review": "independent Sol SOURCE ACCEPT after database/role settings, index metadata and parameter ACL/effective SET+ALTER SYSTEM repairs; no execution by reviewer",
+      "actual_common_catalog": "unexecuted; independent installed-authority comparison remains held"
+    },
+    "previous_ci": [
+      {
+        "id": 38991930749,
+        "name": "CI",
+        "status": "queued; previous cancellation request still not terminal on current provider readback; no resend",
+        "attempt": 1,
+        "head": "967ce4e72f80ab04a8ed28243cc22f2bf4559f9f"
+      },
+      {
+        "id": 38991932656,
+        "name": "Rust Core",
+        "status": "completed",
+        "attempt": 1,
+        "head": "967ce4e72f80ab04a8ed28243cc22f2bf4559f9f",
+        "conclusion": "cancelled; superseded source"
+      }
+    ],
+    "component_login_proposal": {
+      "status": "independent Sol scoped SOURCE ACCEPT; unapplied",
+      "paths": [
+        "evidence/r1-cancel-sql-proposal/compose.yml",
+        "evidence/r1-cancel-sql-proposal/pgbouncer.ini",
+        "evidence/r1-cancel-sql-proposal/activate-test-logins.sql"
+      ],
+      "limit": "No component resources, private credentials, role/login or SQL created. Exact full execution/cleanup/private input procedure and installed-catalog comparison still required.",
+      "compose_sha256": "5991ede81c8bdeb8dd3ad722d1ab8c09c4998c8df4f6c48bce503e2e4febf567",
+      "pool_config_sha256": "0a0421ca4d03b1e596492a806c65479ee9d6e749dcddff7a43f51badc71973e5",
+      "activation_sha256": "90c07859d75e12eeb7fc194b4af460796264130d4f82b772bafeef0d4f30bc21",
+      "validation": "VM101 docker compose config --quiet passed with placeholder private input path; no resources created",
+      "review_findings": "Removed PG16 invalid \\quit1 success path and plaintext password-bearing SQL; built-in psql \\password must set SCRAM passwords while roles remain NOLOGIN. Actual private generation/distinctness, external installed-catalog approval and bounded shutdown still required. Expiry does not revoke existing sessions; pool DISCARD ALL does not run by default in transaction mode."
+    }
   }
 }

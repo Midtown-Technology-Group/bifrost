@@ -1,0 +1,11 @@
+{
+  "head": "dc45a355a444006963e51f5b60a75bbcbcf67a9b",
+  "files": 2456,
+  "internal_imports": [],
+  "parse_errors": [],
+  "allowlist_empty": true,
+  "scope": "committed blobs; current source-defined authored roots/exclusions plus solutions, google_ops_worker and top-level Python",
+  "gate_sha256": "b3e71f317b8d72d85ab17f7a28a32c631e3b72546872e67c00dd8eccdc8bf2e4",
+  "selected_blob_manifest_sha256": "2f904b18344f0d12f6fd62c62f873f7fdd26b5f1382e53bbbb5155cc3892914c",
+  "manifest_encoding": "ls-tree path order; UTF-8 path TAB blob_oid LF"
+}

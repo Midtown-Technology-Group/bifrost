@@ -1,0 +1,84 @@
+{
+  "schema": "bifrost.r1-isolated-activation-proposal/v1",
+  "status": "review-only-unapproved",
+  "base_commit": "a6b5cb7aea87cea48a7b531bd5c7a2d1cbfd3e09",
+  "expected_overlay_tree": "3ca13fba4fa0cb35f3c9cad06f2a41aacff62256",
+  "native_head": "20261012_work_delivery_started",
+  "common_head": "20261016_runtime_source_drain",
+  "operation": "Add exact copies of eight reviewed candidate blobs to the existing versions directory in the approved disposable SQL checkout only. Preserve original candidates. One ordinary Alembic history; no stamp/manual Operations replay/new migration framework.",
+  "authority_limit": "This recipe and tree were computed with a temporary Git index only. No active migration file was written and no SQL/role/login/candidate overlay was applied.",
+  "copies": [
+    {
+      "source": "api/alembic/candidates/20261016_runtime_owner_links.py",
+      "target": "api/alembic/versions/20261016_runtime_owner_links.py",
+      "mode": "100644",
+      "git_blob": "6397981dcf01533b538b23f14f252bfc34158234",
+      "sha256": "4f1e669ee133dd6d1bb549c1964d7a0de16d9c70661e1a0692393f1a6e4a8509",
+      "revision": "20261016_runtime_owner_links",
+      "down_revision": "20261012_work_delivery_started"
+    },
+    {
+      "source": "api/alembic/candidates/20261016_runtime_starts_receipts.py",
+      "target": "api/alembic/versions/20261016_runtime_starts_receipts.py",
+      "mode": "100644",
+      "git_blob": "99a4ed7381508a765d319e277cddac007dd9d97e",
+      "sha256": "448ed6221288c957c03df9be435df2542e6da2c2bbd82f79cc2b86ec59560b78",
+      "revision": "20261016_runtime_receipts",
+      "down_revision": "20261016_runtime_owner_links"
+    },
+    {
+      "source": "api/alembic/candidates/20261016_runtime_sdk_grants.py",
+      "target": "api/alembic/versions/20261016_runtime_sdk_grants.py",
+      "mode": "100644",
+      "git_blob": "2d85486eac96f162677ce9fae2071abec7c66ac2",
+      "sha256": "17344bbb6a8ad159c42099bd1e8e2ecf6bbfee8a0a61403ed5f6cd801398c378",
+      "revision": "20261016_runtime_grants",
+      "down_revision": "20261016_runtime_receipts"
+    },
+    {
+      "source": "api/alembic/candidates/20261016_runtime_admissions_resources.py",
+      "target": "api/alembic/versions/20261016_runtime_admissions_resources.py",
+      "mode": "100644",
+      "git_blob": "bdca861d259674c7c05bda17cf7d47636f0bf822",
+      "sha256": "5590502c8ff801f01b2e87af4c2a6f8a4d3fd41331e1d44aacb9a423b3356e9d",
+      "revision": "20261016_runtime_resources",
+      "down_revision": "20261016_runtime_grants"
+    },
+    {
+      "source": "api/alembic/candidates/20261016_runtime_native_writers.py",
+      "target": "api/alembic/versions/20261016_runtime_native_writers.py",
+      "mode": "100644",
+      "git_blob": "6f54ff9b2edb4c11ec31cc5624cab539f000d72b",
+      "sha256": "024422d4432754c00a0753ed5d481ecaabf4cad35f843007b8e361c5b605aab6",
+      "revision": "20261016_runtime_writers",
+      "down_revision": "20261016_runtime_resources"
+    },
+    {
+      "source": "api/alembic/candidates/20261016_runtime_close_grants.py",
+      "target": "api/alembic/versions/20261016_runtime_close_grants.py",
+      "mode": "100644",
+      "git_blob": "6a5b54c82c6f6d11d78b471acc71e61c5c68aebe",
+      "sha256": "a43ad4e3965652dbbf1671443e25c3ac2349dde4f83e4e2ad6053fafd0f35a43",
+      "revision": "20261016_runtime_close_grants",
+      "down_revision": "20261016_runtime_writers"
+    },
+    {
+      "source": "api/alembic/candidates/20261016_runtime_common_writes.py",
+      "target": "api/alembic/versions/20261016_runtime_common_writes.py",
+      "mode": "100644",
+      "git_blob": "ec03f32e0c162fc87ebbab185eb2480895c076cb",
+      "sha256": "d479a958a3584bcc815c4651731381a2692bc5da4da4bdb16cd40c6639ddafd6",
+      "revision": "20261016_runtime_common_writes",
+      "down_revision": "20261016_runtime_close_grants"
+    },
+    {
+      "source": "api/alembic/candidates/20261016_runtime_source_drain.py",
+      "target": "api/alembic/versions/20261016_runtime_source_drain.py",
+      "mode": "100644",
+      "git_blob": "0e8b0edb329d6ee2fc364c1ac2372267a8aed189",
+      "sha256": "2ef9fc8296d400b36c833c45a573f155408e91872d1a41c1f7a3209fd21d6468",
+      "revision": "20261016_runtime_source_drain",
+      "down_revision": "20261016_runtime_common_writes"
+    }
+  ]
+}

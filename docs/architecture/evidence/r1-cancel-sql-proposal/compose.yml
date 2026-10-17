@@ -1,0 +1,42 @@
+# REVIEW INPUT ONLY. Do not start before explicit isolated SQL approval.
+# No product API, workers, scheduler, source/object store, ports or runtime.
+# Set the project explicitly to bifrost-r1-cancel-a6b5cb7ae; never reuse a stack.
+services:
+  postgres:
+    image: pgvector/pgvector@sha256:7b822b0aac60967beb1ea5e576b8602c94c300a157d187f385ae3e0da199b90a
+    environment:
+      POSTGRES_DB: bifrost_test
+      POSTGRES_USER: bifrost
+      POSTGRES_PASSWORD_FILE: /private/native-password
+      POSTGRES_INITDB_ARGS: --locale=en_US.UTF-8 --auth-host=scram-sha-256
+    volumes:
+      - data:/var/lib/postgresql/data
+      - ${R1_PRIVATE_DIR:?explicit private directory required}/native-password:/private/native-password:ro
+    networks: [component]
+    healthcheck:
+      test: [CMD, pg_isready, -U, bifrost, -d, bifrost_test]
+      interval: 2s
+      timeout: 5s
+      retries: 10
+
+  pool:
+    profiles: [pooled]
+    image: edoburu/pgbouncer@sha256:85d1e38593617af1b5f7f285e97d407e56c29939683cc7cfe4c8f6dc19f1268b
+    # Same installed image as the native test lane, with an explicit config.
+    # Its generated DB_USER mapping is intentionally not used: no forced user.
+    user: "70:70"
+    entrypoint: [/usr/bin/pgbouncer]
+    command: [/private/pgbouncer.ini]
+    volumes:
+      - ${R1_PRIVATE_DIR:?explicit private directory required}/pool:/private:ro
+    networks: [component]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+networks:
+  component:
+    internal: true
+
+volumes:
+  data:
