@@ -19,6 +19,10 @@
 # Local Kubernetes spike (isolated Kind cluster):
 #   ./test.sh kubernetes up|status|down|collect|kubectl
 #
+# Author feedback (does not replace pre-pr/CI):
+#   ./test.sh author --plan             Inspect focused selection, including dirty work.
+#   ./test.sh author --risk sdk         Run focused checks and write a receipt.
+#
 # Quality checks:
 #   ./test.sh quality api               Run API pyright + ruff inside Docker.
 #   ./test.sh quality repo              Run local repository CI hygiene checks.
@@ -50,6 +54,12 @@ cd "$SCRIPT_DIR"
 if [ "${1:-}" = "kubernetes" ]; then
     shift
     exec "$SCRIPT_DIR/scripts/kubernetes/local-kind.sh" "$@"
+fi
+
+# The author orchestrator calls test.sh per lane; each child owns its normal lock.
+if [ "${1:-}" = "author" ]; then
+    shift
+    exec python3 "$SCRIPT_DIR/api/scripts/author_verify.py" "$@"
 fi
 
 # shellcheck source=scripts/lib/test_helpers.sh
@@ -718,6 +728,19 @@ generated_api_checks() {
         python scripts/skill-truth/generate.py --check
 }
 
+# Read-only freshness checks for the author loop. Generate into container-local
+# /tmp and compare, so a stale committed client contract fails without repair.
+author_generated_checks() {
+    docker compose -f "$COMPOSE_FILE" --profile test build test-runner
+    generated_api_checks
+    docker compose -f "$COMPOSE_FILE" --profile client-check build client-check-runner
+    docker compose -f "$COMPOSE_FILE" --profile test run --rm --no-deps -T test-runner \
+        python -c 'import json; from src.main import app; print(json.dumps(app.openapi()))' | \
+        docker compose -f "$COMPOSE_FILE" --profile client-check run --rm --no-deps -T \
+            client-check-runner sh -ec 'cat > /tmp/author-openapi.json; npx --no-install openapi-typescript /tmp/author-openapi.json -o /tmp/author-v1.d.ts; diff -u src/lib/v1.d.ts /tmp/author-v1.d.ts'
+    python3 scripts/check_skill_mirrors.py
+}
+
 build_local_api_candidate() {
     local head_sha version image_tag
     head_sha="$(git rev-parse --short=12 HEAD)"
@@ -1156,6 +1179,7 @@ case "$1" in
     mcp) shift; cmd_mcp "$@" ;;
     pr-preflight) shift; cmd_pr_preflight "$@" ;;
     pre-pr) shift; cmd_pre_pr "$@" ;;
+    author-generated) author_generated_checks ;;
     ci) cmd_ci ;;
     -h|--help|help)
         sed -n '2,35p' "$0"
