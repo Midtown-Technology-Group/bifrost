@@ -28,6 +28,8 @@ there and exit nonzero. `inspect` needs no Docker and never extracts or executes
 the archive. Run outputs retain protocol observations, results and cancellation
 checks as JSON; command stdout is also JSON.
 
+See the [executed validation and measured timings](go-developer-cli-validation.md).
+
 ## Build behavior
 
 `test` and `build` snapshot the module so a concurrent source edit cannot change
