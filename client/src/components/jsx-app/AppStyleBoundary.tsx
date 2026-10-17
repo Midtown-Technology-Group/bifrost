@@ -33,6 +33,43 @@ const HOST_CONSTRAINTS: ReadonlyArray<readonly [string, string]> = [
 	["isolation", "isolate"],
 ];
 
+const APP_MOUNT_SELECTOR = '[data-bifrost-app-mount="true"]';
+const DOCUMENT_ROOT_SELECTOR =
+	/(^|[\s>+~,(])(:root|html|body)(?=$|[\s>+~.#:[,)])/g;
+
+function isolatedDocumentSelector(selector: string): string {
+	return selector.replace(
+		DOCUMENT_ROOT_SELECTOR,
+		(_match: string, prefix: string, root: string) =>
+			`${prefix}${root === "body" ? APP_MOUNT_SELECTOR : ":host"}`,
+	);
+}
+
+/**
+ * Retarget standalone-document selectors after an existing bundle stylesheet
+ * loads inside Shadow DOM. Mutating the linked sheet preserves its own URL as
+ * the base for relative assets while keeping every rule inside the app root.
+ */
+export function adaptDocumentStylesheetForShadowRoot(
+	stylesheet: CSSStyleSheet,
+): void {
+	const visit = (rules: CSSRuleList): void => {
+		for (const rule of Array.from(rules)) {
+			if (rule.type === CSSRule.STYLE_RULE) {
+				const styleRule = rule as CSSStyleRule;
+				const isolated = isolatedDocumentSelector(styleRule.selectorText);
+				if (isolated !== styleRule.selectorText) {
+					styleRule.selectorText = isolated;
+				}
+			}
+			const nested = (rule as CSSRule & { cssRules?: CSSRuleList }).cssRules;
+			if (nested) visit(nested);
+		}
+	};
+
+	visit(stylesheet.cssRules);
+}
+
 /**
  * Return the app's Shadow DOM root and give its host a predictable baseline.
  *

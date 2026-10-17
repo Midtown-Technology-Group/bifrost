@@ -66,6 +66,24 @@ function stylesheet(name: string): HTMLLinkElement {
 	return link;
 }
 
+function finishStylesheetLoad(
+	name: string,
+	css = ":root { --standalone-root-token: red; } body { margin: 0; }",
+): CSSStyleSheet {
+	const style = document.createElement("style");
+	style.dataset.testStandaloneStylesheet = "true";
+	style.textContent = css;
+	document.head.appendChild(style);
+	if (!style.sheet) throw new Error("Test stylesheet did not parse");
+	const link = stylesheet(name);
+	Object.defineProperty(link, "sheet", {
+		configurable: true,
+		value: style.sheet,
+	});
+	act(() => link.dispatchEvent(new Event("load")));
+	return style.sheet;
+}
+
 function manifest(entry: string, css: string | null = null) {
 	return {
 		ok: true,
@@ -121,6 +139,9 @@ afterEach(() => {
 	vi.restoreAllMocks();
 	delete window.__BIFROST_APP__;
 	delete window.__BIFROST_APP_MODULES__;
+	document
+		.querySelectorAll("style[data-test-standalone-stylesheet]")
+		.forEach((style) => style.remove());
 });
 
 describe("StandaloneV2App", () => {
@@ -195,8 +216,10 @@ describe("StandaloneV2App", () => {
 		);
 		expect(root.style.getPropertyValue("contain")).toBe("strict");
 		expect(mountEl).not.toHaveClass("dark");
+		expect(root).not.toHaveClass("dark");
 		document.documentElement.classList.add("dark");
 		await waitFor(() => expect(mountEl).toHaveClass("dark"));
+		expect(root).toHaveClass("dark");
 		expect(root.style.getPropertyPriority("contain")).toBe("important");
 		expect(bootstrap).toMatchObject({
 			token: "tok-1",
@@ -289,8 +312,14 @@ describe("StandaloneV2App", () => {
 		await finishModuleLoad("styled", mount);
 		expect(mount).not.toHaveBeenCalled();
 
-		act(() => stylesheet("styled").dispatchEvent(new Event("load")));
+		const appStylesheet = finishStylesheetLoad("styled");
 		await waitFor(() => expect(mount).toHaveBeenCalledTimes(1));
+		expect(
+			(appStylesheet.cssRules[0] as CSSStyleRule).selectorText,
+		).toBe(":host");
+		expect(
+			(appStylesheet.cssRules[1] as CSSStyleRule).selectorText,
+		).toBe('[data-bifrost-app-mount="true"]');
 	});
 
 	it("recovers a stale JavaScript asset from a fresh manifest without reloading", async () => {
@@ -341,7 +370,7 @@ describe("StandaloneV2App", () => {
 		act(() => stylesheet("stale-css").dispatchEvent(new Event("error")));
 
 		await finishModuleLoad("fresh-css", freshMount);
-		act(() => stylesheet("fresh-css").dispatchEvent(new Event("load")));
+		finishStylesheetLoad("fresh-css");
 
 		await waitFor(() => expect(freshMount).toHaveBeenCalledTimes(1));
 		expect(oldMount).not.toHaveBeenCalled();

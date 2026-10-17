@@ -15,6 +15,7 @@ import { useOrgScope } from "@/hooks/useOrgScope";
 import { authFetch } from "@/lib/api-client";
 import { clearAuthTokens, getActiveToken } from "@/lib/auth-token";
 import {
+	adaptDocumentStylesheetForShadowRoot,
 	AppContainmentBoundary,
 	ensureIsolatedAppShadow,
 	ensurePlatformStyles,
@@ -298,11 +299,11 @@ export function StandaloneV2App({
 		mountEl.dataset.bifrostAppMount = "true";
 		mountEl.style.width = "100%";
 		mountEl.style.height = "100%";
-		const updateTheme = () =>
-			mountEl.classList.toggle(
-				"dark",
-				document.documentElement.classList.contains("dark"),
-			);
+		const updateTheme = () => {
+			const isDark = document.documentElement.classList.contains("dark");
+			hostEl.classList.toggle("dark", isDark);
+			mountEl.classList.toggle("dark", isDark);
+		};
 		updateTheme();
 		const themeObserver = new MutationObserver(updateTheme);
 		themeObserver.observe(document.documentElement, {
@@ -327,22 +328,37 @@ export function StandaloneV2App({
 		let cssEl: HTMLLinkElement | null = null;
 		let stylesheetReady = Promise.resolve();
 		if (assets.css) {
-			cssEl = document.createElement("link");
-			cssEl.rel = "stylesheet";
-			cssEl.href = new URL(
+			const stylesheetLink = document.createElement("link");
+			cssEl = stylesheetLink;
+			stylesheetLink.rel = "stylesheet";
+			stylesheetLink.href = new URL(
 				`${assets.baseUrl}/${assets.css}`,
 				window.location.origin,
 			).href;
 			stylesheetReady = new Promise<void>((resolve, reject) => {
-				cssEl!.onload = () => resolve();
-				cssEl!.onerror = () =>
+				stylesheetLink.onload = () => {
+					try {
+						if (!stylesheetLink.sheet) {
+							throw new Error("Stylesheet CSSOM is unavailable");
+						}
+						adaptDocumentStylesheetForShadowRoot(stylesheetLink.sheet);
+						resolve();
+					} catch {
+						reject(
+							new ApplicationAssetLoadError(
+								`Failed to prepare the application stylesheet: ${stylesheetLink.href}`,
+							),
+						);
+					}
+				};
+				stylesheetLink.onerror = () =>
 					reject(
 						new ApplicationAssetLoadError(
-							`Failed to load the application stylesheet: ${cssEl!.href}`,
+							`Failed to load the application stylesheet: ${stylesheetLink.href}`,
 						),
 					);
 			});
-			shadowRoot.appendChild(cssEl);
+			shadowRoot.appendChild(stylesheetLink);
 		}
 		shadowRoot.appendChild(mountEl);
 
