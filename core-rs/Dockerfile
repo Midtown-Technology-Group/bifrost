@@ -9,6 +9,9 @@ FROM toolchain AS checks
 RUN cargo fmt --check
 RUN cargo clippy --locked --all-targets --all-features -- -D warnings
 RUN cargo test --locked --all
+# The inactive Start module is excluded from default builds. Exercise its pure
+# library tests explicitly; common-start-sql/live-db remain disabled here.
+RUN cargo test --locked -p bifrost-db --features common-start-candidate --lib
 
 FROM toolchain AS build
 ARG BIFROST_BUILD_SHA=development
