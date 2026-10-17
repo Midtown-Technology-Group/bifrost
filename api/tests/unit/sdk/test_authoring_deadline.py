@@ -60,6 +60,7 @@ async def test_polling_and_final_response_share_one_remaining_budget(monkeypatch
             return SimpleNamespace(status="running")
         try:
             await asyncio.Event().wait()  # final response body never arrives
+            raise AssertionError("stalled final response unexpectedly completed")
         finally:
             cleaned.set()
 
