@@ -138,6 +138,8 @@ struct NativeState {
     phase: String,
     attempt_status: String,
     started_clock_matches: bool,
+    root_started: bool,
+    attempt_started: bool,
     completed: bool,
 }
 
@@ -145,7 +147,8 @@ async fn native_state(pool: &PgPool, c: &Cohort) -> TestResult<NativeState> {
     let row = sqlx::query(
         "SELECT e.status::text AS status,a.phase,a.status AS attempt_status, \
           e.started_at IS NOT DISTINCT FROM a.started_at AS clock_matches, \
-          a.completed_at IS NOT NULL AS completed \
+          e.started_at IS NOT NULL AS root_started,a.started_at IS NOT NULL AS attempt_started, \
+          e.completed_at IS NOT NULL OR a.completed_at IS NOT NULL AS completed \
          FROM public.executions e JOIN public.workflow_execution_attempts a ON a.execution_id=e.id \
          WHERE e.id=$1::text::uuid AND a.id=$2::text::uuid",
     )
@@ -160,6 +163,8 @@ async fn native_state(pool: &PgPool, c: &Cohort) -> TestResult<NativeState> {
         phase: row.try_get("phase")?,
         attempt_status: row.try_get("attempt_status")?,
         started_clock_matches: row.try_get("clock_matches")?,
+        root_started: row.try_get("root_started")?,
+        attempt_started: row.try_get("attempt_started")?,
         completed: row.try_get("completed")?,
     })
 }
@@ -183,9 +188,10 @@ async fn verify() -> TestResult<()> {
     let before_a = native_state(core.pool(), a).await?;
     let before_b = native_state(core.pool(), b).await?;
     for initial in [&before_a, &before_b] {
-        assert_eq!(initial.status, "Pending");
+        assert_eq!(initial.status, "Running");
         assert_eq!(initial.attempt_status, "claimed");
         assert_eq!(initial.phase, "claim");
+        assert!(!initial.root_started && !initial.attempt_started);
         assert!(!initial.completed);
     }
     let fence = a.fence();
@@ -252,7 +258,8 @@ async fn verify() -> TestResult<()> {
     assert_eq!(after.status, "Running");
     assert_eq!(after.attempt_status, "running");
     assert_eq!(after.phase, "execution");
-    assert!(after.started_clock_matches && !after.completed);
+    assert!(after.started_clock_matches && after.root_started && after.attempt_started);
+    assert!(!after.completed);
     // Fresh incumbent read proves the same committed native database projection.
     assert_eq!(native_state(incumbent.pool(), a).await?, after);
     assert_eq!(

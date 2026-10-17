@@ -49,7 +49,7 @@ async def _seed_one_prepared(
     destination: Path,
     timeout_seconds: int,
 ) -> dict:
-    """Create only synthetic Pending/claimed common records, never Start."""
+    """Match native claim's Running/claimed projection, without Start or effects."""
     if type(timeout_seconds) is not int or timeout_seconds not in {0, 30}:
         raise FixturePreparationError("fixture timeout must be native30 or0")
     seed = _read_seed(native_seed)
@@ -162,7 +162,7 @@ async def _seed_one_prepared(
                 raise FixturePreparationError("fixture execution admission contended")
             await db.execute(
                 text(
-                    "INSERT INTO public.executions (id,workflow_name,status,parameters,time_saved,value,executed_by,executed_by_name,organization_id,workflow_id,solution_deployment_id,runtime_mode,runtime_evidence,runtime_evidence_hash,is_local_execution,attempt_tracking_version,control_owner) VALUES (:execution_id,'synthetic-sql-fixture','Pending','{}',0,0,:user_id,'SQL fixture',:organization_id,:workflow_id,:deployment_id,'deployment-v1',CAST(:evidence AS jsonb),:evidence_hash,false,'v1','rust')"
+                    "INSERT INTO public.executions (id,workflow_name,status,parameters,time_saved,value,executed_by,executed_by_name,organization_id,workflow_id,solution_deployment_id,runtime_mode,runtime_evidence,runtime_evidence_hash,is_local_execution,attempt_tracking_version,control_owner) VALUES (:execution_id,'synthetic-sql-fixture','Running','{}',0,0,:user_id,'SQL fixture',:organization_id,:workflow_id,:deployment_id,'deployment-v1',CAST(:evidence AS jsonb),:evidence_hash,false,'v1','rust')"
                 ),
                 values,
             )
@@ -216,7 +216,7 @@ async def _seed_one_prepared(
                     values,
                 )
             ).one()
-            if tuple(row) != ("rust", "Pending", "claimed", "claim", True):
+            if tuple(row) != ("rust", "Running", "claimed", "claim", True):
                 raise FixturePreparationError("prepared native readback differs")
         async with core_factory() as db:
             await _identity(db, "wex_core")

@@ -20,16 +20,25 @@ before enabling calls. No public API or wire profile is defined here.
 The transaction uses the existing core-principal checks and source/execution
 advisory fences, then native execution, typed attempt, owner, accepted artifact,
 session, detachable live link and ordered Start/admission/grant/receipt locks.
-Every row/advisory contention fails closed. The held schema guards require native
-Running/execution and an exact attempt timestamp before Start insertion. Both
-native updates and immutable Start use one sampled PostgreSQL clock and one
-transaction. No SDK material or runtime Start message is issued.
+Every row/advisory contention fails closed. Native Python claim already exposes
+Execution Running while its typed attempt remains claimed and both start clocks
+are null. Preserve that public projection: Start requires it, then atomically
+sets both native clocks, advances the typed phase, and inserts immutable Start
+under one sampled PostgreSQL clock. No SDK material or runtime message is issued.
+
+The future claim/coordinator must also preserve PostgreSQL delivery admission
+ownership in the same domain transaction. The current core principal has no
+work_deliveries privileges and this candidate performs no delivery check; a
+claimed typed attempt is not a transport lease. That separately reviewed
+authority/binding seam is required before any runtime callsite. Do not add
+privileges or infer that a prior HTTP/worker check survives lease expiry.
 
 Commit errors return `UnknownCommit`. Preserve the original IDs and binding and
 observe them separately. `NotRetained` is not replay, replacement, owner-transfer
 or process-spawn authority. Observation rolls back its locking transaction. It
 checks exact IDs, input/context hashes, deadline and native clocks; contradictory
-Pending/claimed projections reject while terminal/Cancelling states can retain
+Contradictory Pending roots or claimed typed attempts reject retained Start;
+terminal/Cancelling states can retain
 historical Start. Missing live parents fail closed; a historical-only recovery
 reader requires separate review.
 
@@ -49,9 +58,11 @@ ownership. All-feature Clippy compiles the opt-in SQL test without running it.
 The SQL acceptance source consumes two fresh externally prepared synthetic
 cohorts through private fixture version `bifrost.common-start-sql-fixtures/v1`:
 one finite deadline and one native no-timeout cohort. It creates no schema,
-roles, fixture or process. The existing cancellation fixture producer creates
-Running work and **cannot** supply these prepared cohorts; a reviewed producer
-and explicit experiment authority remain prerequisites. Direct PostgreSQL and
+roles, fixture or process. The cancellation fixture producer precommits typed
+running and Start and **cannot** supply these cohorts. The separate
+`api/tests/helpers/common_start_fixture_driver.py` source prepares typed-claimed
+cohorts; actual common-stage qualification and explicit experiment authority
+remain prerequisites. Direct PostgreSQL and
 supported PgBouncer must use distinct cohorts, never reset/reopen them.
 
 Only after those gates, the intended command is:

@@ -133,7 +133,8 @@ async fn lock_prepared_session<'a>(
          WHERE e.id=$1::text::uuid AND o.owner_incarnation_id=$2::text::uuid \
          AND e.control_owner='rust' AND e.runtime_mode='deployment-v1' \
          AND e.workflow_id=o.workflow_id AND e.solution_deployment_id=o.deployment_id \
-         AND e.parameters=$3::text::jsonb AND ($4 OR e.status::text='Pending') \
+         AND e.parameters=$3::text::jsonb \
+         AND ($4 OR (e.status::text='Running' AND e.started_at IS NULL AND e.completed_at IS NULL)) \
          FOR UPDATE OF e NOWAIT",
     )
     .bind(fence.execution_id.as_str())
@@ -254,7 +255,7 @@ async fn lock_later_rows(
     Ok(())
 }
 
-/// Atomically commit native Running/execution and immutable Start, with one clock.
+/// Atomically commit native start clocks, typed execution and immutable Start.
 /// The outer coordinator must separately authorize admission and authenticate the
 /// prepared live runtime. No Start wire message is generated or sent here.
 /// On UnknownCommit, retain every original ID/binding and reconcile; do not retry.
@@ -284,9 +285,12 @@ pub async fn commit_prepared_workflow_start(
     if remaining_run_ms.is_some_and(|ms| !(1..=9_007_199_254_740_991).contains(&ms)) {
         return Err(SessionError::Rejected);
     }
+    // Native durable claim already exposes Running. Preserve that status and
+    // commit its first start clock together with typed execution and Start.
     let root = sqlx::query(
-        "UPDATE public.executions SET status='Running',started_at=$2::text::timestamptz \
-         WHERE id=$1::text::uuid AND control_owner='rust' AND status::text='Pending'",
+        "UPDATE public.executions SET started_at=$2::text::timestamptz \
+         WHERE id=$1::text::uuid AND control_owner='rust' AND status::text='Running' \
+          AND started_at IS NULL AND completed_at IS NULL",
     )
     .bind(fence.execution_id.as_str())
     .bind(&started_at)
@@ -388,8 +392,9 @@ pub async fn observe_prepared_workflow_start(
         None => {
             // Absence must be internally consistent; it is still not retry authority.
             let untouched:bool=sqlx::query_scalar(
-                "SELECT e.status::text='Pending' AND a.status='claimed' AND a.phase='claim' \
-                 AND a.started_at IS NULL AND a.completed_at IS NULL AND s.closed_at IS NULL \
+                "SELECT e.status::text='Running' AND e.started_at IS NULL AND e.completed_at IS NULL \
+                 AND a.status='claimed' AND a.phase='claim' AND a.started_at IS NULL \
+                 AND a.completed_at IS NULL AND s.closed_at IS NULL \
                  FROM public.executions e JOIN public.workflow_execution_attempts a ON a.execution_id=e.id \
                   JOIN public.runtime_sessions s ON s.workflow_attempt_id=a.id \
                  WHERE e.id=$1::text::uuid AND a.id=$2::text::uuid AND s.id=$3::text::uuid",
