@@ -9,6 +9,7 @@ import pytest
 from pydantic_ai.exceptions import ModelHTTPError
 from pydantic_ai.models import ModelRequestParameters
 from pydantic_ai.models.anthropic import AnthropicModel
+from sqlalchemy.dialects import postgresql
 
 from src.services.agent_runtime.model_factory import (
     agent_model_settings,
@@ -182,7 +183,7 @@ async def test_persistence_locks_profile_before_fencing_connection_revision(
         await persist_prompt_cache_support(config, False)
 
     assert len(session.statements) == (3 if revision_matches else 2)
-    profile_query = session.statements[0].compile()
+    profile_query = session.statements[0].compile(dialect=postgresql.dialect())
     sql = " ".join(str(profile_query).split())
     params = profile_query.params
     assert "ai_model_profiles.model =" in sql

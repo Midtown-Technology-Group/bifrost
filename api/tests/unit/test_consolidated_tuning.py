@@ -246,10 +246,11 @@ async def test_first_messages_detection_does_not_deadlock_consolidated_tuning(
 
         await db_session.commit()
         await persist_prompt_cache_support(captured_config, True)
-        db_session.expire_all()
-        refreshed_profile = await db_session.get(AIModelProfile, profile_id)
-        assert refreshed_profile is not None
-        assert refreshed_profile.anthropic_prompt_cache_supported is True
+        await db_session.refresh(
+            profile,
+            attribute_names=["anthropic_prompt_cache_supported"],
+        )
+        assert profile.anthropic_prompt_cache_supported is True
     finally:
         await db_session.rollback()
         await db_session.execute(
