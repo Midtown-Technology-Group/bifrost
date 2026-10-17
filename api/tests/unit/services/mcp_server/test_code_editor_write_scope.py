@@ -15,7 +15,6 @@ from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
-
 from src.services.file_storage import FileStorageService
 from src.services.mcp_server.tools import code_editor
 
@@ -120,6 +119,11 @@ async def test_delete_content_allowed_for_bypass_caller(db_session, monkeypatch)
     """Allow source deletion by a platform admin."""
     monkeypatch.setattr(code_editor, "get_tool_db", _fake_tool_db(db_session))
     monkeypatch.setattr(code_editor.RepoStorage, "exists", AsyncMock(return_value=True))
+    monkeypatch.setattr(
+        code_editor,
+        "reject_release_governed_paths",
+        AsyncMock(return_value=None),
+    )
 
     delete_file = AsyncMock()
     monkeypatch.setattr(FileStorageService, "delete_file", delete_file)
@@ -159,10 +163,17 @@ async def test_list_content_denied_for_non_bypass(monkeypatch):
 @pytest.mark.asyncio
 async def test_list_content_allowed_for_bypass_caller(db_session, monkeypatch):
     """Allow source enumeration by a platform admin."""
-    from src.services.repo_storage import RepoStorage
-
     monkeypatch.setattr(code_editor, "get_tool_db", _fake_tool_db(db_session))
-    monkeypatch.setattr(RepoStorage, "list", AsyncMock(return_value=[]))
+    monkeypatch.setattr(
+        code_editor,
+        "_list_workspace_repo_paths",
+        AsyncMock(return_value=[]),
+    )
+    monkeypatch.setattr(
+        code_editor,
+        "_active_workspace_release_view",
+        AsyncMock(return_value=None),
+    )
     ctx = _ctx(is_platform_admin=True)
     result = await code_editor.list_content(ctx)
     assert not _is_error(result)

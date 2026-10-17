@@ -194,6 +194,25 @@ class TestWriteFilePathValidation:
                 await service.write_file("__pycache__/x.pyc", b"compiled")
 
 
+class TestDeleteFilePathValidation:
+    """Verify raw repository metadata is rejected before object deletion."""
+
+    @pytest.mark.asyncio
+    async def test_delete_file_rejects_git_metadata_before_storage(self):
+        from src.services.file_storage.file_ops import FileOperationsService
+
+        service = _service()
+        service._delete_from_s3 = AsyncMock()
+        service._delete_file_impl = FileOperationsService._delete_file_impl.__get__(
+            service
+        )
+
+        with pytest.raises(ValueError, match="excluded"):
+            await service._delete_file_impl(".git/objects/aa/bb")
+
+        service._delete_from_s3.assert_not_awaited()
+
+
 class TestWriteFileBehavior:
     """Verify write_file storage, indexing, diagnostics, and notifications."""
 

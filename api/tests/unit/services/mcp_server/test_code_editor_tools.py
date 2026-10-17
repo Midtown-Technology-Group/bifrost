@@ -14,9 +14,10 @@ All files are accessed via their path in file_index / S3 _repo/ store.
 No entity_type or app_id parameters -- everything is path-based.
 """
 
+import hashlib
+import importlib
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
-import importlib
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
@@ -106,17 +107,39 @@ class TestListContent:
     """Tests for the list_content MCP tool."""
 
     @pytest.mark.asyncio
+    async def test_repo_listing_filters_poisoned_metadata_keys(
+        self, platform_admin_context
+    ):
+        from src.services.mcp_server.tools.code_editor import (
+            _list_workspace_repo_paths,
+        )
+
+        repo = MagicMock()
+        repo.list = AsyncMock(
+            return_value=["workflows/safe.py", ".git/HEAD", "../escape.py"]
+        )
+
+        with patch(
+            "src.services.mcp_server.tools.code_editor.RepoStorage",
+            return_value=repo,
+        ):
+            paths = await _list_workspace_repo_paths(platform_admin_context, "")
+
+        assert paths == ["workflows/safe.py"]
+        repo.list.assert_awaited_once_with("")
+
+    @pytest.mark.asyncio
     async def test_list_workflows(self, platform_admin_context):
         """Should list workflow paths using path_prefix."""
         from src.services.mcp_server.tools.code_editor import list_content
 
-        with patch("src.services.mcp_server.tools.code_editor.RepoStorage") as mock_repo_cls:
-            mock_repo = MagicMock()
-            mock_repo.list = AsyncMock(return_value=[
+        with patch(
+            "src.services.mcp_server.tools.code_editor._list_workspace_repo_paths",
+            new=AsyncMock(return_value=[
                 "workflows/sync_tickets.py",
                 "workflows/sync_users.py",
-            ])
-            mock_repo_cls.return_value = mock_repo
+            ]),
+        ) as list_paths:
 
             result = await list_content(
                 context=platform_admin_context,
@@ -129,20 +152,20 @@ class TestListContent:
             assert len(data["files"]) == 2
             assert data["files"][0]["path"] == "workflows/sync_tickets.py"
             assert data["files"][1]["path"] == "workflows/sync_users.py"
-            mock_repo.list.assert_called_once_with("workflows/")
+            list_paths.assert_awaited_once_with(platform_admin_context, "workflows/")
 
     @pytest.mark.asyncio
     async def test_list_modules(self, platform_admin_context):
         """Should list module paths using path_prefix."""
         from src.services.mcp_server.tools.code_editor import list_content
 
-        with patch("src.services.mcp_server.tools.code_editor.RepoStorage") as mock_repo_cls:
-            mock_repo = MagicMock()
-            mock_repo.list = AsyncMock(return_value=[
+        with patch(
+            "src.services.mcp_server.tools.code_editor._list_workspace_repo_paths",
+            new=AsyncMock(return_value=[
                 "modules/helpers.py",
                 "modules/utils.py",
-            ])
-            mock_repo_cls.return_value = mock_repo
+            ]),
+        ):
 
             result = await list_content(
                 context=platform_admin_context,
@@ -161,13 +184,13 @@ class TestListContent:
         """Should list app files using path_prefix with app slug."""
         from src.services.mcp_server.tools.code_editor import list_content
 
-        with patch("src.services.mcp_server.tools.code_editor.RepoStorage") as mock_repo_cls:
-            mock_repo = MagicMock()
-            mock_repo.list = AsyncMock(return_value=[
+        with patch(
+            "src.services.mcp_server.tools.code_editor._list_workspace_repo_paths",
+            new=AsyncMock(return_value=[
                 "apps/test-app/components/Header.tsx",
                 "apps/test-app/pages/index.tsx",
-            ])
-            mock_repo_cls.return_value = mock_repo
+            ]),
+        ):
 
             result = await list_content(
                 context=platform_admin_context,
@@ -186,12 +209,12 @@ class TestListContent:
         """Should filter by path_prefix when provided."""
         from src.services.mcp_server.tools.code_editor import list_content
 
-        with patch("src.services.mcp_server.tools.code_editor.RepoStorage") as mock_repo_cls:
-            mock_repo = MagicMock()
-            mock_repo.list = AsyncMock(return_value=[
+        with patch(
+            "src.services.mcp_server.tools.code_editor._list_workspace_repo_paths",
+            new=AsyncMock(return_value=[
                 "workflows/sync_tickets.py",
-            ])
-            mock_repo_cls.return_value = mock_repo
+            ]),
+        ):
 
             result = await list_content(
                 context=platform_admin_context,
@@ -207,14 +230,14 @@ class TestListContent:
         """Should list all files when no path_prefix given."""
         from src.services.mcp_server.tools.code_editor import list_content
 
-        with patch("src.services.mcp_server.tools.code_editor.RepoStorage") as mock_repo_cls:
-            mock_repo = MagicMock()
-            mock_repo.list = AsyncMock(return_value=[
+        with patch(
+            "src.services.mcp_server.tools.code_editor._list_workspace_repo_paths",
+            new=AsyncMock(return_value=[
                 "apps/my-app/pages/index.tsx",
                 "modules/helpers.py",
                 "workflows/sync.py",
-            ])
-            mock_repo_cls.return_value = mock_repo
+            ]),
+        ) as list_paths:
 
             result = await list_content(
                 context=platform_admin_context,
@@ -223,7 +246,7 @@ class TestListContent:
             assert isinstance(result, ToolResult)
             data = get_result_data(result)
             assert data["count"] == 3
-            mock_repo.list.assert_called_once_with("")
+            list_paths.assert_awaited_once_with(platform_admin_context, "")
 
     @pytest.mark.asyncio
     async def test_list_content_denies_non_admin(self, org_user_context):
@@ -259,15 +282,114 @@ class TestListContent:
         """Should return a structured error if listing storage fails."""
         from src.services.mcp_server.tools.code_editor import list_content
 
-        with patch("src.services.mcp_server.tools.code_editor.RepoStorage") as mock_repo_cls:
-            mock_repo = MagicMock()
-            mock_repo.list = AsyncMock(side_effect=RuntimeError("storage unavailable"))
-            mock_repo_cls.return_value = mock_repo
+        with patch(
+            "src.services.mcp_server.tools.code_editor._list_workspace_repo_paths",
+            new=AsyncMock(side_effect=RuntimeError("storage unavailable")),
+        ):
 
             result = await list_content(context=platform_admin_context)
 
         assert is_error_result(result)
         assert "List failed: storage unavailable" in get_result_data(result)["error"]
+
+    @pytest.mark.asyncio
+    async def test_list_content_rejects_repository_metadata_prefix(
+        self, platform_admin_context
+    ):
+        from src.services.mcp_server.tools.code_editor import list_content
+
+        with patch(
+            "src.services.mcp_server.tools.code_editor._list_workspace_repo_paths",
+            new_callable=AsyncMock,
+        ) as list_paths:
+            result = await list_content(
+                context=platform_admin_context,
+                path_prefix=".git/",
+            )
+
+        assert is_error_result(result)
+        assert "excluded" in get_result_data(result)["error"].lower()
+        list_paths.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_unindexed_json_ingestion_can_be_listed_read_and_deleted(
+        self, platform_admin_context
+    ):
+        """Durable workspace files must not disappear behind the search projection."""
+        from src.services.file_index_service import FileIndexService
+        from src.services.mcp_server.tools.code_editor import (
+            delete_content,
+            get_content,
+            list_content,
+        )
+
+        path = "apps/demo/config.json"
+        content = b'{"enabled": true}\n'
+        objects: dict[str, bytes] = {}
+        repo = MagicMock()
+
+        async def write_object(item: str, body: bytes) -> str:
+            objects[item] = body
+            return hashlib.sha256(body).hexdigest()
+
+        async def list_objects(prefix: str = "") -> list[str]:
+            return sorted(item for item in objects if item.startswith(prefix))
+
+        async def read_object(item: str) -> bytes:
+            try:
+                return objects[item]
+            except KeyError as exc:
+                raise FileNotFoundError(item) from exc
+
+        async def object_exists(item: str) -> bool:
+            return item in objects
+
+        repo.write = AsyncMock(side_effect=write_object)
+        repo.list = AsyncMock(side_effect=list_objects)
+        repo.read = AsyncMock(side_effect=read_object)
+        repo.exists = AsyncMock(side_effect=object_exists)
+
+        db = AsyncMock()
+        await FileIndexService(db, repo_storage=repo).write(path, content)
+        db.execute.assert_not_awaited()
+
+        @asynccontextmanager
+        async def fake_get_tool_db(_context):
+            yield db
+
+        storage = MagicMock()
+
+        async def delete_file(item: str) -> None:
+            del objects[item]
+
+        storage.delete_file = AsyncMock(side_effect=delete_file)
+
+        with (
+            patch(
+                "src.services.mcp_server.tools.code_editor.RepoStorage",
+                return_value=repo,
+            ),
+            patch(
+                "src.services.mcp_server.tools.code_editor.get_tool_db",
+                fake_get_tool_db,
+            ),
+            patch(
+                "src.services.mcp_server.tools.code_editor.FileStorageService",
+                return_value=storage,
+            ),
+        ):
+            listed = await list_content(
+                platform_admin_context,
+                path_prefix="apps/demo/",
+            )
+            read = await get_content(platform_admin_context, path)
+            deleted = await delete_content(platform_admin_context, path)
+
+        assert [item["path"] for item in get_result_data(listed)["files"]] == [path]
+        assert get_result_data(read)["content"] == content.decode()
+        assert get_result_data(deleted)["success"] is True
+        assert path not in objects
+        storage.delete_file.assert_awaited_once_with(path)
 
 
 class TestSearchContent:
@@ -325,6 +447,38 @@ async def sync_tickets(client_id: str) -> dict:
         data = get_result_data(result)
         assert "error" in data
         assert "Invalid regex" in data["error"]
+
+    @pytest.mark.asyncio
+    async def test_search_filters_poisoned_metadata_rows(
+        self, platform_admin_context
+    ):
+        """Repository metadata must not surface through an unscoped search."""
+        from src.services.mcp_server.tools.code_editor import search_content
+
+        rows = [
+            SimpleNamespace(path="workflows/safe.py", content="needle"),
+            SimpleNamespace(path=".git/config", content="needle"),
+        ]
+        mock_session = AsyncMock()
+        mock_session.execute = AsyncMock(return_value=_RowsResult(rows))
+
+        @asynccontextmanager
+        async def fake_get_tool_db(_context):
+            yield mock_session
+
+        with patch(
+            "src.services.mcp_server.tools.code_editor.get_tool_db",
+            fake_get_tool_db,
+        ):
+            result = await search_content(
+                context=platform_admin_context,
+                pattern="needle",
+            )
+
+        assert not is_error_result(result)
+        assert [
+            match["path"] for match in get_result_data(result)["matches"]
+        ] == ["workflows/safe.py"]
 
     @pytest.mark.asyncio
     async def test_search_empty_pattern(self, platform_admin_context):
@@ -1288,6 +1442,7 @@ class TestDeleteContent:
 
             with patch("src.services.mcp_server.tools.code_editor.get_tool_db") as mock_db:
                 mock_session = AsyncMock()
+                mock_session.get = AsyncMock(return_value=None)
                 mock_db.return_value.__aenter__.return_value = mock_session
 
                 result = await delete_content(
@@ -1315,6 +1470,30 @@ class TestDeleteContent:
         data = get_result_data(result)
         assert "error" in data
         assert "path" in data["error"]
+
+    @pytest.mark.asyncio
+    async def test_delete_rejects_repository_metadata_before_database_access(
+        self, platform_admin_context
+    ):
+        from src.services.mcp_server.tools.code_editor import delete_content
+
+        with (
+            patch(
+                "src.services.mcp_server.tools.code_editor.get_tool_db"
+            ) as tool_db,
+            patch(
+                "src.services.mcp_server.tools.code_editor.FileStorageService"
+            ) as storage,
+        ):
+            result = await delete_content(
+                context=platform_admin_context,
+                path=".git/objects/aa/bb",
+            )
+
+        assert is_error_result(result)
+        assert "excluded" in get_result_data(result)["error"].lower()
+        tool_db.assert_not_called()
+        storage.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_delete_content_denies_non_admin(self, org_user_context):
@@ -1682,8 +1861,6 @@ class TestImmutableWorkspaceAuthority:
 
         path = "modules/governed.py"
         view = self._view(path, b"live = True\n")
-        repo = MagicMock()
-        repo.list = AsyncMock(return_value=["modules/legacy.py"])
         with (
             patch(
                 "src.services.mcp_server.tools.code_editor._active_workspace_release_view",
@@ -1691,8 +1868,8 @@ class TestImmutableWorkspaceAuthority:
                 return_value=view,
             ),
             patch(
-                "src.services.mcp_server.tools.code_editor.RepoStorage",
-                return_value=repo,
+                "src.services.mcp_server.tools.code_editor._list_workspace_repo_paths",
+                new=AsyncMock(return_value=["modules/legacy.py"]),
             ),
         ):
             result = await list_content(platform_admin_context, path_prefix="modules/")
