@@ -9,7 +9,8 @@ from sqlalchemy.pool import NullPool
 
 
 @asynccontextmanager
-async def disposable_postgres():
+async def disposable_postgres(*, with_test_schema: bool = False):
+    """Create a private empty DB or clone the migrated runner template."""
     # Fixed Compose hostname/credentials: never derive an admin URL from app or
     # production configuration. UUID identifiers are generated here, not callers.
     name = f"author_{uuid4().hex}"
@@ -25,7 +26,10 @@ async def disposable_postgres():
     created = False
     try:
         async with admin.connect() as connection:
-            await connection.execute(text(f'CREATE DATABASE "{name}"'))
+            # Reuse the runner's migrated, worker-free template when the full
+            # production schema is needed; never clone a live/shared database.
+            template = " TEMPLATE bifrost_test_template" if with_test_schema else ""
+            await connection.execute(text(f'CREATE DATABASE "{name}"{template}'))
             created = True
         yield engine
     finally:

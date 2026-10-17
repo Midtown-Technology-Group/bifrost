@@ -302,7 +302,8 @@ def main() -> int:
         / uuid.uuid4().hex
     )
     evidence.mkdir(parents=True)
-    project = "bifrost-test-" + hashlib.sha256(str(ROOT).encode()).hexdigest()[:8]
+    prefix = os.environ.get("BIFROST_PROJECT_PREFIX") or "bifrost-test"
+    project = prefix + "-" + hashlib.sha256(str(ROOT).encode()).hexdigest()[:8]
     receipt = {
         "schema": "bifrost.author-verification/v1",
         **before,

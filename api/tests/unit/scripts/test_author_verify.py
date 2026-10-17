@@ -239,3 +239,62 @@ def test_runner_marks_provider_key_skip_incomplete_even_with_exit_zero(
     assert result["outcome"] == "incomplete"
     assert result["cases"][0]["reason"] == "missing provider key"
     assert gaps
+
+
+@pytest.mark.parametrize("prefix", [None, "", "author-review"])
+def test_receipt_reads_junit_from_configured_project(monkeypatch, tmp_path, prefix):
+    import hashlib
+    import json
+    import sys
+    from types import SimpleNamespace
+
+    if prefix is None:
+        monkeypatch.delenv("BIFROST_PROJECT_PREFIX", raising=False)
+    else:
+        monkeypatch.setenv("BIFROST_PROJECT_PREFIX", prefix)
+    monkeypatch.setattr(author, "ROOT", tmp_path)
+    target = "tests/unit/test_boundary.py"
+    source = tmp_path / "api" / target
+    source.parent.mkdir(parents=True)
+    source.touch()
+    evidence = tmp_path / "evidence"
+    monkeypatch.setattr(
+        author,
+        "git",
+        lambda *args: str(evidence) if args[-1] == "author-verification" else "base",
+    )
+    monkeypatch.setattr(
+        author, "identity", lambda _base: {"head_sha": "head", "base_sha": "base"}
+    )
+    monkeypatch.setattr(author, "changes", lambda _base: ())
+    monkeypatch.setattr(
+        affected,
+        "plan_changes",
+        lambda _changes: affected.AffectedPlan("docs-only", "fixture", ()),
+    )
+    monkeypatch.setattr(
+        sys, "argv", ["author", "--test", target, "--boundary", "mocked runner"]
+    )
+    expected_project = (
+        (prefix or "bifrost-test")
+        + "-"
+        + hashlib.sha256(str(tmp_path).encode()).hexdigest()[:8]
+    )
+    report = Path(f"/tmp/bifrost-{expected_project}/test-results.xml")
+    report.parent.mkdir()
+
+    def run(*args, **kwargs):
+        report.write_text(
+            '<testsuite><testcase classname="boundary" name="persisted"/></testsuite>'
+        )
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr(author.subprocess, "run", run)
+    try:
+        assert author.main() == 0
+        receipt = json.loads(next(evidence.glob("*/receipt.json")).read_text())
+        assert receipt["compose_project"] == expected_project
+        assert receipt["commands"][0]["cases"][0]["name"] == "boundary::persisted"
+    finally:
+        report.unlink(missing_ok=True)
+        report.parent.rmdir()

@@ -142,6 +142,8 @@ on the old side, weaken assertions, add skips or call import errors “red.”
   upgrade/downgrade and a conflicting transaction rollback. It deliberately
   exercises one historical migration against a minimal historical schema;
   it does not claim full-chain migration or active #1205 acceptance.
+  `with_test_schema=True` clones the runner's migrated `bifrost_test_template`
+  for production transactions without borrowing shared fixtures or workers.
 - [`test_authoring_concurrency.py`](../../api/tests/e2e/platform/test_authoring_concurrency.py)
   starts real production heartbeat and completion transactions, observes the
   actual PostgreSQL blocking edge, then flushes logs with both foreign-key locks

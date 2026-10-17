@@ -5,7 +5,9 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
+import pytest_asyncio
 from sqlalchemy import delete, select, text
+from sqlalchemy.ext.asyncio import async_sessionmaker
 from src.core.cache import get_redis
 from src.core.cache.keys import service_logs_cursor_key, service_logs_stream_key
 from src.models.orm.organizations import Organization
@@ -14,14 +16,22 @@ from src.models.orm.workflows import Workflow
 from src.services import service_lifecycle as lifecycle
 from src.services import service_log_flush
 
-from tests.helpers.postgres import wait_for_blocked
+from tests.helpers.postgres import disposable_postgres, wait_for_blocked
+
+
+@pytest_asyncio.fixture
+async def isolated_service_sessions():
+    """Keep global claim selection inside a private, migrated database."""
+    async with disposable_postgres(with_test_schema=True) as engine:
+        yield async_sessionmaker(engine, expire_on_commit=False)
 
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
 async def test_heartbeat_log_flush_and_completion_commit_without_fk_deadlock(
-    async_session_factory,
+    isolated_service_sessions,
 ):
+    async_session_factory = isolated_service_sessions
     org_id, workflow_id = uuid4(), uuid4()
     service_id = attempt_id = None
     try:
