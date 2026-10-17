@@ -53,7 +53,7 @@ def upgrade() -> None:
     op.execute("""
         DO $$
         BEGIN
-            IF current_setting('transaction_isolation') <> 'read committed' THEN
+            IF pg_catalog.current_setting('transaction_isolation') <> 'read committed' THEN
                 RAISE EXCEPTION 'native writer upgrade requires read committed';
             END IF;
             IF NOT EXISTS (
@@ -136,9 +136,12 @@ def upgrade() -> None:
 def _install_actor() -> None:
     op.execute("""
         CREATE FUNCTION public.runtime_workflow_actor() RETURNS text
-        LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog,pg_temp AS $$
+        LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = pg_catalog,pg_temp AS $$
         DECLARE actor text; principal oid;
         BEGIN
+            IF pg_catalog.current_setting('transaction_isolation') <> 'read committed' THEN
+                RAISE EXCEPTION 'unqualified lifecycle snapshot isolation' USING ERRCODE='42501';
+            END IF;
             actor := CASE session_user WHEN 'wex_core' THEN 'rust'
                 WHEN 'wex_incumbent' THEN 'python' END;
             SELECT oid INTO principal FROM pg_catalog.pg_roles
@@ -173,11 +176,12 @@ def _install_actor() -> None:
 def _install_native_guard() -> None:
     op.execute("""
         CREATE FUNCTION public.guard_runtime_native_writer() RETURNS trigger
-        LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog,pg_temp AS $$
+        LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = pg_catalog,pg_temp AS $$
         DECLARE actor text; previous jsonb; proposed jsonb; facts jsonb;
             parent uuid; actual_parent uuid; parent_owner text; parent_live boolean;
             bound_owner text; native_org uuid; retained boolean;
             actual_type text; actual_job uuid; actual_found boolean;
+            rechecked_type text; rechecked_job uuid; rechecked_found boolean;
             rust_touched boolean := FALSE; python_touched boolean := FALSE;
         BEGIN
             IF TG_TABLE_SCHEMA <> 'public' OR TG_TABLE_NAME NOT IN
@@ -241,6 +245,20 @@ def _install_native_guard() -> None:
                         RAISE EXCEPTION 'runtime projection organization differs' USING ERRCODE='42501';
                     END IF;
                 END LOOP;
+                IF TG_TABLE_NAME = 'execution_lifecycle_events' THEN
+                    -- The first lookup only selects fences. A delete/recreate
+                    -- before those fences must not substitute a different parent
+                    -- through the existing single-column native FK. VOLATILE
+                    -- plus required READ COMMITTED gives this query a fresh view.
+                    SELECT logical_job_type,logical_job_id INTO rechecked_type,rechecked_job
+                        FROM public.execution_attempts WHERE id=(facts->>'attempt_id')::uuid;
+                    rechecked_found := FOUND;
+                    IF rechecked_found IS DISTINCT FROM actual_found OR
+                       rechecked_type IS DISTINCT FROM actual_type OR
+                       rechecked_job IS DISTINCT FROM actual_job THEN
+                        RAISE EXCEPTION 'runtime event parent changed during fencing' USING ERRCODE='42501';
+                    END IF;
+                END IF;
                 IF TG_TABLE_NAME = 'execution_lifecycle_events' AND rust_touched AND
                    ((actual_found AND (actual_type IS DISTINCT FROM facts->>'logical_job_type'
                        OR actual_job IS DISTINCT FROM (facts->>'logical_job_id')::uuid)) OR
@@ -358,14 +376,15 @@ def _install_native_guard() -> None:
 def _install_owner_birth_guard() -> None:
     op.execute("""
         CREATE FUNCTION public.guard_runtime_owner_birth() RETURNS trigger
-        LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog,pg_temp AS $$
+        LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = pg_catalog,pg_temp AS $$
         BEGIN
             IF public.runtime_workflow_actor() <> 'rust' OR
                NOT pg_try_advisory_xact_lock(hashtext('bifrost:workflow-execution:' || NEW.execution_id::text)) THEN
                 RAISE EXCEPTION 'runtime owner birth is not authorized' USING ERRCODE='42501';
             END IF;
-            PERFORM 1 FROM public.executions WHERE id=NEW.execution_id AND control_owner='rust'
-                FOR UPDATE NOWAIT;
+            -- The read-only custodian does not need a row-lock privilege.
+            -- C1's invoker identity guard performs the coordinator's row locks.
+            PERFORM 1 FROM public.executions WHERE id=NEW.execution_id AND control_owner='rust';
             IF NOT FOUND THEN
                 RAISE EXCEPTION 'runtime owner cannot claim an incumbent execution' USING ERRCODE='42501';
             END IF;

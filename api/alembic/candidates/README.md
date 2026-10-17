@@ -66,3 +66,13 @@ privileges/roles, installed catalog, actual race tests and payload disposition
 remain required. Multi-parent agent ownership is not admitted by this workflow
 draft and must be extended and qualified in R4. No fixture-wide read or table-lock
 concession is authorized. Do not apply C5-A by itself.
+
+The guard custodian performs plain reads and try-advisory locking; it receives
+no row-lock UPDATE privilege. Lifecycle-event parent identity is read again
+after acquiring its execution fences, rejecting delete/recreate changes. Guard
+functions are explicitly VOLATILE and require READ COMMITTED so checks use
+fresh snapshots; see [PostgreSQL's volatility contract](https://www.postgresql.org/docs/16/xfunc-volatility.html).
+Runtime isolation/profile compatibility and the actual replacement race still
+need supported PostgreSQL proof. A replayed result receipt must never restore
+native payloads cleared by the public redaction operation; native sanitation
+and retained common evidence are separate contracts.

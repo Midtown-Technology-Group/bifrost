@@ -71,10 +71,12 @@ def test_guard_functions_have_closed_owner_and_no_public_execution() -> None:
         assert f"REVOKE ALL ON FUNCTION public.{function}() FROM PUBLIC" in sql
     assert (
         sql.count(
-            "LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog,pg_temp"
+            "LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = pg_catalog,pg_temp"
         )
         == 3
     )
+    assert "unqualified lifecycle snapshot isolation" in sql
+    assert "FOR UPDATE" not in sql and "FOR SHARE" not in sql
     assert sql.count("CREATE TRIGGER runtime_native_writer ") == 7
     assert "CREATE TRIGGER runtime_owner_birth_writer BEFORE INSERT" in sql
     assert "WHEN 'bifrost'" not in sql
