@@ -112,32 +112,140 @@ class TestSolutionDeployShells:
         )).scalars().all()
         assert len(rows) == 1
 
-    async def test_two_shells_same_provider_name_no_error(self, db_session) -> None:
-        # Two DIFFERENT integrations whose OAuth providers share a provider_name.
-        # Both shells are global (organization_id NULL), and the unique index
-        # (organization_id, provider_name) treats NULLs as distinct in Postgres,
-        # so this never collides — documents the design intent.
+    async def test_two_shells_same_provider_name_rejects_rebinding(self, db_session) -> None:
+        from src.services.oauth_provider_identity import (
+            OAuthProviderIdentityConflict,
+        )
+
         db = db_session
         n1 = f"ShellA-{uuid4().hex[:8]}"
         n2 = f"ShellB-{uuid4().hex[:8]}"
-        shared = "shared-provider"
-        decls = [
-            {"integration_name": nm, "template": {
-                "name": nm, "config_schema": [],
+        shared = f"shared-provider-{uuid4().hex[:8]}"
+
+        def declaration(name: str) -> dict:
+            return {"integration_name": name, "template": {
+                "name": name, "config_schema": [],
                 "oauth": {"provider_name": shared, "display_name": "S",
                           "oauth_flow_type": "authorization_code",
                           "authorization_url": "https://a", "token_url": "https://t",
                           "audience": None, "token_url_defaults": {},
                           "entity_id_source": None, "scopes": [], "redirect_uri": None}}}
-            for nm in (n1, n2)
-        ]
-        created = await SolutionDeployer(db)._upsert_integration_shells(decls)
+
+        assert await SolutionDeployer(db)._upsert_integration_shells(
+            [declaration(n1)]
+        ) == 1
         await db.flush()
-        assert created == 2
+        with pytest.raises(OAuthProviderIdentityConflict, match="already bound"):
+            await SolutionDeployer(db)._upsert_integration_shells(
+                [declaration(n2)]
+            )
+
         providers = (await db.execute(
             select(OAuthProvider).where(OAuthProvider.provider_name == shared)
         )).scalars().all()
-        assert len(providers) == 2
+        assert len(providers) == 1
+        first = (await db.execute(
+            select(Integration).where(Integration.name == n1)
+        )).scalar_one()
+        assert providers[0].integration_id == first.id
+        assert (await db.execute(
+            select(Integration).where(Integration.name == n2)
+        )).scalar_one_or_none() is None
+
+    async def test_compatible_orphan_provider_is_reattached_without_credentials_loss(
+        self, db_session
+    ) -> None:
+        db = db_session
+        name = f"Reattach-{uuid4().hex[:8]}"
+        provider_name = f"reattach-provider-{uuid4().hex[:8]}"
+        provider = OAuthProvider(
+            provider_name=provider_name,
+            display_name="Existing display",
+            oauth_flow_type="authorization_code",
+            client_id="configured-client",
+            encrypted_client_secret=b"configured-secret",
+            authorization_url="https://auth.example/authorize",
+            token_url=None,
+            scopes=["read"],
+            status="connected",
+        )
+        db.add(provider)
+        await db.flush()
+        provider_id = provider.id
+
+        created = await SolutionDeployer(db)._upsert_integration_shells([{
+            "integration_name": name,
+            "template": {
+                "name": name,
+                "config_schema": [],
+                "oauth": {
+                    "provider_name": provider_name,
+                    "display_name": "Portable display",
+                    "oauth_flow_type": "authorization_code",
+                    "authorization_url": "https://auth.example/authorize",
+                    "token_url": "https://auth.example/token",
+                    "scopes": ["read"],
+                },
+            },
+        }])
+        await db.flush()
+        db.expire_all()
+
+        assert created == 1
+        attached = await db.get(OAuthProvider, provider_id)
+        integration = (await db.execute(
+            select(Integration).where(Integration.name == name)
+        )).scalar_one()
+        assert attached is not None
+        assert attached.integration_id == integration.id
+        assert attached.client_id == "configured-client"
+        assert attached.encrypted_client_secret == b"configured-secret"
+        assert attached.status == "connected"
+        assert attached.display_name == "Existing display"
+        assert attached.token_url == "https://auth.example/token"
+
+    async def test_incompatible_orphan_provider_is_rejected_before_shell_write(
+        self, db_session
+    ) -> None:
+        from src.services.oauth_provider_identity import (
+            OAuthProviderIdentityConflict,
+        )
+
+        db = db_session
+        name = f"Reject-{uuid4().hex[:8]}"
+        provider_name = f"reject-provider-{uuid4().hex[:8]}"
+        provider = OAuthProvider(
+            provider_name=provider_name,
+            oauth_flow_type="authorization_code",
+            client_id="configured-client",
+            encrypted_client_secret=b"configured-secret",
+            authorization_url="https://existing.example/authorize",
+        )
+        db.add(provider)
+        await db.flush()
+
+        with pytest.raises(
+            OAuthProviderIdentityConflict, match="authorization_url"
+        ):
+            await SolutionDeployer(db)._upsert_integration_shells([{
+                "integration_name": name,
+                "template": {
+                    "name": name,
+                    "config_schema": [],
+                    "oauth": {
+                        "provider_name": provider_name,
+                        "oauth_flow_type": "authorization_code",
+                        "authorization_url": "https://different.example/authorize",
+                    },
+                },
+            }])
+
+        assert provider.integration_id is None
+        assert provider.client_id == "configured-client"
+        assert provider.encrypted_client_secret == b"configured-secret"
+        assert (await db.execute(
+            select(Integration).where(Integration.name == name)
+        )).scalar_one_or_none() is None
 
     async def test_connection_declarations_full_replace_removes_stale(
         self, db_session
