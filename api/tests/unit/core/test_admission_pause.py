@@ -144,6 +144,45 @@ async def test_existing_websocket_is_closed_without_blocking_finite_request_drai
 
 
 @pytest.mark.asyncio
+async def test_maintenance_disconnects_existing_partial_http_body() -> None:
+    started = asyncio.Event()
+
+    async def app(scope, receive, send):
+        started.set()
+        assert await receive() == {"type": "http.disconnect"}
+
+    async def receive():
+        await asyncio.Future()
+
+    async def send(message):
+        return None
+
+    middleware = AdmissionPauseMiddleware(app, state_reader=open_state)
+    scope = {
+        "type": "http",
+        "method": "POST",
+        "path": "/auth/login",
+        "headers": [],
+        "query_string": b"",
+        "scheme": "https",
+        "server": ("test", 443),
+        "client": ("test", 1),
+    }
+    task = asyncio.create_task(middleware(scope, receive, send))
+    await started.wait()
+
+    assert admission_tracker.ordinary_inflight == 1
+    assert admission_tracker.http_disconnects
+
+    async with admission_tracker.lock:
+        admission_tracker.start_http_disconnects()
+
+    await asyncio.wait_for(task, timeout=0.1)
+    assert admission_tracker.ordinary_inflight == 0
+    assert admission_tracker.http_disconnects == {}
+
+
+@pytest.mark.asyncio
 async def test_websocket_message_handler_counts_as_finite_inflight_work():
     started = asyncio.Event()
     handled = asyncio.Event()
