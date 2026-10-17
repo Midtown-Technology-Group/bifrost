@@ -21,6 +21,21 @@ logger = logging.getLogger(__name__)
 REPO_PREFIX = "_repo/"
 
 
+def _is_missing_object_error(exc: Exception) -> bool:
+    """Return whether a storage error conclusively means the key is absent."""
+    response = getattr(exc, "response", None)
+    if isinstance(response, dict):
+        error = response.get("Error", {})
+        if isinstance(error, dict) and error.get("Code") in {
+            "NoSuchKey",
+            "404",
+            "NotFound",
+            "Not Found",
+        }:
+            return True
+    return type(exc).__name__ == "NoSuchKey"
+
+
 @dataclass
 class S3FileMetadata:
     """Metadata for a file stored in S3."""
@@ -228,12 +243,21 @@ class RepoStorage:
     async def exists(self, path: str) -> bool:
         """Check if a file exists in _repo/."""
         try:
-            async with self._get_client() as client:
-                key = self._repo_key(path)
-                await client.head_object(Bucket=self._bucket, Key=key)
-                return True
-        except Exception:
+            return await self.exists_strict(path)
+        except Exception:  # noqa: BLE001 - legacy callers use best-effort existence
             return False
+
+    async def exists_strict(self, path: str) -> bool:
+        """Check exact object existence while propagating storage failures."""
+        async with self._get_client() as client:
+            key = self._repo_key(path)
+            try:
+                await client.head_object(Bucket=self._bucket, Key=key)
+            except Exception as exc:
+                if _is_missing_object_error(exc):
+                    return False
+                raise
+        return True
 
     async def content_hash(self, path: str) -> str | None:
         """Return a bounded-memory SHA-256 fingerprint, or None when absent."""
