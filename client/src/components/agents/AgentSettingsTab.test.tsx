@@ -243,12 +243,18 @@ describe("AgentSettingsTab — edit mode", () => {
 		mockAuth.mockReturnValue({ isPlatformAdmin: true });
 		await renderTab({ mode: "edit", agent: existingAgent });
 		expect(screen.getByTestId("budget-card")).toBeInTheDocument();
-		expect(screen.getAllByPlaceholderText("No limit")).toHaveLength(2);
+		expect(screen.getAllByPlaceholderText("Platform maximum")).toHaveLength(
+			2,
+		);
 		expect(
-			screen.getByText("Optional LLM request limit (1–200)."),
+			screen.getByText(
+				"Optional lower LLM request limit (1–200). Blank uses the platform maximum (200).",
+			),
 		).toBeInTheDocument();
 		expect(
-			screen.getByText("Optional cumulative limit (1k–1M tokens)."),
+			screen.getByText(
+				"Optional lower cumulative limit (1k–1M tokens). Blank uses the platform maximum (1M).",
+			),
 		).toBeInTheDocument();
 	});
 
