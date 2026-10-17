@@ -833,7 +833,10 @@ def resolve_module_sync(name: str) -> ModuleResolution:
                 storage_path=f"{runtime_prefix}{relative_path}",
             )
         prefix = f"{base_path}/"
-        if any(path.startswith(prefix) for path in source_hashes):
+        if any(
+            path.startswith(prefix) and is_allowed_python_module_path(path)
+            for path in source_hashes
+        ):
             return ModuleResolution(kind="namespace", path=base_path)
         return ModuleResolution(kind="not_found", path=base_path)
 

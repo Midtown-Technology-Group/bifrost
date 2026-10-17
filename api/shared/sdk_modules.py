@@ -117,11 +117,13 @@ def validate_engine_storage_path(path: str, scope: ModuleSourceScope) -> None:
         )
 
 
-async def _prefix_exists(storage_prefix: str) -> bool:
+async def _prefix_has_allowed_python_descendant(storage_prefix: str) -> bool:
     parts = storage_prefix.split("/", 2)
     if len(parts) == 3 and parts[0] == SOLUTIONS_ROOT:
-        return await SolutionStorage(parts[1]).prefix_exists(parts[2])
-    return await RepoStorage().prefix_exists(storage_prefix)
+        paths = await SolutionStorage(parts[1]).list(parts[2])
+    else:
+        paths = await RepoStorage().list(storage_prefix)
+    return any(is_allowed_python_module_path(path) for path in paths)
 
 
 async def hydrate_cached_resolution(cached: dict) -> dict | None:
@@ -230,7 +232,7 @@ async def resolve_module_name(
             storage_prefix = f"{scope_prefix}{base_path}/"
             if is_allowed_python_module_path(
                 f"{base_path}/__init__.py"
-            ) and await _prefix_exists(storage_prefix):
+            ) and await _prefix_has_allowed_python_descendant(storage_prefix):
                 namespace_result: dict[str, object] = {
                     "kind": "namespace",
                     "path": base_path,

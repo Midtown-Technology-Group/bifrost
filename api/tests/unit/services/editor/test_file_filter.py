@@ -13,6 +13,10 @@ def test_python_module_policy_reuses_workspace_exclusions() -> None:
         ".git/hooks/example.py",
         "../example.py",
         "/absolute/example.py",
+        "C:/modules/example.py",
+        "C:modules/example.py",
+        "//server/share/modules/example.py",
+        r"\\server\share\modules\example.py",
         r"venv\example.py",
         "modules/example.pyc",
     ):

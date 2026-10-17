@@ -579,6 +579,26 @@ def test_deployment_namespace_comes_from_pinned_source_manifest_not_mutable_inst
         module_cache_sync.clear_solution_context()
 
 
+def test_deployment_namespace_ignores_excluded_only_manifest_descendants():
+    module_cache_sync = _module_cache_sync()
+    solution_id = str(uuid4())
+    deployment_id = str(uuid4())
+    module_cache_sync.set_solution_context(
+        solution_id,
+        False,
+        runtime_storage_prefix=f"_solutions/{solution_id}/{deployment_id}/",
+        source_hashes={
+            "modules/node_modules/blocked.py": "sha256:" + "a" * 64,
+        },
+    )
+    try:
+        result = module_cache_sync.resolve_module_sync("modules")
+        assert result.kind == "not_found"
+        assert result.path == "modules"
+    finally:
+        module_cache_sync.clear_solution_context()
+
+
 @pytest.mark.parametrize(
     ("source_path", "import_name", "kind"),
     [
