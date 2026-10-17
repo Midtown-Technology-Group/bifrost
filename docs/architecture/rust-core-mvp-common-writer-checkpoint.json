@@ -110,8 +110,8 @@
     "cold_skill_package": "2026-10-09.1"
   },
   "workspace_boundary": {
-    "head": "41ceed881295ad5601afb003e089d331f60074a4",
-    "audit": "rust-core-mvp-workspace-boundary-41ceed88.json",
+    "head": "a8d3f9e0c8050d4f5fa507b246c3063bfb4d5b6d",
+    "audit": "rust-core-mvp-workspace-boundary-a8d3f9e0.json",
     "files": 2460,
     "internal_imports": 0,
     "parse_errors": 0,
@@ -547,6 +547,54 @@
     "resources": "Two owned labelled build-cache volumes removed;143 containers/2583 baseline volumes preserved, including16 unattributed earlier anonymous volumes; pinned images retained; VM101 stopped",
     "authority": "Frozen560 cancellation source and held runbook unchanged. No SQL/role/login/runtime or expanded experiment activated.",
     "pr": null,
-    "publication_gate": "Source branch only; final pre-PR/hostedCI/liveSQL gates remain before implementation PR acceptance."
+    "publication_gate": "Source branch only; final pre-PR/hostedCI/liveSQL gates remain before implementation PR acceptance.",
+    "follow_on_qualification": "rust-core-mvp-workflow-start-fixture.md; source/test PR1320 at74, original6793 evidence remains historical"
+  },
+  "workflow_start_fixture_source": {
+    "package": "R1-START/fixture-source/v1",
+    "pr": 1320,
+    "head": "74bfef3e046bedf94f3c757fe17660fbc51c5976",
+    "base": "560e3decd7a18200809edb9bf9a078ede5d06ea5",
+    "branch": "rust/workflow-start-fixture",
+    "record": "rust-core-mvp-workflow-start-fixture.md",
+    "review": "Independent Sol scoped SOURCE ACCEPT Start6793/producer a52/Docker74; source inspection only",
+    "source_checks": {
+      "docker_checks": 0,
+      "literal_pre_pr": 0,
+      "rust_unique_tests": 38,
+      "native_unique_tests": 34,
+      "native_source": "a52d68bf8ac1f288bb9df7567a0ac2d99077a2f5",
+      "python_build_inputs_unchanged_at_head": true,
+      "committed_rust_inputs_match": 44,
+      "common_sql_executed": false,
+      "source_qualification_sha256": "fa714c0192caa6c84637958d3faa963bfa0627d161a77209ddfc450ea06f7e3c"
+    },
+    "hosted_ci": {
+      "normal": 39004360577,
+      "rust": 39004362524,
+      "attempt": 1,
+      "head": "74bfef3e046bedf94f3c757fe17660fbc51c5976",
+      "status": "queued at publication; manual normal supported entry points because stacked base is outside automatic triggers"
+    },
+    "cleanup": "Exact143 stopped containers/2583 baseline volumes; task resources absent, pinned images preserved, VM101 stopped. Sixteen prior unattributed volumes preserved. Normal a52 build replaced old unqualified shared dev cache index; failed restoration retained in private disposition.",
+    "remaining": [
+      "Actual installed-principal/cancellation qualification after pending exact R1 approval",
+      "Separate Start SQL experiment; complete coordinator admission/Prepare/custody/deadline and lost-ACK proof",
+      "Actual result ownership, unchanged Python workflow/agent, mixed writers, retirement, routing rollback"
+    ],
+    "activation": {
+      "common_ddl": false,
+      "roles_logins_grants": false,
+      "actual_start_sql": false,
+      "runtime": false,
+      "mvp_accepted": false,
+      "merged": false,
+      "deployed": false
+    },
+    "automated_review": {
+      "status": "requested once after non-default-base automatic skip; acceptance pending",
+      "comment": 6229908763,
+      "head": "74bfef3e046bedf94f3c757fe17660fbc51c5976"
+    }
   }
 }

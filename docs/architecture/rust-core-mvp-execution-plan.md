@@ -15,8 +15,8 @@ A complete MVP still includes safe coexistence, unchanged consumers, security,
 reversible routing, observability and an evidence-based CONTINUE or STOP.
 
 Fresh fetch: platform `e42999395231ebc536711e5015422edfb75613a7`, workspace
-`41ceed881295ad5601afb003e089d331f60074a4`.
-The [latest boundary audit](rust-core-mvp-workspace-boundary-41ceed88.json)
+`a8d3f9e0c8050d4f5fa507b246c3063bfb4d5b6d`.
+The [latest boundary audit](rust-core-mvp-workspace-boundary-a8d3f9e0.json)
 records 2,460 authored Python files, zero forbidden imports/parse errors and an
 empty allowlist.
 Both prerequisite merges remain ancestors of these exact heads. Recheck these
@@ -104,8 +104,12 @@ implements atomic native Running/Start and uncertain-commit observation at
 update-before-Start order and excludes the unfinished admission seam from default
 builds. Independent source review, supported fmt/strict all-feature Clippy and38
 unique source tests pass; its opt-in actual SQL acceptance test compiles only.
-A reviewed prepared-fixture producer and the coordinator/wire/custody/deadline
-validation seam remain necessary. No SQL, runtime, Rust result ownership or
+The [prepared-fixture follow-on](rust-core-mvp-workflow-start-fixture.md),
+[PR #1320](https://github.com/Midtown-Technology-Group/bifrost/pull/1320) at
+`74bfef3e046bedf94f3c757fe17660fbc51c5976`, is source-reviewed. Its native
+timeout 30/0 tests pass; final Docker checks and literal pre-PR pass. Common-stage
+fixture production and actual Start SQL remain unexecuted. The full coordinator
+wire/source/schema/custody/deadline validation seam remains necessary. No SQL, runtime, Rust result ownership or
 expanded R1 cancellation authority follows from this source package.
 
 The next cancellation dependency test is now executable Rust test source at

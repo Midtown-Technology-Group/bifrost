@@ -4,6 +4,12 @@ Package `R1-START/source/v1`, crate0.1.0, 2026-10-17. This advances Rust
 transaction implementation; **no actual Start SQL or runtime ownership is
 qualified**. The frozen cancellation experiment is a separate dependency.
 
+Follow-on [prepared fixture and final source qualification](rust-core-mvp-workflow-start-fixture.md)
+is now [PR #1320](https://github.com/Midtown-Technology-Group/bifrost/pull/1320)
+at 74bfef3e0. The rest of this record retains its original 6793 source/evidence
+snapshot; new Dockerfile/pre-PR/native fixture evidence is recorded separately.
+No common SQL or runtime activation follows.
+
 ## Source and owned scope
 
 Platform main remains `e42999395231ebc536711e5015422edfb75613a7`.
