@@ -1,38 +1,51 @@
 {
   "schema_version": 1,
   "kind": "inactive-common-writer-source-checkpoint",
-  "package": "C5-A+B1/writer-close-grant/v1",
+  "package": "C5-A+B1+B2+B3/writer-admission-source/v1",
   "repository": "Midtown-Technology-Group/bifrost",
-  "head": "c287db444c6780555dad10b713c9b6bb14cb0c6e",
+  "head": "baae7e1aeba9566676255f443fef5cc38565d1eb",
   "base_main": "e42999395231ebc536711e5015422edfb75613a7",
   "branch": "rust/common-writer-enforcement-candidate",
   "worktree": "/home/thomas/src/bifrost-rust-common-writer-enforcement",
   "files_sha256": {
-    "api/alembic/candidates/20261016_runtime_native_writers.py": "96324c7bd2c4c6fbad16900c2bb9e2e91640463241d3b91c5f5cced50e01419e",
+    "api/alembic/candidates/20261016_runtime_native_writers.py": "024422d4432754c00a0753ed5d481ecaabf4cad35f843007b8e361c5b605aab6",
     "api/tests/unit/test_runtime_native_writers_candidate.py": "8e1afd9d69cda90b0476950a6eafebdbc6074322a39eebcbf3bf36b77f988c6e",
     "api/alembic/candidates/20261016_runtime_close_grants.py": "a43ad4e3965652dbbf1671443e25c3ac2349dde4f83e4e2ad6053fafd0f35a43",
     "api/tests/unit/test_runtime_close_grants_candidate.py": "c811185a6a73bc8acbedd38c55191e3d2f74ec4033b8414f27cee827c56f2342",
     "api/src/services/workspace_admin.py": "5bf45d696cb3dd40ff9aa9ecc6ec172eb36179d06149942c149d68875d391b84",
     "api/tests/unit/test_workspace_admin.py": "b28981077b0b538cf5c75de6ff9308a732f7094884be0dee265f5829d877586a",
-    "api/tests/unit/test_workspace_admin_persistence.py": "c4215a0ed7572c62726cb5247f72762e02248c0a2e65c61eb23cb2ed7ec6f59b"
+    "api/tests/unit/test_workspace_admin_persistence.py": "c4215a0ed7572c62726cb5247f72762e02248c0a2e65c61eb23cb2ed7ec6f59b",
+    "api/alembic/candidates/20261016_runtime_common_writes.py": "d479a958a3584bcc815c4651731381a2692bc5da4da4bdb16cd40c6639ddafd6",
+    "api/tests/unit/test_runtime_common_writes_candidate.py": "ed96e90613a94ec814680e1ffef20d7bb5f2cc455943701e9d01015bfbf1f471",
+    "api/alembic/candidates/20261016_runtime_source_drain.py": "2ef9fc8296d400b36c833c45a573f155408e91872d1a41c1f7a3209fd21d6468",
+    "api/tests/unit/test_runtime_source_drain_candidate.py": "30ed3c4ae8b9f1c421cdafd4045abf89bf17748d60a48d4c34f83e98f4b7c155",
+    "api/src/services/solution_source_accountability.py": "7a79ba095105f73cf49bcf4787d19350275b11e12518fe1deb3540de293317a4",
+    "api/tests/unit/services/test_common_runtime_source_inventory.py": "733cb6d3695a76d2f33abd8888d5a0945f7d6eb625e92102e231d369e3533adc",
+    "api/tests/e2e/platform/test_solution_source_accountability.py": "18f3f366809a4a1ec9848fd10ec8fe4865f93cad7361908e6205225be22bb47f"
   },
   "source_review": {
     "status": "scoped SOURCE ACCEPT",
-    "head": "c287db444c6780555dad10b713c9b6bb14cb0c6e",
+    "head": "baae7e1aeba9566676255f443fef5cc38565d1eb",
     "reviewer": "independent Sol common_session_source_review",
     "fixed_findings": [
       "Actual generic-attempt binding replacement protected by shared OLD/NEW generic identity try-fences, including absent/nonworkflow parent.",
       "Read-only custodian uses no row-lock UPDATE privilege.",
       "Fail-closed RLS qualification covers all ten common authority tables, preventing filtered active-grant reads."
     ],
-    "limits": "No imports/tests/SQL; source acceptance only. Full implicit wait graph, cascades, remaining common guards, catalog/profile, CRED adapter, physical custody, retention and agent extension remain held."
+    "limits": "No imports/tests/SQL; source acceptance only. Full implicit wait graph, cascades, remaining common guards, catalog/profile, CRED adapter, physical custody, retention and agent extension remain held.",
+    "packages": {
+      "A+B1": "c287db444c6780555dad10b713c9b6bb14cb0c6e scoped SOURCE ACCEPT",
+      "B2": "a037c8131b697eb4c9f987a3da2f46fd56235b48 scoped SOURCE ACCEPT",
+      "B3": "baae7e1aeba9566676255f443fef5cc38565d1eb scoped SOURCE ACCEPT; test-source comment-sensitive assertion corrected"
+    }
   },
   "contracts": {
     "native": "One immutable Execution owner marker, retained historical class, exact ancestor NULL and public terminal sanitation exceptions; actual+declared lifecycle event parent checks.",
-    "python_adapter": "Existing terminal redaction takes native execution advisory before Execution row locks; existing auth, organization scope, status, sentinel and audit behavior preserved in source.",
+    "python_adapter": "Existing terminal redaction takes native execution advisory before Execution row locks; existing auth, organization scope, status, sentinel and audit behavior preserved in source. Source inventory uses neither-common-object Python-only state, rejects partial installs/failures, and validates historical pins through existing exact deployment/provenance/dependency readback; both generic workflow aliases retained.",
     "close_grant": "Authenticated session/grant/operation writes share native execution try-fence; permanent close denies late first grant/operations; deferred final-row check rejects closed session with active grant; no implicit credential issue/revoke.",
-    "source": "No child owner columns or replacement native FKs. Common close is not physical retirement or replay permission.",
-    "credential_policy": "CRED SelectedSDKPolicy and existing issuer/ingress remain one authority; common adapter not implemented or enabled. Go accepted consumer capability unchanged."
+    "source": "Historical owner deployment IDs pin independently of native/live links or active install. No-session owner, nonterminal/incomplete native work and open/unsettled session pin. Source collector/deletion takes exclusive source fence; all Rust native writes share it. Soft uninstall/native metadata updates preserved. Physical-observation qualification remains held.",
+    "credential_policy": "CRED SelectedSDKPolicy and existing issuer/ingress remain one authority; common adapter not implemented or enabled. Go accepted consumer capability unchanged.",
+    "common_writers": "All ten common stores authenticated; source shared try-fence precedes execution try-fence; incumbent only exact C1-validated live-link deltas. No new sessions after native terminal/cancellation; Start/admission requires current open live fence, native Running/execution phase, matching Start clock and unrevoked grant."
   },
   "checks": {
     "locked_ruff": "passed0.15.12",
@@ -45,24 +58,33 @@
     "live_python_redaction": "unproved"
   },
   "ci": {
-    "dispatch": "normal ci.yml accepted once; provider readback bound exact head and run",
-    "old_head": "ecc555324bd014568414f63a76de6e6b30f37802",
-    "old_run": 38985914661,
-    "old_status": "queued; cancellation requested, terminal cancellation not observed",
-    "old_tests_begun": false,
-    "qualification_limit": "Normal CI runs offline candidate checks and native Python tests, not candidate DDL application or C5 races.",
-    "id": 38986409037,
-    "head": "c287db444c6780555dad10b713c9b6bb14cb0c6e",
+    "dispatch": "normal ci.yml accepted once; provider readback bound exact head/run",
+    "head": "baae7e1aeba9566676255f443fef5cc38565d1eb",
     "attempt": 1,
     "status": "pending",
-    "tests_begun": false
+    "tests_begun": false,
+    "superseded_run": {
+      "id": 38986409037,
+      "head": "c287db444c6780555dad10b713c9b6bb14cb0c6e",
+      "status": "completed",
+      "conclusion": "cancelled",
+      "tests_begun": false
+    },
+    "older_run": {
+      "id": 38985914661,
+      "head": "ecc555324bd014568414f63a76de6e6b30f37802",
+      "status": "queued; cancellation requested earlier, terminal cancellation not observed"
+    },
+    "qualification_limit": "Normal CI runs offline candidate and native Python tests, not candidate DDL application, new guards/source functions or C5 races.",
+    "id": 38987661027
   },
   "remaining": [
-    "Remaining common source/Start/report/admission/resource writers and source/physical drain enforcement.",
-    "CRED common issuer/renewal/ingress adapter and finite authenticated principal/catalog decisions.",
-    "Actual supported PostgreSQL contention, wrong-writer, RLS, cascade, redaction and commit-failure proof.",
-    "Selected Python artifact/runtime profile and sensitive-payload disposition.",
-    "Actual Rust-owned Start/result lifecycle, unchanged Python workflow then agent, coexistence and routing rollback."
+    "Finite principal/privilege catalog and matching locked adapter order; C1 artifact row-lock privilege closure includes users/workflows and must not confer arbitrary DML.",
+    "CRED common issuer/renewal/ingress adapter, exact report/projection enforcement and trusted physical-observation admission.",
+    "Actual supported PostgreSQL wrong-writer, source/cancel/admission/retirement contention, RLS, FK/cascade, public errors, Python redaction, failed/unknown commit and S3 post-commit proof.",
+    "Pre-session resource/proof boundary: unresolved no-session owners stay pinned; no retirement inferred from missing session/Start/native history/files. No new retirement table introduced.",
+    "Selected Python artifact/profile and sensitive-payload disposition; general partial-cleanup recovery remains unresolved.",
+    "Actual Rust Start/result lifecycle, unchanged Python workflow then agent, safe coexistence and reversible routing."
   ],
   "activation": {
     "candidate_ddl_applied": false,

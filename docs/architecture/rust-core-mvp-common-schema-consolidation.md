@@ -252,19 +252,37 @@ C5-B1 follows with authenticated session/grant/operation writes under that same
 execution try-fence. Closed sessions deny late first grant/operation insertion;
 a deferred final-row constraint requires existing grants revoked before close
 can commit. It supplies no CRED policy, issuer, renewal or ingress replacement.
-The [writer checkpoint](rust-core-mvp-common-writer-checkpoint.json) identifies
-exact source, review status and unexecuted checks. Current source
-`c287db444c6780555dad10b713c9b6bb14cb0c6e` has independent scoped source
-acceptance, including the RLS fix: filtered common reads fail closed rather than
-hiding active grants. Normal [CI run 38986409037](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/38986409037)
-is pending for that exact head. Cancellation was requested for predecessor
-run 38985914661; terminal cancellation is not observed. Neither has begun a
-test. No candidate SQL or role grant has been applied.
+C5-B2 authenticates all ten common stores and shares the existing source fence
+before the native execution fence. New sessions cannot revive native terminal
+or cancelling work. Start/provision/release insertion requires the exact open
+live attempt/source fence, native Running/execution phase and unrevoked grant;
+Start clock must match. The one CRED policy/issuer still needs its common adapter.
 
-Complete source/admission/drain guards, the CRED common adapter, finite
-principals/installed catalog, actual concurrency/cascade evidence, payload
-policy and the agent extension remain required. Neither A nor B1 is a complete
-C5 application packet or proof of Rust-owned lifecycle execution.
+C5-B3 derives source pins from historical owner deployment IDs, including after
+native history/link deletion. No-session owners, incomplete/nonterminal native
+work and open or physically unsettled sessions remain pinned. Python's existing
+collector validates each deployment/provenance/dependency, recognizing the
+current-main Python-only schema while rejecting partial common installs and
+read failures. Both generic workflow aliases are preserved. Destructive native
+history/source deletion checks drained obligations under the source fence;
+soft uninstall and normal Python metadata updates remain available.
+
+The [writer checkpoint](rust-core-mvp-common-writer-checkpoint.json) binds current
+`baae7e1aeba9566676255f443fef5cc38565d1eb`, independent scoped source acceptance,
+static checks and unexecuted PostgreSQL behavior. Normal
+[CI run 38987661027](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/38987661027)
+is pending for that exact head. Superseded run 38986409037 is confirmed cancelled
+without tests; older 38985914661 still lacks terminal cancellation readback.
+No candidate SQL, role grant or runtime has been enabled.
+
+C5 remains incomplete: finite principal/catalog and lock privileges, CRED
+adapter, report/projection enforcement, original physical observer, actual
+concurrency/cascade/public-error/S3 evidence and payload policy still gate
+application. No-session retirement remains unresolved: the inspected adapter
+can start a dormant process and stage source before session commitment, so
+session-before-Prepare does not establish session-before-all-resource-effects.
+No retirement table, missing-record inference or owner transfer is introduced.
+The agent extension and actual Rust-owned lifecycle remain unproved.
 
 Native ancestor positives to retain: inactive-user deletion clears executed_by;
 user/CLI cascade clears session_id; form purge clears form_id; workflow and

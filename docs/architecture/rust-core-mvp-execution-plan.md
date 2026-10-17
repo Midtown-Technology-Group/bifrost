@@ -104,17 +104,25 @@ same uncoordinated VM qualification blindly or treat its legacy RabbitMQ
 configuration as PostgreSQL delivery evidence. Normal CI for exact composed
 C1-C4 source is queued in run 38983420259; parent runs cannot qualify this head.
 
-C5-A now implements native writer exclusion and exact ancestor/sanitation
-exceptions; C5-B1 adds common close/late-grant serialization. The
-[writer checkpoint](rust-core-mvp-common-writer-checkpoint.json) separates
-source review from unexecuted SQL and exact-candidate CI. C5 remains incomplete:
-source/admission/drain, CRED adapter, finite writer/catalog and actual races
-still precede the bundled schema/authority decision. Existing
-CRED remains the one policy/issuer owner. No candidate DDL, role grant, new
-credential or runtime enablement is authorized by these source packages.
-Execution delivery release, logical close and a missing file cannot prove
-physical teardown. General partial-cleanup recovery and payload disposition
-remain explicit requirements rather than implied storage guarantees.
+C5-A/B1 now implement native writer exclusion, exact ancestor/sanitation
+exceptions and close/late-grant serialization. Source-reviewed B2/B3 add all
+common writers, open live Start/admission fences, historical source accounting
+and destructive-drain checks. The
+[writer checkpoint](rust-core-mvp-common-writer-checkpoint.json) identifies
+exact `baae7e1ae`, independent source acceptance and pending normal CI38987661027.
+All new PostgreSQL behavior remains unexecuted; source review does not qualify
+physical custody, implicit lock/cascade races, public errors or the post-commit
+S3 sweep. Existing CRED remains the one policy/issuer owner.
+
+The next finite package closes principal/privilege/installed-catalog and adapter
+lock closure, including C1 artifact row locks, without granting arbitrary user
+or source mutation. CRED's common adapter and report/projection enforcement
+remain required before the bundled schema/authority decision. No candidate DDL,
+role grant, credential or runtime enablement is authorized by source acceptance.
+No-session owners stay pinned until an explicit pre-session resource/proof
+boundary is established; general partial-cleanup and payload disposition remain
+unresolved. Logical terminal/close, missing files and bare resource-row presence
+cannot substitute for the original qualified physical observer.
 
 ## First falsification checkpoint
 
