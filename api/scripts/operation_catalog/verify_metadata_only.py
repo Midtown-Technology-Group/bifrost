@@ -13,6 +13,7 @@ import ast
 import hashlib
 import json
 from pathlib import Path
+import re
 import subprocess
 
 
@@ -74,12 +75,20 @@ def git(*args: str) -> str:
     return subprocess.check_output(["git", *args], cwd=REPO_ROOT).decode("utf-8")
 
 
+def resolve_base_ref(base_ref: str) -> str:
+    # Treat the supplied tree-ish as one revision, never as a rev-parse option.
+    base_sha = git("rev-parse", "--verify", "--end-of-options", base_ref).strip()
+    if re.fullmatch(r"(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})", base_sha) is None:
+        raise ValueError("Git did not resolve the base ref to one object ID")
+    return base_sha
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--base-ref", required=True)
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
-    base_sha = git("rev-parse", args.base_ref).strip()
+    base_sha = resolve_base_ref(args.base_ref)
     files = git("ls-tree", "-r", "--name-only", base_sha, "api/src/routers", "api/shared", "api/src/main.py").splitlines()
     proof_files: list[dict[str, object]] = []
     proof: dict[str, object] = {"base_sha": base_sha, "files": proof_files}
