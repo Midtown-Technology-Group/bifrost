@@ -183,7 +183,14 @@ class RegisterWorkflowRequest(BaseModel):
             "cross-instance promotion. Omit for first-time creation."
         ),
     )
-    organization_id: str | None = Field(default=None, description="Organization ID to scope the workflow to, or null for global scope")
+    organization_id: str | None = Field(
+        default=None,
+        description=(
+            "Organization ID to scope the workflow to. Omit to preserve scope "
+            "when reactivating (new registrations default to the caller's "
+            "organization); pass null to set global scope."
+        ),
+    )
     access_level: str | None = Field(
         default=None,
         description="Access level: 'authenticated' (any signed-in user except externals), 'everyone' (any signed-in user incl. externals), or 'role_based' (specific roles required). Omit to leave at the schema default.",
