@@ -164,7 +164,7 @@ def _install_actor() -> None:
             IF EXISTS (SELECT 1 FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n
                        ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relrowsecurity
                        AND c.relname IN ('executions','runtime_execution_owners',
-                           'execution_attempts','execution_lifecycle_events','event_deliveries',
+                           'execution_attempts','workflow_execution_attempts','execution_lifecycle_events','event_deliveries',
                            'users','cli_sessions','forms','workflows','messages','organizations',
                            'runtime_deployment_artifacts','runtime_sessions','runtime_workflow_live_links',
                            'runtime_starts','runtime_report_receipts','workflow_runtime_sdk_grants',

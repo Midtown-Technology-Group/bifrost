@@ -105,3 +105,28 @@ unknown COMMIT readback; SET CONSTRAINTS IMMEDIATE; restricted incumbent and
 untrusted SQL identities. Include implicit row/FK/index waits. B1 creates no
 roles/grants and admits no runtime. Source-drain/remaining common writers,
 installed privileges and complete source/physical/payload gates remain held.
+
+C5-B2 authenticates all ten common stores, takes the existing shared workspace
+release try-fence before the native execution try-fence, and retains every
+C1-C4 identity guard. Its trigger sorts before B1. Incumbent writes are limited
+to exact live-link deltas whose native-parent absence C1 independently checks;
+incumbent insertion/deletion or lifecycle mutation is denied. New sessions
+require native Pending/Running work. Start and provision/release insertion
+requires an open attached session, matching live attempt/claim/worker/source,
+native Running state and native execution phase; Start clock must match and
+provision/release requires the exact unrevoked grant. It performs no network,
+credential issuance, report projection, revocation or cleanup on behalf of a
+caller. CRED policy and committed-read admission remain separate requirements.
+
+This is still not source retirement enforcement. Retained source inventory
+must begin at historical common owner deployment IDs even after native history
+unlink. Terminal/no-session owners remain unresolved and pinned: current code
+does not prove that all adapter processes/staging began after committed session
+admission. Soft Solution uninstall is a status-only native operation and must
+remain available; destructive DB/source removal requires a separate drained
+obligation check and the same exclusive workspace-release fence. Missing Start,
+session, native row, process or file cannot manufacture physical retirement.
+Do not add a new retirement table or infer no-effect solely from those absences.
+Actual SQL/lock/cascade/RLS/terminal-admission and mixed-writer proof, the CRED
+adapter, original resource-custody observer, finite privileges and schema/profile
+approval remain held before this continuation can be applied.
