@@ -376,6 +376,69 @@ class TestAgentsCRUD:
         agent_ids = [a["id"] for a in data]
         assert test_agent["id"] not in agent_ids
 
+    def test_private_owner_can_reactivate_paused_agent(
+        self,
+        e2e_client,
+        org1_user,
+    ):
+        """A private owner can reload, inspect, and reactivate a paused agent."""
+        create_response = e2e_client.post(
+            "/api/agents",
+            json={
+                "name": f"Paused Private {uuid4().hex[:8]}",
+                "system_prompt": "You are a private pause lifecycle test agent.",
+                "access_level": "private",
+            },
+            headers=org1_user.headers,
+        )
+        assert create_response.status_code == 201, create_response.text
+        agent_id = create_response.json()["id"]
+
+        try:
+            pause_response = e2e_client.put(
+                f"/api/agents/{agent_id}",
+                json={"is_active": False},
+                headers=org1_user.headers,
+            )
+            assert pause_response.status_code == 200, pause_response.text
+            assert pause_response.json()["is_active"] is False
+
+            list_response = e2e_client.get(
+                "/api/agents",
+                headers=org1_user.headers,
+            )
+            assert list_response.status_code == 200, list_response.text
+            assert agent_id in {item["id"] for item in list_response.json()}
+
+            discovery_response = e2e_client.get(
+                "/api/agents?discovery_only=true",
+                headers=org1_user.headers,
+            )
+            assert discovery_response.status_code == 200, discovery_response.text
+            assert agent_id not in {
+                item["id"] for item in discovery_response.json()
+            }
+
+            detail_response = e2e_client.get(
+                f"/api/agents/{agent_id}",
+                headers=org1_user.headers,
+            )
+            assert detail_response.status_code == 200, detail_response.text
+            assert detail_response.json()["is_active"] is False
+
+            reactivate_response = e2e_client.put(
+                f"/api/agents/{agent_id}",
+                json={"is_active": True},
+                headers=org1_user.headers,
+            )
+            assert reactivate_response.status_code == 200, reactivate_response.text
+            assert reactivate_response.json()["is_active"] is True
+        finally:
+            e2e_client.delete(
+                f"/api/agents/{agent_id}",
+                headers=org1_user.headers,
+            )
+
     def test_get_agent_not_found(
         self,
         e2e_client,

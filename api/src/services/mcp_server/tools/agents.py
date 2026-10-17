@@ -125,6 +125,11 @@ def _can_manage_agent(context: Any, agent: Any) -> bool:
     )
 
 
+def _can_read_inactive_agent(context: Any, agent: Any) -> bool:
+    """Inactive agents are readable only by their owner or a platform admin."""
+    return bool(agent.is_active) or _can_manage_agent(context, agent)
+
+
 # ==================== SCHEMA TOOL ====================
 
 
@@ -268,7 +273,7 @@ async def get_agent(
                     agent_name=agent_name,
                 )
 
-            if not agent:
+            if not agent or not _can_read_inactive_agent(context, agent):
                 identifier = agent_id or agent_name
                 return error_result(f"Agent '{identifier}' not found. Use list_agents to see available agents.")
 
