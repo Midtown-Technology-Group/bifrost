@@ -7,6 +7,13 @@ Provides Pydantic models for:
 - Queue status tracking
 - Pool statistics
 - Stuck execution history
+
+DTO-location decision (MIDT-184): these contracts intentionally remain in
+``src.models.contracts.platform`` rather than moving to ``shared/models.py``.
+Moving them would churn every router, service, and test that imports this
+module, while the heartbeat normalization this issue centralizes lives in
+``shared/worker_heartbeat.py`` and operates on plain heartbeat dicts, so no
+contract move is needed for handlers to share one normalized shape.
 """
 
 from datetime import datetime
