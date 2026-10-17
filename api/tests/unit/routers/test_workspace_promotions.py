@@ -30,13 +30,20 @@ def _ctx():
     return SimpleNamespace(org_id=uuid4())
 
 
-def _request(client_host: str = "203.0.113.10") -> Request:
+def _request(
+    client_host: str = "203.0.113.10",
+    *,
+    forwarded_for: str | None = None,
+) -> Request:
+    headers = (
+        [(b"x-forwarded-for", forwarded_for.encode())] if forwarded_for else []
+    )
     return Request(
         {
             "type": "http",
             "method": "POST",
             "path": "/api/workspace-promotions/source-releases/github",
-            "headers": [],
+            "headers": headers,
             "client": (client_host, 443),
         }
     )
@@ -383,6 +390,23 @@ async def test_github_source_release_dependency_rejects_missing_bearer(
 
     assert exc_info.value.status_code == 401
     assert "bearer token is required" in exc_info.value.detail
+    source_release_limiter.assert_awaited_once_with(
+        "github_source_release", "203.0.113.10", force=True
+    )
+
+
+@pytest.mark.asyncio
+async def test_github_source_release_limiter_ignores_forwarded_client_address(
+    source_release_limiter,
+) -> None:
+    request = _request(
+        client_host="203.0.113.10",
+        forwarded_for="198.51.100.99, 10.0.0.1",
+    )
+
+    with pytest.raises(HTTPException):
+        await workspace_promotions._github_source_release_producer(request, None)
+
     source_release_limiter.assert_awaited_once_with(
         "github_source_release", "203.0.113.10", force=True
     )

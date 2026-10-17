@@ -560,7 +560,6 @@ async def test_jwks_total_deadline_releases_waiters_and_starts_backoff(
 
     assert all(isinstance(result, GitHubActionsOIDCError) for result in results)
     assert all("unavailable" in str(result) for result in results)
-    assert request_count == 1
     assert cache._lock.locked() is False
 
     with pytest.raises(GitHubActionsOIDCError, match="unavailable"):

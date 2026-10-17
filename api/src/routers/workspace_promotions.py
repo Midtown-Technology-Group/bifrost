@@ -14,7 +14,7 @@ from src.config import get_settings
 from src.core.auth import Context, CurrentSuperuser, bearer_scheme
 from src.core.constants import SYSTEM_USER_UUID
 from src.core.db_deps import DbSession
-from src.core.rate_limit import RateLimiter, get_client_ip
+from src.core.rate_limit import RateLimiter
 from src.jobs.platform.workspace_promotion_preview import (
     WORKSPACE_PROMOTION_PREVIEW_DEFINITION,
     WorkspacePromotionPreviewPayload,
@@ -107,8 +107,12 @@ async def _github_source_release_producer(
     request: Request,
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)],
 ) -> WorkspaceSourceReleaseProducer:
+    # This limiter runs before authentication, so forwarded headers are untrusted.
+    transport_client = request.client
     await _github_source_release_limiter.check(
-        "github_source_release", get_client_ip(request), force=True
+        "github_source_release",
+        transport_client.host if transport_client else "unknown",
+        force=True,
     )
     if credentials is None:
         raise HTTPException(
