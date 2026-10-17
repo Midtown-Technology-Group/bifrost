@@ -16,7 +16,11 @@ from fastapi.security import HTTPAuthorizationCredentials
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.core.auth import bearer_scheme, get_current_user
+from src.core.auth import (
+    bearer_scheme,
+    get_current_engine_or_bypass_user,
+    get_current_user,
+)
 from src.core.database import get_session_factory
 from src.core.db_deps import DbSession
 from src.core.principal import UserPrincipal
@@ -300,7 +304,8 @@ async def _principal_scope(
         request, selected_token=token, selected_location=location
     )
     if classification == "legacy":
-        yield await get_current_user(request, credentials, db)
+        user = await get_current_user(request, credentials, db)
+        yield await get_current_engine_or_bypass_user(user)
         return
     if classification == "deny" or token is None:
         raise _denied()
