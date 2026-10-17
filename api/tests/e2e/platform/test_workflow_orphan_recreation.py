@@ -134,7 +134,7 @@ async def test_concurrent_repoint_cannot_recreate_old_source_at_new_path(
             if task is not None and not task.done():
                 task.cancel()
                 with suppress(asyncio.CancelledError):
-                    await task
+                    _ = await task
         async with async_session_factory() as cleanup:
             await cleanup.execute(delete(Workflow).where(Workflow.id == workflow_id))
             await cleanup.execute(
