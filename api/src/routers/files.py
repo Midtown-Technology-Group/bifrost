@@ -59,6 +59,7 @@ from src.services.audit import emit_file_policy_deny
 from src.services.editor.search import search_files_db
 from src.services.file_backend import get_backend
 from src.services.file_storage import FileStorageService
+from src.services.file_storage.service import PRESIGNED_URL_MAX_TTL_SECONDS
 from shared.role_cache import get_user_roles
 
 # Watch session TTL — must be > CLI heartbeat interval (WATCH_HEARTBEAT_SECONDS in bifrost.cli)
@@ -223,8 +224,8 @@ class SignedUrlRequest(BaseModel):
     expires_in: int = Field(
         default=600,
         ge=1,
-        le=604800,
-        description="URL expiration in seconds (maximum 7 days)",
+        le=PRESIGNED_URL_MAX_TTL_SECONDS,
+        description="URL expiration in seconds (maximum 10 minutes)",
     )
 
 

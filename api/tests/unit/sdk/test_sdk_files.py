@@ -1057,18 +1057,40 @@ class TestSdkSignedUrl:
             scope=None,
             method="PUT",
             content_type="application/pdf",
-            expires_in=3600,
+            expires_in=600,
         )
 
         assert result.url == "https://s3/put-url"
         assert result.path == resolve_s3_key("uploads", str(ORG_ID), "file.pdf")
-        assert result.expires_in == 3600
+        assert result.expires_in == 600
         storage.generate_presigned_upload_url.assert_awaited_once_with(
             path=resolve_s3_key("uploads", str(ORG_ID), "file.pdf"),
             content_type="application/pdf",
-            expires_in=3600,
+            expires_in=600,
         )
         storage.record_file_write_metadata.assert_not_awaited()
+        storage.generate_presigned_download_url.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("method", ["GET", "PUT"])
+    async def test_signed_url_rejects_long_lived_capability_before_storage(
+        self, monkeypatch, method
+    ) -> None:
+        storage = _storage(monkeypatch)
+        caller = _mutation_caller()
+
+        with pytest.raises(FileServiceError) as exc:
+            await sdk_signed_url(
+                caller,
+                path="file.pdf",
+                location="uploads",
+                scope=None,
+                method=method,
+                expires_in=601,
+            )
+
+        assert exc.value.status_code == 422
+        storage.generate_presigned_upload_url.assert_not_awaited()
         storage.generate_presigned_download_url.assert_not_awaited()
 
     @pytest.mark.asyncio

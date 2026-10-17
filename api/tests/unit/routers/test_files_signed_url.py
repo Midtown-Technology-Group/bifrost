@@ -88,13 +88,14 @@ class TestSignedUrlRequestModel:
         assert req.scope == "org-123"
 
     def test_explicit_expiration(self):
-        req = SignedUrlRequest(path="file.txt", expires_in=604800)
-        assert req.expires_in == 604800
+        req = SignedUrlRequest(path="file.txt", expires_in=600)
+        assert req.expires_in == 600
 
-    @pytest.mark.parametrize("expires_in", [0, 604801])
-    def test_rejects_expiration_outside_s3_bounds(self, expires_in):
+    @pytest.mark.parametrize("method", ["GET", "PUT"])
+    @pytest.mark.parametrize("expires_in", [0, 601])
+    def test_rejects_expiration_outside_revocation_bound(self, method, expires_in):
         with pytest.raises(ValidationError):
-            SignedUrlRequest(path="file.txt", expires_in=expires_in)
+            SignedUrlRequest(path="file.txt", method=method, expires_in=expires_in)
 
 
 class TestSignedUrlResponseModel:
@@ -292,15 +293,15 @@ class TestPresignedUrlGeneration:
             path="file.pdf",
             method="GET",
             scope=str(ORG_A),
-            expires_in=604800,
+            expires_in=600,
         )
         result = await get_signed_url(req, _ctx(), MagicMock(), AsyncMock())
         assert result.url == "https://s3/get-url"
         assert result.headers == {}
-        assert result.expires_in == 604800
+        assert result.expires_in == 600
         mock_fss.generate_presigned_download_url.assert_awaited_once_with(
             path=f"uploads/{ORG_A}/file.pdf",
-            expires_in=604800,
+            expires_in=600,
         )
 
 

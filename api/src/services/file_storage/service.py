@@ -36,8 +36,19 @@ from .indexers import WorkflowIndexer
 
 logger = logging.getLogger(__name__)
 
+PRESIGNED_URL_MAX_TTL_SECONDS = 600
+
 # Sentinel — returned by _scope_to_org_id to signal "no metadata to write".
 _SCOPE_SKIP = object()
+
+
+def _validate_presigned_url_ttl(expires_in: int) -> None:
+    """Keep direct object-store capabilities inside the revocation bound."""
+    if not 1 <= expires_in <= PRESIGNED_URL_MAX_TTL_SECONDS:
+        raise ValueError(
+            "Presigned URL expiration must be between 1 and "
+            f"{PRESIGNED_URL_MAX_TTL_SECONDS} seconds"
+        )
 
 
 def _scope_to_org_id(location: str, scope: str | None) -> "UUID | None | object":
@@ -231,6 +242,7 @@ class FileStorageService:
         expires_in: int = 600,
     ) -> str:
         """Generate a presigned PUT URL for direct S3 upload."""
+        _validate_presigned_url_ttl(expires_in)
         return await self._s3_storage.generate_presigned_upload_url(
             path=path,
             content_type=content_type,
@@ -250,6 +262,7 @@ class FileStorageService:
         response_content_disposition: str | None = None,
     ) -> str:
         """Generate a presigned GET URL for direct S3 download."""
+        _validate_presigned_url_ttl(expires_in)
         return await self._s3_storage.generate_presigned_download_url(
             path=path,
             expires_in=expires_in,
