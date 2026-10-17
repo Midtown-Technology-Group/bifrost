@@ -1,12 +1,27 @@
 import type { LoaderFunctionArgs } from "react-router";
 
 import { prepareAppBundle } from "@/components/jsx-app/BundledAppShell";
-import { $api } from "@/lib/api-client";
+import { $api, authFetch } from "@/lib/api-client";
 import { queryClient } from "@/lib/queryClient";
 import { getAppEmbedCapability } from "@/lib/auth-token";
 import type { ApplicationPublic } from "@/hooks/useApplications";
 
 export const DETAIL_STALE_TIME_MS = 60_000;
+
+async function requirePlatformAdmin(signal: AbortSignal): Promise<void> {
+	const response = await authFetch("/auth/me", { signal });
+	if (!response.ok) {
+		throw new Response("Unable to verify platform administrator access", {
+			status: response.status,
+		});
+	}
+	const user = (await response.json()) as { is_superuser?: boolean };
+	if (!user.is_superuser) {
+		throw new Response("Platform administrator access is required", {
+			status: 403,
+		});
+	}
+}
 
 export function agentDetailQueryOptions(agentId: string) {
 	return $api.queryOptions(
@@ -79,8 +94,11 @@ export function applicationDetailLoader(
 		const slug = params.applicationId;
 		if (!slug) return null;
 		if (requireAppEmbedCapability && !getAppEmbedCapability(slug)) {
-			throw new Response("App embed capability required", { status: 403 });
+			throw new Response("App embed capability required", {
+				status: 403,
+			});
 		}
+		if (preview) await requirePlatformAdmin(request.signal);
 
 		const application = await queryClient.ensureQueryData(
 			applicationDetailQueryOptions(slug),

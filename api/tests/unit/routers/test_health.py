@@ -1,3 +1,4 @@
+import asyncio
 from datetime import datetime, timezone
 from types import SimpleNamespace
 
@@ -503,6 +504,36 @@ async def test_rabbitmq_check_reports_unhealthy_when_channel_fails(monkeypatch):
         "error": "RuntimeError",
     }
     assert failed_connection.close_count == 1
+
+
+@pytest.mark.asyncio
+async def test_rabbitmq_timeout_invalidates_cached_connection(monkeypatch):
+    await health.close_rabbitmq_health_connection()
+
+    class HangingRabbitMQConnection(FakeRabbitMQConnection):
+        async def channel(self):
+            await asyncio.Event().wait()
+
+    connections = [HangingRabbitMQConnection(), FakeRabbitMQConnection()]
+
+    async def connect_robust(url):
+        return connections.pop(0)
+
+    monkeypatch.setattr(health.aio_pika, "connect_robust", connect_robust)
+    monkeypatch.setattr(health, "CHECK_TIMEOUT_SECONDS", 0.01)
+
+    try:
+        _, first_component = await health.check_rabbitmq(_settings())
+        _, second_component = await health.check_rabbitmq(_settings())
+    finally:
+        await health.close_rabbitmq_health_connection()
+
+    assert first_component == {
+        "status": "unhealthy",
+        "type": "rabbitmq",
+        "error": "TimeoutError",
+    }
+    assert second_component == {"status": "healthy", "type": "rabbitmq"}
 
 
 @pytest.mark.asyncio

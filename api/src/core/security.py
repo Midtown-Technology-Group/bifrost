@@ -22,6 +22,7 @@ from pwdlib.hashers.bcrypt import BcryptHasher
 from src.config import get_settings
 
 ENGINE_USER_ID = "00000000-0000-0000-0000-000000000001"
+EMBED_DISPLAY_NAME_MAX_LENGTH = 255
 
 # Password hashing using pwdlib with bcrypt
 # This is the modern replacement for passlib, recommended by FastAPI
@@ -316,7 +317,8 @@ def create_embed_access_token(
     if resource_slug is not None:
         data[f"{embed_kind}_slug"] = resource_slug
     if display_name is not None:
-        data["name"] = display_name
+        # Embed identities flow into Execution.executed_by_name (varchar(255)).
+        data["name"] = display_name[:EMBED_DISPLAY_NAME_MAX_LENGTH]
     if verified_context:
         data["verified_context"] = verified_context
         if embed_kind == "app":
