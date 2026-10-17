@@ -8,7 +8,10 @@ from uuid import UUID
 
 import httpx
 from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared.external_access import resolve_provider_org_claim
+from shared.scope_resolver import has_scope_bypass
 from src.config import get_settings
 from src.core.database import get_db_context
 from src.core.pubsub import publish_app_published
@@ -26,6 +29,7 @@ from src.jobs.platform.base import (
 from src.models.orm.applications import Application
 from src.models.contracts.applications import ApplicationGitPublicationInput
 from src.repositories.applications import ApplicationRepository
+from src.repositories.users import UserRepository
 from src.services.application_publication import publication_controls_hash
 from src.services.application_publication_evidence import read_app_publication_runtime_pin
 from src.services.application_git_source import app_source_evidence, read_app_git_source
@@ -67,6 +71,50 @@ class ApplicationPublishPayload(BaseModel):
     protected_git: ApplicationGitPublicationInput | None = None
 
 
+def _publish_permission_revoked() -> PlatformJobFailure:
+    return PlatformJobFailure(
+        "application_publish_permission_revoked",
+        "Application publication permission was revoked.",
+    )
+
+
+async def _authorize_application_publish(
+    db: AsyncSession,
+    context: PlatformJobContext,
+    application: Application,
+) -> ApplicationRepository:
+    """Recheck the requester's current write authority before any publish effect."""
+    try:
+        actor_id = UUID(context.requested_by_user_id)
+    except (TypeError, ValueError) as exc:
+        raise _publish_permission_revoked() from exc
+
+    actor = await UserRepository(db).get_by_id(actor_id)
+    if actor is None or not actor.is_active:
+        raise _publish_permission_revoked()
+
+    is_provider_org = await resolve_provider_org_claim(db, actor)
+    if not has_scope_bypass(
+        is_platform_admin=actor.is_superuser,
+        is_provider_org=is_provider_org,
+    ):
+        raise _publish_permission_revoked()
+
+    # Recreate the enqueue-time read gate in the app's captured effective
+    # scope. Provider-org members retain their role/access-level checks;
+    # platform admins retain their established repository bypass.
+    repo = ApplicationRepository(
+        db,
+        context.organization_id,
+        user_id=actor.id,
+        is_superuser=actor.is_superuser,
+        is_external=False,
+    )
+    if await repo.get(id=application.id) is None:
+        raise _publish_permission_revoked()
+    return repo
+
+
 def _publish_percent(
     phase: str,
     current: int,
@@ -102,6 +150,7 @@ async def run_application_publish(
                     or application.app_model != "inline_v1" or application.solution_id is not None):
                 raise ValueError("Application ownership/model changed after publication was queued")
             owns_application = True
+            repo = await _authorize_application_publish(db, context, application)
             if _manifest_not_applied(intent, application.id):
                 # The reclaimed lease fences the old runner's mandatory second
                 # checkpoint, even if Main or current controls have since moved.
@@ -122,12 +171,6 @@ async def run_application_publish(
                 if controls != protected_git.expected_controls_hash:
                     raise ValueError("Application controls changed after protected Git admission")
 
-            repo = ApplicationRepository(
-                db,
-                application.organization_id,
-                user_id=context.requested_by_user_id,
-                is_superuser=True,
-            )
             last_phase: str | None = None
             last_reported = -1
 
@@ -169,6 +212,9 @@ async def run_application_publish(
                 await db.flush()
                 published = application
             else:
+                async def guard_authority() -> None:
+                    await _authorize_application_publish(db, context, application)
+
                 async def checkpoint(proof: dict) -> None:
                     nonlocal intent
                     if await publication_controls_hash(db, application.id, lock=True) != controls:
@@ -180,6 +226,7 @@ async def run_application_publish(
                     published = await repo.publish(
                         application.id, context.requested_by_email, payload.message,
                         progress_callback=report, checkpoint_callback=checkpoint,
+                        before_publication=guard_authority,
                     )
                 else:
                     # Reuse the existing encrypted repository integration only
@@ -205,6 +252,7 @@ async def run_application_publish(
                             "producer_run_attempt": protected_git.producer_run_attempt}
 
                         async def guard_source() -> None:
+                            await guard_authority()
                             await reader.verify_ci(protected_git.source_commit_sha,
                                 protected_git.ci_run_id, protected_git.ci_run_attempt)
                             if await publication_controls_hash(db, application.id, lock=True) != controls:
