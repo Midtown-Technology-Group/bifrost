@@ -27,7 +27,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from src.models.enums import ExecutionStatus
-from src.models.orm.executions import Execution, WorkflowExecutionAttempt
+from src.models.orm.executions import Execution
 from src.models.orm.organizations import Organization
 from src.models.orm.solution_deployments import SolutionDeployment
 from src.models.orm.solutions import Solution
@@ -187,24 +187,26 @@ async def _insert_claimed_attempt(
     worker_incarnation_id: UUID,
     now: datetime,
 ) -> None:
-    """Insert the selected fixture's native claim on its existing transaction."""
-    db.add(
-        WorkflowExecutionAttempt(
-            id=attempt_id,
-            execution_id=execution_id,
-            attempt_number=1,
-            claim_token=claim_token,
-            status="claimed",
-            phase="claim",
-            worker_id="synthetic-sql-fixture",
-            worker_incarnation_id=worker_incarnation_id,
-            published_at=now,
-            claimed_at=now,
-            heartbeat_at=now,
-            runtime_mode="deployment-v1",
-        )
+    """Pin native SQL to public without broadening the core's trusted path."""
+    # ORM mappings omit a schema. Under pg_catalog,pg_temp they either fail to
+    # resolve or write into a temporary shadow. Native defaults retain the
+    # authoritative policy_version/created_at; this helper commits nothing.
+    await db.execute(
+        text(
+            "INSERT INTO public.workflow_execution_attempts "
+            "(id,execution_id,attempt_number,claim_token,status,phase,worker_id,"
+            "worker_incarnation_id,published_at,claimed_at,heartbeat_at,runtime_mode) "
+            "VALUES (:attempt_id,:execution_id,1,:claim_token,'claimed','claim',"
+            "'synthetic-sql-fixture',:worker_incarnation_id,:now,:now,:now,'deployment-v1')"
+        ),
+        {
+            "attempt_id": attempt_id,
+            "execution_id": execution_id,
+            "claim_token": claim_token,
+            "worker_incarnation_id": worker_incarnation_id,
+            "now": now,
+        },
     )
-    await db.flush()
 
 
 async def _native_evidence(db: AsyncSession, seed: dict[str, UUID]) -> dict:
