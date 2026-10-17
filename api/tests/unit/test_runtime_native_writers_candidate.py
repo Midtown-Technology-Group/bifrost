@@ -76,6 +76,8 @@ def test_guard_functions_have_closed_owner_and_no_public_execution() -> None:
         == 3
     )
     assert "unqualified lifecycle snapshot isolation" in sql
+    for table in _scope()["COMMON_TABLES"]:
+        assert f"'{table}'" in sql
     assert "FOR UPDATE" not in sql and "FOR SHARE" not in sql
     assert sql.count("CREATE TRIGGER runtime_native_writer ") == 7
     assert "CREATE TRIGGER runtime_owner_birth_writer BEFORE INSERT" in sql

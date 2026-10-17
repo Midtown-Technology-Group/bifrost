@@ -165,7 +165,11 @@ def _install_actor() -> None:
                        ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relrowsecurity
                        AND c.relname IN ('executions','runtime_execution_owners',
                            'execution_attempts','execution_lifecycle_events','event_deliveries',
-                           'users','cli_sessions','forms','workflows','messages','organizations')) THEN
+                           'users','cli_sessions','forms','workflows','messages','organizations',
+                           'runtime_deployment_artifacts','runtime_sessions','runtime_workflow_live_links',
+                           'runtime_starts','runtime_report_receipts','workflow_runtime_sdk_grants',
+                           'workflow_runtime_sdk_grant_operations','runtime_admissions',
+                           'runtime_resource_settlements')) THEN
                 RAISE EXCEPTION 'unqualified lifecycle read policy' USING ERRCODE='42501';
             END IF;
             RETURN actor;
