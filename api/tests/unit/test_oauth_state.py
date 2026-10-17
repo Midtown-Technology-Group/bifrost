@@ -13,6 +13,7 @@ import pytest
 from src.services.oauth_state import (
     OAuthStateError,
     decode_state,
+    encode_connection_state,
     encode_state,
 )
 
@@ -25,6 +26,26 @@ def test_round_trip_carries_provider_and_mapping():
     payload = decode_state(token)
     assert payload["provider_id"] == str(provider_id)
     assert payload["mapping_id"] == str(mapping_id)
+    assert payload["nonce"] == nonce
+
+
+def test_connection_round_trip_carries_all_callback_bindings():
+    provider_id = uuid4()
+    user_id = uuid4()
+    organization_id = uuid4()
+    token, nonce = encode_connection_state(
+        provider_id=provider_id,
+        user_id=user_id,
+        organization_id=organization_id,
+        redirect_uri="https://app.example.test/oauth/callback/halo",
+    )
+
+    payload = decode_state(token)
+    assert payload["flow"] == "connection"
+    assert payload["provider_id"] == str(provider_id)
+    assert payload["user_id"] == str(user_id)
+    assert payload["organization_id"] == str(organization_id)
+    assert payload["redirect_uri"] == "https://app.example.test/oauth/callback/halo"
     assert payload["nonce"] == nonce
 
 
