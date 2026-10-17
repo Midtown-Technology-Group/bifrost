@@ -186,6 +186,8 @@ def test_run_direct_redacts_registered_secrets_from_results_and_errors(
     escaped_secret = 'päss"word\\line\nvalue'
     error_secret = "standalone\nerror-secret"
     offline_secret = "offline\nsecret-value"
+    collision_secret_1 = "collision-secret-alpha"
+    collision_secret_2 = "collision-secret-beta"
 
     class Client:
         user = {"id": "user-1", "email": "dev@example.test", "name": "Dev"}
@@ -204,6 +206,8 @@ def test_run_direct_redacts_registered_secrets_from_results_and_errors(
         register_secret(escaped_secret)
         register_secret("1234")
         register_secret("true")
+        register_secret(collision_secret_1)
+        register_secret(collision_secret_2)
         return {
             f"key:{escaped_secret}": escaped_secret,
             "custom": StringableResult(),
@@ -214,6 +218,9 @@ def test_run_direct_redacts_registered_secrets_from_results_and_errors(
             "enabled": True,
             "numeric_text": "1234",
             "boolean_text": "true",
+            "collision:[REDACTED]": "literal",
+            f"collision:{collision_secret_1}": "first",
+            f"collision:{collision_secret_2}": "second",
         }
 
     async def raises_secret():
@@ -243,8 +250,13 @@ def test_run_direct_redacts_registered_secrets_from_results_and_errors(
         "enabled": True,
         "numeric_text": "[REDACTED]",
         "boolean_text": "[REDACTED]",
+        "collision:[REDACTED]": "literal",
+        "collision:[REDACTED] (2)": "first",
+        "collision:[REDACTED] (3)": "second",
     }
     assert escaped_secret not in json.dumps(parsed, ensure_ascii=False)
+    assert collision_secret_1 not in result_output
+    assert collision_secret_2 not in result_output
 
     with pytest.raises(RuntimeError, match="No execution context found"):
         get_execution_context()

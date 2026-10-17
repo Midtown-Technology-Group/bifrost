@@ -1612,7 +1612,16 @@ def _redact_direct_output(value: Any, execution_context: Any | None) -> Any:
         if isinstance(item, list):
             return [redact(child) for child in item]
         if isinstance(item, dict):
-            return {redact_text(key): redact(child) for key, child in item.items()}
+            redacted_items: dict[str, Any] = {}
+            for key, child in item.items():
+                redacted_key = redact_text(key)
+                unique_key = redacted_key
+                suffix = 2
+                while unique_key in redacted_items:
+                    unique_key = f"{redacted_key} ({suffix})"
+                    suffix += 1
+                redacted_items[unique_key] = redact(child)
+            return redacted_items
         return item
 
     return redact(normalized)
