@@ -9,7 +9,12 @@
  *  - Multi-select + bulk unassign drops them back to empty
  */
 
-import { test, expect, type AuthedApi } from "./fixtures/api-fixture";
+import {
+	disableAndDeleteUser,
+	test,
+	expect,
+	type AuthedApi,
+} from "./fixtures/api-fixture";
 
 let SUFFIX: string;
 let ROLE_NAME: string;
@@ -168,11 +173,7 @@ async def ${WORKFLOW_FN}(summary: str):
 			),
 			"delete role form workflow source",
 		);
-		if (userId)
-			await expectDeleted(
-				await api.delete(`/api/users/${userId}`),
-				"delete role user",
-			);
+		if (userId) await disableAndDeleteUser(api, userId);
 		if (roleId)
 			await expectDeleted(
 				await api.delete(`/api/roles/${roleId}`),

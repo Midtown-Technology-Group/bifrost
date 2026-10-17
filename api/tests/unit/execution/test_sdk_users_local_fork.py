@@ -134,6 +134,7 @@ class TestForkedUsersSocket:
             f"_empty = await users.list(org_id={no_match_scope!r})",
             "_updated = await users.update(_user_id, name='Fork Renamed')",
             "_missing = await users.get('ghost-nobody@example.com')",
+            "_disabled = await users.update(_user_id, is_active=False)",
             "_deleted = await users.delete(_user_id)",
             "_gone = await users.get(_user_id)",
             "result = {",
@@ -146,6 +147,7 @@ class TestForkedUsersSocket:
             "    'empty_scope_total': len(_empty),",
             "    'updated_name': _updated.name,",
             "    'missing': _missing,",
+            "    'disabled': not _disabled.is_active,",
             "    'deleted': _deleted,",
             "    'gone': _gone,",
             "    'had_db_url': (",
@@ -192,6 +194,7 @@ class TestForkedUsersSocket:
             assert result["empty_scope_total"] == 0, result
             assert result["updated_name"] == "Fork Renamed", result
             assert result["missing"] is None, result
+            assert result["disabled"] is True, result
             assert result["deleted"] is True, result
             assert result["gone"] is None, result
             assert result["had_db_url"] is False, result
