@@ -3,6 +3,7 @@
 import pytest
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, AsyncMock, patch
+from uuid import uuid4
 
 
 class TestOAuthRefreshClientCredentials:
@@ -171,7 +172,13 @@ class TestOAuthRefreshClientCredentials:
         from src.routers.oauth_connections import oauth_callback
 
         provider = MagicMock()
+        provider.id = uuid4()
         provider.provider_name = "Microsoft CSP"
+        provider.display_name = "Microsoft CSP"
+        provider.integration_id = uuid4()
+        provider.organization_id = None
+        provider.entity_id_source = None
+        provider.provider_metadata = {}
         provider.token_url = "https://login.microsoftonline.com/common/oauth2/v2.0/token"
         provider.client_id = "test-client-id"
         provider.encrypted_client_secret = b"encrypted-secret"
@@ -184,6 +191,7 @@ class TestOAuthRefreshClientCredentials:
 
         ctx = MagicMock()
         ctx.db = AsyncMock()
+        ctx.db.get = AsyncMock(return_value=provider)
         ctx.org_id = None
 
         request = OAuthCallbackRequest(
@@ -194,8 +202,19 @@ class TestOAuthRefreshClientCredentials:
         )
 
         with (
-            patch("src.repositories.oauth.OAuthProviderRepository.get_by_connection_name", new=AsyncMock(return_value=provider)),
             patch("src.repositories.oauth.OAuthProviderRepository.store_token", new=AsyncMock()),
+            patch(
+                "src.routers.oauth_connections.decode_state",
+                return_value={
+                    "provider_id": str(provider.id),
+                    "mapping_id": None,
+                    "nonce": "nonce-1",
+                },
+            ),
+            patch(
+                "src.routers.oauth_connections.consume_nonce",
+                new=AsyncMock(return_value=True),
+            ),
             patch("src.routers.oauth_connections.get_url_resolution_defaults", new=AsyncMock(return_value={})),
             patch("src.routers.oauth_connections.resolve_url_template", return_value=provider.token_url),
             patch("src.services.oauth_provider.OAuthProviderClient.exchange_code_for_token", new=AsyncMock(return_value=(
@@ -230,7 +249,12 @@ class TestOAuthRefreshClientCredentials:
         from src.routers.oauth_connections import oauth_callback
 
         provider = MagicMock()
+        provider.id = uuid4()
         provider.provider_name = "NinjaOne"
+        provider.display_name = "NinjaOne"
+        provider.integration_id = uuid4()
+        provider.organization_id = None
+        provider.entity_id_source = None
         provider.provider_metadata = {"omit_token_exchange_scope": True}
         provider.token_url = "https://app.ninjarmm.com/oauth/token"
         provider.client_id = "test-client-id"
@@ -240,6 +264,7 @@ class TestOAuthRefreshClientCredentials:
 
         ctx = MagicMock()
         ctx.db = AsyncMock()
+        ctx.db.get = AsyncMock(return_value=provider)
         ctx.org_id = None
 
         request = OAuthCallbackRequest(
@@ -250,8 +275,19 @@ class TestOAuthRefreshClientCredentials:
         )
 
         with (
-            patch("src.repositories.oauth.OAuthProviderRepository.get_by_connection_name", new=AsyncMock(return_value=provider)),
             patch("src.repositories.oauth.OAuthProviderRepository.store_token", new=AsyncMock()),
+            patch(
+                "src.routers.oauth_connections.decode_state",
+                return_value={
+                    "provider_id": str(provider.id),
+                    "mapping_id": None,
+                    "nonce": "nonce-1",
+                },
+            ),
+            patch(
+                "src.routers.oauth_connections.consume_nonce",
+                new=AsyncMock(return_value=True),
+            ),
             patch("src.routers.oauth_connections.get_url_resolution_defaults", new=AsyncMock(return_value={})),
             patch("src.routers.oauth_connections.resolve_url_template", return_value=provider.token_url),
             patch("src.services.oauth_provider.OAuthProviderClient.exchange_code_for_token", new=AsyncMock(return_value=(

@@ -1,12 +1,13 @@
-"""Tamper-proof ``state`` parameter for per-mapping integration OAuth.
+"""Tamper-proof ``state`` parameter for integration OAuth.
 
 Thin wrapper over :mod:`src.services.oauth_state_core` that pins the audience
 to integration OAuth and validates the payload shape (``provider_id``,
 ``mapping_id``).
 
-The per-mapping authorize endpoint encodes; the callback decodes and
-verifies the nonce hasn't been seen before. Replay protection is critical
-because the same state can otherwise be replayed for the full TTL window.
+Authorization endpoints encode the exact provider and optional mapping; the
+callback decodes and verifies that the nonce has not been seen before. Replay
+protection is critical because the same state can otherwise be replayed for
+the full TTL window.
 """
 
 from __future__ import annotations
@@ -34,26 +35,26 @@ OAuthStateError = StateDecodeError
 def encode_state(
     *,
     provider_id: UUID,
-    mapping_id: UUID,
+    mapping_id: UUID | None = None,
 ) -> tuple[str, str]:
-    """Encode a per-mapping OAuth ``state`` token and return ``(token, nonce)``.
+    """Encode an integration OAuth ``state`` token and return ``(token, nonce)``.
 
     The caller is expected to record the nonce via :func:`remember_nonce`
     so the callback can reject replays.
     """
     claims: dict[str, Any] = {
         "provider_id": str(provider_id),
-        "mapping_id": str(mapping_id),
+        "mapping_id": str(mapping_id) if mapping_id is not None else None,
     }
     return encode_state_jwt(audience=_STATE_AUDIENCE, claims=claims)
 
 
 def decode_state(token: str) -> dict[str, Any]:
-    """Verify the per-mapping ``state`` JWT and return its payload.
+    """Verify an integration OAuth ``state`` JWT and return its payload.
 
     Raises:
         OAuthStateError: any signature/expiry/format issue, or missing
-        per-mapping fields.
+        integration OAuth fields.
     """
     payload = decode_state_jwt(token, audience=_STATE_AUDIENCE)
 
@@ -65,12 +66,12 @@ def decode_state(token: str) -> dict[str, Any]:
 
 
 async def remember_nonce(nonce: str) -> None:
-    """Persist a per-mapping state nonce in Redis. Best-effort."""
+    """Persist an integration OAuth state nonce in Redis. Best-effort."""
     await _remember_nonce(nonce, audience=_STATE_AUDIENCE)
 
 
 async def consume_nonce(nonce: str) -> bool:
-    """Atomically check-and-delete a per-mapping state nonce. See core docstring."""
+    """Atomically check-and-delete an OAuth state nonce. See core docstring."""
     return await _consume_nonce(nonce, audience=_STATE_AUDIENCE)
 
 
