@@ -16,6 +16,7 @@ from pydantic import Field
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy.orm import load_only, raiseload, selectinload
 
 from src.core.runtime_sdk_credentials import (
     GRANT_FIELDS,
@@ -49,7 +50,10 @@ from src.models.orm.runtime_sdk_grants import (
     WorkflowRuntimeSDKGrant,
     WorkflowRuntimeSDKGrantOperation,
 )
-from src.models.orm.solution_deployments import SolutionDeployment
+from src.models.orm.solution_deployments import (
+    SolutionDeployment,
+    SolutionDeploymentDependency,
+)
 from src.models.orm.solutions import Solution
 from src.services.solutions.deployment_manifest import validate_runtime_closure
 from src.services.solutions.deployment_runtime import (
@@ -126,22 +130,80 @@ async def _read_work(
     effective_org: UUID | None,
     lock: bool = False,
 ) -> tuple[WorkflowExecutionAttempt, Execution]:
-    statement = select(WorkflowExecutionAttempt).where(
-        WorkflowExecutionAttempt.id == attempt_id
-    )
+    # This private reader must not acquire unrelated payload/identity columns
+    # or implicit Solution connection/file-location reads. Keep the existing
+    # closure checks and dependency edges; unexpected deferred reads fail closed.
+    statement = select(WorkflowExecutionAttempt).options(
+        load_only(
+            WorkflowExecutionAttempt.id,
+            WorkflowExecutionAttempt.execution_id,
+            WorkflowExecutionAttempt.attempt_number,
+            WorkflowExecutionAttempt.claim_token,
+            WorkflowExecutionAttempt.status,
+            WorkflowExecutionAttempt.phase,
+            WorkflowExecutionAttempt.worker_incarnation_id,
+            WorkflowExecutionAttempt.claimed_at,
+            WorkflowExecutionAttempt.started_at,
+            WorkflowExecutionAttempt.heartbeat_at,
+            WorkflowExecutionAttempt.completed_at,
+            raiseload=True,
+        ),
+        raiseload("*"),
+    ).where(WorkflowExecutionAttempt.id == attempt_id)
     if lock:
         # Serialize provisioning for one attempt, not any future vendor effect.
         statement = statement.with_for_update().execution_options(
             populate_existing=True
         )
     attempt = await db.scalar(statement)
-    execution_statement = select(Execution).where(Execution.id == execution_id)
-    deployment_statement = select(SolutionDeployment).where(
-        SolutionDeployment.id == source.source_id
-    )
-    solution_statement = select(Solution).where(
-        Solution.id == source.solution_install_id
-    )
+    execution_statement = select(Execution).options(
+        load_only(
+            Execution.id,
+            Execution.workflow_id,
+            Execution.executed_by,
+            Execution.organization_id,
+            Execution.runtime_mode,
+            Execution.solution_deployment_id,
+            Execution.runtime_evidence,
+            Execution.runtime_evidence_hash,
+            raiseload=True,
+        ),
+        raiseload("*"),
+    ).where(Execution.id == execution_id)
+    deployment_statement = select(SolutionDeployment).options(
+        load_only(
+            SolutionDeployment.id,
+            SolutionDeployment.organization_id,
+            SolutionDeployment.solution_id,
+            SolutionDeployment.state,
+            SolutionDeployment.bundle_hash,
+            SolutionDeployment.compiled_manifest,
+            SolutionDeployment.compiled_manifest_hash,
+            SolutionDeployment.resolution_map,
+            SolutionDeployment.resolution_map_hash,
+            SolutionDeployment.runtime_storage_prefix,
+            SolutionDeployment.git_commit_sha,
+            raiseload=True,
+        ),
+        raiseload("*"),
+        selectinload(SolutionDeployment.dependencies).load_only(
+            SolutionDeploymentDependency.deployment_id,
+            SolutionDeploymentDependency.dependency_solution_id,
+            SolutionDeploymentDependency.dependency_deployment_id,
+            SolutionDeploymentDependency.resolved_bundle_hash,
+            raiseload=True,
+        ),
+    ).where(SolutionDeployment.id == source.source_id)
+    solution_statement = select(Solution).options(
+        load_only(
+            Solution.id,
+            Solution.organization_id,
+            Solution.status,
+            Solution.allow_outbound_access,
+            raiseload=True,
+        ),
+        raiseload("*"),
+    ).where(Solution.id == source.solution_install_id)
     if lock:
         # Existing terminal writers use both execution-first and attempt-first
         # orders. Never wait while holding the attempt for a later shared lock;
@@ -553,7 +615,19 @@ async def _validate_ingress_snapshot(
         db, GrantReference(grant_id=UUID(claims.sub), grant_digest=claims.grant_digest)
     )
     snapshot = authority.snapshot
-    user = await db.get(User, snapshot.caller_user_id)
+    user = await db.scalar(
+        select(User).options(
+            load_only(
+                User.id,
+                User.organization_id,
+                User.is_active,
+                User.is_superuser,
+                User.is_external,
+                raiseload=True,
+            ),
+            raiseload("*"),
+        ).where(User.id == snapshot.caller_user_id)
+    )
     organization_ids = {
         value
         for value in (
@@ -567,7 +641,15 @@ async def _validate_ingress_snapshot(
             row.id: row
             for row in (
                 await db.scalars(
-                    select(Organization).where(Organization.id.in_(organization_ids))
+                    select(Organization).options(
+                        load_only(
+                            Organization.id,
+                            Organization.is_active,
+                            Organization.is_provider,
+                            raiseload=True,
+                        ),
+                        raiseload("*"),
+                    ).where(Organization.id.in_(organization_ids))
                 )
             ).all()
         }
@@ -585,7 +667,19 @@ async def _validate_ingress_snapshot(
             )
         ).all()
     )
-    attempt = await db.get(WorkflowExecutionAttempt, snapshot.workflow_attempt_id)
+    # _load's ORM locals need not remain in the weak identity map. Bound this
+    # fresh lease read too; never rely on incidental cache retention for scope.
+    attempt = await db.scalar(
+        select(WorkflowExecutionAttempt).options(
+            load_only(
+                WorkflowExecutionAttempt.id,
+                WorkflowExecutionAttempt.heartbeat_at,
+                WorkflowExecutionAttempt.claimed_at,
+                raiseload=True,
+            ),
+            raiseload("*"),
+        ).where(WorkflowExecutionAttempt.id == snapshot.workflow_attempt_id)
+    )
     admitted_at = _now(None)
 
     _check_token_window(snapshot, claims)
