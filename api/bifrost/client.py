@@ -8,7 +8,9 @@ Supports two modes:
 """
 
 import asyncio
+import hashlib
 import logging
+import secrets
 import sys
 import threading
 import time
@@ -226,12 +228,72 @@ _thread_local = threading.local()
 load_allowed_dotenv()
 
 class _ConnectionRefreshCoordinator:
-    """Loop-agnostic single-flight state for one normalized API URL."""
+    """Loop-agnostic single-flight state for one credential generation."""
 
     def __init__(self) -> None:
         self.lock = threading.Lock()
+        self.stale_access_fingerprint: bytes | None = None
+        self.credential_source: str | None = None
         self.latest_access_token: str | None = None
-        self.latest_refresh_token: str | None = None
+        self.latest_access_fingerprint: bytes | None = None
+        self.latest_refresh_fingerprint: bytes | None = None
+
+    def clear_rotation(self) -> None:
+        self.stale_access_fingerprint = None
+        self.credential_source = None
+        self.latest_access_token = None
+        self.latest_access_fingerprint = None
+        self.latest_refresh_fingerprint = None
+
+    def record_rotation(
+        self,
+        *,
+        stale_access_token: str,
+        credential_source: str,
+        access_token: str,
+        refresh_token: str,
+    ) -> None:
+        self.stale_access_fingerprint = _token_fingerprint(stale_access_token)
+        self.credential_source = credential_source
+        self.latest_access_token = access_token
+        self.latest_access_fingerprint = _token_fingerprint(access_token)
+        self.latest_refresh_fingerprint = _token_fingerprint(refresh_token)
+
+    def matches_rotation(
+        self,
+        *,
+        observed_access_token: str,
+        credential_source: str,
+        stored_access_token: str,
+        stored_refresh_token: str,
+    ) -> bool:
+        if (
+            self.stale_access_fingerprint is None
+            or self.credential_source != credential_source
+            or self.latest_access_token is None
+            or self.latest_access_fingerprint is None
+            or self.latest_refresh_fingerprint is None
+        ):
+            return False
+        return (
+            secrets.compare_digest(
+                self.stale_access_fingerprint,
+                _token_fingerprint(observed_access_token),
+            )
+            and secrets.compare_digest(
+                self.latest_access_fingerprint,
+                _token_fingerprint(stored_access_token),
+            )
+            and secrets.compare_digest(
+                self.latest_refresh_fingerprint,
+                _token_fingerprint(stored_refresh_token),
+            )
+        )
+
+
+def _token_fingerprint(token: str) -> bytes:
+    """Return a non-reversible in-process credential-generation identifier."""
+    return hashlib.sha256(token.encode("utf-8")).digest()
 
 
 _refresh_coordinators: dict[str, _ConnectionRefreshCoordinator] = {}
@@ -284,6 +346,7 @@ async def refresh_connection_access_token(
     try:
         resolved = resolve_credentials(normalized_url)
         if resolved is None:
+            coordinator.clear_rotation()
             logger.warning(
                 "Bifrost token refresh failed for %s: no credentials resolved",
                 normalized_url,
@@ -296,22 +359,29 @@ async def refresh_connection_access_token(
         stored_refresh_token = creds.refresh_token
         process_backed = resolved.source == "process"
 
-        if coordinator.latest_access_token is not None:
-            if observed_access_token != coordinator.latest_access_token:
-                return coordinator.latest_access_token
-            if (
-                not process_backed
-                and stored_access_token != coordinator.latest_access_token
-            ):
-                coordinator.latest_access_token = stored_access_token
-                coordinator.latest_refresh_token = stored_refresh_token
-                return stored_access_token
-        elif observed_access_token is not None and stored_access_token != observed_access_token:
-            coordinator.latest_access_token = stored_access_token
-            coordinator.latest_refresh_token = stored_refresh_token
-            return stored_access_token
+        observed_access_token = observed_access_token or stored_access_token
+        if coordinator.matches_rotation(
+            observed_access_token=observed_access_token,
+            credential_source=resolved.source,
+            stored_access_token=stored_access_token,
+            stored_refresh_token=stored_refresh_token,
+        ):
+            return coordinator.latest_access_token
 
-        refresh_token = coordinator.latest_refresh_token or stored_refresh_token
+        # A different stored access token is not proof that another caller
+        # refreshed this same credential generation. It may be a newly selected
+        # user on the same API URL, so never install it into the stale client.
+        coordinator.clear_rotation()
+        if not secrets.compare_digest(stored_access_token, observed_access_token):
+            logger.warning(
+                "Bifrost token refresh refused for %s using %s credentials: "
+                "credential generation changed",
+                normalized_url,
+                credential_source,
+            )
+            return None
+
+        refresh_token = stored_refresh_token
 
         local_socket = _engine_socket_path if process_backed else None
         transport_kwargs = (
@@ -356,8 +426,13 @@ async def refresh_connection_access_token(
                 normalized_url,
                 credential_source,
             )
-        coordinator.latest_access_token = access_token
-        coordinator.latest_refresh_token = new_refresh_token
+            return None
+        coordinator.record_rotation(
+            stale_access_token=observed_access_token,
+            credential_source=resolved.source,
+            access_token=access_token,
+            refresh_token=new_refresh_token,
+        )
         return access_token
     except Exception as exc:
         logger.warning(
