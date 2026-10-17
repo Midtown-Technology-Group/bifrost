@@ -28,7 +28,6 @@ def clients(monkeypatch):
         stream = SimpleNamespace(
             readall=AsyncMock(return_value=b"content"),
             chunks=chunks,
-            close=AsyncMock(),
         )
 
         async def blobs(**_kwargs):

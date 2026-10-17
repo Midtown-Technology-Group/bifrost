@@ -72,17 +72,11 @@ def _owned_operation(
 class _StreamingBody:
     """Read an object in caller-sized pieces without buffering it up front."""
 
-    def __init__(
-        self,
-        chunks: AsyncIterator[bytes],
-        *,
-        close_stream: Callable[[], Awaitable[None]] | None = None,
-    ):
+    def __init__(self, chunks: AsyncIterator[bytes]):
         self._iterator = chunks.__aiter__()
         self._buffer = bytearray()
         self._exhausted = False
         self._closed = False
-        self._close_stream = close_stream
         self._close_owner: Callable[[], Awaitable[None]] | None = None
 
     def bind_owner(self, close_owner: Callable[[], Awaitable[None]]) -> None:
@@ -98,17 +92,15 @@ class _StreamingBody:
         if self._closed:
             return
         self._closed = True
-        aclose = getattr(self._iterator, "aclose", None)
-        if aclose is not None:
-            await aclose()
-        close_stream = self._close_stream
-        self._close_stream = None
-        if close_stream is not None:
-            await close_stream()
-        close_owner = self._close_owner
-        self._close_owner = None
-        if close_owner is not None:
-            await close_owner()
+        try:
+            aclose = getattr(self._iterator, "aclose", None)
+            if aclose is not None:
+                await aclose()
+        finally:
+            close_owner = self._close_owner
+            self._close_owner = None
+            if close_owner is not None:
+                await close_owner()
 
     async def _pull(self) -> None:
         if self._exhausted:
@@ -122,6 +114,13 @@ class _StreamingBody:
             self._buffer.extend(chunk)
 
     async def read(self, size: int = -1) -> bytes:
+        try:
+            return await self._read(size)
+        except Exception:
+            await self.close()
+            raise
+
+    async def _read(self, size: int) -> bytes:
         if size == 0 or (self._closed and not self._buffer):
             return b""
         if size < 0:
@@ -469,7 +468,7 @@ class AzureBlobStorageClient:
                     yield chunk
 
         return {
-            "Body": _StreamingBody(chunks(), close_stream=stream.close),
+            "Body": _StreamingBody(chunks()),
             "ETag": canonical_etag(getattr(getattr(stream, "properties", None), "etag", None))
             or "",
         }

@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock
 from urllib.parse import parse_qs, urlparse
 
 import pytest
+from azure.storage.blob.aio._download_async import StorageStreamDownloader
 
 from src.services.file_storage import azure_blob_client as azure_blob_client_module
 from src.services.file_storage.azure_blob_client import (
@@ -438,6 +439,125 @@ async def test_get_object_bounds_azure_download_before_buffering(monkeypatch) ->
     for invalid in ["bytes=7-0", "bytes=0-", "bytes=0-7,10-20", "other"]:
         with pytest.raises(ValueError, match="bounded inclusive"):
             await client.get_object(Bucket="ignored", Key="resource.json", Range=invalid)
+
+
+class _PinnedSdkDownloader:
+    """azure-storage-blob 12.29.0 StorageStreamDownloader: chunks/read/readall/readinto, no close."""
+
+    def __init__(self, pieces: list[bytes], *, fail_at: int | None = None):
+        self.properties = SimpleNamespace(etag='"etag-1"')
+        self._pieces = pieces
+        self._fail_at = fail_at
+
+    def chunks(self) -> AsyncIterator[bytes]:
+        pieces = self._pieces
+        fail_at = self._fail_at
+
+        async def iterate() -> AsyncIterator[bytes]:
+            for index, piece in enumerate(pieces):
+                if fail_at is not None and index == fail_at:
+                    raise RuntimeError("chunk failed")
+                yield piece
+
+        return iterate()
+
+    async def read(self, size: int = -1) -> bytes:
+        raise AssertionError("production reads use chunks()")
+
+    async def readall(self) -> bytes:
+        raise AssertionError("production reads use chunks()")
+
+    async def readinto(self, stream: object) -> int:
+        del stream
+        raise AssertionError("production reads use chunks()")
+
+
+def _patch_pinned_download(monkeypatch, downloader: _PinnedSdkDownloader):
+    opened: list[tuple[SimpleNamespace, SimpleNamespace]] = []
+
+    async def ensure(client: AzureBlobStorageClient) -> None:
+        if client._container_client is not None:
+            return
+        service = SimpleNamespace(close=AsyncMock())
+        credential = SimpleNamespace(close=AsyncMock())
+        client._service_client = service
+        client._credential = credential
+        client._container_client = SimpleNamespace(
+            download_blob=AsyncMock(return_value=downloader)
+        )
+        opened.append((service, credential))
+
+    monkeypatch.setattr(AzureBlobStorageClient, "_ensure_client", ensure)
+    return opened
+
+
+def _assert_owner_closed(opened) -> None:
+    assert opened
+    service, credential = opened[0]
+    service.close.assert_awaited_once()
+    credential.close.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_read_all_completes_against_sdk_downloader_without_close(monkeypatch) -> None:
+    downloader = _PinnedSdkDownloader([b"blob", b"-bytes"])
+    assert not hasattr(StorageStreamDownloader, "close")
+    assert not hasattr(downloader, "close")
+    opened = _patch_pinned_download(monkeypatch, downloader)
+
+    response = await AzureBlobStorageClient(_settings()).get_object(
+        Bucket="files", Key="docs/readme.txt"
+    )
+
+    assert await response["Body"].read() == b"blob-bytes"
+    assert response["ETag"] == "etag-1"
+    _assert_owner_closed(opened)
+
+
+@pytest.mark.asyncio
+async def test_bounded_reads_reach_eof_against_sdk_downloader_without_close(monkeypatch) -> None:
+    downloader = _PinnedSdkDownloader([b"blob", b"-bytes"])
+    assert not hasattr(downloader, "close")
+    opened = _patch_pinned_download(monkeypatch, downloader)
+    response = await AzureBlobStorageClient(_settings()).get_object(
+        Bucket="files", Key="docs/readme.txt"
+    )
+
+    body = response["Body"]
+    assert await body.read(4) == b"blob"
+    assert await body.read(4) == b"-byt"
+    assert await body.read(4) == b"es"
+    assert await body.read(4) == b""
+    _assert_owner_closed(opened)
+
+
+@pytest.mark.asyncio
+async def test_partial_close_releases_owner_against_sdk_downloader(monkeypatch) -> None:
+    downloader = _PinnedSdkDownloader([b"blob", b"-bytes"])
+    assert not hasattr(downloader, "close")
+    opened = _patch_pinned_download(monkeypatch, downloader)
+    response = await AzureBlobStorageClient(_settings()).get_object(
+        Bucket="files", Key="docs/readme.txt"
+    )
+
+    body = response["Body"]
+    assert await body.read(4) == b"blob"
+    await body.close()
+    _assert_owner_closed(opened)
+
+
+@pytest.mark.asyncio
+async def test_failed_sdk_chunk_still_closes_owner(monkeypatch) -> None:
+    downloader = _PinnedSdkDownloader([b"blob", b"-bytes"], fail_at=1)
+    assert not hasattr(downloader, "close")
+    opened = _patch_pinned_download(monkeypatch, downloader)
+    response = await AzureBlobStorageClient(_settings()).get_object(
+        Bucket="files", Key="docs/readme.txt"
+    )
+
+    with pytest.raises(RuntimeError, match="chunk failed"):
+        await response["Body"].read()
+    _assert_owner_closed(opened)
 
 
 @pytest.mark.asyncio
