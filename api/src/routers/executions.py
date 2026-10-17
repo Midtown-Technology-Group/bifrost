@@ -50,6 +50,7 @@ from src.core.redis_client import get_redis_client
 from src.models import Execution as ExecutionModel
 from src.models import ExecutionLog as ExecutionLogORM
 from src.repositories.execution_logs import ExecutionLogRepository, decode_log_cursor
+from src.repositories.executions import execution_workflow_id
 from src.services.execution.retry_policy import snapshot_retry_policy
 
 logger = logging.getLogger(__name__)
@@ -262,7 +263,13 @@ class ExecutionRepository:
 
         # Filters
         if workflow_id:
-            query = query.where(ExecutionModel.workflow_id == workflow_id)
+            query = query.where(
+                ExecutionModel.workflow_id == workflow_id,
+                # Local executions have source-local identity only. Historical
+                # name-only backfills must not make them appear to belong to a
+                # database workflow, even when include-local is requested.
+                ExecutionModel.is_local_execution == False,  # noqa: E712
+            )
         elif workflow_name:
             query = query.where(ExecutionModel.workflow_name == workflow_name)
 
@@ -521,7 +528,7 @@ class ExecutionRepository:
         return WorkflowExecution(
             execution_id=str(execution.id),
             workflow_name=execution.workflow_name,
-            workflow_id=str(execution.workflow_id) if execution.workflow_id else None,
+            workflow_id=execution_workflow_id(execution),
             org_id=str(execution.organization_id) if execution.organization_id else None,
             org_name=org_name,
             form_id=str(execution.form_id) if execution.form_id else None,
@@ -798,7 +805,7 @@ class ExecutionRepository:
         return ExecutionSummary(
             execution_id=str(execution.id),
             workflow_name=execution.workflow_name,
-            workflow_id=str(execution.workflow_id) if execution.workflow_id else None,
+            workflow_id=execution_workflow_id(execution),
             org_id=str(execution.organization_id) if execution.organization_id else None,
             org_name=ExecutionRepository._org_name(execution),
             form_id=str(execution.form_id) if execution.form_id else None,
@@ -834,7 +841,7 @@ class ExecutionRepository:
         return WorkflowExecution(
             execution_id=str(execution.id),
             workflow_name=execution.workflow_name,
-            workflow_id=str(execution.workflow_id) if execution.workflow_id else None,
+            workflow_id=execution_workflow_id(execution),
             org_id=str(execution.organization_id) if execution.organization_id else None,
             org_name=self._org_name(execution),
             form_id=str(execution.form_id) if execution.form_id else None,
