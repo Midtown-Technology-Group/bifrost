@@ -20,26 +20,22 @@ import json
 import logging
 import secrets
 from datetime import UTC, datetime
-from typing import Annotated, Awaitable, cast
-from urllib.parse import quote, urlencode, urlparse
+from typing import Awaitable, cast
+from urllib.parse import urlencode, urlparse
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
-from fastapi.responses import RedirectResponse
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel, EmailStr
-from src.services.operation_catalog import operation_route
+
 from shared.external_access import (
     resolve_external_claim,
     resolve_provider_org_claim,
 )
-
 from src.config import get_settings
 from src.core.auth import (
     CurrentActiveUser,
     CurrentSuperuser,
-    UserPrincipal,
-    get_current_user_optional,
     renew_engine_access_token,
 )
 from src.core.cache import get_shared_redis
@@ -67,6 +63,9 @@ from src.core.security import (
 )
 from src.models import (
     AuthStatusResponse,
+    CliNativeAuthAuthorizeRequest,
+    CliNativeAuthAuthorizeResponse,
+    CliNativeAuthPendingResponse,
     CliNativeAuthStartRequest,
     CliNativeAuthStartResponse,
     CliNativeAuthTokenRequest,
@@ -89,6 +88,7 @@ from src.models.contracts.passkeys import (
 from src.repositories.users import UserRepository
 from src.services.audit import emit_audit
 from src.services.audit_context import ActorContext, current_actor
+from src.services.operation_catalog import operation_route
 from src.services.user_provisioning import ensure_user_provisioned, get_user_roles
 
 logger = logging.getLogger(__name__)
@@ -1532,14 +1532,10 @@ def _validate_cli_redirect_uri(redirect_uri: str) -> None:
         )
 
 
-def _cli_redirect_with_params(redirect_uri: str, params: str) -> RedirectResponse:
+def _cli_redirect_url_with_params(redirect_uri: str, params: str) -> str:
     _validate_cli_redirect_uri(redirect_uri)
     separator = "&" if "?" in redirect_uri else "?"
-    # The stored redirect URI is revalidated immediately above and may only target localhost.
-    # lgtm[py/url-redirection]
-    return RedirectResponse(
-        url=f"{redirect_uri}{separator}{params}"
-    )  # codeql[py/url-redirection]
+    return f"{redirect_uri}{separator}{params}"
 
 
 @router.post("/cli/start", response_model=CliNativeAuthStartResponse, **operation_route("auth.start_cli_native_auth"))
@@ -1583,7 +1579,7 @@ async def start_cli_native_auth(
         json.dumps(cli_auth_data),
     )
 
-    authorization_url = "/auth/cli/authorize?" + urlencode(
+    authorization_url = "/cli/authorize?" + urlencode(
         {"transaction_id": transaction_id}
     )
     logger.info(
@@ -1598,24 +1594,66 @@ async def start_cli_native_auth(
     )
 
 
-@router.get("/cli/authorize", **operation_route("auth.authorize_cli_native_auth"))
-async def authorize_cli_native_auth(
-    request: Request,
+@router.get(
+    "/cli/authorize",
+    response_model=CliNativeAuthPendingResponse,
+    **operation_route("auth.inspect_cli_native_auth"),
+)
+async def inspect_cli_native_auth(
     transaction_id: str,
-    current_user: Annotated[UserPrincipal | None, Depends(get_current_user_optional)],
-    db: DbSession,
-) -> RedirectResponse:
+    _current_user: CurrentActiveUser,
+) -> CliNativeAuthPendingResponse:
     """
-    Authorize native CLI OAuth using the current browser session.
+    Inspect a pending native CLI request without authorizing it.
 
-    Unauthenticated browser users are sent through the normal login page and
-    returned here after password/MFA/passkey auth completes.
+    The browser consent page calls this after authentication so it can display
+    the exact localhost callback before asking the user to approve access.
     """
-    if current_user is None:
-        return_to = request.url.path
-        if request.url.query:
-            return_to = f"{return_to}?{request.url.query}"
-        return RedirectResponse(url=f"/login?returnTo={quote(return_to, safe='')}")
+    r = await get_shared_redis()
+    cli_auth_key = _cli_native_auth_key(transaction_id)
+    raw = await r.get(cli_auth_key)
+    if raw is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Invalid or expired CLI authorization request",
+        )
+    auth_data = json.loads(raw)
+    if auth_data.get("status") != "pending":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="CLI authorization request is no longer pending",
+        )
+    redirect_uri = auth_data.get("redirect_uri")
+    if not isinstance(redirect_uri, str):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="CLI authorization request is invalid",
+        )
+    _validate_cli_redirect_uri(redirect_uri)
+    expires_in = await r.ttl(cli_auth_key)
+    if expires_in <= 0:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Invalid or expired CLI authorization request",
+        )
+    return CliNativeAuthPendingResponse(
+        transaction_id=transaction_id,
+        redirect_uri=redirect_uri,
+        expires_in=expires_in,
+    )
+
+
+@router.post(
+    "/cli/authorize",
+    response_model=CliNativeAuthAuthorizeResponse,
+    **operation_route("auth.authorize_cli_native_auth"),
+)
+async def authorize_cli_native_auth(
+    authorize_request: CliNativeAuthAuthorizeRequest,
+    current_user: CurrentActiveUser,
+    db: DbSession,
+) -> CliNativeAuthAuthorizeResponse:
+    """Authorize a pending native CLI request after explicit browser consent."""
 
     user_repo = UserRepository(db)
     user = await user_repo.get_by_id(current_user.user_id)
@@ -1632,7 +1670,7 @@ async def authorize_cli_native_auth(
         r.eval(
             _CLI_NATIVE_AUTHORIZE_IF_PENDING,
             1,
-            _cli_native_auth_key(transaction_id),
+            _cli_native_auth_key(authorize_request.transaction_id),
             str(current_user.user_id),
             _sha256_urlsafe(code),
             str(TTL_CLI_NATIVE_AUTH),
@@ -1655,18 +1693,20 @@ async def authorize_cli_native_auth(
         {
             "code": code,
             "state": auth_result["state"],
-            "transaction_id": transaction_id,
+            "transaction_id": authorize_request.transaction_id,
         }
     )
     logger.info(
         f"CLI native OAuth authorized by user: {current_user.email}",
         extra={
             "user_id": str(current_user.user_id),
-            "transaction_id": log_safe(transaction_id[:8]) + "...",
+            "transaction_id": log_safe(authorize_request.transaction_id[:8]) + "...",
         },
     )
 
-    return _cli_redirect_with_params(redirect_uri, params)
+    return CliNativeAuthAuthorizeResponse(
+        redirect_url=_cli_redirect_url_with_params(redirect_uri, params)
+    )
 
 
 @router.post("/cli/token", response_model=CliNativeAuthTokenResponse, **operation_route("auth.exchange_cli_native_auth_token"))

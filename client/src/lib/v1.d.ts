@@ -663,15 +663,19 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Authorize Cli Native Auth
-         * @description Authorize native CLI OAuth using the current browser session.
+         * Inspect Cli Native Auth
+         * @description Inspect a pending native CLI request without authorizing it.
          *
-         *     Unauthenticated browser users are sent through the normal login page and
-         *     returned here after password/MFA/passkey auth completes.
+         *     The browser consent page calls this after authentication so it can display
+         *     the exact localhost callback before asking the user to approve access.
          */
-        get: operations["auth.authorize_cli_native_auth"];
+        get: operations["auth.inspect_cli_native_auth"];
         put?: never;
-        post?: never;
+        /**
+         * Authorize Cli Native Auth
+         * @description Authorize a pending native CLI request after explicit browser consent.
+         */
+        post: operations["auth.authorize_cli_native_auth"];
         delete?: never;
         options?: never;
         head?: never;
@@ -17011,6 +17015,39 @@ export interface components {
              * @description Number of executions that failed to clean up
              */
             failed: number;
+        };
+        /**
+         * CliNativeAuthAuthorizeRequest
+         * @description Explicit browser confirmation for a pending native CLI request.
+         */
+        CliNativeAuthAuthorizeRequest: {
+            /** Transaction Id */
+            transaction_id: string;
+        };
+        /**
+         * CliNativeAuthAuthorizeResponse
+         * @description Validated localhost callback URL after explicit user consent.
+         */
+        CliNativeAuthAuthorizeResponse: {
+            /** Redirect Url */
+            redirect_url: string;
+        };
+        /**
+         * CliNativeAuthPendingResponse
+         * @description Pending native CLI request displayed before user consent.
+         */
+        CliNativeAuthPendingResponse: {
+            /** Transaction Id */
+            transaction_id: string;
+            /**
+             * Client Name
+             * @default Bifrost CLI
+             */
+            client_name: string;
+            /** Redirect Uri */
+            redirect_uri: string;
+            /** Expires In */
+            expires_in: number;
         };
         /**
          * CliNativeAuthStartRequest
@@ -37141,7 +37178,7 @@ export interface operations {
             };
         };
     };
-    "auth.authorize_cli_native_auth": {
+    "auth.inspect_cli_native_auth": {
         parameters: {
             query: {
                 transaction_id: string;
@@ -37158,7 +37195,40 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["CliNativeAuthPendingResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    "auth.authorize_cli_native_auth": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CliNativeAuthAuthorizeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CliNativeAuthAuthorizeResponse"];
                 };
             };
             /** @description Validation Error */
