@@ -15,8 +15,8 @@ A complete MVP still includes safe coexistence, unchanged consumers, security,
 reversible routing, observability and an evidence-based CONTINUE or STOP.
 
 Fresh fetch: platform `e42999395231ebc536711e5015422edfb75613a7`, workspace
-`8a2a441afcee3fc8a1bb3f74deb07440da5a86d0`.
-The [latest boundary audit](rust-core-mvp-workspace-boundary-8a2a441a.json)
+`0bec57e53477553d10b11a70d12cb859c465515f`.
+The [latest boundary audit](rust-core-mvp-workspace-boundary-0bec57e5.json)
 records 2,459 authored Python files, zero forbidden imports/parse errors and an
 empty allowlist.
 Both prerequisite merges remain ancestors of these exact heads. Recheck these
@@ -27,7 +27,11 @@ REST readback: #1011 is open at
 AUTH-P1 #1018 is open/unmerged at
 `39245315e193e1d04886044677bf7a75bb8c6f1f`, with exact-head source review and
 applicable CI evidence complete in its validation receipt. CRED-P1 #1037 remains
-open/unmerged at `3918d608a2d497d1ca8424fd4229d191323e2d7a`.
+open/unmerged at `6e56a72affdb828f3249e320f704c666ce775298` after
+[current-main integration](rust-core-mvp-cred-main-integration.md). That
+separate prerequisite preserves main's execution/provider/admin SDK guard;
+supported reference, drift-detection, credential/HTTP, pre-PR and live proxy
+checks passed, with resources cleaned and VM101 stopped. Normal CI is queued.
 Passing #1018 does not establish CRED integration or Rust parity. Do not require
 merging prerequisites to test an explicitly composed, pinned isolated candidate;
 never treat that candidate as deployed or main. GraphQL was rate-limited during

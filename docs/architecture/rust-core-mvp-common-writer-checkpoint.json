@@ -110,8 +110,8 @@
     "cold_skill_package": "2026-10-09.1"
   },
   "workspace_boundary": {
-    "head": "8a2a441afcee3fc8a1bb3f74deb07440da5a86d0",
-    "audit": "rust-core-mvp-workspace-boundary-8a2a441a.json",
+    "head": "0bec57e53477553d10b11a70d12cb859c465515f",
+    "audit": "rust-core-mvp-workspace-boundary-0bec57e5.json",
     "files": 2459,
     "internal_imports": 0,
     "parse_errors": 0,
@@ -458,5 +458,14 @@
         "disposition": "Source fixture mode0600 from root checkout; restored0644, no source/expectation change."
       }
     }
+  },
+  "credential_main_integration": {
+    "package": "CRED-P1-MAIN/v1",
+    "pr": 1037,
+    "head": "6e56a72affdb828f3249e320f704c666ce775298",
+    "reference_main": "e42999395231ebc536711e5015422edfb75613a7",
+    "record": "rust-core-mvp-cred-main-integration.md",
+    "status": "Separate native CRED prerequisite: independent source review, reference/drift detection, supported local tests, literal pre-PR and actual frontend access proof passed; PR published, hosted CI queued. Resources cleaned, VM101 stopped.",
+    "limits": "No common C1-C5 schema/roles/test logins/issuer adapter activated; R1-CANCEL-SQL/v1 remains held. Not Rust lifecycle or runtime acceptance."
   }
 }
