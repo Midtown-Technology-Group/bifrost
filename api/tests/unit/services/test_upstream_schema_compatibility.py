@@ -4,6 +4,7 @@ from unittest.mock import MagicMock
 import pytest
 from jsonschema import Draft202012Validator
 
+from bifrost.workflow_parameters import WorkflowParameterSchemaError
 from src.services.execution.type_inference import extract_parameters_from_signature
 from src.services.file_storage.indexers.workflow import WorkflowIndexer
 from src.services.tool_registry import workflow_parameters_to_json_schema
@@ -93,6 +94,20 @@ def test_unresolved_imported_type_is_not_falsely_restricted_to_objects():
         "from external import Identifier\ndef run(value: Identifier): pass", "run"
     )
     assert Draft202012Validator(schema).is_valid({"value": "external-id"})
+
+
+@pytest.mark.parametrize("annotation", [
+    "Literal[SOME_CONSTANT]",
+    'Literal["safe", SOME_CONSTANT]',
+])
+def test_unresolved_literal_is_rejected_before_gateway_schema_publication(annotation):
+    source = f"from typing import Literal\ndef run(value: {annotation}): pass"
+
+    with pytest.raises(
+        WorkflowParameterSchemaError,
+        match="Literal annotations require statically resolvable members",
+    ):
+        WorkflowIndexer(MagicMock()).extract_parameters_from_source(source, "run")
 
 
 def test_annotated_metadata_does_not_erase_the_runtime_signature():
