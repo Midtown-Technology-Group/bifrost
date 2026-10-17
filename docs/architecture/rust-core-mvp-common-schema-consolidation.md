@@ -21,8 +21,8 @@ without importing application code or evaluating ORM/DDL expressions. Starred
 constraint generators remain source expressions, not executed expansions. ORM
 inventory does not prove installed schema or migration equivalence.
 
-Workspace main is `eae7d3b4a337213f90c127bcb9e3eabe7516984d`.
-The [current boundary audit](rust-core-mvp-workspace-boundary-eae7d3b4.json) parsed
+Workspace main is `e85e3c8b1fa90c08e0ac2db23d711b24b1b30df2`.
+The [current boundary audit](rust-core-mvp-workspace-boundary-e85e3c8b.json) parsed
 2,452 committed authored Python files using the current gate's roots and
 exclusions, plus Solution, google_ops_worker and top-level files. Zero src.* or
 SQLAlchemy imports, zero parse errors and an explicitly empty internal-import
@@ -268,14 +268,27 @@ history/source deletion checks drained obligations under the source fence;
 soft uninstall and normal Python metadata updates remain available.
 
 The [writer checkpoint](rust-core-mvp-common-writer-checkpoint.json) binds current
-`baae7e1aeba9566676255f443fef5cc38565d1eb`, independent scoped source acceptance,
+`51dd6c3e4a4270d80f2679f650c1515f94f934a4`, independent scoped source acceptance,
 static checks and unexecuted PostgreSQL behavior. Normal
-[CI run 38987661027](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/38987661027)
-is pending for that exact head. Superseded run 38986409037 is confirmed cancelled
+[CI run 38988901890](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/38988901890)
+is pending for that exact head. Superseded run 38987661027 is confirmed cancelled
 without tests; older 38985914661 still lacks terminal cancellation readback.
 No candidate SQL, role grant or runtime has been enabled.
 
-C5 remains incomplete: finite principal/catalog and lock privileges, CRED
+C5-C supplies a finite review-only isolated SQL ACL profile, not role creation,
+activation or full Python backend qualification. It includes explicit database
+CONNECT for both test logins and public-schema USAGE for all four identities.
+Core has no users/source privileges. Composed C1 now preserves d/w/u/s NOWAIT
+inside one fixed SECURITY DEFINER artifact guard owned by a distinct NOLOGIN
+custodian with SELECT of identity columns and UPDATE(id) on those four parents.
+The original lifecycle custodian remains read-only; immutable common tables
+have finite core key-column UPDATE privileges solely to permit required row
+locks, with mutation still denied by their guards. Independent source review
+accepted the repaired profile. Effective PUBLIC/default/column/function rights,
+native ownership, actual direct/pool logins and cross-owner reads/locking remain
+explicit qualification/approval gates. Nothing consumes the JSON at startup.
+
+C5 remains incomplete: actual principal/catalog and lock qualification, CRED
 adapter, report/projection enforcement, original physical observer, actual
 concurrency/cascade/public-error/S3 evidence and payload policy still gate
 application. No-session retirement remains unresolved: the inspected adapter

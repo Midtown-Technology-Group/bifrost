@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
   "kind": "inactive-common-writer-source-checkpoint",
-  "package": "C5-A+B1+B2+B3/writer-admission-source/v1",
+  "package": "C5-A+B1+B2+B3+C/writer-admission-source/v1",
   "repository": "Midtown-Technology-Group/bifrost",
-  "head": "baae7e1aeba9566676255f443fef5cc38565d1eb",
+  "head": "51dd6c3e4a4270d80f2679f650c1515f94f934a4",
   "base_main": "e42999395231ebc536711e5015422edfb75613a7",
   "branch": "rust/common-writer-enforcement-candidate",
   "worktree": "/home/thomas/src/bifrost-rust-common-writer-enforcement",
@@ -21,22 +21,28 @@
     "api/tests/unit/test_runtime_source_drain_candidate.py": "30ed3c4ae8b9f1c421cdafd4045abf89bf17748d60a48d4c34f83e98f4b7c155",
     "api/src/services/solution_source_accountability.py": "7a79ba095105f73cf49bcf4787d19350275b11e12518fe1deb3540de293317a4",
     "api/tests/unit/services/test_common_runtime_source_inventory.py": "733cb6d3695a76d2f33abd8888d5a0945f7d6eb625e92102e231d369e3533adc",
-    "api/tests/e2e/platform/test_solution_source_accountability.py": "18f3f366809a4a1ec9848fd10ec8fe4865f93cad7361908e6205225be22bb47f"
+    "api/tests/e2e/platform/test_solution_source_accountability.py": "18f3f366809a4a1ec9848fd10ec8fe4865f93cad7361908e6205225be22bb47f",
+    "api/alembic/candidates/20261016_runtime_owner_links.py": "4f1e669ee133dd6d1bb549c1964d7a0de16d9c70661e1a0692393f1a6e4a8509",
+    "api/tests/unit/test_runtime_owner_links_candidate.py": "0beabc025a8bfc0e7058d9c04159657263904a3159ee6ad28781188adcca8572",
+    "api/alembic/candidates/runtime_principals_v1.json": "712a06a9b21ee00912221b0625e881fe92131a297834db175bca4ff04ddd16e7",
+    "api/tests/unit/test_runtime_principals_candidate.py": "ce3d823f0ab056c1b59efb2ea12ad705b7de3db16f7bc8ffda217fe2c3def8a3",
+    "api/alembic/candidates/README.md": "325a65d11325ef6c993b416096334e3001808c5b51bdbd617cf22be1a2316a14"
   },
   "source_review": {
     "status": "scoped SOURCE ACCEPT",
-    "head": "baae7e1aeba9566676255f443fef5cc38565d1eb",
+    "head": "51dd6c3e4a4270d80f2679f650c1515f94f934a4",
     "reviewer": "independent Sol common_session_source_review",
     "fixed_findings": [
       "Actual generic-attempt binding replacement protected by shared OLD/NEW generic identity try-fences, including absent/nonworkflow parent.",
       "Read-only custodian uses no row-lock UPDATE privilege.",
       "Fail-closed RLS qualification covers all ten common authority tables, preventing filtered active-grant reads."
     ],
-    "limits": "No imports/tests/SQL; source acceptance only. Full implicit wait graph, cascades, remaining common guards, catalog/profile, CRED adapter, physical custody, retention and agent extension remain held.",
+    "limits": "No imports/tests/SQL; source acceptance only. Effective PUBLIC/default/column/function/schema/database ACLs, authenticated direct/pool logins, cross-owner reads/lock-authority disposition, implicit waits/cascades, CRED adapter, physical custody, retention and agent extension remain held.",
     "packages": {
       "A+B1": "c287db444c6780555dad10b713c9b6bb14cb0c6e scoped SOURCE ACCEPT",
       "B2": "a037c8131b697eb4c9f987a3da2f46fd56235b48 scoped SOURCE ACCEPT",
-      "B3": "baae7e1aeba9566676255f443fef5cc38565d1eb scoped SOURCE ACCEPT; test-source comment-sensitive assertion corrected"
+      "B3": "baae7e1aeba9566676255f443fef5cc38565d1eb scoped SOURCE ACCEPT; test-source comment-sensitive assertion corrected",
+      "C": "51dd6c3e4a4270d80f2679f650c1515f94f934a4 scoped SOURCE ACCEPT after explicit CONNECT/public-schema USAGE repair; b0d9 initial review finding retained as repaired"
     }
   },
   "contracts": {
@@ -45,7 +51,9 @@
     "close_grant": "Authenticated session/grant/operation writes share native execution try-fence; permanent close denies late first grant/operations; deferred final-row check rejects closed session with active grant; no implicit credential issue/revoke.",
     "source": "Historical owner deployment IDs pin independently of native/live links or active install. No-session owner, nonterminal/incomplete native work and open/unsettled session pin. Source collector/deletion takes exclusive source fence; all Rust native writes share it. Soft uninstall/native metadata updates preserved. Physical-observation qualification remains held.",
     "credential_policy": "CRED SelectedSDKPolicy and existing issuer/ingress remain one authority; common adapter not implemented or enabled. Go accepted consumer capability unchanged.",
-    "common_writers": "All ten common stores authenticated; source shared try-fence precedes execution try-fence; incumbent only exact C1-validated live-link deltas. No new sessions after native terminal/cancellation; Start/admission requires current open live fence, native Running/execution phase, matching Start clock and unrevoked grant."
+    "common_writers": "All ten common stores authenticated; source shared try-fence precedes execution try-fence; incumbent only exact C1-validated live-link deltas. No new sessions after native terminal/cancellation; Start/admission requires current open live fence, native Running/execution phase, matching Start clock and unrevoked grant.",
+    "principals": "Review-only finite four-role isolated SQL proposal, not full Python backend/production/runtime SQL authority. Core has no user/source privileges. Explicit CONNECT only two test logins and public-schema USAGE all four; no CREATE/TEMP, membership/native ownership or blanket grants. New NOLOGIN artifact lock custodian preserves exact d/w/u/s NOWAIT through one fixed SECURITY DEFINER guard with only SELECT identity columns + UPDATE(id) on four parents. Existing lifecycle custodian stays read-only.",
+    "artifact_guard": "Composed C1 differs from frozen C1-only storage input: fixed NOLOGIN definer owner/context, pinned pg_catalog,pg_temp, parent RLS rejection and custodian precondition. Native parent relationships/locks and live-link semantics unchanged. No role created or activated."
   },
   "checks": {
     "locked_ruff": "passed0.15.12",
@@ -58,14 +66,15 @@
     "live_python_redaction": "unproved"
   },
   "ci": {
-    "dispatch": "normal ci.yml accepted once; provider readback bound exact head/run",
-    "head": "baae7e1aeba9566676255f443fef5cc38565d1eb",
+    "dispatch": "normal ci.yml accepted once for changed source; provider readback bound exact head/run",
+    "id": 38988901890,
+    "head": "51dd6c3e4a4270d80f2679f650c1515f94f934a4",
     "attempt": 1,
     "status": "pending",
     "tests_begun": false,
     "superseded_run": {
-      "id": 38986409037,
-      "head": "c287db444c6780555dad10b713c9b6bb14cb0c6e",
+      "id": 38987661027,
+      "head": "baae7e1aeba9566676255f443fef5cc38565d1eb",
       "status": "completed",
       "conclusion": "cancelled",
       "tests_begun": false
@@ -75,11 +84,10 @@
       "head": "ecc555324bd014568414f63a76de6e6b30f37802",
       "status": "queued; cancellation requested earlier, terminal cancellation not observed"
     },
-    "qualification_limit": "Normal CI runs offline candidate and native Python tests, not candidate DDL application, new guards/source functions or C5 races.",
-    "id": 38987661027
+    "qualification_limit": "Normal CI runs offline candidate and native Python tests, not candidate DDL application, new guards/source functions, real restricted logins or C5 races."
   },
   "remaining": [
-    "Finite principal/privilege catalog and matching locked adapter order; C1 artifact row-lock privilege closure includes users/workflows and must not confer arbitrary DML.",
+    "Approve finite isolated principal/lock/read authority, reconcile effective installed catalog and qualify genuine direct/pool logins; proposed ACL source is complete but unapplied. Finish matching adapter order, remaining native cascade positives and exact maintenance policy.",
     "CRED common issuer/renewal/ingress adapter, exact report/projection enforcement and trusted physical-observation admission.",
     "Actual supported PostgreSQL wrong-writer, source/cancel/admission/retirement contention, RLS, FK/cascade, public errors, Python redaction, failed/unknown commit and S3 post-commit proof.",
     "Pre-session resource/proof boundary: unresolved no-session owners stay pinned; no retirement inferred from missing session/Start/native history/files. No new retirement table introduced.",
@@ -99,5 +107,14 @@
     "mtg-engineering-flow": "2026-10-06.1",
     "github-pr-stewardship": "2026-10-06.1",
     "cold_skill_package": "2026-10-09.1"
+  },
+  "workspace_boundary": {
+    "head": "e85e3c8b1fa90c08e0ac2db23d711b24b1b30df2",
+    "audit": "rust-core-mvp-workspace-boundary-e85e3c8b.json",
+    "files": 2452,
+    "internal_imports": 0,
+    "parse_errors": 0,
+    "allowlist_empty": true,
+    "prerequisite_ancestry": "#1001/#1112 reverified on exact fetched heads"
   }
 }

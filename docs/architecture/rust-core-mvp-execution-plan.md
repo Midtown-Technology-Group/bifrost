@@ -15,8 +15,8 @@ A complete MVP still includes safe coexistence, unchanged consumers, security,
 reversible routing, observability and an evidence-based CONTINUE or STOP.
 
 Fresh fetch: platform `e42999395231ebc536711e5015422edfb75613a7`, workspace
-`eae7d3b4a337213f90c127bcb9e3eabe7516984d`.
-The [latest boundary audit](rust-core-mvp-workspace-boundary-eae7d3b4.json)
+`e85e3c8b1fa90c08e0ac2db23d711b24b1b30df2`.
+The [latest boundary audit](rust-core-mvp-workspace-boundary-e85e3c8b.json)
 records authored source, forbidden-import/parse results and empty allowlist.
 Both prerequisite merges remain ancestors of these exact heads. Recheck these
 invariants when either baseline changes.
@@ -109,14 +109,24 @@ exceptions and close/late-grant serialization. Source-reviewed B2/B3 add all
 common writers, open live Start/admission fences, historical source accounting
 and destructive-drain checks. The
 [writer checkpoint](rust-core-mvp-common-writer-checkpoint.json) identifies
-exact `baae7e1ae`, independent source acceptance and pending normal CI38987661027.
+exact `51dd6c3e4`, independent source acceptance and pending normal CI38988901890.
 All new PostgreSQL behavior remains unexecuted; source review does not qualify
 physical custody, implicit lock/cascade races, public errors or the post-commit
 S3 sweep. Existing CRED remains the one policy/issuer owner.
 
-The next finite package closes principal/privilege/installed-catalog and adapter
-lock closure, including C1 artifact row locks, without granting arbitrary user
-or source mutation. CRED's common adapter and report/projection enforcement
+C5-C adds the finite, review-only isolated SQL principal profile. Core receives
+no user/source privileges; a separate fixed NOLOGIN artifact guard preserves
+the original parent NOWAIT locks. The existing lifecycle custodian stays
+read-only. Independent review caught missing CONNECT/schema USAGE, repaired
+before source acceptance. No roles, grants or schema were applied; effective
+installed ACLs, genuine direct/pool logins and read/lock-authority approval still
+gate a SQL experiment. This is not a full Python backend credential profile.
+
+The next finite package closes the matching CRED adapter order and the exact
+R1 qualification packet. Keep R1's selected persistence experiment separate
+from R2's interpreter/physical-resource acceptance; do not make production
+catalog access a prerequisite for an approved disposable SQL test.
+CRED's common adapter and report/projection enforcement
 remain required before the bundled schema/authority decision. No candidate DDL,
 role grant, credential or runtime enablement is authorized by source acceptance.
 No-session owners stay pinned until an explicit pre-session resource/proof
