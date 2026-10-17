@@ -1,0 +1,2 @@
+"wex_incumbent" "synthetic_primer_incumbent"
+"wex_core" "synthetic_primer_core"
