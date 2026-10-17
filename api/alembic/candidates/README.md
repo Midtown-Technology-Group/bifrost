@@ -80,3 +80,28 @@ fences alone cannot protect those polymorphic FK targets. Include this edge
 and implicit FK/row/index waits in the complete lock review. A replayed result receipt must never restore
 native payloads cleared by the public redaction operation; native sanitation
 and retained common evidence are separate contracts.
+
+C5-B1 adds session/grant write authentication and the shared native execution
+try-fence. A permanently closed session rejects first grant and operation
+insertion. A deferred constraint reads final session/grant rows and rejects
+COMMIT if a closed session retains an unrevoked grant. The existing Rust
+cancellation transaction closes then revokes; both must commit together.
+Closing with no grant remains valid and prevents later issuance. Already-revoked
+grants need no new revocation. Failed/unknown commits still require exact state
+reconciliation; no replay, physical-stop or source-release fact follows.
+The read-only guard never revokes or issues on the caller's behalf. CRED's one
+policy/issuer and renewal/ingress eligibility remain authoritative and still
+need their common adapter; B1 is not complete SDK admission. A separate issuer
+SQL principal, if needed, requires explicit review rather than granting the
+Python runtime coordinator authority. See PostgreSQL's
+[deferred constraint-trigger contract](https://www.postgresql.org/docs/16/sql-createtrigger.html).
+
+Required actual PostgreSQL cases, not established by offline DDL tests:
+close with no grant then late first issue; issue versus close in both lock
+orders; close alone with a live grant must fail at COMMIT; close plus revoke in
+either statement order must succeed; pre-existing explicit revoke; grant and
+operation parent substitutions; close versus operation append; rollback and
+unknown COMMIT readback; SET CONSTRAINTS IMMEDIATE; restricted incumbent and
+untrusted SQL identities. Include implicit row/FK/index waits. B1 creates no
+roles/grants and admits no runtime. Source-drain/remaining common writers,
+installed privileges and complete source/physical/payload gates remain held.
