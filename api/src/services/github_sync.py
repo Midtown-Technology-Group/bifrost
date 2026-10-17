@@ -41,6 +41,7 @@ from src.models.contracts.github import (
 )
 from src.services.git_repo_manager import GitRepoManager, hash_file, iter_tree_metadata
 from src.services.github_sync_entity_metadata import extract_entity_metadata
+from src.services.legacy_entity_files import remove_legacy_entity_files
 
 if TYPE_CHECKING:
     from src.models.contracts.github import (
@@ -1125,6 +1126,8 @@ class GitHubSyncService:
             path = bifrost_dir / filename
             if filename not in files and path.exists():
                 path.unlink()
+
+        remove_legacy_entity_files(work_dir)
 
     async def _reindex_registered_workflows(self, work_dir) -> int:
         """Re-run WorkflowIndexer on all registered workflow .py files."""

@@ -1048,6 +1048,10 @@ async def update_agent(
     # Sync agent roles to referenced workflows (tools) - additive
     await sync_agent_roles_to_workflows(db, agent, assigned_by=user.email)
 
+    from src.services.repo_sync_writer import RepoSyncWriter
+
+    await RepoSyncWriter(db).delete_legacy_entity_file("agent", str(agent_id))
+
     return _agent_to_public(agent)
 
 
@@ -1086,6 +1090,10 @@ async def delete_agent(
     # memberships while SET NULL references (such as conversations) are preserved.
     await db.execute(delete(Agent).where(Agent.id == agent_id))
     await db.flush()
+
+    from src.services.repo_sync_writer import RepoSyncWriter
+
+    await RepoSyncWriter(db).delete_legacy_entity_file("agent", str(agent_id))
 
 
 @router.post("/{agent_id}/promote")
