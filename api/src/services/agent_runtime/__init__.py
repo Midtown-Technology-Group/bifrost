@@ -1,6 +1,11 @@
 """Shared Pydantic AI runtime primitives for every Bifrost agent surface."""
 
-from src.services.agent_runtime.budgets import AgentRunBudget, build_runtime_capabilities
+from src.services.agent_runtime.budgets import (
+    PLATFORM_MAX_AGENT_REQUESTS,
+    PLATFORM_MAX_AGENT_TOTAL_TOKENS,
+    AgentRunBudget,
+    build_runtime_capabilities,
+)
 from src.services.agent_runtime.empty_output import (
     EMPTY_OUTPUT_FALLBACK_MAX_TOKENS,
     EMPTY_OUTPUT_MAX_FALLBACKS,
@@ -44,6 +49,8 @@ __all__ = [
     "ModelCallEvent",
     "ModelCallObserver",
     "ObservedModel",
+    "PLATFORM_MAX_AGENT_REQUESTS",
+    "PLATFORM_MAX_AGENT_TOTAL_TOKENS",
     "ToolEvent",
     "ToolEventHandler",
     "bound_tool_result_for_model",
