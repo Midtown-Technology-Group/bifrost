@@ -12,6 +12,13 @@ class DummyDB:
         return None
 
 
+@pytest.fixture(autouse=True)
+def reset_readiness_cache():
+    health.clear_readiness_cache()
+    yield
+    health.clear_readiness_cache()
+
+
 def _settings(s3_configured: bool = True, work_delivery_backend: str = "rabbitmq"):
     return SimpleNamespace(
         environment="test",
@@ -177,6 +184,56 @@ async def test_ready_returns_healthy_when_core_dependencies_pass(monkeypatch):
     assert response.status_code == 200
     assert result.status == "healthy"
     assert set(result.components) == {"database", "redis", "rabbitmq", "s3"}
+
+
+@pytest.mark.asyncio
+async def test_readiness_dependency_checks_are_single_flight_and_cached(monkeypatch):
+    settings = _settings()
+    calls = 0
+
+    async def build_components(db, actual_settings):
+        nonlocal calls
+        assert actual_settings is settings
+        calls += 1
+        await asyncio.sleep(0)
+        return await _build_components(db, actual_settings)
+
+    monkeypatch.setattr(health, "get_settings", lambda: settings)
+    monkeypatch.setattr(health, "build_health_components", build_components)
+
+    responses = [Response() for _ in range(12)]
+    results = await asyncio.gather(
+        *(health.ready_health_check(response, DummyDB()) for response in responses)
+    )
+    detailed = await health.detailed_health_check(Response(), DummyDB())
+
+    assert calls == 1
+    assert all(result.status == "healthy" for result in results)
+    assert detailed.status == "healthy"
+
+
+@pytest.mark.asyncio
+async def test_readiness_cache_refreshes_after_ttl(monkeypatch):
+    settings = _settings()
+    clock = {"now": 100.0}
+    calls = 0
+
+    async def build_components(db, actual_settings):
+        nonlocal calls
+        calls += 1
+        return await _build_components(db, actual_settings)
+
+    monkeypatch.setattr(health, "get_settings", lambda: settings)
+    monkeypatch.setattr(health, "build_health_components", build_components)
+    monkeypatch.setattr(health, "monotonic", lambda: clock["now"])
+
+    await health.ready_health_check(Response(), DummyDB())
+    clock["now"] += health.READINESS_CACHE_SECONDS - 0.1
+    await health.ready_health_check(Response(), DummyDB())
+    clock["now"] += 0.2
+    await health.ready_health_check(Response(), DummyDB())
+
+    assert calls == 2
 
 
 @pytest.mark.asyncio
