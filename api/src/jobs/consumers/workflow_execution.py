@@ -375,6 +375,77 @@ class WorkflowExecutionConsumer(BaseConsumer):
                 exc_info=True,
             )
 
+    async def _finalize_committed_result(
+        self,
+        *,
+        execution_id: str,
+        status: ExecutionStatus,
+        metadata: ActiveExecution,
+        duration_ms: int,
+        update_payload: dict[str, Any],
+        change_acknowledgements: list[tuple[str, dict[str, str]]],
+        log_acknowledgements: list[tuple[str, list[str]]],
+        delete_pending: bool,
+    ) -> None:
+        """Publish and clean up a result after its authoritative commit."""
+        await self._run_derived_step(
+            "execution-update",
+            lambda: publish_execution_update(
+                execution_id,
+                status.value,
+                update_payload,
+            ),
+        )
+
+        completed_at = datetime.now(timezone.utc)
+        await self._run_derived_step(
+            "history-update",
+            lambda: publish_history_update(
+                execution_id=execution_id,
+                status=status.value,
+                executed_by=metadata.get("user_id"),
+                executed_by_name=metadata.get("user_name"),
+                workflow_name=metadata.get("workflow_name", "unknown"),
+                org_id=metadata.get("org_id"),
+                completed_at=completed_at,
+                duration_ms=duration_ms,
+            ),
+        )
+
+        from bifrost._logging import acknowledge_persisted_logs
+        from bifrost._sync import acknowledge_persisted_changes
+
+        await self._run_derived_step(
+            "change-acknowledgement",
+            lambda: acknowledge_persisted_changes(change_acknowledgements),
+        )
+        await self._run_derived_step(
+            "log-acknowledgement",
+            lambda: acknowledge_persisted_logs(log_acknowledgements),
+        )
+
+        try:
+            from src.core.cache import cleanup_execution_cache
+
+            await cleanup_execution_cache(
+                execution_id,
+                preserve_logs=True,
+                preserve_pending_changes=True,
+            )
+        except Exception as e:
+            logger.warning(f"Failed to cleanup cache for {execution_id[:8]}...: {e}")
+
+        if delete_pending:
+            await self._run_derived_step(
+                "pending-cleanup",
+                lambda: self._redis_client.delete_pending_execution(execution_id),
+            )
+        else:
+            logger.error(
+                "Sync result delivery exhausted for %s; retaining pending context",
+                execution_id,
+            )
+
     async def _process_success(
         self,
         execution_id: str,
@@ -405,10 +476,7 @@ class WorkflowExecutionConsumer(BaseConsumer):
         metadata_read_ms = (time.perf_counter() - completion_started) * 1000
 
         workflow_id = metadata.get("workflow_id")
-        workflow_name = metadata.get("workflow_name", "unknown")
         org_id = metadata.get("org_id")
-        user_id = metadata.get("user_id")
-        user_name = metadata.get("user_name")
         is_sync = result["sync"]
 
         status_str = result.get("status", "Success")
@@ -424,6 +492,7 @@ class WorkflowExecutionConsumer(BaseConsumer):
 
         # DB operations + flush — single short-lived session
         # (flush functions do Redis reads internally but DB writes share the session)
+        change_acknowledgements: list[tuple[str, dict[str, str]]] = []
         log_acknowledgements: list[tuple[str, list[str]]] = []
         session_factory = get_session_factory()
         async with session_factory() as session:
@@ -518,7 +587,11 @@ class WorkflowExecutionConsumer(BaseConsumer):
             changes_count = 0
             try:
                 from bifrost._sync import flush_pending_changes
-                changes_count = await flush_pending_changes(execution_id, session=session)
+                changes_count = await flush_pending_changes(
+                    execution_id,
+                    session=session,
+                    pending_acknowledgements=change_acknowledgements,
+                )
                 if changes_count > 0:
                     logger.info(f"Flushed {changes_count} pending changes for {execution_id[:8]}...")
             except Exception as e:
@@ -544,17 +617,6 @@ class WorkflowExecutionConsumer(BaseConsumer):
 
             await session.commit()
 
-        if changes_count > 0:
-            try:
-                from bifrost._sync import acknowledge_pending_changes
-
-                await acknowledge_pending_changes(execution_id)
-            except Exception as e:
-                logger.warning(
-                    "Failed to acknowledge committed pending changes for %s...: %s",
-                    execution_id[:8],
-                    e,
-                )
         durable_ms = (time.perf_counter() - completion_started) * 1000
 
         # Wake sync callers as soon as their result and buffered SDK writes are
@@ -600,57 +662,17 @@ class WorkflowExecutionConsumer(BaseConsumer):
         )
         metrics_done_ms = (time.perf_counter() - completion_started) * 1000
 
-        # Pub/sub — no DB connection held.  The result is already persisted and
-        # execution clients fetch it from the result endpoint, so publishing it
-        # again needlessly serializes and transports large payloads through
-        # Redis and WebSocket connections.
-        await self._run_derived_step(
-            "execution-update",
-            lambda: publish_execution_update(
-                execution_id,
-                status.value,
-                {"duration_ms": duration_ms},
-            ),
+        # Derived fan-out and Redis cleanup run only after the result is durable.
+        await self._finalize_committed_result(
+            execution_id=execution_id,
+            status=status,
+            metadata=metadata,
+            duration_ms=duration_ms,
+            update_payload={"duration_ms": duration_ms},
+            change_acknowledgements=change_acknowledgements,
+            log_acknowledgements=log_acknowledgements,
+            delete_pending=not is_sync or sync_result_delivered,
         )
-
-        completed_at = datetime.now(timezone.utc)
-        await self._run_derived_step(
-            "history-update",
-            lambda: publish_history_update(
-                execution_id=execution_id,
-                status=status.value,
-                executed_by=user_id,
-                executed_by_name=user_name,
-                workflow_name=workflow_name,
-                org_id=org_id,
-                completed_at=completed_at,
-                duration_ms=duration_ms,
-            ),
-        )
-
-        from bifrost._logging import acknowledge_persisted_logs
-        await self._run_derived_step(
-            "log-acknowledgement",
-            lambda: acknowledge_persisted_logs(log_acknowledgements),
-        )
-
-        # Redis cleanup — no DB connection held
-        try:
-            from src.core.cache import cleanup_execution_cache
-            await cleanup_execution_cache(execution_id, preserve_logs=True)
-        except Exception as e:
-            logger.warning(f"Failed to cleanup cache for {execution_id[:8]}...: {e}")
-
-        if not is_sync or sync_result_delivered:
-            await self._run_derived_step(
-                "pending-cleanup",
-                lambda: self._redis_client.delete_pending_execution(execution_id),
-            )
-        else:
-            logger.error(
-                "Sync result delivery exhausted for %s; retaining pending context",
-                execution_id,
-            )
 
         logger.debug(
             "Completion timing %s: metadata=%.1fms execution_update=%.1fms "
@@ -722,6 +744,7 @@ class WorkflowExecutionConsumer(BaseConsumer):
             status = ExecutionStatus.FAILED
 
         # DB operations + flush — single short-lived session
+        change_acknowledgements: list[tuple[str, dict[str, str]]] = []
         log_acknowledgements: list[tuple[str, list[str]]] = []
         session_factory = get_session_factory()
         async with session_factory() as session:
@@ -866,7 +889,11 @@ class WorkflowExecutionConsumer(BaseConsumer):
             changes_count = 0
             try:
                 from bifrost._sync import flush_pending_changes
-                changes_count = await flush_pending_changes(execution_id, session=session)
+                changes_count = await flush_pending_changes(
+                    execution_id,
+                    session=session,
+                    pending_acknowledgements=change_acknowledgements,
+                )
                 if changes_count > 0:
                     logger.info(f"Flushed {changes_count} pending changes for failed {execution_id[:8]}...")
             except Exception as e:
@@ -889,18 +916,6 @@ class WorkflowExecutionConsumer(BaseConsumer):
                     )
 
             await session.commit()
-
-        if changes_count > 0:
-            try:
-                from bifrost._sync import acknowledge_pending_changes
-
-                await acknowledge_pending_changes(execution_id)
-            except Exception as e:
-                logger.warning(
-                    "Failed to acknowledge committed pending changes for %s...: %s",
-                    execution_id[:8],
-                    e,
-                )
 
         # A sync failure is just as latency-sensitive as a success. Wake the
         # caller once the authoritative failure is durable; aggregates and
@@ -938,54 +953,16 @@ class WorkflowExecutionConsumer(BaseConsumer):
             ),
         )
 
-        # Pub/sub — no DB connection held
-        await self._run_derived_step(
-            "execution-update",
-            lambda: publish_execution_update(
-                execution_id,
-                status.value,
-                {"error": error, "errorType": error_type},
-            ),
+        await self._finalize_committed_result(
+            execution_id=execution_id,
+            status=status,
+            metadata=metadata,
+            duration_ms=duration_ms,
+            update_payload={"error": error, "errorType": error_type},
+            change_acknowledgements=change_acknowledgements,
+            log_acknowledgements=log_acknowledgements,
+            delete_pending=not is_sync or sync_result_delivered,
         )
-
-        completed_at = datetime.now(timezone.utc)
-        await self._run_derived_step(
-            "history-update",
-            lambda: publish_history_update(
-                execution_id=execution_id,
-                status=status.value,
-                executed_by=user_id,
-                executed_by_name=user_name,
-                workflow_name=workflow_name,
-                org_id=org_id,
-                completed_at=completed_at,
-                duration_ms=duration_ms,
-            ),
-        )
-
-        from bifrost._logging import acknowledge_persisted_logs
-        await self._run_derived_step(
-            "log-acknowledgement",
-            lambda: acknowledge_persisted_logs(log_acknowledgements),
-        )
-
-        # Redis cleanup — no DB connection held
-        try:
-            from src.core.cache import cleanup_execution_cache
-            await cleanup_execution_cache(execution_id, preserve_logs=True)
-        except Exception as e:
-            logger.warning(f"Failed to cleanup cache for {execution_id[:8]}...: {e}")
-
-        if not is_sync or sync_result_delivered:
-            await self._run_derived_step(
-                "pending-cleanup",
-                lambda: self._redis_client.delete_pending_execution(execution_id),
-            )
-        else:
-            logger.error(
-                "Sync result delivery exhausted for %s; retaining pending context",
-                execution_id,
-            )
 
         logger.warning(
             f"Execution failed: {execution_id[:8]}... status={status.value} error={error_type}",
