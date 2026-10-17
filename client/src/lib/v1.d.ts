@@ -10689,7 +10689,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Poll the status of an async deploy job (admin only) */
+        /**
+         * Poll the status of an async deploy job (admin only)
+         * @description Keep projected outcomes nonterminal until the owning job finishes.
+         */
         get: operations["get_deploy_job_api_solutions_deploy_jobs__job_id__get"];
         put?: never;
         post?: never;

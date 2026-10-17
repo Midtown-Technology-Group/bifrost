@@ -857,11 +857,9 @@ async def can_access_execution(user: UserPrincipal, execution_id: str) -> bool:
             or (user.embed_kind == "form" and user.grant == "hmac")
         )
     ):
-        from src.core.cache.keys import embed_execution_key
-        from src.core.cache.redis_client import get_redis
+        from src.core.embed_middleware import has_embed_execution_access
 
-        async with get_redis() as r:
-            return bool(await r.exists(embed_execution_key(user.jti, execution_id)))
+        return await has_embed_execution_access(user.jti, execution_id)
 
     if user.embed and user.embed_kind == "form":
         return False
