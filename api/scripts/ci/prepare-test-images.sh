@@ -1,18 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Prepare the dependency-heavy images used by required test jobs without
-# downloading third-party JavaScript actions during GitHub's job setup phase.
-# Reviewed source remains bind-mounted by docker-compose.test.yml.
+# Prepare the dependency-heavy images used by required test jobs. CI pulls the
+# fixed cache references and logs out before checking out pull-request source;
+# this checked-out helper must never receive a registry credential. Reviewed
+# source remains bind-mounted by docker-compose.test.yml.
 
 registry="${REGISTRY:?REGISTRY is required}"
-username="${GHCR_USERNAME:?GHCR_USERNAME is required}"
-token="${GHCR_TOKEN:?GHCR_TOKEN is required}"
 image_tag="${CI_TEST_IMAGE_TAG:?CI_TEST_IMAGE_TAG is required}"
 summary="${GITHUB_STEP_SUMMARY:-/dev/null}"
-
-printf '%s' "$token" | docker login "$registry" --username "$username" --password-stdin
-trap 'docker logout "$registry" >/dev/null 2>&1 || true' EXIT
 
 prepare_image() {
   local name="$1"
@@ -24,10 +20,10 @@ prepare_image() {
   local remote_ref="${registry}/${remote_image}:${image_tag}"
   local pulled=false
 
-  if docker pull "$remote_ref"; then
+  if docker image inspect "$remote_ref" >/dev/null 2>&1; then
     pulled=true
   elif [ "$changed" != "true" ]; then
-    echo "::warning::Unable to pull $name CI image; building it from the reviewed checkout."
+    echo "::warning::$name CI image cache is unavailable; building it from the reviewed checkout."
   fi
 
   if [ "$changed" != "true" ] && [ "$pulled" = "true" ]; then

@@ -81,6 +81,20 @@ ALLOWED_CODEOWNERS = (
     '@MTG-Thomas',
     '@Midtown-Technology-Group/',
 )
+CI_IMAGE_CONSUMER_JOBS = (
+    "test-unit",
+    "mcp-conformance",
+    "test-e2e",
+    "test-client-e2e",
+)
+CACHE_PULL_STEP = "Pull CI image caches before checkout"
+CI_IMAGE_PUBLISH_JOB = "publish-ci-test-images"
+CI_IMAGE_BUILD_STEPS = (
+    "Build API CI test image without registry credentials",
+    "Build client CI test image without registry credentials",
+    "Build Playwright CI test image without registry credentials",
+)
+CI_IMAGE_PUBLISH_STEP = "Publish fixed CI test image references"
 
 
 def _repo_root() -> Path:
@@ -128,6 +142,240 @@ def _parse_name_line(block: list[str]) -> str | None:
         if stripped.startswith("name:"):
             return stripped.removeprefix("name:").strip().strip("\"'")
     return None
+
+
+def _named_step(block: list[str], name: str) -> tuple[int, list[str]] | None:
+    marker = f"- name: {name}"
+    for index, line in enumerate(block):
+        if line.strip() != marker:
+            continue
+        step = [line]
+        for step_line in block[index + 1 :]:
+            if step_line.strip().startswith("- name:"):
+                break
+            step.append(step_line)
+        return index, step
+    return None
+
+
+def _check_image_consumer_job(
+    *,
+    workflow_path: Path,
+    job_name: str,
+    block: list[str],
+    expected_token: str,
+    checkout_name: str,
+) -> list[str]:
+    location = f"{workflow_path}:{job_name}"
+    pull = _named_step(block, CACHE_PULL_STEP)
+    checkout = _named_step(block, checkout_name)
+    prepare_name = (
+        "Prepare exact-source test images"
+        if job_name == "evidence"
+        else "Prepare CI test images"
+    )
+    prepare = _named_step(block, prepare_name)
+    failures: list[str] = []
+    if pull is None or checkout is None or prepare is None:
+        return [
+            f"{location}: image consumers require a trusted cache pull, checkout, "
+            "and credential-free image preparation step."
+        ]
+
+    pull_index, pull_step = pull
+    checkout_index, checkout_step = checkout
+    prepare_index, prepare_step = prepare
+    if not pull_index < checkout_index < prepare_index:
+        failures.append(
+            f"{location}: registry authentication must finish before checkout, and "
+            "image preparation must run after checkout."
+        )
+
+    if not any(line.strip() == "persist-credentials: false" for line in checkout_step):
+        failures.append(f"{location}: checkout must set persist-credentials: false.")
+
+    if not any(
+        line.strip() == f"GHCR_TOKEN: {expected_token}" for line in pull_step
+    ):
+        failures.append(
+            f"{location}: the pre-checkout cache pull must receive the read-only GitHub token."
+        )
+    required_commands = ("docker login", "docker pull", "docker logout")
+    pull_text = "\n".join(pull_step)
+    if any(command not in pull_text for command in required_commands):
+        failures.append(
+            f"{location}: the pre-checkout cache pull must login, pull, and logout inline."
+        )
+    elif not (
+        pull_text.index("docker logout")
+        < pull_text.index("docker login")
+        < pull_text.index("docker pull")
+    ):
+        failures.append(
+            f"{location}: logout cleanup must be armed before registry login and pulls."
+        )
+    if "bash api/scripts/ci/prepare-test-images.sh" not in "\n".join(prepare_step):
+        failures.append(
+            f"{location}: image preparation must use the credential-free repository helper."
+        )
+
+    for offset, line in enumerate(block):
+        if ("GITHUB_TOKEN" in line or "github.token" in line) and not (
+            pull_index <= offset < checkout_index
+        ):
+            failures.append(
+                f"{location}: line {offset + 1} exposes the GitHub token outside "
+                "the pre-checkout cache pull."
+            )
+    return failures
+
+
+def _check_image_publisher_job(
+    *, workflow_path: Path, block: list[str]
+) -> list[str]:
+    """Keep package-write credentials out of PR-controlled image builds."""
+    location = f"{workflow_path}:{CI_IMAGE_PUBLISH_JOB}"
+    checkout = _named_step(block, "Checkout repository")
+    builds = [_named_step(block, name) for name in CI_IMAGE_BUILD_STEPS]
+    publish = _named_step(block, CI_IMAGE_PUBLISH_STEP)
+    if checkout is None or any(build is None for build in builds) or publish is None:
+        return [
+            f"{location}: image publication requires credential-free checkout and "
+            "build steps followed by one fixed-reference publish step."
+        ]
+
+    checkout_index, checkout_step = checkout
+    typed_builds = [build for build in builds if build is not None]
+    publish_index, publish_step = publish
+    failures: list[str] = []
+    if not (
+        checkout_index
+        < typed_builds[0][0]
+        < typed_builds[1][0]
+        < typed_builds[2][0]
+        < publish_index
+    ):
+        failures.append(
+            f"{location}: checkout and every untrusted image build must finish before "
+            "registry authentication and publication."
+        )
+
+    if not any(line.strip() == "persist-credentials: false" for line in checkout_step):
+        failures.append(f"{location}: checkout must set persist-credentials: false.")
+
+    for name, (_, build_step) in zip(CI_IMAGE_BUILD_STEPS, typed_builds, strict=True):
+        build_text = "\n".join(build_step)
+        if "load: true" not in build_text or "push: false" not in build_text:
+            failures.append(
+                f"{location}:{name}: untrusted image builds must load locally and must not push."
+            )
+        if "GHCR_TOKEN" in build_text or "GITHUB_TOKEN" in build_text:
+            failures.append(
+                f"{location}:{name}: package credentials must not reach untrusted image builds."
+            )
+
+    publish_text = "\n".join(publish_step)
+    if not any(
+        line.strip()
+        == "GHCR_TOKEN: ${{ secrets.GHCR_TOKEN || secrets.GITHUB_TOKEN }}"
+        for line in publish_step
+    ):
+        failures.append(
+            f"{location}: only the final fixed-reference publish step may receive the package token."
+        )
+    required_commands = ("docker logout", "docker login", "docker push")
+    if any(command not in publish_text for command in required_commands):
+        failures.append(
+            f"{location}: the fixed-reference publish step must login, push, and logout inline."
+        )
+    elif not (
+        publish_text.index("docker logout")
+        < publish_text.index("docker login")
+        < publish_text.index("docker push")
+    ):
+        failures.append(
+            f"{location}: logout cleanup must be armed before registry login and pushes."
+        )
+    for required in (
+        '[[ "$GITHUB_SHA" =~ ^[0-9a-f]{40}$ ]]',
+        'for image in "$CI_API_TEST_IMAGE" "$CI_CLIENT_TEST_IMAGE" "$CI_PLAYWRIGHT_TEST_IMAGE"',
+        'remote_ref="$REGISTRY/$image:sha-$GITHUB_SHA"',
+    ):
+        if required not in publish_text:
+            failures.append(
+                f"{location}: the publish step must validate and use fixed exact-SHA image refs."
+            )
+            break
+
+    if any(
+        line.strip().startswith("- name:") for line in block[publish_index + 1 :]
+    ):
+        failures.append(
+            f"{location}: no step may run after the package-authenticated publish step."
+        )
+    for offset, line in enumerate(block):
+        if ("GHCR_TOKEN" in line or "secrets.GITHUB_TOKEN" in line) and offset < publish_index:
+            failures.append(
+                f"{location}: line {offset + 1} exposes a package credential before "
+                "the fixed-reference publish step."
+            )
+    return failures
+
+
+def check_ci_image_token_boundaries(ci_path: Path, sonar_path: Path) -> list[str]:
+    """Keep package credentials out of checked-out pull-request code."""
+    failures: list[str] = []
+    for workflow_path, job_names, expected_token, checkout_name in (
+        (
+            ci_path,
+            CI_IMAGE_CONSUMER_JOBS,
+            "${{ secrets.GITHUB_TOKEN }}",
+            "Checkout repository",
+        ),
+        (
+            sonar_path,
+            ("evidence",),
+            "${{ github.token }}",
+            "Checkout exact analysis source",
+        ),
+    ):
+        if not workflow_path.exists():
+            failures.append(f"{workflow_path}: workflow file does not exist")
+            continue
+        lines = workflow_path.read_text(encoding="utf-8").splitlines()
+        for job_name in job_names:
+            parsed = _job_block(lines, job_name)
+            if parsed is None:
+                failures.append(
+                    f"{workflow_path}:{job_name}: required image consumer job is missing"
+                )
+                continue
+            failures.extend(
+                _check_image_consumer_job(
+                    workflow_path=workflow_path,
+                    job_name=job_name,
+                    block=parsed[1],
+                    expected_token=expected_token,
+                    checkout_name=checkout_name,
+                )
+            )
+    if ci_path.exists():
+        publisher = _job_block(
+            ci_path.read_text(encoding="utf-8").splitlines(),
+            CI_IMAGE_PUBLISH_JOB,
+        )
+        if publisher is None:
+            failures.append(
+                f"{ci_path}:{CI_IMAGE_PUBLISH_JOB}: required image publisher job is missing"
+            )
+        else:
+            failures.extend(
+                _check_image_publisher_job(
+                    workflow_path=ci_path,
+                    block=publisher[1],
+                )
+            )
+    return failures
 
 
 def check_ci_workflow(path: Path) -> list[str]:
@@ -278,6 +526,10 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     violations = check_ci_workflow(workflow)
+    violations += check_ci_image_token_boundaries(
+        workflow,
+        _repo_root() / ".github/workflows/sonar-coverage.yml",
+    )
     violations += check_codeowners(_repo_root() / ".github/CODEOWNERS")
     if not violations:
         print("MTG CI boundary checks passed.")
