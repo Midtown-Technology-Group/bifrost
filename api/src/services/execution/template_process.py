@@ -431,14 +431,30 @@ def _handle_fork_request(
             # Already closed in parent post-fork — ignore
             logger.debug(f"child: pipe.close ignored: {e}")
 
+        # Keep the process-pool slot occupied until telemetry is flushed. The
+        # parent releases the slot when it receives a result, so publishing the
+        # result before this bounded flush can temporarily exceed the process
+        # concurrency cap.
+        telemetry_flushed_before_result = False
+
+        def flush_before_result() -> None:
+            nonlocal telemetry_flushed_before_result
+            _flush_child_telemetry()
+            telemetry_flushed_before_result = True
+
         # Run the worker function (this blocks until the child exits)
         try:
             _run_forked_child(
                 work_recv, result_send, worker_id, persistent,
                 sdk_socket_path=sdk_socket_path,
+                before_result=flush_before_result,
             )
         finally:
-            _flush_child_telemetry()
+            # Preserve a final best-effort flush for exits that never publish a
+            # result (for example, a closed work pipe or early initialization
+            # failure). Result paths already flushed before notifying the parent.
+            if not telemetry_flushed_before_result:
+                _flush_child_telemetry()
         os._exit(0)
 
 
@@ -457,6 +473,7 @@ def _run_forked_child(
     worker_id: str,
     persistent: bool,
     sdk_socket_path: str | None = None,
+    before_result: Callable[[], None] | None = None,
 ) -> None:
     """
     Entry point for a forked child process.
@@ -484,6 +501,8 @@ def _run_forked_child(
         sdk_socket_path: Worker-local Unix socket for engine SDK HTTP calls,
             injected only by the worker parent. When present the child sends
             the ordinary HTTP request over it instead of the network API.
+        before_result: Hook that completes bounded child cleanup before each
+            result is published and the parent releases the process-pool slot.
     """
     # Reconfigure logging for this child
     logging.basicConfig(
@@ -570,6 +589,7 @@ def _run_forked_child(
                 # be missing on macOS; result may be a non-dict — all best-effort metrics
                 logger.debug(f"could not record RSS for execution {execution_id}: {e}")
 
+            (before_result or _flush_child_telemetry)()
             result_send.send(result)
 
             logger.info(
@@ -594,6 +614,7 @@ def _run_forked_child(
             logger.exception(f"Worker {worker_id} error: {e}")
             if execution_id is not None:
                 try:
+                    (before_result or _flush_child_telemetry)()
                     result_send.send({
                         "execution_id": execution_id,
                         "success": False,
