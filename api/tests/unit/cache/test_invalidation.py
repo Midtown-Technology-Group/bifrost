@@ -21,6 +21,7 @@ from src.core.cache.invalidation import (
     invalidate_role_users,
     upsert_config,
 )
+from src.core.cache.keys import TTL_EXECUTION_LOGS
 
 
 class TestConfigInvalidation:
@@ -382,6 +383,20 @@ class TestExecutionCleanup:
             mock_redis.delete.assert_awaited_once_with(
                 "bifrost:pending:exec-123",
                 "bifrost:logs:exec-123",
+                "bifrost:exec:exec-123:active",
+            )
+
+    @pytest.mark.asyncio
+    async def test_cleanup_execution_cache_bounds_preserved_logs(self, mock_redis):
+        """Preserved log streams retain a hard expiry after completion."""
+        with patch("src.core.cache.invalidation.get_shared_redis", return_value=mock_redis):
+            await cleanup_execution_cache("exec-123", preserve_logs=True)
+
+            mock_redis.expire.assert_awaited_once_with(
+                "bifrost:logs:exec-123", TTL_EXECUTION_LOGS
+            )
+            mock_redis.delete.assert_awaited_once_with(
+                "bifrost:pending:exec-123",
                 "bifrost:exec:exec-123:active",
             )
 
