@@ -75,8 +75,7 @@ async def persist_prompt_cache_support(config: LLMConfig, supported: bool) -> No
                     )
                     .with_for_update(of=AIModelProfile, nowait=True)
                 )
-                .one_or_none()
-            )
+            ).one_or_none()
             if profile is None:
                 return
 
