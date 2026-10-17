@@ -21,6 +21,7 @@ class OperationReceipt(Base):
     )
     namespace: Mapped[str] = mapped_column(String(100), nullable=False)
     scope_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    admission_key: Mapped[str | None] = mapped_column(String(64), nullable=True)
     request_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, server_default="started"
@@ -51,6 +52,12 @@ class OperationReceipt(Base):
             "namespace",
             "scope_key",
             unique=True,
+        ),
+        Index(
+            "ix_operation_receipts_namespace_admission",
+            "namespace",
+            "admission_key",
+            postgresql_where=text("admission_key IS NOT NULL"),
         ),
         CheckConstraint(
             "status IN ('started', 'succeeded', 'failed')",
