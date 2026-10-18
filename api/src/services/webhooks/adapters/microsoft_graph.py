@@ -401,13 +401,15 @@ class MicrosoftGraphAdapter(WebhookAdapter):
 
         # Handle change notification
         payload = request.json_body
-        if not payload:
+        if not isinstance(payload, dict):
             return Rejected(message="Invalid notification payload", status_code=400)
 
         # Graph sends notifications in a 'value' array
-        notifications = payload.get("value", [])
-        if not notifications:
+        notifications = payload.get("value")
+        if not isinstance(notifications, list) or not notifications:
             return Rejected(message="No notifications in payload", status_code=400)
+        if not all(isinstance(notification, dict) for notification in notifications):
+            return Rejected(message="Invalid notification payload", status_code=400)
 
         # Validate client state on each notification
         expected_state = state.get("client_state")
