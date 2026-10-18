@@ -7,6 +7,7 @@ import json
 import os
 import re
 import stat
+import sys
 import subprocess
 from pathlib import Path
 from types import SimpleNamespace
@@ -305,3 +306,238 @@ def test_actual_exit_trap_preserves_original_failure_and_reports_cleanup_failure
     assert observed[0] == "capture" and len(observed) == 2
     assert observed[1].endswith("--profile client down -v")
     assert ("cleanup reported a failure" in result.stderr) == bool(capture_status or teardown_status)
+
+
+# Public proof projection tests use synthetic XML only; no application imports.
+def _proof_extractor_path():
+    candidates = (
+        Path("/app/scripts/extract_mtg_rbac_rehearsal_proof.py"),
+        Path(__file__).resolve().parents[3] / "api/scripts/extract_mtg_rbac_rehearsal_proof.py",
+    )
+    return next(path for path in candidates if path.exists())
+
+
+def _proof_extractor():
+    path = _proof_extractor_path()
+    spec = importlib.util.spec_from_file_location("mtg_rbac_public_proof", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _public_proof_records():
+    rollback = {
+        "head": "20260929_r2b_roles", "archive_retained": True, "rollback_window_open_before": True,
+        "only_recorded_rows_removed": True, "r2b_rows_and_ids_unchanged": True,
+        "unrelated_permission_rows_preserved": 50, "unrelated_boundary_ids_preserved": 8,
+        "created_permission_rows_removed": 5, "created_boundary_rows_removed": 1,
+    }
+    records = {"mtg_rbac_bridge_only_rollback": rollback}
+    for outcome in ("commit", "rollback"):
+        records[f"mtg_rbac_maintenance_fence_{outcome}"] = {
+            "outcome": outcome, "same_backend_and_transaction": True, "transaction_locks_released": True,
+            "stages": [{"stage": stage, "locks": [{"table_name": table, "mode": "ShareRowExclusiveLock"}
+                        for table in ("roles", "user_roles", "users")]}
+                       for stage in ("preflight", "r2b", "bridge", "cutover")],
+            "contenders": [{"table": table, "waiting_mode": "RowExclusiveLock", "blocked_by_migrator": True,
+                            "write_attempts": 1, "cancel_sqlstate": "57014", "transaction_rolled_back": True,
+                            "contender_session_closed": True,
+                            "abort_method": "observer_cancel" if table == "roles" else "server_statement_deadline"}
+                           for table in ("roles", "user_roles", "users")],
+            "original_authority_preserved": True, "external_full_graph_release_fence_proven": False,
+        }
+    return records
+
+
+def _proof_xml(tmp_path, records):
+    from xml.etree import ElementTree as ET
+
+    root = ET.Element("testsuites")
+    suite = ET.SubElement(root, "testsuite", {"tests": "1", "errors": "0", "failures": "0"})
+    properties = ET.SubElement(suite, "properties")
+    for name, value in records:
+        ET.SubElement(properties, "property", {"name": name, "value": value})
+    ET.SubElement(suite, "system-out").text = "private SQL and credentials must never be copied"
+    path = tmp_path / "results.xml"
+    ET.ElementTree(root).write(path, encoding="utf-8")
+    return path
+
+
+def test_public_junit_proof_round_trip_is_complete_but_not_a_release_verdict(tmp_path):
+    expected = _public_proof_records()
+    xml = _proof_xml(tmp_path, [(name, json.dumps(value)) for name, value in expected.items()])
+    receipt = _proof_extractor().extract_proof(xml, source_sha="a" * 40, run_id=123, run_attempt=2,
+                                               shard=3, lane="normal_e2e")
+    assert receipt["status"] == "complete"
+    assert receipt["proofs"] == expected
+    assert receipt["missing_properties"] == receipt["invalid_properties"] == []
+    assert receipt["provenance"] == {"source_sha": "a" * 40, "run_id": 123, "run_attempt": 2,
+                                     "shard": 3, "lane": "normal_e2e"}
+    assert receipt["evidence_scope"] == "synthetic_migration_tests_only"
+    assert len(receipt["junit_sha256"]) == 64
+    assert "private" not in json.dumps(receipt) and "credentials" not in json.dumps(receipt)
+    assert all(not proof.get("external_full_graph_release_fence_proven", False)
+               for proof in receipt["proofs"].values())
+
+
+def test_public_junit_proof_ignores_unknown_properties_and_never_copies_them(tmp_path):
+    helper = _proof_extractor()
+    receipt = helper.extract_proof(_proof_xml(tmp_path, [("secret-property", "unrestricted private SQL credential")]))
+    assert receipt["status"] == "not_present"
+    assert receipt["missing_properties"] == list(helper.PROPERTIES)
+    assert receipt["proofs"] == {}
+    assert "secret-property" not in json.dumps(receipt)
+    assert "private" not in json.dumps(receipt)
+
+
+def test_public_junit_proof_reports_partial_or_missing_evidence(tmp_path):
+    helper = _proof_extractor()
+    expected = _public_proof_records()
+    first = next(iter(expected))
+    receipt = helper.extract_proof(_proof_xml(tmp_path, [(first, json.dumps(expected[first]))]))
+    assert receipt["status"] == "incomplete" and set(receipt["proofs"]) == {first}
+    assert receipt["missing_properties"] == list(helper.PROPERTIES[1:])
+    missing = helper.extract_proof(tmp_path / "absent.xml")
+    assert missing["status"] == "not_present" and missing["input_status"] == "missing"
+    assert missing["missing_properties"] == list(helper.PROPERTIES)
+
+
+@pytest.mark.parametrize("value", [True, "50", 50.0, -1, 1_000_001, None])
+def test_public_junit_proof_counts_must_be_bounded_integers(tmp_path, value):
+    records = _public_proof_records()
+    name = "mtg_rbac_bridge_only_rollback"
+    records[name]["unrelated_permission_rows_preserved"] = value
+    receipt = _proof_extractor().extract_proof(_proof_xml(tmp_path, [(name, json.dumps(records[name]))]))
+    assert receipt["status"] == "invalid"
+    assert receipt["invalid_properties"] == [{"property": name, "category": "invalid_schema"}]
+    assert receipt["proofs"] == {}
+
+
+@pytest.mark.parametrize("mutation", ["unknown_field", "wrong_stage", "wrong_table", "wrong_mode", "wrong_outcome",
+                                      "extra_attempt", "unclosed_session", "raw_abort", "claims_release_fence"])
+def test_public_fence_proof_rejects_unreviewed_shapes_without_exposing_values(tmp_path, mutation):
+    name = "mtg_rbac_maintenance_fence_commit"
+    item = _public_proof_records()[name]
+    if mutation == "unknown_field":
+        item["private SQL"] = "sensitive customer credential"
+    elif mutation == "wrong_stage":
+        item["stages"][0]["stage"] = "sensitive customer credential"
+    elif mutation == "wrong_table":
+        item["contenders"][0]["table"] = "sensitive customer credential"
+    elif mutation == "wrong_mode":
+        item["stages"][0]["locks"][0]["mode"] = "AccessShareLock"
+    elif mutation == "wrong_outcome":
+        item["outcome"] = "rollback"
+    elif mutation == "extra_attempt":
+        item["contenders"][0]["write_attempts"] = 2
+    elif mutation == "unclosed_session":
+        item["contenders"][0]["contender_session_closed"] = False
+    elif mutation == "raw_abort":
+        item["contenders"][0]["abort_method"] = "sensitive customer credential"
+    else:
+        item["external_full_graph_release_fence_proven"] = True
+    receipt = _proof_extractor().extract_proof(_proof_xml(tmp_path, [(name, json.dumps(item))]))
+    assert receipt["status"] == "invalid" and receipt["proofs"] == {}
+    assert "sensitive" not in json.dumps(receipt) and "private SQL" not in json.dumps(receipt)
+
+
+@pytest.mark.parametrize("payload", ["private malformed JSON", "[]", "null", '"sensitive"',
+                                    '{"head":"sensitive","head":"duplicate"}', '{"head":NaN}'])
+def test_public_proof_rejects_malformed_json_and_duplicate_json_keys(tmp_path, payload):
+    name = "mtg_rbac_bridge_only_rollback"
+    receipt = _proof_extractor().extract_proof(_proof_xml(tmp_path, [(name, payload)]))
+    assert receipt["status"] == "invalid" and receipt["proofs"] == {}
+    assert "sensitive" not in json.dumps(receipt) and "private malformed" not in json.dumps(receipt)
+
+
+def test_duplicate_known_xml_property_is_never_accepted_even_if_identical(tmp_path):
+    name = "mtg_rbac_bridge_only_rollback"
+    raw = json.dumps(_public_proof_records()[name])
+    receipt = _proof_extractor().extract_proof(_proof_xml(tmp_path, [(name, raw), (name, raw)]))
+    assert receipt["status"] == "invalid" and receipt["proofs"] == {}
+    assert receipt["invalid_properties"] == [{"property": name, "category": "duplicate_property"}]
+
+
+@pytest.mark.parametrize("argument,value", [("source_sha", "sensitive credential"), ("run_id", True),
+                                            ("run_attempt", 0), ("shard", 1001), ("lane", "private SQL")])
+def test_public_proof_provenance_is_bounded_without_echoing_invalid_inputs(tmp_path, argument, value):
+    receipt = _proof_extractor().extract_proof(tmp_path / "absent.xml", **{argument: value})
+    assert receipt["status"] == "invalid" and receipt["input_error"] == "invalid_provenance"
+    assert receipt["provenance"] == {} and "sensitive" not in json.dumps(receipt)
+    assert "private SQL" not in json.dumps(receipt)
+
+
+def test_extractor_cli_writes_failure_receipt_and_returns_nonzero_without_raw_xml(tmp_path):
+    source = tmp_path / "results.xml"
+    source.write_text("private credential invalid XML")
+    output = tmp_path / "public.json"
+    result = subprocess.run([sys.executable, str(_proof_extractor_path()),
+                             "--junit", str(source), "--output", str(output)], capture_output=True, text=True)
+    assert result.returncode == 1
+    receipt = json.loads(output.read_text())
+    assert receipt["status"] == "invalid" and receipt["input_error"] == "invalid_xml"
+    assert "private" not in result.stdout + result.stderr + output.read_text()
+    assert "credential" not in result.stdout + result.stderr + output.read_text()
+
+
+@pytest.mark.parametrize("also_valid_suite_property", [False, True])
+def test_reserved_proof_names_in_testcase_metadata_cannot_bypass_validation(tmp_path, also_valid_suite_property):
+    from xml.etree import ElementTree as ET
+
+    name = "mtg_rbac_bridge_only_rollback"
+    raw = json.dumps(_public_proof_records()[name])
+    records = [(name, raw)] if also_valid_suite_property else []
+    xml = _proof_xml(tmp_path, records)
+    root = ET.parse(xml).getroot()
+    suite = root.find("testsuite")
+    assert suite is not None
+    case = ET.SubElement(suite, "testcase")
+    properties = ET.SubElement(case, "properties")
+    ET.SubElement(properties, "property", {"name": name, "value": raw})
+    ET.ElementTree(root).write(xml, encoding="utf-8")
+    receipt = _proof_extractor().extract_proof(xml)
+    assert receipt["status"] == "invalid" and receipt["proofs"] == {}
+    category = "duplicate_property" if also_valid_suite_property else "invalid_property_location"
+    assert receipt["invalid_properties"] == [{"property": name, "category": category}]
+
+
+def test_complete_proof_with_one_invalid_record_is_not_partially_claimed_complete(tmp_path):
+    records = _public_proof_records()
+    name = "mtg_rbac_maintenance_fence_rollback"
+    records[name]["original_authority_preserved"] = False
+    receipt = _proof_extractor().extract_proof(_proof_xml(
+        tmp_path, [(key, json.dumps(value)) for key, value in records.items()],
+    ))
+    assert receipt["status"] == "invalid"
+    assert set(receipt["proofs"]) == set(records) - {name}
+    assert receipt["missing_properties"] == [name]
+
+
+@pytest.mark.parametrize("payload", [
+    b'<?xml version="1.0" encoding="sensitive-customer-credential"?><testsuites/>',
+    '<?xml version="1.0"?><!DOCTYPE testsuites [<!ENTITY secret "sensitive-customer-credential">]><testsuites/>'.encode("utf-16"),
+    '<?xml version="1.0"?><!DOCTYPE testsuites [<!ENTITY secret "sensitive-customer-credential">]><testsuites/>'.encode("utf-16-le"),
+    b'\xffsensitive-customer-credential',
+])
+def test_extractor_cli_rejects_unsupported_xml_encodings_without_raw_diagnostics(tmp_path, payload):
+    source = tmp_path / "results.xml"
+    source.write_bytes(payload)
+    output = tmp_path / "public.json"
+    result = subprocess.run([sys.executable, str(_proof_extractor_path()),
+                             "--junit", str(source), "--output", str(output)], capture_output=True, text=True)
+    assert result.returncode == 1
+    receipt = json.loads(output.read_text())
+    assert receipt["status"] == "invalid" and receipt["input_error"] == "invalid_xml"
+    assert "sensitive" not in result.stdout + result.stderr + output.read_text()
+    assert "credential" not in result.stdout + result.stderr + output.read_text()
+    assert "Traceback" not in result.stderr
+
+
+@pytest.mark.parametrize("bom", [b"", b"\xef\xbb\xbf"])
+def test_standard_utf8_junit_declaration_and_optional_bom_remain_supported(tmp_path, bom):
+    records = _public_proof_records()
+    xml = _proof_xml(tmp_path, [(name, json.dumps(value)) for name, value in records.items()])
+    xml.write_bytes(bom + b'<?xml version="1.0" encoding="utf-8"?>' + xml.read_bytes())
+    receipt = _proof_extractor().extract_proof(xml)
+    assert receipt["status"] == "complete" and receipt["proofs"] == records

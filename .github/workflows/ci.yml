@@ -1067,6 +1067,32 @@ jobs:
             ./test.sh "${shard_files[@]}" -v --durations=50
           fi
 
+      - name: Extract closed RBAC migration property proof
+        if: always() && matrix.total != 0
+        env:
+          PROOF_RUN_ID: ${{ github.run_id }}
+          PROOF_RUN_ATTEMPT: ${{ github.run_attempt }}
+          PROOF_SHARD: ${{ matrix.shard }}
+        run: |
+          set -euo pipefail
+          source scripts/lib/test_helpers.sh
+          project="$(compute_project_name .)"
+          source_sha="$(git rev-parse HEAD)"
+          python3 api/scripts/extract_mtg_rbac_rehearsal_proof.py \
+            --junit "/tmp/bifrost-$project/test-results.xml" \
+            --output "$RUNNER_TEMP/mtg-rbac-rehearsal-proof.json" \
+            --source-sha "$source_sha" --run-id "$PROOF_RUN_ID" \
+            --run-attempt "$PROOF_RUN_ATTEMPT" --shard "$PROOF_SHARD" --lane normal_e2e
+
+      - name: Preserve closed RBAC migration property proof
+        if: always() && matrix.total != 0
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: mtg-rbac-migration-proof-${{ github.sha }}-${{ matrix.shard }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/mtg-rbac-rehearsal-proof.json
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Export E2E service logs and stop stack
         if: always() && matrix.total != 0
         run: ./test.sh stack down

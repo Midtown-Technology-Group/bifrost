@@ -69,7 +69,7 @@ jobs:
               '.github/workflows/rbac-focused-rehearsal-diagnostic.yml',
               'api/Dockerfile.dev', 'docker-compose.test.yml', 'test.sh',
               'pyproject.toml', 'requirements.lock', 'requirements-pyright.lock',
-              'api/product-updates.bundle.json',
+              'api/product-updates.bundle.json', 'api/scripts/extract_mtg_rbac_rehearsal_proof.py',
               'scripts/rehearse-mtg-rbac-backup.sh', 'scripts/rehearse-mtg-rbac-backup.py',
               'scripts/rehearse-mtg-rbac-old-readers.sh', 'scripts/rehearse-mtg-rbac-old-readers.py',
           )
@@ -255,6 +255,21 @@ jobs:
           (public / 'e2e-summary.json').write_text(json.dumps(data, sort_keys=True, indent=2) + '\n')
           PY
 
+      - name: Extract closed migration property proof without raw JUnit
+        if: ${{ always() && steps.ownership.outcome == 'success' }}
+        shell: bash
+        env:
+          PROOF_PROJECT: ${{ steps.ownership.outputs.compose_project }}
+          PROOF_RUN_ID: ${{ github.run_id }}
+          PROOF_RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          python3 api/scripts/extract_mtg_rbac_rehearsal_proof.py \
+            --junit "/tmp/bifrost-$PROOF_PROJECT/test-results.xml" \
+            --output "$RUNNER_TEMP/rbac-focused-public/migration-property-proof.json" \
+            --source-sha "$DIAGNOSTIC_SOURCE_SHA" --run-id "$PROOF_RUN_ID" \
+            --run-attempt "$PROOF_RUN_ATTEMPT" --lane focused_diagnostic
+
       - name: Verify the source and frozen test image still match
         if: ${{ always() && steps.image.outcome == 'success' }}
         shell: bash
@@ -319,6 +334,7 @@ jobs:
             ${{ runner.temp }}/rbac-focused-public/e2e-exit-code.txt
             ${{ runner.temp }}/rbac-focused-public/unit-summary.json
             ${{ runner.temp }}/rbac-focused-public/e2e-summary.json
+            ${{ runner.temp }}/rbac-focused-public/migration-property-proof.json
             ${{ runner.temp }}/rbac-focused-public/source-readback.json
             ${{ runner.temp }}/rbac-focused-public/cleanup.json
             /tmp/bifrost-bifrost-test-*/rbac-backup-*/proof.json
