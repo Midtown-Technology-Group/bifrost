@@ -4,28 +4,36 @@ title: Solutions, Workspace Promotion, and Git Sync
 description: How portable Solution bundles are previewed, installed, reconciled, and synchronized, and how mutable Workspace authoring moves through reviewed changesets or immutable promotion.
 tags: [solutions, workspace, promotion, git-sync, manifests]
 sources:
+  - id: openwiki-source-a986bc02ee8181224d4258b2
+    resource: repo://api/bifrost/manifest.py
   - id: openwiki-source-4caee390dc5fd98930592bdd
     resource: repo://api/src/routers/solutions.py
   - id: openwiki-source-b62002f0045af3615fa35f0e
     resource: repo://api/src/routers/workspace_promotions.py
   - id: openwiki-source-7d8425e8a1749c96e407cb70
     resource: repo://api/src/routers/workspace_repo_changesets.py
+  - id: openwiki-source-c5eb66ab445aedd8ddee8557
+    resource: repo://api/src/services/manifest_import.py
   - id: openwiki-source-bd7341a1b27f641827153147
     resource: repo://api/src/services/solutions/deploy.py
   - id: openwiki-source-87f9ee1add68ff2e73f6f751
     resource: repo://api/src/services/solutions/export.py
   - id: openwiki-source-b3ff21776fd9771e7f50ea47
     resource: repo://api/src/services/solutions/git_sync.py
+  - id: openwiki-source-eed4a86afc56638719760898
+    resource: repo://api/src/services/solutions/workspace_bundle_plan.py
   - id: openwiki-source-7cd8161b5f8c9f0d19c9a50a
     resource: repo://api/src/services/workspace_repo_changesets.py
+  - id: openwiki-source-077499a0fb030f088d717778
+    resource: repo://api/tests/unit/test_workflow_cache_manifest.py
   - id: openwiki-source-2fc99602da69d2f7b60e291e
     resource: repo://docs/architecture/rapid-workspace-promotion.md
   - id: openwiki-source-ae7bfdacbc3430a281161a63
     resource: repo://docs/architecture/workspace-source-coherence.md
-generated: { by: "bifrost-atlas", at: "2026-10-18T02:51:00.673Z" }
+generated: { by: "bifrost-atlas", at: "2026-10-18T11:44:53.228Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-18T02:51:00.673Z
+    at: 2026-10-18T11:44:53.228Z
 ---
 
 # Solutions, Workspace Promotion, and Git Sync
@@ -37,6 +45,8 @@ Solutions and Workspace releases are related packaging and delivery paths, but t
 A Solution workspace is represented by a `bifrost.solution.yaml` descriptor, Python source, and `.bifrost/*.yaml` entity manifests. Export writes the same general workspace shape accepted by preview/install, keeping the descriptor declarative: organization/global install scope is chosen by the installer rather than embedded in the package. Export can include encrypted runtime values only in password-protected full backups; a shareable export omits the encrypted secrets blob. This makes a package portable while keeping target identity and sensitive instance values outside ordinary source manifests.
 
 The workspace-import preview endpoint stages the uploaded archive under a requester-bound token, parses it, computes a collision plan, and stores the package digest, planned manifest, ID map, and file hashes. Import submission requires one explicit decision for every conflict and checks config values against declared schema keys before it queues a durable PlatformJob. Repository preview is a one-time snapshot operation: it clones a requested ref, requires a descriptor under the selected subpath, rejects symlinks, resolves the concrete commit, then stages a preview. It does not create a connected Solution or continuing synchronization relationship.
+
+Workflow manifests can carry an optional `cache_ttl_seconds` content field, validated as a strict integer from 0 through 86400; the field declares 0 as disabling caching. Concrete values are serialized for Git Sync and install, while omission or null creates no upsert value. For a matching destination workflow, Git Sync diff and Solution preview compare an omitted or null TTL as the destination's existing value, so absence alone does not create an update or conflict. An explicit value, including zero, remains comparison intent. This describes manifest transport and preview behavior, not execution-time cache operation. ([`manifest.py`](../../api/bifrost/manifest.py#L139-L144), [`manifest.py`](../../api/bifrost/manifest.py#L160-L183), [`manifest.py`](../../api/bifrost/manifest.py#L197-L242), [`manifest_import.py`](../../api/src/services/manifest_import.py#L209-L218), [`workspace_bundle_plan.py`](../../api/src/services/solutions/workspace_bundle_plan.py#L371-L395), [`test_workflow_cache_manifest.py`](../../api/tests/unit/test_workflow_cache_manifest.py#L37-L101), [`test_workflow_cache_manifest.py`](../../api/tests/unit/test_workflow_cache_manifest.py#L104-L159))
 
 At install time, source manifest IDs remain portable while persisted entity IDs are deterministically remapped with UUIDv5 using the install ID as namespace. Redeploying the same install preserves its generated IDs and references; another install gets independent rows. The reconciler upserts the bundle and deletes only entities owned by that exact `solution_id` that are absent from the new bundle. It cannot sweep `_repo/` rows or another installation. Python installs as source under `_solutions/{id}/`, and entities inherit the install's organization scope.
 

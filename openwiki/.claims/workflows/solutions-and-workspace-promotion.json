@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:10f93970f30b800fa38e28be718e74d1e00001473e756a818b68da5113547c8f",
+  "pageVersion": "sha256:ad4675974c8752cfd860215a7af3153759babeb53f00a86fb52d61dbd68adea8",
   "claims": [
     {
       "id": "claim_528b2599600e456bb9d909e2459d7aea",
@@ -157,10 +157,54 @@
           "version": "repo-lines-v1:sha256:f670eacbdb2f83e5f1773cb088e6a87b208c2bd8308c3b022eaab22362722b5c:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU3NDdmNDFmMmY5ODMyYzliMDEwOGI3ZTRhMjBkYWZjNmNmMDEzMDVhMzEwZGM2MjlmYWJiZjZhOTBjNjdlNmUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE3NzY3Y2EyMzRhOGExNWY1ZWUzYTZmZDY5MDRkNDQ1MGQ4MDVmZGZkMzlmMWRjYjY2MGIzYTExYWI3ODM4OGYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM3M2QxZDc4Njk3OGExYjZmNDgxNGRmZDg2ZmIyY2ZiMGUyOWZhNjJmODVmMDFlYjEyZDdmZGQ2NjU2OGVhOWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE3MzExNDJhNmMxMDkyYWQ5MGEyNDRkY2VhZWRkYWNhZTBkMzJiOTBkZDY4ZDc2ZmVhNzJjZjc1ODZmNzUzYmUifQ"
         }
       ]
+    },
+    {
+      "id": "claim_1615397e0bf6423099f291fc0fdaa96b",
+      "statement": "Workflow manifests expose cache_ttl_seconds as an optional content field validated as a strict integer from 0 through 86400; concrete values, including zero, are carried from rows and included in Git Sync and INSTALL upsert projections, while null is omitted.",
+      "evidence": [
+        {
+          "resource": "repo://api/bifrost/manifest.py#L139-L144",
+          "version": "repo-lines-v1:sha256:cd2549147c06e2f30341c10377986b22ea1e4948579d848019f82f5b4de1416c:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMGQ0NDdhYTU2YjVmOTRhMjY0ZTBiODJjZjYyZGQyODRmNDIxZTlmN2VlNDg2MmNiYTc1YjgxNDBkY2I0MWI1ZSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMzBjMWYxODhmMTQyZWQ3YTgyNDY4MGIyMDcxNzJjNTUxOWJjNjE0YTQ4ZmRhN2NmMTY3ZWRiOGRkZjc5OTU2YyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMzY0NzA5MGUzYjZkYzIxNjU4OTI3NzI3ZGMzZTQzYmUwM2QwYzg4ODJkMmE4ODI3MjJjZmFlMzJiNGJlZDg5NiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNGU2ZWNjZTc3MTUzNTkxYWUzY2I2M2NkYmNhYjgyODU0N2QzOTBjZTdmOTgxNzYxZGUzOWVkMjRjZDhkZjgwMiJ9"
+        },
+        {
+          "resource": "repo://api/bifrost/manifest.py#L160-L183",
+          "version": "repo-lines-v1:sha256:9bd453cdf564a1fa7c4e74507f5408c6e2edbec42608e1bd4b0cf77c5502afdf:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgyMGI0NTNmNWUwYzkyZDVmNmMyNTFhNWVhMTk2MGQ3MmYzYmQwNzk1NmFlODU3ZGEyMGUzMWE4OGM1NTk2OWYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU5MDlhNTNhNjE4ZDAyOGUxZDMwMDBjMGE3YWJjZWVjYmU1ZmIzN2Y0ZTUxMWVmZTQ2NjQzZmFkNmU2Njg3MmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjNjZWVjNTlhYzI1YzRkNDdmMzA1Zjc0ODk3ZWNkNTIwMDVmOTE3ZDk4M2RjZjMyY2YyZTFlZjEyZDVhNjdjNDgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI1NTEyNDUzMDA3NjI0YjZlNzFjMTI1ZGEwOWNjMTExMzlhZmQ4MTliYjhkMDdlYzYyZGJiYmJiMzYyYzE1YmIifQ"
+        },
+        {
+          "resource": "repo://api/bifrost/manifest.py#L185-L242",
+          "version": "repo-lines-v1:sha256:80d6affeedf73fb9d56cd40be6454b4f648856665a4f607071235cf8b5634a3d:eyJzZWxlY3RlZExpbmVDb3VudCI6NTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM0MjM5MDI5MzkyNDBkYzM3OGU5N2YzYmY3MmJmOTI1ZWM5YjU1MWExYmIwYjYwYWFiOTAwYTY5MjBiZjFjNWQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdhNmE2MmUxYTllMWViOTJjYzE5ZDY0Mzg5OTRhYzYzYWZiYTEwYmExNzYzOGM4ODViZGM3ZjUxMjBlNGEwMjUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg3ZDRjM2NiYzE3YzVkMGQ0YTJmZjFjNGJiNTg0NWFjNDlkNmMyMzFmNWU4MDQzZWVlNzIzZTBhMTFhYjhiNTQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJhYzYwNDI2YTNlNTdiMTY2MmY2YjYyZDMwZmI2ZTMxYjlkNWZkNDk2ODEyM2Y5NTFjOGY3ZTUzYzhhNGFkZmIifQ"
+        },
+        {
+          "resource": "repo://api/tests/unit/test_workflow_cache_manifest.py#L37-L101",
+          "version": "repo-lines-v1:sha256:d21c28befffbe5f9d082a0f97961269cd6c16751e190c1f9733d7d97cd4ee13e:eyJzZWxlY3RlZExpbmVDb3VudCI6NjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUxNWNhY2YyMDQyY2NkNjM2YTg5YWIyMmRiZmY5ZWM3YTMwMzdiMTk1OTNmMmViZGJkNDI1Y2E3NjEzYWU0OGUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI0NjZjN2JhNGJmMmU3ODZkMzEwNjFiNGZkNDAyZjljNmI2MDgzZDZhMTY4MDY5MGIyZDE4NDRiY2E2ZWQ3ZmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRmYmQwMDkzMTRiYzI3MDg0MTY3MzRhMDJhZTVmZjM5YTFlNDhhMDUwYmU5MWY0M2IyZmFhOTIwMDJjNjJiZmMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgwYTg2MjU4NzUxMzIxN2U0MTM3M2RiNzA3ZWY0YzI0N2NhOGJjNjkxYmVlN2Q3MTkwOGI2OGUxNmNjNTlmMzAifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_b3cd6cf7252c44588ba1808325d59022",
+      "statement": "For an existing workflow, Git Sync diff and Solution workspace preview treat an omitted or null incoming cache_ttl_seconds as the destination's current value; explicit TTLs, including zero, remain comparison intent and can change the diff or preview classification.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/services/manifest_import.py#L209-L218",
+          "version": "repo-lines-v1:sha256:cfe97372134df868aaf6559618d8d5f3666e83fdefbc88e3644691e9ce1124c3:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjliMzFlYmI2YTRhMzA0NDZlMzk4ODhiYmUzODMzMjVjMDU4ZGI0ZDgxOGYyNDhiZmJhY2JjMTA5MTY0MTcyMjQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI4NGU4ODcxYzljNzgxNGVhMzg2YzVjMTZlOWRhNzI0NDFkYTBlOWY2NGY0ODU3YWU2NzA0MDQ3MzU3Njg4MTkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY5MDFiNzhhMDVkMWZiYTg5ODNhNWMyMWViMzk4NzY1MDg5ZGJiNGQxMDQyOTUzNThjMDNmYmU0ODQ5YjQwZTgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijc1M2I3YThlYjdmNGY2OWIyYzIwOTg5ODBjZWYzOGFhYmY3YTY0YTU4YWFmOWI5MDMyNGFiYzg2YzZkZDc3ZGYifQ"
+        },
+        {
+          "resource": "repo://api/src/services/solutions/workspace_bundle_plan.py#L371-L395",
+          "version": "repo-lines-v1:sha256:0d49ed9a2a719f7cbdf1573d897db26c0e425af8a53999387d4d594f751fc470:eyJzZWxlY3RlZExpbmVDb3VudCI6MjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNkNjBlNzEzYWYzMDI0ODI2ZDMwOTMxMGJjYTBjZDExNjQwNTBmM2RjOGM1NTdhMGJmOGY2YTM5N2Y1ZGUyZjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUxMDM0ODFjNTdkMGYwZGMwZjc2Y2QyY2M4YjM2MDRjNGU4Mjk2ZGE0MTIyYWRkMTllODE3NDVkYzdlMzMxYTYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijc5NDE1MDUwNzgyODRjYmQ4Mjc2NzU5M2M1ZWU1YmI5OTExNDBlNGJmMDk3Y2IyMDAyNmRhNjBmMDY4YTIwYWMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk4ZGI2YTIzZGRkYzBmY2QwMDBmMGZlYmE4ZmNjMDA2OGQ0YjA5MzJiNWNiMTg2ODhkNTBlNDIyMDBlNzFmNDkifQ"
+        },
+        {
+          "resource": "repo://api/tests/unit/test_workflow_cache_manifest.py#L104-L159",
+          "version": "repo-lines-v1:sha256:18fd4ecd140f8cd13b4823369113d9b5faffebc071e111f85d2fc193bcaa12bc:eyJzZWxlY3RlZExpbmVDb3VudCI6NTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBhMGZhYjY3MjUyY2NkYjhiNWVhNTgwNTYzYjE3YTM0M2FjMWIxYTk1ZDI3YzRiM2NlMmJlZDA3MzM3OGQ4NGMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwYzFmMTg4ZjE0MmVkN2E4MjQ2ODBiMjA3MTcyYzU1MTliYzYxNGE0OGZkYTdjZjE2N2VkYjhkZGY3OTk1NmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg2ZDk1NjBlNzhjZjM5ZWE1MmE5ODQ0NTc1ZjZkMzg1ZmMyYWM1MTFjNWIwNmFhMjAyOTJlZDg5M2E3NmZlM2UiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        },
+        {
+          "resource": "repo://api/tests/unit/test_workflow_cache_manifest.py#L15-L24",
+          "version": "repo-lines-v1:sha256:a52122af23f82de3bf17d1edab1b99bafa85dce4570e366f4a5dca2621e8c68d:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE4YjliYzU3ZGZhZjRmNGFiOGY3ODdhMTMxN2JhNmFhMzRhZDAwNDE5YzRlNTZjNTc3OTNmYTc4MWEwMmM2MmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY5NDE2ZTA5Zjc4YmEzMTZjMDMyNTY4MjEzYjg1NWVlNzU2ZTQxNTY1ZDkxOGYwOTUxOWM4MWZkNjIwZjQwNjAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImEyY2QxMDZmZTg1ZmNjNmMyNzNjMmY3NTM5ODI4ZTU3MjkzYmZmYWMzNGYxMDI4Mjc5ODQ2ZjRlNWY2MDU3MmIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjkwZDIzYjc3OGIwYzQ1N2IwMjMxYzIwMDFiNzY3ZDZkYjRiMzc1NTA3N2EzNzk4ZTQxYzBlZTFlOTM2YTZlNjIifQ"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-18T02:51:00.673Z"
+    "at": "2026-10-18T11:44:53.228Z"
   }
 }

@@ -12,8 +12,12 @@ sources:
     resource: repo://api/src/models/orm/events.py
   - id: openwiki-source-521891cb02d8e6a2b1faaaa5
     resource: repo://api/src/routers/events.py
+  - id: openwiki-source-769e0c3040b6c17d616752d2
+    resource: repo://api/src/routers/hooks.py
   - id: openwiki-source-1bd3d013de2efef2651a9d95
     resource: repo://api/src/scheduler/main.py
+  - id: openwiki-source-e340e9a52ebab7d45c33903d
+    resource: repo://api/src/services/events/processor.py
   - id: openwiki-source-1d506e381e28f88063e2658a
     resource: repo://api/src/services/webhooks/adapters/local_fixture.py
   - id: openwiki-source-f190d78edc5127f7d5abec4f
@@ -30,10 +34,10 @@ sources:
     resource: repo://api/tests/unit/jobs/schedulers/test_webhook_renewal.py
   - id: openwiki-source-348a04725dd62e51f9e9b7ec
     resource: repo://api/tests/unit/services/test_webhook_lifecycle.py
-generated: { by: "bifrost-atlas", at: "2026-10-18T06:28:44.263Z" }
+generated: { by: "bifrost-atlas", at: "2026-10-18T11:44:53.228Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-18T06:28:44.263Z
+    at: 2026-10-18T11:44:53.228Z
 ---
 
 # Provider-Managed Webhook Subscriptions
@@ -68,4 +72,6 @@ The recurring scheduler itself is configured to check every six hours; the expir
 
 `WebhookSource` stores adapter name, integration binding, configuration, external ID, adapter state, expiry, and rate-limit settings alongside the event-source relationship. The active adapter owns the meaning of its state fields; callers should pass state through its protocol rather than reinterpret provider-specific values. Generic adapter state includes an optional HMAC secret, whereas Graph state includes provider subscription validation material. ([`events.py`](../../api/src/models/orm/events.py#L176-L236), [`generic.py`](../../api/src/services/webhooks/adapters/generic.py#L22-L40), [`microsoft_graph.py`](../../api/src/services/webhooks/adapters/microsoft_graph.py#L220-L275))
 
-The subscriptions described here are registrations with external senders. The callback route is a separate ingress boundary, and each adapter applies its own checks before returning a delivery result. For generic endpoints, HMAC is optional and enforced only when a secret is configured. Microsoft Graph compares each incoming `clientState` with stored adapter state only when `client_state` is truthy; if that value is absent or falsey, this equality check is skipped. The Graph adapter also handles validation challenges. Trace actual callback handling through the adapters and event processor before changing event authenticity or delivery semantics. ([`generic.py`](../../api/src/services/webhooks/adapters/generic.py#L140-L190), [`microsoft_graph.py`](../../api/src/services/webhooks/adapters/microsoft_graph.py#L380-L445), [`events.py`](../../api/src/routers/events.py#L1-L80))
+Public provider delivery enters `/api/hooks/{source_id}` in `api/src/routers/hooks.py`: `receive_webhook` resolves the source and calls `EventProcessor.process_webhook`, which dispatches to the selected adapter. Provider and event-source management instead belongs to the authenticated `/api/events` router in `api/src/routers/events.py`; source creation registers the provider subscription and builds its external callback URL under `/api/hooks`. Keep these owners distinct when tracing ingress or changing subscription lifecycle. ([`hooks.py`](../../api/src/routers/hooks.py#L43-L43), [`hooks.py`](../../api/src/routers/hooks.py#L93-L115), [`hooks.py`](../../api/src/routers/hooks.py#L184-L210), [`processor.py`](../../api/src/services/events/processor.py#L292-L353), [`events.py`](../../api/src/routers/events.py#L82-L92), [`events.py`](../../api/src/routers/events.py#L406-L419), [`events.py`](../../api/src/routers/events.py#L514-L527))
+
+For generic endpoints, HMAC is optional and enforced only when a secret is configured. Microsoft Graph compares each incoming `clientState` with stored adapter state only when `client_state` is truthy; if that value is absent or falsey, this equality check is skipped. The Graph adapter also handles validation challenges. Provider OAuth and PKCE are a separate boundary described in [workflow and integration OAuth](../integrations/oauth-and-external-mcp.md#workflow-and-integration-oauth). Trace adapter behavior before changing event authenticity or delivery semantics. ([`generic.py`](../../api/src/services/webhooks/adapters/generic.py#L140-L190), [`microsoft_graph.py`](../../api/src/services/webhooks/adapters/microsoft_graph.py#L380-L445))
