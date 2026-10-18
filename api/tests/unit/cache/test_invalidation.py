@@ -401,6 +401,24 @@ class TestExecutionCleanup:
             )
 
     @pytest.mark.asyncio
+    async def test_cleanup_execution_cache_deletes_state_when_log_expiry_fails(
+        self, mock_redis
+    ):
+        """Expiry failure does not strand pending or active execution state."""
+        mock_redis.expire.side_effect = Exception("Redis error")
+
+        with patch("src.core.cache.invalidation.get_shared_redis", return_value=mock_redis):
+            await cleanup_execution_cache("exec-123", preserve_logs=True)
+
+            mock_redis.expire.assert_awaited_once_with(
+                "bifrost:logs:exec-123", TTL_EXECUTION_LOGS
+            )
+            mock_redis.delete.assert_awaited_once_with(
+                "bifrost:pending:exec-123",
+                "bifrost:exec:exec-123:active",
+            )
+
+    @pytest.mark.asyncio
     async def test_cleanup_execution_cache_handles_error(self, mock_redis):
         """cleanup_execution_cache handles errors gracefully."""
         mock_redis.delete.side_effect = Exception("Redis error")

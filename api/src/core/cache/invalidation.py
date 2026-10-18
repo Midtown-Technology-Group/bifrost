@@ -376,7 +376,10 @@ async def cleanup_execution_cache(execution_id: str, *, preserve_logs: bool = Fa
         if preserve_logs:
             # A committed stream may be retained briefly for recovery or a
             # concurrent append, but it must never become permanent metadata.
-            await r.expire(log_stream_key, TTL_EXECUTION_LOGS)
+            try:
+                await r.expire(log_stream_key, TTL_EXECUTION_LOGS)
+            except Exception as e:
+                logger.warning(f"Failed to bound execution log retention: {e}")
         else:
             keys.append(log_stream_key)
         keys.append(active_execution_key(execution_id))
