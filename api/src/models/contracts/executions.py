@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 
 class ExecutionLogPublic(BaseModel):
     """Single log entry from workflow execution (API response model)"""
-    id: int  # Unique log ID for exact deduplication
+    id: int  # Stable zero-based offset within this authorized execution log view
     timestamp: str
     level: str  # debug, info, warning, error
     message: str

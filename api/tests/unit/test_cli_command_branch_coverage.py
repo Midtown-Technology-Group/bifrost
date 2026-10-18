@@ -54,8 +54,8 @@ def test_handle_login_password_grant_env_write_fallback(monkeypatch, capsys):
     captured = capsys.readouterr()
     assert "could not update .env" in captured.err
     assert "BIFROST_API_URL=https://api.example.test" in captured.out
-    assert "BIFROST_ACCESS_TOKEN=access-1" in captured.out
-    assert "BIFROST_REFRESH_TOKEN=refresh-1" in captured.out
+    assert "access-1" not in captured.out
+    assert "refresh-1" not in captured.out
 
 
 def test_handle_login_browser_env_write_warning(monkeypatch, capsys):
