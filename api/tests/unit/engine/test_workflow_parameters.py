@@ -8,9 +8,11 @@ Tests that workflow parameters are correctly:
 """
 
 import asyncio
-import pytest
+import sys
 from enum import Enum
 from typing import Literal
+
+import pytest
 
 from src.sdk.context import ExecutionContext, Organization
 from src.sdk.decorators import workflow
@@ -350,6 +352,30 @@ class TestWorkflowVariableCapture:
             await _execute_workflow_with_trace(capture_failure, mock_context, {})
 
         assert exc.value.captured_vars["marker"] == "available on error"
+
+    @pytest.mark.asyncio
+    async def test_failure_restores_preexisting_trace_hook(
+        self,
+        mock_context,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Workflow tracing must not disable a caller-owned tracer on exit."""
+
+        def preexisting_trace(_frame, _event, _arg):
+            return preexisting_trace
+
+        trace_updates = []
+        monkeypatch.setattr(sys, "gettrace", lambda: preexisting_trace)
+        monkeypatch.setattr(sys, "settrace", trace_updates.append)
+
+        @workflow(name="restore_trace", description="Restore trace hook")
+        async def traced_failure():
+            raise ValueError("synthetic failure")
+
+        with pytest.raises(WorkflowExecutionException):
+            await _execute_workflow_with_trace(traced_failure, mock_context, {})
+
+        assert trace_updates[-1] is preexisting_trace
 
 
 class TestContextParameterDetection:

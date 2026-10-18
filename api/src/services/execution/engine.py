@@ -1651,8 +1651,11 @@ async def _execute_workflow_with_trace(
                     )
                     raise
         finally:
-            # Clear trace function
-            sys.settrace(None)
+            # Restore the caller's trace hook. Coverage, debuggers, and
+            # profilers can all own this process-wide boundary before workflow
+            # execution starts; clearing it here silently disables them for
+            # the rest of the process.
+            sys.settrace(existing_trace)
             # Clear context
             if BIFROST_CONTEXT_AVAILABLE:
                 clear_execution_context()
