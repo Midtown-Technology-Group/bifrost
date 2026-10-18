@@ -123,7 +123,8 @@ async def test_stop_serializes_claim_admission_before_attempt_scan(monkeypatch):
     stop_attempt.assert_not_awaited()
     assert definition.desired_state == "running"
     release_claim.set()
-    await stop
+    stopped_definition = await stop
+    assert stopped_definition is definition
     stop_attempt.assert_awaited_once_with(db, definition.id)
     assert definition.desired_state == "stopped"
 
