@@ -16,11 +16,14 @@ if TYPE_CHECKING:
 
 OAuthFlowType = Literal["authorization_code", "client_credentials", "refresh_token"]
 OAuthStatus = Literal["not_connected", "waiting_callback", "testing", "connected", "completed", "failed"]
-PROVIDER_METADATA_DESCRIPTION = "Provider-specific OAuth behavior flags and metadata"
+PROVIDER_METADATA_DESCRIPTION = (
+    "Provider-specific OAuth behavior flags and metadata "
+    "(e.g. use_pkce, omit_token_exchange_scope, omit_authorization_scope)"
+)
 
 
 def _validate_provider_metadata(v: dict[str, Any]) -> dict[str, Any]:
-    for key in ("omit_token_exchange_scope", "omit_authorization_scope"):
+    for key in ("use_pkce", "omit_token_exchange_scope", "omit_authorization_scope"):
         flag = v.get(key)
         if flag is not None and not isinstance(flag, bool):
             raise ValueError(f"provider_metadata.{key} must be a boolean")
@@ -55,7 +58,7 @@ class CreateOAuthConnectionRequest(BaseModel):
     )
     client_secret: str | None = Field(
         None,
-        description="OAuth client secret (optional for PKCE flow, required for client_credentials, will be stored securely in Key Vault)"
+        description="OAuth client secret (optional for public clients such as PKCE-enabled providers without a secret, required for client_credentials, will be stored securely in Key Vault)"
     )
     authorization_url: str | None = Field(
         None,
@@ -116,7 +119,9 @@ class CreateOAuthConnectionRequest(BaseModel):
             # We'll just ignore it if provided, or use a placeholder if needed
 
         elif self.oauth_flow_type == 'authorization_code':
-            # Authorization code: requires authorization_url, client_secret is optional (PKCE)
+            # Authorization code: requires authorization_url. client_secret stays
+            # optional (public clients omit it); PKCE is an explicit opt-in via
+            # provider_metadata.use_pkce, never inferred from a missing secret.
             if not self.authorization_url:
                 raise ValueError("authorization_url is required for authorization_code flow")
 

@@ -97,6 +97,16 @@ def test_to_pydantic_includes_admin_only_fields_for_superuser_and_global_name():
     assert result.execution_context == {"trace": "admin-only"}
 
 
+def test_to_pydantic_hides_stale_workflow_id_for_local_execution():
+    repo = executions.ExecutionRepository.__new__(executions.ExecutionRepository)
+    row = _execution_row(is_local_execution=True)
+
+    result = repo._to_pydantic(row, SimpleNamespace(is_superuser=True))
+
+    assert row.workflow_id is not None
+    assert result.workflow_id is None
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("token, expected_offset, expected_cursor", [
     ("25", 25, None),
@@ -248,6 +258,27 @@ async def test_history_date_bounds_bind_naive_utc_instants(start, end):
     params = db.execute.await_args.args[0].compile().params
     dates = {value for value in params.values() if isinstance(value, datetime)}
     assert dates == {datetime(2026, 7, 5, 8), datetime(2026, 7, 5, 10)}
+
+
+@pytest.mark.asyncio
+async def test_workflow_id_filter_never_attributes_local_executions():
+    db = SimpleNamespace(execute=AsyncMock(return_value=_DbResult(rows=[])))
+    repo = executions.ExecutionRepository(db)
+    user = SimpleNamespace(is_superuser=True, user_id=uuid4())
+
+    rows, token = await repo.list_executions(
+        user=user,
+        org_id=None,
+        workflow_id=uuid4(),
+        exclude_local=False,
+        limit=25,
+    )
+
+    assert rows == []
+    assert token is None
+    query = str(db.execute.await_args.args[0])
+    assert "executions.workflow_id =" in query
+    assert "executions.is_local_execution = false" in query.lower()
 
 
 @pytest.mark.asyncio
@@ -487,6 +518,7 @@ async def test_get_execution_logs_falls_back_to_db_when_redis_read_fails():
 
     assert error is None
     assert len(logs) == 1
+    assert logs[0].id == 0
     assert logs[0].message == "from db"
     assert logs[0].data == {"source": "postgres"}
     assert db.execute.await_count == 2

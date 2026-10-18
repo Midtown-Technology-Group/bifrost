@@ -64,6 +64,10 @@ describe("MCPServers", () => {
 			ctrlKey: true,
 		});
 
-		expect(open).toHaveBeenCalledWith("/mcp-servers/server-1", "_blank");
+		expect(open).toHaveBeenCalledWith(
+			"/mcp-servers/server-1",
+			"_blank",
+			"noopener,noreferrer",
+		);
 	});
 });

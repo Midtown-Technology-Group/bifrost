@@ -20,6 +20,10 @@ Redis isolation: the RateLimiter key is
   rate_limit:<endpoint>:<identifier>
   = rate_limit:webhook_ingress:<source_id>
 
+The pre-auth flood bucket uses ``webhook_ingress_ip`` and a source/IP key. Its
+minimum threshold is intentionally above this test's ten requests; the shared
+source quota is what caps accepted deliveries here.
+
 Fresh UUID per test → fresh Redis key → no carry-over between runs.
 """
 
