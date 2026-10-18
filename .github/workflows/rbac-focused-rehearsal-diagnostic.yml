@@ -1,0 +1,328 @@
+# TEMPORARY: remove this standalone diagnostic before the final PR.
+# It neither satisfies nor changes normal CI, review, merge, or release gates.
+name: RBAC Focused Rehearsal Diagnostic
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/upstream-rbac-sync-20261017]
+    paths:
+      - .github/workflows/rbac-focused-rehearsal-diagnostic.yml
+      - api/**
+      - client/src/lib/app-sdk/**
+      - scripts/rehearse-mtg-rbac-*
+      - scripts/lib/test_helpers.sh
+      - scripts/stack_template_init.sh
+      - test.sh
+      - docker-compose.test.yml
+      - pyproject.toml
+      - requirements*.lock
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rbac-focused-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  focused-rehearsal:
+    if: github.repository == 'Midtown-Technology-Group/bifrost' && github.ref == 'refs/heads/codex/upstream-rbac-sync-20261017' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    # Same bound as the existing exact-source regeneration diagnostic. No retries.
+    timeout-minutes: 60
+    env:
+      BIFROST_SKIP_BUILD: "1"
+      DIAGNOSTIC_SOURCE_SHA: ${{ github.sha }}
+    steps:
+      - name: Checkout exact diagnostic source and frozen fork history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Establish isolated stack ownership and source identity
+        id: ownership
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = refs/heads/codex/upstream-rbac-sync-20261017
+          test "$(git rev-parse HEAD)" = "$DIAGNOSTIC_SOURCE_SHA"
+          test -z "$(git status --porcelain --untracked-files=all)"
+          git cat-file -e '5085cc467ffb1ed35de9c9ca48890ab0d929e1d0^{commit}'
+          source scripts/lib/test_helpers.sh
+          project="$(BIFROST_PROJECT_PREFIX=bifrost-test compute_project_name .)"
+          initial_containers="$(docker ps -aq --filter "label=com.docker.compose.project=$project")"
+          initial_volumes="$(docker volume ls -q --filter "label=com.docker.compose.project=$project")"
+          initial_networks="$(docker network ls -q --filter "label=com.docker.compose.project=$project")"
+          test -z "$initial_containers"
+          test -z "$initial_volumes"
+          test -z "$initial_networks"
+          printf 'compose_project=%s\n' "$project" >> "$GITHUB_OUTPUT"
+          export DIAGNOSTIC_COMPOSE_PROJECT="$project"
+          python3 - <<'PY'
+          import hashlib, json, os, pathlib, re, subprocess
+          public = pathlib.Path(os.environ['RUNNER_TEMP']) / 'rbac-focused-public'
+          public.mkdir()
+          paths = (
+              '.github/workflows/rbac-focused-rehearsal-diagnostic.yml',
+              'api/Dockerfile.dev', 'docker-compose.test.yml', 'test.sh',
+              'pyproject.toml', 'requirements.lock', 'requirements-pyright.lock',
+              'api/product-updates.bundle.json',
+              'scripts/rehearse-mtg-rbac-backup.sh', 'scripts/rehearse-mtg-rbac-backup.py',
+              'scripts/rehearse-mtg-rbac-old-readers.sh', 'scripts/rehearse-mtg-rbac-old-readers.py',
+          )
+          workflow = pathlib.Path('.github/workflows/rbac-focused-rehearsal-diagnostic.yml').read_text()
+          targets = re.findall(r'^\s+(tests/[^\s]+)\s+\\$', workflow, re.M)
+          assert targets, 'No explicit focused test paths were found'
+          assert all((pathlib.Path('api') / target).exists() for target in targets), 'A listed focused test path does not exist'
+          data = {
+              'focused_test_targets': targets,
+              'purpose': 'diagnostic-only-not-candidate-acceptance',
+              'source_sha': os.environ['DIAGNOSTIC_SOURCE_SHA'],
+              'source_tree': subprocess.check_output(['git', 'rev-parse', 'HEAD^{tree}'], text=True).strip(),
+              'source_ref': os.environ['GITHUB_REF'],
+              'run_id': os.environ['GITHUB_RUN_ID'], 'run_attempt': os.environ['GITHUB_RUN_ATTEMPT'],
+              'compose_project': os.environ['DIAGNOSTIC_COMPOSE_PROJECT'],
+              'stack_predated_task': False, 'synthetic_data_only': True,
+              'input_sha256': {name: hashlib.sha256(pathlib.Path(name).read_bytes()).hexdigest() for name in paths},
+          }
+          (public / 'source-identity.json').write_text(json.dumps(data, sort_keys=True, indent=2) + '\n')
+          PY
+
+      - name: Build the canonical test image from this checkout
+        id: image
+        shell: bash
+        env:
+          DOCKER_BUILDKIT: "1"
+        run: |
+          set -euo pipefail
+          # This is the supported source-build fallback from prepare-test-images.sh.
+          # No registry publication, privileged token, or mutable remote image reuse.
+          docker build --file ./api/Dockerfile.dev --tag bifrost-test-api-dev:latest .
+          test -z "$(git status --porcelain --untracked-files=all)"
+          python3 - <<'PY'
+          import hashlib, json, os, pathlib, subprocess
+          image_id = subprocess.check_output(
+              ['docker', 'image', 'inspect', 'bifrost-test-api-dev:latest', '--format', '{{.Id}}'], text=True,
+          ).strip()
+          bundle = pathlib.Path('api/product-updates.bundle.json')
+          data = {'source_sha': os.environ['DIAGNOSTIC_SOURCE_SHA'],
+                  'image_tag': 'bifrost-test-api-dev:latest', 'image_id': image_id,
+                  'producer': 'docker build --file ./api/Dockerfile.dev --tag bifrost-test-api-dev:latest .',
+                  'committed_product_updates_bundle_sha256': hashlib.sha256(bundle.read_bytes()).hexdigest(),
+                  'lane': 'dev-test-source-not-production-candidate'}
+          public = pathlib.Path(os.environ['RUNNER_TEMP']) / 'rbac-focused-public'
+          (public / 'image-identity.json').write_text(json.dumps(data, sort_keys=True, indent=2) + '\n')
+          PY
+
+      - name: Boot the owned canonical Linux Docker stack
+        id: stack
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./test.sh stack up
+
+      - name: Rehearse fork-head backup, frozen readers, restore and full upgrade first
+        id: backup
+        shell: bash
+        run: |
+          set -euo pipefail
+          public="$RUNNER_TEMP/rbac-focused-public"
+          printf '%s\n' './test.sh rbac-backup-rehearsal' > "$public/backup-command.txt"
+          trap 'result=$?; printf "%s\n" "$result" > "$RUNNER_TEMP/rbac-focused-public/backup-exit-code.txt"; exit "$result"' EXIT
+          ./test.sh rbac-backup-rehearsal
+
+      - name: Run explicit bridge and authorization unit suites
+        id: unit
+        if: ${{ !cancelled() && steps.backup.outcome == 'success' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          source scripts/lib/test_helpers.sh
+          rm -f -- "/tmp/bifrost-$(BIFROST_PROJECT_PREFIX=bifrost-test compute_project_name .)/test-results.xml"
+          test_command=(./test.sh \
+            tests/unit/test_mtg_rbac_backup_rehearsal.py \
+            tests/unit/test_mtg_bridge_grants.py \
+            tests/unit/test_bridge_protected_mutations.py \
+            tests/unit/test_mtg_bridge_wrappers.py \
+            tests/unit/test_builtin_roles.py \
+            tests/unit/test_r2b_roles_migration.py \
+            tests/unit/test_knowledge_namespace_access.py \
+            tests/unit/test_role_cache.py \
+            tests/unit/routers/test_agent_promotion_bridge.py \
+            tests/unit/services/test_device_registry.py \
+            tests/unit/services/test_device_keys.py \
+            tests/unit/services/test_device_control_keys.py \
+            tests/unit/services/test_device_jobs.py \
+            tests/unit/services/test_device_peer_admission.py \
+            tests/unit/core/test_auth_platform.py \
+            tests/unit/authorization \
+            tests/unit/services/mcp_server/test_auth_provider_claims.py \
+            tests/unit/services/mcp_server/test_auth_code_binding.py \
+            tests/unit/services/test_mcp_auth.py \
+            tests/unit/jobs/schedulers/test_deferred_execution_promoter.py \
+            -v)
+          printf '%q ' "${test_command[@]}" > "$RUNNER_TEMP/rbac-focused-public/unit-command.txt"
+          printf '\n' >> "$RUNNER_TEMP/rbac-focused-public/unit-command.txt"
+          trap 'result=$?; printf "%s\n" "$result" > "$RUNNER_TEMP/rbac-focused-public/unit-exit-code.txt"; exit "$result"' EXIT
+          "${test_command[@]}"
+
+      - name: Retain only sanitized unit result counts and failed test identities
+        if: ${{ always() && steps.unit.outcome != 'skipped' && steps.ownership.outcome == 'success' }}
+        shell: bash
+        env:
+          TEST_OUTCOME: ${{ steps.unit.outcome }}
+          TEST_PROJECT: ${{ steps.ownership.outputs.compose_project }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, pathlib, xml.etree.ElementTree as ET
+          report = pathlib.Path('/tmp') / ('bifrost-' + os.environ['TEST_PROJECT']) / 'test-results.xml'
+          data = {'source_sha': os.environ['DIAGNOSTIC_SOURCE_SHA'], 'outcome': os.environ['TEST_OUTCOME'],
+                  'junit_present': report.is_file(), 'purpose': 'diagnostic-only-not-candidate-acceptance'}
+          if report.is_file():
+              root = ET.parse(report).getroot()
+              suites = [root] if root.tag == 'testsuite' else list(root.iter('testsuite'))
+              data['counts'] = {key: sum(int(s.get(key, '0')) for s in suites) for key in ('tests', 'failures', 'errors', 'skipped')}
+              data['failed_tests'] = [{'classname': case.get('classname'), 'name': (case.get('name') or '').partition('[')[0]}
+                  for case in root.iter('testcase') if case.find('failure') is not None or case.find('error') is not None]
+          public = pathlib.Path(os.environ['RUNNER_TEMP']) / 'rbac-focused-public'
+          (public / 'unit-summary.json').write_text(json.dumps(data, sort_keys=True, indent=2) + '\n')
+          PY
+
+      - name: Run explicit migration, device, promotion, grants, knowledge and MCP rehearsals
+        id: e2e
+        # Independent evidence after unit failures; never retry or waive a failure.
+        if: ${{ !cancelled() && steps.backup.outcome == 'success' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          source scripts/lib/test_helpers.sh
+          rm -f -- "/tmp/bifrost-$(BIFROST_PROJECT_PREFIX=bifrost-test compute_project_name .)/test-results.xml"
+          test_command=(./test.sh \
+            tests/e2e/platform/test_mtg_rbac_bridge_migration_rehearsal.py \
+            tests/e2e/platform/test_mtg_canonical_system_membership_migration_rehearsal.py \
+            tests/e2e/platform/test_r2b_roles_migration_rehearsal.py \
+            tests/e2e/platform/test_r3a_boundary_fill_migration_rehearsal.py \
+            tests/e2e/platform/test_r3a_operator_perms_migration_rehearsal.py \
+            tests/e2e/platform/test_r3a_admin_additional_migration_rehearsal.py \
+            tests/e2e/platform/test_r3_operator_secrets_migration_rehearsal.py \
+            tests/e2e/platform/test_r3b_identities_migration_rehearsal.py \
+            tests/e2e/platform/test_r3b_lineage_migration_rehearsal.py \
+            tests/e2e/api/test_device_bridge_boundaries.py \
+            tests/e2e/api/test_disabled_device_bridge_holder.py \
+            tests/e2e/api/test_devices.py \
+            tests/e2e/api/test_device_control_keys.py \
+            tests/e2e/api/test_device_jobs_api.py \
+            tests/e2e/api/test_device_execution_credentials.py \
+            tests/e2e/api/test_device_freshness.py \
+            tests/e2e/api/test_device_protocol.py \
+            tests/e2e/api/test_device_ws.py \
+            tests/e2e/api/test_agent_promotion_bridge.py \
+            tests/e2e/api/test_mtg_bridge_grants.py \
+            tests/e2e/api/test_knowledge_namespace_bridge.py \
+            tests/e2e/api/test_permissions.py \
+            tests/e2e/mcp/test_knowledge_bridge_deterministic.py \
+            tests/e2e/mcp/test_mcp_parity.py \
+            -v)
+          printf '%q ' "${test_command[@]}" > "$RUNNER_TEMP/rbac-focused-public/e2e-command.txt"
+          printf '\n' >> "$RUNNER_TEMP/rbac-focused-public/e2e-command.txt"
+          trap 'result=$?; printf "%s\n" "$result" > "$RUNNER_TEMP/rbac-focused-public/e2e-exit-code.txt"; exit "$result"' EXIT
+          "${test_command[@]}"
+
+      - name: Retain only sanitized rehearsal result counts and failed test identities
+        if: ${{ always() && steps.e2e.outcome != 'skipped' && steps.ownership.outcome == 'success' }}
+        shell: bash
+        env:
+          TEST_OUTCOME: ${{ steps.e2e.outcome }}
+          TEST_PROJECT: ${{ steps.ownership.outputs.compose_project }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, pathlib, xml.etree.ElementTree as ET
+          report = pathlib.Path('/tmp') / ('bifrost-' + os.environ['TEST_PROJECT']) / 'test-results.xml'
+          data = {'source_sha': os.environ['DIAGNOSTIC_SOURCE_SHA'], 'outcome': os.environ['TEST_OUTCOME'],
+                  'junit_present': report.is_file(), 'purpose': 'diagnostic-only-not-candidate-acceptance'}
+          if report.is_file():
+              root = ET.parse(report).getroot()
+              suites = [root] if root.tag == 'testsuite' else list(root.iter('testsuite'))
+              data['counts'] = {key: sum(int(s.get(key, '0')) for s in suites) for key in ('tests', 'failures', 'errors', 'skipped')}
+              data['failed_tests'] = [{'classname': case.get('classname'), 'name': (case.get('name') or '').partition('[')[0]}
+                  for case in root.iter('testcase') if case.find('failure') is not None or case.find('error') is not None]
+          public = pathlib.Path(os.environ['RUNNER_TEMP']) / 'rbac-focused-public'
+          (public / 'e2e-summary.json').write_text(json.dumps(data, sort_keys=True, indent=2) + '\n')
+          PY
+
+      - name: Verify the source and frozen test image still match
+        if: ${{ always() && steps.image.outcome == 'success' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$DIAGNOSTIC_SOURCE_SHA"
+          test -z "$(git status --porcelain --untracked-files=all)"
+          python3 - <<'PY'
+          import json, os, pathlib, subprocess
+          public = pathlib.Path(os.environ['RUNNER_TEMP']) / 'rbac-focused-public'
+          expected = json.loads((public / 'image-identity.json').read_text())
+          actual = subprocess.check_output(['docker', 'image', 'inspect', 'bifrost-test-api-dev:latest', '--format', '{{.Id}}'], text=True).strip()
+          assert actual == expected['image_id'], 'Test image changed during the diagnostic'
+          (public / 'source-readback.json').write_text(json.dumps({'source_sha': os.environ['DIAGNOSTIC_SOURCE_SHA'], 'clean_candidate': True, 'image_identity_unchanged': True}) + '\n')
+          PY
+
+      - name: Always tear down and verify only this job's owned test stack
+        if: ${{ always() && steps.ownership.outcome == 'success' }}
+        timeout-minutes: 5
+        shell: bash
+        env:
+          OWNED_PROJECT: ${{ steps.ownership.outputs.compose_project }}
+        run: |
+          set -euo pipefail
+          source scripts/lib/test_helpers.sh
+          test "$OWNED_PROJECT" = "$(BIFROST_PROJECT_PREFIX=bifrost-test compute_project_name .)"
+          set +e
+          ./test.sh stack down
+          cleanup_status=$?
+          set -e
+          export DIAGNOSTIC_CLEANUP_STATUS="$cleanup_status"
+          python3 - <<'PY'
+          import json, os, pathlib, subprocess
+          project = os.environ['OWNED_PROJECT']
+          label = 'label=com.docker.compose.project=' + project
+          commands = {'containers': ['docker', 'ps', '-aq', '--filter', label],
+                      'volumes': ['docker', 'volume', 'ls', '-q', '--filter', label],
+                      'networks': ['docker', 'network', 'ls', '-q', '--filter', label]}
+          counts = {kind: len(subprocess.check_output(command, text=True).splitlines()) for kind, command in commands.items()}
+          verified = os.environ['DIAGNOSTIC_CLEANUP_STATUS'] == '0' and not any(counts.values())
+          data = {'source_sha': os.environ['DIAGNOSTIC_SOURCE_SHA'], 'compose_project': project,
+                  'cleanup_exit_code': int(os.environ['DIAGNOSTIC_CLEANUP_STATUS']),
+                  'remaining_owned_resource_counts': counts, 'cleanup_verified': verified}
+          public = pathlib.Path(os.environ['RUNNER_TEMP']) / 'rbac-focused-public'
+          (public / 'cleanup.json').write_text(json.dumps(data, sort_keys=True, indent=2) + '\n')
+          assert verified, 'Owned test-stack cleanup could not be verified'
+          PY
+
+      - name: Preserve only public SHA-bound proof receipts
+        if: ${{ always() && steps.ownership.outcome == 'success' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: rbac-focused-rehearsal-${{ github.sha }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/rbac-focused-public/source-identity.json
+            ${{ runner.temp }}/rbac-focused-public/image-identity.json
+            ${{ runner.temp }}/rbac-focused-public/backup-command.txt
+            ${{ runner.temp }}/rbac-focused-public/backup-exit-code.txt
+            ${{ runner.temp }}/rbac-focused-public/unit-command.txt
+            ${{ runner.temp }}/rbac-focused-public/unit-exit-code.txt
+            ${{ runner.temp }}/rbac-focused-public/e2e-command.txt
+            ${{ runner.temp }}/rbac-focused-public/e2e-exit-code.txt
+            ${{ runner.temp }}/rbac-focused-public/unit-summary.json
+            ${{ runner.temp }}/rbac-focused-public/e2e-summary.json
+            ${{ runner.temp }}/rbac-focused-public/source-readback.json
+            ${{ runner.temp }}/rbac-focused-public/cleanup.json
+            /tmp/bifrost-bifrost-test-*/rbac-backup-*/proof.json
+            /tmp/bifrost-bifrost-test-*/rbac-backup-*/host-provenance.json
+            /tmp/bifrost-bifrost-test-*/rbac-backup-*/*/receipt.json
+          if-no-files-found: error
+          retention-days: 14

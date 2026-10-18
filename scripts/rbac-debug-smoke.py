@@ -17,6 +17,7 @@ import ipaddress
 import json
 import os
 from pathlib import Path
+import re
 import secrets
 import struct
 import subprocess
@@ -53,6 +54,92 @@ class Proof:
         self.deadline = time.monotonic() + 240
         self.checks: list[dict] = []
         self.cleanup: dict[str, int] = {}
+        self.validation_fields: set[str] = set()
+
+    def validation_diagnostics(self, step, raw, *, expected, has_body):
+        """Retain only schema-known locations and closed validation categories.
+
+        The API's request-validation envelope currently keeps its first field
+        location as the prefix before the first colon, followed by a message.
+        Read that prefix only; never retain the message, submitted input, error
+        context, response body, or arbitrary map keys. Structured FastAPI errors
+        are likewise projected through the public-schema field allowlist.
+        """
+        try:
+            error = json.loads(raw)
+        except (ValueError, UnicodeError):
+            return
+        if not isinstance(error, dict):
+            return
+        locations = []
+        kinds = set()
+        allowed_kinds = {
+            "missing",
+            "value_error",
+            "extra_forbidden",
+            "string_type",
+            "bool_type",
+            "int_type",
+            "uuid_parsing",
+            "literal_error",
+            "list_type",
+            "dict_type",
+            "string_too_long",
+            "string_too_short",
+            "greater_than_equal",
+            "less_than_equal",
+            "json_invalid",
+        }
+        details = error.get("detail")
+        if isinstance(details, list):
+            for item in details[:20]:
+                if not isinstance(item, dict):
+                    continue
+                if isinstance(item.get("loc"), list):
+                    locations.append(item["loc"])
+                kind = item.get("type")
+                if isinstance(kind, str) and kind in allowed_kinds:
+                    kinds.add(kind)
+        elif error.get("error") == "validation_error":
+            kinds.add("validation_error")
+            fields = error.get("details")
+            if isinstance(fields, dict) and isinstance(fields.get("fields"), dict):
+                # Values are error messages and deliberately never traversed.
+                locations.extend(
+                    key.split(".")
+                    for key in list(fields["fields"])[:20]
+                    if isinstance(key, str)
+                )
+            elif isinstance(error.get("message"), str):
+                prefix, separator, _message = error["message"].partition(":")
+                if separator and re.fullmatch(r"[a-z][a-z0-9_.]{0,120}", prefix):
+                    locations.append(prefix.split("."))
+        for kind in sorted(kinds):
+            self.checks.append(
+                {"check": step + "_validation_type_" + kind, "passed": expected}
+            )
+        safe_locations = set()
+        for location in locations:
+            if not location or len(location) > 6:
+                continue
+            parts = []
+            for part in location:
+                if isinstance(part, str) and (
+                    part in {"body", "query", "path"} or part in self.validation_fields
+                ):
+                    parts.append(part)
+                else:
+                    # Unknown field names/indices may come from submitted data.
+                    parts = []
+                    break
+            if parts and not set(parts) <= {"body", "query", "path"}:
+                if has_body and parts[0] not in {"body", "query", "path"}:
+                    parts.insert(0, "body")
+                label = step + "_validation_location_" + "_".join(parts)
+                if len(label) <= 121:
+                    safe_locations.add(label)
+        for label in sorted(safe_locations):
+            self.checks.append({"check": label, "passed": expected})
 
     def request(
         self,
@@ -99,6 +186,10 @@ class Proof:
         self.checks.append(
             {"check": step, "status": status, "passed": status in expect}
         )
+        if status == 422 and len(raw) <= 4_000_000:
+            self.validation_diagnostics(
+                step, raw, expected=status in expect, has_body=body is not None
+            )
         if status not in expect:
             raise SmokeFailure(step, status)
         if len(raw) > 4_000_000:
@@ -211,6 +302,13 @@ def exercise(proof, supplied, args):
     tag = "rbac-debug-" + uuid4().hex[:12]
     try:
         schema = proof.request("public_schema", "GET", "/openapi.json")
+        proof.validation_fields = {
+            name
+            for model in schema["components"]["schemas"].values()
+            if isinstance(model, dict) and isinstance(model.get("properties"), dict)
+            for name in model["properties"]
+            if isinstance(name, str) and re.fullmatch(r"[a-z][a-z0-9_]{0,63}", name)
+        }
         proof.condition(
             "typed_public_contracts",
             all(
@@ -313,7 +411,9 @@ def exercise(proof, supplied, args):
             expect=(401,),
         )
 
-        user_email = tag + "@example.test"
+        # EmailStr deliberately rejects the special-use .test TLD. The reserved
+        # example.com domain is accepted by the unchanged public user contract.
+        user_email = tag + "@example.com"
         password = secrets.token_urlsafe(24) + "aA1!"
         user = proof.request(
             "create_synthetic_person_without_email_send",
@@ -324,6 +424,7 @@ def exercise(proof, supplied, args):
                 "email": user_email,
                 "name": tag,
                 "organization_id": resources["org"],
+                "trigger_automation": False,
             },
             expect=(201,),
         )
