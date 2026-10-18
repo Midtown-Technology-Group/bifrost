@@ -11,6 +11,9 @@ from __future__ import annotations
 import asyncio
 import importlib.util
 import json
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from uuid import uuid4
 
@@ -19,6 +22,8 @@ import sqlalchemy as sa
 from alembic import command
 from alembic.operations import Operations
 from alembic.runtime.migration import MigrationContext
+from sqlalchemy.engine import Engine
+from sqlalchemy.ext.asyncio import create_async_engine
 
 from tests.e2e.platform.test_r2b_roles_migration_rehearsal import (
     _alembic_config,
@@ -311,6 +316,87 @@ def test_immediate_segment_downgrade_preserves_original_state(legacy_db):
     _assert_failed_segment_left_legacy(legacy_db, before)
 
 
+R2B_ROWS_SQL = """
+    SELECT
+      (SELECT jsonb_agg(to_jsonb(r) ORDER BY id) FROM roles r) AS roles,
+      (SELECT jsonb_agg(to_jsonb(u) ORDER BY id) FROM users u) AS users,
+      (SELECT jsonb_agg(to_jsonb(m) ORDER BY user_id, role_id) FROM user_roles m) AS memberships,
+      (SELECT jsonb_agg(to_jsonb(p) ORDER BY role_id, permission) FROM role_permissions p) AS permissions,
+      (SELECT jsonb_agg(to_jsonb(b) ORDER BY id) FROM user_role_boundaries b) AS boundaries,
+      (SELECT jsonb_agg(to_jsonb(k) ORDER BY id) FROM knowledge_namespace_roles k) AS knowledge,
+      (SELECT jsonb_agg(pg_get_indexdef(indexrelid) ORDER BY indexrelid::regclass::text)
+         FROM pg_index WHERE indrelid = 'knowledge_namespace_roles'::regclass) AS knowledge_indexes
+"""
+
+
+def test_bridge_only_downgrade_removes_exact_created_rows(legacy_db, record_testsuite_property):
+    ids = _seed(legacy_db)
+    database = sa.engine.make_url(legacy_db).database
+    r2b_rows = {}
+
+    def capture_r2b(connection, cursor, statement, parameters, context, executemany):
+        if (connection.engine.url.database != database or r2b_rows
+                or not statement.strip().startswith("LOCK TABLE public.roles")
+                or "public.role_permissions" not in statement):
+            return
+        # The real Alembic R2b body and version update have completed. Keep
+        # every legitimate R2b seed row; arbitrary extra grants are forbidden
+        # by the bridge's exact-set precondition. Create one proven repair gap.
+        removed = connection.execute(sa.text("""
+            DELETE FROM user_role_boundaries
+            WHERE user_id = CAST(:user AS uuid) AND role_id = CAST(:role AS uuid)
+            RETURNING id::text
+        """), {"user": ids["user_a"], "role": ids["both"]}).scalars().all()
+        assert len(removed) == 1
+        r2b_rows.update(connection.execute(sa.text(R2B_ROWS_SQL)).mappings().one())
+
+    sa.event.listen(Engine, "before_cursor_execute", capture_r2b)
+    try:
+        _upgrade(legacy_db, BRIDGE)
+    finally:
+        sa.event.remove(Engine, "before_cursor_execute", capture_r2b)
+    assert _current_revision(legacy_db) == BRIDGE
+    assert r2b_rows["permissions"] and r2b_rows["boundaries"]
+    archive = _sql(legacy_db, """
+        SELECT original_state, created_permission_rows, created_boundary_rows,
+               NOT (SELECT is_called FROM mtg_rbac_bridge.authority_change_epoch) AS rollback_window_open
+        FROM mtg_rbac_bridge.rollback_record WHERE singleton
+    """)[0]
+    assert archive["rollback_window_open"]
+    created_permissions = {tuple(row) for row in archive["created_permission_rows"]}
+    assert created_permissions == {
+        *((ids["both"], permission) for permission in GRANTS.values()),
+        (ids["manage"], "devices.readwrite"), (ids["execute"], "devices.execute"),
+    }
+    original_permissions = {(row["role_id"], row["permission"]) for row in r2b_rows["permissions"]}
+    assert created_permissions and not created_permissions & original_permissions
+    assert len(archive["created_boundary_rows"]) == 1
+    before_down = _sql(legacy_db, R2B_ROWS_SQL)[0]
+    assert {(row["role_id"], row["permission"]) for row in before_down["permissions"]} == (
+        original_permissions | created_permissions
+    )
+    assert {row["id"] for row in before_down["boundaries"]} == (
+        {row["id"] for row in r2b_rows["boundaries"]} | set(archive["created_boundary_rows"])
+    )
+    with _temporary_migration_database_url(legacy_db):
+        command.downgrade(_alembic_config(), "20260929_r2b_roles")
+    assert _current_revision(legacy_db) == "20260929_r2b_roles"
+    assert _sql(legacy_db, R2B_ROWS_SQL)[0] == r2b_rows
+    retained = _sql(legacy_db, """
+        SELECT original_state, bridged_state, created_permission_rows, created_boundary_rows
+        FROM mtg_rbac_bridge.rollback_record WHERE singleton
+    """)[0]
+    assert retained == {"original_state": archive["original_state"], "bridged_state": None,
+                        "created_permission_rows": None, "created_boundary_rows": None}
+    record_testsuite_property("mtg_rbac_bridge_only_rollback", json.dumps({
+        "head": "20260929_r2b_roles", "archive_retained": True, "rollback_window_open_before": True,
+        "only_recorded_rows_removed": True, "r2b_rows_and_ids_unchanged": True,
+        "unrelated_permission_rows_preserved": len(original_permissions),
+        "unrelated_boundary_ids_preserved": len(r2b_rows["boundaries"]),
+        "created_permission_rows_removed": len(created_permissions), "created_boundary_rows_removed": 1,
+    }, sort_keys=True))
+
+
 @pytest.mark.parametrize("mutation", [
     "DELETE FROM role_permissions WHERE permission = 'devices.execute'",
     "DELETE FROM user_roles",
@@ -351,6 +437,173 @@ def _revision_module(name):
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def _fence_identity(connection, stage):
+    identity = dict(connection.execute(sa.text(
+        "SELECT pg_backend_pid() AS backend, txid_current() AS transaction"
+    )).mappings().one())
+    locks = connection.execute(sa.text("""
+        SELECT c.relname AS table_name, l.mode
+        FROM pg_locks l JOIN pg_class c ON c.oid = l.relation
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE l.pid = pg_backend_pid() AND l.granted AND n.nspname = 'public'
+          AND c.relname IN ('roles', 'user_roles', 'users') AND l.mode = 'ShareRowExclusiveLock'
+        ORDER BY c.relname
+    """)).mappings().all()
+    assert [row["table_name"] for row in locks] == ["roles", "user_roles", "users"]
+    return {**identity, "stage": stage, "locks": [dict(row) for row in locks]}
+
+
+def _prove_blocked_authority_write(connection, database_url, table, statement, parameters):
+    """One real write attempt; observe its wait, cancel, and verify rollback."""
+    ready = threading.Event()
+    worker = {}
+    migrator = connection.execute(sa.text("SELECT pg_backend_pid()")).scalar_one()
+
+    async def attempt():
+        engine = create_async_engine(database_url, poolclass=sa.pool.NullPool,
+                                     connect_args={"timeout": 2, "command_timeout": 3})
+        try:
+            async with engine.begin() as contender:
+                await contender.execute(sa.text("SET LOCAL statement_timeout = '3s'"))
+                worker["backend"] = (await contender.execute(sa.text("SELECT pg_backend_pid()"))).scalar_one()
+                ready.set()
+                await contender.execute(sa.text(statement), parameters)
+            return {"write_succeeded": True}
+        except sa.exc.DBAPIError as exc:
+            return {"write_succeeded": False, "sqlstate": getattr(exc.orig, "sqlstate", None),
+                    "transaction_rolled_back": True}
+        finally:
+            ready.set()
+            await engine.dispose()
+
+    def run():
+        return asyncio.run(asyncio.wait_for(attempt(), timeout=5))
+
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(run)
+        observed = None
+        cancel_requested = False
+        try:
+            assert ready.wait(2.5), "Single contender did not establish its synthetic session"
+            assert "backend" in worker, "Single contender failed before its authorization write"
+            # Poll only the lock observer, never retry the authorization write.
+            # The contender also has a short server-side statement deadline.
+            deadline = time.monotonic() + 1
+            while time.monotonic() < deadline:
+                observed = connection.execute(sa.text("""
+                    SELECT l.mode, l.granted,
+                           CAST(:migrator AS integer) = ANY(pg_blocking_pids(l.pid)) AS blocked_by_migrator
+                    FROM pg_locks l
+                    WHERE l.pid = :pid AND NOT l.granted AND l.locktype = 'relation'
+                      AND l.relation = CAST(:relation AS regclass)
+                """), {"pid": worker["backend"], "migrator": migrator,
+                          "relation": f"public.{table}"}).mappings().first()
+                if observed is not None:
+                    break
+                if future.done():
+                    break
+                time.sleep(0.01)
+            assert observed is not None, "Single authority write was not observed waiting behind the migration fence"
+            assert dict(observed) == {"mode": "RowExclusiveLock", "granted": False,
+                                      "blocked_by_migrator": True}
+        finally:
+            if "backend" in worker and not future.done():
+                cancelled = connection.execute(sa.text("""
+                    SELECT pg_cancel_backend(pid) FROM pg_stat_activity
+                    WHERE pid = :pid AND datname = current_database() AND usename = current_user
+                """), {"pid": worker["backend"]}).scalars().all()
+                # The short server deadline may have already closed the
+                # session between observation and this bounded cancellation.
+                assert all(cancelled), "Could not cancel the owned synthetic contender"
+                cancel_requested = bool(cancelled)
+            result = future.result(timeout=6)
+        assert result == {"write_succeeded": False, "sqlstate": "57014", "transaction_rolled_back": True}
+        connection.execute(sa.text("SELECT pg_stat_clear_snapshot()"))
+        assert connection.execute(sa.text("""
+            SELECT count(*) FROM pg_stat_activity WHERE pid = :pid AND datname = current_database()
+        """), {"pid": worker["backend"]}).scalar_one() == 0
+    return {"table": table, "waiting_mode": observed["mode"], "blocked_by_migrator": True,
+            "write_attempts": 1, "cancel_sqlstate": result["sqlstate"], "transaction_rolled_back": True,
+            "contender_session_closed": True,
+            "abort_method": "observer_cancel" if cancel_requested else "server_statement_deadline"}
+
+
+@pytest.mark.parametrize("outcome", ["commit", "rollback"])
+def test_real_alembic_fence_blocks_writes_and_spans_transaction(legacy_db, outcome, record_testsuite_property):
+    ids = _seed(legacy_db)
+    before = _legacy_snapshot(legacy_db)
+    database = sa.engine.make_url(legacy_db).database
+    stages, contenders = [], []
+
+    def trace(connection, cursor, statement, parameters, context, executemany):
+        if connection.engine.url.database != database:
+            return
+        normalized = " ".join(statement.split())
+        stage = None
+        if normalized.startswith("LOCK TABLE public.roles"):
+            stage = "bridge" if "public.role_permissions" in normalized else "preflight"
+        elif normalized == "DROP INDEX IF EXISTS uq_roles_key":
+            stage = "r2b"
+        elif normalized.startswith("UPDATE alembic_version SET") and BRIDGE in normalized:
+            stage = "cutover"
+        if stage is None:
+            return
+        stages.append(_fence_identity(connection, stage))
+        if stage == "preflight":
+            for table, write, arguments in (
+                ("roles", "UPDATE public.roles SET permissions = '{}'::jsonb WHERE id = CAST(:role AS uuid)",
+                 {"role": ids["both"]}),
+                ("user_roles", "DELETE FROM public.user_roles WHERE user_id = CAST(:user AS uuid) "
+                 "AND role_id = CAST(:role AS uuid)", {"user": ids["user_a"], "role": ids["both"]}),
+                ("users", "UPDATE public.users SET organization_id = CAST(:foreign AS uuid) WHERE id = CAST(:user AS uuid)",
+                 {"foreign": ids["org_b"], "user": ids["user_a"]}),
+            ):
+                contenders.append(_prove_blocked_authority_write(connection, legacy_db, table, write, arguments))
+        else:
+            archived_txid = connection.execute(sa.text(
+                "SELECT transaction_id FROM mtg_rbac_bridge.rollback_record WHERE singleton"
+            )).scalar_one()
+            assert archived_txid == stages[-1]["transaction"]
+        if stage == "cutover" and outcome == "rollback":
+            raise RuntimeError("injected fence cutover failure")
+
+    # Hook actual SQL emitted by unmodified Alembic revision bodies, including
+    # its real version update. Nothing stamps or substitutes a migration body.
+    sa.event.listen(Engine, "after_cursor_execute", trace)
+    try:
+        if outcome == "rollback":
+            with pytest.raises(RuntimeError, match="injected fence cutover failure"):
+                _upgrade(legacy_db, BRIDGE)
+        else:
+            _upgrade(legacy_db, BRIDGE)
+    finally:
+        sa.event.remove(Engine, "after_cursor_execute", trace)
+    assert [stage["stage"] for stage in stages] == ["preflight", "r2b", "bridge", "cutover"]
+    assert len({(stage["backend"], stage["transaction"]) for stage in stages}) == 1
+    assert [row["table"] for row in contenders] == ["roles", "user_roles", "users"]
+    if outcome == "rollback":
+        _assert_failed_segment_left_legacy(legacy_db, before)
+    else:
+        assert _current_revision(legacy_db) == BRIDGE
+        after = _legacy_snapshot(legacy_db)
+        assert after["memberships"] == before["memberships"]
+        assert after["knowledge"] == before["knowledge"]
+        assert after["knowledge_indexes"] == before["knowledge_indexes"]
+        assert {r["id"]: r["permissions"] for r in after["roles"] if r["id"] == ids["both"]} == {
+            ids["both"]: {key: True for key in GRANTS}
+        }
+        assert next(u for u in after["users"] if u["id"] == ids["user_a"])["organization_id"] == ids["org_a"]
+    assert _sql(legacy_db, """
+        SELECT count(*) AS held FROM pg_locks WHERE pid = :pid
+    """, {"pid": stages[0]["backend"]})[0]["held"] == 0
+    record_testsuite_property(f"mtg_rbac_maintenance_fence_{outcome}", json.dumps({
+        "outcome": outcome, "same_backend_and_transaction": True, "transaction_locks_released": True,
+        "stages": [{"stage": stage["stage"], "locks": stage["locks"]} for stage in stages],
+        "contenders": contenders, "original_authority_preserved": True,
+        "external_full_graph_release_fence_proven": False,
+    }, sort_keys=True))
 
 
 def _direct_segment(database_url, *, after_r2b=None):

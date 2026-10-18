@@ -9,7 +9,7 @@ from fastapi import HTTPException
 from pydantic import ValidationError
 
 from shared.bridge_grants import BRIDGE_PERMISSIONS, validate_bridge_placement
-from shared.builtin_roles import PLATFORM_ADMIN_ROLE_ID
+from shared.builtin_roles import PLATFORM_ADMIN_ROLE_ID, USER_ROLE_ID
 from shared.sdk_users import (
     UserServiceError,
     set_user_base_role,
@@ -31,7 +31,7 @@ from src.services.role_permissions import (
     set_role_permissions,
 )
 from src.services.user_role_assignments import RoleAssignmentError, insert_assignment
-from tests.helpers.authorization import admin_caller
+from tests.helpers.authorization import admin_caller, persist_caller
 
 
 @pytest.mark.parametrize("permission", sorted(BRIDGE_PERMISSIONS))
@@ -395,3 +395,281 @@ async def test_mutation_reloads_actor_after_admin_revocation_despite_stale_snaps
         )
     assert exc.value.status_code == 403
     assert user.name != "Revoked actor"
+
+
+async def _identity_delegate(session, organization_id):
+    """A powerful identity delegate, deliberately lacking the Admin wildcard."""
+    from src.core.principal import UserPrincipal
+    from src.services.authorization.context import AuthorizationContext, RoleGrant
+    from src.services.authorization.enforce import Caller
+
+    user_id = uuid4()
+    permissions = frozenset(
+        {
+            "roleassignments.read",
+            "roleassignments.readwrite",
+            "privilegedaccess.readwrite",
+            "roles.read",
+            "roles.readwrite",
+            "userlifecycle.readwrite",
+            "users.readwrite",
+        }
+    )
+    caller = Caller(
+        UserPrincipal(
+            user_id=user_id,
+            email="delegate@example.test",
+            organization_id=organization_id,
+        ),
+        AuthorizationContext(
+            user_id=user_id,
+            home_organization_id=organization_id,
+            base_role_id=USER_ROLE_ID,
+            is_external=False,
+            base_permissions=frozenset(),
+            role_grants=(
+                RoleGrant(
+                    uuid4(),
+                    permissions,
+                    (
+                        Boundary(BoundaryKind.ORGANIZATION, organization_id),
+                        Boundary(BoundaryKind.PLATFORM),
+                    ),
+                ),
+            ),
+        ),
+    )
+    current = await persist_caller(session, caller)
+    assert current.ctx is not None
+    assert {
+        "roleassignments.readwrite",
+        "privilegedaccess.readwrite",
+    } <= current.ctx.held_permissions
+    assert not current.is_platform_admin
+    return current
+
+
+async def _assignment_rows(session, user_id):
+    """Read database authority rows instead of relying on cached ORM state."""
+    from sqlalchemy import select
+    from src.models.orm.users import UserRole, UserRoleBoundary
+
+    base = await session.scalar(select(User.base_role_id).where(User.id == user_id))
+    roles = frozenset(
+        (
+            await session.scalars(
+                select(UserRole.role_id).where(UserRole.user_id == user_id)
+            )
+        ).all()
+    )
+    boundaries = frozenset(
+        (
+            await session.execute(
+                select(
+                    UserRoleBoundary.role_id,
+                    UserRoleBoundary.kind,
+                    UserRoleBoundary.organization_id,
+                ).where(UserRoleBoundary.user_id == user_id)
+            )
+        ).all()
+    )
+    return base, roles, boundaries
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "permission", ["devices.readwrite", "devices.execute", "agents.promote"]
+)
+async def test_identity_delegate_cannot_assign_remove_bridge_roles_or_change_their_holders(
+    db_session, permission
+):
+    from shared.sdk_roles import assign_users_to_role, remove_users_from_role
+
+    user = await _user(db_session)
+    delegate = await _identity_delegate(db_session, user.organization_id)
+    admin = await _admin(db_session)
+    bridge, sharing = await _role(db_session), await _role(db_session)
+    await set_role_permissions(
+        db_session, role_id=bridge.id, permissions=frozenset({permission})
+    )
+    before = await _assignment_rows(db_session, user.id)
+    # The same caller can manage a pure sharing role on an ordinary target.
+    await assign_users_to_role(
+        db_session, delegate, role_id=sharing.id, user_ids=[str(user.id)]
+    )
+    await remove_users_from_role(
+        db_session,
+        delegate,
+        role_id=sharing.id,
+        user_ids=[user.id],
+        operation="roles.users.remove",
+    )
+    assert await _assignment_rows(db_session, user.id) == before
+    with pytest.raises(HTTPException) as refused:
+        await assign_users_to_role(
+            db_session, delegate, role_id=bridge.id, user_ids=[str(user.id)]
+        )
+    assert refused.value.status_code == 403
+    assert await _assignment_rows(db_session, user.id) == before
+
+    await assign_users_to_role(
+        db_session, admin, role_id=bridge.id, user_ids=[str(user.id)]
+    )
+    await assign_users_to_role(
+        db_session, admin, role_id=sharing.id, user_ids=[str(user.id)]
+    )
+    protected = await _assignment_rows(db_session, user.id)
+    assert protected[1] == {bridge.id, sharing.id}
+    # An empty sharing role does not make a bridge holder an editable target.
+    for role in (sharing, bridge):
+        with pytest.raises(HTTPException) as refused:
+            await remove_users_from_role(
+                db_session,
+                delegate,
+                role_id=role.id,
+                user_ids=[user.id],
+                operation="roles.users.remove",
+            )
+        assert refused.value.status_code == 403
+        assert await _assignment_rows(db_session, user.id) == protected
+        removed = await remove_users_from_role(
+            db_session,
+            admin,
+            role_id=role.id,
+            user_ids=[user.id],
+            operation="roles.users.remove",
+        )
+        assert removed == [user.id]
+        protected = await _assignment_rows(db_session, user.id)
+    assert protected == before
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "permission", ["devices.readwrite", "devices.execute", "agents.promote"]
+)
+async def test_identity_delegate_cannot_replace_additional_or_base_bridge_roles(
+    db_session, permission
+):
+    from src.models.contracts.role_assignments import UserRoleAssignmentsUpdate
+    from src.services.user_role_assignments import replace_role_assignments
+
+    user, bridge = await _user(db_session), await _role(db_session)
+    delegate = await _identity_delegate(db_session, user.organization_id)
+    admin = await _admin(db_session)
+    await set_role_permissions(
+        db_session, role_id=bridge.id, permissions=frozenset({permission})
+    )
+    requests = [
+        UserRoleAssignmentsUpdate(
+            base_role_id=USER_ROLE_ID, additional=[{"role_id": bridge.id}]
+        ),
+        UserRoleAssignmentsUpdate(base_role_id=USER_ROLE_ID),
+        UserRoleAssignmentsUpdate(base_role_id=bridge.id),
+        UserRoleAssignmentsUpdate(base_role_id=USER_ROLE_ID),
+    ]
+    for request in requests:
+        before = await _assignment_rows(db_session, user.id)
+        with pytest.raises(HTTPException) as refused:
+            await replace_role_assignments(
+                db_session, delegate, user_id=user.id, request=request
+            )
+        assert refused.value.status_code == 403
+        assert await _assignment_rows(db_session, user.id) == before
+        saved = await replace_role_assignments(
+            db_session, admin, user_id=user.id, request=request
+        )
+        assert saved.base_role.id == request.base_role_id
+        assert {item.role_id for item in saved.additional} == {
+            item.role_id for item in request.additional
+        }
+    assert await _assignment_rows(db_session, user.id) == (
+        USER_ROLE_ID,
+        frozenset(),
+        frozenset(),
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "permission", ["devices.readwrite", "devices.execute", "agents.promote"]
+)
+async def test_bulk_role_replacement_has_bridge_specific_delegate_denials_and_admin_success(
+    db_session, permission
+):
+    from shared.sdk_users import bulk_update_users
+    from src.models.contracts.users import BulkUserOperation
+
+    user, bridge = await _user(db_session), await _role(db_session)
+    delegate = await _identity_delegate(db_session, user.organization_id)
+    admin = await _admin(db_session)
+    await set_role_permissions(
+        db_session, role_id=bridge.id, permissions=frozenset({permission})
+    )
+    for wanted in ([bridge.id], []):
+        request = BulkUserOperation(
+            user_ids=[user.id], operation="replace_roles", role_ids=wanted
+        )
+        before = await _assignment_rows(db_session, user.id)
+        denied = await bulk_update_users(db_session, delegate, request)
+        assert denied.succeeded == []
+        assert [failure.user_id for failure in denied.failed] == [user.id]
+        assert "Platform Admin" in denied.failed[0].reason
+        assert await _assignment_rows(db_session, user.id) == before
+        saved = await bulk_update_users(db_session, admin, request)
+        assert saved.succeeded == [user.id]
+        assert saved.failed == []
+        assert (await _assignment_rows(db_session, user.id))[1] == set(wanted)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "permission", ["devices.readwrite", "devices.execute", "agents.promote"]
+)
+async def test_general_identity_editor_cannot_smuggle_bridge_permissions_even_for_admin(
+    db_session, permission
+):
+    user, role = await _user(db_session), await _role(db_session)
+    delegate = await _identity_delegate(db_session, user.organization_id)
+    admin = await _admin(db_session)
+    for caller in (delegate, admin):
+        with pytest.raises(RolePermissionError) as refused:
+            await replace_identity_permissions(
+                db_session,
+                role_id=role.id,
+                permissions=[permission],
+                caller=caller,
+            )
+        assert refused.value.status_code == 422
+        assert await get_role_permissions(db_session, role_id=role.id) == frozenset()
+    current = await describe_bridge_grants(db_session, admin, role_id=role.id)
+    await replace_bridge_grants(
+        db_session,
+        admin,
+        role_id=role.id,
+        request=RoleBridgeGrantsUpdate(
+            permissions=[permission],
+            expected_permissions=[],
+            expected_version=current.version,
+        ),
+    )
+    with pytest.raises(RolePermissionError) as refused:
+        await replace_identity_permissions(
+            db_session,
+            role_id=role.id,
+            permissions=["users.read"],
+            caller=delegate,
+        )
+    assert refused.value.status_code == 403
+    assert await get_role_permissions(db_session, role_id=role.id) == frozenset(
+        {permission}
+    )
+    await replace_identity_permissions(
+        db_session,
+        role_id=role.id,
+        permissions=["users.read"],
+        caller=admin,
+    )
+    assert await get_role_permissions(db_session, role_id=role.id) == frozenset(
+        {permission, "users.read"}
+    )
