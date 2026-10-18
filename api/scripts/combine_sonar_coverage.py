@@ -1,8 +1,8 @@
 """Combine actual Sonar unit and server-process hits; reject absent runtime data."""
 
 import json
-from pathlib import Path
 import shutil
+from pathlib import Path
 
 import coverage
 
