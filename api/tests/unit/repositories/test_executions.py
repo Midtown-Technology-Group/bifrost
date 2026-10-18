@@ -573,7 +573,7 @@ async def test_get_execution_includes_logs_ai_usage_totals_and_admin_fields() ->
     assert result is not None
     assert result.logs == [
         {
-            "id": log.id,
+            "id": 0,
             "timestamp": "2026-07-04T12:00:00+00:00",
             "level": "DEBUG",
             "message": "debug detail",
@@ -596,21 +596,31 @@ async def test_get_execution_includes_logs_ai_usage_totals_and_admin_fields() ->
 async def test_get_execution_logs_handles_access_and_filters_to_public_logs() -> None:
     owner = _user()
     other = _user()
-    log = SimpleNamespace(
-        id=2,
-        timestamp=None,
-        level=None,
-        message=None,
-        log_metadata={"visible": True},
-        sequence=None,
-    )
+    logs_from_db = [
+        SimpleNamespace(
+            id=2,
+            timestamp=None,
+            level=None,
+            message=None,
+            log_metadata={"visible": True},
+            sequence=None,
+        ),
+        SimpleNamespace(
+            id=9002,
+            timestamp=None,
+            level="WARNING",
+            message="second",
+            log_metadata=None,
+            sequence=None,
+        ),
+    ]
     session = AsyncMock()
     session.execute = AsyncMock(
         side_effect=[
             OneOrNoneResult(None),
             OneOrNoneResult(SimpleNamespace(executed_by=owner.user_id)),
             OneOrNoneResult(SimpleNamespace(executed_by=owner.user_id)),
-            ExecuteResult(scalars=[log]),
+            ExecuteResult(scalars=logs_from_db),
         ]
     )
     repo = ExecutionRepository(session)
@@ -626,7 +636,8 @@ async def test_get_execution_logs_handles_access_and_filters_to_public_logs() ->
     logs, error = await repo.get_execution_logs(uuid4(), owner)
     assert error is None
     assert logs is not None
-    assert len(logs) == 1
+    assert len(logs) == 2
+    assert [log.id for log in logs] == [0, 1]
     assert logs[0].timestamp == ""
     assert logs[0].level == "info"
     assert logs[0].message == ""

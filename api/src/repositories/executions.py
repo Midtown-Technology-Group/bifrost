@@ -457,7 +457,7 @@ class ExecutionRepository(BaseRepository[Execution]):
         logs_query = (
             select(ExecutionLog)
             .where(ExecutionLog.execution_id == execution_id)
-            .order_by(ExecutionLog.sequence)
+            .order_by(ExecutionLog.sequence, ExecutionLog.id)
         )
         if not user.is_superuser:
             logs_query = logs_query.where(
@@ -468,14 +468,14 @@ class ExecutionRepository(BaseRepository[Execution]):
 
         logs = [
             ExecutionLogPublic(
-                id=log.id,
+                id=public_id,
                 timestamp=log.timestamp.isoformat() if log.timestamp else "",
                 level=log.level or "info",
                 message=log.message or "",
                 data=log.log_metadata,
                 sequence=log.sequence or 0,
             )
-            for log in log_entries
+            for public_id, log in enumerate(log_entries)
         ]
 
         # 3. Fetch AI usage data
@@ -613,7 +613,7 @@ class ExecutionRepository(BaseRepository[Execution]):
         logs_query = (
             select(ExecutionLog)
             .where(ExecutionLog.execution_id == execution_id)
-            .order_by(ExecutionLog.sequence)
+            .order_by(ExecutionLog.sequence, ExecutionLog.id)
         )
 
         # Filter debug logs for non-superusers
@@ -626,14 +626,14 @@ class ExecutionRepository(BaseRepository[Execution]):
         # Convert ORM models to Pydantic models
         logs = [
             ExecutionLogPublic(
-                id=log.id,
+                id=public_id,
                 timestamp=log.timestamp.isoformat() if log.timestamp else "",
                 level=log.level or "info",
                 message=log.message or "",
                 data=log.log_metadata,
                 sequence=log.sequence or 0,
             )
-            for log in log_entries
+            for public_id, log in enumerate(log_entries)
         ]
 
         return logs, None
