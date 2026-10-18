@@ -2878,27 +2878,11 @@ def summarize_bundle(python_files: dict, apps: list, vendored_count: int) -> Bun
     return BundleSummary(count, mb, warn, msg)
 
 
-def _build_deploy_zip(
+def _workspace_deploy_entries(
     workspace: pathlib.Path,
-    *,
-    extra_text_files: dict[str, str],
-) -> bytes:
-    """Build the workspace zip sent by ``solution deploy``.
-
-    Deploy zips must carry ``.bifrost/`` manifests, unlike normal file sync,
-    but must still skip dependency/build output and local secrets.
-    """
-    import pathspec
-
-    from bifrost.ignore_patterns import DEFAULT_IGNORE_PATTERNS
-
-    patterns = [p for p in DEFAULT_IGNORE_PATTERNS if p != ".bifrost/"]
-    patterns.append(".bifrost/secrets.enc")
-    ignore_spec = pathspec.GitIgnoreSpec.from_lines(patterns)
-    try:
-        workspace_root = workspace.resolve(strict=True)
-    except OSError as exc:
-        raise click.ClickException("solution workspace is unavailable") from exc
+    workspace_root: pathlib.Path,
+    ignore_spec,
+) -> dict[str, bytes]:
     entries: dict[str, bytes] = {}
     for path in workspace.rglob("*"):
         rel = path.relative_to(workspace).as_posix()
@@ -2920,9 +2904,33 @@ def _build_deploy_zip(
             raise click.ClickException(
                 f"refusing path outside solution deploy workspace: {rel}"
             )
-        if not resolved.is_file():
-            continue
-        entries[rel] = resolved.read_bytes()
+        if resolved.is_file():
+            entries[rel] = resolved.read_bytes()
+    return entries
+
+
+def _build_deploy_zip(
+    workspace: pathlib.Path,
+    *,
+    extra_text_files: dict[str, str],
+) -> bytes:
+    """Build the workspace zip sent by ``solution deploy``.
+
+    Deploy zips must carry ``.bifrost/`` manifests, unlike normal file sync,
+    but must still skip dependency/build output and local secrets.
+    """
+    import pathspec
+
+    from bifrost.ignore_patterns import DEFAULT_IGNORE_PATTERNS
+
+    patterns = [p for p in DEFAULT_IGNORE_PATTERNS if p != ".bifrost/"]
+    patterns.append(".bifrost/secrets.enc")
+    ignore_spec = pathspec.GitIgnoreSpec.from_lines(patterns)
+    try:
+        workspace_root = workspace.resolve(strict=True)
+    except OSError as exc:
+        raise click.ClickException("solution workspace is unavailable") from exc
+    entries = _workspace_deploy_entries(workspace, workspace_root, ignore_spec)
 
     for rel, content in extra_text_files.items():
         rel_path = pathlib.PurePosixPath(rel)
