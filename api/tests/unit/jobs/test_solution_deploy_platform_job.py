@@ -108,8 +108,10 @@ async def test_failed_repo_install_cleanup_commits_before_job_failure(monkeypatc
 
 
 @pytest.mark.asyncio
-async def test_failed_repo_install_terminalizes_projection_when_cleanup_rolls_back(
+@pytest.mark.parametrize("recovery_projection_present", [True, False])
+async def test_failed_repo_install_preserves_failure_when_cleanup_rolls_back(
     monkeypatch,
+    recovery_projection_present,
 ):
     deploy_job_id = uuid4()
     install_id = uuid4()
@@ -142,7 +144,7 @@ async def test_failed_repo_install_terminalizes_projection_when_cleanup_rolls_ba
     class RecoveryDB:
         async def get(self, model, row_id):  # noqa: ANN001, ANN201
             if model is SolutionDeployJob and row_id == deploy_job_id:
-                return recovery_projection
+                return recovery_projection if recovery_projection_present else None
             return None
 
     cleanup_db = CleanupDB()
@@ -189,11 +191,12 @@ async def test_failed_repo_install_terminalizes_projection_when_cleanup_rolls_ba
 
     assert failed.value.code == "solution_deploy_failed"
     assert transaction_count == 2
-    assert recovery_committed is True
-    assert recovery_projection.status == "failed"
-    assert recovery_projection.error == "manifest invalid"
-    assert recovery_projection.result is None
-    assert recovery_projection.install_id == install_id
+    assert recovery_committed is recovery_projection_present
+    if recovery_projection_present:
+        assert recovery_projection.status == "failed"
+        assert recovery_projection.error == "manifest invalid"
+        assert recovery_projection.result is None
+        assert recovery_projection.install_id == install_id
     cleanup_db.flush.assert_awaited_once()
     cleanup_db.delete.assert_awaited_once_with(orphan)
 
