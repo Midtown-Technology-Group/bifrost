@@ -461,6 +461,7 @@ async def test_get_execution_logs_falls_back_to_db_when_redis_read_fails():
 
     assert error is None
     assert len(logs) == 1
+    assert logs[0].id == 0
     assert logs[0].message == "from db"
     assert logs[0].data == {"source": "postgres"}
     assert db.execute.await_count == 2
