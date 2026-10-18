@@ -93,10 +93,11 @@ async def test_warm_cache_stops_authorizing_after_solution_uninstall(
         solution.status = "inactive"
         await db_session.flush()
 
+        revoked_request = _PostRequest()
         with pytest.raises(HTTPException) as exc_info:
             await endpoints.execute_endpoint(
                 workflow_id,
-                _PostRequest(),  # type: ignore[arg-type]
+                revoked_request,  # type: ignore[arg-type]
                 "fixture-key",
             )
 
