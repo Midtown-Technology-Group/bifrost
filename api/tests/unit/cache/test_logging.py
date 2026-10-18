@@ -86,9 +86,11 @@ class TestAppendLogToStream:
 
             assert entry_id == "1234567890-0"
             pipeline.xadd.assert_called_once()
+            pipeline.execute.assert_called_once_with(raise_on_error=False)
             pipeline.expire.assert_called_once_with(
                 f"bifrost:logs:{exec_id}", TTL_EXECUTION_LOGS
             )
+            mock_redis.delete.assert_not_called()
 
             # Verify the call arguments
             call_args = pipeline.xadd.call_args
@@ -174,6 +176,28 @@ class TestAppendLogToStream:
                 )
 
                 assert entry_id is None
+
+    def test_append_log_to_stream_deletes_unbounded_stream(self):
+        """A committed append is removed when its expiry command fails."""
+        exec_id = "exec-123"
+
+        with patch("bifrost._logging._get_sync_redis") as mock_get_redis:
+            mock_redis = MagicMock()
+            pipeline = _sync_log_pipeline(mock_redis, "1234567890-0")
+            pipeline.execute.return_value = [
+                "1234567890-0",
+                RuntimeError("expiry failed"),
+            ]
+            mock_get_redis.return_value = mock_redis
+
+            entry_id = append_log_to_stream(
+                execution_id=exec_id,
+                level="INFO",
+                message="Message",
+            )
+
+            assert entry_id is None
+            mock_redis.delete.assert_called_once_with(f"bifrost:logs:{exec_id}")
 
 
 class TestPublishLogToPubsub:
@@ -301,9 +325,11 @@ class TestAsyncLogFunctions:
             )
 
             assert entry_id == "async-entry-id"
+            pipeline.execute.assert_awaited_once_with(raise_on_error=False)
             pipeline.expire.assert_called_once_with(
                 f"bifrost:logs:{exec_id}", TTL_EXECUTION_LOGS
             )
+            mock_redis.delete.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_append_log_to_stream_async_handles_error(self):
@@ -321,6 +347,29 @@ class TestAsyncLogFunctions:
             )
 
             assert entry_id is None
+
+    @pytest.mark.asyncio
+    async def test_append_log_to_stream_async_deletes_unbounded_stream(self):
+        """Async appends remove a stream when expiry cannot be applied."""
+        exec_id = "exec-123"
+
+        with patch("src.core.cache.get_redis") as mock_get_redis:
+            mock_redis = AsyncMock()
+            pipeline = _async_log_pipeline(mock_redis, "async-entry-id")
+            pipeline.execute.return_value = [
+                "async-entry-id",
+                RuntimeError("expiry failed"),
+            ]
+            mock_get_redis.return_value.__aenter__.return_value = mock_redis
+
+            entry_id = await append_log_to_stream_async(
+                execution_id=exec_id,
+                level="INFO",
+                message="Message",
+            )
+
+            assert entry_id is None
+            mock_redis.delete.assert_awaited_once_with(f"bifrost:logs:{exec_id}")
 
     @pytest.mark.asyncio
     async def test_read_logs_from_stream_success(self):

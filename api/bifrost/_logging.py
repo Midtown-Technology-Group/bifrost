@@ -126,8 +126,17 @@ def append_log_to_stream(
         with r.pipeline(transaction=True) as pipeline:
             pipeline.xadd(stream_key, entry, maxlen=10000)
             pipeline.expire(stream_key, TTL_EXECUTION_LOGS)
-            entry_id, expiry_applied = pipeline.execute()
+            # EXEC may commit XADD while returning an error for EXPIRE.
+            entry_id, expiry_applied = pipeline.execute(raise_on_error=False)
+        if isinstance(entry_id, Exception):
+            raise entry_id
+        if isinstance(expiry_applied, Exception):
+            r.delete(stream_key)
+            raise RuntimeError(
+                "Failed to apply execution log stream expiry"
+            ) from expiry_applied
         if not expiry_applied:
+            r.delete(stream_key)
             raise RuntimeError("Failed to apply execution log stream expiry")
         return entry_id
     except Exception as e:
@@ -338,8 +347,17 @@ async def append_log_to_stream_async(
             async with r.pipeline(transaction=True) as pipeline:
                 pipeline.xadd(stream_key, entry, maxlen=10000)
                 pipeline.expire(stream_key, TTL_EXECUTION_LOGS)
-                entry_id, expiry_applied = await pipeline.execute()
+                # EXEC may commit XADD while returning an error for EXPIRE.
+                entry_id, expiry_applied = await pipeline.execute(raise_on_error=False)
+            if isinstance(entry_id, Exception):
+                raise entry_id
+            if isinstance(expiry_applied, Exception):
+                await r.delete(stream_key)
+                raise RuntimeError(
+                    "Failed to apply execution log stream expiry"
+                ) from expiry_applied
             if not expiry_applied:
+                await r.delete(stream_key)
                 raise RuntimeError("Failed to apply execution log stream expiry")
             return entry_id
     except Exception as e:
