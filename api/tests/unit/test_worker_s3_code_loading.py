@@ -4,9 +4,9 @@ import hashlib
 import json
 import sys
 from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
 
 
 @pytest.fixture(autouse=True)
@@ -29,10 +29,15 @@ class TestGetModuleSyncFromCache:
 
     @pytest.fixture(autouse=True)
     def stable_workspace_generation(self, monkeypatch):
+        from src.core import module_cache_sync
+
+        real_generation_for_import = module_cache_sync.workspace_generation_for_import
         monkeypatch.setattr(
-            "src.core.module_cache_sync.workspace_generation_for_import",
+            module_cache_sync,
+            "workspace_generation_for_import",
             lambda: "generation-1",
         )
+        return real_generation_for_import
 
     def test_worker_loads_code_from_redis_cache(self):
         """Worker should load workflow code from Redis cache using path."""
@@ -93,6 +98,50 @@ class TestGetModuleSyncFromCache:
             ["bifrost:module:modules/a.py", "bifrost:module:modules/b.py"]
         )
         mock_redis.get.assert_not_called()
+
+    def test_worker_batch_bounds_generation_reads_for_cached_modules(
+        self, stable_workspace_generation
+    ):
+        """A warm batch should recheck its generation once, not once per module."""
+        from src.core.module_cache_sync import (
+            WORKSPACE_GENERATION_KEY,
+            get_modules_sync,
+        )
+
+        modules: list[dict[str, str]] = []
+        for index in range(3):
+            content = f"x = {index}"
+            modules.append(
+                {
+                    "content": content,
+                    "path": f"modules/{index}.py",
+                    "hash": hashlib.sha256(content.encode()).hexdigest(),
+                    "generation": "generation-1",
+                }
+            )
+
+        with (
+            patch(
+                "src.core.module_cache_sync._get_sync_redis"
+            ) as mock_redis_factory,
+            patch(
+                "src.core.module_cache_sync.workspace_generation_for_import",
+                wraps=stable_workspace_generation,
+            ) as get_generation,
+        ):
+            mock_redis = MagicMock()
+            mock_redis.mget.return_value = [json.dumps(module) for module in modules]
+            mock_redis.get.return_value = "generation-1"
+            mock_redis_factory.return_value = mock_redis
+
+            result = get_modules_sync([module["path"] for module in modules])
+
+        assert result == {module["path"]: module for module in modules}
+        assert get_generation.call_count == 2
+        assert mock_redis.get.call_args_list == [
+            call(WORKSPACE_GENERATION_KEY),
+            call(WORKSPACE_GENERATION_KEY),
+        ]
 
     def test_worker_batch_prefers_cold_solution_module_over_cached_global(self):
         """A lower-priority cache hit must not bypass the solution source."""

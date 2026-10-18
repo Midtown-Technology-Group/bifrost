@@ -1276,6 +1276,7 @@ def get_modules_sync(paths: list[str]) -> dict[str, CachedModule | None]:
         )
         resolved: dict[str, CachedModule | None] = {}
         expected_generation = workspace_generation_for_import()
+        accepted_mutable_hit = False
         for (path, storage_path), data in zip(candidates, values, strict=True):
             if path in resolved:
                 continue
@@ -1301,14 +1302,8 @@ def get_modules_sync(paths: list[str]) -> dict[str, CachedModule | None]:
                     elif _cached_module_matches_generation(
                         cached_module, expected_generation
                     ):
-                        _require_workspace_generation(
-                            expected_generation,
-                            message=(
-                                "workspace source generation changed during "
-                                "module batch fallback"
-                            ),
-                        )
                         module = cached_module
+                        accepted_mutable_hit = True
 
             # A lower-priority cache hit cannot outrank a higher-priority
             # candidate that is merely cold in Redis. Exhaust the current
@@ -1319,6 +1314,14 @@ def get_modules_sync(paths: list[str]) -> dict[str, CachedModule | None]:
                 )
             if module is not None:
                 resolved[path] = module
+
+        if accepted_mutable_hit:
+            _require_workspace_generation(
+                expected_generation,
+                message=(
+                    "workspace source generation changed during module batch fallback"
+                ),
+            )
 
         for path in ordered_paths:
             if path not in resolved:
