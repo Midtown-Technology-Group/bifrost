@@ -100,11 +100,11 @@
       "completedRunId": "05110ba3-1c53-49be-b9e3-3d246c3f102e"
     },
     "/openwiki/operations/ci-and-release-evidence.md": {
+      "gitHead": "274016358f2f0a0342bd1acd6b47ccf7ae3f27b2",
+      "sourceFingerprint": "sha256:f67fe629dcc934057a39b59a00bc01f8a852b9adfcd77e43500fc4a90859ed74",
       "pageVersion": "sha256:c16d237c628510ab9ec65b9737bd003904a7bcf42fa355cbdf2bb5cea8ab6ede",
       "completedBy": "bifrost-atlas",
-      "completedRunId": "f8956e6d-f39a-4ed3-8241-7efb66fe2185",
-      "gitHead": "b113f510675f5c11c9766eece89bd3125071dfb8",
-      "sourceFingerprint": "sha256:5a94fd99f353da477d0025f0ad3b79324b37c190bc0f9f715136323152b4ca07"
+      "completedRunId": "f8956e6d-f39a-4ed3-8241-7efb66fe2185"
     },
     "/openwiki/operations/deployment-and-infrastructure.md": {
       "gitHead": "5085cc467ffb1ed35de9c9ca48890ab0d929e1d0",
@@ -114,8 +114,8 @@
       "completedRunId": "105b185b-7bc4-4345-b11b-a06fca8bfcc4"
     },
     "/openwiki/operations/development-and-verification.md": {
-      "gitHead": "b113f510675f5c11c9766eece89bd3125071dfb8",
-      "sourceFingerprint": "sha256:5a94fd99f353da477d0025f0ad3b79324b37c190bc0f9f715136323152b4ca07",
+      "gitHead": "274016358f2f0a0342bd1acd6b47ccf7ae3f27b2",
+      "sourceFingerprint": "sha256:f67fe629dcc934057a39b59a00bc01f8a852b9adfcd77e43500fc4a90859ed74",
       "pageVersion": "sha256:3973981e9596b546e69138ded6b7eec24a488d6f5c3067c4715a32a1582d196a",
       "completedBy": "bifrost-atlas",
       "completedRunId": "9e3705a0-d799-4343-ad81-d614f2518438"
