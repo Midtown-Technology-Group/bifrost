@@ -19,6 +19,10 @@ import signal
 import socket
 import subprocess
 import sys
+import time
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlsplit
+from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -105,6 +109,13 @@ def sanitized_failure_details(output: str) -> dict[str, object]:
         "docker_build_failure": "failed to build", "registry_rate_limit": "toomanyrequests",
         "registry_access_denied": "pull access denied", "registry_manifest_missing": "manifest unknown",
         "api_readiness_timeout": "api did not become ready",
+        "client_config_load_failure": "failed to load config",
+        "client_missing_module": "cannot find module",
+        "client_missing_package": "cannot find package",
+        "client_address_in_use": "eaddrinuse",
+        "client_bind_permission_denied": "eacces",
+        "client_optional_dependency_failure": "npm has a bug related to optional dependencies",
+        "client_vite_ready": "ready in",
     }.items() if literal in lower}
     statuses = sorted({int(value) for value in re.findall(r'HTTP/[0-9.]+[" ]+([1-5][0-9]{2})\b', output)})
     return {"exception_classes": exceptions, "traceback_locations": [
@@ -112,12 +123,14 @@ def sanitized_failure_details(output: str) -> dict[str, object]:
         "categories": sorted(categories), "http_statuses": statuses}
 
 
-def collect_failed_boot(project: str, boot_output: str) -> None:
+def collect_failed_boot(project: str, boot_output: str, *, phase: str = "boot") -> None:
     if not re.fullmatch(r"bifrost-debug-[0-9a-f]{8}", project):
         raise DiagnosticFailure("Invalid failed-boot project identity")
-    report: dict[str, object] = {"source_sha": os.environ["GITHUB_SHA"], "project": project,
+    if phase not in {"boot", "readiness", "smoke"}:
+        raise DiagnosticFailure("Invalid debug failure diagnostic phase")
+    report: dict[str, object] = {"source_sha": os.environ["GITHUB_SHA"], "project": project, "phase": phase,
         "boot_summary": sanitized_failure_details(boot_output), "containers": [], "collection_errors": []}
-    destination = ARTIFACT / "debug-boot-failure.json"
+    destination = ARTIFACT / f"debug-{phase}-failure.json"
 
     def save() -> None:
         destination.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
@@ -163,7 +176,84 @@ def collect_failed_boot(project: str, boot_output: str) -> None:
         report["containers"] = containers
         report["collection_errors"] = errors
         save()
-    record(stage="failed-boot-diagnostics", containers=len(containers), collection_errors=len(errors))
+    record(stage=f"failed-{phase}-diagnostics", containers=len(containers), collection_errors=len(errors))
+
+
+def wait_for_debug_frontend(project: str, worktree_url: str) -> None:
+    """Establish the newly booted Vite listener/proxy before running behavior.
+
+    debug.sh currently waits for the API's internal readiness, while the client
+    starts only after that API is healthy. Poll only absent/reset listeners
+    while the exact client is running; actual HTTP/schema/config errors fail
+    immediately and never trigger a behavioral-smoke retry.
+    """
+    parsed = urlsplit(worktree_url)
+    if parsed.scheme != "http" or parsed.hostname != "localhost" or parsed.path or not parsed.port:
+        raise DiagnosticFailure("Unexpected frontend readiness URL")
+    containers = run("readiness-client-container", ["docker", "ps", "-aq", "--filter",
+        f"label=com.docker.compose.project={project}", "--filter", "label=com.docker.compose.service=client"]).split()
+    if len(containers) != 1 or not re.fullmatch(r"[a-f0-9]{12,64}", containers[0]):
+        raise DiagnosticFailure("Expected exactly one owned client container")
+    container_id = containers[0]
+    published = run("readiness-client-published-port", ["docker", "port", container_id, "80/tcp"]).splitlines()
+    if published != [f"127.0.0.1:{parsed.port}"]:
+        raise DiagnosticFailure("Printed frontend URL differs from the owned client's published port")
+
+    class RejectRedirect(HTTPRedirectHandler):
+        def redirect_request(self, req, fp, code, msg, headers, newurl):
+            raise DiagnosticFailure("Frontend readiness redirected away from its expected endpoint")
+
+    http = build_opener(ProxyHandler({}), RejectRedirect())
+    started = time.monotonic()
+    deadline = started + 90
+    observations = []
+    destination = ARTIFACT / "debug-frontend-readiness.json"
+
+    def save(passed: bool) -> None:
+        destination.write_text(json.dumps({"source_sha": os.environ["GITHUB_SHA"], "project": project,
+            "passed": passed, "elapsed_ms": round((time.monotonic() - started) * 1000),
+            "observations": observations}, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+    while time.monotonic() < deadline:
+        state = run("readiness-client-state", ["docker", "inspect", "--format", "{{.State.Status}}", container_id]).strip()
+        if state not in {"created", "running"}:
+            observations.append({"outcome": "client_not_running"})
+            save(False)
+            raise DiagnosticFailure("Owned client exited or restarted before frontend readiness")
+        try:
+            request = Request(f"http://127.0.0.1:{parsed.port}/openapi.json", headers={"Accept": "application/json"})
+            with http.open(request, timeout=min(3, max(0.1, deadline - time.monotonic()))) as response:
+                payload = response.read(4_000_001)
+                status = response.status
+            if status != 200 or len(payload) > 4_000_000:
+                observations.append({"outcome": "unexpected_http_response", "status": status})
+                save(False)
+                raise DiagnosticFailure("Frontend readiness returned an unexpected HTTP response")
+            try:
+                schema = json.loads(payload)
+            except (ValueError, UnicodeError):
+                observations.append({"outcome": "non_json_response", "status": status})
+                save(False)
+                raise DiagnosticFailure("Frontend proxy did not return JSON OpenAPI") from None
+            if not isinstance(schema, dict) or not isinstance(schema.get("openapi"), str) or not isinstance(schema.get("paths"), dict) or "/auth/login" not in schema["paths"]:
+                observations.append({"outcome": "unexpected_schema", "status": status})
+                save(False)
+                raise DiagnosticFailure("Frontend proxy did not return the current API contract")
+            observations.append({"outcome": "ready", "status": status, "schema_sha256": hashlib.sha256(payload).hexdigest()})
+            save(True)
+            record(stage="debug-frontend-ready", observations=len(observations), elapsed_ms=round((time.monotonic() - started) * 1000))
+            return
+        except HTTPError as exc:
+            observations.append({"outcome": "http_failure", "status": exc.code})
+            save(False)
+            raise DiagnosticFailure("Frontend proxy returned an HTTP error during startup readiness") from None
+        except (URLError, OSError) as exc:
+            # These observations are explicit startup readiness, never a retry
+            # of a failed grant mutation or behavioral assertion.
+            observations.append({"outcome": "listener_not_ready", "exception_class": type(exc).__name__})
+            save(False)
+            time.sleep(min(1, max(0, deadline - time.monotonic())))
+    raise DiagnosticFailure("Owned frontend listener did not become ready within the startup deadline")
 
 
 def run_debug_smoke(worktree_url: str, status: str, source_sha: str) -> None:
@@ -392,7 +482,22 @@ def regenerate() -> None:
             raise DiagnosticFailure("API image identity is not immutable")
         identity["api_image"] = api_image
         write_identity(identity)
-        run_debug_smoke(worktree_url, status, source_sha)
+        try:
+            wait_for_debug_frontend(project, worktree_url)
+        except DiagnosticFailure as readiness_failure:
+            try:
+                collect_failed_boot(project, readiness_failure.captured_output, phase="readiness")
+            except Exception as diagnostic_error:
+                record(stage="failed-readiness-diagnostic-error", exception_class=type(diagnostic_error).__name__)
+            raise
+        try:
+            run_debug_smoke(worktree_url, status, source_sha)
+        except DiagnosticFailure as smoke_failure:
+            try:
+                collect_failed_boot(project, smoke_failure.captured_output, phase="smoke")
+            except Exception as diagnostic_error:
+                record(stage="failed-smoke-diagnostic-error", exception_class=type(diagnostic_error).__name__)
+            raise
         run("generate-client-types", ["npm", "--prefix", "client", "run", "generate:types"],
             env={**ENV, "OPENAPI_URL": worktree_url + "/openapi.json"})
         copy_generated("client/src/lib/v1.d.ts")

@@ -107,6 +107,18 @@ seeds and namespace parity in the authorized Linux Docker/CI lane. Regenerate
 contracts, build the client, and satisfy the exact final candidate's normal
 pre-PR, review and CI gates.
 
+Run `./test.sh rbac-backup-rehearsal` from a clean committed candidate in the
+Linux Docker lane. It uses matching PostgreSQL 16 dump/restore tools and
+synthetic databases for the clean fork head, historical delivery-column stamp,
+and withdrawn Builder residue. After an interrupted forward-only upgrade it
+restores the original archive, exercises actual read-only readers from frozen
+`5085cc467` source and dependencies, and upgrades to the candidate head. This
+proves imported-reader compatibility, not complete old-service startup or a
+deployment rollback. Comprehensive CI requires the rehearsal in E2E shard 1.
+Retain the restricted `rbac-backup-*/proof.json` and per-variant receipts from
+the worktree's test results directory; raw dumps and private snapshots stay out
+of CI artifacts.
+
 The SDK/server contract advances to version 14. Before runtime cutover, the
 documented release lane must pause admissions/triggers, drain old executions
 and their buffers, and freeze competing migrators. Deploy the accepted

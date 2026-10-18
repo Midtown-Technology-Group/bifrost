@@ -24,7 +24,7 @@ import sys
 import time
 from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qs, urlencode, urlsplit
-from urllib.request import HTTPRedirectHandler, Request, build_opener
+from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
 from uuid import uuid4
 
 
@@ -32,9 +32,12 @@ GRANTS = ["agents.promote", "devices.execute", "devices.readwrite"]
 
 
 class SmokeFailure(Exception):
-    def __init__(self, step: str, status: int | None = None) -> None:
+    def __init__(
+        self, step: str, status: int | None = None, error_type: str | None = None
+    ) -> None:
         self.step = step
         self.status = status
+        self.error_type = error_type
 
 
 class NoRedirect(HTTPRedirectHandler):
@@ -45,7 +48,8 @@ class NoRedirect(HTTPRedirectHandler):
 class Proof:
     def __init__(self, url: str) -> None:
         self.url = url.rstrip("/")
-        self.http = build_opener(NoRedirect())
+        # Loopback credentials must never be forwarded through environment proxies.
+        self.http = build_opener(ProxyHandler({}), NoRedirect())
         self.deadline = time.monotonic() + 240
         self.checks: list[dict] = []
         self.cleanup: dict[str, int] = {}
@@ -87,8 +91,11 @@ class Proof:
         except HTTPError as response:
             status = response.code
             raw = response.read(4_000_001)
-        except URLError:
-            raise SmokeFailure(step) from None
+        except (URLError, OSError) as exc:
+            self.checks.append({"check": step + "_transport", "passed": False})
+            raise SmokeFailure(
+                step + "_transport_error", error_type=type(exc).__name__
+            ) from None
         self.checks.append(
             {"check": step, "status": status, "passed": status in expect}
         )
@@ -587,6 +594,8 @@ def main():
         receipt["passed"] = True
     except SmokeFailure as exc:
         receipt["failure"] = {"check": exc.step, "status": exc.status}
+        if exc.error_type:
+            receipt["failure"]["type"] = exc.error_type
     except Exception as exc:
         # Exception text can contain request URLs, credentials or response data.
         receipt["failure"] = {"check": "unexpected_failure", "type": type(exc).__name__}
