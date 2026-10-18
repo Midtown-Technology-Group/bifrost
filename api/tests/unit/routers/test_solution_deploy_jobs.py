@@ -212,6 +212,69 @@ async def test_run_deploy_job_does_not_start_after_job_is_terminal(
     assert not zip_path.exists()
 
 
+@pytest.mark.asyncio
+async def test_failed_repo_install_is_deleted_with_terminal_projection(
+    tmp_path, monkeypatch
+):
+    job = SolutionDeployJob(id=uuid4(), install_id=None, status="queued")
+    solution = Solution(
+        id=uuid4(),
+        slug="failed-repo-install",
+        name="Failed repo install",
+        git_connected=True,
+    )
+    job.install_id = solution.id
+    deleted: list[Solution] = []
+
+    class FakeDB:
+        async def get(self, model, row_id):  # noqa: ANN001, ANN201
+            if model is SolutionDeployJob and row_id == job.id:
+                return job
+            if model is Solution and row_id == solution.id:
+                return None if deleted else solution
+            return None
+
+        async def flush(self) -> None:
+            pass
+
+        async def delete(self, row) -> None:  # noqa: ANN001
+            deleted.append(row)
+
+    @asynccontextmanager
+    async def fake_db_context():
+        yield FakeDB()
+
+    @asynccontextmanager
+    async def fake_write_lock(_solution_id):  # noqa: ANN001
+        yield
+
+    from src.core import database
+    from src.services.solutions import write_lock, zip_install
+
+    monkeypatch.setattr(database, "get_db_context", fake_db_context)
+    monkeypatch.setattr(write_lock, "solution_write_lock", fake_write_lock)
+    monkeypatch.setattr(
+        zip_install,
+        "deploy_zip_to_solution_path",
+        AsyncMock(side_effect=ValueError("manifest invalid")),
+    )
+    zip_path = tmp_path / "deploy.zip"
+    zip_path.write_bytes(b"invalid manifest")
+
+    await _run_deploy_job(
+        job.id,
+        solution.id,
+        zip_path,
+        force=True,
+        allow_connected_install=True,
+    )
+
+    assert job.status == "failed"
+    assert job.install_id is None
+    assert deleted == [solution]
+    assert not zip_path.exists()
+
+
 _SENSITIVE_ERROR_TEXT = (
     "asyncpg query failed: password='s3cr3t-p@ss' host=db.internal port=5432"
 )
