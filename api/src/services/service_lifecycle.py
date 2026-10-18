@@ -183,9 +183,10 @@ async def park_definitions_for_workflows(
     if not workflow_ids:
         return 0
     result = await db.execute(
-        select(ServiceDefinition).where(
-            ServiceDefinition.workflow_id.in_(workflow_ids)
-        )
+        select(ServiceDefinition)
+        .where(ServiceDefinition.workflow_id.in_(workflow_ids))
+        .order_by(ServiceDefinition.id)
+        .with_for_update()
     )
     parked = 0
     for definition in result.scalars().all():

@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Readable } from "node:stream";
@@ -101,6 +107,22 @@ test("selector rejects checkout paths from CLI input", () => {
     );
     assert.equal(result.status, 2);
     assert.match(result.stderr, new RegExp(`unknown arg: ${option}`));
+  }
+});
+
+test("selector runs when invoked through a symlink", () => {
+  const directory = mkdtempSync(join(tmpdir(), "decide-captures-link-"));
+  const link = join(directory, "selector.mjs");
+  try {
+    symlinkSync(scriptPath, link);
+    const result = spawnSync(process.execPath, [link, "--full"], {
+      encoding: "utf8",
+      input: "entries: [{ id: symlinked }]\n",
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout, "symlinked");
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
   }
 });
 

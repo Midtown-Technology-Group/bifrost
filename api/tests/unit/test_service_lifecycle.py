@@ -6,6 +6,7 @@ Covers ensure/idempotence, desired-state transitions, worker-pull claims
 lease expiry, and observed-state derivation.
 """
 
+from datetime import timedelta
 from uuid import uuid4
 
 import pytest
@@ -468,9 +469,10 @@ async def test_expiry_skips_definition_locked_by_stop(async_session_factory):
 
     async with async_session_factory() as setup:
         definition, workflow = await _ensure(setup)
-        await service_lifecycle.claim_eligible_service(
-            setup, worker_id="w1", lease_ttl_seconds=-1
+        attempt = await service_lifecycle.claim_eligible_service(
+            setup, worker_id="w1", lease_ttl_seconds=600
         )
+        sweep_time = attempt.lease_expires_at + timedelta(seconds=1)
         service_id = definition.id
         workflow_id = workflow.id
         organization_id = definition.organization_id
@@ -493,14 +495,17 @@ async def test_expiry_skips_definition_locked_by_stop(async_session_factory):
             # attempt-first sweep blocked here while holding the attempt.
             assert (
                 await asyncio.wait_for(
-                    service_lifecycle.expire_leases(sweep_db), timeout=1
+                    service_lifecycle.expire_leases(sweep_db, now=sweep_time),
+                    timeout=1,
                 )
                 == 0
             )
             await service_lifecycle.stop_service(stop_db, locked_definition)
             await stop_db.commit()
 
-            assert await service_lifecycle.expire_leases(sweep_db) == 1
+            assert (
+                await service_lifecycle.expire_leases(sweep_db, now=sweep_time) == 1
+            )
             await sweep_db.commit()
     finally:
         await _cleanup_committed_service(

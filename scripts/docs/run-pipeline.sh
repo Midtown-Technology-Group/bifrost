@@ -110,7 +110,7 @@ if [[ ! "$MANIFEST_SIZE" =~ ^[0-9]+$ ]] || \
     exit 1
 fi
 
-CAPTURE_IDS="$(docs_git show HEAD:screenshots.yaml | node "$SCRIPT_DIR/decide-captures.mjs" "${DECIDE_ARGS[@]}")"
+CAPTURE_IDS="$(docs_git show HEAD:screenshots.yaml | node "$SCRIPT_DIR/decide-captures.mjs" ${DECIDE_ARGS[@]+"${DECIDE_ARGS[@]}"})"
 
 if [[ -z "$CAPTURE_IDS" ]]; then
     echo "No entries to capture (everything is up to date)."

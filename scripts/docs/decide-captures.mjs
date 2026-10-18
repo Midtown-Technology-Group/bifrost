@@ -11,6 +11,7 @@
  * DOCS_CAPTURE_IDS. Empty string if nothing to do (also exit 0).
  */
 import { execFileSync } from "node:child_process";
+import { realpathSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -119,7 +120,7 @@ async function main() {
 
 if (
   process.argv[1] &&
-  import.meta.url === pathToFileURL(process.argv[1]).href
+  import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href
 ) {
   await main();
 }
