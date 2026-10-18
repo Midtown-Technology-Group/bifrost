@@ -405,6 +405,9 @@ async def test_stop_and_completion_share_definition_then_attempt_lock_order(
             async_session_factory() as worker_db,
             async_session_factory() as observer,
         ):
+            cached_definition = await worker_db.get(ServiceDefinition, service_id)
+            assert cached_definition is not None
+            assert cached_definition.desired_state == "running"
             locked_definition = (
                 await stop_db.execute(
                     select(ServiceDefinition)
@@ -446,6 +449,8 @@ async def test_stop_and_completion_share_definition_then_attempt_lock_order(
             completed_definition = await asyncio.wait_for(completion, timeout=5)
             await worker_db.commit()
             assert completed_definition.id == service_id
+            assert completed_definition.desired_state == "stopped"
+            assert completed_definition.restart_eligible_at is None
     finally:
         if completion is not None:
             if not completion.done():
@@ -481,6 +486,9 @@ async def test_expiry_skips_definition_locked_by_stop(async_session_factory):
             async_session_factory() as stop_db,
             async_session_factory() as sweep_db,
         ):
+            cached_definition = await sweep_db.get(ServiceDefinition, service_id)
+            assert cached_definition is not None
+            assert cached_definition.desired_state == "running"
             locked_definition = (
                 await stop_db.execute(
                     select(ServiceDefinition)
@@ -501,6 +509,8 @@ async def test_expiry_skips_definition_locked_by_stop(async_session_factory):
             await stop_db.commit()
 
             assert await service_lifecycle.expire_leases(sweep_db) == 1
+            assert cached_definition.desired_state == "stopped"
+            assert cached_definition.restart_eligible_at is None
             await sweep_db.commit()
     finally:
         await _cleanup_committed_service(

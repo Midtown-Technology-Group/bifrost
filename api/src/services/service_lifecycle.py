@@ -801,6 +801,7 @@ async def complete_attempt(
         select(ServiceDefinition)
         .where(ServiceDefinition.id == service_id)
         .with_for_update()
+        .execution_options(populate_existing=True)
     )
     definition = result.scalar_one()
     attempt = await _locked_live_attempt(db, attempt_id, lease_token, now)
@@ -897,6 +898,7 @@ async def expire_leases(
             select(ServiceDefinition)
             .where(ServiceDefinition.id == service_id)
             .with_for_update(skip_locked=True)
+            .execution_options(populate_existing=True)
         )
         definition = locked_definition.scalar_one_or_none()
         if definition is None:
