@@ -10,6 +10,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.core.cache.redis_client import get_redis
 from src.core.database import get_db_context
 from src.core.principal import UserPrincipal
+from src.jobs.execution_policy import (
+    CancellationMode,
+    WorkloadClass,
+    platform_job_operations_policy,
+)
 from src.jobs.platform.base import (
     PlatformJobCancelled,
     PlatformJobContext,
@@ -127,6 +132,11 @@ RUN_RETENTION_DEFINITION = PlatformJobDefinition(
         retry_on_runner_loss=True,
         min_memory_headroom_mb=256,
         allow_running_cancellation=True,
+    ),
+    operations_policy=platform_job_operations_policy(
+        RUN_RETENTION_JOB_TYPE,
+        workload_class=WorkloadClass.PLATFORM_MAINTENANCE,
+        cancellation=CancellationMode.QUEUED_AND_RUNNING,
     ),
 )
 

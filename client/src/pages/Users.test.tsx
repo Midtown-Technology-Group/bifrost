@@ -148,6 +148,10 @@ import { Users } from "./Users";
 
 beforeEach(() => {
 	authz.summary = adminSummary();
+	mockToastSuccess.mockReset();
+	mockToastError.mockReset();
+	mockResetMfa.mockReset();
+	mockSignOut.mockReset();
 });
 
 function LocationProbe() {
@@ -252,8 +256,6 @@ describe("Users — registration links", () => {
 				],
 			},
 		});
-		mockToastSuccess.mockReset();
-		mockToastError.mockReset();
 		mockEditUserDialog.mockClear();
 	});
 
@@ -678,6 +680,9 @@ describe("Users — permission-driven actions", () => {
 			"This user signs in only with a passkey. Resetting would leave them no way to sign in.",
 		);
 		expect(screen.getByRole("alertdialog")).toBeInTheDocument();
+		expect(mockResetMfa).toHaveBeenCalledExactlyOnceWith({
+			params: { path: { user_id: "ordinary" } },
+		});
 		expect(mockToastSuccess).not.toHaveBeenCalled();
 	});
 

@@ -199,11 +199,8 @@ describe("AccessMap", () => {
 			name: "All Permissions",
 		});
 		expect(chip).toHaveAttribute("data-variant", "privileged");
-		expect(chip).toHaveClass(
-			"w-full",
-			"bg-[var(--bf-warning-soft)]",
-			"text-[var(--bf-warning)]",
-		);
+		// The wildcard uses the same warning theme tokens as every privileged chip.
+		expect(chip).toHaveClass("w-full", "bg-warning/15", "text-warning");
 		expect(within(span).getAllByRole("button")).toHaveLength(1);
 
 		const explicitRow = spanRow.nextElementSibling as HTMLElement;

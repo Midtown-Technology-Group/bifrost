@@ -280,6 +280,10 @@ MODEL_CATALOG_REFRESH_DEFINITION = PlatformJobDefinition(
         max_concurrency=1,
         min_memory_headroom_mb=256,
     ),
+    operations_policy=platform_job_operations_policy(
+        "model_catalog.refresh",
+        workload_class=WorkloadClass.PLATFORM_MAINTENANCE,
+    ),
 )
 
 

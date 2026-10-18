@@ -178,10 +178,8 @@ describe("PermissionChip", () => {
 
 		const chip = screen.getByRole("button", { name: /Secret Values/ });
 		expect(chip).toHaveAttribute("data-variant", "privileged");
-		expect(chip).toHaveClass(
-			"bg-[var(--bf-warning-soft)]",
-			"text-[var(--bf-warning)]",
-		);
+		// Use Badge's warning theme-token contract, including dark-mode values.
+		expect(chip).toHaveClass("bg-warning/15", "text-warning");
 	});
 
 	it("shows the permission as written when no catalog entry is given", () => {

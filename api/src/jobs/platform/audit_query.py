@@ -7,6 +7,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.config import get_settings
 from src.core.principal import UserPrincipal
 from src.jobs.platform.audit_archive import AUDIT_ARCHIVE_DEFINITION
+from src.jobs.execution_policy import (
+    CancellationMode,
+    WorkloadClass,
+    platform_job_operations_policy,
+)
 from src.jobs.platform.base import (
     PlatformJobContext,
     PlatformJobDefinition,
@@ -48,6 +53,11 @@ AUDIT_QUERY_DEFINITION = PlatformJobDefinition(
         retry_on_runner_loss=True,
         min_memory_headroom_mb=256,
         allow_running_cancellation=True,
+    ),
+    operations_policy=platform_job_operations_policy(
+        "audit.query",
+        workload_class=WorkloadClass.PLATFORM_BATCH,
+        cancellation=CancellationMode.QUEUED_AND_RUNNING,
     ),
 )
 

@@ -12,7 +12,10 @@ import { cleanup } from "@testing-library/react";
 // an unhandled rejection into a hard failure. Force framer-motion back onto its JS
 // animation path in tests, matching how it already ran before happy-dom added this API
 // and how it still behaves in any environment without WAAPI support.
-delete (Element.prototype as { animate?: unknown }).animate;
+// Pure Node suites (including Playwright project metadata) have no DOM to patch.
+if (typeof Element !== "undefined") {
+	delete (Element.prototype as { animate?: unknown }).animate;
+}
 
 // Start every test from a clean DOM even if a previous file timed out before
 // its own afterEach cleanup could run.

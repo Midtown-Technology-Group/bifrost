@@ -1,6 +1,8 @@
 """Contracts for the unified execution operations policy registry."""
 
+import ast
 from dataclasses import replace
+from pathlib import Path
 
 import pytest
 
@@ -19,6 +21,7 @@ from src.jobs.execution_policy import (
 )
 from src.jobs.platform.registry import (
     get_execution_operations_policy,
+    get_platform_job_definition,
     list_execution_operations_policies,
     list_platform_job_definitions,
 )
@@ -138,3 +141,51 @@ def test_platform_validation_rejects_runner_loss_drift() -> None:
                 ),
             ),
         )
+
+
+@pytest.mark.parametrize(("job_type", "workload", "cancellation"), [
+    ("model_catalog.refresh", WorkloadClass.PLATFORM_MAINTENANCE, CancellationMode.QUEUED_ONLY),
+    ("audit.archive", WorkloadClass.PLATFORM_MAINTENANCE, CancellationMode.QUEUED_AND_RUNNING),
+    ("audit.query", WorkloadClass.PLATFORM_BATCH, CancellationMode.QUEUED_AND_RUNNING),
+    ("run.retention", WorkloadClass.PLATFORM_MAINTENANCE, CancellationMode.QUEUED_AND_RUNNING),
+])
+def test_upstream_platform_jobs_keep_explicit_fork_operations_policy(job_type, workload, cancellation):
+    """Importing the registry must admit the four jobs with their actual semantics.
+
+    Archive/retention use frozen cutoffs and lease-fenced batches. Query restarts
+    at the same per-job export key, while catalog refresh replaces one source's
+    last-good snapshot. These permit runner-loss recovery, never generic replay.
+    """
+    definition = get_platform_job_definition(job_type)
+    assert definition is not None
+    policy = get_execution_operations_policy(job_type)
+    assert policy is not None
+    assert policy.identifier == definition.job_type
+    assert policy.workload_class == workload
+    assert policy.mechanism == ExecutionMechanism.POSTGRES_LEASE
+    assert policy.admission_policy == AdmissionPolicy.PLATFORM_SCHEDULER
+    assert policy.durable_authority == "platform_jobs"
+    assert policy.completion_boundary == CompletionBoundary.PLATFORM_JOB_TERMINAL_OR_WAITING
+    assert policy.idempotency == IdempotencyRequirement.REQUIRED
+    assert policy.worker_loss == WorkerLossBehavior.RETRY
+    assert policy.retry_profile == RetryProfile.PLATFORM_RUNNER_LOSS
+    assert policy.cancellation == cancellation
+    assert policy.replay_allowed is False
+    assert definition.policy.retry_on_runner_loss is True
+    assert definition.policy.allow_running_cancellation == (cancellation == CancellationMode.QUEUED_AND_RUNNING)
+    validate_platform_job_definition(definition)
+
+
+def test_platform_definition_constructors_never_depend_on_an_implicit_policy():
+    """Catch missing semantic policy before a registry import disables the API."""
+    root = Path(__file__).resolve().parents[3] / "src" / "jobs" / "platform"
+    missing = []
+    for path in sorted(root.glob("*.py")):
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if not isinstance(node, ast.Call):
+                continue
+            if not isinstance(node.func, ast.Name) or node.func.id != "PlatformJobDefinition":
+                continue
+            if not any(keyword.arg == "operations_policy" for keyword in node.keywords):
+                missing.append(f"{path.name}:{node.lineno}")
+    assert not missing, f"PlatformJob definitions require explicit operations_policy: {missing}"
