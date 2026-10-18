@@ -8,11 +8,13 @@ local attempt never falls back to the network API.
 """
 from __future__ import annotations
 
-import json
 import asyncio
+import json
 import time
 from datetime import datetime, timezone
 from typing import Any, Literal
+
+import httpx
 
 from ._context import _execution_context
 from .client import get_client, raise_for_status_with_detail
@@ -219,7 +221,7 @@ class agents:
                             output = await asyncio.wait_for(
                                 agents.get_result(run_id), timeout=remaining
                             )
-                    except asyncio.TimeoutError:
+                    except (asyncio.TimeoutError, httpx.TimeoutException):
                         return AgentRunPending(
                             run_id=run_id,
                             last_known_status=None,

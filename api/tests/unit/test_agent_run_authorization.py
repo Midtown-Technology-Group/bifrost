@@ -20,7 +20,12 @@ from src.models.orm.agent_runs import AgentRun
 from src.models.orm.agents import Agent, AgentRole
 from src.models.orm.organizations import Organization
 from src.models.orm.users import Role, User, UserRole
-from src.routers.agent_runs import execute_agent_run, list_agent_runs, rerun_agent_run
+from src.routers.agent_runs import (
+    execute_agent_run,
+    get_agent_run_result,
+    list_agent_runs,
+    rerun_agent_run,
+)
 from src.routers.websocket import websocket_connect
 from src.services.agent_run_access import load_agent_run_for_user
 
@@ -33,6 +38,7 @@ def _principal(
     org_id: UUID | None,
     *,
     is_superuser: bool = False,
+    roles: list[str] | None = None,
 ) -> UserPrincipal:
     return UserPrincipal(
         user_id=user_id,
@@ -41,7 +47,7 @@ def _principal(
         is_active=True,
         is_superuser=is_superuser,
         is_verified=True,
-        roles=[],
+        roles=roles or [],
     )
 
 
@@ -269,6 +275,49 @@ async def test_user_with_agent_role_can_list_own_agent_run(db_session: AsyncSess
 
     assert response.total == 1
     assert response.items[0].id == run.id
+
+
+async def test_role_granted_platform_admin_can_get_same_org_callers_result(
+    db_session: AsyncSession,
+):
+    org = await _make_org(db_session, "ResultAdminOrg")
+    admin = await _make_user(db_session, org)
+    caller = await _make_user(db_session, org)
+    agent = await _make_authenticated_agent(db_session, org)
+    run = await _make_run(db_session, agent, org, caller_user_id=caller.id)
+    run.output = {"text": "private result"}
+    await db_session.flush()
+
+    response = await get_agent_run_result(
+        run.id,
+        db_session,
+        _principal(admin.id, org.id, roles=["Platform Admin"]),
+    )
+
+    assert response.run_id == run.id
+    assert response.output == {"text": "private result"}
+
+
+async def test_role_granted_platform_admin_cannot_get_cross_org_result(
+    db_session: AsyncSession,
+):
+    admin_org = await _make_org(db_session, "ResultAdminOrg")
+    foreign_org = await _make_org(db_session, "ResultForeignOrg")
+    admin = await _make_user(db_session, admin_org)
+    caller = await _make_user(db_session, foreign_org)
+    agent = await _make_authenticated_agent(db_session, foreign_org)
+    run = await _make_run(db_session, agent, foreign_org, caller_user_id=caller.id)
+    run.output = {"text": "foreign result"}
+    await db_session.flush()
+
+    with pytest.raises(HTTPException) as exc_info:
+        await get_agent_run_result(
+            run.id,
+            db_session,
+            _principal(admin.id, admin_org.id, roles=["Platform Owner"]),
+        )
+
+    assert exc_info.value.status_code == 404
 
 
 async def test_delegated_runs_require_the_callers_parent(db_session: AsyncSession):

@@ -25,6 +25,7 @@ from src.services.agent_run_access import (
     apply_agent_run_access,
     load_agent_for_user,
     load_agent_run_for_user,
+    load_agent_run_result_for_user,
 )
 from src.models.contracts.agent_run_flag_conversations import (
     FlagConversationResponse,
@@ -740,7 +741,7 @@ async def get_agent_run_result(
     user: CurrentActiveUser,
 ) -> AgentRunResultResponse:
     """Return terminal output to its initiating caller without raw trace data."""
-    run = await load_agent_run_for_user(db, run_id, user)
+    run = await load_agent_run_result_for_user(db, run_id, user)
     is_original_caller = run is not None and run.caller_user_id == str(user.user_id)
     if run is None or not (
         is_original_caller or user.has_platform_admin_grant()

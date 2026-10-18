@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
+import httpx
 import pytest
 
 
@@ -85,6 +86,25 @@ async def test_result_fetch_respects_wait_timeout_and_can_resume(monkeypatch):
     assert await mod.agents.wait(pending.run_id, timeout=1.0) == "caller result"
     resumed_result.assert_awaited_once_with("run-redacted")
     enqueue.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_result_fetch_transport_timeout_returns_resumable_pending(monkeypatch):
+    mod = _agents_module()
+    monkeypatch.setattr(
+        mod.agents,
+        "get_run",
+        AsyncMock(return_value=MagicMock(status="completed", output=None)),
+    )
+    get_result = AsyncMock(side_effect=httpx.ReadTimeout("result fetch timed out"))
+    monkeypatch.setattr(mod.agents, "get_result", get_result)
+
+    pending = await mod.agents.wait("run-redacted")
+
+    assert pending.run_id == "run-redacted"
+    assert pending.reason == "wait_timeout"
+    assert pending.last_known_status is None
+    get_result.assert_awaited_once_with("run-redacted")
 
 
 @pytest.mark.asyncio
