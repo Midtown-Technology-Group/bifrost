@@ -817,12 +817,12 @@ async def get_agent(
     if (
         access_level == AgentAccessLevel.PRIVATE.value
         and not user.has_platform_admin_grant()
+        and agent.owner_user_id != user.user_id
     ):
-        if agent.owner_user_id != user.user_id:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Agent {agent_id} not found",
-            )
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Agent {agent_id} not found",
+        )
 
     can_manage = user.is_platform_admin or (
         access_level == AgentAccessLevel.PRIVATE.value

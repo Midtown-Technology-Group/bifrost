@@ -147,9 +147,10 @@ class TestAgentRouterCoverage:
         monkeypatch.setattr(agents, "AgentRepository", lambda **_kwargs: repo)
         user = _principal()
         user.has_platform_admin_grant = lambda: False
+        db = _FakeDb([])
 
         with pytest.raises(HTTPException) as exc:
-            await agents.get_agent(agent_id, db=_FakeDb([]), user=user)
+            await agents.get_agent(agent_id, db=db, user=user)
 
         assert exc.value.status_code == 404
 
