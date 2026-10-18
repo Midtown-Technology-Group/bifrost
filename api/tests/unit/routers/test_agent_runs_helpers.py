@@ -238,7 +238,7 @@ async def test_get_agent_run_result_allows_original_caller_or_admin(
     run = _run(caller_user_id=caller_user_id, output={"text": "private result"})
     monkeypatch.setattr(
         agent_runs,
-        "load_agent_run_for_user",
+        "load_agent_run_result_for_user",
         AsyncMock(return_value=run),
     )
 
@@ -256,7 +256,7 @@ async def test_get_agent_run_result_hides_visible_run_from_noncaller(
     run = _run(caller_user_id=str(uuid4()))
     monkeypatch.setattr(
         agent_runs,
-        "load_agent_run_for_user",
+        "load_agent_run_result_for_user",
         AsyncMock(return_value=run),
     )
 
@@ -274,7 +274,7 @@ async def test_get_agent_run_result_rejects_nonterminal_run(
     run = _run(caller_user_id=str(user.user_id), status="running")
     monkeypatch.setattr(
         agent_runs,
-        "load_agent_run_for_user",
+        "load_agent_run_result_for_user",
         AsyncMock(return_value=run),
     )
 
