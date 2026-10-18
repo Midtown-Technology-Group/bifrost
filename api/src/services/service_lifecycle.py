@@ -660,14 +660,20 @@ async def claim_eligible_service(
     if definition is None:
         return None
 
+    # Keep the scalar identity available if a competing claimant wins. A failed
+    # flush expires ORM state and leaves the transaction pending rollback, so
+    # dereferencing ``definition.id`` while constructing the conflict would
+    # mask ServiceClaimConflict with PendingRollbackError.
+    definition_id = definition.id
+
     last_number = await db.scalar(
         select(func.max(ServiceAttempt.restart_number)).where(
-            ServiceAttempt.service_id == definition.id
+            ServiceAttempt.service_id == definition_id
         )
     )
     attempt = ServiceAttempt(
         id=uuid4(),
-        service_id=definition.id,
+        service_id=definition_id,
         revision=definition.current_revision,
         worker_id=worker_id,
         lease_token=_new_lease_token(),
@@ -682,12 +688,12 @@ async def claim_eligible_service(
         await db.flush()
     except IntegrityError as e:
         raise ServiceClaimConflict(
-            f"Lost claim race for service {definition.id}"
+            f"Lost claim race for service {definition_id}"
         ) from e
     logger.info(
         "Worker %s claimed service %s (attempt %s)",
         worker_id,
-        definition.id,
+        definition_id,
         attempt.id,
     )
     return attempt
