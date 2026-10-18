@@ -6,6 +6,13 @@ from typing import Any
 import pytest
 
 from src.services.codex_gateway.oauth import (
+    MAX_CODEX_EMAIL_CHARS,
+    MAX_CODEX_EXPIRY_CHARS,
+    MAX_CODEX_SCOPE_CHARS,
+    MAX_CODEX_SCOPE_COUNT,
+    MAX_CODEX_SUBJECT_CHARS,
+    MAX_CODEX_TOKEN_CHARS,
+    MAX_CODEX_WORKSPACE_ID_CHARS,
     CodexAuthCacheError,
     parse_codex_auth_cache,
 )
@@ -148,3 +155,86 @@ def test_parse_codex_auth_cache_error_text_does_not_include_token_values():
 
     assert "access-token-secret" not in str(excinfo.value)
     assert str(excinfo.value) == "Codex auth cache must be a JSON object."
+
+
+@pytest.mark.parametrize(
+    ("payload", "expected_error"),
+    [
+        (
+            {"tokens": {"access_token": "a" * (MAX_CODEX_TOKEN_CHARS + 1)}},
+            "Codex auth cache access token exceeds its limit.",
+        ),
+        (
+            {"tokens": {"refresh_token": "r" * (MAX_CODEX_TOKEN_CHARS + 1)}},
+            "Codex auth cache refresh token exceeds its limit.",
+        ),
+        (
+            {
+                "tokens": {"access_token": "token"},
+                "account": {"sub": "s" * (MAX_CODEX_SUBJECT_CHARS + 1)},
+            },
+            "Codex auth cache upstream subject exceeds its limit.",
+        ),
+        (
+            {
+                "tokens": {"access_token": "token"},
+                "account": {"email": "e" * (MAX_CODEX_EMAIL_CHARS + 1)},
+            },
+            "Codex auth cache upstream email exceeds its limit.",
+        ),
+        (
+            {
+                "tokens": {"access_token": "token"},
+                "account": {
+                    "workspace_id": "w" * (MAX_CODEX_WORKSPACE_ID_CHARS + 1)
+                },
+            },
+            "Codex auth cache upstream workspace id exceeds its limit.",
+        ),
+        (
+            {
+                "tokens": {
+                    "access_token": "token",
+                    "expires_at": "1" * (MAX_CODEX_EXPIRY_CHARS + 1),
+                }
+            },
+            "Codex auth cache token expiry exceeds its limit.",
+        ),
+    ],
+)
+def test_parse_codex_auth_cache_rejects_oversized_token_and_metadata_fields(
+    payload,
+    expected_error,
+):
+    with pytest.raises(CodexAuthCacheError) as excinfo:
+        parse_codex_auth_cache(payload)
+
+    assert str(excinfo.value) == expected_error
+
+
+def test_parse_codex_auth_cache_rejects_excessive_scope_count():
+    with pytest.raises(CodexAuthCacheError) as excinfo:
+        parse_codex_auth_cache(
+            {
+                "tokens": {
+                    "access_token": "token",
+                    "scopes": ["scope"] * (MAX_CODEX_SCOPE_COUNT + 1),
+                }
+            }
+        )
+
+    assert str(excinfo.value) == "Codex auth cache scope count exceeds its limit."
+
+
+def test_parse_codex_auth_cache_rejects_oversized_scope_value():
+    with pytest.raises(CodexAuthCacheError) as excinfo:
+        parse_codex_auth_cache(
+            {
+                "tokens": {
+                    "access_token": "token",
+                    "scope": "s" * (MAX_CODEX_SCOPE_CHARS + 1),
+                }
+            }
+        )
+
+    assert str(excinfo.value) == "Codex auth cache scope value exceeds its limit."

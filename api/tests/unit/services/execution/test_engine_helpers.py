@@ -65,6 +65,76 @@ def test_scrub_outputs_redacts_context_secret_values():
     assert error == "failed with [REDACTED]"
 
 
+def test_scrub_execution_context_redacts_parameters_and_startup():
+    context = ExecutionContext(
+        execution_id="exec-1",
+        user_id="user-1",
+        email="user@example.com",
+        name="User One",
+        scope="org-1",
+        organization=Organization(id="org-1", name="Org One"),
+        is_platform_admin=False,
+        is_function_key=False,
+        parameters={
+            "ordinary": "contains secret-value",
+            "api_token": "unregistered-sensitive-value",
+        },
+        startup={
+            "nested": {
+                "credential": "startup-sensitive-value",
+                "secret-value": "first secret-key value",
+                "prefix-secret-value": "second secret-key value",
+                "[REDACTED_KEY_1]": "existing safe key",
+            }
+        },
+    )
+    context._register_dynamic_secret("secret-value")
+
+    public_context = engine._scrub_execution_context(context)
+
+    assert public_context["parameters"] == {
+        "ordinary": "contains [REDACTED]",
+        "api_token": "[REDACTED]",
+    }
+    assert public_context["startup"] == {
+        "nested": {
+            "credential": "[REDACTED]",
+            "[REDACTED_KEY_2]": "[REDACTED]",
+            "[REDACTED_KEY_3]": "[REDACTED]",
+            "[REDACTED_KEY_1]": "existing safe key",
+        }
+    }
+    assert "secret-value" not in json.dumps(public_context)
+    assert context.parameters["ordinary"] == "contains secret-value"
+
+
+def test_redact_secret_keys_traverses_json_like_containers():
+    value = [({"secret-value": "ordinary"},), {"safe"}]
+
+    assert engine._redact_secret_keys(value, {"secret-value"}) == [
+        ({"[REDACTED_KEY_1]": "ordinary"},),
+        {"safe"},
+    ]
+
+
+def test_scrub_execution_context_without_registered_secrets_is_sanitized():
+    context = ExecutionContext(
+        execution_id="exec-1",
+        user_id="user-1",
+        email="user@example.com",
+        name="User One",
+        scope="org-1",
+        organization=Organization(id="org-1", name="Org One"),
+        is_platform_admin=False,
+        is_function_key=False,
+        parameters={"api_token": "unregistered-sensitive-value"},
+    )
+
+    public_context = engine._scrub_execution_context(context)
+
+    assert public_context["parameters"] == {"api_token": "[REDACTED]"}
+
+
 def test_scrub_outputs_redacts_generated_scripts_without_registered_secrets():
     context = ExecutionContext(
         execution_id="exec-1",

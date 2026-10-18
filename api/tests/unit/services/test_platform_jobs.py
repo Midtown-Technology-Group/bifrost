@@ -386,7 +386,7 @@ async def test_requires_action_projects_result_to_public_job_and_notification(
     job.result = {"requires_action": "confirm_deletes"}
     job.notification_id = uuid4()
     notifications = MagicMock()
-    notifications.update_notification = AsyncMock()
+    notifications.update_platform_job_notification = AsyncMock()
     monkeypatch.setattr(service, "get_notification_service", lambda: notifications)
     monkeypatch.setattr(service.pubsub_manager, "broadcast", AsyncMock())
 
@@ -395,7 +395,7 @@ async def test_requires_action_projects_result_to_public_job_and_notification(
     public = service.platform_job_to_public(job)
     assert public.status is PlatformJobStatus.REQUIRES_ACTION
     assert public.result == {"requires_action": "confirm_deletes"}
-    update = notifications.update_notification.await_args.args[1]
+    update = notifications.update_platform_job_notification.await_args.args[1]
     assert update.status.value == "awaiting_action"
     assert update.result == {
         "job_id": str(job.id),
@@ -474,7 +474,7 @@ async def test_notification_projection_precedes_platform_job_broadcasts(
 
     call_order: list[str] = []
     notifications = MagicMock()
-    notifications.update_notification = AsyncMock(
+    notifications.update_platform_job_notification = AsyncMock(
         side_effect=lambda *_args, **_kwargs: call_order.append("notification")
     )
     broadcast = AsyncMock(
@@ -500,13 +500,13 @@ async def test_notification_projection_preserves_canonical_job_id(
     await db_session.commit()
 
     notifications = MagicMock()
-    notifications.update_notification = AsyncMock()
+    notifications.update_platform_job_notification = AsyncMock()
     monkeypatch.setattr(service, "get_notification_service", lambda: notifications)
     monkeypatch.setattr(service.pubsub_manager, "broadcast", AsyncMock())
 
     await service.publish_platform_job_update(job)
 
-    update = notifications.update_notification.await_args.args[1]
+    update = notifications.update_platform_job_notification.await_args.args[1]
     assert update.result == {"job_id": str(job.id), "ok": True}
 @pytest.mark.asyncio
 async def test_notification_projection_is_persisted_before_websocket_broadcasts(
@@ -517,7 +517,7 @@ async def test_notification_projection_is_persisted_before_websocket_broadcasts(
     job.notification_id = uuid4()
     events: list[str] = []
     notifications = MagicMock()
-    notifications.update_notification = AsyncMock(
+    notifications.update_platform_job_notification = AsyncMock(
         side_effect=lambda *_args, **_kwargs: events.append("notification")
     )
     monkeypatch.setattr(service, "get_notification_service", lambda: notifications)

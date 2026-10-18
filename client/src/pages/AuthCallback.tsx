@@ -58,7 +58,14 @@ export function AuthCallback() {
 				sessionStorage.removeItem("oauth_state");
 				sessionStorage.removeItem("oauth_redirect_from");
 
-				if (storedState && (await hashOAuthState(state)) !== storedState) {
+				if (!storedState) {
+					setError(
+						"This sign-in session is missing or expired. Please start sign-in again.",
+					);
+					return;
+				}
+
+				if ((await hashOAuthState(state)) !== storedState) {
 					setError("Invalid OAuth state");
 					return;
 				}

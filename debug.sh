@@ -549,6 +549,8 @@ cmd_up() {
     # Ensure node_modules dirs exist for Docker anonymous volume mountpoints.
     mkdir -p api/src/services/app_compiler/node_modules
     mkdir -p api/src/services/app_bundler/node_modules
+    mkdir -p api/src/services/sdk_package/node_modules
+    mkdir -p api/src/services/sdk_package/sdk_src
 
     BIFROST_VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "debug")
     export BIFROST_VERSION

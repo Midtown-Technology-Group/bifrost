@@ -468,6 +468,38 @@ def test_import_codex_auth_cache_stores_tokens_without_returning_them(monkeypatc
     assert "refresh-token-secret" not in str(audit_details)
 
 
+def test_import_codex_auth_cache_rejects_oversized_tokens_before_repository(
+    monkeypatch,
+):
+    from src.services.codex_gateway.oauth import MAX_CODEX_TOKEN_CHARS
+
+    app = FastAPI()
+    app.include_router(router)
+    repository = FakeRepository()
+    user_id = uuid4()
+    audit = AsyncMock()
+    app.dependency_overrides[get_codex_gateway_repository] = lambda: repository
+    app.dependency_overrides[get_current_active_user] = lambda: _principal(user_id)
+    monkeypatch.setattr("src.routers.codex_gateway.emit_audit", audit)
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/codex-gateway/oauth/import-auth-cache",
+        json={
+            "auth_cache": {
+                "tokens": {"access_token": "s" * (MAX_CODEX_TOKEN_CHARS + 1)}
+            }
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json() == {
+        "detail": "Codex auth cache access token exceeds its limit."
+    }
+    assert repository.oauth_upserts == []
+    audit.assert_not_awaited()
+
+
 def test_disconnect_codex_oauth_revokes_user_account_and_audits(monkeypatch):
     app = FastAPI()
     app.include_router(router)
