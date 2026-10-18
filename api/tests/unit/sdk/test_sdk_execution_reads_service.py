@@ -231,6 +231,25 @@ class TestListSdkWorkflows:
 
 @pytest.mark.asyncio
 class TestListSdkExecutions:
+    async def test_local_rows_cannot_claim_database_workflow_identity(self, db_session):
+        owner = await _seed_user(db_session, is_superuser=True)
+        workflow = await _seed_workflow(db_session, "reads-local-stale-list")
+        row = await _seed_execution(
+            db_session, workflow.name, user_id=owner.id, workflow_id=workflow.id,
+        )
+        row.is_local_execution = True
+        await db_session.flush()
+        principal = _admin(user_id=owner.id)
+        named, _ = await list_sdk_executions(
+            db_session, principal, workflow_name=workflow.name, exclude_local=False,
+        )
+        by_id, _ = await list_sdk_executions(
+            db_session, principal, workflow_id=workflow.id, exclude_local=False,
+        )
+        assert [item.execution_id for item in named] == [str(row.id)]
+        assert named[0].workflow_id is None
+        assert by_id == []
+
     async def test_local_runs_are_excluded_by_default_but_explicitly_readable(self, db_session):
         owner = await _seed_user(db_session, is_superuser=True)
         row = await _seed_execution(db_session, "reads-local", user_id=owner.id)
@@ -351,6 +370,31 @@ class TestListSdkExecutions:
 
 @pytest.mark.asyncio
 class TestGetSdkExecution:
+    async def test_local_detail_hides_historical_database_workflow_identity(self, db_session):
+        owner = await _seed_user(db_session, is_superuser=True)
+        workflow = await _seed_workflow(db_session, "reads-local-stale-detail")
+        row = await _seed_execution(
+            db_session, workflow.name, user_id=owner.id, workflow_id=workflow.id,
+        )
+        row.is_local_execution = True
+        await db_session.flush()
+        result = await get_sdk_execution(db_session, _admin(user_id=owner.id), row.id)
+        assert result.workflow_id is None
+
+    async def test_detail_logs_expose_ordinals_with_stable_sequence_tie_break(self, db_session):
+        from src.models.orm.executions import ExecutionLog
+
+        owner = await _seed_user(db_session, is_superuser=True)
+        row = await _seed_execution(db_session, "reads-opaque-logs", user_id=owner.id)
+        db_session.add_all([
+            ExecutionLog(id=930002, execution_id=row.id, sequence=1, level="INFO", message="second"),
+            ExecutionLog(id=930001, execution_id=row.id, sequence=1, level="INFO", message="first"),
+        ])
+        await db_session.flush()
+        result = await get_sdk_execution(db_session, _admin(user_id=owner.id), row.id)
+        assert [log["id"] for log in result.logs] == [0, 1]
+        assert [log["message"] for log in result.logs] == ["first", "second"]
+
     async def test_retry_and_attempt_evidence_are_preserved_and_redacted(self, db_session):
         from src.models.orm.executions import WorkflowExecutionAttempt
 

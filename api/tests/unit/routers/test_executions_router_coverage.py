@@ -98,6 +98,26 @@ def test_to_pydantic_includes_admin_only_fields_for_superuser_and_global_name():
     assert result.execution_context == {"trace": "admin-only"}
 
 
+def test_to_pydantic_hides_stale_workflow_id_for_local_execution():
+    repo = executions.ExecutionRepository.__new__(executions.ExecutionRepository)
+    row = _execution_row(is_local_execution=True)
+
+    result = repo._to_pydantic(row, SimpleNamespace(is_superuser=True))
+
+    assert row.workflow_id is not None
+    assert result.workflow_id is None
+
+
+@pytest.mark.parametrize("is_local", [False, True])
+def test_shared_summary_exposes_only_database_workflow_identity(is_local):
+    row = _execution_row(is_local_execution=is_local)
+
+    summary = sdk_execution_reads.to_execution_summary(row)
+
+    assert row.workflow_id is not None
+    assert summary.workflow_id == (None if is_local else str(row.workflow_id))
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("token, expected_offset, expected_cursor", [
     ("25", 25, None),
@@ -206,6 +226,25 @@ async def test_history_orders_by_consistent_execution_timeline():
     query = str(db.execute.await_args.args[0])
     assert "coalesce(executions.started_at, executions.scheduled_at, executions.completed_at, executions.created_at) DESC" in query
     assert "executions.id DESC" in query
+
+
+@pytest.mark.asyncio
+async def test_workflow_id_filter_never_attributes_local_executions():
+    db = SimpleNamespace(execute=AsyncMock(return_value=_DbResult(rows=[])))
+    user = SimpleNamespace(is_superuser=True, user_id=uuid4())
+
+    rows, token = await sdk_execution_reads.list_sdk_executions(
+        db, user, scope=None, workflow_id=uuid4(), exclude_local=False, limit=25,
+    )
+
+    assert rows == []
+    assert token is None
+    query = str(db.execute.await_args.args[0])
+    assert "executions.workflow_id =" in query
+    assert (
+        "executions.is_local_execution = false" in query.lower()
+        or "executions.is_local_execution IS false" in query
+    )
 
 
 @pytest.mark.asyncio
@@ -453,6 +492,14 @@ async def test_get_execution_logs_falls_back_to_db_when_redis_read_fails():
         log_metadata={"source": "postgres"},
         sequence=3,
     )
+    tied_log = SimpleNamespace(
+        id=19,
+        timestamp=datetime(2026, 7, 5, 10, 0, tzinfo=UTC),
+        level="INFO",
+        message="second at the same sequence",
+        log_metadata=None,
+        sequence=3,
+    )
     db = SimpleNamespace(
         execute=AsyncMock(
             side_effect=[
@@ -465,7 +512,7 @@ async def test_get_execution_logs_falls_back_to_db_when_redis_read_fails():
                         status=ExecutionStatus.PENDING,
                     )
                 ),
-                _DbResult(rows=[db_log]),
+                _DbResult(rows=[db_log, tied_log]),
             ]
         )
     )
@@ -482,10 +529,16 @@ async def test_get_execution_logs_falls_back_to_db_when_redis_read_fails():
         )
 
     assert error is None
-    assert len(logs) == 1
+    assert len(logs) == 2
+    assert [log.id for log in logs] == [0, 1]
+    assert logs[0].sequence == 3
     assert logs[0].message == "from db"
     assert logs[0].data == {"source": "postgres"}
+    assert logs[1].sequence == 3
+    assert logs[1].message == "second at the same sequence"
     assert db.execute.await_count == 2
+    logs_query = str(db.execute.await_args_list[1].args[0])
+    assert "ORDER BY execution_logs.sequence, execution_logs.id" in logs_query
 
 
 @pytest.mark.asyncio

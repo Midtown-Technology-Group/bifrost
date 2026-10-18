@@ -29,6 +29,7 @@ socket).
 from __future__ import annotations
 
 import base64
+from shared.execution_logs import project_execution_logs
 import json
 import logging
 from datetime import datetime
@@ -45,6 +46,7 @@ from shared.execution_visibility import is_own_execution, own_executions
 from src.core.log_safety import log_safe
 from src.core.org_filter import OrgFilterType, filter_target, resolve_org_filter
 from src.core.principal import UserPrincipal
+from src.repositories.executions import execution_workflow_id
 
 if TYPE_CHECKING:
     from src.models.contracts.workflow_permissions import WorkflowPermissionMode
@@ -463,7 +465,7 @@ def to_execution_summary(execution):
     return ExecutionSummary(
         execution_id=str(execution.id),
         workflow_name=execution.workflow_name,
-        workflow_id=str(execution.workflow_id) if execution.workflow_id else None,
+        workflow_id=execution_workflow_id(execution),
         org_id=str(execution.organization_id) if execution.organization_id else None,
         org_name=_execution_org_name(execution),
         form_id=str(execution.form_id) if execution.form_id else None,
@@ -542,6 +544,7 @@ async def list_sdk_executions(
         defer(ExecutionModel.result, raiseload=True),
         defer(ExecutionModel.variables, raiseload=True),
         defer(ExecutionModel.execution_context, raiseload=True),
+        defer(ExecutionModel.dispatch_evidence, raiseload=True),
     )
 
     if org_filter:
@@ -553,7 +556,10 @@ async def list_sdk_executions(
         access_checks.note_power("executions.read.all", filter_target(filter_type, filter_org), subject="executions")
 
     if workflow_id:
-        query = query.where(ExecutionModel.workflow_id == workflow_id)
+        query = query.where(
+            ExecutionModel.workflow_id == workflow_id,
+            ExecutionModel.is_local_execution.is_(False),
+        )
     elif workflow_name:
         query = query.where(ExecutionModel.workflow_name == workflow_name)
 
@@ -743,7 +749,7 @@ async def get_sdk_execution(
         logs_query = (
             select(ExecutionLogORM)
             .where(ExecutionLogORM.execution_id == execution_id)
-            .order_by(ExecutionLogORM.sequence)
+            .order_by(ExecutionLogORM.sequence, ExecutionLogORM.id)
         )
         if not principal.is_superuser:
             logs_query = logs_query.where(
@@ -752,17 +758,7 @@ async def get_sdk_execution(
         logs_result = await session.execute(logs_query)
         log_entries = logs_result.scalars().all()
 
-        logs = [
-            ExecutionLogPublic(
-                id=log.id,
-                timestamp=log.timestamp.isoformat() if log.timestamp else "",
-                level=log.level or "info",
-                message=log.message or "",
-                data=log.log_metadata,
-                sequence=log.sequence,
-            )
-            for log in log_entries
-        ]
+        logs = project_execution_logs(log_entries)
 
     ai_usage_query = (
         select(AIUsage)
@@ -832,7 +828,7 @@ async def get_sdk_execution(
     return WorkflowExecution(
         execution_id=str(execution.id),
         workflow_name=execution.workflow_name,
-        workflow_id=str(execution.workflow_id) if execution.workflow_id else None,
+        workflow_id=execution_workflow_id(execution),
         org_id=str(execution.organization_id) if execution.organization_id else None,
         org_name=org_name,
         form_id=str(execution.form_id) if execution.form_id else None,

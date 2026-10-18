@@ -116,6 +116,16 @@ def test_to_pydantic_includes_admin_fields_for_superuser() -> None:
     assert result.value == 12.5
 
 
+def test_to_pydantic_hides_stale_workflow_id_for_local_execution() -> None:
+    repo = ExecutionRepository(session=None)  # type: ignore[arg-type]
+    execution = _execution(is_local_execution=True)
+
+    result = repo._to_pydantic(execution, _user(is_superuser=True))
+
+    assert execution.workflow_id is not None
+    assert result.workflow_id is None
+
+
 def test_to_pydantic_without_user_treats_request_as_non_admin() -> None:
     repo = ExecutionRepository(session=None)  # type: ignore[arg-type]
     execution = _execution(workflow_id=None, organization_id=None, form_id=None, session_id=None)
@@ -577,7 +587,7 @@ async def test_get_execution_includes_logs_ai_usage_totals_and_admin_fields() ->
     assert result is not None
     assert result.logs == [
         {
-            "id": log.id,
+            "id": 0,
             "timestamp": "2026-07-04T12:00:00+00:00",
             "level": "DEBUG",
             "message": "debug detail",
@@ -600,21 +610,31 @@ async def test_get_execution_includes_logs_ai_usage_totals_and_admin_fields() ->
 async def test_get_execution_logs_handles_access_and_filters_to_public_logs() -> None:
     owner = _user()
     other = _user()
-    log = SimpleNamespace(
-        id=2,
-        timestamp=None,
-        level=None,
-        message=None,
-        log_metadata={"visible": True},
-        sequence=None,
-    )
+    logs_from_db = [
+        SimpleNamespace(
+            id=2,
+            timestamp=None,
+            level=None,
+            message=None,
+            log_metadata={"visible": True},
+            sequence=None,
+        ),
+        SimpleNamespace(
+            id=9002,
+            timestamp=None,
+            level="WARNING",
+            message="second",
+            log_metadata=None,
+            sequence=None,
+        ),
+    ]
     session = AsyncMock()
     session.execute = AsyncMock(
         side_effect=[
             OneOrNoneResult(None),
             OneOrNoneResult(_execution(executed_by=owner.user_id)),
             OneOrNoneResult(_execution(executed_by=owner.user_id)),
-            ExecuteResult(scalars=[log]),
+            ExecuteResult(scalars=logs_from_db),
         ]
     )
     repo = ExecutionRepository(session)
@@ -630,7 +650,8 @@ async def test_get_execution_logs_handles_access_and_filters_to_public_logs() ->
     logs, error = await repo.get_execution_logs(uuid4(), owner)
     assert error is None
     assert logs is not None
-    assert len(logs) == 1
+    assert len(logs) == 2
+    assert [log.id for log in logs] == [0, 1]
     assert logs[0].timestamp == ""
     assert logs[0].level == "info"
     assert logs[0].message == ""

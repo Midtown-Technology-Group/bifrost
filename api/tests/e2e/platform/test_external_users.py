@@ -405,6 +405,17 @@ class TestExternalToolsCatalog:
         assert patch.status_code == 200, patch.text
         assert global_tool["id"] not in self._external_tool_ids(e2e_client, external_user)
 
+    def test_external_user_does_not_inherit_internal_authenticated_tier(
+        self, e2e_client, platform_admin, external_user, global_tool
+    ):
+        patch = e2e_client.patch(
+            f"/api/workflows/{global_tool['id']}",
+            headers=platform_admin.headers,
+            json={"access_level": "authenticated"},
+        )
+        assert patch.status_code == 200, patch.text
+        assert global_tool["id"] not in self._external_tool_ids(e2e_client, external_user)
+
 
 @pytest.fixture
 async def global_kb_doc(db_session, org1):
