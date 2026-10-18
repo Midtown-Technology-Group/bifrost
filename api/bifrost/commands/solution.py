@@ -4281,13 +4281,13 @@ def _vite_process_owns_listener(proc: "subprocess.Popen", port: int) -> bool:
     try:
         root = psutil.Process(proc.pid)
         processes = [root, *root.children(recursive=True)]
-    except (psutil.AccessDenied, psutil.NoSuchProcess, psutil.ZombieProcess):
+    except (psutil.AccessDenied, psutil.NoSuchProcess):
         return False
 
     for process in processes:
         try:
             connections = process.net_connections(kind="tcp")
-        except (psutil.AccessDenied, psutil.NoSuchProcess, psutil.ZombieProcess):
+        except (psutil.AccessDenied, psutil.NoSuchProcess):
             continue
         for connection in connections:
             if connection.status != psutil.CONN_LISTEN or not connection.laddr:

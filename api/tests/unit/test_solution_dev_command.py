@@ -1217,8 +1217,9 @@ def test_wait_for_vite_times_out_with_clean_error():
     port = probe.getsockname()[1]
     probe.close()
 
+    process = _LiveProc()
     with _pytest.raises(click.ClickException, match="child-owned listener"):
-        _wait_for_vite(_LiveProc(), port=port, timeout=0.6)
+        _wait_for_vite(process, port=port, timeout=0.6)
 
 
 def test_wait_for_vite_rejects_listener_owned_by_another_process():
@@ -1227,8 +1228,6 @@ def test_wait_for_vite_rejects_listener_owned_by_another_process():
     import sys
 
     import click
-    import pytest as _pytest
-
     from bifrost.commands.solution import _wait_for_vite
 
     server = socket.socket()
@@ -1239,7 +1238,7 @@ def test_wait_for_vite_rejects_listener_owned_by_another_process():
         [sys.executable, "-c", "import time; time.sleep(10)"]
     )
     try:
-        with _pytest.raises(click.ClickException, match="child-owned listener"):
+        with pytest.raises(click.ClickException, match="child-owned listener"):
             _wait_for_vite(unrelated_child, port=port, timeout=0.6)
     finally:
         unrelated_child.terminate()
@@ -1497,7 +1496,8 @@ def test_start_rechecks_vite_port_after_npm_install(tmp_path, monkeypatch):
     assert result.exit_code == 1
     assert "Port 3001 is already in use" in result.output
     assert checked_ports == [3000, 3001, 3001]
-    assert npm_runs and npm_runs[0][1] == "install"
+    assert npm_runs
+    assert npm_runs[0][1] == "install"
     assert popen_calls == []
 
 
