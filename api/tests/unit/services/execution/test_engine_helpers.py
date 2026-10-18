@@ -101,11 +101,12 @@ def test_scrub_execution_context_redacts_parameters_and_startup():
             "credential": "[REDACTED]",
             "[REDACTED_KEY_2]": "[REDACTED]",
             "[REDACTED_KEY_3]": "[REDACTED]",
-            "[REDACTED_KEY_1]": "existing safe key",
+            "[REDACTED_KEY_1]": "[REDACTED]",
         }
     }
     assert "secret-value" not in json.dumps(public_context)
     assert context.parameters["ordinary"] == "contains secret-value"
+    assert context.startup["nested"]["[REDACTED_KEY_1]"] == "existing safe key"
 
 
 def test_redact_secret_keys_traverses_json_like_containers():
