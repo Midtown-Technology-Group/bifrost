@@ -124,8 +124,24 @@ export_logs() {
     local services
     services=$(docker compose -p "$project" -f "$compose_file" ps --services 2>/dev/null)
     [ -z "$services" ] && return 0
+    local svc captured_log
     for svc in $services; do
-        docker compose -p "$project" -f "$compose_file" logs --no-color --timestamps "$svc" > "$log_dir/$svc.log" 2>&1 || true
-        [ -s "$log_dir/$svc.log" ] || rm -f "$log_dir/$svc.log"
+        if [[ ! "$svc" =~ ^[a-zA-Z0-9][a-zA-Z0-9_.-]*$ ]]; then
+            echo 'Invalid Compose service name; refusing log artifact path.' >&2
+            return 1
+        fi
+        # A normal test-runner entrypoint can change the previous file's
+        # owner. Capture into a host-owned sibling, then atomically replace
+        # only this public service log; never chmod/chown private artifacts.
+        captured_log="$(mktemp "$log_dir/.$svc.log.XXXXXXXX")" || return 1
+        docker compose -p "$project" -f "$compose_file" logs --no-color --timestamps "$svc" > "$captured_log" 2>&1 || true
+        if [ -s "$captured_log" ]; then
+            if ! chmod 644 "$captured_log" || ! mv -fT -- "$captured_log" "$log_dir/$svc.log"; then
+                rm -f -- "$captured_log"
+                return 1
+            fi
+        else
+            rm -f -- "$captured_log" "$log_dir/$svc.log" || return 1
+        fi
     done
 }

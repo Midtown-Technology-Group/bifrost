@@ -334,7 +334,7 @@ def restored(args, path: Path, state: dict) -> None:
                                      "pg_restore": args.restore_elapsed_ns / 1_000_000_000})
     state["postgres_tool_commands"] = [
         "pg_dump --no-password --format=custom",
-        "pg_restore --no-password --exit-on-error --single-transaction --clean --if-exists",
+        'pg_restore --no-password --dbname "$PGDATABASE" --exit-on-error --single-transaction --clean --if-exists',
     ]
     state["initial_restoration_verified"] = True
 
@@ -539,9 +539,41 @@ def upgrade(args, path: Path, state: dict) -> None:
                   "status": "upgrade_verified"})
 
 
+def classify_restore_failure(path: Path, exit_code: int | None) -> dict:
+    """Expose only closed categories; raw diagnostics/SQL never enter receipts."""
+    result = {"tool": "pg_restore", "exit_code": exit_code,
+              "category": "restore_diagnostic_unavailable", "raw_diagnostic_exposed": False}
+    try:
+        with path.open("rb") as stream:
+            size = path.stat().st_size
+            prefix = stream.read(32768)
+            stream.seek(max(0, size - 32768))
+            sample = (prefix + stream.read(32768)).decode("utf-8", errors="replace").lower()
+    except OSError:
+        return result
+    result["diagnostic_bytes"] = size
+    categories = (
+        ("missing_database_target", r"(?:requires? (?:a )?database|(?:-d/--dbname|--dbname).*must be specified)"),
+        ("connection_failure", r"(?:connection .*failed|could not connect|connection refused|could not translate host name)"),
+        ("archive_version_unsupported", r"unsupported version .*file header"),
+        ("archive_read_failure", r"(?:input file .*does not appear|unexpected end of file|could not read from input file)"),
+        ("insufficient_privilege", r"(?:permission denied|must be (?:owner|superuser)|insufficient privilege)"),
+        ("schema_conflict", r"(?:already exists|duplicate key value violates unique constraint)"),
+        ("restore_sql_failure", r"(?:could not execute query|error:.*(?:sql|syntax error))"),
+        ("container_execution_failure", r"(?:no such container|container .*not running|error response from daemon)"),
+    )
+    result["category"] = next((name for name, pattern in categories if re.search(pattern, sample)),
+                              "unclassified_restore_failure")
+    return result
+
+
 def cleanup(args, path: Path, state: dict) -> None:
     if args is not None and args.failed_host_step:
         state["failed_host_step"] = args.failed_host_step
+        if args.failed_host_step in ("pg_restore", "recovery_pg_restore"):
+            log_name = "pg_restore.log" if args.failed_host_step == "pg_restore" else "recovery-pg_restore.log"
+            state["restore_failure"] = classify_restore_failure(
+                path.parent / log_name, args.failed_host_exit_code)
     if not state.get("owned_databases"):
         state["database_cleanup_verified"] = True
         state["status"] = "failed"
@@ -595,11 +627,14 @@ def main() -> int:
         "prepare", "pg_dump", "pg_restore", "restored", "interrupt", "reset_target",
         "recovery_pg_restore", "recovered", "old_readers", "upgrade", "cleanup",
     ))
+    parser.add_argument("--failed-host-exit-code", type=int, choices=range(256))
     args = parser.parse_args()
     if sys.platform != "linux" or os.environ.get("BIFROST_ENVIRONMENT") != "testing":
         parser.error("This helper only runs in the Linux Docker test-runner environment")
     if not RUN_RE.fullmatch(args.run_id):
         parser.error("Invalid synthetic rehearsal run identity")
+    if os.getuid() == 0:
+        parser.error("Run phases with the validated non-root host UID to preserve shared log ownership")
     if args.phase == "prepare" and (not args.source or not args.restored):
         parser.error("Prepare requires distinct synthetic source/restoration database names")
     if args.phase in ("restored", "recovered") and (
@@ -616,6 +651,10 @@ def main() -> int:
     state = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {
         "run_id": args.run_id, "variant": args.variant, "owned_databases": []
     }
+    phase_user = {"uid": os.getuid(), "gid": os.getgid()}
+    if state.get("phase_user", phase_user) != phase_user:
+        parser.error("Rehearsal phase identity differs from the owner of the private artifacts")
+    state["phase_user"] = phase_user
     if state and (state.get("run_id") != args.run_id or state.get("variant") != args.variant):
         parser.error("Saved rehearsal identity differs")
     started = time.monotonic()
@@ -646,10 +685,11 @@ def main() -> int:
         state.setdefault("timings_seconds", {})[args.phase] = round(time.monotonic() - started, 3)
         _save(path, state)
         _save(args.directory / "receipt.json", _receipt(state), mode=0o644)
-        # entrypoint chowns the mounted results to uid 1000. Keep public
-        # count/head/tool logs readable by the CI host; dump/state stay 0600.
+        # Phases run as the host's UID. Only count/head/tool logs are public;
+        # restore diagnostics can contain SQL, and dump/state remain 0600.
+        private_logs = {"pg_dump.log", "pg_restore.log", "recovery-pg_restore.log", "diagnostic.log"}
         for log in args.directory.glob("*.log"):
-            log.chmod(0o644)
+            log.chmod(0o600 if log.name in private_logs else 0o644)
     print(f"RBAC backup rehearsal {args.variant}: {args.phase} verified")
     return 0
 

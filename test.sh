@@ -293,9 +293,32 @@ stack_up() {
 stack_down() {
     print_project
     echo "Tearing down stack..."
-    export_logs "$COMPOSE_PROJECT_NAME" "$COMPOSE_FILE"
-    docker compose -f "$COMPOSE_FILE" --profile e2e --profile test --profile client down -v
+    local capture_result=0 teardown_result=0
+    export_logs "$COMPOSE_PROJECT_NAME" "$COMPOSE_FILE" || capture_result=$?
+    # Log artifact failures must never prevent removal of task-owned resources.
+    docker compose -f "$COMPOSE_FILE" --profile e2e --profile test --profile client down -v || teardown_result=$?
+    if [ "$capture_result" -ne 0 ]; then
+        echo "Service log capture failed (exit $capture_result)." >&2
+    fi
+    if [ "$teardown_result" -ne 0 ]; then
+        echo "Test stack teardown failed (exit $teardown_result)." >&2
+        return "$teardown_result"
+    fi
     echo "Done."
+    return "$capture_result"
+}
+
+stack_down_on_exit() {
+    local original_result=$? cleanup_result=0
+    trap - EXIT
+    stack_down || cleanup_result=$?
+    if [ "$cleanup_result" -ne 0 ]; then
+        echo "Test stack cleanup reported a failure (exit $cleanup_result)." >&2
+    fi
+    if [ "$original_result" -ne 0 ]; then
+        exit "$original_result"
+    fi
+    exit "$cleanup_result"
 }
 
 stack_reset() {
@@ -960,7 +983,7 @@ cmd_rbac_backup_rehearsal() {
     if stack_is_up "$COMPOSE_PROJECT_NAME" "$COMPOSE_FILE"; then
         rehearsal_existing_stack=1
     else
-        trap 'export_logs "$COMPOSE_PROJECT_NAME" "$COMPOSE_FILE"; stack_down' EXIT
+        trap stack_down_on_exit EXIT
     fi
     stack_up
     BIFROST_RBAC_BACKUP_LOCKED=1 bash "$SCRIPT_DIR/scripts/rehearse-mtg-rbac-backup.sh"
@@ -973,7 +996,7 @@ cmd_ci() {
     print_project
     # Install teardown trap BEFORE stack_up so a boot-time failure still tears
     # down the partially-booted stack instead of leaking containers/volumes.
-    trap 'export_logs "$COMPOSE_PROJECT_NAME" "$COMPOSE_FILE"; stack_down' EXIT
+    trap stack_down_on_exit EXIT
     stack_up
     # Keep backend unit and e2e suites in separate pytest processes. E2E tests
     # intentionally replace modules and create long-lived async resources;
@@ -1108,7 +1131,7 @@ PY
         stack_was_up=1
     else
         # Install the trap before boot so a partial startup is cleaned up too.
-        trap 'export_logs "$COMPOSE_PROJECT_NAME" "$COMPOSE_FILE"; stack_down' EXIT
+        trap stack_down_on_exit EXIT
     fi
 
     print_project

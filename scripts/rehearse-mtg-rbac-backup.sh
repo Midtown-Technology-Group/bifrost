@@ -25,6 +25,10 @@ if [ -n "$(git status --porcelain --untracked-files=all)" ]; then
 fi
 
 rehearsal_head="$(git rev-parse HEAD)"
+rehearsal_uid="$(id -u)"
+rehearsal_gid="$(id -g)"
+[[ "$rehearsal_uid" =~ ^[1-9][0-9]*$ ]]
+[[ "$rehearsal_gid" =~ ^[0-9]+$ ]]
 rehearsal_run="$(python3 -c 'import uuid; print(uuid.uuid4().hex)')"
 rehearsal_root="$LOG_DIR/rbac-backup-$rehearsal_run"
 mkdir -m 0777 "$rehearsal_root"
@@ -36,7 +40,10 @@ recovery_archive_fd=''
 variants=(clean delivery_started_historical_stamp withdrawn_builder_residue)
 
 phase() {
-    "${compose[@]}" --profile test run --rm --no-deps test-runner \
+    # A non-root host identity bypasses entrypoint's recursive chown of the
+    # shared results mount. Private state/archive remain owned by this caller.
+    "${compose[@]}" --profile test run --rm --no-deps \
+        --user "$rehearsal_uid:$rehearsal_gid" test-runner \
         python /repo/scripts/rehearse-mtg-rbac-backup.py "$1" \
         --directory "/tmp/bifrost/rbac-backup-$rehearsal_run/$active_variant" \
         --run-id "$rehearsal_run" --variant "$active_variant" "${@:2}"
@@ -46,7 +53,8 @@ finish() {
     local result=$?
     trap - EXIT INT TERM
     if [ -n "$active_variant" ]; then
-        if ! phase cleanup --failed-host-step "$active_step" >> "$active_directory/cleanup.log" 2>&1; then
+        if ! phase cleanup --failed-host-step "$active_step" --failed-host-exit-code "$result" \
+            >> "$active_directory/cleanup.log" 2>&1; then
             result=1
             echo "Synthetic DB cleanup was not verified; inspect $active_directory/receipt.json" >&2
         fi
@@ -80,13 +88,14 @@ postgres_container="$("${compose[@]}" ps -q postgres)"
 postgres_image="$(docker inspect --format '{{.Image}}' "$postgres_container")"
 runner_image="$(docker image inspect bifrost-test-api-dev:latest --format '{{.Id}}')"
 python3 - "$rehearsal_root/host-provenance.json" "$rehearsal_head" "$rehearsal_repo" \
-    "$COMPOSE_PROJECT_NAME" "$postgres_container" "$postgres_image" "$runner_image" "$tool_versions" <<'PY'
+    "$COMPOSE_PROJECT_NAME" "$postgres_container" "$postgres_image" "$runner_image" "$tool_versions" \
+    "$rehearsal_uid" "$rehearsal_gid" <<'PY'
 import hashlib
 import json
 import pathlib
 import re
 import sys
-destination, head, worktree, project, container, postgres_image, runner_image, versions = sys.argv[1:]
+destination, head, worktree, project, container, postgres_image, runner_image, versions, uid, gid = sys.argv[1:]
 lines = versions.splitlines()
 assert len(lines) == 3 and lines[2].isdigit(), 'Unexpected PostgreSQL tool identity response'
 server_major = int(lines[2]) // 10000
@@ -95,11 +104,12 @@ for value in lines[:2]:
     assert match and int(match.group(1)) == server_major == 16, 'Matching PostgreSQL 16 tools required'
 root = pathlib.Path(worktree)
 sources = {name: hashlib.sha256((root / name).read_bytes()).hexdigest() for name in (
-    'test.sh', 'scripts/rehearse-mtg-rbac-backup.sh', 'scripts/rehearse-mtg-rbac-backup.py',
+    'test.sh', 'scripts/lib/test_helpers.sh', 'scripts/rehearse-mtg-rbac-backup.sh', 'scripts/rehearse-mtg-rbac-backup.py',
     'scripts/rehearse-mtg-rbac-old-readers.sh', 'scripts/rehearse-mtg-rbac-old-readers.py')}
 data = dict(git_head=head, clean_candidate=True, worktree=worktree, compose_project=project,
             postgres_container=container, postgres_image_id=postgres_image, runner_image_id=runner_image,
-            tool_versions=lines, harness_source_sha256=sources, synthetic_data_only=True)
+            tool_versions=lines, harness_source_sha256=sources, synthetic_data_only=True,
+            phase_user_uid=int(uid), phase_user_gid=int(gid), phase_entrypoint_recursive_chown=False)
 pathlib.Path(destination).write_text(json.dumps(data, indent=2, sort_keys=True) + '\n')
 pathlib.Path(destination).chmod(0o644)
 PY
@@ -126,9 +136,8 @@ for active_variant in "${variants[@]}"; do
     ' sh "$source_database" > "$archive" 2> "$active_directory/pg_dump.log"
     dump_elapsed_ns="$(($(date +%s%N) - dump_started_ns))"
     dump_sha256="$(sha256sum "$archive" | cut -d ' ' -f 1)"
-    # entrypoint will chown results on the next runner phase. Retain one
-    # already-open read descriptor for the later recovery restore; the raw
-    # synthetic archive can remain 0600 throughout.
+    # Retain one read descriptor for recovery. Both the host and every runner
+    # phase use this caller's non-root UID; the archive stays 0600 throughout.
     exec {recovery_archive_fd}<"$archive"
     # Target was created empty and ownership-tagged by prepare. No --create,
     # no template clone and no application/shared database is a restore target.
@@ -137,7 +146,7 @@ for active_variant in "${variants[@]}"; do
     "${compose[@]}" exec -T postgres sh -eu -c '
         export PGUSER="${POSTGRES_USER:?}" PGPASSWORD="${POSTGRES_PASSWORD:?}"
         export PGDATABASE="$1" PGHOST=127.0.0.1 PGPORT=5432
-        exec pg_restore --no-password --exit-on-error --single-transaction --clean --if-exists
+        exec pg_restore --no-password --dbname "$PGDATABASE" --exit-on-error --single-transaction --clean --if-exists
     ' sh "$restored_database" < "$archive" > "$active_directory/pg_restore.log" 2>&1
     restore_elapsed_ns="$(($(date +%s%N) - restore_started_ns))"
     active_step=restored
@@ -152,7 +161,7 @@ for active_variant in "${variants[@]}"; do
     "${compose[@]}" exec -T postgres sh -eu -c '
         export PGUSER="${POSTGRES_USER:?}" PGPASSWORD="${POSTGRES_PASSWORD:?}"
         export PGDATABASE="$1" PGHOST=127.0.0.1 PGPORT=5432
-        exec pg_restore --no-password --exit-on-error --single-transaction --clean --if-exists
+        exec pg_restore --no-password --dbname "$PGDATABASE" --exit-on-error --single-transaction --clean --if-exists
     ' sh "$restored_database" <&"$recovery_archive_fd" > "$active_directory/recovery-pg_restore.log" 2>&1
     recovery_elapsed_ns="$(($(date +%s%N) - recovery_started_ns))"
     exec {recovery_archive_fd}<&-
