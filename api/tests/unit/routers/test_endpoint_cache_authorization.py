@@ -50,10 +50,11 @@ async def test_warm_cache_cannot_outlive_endpoint_disablement(monkeypatch) -> No
     )
     monkeypatch.setattr(endpoints, "WorkflowRepository", lambda *args, **kwargs: repository)
 
+    request = _request("POST")
     with pytest.raises(HTTPException) as exc_info:
         await endpoints.execute_endpoint(
             workflow_id,
-            _request("POST"),  # type: ignore[arg-type]
+            request,  # type: ignore[arg-type]
             "secret-key",
         )
 
@@ -95,10 +96,11 @@ async def test_warm_cache_cannot_preserve_removed_http_method(monkeypatch) -> No
     )
     monkeypatch.setattr(endpoints, "WorkflowRepository", lambda *args, **kwargs: repository)
 
+    request = _request("POST")
     with pytest.raises(HTTPException) as exc_info:
         await endpoints.execute_endpoint(
             workflow_id,
-            _request("POST"),  # type: ignore[arg-type]
+            request,  # type: ignore[arg-type]
             "secret-key",
         )
 
