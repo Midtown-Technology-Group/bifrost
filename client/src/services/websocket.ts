@@ -643,7 +643,12 @@ class WebSocketService {
 				channels,
 				connectionGeneration,
 			);
-			if (!shouldConnect) return;
+			if (
+				!shouldConnect ||
+				connectionGeneration !== this.connectionGeneration
+			) {
+				return;
+			}
 
 			const wsUrl = `${protocol}//${host}/ws/connect?${params.toString()}`;
 

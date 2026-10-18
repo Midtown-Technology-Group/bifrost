@@ -190,6 +190,38 @@ describe("webSocketService security hardening", () => {
 			}
 		},
 	);
+
+	it("disconnect invalidates a non-embed connection across ticket setup", async () => {
+		sessionStorage.removeItem("bifrost_embed_token");
+		class MockWebSocket {
+			static urls: string[] = [];
+			onopen: (() => void) | null = null;
+			onmessage: (() => void) | null = null;
+			onerror: (() => void) | null = null;
+			onclose: (() => void) | null = null;
+
+			constructor(url: string) {
+				MockWebSocket.urls.push(url);
+			}
+
+			close(): void {}
+		}
+		vi.stubGlobal("WebSocket", MockWebSocket);
+		const service = webSocketService as unknown as {
+			_connect(channels: string[]): Promise<void>;
+		};
+
+		try {
+			const pending = service._connect(["execution:cancelled"]);
+			await webSocketService.disconnect();
+			await pending;
+
+			expect(MockWebSocket.urls).toHaveLength(0);
+		} finally {
+			await webSocketService.disconnect();
+			vi.unstubAllGlobals();
+		}
+	});
 });
 
 describe("platform-job WebSocket contract", () => {
