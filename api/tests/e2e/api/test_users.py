@@ -456,10 +456,11 @@ async def test_permanent_delete_serializes_with_reenable(
         ):
             await delete_user(delete_first_id, platform_admin, deleting)
             await enabling.execute(text("SET LOCAL lock_timeout = '250ms'"))
+            reenable_request = UserUpdate(is_active=True)
             with pytest.raises(DBAPIError, match="lock timeout"):
                 await update_user(
                     delete_first_id,
-                    UserUpdate(is_active=True),
+                    reenable_request,
                     platform_admin,
                     enabling,
                 )

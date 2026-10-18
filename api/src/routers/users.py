@@ -13,6 +13,7 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, Query, Response, status
 from sqlalchemy import case, exists, func, or_, select
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.services.operation_catalog import operation_route
 from src.config import get_settings
@@ -48,6 +49,20 @@ from src.core.constants import PROVIDER_ORG_ID
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/users", tags=["Users"])
+
+
+async def _get_user_for_update(
+    db: AsyncSession,
+    user_id: str,
+) -> UserORM | None:
+    """Load a user by UUID or email while holding its row lock."""
+    try:
+        criterion = UserORM.id == UUID(user_id)
+    except ValueError:
+        criterion = UserORM.email == user_id
+
+    result = await db.execute(select(UserORM).where(criterion).with_for_update())
+    return result.scalar_one_or_none()
 
 
 @router.get("/{user_id}/external-identities", response_model=list[ExternalIdentityResponse], **operation_route("users.list_external_identities"))
@@ -673,18 +688,7 @@ async def update_user(
     db: DbSession,
 ) -> UserPublic:
     """Update a user."""
-    # Try UUID first
-    try:
-        uuid_id = UUID(user_id)
-        result = await db.execute(
-            select(UserORM).where(UserORM.id == uuid_id).with_for_update()
-        )
-    except ValueError:
-        result = await db.execute(
-            select(UserORM).where(UserORM.email == user_id).with_for_update()
-        )
-
-    db_user = result.scalar_one_or_none()
+    db_user = await _get_user_for_update(db, user_id)
 
     if not db_user:
         raise HTTPException(
@@ -758,18 +762,7 @@ async def delete_user(
             detail="Cannot delete yourself",
         )
 
-    # Try UUID first
-    try:
-        uuid_id = UUID(user_id)
-        result = await db.execute(
-            select(UserORM).where(UserORM.id == uuid_id).with_for_update()
-        )
-    except ValueError:
-        result = await db.execute(
-            select(UserORM).where(UserORM.email == user_id).with_for_update()
-        )
-
-    db_user = result.scalar_one_or_none()
+    db_user = await _get_user_for_update(db, user_id)
 
     if not db_user:
         raise HTTPException(
