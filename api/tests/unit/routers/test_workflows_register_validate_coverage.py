@@ -753,11 +753,7 @@ async def test_execute_workflow_allows_same_embed_session_recovery() -> None:
         patch(
             "src.services.execution.submission_recovery.recover_execution_submission",
             AsyncMock(return_value=existing),
-        ),
-        patch(
-            "src.services.execution.submission_recovery.assert_execution_bound_to_embed_session",
-            AsyncMock(),
-        ) as assert_bound,
+        ) as recover,
         patch("src.services.execution.service.run_workflow", AsyncMock()) as run_workflow,
     ):
         result = await workflows.execute_workflow(
@@ -772,7 +768,7 @@ async def test_execute_workflow_allows_same_embed_session_recovery() -> None:
         )
 
     assert result is existing
-    assert_bound.assert_awaited_once_with("session-a", execution_id)
+    assert recover.await_args.kwargs["embed_session_jti"] == "session-a"
     run_workflow.assert_not_awaited()
 
 
@@ -785,22 +781,11 @@ async def test_execute_workflow_rejects_cross_embed_session_recovery() -> None:
     user = _exec_user(embed=True, jti="session-b")
     workflow = _workflow(organization_id=user.organization_id)
     execution_id = uuid4()
-    existing = WorkflowExecutionResponse(
-        execution_id=str(execution_id),
-        workflow_id=str(workflow.id),
-        workflow_name=workflow.name,
-        status=ExecutionStatus.SUCCESS,
-        result={"private": True},
-    )
 
     with (
         patch("src.repositories.WorkflowRepository", return_value=_WorkflowRepo(workflow)),
         patch(
             "src.services.execution.submission_recovery.recover_execution_submission",
-            AsyncMock(return_value=existing),
-        ),
-        patch(
-            "src.services.execution.submission_recovery.assert_execution_bound_to_embed_session",
             AsyncMock(
                 side_effect=EmbedExecutionRecoveryDeniedError(
                     "Access denied to this execution"
@@ -888,10 +873,6 @@ async def test_execute_workflow_binds_new_embed_submission_to_session() -> None:
             AsyncMock(return_value=None),
         ),
         patch(
-            "src.services.execution.submission_recovery.bind_execution_to_embed_session",
-            AsyncMock(),
-        ) as bind_execution,
-        patch(
             "src.services.execution.service.run_workflow",
             AsyncMock(return_value=service_result),
         ),
@@ -914,7 +895,7 @@ async def test_execute_workflow_binds_new_embed_submission_to_session() -> None:
         )
 
     assert result is service_result
-    bind_execution.assert_awaited_once_with("session-a", str(execution_id))
+    assert run_workflow.await_args.kwargs["embed_session_jti"] == "session-a"
 
 
 @pytest.mark.asyncio

@@ -12,6 +12,7 @@ from src.services.execution.submission_recovery import (
     ExecutionSubmissionConflictError,
     assert_execution_bound_to_embed_session,
     bind_execution_to_embed_session,
+    embed_session_binding,
     recover_execution_submission,
 )
 
@@ -98,6 +99,74 @@ async def test_recovery_requires_exact_embed_session_binding(monkeypatch) -> Non
         f"bifrost:embed:exec:session-a:{execution_id}",
         f"bifrost:embed:exec:session-b:{execution_id}",
     ]
+
+
+def test_durable_embed_binding_is_one_way() -> None:
+    binding = embed_session_binding("session-a")
+
+    assert binding.startswith("sha256:")
+    assert "session-a" not in binding
+    assert len(binding) == 71
+
+
+@pytest.mark.asyncio
+async def test_recovery_remints_capability_from_matching_durable_owner(
+    monkeypatch,
+) -> None:
+    existing = _execution(embed_session_binding=embed_session_binding("session-a"))
+    redis = SimpleNamespace(setex=AsyncMock())
+    monkeypatch.setattr(
+        submission_recovery,
+        "get_redis",
+        lambda: _RedisContext(redis),
+    )
+
+    result = await recover_execution_submission(
+        _Db(existing),
+        execution_id=existing.id,
+        workflow_id=existing.workflow_id,
+        parameters=existing.parameters,
+        executed_by=existing.executed_by,
+        organization_id=existing.organization_id,
+        form_id=existing.form_id,
+        embed_session_jti="session-a",
+    )
+
+    assert result is not None
+    redis.setex.assert_awaited_once_with(
+        f"bifrost:embed:exec:session-a:{existing.id}",
+        86400,
+        "1",
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("session_jti", [None, "session-b"])
+async def test_recovery_rejects_any_non_owner_of_durable_embed_execution(
+    monkeypatch,
+    session_jti,
+) -> None:
+    existing = _execution(embed_session_binding=embed_session_binding("session-a"))
+    redis = SimpleNamespace(setex=AsyncMock())
+    monkeypatch.setattr(
+        submission_recovery,
+        "get_redis",
+        lambda: _RedisContext(redis),
+    )
+
+    with pytest.raises(EmbedExecutionRecoveryDeniedError, match="Access denied"):
+        await recover_execution_submission(
+            _Db(existing),
+            execution_id=existing.id,
+            workflow_id=existing.workflow_id,
+            parameters=existing.parameters,
+            executed_by=existing.executed_by,
+            organization_id=existing.organization_id,
+            form_id=existing.form_id,
+            embed_session_jti=session_jti,
+        )
+
+    redis.setex.assert_not_awaited()
 
 
 @pytest.mark.asyncio

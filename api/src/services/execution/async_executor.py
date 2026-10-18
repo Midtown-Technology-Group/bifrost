@@ -211,6 +211,7 @@ async def _persist_execution_pin(
     api_key_id: str | None,
     file_path: str | None,
     dispatch_metadata: dict[str, Any] | None = None,
+    embed_session_binding: str | None = None,
 ) -> tuple[dict[str, Any], bool]:
     """Persist immutable runtime evidence before anything enters the queue."""
     from src.core.database import get_db_context
@@ -271,6 +272,14 @@ async def _persist_execution_pin(
         )
         existing = await db.get(Execution, uuid.UUID(execution_id))
         if existing is not None:
+            from src.services.execution.submission_recovery import (
+                assert_persisted_embed_session_binding,
+            )
+
+            assert_persisted_embed_session_binding(
+                existing,
+                embed_session_binding,
+            )
             # Scheduled rows are deliberately created before their queue
             # message. Every other existing state proves this execution was
             # already dispatched (or completed), so publishing again would
@@ -344,6 +353,7 @@ async def _persist_execution_pin(
             runtime_evidence_hash=evidence_hash,
             dispatch_evidence=dispatch,
             dispatch_evidence_hash=sha256_digest(canonical_json(dispatch)),
+            embed_session_binding=embed_session_binding,
             retry_policy=retry_policy,
             attempt_tracking_version="v1",
             # SCHEDULED is the durable, retryable pre-publication state.
@@ -579,6 +589,7 @@ async def enqueue_workflow_execution_once(
     file_path: str | None = None,
     org_id_override: str | None = None,
     dispatch_metadata: dict[str, Any] | None = None,
+    embed_session_jti: str | None = None,
 ) -> tuple[str, bool]:
     """
     Enqueue a workflow for async execution.
@@ -603,6 +614,16 @@ async def enqueue_workflow_execution_once(
     if execution_id is None:
         execution_id = str(uuid.uuid4())
 
+    from src.services.execution.submission_recovery import (
+        bind_execution_to_embed_session,
+        embed_session_binding,
+    )
+
+    durable_embed_binding = (
+        embed_session_binding(embed_session_jti)
+        if embed_session_jti is not None
+        else None
+    )
     publish_kwargs, created = await _persist_execution_pin(
         context,
         execution_id,
@@ -614,10 +635,18 @@ async def enqueue_workflow_execution_once(
         api_key_id=api_key_id,
         file_path=file_path,
         dispatch_metadata=dispatch_metadata,
+        embed_session_binding=durable_embed_binding,
     )
 
     # An event delivery keeps its existing canonical execution on redispatch.
     execution_id = str(publish_kwargs["execution_id"])
+
+    if embed_session_jti is not None:
+        # Mint the revocable read capability only after durable ownership has
+        # been inserted or validated, and before the execution can be queued.
+        # A Redis failure leaves the row retryable in SCHEDULED rather than
+        # publishing work that its owning session cannot recover.
+        await bind_execution_to_embed_session(embed_session_jti, execution_id)
 
     await _publish_scheduled_once(
         execution_id=execution_id,
@@ -647,6 +676,7 @@ async def enqueue_workflow_execution(
     file_path: str | None = None,
     org_id_override: str | None = None,
     dispatch_metadata: dict[str, Any] | None = None,
+    embed_session_jti: str | None = None,
 ) -> str:
     """Compatibility wrapper returning only the canonical execution ID."""
     queued_id, _reused = await enqueue_workflow_execution_once(
@@ -660,6 +690,7 @@ async def enqueue_workflow_execution(
         file_path=file_path,
         org_id_override=org_id_override,
         dispatch_metadata=dispatch_metadata,
+        embed_session_jti=embed_session_jti,
     )
     return queued_id
 

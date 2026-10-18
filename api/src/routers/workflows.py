@@ -21,7 +21,7 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Header, HTTPException, Query, status
 from fastapi.responses import JSONResponse
-from sqlalchemy import delete, distinct, func, or_, select, union_all, update
+from sqlalchemy import delete, distinct, func, or_, select, text, union_all, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # Import existing Pydantic models for API compatibility
@@ -768,6 +768,7 @@ async def _insert_scheduled_execution(
     is_provider_org: bool = False,
     is_external: bool = False,
     execution_id: UUID | None = None,
+    embed_session_jti: str | None = None,
 ) -> UUID:
     """Insert a SCHEDULED execution row.
 
@@ -784,6 +785,50 @@ async def _insert_scheduled_execution(
     from src.services.workspace_release_projection import acquire_runtime_admission_lock
 
     await acquire_runtime_admission_lock(db)
+    from src.services.execution.submission_recovery import (
+        assert_execution_submission_identity,
+        assert_persisted_embed_session_binding,
+        bind_execution_to_embed_session,
+        embed_session_binding,
+    )
+
+    durable_embed_binding = (
+        embed_session_binding(embed_session_jti)
+        if embed_session_jti is not None
+        else None
+    )
+    if execution_id is not None:
+        # Match the immediate-dispatch admission boundary: serialize caller-
+        # chosen identities before either creating or reusing a durable row.
+        await db.execute(
+            text(
+                "SELECT pg_advisory_xact_lock("
+                "hashtext('bifrost:workflow-execution:' || :execution_id))"
+            ),
+            {"execution_id": str(exec_id)},
+        )
+        existing = await db.get(Execution, exec_id)
+        if existing is not None:
+            assert_execution_submission_identity(
+                existing,
+                workflow_id=workflow_id,
+                parameters=parameters,
+                executed_by=executed_by,
+                organization_id=organization_id,
+                form_id=form_id,
+            )
+            assert_persisted_embed_session_binding(
+                existing,
+                durable_embed_binding,
+            )
+            await db.commit()
+            if embed_session_jti is not None:
+                await bind_execution_to_embed_session(
+                    embed_session_jti,
+                    existing.id,
+                )
+            return existing.id
+
     pinned_runtime = await pin_workflow_runtime(db, workflow_id)
     if pinned_runtime is None:
         pinned_runtime = await pin_workspace_runtime(db, workflow_id)
@@ -829,6 +874,7 @@ async def _insert_scheduled_execution(
             if runtime_evidence
             else None
         ),
+        embed_session_binding=durable_embed_binding,
         retry_policy=retry_policy,
         execution_context=execution_context,
     )
@@ -838,6 +884,8 @@ async def _insert_scheduled_execution(
 
     await ensure_dispatch_attempt(db, execution)
     await db.commit()
+    if embed_session_jti is not None:
+        await bind_execution_to_embed_session(embed_session_jti, exec_id)
     return exec_id
 
 
@@ -902,23 +950,13 @@ async def execute_workflow(
     from src.services.execution.submission_recovery import (
         EmbedExecutionRecoveryDeniedError,
         ExecutionSubmissionConflictError,
-        assert_execution_bound_to_embed_session,
-        bind_execution_to_embed_session,
         recover_execution_submission,
     )
-
-    async def bind_embed_execution(
-        response: WorkflowExecutionResponse,
-    ) -> WorkflowExecutionResponse:
-        """Scope a persisted app-embed execution to its exact token session."""
-
-        if effective_user.embed and not request.transient:
-            assert effective_user.jti is not None
-            await bind_execution_to_embed_session(
-                effective_user.jti,
-                response.execution_id,
-            )
-        return response
+    persisted_embed_session_jti = (
+        effective_user.jti
+        if effective_user.embed and not request.transient
+        else None
+    )
 
     # Resolve org scope for workflow lookup — follows the same pattern as
     # configs, tables, etc. Superusers can pass org_id to search that org;
@@ -1107,25 +1145,21 @@ async def execute_workflow(
                 executed_by=UUID(exec_user_id),
                 organization_id=execution_org_id,
                 form_id=UUID(request.form_id) if request.form_id else None,
+                embed_session_jti=(
+                    effective_user.jti if effective_user.embed else None
+                ),
             )
         except ExecutionSubmissionConflictError as exc:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail=str(exc),
             ) from exc
+        except EmbedExecutionRecoveryDeniedError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=str(exc),
+            ) from exc
         if recovered is not None:
-            if effective_user.embed:
-                assert effective_user.jti is not None
-                try:
-                    await assert_execution_bound_to_embed_session(
-                        effective_user.jti,
-                        execution_request_id,
-                    )
-                except EmbedExecutionRecoveryDeniedError as exc:
-                    raise HTTPException(
-                        status_code=status.HTTP_403_FORBIDDEN,
-                        detail=str(exc),
-                    ) from exc
             return recovered
 
     # Scheduled execution: normalize delay_seconds -> scheduled_at and insert row.
@@ -1137,29 +1171,39 @@ async def execute_workflow(
     if scheduled_at is not None:
         # Schedule-with-code is rejected by the contract validator; workflow must exist.
         assert workflow is not None
-        exec_id = await _insert_scheduled_execution(
-            db=db,
-            workflow_id=workflow.id,
-            workflow_name=workflow.name,
-            parameters=request.input_data,
-            scheduled_at=scheduled_at,
-            organization_id=execution_org_id,
-            executed_by=UUID(exec_user_id),
-            executed_by_name=exec_user_name,
-            form_id=UUID(request.form_id) if request.form_id else None,
-            is_platform_admin=exec_is_admin,
-            is_provider_org=exec_is_provider_org,
-            is_external=exec_is_external,
-            execution_id=execution_request_id,
-        )
-        return await bind_embed_execution(
-            WorkflowExecutionResponse(
-                execution_id=str(exec_id),
-                workflow_id=str(workflow.id),
+        try:
+            exec_id = await _insert_scheduled_execution(
+                db=db,
+                workflow_id=workflow.id,
                 workflow_name=workflow.name,
-                status=ExecutionStatus.SCHEDULED,
+                parameters=request.input_data,
                 scheduled_at=scheduled_at,
+                organization_id=execution_org_id,
+                executed_by=UUID(exec_user_id),
+                executed_by_name=exec_user_name,
+                form_id=UUID(request.form_id) if request.form_id else None,
+                is_platform_admin=exec_is_admin,
+                is_provider_org=exec_is_provider_org,
+                is_external=exec_is_external,
+                execution_id=execution_request_id,
+                embed_session_jti=persisted_embed_session_jti,
             )
+        except EmbedExecutionRecoveryDeniedError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=str(exc),
+            ) from exc
+        except ExecutionSubmissionConflictError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=str(exc),
+            ) from exc
+        return WorkflowExecutionResponse(
+            execution_id=str(exec_id),
+            workflow_id=str(workflow.id),
+            workflow_name=workflow.name,
+            status=ExecutionStatus.SCHEDULED,
+            scheduled_at=scheduled_at,
         )
 
     # Build shared context for execution.
@@ -1249,16 +1293,15 @@ async def execute_workflow(
                 sync=True,
                 dispatch_metadata=dispatch_metadata,
                 org_id_override=request.org_id,
+                embed_session_jti=persisted_embed_session_jti,
             )
-            return await bind_embed_execution(
-                WorkflowExecutionResponse(
-                    execution_id=result.execution_id,
-                    workflow_id=str(workflow.id),
-                    workflow_name=workflow.name,
-                    status=result.status,
-                    result=result.result,
-                    is_transient=request.transient,
-                )
+            return WorkflowExecutionResponse(
+                execution_id=result.execution_id,
+                workflow_id=str(workflow.id),
+                workflow_name=workflow.name,
+                status=result.status,
+                result=result.result,
+                is_transient=request.transient,
             )
         elif workflow:
             # Execute workflow by ID
@@ -1278,6 +1321,7 @@ async def execute_workflow(
                 sync=request.sync or False,
                 dispatch_metadata=dispatch_metadata,
                 org_id_override=request.org_id,
+                embed_session_jti=persisted_embed_session_jti,
             )
         else:
             # This shouldn't happen due to earlier validation
@@ -1321,7 +1365,7 @@ async def execute_workflow(
                 duration_ms=result.duration_ms,
             )
 
-        return await bind_embed_execution(result)
+        return result
 
     except WorkflowNotFoundError as e:
         raise HTTPException(
@@ -1333,6 +1377,11 @@ async def execute_workflow(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(e),
         )
+    except EmbedExecutionRecoveryDeniedError as e:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=str(e),
+        ) from e
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

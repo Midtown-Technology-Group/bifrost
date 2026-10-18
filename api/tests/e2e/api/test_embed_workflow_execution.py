@@ -3,6 +3,8 @@
 import hashlib
 import hmac as hmac_module
 import uuid
+from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier
 from urllib.parse import urlparse
 
 import pytest
@@ -161,6 +163,93 @@ class TestEmbedWorkflowExecution:
         assert same_session.json()["execution_id"] == execution_id
         assert other_same_org_session.status_code == 403, other_same_org_session.text
         assert "Access denied to this execution" in other_same_org_session.text
+
+    def test_concurrent_embed_sessions_cannot_claim_same_execution(
+        self,
+        e2e_client,
+        embed_session,
+        recovery_workflow,
+    ):
+        """The durable admission lock must choose exactly one embed owner."""
+
+        params = embed_session["verified_params"]
+        hmac_val = _compute_hmac(params, embed_session["raw_secret"])
+        second_bootstrap = e2e_client.get(
+            f"/embed/apps/{embed_session['app']['slug']}",
+            params={**params, "hmac": hmac_val},
+            follow_redirects=False,
+        )
+        assert second_bootstrap.status_code == 302, second_bootstrap.text
+        sessions = {
+            "first": embed_session["embed_token"],
+            "second": _extract_token_from_redirect(second_bootstrap),
+        }
+        assert sessions["first"] != sessions["second"]
+
+        execution_id = str(uuid.uuid4())
+        payload = {
+            "workflow_id": recovery_workflow["id"],
+            "app_id": embed_session["app"]["id"],
+            "input_data": {"marker": "concurrent-owner"},
+            "sync": False,
+        }
+        barrier = Barrier(2)
+
+        def submit(item):
+            label, token = item
+            barrier.wait()
+            response = e2e_client.post(
+                "/api/workflows/execute",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "X-Bifrost-Execution-ID": execution_id,
+                },
+                json=payload,
+            )
+            return label, token, response
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            attempts = list(pool.map(submit, sessions.items()))
+
+        accepted = [attempt for attempt in attempts if attempt[2].status_code == 200]
+        denied = [attempt for attempt in attempts if attempt[2].status_code == 403]
+        assert len(accepted) == 1, [(label, response.text) for label, _, response in attempts]
+        assert len(denied) == 1, [(label, response.text) for label, _, response in attempts]
+        assert accepted[0][2].json()["execution_id"] == execution_id
+        assert "Access denied to this execution" in denied[0][2].text
+
+        owner_token = accepted[0][1]
+        losing_token = denied[0][1]
+        owner_read = e2e_client.get(
+            f"/api/executions/{execution_id}",
+            headers={"Authorization": f"Bearer {owner_token}"},
+        )
+        losing_read = e2e_client.get(
+            f"/api/executions/{execution_id}",
+            headers={"Authorization": f"Bearer {losing_token}"},
+        )
+        assert owner_read.status_code == 200, owner_read.text
+        assert losing_read.status_code == 403, losing_read.text
+
+        owner_retry = e2e_client.post(
+            "/api/workflows/execute",
+            headers={
+                "Authorization": f"Bearer {owner_token}",
+                "X-Bifrost-Execution-ID": execution_id,
+            },
+            json=payload,
+        )
+        losing_retry = e2e_client.post(
+            "/api/workflows/execute",
+            headers={
+                "Authorization": f"Bearer {losing_token}",
+                "X-Bifrost-Execution-ID": execution_id,
+            },
+            json=payload,
+        )
+        assert owner_retry.status_code == 200, owner_retry.text
+        assert owner_retry.json()["execution_id"] == execution_id
+        assert losing_retry.status_code == 403, losing_retry.text
 
     def test_embed_token_cannot_access_admin_endpoints(self, e2e_client, embed_session):
         """Embed tokens should be blocked from admin endpoints by EmbedScopeMiddleware."""
