@@ -16,10 +16,48 @@ from urllib.parse import quote
 from urllib.request import Request, urlopen
 
 import yaml
+from yaml.composer import ComposerError
+from yaml.events import AliasEvent
 from yaml.nodes import MappingNode, Node, ScalarNode, SequenceNode
 
 WORKFLOW_SUFFIXES = {".yml", ".yaml"}
 VERSION_COMMENT_RE = re.compile(r"#\s*(?P<version>v[0-9][^\s#]*)\s*$")
+
+
+class _ActionPinLoader(yaml.SafeLoader):
+    """Compose workflow nodes without losing security-relevant source details."""
+
+    def compose_node(self, parent: Node | None, index: int | None) -> Node:
+        if not self.check_event(AliasEvent):
+            return super().compose_node(parent, index)
+
+        alias_event = self.peek_event()
+        node = super().compose_node(parent, index)
+        if isinstance(alias_event, AliasEvent) and isinstance(node, ScalarNode):
+            return ScalarNode(
+                node.tag,
+                node.value,
+                alias_event.start_mark,
+                alias_event.end_mark,
+                node.style,
+            )
+        return node
+
+    def compose_mapping_node(self, anchor: str | None) -> MappingNode:
+        node = super().compose_mapping_node(anchor)
+        seen_keys: set[str] = set()
+        for key_node, _ in node.value:
+            if not isinstance(key_node, ScalarNode):
+                continue
+            if key_node.value in seen_keys:
+                raise ComposerError(
+                    "while composing a mapping",
+                    node.start_mark,
+                    f"found duplicate key {key_node.value!r}",
+                    key_node.start_mark,
+                )
+            seen_keys.add(key_node.value)
+        return node
 
 
 @dataclass(frozen=True)
@@ -92,7 +130,7 @@ def _action_references(path: Path) -> tuple[list[ActionReference], Violation | N
     references: list[ActionReference] = []
 
     try:
-        documents = list(yaml.compose_all(source, Loader=yaml.SafeLoader))
+        documents = list(yaml.compose_all(source, Loader=_ActionPinLoader))
     except yaml.YAMLError as exc:
         mark = getattr(exc, "problem_mark", None)
         line_number = mark.line + 1 if mark is not None else 1

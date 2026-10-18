@@ -124,6 +124,50 @@ def test_flags_invalid_yaml_instead_of_skipping_scan(tmp_path: Path) -> None:
     assert violations[0].reason == "workflow could not be parsed as YAML"
 
 
+def test_flags_duplicate_mapping_keys_as_invalid_yaml(tmp_path: Path) -> None:
+    workflow = tmp_path / "workflow.yml"
+    workflow.write_text(
+        _workflow(
+            "- uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd",
+            "  uses: owner/action@main",
+        ),
+        encoding="utf-8",
+    )
+
+    violations = check_github_action_pins.find_unpinned_actions([workflow])
+
+    assert len(violations) == 1
+    assert violations[0].action == "<invalid YAML>"
+    assert violations[0].line_number == 6
+
+
+def test_scalar_alias_uses_alias_line_and_version_comment(tmp_path: Path) -> None:
+    workflow = tmp_path / "workflow.yml"
+    sha = "a" * 40
+    workflow.write_text(
+        "\n".join(
+            [
+                "anchors:",
+                f"  action: &action owner/action@{sha} # v1.0.0",
+                "jobs:",
+                "  test:",
+                "    steps:",
+                "      - uses: *action # v2.0.0",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    calls: list[tuple[str, str]] = []
+
+    violations = check_github_action_pins.find_mismatched_action_versions(
+        [workflow],
+        lambda repository, version: calls.append((repository, version)) or sha,
+    )
+
+    assert violations == []
+    assert calls == [("owner/action", "v2.0.0")]
+
+
 def test_allows_sha_pinned_local_and_docker_actions(tmp_path: Path) -> None:
     workflow = tmp_path / "workflow.yml"
     workflow.write_text(

@@ -94,6 +94,43 @@ echo 'PASS: MCP conformance reconciles backend authority after browser lanes'
 )
 echo 'PASS: Action pin scanner bootstraps a wheel-only hash-locked clean-host environment'
 
+for failed_step in venv install validate marker; do
+    (
+        scanner_state="$(mktemp -d)"
+        trap 'rm -rf "$scanner_state"' EXIT
+        TEST_LOCK_DIR="$scanner_state"
+        export ACTION_PIN_TEST_FAILURE="$failed_step"
+        python3() {
+            if [[ "$ACTION_PIN_TEST_FAILURE" == venv ]]; then
+                return 41
+            fi
+            mkdir -p "$3/bin"
+            cat > "$3/bin/python" <<'EOF'
+#!/usr/bin/env bash
+if [[ "$ACTION_PIN_TEST_FAILURE" == install && "$1" == -m ]]; then
+    exit 42
+fi
+if [[ "$ACTION_PIN_TEST_FAILURE" == validate && "$1" == -c ]]; then
+    exit 43
+fi
+EOF
+            chmod +x "$3/bin/python"
+        }
+        touch() {
+            if [[ "$ACTION_PIN_TEST_FAILURE" == marker ]]; then
+                return 44
+            fi
+            command touch "$@"
+        }
+
+        if action_pin_scanner_python >/dev/null; then
+            exit 1
+        fi
+        [[ ! -e "$TEST_LOCK_DIR"/action-pin-scanner-*/.ready ]]
+    )
+done
+echo 'PASS: Action pin scanner bootstrap failures never create a ready marker'
+
 (
     pin_calls=()
     pin_diff_status=0

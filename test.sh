@@ -684,15 +684,15 @@ action_pin_scanner_python() {
     local scanner_venv
     local scanner_python
 
-    lock_hash="$(git hash-object "$lock_file")"
+    lock_hash="$(git hash-object "$lock_file")" || return 1
     scanner_venv="$TEST_LOCK_DIR/action-pin-scanner-$lock_hash"
     scanner_python="$scanner_venv/bin/python"
     if [ ! -f "$scanner_venv/.ready" ]; then
-        python3 -m venv "$scanner_venv"
+        python3 -m venv "$scanner_venv" || return 1
         "$scanner_python" -m pip install --quiet --disable-pip-version-check \
-            --no-deps --only-binary :all: --require-hashes -r "$lock_file"
-        "$scanner_python" -c 'import yaml; assert yaml.__version__ == "6.0.3"'
-        touch "$scanner_venv/.ready"
+            --no-deps --only-binary :all: --require-hashes -r "$lock_file" || return 1
+        "$scanner_python" -c 'import yaml; assert yaml.__version__ == "6.0.3"' || return 1
+        touch "$scanner_venv/.ready" || return 1
     fi
     printf '%s\n' "$scanner_python"
 }
