@@ -11,6 +11,16 @@ from src.jobs.consumers import agent_run as agent_run_consumer
 from src.routers import websocket as ws_mod
 
 
+@pytest.fixture(autouse=True)
+def _stub_authoritative_roles(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep fake policy-loader sessions focused on their intended query."""
+    monkeypatch.setattr(
+        ws_mod,
+        "load_user_roles_uncached",
+        AsyncMock(return_value=([], [])),
+    )
+
+
 def _user(*, org_id=None, is_superuser: bool = False, **overrides):
     user = UserPrincipal(
         user_id=uuid4(),

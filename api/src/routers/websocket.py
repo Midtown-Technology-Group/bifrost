@@ -31,7 +31,7 @@ from shared.policy_rules import (
     PolicyRuleNotFound,
     resolve_policy_refs,
 )
-from shared.role_cache import get_user_roles
+from shared.role_cache import get_user_roles, load_user_roles_uncached
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
@@ -287,6 +287,16 @@ async def _load_policies_for_table(
             )
             return TablePolicies()
 
+        # WebSocket principals outlive role mutations. Refresh membership from
+        # the authoritative database for every policy evaluation rather than
+        # copying the connection-time snapshot or trusting a cache entry that
+        # may have been repopulated while revocation was still committing.
+        # This must happen even when only a custom claim's source policy uses
+        # has_role(), so detecting the function in the outer policy is unsafe.
+        role_ids, role_names = await load_user_roles_uncached(user.user_id, db)
+        user.role_ids = role_ids
+        user.role_names = role_names
+
         await preresolve_for_policies(
             user,
             policies,
@@ -484,7 +494,6 @@ async def _authorize_table_subscribe(
     # would NOT have reached us (no subscriber to fan out to). Force a
     # fresh load on subscribe to close that staleness window.
     _invalidate_table_policy_cache(canonical_id)
-    await _populate_user_roles(user)
     policy_user = _fresh_table_policy_user(user)
     policies = await _load_policies_for_table(canonical_id, policy_user)
     if policies is None:

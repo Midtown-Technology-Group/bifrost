@@ -4,6 +4,7 @@
     "GET",
     "POST"
   ],
+  "cache_ttl_seconds": 300,
   "category": "TestCat",
   "description": "parity test desc",
   "endpoint_enabled": true,
