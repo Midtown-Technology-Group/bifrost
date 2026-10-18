@@ -489,7 +489,7 @@ async def test_poison_finalization_skips_messages_without_durable_execution_id(
 @pytest.mark.parametrize(
     ("status", "expected_status", "failed"),
     [
-        ("Scheduled", "Scheduled", False),
+        ("Scheduled", "Failed", True),
         ("Pending", "Failed", True),
         ("Running", "Running", False),
         ("Success", "Success", False),
@@ -534,7 +534,7 @@ async def test_missing_context_failure_is_locked_and_state_aware(
 @pytest.mark.parametrize(
     ("status", "claimable"),
     [
-        ("Scheduled", False),
+        ("Scheduled", True),
         ("Pending", True),
         ("Running", False),
         ("Success", False),
@@ -559,6 +559,7 @@ async def test_durable_execution_claim_serializes_with_publisher(
     execution_id = str(uuid4())
     claim_token = uuid4()
     claim = SimpleNamespace(claim_token=claim_token)
+    mark_attempt_published = AsyncMock()
     with (
         patch(
             "src.core.database.get_db_context",
@@ -569,6 +570,10 @@ async def test_durable_execution_claim_serializes_with_publisher(
             new_callable=AsyncMock,
             return_value=claim,
         ) as create_claimed_attempt,
+        patch(
+            "src.services.execution.attempts.mark_attempt_published",
+            new=mark_attempt_published,
+        ),
     ):
         result = await consumer._claim_durable_execution(execution_id)
 
@@ -583,9 +588,14 @@ async def test_durable_execution_claim_serializes_with_publisher(
             worker_id="worker-test",
             worker_incarnation_id=consumer._pool.worker_incarnation_id,
         )
+        if status == "Scheduled":
+            mark_attempt_published.assert_awaited_once_with(db, row)
+        else:
+            mark_attempt_published.assert_not_awaited()
     else:
         db.commit.assert_not_awaited()
         create_claimed_attempt.assert_not_awaited()
+        mark_attempt_published.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -688,7 +698,9 @@ async def test_process_message_retries_pool_admission_memory_pressure_without_de
     consumer._pool.route_execution = AsyncMock(
         side_effect=ProcessPoolAdmissionRejected("limit reached")
     )
-    consumer._redis_client.get_pending_execution.return_value = pending_context()
+    pending = pending_context()
+    pending["created_at"] = "2026-07-05T11:59:58+00:00"
+    consumer._redis_client.get_pending_execution.return_value = pending
     consumer._redis_client.delete_pending_execution = AsyncMock()
 
     with (
@@ -721,6 +733,7 @@ async def test_process_message_retries_pool_admission_memory_pressure_without_de
     create_execution.assert_awaited_once()
     update_execution.assert_not_awaited()
     consumer._pool.route_execution.assert_awaited_once()
+    assert consumer._pool.route_execution.await_args.kwargs["context"]["created_at"] == pending["created_at"]
     publish_execution_update.assert_awaited_once()
     assert publish_execution_update.await_args is not None
     assert publish_execution_update.await_args.args[:2] == (execution_id, "Running")
@@ -1076,6 +1089,10 @@ async def test_process_success_updates_storage_metrics_pubsub_and_sync_result() 
         ) as update_execution,
         patch("src.services.events.processor.update_delivery_from_execution", new_callable=AsyncMock) as update_delivery,
         patch("bifrost._sync.flush_pending_changes", new_callable=AsyncMock, return_value=2) as flush_changes,
+        patch(
+            "bifrost._sync.acknowledge_pending_changes",
+            new_callable=AsyncMock,
+        ) as acknowledge_changes,
         patch("bifrost._logging.flush_logs_to_postgres", new_callable=AsyncMock, return_value=3) as flush_logs,
         patch("src.core.metrics.update_daily_metrics", new_callable=AsyncMock) as update_daily_metrics,
         patch("src.core.metrics.update_workflow_roi_daily", new_callable=AsyncMock) as update_workflow_roi_daily,
@@ -1106,6 +1123,7 @@ async def test_process_success_updates_storage_metrics_pubsub_and_sync_result() 
     assert update_execution.await_args.kwargs["value"] == 12.5
     update_delivery.assert_not_awaited()
     flush_changes.assert_awaited_once_with(execution_id, session=session)
+    acknowledge_changes.assert_awaited_once_with(execution_id)
     flush_logs.assert_not_awaited()
     update_daily_metrics.assert_awaited_once()
     assert update_daily_metrics.await_args.kwargs["peak_memory_bytes"] == 10

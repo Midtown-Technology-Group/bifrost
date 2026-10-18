@@ -233,6 +233,51 @@ class TestCLISessionHttpBranches:
         assert "Workflow 'missing' not found" in exc.value.detail
         exec_repo_cls.assert_not_called()
 
+    @pytest.mark.asyncio
+    async def test_continue_does_not_guess_database_workflow_id_from_local_name(
+        self,
+    ) -> None:
+        user = _user()
+        session = _session(user_id=user.user_id)
+        execution = SimpleNamespace(session_id=None)
+        db = _db()
+
+        def reject_workflow_lookup(statement):
+            table_names = {
+                getattr(from_clause, "name", None)
+                for from_clause in statement.get_final_froms()
+            }
+            assert "workflows" not in table_names
+            return _scalar_result(execution)
+
+        db.execute = AsyncMock(side_effect=reject_workflow_lookup)
+        repo = MagicMock()
+        repo.get_session_for_user = AsyncMock(return_value=session)
+        repo.set_pending = AsyncMock()
+        repo.get_session_with_executions = AsyncMock(return_value=None)
+        execution_repo = MagicMock()
+        execution_repo.create_execution = AsyncMock()
+
+        with (
+            patch.object(cli, "CLISessionRepository", return_value=repo),
+            patch(
+                "src.repositories.executions.ExecutionRepository",
+                return_value=execution_repo,
+            ),
+        ):
+            result = await cli.continue_cli_session(
+                str(session.id),
+                CLISessionContinueRequest(workflow_name="sync", params={}),
+                user,
+                db,
+            )
+
+        assert result.status == "pending"
+        execution_repo.create_execution.assert_awaited_once()
+        assert execution_repo.create_execution.await_args.kwargs["workflow_id"] is None
+        db.execute.assert_awaited_once()
+        assert execution.session_id == session.id
+
 
 class TestCLISessionPendingAndResult:
     @pytest.mark.asyncio
