@@ -596,6 +596,25 @@ def require_compatible_parameters(old: dict, new: dict) -> None:
 
 
 
+def _baseline_is_current(recipe_value: dict, files: dict[str, bytes], resources: dict[str, bytes],
+                         previous_recipe_value: dict | None, previous_files: dict[str, bytes] | None,
+                         previous_resources: dict[str, bytes] | None) -> bool:
+    """An installed baseline with byte-identical inputs needs no second compilation.
+
+    Every baseline comparison passes by construction against the identical inputs
+    already compiled, so the equality proof replaces the duplicate work. Reviewing
+    the same recipe twice is otherwise the dominant cost of the offline delivery
+    review for unchanged installations.
+    """
+    if previous_recipe_value is None or (previous_files or {}) != files or (previous_resources or {}) != resources:
+        return False
+    # Recipe equality must keep scalar types: plain dict equality treats 20 == 20.0
+    # and False == 0 as identical, which would skip the baseline's strict validation
+    # and certify a schema-invalid installed recipe as checked. JSON text separates
+    # those collisions while ignoring key order.
+    return json.dumps(previous_recipe_value, sort_keys=True) == json.dumps(recipe_value, sort_keys=True)
+
+
 def review_workflow_recipe(recipe_value: dict, files: dict[str, bytes], resources: dict[str, bytes], *,
                            previous_recipe_value: dict | None = None,
                            previous_files: dict[str, bytes] | None = None,
@@ -626,7 +645,8 @@ def review_workflow_recipe(recipe_value: dict, files: dict[str, bytes], resource
     recipe, desired = compile_complete(recipe_value, files, resources)
     removed_ids: set[str] = set()
     evidence_digest = None
-    if previous_recipe_value is not None:
+    if previous_recipe_value is not None and not _baseline_is_current(
+            recipe_value, files, resources, previous_recipe_value, previous_files, previous_resources):
         previous, old = compile_complete(previous_recipe_value, previous_files or {}, previous_resources or {})
         if previous.solution_id != recipe.solution_id:
             raise WorkflowRecipeError("An installed recipe cannot change its Solution identity")
@@ -735,7 +755,8 @@ def review_solution_recipe(recipe_value: dict, files: dict[str, bytes], resource
         return result
 
     current = signatures(recipe_value, files, resources)
-    if previous_recipe_value is not None:
+    if previous_recipe_value is not None and not _baseline_is_current(
+            recipe_value, files, resources, previous_recipe_value, previous_files, previous_resources):
         if recipe_value["solution_id"] != previous_recipe_value.get("solution_id"):
             raise WorkflowRecipeError("An installed recipe cannot change its Solution identity")
         if current != signatures(previous_recipe_value, previous_files or {}, previous_resources or {}):
