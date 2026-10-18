@@ -25,6 +25,16 @@ def test_deploy_zip_includes_regular_workspace_file(tmp_path: Path) -> None:
         assert bundle.read("workflows/main.py") == b"VALUE = 1\n"
 
 
+def test_deploy_zip_rejects_unavailable_workspace(tmp_path: Path) -> None:
+    workspace = tmp_path / "missing-solution"
+
+    with pytest.raises(
+        click.ClickException,
+        match="solution workspace is unavailable",
+    ):
+        _build_deploy_zip(workspace, extra_text_files={})
+
+
 @pytest.mark.parametrize("target_kind", ["inside", "outside", "directory", "cycle"])
 def test_deploy_zip_rejects_unignored_symlink(
     tmp_path: Path,
@@ -58,6 +68,28 @@ def test_deploy_zip_does_not_dereference_ignored_symlink(tmp_path: Path) -> None
     outside = tmp_path / "host-secret.txt"
     outside.write_text("must not be packaged")
     ignored.symlink_to(outside)
+    source = workspace / "README.md"
+    source.write_text("safe")
+
+    archive = _build_deploy_zip(workspace, extra_text_files={})
+
+    with zipfile.ZipFile(io.BytesIO(archive)) as bundle:
+        assert bundle.namelist() == ["README.md"]
+        assert bundle.read("README.md") == b"safe"
+
+
+def test_deploy_zip_does_not_dereference_ignored_directory_symlink(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "solution"
+    workspace.mkdir()
+    outside = tmp_path / "outside-dependencies"
+    outside.mkdir()
+    (outside / "host-secret.js").write_text("must not be packaged")
+    (workspace / "node_modules").symlink_to(
+        outside,
+        target_is_directory=True,
+    )
     source = workspace / "README.md"
     source.write_text("safe")
 
