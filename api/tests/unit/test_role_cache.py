@@ -15,13 +15,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
-
 from shared.role_cache import (
     _ROLE_CACHE_KEY_PREFIX,
     _ROLE_CACHE_TTL,
     get_user_roles,
     invalidate_role,
     invalidate_user,
+    load_user_roles_uncached,
 )
 
 
@@ -203,6 +203,22 @@ class TestGetUserRoles:
         message = warning.call_args.args[0]
         assert "\n" not in message
         assert "\\n" in message
+
+
+@pytest.mark.asyncio
+async def test_load_user_roles_uncached_always_reads_database():
+    """The revocation-sensitive path must not consult or populate Redis."""
+    user_id = uuid4()
+    role_id = uuid4()
+    db = _make_db_returning([(role_id, "operator")])
+
+    with patch("shared.role_cache.get_shared_redis") as get_redis:
+        role_ids, role_names = await load_user_roles_uncached(user_id, db)
+
+    db.execute.assert_awaited_once()
+    get_redis.assert_not_called()
+    assert role_ids == [role_id]
+    assert role_names == ["operator"]
 
 
 class TestInvalidateUser:
