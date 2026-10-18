@@ -139,14 +139,29 @@ async def test_superuser_global_success_preserves_actor():
         "src.services.events.emit_event",
         new=AsyncMock(return_value=(event_id, 0)),
     ) as durable:
-        resp = await emit_topic_event(
-            caller, EmitEventRequest(topic="a.b", data={})
-        )
+        resp = await emit_topic_event(caller, EmitEventRequest(topic="a.b", data={}))
     assert resp.event_id == str(event_id)
     assert resp.subscribers_notified == 0
     _, kwargs = durable.call_args
     assert kwargs["organization_id"] is None
     assert kwargs["triggered_by"] == str(principal.user_id)
+
+
+@pytest.mark.asyncio
+async def test_superuser_lowercase_global_scope_succeeds():
+    principal = _superuser(uuid4())
+    caller = _caller(principal)
+    event_id = uuid4()
+    with patch(
+        "src.services.events.emit_event",
+        new=AsyncMock(return_value=(event_id, 0)),
+    ) as durable:
+        resp = await emit_topic_event(
+            caller, EmitEventRequest(topic="a.b", data={}, scope="global")
+        )
+
+    assert resp.event_id == str(event_id)
+    assert durable.await_args.kwargs["organization_id"] is None
 
 
 @pytest.mark.e2e
@@ -175,9 +190,7 @@ class TestSolutionGating:
         return sol
 
     async def test_unknown_solution_404(self, db_session):
-        caller = EventEmissionCaller(
-            user=_superuser(), db=db_session, solution_id=None
-        )
+        caller = EventEmissionCaller(user=_superuser(), db=db_session, solution_id=None)
         with pytest.raises(EventEmissionError) as exc:
             await emit_topic_event(
                 caller,
@@ -219,9 +232,7 @@ class TestSolutionGating:
         assert kwargs["solution_id"] == sol.id
         assert kwargs["organization_id"] == org.id
 
-    async def test_sealed_solution_own_call_via_signed_claim_passes(
-        self, db_session
-    ):
+    async def test_sealed_solution_own_call_via_signed_claim_passes(self, db_session):
         org = await self._org(db_session)
         sol = await self._sol(db_session, org.id, "sealed-own", sealed=True)
         principal = UserPrincipal(

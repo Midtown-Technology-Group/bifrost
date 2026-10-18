@@ -18,12 +18,13 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
-
+from sqlalchemy import delete
 from src.core.auth import UserPrincipal
 from src.models.contracts.policies import TablePolicies
 from src.models.orm.organizations import Organization
 from src.models.orm.solutions import Solution
 from src.models.orm.tables import Table
+from src.models.orm.users import Role, User, UserRole
 from src.routers import websocket as ws_mod
 
 pytestmark = pytest.mark.e2e
@@ -198,6 +199,92 @@ class TestFreshTablePolicyClaims:
         assert len(seen) == 2
         assert seen[1] is not user
         assert seen[1].claims == {}
+
+
+class TestRoleGatedSubscriptionVisibility:
+    """Active subscriptions must observe committed role revocation."""
+
+    async def test_role_removal_suppresses_later_document_change(
+        self, patched_db
+    ) -> None:
+        db = patched_db
+        org = await _make_org(db)
+        user_row = User(
+            id=uuid.uuid4(),
+            email=f"member-{uuid.uuid4().hex[:8]}@x.test",
+            organization_id=org,
+        )
+        role = Role(
+            id=uuid.uuid4(),
+            name=f"subscriber-{uuid.uuid4().hex[:8]}",
+            created_by="dev@x",
+        )
+        db.add_all([user_row, role])
+        await db.flush()
+        db.add(
+            UserRole(
+                user_id=user_row.id,
+                role_id=role.id,
+                assigned_by="dev@x",
+            )
+        )
+        table = _table(
+            f"role_feed_{uuid.uuid4().hex[:8]}",
+            org_id=org,
+            access={
+                "policies": [
+                    {
+                        "name": "role_read",
+                        "actions": ["read"],
+                        "when": {"call": "has_role", "args": [str(role.id)]},
+                    }
+                ]
+            },
+        )
+        db.add(table)
+        await db.flush()
+
+        principal = UserPrincipal(
+            user_id=user_row.id,
+            email=user_row.email,
+            organization_id=org,
+            is_superuser=False,
+            role_ids=[role.id],
+            role_names=[role.name],
+        )
+        websocket = SimpleNamespace(
+            state=SimpleNamespace(
+                table_subscriptions={str(table.id): {"filter": None}}
+            ),
+            send_json=AsyncMock(),
+        )
+        payload = {
+            "type": "document_change",
+            "old_row": None,
+            "new_row": {"id": "row-1"},
+        }
+
+        await ws_mod._handle_table_message(
+            websocket, principal, f"table:{table.id}", payload
+        )
+        assert websocket.send_json.await_count == 1
+
+        await db.execute(
+            delete(UserRole).where(
+                UserRole.user_id == user_row.id,
+                UserRole.role_id == role.id,
+            )
+        )
+        await db.flush()
+        websocket.send_json.reset_mock()
+
+        # The connection principal still carries its original role snapshot;
+        # the second policy evaluation must ignore it and read current rows.
+        assert principal.role_ids == [role.id]
+        await ws_mod._handle_table_message(
+            websocket, principal, f"table:{table.id}", payload
+        )
+        websocket.send_json.assert_not_awaited()
 
 
 class TestClaimGatedSubscriptionVisibility:
