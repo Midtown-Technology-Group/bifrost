@@ -14,6 +14,7 @@ from src.services.execution.template_process import (
     TemplateProcess,
     _RecvQueue,
     _SendQueue,
+    _handle_fork_request,
     _load_execution_infrastructure,
     _reap_children,
     _run_forked_child,
@@ -123,6 +124,78 @@ def test_reap_children_drains_exited_children() -> None:
 
     assert waitpid.call_count == 3
     assert exit_statuses == {101: 0, 102: 0}
+
+
+def test_forked_child_flushes_after_result_before_exit() -> None:
+    pipe = FakeConnection()
+    work_recv = FakeConnection()
+    result_send = FakeConnection()
+    events: list[str] = []
+
+    def run_child(
+        _work_recv,
+        _result_send,
+        _worker_id,
+        _persistent,
+        sdk_socket_path=None,
+        after_result=None,
+    ) -> None:
+        assert sdk_socket_path is None
+        events.append("result")
+        assert after_result is not None
+        after_result()
+
+    with (
+        patch("src.services.execution.template_process.os.fork", return_value=0),
+        patch("src.services.execution.template_process._run_forked_child", run_child),
+        patch(
+            "src.services.execution.template_process._flush_child_telemetry",
+            side_effect=lambda: events.append("flush"),
+        ) as flush,
+        patch(
+            "src.services.execution.template_process.os._exit",
+            side_effect=SystemExit,
+        ) as exit_process,
+        pytest.raises(SystemExit),
+    ):
+        _handle_fork_request(
+            pipe,
+            "worker-1",
+            False,
+            work_recv,
+            result_send,
+        )
+
+    assert pipe.closed is True
+    assert events == ["result", "flush"]
+    flush.assert_called_once_with()
+    exit_process.assert_called_once_with(0)
+
+
+def test_forked_child_without_result_still_flushes_before_exit() -> None:
+    pipe = FakeConnection()
+
+    with (
+        patch("src.services.execution.template_process.os.fork", return_value=0),
+        patch("src.services.execution.template_process._run_forked_child"),
+        patch(
+            "src.services.execution.template_process._flush_child_telemetry"
+        ) as flush,
+        patch(
+            "src.services.execution.template_process.os._exit",
+            side_effect=SystemExit,
+        ),
+        pytest.raises(SystemExit),
+    ):
+        _handle_fork_request(
+            pipe,
+            "worker-1",
+            False,
+            FakeConnection(),
+            FakeConnection(),
+        )
+
+    flush.assert_called_once_with()
 
 
 def test_load_execution_infrastructure_installs_requirements_and_user_site(monkeypatch) -> None:
@@ -366,14 +439,14 @@ def test_run_forked_child_reports_success_with_rss(monkeypatch) -> None:
         result_send,
         "worker-1",
         persistent=False,
-        before_result=lambda: events.append("flush"),
+        after_result=lambda: events.append("flush"),
     )
 
     simple_worker._execute_sync.assert_called_once_with(
         "exec-12345678", "worker-1", context
     )
     logging_module.clear_sequence_counter.assert_called_once_with("exec-12345678")
-    assert events == ["flush", "send"]
+    assert events == ["send", "flush"]
     assert result_send.sent == [
         {
             "execution_id": "exec-12345678",
@@ -405,10 +478,10 @@ def test_run_forked_child_sends_error_result_for_execution_failure(monkeypatch) 
         result_send,
         "worker-err",
         persistent=False,
-        before_result=lambda: events.append("flush"),
+        after_result=lambda: events.append("flush"),
     )
 
-    assert events == ["flush", "send"]
+    assert events == ["send", "flush"]
     assert result_send.sent == [
         {
             "execution_id": "exec-failure",
