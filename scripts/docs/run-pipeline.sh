@@ -6,7 +6,7 @@
 #
 # Args:
 #   --docs-repo <path>    required (absolute)
-#   --bifrost-repo <path> required (absolute)
+#   --bifrost-repo <path> required (absolute; must contain this script)
 #   --full                bypass diff-mode shortlist and capture every entry
 #   --ids <id1,id2>       capture only the named entries (overrides --full)
 #   --threshold <0..1>    pixel-diff threshold for commit (default 0.001)
@@ -38,7 +38,18 @@ if [[ -z "$DOCS_REPO" || -z "$BIFROST_REPO" ]]; then
     exit 2
 fi
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_PATH="$(/usr/bin/realpath -- "${BASH_SOURCE[0]}")"
+SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd -P)"
+SCRIPT_BIFROST_REPO="$(cd "$SCRIPT_DIR/../.." && pwd -P)"
+if ! SELECTED_BIFROST_REPO="$(cd "$BIFROST_REPO" 2>/dev/null && pwd -P)"; then
+    echo "--bifrost-repo must be an existing checkout directory" >&2
+    exit 1
+fi
+if [[ "$SELECTED_BIFROST_REPO" != "$SCRIPT_BIFROST_REPO" ]]; then
+    echo "--bifrost-repo must match the checkout containing run-pipeline.sh" >&2
+    exit 1
+fi
+BIFROST_REPO="$SCRIPT_BIFROST_REPO"
 
 # decide-captures/post-process need their own node deps (js-yaml, sharp, …).
 # Auto-install on first run so step [1/3] doesn't die with ERR_MODULE_NOT_FOUND.

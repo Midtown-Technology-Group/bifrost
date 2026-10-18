@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
 import {
+  copyFileSync,
   existsSync,
   mkdtempSync,
+  mkdirSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -17,6 +19,9 @@ import { pathChanged, readCaptureManifest } from "./decide-captures.mjs";
 
 const scriptPath = fileURLToPath(
   new URL("./decide-captures.mjs", import.meta.url),
+);
+const pipelinePath = fileURLToPath(
+  new URL("./run-pipeline.sh", import.meta.url),
 );
 
 function fixtureRepo() {
@@ -37,6 +42,30 @@ function fixtureRepo() {
     encoding: "utf8",
   }).trim();
   return { repo, sha };
+}
+
+function fixturePipelineWorktrees() {
+  const root = mkdtempSync(join(tmpdir(), "capture-pipeline-worktrees-"));
+  const first = join(root, "first");
+  const second = join(root, "second");
+  const firstScript = join(first, "scripts", "docs", "run-pipeline.sh");
+
+  mkdirSync(join(first, "scripts", "docs"), { recursive: true });
+  copyFileSync(pipelinePath, firstScript);
+  execFileSync("git", ["init", "-q"], { cwd: first });
+  execFileSync("git", ["config", "user.email", "test@example.com"], {
+    cwd: first,
+  });
+  execFileSync("git", ["config", "user.name", "Test"], { cwd: first });
+  execFileSync("git", ["add", "scripts/docs/run-pipeline.sh"], {
+    cwd: first,
+  });
+  execFileSync("git", ["commit", "-qm", "fixture"], { cwd: first });
+  execFileSync("git", ["worktree", "add", "-q", "-b", "second", second], {
+    cwd: first,
+  });
+
+  return { root, first, second, firstScript };
 }
 
 test("manifest SHA is data, not shell input", () => {
@@ -123,6 +152,41 @@ test("selector runs when invoked through a symlink", () => {
     assert.equal(result.stdout, "symlinked");
   } finally {
     rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("pipeline rejects a different Bifrost worktree before side effects", () => {
+  const { root, first, second, firstScript } = fixturePipelineWorktrees();
+  const docsRepo = join(root, "docs");
+  const captureMarker = join(docsRepo, ".tmp-captures", "keep");
+  mkdirSync(join(docsRepo, ".tmp-captures"), { recursive: true });
+  writeFileSync(captureMarker, "preserve\n");
+
+  try {
+    const result = spawnSync(
+      "/bin/bash",
+      [
+        firstScript,
+        "--docs-repo",
+        docsRepo,
+        "--bifrost-repo",
+        second,
+        "--full",
+      ],
+      { encoding: "utf8" },
+    );
+    assert.equal(result.status, 1);
+    assert.match(
+      result.stderr,
+      /--bifrost-repo must match the checkout containing run-pipeline\.sh/,
+    );
+    assert.equal(existsSync(captureMarker), true);
+    assert.equal(
+      existsSync(join(first, "scripts", "docs", "node_modules")),
+      false,
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
   }
 });
 
