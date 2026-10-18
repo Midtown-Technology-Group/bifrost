@@ -6,13 +6,13 @@
 
 Agent execution operations.
 
-**`agents.enqueue(agent_name: str, input: dict[str, Any] | None = None, output_schema: dict[str, Any] | None = None) -> AgentRunHandle`**
+**`agents.enqueue(agent_name: str, input: dict[str, Any] | None = None, output_schema: dict[str, Any] | None = None, run_as: str | None = None) -> AgentRunHandle`**
   Queue an agent and return as soon as the run is accepted.
 
 **`agents.get_run(run_id: str) -> AgentRun`**
   Get the current status and result for an agent run.
 
-**`agents.run(agent_name: str, input: dict[str, Any] | None = None, output_schema: dict[str, Any] | None = None, timeout: float | None = None) -> dict[str, Any] | str | AgentRunPending`**
+**`agents.run(agent_name: str, input: dict[str, Any] | None = None, output_schema: dict[str, Any] | None = None, timeout: float | None = None, run_as: str | None = None) -> dict[str, Any] | str | AgentRunPending`**
   Run an agent and wait for the result.
 
 **`agents.wait(run_id: str, output_schema: dict[str, Any] | None = None, timeout: float | None = None) -> dict[str, Any] | str | AgentRunPending`**
@@ -91,7 +91,7 @@ Event publishing operations (async).
 
 **`executions.get_current_logs(execution_id: str | None = None, start: str = '0', count: int = 100) -> list[ExecutionLog]`**
 
-**`executions.list(workflow_name: str | None = None, status: str | None = None, start_date: str | None = None, end_date: str | None = None, limit: int = 50, workflow_id: str | None = None, exclude_local: bool | None = None, continuation_token: str | None = None) -> ExecutionList`**
+**`executions.list(workflow_name: str | None = None, status: str | None = None, start_date: str | None = None, end_date: str | None = None, limit: int = 50, workflow_id: str | None = None, continuation_token: str | None = None) -> ExecutionList`**
 
 **`executions.redact_sensitive_fields(execution_id: str, scope: str | None = None) -> ExecutionRedactionResult`**
   Sanitize stored payloads of one terminal execution (platform admin only).
@@ -115,7 +115,7 @@ Event publishing operations (async).
 
 **`files.read_bytes(path: str, location: str = 'workspace', mode: Mode = 'cloud', scope: str | None = None) -> bytes`**
 
-**`files.search(query: str, case_sensitive: bool = False, is_regex: bool = False, include_pattern: str = '**/*', max_results: int = 1000) -> dict`**
+**`files.search(query: str, is_regex: bool = False, case_sensitive: bool = False, include_pattern: str | None = None, source: str = 'all', solution_id: str | None = None, output_mode: str = 'content', context_lines: int = 1, limit: int = 25, cursor: str | None = None) -> dict`**
 
 **`files.stat(path: str, location: str = 'workspace', mode: Mode = 'cloud', scope: str | None = None) -> dict`**
 

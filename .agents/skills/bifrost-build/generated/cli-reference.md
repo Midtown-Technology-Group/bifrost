@@ -519,6 +519,67 @@ Options:
   --help               Show this message and exit.
 ```
 
+## `audit`
+
+```
+Usage: audit [OPTIONS] COMMAND [ARGS]...
+
+  Read the audit log and explain access decisions.
+
+Options:
+  --json  Emit JSON instead of human-readable output.
+  --help  Show this message and exit.
+
+Commands:
+  explain  Explain a stored access check: how it was decided then, and...
+  list     List audit log entries, or count them with --group-by.
+```
+
+### `audit explain`
+
+```
+Usage: audit explain [OPTIONS] EVENT_ID
+
+  Explain a stored access check: how it was decided then, and how it would be
+  now.
+
+Options:
+  --json  Emit JSON instead of human-readable output.
+  --help  Show this message and exit.
+```
+
+### `audit list`
+
+```
+Usage: audit list [OPTIONS]
+
+  List audit log entries, or count them with --group-by.
+
+Options:
+  --action TEXT                   Action prefix, e.g. 'user.' or
+                                  'access.check'.
+  --outcome [success|failure]     Only successes or failures.
+  --resource-type TEXT            Only events on this resource type.
+  --user TEXT                     Acting user: UUID, email, or identity name.
+  --execution TEXT                Workflow execution ID.
+  --workflow TEXT                 Only events naming this workflow: UUID,
+                                  name, or path::function.
+  --org TEXT                      Only events in this organization: UUID or
+                                  name, or 'global'.
+  --since TEXT                    Start of the time range (ISO 8601,
+                                  inclusive).
+  --until TEXT                    End of the time range (ISO 8601, inclusive).
+  --search TEXT                   Free-text search on actor, organization,
+                                  action, resource type, IP, and details.
+  --group-by [workflow|action|resource_type|outcome|user|organization]
+                                  Count matching events per value instead of
+                                  listing them.
+  --limit INTEGER RANGE           Maximum entries to return (server default
+                                  50).  [1<=x<=500]
+  --json                          Emit JSON instead of human-readable output.
+  --help                          Show this message and exit.
+```
+
 ## `claims`
 
 ```
@@ -705,9 +766,8 @@ Usage: configs get [OPTIONS] REF
 
   Get a single configuration value by UUID or key.
 
-  The server does not expose a per-record GET endpoint for configs, so this
-  resolves the ref via :class:`RefResolver` and locates the entry in the ``GET
-  /api/config`` list payload.
+  Resolves the ref via :class:`RefResolver`, then reads ``GET
+  /api/config/{uuid}`` directly.
 
 Options:
   --json  Emit JSON instead of human-readable output.
@@ -804,6 +864,7 @@ Commands:
   list-sources         List all event sources (wrapped ``{items, total}``...
   list-subscriptions   List subscriptions for an event source.
   resubscribe-source   Replace an event source's external provider...
+  rotate-secret        Generate a new signing secret for a webhook source.
   subscribe            Subscribe a workflow or agent to an event source.
   update-source        Update an event source.
   update-subscription  Update an event subscription.
@@ -919,9 +980,6 @@ Usage: events get-subscription [OPTIONS] SOURCE_REF SUBSCRIPTION_ID
 
   Get a single subscription by source ref + subscription UUID.
 
-  The server has no per-subscription GET endpoint, so this lists the source's
-  subscriptions and filters client-side.
-
 Options:
   --json  Emit JSON instead of human-readable output.
   --help  Show this message and exit.
@@ -959,6 +1017,22 @@ Options:
 Usage: events resubscribe-source [OPTIONS] REF
 
   Replace an event source's external provider subscription.
+
+Options:
+  --json  Emit JSON instead of human-readable output.
+  --help  Show this message and exit.
+```
+
+### `events rotate-secret`
+
+```
+Usage: events rotate-secret [OPTIONS] REF
+
+  Generate a new signing secret for a webhook source.
+
+  The output's ``raw_secret`` is the only time the new secret is shown;
+  configure it in the sending service before it is lost. Requests signed with
+  the previous secret are rejected from now on.
 
 Options:
   --json  Emit JSON instead of human-readable output.
@@ -1103,7 +1177,7 @@ Commands:
   list      List files in a directory (default: location root).
   policies  Manage file access policies.
   read      Read a workspace file and write its contents to stdout.
-  search    Search workspace file contents.
+  search    Search workspace and Solution source like grep, one page at a...
   stat      Show existence, version, size, and last-edit metadata without...
   write     Write to a workspace file.
 ```
@@ -1286,17 +1360,32 @@ Options:
 ```
 Usage: files search [OPTIONS] QUERY
 
-  Search workspace file contents.
+  Search workspace and Solution source like grep, one page at a time.
+
+  Examples:
+    bifrost files search get_client --include '*.py'
+    bifrost files search 'def .*_sync' --regex --files
+    bifrost files search halo --solution covi-psa
 
 Options:
-  --regex                      Treat query as a regex.
+  --regex                         Treat query as a Python regex.
   --case-sensitive
-  --include TEXT               Glob restricting which files to search
-                               (default: "**/*").
-  --max-results INTEGER RANGE  Maximum results to return (default: 1000, max:
-                               10000).  [1<=x<=10000]
-  --json                       Emit JSON instead of human-readable output.
-  --help                       Show this message and exit.
+  --include TEXT                  ripgrep-style glob over paths, e.g. '*.py',
+                                  'workflows/**', '*.{ts,tsx}'.
+  --source [all|workspace|solutions]
+                                  Search workspace source, Solution source, or
+                                  both.  [default: all]
+  --solution TEXT                 Restrict to one Solution install's deployed
+                                  source (slug or UUID). Unlike other files
+                                  verbs, this targets Solution source, not
+                                  runtime files.
+  --files                         List matching files instead of lines.
+  -C, --context INTEGER RANGE     [default: 1; 0<=x<=5]
+  --limit INTEGER RANGE           Results per page.  [default: 25; 1<=x<=200]
+  --cursor TEXT                   next_cursor from the previous page (printed
+                                  under 'More results').
+  --json                          Emit JSON instead of human-readable output.
+  --help                          Show this message and exit.
 ```
 
 ### `files stat`
@@ -1590,8 +1679,8 @@ Usage: integrations update [OPTIONS] REF
 
   Update an integration.
 
-  ``REF`` is a UUID or integration name. When ``--config-schema`` replaces the
-  existing schema with one that drops keys, the command refuses unless
+  ``REF`` is a UUID or integration name. When ``--config-schema`` drops keys
+  that have saved ``Config`` values, the server refuses with 409 unless
   ``--force-remove-keys`` is passed — removed keys cascade-delete related
   ``Config`` rows (integration-level defaults and per-org overrides).
 
@@ -1728,6 +1817,33 @@ Options:
   --help                        Show this message and exit.
 ```
 
+## `permissions`
+
+```
+Usage: permissions [OPTIONS] COMMAND [ARGS]...
+
+  Inspect the permission catalog.
+
+Options:
+  --json  Emit JSON instead of human-readable output.
+  --help  Show this message and exit.
+
+Commands:
+  list  List checked permissions by area, with name, scope and enforcement.
+```
+
+### `permissions list`
+
+```
+Usage: permissions list [OPTIONS]
+
+  List checked permissions by area, with name, scope and enforcement.
+
+Options:
+  --json  Emit JSON instead of human-readable output.
+  --help  Show this message and exit.
+```
+
 ## `policy-rule`
 
 ```
@@ -1803,8 +1919,8 @@ Usage: policy-rule get [OPTIONS] {file|table} NAME
 
   Get a single policy rule by domain and name.
 
-  Uses the usages endpoint (which 404s when not found) to confirm the rule
-  exists, then fetches the full record from the list.
+  Reads ``GET /api/policy-rules/{domain}/{name}`` directly. Solution-managed
+  rules are readable (writes stay blocked).
 
 Options:
   --scope TEXT  Organization UUID for org-scoped rules.
@@ -1918,6 +2034,118 @@ Options:
   --help  Show this message and exit.
 ```
 
+## `retention`
+
+```
+Usage: retention [OPTIONS] COMMAND [ARGS]...
+
+  Show and change how long runs, events, and audit events are kept.
+
+Options:
+  --json  Emit JSON instead of human-readable output.
+  --help  Show this message and exit.
+
+Commands:
+  preview  Show what a retention run would do now, without changing...
+  run      Run retention now: delete expired runs and events, or archive...
+  set      Change a retention window.
+  show     Show the retention windows, what the oldest data is, and the...
+```
+
+### `retention preview`
+
+```
+Usage: retention preview [OPTIONS] {runs|audit}
+
+  Show what a retention run would do now, without changing anything.
+
+Options:
+  --json  Emit JSON instead of human-readable output.
+  --help  Show this message and exit.
+```
+
+### `retention run`
+
+```
+Usage: retention run [OPTIONS] {runs|audit}
+
+  Run retention now: delete expired runs and events, or archive aged audit
+  events.
+
+Options:
+  --json  Emit JSON instead of human-readable output.
+  --help  Show this message and exit.
+```
+
+### `retention set`
+
+```
+Usage: retention set [OPTIONS] COMMAND [ARGS]...
+
+  Change a retention window.
+
+Options:
+  --json  Emit JSON instead of human-readable output.
+  --help  Show this message and exit.
+
+Commands:
+  audit  Set the audit database window, the archive window, or both.
+  runs   Set how long finished runs and their events are kept.
+```
+
+#### `retention set audit`
+
+```
+Usage: retention set audit [OPTIONS]
+
+  Set the audit database window, the archive window, or both.
+
+  A window you leave out keeps its current value.
+
+  Examples:
+    bifrost retention set audit --database 60
+    bifrost retention set audit --archive forever
+
+Options:
+  --database INTEGER      Days audit events stay in the database before they
+                          are archived.
+  --archive DAYS|FOREVER  Days archived audit events are kept before deletion,
+                          or 'forever'.
+  --json                  Emit JSON instead of human-readable output.
+  --help                  Show this message and exit.
+```
+
+#### `retention set runs`
+
+```
+Usage: retention set runs [OPTIONS]
+
+  Set how long finished runs and their events are kept.
+
+  Examples:
+    bifrost retention set runs --days 60
+    bifrost retention set runs --forever
+
+Options:
+  --days INTEGER  Keep finished runs and events this many days (30 to 3650).
+  --forever       Keep finished runs and events forever.
+  --json          Emit JSON instead of human-readable output.
+  --help          Show this message and exit.
+```
+
+### `retention show`
+
+```
+Usage: retention show [OPTIONS]
+
+  Show the retention windows, what the oldest data is, and the last run of
+  each.
+
+Options:
+  --json  Emit JSON instead of human-readable output.
+  --help  Show this message and exit.
+```
+
 ## `roles`
 
 ```
@@ -1947,8 +2175,6 @@ Usage: roles create [OPTIONS]
 Options:
   --name TEXT         name  [required]
   --description TEXT  description
-  --permissions TEXT  permissions as JSON literal or @path to a YAML/JSON
-                      file.
   --json              Emit JSON instead of human-readable output.
   --help              Show this message and exit.
 ```
@@ -2004,8 +2230,6 @@ Usage: roles update [OPTIONS] REF
 Options:
   --name TEXT         name
   --description TEXT  description
-  --permissions TEXT  permissions as JSON literal or @path to a YAML/JSON
-                      file.
   --json              Emit JSON instead of human-readable output.
   --help              Show this message and exit.
 ```
@@ -2872,13 +3096,200 @@ Usage: tables update [OPTIONS] REF
   break on rename. No confirmation is required; the warning just nudges the
   caller to grep their workspace before committing.
 
+  Passing ``--org``/``--global`` re-scopes the table (HOME leaves the scope
+  unchanged, since omitting org sends no ``organization_id``).
+
 Options:
-  --name TEXT         name
-  --description TEXT  description
-  --schema TEXT       schema as JSON literal or @path to a YAML/JSON file.
-  --policies TEXT     policies as JSON literal or @path to a YAML/JSON file.
-  --json              Emit JSON instead of human-readable output.
-  --help              Show this message and exit.
+  --name TEXT                     name
+  --description TEXT              description
+  --schema TEXT                   schema as JSON literal or @path to a
+                                  YAML/JSON file.
+  --policies TEXT                 policies as JSON literal or @path to a
+                                  YAML/JSON file.
+  --global                        Target global scope (org=NULL). Alias for
+                                  --org global.
+  --org, --organization, --scope TEXT
+                                  Org UUID/name, or 'none'/'global' for global
+                                  scope. Omit = your org. (--organization /
+                                  --scope are synonyms.)
+  --json                          Emit JSON instead of human-readable output.
+  --help                          Show this message and exit.
+```
+
+## `users`
+
+```
+Usage: users [OPTIONS] COMMAND [ARGS]...
+
+  Show and change what a user can do, and ask what their access would be.
+
+Options:
+  --json  Emit JSON instead of human-readable output.
+  --help  Show this message and exit.
+
+Commands:
+  access  Show a user's access, or check what it would allow.
+  create  Create a custom identity in --org, or Global.
+  list    List the people you may read, or with --identities the identities.
+  roles   Show and replace a user's roles.
+```
+
+### `users access`
+
+```
+Usage: users access [OPTIONS] COMMAND [ARGS]...
+
+  Show a user's access, or check what it would allow.
+
+Options:
+  --json  Emit JSON instead of human-readable output.
+  --help  Show this message and exit.
+
+Commands:
+  check  Show how the access model decides USER performing --operation in...
+  show   Show what USER can do, and where.
+```
+
+#### `users access check`
+
+```
+Usage: users access check [OPTIONS] USER
+
+  Show how the access model decides USER performing --operation in --org.
+
+  USER is a UUID, email, or identity name.
+
+  Examples:
+
+    bifrost users access check ada@contoso.test --org global --operation tables.documents.create
+    bifrost users access check ada@contoso.test --org Contoso --operation tables.documents.create --workflow "Sync Invoices"
+
+Options:
+  --org TEXT        Organization UUID or name, or 'global'.  [required]
+  --operation TEXT  Catalog operation id or 'METHOD /api/path'.  [required]
+  --workflow TEXT   Workflow whose powers apply (UUID, name, or path::func).
+                    Omit to act directly.
+  --json            Emit JSON instead of human-readable output.
+  --help            Show this message and exit.
+```
+
+#### `users access show`
+
+```
+Usage: users access show [OPTIONS] USER
+
+  Show what USER can do, and where.
+
+  Lists every place the user reaches and the permissions held there. `bifrost
+  users access USER` is the same as `bifrost users access show USER`.
+
+  USER is a UUID, email, or identity name.
+
+  Example:
+
+    bifrost users access ada@contoso.test
+
+Options:
+  --json  Emit JSON instead of human-readable output.
+  --help  Show this message and exit.
+```
+
+### `users create`
+
+```
+Usage: users create [OPTIONS]
+
+  Create a custom identity in --org, or Global.
+
+  The identity starts with the User base role and no additional roles; give it
+  roles with `bifrost users roles set`, then point a workflow at it with
+  `bifrost workflows update --run-as`.
+
+  Example:
+
+    bifrost users create --identity --org Contoso --name "Contoso Nightly"
+
+Options:
+  --identity   Create an identity (the only thing created here).  [required]
+  --org TEXT   Organization UUID or name, or 'global'.  [required]
+  --name TEXT  The identity's name.  [required]
+  --json       Emit JSON instead of human-readable output.
+  --help       Show this message and exit.
+```
+
+### `users list`
+
+```
+Usage: users list [OPTIONS]
+
+  List the people you may read, or with --identities the identities.
+
+  Identities are the accounts that run work no person started: each
+  organization's default, the global default, and custom ones.
+
+Options:
+  --identities  List identities instead of people.
+  --json        Emit JSON instead of human-readable output.
+  --help        Show this message and exit.
+```
+
+### `users roles`
+
+```
+Usage: users roles [OPTIONS] COMMAND [ARGS]...
+
+  Show and replace a user's roles.
+
+Options:
+  --json  Emit JSON instead of human-readable output.
+  --help  Show this message and exit.
+
+Commands:
+  get  Show USER's base role and additional roles, with the places each...
+  set  Replace USER's additional roles, and optionally their base role.
+```
+
+#### `users roles get`
+
+```
+Usage: users roles get [OPTIONS] USER
+
+  Show USER's base role and additional roles, with the places each applies.
+
+  USER is a UUID, email, or identity name.
+
+Options:
+  --json  Emit JSON instead of human-readable output.
+  --help  Show this message and exit.
+```
+
+#### `users roles set`
+
+```
+Usage: users roles set [OPTIONS] USER
+
+  Replace USER's additional roles, and optionally their base role.
+
+  USER is a UUID, email, or identity name.
+
+  The --role options replace the additional roles; --no-roles removes them
+  all. With only --base, the additional roles stay as they are.
+
+  Examples:
+
+    bifrost users roles set ada@contoso.test --role Helpdesk=org:Contoso,org:Fabrikam
+    bifrost users roles set ada@contoso.test --base User --role Auditor=all
+    bifrost users roles set ada@contoso.test --no-roles
+
+Options:
+  --base TEXT           Base role (UUID or name). Omit to keep the current
+                        one.
+  --role ROLE[=PLACES]  Additional role, repeatable. PLACES is a comma list of
+                        org:<organization>, customers, global or all; omit it
+                        for the role's default (the user's home organization).
+  --no-roles            Remove every additional role.
+  --json                Emit JSON instead of human-readable output.
+  --help                Show this message and exit.
 ```
 
 ## `workflows`
@@ -2893,17 +3304,19 @@ Options:
   --help  Show this message and exit.
 
 Commands:
-  delete         Delete a workflow by removing its function from the...
-  execute        Execute a registered workflow remotely and stream logs...
-  get            Get a single workflow by UUID, name, or ``path::func`` ref.
-  grant-role     Grant a role access to a workflow.
-  list           List all workflows visible to the caller.
-  list-orphaned  List all orphaned workflows (backing file deleted or...
-  register       Register a decorated function from an existing workspace...
-  remap          Move references from one workflow ID to another active...
-  replace        Repoint an orphaned workflow to a new file location.
-  revoke-role    Revoke a role's access from a workflow.
-  update         Update a workflow's editable properties.
+  delete           Delete a workflow by removing its function from the...
+  execute          Execute a registered workflow remotely and stream logs...
+  get              Get a single workflow by UUID, name, or ``path::func``...
+  grant            Grant the identity a workflow runs as what Recommended...
+  grant-role       Grant a role access to a workflow.
+  list             List all workflows visible to the caller.
+  list-orphaned    List all orphaned workflows (backing file deleted or...
+  recommendations  Show what the identity a workflow runs as would also...
+  register         Register a decorated function from an existing...
+  remap            Move references from one workflow ID to another active...
+  replace          Repoint an orphaned workflow to a new file location.
+  revoke-role      Revoke a role's access from a workflow.
+  update           Update a workflow's editable properties.
 ```
 
 ### `workflows delete`
@@ -2960,13 +3373,41 @@ Usage: workflows get [OPTIONS] REF
 
   Get a single workflow by UUID, name, or ``path::func`` ref.
 
-  The server does not expose a per-record GET endpoint for workflows, so this
-  resolves the ref via :class:`RefResolver` and locates the entry in the ``GET
-  /api/workflows`` list payload.
+  Resolves ``REF`` via :class:`RefResolver`, then calls ``GET
+  /api/workflows/{uuid}`` directly (platform admin only; admins can read any
+  org's workflow by id).
 
 Options:
   --json  Emit JSON instead of human-readable output.
   --help  Show this message and exit.
+```
+
+### `workflows grant`
+
+```
+Usage: workflows grant [OPTIONS] REF
+
+  Grant the identity a workflow runs as what Recommended Access recommends.
+
+  Each grant is merged into the identity's existing assignment of that role. A
+  recommendation without a grant needs a role chosen: use `bifrost users roles
+  set`. A default identity is shared by every workflow that runs as it, so
+  granting to one needs --yes.
+
+  Examples:
+
+    bifrost workflows grant "Sync Invoices" --recommendation 1
+    bifrost workflows grant "Sync Invoices" --all
+    bifrost workflows grant "Sync Invoices" --recommendation 1 --yes
+
+Options:
+  --recommendation N  Number of a recommendation from `workflows
+                      recommendations`, repeatable.
+  --all               Apply every recommendation that has a grant.
+  --yes               Confirm granting to a default identity, which other
+                      workflows share.
+  --json              Emit JSON instead of human-readable output.
+  --help              Show this message and exit.
 ```
 
 ### `workflows grant-role`
@@ -3007,6 +3448,25 @@ Usage: workflows list-orphaned [OPTIONS]
   Orphaned workflows are workflows whose source file no longer exists or no
   longer contains the decorated function. They can be repointed with ``bifrost
   workflows replace``.
+
+Options:
+  --json  Emit JSON instead of human-readable output.
+  --help  Show this message and exit.
+```
+
+### `workflows recommendations`
+
+```
+Usage: workflows recommendations [OPTIONS] REF
+
+  Show what the identity a workflow runs as would also need.
+
+  Recommended Access, based on the access checks the workflow's recent runs
+  recorded: reach into other organizations, roles its policies look for, and
+  the workflow's own roles. Empty until runs are observed. Apply the grants
+  with `bifrost workflows grant`.
+
+  ``REF`` is a UUID, workflow name, or ``path::func`` locator.
 
 Options:
   --json  Emit JSON instead of human-readable output.
@@ -3122,6 +3582,11 @@ Usage: workflows update [OPTIONS] REF
   :mod:`bifrost.refs` for resolution rules.
 
 Options:
+  --run-as TEXT                   Identity the workflow runs as when no person
+                                  starts it: UUID, name, or name with its
+                                  place, e.g. 'Default Identity (Contoso)'.
+  --run-as-default                Run as the organization's default identity
+                                  again.
   --organization-id TEXT          organization_id
   --access-level TEXT             access_level
   --clear-roles / --no-clear-roles
