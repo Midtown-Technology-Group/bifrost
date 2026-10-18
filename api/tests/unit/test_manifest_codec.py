@@ -1700,6 +1700,7 @@ def _install_roundtrip_specs():
         endpoint_enabled=True,
         public_endpoint=True,
         timeout_seconds=4242,
+        cache_ttl_seconds=421,
         retry_policy={
             "version": "execution-retry/v1",
             "enabled": True,
