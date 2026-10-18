@@ -372,10 +372,9 @@ async def e2e_external_users_global_tool(q: str = "x") -> str:
 
 
 class TestExternalToolsCatalog:
-    """The tools catalog is org-cascade scoped the same for every principal —
-    an external sees global tool metadata like any org user."""
+    """The tools catalog applies access-level checks after org scoping."""
 
-    def test_external_user_sees_global_tool(
+    def test_external_user_cannot_list_unassigned_global_role_tool(
         self, e2e_client, external_user, global_tool
     ):
         resp = e2e_client.get(
@@ -383,8 +382,8 @@ class TestExternalToolsCatalog:
         )
         assert resp.status_code == 200, resp.text
         tools = resp.json()["tools"]
-        assert global_tool["id"] in {t["id"] for t in tools}, (
-            "external user lists global tools like any org user"
+        assert global_tool["id"] not in {t["id"] for t in tools}, (
+            "org scope must not bypass workflow role requirements"
         )
 
 
