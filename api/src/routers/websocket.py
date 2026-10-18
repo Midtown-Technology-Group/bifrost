@@ -13,29 +13,32 @@ from uuid import UUID
 
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 from pydantic import ValidationError
+from shared.claims.preresolve import preresolve_for_policies
+from shared.policies.probe import is_subscribe_authorized
+from shared.policies.subscription import decide_visibility_change
+from shared.policy_rules import (
+    PolicyRuleDomainMismatch,
+    PolicyRuleNotFound,
+    resolve_policy_refs,
+)
+from shared.role_cache import get_user_roles, load_user_roles_uncached
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
-from shared.claims.preresolve import preresolve_for_policies
-from shared.policies.probe import is_subscribe_authorized
-from shared.policy_rules import PolicyRuleDomainMismatch, PolicyRuleNotFound, resolve_policy_refs
-from src.repositories.policy_rule import PolicyRuleRepository
-from shared.policies.subscription import decide_visibility_change
-from shared.role_cache import get_user_roles
 from src.core.auth import get_current_user_ws
-from src.core.exceptions import AccessDeniedError
-from src.core.principal import UserPrincipal
 from src.core.database import get_db_context
+from src.core.exceptions import AccessDeniedError
 from src.core.log_safety import log_safe
+from src.core.principal import UserPrincipal
 from src.core.pubsub import manager
 from src.models import Conversation, Execution
-from src.models.contracts.policies import Expr, TablePolicies
-from src.models.contracts.policies import FileAction
+from src.models.contracts.policies import Expr, FileAction, TablePolicies
 from src.models.orm import Agent
 from src.models.orm.cli import CLISession
-from src.repositories.applications import ApplicationRepository
 from src.models.orm.devices import DEVICE_STATUS_ACTIVE, Device
 from src.models.orm.tables import Table as TableOrm
+from src.repositories.applications import ApplicationRepository
+from src.repositories.policy_rule import PolicyRuleRepository
 from src.services.agent_run_access import load_agent_run_for_user
 from src.services.audit import emit_file_policy_deny, emit_table_policy_deny
 from src.services.audit_context import ActorContext
@@ -273,6 +276,16 @@ async def _load_policies_for_table(
             )
             return TablePolicies()
 
+        # WebSocket principals outlive role mutations. Refresh membership from
+        # the authoritative database for every policy evaluation rather than
+        # copying the connection-time snapshot or trusting a cache entry that
+        # may have been repopulated while revocation was still committing.
+        # This must happen even when only a custom claim's source policy uses
+        # has_role(), so detecting the function in the outer policy is unsafe.
+        role_ids, role_names = await load_user_roles_uncached(user.user_id, db)
+        user.role_ids = role_ids
+        user.role_names = role_names
+
         await preresolve_for_policies(
             user,
             policies,
@@ -503,7 +516,6 @@ async def _authorize_table_subscribe(
     # would NOT have reached us (no subscriber to fan out to). Force a
     # fresh load on subscribe to close that staleness window.
     _invalidate_table_policy_cache(canonical_id)
-    await _populate_user_roles(user)
     policy_user = _fresh_table_policy_user(user)
     policies = await _load_policies_for_table(canonical_id, policy_user)
     if policies is None:
