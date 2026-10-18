@@ -2,6 +2,7 @@
 
 import json
 from pathlib import Path
+import shutil
 
 import coverage
 
@@ -36,6 +37,16 @@ def main() -> int:
     if AUDIT_FILE.is_symlink():
         raise ValueError("Unsafe runtime coverage audit path")
     AUDIT_FILE.write_text(json.dumps({"version": 1, "reports": audit}, indent=2) + "\n")
+    if empty or incompatible:
+        archive = AUDIT_FILE.parent / "sonar-runtime-data"
+        if archive.is_symlink():
+            raise ValueError("Unsafe runtime coverage archive path")
+        archive.mkdir(exist_ok=True)
+        for report in reports:
+            destination = archive / report.name
+            if destination.is_symlink():
+                raise ValueError("Unsafe runtime coverage archive file")
+            shutil.copyfile(report, destination)
     if empty:
         raise ValueError(f"Empty actual runtime coverage data: {empty!r}")
     if incompatible:

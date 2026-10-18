@@ -497,6 +497,7 @@ def test_sonar_empty_runtime_is_identified_without_altering_unit_evidence(tmp_pa
                                  "measured_files": 0, "has_arcs": False}]
     assert module.DATA_FILE.read_bytes() == original
     assert empty.is_file()
+    assert (module.AUDIT_FILE.parent / "sonar-runtime-data" / empty.name).read_bytes() == empty.read_bytes()
 
 
 def test_stopped_runtime_logs_survive_export(tmp_path: Path) -> None:
