@@ -544,3 +544,98 @@ async def test_startup_grace_breach_fails_unready_attempt(db_session):
     assert attempt.state == "failed"
     assert attempt.exit_reason == "startup_grace_exceeded"
     assert attempt_id not in loop._owned
+
+
+async def test_startup_grace_heartbeat_and_stop_share_lock_order(
+    async_session_factory,
+):
+    """The claim loop locks definition before heartbeat and completion."""
+    from datetime import datetime, timedelta, timezone
+
+    from sqlalchemy import select, text
+
+    from src.models.orm.services import ServiceAttempt, ServiceDefinition
+
+    async with async_session_factory() as setup:
+        definition, _, _ = await _ensure_service(setup)
+        definition.startup_grace_seconds = 60
+        service_id = definition.id
+        claim_time = datetime.now(timezone.utc) + timedelta(days=1)
+        # Keep the shared stack worker from claiming this committed row while
+        # still allowing this test to claim it at an explicit eligibility time.
+        definition.restart_eligible_at = claim_time
+        attempt = await service_lifecycle.claim_eligible_service(
+            setup,
+            worker_id="startup-grace-worker",
+            now=claim_time,
+        )
+        assert attempt is not None
+        attempt.started_at = datetime.now(timezone.utc) - timedelta(minutes=10)
+        attempt_id = attempt.id
+        lease_token = attempt.lease_token
+        await setup.commit()
+
+    pool = StubPool()
+    loop = _loop(pool)
+    loop._owned[str(attempt_id)] = OwnedAttempt(
+        attempt_id=attempt_id,
+        service_id=service_id,
+        lease_token=lease_token,
+    )
+    beat = None
+    try:
+        async with (
+            async_session_factory() as stop_db,
+            async_session_factory() as worker_db,
+            async_session_factory() as observer,
+        ):
+            locked_definition = (
+                await stop_db.execute(
+                    select(ServiceDefinition)
+                    .where(ServiceDefinition.id == service_id)
+                    .with_for_update()
+                )
+            ).scalar_one()
+            await stop_db.execute(text("SET LOCAL lock_timeout = '500ms'"))
+            worker_pid = await worker_db.scalar(text("SELECT pg_backend_pid()"))
+            beat = asyncio.create_task(loop._beat_owned(worker_db))
+
+            # The beat must wait for the definition before it can lock the
+            # attempt. Under the old order it held the attempt while waiting
+            # for this definition and stop_service timed out below.
+            for _ in range(100):
+                wait_type = await observer.scalar(
+                    text(
+                        "SELECT wait_event_type FROM pg_stat_activity "
+                        "WHERE pid = :pid"
+                    ),
+                    {"pid": worker_pid},
+                )
+                if wait_type == "Lock":
+                    break
+                assert not beat.done()
+                await asyncio.sleep(0.02)
+            else:
+                pytest.fail("claim-loop beat did not reach the definition-lock wait")
+
+            await service_lifecycle.stop_service(stop_db, locked_definition)
+            await stop_db.commit()
+            await asyncio.wait_for(beat, timeout=5)
+            await worker_db.commit()
+
+        async with async_session_factory() as check:
+            completed = await check.get(ServiceAttempt, attempt_id)
+            stopped_definition = await check.get(ServiceDefinition, service_id)
+            assert completed is not None
+            assert completed.state == "failed"
+            assert completed.exit_reason == "startup_grace_exceeded"
+            assert stopped_definition is not None
+            assert stopped_definition.desired_state == "stopped"
+            assert stopped_definition.restart_eligible_at is None
+        assert str(attempt_id) not in loop._owned
+        pool.stop_service_child.assert_awaited_once_with(str(attempt_id))
+    finally:
+        if beat is not None:
+            if not beat.done():
+                beat.cancel()
+            await asyncio.gather(beat, return_exceptions=True)
