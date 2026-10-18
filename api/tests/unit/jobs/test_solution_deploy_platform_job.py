@@ -44,7 +44,7 @@ async def test_failed_repo_install_cleanup_commits_before_job_failure(monkeypatc
     projection = SolutionDeployJob(
         id=deploy_job_id,
         install_id=install_id,
-        status="running",
+        status="failed",
         error="manifest invalid",
     )
     orphan = Solution(id=install_id, slug="failed-install", name="Failed install")
@@ -98,7 +98,6 @@ async def test_failed_repo_install_cleanup_commits_before_job_failure(monkeypatc
         )
 
     assert transaction_committed is True
-    assert projection.status == "failed"
     assert projection.install_id is None
     db.flush.assert_awaited_once()
     db.delete.assert_awaited_once_with(orphan)

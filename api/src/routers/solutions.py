@@ -2433,13 +2433,7 @@ async def _run_deploy_job(
                 return False
             if job.status in ("succeeded", "failed"):
                 return False
-            # First-install failure is not terminal until its newly created
-            # install has been removed by the owning platform job transaction.
-            job.status = (
-                "running"
-                if allow_connected_install and status_value == "failed"
-                else status_value
-            )
+            job.status = status_value
             job.error = error
             job.result = result
             return True
