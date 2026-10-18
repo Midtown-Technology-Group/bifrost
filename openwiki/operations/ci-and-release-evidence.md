@@ -16,6 +16,8 @@ sources:
     resource: repo://AGENTS.md
   - id: openwiki-source-3c58c59d9fb34466e7323eba
     resource: repo://api/scripts/plan_affected_tests.py
+  - id: openwiki-source-ad33f5f7987cd9809ea2c20e
+    resource: repo://api/tests/unit/scripts/test_plan_affected_tests.py
   - id: openwiki-source-77d022d88d2044e192540b6a
     resource: repo://scripts/ci/enforce_closure.py
   - id: openwiki-source-5a11cbd768e254bddf348604
@@ -24,10 +26,10 @@ sources:
     resource: repo://scripts/release/release_manifest.py
   - id: openwiki-source-2b82f9c45eb5d5013568a030
     resource: repo://scripts/sonar/preflight.py
-generated: { by: "bifrost-atlas", at: "2026-10-18T04:42:50.629Z" }
+generated: { by: "bifrost-atlas", at: "2026-10-18T05:33:14.512Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-18T04:42:50.629Z
+    at: 2026-10-18T05:33:14.512Z
 ---
 
 # CI Selection, Quality Gates, and Release Evidence
@@ -39,6 +41,10 @@ The CI workflow connects a source-diff plan to quality and test lanes, then uses
 For pull requests, merge groups, and pushes with a usable base commit, `affected-test-plan` checks out full history and asks `api/scripts/plan_affected_tests.py` to compare that base with the exact candidate head. A missing or all-zero base forces comprehensive planning, and CI uploads the resulting JSON plan for review ([plan invocation and artifact](../../.github/workflows/ci.yml#L135-L171)). The planner models Python and TypeScript dependencies in both directions and emits lane modes, selected targets, and shard matrices; its summary records the selected scope and reasons ([planner contract](../../api/scripts/plan_affected_tests.py#L884-L967)).
 
 The planner is conservative: an empty diff, deletion, high-risk or CI-owned path, or unmodelled path produces comprehensive scope. Its supported-path checks and fallback are in the implementation, not an informal assumption that an unfamiliar file is safe to ignore ([fail-closed selection](../../api/scripts/plan_affected_tests.py#L744-L774)). Delivery-lane guidance documents additional conservative fallback cases, including dependency/container inputs, migrations, contracts, mixed backend/client source, parse errors, excessive fan-out, and reverse dependency closures without graph-owned tests ([delivery-lane planner policy](../../docs/dev/delivery-lanes.md#L24-L41)). The plan artifact says what CI intends to run; only the completed lane and its retained results provide execution evidence.
+
+The planner recognizes documentation-only changes in root `AGENTS.md`, `CLAUDE.md`, `CONTRIBUTING.md`, `GOVERNANCE.md`, `CODE_OF_CONDUCT.md`, `README.md`, `SECURITY.md`, and `LICENSE`; all paths under `docs/`, `.agents/`, `.claude/`, `.codex/`, and `plugins/bifrost/skills/`; OpenWiki Markdown; JSON Claims under `openwiki/.claims/`; and exactly `openwiki/.last-update.json` and `openwiki/.page-manifest.json` ([documented roots](../../api/scripts/plan_affected_tests.py#L38-L54), [OpenWiki rules](../../api/scripts/plan_affected_tests.py#L251-L265)). A pure documentation diff produces `docs-only` scope with all test lanes marked `skip`; this is plan selection, not a successful test result ([scope construction](../../api/scripts/plan_affected_tests.py#L761-L815), [regression test](../../api/tests/unit/scripts/test_plan_affected_tests.py#L211-L223)).
+
+Policy and unmodelled paths remain comprehensive: `.openwikiignore`, `openwiki/.run.json`, OpenWiki files outside the explicit Markdown, Claims JSON, and checkpoint allowlist, `.github/` changes, and edits to the planner itself do not qualify as documentation. Any deletion also forces comprehensive validation. When OpenWiki Markdown accompanies an API source change, the planner stays in `affected` scope and still selects dependency-backed tests; adding OpenWiki Markdown to a CI workflow change remains comprehensive ([comprehensive and fallback rules](../../api/scripts/plan_affected_tests.py#L58-L75), [change classification](../../api/scripts/plan_affected_tests.py#L761-L815), [failure and mixed-scope tests](../../api/tests/unit/scripts/test_plan_affected_tests.py#L226-L285)).
 
 ## Quality and test lanes
 

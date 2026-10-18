@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:9059dacaec32817d1839cddc9ef98c31fc3f3e33c7e26fa312e14a1cf7dacd3f",
+  "pageVersion": "sha256:3973981e9596b546e69138ded6b7eec24a488d6f5c3067c4715a32a1582d196a",
   "claims": [
     {
       "id": "claim_72cd936dc6af47e999f23455f41f7f2d",
@@ -167,10 +167,38 @@
           "version": "repo-lines-v1:sha256:863b18f77ff10f46451ae0278a95b4ba0693366a18cbad6111df7d4cacbfec3d:eyJzZWxlY3RlZExpbmVDb3VudCI6MzQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVjOTZmOGY1OTQ0YWI5ODVjZDlhYjliMWE3YjI4YjY1YWM0NzViMjRkYWIzZmE3M2UxZGQyYjgzZjM4MTk3MzYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIwYmZjYWRhMDc4Mzc0OTkyNDllMmUzMzQ5ODkzYzZiZTI1MDc1ZThlMGZiYjNjZDUxNDdiZWVmNjYyMDNmMmUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjIwYWQ0NzJiMWI0YTI0MzczZTE3OTE0N2VjMDdlNDQ3MGVjZWUwNGY1ZWQ2NDRjZTk3ZjgxMDg2YmIwMTAwNGQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijc3YmY3ZDBlNTgyMDk0NGRhYWY0ZWE5NjlhYzU1ZTI1YTAzMDg5MDU0ZmFhY2VkNGRmMTdiOWUzZmZiZWJlYjMifQ"
         }
       ]
+    },
+    {
+      "id": "claim_85dc24509d9e473ca49251f22b49729f",
+      "statement": "The October 8, 2026 TypeScript investigation kept native Go checking in the production build before Vite, retained Rust only as an optional advisory checker, and kept TypeScript 5.9.3 for JavaScript API consumers; unresolved provenance and initial watch readiness limited the Rust findings and did not establish reliable watcher or editor/LSP integration.",
+      "evidence": [
+        {
+          "resource": "repo://docs/investigations/typescript-compiler-and-build-pipeline.md#L445-L481",
+          "version": "repo-lines-v1:sha256:2c2ce37583bf51019d40f442dd7f77336de760a0482c886768b5c30c91ba6148:eyJzZWxlY3RlZExpbmVDb3VudCI6MzcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVkNjFjMDZjZGQzMDk5NTMxYWU4ODg5Yjc0YTdlMGY4NzlmYThmMDUyMzJiNTJiZWFlY2M2ODQ0ZTZhNTAyYzAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQxYmNhODhlYWE4ZWU5NjBjYmNkODdmMGZhNDAxNzU4MTA2OGQ2ZTBhMGQ3OGJhZjUwYmRiMzE2MmJhMDRmZTUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE0NTI0NTZmYzUyODEzYmRiMWEzZTE5NDM5N2FmYTUxNDI3YTdlMjg4ZjZlZjc2Njc3ZWUyMDQxYjlhZTE3YmMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFiOTEyODdlNDFiZDdmZWU2NjAzYzYxYTM4ZWQ1ZTY4MTk4ZDllM2YyYjUyOTU5Yjg0YjhhYmRmNmQ3Mzg0ZDUifQ"
+        },
+        {
+          "resource": "repo://docs/investigations/typescript-compiler-and-build-pipeline.md#L65-L70",
+          "version": "repo-lines-v1:sha256:d60548d848bdfcd22395d178a1e6fc0cd7c48126c7bf5fd8a0a5e57c91d3ad6d:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMWVkODY0YzM2YWI1NmU3NGFlYzJjZDAzYzAzMjhkM2MwZDA0ZWZmZTYxMTRlY2Q3M2ViZDIwNDdkMGFkMmRhZSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYTkyOThiMjc3Mjc4NjgwN2Q5NDZlNzQwYjMxODU2OTFmN2YzYWU3ZmUzMmY0YmMyZmYzN2VkZGVlYzNjMjVmYiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiODVlYTZmYTFjNDAzYWE2MTFkN2MwYzkzMTQxNmUyNDVkYzhiNDVjYmIyY2Q5OTkzNDNlNDljOGM4NjIxMzVmOSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOTZlZjMyYzM4ZjdhMTQxNDYxZmM4ZTczYTgxOTEwODNmZjYwNzUzNjAxNDQwNTlmN2NhMTJiOTYwNzJiYTQ2MiJ9"
+        },
+        {
+          "resource": "repo://docs/investigations/typescript-compiler-and-build-pipeline.md#L7-L26",
+          "version": "repo-lines-v1:sha256:8162f51b8e156426526a313970fd2e5fc238235a3f1aa55ebff530cc122f3872:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY3YmQ4NTlkZDc2ZTRkZDUzMTVmZWE4Yzc5MGUxMjk5YTRlMzA5ZDY2MWQxYWQ1NTVkYmZlMmM5NzI4ZTRlMWIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk2YzQyYzE4ZmY5NTFhZGEzZmIwYjc4NTBmOTAzZWNmNDEwMDgxNDc5OGFlMTNkZjAwMjZiYmU5MTZiMDEwZjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjUyYzE2ODAyNGZhOTVkZDMzMmVkYjIxZTZkN2Q4ZGI4MDgzOTA5MGJmNzdiNWZhOTgxNjhjYzNhMThjNGMwNDYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY3MzQxZWJlMjIxOWMxMWY2YWIxNjBkODM4YTdlYTdmYzZhMjc2YWJmYTIxZjliODY0NDM1NDUwOGU2ZjA0YWIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_f45cf2c14b904343a51046f483c3d435",
+      "statement": "The public October 8, 2026 report records a prior VM101 investigation on pve-t340: after use-time retrieval of Keeper access records and a hostname resolution failure, local Proxmox state established the physical target and the operator used the existing authenticated local Proxmox guest-agent transport; this is historical precedent and does not establish current access, VM state, or authorization.",
+      "evidence": [
+        {
+          "resource": "repo://docs/investigations/typescript-compiler-and-build-pipeline.md#L35-L49",
+          "version": "repo-lines-v1:sha256:c64680f18b70311443196ea98cfcbb9bc14656aa000df6446248173bbd0e8fab:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxMmY1ZjMxMTQ4NGIyNTZlNmNjOTk1Y2Q3NjNhMzMzZjM5YjcwNTJhYzFmMzkxZTRhOWM4ZTdjMWE0MGM4NjkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRhMzRlOWUwYjRjYTE0YjYyYjg0YWE5ZWQyMzczZmY5MjVlN2MxM2ZkMmRiNzNhZjI3ZDE4MDdmY2I4MjAyZjkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk4N2I0MGI1YzM1OTcyNGFlZjNkZjhjMzMyY2Q0ZTliOTA1MTZlZTJjNWViMDk5N2ExZDIwMDBmZDIwYzI3NGUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNlZjY1OGNmNmE0NTE3YTFhYjQ2MDU3NzM1ZjIwOTFmZGNjNDhlMDYxY2VhNzhkM2I5NTlhMWFiNjA3NjUxM2QifQ"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-18T02:51:00.673Z"
+    "at": "2026-10-18T05:31:16.659Z"
   }
 }

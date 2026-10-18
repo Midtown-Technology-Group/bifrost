@@ -100,11 +100,11 @@
       "completedRunId": "05110ba3-1c53-49be-b9e3-3d246c3f102e"
     },
     "/openwiki/operations/ci-and-release-evidence.md": {
-      "gitHead": "83f18a8854667e1d804dad5d607433e282e9e7ee",
-      "sourceFingerprint": "sha256:2e1d0b6d12cd6c49a1c1a8d57fadf7cb4e8cdca0135c73acb224a005d9591fd8",
-      "pageVersion": "sha256:e2687ece89f65a0e7e1a91eb70f52881a547a37cf6682c61761b4f4daff62aa4",
+      "pageVersion": "sha256:c16d237c628510ab9ec65b9737bd003904a7bcf42fa355cbdf2bb5cea8ab6ede",
       "completedBy": "bifrost-atlas",
-      "completedRunId": "8c8a3901-177b-404d-bad2-ea67eeb8ec97"
+      "completedRunId": "f8956e6d-f39a-4ed3-8241-7efb66fe2185",
+      "gitHead": "b113f510675f5c11c9766eece89bd3125071dfb8",
+      "sourceFingerprint": "sha256:5a94fd99f353da477d0025f0ad3b79324b37c190bc0f9f715136323152b4ca07"
     },
     "/openwiki/operations/deployment-and-infrastructure.md": {
       "gitHead": "5085cc467ffb1ed35de9c9ca48890ab0d929e1d0",
@@ -114,11 +114,11 @@
       "completedRunId": "105b185b-7bc4-4345-b11b-a06fca8bfcc4"
     },
     "/openwiki/operations/development-and-verification.md": {
-      "gitHead": "5085cc467ffb1ed35de9c9ca48890ab0d929e1d0",
-      "sourceFingerprint": "sha256:fbdc7261c0b5a45ad70e9e711671ca2d46c77969cd8420df1f2c4fd40fcd587c",
-      "pageVersion": "sha256:9059dacaec32817d1839cddc9ef98c31fc3f3e33c7e26fa312e14a1cf7dacd3f",
+      "gitHead": "b113f510675f5c11c9766eece89bd3125071dfb8",
+      "sourceFingerprint": "sha256:5a94fd99f353da477d0025f0ad3b79324b37c190bc0f9f715136323152b4ca07",
+      "pageVersion": "sha256:3973981e9596b546e69138ded6b7eec24a488d6f5c3067c4715a32a1582d196a",
       "completedBy": "bifrost-atlas",
-      "completedRunId": "105b185b-7bc4-4345-b11b-a06fca8bfcc4"
+      "completedRunId": "9e3705a0-d799-4343-ad81-d614f2518438"
     },
     "/openwiki/operations/extension-points.md": {
       "gitHead": "5085cc467ffb1ed35de9c9ca48890ab0d929e1d0",

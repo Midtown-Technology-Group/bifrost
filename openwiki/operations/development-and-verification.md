@@ -14,6 +14,8 @@ sources:
     resource: repo://docs/dev/ci-test-sharding.md
   - id: openwiki-source-ab020f2fc3594eaf2a194005
     resource: repo://docs/dev/delivery-lanes.md
+  - id: openwiki-source-d3968563e820b43fb83a2fc6
+    resource: repo://docs/investigations/typescript-compiler-and-build-pipeline.md
   - id: openwiki-source-357a1ac9413cdcd5189e8f59
     resource: repo://scripts/benchmarks/test_typescript.py
   - id: openwiki-source-b92edbf78b8b7768fa6b105c
@@ -24,10 +26,10 @@ sources:
     resource: repo://scripts/lib/test_helpers.sh
   - id: openwiki-source-06dfbbee2ae2d2a513ed6819
     resource: repo://test.sh
-generated: { by: "bifrost-atlas", at: "2026-10-18T02:51:00.673Z" }
+generated: { by: "bifrost-atlas", at: "2026-10-18T05:31:16.659Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-18T02:51:00.673Z
+    at: 2026-10-18T05:31:16.659Z
 ---
 
 # Development, Test, and Verification Lanes
@@ -57,6 +59,12 @@ API contracts are generated from the running API's OpenAPI document into the Typ
 ## TypeScript and bundling benchmark harness
 
 `scripts/benchmarks/typescript.py` is a comparative performance harness, not a normal correctness gate. It requires Linux, Python 3, GNU `/usr/bin/time`, a client checkout with `node_modules`, and explicitly supplied checker commands; by default it separates two warmups from at least ten measured runs and writes JSON results to stdout ([harness prerequisites and CLI validation](../../scripts/benchmarks/typescript.py#L1-L8), [options and minimum sample count](../../scripts/benchmarks/typescript.py#L180-L205)). It copies client source to a disposable temporary directory, links the installed dependencies, and measures selected full-project TypeScript scenarios and optionally Vite build pipelines. Reports retain per-run elapsed time, RSS, CPU time, exit status, output digest, and summary statistics ([scenario definitions and checker measurement](../../scripts/benchmarks/typescript.py#L86-L145), [temporary-copy and JSON report lifecycle](../../scripts/benchmarks/typescript.py#L180-L228)). The safety regression suite checks that source/cache/build outputs stay isolated in the fixture, validates scenario selection and minimum sampling, and exercises timeout termination and failure propagation ([benchmark safety tests](../../scripts/benchmarks/test_typescript.py#L33-L80), [isolation and failure regressions](../../scripts/benchmarks/test_typescript.py#L82-L170)). Benchmark output measures a specific toolchain and host; it is not evidence that CI or release gates passed.
+
+### Historical compiler and VM101 evidence (2026-10-08)
+
+The October 8, 2026 investigation kept native Go type checking in the production build before Vite and retained Rust as an optional advisory checker. It also kept TypeScript 5.9.3 for tools that use TypeScript's JavaScript API, which the native command-line compiler cannot replace. The Rust comparison did not establish broad correctness: source/version provenance and initial watch readiness remained unresolved, so the report made no claim of reliable watcher or editor/LSP integration. Treat these as findings from that investigation and verify current source before applying them to present-day changes ([build disposition](../../docs/investigations/typescript-compiler-and-build-pipeline.md#L7-L26), [JavaScript API compatibility](../../docs/investigations/typescript-compiler-and-build-pipeline.md#L65-L70), [watch readiness and recommendation](../../docs/investigations/typescript-compiler-and-build-pipeline.md#L445-L481)).
+
+The public report records a prior VM101 investigation on the physical `pve-t340` host. It says Keeper access records were retrieved at use time, the named host did not resolve from the operator's host, and local Proxmox state established the target before using the existing authenticated local Proxmox guest-agent transport. This is dated historical evidence of one prior access method. Check current repository policy, Keeper authentication, VM identity and state, and authorization before relying on any VM path ([historical target and access notes](../../docs/investigations/typescript-compiler-and-build-pipeline.md#L35-L49)).
 
 ## CI sharding and evidence
 

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:e2687ece89f65a0e7e1a91eb70f52881a547a37cf6682c61761b4f4daff62aa4",
+  "pageVersion": "sha256:c16d237c628510ab9ec65b9737bd003904a7bcf42fa355cbdf2bb5cea8ab6ede",
   "claims": [
     {
       "id": "claim_733d3c76bfdf448aaad35f19736f94bd",
@@ -11,11 +11,11 @@
           "version": "repo-lines-v1:sha256:32bad79fbb8c565e6b4c2ff7ee92e2cc51621f95050ef066ccef63adacbaeede:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIxYWFmMDgyNGZkNjg5ZWE5NjkwMWMwN2I0Y2U0NTJiZWEzYjQzMTdiZjBjMWYxYjgxMmI0OGY3ZDIyZTkwMzUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE2NmQwNGZhNzkyMDQxYWEwNGMxY2ZmYjZkN2IxNWFkYTc1N2UxZGU4OTFlNDY2MzFmYmZmYzU2YTFhZThmNjkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE0NDU4ZTU1M2M2MGU0M2QyZDk5MzQ4NmRjY2MzZmQ5Y2M0ZWNlYzAxOTg4MmUyOTE0MDI5Y2UxODc2NzU2NjkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE2Njk0NGM1MDUyOWMxNmI3MjU4YjgyNDA5Y2ZjNmM2NmZhNTBlNDNhZWE0YjkwNTY4MzAzN2NlMmQ5MTRlMjAifQ"
         },
         {
-          "resource": "repo://api/scripts/plan_affected_tests.py#L744-L774",
+          "resource": "repo://api/scripts/plan_affected_tests.py#L761-L791",
           "version": "repo-lines-v1:sha256:1e2c14352be1467d11f988ce17b775d08e81f96e521dd1bded7499a3a8d950ec:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNlM2RjNTZkYjQ4NDlmNDk1NzIzNWVjMTEyZWZmMTk4MzNlMmFiNTE1NmE4OTU4MmIzMGQ3NTRjMjA2ZThkNTMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU5MDlhNTNhNjE4ZDAyOGUxZDMwMDBjMGE3YWJjZWVjYmU1ZmIzN2Y0ZTUxMWVmZTQ2NjQzZmFkNmU2Njg3MmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhjYzRhN2QxY2M3OTZhYmEzZTQ2NzIzMzI3ZjUxN2U5ZjgxMTk4MmQyNTBmMDcwMjk4NmU0YjU3NjRhZDk1ODkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjcwZDUwMDExOWE5YWNlZGFiN2I2YjdmZTU5MzQ1NDc2ZDFkZWJlNmVjNmQzNzE4OGY4N2JjNWNkMTQyNzU3NjIifQ"
         },
         {
-          "resource": "repo://api/scripts/plan_affected_tests.py#L884-L967",
+          "resource": "repo://api/scripts/plan_affected_tests.py#L901-L984",
           "version": "repo-lines-v1:sha256:693bb1da15c2f17f87ea9fa70c29ddf2a451d50c22b216790fa26788f7ca79a2:eyJzZWxlY3RlZExpbmVDb3VudCI6ODQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNiODRlYjQyMzY2NzVmMTIyNDUyMGQzNzZkZDBiMmY0MzU4Y2Q4OGE1MWMyOWU4ZTlkOThiMDE4YjQxYjJkN2EiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ3MTVmODdkZDdjYWI5Y2UwOGY3MTEyOTAxZGY1ZGVhMjk0NzJiM2FiOTJjYzRmNjcyYjlhOGExM2ViM2YzZjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE3MTc2ODQ5NGEwMTdiMTA4MmU1MTQxNTkwMTZhMTJhZTA0OTExNTljMmIyYzk5OTBlN2E1NmQxMGMxN2E4MDciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ3YjcyN2E3Yjc3NzYyODY0MTYzMGMzMGE5NGYyOTI2YWRiZGZjMjU2MjMyNmI4MDkwN2RmYjc3Mjk0YzVjOWIifQ"
         }
       ]
@@ -159,10 +159,50 @@
           "version": "repo-lines-v1:sha256:5d90238d71f2cdf99eecc8956a85ab7a5accce6d97aad94e581a435ff69eb6a0:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMDc0NzlkMzEzNGI0MDFhZjA0NTdhNjEwOTYzZjRkZjIyYmVjY2Q2ZGU1M2Y0ZDgxNTY3MzQ0MDk4NmY0YjJiZCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMGUzZWFlOGFkZDUwZmY4ODMzMWQyNjRhNGViZDNkNzA3Zjg1NDNhZjcxNTM2N2JhZTViOWFiZjNkYzdlY2EyNiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNjkzOTEyY2QzYzMzZWRmZDIzZDM3NjRlMTdhYjI5NzQ3YjM3OTM3NDIzNmM2NGE3NmIwYTVmZmU0OGFkMzgwZSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjAsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSJ9"
         }
       ]
+    },
+    {
+      "id": "claim_3150d65ed24549eb95f0a10fc3a7ed1a",
+      "statement": "The platform affected-test planner classifies documentation-only changes from a fixed set of root guidance files, documentation roots, and OpenWiki prose, Claims, and two exact metadata files; pure documentation yields docs-only scope with all test lanes set to skip.",
+      "evidence": [
+        {
+          "resource": "repo://api/scripts/plan_affected_tests.py#L251-L265",
+          "version": "repo-lines-v1:sha256:f5c1f5a94111dc384841ffbbdf71440463d97b566af306a82d2e96a8bb9183dd:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ2OWZiZjc4NWFlZjhhYjljYWFjOWViYTNjNDE1YmY5MDEyMTUzNzMzYzZmYTE0MTFlNTY4OWRmMmU0NGYwYzUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgzYjE5NGEyNzEyODUxNjJhOGNlNjNhMWVhYTI3NjMyMjQ4NmQ0OWYzODM5YTE1NjkxYWM3NmUyNWY0ZjhjMTIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImI1M2EzMjQyMTNhZmE4NjkwMGUxYzE4OTkxMGMxOTEwNTk1YzYzMmJhMTQ5ZGUwM2Y3MDkzNGEwYzlmYjQ5NmEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJhZTk1MGFhZjhhYmJiYTU4M2ViOTU1MDI5NzY1ZWQ4ZGJlODU2Y2YzMjBhODNhYzRlN2Y5NzQxYmRjNWY0NzMifQ"
+        },
+        {
+          "resource": "repo://api/scripts/plan_affected_tests.py#L38-L54",
+          "version": "repo-lines-v1:sha256:584c6bea3043c13f887f33a755047c114d3c17a79a41cfa21e1df54d0ed18dbc:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVjYjM1NTUzOTg3MTNiMzI1Y2FlYTg1NDU3Njc4YTBjMWZmNzMwNGQyZDYwYWI5Mzc1ZjE2NzQ3MTkzZDY1ZDAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZhZmJhMDUyN2MzOTUzYzRiNmUwZTViNTczOWJhODM2MTJmODA1M2JjZGM5NDY2NzMwMTkzY2QxZDU5MGI0MDgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQ4ZTEyYWYzODhkN2FiMjk3Mzg2M2IyZTcyNGUyZDE0MGY4MTJlOGMyMTFhZGEwOWFhZmQxYmQ2NDkxYmZiZjgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjkwMTcxZjBjMjkxMzdiNDYyZTQwNGZjODk1Mjc1YzdhMjgxY2ZhZjM1NmEzMmU3MDdhNmNmZGUzYzBmNzYzNTQifQ"
+        },
+        {
+          "resource": "repo://api/scripts/plan_affected_tests.py#L761-L815",
+          "version": "repo-lines-v1:sha256:56522d1fddcdb3353a99ab2f713ae52604185e76f655c4303304204ca980bdb1:eyJzZWxlY3RlZExpbmVDb3VudCI6NTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNlM2RjNTZkYjQ4NDlmNDk1NzIzNWVjMTEyZWZmMTk4MzNlMmFiNTE1NmE4OTU4MmIzMGQ3NTRjMjA2ZThkNTMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFhNjM0Y2VmMzQwY2Y5NzllZDllYmYyMzEwNjMzOWU3OWExMjYwOTBjMjNhZGZkOTgyYWM0YWRkNzlmOWZkNjUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhjYzRhN2QxY2M3OTZhYmEzZTQ2NzIzMzI3ZjUxN2U5ZjgxMTk4MmQyNTBmMDcwMjk4NmU0YjU3NjRhZDk1ODkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImNhNzQwMzMyNjE4ZWVjNjk2OTM0MDIzOTU2ZDU4MDQzYzFiODdkODdiYmZjMTE4N2I4MWNkNmVkNTY1MGEyZmYifQ"
+        },
+        {
+          "resource": "repo://api/tests/unit/scripts/test_plan_affected_tests.py#L211-L223",
+          "version": "repo-lines-v1:sha256:5d1e7ac2f04cf48518573a1bd6484d9707e74f8267d19abec338376fc6783e59:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBhN2VhMGYyMTI1YTExYzVjZmYzMjY1YThlMTM1YjcyNjJjMmE4MDY0MmVhM2Q1OWFjZDI4MTc1OGU4YzM5MGQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM0OWIyMWFmYTNiZWMyYTBlNmZmNDI5YmU3NWVmZTM0YTAwZWNhYzViODkzMjYyYzJlMDYxNmQ5YTdhOWYzZTIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImEyNzI5MzA1ZmQxY2YwNzdiN2VhM2MxZTU1YzNhYWViZmJiNWRjN2ViMjdkNDVkMGJmNjY4NTNmNTQ4ODUxZTkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU2ODBiMGYyOTI4YWMwZGJmM2RkNGEzMWQ1YzE2ZTkxOThhMjlhNjA4NmQzOWNmYjU3YzIwZjYwYmUzM2E2NWQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_a4c1c3aa04214f648226d934ab6a2c4d",
+      "statement": "The planner keeps OpenWiki policy and unmodelled files, CI-owned paths, and all deletions comprehensive; adding OpenWiki prose to API source remains affected scope with dependency analysis, while adding it to a CI workflow change remains comprehensive.",
+      "evidence": [
+        {
+          "resource": "repo://api/scripts/plan_affected_tests.py#L58-L75",
+          "version": "repo-lines-v1:sha256:ca28e5edc13511f3ecfe002417e50e262fb2b2904c8d4390b2d82446778a3066:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImYxOTQ2Y2UyMjgyZmUwOTUyMjI3ZWUzNDRmMGI3ZjM1NjM4M2IxNDFiYTlmMTcwZGUwNTUwZmM2ODI2MTI0MjIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZlNGUxNzNmYzY2NzJlYjk2MjJjOTk5MjcwMjc2MWQ4YjE1NDQ0MDc1MzA4ZmU3YmUwZjhhNDg3OGEyYTQ1NzciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjkwMTcxZjBjMjkxMzdiNDYyZTQwNGZjODk1Mjc1YzdhMjgxY2ZhZjM1NmEzMmU3MDdhNmNmZGUzYzBmNzYzNTQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ3M2IwNGE1OWIxNjNmOTY0NzM0ZTZkNjUzM2Y4ZjNkMTdhOWUwNjA4MmRjNDY3YzcwNGRjMGE0Mjc1NTdjMTYifQ"
+        },
+        {
+          "resource": "repo://api/scripts/plan_affected_tests.py#L761-L815",
+          "version": "repo-lines-v1:sha256:56522d1fddcdb3353a99ab2f713ae52604185e76f655c4303304204ca980bdb1:eyJzZWxlY3RlZExpbmVDb3VudCI6NTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNlM2RjNTZkYjQ4NDlmNDk1NzIzNWVjMTEyZWZmMTk4MzNlMmFiNTE1NmE4OTU4MmIzMGQ3NTRjMjA2ZThkNTMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFhNjM0Y2VmMzQwY2Y5NzllZDllYmYyMzEwNjMzOWU3OWExMjYwOTBjMjNhZGZkOTgyYWM0YWRkNzlmOWZkNjUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhjYzRhN2QxY2M3OTZhYmEzZTQ2NzIzMzI3ZjUxN2U5ZjgxMTk4MmQyNTBmMDcwMjk4NmU0YjU3NjRhZDk1ODkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImNhNzQwMzMyNjE4ZWVjNjk2OTM0MDIzOTU2ZDU4MDQzYzFiODdkODdiYmZjMTE4N2I4MWNkNmVkNTY1MGEyZmYifQ"
+        },
+        {
+          "resource": "repo://api/tests/unit/scripts/test_plan_affected_tests.py#L226-L285",
+          "version": "repo-lines-v1:sha256:247e2f5f850cf1cd234f2aa59b44c6dbbfe2b8c17f4992194fc7c51c22294e8a:eyJzZWxlY3RlZExpbmVDb3VudCI6NjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFmMzQ1ODNhNTk4NzY3YmY1NmFlZmViNjVlMjAzM2ExNjUxY2M0YzhkN2U2ZjBhZjNlNWNmZDMyOTNmOTMzYjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk4Njg4OWNlMGIyMTc4NzdlZDNlZTczYzg2OGM4Njc2NzQ3MWY0MDAwOWRiMjU0MmFkMzhlNzRlZmFjZWJmMzkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIzMjM0MWVjNjZjMThlNDUxZDM3MDNjNTgwNGM4YWE5NDBiNzM0OTc0N2U1Mzk0OTVjNWYzNjc2M2QwNWYxYTEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjEzMjYxZTNlZTJhOTg5ZWIyNTZjMThhMmYxOGFlMWY5ZWI5YjIwYWY3NTM1ZmU5OTk5NzBkNjZjNTEwZTY1MTIifQ"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-18T04:42:50.629Z"
+    "at": "2026-10-18T05:33:14.512Z"
   }
 }
