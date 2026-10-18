@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:7175ec0035cbfdc4560060d27f76ce218811986d67c36111c559ee3ef68c06bf",
+  "pageVersion": "sha256:338d6f5d4f91666cd32ad229da0fa6300b892a8342957ed22eaa2b1e5b71e5dd",
   "claims": [
     {
       "id": "claim_e70abc111b9749219ab95eb349ea47cb",
@@ -28,7 +28,7 @@
     },
     {
       "id": "claim_639036d1b9eb452a8436a3437601b2f8",
-      "statement": "Webhook ingress resolves a source, applies a pre-auth source-and-IP limiter, validates through the adapter, then applies source quota before delivery processing.",
+      "statement": "Webhook ingress resolves a source and creates both its pre-auth source/IP limiter and shared source quota only when rate limiting is enabled and rate_limit_per_minute is non-null; adapter acceptance precedes charging the shared source quota.",
       "evidence": [
         {
           "resource": "repo://api/src/routers/hooks.py#L143-L181",
@@ -37,10 +37,6 @@
         {
           "resource": "repo://api/src/routers/hooks.py#L193-L214",
           "version": "repo-lines-v1:sha256:e9628e286b7c551e5e8090b6a753e5d9fae029131c121ecbbb9b6b4d2a87368a:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZmYjI2OGIyNDQ4MDQzZGQyNmQyMGI4ODZiZWRlZmJjNmU3ZTlkODM2YmE5ZmIyMDljNDViMGQ3N2ZmYmJkZmQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjEzYjIyMzQzZTljNzU1OTIzM2RjNDZkY2VhNTg5OTY1OGY2Yzg2YTczMTRmYTQ2MjA5OGYyOTI4YWY2YWQzZjUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjAyNjVmNDc5NzAyYzBiOTUzYWZlMzJmMGU4YjIyYTE0YjBmYWU1OGRiZjE5MWQ3ZDBlOGNkMjJhNzU4MmY0MzgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM4YWU0NDAwODRlZjAwMGVlYmQ3ZTAwMWE1OWJmODNjN2Q0N2I3MmMyMWIxNjQ4MDY2MGY5ZGNiMTYzZmQ4YzgifQ"
-        },
-        {
-          "resource": "repo://api/src/routers/hooks.py#L93-L123",
-          "version": "repo-lines-v1:sha256:39845ba5e863dbf61616a13b0718dabce6d77f4f766865516e97dd4c1f30916c:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUxMDYzNGRiZjhmZDlhYWZjYjIwYzM3OGJkZThkYTIzY2VjYmNlYTdjNzA2ZDY5OGNjMDUxMzhkZDBhZTU0NjQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE2YTcxNTI1NzJlZTg0ZjEwOTA2Yzc0YjlmMmE5MjQzNGRkYWIwZTNjNDI4MTNiMDRlNTk3ZWZjZWM5NTFiMjYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYyNjJlMWNjNzFlZDQ0ZTE3ZTg4NGY0Y2QzMmZlNDQ3ZjQ0YzZiMDI3ODYwY2UyNTI3MzliMGRiNWM5YzQ1MmEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjkwMmE1M2Y1NzY4ODA1NjQ0Y2YwOTU4Mzc2OTYxYmY2NjQ0YTk0ZTMxYzcxYjA0MTk0NDc3ZmRkMjAyODM4YTIifQ"
         }
       ]
     },
@@ -171,6 +167,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-18T02:51:00.673Z"
+    "at": "2026-10-18T06:28:44.263Z"
   }
 }

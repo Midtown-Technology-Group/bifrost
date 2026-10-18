@@ -12,12 +12,14 @@ sources:
     resource: repo://docs/VERSIONING.md
   - id: openwiki-source-8a473cb55a1f37afa08f1a7d
     resource: repo://scripts/next-version.py
+  - id: openwiki-source-5a11cbd768e254bddf348604
+    resource: repo://scripts/release/accept_release_images.py
   - id: openwiki-source-ba8351f4b5251e582339aa49
     resource: repo://scripts/release/automatic-release.py
-generated: { by: "bifrost-atlas", at: "2026-10-18T02:34:56.337Z" }
+generated: { by: "bifrost-atlas", at: "2026-10-18T06:28:44.263Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-18T02:51:00.673Z
+    at: 2026-10-18T06:28:44.263Z
 ---
 
 # Versioning, Packaging, and Release Process
@@ -44,7 +46,7 @@ Before dispatching tag CI, publication refuses to move a conflicting tag and rea
 
 After the release PR is merged and exact main CI succeeds, the Release tag workflow validates the approved candidate and source interval, creates an immutable tag, then explicitly dispatches CI on that tag. The explicit dispatch matters because token-created tag pushes do not trigger downstream workflows. Tag CI tests and builds signed packages and publishes an immutable GitHub Release (`.github/workflows/release-tag.yml`, `docs/VERSIONING.md`).
 
-Stable package generation uses final API/client/worker image digests and reads contracts and migrations from the exact tag commit. Content acceptance checks inspect those exact Linux/amd64 image digests for baked versions, server/client contracts, bundled CLI version, and migration heads. This is bounded content evidence; it does not execute migrations or prove service health, production rollout, or arm64 behavior. CI attests the release manifest and publishes the manifest, checksum, and verification bundle; consumers verify repository/workflow/ref/source and all component digests before promotion (`docs/VERSIONING.md`).
+Stable package generation uses final API/client/worker image digests and reads contracts and migrations from the exact tag commit. Read-only content acceptance checks the server image's baked version, server/CLI contract equality, migration heads, and the bundled CLI artifact's version and contract; the client image probe checks only its baked version and static entrypoint. This bounded Linux/amd64 content evidence does not verify client contract compatibility, execute migrations, or prove service health, production rollout, or arm64 behavior ([acceptance probes](../../scripts/release/accept_release_images.py#L20-L46)). CI attests the release manifest and publishes the manifest, checksum, and verification bundle; consumers verify repository/workflow/ref/source and all component digests before promotion (`docs/VERSIONING.md`).
 
 ## Deployment boundary and recovery
 

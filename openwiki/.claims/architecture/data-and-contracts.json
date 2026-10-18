@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:40f306bf95558e90e31599875d6b7ba5ef7e8ac97be96070527a9f8f1dd447ba",
+  "pageVersion": "sha256:f7966c7ffa1f7a3beb1f1e78eb17787b5acbe3e60ef707149916f7a4dfa85ced",
   "claims": [
     {
       "id": "claim_e1155f2e3b5846d380c65884628a73d4",
@@ -64,12 +64,8 @@
     },
     {
       "id": "claim_1cf79a4934e543158e054642957362e8",
-      "statement": "The browser's generated TypeScript API declarations are produced from the running API's OpenAPI document; the generation script waits for /openapi.json and invokes the client generate:types script.",
+      "statement": "The type-generation helper probes API_URL but the client generator independently reads OPENAPI_URL; their defaults differ, so the checked API and generated schema are not guaranteed to match unless both are explicitly configured to the same endpoint.",
       "evidence": [
-        {
-          "resource": "repo://api/src/main.py#L339-L347",
-          "version": "repo-lines-v1:sha256:e5ece8c7a8ed1bbf68727d033fd5e1ec0a3e1429663dc6ab010271f1394bcbe3:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiY2NiZmQ0MzhmZDdlYTM5OGQzMzlhNTQzZDEwMTE5NDA2YzIyMTc1YTI1MDc4ODczNjRkNDkyY2M1OWVjZjBiZSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMzBjMWYxODhmMTQyZWQ3YTgyNDY4MGIyMDcxNzJjNTUxOWJjNjE0YTQ4ZmRhN2NmMTY3ZWRiOGRkZjc5OTU2YyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYWUyOTc4MmZmMjQyYzM4MmU1ODE2M2I5ZDUyYmQzOTkxMTM0YmUzMTU5ZmY0Zjc3MjY3YTBjNzVhNjU1MmQ0MiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZjY1ZWI3MDRlN2RlNWI0MDFkMjU0MDBhNzZiNDcxZGQ4NjkxMTRhNDQ5ZDQ1MTEwMzE0NTAxM2QyNzI4MTBkNSJ9"
-        },
         {
           "resource": "repo://client/package.json#L20-L23",
           "version": "repo-lines-v1:sha256:f9881479b74cc7118d0fa3b193ce889ca5d8423390e10202293555736d67e55c:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMGQ3MjVkZDRkZGIyYjQ5Yzc4ZmJkNDRlMmJkM2I2YTJkM2ZmNTcwZmQ1ZDcxMGVlMjBhM2U4MDc0M2ZkMDgzYiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMWY3OTIxMWFkYmU1MmNhZTVkZDEzNWEzOGFjNGVjY2ZiODNiNmQ3YWZkNGFhNWE5NWY5OGFiYWI5MjNkNGFiNCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYWI3NjU1Yjk2OGZjOTJkYWY1MTBkNTk2MzEwNWQ1ZjMxYmEyZTU0ZjgwZTUxYmE4ZGVhOTNkZGE3ZmVhNjM5MCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiY2ExYzYzZjNiMzVhNzM5MDcyZGVjNmRmYzdhYWEyNzg5Zjk2ZDUyMWYxZDlmODAzYTViYzY3NWYwOTcxOGM5NiJ9"
@@ -167,6 +163,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-18T02:51:00.673Z"
+    "at": "2026-10-18T06:28:44.263Z"
   }
 }

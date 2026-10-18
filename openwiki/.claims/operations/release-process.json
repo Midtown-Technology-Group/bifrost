@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:543bdb86e7352482ffc4932ab95728e85dbfcd608b577f4419c6f77d892712dc",
+  "pageVersion": "sha256:91362a61c8bcdc75fe818f8d206af78e3cfd0cc4d809c7003b4edf7ddf982884",
   "claims": [
     {
       "id": "claim_2225fa37e8104af5acb6e638dc221096",
@@ -46,11 +46,15 @@
     },
     {
       "id": "claim_5204ac6d570f4cf0910d07138deb0a6c",
-      "statement": "Stable acceptance reads contracts and migrations from the exact tag and runs read-only content checks against exact image digests on linux/amd64, which do not certify live readiness or production deployment.",
+      "statement": "Stable acceptance reads expected contracts and migrations from the exact tag, then runs read-only content probes against exact linux/amd64 image digests: the server probe checks baked version, server/CLI contract equality, migrations, and bundled CLI version/contract; the client probe checks only baked version and static entrypoint. These checks do not certify live readiness, client contract compatibility, or production deployment.",
       "evidence": [
         {
           "resource": "repo://docs/VERSIONING.md#L121-L136",
           "version": "repo-lines-v1:sha256:d97a7fc10260eaaef37f4c4340dbd30e62e5447089279fb3355090e101c77850:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFiNmRhZDNjZjkyMDEzMjcyMzVjMTAxZWI1ZTA2YmZhOTY3NzEzY2ViYTBiNGQ5Y2M5MDU0OTBiOGNkZTM4MTMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIyYjE5NzVkNWEwMjdmMTAzMjk5M2Q0YjBmYTBhMjE0MDY1NjJlMmQ0MDVmMGY5MDE2NDA5OWM5NzhjMzJlZTAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjlkNzQ4ZjljNjExOGFmODgyOTAyY2U3NmYzZTRmYjBkZmY1MTIyZDJhZTc0OWU0MjZhZTI4ZTk4ZjFmMTNjMmEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRiMzk0NjhkMzM2MGJhNzY4MmNhMzQ2MTMxNTAyOGQ5ZjM2MTFlMGI0NjUzMTgzNjUyMTBmNDkzYWYzODg1ZTgifQ"
+        },
+        {
+          "resource": "repo://scripts/release/accept_release_images.py#L20-L46",
+          "version": "repo-lines-v1:sha256:7397942d9ddc017dfba8ffbe346bb001d6f5807981d3e51bb72bd7a36010b7cb:eyJzZWxlY3RlZExpbmVDb3VudCI6MjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdmMTA4YmY5NzlmNzI3NjIwZGNkZmIwNjM0ZWQyMjRhY2MxMDc0N2I4MjhiNzJjOTJhMTAzNjE2YzlhNDk1NWMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZmNmFlNTI4OGM5YjU5M2RjMzgwZDdjMzAwZDFkYTQ3NDM1MTBjZDljYzBkY2IwN2M5NzBkMGI5ZThjZmVhM2EiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJhM2U0MThmNmY4MjU0MjBjMTAyMmZlOWNiMmI0Y2VkZDM4OTE4ODY2MjU5YzgzOWEyMzE5Mjk0NzBiYThiZTciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImRjN2QzMjM2N2IwYjZjNjE5ODU0YzZkOTYyMzgyMGNmMjZiN2UzNGQ1N2I5N2UzNGQzM2M2ZTc2OGJiYWI4YmIifQ"
         }
       ]
     },
@@ -137,6 +141,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-18T02:51:00.673Z"
+    "at": "2026-10-18T06:28:44.263Z"
   }
 }

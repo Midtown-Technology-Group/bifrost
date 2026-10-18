@@ -1,14 +1,18 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:59a3fa695275e170effd043bf25c85fe062ed21acfcd3a218bfea4f84f38c222",
+  "pageVersion": "sha256:2525aa21f91980ccdd4a6c810e3b2b570db41e60caebd5003690acde6d5a04e6",
   "claims": [
     {
       "id": "claim_83096e390c7d4d5c8f545bd2a9c95ae6",
-      "statement": "Workflow OAuth authorization builds provider redirects with CSRF state and, for PKCE-enabled providers, a stored verifier and challenge; callbacks consume the verifier once and validate its provider/redirect binding before exchanging the code.",
+      "statement": "Workflow OAuth authorization builds redirects with state and adds a stored verifier/challenge for PKCE-enabled providers; their callbacks atomically consume the verifier once, validate provider and redirect binding, and reject missing, expired, or replayed PKCE state. Undecodable legacy integration-level non-PKCE state can proceed without this PKCE binding check.",
       "evidence": [
         {
           "resource": "repo://api/src/routers/oauth_connections.py#L342-L369",
           "version": "repo-lines-v1:sha256:b05574e6a4adbb8187987a65b426e51060753f19fb3fbe238ab96dfbf5b964d0:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNjOWYzYzVjMjg2ZDU2NDY2YWE4NDhkNGRiZDEwOWIxZWJlNDE0OTZhN2Y1MjhmYmVmNmYyYWQyMzgyNWU4NGYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlhYTYyOTZiZmNkMDJmMGU5ODJiOWUwODQ3MzUzM2VkZDczODczMzEwNTVlYWIwYjkyZGQxNmE0ZmI3YzA3YjUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJiMDJhNGUwMDk5ODEyYWNhMmExYTY2NDg0NzUzOTIyMDEzYTY2NGNiOTE1NjU2OWEwZGZlOGZlNWJlMjc5MzIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRjOTg4NjAxOWVjNzQ4Y2VkZGZlYjE3Nzc1ZjFjNjIwMDM3ODQ0ZTc1NzVmOTFhY2YwYjdjYTdiYzM4NDMzNTgifQ"
+        },
+        {
+          "resource": "repo://api/src/routers/oauth_connections.py#L672-L707",
+          "version": "repo-lines-v1:sha256:431baa28e9328c22a379a8318a1912c39a95c93582c86a95e96e834d94a69d90:eyJzZWxlY3RlZExpbmVDb3VudCI6MzYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBhYTJiZWI0Y2VhZTdiZDhmOTQ4YWIyZjg3Mzg0MGZkODUyYWJjYTRhNWQwNmZlMzI3NjBjYjdjNjExNjA5NzAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU1MDMyZTk2NGQwOTMyMzUxZTVkMTg1MjY5MjgxYjE3MWEzYTA5YjA4YjI4NmU2NjFlYTQ3MDMyM2M4MmViNGQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjBhNGRiOTY4NTgyMzliOTgxMmVhYjc3MTQxYjhhYWUzMzcyMTUxODcyYzI4OTE3NTk4OGI0ODVjYWI5Y2RiYzEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJkNTE5NGEwZTY0NDdlNWFiYTNhYWI3MjdmNGNkZDRlMDRjN2VhNWUwYzEzMGVlYTNlMmE5ZDUxZDEzYjkwMzIifQ"
         },
         {
           "resource": "repo://api/src/routers/oauth_connections.py#L740-L793",
@@ -109,6 +113,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-18T02:14:28.318Z"
+    "at": "2026-10-18T06:28:44.263Z"
   }
 }

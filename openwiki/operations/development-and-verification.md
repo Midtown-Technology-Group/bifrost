@@ -26,10 +26,10 @@ sources:
     resource: repo://scripts/lib/test_helpers.sh
   - id: openwiki-source-06dfbbee2ae2d2a513ed6819
     resource: repo://test.sh
-generated: { by: "bifrost-atlas", at: "2026-10-18T05:31:16.659Z" }
+generated: { by: "bifrost-atlas", at: "2026-10-18T06:28:44.263Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-18T05:31:16.659Z
+    at: 2026-10-18T06:43:57.793Z
 ---
 
 # Development, Test, and Verification Lanes
@@ -53,6 +53,8 @@ Stage reuse is conditional evidence, not a way to turn a skipped command into a 
 ## Verification lanes and generated contracts
 
 Choose checks according to the surface: backend unit tests for isolated logic; backend E2E for API/database/queue boundaries; client unit tests via Vitest; and Playwright smoke or broader E2E for browser behavior. The wrapper also exposes API quality checks (Pyright and Ruff), repository hygiene checks, MCP conformance, and required `pre-pr` checks. The entry point describes `pre-pr --full` as exhaustive, so a scoped command should not be reported as the full suite (`test.sh`).
+
+The affected-test planner treats a pure allowlisted documentation diff as `docs-only` and sets all test lanes to `skip`; this records selection, not test execution. For OpenWiki, the accepted paths are Markdown, JSON under `.claims/`, and exactly `.last-update.json` plus `.page-manifest.json`. Deletions, CI or planner-selector changes, `.openwikiignore`, `.run.json`, and other unmodeled paths remain comprehensive; adding wiki prose alongside Python source retains the affected Python dependency analysis ([planner rules](../../api/scripts/plan_affected_tests.py#L251-L265), [selection and mixed-scope behavior](../operations/ci-and-release-evidence.md#affected-test-plan)).
 
 API contracts are generated from the running API's OpenAPI document into the TypeScript declarations. `client/package.json` defines `generate:types` against `OPENAPI_URL` with a local default; the repository contributor guidance requires regeneration after API contract changes. Generated output therefore depends on which API instance supplied the schema, and source-level presence alone does not prove it matches a deployed server (`client/package.json`, `CONTRIBUTING.md`).
 

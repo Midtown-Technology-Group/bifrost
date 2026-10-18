@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:636a2b2d0eca5fa008f3f193bac4fe777a457c32c169964d4f3d866d09bce72d",
+  "pageVersion": "sha256:dc6e110df16f1cfe606fbccd1ec9383d067174f8b7d62b58c1850c4744ca21e7",
   "claims": [
     {
       "id": "claim_294489c6a8ac43e9b519fc6b00d90357",
@@ -112,7 +112,7 @@
     },
     {
       "id": "claim_3891031360d54499ae73ee2d2f9e4e1c",
-      "statement": "Execution history and detail routes require an organization user; the history page restores URL-backed search, organization, date, view, and log-level filters, while the detail page remains a separate investigation surface.",
+      "statement": "Execution history and detail routes use requireOrgUser, which allows organization users, embed users, and platform administrators; the history page restores URL-backed search, organization, date, view, and log-level filters, while the detail page remains a separate investigation surface.",
       "evidence": [
         {
           "resource": "repo://client/src/App.tsx#L453-L461",
@@ -121,6 +121,10 @@
         {
           "resource": "repo://client/src/App.tsx#L834-L842",
           "version": "repo-lines-v1:sha256:7f2478e67a11c2b4ea60eab90f05af909bc8ea8369790841634a1d256045afa1:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMmJlNzNjMmE1ZjExMjUyMjIxODA5YzdmODk1NWM2ZTgyZDQ0ZDE4MzM2NDYwNTViOTJmYTlmYjExNzNmNzFhZSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiM2RhMmZkYzAxM2RjZjhkOTc1MGE5NmMzMGU4MzAwYmM0YzBjZjc5MTliOWQ3ZTUyZGRjMGRjZDY0OTc5MzFiOSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNmE1MGNjZmQ1NmMwMWI0NzQwZGI5NTZjOGMzOWY2YWI2YmIxZjgxYmEwOTcxYmU2ZWJhODg0ZDA3Zjk3MGY2NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiN2YxOTI1ODhlMDY4MTZmYzBhMjUxYTY4Yzg0NzU5NDZlMGM1MDZiNzZiOTgzMmQ1ZDkxZGM3M2ZjYWMxMWNlMCJ9"
+        },
+        {
+          "resource": "repo://client/src/components/ProtectedRoute.tsx#L44-L50",
+          "version": "repo-lines-v1:sha256:19f163101a4dff974389566c5b54d5eeeefdfce9b15f2c043826cfbe48869681:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMmUxNDBkYjhlMmM2ODg1YTUyMTY5YWEwYTQ0YTdhMzFmNjc1MDUzMWY4YWI2OWRlNTQwOThiYTMyMGJhM2NlZiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMTM1ZGEyMmZiZjBhYTE4NDgwOTE5NThhODliYWE5NjM5YjExYWRiM2FhNGIwNjdhMzM2ZTU2NTYzOWU1NGZmZSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMTFmZGNhZTg0YzRhOTFjOWNkZWVhZWMxODg0NTJiMDJmMDk0ZGNiZGRhOWFjNGJiZWMzZWJkY2I4NmVjNTM4ZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNWNiNTlhNzRjZTljMDY4NTIyM2Y2OGEzYjE4NTk0ZTdmZTY5NGFmYWM4OGFlMTZkNTgxODU1YzllNjBiODBjNiJ9"
         },
         {
           "resource": "repo://client/src/pages/ExecutionHistory.test.tsx#L521-L550",
@@ -241,6 +245,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-18T03:01:08.144Z"
+    "at": "2026-10-18T06:28:44.263Z"
   }
 }

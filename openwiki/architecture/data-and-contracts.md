@@ -14,8 +14,6 @@ sources:
     resource: repo://api/shared/claims/registry.py
   - id: openwiki-source-0d5756e514c6f82a0523b826
     resource: repo://api/src/core/database.py
-  - id: openwiki-source-de1257550254e1c4095fea5a
-    resource: repo://api/src/main.py
   - id: openwiki-source-d6c44018833858d7b0b0a6b3
     resource: repo://api/src/models/__init__.py
   - id: openwiki-source-6f99c8dbbb4bc3ea05fe385a
@@ -36,10 +34,10 @@ sources:
     resource: repo://client/package.json
   - id: openwiki-source-ff67015c30e862ea4697c025
     resource: repo://scripts/generate-types.sh
-generated: { by: "bifrost-atlas", at: "2026-10-18T02:51:00.673Z" }
+generated: { by: "bifrost-atlas", at: "2026-10-18T06:28:44.263Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-18T02:51:00.673Z
+    at: 2026-10-18T06:28:44.263Z
 ---
 
 # Data Model, API Contracts, and Schema Evolution
@@ -70,7 +68,7 @@ Shared claim helpers load organization-scoped custom claims, extract references 
 
 ## Browser contract generation and verification
 
-`client/src/lib/v1.d.ts` is generated with `openapi-typescript` from the API's `/openapi.json` document. `scripts/generate-types.sh` waits for the selected API URL to serve that document and then invokes the client package's `generate:types` script. This makes the running API the source for generated browser types; stale or unavailable API schema prevents generation. Contract and model tests live under `api/tests/unit/models/` and `api/tests/contract/`; organization-scope enforcement is covered separately under `api/tests/unit/test_org_scoping_enforcement.py`. Consult [development and verification](../operations/development-and-verification.md) for the supported lane and distinguish generated-type success from runtime compatibility evidence.
+`client/src/lib/v1.d.ts` is generated with `openapi-typescript` from an `/openapi.json` document, but the helper does not currently guarantee that its readiness check and generator use the same API. `scripts/generate-types.sh` polls `API_URL` (default `http://localhost:8000`) and then invokes the client package script; `generate:types` independently reads `OPENAPI_URL` (default `http://localhost:3000/openapi.json`). Unless those settings identify the same schema, the helper can check one API while generating from another, or the client command can fail if its default endpoint is unavailable. For a consistent manual run, set both explicitly, for example `API_URL=http://localhost:8000 OPENAPI_URL=http://localhost:8000/openapi.json ./scripts/generate-types.sh`; the script itself does not pass the checked URL through. Contract and model tests live under `api/tests/unit/models/` and `api/tests/contract/`; organization-scope enforcement is covered separately under `api/tests/unit/test_org_scoping_enforcement.py`. Consult [development and verification](../operations/development-and-verification.md) for the supported lane and distinguish generated-type success from runtime compatibility evidence.
 
 ## CLI and SDK compatibility gate
 

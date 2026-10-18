@@ -60,10 +60,14 @@ This repository has a generated `openwiki/` evidence index. It is optional just-
 - Treat source code and tests as authoritative. A brief's unknowns and review items are verification gaps, not automatic requirements.
 - Prefer the narrowest quiet validation that proves the changed behavior. Preserve complete failure output.
 
-The scheduled OpenWiki GitHub Actions workflow refreshes the repository wiki. Do not hand-edit generated OpenWiki pages unless explicitly asked; prefer updating source code/docs and letting OpenWiki regenerate.
+Use the repository's documented maintenance process to refresh generated pages after source changes. Check its configuration and completed runs before relying on automatic updates. Do not hand-edit generated OpenWiki pages unless explicitly asked; prefer updating source code/docs and letting OpenWiki regenerate.
 
 <!-- OPENWIKI:END -->
 
 ## Shared ecosystem architecture
 
 For unfamiliar cross-repository changes, use the [private architecture atlas](https://docs.bifrost.midtowntg.com/atlas/viewer/) and focused local OpenWiki retrieval. The [portable reader and maintenance guide](https://github.com/MTG-Thomas/bifrost-ops/blob/main/docs/architecture-atlas.md) covers linked workspaces and CLI access across harnesses. Verify consequential facts against current source; generated knowledge does not authorize runtime actions.
+
+## Atlas maintenance
+
+`.github/workflows/openwiki-refresh.yml` sends notifications to the central `bifrost-ops` workflows when `OPENWIKI_MAINTENANCE_ENABLED=true` and the dispatch credential is enrolled. Regeneration uses protected `main` checkouts in `bifrost-ops/.github/workflows/openwiki-maintain.yml`; this repository has no scheduled regeneration job. Check enrollment and run evidence in the [maintenance guide](https://github.com/MTG-Thomas/bifrost-ops/blob/main/docs/architecture-atlas.md#maintenance-and-adoption). Prefer correcting authoritative source or authored documentation, then use the OpenWiki lifecycle to refresh generated pages.

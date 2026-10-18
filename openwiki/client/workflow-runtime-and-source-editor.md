@@ -30,6 +30,8 @@ sources:
     resource: repo://client/src/components/files/FilesExplorer.tsx
   - id: openwiki-source-f325db99b3963aa505bc90a3
     resource: repo://client/src/components/forms/FieldsPanel.tsx
+  - id: openwiki-source-0b10024142eebe28920031df
+    resource: repo://client/src/components/ProtectedRoute.tsx
   - id: openwiki-source-6037d32b8d9c89eed86af9d5
     resource: repo://client/src/components/schedules/CronTester.tsx
   - id: openwiki-source-47b05cce746ea1f46b5e4669
@@ -54,10 +56,10 @@ sources:
     resource: repo://client/src/pages/ExecutionHistory/components/ExecutionDrawer.tsx
   - id: openwiki-source-14d1a49ccb9ee805cd67c5ff
     resource: repo://client/src/pages/table-detail/TableDetailHeader.tsx
-generated: { by: "bifrost-atlas", at: "2026-10-18T03:01:08.144Z" }
+generated: { by: "bifrost-atlas", at: "2026-10-18T06:28:44.263Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-18T03:01:08.144Z
+    at: 2026-10-18T06:28:44.263Z
 ---
 
 # Workflow Builder, Execution Views, and Source Editor
@@ -90,7 +92,7 @@ The V2 app code editor has its own `/apps/new` and `/apps/:applicationId/edit/*`
 
 ## Execution history and detail
 
-The history list and `/history/:executionId` detail route require an organization user, while the editor overlay has its own platform-admin visibility check ([history and detail routes](../../client/src/App.tsx#L453-L461), [execution detail route](../../client/src/App.tsx#L834-L842), [editor overlay gate](../../client/src/components/editor/EditorOverlay.tsx#L16-L25)). `ExecutionHistory` maps search, organization, date, status, view, and log-level selections into URL state and supports pagination and row previews. Tests restore filter state from a deep link, check regular-user workflow-filter behavior, and verify canonical status-filter updates ([history URL filter tests](../../client/src/pages/ExecutionHistory.test.tsx#L277-L320), [filter restoration tests](../../client/src/pages/ExecutionHistory.test.tsx#L521-L550)). The execution detail page is a separate investigation surface with logs, metadata, and available actions; for durable status, cancellation, and result semantics, follow the runtime API documentation rather than inferring them from the page.
+The history list and `/history/:executionId` detail route use `requireOrgUser`, which allows organization users, embed users, and platform administrators; the editor overlay has its own platform-admin visibility check ([history and detail routes](../../client/src/App.tsx#L453-L461), [execution detail route](../../client/src/App.tsx#L834-L842), [role gate](../../client/src/components/ProtectedRoute.tsx#L44-L50), [editor overlay gate](../../client/src/components/editor/EditorOverlay.tsx#L16-L25)). `ExecutionHistory` maps search, organization, date, status, view, and log-level selections into URL state and supports pagination and row previews. Tests restore filter state from a deep link, check regular-user workflow-filter behavior, and verify canonical status-filter updates ([history URL filter tests](../../client/src/pages/ExecutionHistory.test.tsx#L277-L320), [filter restoration tests](../../client/src/pages/ExecutionHistory.test.tsx#L521-L550)). The execution detail page is a separate investigation surface with logs, metadata, and available actions; for durable status, cancellation, and result semantics, follow the runtime API documentation rather than inferring them from the page.
 
 ## Workflow, file, event, and execution component map
 

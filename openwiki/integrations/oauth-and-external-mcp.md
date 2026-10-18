@@ -3,9 +3,6 @@ type: integration-architecture
 title: OAuth, Integrations, and External MCP
 description: How Bifrost configures workflow OAuth providers, stores user or service credentials, calls external MCP servers, and exposes its own role-filtered MCP tools.
 tags: [oauth, integrations, mcp, authentication, security]
-verified:
-  - by: openwiki/0.7.2
-    at: 2026-10-18T02:14:28.318Z
 sources:
   - id: openwiki-source-5d674a40718e7aa7da02ac10
     resource: repo://api/src/routers/mcp_connections.py
@@ -19,7 +16,10 @@ sources:
     resource: repo://api/src/services/mcp_server/auth.py
   - id: openwiki-source-c03efcc833e9a07a34b76a61
     resource: repo://api/src/services/mcp_server/tool_access.py
-generated: { by: "bifrost-atlas", at: "2026-10-18T02:14:28.318Z" }
+generated: { by: "bifrost-atlas", at: "2026-10-18T06:28:44.263Z" }
+verified:
+  - by: openwiki/0.7.2
+    at: 2026-10-18T06:28:44.263Z
 ---
 
 # OAuth, Integrations, and External MCP
@@ -28,7 +28,7 @@ There are separate OAuth surfaces in Bifrost. `/auth/oauth` handles user sign-in
 
 ## Workflow and integration OAuth
 
-OAuth provider configuration is admin-managed and contains provider endpoints, flow type, client configuration, requested scopes, and optional tenant/entity URL templates. The authorization-code path builds a redirect URL with state for CSRF protection and adds a PKCE challenge when the provider opts in. The callback validates the provider and redirect binding, consumes the PKCE verifier once before token exchange, and rejects missing or replayed PKCE state. Per-mapping state binds the resulting token to the mapping's organization rather than overwriting the global fallback token. Client-credentials providers skip user authorization and obtain tokens through the refresh path.
+OAuth provider configuration is admin-managed and contains provider endpoints, flow type, client configuration, requested scopes, and optional tenant/entity URL templates. The authorization-code path builds a redirect URL with state and adds a stored verifier/challenge only when the provider opts into PKCE. For PKCE-enabled providers, the callback atomically consumes the verifier once, validates its provider and redirect binding, and rejects missing, expired, or replayed PKCE state before token exchange. Per-mapping flows separately use signed state and consume a nonce before token exchange; that replay check is independent of PKCE and keeps a replay from overwriting another token slot. Non-PKCE integration-level callbacks retain legacy handling: undecodable state is treated as a legacy flow and can proceed without the PKCE provider/redirect binding check. Client-credentials providers skip user authorization and obtain tokens through the refresh path.
 
 Tokens are stored through the OAuth repository and are used by integration dispatch; a refresh scheduler maintains expiring tokens. Per-user and per-mapping credentials must retain their scope so one tenant's authorization cannot become a global integration credential. The workflow OAuth route is distinct from SSO and from MCP's protocol-specific access tokens.
 

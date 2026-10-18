@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:3973981e9596b546e69138ded6b7eec24a488d6f5c3067c4715a32a1582d196a",
+  "pageVersion": "sha256:c91e2a6253c203eefd52facbbda9e3ee08a088c9b4afa4672ca186b01fde34bc",
   "claims": [
     {
       "id": "claim_72cd936dc6af47e999f23455f41f7f2d",
@@ -87,15 +87,15 @@
       "statement": "Local `pre-pr` requires a clean worktree containing the latest fetched origin/main, plans against exact HEAD and base SHAs, and rechecks that the candidate did not change; default scoped runs defer comprehensive lanes to required CI, while `--full` explicitly runs comprehensive local stages.",
       "evidence": [
         {
-          "resource": "repo://test.sh#L1022-L1094",
+          "resource": "repo://test.sh#L1023-L1095",
           "version": "repo-lines-v1:sha256:f29c4f1af38b26339b35c0d68de6046da3eec505e8e6e86dbcd344eb733b259f:eyJzZWxlY3RlZExpbmVDb3VudCI6NzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjczNGQ3MGNiODUzNGFkOTkwMjM1NWVmYjZmYjc5ZGIxNzUxMjM3MmIxYmQyZGEzNzM0MzQ4YTVlYTA5NDUwNzYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg0ZTc2MDQyNmE4ZTNhODYwZGQxNTBlNmMxMTc4YmFhNmJmMTgyNGM1N2ZlODI3M2IwMmI0YTVjZTQ1M2FhNzEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImI3YzljOTM1OTY5NmJhYTBmMWE2MzY0ZjNiNzFmZDBmOWRlZDliOGI5MzliZmYwOGFlZjdmMzc0NGYzNmMxNzEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUxMTFjM2ZlMzY1ZWIyYjczZTE4MGI3OTM3NTJkOTM3NDY1YjgyYTdiMzI1OTBiMDc4ODA4YmRjM2NhMGQxNjkifQ"
         },
         {
-          "resource": "repo://test.sh#L948-L996",
+          "resource": "repo://test.sh#L949-L997",
           "version": "repo-lines-v1:sha256:00a3c81f2208d8ba32ef88508cbaa2966a86036f67cbaa05996e3f5b800f0ffb:eyJzZWxlY3RlZExpbmVDb3VudCI6NDksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM2YjdiZmEyNjM5NzUzYWRjNzYyMmNmMGZjMDg1ZDkxMDgxNzBiYmY3ODc4Yjc2NzAyMmQ0Y2MwZDY0YzJkYmEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjJiNGU4MWI1ZGE4MmFkNDg5MGEyYzliNzkxNmIyZWU1NTA2MWFkOGZhMjE0YjhkOGJjNzM5NzA4NWEzNTI0ZWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI1ZDkyZWZmOGIyZjJjOGIwMTJiODRjMDViZmEzMzY0MTJkODJiZTI3OWVlYjEyNzg3NDllMTM5ZTVjZTM3YWEifQ"
         },
         {
-          "resource": "repo://test.sh#L998-L1020",
+          "resource": "repo://test.sh#L999-L1021",
           "version": "repo-lines-v1:sha256:e618bdea39add8f61f3d030d8117b14222283fb58183366efd76c432ee26508a:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE5ZTA3NWY1ZmZiN2Q2MWQwNGY5OTM3NTE1ZWFjMTYzMjUxMzAwZGYyMTJhMDhjYWE2OGU3MDg1NjhkZDg2ZTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjMyNDUwNzhhYWU3ODY3NzZlMDI0ZWNmMzZmZTFhYWQ5ZjZhZjM3NTkwZWVmMWM3MWExNWFmN2FlNDQyMWE5NmUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjliNWE0MzI0N2M2MjRjMzQzNjA4Mjg0ODYxY2EzMjg1ODc1ZmZkYzUyMDU0YTc2ZjdkYzYzYzlhYjk5MDRkZjUifQ"
         }
       ]
@@ -127,7 +127,7 @@
           "version": "repo-lines-v1:sha256:4f10143ce16854b0ca56d1c714f83a76b05dc1305018a33bb64bd52ba31e4929:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgzN2I2YTJlYjk4MTBhMmNjY2QwYTQwZjAxZGRmZWExODEyZmY0MDM4ZmUxMTUyOGQ5MTkxNzlhNTJlMDJjMzMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjMwZDQ5MDAwMWYzNDY3ZjViYjc0MTI2ODRkMDkxOWYzYjM1ODNlZmJmOTdhMDRiNGUwZTgyMzc4YzY0MTAyZDIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU5M2RmMDEyZjFjOGEwZmU1MTE3OTVkZDkwNDVlZjYxMThhMjViMGJmZmZlYjAzOTAxNTQzMTlkYTlhYzM2ZGMifQ"
         },
         {
-          "resource": "repo://test.sh#L1022-L1094",
+          "resource": "repo://test.sh#L1023-L1095",
           "version": "repo-lines-v1:sha256:f29c4f1af38b26339b35c0d68de6046da3eec505e8e6e86dbcd344eb733b259f:eyJzZWxlY3RlZExpbmVDb3VudCI6NzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjczNGQ3MGNiODUzNGFkOTkwMjM1NWVmYjZmYjc5ZGIxNzUxMjM3MmIxYmQyZGEzNzM0MzQ4YTVlYTA5NDUwNzYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg0ZTc2MDQyNmE4ZTNhODYwZGQxNTBlNmMxMTc4YmFhNmJmMTgyNGM1N2ZlODI3M2IwMmI0YTVjZTQ1M2FhNzEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImI3YzljOTM1OTY5NmJhYTBmMWE2MzY0ZjNiNzFmZDBmOWRlZDliOGI5MzliZmYwOGFlZjdmMzc0NGYzNmMxNzEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUxMTFjM2ZlMzY1ZWIyYjczZTE4MGI3OTM3NTJkOTM3NDY1YjgyYTdiMzI1OTBiMDc4ODA4YmRjM2NhMGQxNjkifQ"
         }
       ]
@@ -199,6 +199,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-18T05:31:16.659Z"
+    "at": "2026-10-18T06:43:57.793Z"
   }
 }

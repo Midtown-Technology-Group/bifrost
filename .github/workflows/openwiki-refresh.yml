@@ -7,10 +7,6 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: openwiki-notification-${{ github.repository }}
-  cancel-in-progress: false
-
 jobs:
   notify:
     if: github.repository == 'Midtown-Technology-Group/bifrost' && vars.OPENWIKI_MAINTENANCE_ENABLED == 'true'
@@ -34,7 +30,24 @@ jobs:
               });
               const files = comparison.data.files ?? [];
               // GitHub caps this list at 300. Treat truncation conservatively.
-              sourceChanged = files.length >= 300 || files.some(f => !f.filename.startsWith('openwiki/'));
+              sourceChanged = files.length >= 300 || files.some(file => {
+                if (!file || typeof file !== 'object' || typeof file.filename !== 'string' || file.filename.length === 0) return true;
+                const candidates = [file.filename, file.previous_filename];
+                if (candidates.some(path => path !== undefined && (typeof path !== 'string' || path.length === 0))) return true;
+                const paths = candidates.filter(path => typeof path === 'string');
+                return paths.length === 0 || paths.some(path => {
+                  const parts = path.split('/');
+                  const safePath = path.startsWith('openwiki/') &&
+                    parts.every(part => part && part !== '.' && part !== '..');
+                  const generated = safePath && (
+                    (/^openwiki\/.+\.md$/i).test(path) ||
+                    (/^openwiki\/\.claims\/.+\.json$/).test(path) ||
+                    path === 'openwiki/.last-update.json' ||
+                    path === 'openwiki/.page-manifest.json'
+                  );
+                  return !generated || path === 'openwiki/INSTRUCTIONS.md';
+                });
+              });
             }
             const events = ['bifrost-docs-refresh'];
             if (sourceChanged) events.push('openwiki-source-updated');

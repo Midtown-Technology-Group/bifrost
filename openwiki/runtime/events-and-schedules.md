@@ -28,10 +28,10 @@ sources:
     resource: repo://api/tests/unit/routers/test_events_webhook_creation.py
   - id: openwiki-source-348a04725dd62e51f9e9b7ec
     resource: repo://api/tests/unit/services/test_webhook_lifecycle.py
-generated: { by: "bifrost-atlas", at: "2026-10-18T02:34:56.337Z" }
+generated: { by: "bifrost-atlas", at: "2026-10-18T06:28:44.263Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-18T02:51:00.673Z
+    at: 2026-10-18T06:28:44.263Z
 ---
 
 # Events, Webhooks, and Scheduling
@@ -46,7 +46,7 @@ When a topic event is emitted, active subscriptions on the matching source are e
 
 ## Webhook ingress and validation
 
-Webhook callbacks use the source UUID as an unguessable path and are publicly callable without user authentication. The handler resolves the source, applies a pre-auth rate limit scoped by source and client IP, then invokes the adapter to validate the provider request. Only after adapter acceptance does it charge the shared source quota and proceed to persist/queue deliveries. Invalid requests cannot consume the quota reserved for authenticated deliveries. Adapter rejection, unknown source, rate limiting, and internal processing errors have distinct HTTP outcomes; internal errors are not returned verbatim (`api/src/routers/hooks.py`).
+Webhook callbacks use the source UUID as an unguessable path and are publicly callable without user authentication. The handler resolves the source and creates both a pre-auth limiter scoped by source and client IP and a shared source quota only when `rate_limit_enabled` is true and `rate_limit_per_minute` is non-null. It then invokes the adapter to validate the provider request; after adapter acceptance it charges the shared source quota before persisting or queueing deliveries. If either setting condition is false, neither limiter applies. Adapter rejection, unknown source, configured rate limiting, and internal processing errors have distinct HTTP outcomes; internal errors are not returned verbatim ([ingress limiter construction and quota boundary](../../api/src/routers/hooks.py#L153-L214)).
 
 Adapters own provider-specific handshake and signature/client-state validation. A missing adapter rejects processing. The event processor turns validated requests into events and tracked deliveries; retrying a failed delivery resets its attempt state and queues it again, with queue failures recorded back as failed (`api/src/services/events/processor.py`).
 

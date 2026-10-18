@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:c16d237c628510ab9ec65b9737bd003904a7bcf42fa355cbdf2bb5cea8ab6ede",
+  "pageVersion": "sha256:3e412159e39e5e431cfd5e5163ac1d2ddf5fec1f60adeb6cf7953820cc80e45c",
   "claims": [
     {
       "id": "claim_733d3c76bfdf448aaad35f19736f94bd",
@@ -25,15 +25,15 @@
       "statement": "The required `E2E Tests` aggregate validates planning and prerequisite results and accepts a skipped backend or browser shard only when the affected plan explicitly marks that lane skipped; failures, cancellations, and unexpected skips fail the aggregate.",
       "evidence": [
         {
-          "resource": "repo://.github/workflows/ci.yml#L1062-L1111",
+          "resource": "repo://.github/workflows/ci.yml#L1064-L1113",
           "version": "repo-lines-v1:sha256:8b05d628aa3964c798f21e7ef54458a1c22a92d097831bdc2f55d1fa7b8e74dd:eyJzZWxlY3RlZExpbmVDb3VudCI6NTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNhNjU2NmJmOTNmM2E0YWQzYjJjMjM3OTI3NmM3YjA1MzI5MTliZjlhZGMyODZlMTVjNTJhOGM4Y2Y5MmE0YjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE0MDM2MzRjZWJhZGUyOTRhMzJlZjE0NzYyZGVlNWNhMTM0NjMxNzcyZGJhNzljZWExOTM4NWEyMjBmYTlhNzMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUxY2VjZGQ3YjNlZmI0ZGI4NTExMWUyNjUxOGUxODk0NDQ1MjcxMGNhMGU2ZjhiMmIyZDYwYTU0M2Y3OTFmZWQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk0MTE2ZDBlOTE3NjAxNWVhNzgwNmM4ODJiYzE4MTA1ODU4ODNhMDliMjljNjQ0ZmI5YWZjN2Y4YTI3ODRiMDgifQ"
         },
         {
-          "resource": "repo://.github/workflows/ci.yml#L829-L850",
+          "resource": "repo://.github/workflows/ci.yml#L831-L852",
           "version": "repo-lines-v1:sha256:5f02c7b7fcb7b64274cdb8668b4f7a741ac00689a7346e4d5da12f37973985c1:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQzMGE5ZWZlODI2YTJjNDk2YjYzYjUwYzM5NzI0ZjU3ZGFhZTg4NmQ4NWE2OWY1MTgzYzQxYWE2YTkwYTQ2ZTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIxODdjZTRmMDJhYjRmY2Y3Y2Q4MTc2ODMxNTgzNDVjN2ZjNTI0OTc5MzEwMWMxYWVkNWM4NGMxNGViMjg3ZmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImEwZWFlMzI4OTA5YTljNDllNjAyODkwZDk0NzU5ZGQ0NjFiYTQ0ZTc1MWU2MjhiZDE2ODM5YTVhNmU5OGYxZjgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImFjZDc0NmE5YmQ2OTg4YmVlNDQ2MTQxNjZlZTkyYTkxYTQ0M2MzZThjNDgxY2MxMjkxYTk2MzZjZjI0Nzk5MWIifQ"
         },
         {
-          "resource": "repo://.github/workflows/ci.yml#L958-L1028",
+          "resource": "repo://.github/workflows/ci.yml#L960-L1030",
           "version": "repo-lines-v1:sha256:18f41a34395c6dae70366f2fff6a8af9db66d232594f693e3b62ddc9508a769a:eyJzZWxlY3RlZExpbmVDb3VudCI6NzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFjY2IwZjZmYWJjY2FjY2U2YWJjYzdlYjA0YTBmZGM4NzBkODkwMWNjMDI3MGYzNDg2NTY3YWNjMjhiZmNhZWYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZjZjk5M2U0ZTdmMWI2YjFlMjNkNzdhZDJkMzJkYzU5NjQ1NWFjZjhiYWZmMTQ1N2VmNzQ3Nzk2YjhmNGE4ZGYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA4OTNmMGM2YTk0YTU1MjFiZjYxNjE3YzliYTExOTU5OWQ1MGViZDA0YTMxNDQ2ODEzYjJlYTZiNjQ2Y2JlZTMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY4MjZkZGI4ZjU0NTlmMjk0NTNkMzVjZWFiMWNhZTdkZGE0ZjAxMDg3NWU2NTVmNGVmZDIxZGEwZTgzMWRhMGMifQ"
         }
       ]
@@ -61,7 +61,7 @@
       "statement": "The CI enforcement-chain ownership audit runs in advisory report mode because CODEOWNERS ownership is not yet established; it is not evidence that owner review is an enforced gate.",
       "evidence": [
         {
-          "resource": "repo://.github/workflows/ci.yml#L506-L513",
+          "resource": "repo://.github/workflows/ci.yml#L516-L523",
           "version": "repo-lines-v1:sha256:c30079941e4bc3b4cf93cf9086da4d8e98ebf8c47878bc90556f8dcf0354abaa:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMzEzY2NiMTg0YzY0NDcxMTUxYzhkODRjOWUzNzIzMmQxMjliN2FjNDc3ZDVkZmFjNGY1ZTJiYTQxMGRiYWE1YiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNjM4ZjliMjg1ZTIxMzNhOGZhMGVjNTJmYWE0MTViZDZkMzFiZjNiNDk0NjkzOTM0NWEyMzUxMzkyOTBjNTdmYyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNDdmYmVkOTc2MzUyNjI5OTgxOTY3MjIxZDVlODhjNDliNmRkMWNjYTZmNTVjNmRhYzc2NzJjZjcwYTk5ODdjYyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYzlkODE1ZDc4MTAzMzhlODI5MWNiYzU1ZDAwYzQ2MzcwNGIwM2U0ZGQ3NGI4NWJiNzY3ZDZhNzA2YzUwNjM4NCJ9"
         },
         {
@@ -79,7 +79,7 @@
       "statement": "Stable release packaging binds a manifest to the exact tag source, build run, and image digests, then performs read-only container content checks for baked versions, server/CLI contract parity, migration heads, bundled CLI metadata, and client entrypoint; the acceptance script explicitly does not establish production or canary readiness.",
       "evidence": [
         {
-          "resource": "repo://.github/workflows/ci.yml#L1986-L2014",
+          "resource": "repo://.github/workflows/ci.yml#L1988-L2016",
           "version": "repo-lines-v1:sha256:03691c225160e98956bceebdce5f5a374596cfb7433fefd9bbf0ac52f91e3193:eyJzZWxlY3RlZExpbmVDb3VudCI6MjksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIxZGNmNDdkODI4ZmE3MjRlMTU3Mzg5NTU2NWE4ZWJmODZjNmFjZDg2NTNjYzkxZjBmYzRhNjRkZjhmYWNiNmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMzOGMzMjM5MWUzNjg0ODk5NGNmMmUwZjI5ODBjYWFlMWU5NDRiZGZmZjFhM2E4ZWUzNWYwZTAwODFmMTYwZDgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImEzNTQxMTA3ZTI5ZWRmZWFhYWI2Mjk4M2ZiMWQ4YzllNGMzM2U5OTc3YTQ4MGYxNjFjNzkzMTk1OTg5YWI4MGUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM4YWE3NWZlNzBlNWY0NmEyMTdlMjViNjA1NjAwZGU4ZWNiNmYxOTlkZjQ3NzU2YzU3ZGQ1NzQ5NDg0NTZjZDMifQ"
         },
         {
@@ -97,11 +97,11 @@
       "statement": "The release workflow publishes only after upload and readback of the expected immutable release assets; package publication is downstream of version-tag CI and remains separate from production deployment.",
       "evidence": [
         {
-          "resource": "repo://.github/workflows/ci.yml#L1548-L1616",
+          "resource": "repo://.github/workflows/ci.yml#L1550-L1618",
           "version": "repo-lines-v1:sha256:f78b5d33a00763482d021ab570c8c2fe6722c77fb8b9a342320b3874bbcb13db:eyJzZWxlY3RlZExpbmVDb3VudCI6NjksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVkZWE2Y2RiZTc5ZjQzOGYwZWZkMTc1YTViOThmOWRkYTJkMGVhYzg1N2EwN2U5NzRmYTNmMmU4OTk0MjJmOTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJmNTU5NzljZTczMDIwMzNlNmIyZmQ3ZDg4ZjUzN2EzYjhlMDkxZWEzMDVjODExZmZhMTI3NGJmNTc2NGVhNWUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjI5ZjBhYjlkYTBjZDgyZGE4ODFjNmYyMzZlNDI4MzcxZWFjZTdkYjhmYTY3NzcyNDkzMDNkOGIyMDEyYjVlZGIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI1MDhiNjZkNDBhMTk3MDg5NjlhM2QyZDU3OTNmYmFjODUzOGY5MDA1ZDI1MjBkOTljOTY4NWVkNDBkNWYwYzYifQ"
         },
         {
-          "resource": "repo://.github/workflows/ci.yml#L2065-L2125",
+          "resource": "repo://.github/workflows/ci.yml#L2067-L2127",
           "version": "repo-lines-v1:sha256:ea1e816539b9f01c0f2012eba6dbd47a54e252c56d75eafdda12d4862f006ecf:eyJzZWxlY3RlZExpbmVDb3VudCI6NjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBhNjMwYTdlOGI4ZWM5YjdmYmU3MWUxN2U2Njg1N2QwZmZhOGM5NTQxZGMzYTNmOTkyN2IzYmY1MjljOTA5Y2MiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJkYzFkYmY2ZTViZTA0OGExYjk4MTQ4NzUwN2U2NGRlODEyNDgxMDkyM2E1YWYzNTg0ZDg2ZDQxYTEyYTk0ZjUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE3ZGRkMDc3OGE5NWFjMmRlNWZkMWM0ZWNiNTA3ZjkwMTcyMjk4NzY0MWVjYzE5ZDlkNzg2YzU5YTRkMGU4Y2UiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoyLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijc1YTExZGE0NGM4MDI0ODZiYzZmNjU2NDBhYTQ4YTczMGYwZjY4NGM1YzA3YTQyYmEzY2QxNzM1ZWIzZmIwNzAifQ"
         },
         {
@@ -112,31 +112,43 @@
     },
     {
       "id": "claim_b55f711b52ee498ea106f892cca1aec0",
-      "statement": "The OpenWiki notification workflow is triggered by main-branch pushes, but its notify job is eligible only for the exact Midtown Bifrost repository when OPENWIKI_MAINTENANCE_ENABLED is exactly true; it retains read-only contents permission, non-cancelling concurrency, and a five-minute job limit.",
+      "statement": "The OpenWiki notification workflow is triggered by main-branch pushes, but its notify job is eligible only for the exact Midtown Bifrost repository when OPENWIKI_MAINTENANCE_ENABLED is exactly true; it retains read-only contents permission and a five-minute job limit, and has no workflow concurrency group that can replace a pending run.",
       "evidence": [
         {
-          "resource": "repo://.github/workflows/openwiki-refresh.yml#L1-L21",
-          "version": "repo-lines-v1:sha256:09b1e0510791c7d790b1d6a07d0ca0d0e5d336e125b8e252e1242cbffe5649e8:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMyNzdlZmNjMTMzYzU5ZTE1MjM3OWUzNTM2OWFlOGQ1NjQ4YjI3ZDE5NzMxM2MzNTQwZmYwYTU3YzhmZmY4N2YiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE1MWQ1MDE1YzlhNmIzZDk5NTc1ODJmYmRmYzViMTE1YTFmNzgzNzI3ZjhjMzE0ZTE1Njk1ODlmNDkxYmRlNDciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImIxNjk1M2JhZjkwOTZlZjdlZmUyMTgzYTZkYzFjOTVmMzhjNzFiZDVlYTQ5NWE1YTJiZjFjZjA4ODA2NDU1NTAifQ"
+          "resource": "repo://.github/workflows/openwiki-refresh.yml#L1-L23",
+          "version": "repo-lines-v1:sha256:ab8bc34b641d2cfbdccdd80232f80b0522ad856716b3daa89a31cd5d7fd60eba:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMyNzdlZmNjMTMzYzU5ZTE1MjM3OWUzNTM2OWFlOGQ1NjQ4YjI3ZDE5NzMxM2MzNTQwZmYwYTU3YzhmZmY4N2YiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk1ZWNlZTQ3MDZiZGYzNTdmOGYzZTY1Y2U1MzU0NzQxNjU3NjFjNTVkNjcxNTU3NzNiZmFmN2E1ZDg4ZThiM2UiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImYzNWYwMzcwZjg3NzdmZDI3M2Q1YmRkMDJhNjdlNTIyYjkwZDY0MDYzZjkyZjM2OGU2MjYyZjQzZGU0ODkzNTEifQ"
         }
       ]
     },
     {
       "id": "claim_4b32d2bc5bda49408547b35fe3d0fc4b",
-      "statement": "The notifier compares a valid nonzero push base with the new commit, treats missing or invalid bases as source changes, classifies any non-openwiki path as source-changing, and conservatively treats comparisons at the GitHub 300-file cap as source-changing.",
+      "statement": "The notifier compares a valid nonzero push base with the new commit and treats missing or invalid bases, comparisons at GitHub's 300-file cap, malformed entries, and unsafe or unmodeled paths as source changes. Each comparison entry must be an object with a nonempty filename; a missing filename fails closed even if previous_filename names generated documentation, and a malformed present previous_filename also fails closed. For renames both path endpoints are checked against the safe generated-doc allowlist: Markdown under openwiki/ except curated INSTRUCTIONS, JSON under openwiki/.claims/, and exactly the two checkpoint JSON files.",
       "evidence": [
         {
-          "resource": "repo://.github/workflows/openwiki-refresh.yml#L28-L38",
-          "version": "repo-lines-v1:sha256:71498ece131dcc3299225152be4027bd511917f82ceccc8245f1b9b50c3b3d36:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhkZTZjZmVhZGQ2NzRmZDIzZTcyZWYzOTIzMDQyZGY1MWUyMzAyYWZmNTQwNWNiYTIyMjIyOGM0ZjY5MDRlODAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU1MjJjNDJjZDE5YzZkMDNkODA4YzQ1MjcyMDU1MjgyNWI3ZWExYzViNDkxYjIxODUxMWNhYzc0MTVjZjlkOWIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM1NjUwNThjN2FmNzIyMGIzNjM1M2EyYjAzNTc4YzAwYzI3YzczMzZjYTVmNTFkMWFjYzExYmZlMTE0ZWVkNzUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA3MzUyZmM3MDJmYzE2YzcwZGNiODBmNWJiOGFmZjkzYThlYzA5ZDQwNDNhNmU2MTMxNmMzNDJhMjI2MWQ3M2MifQ"
+          "resource": "repo://.github/scripts/openwiki-refresh.test.mjs#L107-L125",
+          "version": "repo-lines-v1:sha256:260ce801426f2ef3a6843ad2304777791b185f23be00d1e1e483a6af32bff56c:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdjZDYwNGJlYjc3ZDJhYjgwODlhNjA4ZmI4NTE0YTEyM2RiOGEyZjVlOGM0ZjM2MjBlMjhlNzJjNTBlMmY3ZjAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImViMWVhMTVhMGY3YjFkNzc0MWMwOTJkZTgwMmQzOWZkYTQ0MzRlY2YwNWY5NDM1OGM2ZjM2OWNhOTExNmUyMmYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM2Nzk1MDBhYWVhMjUyNGE3NDIwYmZkZjkzODQ2ZWQ3YTRlNDZjNmIwMmZjMzc3MjRkYjY0MGI5MzQwOTAwZjQifQ"
+        },
+        {
+          "resource": "repo://.github/workflows/openwiki-refresh.yml#L24-L50",
+          "version": "repo-lines-v1:sha256:7261d79b217de862a1016d1b62c0c6b6a04f906d36743be1f9a1ed27792b03a8:eyJzZWxlY3RlZExpbmVDb3VudCI6MjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhkZTZjZmVhZGQ2NzRmZDIzZTcyZWYzOTIzMDQyZGY1MWUyMzAyYWZmNTQwNWNiYTIyMjIyOGM0ZjY5MDRlODAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImYzZDc0MzliOTI0ZGRkYmQ5MmNkZDI3NTM0MjQ1NmRmYWFiNjM5ZTNlMjY3ODM1Y2E1ODRkNjcwYzViNTNiYmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjBlNjdlZWEwMzE3ZDg1Y2M5ZGUxMzRhYWNkNDU2ZmI4OWY5M2Y1MDg1Nzk1OWU0ZDViNmZhMWQxNThlNDAxYzUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImYyYmI2ZDc0MjYzMDMwYWEyOThmZDliYzBjYmQyN2E2YTU4NWViYzdjYTY2ZDJhOGMwMzhjZTZkMGM5ZDhlZjMifQ"
         }
       ]
     },
     {
       "id": "claim_0008f80bf504477bafa431a7651e601e",
-      "statement": "Every push dispatches bifrost-docs-refresh to the private Bifrost operations repository with the member and commit payload; openwiki-source-updated is dispatched only when the push is classified as source-changing, so wiki-only changes request documentation refresh without a source-update event.",
+      "statement": "Every eligible push with an enrolled token dispatches bifrost-docs-refresh to the central Bifrost operations receiver with member and commit payload; openwiki-source-updated is added only when the comparison is classified as source-changing. Each run carries its own commit without a workflow concurrency group that could replace a pending run. The sender requires HTTP 204, which does not establish receiver adoption.",
       "evidence": [
         {
-          "resource": "repo://.github/workflows/openwiki-refresh.yml#L39-L49",
-          "version": "repo-lines-v1:sha256:bddb3da61421cf273e40a2d7c74ad72e03143062454062b150a876a3d56e9a8a:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgxOTA4Yzc1NWZmMmFhYjRmMzU2ZDc2MjcwZmQ1MDlhNjYzYzA4MmU0ZjNkYmEwYTViNTgyNDZlMjU5YjE5NmYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQwNzFjNDlmNTk2Yjc0NGRmMDBjNDUyNjhjM2I4YzA2MGMyYzg1NjQzNDFhZTMxMmY1ZTY3ZWVlYTU2YjcyZGEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA3M2ExN2EzMTRjYjQ0ODQ0M2RjZTQyNjk3OGE0Yzk0MTljNWE1YTc2NzViZjA4YjZmYzNkODkwNThkNmUzMWMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU1MjJjNDJjZDE5YzZkMDNkODA4YzQ1MjcyMDU1MjgyNWI3ZWExYzViNDkxYjIxODUxMWNhYzc0MTVjZjlkOWIifQ"
+          "resource": "repo://.github/scripts/openwiki-refresh.test.mjs#L147-L160",
+          "version": "repo-lines-v1:sha256:854dda0a9b5e615c3e77edeb181be88dcb24071446968582e2fe4cc8c433f328:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk2NzQzODViMDZlODllY2YyYTZhZTUwNTY3MGU2Y2ZlZDA5ZmE2Yzk0MTM5ODNlM2Q3NmE3ZDlkMjlhYmM3YTIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFhMDllODk3NWVkZGM0ZjVmZTM0ZjQwY2U1NGFjNjI3YWY2NmY0MjM0ZjI0MDlhMzZjM2YzZjRlZWU2ZWM3OGEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU2OTU2ZDAzYWZmMDkxNmY5NmE3NTJkOGY5ZjNlMWMwZmRjNWIyNDc1Zjc4ZDMyMzBhYWYxYzQ3ZGJhZDIyOTciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY2ZjViNDBiMTU4NDU3ZDE3ODY0ZjIxNzkwNzg2ZGQ1YTJlY2RiNjRiNjZhNjUxZjc4OGQ0ZTI1Y2QzMzAzZDIifQ"
+        },
+        {
+          "resource": "repo://.github/workflows/openwiki-refresh.yml#L22-L23",
+          "version": "repo-lines-v1:sha256:4443159d7d302fb32bdebcd44ccec9fd644de030277e33f907d510f303dac4ec:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOWE5NTdhYTU5MDBhYTI3NmY5YTYxOTY5NDQyMjJjY2MxMjRiZTk3OTUzZmFiMjZlZmYzZWY4NGNhNmMwY2Q2YSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOTVlY2VlNDcwNmJkZjM1N2Y4ZjNlNjVjZTUzNTQ3NDE2NTc2MWM1NWQ2NzE1NTc3M2JmYWY3YTVkODhlOGIzZSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMjZhY2ZmYWViY2JhOWM4ZmEzNzk1YWJhOWU3NGI1OWMwOTE0MzhlMzZiNGI4OTIxNGZhM2JjNDg3MjVhYTBiNSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZjM1ZjAzNzBmODc3N2ZkMjczZDViZGQwMmE2N2U1MjJiOTBkNjQwNjNmOTJmMzY4ZTYyNjJmNDNkZTQ4OTM1MSJ9"
+        },
+        {
+          "resource": "repo://.github/workflows/openwiki-refresh.yml#L52-L62",
+          "version": "repo-lines-v1:sha256:bddb3da61421cf273e40a2d7c74ad72e03143062454062b150a876a3d56e9a8a:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgxOTA4Yzc1NWZmMmFhYjRmMzU2ZDc2MjcwZmQ1MDlhNjYzYzA4MmU0ZjNkYmEwYTViNTgyNDZlMjU5YjE5NmYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQwNzFjNDlmNTk2Yjc0NGRmMDBjNDUyNjhjM2I4YzA2MGMyYzg1NjQzNDFhZTMxMmY1ZTY3ZWVlYTU2YjcyZGEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImMyNTE1MjZmZmFlYTA4MWQyN2Q2OWYyYjdhZjEzMDAyOGEzZTU1ZjdjNjMxZDJhNTk5MWJlNTdlNTIxNjIwMzkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU1MjJjNDJjZDE5YzZkMDNkODA4YzQ1MjcyMDU1MjgyNWI3ZWExYzViNDkxYjIxODUxMWNhYzc0MTVjZjlkOWIifQ"
         }
       ]
     },
@@ -145,24 +157,28 @@
       "statement": "When the exact-repository and opt-in activation gate is met, the workflow requires OPENWIKI_DISPATCH_TOKEN; if absent, it fails before dispatch with `OPENWIKI_DISPATCH_TOKEN is not enrolled; no source event was sent.` Source does not prove the variable or token is configured or that dispatches succeeded.",
       "evidence": [
         {
-          "resource": "repo://.github/workflows/openwiki-refresh.yml#L17-L27",
+          "resource": "repo://.github/workflows/openwiki-refresh.yml#L13-L23",
           "version": "repo-lines-v1:sha256:f1db98e1d9f2d92ef7cf37ded05d05ca9816ed779c608218f95c7cb3e9cb61ea:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMzMzczMzRhZWMwZGNiMjRlNDBlM2MyMGRjMDlkNTlhZjY3NDNkMDI3ZGJmZjUwYzFhY2EwODk3NDcxMTc2NzAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk1ZWNlZTQ3MDZiZGYzNTdmOGYzZTY1Y2U1MzU0NzQxNjU3NjFjNTVkNjcxNTU3NzNiZmFmN2E1ZDg4ZThiM2UiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImMyNzMyOTVlMzE1YmFiYjg2YWFiYzAxNDA4MzFiYjJjMmQ0ZjUyOGZhMjYyZjViN2Q4MzhlZWYwZDY1OTc1MjUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImYzNWYwMzcwZjg3NzdmZDI3M2Q1YmRkMDJhNjdlNTIyYjkwZDY0MDYzZjkyZjM2OGU2MjYyZjQzZGU0ODkzNTEifQ"
         }
       ]
     },
     {
       "id": "claim_936a9fd961b74f928a8ac67ea18012f4",
-      "statement": "Repository guidance directs contributors to the private architecture atlas and focused local OpenWiki retrieval, and links a portable reader/maintenance guide for linked workspaces and CLI access across harnesses.",
+      "statement": "Repository guidance directs contributors to the private architecture atlas and focused local OpenWiki retrieval, links a portable reader and maintenance guide for linked workspaces, and identifies the opt-in notification workflow plus protected-main companion maintenance workflow as the intended regeneration path; it says this repository has no scheduled regeneration job. Those local pointers do not establish current companion-workflow behavior or activation.",
       "evidence": [
         {
           "resource": "repo://AGENTS.md#L67-L69",
-          "version": "repo-lines-v1:sha256:5d90238d71f2cdf99eecc8956a85ab7a5accce6d97aad94e581a435ff69eb6a0:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMDc0NzlkMzEzNGI0MDFhZjA0NTdhNjEwOTYzZjRkZjIyYmVjY2Q2ZGU1M2Y0ZDgxNTY3MzQ0MDk4NmY0YjJiZCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMGUzZWFlOGFkZDUwZmY4ODMzMWQyNjRhNGViZDNkNzA3Zjg1NDNhZjcxNTM2N2JhZTViOWFiZjNkYzdlY2EyNiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNjkzOTEyY2QzYzMzZWRmZDIzZDM3NjRlMTdhYjI5NzQ3YjM3OTM3NDIzNmM2NGE3NmIwYTVmZmU0OGFkMzgwZSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjAsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSJ9"
+          "version": "repo-lines-v1:sha256:5d90238d71f2cdf99eecc8956a85ab7a5accce6d97aad94e581a435ff69eb6a0:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMDc0NzlkMzEzNGI0MDFhZjA0NTdhNjEwOTYzZjRkZjIyYmVjY2Q2ZGU1M2Y0ZDgxNTY3MzQ0MDk4NmY0YjJiZCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMGUzZWFlOGFkZDUwZmY4ODMzMWQyNjRhNGViZDNkNzA3Zjg1NDNhZjcxNTM2N2JhZTViOWFiZjNkYzdlY2EyNiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNjkzOTEyY2QzYzMzZWRmZDIzZDM3NjRlMTdhYjI5NzQ3YjM3OTM3NDIzNmM2NGE3NmIwYTVmZmU0OGFkMzgwZSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMWFhZWE5ZTkyYjcwNjQwM2ZlY2M0MGNlNzExNzhhMjA4YWFmY2ViNzlkZDQ0ZjExYTcwYTdhNGNiNGM4YzRjNSJ9"
+        },
+        {
+          "resource": "repo://AGENTS.md#L71-L73",
+          "version": "repo-lines-v1:sha256:a6aebf1410d831b89a61b22d0c831c967edc05ea7b4aaca6b9b1fddbb5f09b12:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZTU1ZGU5ODM4MTkyYjg5ODYwNzIxZGY0YWE3NmQzOTM0MjQwMzM1ZDlmZGNmMDE0NzBlZWQxZTJlZDQ4MWQ1MSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjY0NTdkMDU1ZGVhYjMwOWI5NmQ0NzE2ZjExM2I5NDY0YmU1NGZlMjM0NDI2MDM0MzE4ZTA4NWQzNzEyN2UyOSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNzI1MjIwMTk5ZDcyYjdhOGY2ZTFkMGFiZDU4MDFlNDY1N2U5NDRkYjAzZGIzMWE5NWJhM2M0YzdmOTRmNzFmNiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjAsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSJ9"
         }
       ]
     },
     {
       "id": "claim_3150d65ed24549eb95f0a10fc3a7ed1a",
-      "statement": "The platform affected-test planner classifies documentation-only changes from a fixed set of root guidance files, documentation roots, and OpenWiki prose, Claims, and two exact metadata files; pure documentation yields docs-only scope with all test lanes set to skip.",
+      "statement": "The platform affected-test planner classifies documentation-only changes from the fixed root guidance files and documentation roots, plus OpenWiki Markdown, JSON under openwiki/.claims/, and exactly openwiki/.last-update.json and openwiki/.page-manifest.json; a pure documentation diff yields docs-only scope with every test lane set to skip.",
       "evidence": [
         {
           "resource": "repo://api/scripts/plan_affected_tests.py#L251-L265",
@@ -184,11 +200,11 @@
     },
     {
       "id": "claim_a4c1c3aa04214f648226d934ab6a2c4d",
-      "statement": "The planner keeps OpenWiki policy and unmodelled files, CI-owned paths, and all deletions comprehensive; adding OpenWiki prose to API source remains affected scope with dependency analysis, while adding it to a CI workflow change remains comprehensive.",
+      "statement": "The planner keeps all deletions comprehensive, along with .openwikiignore, openwiki/.run.json, unmodeled OpenWiki files, CI-owned paths, and planner-selector changes; adding generated OpenWiki prose to API source retains affected dependency analysis, while adding it to a CI workflow remains comprehensive.",
       "evidence": [
         {
-          "resource": "repo://api/scripts/plan_affected_tests.py#L58-L75",
-          "version": "repo-lines-v1:sha256:ca28e5edc13511f3ecfe002417e50e262fb2b2904c8d4390b2d82446778a3066:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImYxOTQ2Y2UyMjgyZmUwOTUyMjI3ZWUzNDRmMGI3ZjM1NjM4M2IxNDFiYTlmMTcwZGUwNTUwZmM2ODI2MTI0MjIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZlNGUxNzNmYzY2NzJlYjk2MjJjOTk5MjcwMjc2MWQ4YjE1NDQ0MDc1MzA4ZmU3YmUwZjhhNDg3OGEyYTQ1NzciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjkwMTcxZjBjMjkxMzdiNDYyZTQwNGZjODk1Mjc1YzdhMjgxY2ZhZjM1NmEzMmU3MDdhNmNmZGUzYzBmNzYzNTQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ3M2IwNGE1OWIxNjNmOTY0NzM0ZTZkNjUzM2Y4ZjNkMTdhOWUwNjA4MmRjNDY3YzcwNGRjMGE0Mjc1NTdjMTYifQ"
+          "resource": "repo://api/scripts/plan_affected_tests.py#L58-L82",
+          "version": "repo-lines-v1:sha256:13d1a2aeb195c3a648a576b29ee45c6a05b14019a3e76fce361419bdf48c70d6:eyJzZWxlY3RlZExpbmVDb3VudCI6MjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImYxOTQ2Y2UyMjgyZmUwOTUyMjI3ZWUzNDRmMGI3ZjM1NjM4M2IxNDFiYTlmMTcwZGUwNTUwZmM2ODI2MTI0MjIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjkwMTcxZjBjMjkxMzdiNDYyZTQwNGZjODk1Mjc1YzdhMjgxY2ZhZjM1NmEzMmU3MDdhNmNmZGUzYzBmNzYzNTQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImZjYWFiNTg2ZGI5NDEwNmYyYTY0OTAwYTk5YmExMjhmODk4ZDBjYzhhNGE5ZGE3ZTY0ODE5ZWE0ODQ1MDliOWEifQ"
         },
         {
           "resource": "repo://api/scripts/plan_affected_tests.py#L761-L815",
@@ -203,6 +219,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-18T05:33:14.512Z"
+    "at": "2026-10-18T06:43:57.793Z"
   }
 }
