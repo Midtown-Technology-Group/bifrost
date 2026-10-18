@@ -49,6 +49,25 @@ def test_connection_round_trip_carries_all_callback_bindings():
     assert payload["nonce"] == nonce
 
 
+@pytest.mark.parametrize(
+    ("claims", "detail"),
+    [
+        ({"flow": "connection"}, "provider_id"),
+        ({"provider_id": "provider-1", "flow": "unexpected"}, "unsupported"),
+    ],
+)
+def test_decode_rejects_invalid_integration_state_shape(claims, detail):
+    from src.services.oauth_state_core import encode_state_jwt
+
+    token, _ = encode_state_jwt(
+        audience="bifrost-integration-oauth-state",
+        claims=claims,
+    )
+
+    with pytest.raises(OAuthStateError, match=detail):
+        decode_state(token)
+
+
 def test_nonce_is_unique_per_call():
     """Each encode call generates a fresh nonce so replay detection has something to bite on."""
     p, m = uuid4(), uuid4()

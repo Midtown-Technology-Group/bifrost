@@ -513,6 +513,215 @@ async def test_callback_rejects_missing_state_before_provider_exchange():
 
 
 @pytest.mark.asyncio
+async def test_callback_rejects_invalid_signed_state_before_provider_exchange():
+    consume = oauth_connections.consume_nonce
+
+    with (
+        patch.object(
+            oauth_connections,
+            "decode_state",
+            side_effect=oauth_connections.OAuthStateError("invalid state"),
+        ),
+        patch(
+            "src.services.oauth_provider.OAuthProviderClient.exchange_code_for_token",
+            new=AsyncMock(),
+        ) as exchange,
+    ):
+        with pytest.raises(HTTPException) as exc_info:
+            await oauth_connections.oauth_callback(
+                connection_name="goto",
+                request=_callback_request(),
+                ctx=_ctx(),
+                user=_user(),
+            )
+
+    assert exc_info.value.status_code == 400
+    assert "Invalid or expired OAuth state" in exc_info.value.detail
+    consume.assert_not_awaited()
+    exchange.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_callback_rejects_invalid_mapping_state_before_lookup_or_exchange():
+    consume = oauth_connections.consume_nonce
+    ctx = _ctx()
+    ctx.db.get = AsyncMock()
+
+    with (
+        patch.object(
+            oauth_connections,
+            "decode_state",
+            return_value={
+                "provider_id": str(PROVIDER_ID),
+                "mapping_id": "not-a-uuid",
+                "nonce": "nonce-1",
+            },
+        ),
+        patch(
+            "src.services.oauth_provider.OAuthProviderClient.exchange_code_for_token",
+            new=AsyncMock(),
+        ) as exchange,
+    ):
+        with pytest.raises(HTTPException) as exc_info:
+            await oauth_connections.oauth_callback(
+                connection_name="goto",
+                request=_callback_request(),
+                ctx=ctx,
+                user=_user(),
+            )
+
+    assert exc_info.value.status_code == 400
+    assert "Invalid OAuth mapping state" in exc_info.value.detail
+    ctx.db.get.assert_not_awaited()
+    consume.assert_not_awaited()
+    exchange.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_callback_rejects_deleted_mapping_before_nonce_or_exchange():
+    consume = oauth_connections.consume_nonce
+    ctx = _ctx()
+    ctx.db.get = AsyncMock(return_value=None)
+
+    with (
+        patch.object(
+            oauth_connections,
+            "decode_state",
+            return_value={
+                "provider_id": str(PROVIDER_ID),
+                "mapping_id": str(MAPPING_ID),
+                "nonce": "nonce-1",
+            },
+        ),
+        patch(
+            "src.services.oauth_provider.OAuthProviderClient.exchange_code_for_token",
+            new=AsyncMock(),
+        ) as exchange,
+    ):
+        with pytest.raises(HTTPException) as exc_info:
+            await oauth_connections.oauth_callback(
+                connection_name="goto",
+                request=_callback_request(),
+                ctx=ctx,
+                user=_user(),
+            )
+
+    assert exc_info.value.status_code == 400
+    assert "OAuth mapping no longer exists" in exc_info.value.detail
+    consume.assert_not_awaited()
+    exchange.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_callback_rejects_incomplete_connection_state_before_nonce_or_exchange():
+    consume = oauth_connections.consume_nonce
+
+    with (
+        patch.object(
+            oauth_connections,
+            "decode_state",
+            return_value={
+                "flow": "connection",
+                "provider_id": str(PROVIDER_ID),
+                "organization_id": None,
+                "redirect_uri": REDIRECT_URI,
+                "nonce": "nonce-1",
+            },
+        ),
+        patch(
+            "src.services.oauth_provider.OAuthProviderClient.exchange_code_for_token",
+            new=AsyncMock(),
+        ) as exchange,
+    ):
+        with pytest.raises(HTTPException) as exc_info:
+            await oauth_connections.oauth_callback(
+                connection_name="goto",
+                request=_callback_request(),
+                ctx=_ctx(),
+                user=_user(),
+            )
+
+    assert exc_info.value.status_code == 400
+    assert "Invalid OAuth connection state" in exc_info.value.detail
+    consume.assert_not_awaited()
+    exchange.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_callback_rejects_invalid_requested_organization_before_nonce_or_exchange():
+    organization_id = uuid4()
+    consume = oauth_connections.consume_nonce
+
+    with (
+        patch.object(
+            oauth_connections,
+            "decode_state",
+            return_value={
+                "flow": "connection",
+                "provider_id": str(PROVIDER_ID),
+                "user_id": str(USER_ID),
+                "organization_id": str(organization_id),
+                "redirect_uri": REDIRECT_URI,
+                "nonce": "nonce-1",
+            },
+        ),
+        patch(
+            "src.services.oauth_provider.OAuthProviderClient.exchange_code_for_token",
+            new=AsyncMock(),
+        ) as exchange,
+    ):
+        with pytest.raises(HTTPException) as exc_info:
+            await oauth_connections.oauth_callback(
+                connection_name="goto",
+                request=_callback_request(organization_id="not-a-uuid"),
+                ctx=_ctx(org_id=organization_id),
+                user=_user(),
+            )
+
+    assert exc_info.value.status_code == 400
+    assert "Invalid organization in OAuth callback" in exc_info.value.detail
+    consume.assert_not_awaited()
+    exchange.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_callback_rejects_requested_organization_mismatch_before_nonce_or_exchange():
+    organization_id = uuid4()
+    consume = oauth_connections.consume_nonce
+
+    with (
+        patch.object(
+            oauth_connections,
+            "decode_state",
+            return_value={
+                "flow": "connection",
+                "provider_id": str(PROVIDER_ID),
+                "user_id": str(USER_ID),
+                "organization_id": str(organization_id),
+                "redirect_uri": REDIRECT_URI,
+                "nonce": "nonce-1",
+            },
+        ),
+        patch(
+            "src.services.oauth_provider.OAuthProviderClient.exchange_code_for_token",
+            new=AsyncMock(),
+        ) as exchange,
+    ):
+        with pytest.raises(HTTPException) as exc_info:
+            await oauth_connections.oauth_callback(
+                connection_name="goto",
+                request=_callback_request(organization_id=str(uuid4())),
+                ctx=_ctx(org_id=organization_id),
+                user=_user(),
+            )
+
+    assert exc_info.value.status_code == 400
+    assert "OAuth callback organization does not match state" in exc_info.value.detail
+    consume.assert_not_awaited()
+    exchange.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("claim", "value", "detail"),
     [
