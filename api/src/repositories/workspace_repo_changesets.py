@@ -29,7 +29,11 @@ class WorkspaceRepoChangesetRepository:
             WorkspaceRepoChangeset.organization_id == organization_id,
         )
         if for_update:
-            stmt = stmt.with_for_update()
+            # ``expire_on_commit=False`` keeps this row in the session identity map
+            # across the external Git operation. Re-populate it while acquiring the
+            # lock so a later transaction cannot replace the durable operation owner
+            # and then be overwritten by this stale instance.
+            stmt = stmt.with_for_update().execution_options(populate_existing=True)
         return (await self.db.execute(stmt)).scalar_one_or_none()
 
     async def count_open(self, scope: str, organization_id: UUID) -> int:

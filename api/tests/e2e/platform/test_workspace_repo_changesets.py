@@ -7,10 +7,16 @@ from uuid import UUID, uuid4
 
 import pytest
 from sqlalchemy import delete, select
+from src.models.contracts.workspace_repo_changesets import WorkspaceRepoActivateRequest
 from src.models.orm.users import User
 from src.models.orm.workspace_repo_changesets import WorkspaceRepoChangeset
 from src.repositories.workspace_repo_changesets import GIT_CLOSURE_PENDING_STALE_AFTER
+from src.services.platform_commit_writer import (
+    PlatformCommitResult,
+    PlatformCommitSnapshot,
+)
 from src.services.repo_storage import RepoStorage
+from src.services.workspace_repo_changesets import WorkspaceRepoChangesetService
 
 from tests.e2e.conftest import execute_workflow_sync, write_and_register
 
@@ -470,6 +476,148 @@ async def test_workspace_repo_git_closure_retry_is_org_scoped_and_state_guarded(
             )
         )
         await db_session.commit()
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+@pytest.mark.parametrize("closeout_branch", ["already_current", "write"])
+async def test_git_closure_closeout_refreshes_durable_operation_owner(
+    async_session_factory,
+    platform_admin,
+    closeout_branch,
+):
+    """A stale attempt cannot overwrite an owner installed by another session."""
+    before = b"before"
+    target = b"target"
+    before_hash = hashlib.sha256(before).hexdigest()
+    target_hash = hashlib.sha256(target).hexdigest()
+    path = f"test_changesets_{uuid4().hex}/owned.txt"
+    replacement_operation_id = str(uuid4())
+
+    async with async_session_factory() as setup_db:
+        admin = (
+            await setup_db.execute(
+                select(User).where(User.id == platform_admin.user_id)
+            )
+        ).scalar_one()
+        assert admin.organization_id is not None
+        organization_id = admin.organization_id
+        row = WorkspaceRepoChangeset(
+            organization_id=organization_id,
+            scope=path.rsplit("/", 1)[0],
+            base_revision="0" * 64,
+            base_files={path: before_hash},
+            mutations=[
+                {
+                    "path": path,
+                    "operation": "write",
+                    "content_base64": base64.b64encode(target).decode(),
+                    "before_hash": before_hash,
+                    "after_hash": target_hash,
+                }
+            ],
+            status="activated",
+            created_by=admin.id,
+            failure_detail={
+                "phase": "git_closure",
+                "state": "failed",
+                "provenance": {
+                    "operator": "first-attempt",
+                    "commit_message": "close workspace source",
+                },
+            },
+        )
+        setup_db.add(row)
+        await setup_db.commit()
+        changeset_id = row.id
+
+    class OwnershipReplacingWriter:
+        write_calls = 0
+
+        async def replace_owner(self):
+            async with async_session_factory() as replacement_db:
+                replacement = (
+                    await replacement_db.execute(
+                        select(WorkspaceRepoChangeset)
+                        .where(WorkspaceRepoChangeset.id == changeset_id)
+                        .with_for_update()
+                    )
+                ).scalar_one()
+                replacement.failure_detail = {
+                    "phase": "git_closure",
+                    "state": "pending",
+                    "operation_id": replacement_operation_id,
+                    "provenance": {
+                        "operator": "replacement-attempt",
+                        "commit_message": "close workspace source",
+                    },
+                }
+                await replacement_db.commit()
+
+        async def inspect(self, paths, *, ref=None, reachable_from=None):
+            assert tuple(paths) == (path,)
+            if closeout_branch == "already_current":
+                await self.replace_owner()
+            return PlatformCommitSnapshot(
+                commit_sha="d" * 40,
+                tree_sha="e" * 40,
+                file_sha256={
+                    path: (
+                        target_hash
+                        if closeout_branch == "already_current"
+                        else before_hash
+                    )
+                },
+                signature_state="VALID",
+            )
+
+        async def write(self, request):
+            self.write_calls += 1
+            await self.replace_owner()
+            return PlatformCommitResult(
+                commit_sha="a" * 40,
+                tree_sha="b" * 40,
+                signature_state="VALID",
+            )
+
+    writer = OwnershipReplacingWriter()
+    try:
+        async with async_session_factory() as attempt_db:
+            service = WorkspaceRepoChangesetService(
+                attempt_db,
+                organization_id,
+                commit_writer=writer,
+            )
+            result = await service.retry_git_closure(
+                changeset_id,
+                WorkspaceRepoActivateRequest(push=True),
+                "retrying-operator",
+            )
+
+            assert result.status == "activated"
+            assert result.commit_sha is None
+            assert result.failure_detail["operation_id"] == replacement_operation_id
+
+        assert writer.write_calls == (0 if closeout_branch == "already_current" else 1)
+        async with async_session_factory() as observer_db:
+            persisted = (
+                await observer_db.execute(
+                    select(WorkspaceRepoChangeset).where(
+                        WorkspaceRepoChangeset.id == changeset_id
+                    )
+                )
+            ).scalar_one()
+            assert persisted.status == "activated"
+            assert persisted.commit_sha is None
+            assert persisted.failure_detail["operation_id"] == replacement_operation_id
+    finally:
+        async with async_session_factory() as cleanup_db:
+            await cleanup_db.execute(
+                delete(WorkspaceRepoChangeset).where(
+                    WorkspaceRepoChangeset.id == changeset_id
+                )
+            )
+            await cleanup_db.commit()
 
 
 @pytest.mark.e2e
