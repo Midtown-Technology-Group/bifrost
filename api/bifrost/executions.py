@@ -13,6 +13,8 @@ Redis stream directly — it is not an API call.
 
 from __future__ import annotations
 
+from uuid import UUID
+
 from .admin_models import ExecutionRedactionResult
 from .client import get_client, raise_for_status_with_detail
 from .models import ExecutionLog, WorkflowExecution
@@ -83,7 +85,7 @@ class Executions:
 
         Args:
             workflow_id: Filter by workflow UUID (optional)
-            scope: Filter to an organization UUID or global scope (optional).
+            scope: Filter to an organization UUID (optional).
                 Organization users remain pinned to their authorized scope;
                 the server validates this value.
             workflow_name: Filter by workflow name (optional)
@@ -115,6 +117,7 @@ class Executions:
                 - peak_memory_bytes, cpu_total_seconds: Resource metrics
 
         Raises:
+            ValueError: If scope is not an organization UUID
             RuntimeError: If not authenticated
 
         Example:
@@ -129,7 +132,10 @@ class Executions:
         # Build query parameters
         params = {}
         if scope is not None:
-            params["scope"] = scope
+            try:
+                params["scope"] = str(UUID(scope))
+            except (AttributeError, TypeError, ValueError) as exc:
+                raise ValueError("scope must be an organization UUID") from exc
         if workflow_id:
             params["workflow_id"] = workflow_id
         elif workflow_name:

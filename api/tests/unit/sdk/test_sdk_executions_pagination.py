@@ -94,9 +94,9 @@ async def test_list_preserves_legacy_workflow_name_filter(monkeypatch):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("scope", ["org-alpha", "global", ""])
-async def test_list_forwards_explicit_scope_for_server_validation(monkeypatch, scope):
+async def test_list_forwards_explicit_organization_scope(monkeypatch):
     module = importlib.import_module("bifrost.executions")
+    scope = "06BEA11A-0DF6-4524-8ED7-6CED21999B17"
     response = MagicMock()
     response.json.return_value = {"executions": [], "continuation_token": None}
     client = MagicMock()
@@ -109,5 +109,19 @@ async def test_list_forwards_explicit_scope_for_server_validation(monkeypatch, s
     client.engine_request.assert_awaited_once_with(
         "GET",
         "/api/executions",
-        params={"scope": scope, "limit": 50},
+        params={"scope": scope.lower(), "limit": 50},
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("scope", ["global", "", "org-alpha"])
+async def test_list_rejects_non_organization_scope(monkeypatch, scope):
+    module = importlib.import_module("bifrost.executions")
+    client = MagicMock()
+    client.engine_request = AsyncMock()
+    monkeypatch.setattr(module, "get_client", lambda: client)
+
+    with pytest.raises(ValueError, match="scope must be an organization UUID"):
+        await module.executions.list(scope=scope)
+
+    client.engine_request.assert_not_awaited()
