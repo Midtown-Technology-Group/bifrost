@@ -324,10 +324,11 @@ class TestExecuteAuthDecisions:
             input_data={},
             **{scope_field: str(resource.id)},
         )
+        principal = _user(org.id)
         with pytest.raises(SdkWorkflowExecutionError) as exc_info:
             await execute_sdk_workflow(
                 db_session,
-                _user(org.id),
+                principal,
                 request,
                 caller_org_id=org.id,
             )
