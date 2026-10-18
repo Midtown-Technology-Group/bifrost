@@ -110,3 +110,39 @@ async def test_stale_admin_token_does_not_bypass_current_rows(monkeypatch):
     with pytest.raises(HTTPException) as exc:
         await _promote(monkeypatch, principal, caller, agent)
     assert exc.value.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_real_promotion_serializes_loaded_mcp_connections(db_session):
+    """The real serializer must not issue an async lazy read after promotion."""
+    from src.models.orm.agents import Agent
+    from src.models.orm.organizations import Organization
+    from src.models.orm.users import Role, RolePermission, User, UserRole, UserRoleBoundary
+
+    org = Organization(name=f"Promotion serialization {uuid4()}", created_by="test")
+    role = Role(name=f"Promotion serializer {uuid4()}", created_by="test")
+    db_session.add_all([org, role])
+    await db_session.flush()
+    person = User(email=f"promotion-serializer-{uuid4()}@example.com", organization_id=org.id)
+    db_session.add(person)
+    await db_session.flush()
+    db_session.add_all([
+        RolePermission(role_id=role.id, permission="agents.promote"),
+        UserRole(user_id=person.id, role_id=role.id, assigned_by="test"),
+    ])
+    await db_session.flush()
+    db_session.add(UserRoleBoundary(user_id=person.id, role_id=role.id,
+                                   kind="organization", organization_id=org.id))
+    agent = Agent(name=f"Private serialization {uuid4()}", system_prompt="Synthetic fixture.",
+                  access_level=AgentAccessLevel.PRIVATE, organization_id=org.id,
+                  owner_user_id=person.id, created_by="test")
+    db_session.add(agent)
+    await db_session.flush()
+    response = await agents.promote_agent(
+        agent.id, AgentPromoteRequest(access_level=AgentAccessLevel.AUTHENTICATED),
+        db_session, UserPrincipal(user_id=person.id, email=person.email, organization_id=org.id),
+    )
+    assert response.id == agent.id
+    assert response.access_level == AgentAccessLevel.AUTHENTICATED
+    assert response.owner_user_id is None
+    assert response.mcp_connection_ids == []

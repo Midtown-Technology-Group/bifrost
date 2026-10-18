@@ -16,6 +16,7 @@ from shared.builtin_roles import (
     USER_ROLE_ID,
 )
 from src.core.constants import PROVIDER_ORG_ID
+from src.core.principal import UserPrincipal
 from src.models.contracts.access_list import AccessClass, AccessEntry, CurrentGate, InlineEffect
 from tests.helpers.authorization import platform_admin_grant
 from src.services.authorization.context import (
@@ -25,6 +26,8 @@ from src.services.authorization.context import (
     RoleGrant,
 )
 from src.services.authorization.evaluator import GLOBAL, HOME, cross_org, decide
+from src.services.authorization.enforce import Caller
+from src.services.bridge_authorization import bridge_permission_allowed
 
 CUSTOMER_A = UUID("00000000-0000-0000-0000-00000000a001")
 CUSTOMER_B = UUID("00000000-0000-0000-0000-00000000a002")
@@ -131,8 +134,16 @@ class TestBaseRole:
 class TestPlatformAdmin:
     @pytest.mark.parametrize("permission", ("devices.readwrite", "devices.execute", "agents.promote"))
     def test_wildcard_retains_explicit_bridge_grants(self, permission) -> None:
-        assert decide(_ctx(admin=True), _perm_entry(permission), HOME).allowed
-        assert decide(_ctx(admin=True), _perm_entry(permission), cross_org(CUSTOMER_B)).allowed
+        # Bridge operations use their dedicated current-row, home-bound gate.
+        # An invented authenticated /x entry has no cross-org widening and is
+        # correctly confined by the generic evaluator; it is not this policy.
+        ctx = _ctx(admin=True)
+        caller = Caller(
+            UserPrincipal(user_id=ctx.user_id, email="admin@example.test", organization_id=CUSTOMER_A),
+            ctx,
+        )
+        for target_org in (CUSTOMER_A, CUSTOMER_B, None):
+            assert bridge_permission_allowed(caller, permission, target_org)
 
     admin = _ctx(admin=True, home=PROVIDER_ORG_ID)
 

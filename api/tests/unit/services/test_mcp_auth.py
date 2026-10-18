@@ -28,6 +28,7 @@ from src.services.mcp_server.auth import (
     _mcp_auth_code_key,
     _mcp_client_key,
     _mcp_state_key,
+    _seal_auth_code_record,
 )
 
 
@@ -409,7 +410,7 @@ class TestTokenEndpoint:
     @pytest.mark.asyncio
     async def test_authorization_code_rejects_missing_or_expired_code(self, auth_provider):
         redis = AsyncMock()
-        redis.get.return_value = None
+        redis.getdel.return_value = None
 
         with patch("src.core.cache.get_shared_redis", AsyncMock(return_value=redis)):
             response = await auth_provider._token(self._request_with_form({
@@ -423,12 +424,12 @@ class TestTokenEndpoint:
 
         assert response.status_code == 400
         assert json.loads(response.body)["error"] == "invalid_grant"
-        redis.get.assert_awaited_once_with(_mcp_auth_code_key("missing-code"))
+        redis.getdel.assert_awaited_once_with(_mcp_auth_code_key("missing-code"))
 
     @pytest.mark.asyncio
     async def test_authorization_code_rejects_redirect_uri_mismatch(self, auth_provider):
         redis = AsyncMock()
-        redis.get.return_value = json.dumps({
+        redis.getdel.return_value = _seal_auth_code_record("code-1", {
             "redirect_uri": "https://client.example/callback",
             "client_id": "client-1",
             "code_challenge": "challenge",
@@ -447,12 +448,13 @@ class TestTokenEndpoint:
 
         assert response.status_code == 400
         assert json.loads(response.body)["error_description"] == "redirect_uri mismatch"
-        redis.delete.assert_awaited_once_with(_mcp_auth_code_key("code-1"))
+        redis.getdel.assert_awaited_once_with(_mcp_auth_code_key("code-1"))
+        redis.delete.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_authorization_code_rejects_client_id_mismatch(self, auth_provider):
         redis = AsyncMock()
-        redis.get.return_value = json.dumps({
+        redis.getdel.return_value = _seal_auth_code_record("code-1", {
             "redirect_uri": "https://client.example/callback",
             "client_id": "client-1",
             "code_challenge": "challenge",
@@ -475,7 +477,7 @@ class TestTokenEndpoint:
     @pytest.mark.asyncio
     async def test_authorization_code_rejects_invalid_pkce_verifier(self, auth_provider):
         redis = AsyncMock()
-        redis.get.return_value = json.dumps({
+        redis.getdel.return_value = _seal_auth_code_record("code-1", {
             "redirect_uri": "https://client.example/callback",
             "client_id": "client-1",
             "code_challenge": "not-the-verifier-hash",
@@ -502,7 +504,7 @@ class TestTokenEndpoint:
             hashlib.sha256(verifier.encode()).digest()
         ).rstrip(b"=").decode()
         redis = AsyncMock()
-        redis.get.return_value = json.dumps({
+        redis.getdel.return_value = _seal_auth_code_record("code-1", {
             "user_id": "user-1",
             "email": "user@example.com",
             "redirect_uri": "https://client.example/callback",
@@ -512,6 +514,7 @@ class TestTokenEndpoint:
             "resource": auth_provider.resource,
         })
         user = MagicMock()
+        user.identity_kind = None
         user.id = "user-1"
         user.email = "user@example.com"
         user.name = "MCP User"
@@ -548,6 +551,8 @@ class TestTokenEndpoint:
         redis.setex.assert_awaited_once()
         mock_external.assert_awaited_once_with(db, user)
         assert mock_access.call_args.kwargs["data"]["is_external"] is True
+        assert mock_access.call_args.kwargs["data"]["resource"] == auth_provider.resource
+        assert mock_access.call_args.kwargs["audience"] == auth_provider.resource
 
     @pytest.mark.asyncio
     async def test_refresh_token_requires_refresh_token(self, auth_provider):
@@ -596,6 +601,7 @@ class TestTokenEndpoint:
     @pytest.mark.asyncio
     async def test_refresh_token_returns_rotated_tokens(self, auth_provider):
         user = MagicMock()
+        user.identity_kind = None
         user.id = "user-1"
         user.email = "user@example.com"
         user.name = "MCP User"
@@ -632,12 +638,15 @@ class TestTokenEndpoint:
         assert token_data["is_superuser"] is True
         assert token_data["is_external"] is False
         assert token_data["org_id"] is None
+        assert token_data["resource"] == auth_provider.resource
+        assert mock_access.call_args.kwargs["audience"] == auth_provider.resource
         redis.delete.assert_awaited_once()
         redis.setex.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_refresh_token_rejects_replay_after_rotation(self, auth_provider):
         user = MagicMock()
+        user.identity_kind = None
         user.id = "user-1"
         user.email = "user@example.com"
         user.name = "MCP User"

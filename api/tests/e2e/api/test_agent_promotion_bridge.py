@@ -44,6 +44,7 @@ def test_owner_home_grant_and_immediate_revocation(e2e_client, platform_admin):
                                        json={"access_level": "authenticated"}))
         assert promoted["access_level"] == "authenticated"
         assert promoted["owner_user_id"] is None
+        assert promoted["mcp_connection_ids"] == []
 
         revoked = create_private("revoked")
         _set_grants(e2e_client, admin, role["id"], [])
@@ -57,6 +58,7 @@ def test_owner_home_grant_and_immediate_revocation(e2e_client, platform_admin):
         promoted = ok(e2e_client.post(f"/api/agents/{revoked['id']}/promote", headers=admin,
                                        json={"access_level": "authenticated"}))
         assert promoted["access_level"] == "authenticated"
+        assert promoted["mcp_connection_ids"] == []
     finally:
         for agent_id in agent_ids:
             response = e2e_client.delete(f"/api/agents/{agent_id}", headers=admin)
@@ -133,7 +135,10 @@ async def test_http_promotion_owner_home_solution_and_permission_matrix(
         # A Platform Admin still cannot mutate Solution-owned agent state.
         assert promote("solution", admin).status_code == 409
         # The Admin exception does cover a different owner's organization.
-        assert promote("foreign-org", admin).status_code == 200
+        admin_promoted = ok(promote("foreign-org", admin))
+        assert admin_promoted["access_level"] == "authenticated"
+        assert admin_promoted["owner_user_id"] is None
+        assert admin_promoted["mcp_connection_ids"] == []
 
         _set_grants(e2e_client, admin, role["id"], [])
         for permission in ("agents.readwrite", "agents.readwrite.all"):

@@ -143,11 +143,16 @@ async def test_junction_edits_preserve_person_and_engine_content_scope(
                                      params={"namespace": namespace, "key": label, "scope": scope})
                 assert sdk.status_code == 200, f"engine SDK {label}: {sdk.status_code}"
                 assert sdk.json()["content"] == docs[label]["content"]
-            direct = e2e_client.get(
-                f"/api/knowledge-sources/{namespace}/documents/{docs['foreign']['id']}", headers=engine_headers,
-            )
-            assert direct.status_code == 200
-            assert direct.json()["content"] == docs["foreign"]["content"]
+            # The direct UUID API constructs a home-scoped repository even
+            # for engine credentials. Preserve that existing home/global
+            # filter; explicit cross-org SDK scope above is a separate path.
+            for label, doc in docs.items():
+                direct = e2e_client.get(
+                    f"/api/knowledge-sources/{namespace}/documents/{doc['id']}", headers=engine_headers,
+                )
+                assert direct.status_code == (404 if label == "foreign" else 200)
+                if label != "foreign":
+                    assert direct.json()["content"] == doc["content"]
 
         def assert_selected(expected):
             selected = ok(e2e_client.get("/api/agents/accessible-knowledge", headers=person.headers))

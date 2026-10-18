@@ -532,19 +532,18 @@ class BifrostAuthProvider(AuthProvider):
                     status_code=400,
                 )
 
-            # Get auth code data from Redis
+            # Atomically consume before stored-record and client/PKCE checks.
+            # Separate GET/DELETE lets concurrent exchanges redeem the same code.
+            # Redis failure propagates; there is no non-atomic fallback.
             r = await get_shared_redis()
             code_key = _mcp_auth_code_key(code)
-            auth_code_data_json = await r.get(code_key)
+            auth_code_data_json = await r.getdel(code_key)
 
             if not auth_code_data_json:
                 return JSONResponse(
                     {"error": "invalid_grant", "error_description": "Invalid or expired authorization code"},
                     status_code=400
                 )
-
-            # Delete auth code (one-time use)
-            await r.delete(code_key)
 
             auth_code_data = _open_auth_code_record(code, auth_code_data_json)
             if auth_code_data is None:

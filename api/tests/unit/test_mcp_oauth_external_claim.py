@@ -73,7 +73,7 @@ async def test_auth_code_grant_stamps_is_external():
 
     provider = BifrostAuthProvider(base_url="http://test")
 
-    # Redis: return the stored auth-code data, then accept delete.
+    # Redis: atomically consume the sealed auth-code record.
     auth_code_data = {
         "user_id": str(user.id),
         "email": user.email,
@@ -87,7 +87,7 @@ async def test_auth_code_grant_stamps_is_external():
         "resource": provider.resource,
     }
     redis = AsyncMock()
-    redis.get = AsyncMock(return_value=json.dumps(auth_code_data))
+    redis.getdel = AsyncMock(return_value=json.dumps(auth_code_data))
     redis.delete = AsyncMock()
 
     form = {
@@ -111,7 +111,7 @@ async def test_auth_code_grant_stamps_is_external():
         hashlib.sha256("verifier".encode()).digest()
     ).rstrip(b"=").decode()
     auth_code_data["code_challenge"] = expected
-    redis.get = AsyncMock(return_value=_seal_auth_code_record("thecode", auth_code_data))
+    redis.getdel = AsyncMock(return_value=_seal_auth_code_record("thecode", auth_code_data))
 
     with patch("src.core.cache.get_shared_redis", new=AsyncMock(return_value=redis)):
         for p in ctx:

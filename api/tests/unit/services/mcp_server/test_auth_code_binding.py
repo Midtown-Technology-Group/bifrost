@@ -7,6 +7,7 @@ record stored under the derived key with a matching tag, once.
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import hashlib
 import json
@@ -34,9 +35,15 @@ class _FakeRedis:
 
     def __init__(self) -> None:
         self.values: dict[str, str] = {}
+        self.getdel_keys: list[str] = []
 
     async def get(self, name: str) -> str | None:
         return self.values.get(name)
+
+    async def getdel(self, name: str) -> str | None:
+        # Redis executes this fetch-and-delete as one indivisible command.
+        self.getdel_keys.append(name)
+        return self.values.pop(name, None)
 
     async def setex(self, name: str, time: int, value: str) -> bool:
         self.values[name] = value
@@ -73,7 +80,8 @@ def minted(user: SimpleNamespace, redis: _FakeRedis):
     """Patch the token endpoint's dependencies; record minted access-token data."""
     minted_tokens: list[dict[str, Any]] = []
 
-    def create_access_token(data: dict, expires_delta: Any = None) -> str:
+    def create_access_token(data: dict, expires_delta: Any = None, *, audience: str | None = None) -> str:
+        assert audience == data["resource"]
         minted_tokens.append(data)
         return "minted.jwt"
 
@@ -104,6 +112,7 @@ async def _issue_code(provider: BifrostAuthProvider, redis: _FakeRedis, user: Si
         "state": "client-state",
         "code_challenge": _challenge(_VERIFIER),
         "scope": "mcp:access",
+        "resource": provider.resource,
     })
     request = SimpleNamespace(
         query_params={"internal_state": "internal"},
@@ -127,6 +136,7 @@ async def _exchange(provider: BifrostAuthProvider, code: str) -> tuple[int, dict
         "redirect_uri": _REDIRECT_URI,
         "code_verifier": _VERIFIER,
         "client_id": "client",
+        "resource": provider.resource,
     }
     request = SimpleNamespace(form=AsyncMock(return_value=form))
     response = await provider._token(request)  # type: ignore[arg-type]
@@ -183,6 +193,7 @@ async def test_record_under_a_key_not_derived_with_the_secret_is_rejected(
         "redirect_uri": _REDIRECT_URI,
         "client_id": "client",
         "scope": "mcp:access",
+        "resource": provider.resource,
     })
 
     status, body = await _exchange(provider, code)
@@ -258,3 +269,70 @@ def test_auth_code_key_depends_on_the_secret(monkeypatch: pytest.MonkeyPatch) ->
 
     assert second != first
     assert prefixed
+
+
+async def test_concurrent_exchanges_have_exactly_one_winner(
+    user: SimpleNamespace, redis: _FakeRedis, minted: list[dict[str, Any]], monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The old GET/DELETE path deterministically reads the same snapshot twice.
+
+    The barrier releases only after both legacy reads captured the code. Atomic
+    GETDEL never uses that path and grants exactly one caller the stored record.
+    No timing delay, backend retry, or increased timeout is involved.
+    """
+    provider = BifrostAuthProvider(base_url="http://test")
+    code = await _issue_code(provider, redis, user)
+    key = _mcp_auth_code_key(code)
+    original_get = redis.get
+    both_legacy_readers = asyncio.Barrier(2)
+
+    async def interleaved_get(name: str) -> str | None:
+        snapshot = await original_get(name)
+        if name == key:
+            await both_legacy_readers.wait()
+        return snapshot
+
+    monkeypatch.setattr(redis, "get", interleaved_get)
+    results = await asyncio.gather(_exchange(provider, code), _exchange(provider, code))
+    assert sorted(status for status, _ in results) == [200, 400]
+    assert next(body for status, body in results if status == 400)["error"] == "invalid_grant"
+    assert len(minted) == 1
+    assert redis.getdel_keys == [key, key]
+    assert key not in redis.values
+
+
+async def test_atomic_consumption_failure_does_not_fall_back_or_mint(
+    user: SimpleNamespace, redis: _FakeRedis, minted: list[dict[str, Any]], monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    provider = BifrostAuthProvider(base_url="http://test")
+    code = await _issue_code(provider, redis, user)
+    getdel = AsyncMock(side_effect=RuntimeError("synthetic atomic consume failure"))
+    nonatomic_get = AsyncMock()
+    monkeypatch.setattr(redis, "getdel", getdel)
+    monkeypatch.setattr(redis, "get", nonatomic_get)
+    with pytest.raises(RuntimeError, match="synthetic atomic consume failure"):
+        await _exchange(provider, code)
+    assert minted == []
+    getdel.assert_awaited_once_with(_mcp_auth_code_key(code))
+    nonatomic_get.assert_not_awaited()
+
+
+@pytest.mark.parametrize(("field", "wrong_value", "description"), [
+    ("redirect_uri", "http://other.example/cb", "redirect_uri mismatch"),
+    ("client_id", "other-client", "client_id mismatch"),
+    ("code_verifier", "wrong-verifier", "Invalid code_verifier"),
+])
+async def test_invalid_bound_exchange_still_burns_the_code(
+    user: SimpleNamespace, redis: _FakeRedis, minted: list[dict[str, Any]], field: str, wrong_value: str, description: str,
+) -> None:
+    provider = BifrostAuthProvider(base_url="http://test")
+    code = await _issue_code(provider, redis, user)
+    form = {"grant_type": "authorization_code", "code": code, "redirect_uri": _REDIRECT_URI,
+            "client_id": "client", "code_verifier": _VERIFIER, "resource": provider.resource, field: wrong_value}
+    response = await provider._token(SimpleNamespace(form=AsyncMock(return_value=form)))  # type: ignore[arg-type]
+    assert response.status_code == 400
+    assert json.loads(bytes(response.body))["error_description"] == description
+    status, body = await _exchange(provider, code)
+    assert status == 400 and body["error"] == "invalid_grant"
+    assert minted == []
+    assert _mcp_auth_code_key(code) not in redis.values

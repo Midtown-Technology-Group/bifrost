@@ -73,50 +73,79 @@ def test_cli_requires_version_and_rejects_nonbridge_choices():
 
 
 @pytest.mark.asyncio
-async def test_worker_mounts_canonical_bridge_handlers_but_engine_is_refused():
+async def test_worker_mounts_canonical_bridge_handlers_but_engine_is_refused(
+    async_session_factory,
+):
+    from datetime import datetime, timezone
     import httpx
     from uuid import uuid4
 
-    from src.core.auth import get_current_active_user
-    from src.core.database import get_db
-    from src.core.principal import UserPrincipal
+    from src.core.security import mint_engine_token
+    from src.models.orm.executions import WorkflowExecutionAttempt
+    from src.routers.roles import router as roles_router
     from src.services.execution.worker_sdk_http import (
         ROLES_ROUTE_METHODS,
         build_worker_sdk_app,
+    )
+    from tests.helpers.live_execution import (
+        create_live_execution,
+        delete_live_execution,
     )
 
     path = "/api/roles/{role_id}/bridge-grants"
     assert ROLES_ROUTE_METHODS[path] == frozenset({"GET", "PUT"})
     app = build_worker_sdk_app()
-    principal = UserPrincipal(
-        user_id=uuid4(),
-        email="engine@example.test",
-        organization_id=None,
-        is_superuser=True,
-        engine_execution_id=uuid4(),
-        is_engine_token=True,
-    )
+    canonical = [
+        route for route in roles_router.routes if getattr(route, "path", None) == path
+    ]
+    mounted = [route for route in app.routes if getattr(route, "path", None) == path]
+    assert len(canonical) == len(mounted) == 2
+    assert {id(route) for route in mounted} == {id(route) for route in canonical}
 
-    async def current_engine():
-        return principal
-
-    async def database():
-        yield object()
-
-    app.dependency_overrides[get_current_active_user] = current_engine
-    app.dependency_overrides[get_db] = database
-    async with httpx.AsyncClient(
-        transport=httpx.ASGITransport(app=app), base_url="http://worker-local"
-    ) as client:
-        url = f"/api/roles/{uuid4()}/bridge-grants"
-        read = await client.get(url)
-        write = await client.put(
-            url,
-            json={
-                "permissions": ["devices.execute"],
-                "expected_permissions": [],
-                "expected_version": "a" * 64,
-            },
+    # Reused APIRoutes retain their original dependency provider. Exercise real
+    # bearer authentication instead of app overrides that never reach them.
+    execution_id, attempt_token = uuid4(), uuid4()
+    await create_live_execution(async_session_factory, str(execution_id))
+    try:
+        now = datetime.now(timezone.utc)
+        async with async_session_factory() as db:
+            db.add(
+                WorkflowExecutionAttempt(
+                    execution_id=execution_id,
+                    attempt_number=1,
+                    claim_token=attempt_token,
+                    status="claimed",
+                    phase="claim",
+                    published_at=now,
+                    claimed_at=now,
+                )
+            )
+            await db.commit()
+        token, _ = mint_engine_token(
+            execution_id=str(execution_id),
+            attempt_token=str(attempt_token),
+            global_repo_access=True,
+            timeout_seconds=300,
         )
-    assert read.status_code == write.status_code == 403
-    assert "Only a Platform Admin" in read.json()["detail"]
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://worker-local"
+        ) as client:
+            url = f"/api/roles/{uuid4()}/bridge-grants"
+            anonymous = await client.get(url)
+            headers = {"Authorization": f"Bearer {token}"}
+            read = await client.get(url, headers=headers)
+            write = await client.put(
+                url,
+                headers=headers,
+                json={
+                    "permissions": ["devices.execute"],
+                    "expected_permissions": [],
+                    "expected_version": "a" * 64,
+                },
+            )
+        assert anonymous.status_code == 401
+        assert read.status_code == write.status_code == 403
+        assert "Only a Platform Admin" in read.json()["detail"]
+        assert "Only a Platform Admin" in write.json()["detail"]
+    finally:
+        await delete_live_execution(async_session_factory, str(execution_id))

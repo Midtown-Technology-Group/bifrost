@@ -168,6 +168,7 @@ async def test_grant_committed_while_support_waits_is_seen_before_authorization(
     async with AsyncSession(async_engine, expire_on_commit=False) as seed:
         target, role, caller = await _setup(seed)
         home = target.organization_id
+        user_ids = [target.id, caller.principal.user_id]
         assert caller.ctx is not None
         role_ids = [role.id, *(grant.role_id for grant in caller.ctx.role_grants)]
         await seed.commit()
@@ -201,6 +202,7 @@ async def test_grant_committed_while_support_waits_is_seen_before_authorization(
                     await asyncio.gather(mutation, return_exceptions=True)
     finally:
         async with AsyncSession(async_engine) as cleanup:
-            await cleanup.execute(delete(Organization).where(Organization.id == home))
+            await cleanup.execute(delete(User).where(User.id.in_(user_ids)))
             await cleanup.execute(delete(Role).where(Role.id.in_(role_ids)))
+            await cleanup.execute(delete(Organization).where(Organization.id == home))
             await cleanup.commit()

@@ -1,8 +1,8 @@
-"""Persona x operation matrix: the R2c evaluator against today's behaviour.
+"""Persona x operation matrix: evaluator plus existing MTG dedicated guards.
 
-For every access-list entry, every persona and every target, the evaluator
-must decide what today's code decides (``legacy_oracle``), except the two
-listed differences:
+For every access-list entry, persona and target, the composed authorization
+model must match the route reference (the upstream ``legacy_oracle`` plus
+explicit MTG credential/grant guards), except the two listed differences:
 
 - a provider-org member on an entry that records an ``intended_change`` (the
   provider-org non-admin path goes away at R3), and
@@ -14,12 +14,24 @@ Routes already cut over to the evaluator (``current_gate=evaluator``) are
 also checked through the enforced decision itself, with execution
 credentials and the personas whose access the cutover approves (see the
 section at the end).
+
+MTG bridge operations additionally use the actual dedicated home-org gate.
+Capability-only uploads, pinned execution resources and Teams submissions
+retain their additional guards: a dependency floor is not their full policy.
+Every route/persona/target cell remains asserted, with the special guards
+linked to their handlers and exercised independently below.
 """
 
 from __future__ import annotations
 
+import ast
 from collections import defaultdict
+from pathlib import Path
+from types import SimpleNamespace
 from uuid import uuid4
+
+import pytest
+from fastapi import HTTPException, Request
 
 from shared.builtin_roles import (
     PLATFORM_OPERATOR_PERMISSIONS,
@@ -45,7 +57,9 @@ from src.services.authorization.enforce import (
     entry_for_operation,
     operation_key,
 )
-from src.services.authorization.evaluator import GLOBAL, HOME, Target, cross_org, decide
+from src.services.authorization.evaluator import GLOBAL, HOME, Decision, Target, TargetKind, cross_org, decide
+from src.services.bridge_authorization import bridge_permission_allowed
+from src.services.permission_catalog import _BRIDGE_ROW_CHECKS
 from tests.unit.authorization.legacy_oracle import (
     CUSTOMER_ORG_ID,
     OTHER_CUSTOMER_ORG_ID,
@@ -62,6 +76,64 @@ TARGETS: tuple[tuple[str, Target, bool], ...] = (
 
 _DECIDERS = dict(zip((e.key for e in ACCESS_LIST), effective_entries(ACCESS_LIST)))
 
+_BRIDGE_PERMISSIONS = {"devices.readwrite", "devices.execute", "agents.promote"}
+_UPLOAD = ("PUT", "/api/forms/{form_id}/upload")
+_EXECUTION_RESOURCE = ("GET", "/api/sdk/resources/{path}")
+_TEAMS_EVENT = ("POST", "/api/chat/teams/events")
+
+
+def _route_reference(persona: Persona, entry: AccessEntry, cross: bool) -> bool:
+    """The coarse upstream oracle has no legacy-JSON or capability principal.
+
+    The five existing personas hold no explicit legacy bridge grant, signed
+    form-upload capability, or Solution engine attempt. Missing those inputs
+    must deny; a dependency floor of ``none``/``authenticated`` is not a grant.
+    The bridge has its independent Admin wildcard exception at every target.
+    """
+    if entry.key in _BRIDGE_ROW_CHECKS:
+        assert entry.permission in _BRIDGE_PERMISSIONS
+        assert entry.permission is not None
+        return persona.is_superuser
+    if entry.key in {_UPLOAD, _EXECUTION_RESOURCE}:
+        return False
+    return legacy_decide(persona, entry, cross)
+
+
+def _route_decision(persona: Persona, entry: AccessEntry, target: Target) -> Decision:
+    """Compose the operation model with its existing dedicated MTG guard.
+
+    No route is omitted from the matrix. The bridge's actual runtime helper
+    decides its rows. Two credential-only surfaces and the Teams admin floor
+    have separate real-guard/source-link tests below; generic evaluator grants
+    cannot replace those additional runtime checks.
+    """
+    if entry.key in _BRIDGE_ROW_CHECKS:
+        assert entry.permission in _BRIDGE_PERMISSIONS
+        assert entry.permission is not None
+        if persona.ctx is None:
+            return Decision(False, "denied:anonymous")
+        caller = Caller(
+            UserPrincipal(
+                user_id=persona.ctx.user_id, email=f"{persona.name}@example.test",
+                organization_id=persona.ctx.home_organization_id,
+                is_superuser=persona.is_superuser, is_provider_org=persona.is_provider_org,
+            ),
+            persona.ctx,
+        )
+        organization_id = (
+            persona.ctx.home_organization_id
+            if target.kind == TargetKind.HOME else target.organization_id
+        )
+        return Decision(
+            bridge_permission_allowed(caller, entry.permission, organization_id),
+            "dedicated:home_organization_bridge",
+        )
+    if entry.key in {_UPLOAD, _EXECUTION_RESOURCE}:
+        return Decision(False, "denied:dedicated_credential_required")
+    if entry.key == _TEAMS_EVENT and not persona.is_superuser:
+        return Decision(False, "denied:teams_submission_admin_floor")
+    return decide(persona.ctx, entry, target)
+
 
 def _label(entry: AccessEntry) -> str:
     return entry.mcp_tool or f"{entry.method} {entry.path}"
@@ -72,8 +144,8 @@ def _cells():
         decider = _DECIDERS[entry.key]
         for persona in PERSONAS:
             for target_name, target, cross in TARGETS:
-                legacy = legacy_decide(persona, decider, cross)
-                decision = decide(persona.ctx, decider, target)
+                legacy = _route_reference(persona, decider, cross)
+                decision = _route_decision(persona, decider, target)
                 yield entry, decider, persona, target_name, legacy, decision
 
 
@@ -100,7 +172,7 @@ def _row(entry: AccessEntry, persona: Persona, target_name: str, legacy: bool, d
     return f"{persona.name} / {_label(entry)} / {target_name} / legacy={legacy} / new={decision.allowed} / {decision.rule}"
 
 
-def test_evaluator_matches_legacy_except_listed_differences() -> None:
+def test_composed_authorization_matches_route_reference_except_listed_differences() -> None:
     mismatches = []
     for entry, decider, persona, target_name, legacy, decision in _cells():
         if legacy == decision.allowed:
@@ -109,6 +181,62 @@ def test_evaluator_matches_legacy_except_listed_differences() -> None:
             continue
         mismatches.append(_row(entry, persona, target_name, legacy, decision))
     assert not mismatches, f"{len(mismatches)} unexpected differences:\n" + "\n".join(mismatches)
+
+
+def test_matrix_personas_have_no_implicit_bridge_grants() -> None:
+    for persona in PERSONAS:
+        if persona.ctx is not None:
+            assert not _BRIDGE_PERMISSIONS & persona.ctx.held_permissions
+
+
+def test_dedicated_matrix_guards_are_linked_to_the_actual_routes() -> None:
+    api_root = Path(__file__).resolve().parents[3]
+
+    def handler(relative: str, name: str):
+        tree = ast.parse((api_root / relative).read_text(encoding="utf-8"))
+        return next(node for node in tree.body if isinstance(node, ast.AsyncFunctionDef) and node.name == name)
+
+    teams = handler("src/routers/chat.py", "submit_teams_event")
+    assert any(ast.unparse(arg.annotation) == "CurrentSuperuser" for arg in teams.args.args if arg.annotation)
+    resource = handler("src/routers/sdk_modules.py", "read_deployment_resource")
+    assert any(
+        isinstance(node, ast.Call) and getattr(node.func, "id", None) == "read_execution_resource"
+        for node in ast.walk(resource)
+    )
+    upload = handler("src/routers/forms.py", "upload_embed_form_content")
+    assert any(
+        isinstance(node, ast.Call) and getattr(node.func, "id", None) == "decode_token"
+        and any(keyword.arg == "expected_type" and isinstance(keyword.value, ast.Constant)
+                and keyword.value.value == "form_upload" for keyword in node.keywords)
+        for node in ast.walk(upload)
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("persona", PERSONAS, ids=lambda persona: persona.name)
+async def test_human_matrix_personas_cannot_replace_dedicated_credentials(persona) -> None:
+    from src.core.auth import get_current_superuser
+    from src.routers.forms import upload_embed_form_content
+    from src.services.solutions.deployment_resources import DeploymentResourceDenied, read_execution_resource
+
+    principal = UserPrincipal(
+        user_id=persona.ctx.user_id if persona.ctx else uuid4(),
+        email=f"{persona.name}@example.test",
+        is_superuser=persona.is_superuser,
+    )
+    # No session or wildcard substitutes for the pinned execution attempt.
+    with pytest.raises(DeploymentResourceDenied, match="active Solution workflow attempt"):
+        await read_execution_resource(SimpleNamespace(user=principal), "assets/example.json")
+    # No session or wildcard substitutes for the signed one-use upload token.
+    with pytest.raises(HTTPException) as refused:
+        await upload_embed_form_content(uuid4(), Request({"type": "http", "headers": []}), None)
+    assert refused.value.status_code == 401
+    if persona.is_superuser:
+        assert await get_current_superuser(principal) is principal
+    else:
+        with pytest.raises(HTTPException) as refused:
+            await get_current_superuser(principal)
+        assert refused.value.status_code == 403
 
 
 def test_every_intended_change_marker_produces_a_difference() -> None:

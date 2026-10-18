@@ -185,22 +185,25 @@ class TestGetUserRoles:
         assert "\n" not in message
 
     @pytest.mark.asyncio
-    async def test_cache_population_failure_log_is_safe(self):
+    async def test_cache_population_failure_log_is_safe(self, caplog):
         user_id = uuid4()
         db = _make_db_returning([])
         read_redis = AsyncMock()
         read_redis.get.return_value = None
 
-        with (
-            patch(
-                "shared.role_cache.get_shared_redis",
-                side_effect=[read_redis, Exception("write down\nforged")],
-            ),
-            patch("shared.role_cache.logger.warning") as warning,
+        with patch(
+            "shared.role_cache.get_shared_redis",
+            side_effect=[read_redis, Exception("write down\nforged")],
         ):
             assert await get_user_roles(user_id, db) == ([], [])
 
-        message = warning.call_args.args[0]
+        messages = [
+            record.getMessage()
+            for record in caplog.records
+            if record.name == "shared.role_cache"
+        ]
+        assert len(messages) == 1
+        message = messages[0]
         assert "\n" not in message
         assert "\\n" in message
 
@@ -252,21 +255,24 @@ class TestInvalidateUser:
         assert role_names == ["admin"]
 
     @pytest.mark.asyncio
-    async def test_invalidate_user_handles_redis_error(self):
+    async def test_invalidate_user_handles_redis_error(self, caplog):
         """Redis failure during invalidation is logged, not raised."""
         user_id = uuid4()
 
         mock_redis = AsyncMock()
         mock_redis.delete = AsyncMock(side_effect=Exception("redis down\nforged"))
 
-        with (
-            patch("shared.role_cache.get_shared_redis", return_value=mock_redis),
-            patch("shared.role_cache.logger.warning") as warning,
-        ):
+        with patch("shared.role_cache.get_shared_redis", return_value=mock_redis):
             # Must not raise
             await invalidate_user(user_id)
 
-        message = warning.call_args.args[0]
+        messages = [
+            record.getMessage()
+            for record in caplog.records
+            if record.name == "shared.role_cache"
+        ]
+        assert len(messages) == 1
+        message = messages[0]
         assert "\n" not in message
         assert "\\n" in message
 
