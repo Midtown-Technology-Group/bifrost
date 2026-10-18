@@ -72,9 +72,33 @@ echo 'PASS: MCP conformance reconciles backend authority after browser lanes'
 # Unchanged action inputs need structural SHA checks locally; changed inputs
 # still resolve readable versions. An unknown comparison fails closed.
 (
+    scanner_state="$(mktemp -d)"
+    trap 'rm -rf "$scanner_state"' EXIT
+    TEST_LOCK_DIR="$scanner_state"
+    bootstrap_log="$scanner_state/bootstrap.log"
+    python3() {
+        [[ "$1" == -m && "$2" == venv && "$#" == 3 ]]
+        mkdir -p "$3/bin"
+        printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >> %q\n' \
+            "$bootstrap_log" > "$3/bin/python"
+        chmod +x "$3/bin/python"
+    }
+
+    scanner_python="$(action_pin_scanner_python)"
+    [[ "$scanner_python" == "$TEST_LOCK_DIR"/action-pin-scanner-*/bin/python ]]
+    [[ -f "${scanner_python%/bin/python}/.ready" ]]
+    grep -F -- \
+        '-m pip install --quiet --disable-pip-version-check --no-deps --only-binary :all: --require-hashes -r .github/requirements/action-pin-scanner.lock' \
+        "$bootstrap_log"
+    grep -F -- '-c import yaml; assert yaml.__version__ == "6.0.3"' "$bootstrap_log"
+)
+echo 'PASS: Action pin scanner bootstraps a wheel-only hash-locked clean-host environment'
+
+(
     pin_calls=()
     pin_diff_status=0
     pin_python_status=0
+    action_pin_scanner_python() { printf '%s\n' python3; }
     git() {
         [[ "$*" == 'diff --quiet origin/main HEAD -- .github/workflows .github/actions api/scripts/check_github_action_pins.py' ]] || exit 99
         return "$pin_diff_status"

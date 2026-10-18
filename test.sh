@@ -678,16 +678,37 @@ client_unit_targets() {
         client-check-runner npm test -- "$@"
 }
 
+action_pin_scanner_python() {
+    local lock_file=".github/requirements/action-pin-scanner.lock"
+    local lock_hash
+    local scanner_venv
+    local scanner_python
+
+    lock_hash="$(git hash-object "$lock_file")"
+    scanner_venv="$TEST_LOCK_DIR/action-pin-scanner-$lock_hash"
+    scanner_python="$scanner_venv/bin/python"
+    if [ ! -f "$scanner_venv/.ready" ]; then
+        python3 -m venv "$scanner_venv"
+        "$scanner_python" -m pip install --quiet --disable-pip-version-check \
+            --no-deps --only-binary :all: --require-hashes -r "$lock_file"
+        "$scanner_python" -c 'import yaml; assert yaml.__version__ == "6.0.3"'
+        touch "$scanner_venv/.ready"
+    fi
+    printf '%s\n' "$scanner_python"
+}
+
 candidate_action_pin_checks() {
     local diff_status=0
+    local scanner_python
+    scanner_python="$(action_pin_scanner_python)"
     git diff --quiet origin/main HEAD -- .github/workflows .github/actions \
         api/scripts/check_github_action_pins.py || diff_status=$?
     case "$diff_status" in
         0)
             echo "Action inputs unchanged: checking full SHA pins locally; CI verifies version comments."
-            python3 api/scripts/check_github_action_pins.py
+            "$scanner_python" api/scripts/check_github_action_pins.py
             ;;
-        1) python3 api/scripts/check_github_action_pins.py --verify-versions ;;
+        1) "$scanner_python" api/scripts/check_github_action_pins.py --verify-versions ;;
         *) echo "ERROR: cannot establish Action input changes." >&2; return "$diff_status" ;;
     esac
 }

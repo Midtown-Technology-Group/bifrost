@@ -8,7 +8,7 @@ import json
 import os
 import re
 import sys
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.error import HTTPError, URLError
@@ -41,6 +41,51 @@ class ActionReference:
     source_line: str
 
 
+def _mapping_values(node: Node, key: str) -> Iterator[Node]:
+    if not isinstance(node, MappingNode):
+        return
+    for key_node, value_node in node.value:
+        if isinstance(key_node, ScalarNode) and key_node.value == key:
+            yield value_node
+
+
+def _step_use_nodes(steps_node: Node) -> Iterator[Node]:
+    if not isinstance(steps_node, SequenceNode):
+        return
+    for step_node in steps_node.value:
+        yield from _mapping_values(step_node, "uses")
+
+
+def _workflow_use_nodes(document: Node) -> Iterator[Node]:
+    for jobs_node in _mapping_values(document, "jobs"):
+        if not isinstance(jobs_node, MappingNode):
+            continue
+        for _, job_node in jobs_node.value:
+            yield from _mapping_values(job_node, "uses")
+            for steps_node in _mapping_values(job_node, "steps"):
+                yield from _step_use_nodes(steps_node)
+
+
+def _composite_action_use_nodes(document: Node) -> Iterator[Node]:
+    for runs_node in _mapping_values(document, "runs"):
+        for steps_node in _mapping_values(runs_node, "steps"):
+            yield from _step_use_nodes(steps_node)
+
+
+def _action_reference(
+    path: Path,
+    source_lines: list[str],
+    value_node: Node,
+) -> ActionReference | None:
+    if not isinstance(value_node, ScalarNode):
+        return None
+    line_number = value_node.start_mark.line + 1
+    source_line = (
+        source_lines[line_number - 1] if line_number <= len(source_lines) else ""
+    )
+    return ActionReference(path, line_number, value_node.value.strip(), source_line)
+
+
 def _action_references(path: Path) -> tuple[list[ActionReference], Violation | None]:
     source = path.read_text(encoding="utf-8")
     source_lines = source.splitlines()
@@ -58,35 +103,19 @@ def _action_references(path: Path) -> tuple[list[ActionReference], Violation | N
             "workflow could not be parsed as YAML",
         )
 
-    pending: list[Node] = [document for document in documents if document is not None]
-    visited: set[int] = set()
-    while pending:
-        node = pending.pop()
-        if id(node) in visited:
+    for document in documents:
+        if document is None:
             continue
-        visited.add(id(node))
-
-        if isinstance(node, MappingNode):
-            for key_node, value_node in node.value:
-                if isinstance(key_node, ScalarNode) and key_node.value == "uses":
-                    line_number = value_node.start_mark.line + 1
-                    if isinstance(value_node, ScalarNode):
-                        source_line = (
-                            source_lines[line_number - 1]
-                            if line_number <= len(source_lines)
-                            else ""
-                        )
-                        references.append(
-                            ActionReference(
-                                path,
-                                line_number,
-                                value_node.value.strip(),
-                                source_line,
-                            )
-                        )
-                pending.extend((key_node, value_node))
-        elif isinstance(node, SequenceNode):
-            pending.extend(node.value)
+        use_nodes = (
+            *_workflow_use_nodes(document),
+            *_composite_action_use_nodes(document),
+        )
+        references.extend(
+            reference
+            for value_node in use_nodes
+            if (reference := _action_reference(path, source_lines, value_node))
+            is not None
+        )
 
     return sorted(references, key=lambda reference: reference.line_number), None
 
