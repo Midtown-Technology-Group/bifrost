@@ -26,10 +26,10 @@ from src.jobs.platform.base import (
     PlatformJobPolicy,
     PlatformJobRequiresAction,
 )
+from src.models import User
 from src.models.orm.applications import Application
 from src.models.contracts.applications import ApplicationGitPublicationInput
 from src.repositories.applications import ApplicationRepository
-from src.repositories.users import UserRepository
 from src.services.application_publication import publication_controls_hash
 from src.services.application_publication_evidence import read_app_publication_runtime_pin
 from src.services.application_git_source import app_source_evidence, read_app_git_source
@@ -89,8 +89,22 @@ async def _authorize_application_publish(
     except (TypeError, ValueError) as exc:
         raise _publish_permission_revoked() from exc
 
-    actor = await UserRepository(db).get_by_id(actor_id)
+    # Both checks run in one long-lived transaction. Force database readback so
+    # an identity-map instance loaded by the initial check cannot hide a later
+    # account or application authorization change at the publication boundary.
+    actor = await db.get(User, actor_id, populate_existing=True)
     if actor is None or not actor.is_active:
+        raise _publish_permission_revoked()
+
+    current_application = await db.get(
+        Application,
+        application.id,
+        populate_existing=True,
+    )
+    if (current_application is None
+            or current_application.organization_id != context.organization_id
+            or current_application.app_model != "inline_v1"
+            or current_application.solution_id is not None):
         raise _publish_permission_revoked()
 
     is_provider_org = await resolve_provider_org_claim(db, actor)
@@ -150,7 +164,6 @@ async def run_application_publish(
                     or application.app_model != "inline_v1" or application.solution_id is not None):
                 raise ValueError("Application ownership/model changed after publication was queued")
             owns_application = True
-            repo = await _authorize_application_publish(db, context, application)
             if _manifest_not_applied(intent, application.id):
                 # The reclaimed lease fences the old runner's mandatory second
                 # checkpoint, even if Main or current controls have since moved.
@@ -212,6 +225,12 @@ async def run_application_publish(
                 await db.flush()
                 published = application
             else:
+                # A fresh attempt must hold current authority before it builds
+                # or writes anything. Recovery above is deliberately readback-
+                # only and may reconcile an already-applied durable intent even
+                # after the original requester's authority is revoked.
+                repo = await _authorize_application_publish(db, context, application)
+
                 async def guard_authority() -> None:
                     await _authorize_application_publish(db, context, application)
 
@@ -320,6 +339,11 @@ async def run_application_publish(
             )
         return result
     except PlatformJobFailure as exc:
+        if exc.code == "application_publish_permission_revoked":
+            # A boundary revocation after checkpointing is still a definitive
+            # authorization failure. Do not rewrite it as a storage outcome or
+            # an operator-action state merely because an intent was saved.
+            raise
         if intent is not None:
             if owns_application and _manifest_not_applied(intent, payload.application_id):
                 raise _publication_not_applied(context, intent) from exc
