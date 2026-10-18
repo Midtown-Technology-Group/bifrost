@@ -62,26 +62,29 @@ describe("CliAuthorizePage authentication flow", () => {
 	});
 
 	it("preserves the transaction while a logged-out user signs in", async () => {
-		const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-			const url = typeof input === "string" ? input : input.toString();
+		const fetchMock = vi.fn(
+			async (input: RequestInfo | URL, _init?: RequestInit) => {
+				const url =
+					typeof input === "string" ? input : input.toString();
 
-			if (url === "/auth/status") {
-				return Response.json({ needs_setup: false });
-			}
-			if (url.endsWith("/api/auth/refresh")) {
-				return Response.json({}, { status: 401 });
-			}
-			if (url === "/auth/cli/authorize?transaction_id=txn-1") {
-				return Response.json({
-					transaction_id: "txn-1",
-					client_name: "Bifrost CLI",
-					redirect_uri: "http://127.0.0.1:8247/callback",
-					expires_at: "2099-01-01T00:00:00Z",
-				});
-			}
+				if (url === "/auth/status") {
+					return Response.json({ needs_setup: false });
+				}
+				if (url.endsWith("/api/auth/refresh")) {
+					return Response.json({}, { status: 401 });
+				}
+				if (url === "/auth/cli/authorize?transaction_id=txn-1") {
+					return Response.json({
+						transaction_id: "txn-1",
+						client_name: "Bifrost CLI",
+						redirect_uri: "http://127.0.0.1:8247/callback",
+						expires_at: "2099-01-01T00:00:00Z",
+					});
+				}
 
-			throw new Error(`Unexpected fetch: ${url}`);
-		});
+				throw new Error(`Unexpected fetch: ${url}`);
+			},
+		);
 		vi.stubGlobal("fetch", fetchMock);
 
 		render(
@@ -112,5 +115,11 @@ describe("CliAuthorizePage authentication flow", () => {
 			"/auth/cli/authorize?transaction_id=txn-1",
 			expect.any(Object),
 		);
+		expect(
+			fetchMock.mock.calls.some(
+				([input, init]) =>
+					input === "/auth/cli/authorize" && init?.method === "POST",
+			),
+		).toBe(false);
 	});
 });
