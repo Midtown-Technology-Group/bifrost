@@ -1991,6 +1991,14 @@ class ProcessPoolManager:
 
                     if isinstance(result, dict):
                         await self._handle_result(handle, result)
+                        # This sweep already proved the child has exited. If
+                        # terminal delivery succeeded, cleanup is complete and
+                        # the retained capacity can be released immediately.
+                        if (
+                            handle.state == ProcessState.CLEANING
+                            and handle.result_reported
+                        ):
+                            to_remove.append(process_id)
                         continue
 
                     if handle.process.exitcode == 0:
