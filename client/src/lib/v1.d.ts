@@ -537,23 +537,22 @@ export interface paths {
         put?: never;
         /**
          * Admin Revoke User Sessions
-         * @description Revoke all refresh tokens for a specific user (admin only).
+         * @description Revoke all refresh tokens for a specific user.
          *
-         *     Allows platform administrators to forcibly log out a user from all
-         *     devices. Useful for security incidents or account compromises.
-         *
-         *     Requires platform admin (superuser) privileges.
+         *     Signs a user out of every device: users.readwrite at the user's
+         *     organization, and only a Platform Admin for a privileged user. Useful
+         *     for security incidents or account compromises.
          *
          *     Args:
          *         revoke_data: Target user ID to revoke
-         *         current_user: Current authenticated user (must be admin)
+         *         current_user: Current authenticated user
          *         db: Database session
          *
          *     Returns:
          *         Number of sessions revoked
          *
          *     Raises:
-         *         HTTPException: If not admin or user not found
+         *         HTTPException: If not permitted or user not found
          */
         post: operations["admin_revoke_user_sessions_auth_admin_revoke_user_post"];
         delete?: never;
@@ -939,6 +938,26 @@ export interface paths {
          * @description Complete invite registration by verifying a passkey and logging the user in.
          */
         post: operations["register_from_invite_passkey_verify_auth_register_from_invite_passkey_verify_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/authorization": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get my authorization
+         * @description Whether the signed-in user is a Platform Admin, their base role, and the permissions their roles grant at each boundary. Read from the database on every call.
+         */
+        get: operations["get_my_authorization_auth_authorization_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1466,13 +1485,13 @@ export interface paths {
         };
         /**
          * List organizations
-         * @description Get active organizations, optionally including inactive ones (Platform admin only)
+         * @description Get the active organizations the caller may view, optionally including inactive ones
          */
         get: operations["organizations.list"];
         put?: never;
         /**
          * Create a new organization
-         * @description Create a new client organization (Platform admin only)
+         * @description Create a new client organization
          */
         post: operations["organizations.create"];
         delete?: never;
@@ -1490,21 +1509,21 @@ export interface paths {
         };
         /**
          * Get organization by ID
-         * @description Get a specific organization by ID (Platform admin only)
+         * @description Get a specific organization by ID
          */
         get: operations["organizations.get"];
         put?: never;
         post?: never;
         /**
          * Delete an organization
-         * @description Soft delete an organization (sets is_active=False, Platform admin only)
+         * @description Soft delete an organization (sets is_active=False)
          */
         delete: operations["organizations.delete"];
         options?: never;
         head?: never;
         /**
          * Update an organization
-         * @description Update an existing organization (Platform admin only)
+         * @description Update an existing organization
          */
         patch: operations["organizations.update"];
         trace?: never;
@@ -1559,7 +1578,7 @@ export interface paths {
         put?: never;
         /**
          * Create user
-         * @description Create a new user proactively (Platform admin only)
+         * @description Invite a new user into an organization (or, for Platform Admins, create a Global or Platform Admin user)
          */
         post: operations["users.create"];
         delete?: never;
@@ -1677,7 +1696,7 @@ export interface paths {
         };
         /**
          * Get user details
-         * @description Get a specific user's details (Platform admin only)
+         * @description Get a specific user's details
          */
         get: operations["users.get"];
         put?: never;
@@ -1694,6 +1713,26 @@ export interface paths {
          * @description Update user properties including role transitions
          */
         patch: operations["users.update"];
+        trace?: never;
+    };
+    "/api/users/{user_id}/mfa/reset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reset a user's MFA
+         * @description Remove the user's authenticator app, recovery codes, passkeys and remembered devices, and sign them out everywhere. They enroll MFA again at their next sign-in.
+         */
+        post: operations["users.mfa.reset"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/users/{user_id}/roles": {
@@ -1730,6 +1769,70 @@ export interface paths {
         get: operations["users.forms.list"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/users/{user_id}/role-assignments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a user's role assignments
+         * @description The user's base role, additional roles with where each applies, whether the user is protected, and the roles the caller may grant them.
+         */
+        get: operations["get_role_assignments_api_users__user_id__role_assignments_get"];
+        /**
+         * Replace a user's role assignments
+         * @description Replace the user's base role and additional roles (with boundaries) atomically.
+         */
+        put: operations["replace_role_assignments_api_users__user_id__role_assignments_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/users/{user_id}/access": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get what a user can do, and where
+         * @description The user's permissions grouped by place (home, selected organizations, all customer organizations, Global) with the role each comes through.
+         */
+        get: operations["get_user_access_api_users__user_id__access_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/users/{user_id}/access/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Test a user's access
+         * @description What the managed-identity model decides for this user performing an access-list operation in an organization (or Global), directly or through a workflow. Report-only; nothing is recorded.
+         */
+        post: operations["check_user_access_api_users__user_id__access_check_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1796,13 +1899,13 @@ export interface paths {
         };
         /**
          * List all roles
-         * @description Get all roles (Platform admin only)
+         * @description Get all roles
          */
         get: operations["roles.list"];
         put?: never;
         /**
          * Create a role
-         * @description Create a new role (Platform admin only)
+         * @description Create a new role
          */
         post: operations["roles.create"];
         delete?: never;
@@ -1820,21 +1923,21 @@ export interface paths {
         };
         /**
          * Get a role
-         * @description Get a role by ID (Platform admin only)
+         * @description Get a role by ID
          */
         get: operations["roles.get"];
         put?: never;
         post?: never;
         /**
          * Delete a role
-         * @description Delete a role (Platform admin only). CASCADE removes all role assignments.
+         * @description Delete a role. CASCADE removes all role assignments; a role that is anyone's base role can't be deleted.
          */
         delete: operations["roles.delete"];
         options?: never;
         head?: never;
         /**
          * Update a role
-         * @description Update a role (Platform admin only)
+         * @description Update a role
          */
         patch: operations["roles.update"];
         trace?: never;
@@ -2021,6 +2124,48 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/roles/{role_id}/bridge-grants": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get the role's MTG bridge grants (Platform Admin only) */
+        get: operations["roles.bridge_grants.get"];
+        /** Replace MTG bridge grants with a current-set/version precondition */
+        put: operations["roles.bridge_grants.update"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/roles/{role_id}/permissions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a role's permissions
+         * @description Every permission the role holds, marked editable (identity permissions on custom roles) and privileged, plus the identity permissions an editor offers.
+         */
+        get: operations["get_role_permissions_api_roles__role_id__permissions_get"];
+        /**
+         * Set a role's identity permissions
+         * @description Replace the role's identity permissions (users, userlifecycle, organizations, roleassignments, roles); its other permissions are kept. Builtin roles can't be changed.
+         */
+        put: operations["set_role_permissions_api_roles__role_id__permissions_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/roles/{role_id}/knowledge": {
         parameters: {
             query?: never;
@@ -2035,6 +2180,26 @@ export interface paths {
         post: operations["roles.knowledge.assign"];
         /** Bulk unassign knowledge namespaces from role */
         delete: operations["roles.knowledge.bulk_remove"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/permissions/catalog": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List permission domains
+         * @description Every permission domain with its title, area, guidance, actions, scope and enforcement
+         */
+        get: operations["get_permission_catalog_api_permissions_catalog_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -2367,7 +2532,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * Get a workflow by ID
+         * @description Get one workflow's metadata by ID, from any organization (Platform admin only)
+         */
+        get: operations["workflows.get"];
         put?: never;
         post?: never;
         /**
@@ -2543,6 +2712,46 @@ export interface paths {
          * @description Remove a role from a workflow (Platform admin only)
          */
         delete: operations["workflows.roles.revoke"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/workflows/{workflow_id}/run-identities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the identities a workflow may run as
+         * @description The identities this workflow may run as when no person starts it: its organization's identities (a global or provider-organization workflow: the global and provider-organization ones), including the default (Platform admin only)
+         */
+        get: operations["list_workflow_run_identities_api_workflows__workflow_id__run_identities_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/workflows/{workflow_id}/recommended-access": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Recommended Access for a workflow's identity
+         * @description What the identity the workflow runs as would also need, based on the access checks its runs recorded in the audit log's hot window: reach into other organizations, roles its policies look for, and the workflow's own roles. Computed for identity_id, else the identity it runs as now. Empty until runs are observed (Platform admin only)
+         */
+        get: operations["get_workflow_recommended_access_api_workflows__workflow_id__recommended_access_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -2817,7 +3026,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * Get a configuration value by ID
+         * @description Get a single configuration value by its UUID
+         */
+        get: operations["configs.get"];
         /**
          * Update configuration value by ID
          * @description Update an existing configuration value, including its organization scope
@@ -3576,10 +3789,11 @@ export interface paths {
         put?: never;
         /**
          * Search file contents
-         * @description Search file contents for text or regex patterns.
+         * @description Search workspace and Solution source like grep, one bounded page at a time.
          *
          *     Immutable Live Workspace source overlays the mutable file index. Other
          *     non-release files continue to come from the database projection.
+         *     Follow ``next_cursor`` (or the ``guidance`` sentence) for more results.
          */
         post: operations["workspace.files.search"];
         delete?: never;
@@ -4190,9 +4404,66 @@ export interface paths {
         };
         /**
          * List audit log entries
-         * @description List audit log entries with filters (Platform admin only)
+         * @description List audit log entries with filters, or group them with group_by. Platform Admins read everything; Platform Operators read access checks in the organizations they reach.
          */
         get: operations["list_audit_logs_api_audit_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/audit/exports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Export audit events, archived and current, to a file
+         * @description Queue an export of the audit events in a date range (at most 366 days) to one gzip JSONL file, under the same rules as listing them.
+         */
+        post: operations["start_audit_export_api_audit_exports_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/audit/exports/{job_id}/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Download a finished audit export */
+        get: operations["download_audit_export_api_audit_exports__job_id__download_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/audit/{event_id}/explain": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Explain an access check
+         * @description A stored access check as decided then, and judged again now against the run user's current roles and the workflow's current powers. Platform Operators explain access checks in the organizations they reach.
+         */
+        get: operations["explain_access_check_api_audit__event_id__explain_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -5881,163 +6152,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/sdk/sessions": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List user's CLI sessions
-         * @description List all CLI sessions for the current user.
-         */
-        get: operations["list_cli_sessions_api_sdk_sessions_get"];
-        put?: never;
-        /**
-         * Register/create a CLI session
-         * @description Register workflows discovered by CLI for web UI.
-         *
-         *     Called by `bifrost run <file>` to register workflows before
-         *     opening the browser to the CLI session page.
-         */
-        post: operations["register_cli_session_api_sdk_sessions_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/sdk/sessions/{session_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get CLI session state
-         * @description Get current CLI session state for web UI.
-         */
-        get: operations["get_cli_session_api_sdk_sessions__session_id__get"];
-        put?: never;
-        post?: never;
-        /**
-         * Delete CLI session
-         * @description Delete a CLI session.
-         */
-        delete: operations["delete_cli_session_api_sdk_sessions__session_id__delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/sdk/sessions/{session_id}/continue": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Continue workflow execution
-         * @description Submit parameters to continue workflow execution.
-         *
-         *     Called by web UI when user clicks "Continue".
-         *     Creates a real Execution record and sets pending=True so CLI can pick up.
-         */
-        post: operations["continue_cli_session_api_sdk_sessions__session_id__continue_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/sdk/sessions/{session_id}/pending": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Poll for pending execution
-         * @description Poll for pending workflow execution.
-         *
-         *     Returns 204 No Content if no execution pending.
-         *     Returns execution_id, params and clears pending flag when execution is ready.
-         */
-        get: operations["get_pending_execution_api_sdk_sessions__session_id__pending_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/sdk/sessions/{session_id}/heartbeat": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Update session heartbeat
-         * @description Update session's last_seen timestamp (CLI heartbeat).
-         */
-        post: operations["session_heartbeat_api_sdk_sessions__session_id__heartbeat_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/sdk/sessions/{session_id}/executions/{execution_id}/log": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Stream log entry from CLI
-         * @description Stream a log entry from CLI to the execution.
-         */
-        post: operations["post_cli_log_api_sdk_sessions__session_id__executions__execution_id__log_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/sdk/sessions/{session_id}/executions/{execution_id}/result": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Post execution result from CLI
-         * @description Post execution result from CLI.
-         */
-        post: operations["post_cli_result_api_sdk_sessions__session_id__executions__execution_id__result_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/sdk/artifacts": {
         parameters: {
             query?: never;
@@ -6485,6 +6599,163 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/sdk/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List user's CLI sessions
+         * @description List all CLI sessions for the current user.
+         */
+        get: operations["list_cli_sessions_api_sdk_sessions_get"];
+        put?: never;
+        /**
+         * Register/create a CLI session
+         * @description Register workflows discovered by CLI for web UI.
+         *
+         *     Called by `bifrost run <file>` to register workflows before
+         *     opening the browser to the CLI session page.
+         */
+        post: operations["register_cli_session_api_sdk_sessions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sdk/sessions/{session_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get CLI session state
+         * @description Get current CLI session state for web UI.
+         */
+        get: operations["get_cli_session_api_sdk_sessions__session_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete CLI session
+         * @description Delete a CLI session.
+         */
+        delete: operations["delete_cli_session_api_sdk_sessions__session_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sdk/sessions/{session_id}/continue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Continue workflow execution
+         * @description Submit parameters to continue workflow execution.
+         *
+         *     Called by web UI when user clicks "Continue".
+         *     Creates a real Execution record and sets pending=True so CLI can pick up.
+         */
+        post: operations["continue_cli_session_api_sdk_sessions__session_id__continue_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sdk/sessions/{session_id}/pending": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Poll for pending execution
+         * @description Poll for pending workflow execution.
+         *
+         *     Returns 204 No Content if no execution pending.
+         *     Returns execution_id, params and clears pending flag when execution is ready.
+         */
+        get: operations["get_pending_execution_api_sdk_sessions__session_id__pending_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sdk/sessions/{session_id}/heartbeat": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Update session heartbeat
+         * @description Update session's last_seen timestamp (CLI heartbeat).
+         */
+        post: operations["session_heartbeat_api_sdk_sessions__session_id__heartbeat_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sdk/sessions/{session_id}/executions/{execution_id}/log": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stream log entry from CLI
+         * @description Stream a log entry from CLI to the execution.
+         */
+        post: operations["post_cli_log_api_sdk_sessions__session_id__executions__execution_id__log_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sdk/sessions/{session_id}/executions/{execution_id}/result": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Post execution result from CLI
+         * @description Post execution result from CLI.
+         */
+        post: operations["post_cli_result_api_sdk_sessions__session_id__executions__execution_id__result_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/cli/download": {
         parameters: {
             query?: never;
@@ -6597,7 +6868,8 @@ export interface paths {
          * Dismiss Notification
          * @description Dismiss (delete) a notification.
          *
-         *     Only the owner can dismiss their notification.
+         *     Only the owner can dismiss their notification. Platform admins can also
+         *     dismiss admin-scoped notifications, which they can read.
          *
          *     For embedding-reindex notifications that are still running, this also sets
          *     the Redis cancellation flag the scheduler polls between batches — so the
@@ -6712,8 +6984,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Change or set password
-         * @description Change the authenticated user's password, or set one if they don't have one (passkey/OAuth users)
+         * Change password
+         * @description Change the authenticated user's existing password
          */
         post: operations["change_password_api_profile_password_post"];
         delete?: never;
@@ -6968,11 +7240,11 @@ export interface paths {
         };
         /**
          * Get Accessible Knowledge
-         * @description Get knowledge sources the current user can assign to their agents.
+         * @description Select namespaces through current home-effective sharing roles.
          *
-         *     Role membership alone isn't org scope: also require the namespace-role
-         *     grant itself to be global or the caller's own org, so a role grant
-         *     scoped to another org's namespace assignment never surfaces here.
+         *     The namespace junction remains selection metadata, not a content ACL.
+         *     Permission-bearing and permission-free roles both need a current boundary;
+         *     the base role applies at home. The assignment itself must be home/global.
          */
         get: operations["get_accessible_knowledge_api_agents_accessible_knowledge_get"];
         put?: never;
@@ -7053,7 +7325,11 @@ export interface paths {
         put?: never;
         /**
          * Promote Agent
-         * @description Promote a private agent to organization scope.
+         * @description Promote a private agent using a current home-bound promotion grant.
+         *
+         *     Ordinary callers must own the agent in their current home organization.
+         *     Only the stored Platform Admin wildcard bypasses those restrictions;
+         *     Solution ownership remains immutable for every caller.
          */
         post: operations["promote_agent_api_agents__agent_id__promote_post"];
         delete?: never;
@@ -7894,46 +8170,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/admin/llm/model-capabilities": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Discover Model Capabilities
-         * @description Look up model features without trusting provider model-list labels.
-         */
-        post: operations["discover_model_capabilities_api_admin_llm_model_capabilities_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/admin/llm/model-capabilities/verify": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Verify Model Capability Support
-         * @description Run a bounded, one-time provider conformance check for an unknown model.
-         */
-        post: operations["verify_model_capability_support_api_admin_llm_model_capabilities_verify_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/admin/llm/embedding-config": {
         parameters: {
             query?: never;
@@ -8145,6 +8381,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/ai/catalog": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Catalog
+         * @description Providers Bifrost can connect to, from the cached models.dev catalog.
+         */
+        get: operations["get_catalog_api_admin_ai_catalog_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/ai/catalog/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Refresh Catalog
+         * @description Refresh the model catalog now instead of waiting for the schedule.
+         */
+        post: operations["refresh_catalog_api_admin_ai_catalog_refresh_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/ai/profiles": {
         parameters: {
             query?: never;
@@ -8198,6 +8474,23 @@ export interface paths {
         patch: operations["update_model_profile_api_admin_ai_profiles__profile_id__patch"];
         trace?: never;
     };
+    "/api/admin/ai/profiles/{profile_id}/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Verify Model Profile */
+        post: operations["verify_model_profile_api_admin_ai_profiles__profile_id__verify_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/ai/assignments": {
         parameters: {
             query?: never;
@@ -8228,6 +8521,26 @@ export interface paths {
         post?: never;
         /** Clear Model Assignment */
         delete: operations["clear_model_assignment_api_admin_ai_assignments__assignment_key__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/model-catalog/names": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Model Display Names
+         * @description Display names for the model ids shown in runs, usage, and settings.
+         */
+        get: operations["get_model_display_names_api_model_catalog_names_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -8669,6 +8982,110 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/maintenance/audit-retention/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get audit retention settings and archive status */
+        get: operations["get_audit_retention_settings_api_maintenance_audit_retention_settings_get"];
+        /** Update audit retention settings */
+        put: operations["update_audit_retention_settings_api_maintenance_audit_retention_settings_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/maintenance/audit-retention/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Archive aged audit events now, or preview the run */
+        post: operations["start_audit_archive_api_maintenance_audit_retention_run_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/maintenance/audit-retention/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Preview which archived audit events an archive window would delete */
+        get: operations["preview_audit_expiry_api_maintenance_audit_retention_preview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/maintenance/run-retention/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get run retention settings and status */
+        get: operations["get_run_retention_settings_api_maintenance_run_retention_settings_get"];
+        /** Update run retention settings */
+        put: operations["update_run_retention_settings_api_maintenance_run_retention_settings_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/maintenance/run-retention/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Delete expired runs and events now, or preview the run */
+        post: operations["start_run_retention_api_maintenance_run_retention_run_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/maintenance/run-retention/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Preview how many runs and events a retention window would delete */
+        get: operations["preview_run_retention_api_maintenance_run_retention_preview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/maintenance/status": {
         parameters: {
             query?: never;
@@ -8787,6 +9204,74 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/run-retention": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get the run retention window
+         * @description The retention window, for wording about removed runs. Any signed-in user.
+         */
+        get: operations["get_run_retention_api_run_retention_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/identities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List identities
+         * @description The identities in the organizations the caller may read users in, with their roles and the number of workflows that run as each. The global identity comes first.
+         */
+        get: operations["list_identities_api_identities_get"];
+        put?: never;
+        /**
+         * Create a custom identity
+         * @description A custom identity with the User base role, in an organization or (organization_id null) Global.
+         */
+        post: operations["create_identity_api_identities_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/identities/{identity_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete a custom identity
+         * @description Only a custom identity no workflow runs as can be deleted; the 409 names the workflows.
+         */
+        delete: operations["delete_identity_api_identities__identity_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Rename a custom identity
+         * @description Rename a custom identity; default identities are all named Default Identity and can't be renamed.
+         */
+        patch: operations["rename_identity_api_identities__identity_id__patch"];
         trace?: never;
     };
     "/api/admin/roi/settings": {
@@ -9444,7 +9929,7 @@ export interface paths {
         put?: never;
         /**
          * Create event source
-         * @description Create a new event source (Platform admin only).
+         * @description Create a new event source (Platform admin only). A webhook signing secret supplied as webhook.config.secret is returned once, in raw_secret.
          */
         post: operations["events.sources.create"];
         delete?: never;
@@ -9501,6 +9986,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/events/sources/{source_id}/rotate-secret": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rotate a webhook source's signing secret
+         * @description Replace the HMAC signing secret with a supplied or generated one. The response returns the new secret once, in raw_secret; no later call returns it (Platform admin only).
+         */
+        post: operations["rotate_source_secret_api_events_sources__source_id__rotate_secret_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/events/sources/{source_id}/subscriptions": {
         parameters: {
             query?: never;
@@ -9532,7 +10037,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * Get subscription
+         * @description Get a specific event subscription by ID (Platform admin only).
+         */
+        get: operations["events.subscriptions.get"];
         put?: never;
         post?: never;
         /**
@@ -10524,6 +11033,23 @@ export interface paths {
         get: operations["get_solution_export_job_api_solutions_export_jobs__job_id__get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/solutions/export-jobs/{job_id}/download-link": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create a direct backup download link (admin only) */
+        post: operations["create_solution_export_download_link_api_solutions_export_jobs__job_id__download_link_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -12072,7 +12598,7 @@ export interface paths {
          * Read a single app file
          * @description Read a single file by relative path.
          *
-         *     Source content is read from the file_index (_repo/apps/{slug}/).
+         *     Source content is read from S3 (_repo/apps/{slug}/).
          *     Compiled content is read from _apps/{app_id}/{mode}/.
          *     The compiled field is only set when it differs from source.
          */
@@ -13258,7 +13784,13 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * Get a named policy rule
+         * @description Get a single policy rule by domain and name.
+         *
+         *     Solution-managed rules are readable here (writes stay blocked).
+         */
+        get: operations["policy.rules.get"];
         /**
          * Update a named policy rule
          * @description Update an existing policy rule.
@@ -13289,6 +13821,46 @@ export interface paths {
         get: operations["policy.rules.list_usages"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/product-updates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Product Updates
+         * @description Return this build's approved bundle and the caller's prior receipts.
+         */
+        get: operations["productupdates.get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/product-updates/receipts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Product Update Receipts
+         * @description Persist receipt(s) for entries presented from the current bundle only.
+         */
+        post: operations["productupdates.receipts.create"];
         delete?: never;
         options?: never;
         head?: never;
@@ -13573,6 +14145,11 @@ export interface components {
              * @description Fallback profile tried when this profile's provider fails with a retryable transport error after retries are exhausted
              */
             failover_profile_id?: string | null;
+            /**
+             * Reasoning Effort
+             * @description One of the model's catalog reasoning choices; null = model default
+             */
+            reasoning_effort?: string | null;
         };
         /** AIModelProfileMergeRequest */
         AIModelProfileMergeRequest: {
@@ -13615,6 +14192,8 @@ export interface components {
             enabled_for_chat: boolean;
             /** Default Max Tokens */
             default_max_tokens?: number | null;
+            /** Reasoning Effort */
+            reasoning_effort?: string | null;
             /** Failover Profile Id */
             failover_profile_id?: string | null;
             /** Failover Profile Name */
@@ -13659,6 +14238,18 @@ export interface components {
              * @description Fallback profile tried when this profile's provider fails with a retryable transport error after retries are exhausted
              */
             failover_profile_id?: string | null;
+            /**
+             * Reasoning Effort
+             * @description One of the model's catalog reasoning choices; null = model default
+             */
+            reasoning_effort?: string | null;
+        };
+        /** AIModelProfileVerifyResponse */
+        AIModelProfileVerifyResponse: {
+            /** Success */
+            success: boolean;
+            /** Message */
+            message: string;
         };
         /** AIModelsResponse */
         AIModelsResponse: {
@@ -13667,6 +14258,11 @@ export interface components {
              * @enum {string}
              */
             provider: "openai" | "anthropic" | "google" | "openrouter" | "openai_compatible" | "opencode_go";
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "catalog" | "provider";
             /** Models */
             models: components["schemas"]["LLMModelInfo"][];
         };
@@ -13683,6 +14279,11 @@ export interface components {
             api_key: string;
             /** Endpoint */
             endpoint?: string | null;
+            /**
+             * Catalog Provider Id
+             * @description models.dev provider id; supplies the default endpoint and model list
+             */
+            catalog_provider_id?: string | null;
         };
         /** AIProviderConnectionResponse */
         AIProviderConnectionResponse: {
@@ -13700,6 +14301,8 @@ export interface components {
             provider: "openai" | "anthropic" | "google" | "openrouter" | "openai_compatible" | "opencode_go";
             /** Endpoint */
             endpoint?: string | null;
+            /** Catalog Provider Id */
+            catalog_provider_id?: string | null;
             /** Api Key Set */
             api_key_set: boolean;
             /**
@@ -13736,6 +14339,8 @@ export interface components {
             provider: "openai" | "anthropic" | "google" | "openrouter" | "openai_compatible" | "opencode_go";
             /** Endpoint */
             endpoint?: string | null;
+            /** Catalog Provider Id */
+            catalog_provider_id?: string | null;
             /** Anthropic Prompt Cache Supported */
             anthropic_prompt_cache_supported?: boolean | null;
         };
@@ -13749,6 +14354,8 @@ export interface components {
             api_key?: string | null;
             /** Endpoint */
             endpoint?: string | null;
+            /** Catalog Provider Id */
+            catalog_provider_id?: string | null;
         };
         /**
          * AIUsagePublicSimple
@@ -13773,6 +14380,11 @@ export interface components {
              * @default 0
              */
             cache_write_tokens: number;
+            /**
+             * Reasoning Tokens
+             * @default 0
+             */
+            reasoning_tokens: number;
             /** Provider Cost */
             provider_cost?: string | null;
             /** Cost */
@@ -13813,6 +14425,11 @@ export interface components {
              */
             total_cache_write_tokens: number;
             /**
+             * Total Reasoning Tokens
+             * @default 0
+             */
+            total_reasoning_tokens: number;
+            /**
              * Total Provider Cost
              * @default 0
              */
@@ -13834,8 +14451,121 @@ export interface components {
             call_count: number;
         };
         /**
+         * AccessCheckRequest
+         * @description A what-if: could this user do this operation in this organization?
+         */
+        AccessCheckRequest: {
+            /**
+             * Organization Id
+             * @description Organization to act in, or "global".
+             */
+            organization_id: string | "global";
+            /**
+             * Operation
+             * @description Access-list operation: a catalog id (e.g. tables.documents.create) or "METHOD /api/path".
+             */
+            operation: string;
+            /**
+             * Workflow Id
+             * @description Workflow whose powers apply; omit for the user acting directly.
+             */
+            workflow_id?: string | null;
+        };
+        /**
+         * AccessExplanation
+         * @description A stored access check, as decided then and judged again now.
+         */
+        AccessExplanation: {
+            event: components["schemas"]["AuditLogEntry"];
+            then: components["schemas"]["AccessTrace"] | null;
+            now: components["schemas"]["AccessTrace"] | null;
+            /** Now Unavailable */
+            now_unavailable: ("rows_not_stored" | "run_user_missing" | "run_as_user_missing" | "workflow_missing" | "solution_not_recorded" | "inputs_not_stored") | null;
+            /** Changed */
+            changed: boolean | null;
+        };
+        /** AccessGrant */
+        AccessGrant: {
+            /** Permission */
+            permission: string;
+            /** Domain */
+            domain: string;
+            /** Action */
+            action: string;
+            /**
+             * Scope
+             * @enum {string}
+             */
+            scope: "per_organization" | "platform_wide" | "varies";
+            /** Sources */
+            sources: components["schemas"]["AccessGrantSource"][];
+        };
+        /**
+         * AccessGrantSource
+         * @description The role a permission is held through.
+         */
+        AccessGrantSource: {
+            /**
+             * Role Id
+             * Format: uuid
+             */
+            role_id: string;
+            /** Role Name */
+            role_name: string;
+            /**
+             * Via
+             * @enum {string}
+             */
+            via: "base" | "additional";
+        };
+        /** AccessRow */
+        AccessRow: {
+            place: components["schemas"]["Place"];
+            /** Grants */
+            grants: components["schemas"]["AccessGrant"][];
+        };
+        /**
+         * AccessStep
+         * @description One step of an access trace.
+         */
+        AccessStep: {
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "passed" | "stopped" | "not_applicable" | "not_reached";
+            /** Reason */
+            reason: string;
+            /**
+             * Facts
+             * @default {}
+             */
+            facts: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * AccessTrace
+         * @description What the managed-identity model decides, step by step.
+         */
+        AccessTrace: {
+            /**
+             * Outcome
+             * @enum {string}
+             */
+            outcome: "success" | "failure";
+            /** Enforced */
+            enforced: boolean;
+            /** Steps */
+            steps: components["schemas"]["AccessStep"][];
+        };
+        /**
          * AccessibleKnowledgeSource
-         * @description A knowledge source the current user can assign to their agents.
+         * @description A knowledge namespace the caller may select for an agent.
          */
         AccessibleKnowledgeSource: {
             /** Id */
@@ -13858,6 +14588,19 @@ export interface components {
             name: string;
             /** Description */
             description?: string | null;
+        };
+        /** AdditionalRoleInput */
+        AdditionalRoleInput: {
+            /**
+             * Role Id
+             * Format: uuid
+             */
+            role_id: string;
+            /**
+             * Boundaries
+             * @description Where the role applies. Omit for the default: the user's home organization (Platform for a Global user).
+             */
+            boundaries?: components["schemas"]["RoleBoundaryInput"][] | null;
         };
         /**
          * AdminRevokeRequest
@@ -14203,6 +14946,11 @@ export interface components {
              * @default 1800
              */
             timeout: number;
+            /**
+             * Run As
+             * @description Run the agent as this user. Requires Impersonate Users in that user's organization.
+             */
+            run_as?: string | null;
         };
         /** AgentRunDetailResponse */
         AgentRunDetailResponse: {
@@ -14243,6 +14991,12 @@ export interface components {
             caller_email?: string | null;
             /** Caller Name */
             caller_name?: string | null;
+            /** Run As User Id */
+            run_as_user_id?: string | null;
+            /** Run As User Name */
+            run_as_user_name?: string | null;
+            /** Run As User Email */
+            run_as_user_email?: string | null;
             /** Iterations Used */
             iterations_used: number;
             /** Tokens Used */
@@ -14297,6 +15051,7 @@ export interface components {
             completed_at?: string | null;
             /** Parent Run Id */
             parent_run_id?: string | null;
+            usage_summary?: components["schemas"]["AgentRunUsageSummary"] | null;
             /** Steps */
             steps?: components["schemas"]["AgentRunStepResponse"][];
             /** Child Run Ids */
@@ -14319,6 +15074,11 @@ export interface components {
             output_schema?: {
                 [key: string]: unknown;
             } | null;
+            /**
+             * Run As
+             * @description Run the agent as this user. Requires Impersonate Users in that user's organization.
+             */
+            run_as?: string | null;
         };
         /** AgentRunEnqueueResponse */
         AgentRunEnqueueResponse: {
@@ -14333,6 +15093,8 @@ export interface components {
              * @constant
              */
             status: "queued";
+            /** Run As User Id */
+            run_as_user_id?: string | null;
         };
         /** AgentRunListResponse */
         AgentRunListResponse: {
@@ -14390,6 +15152,12 @@ export interface components {
             caller_email?: string | null;
             /** Caller Name */
             caller_name?: string | null;
+            /** Run As User Id */
+            run_as_user_id?: string | null;
+            /** Run As User Name */
+            run_as_user_name?: string | null;
+            /** Run As User Email */
+            run_as_user_email?: string | null;
             /** Iterations Used */
             iterations_used: number;
             /** Tokens Used */
@@ -14444,6 +15212,7 @@ export interface components {
             completed_at?: string | null;
             /** Parent Run Id */
             parent_run_id?: string | null;
+            usage_summary?: components["schemas"]["AgentRunUsageSummary"] | null;
         };
         /** AgentRunStepResponse */
         AgentRunStepResponse: {
@@ -14474,6 +15243,24 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+        };
+        /**
+         * AgentRunUsageSummary
+         * @description What a single run cost and how heavy its model calls were.
+         *
+         *     ``cost`` and ``cache_hit_rate`` cover the whole run tree (delegates at any
+         *     depth, plus the summarizer). ``peak_context_tokens`` is the largest single
+         *     request in this run's own conversation.
+         */
+        AgentRunUsageSummary: {
+            /** Cost */
+            cost?: string | null;
+            /** Delegate Cost */
+            delegate_cost?: string | null;
+            /** Peak Context Tokens */
+            peak_context_tokens?: number | null;
+            /** Cache Hit Rate */
+            cache_hit_rate?: number | null;
         };
         /** AgentStatsResponse */
         AgentStatsResponse: {
@@ -15449,6 +16236,69 @@ export interface components {
             /** Workflow Ids */
             workflow_ids: string[];
         };
+        /**
+         * AssignableRole
+         * @description A role the caller may grant to this user (the server applies the
+         *     grant ceiling).
+         */
+        AssignableRole: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Description */
+            description?: string | null;
+            /** Is Builtin */
+            is_builtin: boolean;
+            /** Permissions */
+            permissions: string[];
+            /**
+             * Can Be Base
+             * @description Whether the caller may make this the user's base role.
+             */
+            can_be_base: boolean;
+            /**
+             * Can Be Additional
+             * @description Whether the caller may add this as an additional role.
+             */
+            can_be_additional: boolean;
+            /**
+             * Boundary Kinds
+             * @description Where the caller may make this role apply as an additional role. An 'organization' boundary is further limited to organizations where the caller can assign roles.
+             */
+            boundary_kinds: ("organization" | "managed_organizations" | "platform")[];
+            /**
+             * Provider Organization Allowed
+             * @description Whether an 'organization' boundary may name the provider organization.
+             */
+            provider_organization_allowed: boolean;
+            /**
+             * Fixed Boundaries
+             * @description When not empty, the role applies at exactly these boundaries and the caller doesn't choose where.
+             */
+            fixed_boundaries?: components["schemas"]["RoleBoundaryInput"][];
+        };
+        /** AssignedRole */
+        AssignedRole: {
+            /**
+             * Role Id
+             * Format: uuid
+             */
+            role_id: string;
+            /** Name */
+            name: string;
+            /** Description */
+            description?: string | null;
+            /** Is Builtin */
+            is_builtin: boolean;
+            /** Permissions */
+            permissions: string[];
+            /** Boundaries */
+            boundaries: components["schemas"]["RoleBoundaryPublic"][];
+        };
         /** AssistantTurn */
         AssistantTurn: {
             /**
@@ -15493,6 +16343,50 @@ export interface components {
             /** Attachments */
             attachments: components["schemas"]["AttachmentPublic"][];
         };
+        /** AuditArchiveRunRequest */
+        AuditArchiveRunRequest: {
+            /**
+             * Dry Run
+             * @default false
+             */
+            dry_run: boolean;
+        };
+        /** AuditExpiryPreview */
+        AuditExpiryPreview: {
+            /** Expiring Segments */
+            expiring_segments: number;
+            /** Expiring Rows */
+            expiring_rows: number;
+            /** Expiring From */
+            expiring_from: string | null;
+            /** Expiring To */
+            expiring_to: string | null;
+        };
+        /** AuditExportRequest */
+        AuditExportRequest: {
+            /**
+             * Start Date
+             * Format: date-time
+             * @description Start of the export range (inclusive).
+             */
+            start_date: string;
+            /**
+             * End Date
+             * Format: date-time
+             * @description End of the export range (inclusive).
+             */
+            end_date: string;
+            /**
+             * Organization Id
+             * @description Export only this organization's events; omit for every organization you reach.
+             */
+            organization_id?: string | null;
+            /**
+             * Action
+             * @description Action prefix filter, e.g. 'access.check'.
+             */
+            action?: string | null;
+        };
         /**
          * AuditLogActor
          * @description Who performed the action.
@@ -15515,14 +16409,24 @@ export interface components {
             user_name?: string | null;
             /**
              * Organization Id
-             * @description Acting user's organization
+             * @description Organization the event happened in (an access check's target organization)
              */
             organization_id?: string | null;
             /**
              * Organization Name
-             * @description Acting user's organization name
+             * @description Name of the organization the event happened in
              */
             organization_name?: string | null;
+            /**
+             * Home Organization Id
+             * @description The organization the acting user belongs to (null for Global or a deleted user)
+             */
+            home_organization_id?: string | null;
+            /**
+             * Home Organization Name
+             * @description Name of the acting user's own organization
+             */
+            home_organization_name?: string | null;
         };
         /**
          * AuditLogEntry
@@ -15565,6 +16469,16 @@ export interface components {
              */
             source: string;
             /**
+             * Operation Id
+             * @description Catalog operation id for the route that produced this event
+             */
+            operation_id?: string | null;
+            /**
+             * Surface
+             * @description Transport the request came in over: 'web', 'cli', 'mcp', 'embed', 'workflow', 'service'
+             */
+            surface?: string | null;
+            /**
              * Execution Id
              * @description Workflow execution that produced the event, when supported
              */
@@ -15582,10 +16496,38 @@ export interface components {
             details?: {
                 [key: string]: unknown;
             } | null;
+            /**
+             * Workflow Name
+             * @description Name of the workflow the event names (details.workflow_id), when it still exists
+             */
+            workflow_name?: string | null;
+        };
+        /**
+         * AuditLogGroup
+         * @description Entries sharing one value of the requested ``group_by``.
+         */
+        AuditLogGroup: {
+            /**
+             * Key
+             * @description The group's value (null when entries have none)
+             */
+            key?: string | null;
+            /**
+             * Count
+             * @description Matching entries in the group
+             */
+            count: number;
+            /**
+             * Last Seen
+             * @description Newest entry's time
+             */
+            last_seen: string;
+            /** @description Newest entry in the group */
+            sample: components["schemas"]["AuditLogEntry"];
         };
         /**
          * AuditLogListResponse
-         * @description Paginated audit log list response.
+         * @description Paginated audit log list response, or groups when ``group_by`` is set.
          */
         AuditLogListResponse: {
             /**
@@ -15594,10 +16536,60 @@ export interface components {
              */
             entries: components["schemas"]["AuditLogEntry"][];
             /**
+             * Groups
+             * @description Groups, largest first (only with group_by; entries is then empty)
+             */
+            groups?: components["schemas"]["AuditLogGroup"][] | null;
+            /**
              * Continuation Token
              * @description Opaque token for next page (null when no more)
              */
             continuation_token?: string | null;
+            /** @description What the database holds and what is archived */
+            retention?: components["schemas"]["AuditRetentionInfo"] | null;
+        };
+        /** AuditRetentionInfo */
+        AuditRetentionInfo: {
+            /** Hot Days */
+            hot_days: number;
+            /** Archive Days */
+            archive_days: number | null;
+            /** Oldest In Database */
+            oldest_in_database: string | null;
+            /** Archived Through */
+            archived_through: string | null;
+            /** Archived Segments */
+            archived_segments: number;
+            /** Archived Rows */
+            archived_rows: number;
+        };
+        /** AuditRetentionSettings */
+        AuditRetentionSettings: {
+            /**
+             * Hot Days
+             * @description Days events stay in the database before they are archived.
+             * @default 90
+             */
+            hot_days: number;
+            /**
+             * Archive Days
+             * @description Age in days at which archived events are deleted; null keeps them forever.
+             * @default 365
+             */
+            archive_days: number | null;
+        };
+        /** AuditRetentionSettingsUpdate */
+        AuditRetentionSettingsUpdate: {
+            /** Hot Days */
+            hot_days: number;
+            /** Archive Days */
+            archive_days: number | null;
+        };
+        /** AuditRetentionStatus */
+        AuditRetentionStatus: {
+            settings: components["schemas"]["AuditRetentionSettings"];
+            info: components["schemas"]["AuditRetentionInfo"];
+            last_run: components["schemas"]["PlatformJobPublic"] | null;
         };
         /**
          * AuthStatusResponse
@@ -15625,6 +16617,54 @@ export interface components {
             auto_redirect_to_sso: boolean;
             /** Default Sso Provider */
             default_sso_provider?: ("microsoft" | "google" | "oidc") | null;
+        };
+        /** AuthorizationBaseRole */
+        AuthorizationBaseRole: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+        };
+        /** AuthorizationBoundary */
+        AuthorizationBoundary: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "home" | "organization" | "managed_organizations" | "platform";
+            /** Organization Id */
+            organization_id?: string | null;
+        };
+        /** AuthorizationGrant */
+        AuthorizationGrant: {
+            /** Permission */
+            permission: string;
+            boundary: components["schemas"]["AuthorizationBoundary"];
+        };
+        /**
+         * AuthorizationSummary
+         * @description What the signed-in user holds, for the UI to decide which controls to
+         *     show. The server decides every request on its own.
+         */
+        AuthorizationSummary: {
+            /** Is Platform Admin */
+            is_platform_admin: boolean;
+            /** Home Organization Id */
+            home_organization_id: string | null;
+            /**
+             * Provider Organization Id
+             * Format: uuid
+             */
+            provider_organization_id: string;
+            base_role: components["schemas"]["AuthorizationBaseRole"];
+            /**
+             * Grants
+             * @description Base-role permissions (kind='home', the home organization only) and every additional role's permissions at each of its boundaries, for everyone including a Platform Admin. A Platform Admin's list has the wildcard '*' at the platform boundary, which satisfies every permission except secrets.read; secrets.read is held only through its own grant.
+             */
+            grants: components["schemas"]["AuthorizationGrant"][];
         };
         /**
          * AuthorizeResponse
@@ -16674,6 +17714,20 @@ export interface components {
             filename: string;
         };
         /**
+         * ChatContextUsage
+         * @description Context and cached input for the latest request in the Chat conversation.
+         */
+        ChatContextUsage: {
+            /** Input Tokens */
+            input_tokens: number;
+            /** Context Window */
+            context_window?: number | null;
+            /** Cache Read Tokens */
+            cache_read_tokens: number;
+            /** Model Profile Id */
+            model_profile_id: string;
+        };
+        /**
          * ChatModelProfilePublic
          * @description One administrator-governed reusable model profile exposed in Chat.
          */
@@ -16874,6 +17928,7 @@ export interface components {
              * @default 0
              */
             latest_sequence: number;
+            context_usage?: components["schemas"]["ChatContextUsage"] | null;
         };
         /**
          * ChatStreamChunk
@@ -16886,7 +17941,7 @@ export interface components {
              * Type
              * @enum {string}
              */
-            type: "message_start" | "delta" | "assistant_message_end" | "tool_call" | "tool_progress" | "tool_result" | "artifact_started" | "artifact_ready" | "artifact_failed" | "agent_switch" | "context_warning" | "run_status" | "title_update" | "done" | "cancelled" | "error";
+            type: "message_start" | "delta" | "assistant_message_end" | "tool_call" | "tool_progress" | "tool_result" | "artifact_started" | "artifact_ready" | "artifact_failed" | "agent_switch" | "context_warning" | "context_usage" | "run_status" | "title_update" | "done" | "cancelled" | "error";
             /** Content */
             content?: string | null;
             tool_call?: components["schemas"]["ToolCall"] | null;
@@ -16900,6 +17955,7 @@ export interface components {
             execution_id?: string | null;
             agent_switch?: components["schemas"]["AgentSwitch"] | null;
             context_warning?: components["schemas"]["ContextWarning"] | null;
+            context_usage?: components["schemas"]["ChatContextUsage"] | null;
             /** Message Id */
             message_id?: string | null;
             /**
@@ -20552,6 +21608,89 @@ export interface components {
             schedule?: components["schemas"]["ScheduleSourceResponse"] | null;
         };
         /**
+         * EventSourceSecretResponse
+         * @description Event source returned by the create or rotate call that set its signing secret.
+         *     POST /api/events/sources, POST /api/events/sources/{source_id}/rotate-secret
+         */
+        EventSourceSecretResponse: {
+            /**
+             * Id
+             * Format: uuid
+             * @description Event source ID
+             */
+            id: string;
+            /**
+             * Name
+             * @description Event source name
+             */
+            name: string;
+            /** @description Source type */
+            source_type: components["schemas"]["EventSourceType"];
+            /**
+             * Event Type
+             * @description Topic string for topic sources (e.g. 'user.invited')
+             */
+            event_type?: string | null;
+            /**
+             * Organization Id
+             * @description Organization ID (null for global)
+             */
+            organization_id?: string | null;
+            /**
+             * Organization Name
+             * @description Organization name (for display)
+             */
+            organization_name?: string | null;
+            /**
+             * Is Active
+             * @description Whether the source is active
+             */
+            is_active: boolean;
+            /**
+             * Error Message
+             * @description Error message if source is in error state
+             */
+            error_message?: string | null;
+            /**
+             * Subscription Count
+             * @description Number of active subscriptions
+             * @default 0
+             */
+            subscription_count: number;
+            /**
+             * Event Count 24H
+             * @description Number of events received in the last 24 hours
+             * @default 0
+             */
+            event_count_24h: number;
+            /**
+             * Created By
+             * @description User who created the source
+             */
+            created_by: string;
+            /**
+             * Created At
+             * Format: date-time
+             * @description Creation timestamp
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             * @description Last update timestamp
+             */
+            updated_at: string;
+            /** @description Webhook configuration details */
+            webhook?: components["schemas"]["WebhookSourceResponse"] | null;
+            /** @description Schedule configuration details */
+            schedule?: components["schemas"]["ScheduleSourceResponse"] | null;
+            /**
+             * Raw Secret
+             * @description The signing secret this call set, shown once. No other response returns it. Null when the source has no signing secret.
+             */
+            raw_secret?: string | null;
+        };
+        /**
          * EventSourceType
          * @description Event source types
          * @enum {string}
@@ -23137,6 +24276,79 @@ export interface components {
             /** Collections */
             collections: components["schemas"]["HomeCollectionPublic"][];
         };
+        /** IdentityBaseRole */
+        IdentityBaseRole: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+        };
+        /**
+         * IdentityCreate
+         * @description A new custom identity (base role User, no additional roles).
+         */
+        IdentityCreate: {
+            /** Name */
+            name: string;
+            /**
+             * Organization Id
+             * @description The identity's organization; null for a Global identity.
+             */
+            organization_id: string | null;
+        };
+        /** IdentityPublic */
+        IdentityPublic: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /**
+             * Identity Kind
+             * @enum {string}
+             */
+            identity_kind: "org_default" | "global_default" | "custom";
+            /**
+             * Organization Id
+             * @description Null for Global identities.
+             */
+            organization_id: string | null;
+            /** Organization Name */
+            organization_name: string | null;
+            base_role: components["schemas"]["IdentityBaseRole"];
+            /** Additional Roles */
+            additional_roles: components["schemas"]["IdentityRole"][];
+            /**
+             * Workflows Using
+             * @description Workflows that run unattended as this identity. A default identity also runs the workflows of its organization (Global: of no organization) that name no identity.
+             */
+            workflows_using: number;
+        };
+        /**
+         * IdentityRole
+         * @description An additional role the identity holds, and where it applies.
+         */
+        IdentityRole: {
+            /**
+             * Role Id
+             * Format: uuid
+             */
+            role_id: string;
+            /** Name */
+            name: string;
+            /** Boundaries */
+            boundaries: components["schemas"]["RoleBoundaryPublic"][];
+        };
+        /** IdentityUpdate */
+        IdentityUpdate: {
+            /** Name */
+            name: string;
+        };
         /**
          * ImageArtifactSpec
          * @description Prompt for a provider-generated image saved as a Chat artifact.
@@ -24284,6 +25496,9 @@ export interface components {
         /**
          * LLMModelInfo
          * @description Model information with both ID and display name.
+         *
+         *     Catalog fields are filled when the model is in the models.dev catalog and
+         *     left empty for models listed live from a custom endpoint.
          */
         LLMModelInfo: {
             /** Id */
@@ -24292,6 +25507,22 @@ export interface components {
             display_name: string;
             /** Output Modalities */
             output_modalities?: string[] | null;
+            /** Input Modalities */
+            input_modalities?: string[] | null;
+            /** Context Window */
+            context_window?: number | null;
+            /** Max Output Tokens */
+            max_output_tokens?: number | null;
+            /** Input Price */
+            input_price?: string | null;
+            /** Output Price */
+            output_price?: string | null;
+            /** Cache Read Price */
+            cache_read_price?: string | null;
+            /** Tool Call */
+            tool_call?: boolean | null;
+            /** Reasoning Choices */
+            reasoning_choices?: string[];
         };
         /**
          * LinkedAccountResponse
@@ -24800,6 +26031,11 @@ export interface components {
                 [key: string]: unknown;
             };
             /**
+             * Async
+             * @description Override the capability's default execution mode. When omitted, delegations run asynchronously and other tools run synchronously.
+             */
+            async?: boolean | null;
+            /**
              * Operation Id
              * @description Stable caller-generated identity used to make retries of this agent/tool operation idempotent.
              */
@@ -24832,8 +26068,19 @@ export interface components {
             /** Duration Ms */
             duration_ms: number;
             /** Result */
-            result: unknown;
+            result?: unknown;
             durable_handle?: components["schemas"]["MCPGatewayDurableHandle"] | null;
+            /**
+             * Async
+             * @default false
+             */
+            async: boolean;
+            /** Execution Id */
+            execution_id?: string | null;
+            /** Execution Type */
+            execution_type?: ("workflow" | "agent_run") | null;
+            /** Status */
+            status?: string | null;
         };
         /**
          * MCPGatewayExecutionResponse
@@ -24965,12 +26212,7 @@ export interface components {
              * @description MCP server URL (Streamable HTTP endpoint)
              */
             server_url: string;
-            /**
-             * Oauth Provider Id
-             * @description OAuth provider configuration FK; absent for servers without auth
-             */
-            oauth_provider_id?: string | null;
-            /** @description Inline OAuth provider creation. When set, the router creates an OAuthProvider row and links it via ``oauth_provider_id``. Mutually exclusive with ``oauth_provider_id``. */
+            /** @description Inline OAuth provider creation. When set, the router creates an OAuthProvider row and links it via ``oauth_provider_id``. */
             oauth_provider?: components["schemas"]["MCPServerOAuthProviderCreate"] | null;
             /**
              * Redirect Url
@@ -25130,8 +26372,6 @@ export interface components {
             name?: string | null;
             /** Server Url */
             server_url?: string | null;
-            /** Oauth Provider Id */
-            oauth_provider_id?: string | null;
             /** Redirect Url */
             redirect_url?: string | null;
             /** Discovery Metadata */
@@ -25562,7 +26802,7 @@ export interface components {
              * @default unknown
              * @enum {string}
              */
-            source: "openrouter" | "verified" | "manual" | "unknown";
+            source: "catalog" | "openrouter" | "verified" | "manual" | "unknown";
             /** Checked At */
             checked_at?: string | null;
             /**
@@ -25572,48 +26812,58 @@ export interface components {
             fingerprint: string;
         };
         /**
-         * ModelCapabilityLookupRequest
-         * @description Identify a configured model for deterministic catalog lookup.
+         * ModelCatalogProvider
+         * @description A provider Bifrost can connect to, from the models.dev catalog.
          */
-        ModelCapabilityLookupRequest: {
+        ModelCatalogProvider: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
             /**
-             * Provider
+             * Adapter
              * @enum {string}
              */
-            provider: "openai" | "anthropic" | "google";
-            /** Model */
-            model: string;
+            adapter: "openai" | "anthropic" | "google" | "openrouter" | "openai_compatible" | "opencode_go";
             /** Endpoint */
             endpoint?: string | null;
-        };
-        /**
-         * ModelCapabilityLookupResponse
-         * @description Capability lookup result plus an explanation suitable for settings UI.
-         */
-        ModelCapabilityLookupResponse: {
-            capabilities: components["schemas"]["ModelCapabilities"];
-            /** Message */
-            message: string;
-        };
-        /**
-         * ModelCapabilityVerifyRequest
-         * @description Run a one-time conformance check against the configured provider.
-         */
-        ModelCapabilityVerifyRequest: {
+            /** Doc */
+            doc?: string | null;
+            /** Env */
+            env?: string[];
             /**
-             * Provider
+             * Native
+             * @description Exercised directly by Bifrost; other providers reuse a native adapter
+             */
+            native: boolean;
+            /** Model Count */
+            model_count: number;
+        };
+        /** ModelCatalogResponse */
+        ModelCatalogResponse: {
+            /**
+             * Source
              * @enum {string}
              */
-            provider: "openai" | "anthropic" | "google";
-            /** Model */
-            model: string;
-            /** Endpoint */
-            endpoint?: string | null;
-            /**
-             * Api Key
-             * @description New unsaved API key; omit to use the saved provider key.
-             */
-            api_key?: string | null;
+            source: "bundled" | "refreshed";
+            /** Fetched At */
+            fetched_at?: string | null;
+            /** Provider Count */
+            provider_count: number;
+            /** Model Count */
+            model_count: number;
+            /** Providers */
+            providers: components["schemas"]["ModelCatalogProvider"][];
+        };
+        /**
+         * ModelDisplayNamesResponse
+         * @description Stored model id -> catalog display name, for ids the catalog knows.
+         */
+        ModelDisplayNamesResponse: {
+            /** Names */
+            names: {
+                [key: string]: string;
+            };
         };
         /**
          * NotificationCategory
@@ -26450,6 +27700,16 @@ export interface components {
             /** Total Value */
             total_value: number;
         };
+        /** OrganizationRef */
+        OrganizationRef: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+        };
         /**
          * OrganizationUpdate
          * @description Input for updating an organization (all fields optional).
@@ -26864,14 +28124,14 @@ export interface components {
         };
         /**
          * PasswordChange
-         * @description Request model for changing or setting password.
+         * @description Request model for changing an existing password.
          */
         PasswordChange: {
             /**
              * Current Password
-             * @description Current password (required if user has a password set)
+             * @description Current password
              */
-            current_password?: string | null;
+            current_password: string;
             /**
              * New Password
              * @description New password (minimum 8 characters)
@@ -26964,6 +28224,57 @@ export interface components {
              * @description Forms, agents, and apps that depend on this workflow
              */
             affected_entities?: components["schemas"]["AffectedEntity"][];
+        };
+        /**
+         * PermissionCatalogEntry
+         * @description One permission domain as the roles and access screens present it.
+         */
+        PermissionCatalogEntry: {
+            /** Domain */
+            domain: string;
+            /** Title */
+            title: string;
+            /**
+             * Area
+             * @enum {string}
+             */
+            area: "Identity & Access" | "Automation" | "Data & Content" | "Integrations & Secrets" | "Platform";
+            /** Description */
+            description: string;
+            /** Who Should Hold */
+            who_should_hold: string;
+            /** Actions */
+            actions: string[];
+            /** Names */
+            names: {
+                [key: string]: string;
+            };
+            /** Privileged */
+            privileged: string[];
+            /**
+             * Scope
+             * @enum {string}
+             */
+            scope: "per_organization" | "platform_wide" | "varies";
+            /** Enforced */
+            enforced: boolean;
+        };
+        /**
+         * Place
+         * @description Somewhere a person's roles apply, with the label the screens show.
+         */
+        Place: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "home" | "organization" | "managed_organizations" | "platform";
+            /** Organization Id */
+            organization_id?: string | null;
+            /** Organization Name */
+            organization_name?: string | null;
+            /** Label */
+            label: string;
         };
         /**
          * PlatformJobAccepted
@@ -27599,6 +28910,125 @@ export interface components {
              */
             is_alive: boolean;
         };
+        /** ProductUpdateAsset */
+        ProductUpdateAsset: {
+            /** Path */
+            path: string;
+            /** Url */
+            url: string;
+            /** Alt */
+            alt: string;
+            /** Caption */
+            caption?: string | null;
+        };
+        /** ProductUpdateContributor */
+        ProductUpdateContributor: {
+            /** Login */
+            login: string;
+            /** Profile Url */
+            profile_url: string;
+            /** Source Pr */
+            source_pr: number;
+            /** Role */
+            role?: string | null;
+        };
+        /** ProductUpdateEntry */
+        ProductUpdateEntry: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Revision */
+            revision: number;
+            /** Published At */
+            published_at: string;
+            /** Title */
+            title: string;
+            /** Markdown */
+            markdown: string;
+            /**
+             * Area
+             * @enum {string}
+             */
+            area: "Agents" | "Apps & Forms" | "Workflows" | "Integrations" | "Administration" | "Platform" | "Developer Tools";
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "New" | "Improved" | "Fixed" | "Security";
+            /** Action Required */
+            action_required: boolean;
+            /** Sources */
+            sources: components["schemas"]["ProductUpdateSource"][];
+            /** Contributors */
+            contributors: components["schemas"]["ProductUpdateContributor"][];
+            /** Assets */
+            assets: components["schemas"]["ProductUpdateAsset"][];
+            /** Additional Areas */
+            additional_areas?: string[] | null;
+            /** Release */
+            release?: string | null;
+            /** In App */
+            in_app?: boolean | null;
+        };
+        /** ProductUpdateOtherChange */
+        ProductUpdateOtherChange: {
+            /** Source */
+            source: string;
+            /** Title */
+            title: string;
+            /** Url */
+            url: string;
+            /** Contributors */
+            contributors: components["schemas"]["ProductUpdateContributor"][];
+            /** Category */
+            category?: ("fix" | "hardening") | null;
+        };
+        /** ProductUpdateSource */
+        ProductUpdateSource: {
+            /** Pr */
+            pr?: number | null;
+            /** Commit */
+            commit?: string | null;
+            /** Role */
+            role?: string | null;
+        };
+        /**
+         * ProductUpdatesBundle
+         * @description The approved, build-pinned Product Updates bundle served at runtime.
+         */
+        ProductUpdatesBundle: {
+            /**
+             * Schema Version
+             * @constant
+             */
+            schema_version: 1;
+            /** Target Ref */
+            target_ref: string;
+            /** Content Ref */
+            content_ref: string;
+            /** Entries */
+            entries: components["schemas"]["ProductUpdateEntry"][];
+            /** Other Changes */
+            other_changes: components["schemas"]["ProductUpdateOtherChange"][];
+        };
+        /** ProductUpdatesFeedResponse */
+        ProductUpdatesFeedResponse: {
+            bundle: components["schemas"]["ProductUpdatesBundle"];
+            /** Seen Entry Ids */
+            seen_entry_ids: string[];
+        };
+        /** ProductUpdatesReceiptRequest */
+        ProductUpdatesReceiptRequest: {
+            /** Entry Ids */
+            entry_ids: string[];
+        };
+        /** ProductUpdatesReceiptResponse */
+        ProductUpdatesReceiptResponse: {
+            /** Seen Entry Ids */
+            seen_entry_ids: string[];
+        };
         /**
          * ProfileResponse
          * @description Response model for user profile.
@@ -28049,6 +29479,63 @@ export interface components {
             error_message: string | null;
             /** Started At */
             started_at: string | null;
+        };
+        /**
+         * RecommendedAccess
+         * @description What the identity a workflow runs as would also need, based on its recorded runs.
+         */
+        RecommendedAccess: {
+            /**
+             * Identity Id
+             * Format: uuid
+             * @description The identity the recommendations are computed for.
+             */
+            identity_id: string;
+            /**
+             * Observed Runs
+             * @description Runs in the window that recorded access checks for this workflow.
+             */
+            observed_runs: number;
+            /**
+             * Window Days
+             * @description How far back the recorded checks reach: the audit log's hot window.
+             */
+            window_days: number;
+            /** Items */
+            items: components["schemas"]["RecommendedAccessItem"][];
+        };
+        /** RecommendedAccessItem */
+        RecommendedAccessItem: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "reach" | "policy_role" | "workflow_role";
+            /** Label */
+            label: string;
+            /** Detail */
+            detail: string;
+            /**
+             * Organization Id
+             * @description The organization a reach recommendation targets, or where a policy role's grant would be placed; null for everything, for Global, and for a workflow role.
+             */
+            organization_id: string | null;
+            /** @description Null when no single role assignment meets it (a role to choose, or information only). */
+            grant: components["schemas"]["RecommendedGrant"] | null;
+        };
+        /**
+         * RecommendedGrant
+         * @description The role assignment a recommendation asks for: ``role_id`` applied at
+         *     ``boundaries``, merged into the identity's existing assignment of that role.
+         */
+        RecommendedGrant: {
+            /**
+             * Role Id
+             * Format: uuid
+             */
+            role_id: string;
+            /** Boundaries */
+            boundaries: components["schemas"]["RoleBoundaryInput"][];
         };
         /**
          * RecoveryCodesCountResponse
@@ -28682,6 +30169,57 @@ export interface components {
             app_ids: string[];
         };
         /**
+         * RoleBoundaryInput
+         * @description Where an additional role applies.
+         */
+        RoleBoundaryInput: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "organization" | "managed_organizations" | "platform";
+            /**
+             * Organization Id
+             * @description Required for kind='organization'; must be unset otherwise.
+             */
+            organization_id?: string | null;
+        };
+        /** RoleBoundaryPublic */
+        RoleBoundaryPublic: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "organization" | "managed_organizations" | "platform";
+            /** Organization Id */
+            organization_id?: string | null;
+            /** Organization Name */
+            organization_name?: string | null;
+        };
+        /** RoleBridgeGrantsResponse */
+        RoleBridgeGrantsResponse: {
+            /**
+             * Role Id
+             * Format: uuid
+             */
+            role_id: string;
+            /** Is Builtin */
+            is_builtin: boolean;
+            /** Permissions */
+            permissions: ("devices.readwrite" | "devices.execute" | "agents.promote")[];
+            /** Version */
+            version: string;
+        };
+        /** RoleBridgeGrantsUpdate */
+        RoleBridgeGrantsUpdate: {
+            /** Permissions */
+            permissions: ("devices.readwrite" | "devices.execute" | "agents.promote")[];
+            /** Expected Permissions */
+            expected_permissions: ("devices.readwrite" | "devices.execute" | "agents.promote")[];
+            /** Expected Version */
+            expected_version: string;
+        };
+        /**
          * RoleConsumerCounts
          * @description Inline counts of every consumer type for a role.
          */
@@ -28728,10 +30266,6 @@ export interface components {
             name: string;
             /** Description */
             description?: string | null;
-            /** Permissions */
-            permissions?: {
-                [key: string]: unknown;
-            } | null;
         };
         /**
          * RoleFormsResponse
@@ -28767,6 +30301,71 @@ export interface components {
             /** Entries */
             entries?: components["schemas"]["RoleKnowledgeEntry"][];
         };
+        /** RolePermissionItem */
+        RolePermissionItem: {
+            /** Permission */
+            permission: string;
+            /**
+             * Editable
+             * @description Whether PUT /api/roles/{role_id}/permissions may change it.
+             */
+            editable: boolean;
+            /**
+             * Privileged
+             * @description Holders of this permission become protected users.
+             */
+            privileged: boolean;
+        };
+        /** RolePermissionsResponse */
+        RolePermissionsResponse: {
+            /**
+             * Role Id
+             * Format: uuid
+             */
+            role_id: string;
+            /** Is Builtin */
+            is_builtin: boolean;
+            /**
+             * Permissions
+             * @description Every permission the role holds.
+             */
+            permissions: components["schemas"]["RolePermissionItem"][];
+            /**
+             * Identity Permissions
+             * @description The identity permissions an editor may choose from, held or not.
+             */
+            identity_permissions: components["schemas"]["RolePermissionItem"][];
+        };
+        /**
+         * RolePermissionsUpdate
+         * @description The role's identity permissions (users, userlifecycle, organizations,
+         *     roleassignments, roles). Other permissions the role holds are kept.
+         */
+        RolePermissionsUpdate: {
+            /** Permissions */
+            permissions: string[];
+        };
+        /**
+         * RolePlacementSummary
+         * @description Where a role's assignments apply, across everyone who holds it.
+         */
+        RolePlacementSummary: {
+            /**
+             * Organizations
+             * @description Distinct organizations the role is placed on
+             */
+            organizations: number;
+            /**
+             * Managed
+             * @description Placed on every managed (customer) organization
+             */
+            managed: boolean;
+            /**
+             * Platform
+             * @description Placed platform-wide
+             */
+            platform: boolean;
+        };
         /**
          * RolePublic
          * @description Role output for API responses.
@@ -28783,10 +30382,16 @@ export interface components {
              * Format: uuid
              */
             id: string;
-            /** Permissions */
-            permissions?: {
-                [key: string]: unknown;
-            };
+            /**
+             * Is Base
+             * @default false
+             */
+            is_base: boolean;
+            /**
+             * Is Builtin
+             * @default false
+             */
+            is_builtin: boolean;
             /** Created By */
             created_by: string;
             /** Created At */
@@ -28795,6 +30400,32 @@ export interface components {
             updated_at: string | null;
             /** @description Inline counts of every consumer type. Populated on list-roles for the Roles UI; may be None on single-role responses where it's not needed. */
             consumer_counts?: components["schemas"]["RoleConsumerCounts"] | null;
+            /**
+             * Holders
+             * @description Distinct users holding the role as their base role or an additional role. Populated with consumer_counts.
+             */
+            holders?: number | null;
+            /**
+             * Grants
+             * @description Permissions the role grants, sorted. Populated with consumer_counts.
+             */
+            grants?: string[] | null;
+            /** @description Where the role's assignments are placed. Populated with consumer_counts. */
+            placements?: components["schemas"]["RolePlacementSummary"] | null;
+        };
+        /** RoleSummary */
+        RoleSummary: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Description */
+            description?: string | null;
+            /** Is Builtin */
+            is_builtin: boolean;
         };
         /**
          * RoleUpdate
@@ -28805,10 +30436,6 @@ export interface components {
             name?: string | null;
             /** Description */
             description?: string | null;
-            /** Permissions */
-            permissions?: {
-                [key: string]: unknown;
-            } | null;
         };
         /**
          * RoleUserSummary
@@ -28833,6 +30460,16 @@ export interface components {
              * @default false
              */
             organization_is_provider: boolean;
+            /**
+             * Identity Kind
+             * @description org_default, global_default or custom for an identity; null for a person.
+             */
+            identity_kind?: string | null;
+            /**
+             * Boundaries
+             * @description Where the role applies for this user.
+             */
+            boundaries?: components["schemas"]["RoleBoundaryPublic"][];
         };
         /**
          * RoleUsersResponse
@@ -28895,6 +30532,66 @@ export interface components {
             max_url_ttl_seconds: number;
             /** Expected Read Sha256 */
             expected_read_sha256?: string | null;
+        };
+        /** RunRetentionInfo */
+        RunRetentionInfo: {
+            /** Days */
+            days: number | null;
+            /** Oldest Finished Run */
+            oldest_finished_run: string | null;
+            /** Rolled Up Runs */
+            rolled_up_runs: number;
+            /** Rolled Up Through */
+            rolled_up_through: string | null;
+        };
+        /** RunRetentionPreview */
+        RunRetentionPreview: {
+            /** Days */
+            days: number | null;
+            /** Cutoff */
+            cutoff: string | null;
+            /** Workflow Runs */
+            workflow_runs: number;
+            /** Agent Runs */
+            agent_runs: number;
+            /** Events */
+            events: number;
+        };
+        /** RunRetentionPublic */
+        RunRetentionPublic: {
+            /** Days */
+            days: number | null;
+        };
+        /** RunRetentionRunRequest */
+        RunRetentionRunRequest: {
+            /**
+             * Dry Run
+             * @default false
+             */
+            dry_run: boolean;
+        };
+        /** RunRetentionSettings */
+        RunRetentionSettings: {
+            /**
+             * Days
+             * @description Days a finished run or event is kept; null keeps them forever.
+             * @default 30
+             */
+            days: number | null;
+        };
+        /** RunRetentionSettingsUpdate */
+        RunRetentionSettingsUpdate: {
+            /**
+             * Days
+             * @description Days a finished run or event is kept; null keeps them forever.
+             */
+            days: number | null;
+        };
+        /** RunRetentionStatus */
+        RunRetentionStatus: {
+            settings: components["schemas"]["RunRetentionSettings"];
+            info: components["schemas"]["RunRetentionInfo"];
+            last_run: components["schemas"]["PlatformJobPublic"] | null;
         };
         /** RuntimeEntityDefinition */
         RuntimeEntityDefinition: {
@@ -29584,74 +31281,161 @@ export interface components {
             scope: "global" | string;
         };
         /**
+         * SearchFileHit
+         * @description One matching file (files output mode).
+         */
+        SearchFileHit: {
+            /** File Path */
+            file_path: string;
+            source: components["schemas"]["SearchSource"];
+            /** Match Count */
+            match_count: number;
+            /** First Line */
+            first_line: number;
+        };
+        /**
+         * SearchMatch
+         * @description One matching line.
+         */
+        SearchMatch: {
+            /**
+             * File Path
+             * @description Path relative to its source root
+             */
+            file_path: string;
+            source: components["schemas"]["SearchSource"];
+            /**
+             * Line
+             * @description Line number (1-indexed)
+             */
+            line: number;
+            /**
+             * Column
+             * @description Column of the match start (0-indexed)
+             */
+            column: number;
+            /**
+             * Text
+             * @description The matching line, windowed around the match when very long
+             */
+            text: string;
+            /** Context Before */
+            context_before?: string[];
+            /** Context After */
+            context_after?: string[];
+        };
+        /**
          * SearchRequest
-         * @description Search query request
+         * @description Search workspace and Solution source like grep, one page at a time.
          */
         SearchRequest: {
             /**
              * Query
-             * @description Search text or regex pattern
+             * @description Literal text, or a Python `re` pattern when is_regex is true. Matched per line.
              */
             query: string;
             /**
-             * Case Sensitive
-             * @description Case-sensitive matching
-             * @default false
-             */
-            case_sensitive: boolean;
-            /**
              * Is Regex
-             * @description Treat query as regex
+             * @description Treat query as a Python regular expression
              * @default false
              */
             is_regex: boolean;
             /**
-             * Include Pattern
-             * @description Glob pattern for files to search
-             * @default **\/*
+             * Case Sensitive
+             * @description Case-sensitive matching. Case-insensitive literal search prefilters with PostgreSQL ILIKE, so a few non-ASCII case folds (e.g. ß) may be missed.
+             * @default false
              */
-            include_pattern: string | null;
+            case_sensitive: boolean;
             /**
-             * Max Results
-             * @description Maximum results to return
-             * @default 1000
+             * Include Pattern
+             * @description ripgrep-style glob over repo-relative paths, e.g. '*.py', 'workflows/**', '*.{ts,tsx}'
              */
-            max_results: number;
+            include_pattern?: string | null;
+            /**
+             * Source
+             * @description Search workspace source, Solution source, or both
+             * @default all
+             * @enum {string}
+             */
+            source: "all" | "workspace" | "solutions";
+            /**
+             * Solution Id
+             * @description Restrict the search to one Solution install's source
+             */
+            solution_id?: string | null;
+            /**
+             * Output Mode
+             * @description 'content' returns matching lines; 'files' returns one entry per matching file
+             * @default content
+             * @enum {string}
+             */
+            output_mode: "content" | "files";
+            /**
+             * Context Lines
+             * @description Lines of context around each match
+             * @default 1
+             */
+            context_lines: number;
+            /**
+             * Limit
+             * @description Matches (content mode) or files (files mode) per page
+             * @default 25
+             */
+            limit: number;
+            /**
+             * Cursor
+             * @description next_cursor from the previous page of this exact search
+             */
+            cursor?: string | null;
         };
         /**
          * SearchResponse
-         * @description Search results response
+         * @description One page of search results plus what to do next.
          */
         SearchResponse: {
-            /**
-             * Query
-             * @description Original search query
-             */
+            /** Query */
             query: string;
             /**
-             * Total Matches
-             * @description Total matches found
+             * Output Mode
+             * @enum {string}
              */
-            total_matches: number;
+            output_mode: "content" | "files";
             /**
-             * Files Searched
-             * @description Number of files searched
+             * Matches
+             * @description Matching lines (content mode; empty in files mode)
              */
-            files_searched: number;
+            matches: components["schemas"]["SearchMatch"][];
             /**
-             * Results
-             * @description Array of search results
+             * Files
+             * @description Matching files (files mode; empty in content mode)
              */
-            results: components["schemas"]["SearchResult"][];
+            files: components["schemas"]["SearchFileHit"][];
             /**
-             * Truncated
-             * @description Whether results were truncated
+             * Returned
+             * @description Results in this page
              */
-            truncated: boolean;
+            returned: number;
             /**
-             * Search Time Ms
-             * @description Search duration in milliseconds
+             * Has More Matches
+             * @description More results exist beyond this page
              */
+            has_more_matches: boolean;
+            /**
+             * Response Complete
+             * @description This page ends the result set
+             */
+            response_complete: boolean;
+            /**
+             * Next Cursor
+             * @description Pass as cursor to get the next page
+             */
+            next_cursor?: string | null;
+            /**
+             * Guidance
+             * @description Plain-language summary and how to get more results
+             */
+            guidance: string;
+            /** Search Time Ms */
             search_time_ms: number;
             /**
              * Source Authority
@@ -29666,40 +31450,24 @@ export interface components {
             workspace_release_id?: string | null;
         };
         /**
-         * SearchResult
-         * @description Single search match result
+         * SearchSource
+         * @description Where a search hit lives and whether it can be edited in place.
          */
-        SearchResult: {
+        SearchSource: {
             /**
-             * File Path
-             * @description Relative path to file containing match
+             * Kind
+             * @enum {string}
              */
-            file_path: string;
+            kind: "workspace" | "solution";
+            /** Solution Id */
+            solution_id?: string | null;
+            /** Solution Slug */
+            solution_slug?: string | null;
             /**
-             * Line
-             * @description Line number (1-indexed)
+             * Editable
+             * @description False for Solution source, which is deploy-owned (edit locally and redeploy)
              */
-            line: number;
-            /**
-             * Column
-             * @description Column number (0-indexed)
-             */
-            column: number;
-            /**
-             * Match Text
-             * @description The matched text
-             */
-            match_text: string;
-            /**
-             * Context Before
-             * @description Line before match
-             */
-            context_before?: string | null;
-            /**
-             * Context After
-             * @description Line after match
-             */
-            context_after?: string | null;
+            editable: boolean;
         };
         /** SendFlagMessageRequest */
         SendFlagMessageRequest: {
@@ -30850,6 +32618,11 @@ export interface components {
              * @default 0
              */
             events: number;
+            /**
+             * External Event Subscriptions
+             * @default 0
+             */
+            external_event_subscriptions: number;
         };
         /**
          * SolutionDependencyPreview
@@ -31345,6 +33118,18 @@ export interface components {
             name: string;
             /** Version */
             version?: string | null;
+        };
+        /**
+         * SolutionExportDownloadLink
+         * @description Short-lived direct download for one authorized backup artifact.
+         */
+        SolutionExportDownloadLink: {
+            /** Url */
+            url: string;
+            /** Filename */
+            filename: string;
+            /** Expires In */
+            expires_in: number;
         };
         /**
          * SolutionExportJobCreate
@@ -32222,6 +34007,11 @@ export interface components {
             schema?: {
                 [key: string]: unknown;
             } | null;
+            /**
+             * Organization Id
+             * @description Organization ID. Null for global table.
+             */
+            organization_id?: string | null;
             /** @description Optional row-level access policies. See docs/superpowers/specs/2026-04-30-table-policies-design.md. */
             policies?: components["schemas"]["TablePolicies"] | null;
         };
@@ -32842,6 +34632,29 @@ export interface components {
              */
             output_tokens: number;
         };
+        /** UserAccessMap */
+        UserAccessMap: {
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+            /** Name */
+            name?: string | null;
+            /** Email */
+            email: string;
+            home_organization?: components["schemas"]["OrganizationRef"] | null;
+            /** Is Platform Admin */
+            is_platform_admin: boolean;
+            /** Is Protected */
+            is_protected: boolean;
+            /** Privileged Permissions */
+            privileged_permissions: string[];
+            /** Reach */
+            reach: components["schemas"]["Place"][];
+            /** Rows */
+            rows: components["schemas"]["AccessRow"][];
+        };
         /**
          * UserFormsResponse
          * @description Response model for getting forms accessible to a user
@@ -32909,6 +34722,22 @@ export interface components {
             updated_at: string;
         };
         /**
+         * UserMfaResetResponse
+         * @description What an administrator's MFA reset removed.
+         */
+        UserMfaResetResponse: {
+            /** Totp Removed */
+            totp_removed: boolean;
+            /** Recovery Codes Removed */
+            recovery_codes_removed: number;
+            /** Passkeys Removed */
+            passkeys_removed: number;
+            /** Trusted Devices Revoked */
+            trusted_devices_revoked: number;
+            /** Sessions Revoked */
+            sessions_revoked: number;
+        };
+        /**
          * UserPublic
          * @description User output for API responses (excludes sensitive fields).
          */
@@ -32970,12 +34799,23 @@ export interface components {
             /** Updated At */
             updated_at: string | null;
             /**
+             * Identity Kind
+             * @description org_default, global_default or custom for an identity; null for a person.
+             */
+            identity_kind?: string | null;
+            /**
              * Invite Status
              * @default active
              */
             invite_status: string;
             /** Registration Url */
             registration_url?: string | null;
+            /**
+             * Is Protected
+             * @description The user holds privileged access somewhere (or is a Platform Admin), so only a Platform Admin can change them.
+             * @default false
+             */
+            is_protected: boolean;
         };
         /**
          * UserResponse
@@ -33001,6 +34841,32 @@ export interface components {
              * @default []
              */
             roles: string[];
+        };
+        /** UserRoleAssignmentsResponse */
+        UserRoleAssignmentsResponse: {
+            base_role: components["schemas"]["RoleSummary"];
+            /** Additional */
+            additional: components["schemas"]["AssignedRole"][];
+            /**
+             * Is Protected
+             * @description The user holds privileged access somewhere, so only a Platform Admin can change them.
+             */
+            is_protected: boolean;
+            /** Assignable Roles */
+            assignable_roles: components["schemas"]["AssignableRole"][];
+        };
+        /**
+         * UserRoleAssignmentsUpdate
+         * @description Replaces a user's base role and additional roles atomically.
+         */
+        UserRoleAssignmentsUpdate: {
+            /**
+             * Base Role Id
+             * Format: uuid
+             */
+            base_role_id: string;
+            /** Additional */
+            additional?: components["schemas"]["AdditionalRoleInput"][];
         };
         /**
          * UserRolesResponse
@@ -33223,6 +35089,18 @@ export interface components {
             adapters: components["schemas"]["WebhookAdapterInfo"][];
         };
         /**
+         * WebhookSecretRotate
+         * @description Request model for rotating a webhook source's signing secret.
+         *     POST /api/events/sources/{source_id}/rotate-secret
+         */
+        WebhookSecretRotate: {
+            /**
+             * Secret
+             * @description New signing secret. If omitted, one is generated.
+             */
+            secret?: string | null;
+        };
+        /**
          * WebhookSourceConfig
          * @description Webhook-specific configuration for creating an event source.
          */
@@ -33239,7 +35117,7 @@ export interface components {
             integration_id?: string | null;
             /**
              * Config
-             * @description Adapter-specific configuration
+             * @description Adapter-specific configuration. A 'secret' key sets the HMAC signing secret, which is write-only: it is stored encrypted and never returned. On update, omit the key to keep the stored secret, or send null or an empty string to remove it.
              */
             config?: {
                 [key: string]: unknown;
@@ -33285,11 +35163,17 @@ export interface components {
             integration_name?: string | null;
             /**
              * Config
-             * @description Adapter configuration
+             * @description Adapter configuration, without the signing secret
              */
             config?: {
                 [key: string]: unknown;
             };
+            /**
+             * Secret Set
+             * @description Whether a signing secret is stored. The secret itself is never returned.
+             * @default false
+             */
+            secret_set: boolean;
             /**
              * Callback Url
              * @description Full callback URL for this webhook
@@ -33568,7 +35452,7 @@ export interface components {
             org_id?: string | null;
             /**
              * Run As
-             * @description Execute as this user UUID (impersonation). Requires platform admin.
+             * @description Execute as this user UUID. Requires Impersonate Users in that user's organization.
              */
             run_as?: string | null;
             /**
@@ -33826,6 +35710,13 @@ export interface components {
              */
             solution_id?: string | null;
             /**
+             * Run Identity Id
+             * @description Identity this workflow runs as when no person starts it. Null = its organization's default identity.
+             */
+            run_identity_id?: string | null;
+            /** @description Effective workflow permission mode: 'full' or 'restricted' */
+            permission_mode: components["schemas"]["WorkflowPermissionMode"];
+            /**
              * Access Level
              * @description Access level: 'authenticated' (any signed-in user except externals), 'everyone' (any signed-in user incl. externals), or 'role_based' (specific roles required)
              * @default role_based
@@ -34014,6 +35905,11 @@ export interface components {
                 [key: string]: unknown;
             } | null;
         };
+        /**
+         * WorkflowPermissionMode
+         * @enum {string}
+         */
+        WorkflowPermissionMode: "full" | "restricted";
         /**
          * WorkflowROIEntry
          * @description ROI data for a single workflow.
@@ -34325,6 +36221,11 @@ export interface components {
              * @description Role IDs for role_based access (bulk replaces existing assignments when provided). Mutually exclusive with clear_roles; if both are set, role_ids wins.
              */
             role_ids?: string[] | null;
+            /**
+             * Run Identity Id
+             * @description Identity this workflow runs as when no person starts it. Null = its organization's default identity.
+             */
+            run_identity_id?: string | null;
             /**
              * Name
              * @description MCP tool name for this workflow. Defaults to the Python function name on registration.
@@ -37456,6 +39357,26 @@ export interface operations {
             };
         };
     };
+    get_my_authorization_auth_authorization_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthorizationSummary"];
+                };
+            };
+        };
+    };
     get_mfa_status_auth_mfa_status_get: {
         parameters: {
             query?: never;
@@ -38631,6 +40552,37 @@ export interface operations {
             };
         };
     };
+    "users.mfa.reset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserMfaResetResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     "users.roles.list": {
         parameters: {
             query?: never;
@@ -38680,6 +40632,138 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UserFormsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_role_assignments_api_users__user_id__role_assignments_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserRoleAssignmentsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    replace_role_assignments_api_users__user_id__role_assignments_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UserRoleAssignmentsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserRoleAssignmentsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_user_access_api_users__user_id__access_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserAccessMap"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    check_user_access_api_users__user_id__access_check_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccessCheckRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccessTrace"];
                 };
             };
             /** @description Validation Error */
@@ -38791,6 +40875,8 @@ export interface operations {
             query?: {
                 /** @description Search role name or description */
                 search?: string | null;
+                /** @description Include the builtin roles (Platform Admin, User, Platform Operator, Secrets Reader) */
+                include_builtin?: boolean;
                 sort_by?: "name" | "created";
                 sort_direction?: "asc" | "desc";
                 /** @description Maximum rows to return; omit for the legacy unbounded response */
@@ -38859,7 +40945,10 @@ export interface operations {
     };
     "roles.get": {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Also find the builtin roles (Platform Admin, User, Platform Operator, Secrets Reader) */
+                include_builtin?: boolean;
+            };
             header?: never;
             path: {
                 role_id: string;
@@ -39534,6 +41623,138 @@ export interface operations {
             };
         };
     };
+    "roles.bridge_grants.get": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                role_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoleBridgeGrantsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    "roles.bridge_grants.update": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                role_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RoleBridgeGrantsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoleBridgeGrantsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_role_permissions_api_roles__role_id__permissions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                role_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RolePermissionsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_role_permissions_api_roles__role_id__permissions_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                role_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RolePermissionsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RolePermissionsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     "roles.knowledge.list": {
         parameters: {
             query?: never;
@@ -39627,6 +41848,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_permission_catalog_api_permissions_catalog_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PermissionCatalogEntry"][];
                 };
             };
         };
@@ -40192,6 +42433,37 @@ export interface operations {
             };
         };
     };
+    "workflows.get": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workflow_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowMetadata"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     "workflows.delete": {
         parameters: {
             query?: never;
@@ -40541,6 +42813,71 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_workflow_run_identities_api_workflows__workflow_id__run_identities_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workflow_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IdentityPublic"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_workflow_recommended_access_api_workflows__workflow_id__recommended_access_get: {
+        parameters: {
+            query?: {
+                /** @description Compute for this identity instead of the current one */
+                identity_id?: string | null;
+            };
+            header?: never;
+            path: {
+                workflow_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecommendedAccess"];
+                };
             };
             /** @description Validation Error */
             422: {
@@ -41235,6 +43572,37 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConfigResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    "configs.get": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                config_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -43796,12 +46164,18 @@ export interface operations {
                 user_id?: string | null;
                 /** @description Filter by workflow execution ID */
                 execution_id?: string | null;
+                /** @description Filter by the workflow an entry names, or 'none' for entries naming no workflow */
+                workflow_id?: string | "none" | null;
+                /** @description Filter by organization ID, or 'none' for Global entries */
+                organization_id?: string | "none" | null;
                 /** @description Start of time range (inclusive) */
                 start_date?: string | null;
                 /** @description End of time range (inclusive) */
                 end_date?: string | null;
                 /** @description Free-text search on actor, organization, action, resource type, IP address, and event details */
                 search?: string | null;
+                /** @description Group matching entries by this field (counts and newest entry per group) */
+                group_by?: ("workflow" | "action" | "resource_type" | "outcome" | "user" | "organization") | null;
                 limit?: number;
                 /** @description Pagination cursor */
                 continuation_token?: string | null;
@@ -43819,6 +46193,101 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AuditLogListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_audit_export_api_audit_exports_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AuditExportRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlatformJobAccepted"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    download_audit_export_api_audit_exports__job_id__download_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/gzip": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    explain_access_check_api_audit__event_id__explain_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccessExplanation"];
                 };
             };
             /** @description Validation Error */
@@ -46825,293 +49294,6 @@ export interface operations {
             };
         };
     };
-    list_cli_sessions_api_sdk_sessions_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CLISessionListResponse"];
-                };
-            };
-        };
-    };
-    register_cli_session_api_sdk_sessions_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CLISessionRegisterRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CLISessionResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_cli_session_api_sdk_sessions__session_id__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                session_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CLISessionResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    delete_cli_session_api_sdk_sessions__session_id__delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                session_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    continue_cli_session_api_sdk_sessions__session_id__continue_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                session_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CLISessionContinueRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CLISessionContinueResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_pending_execution_api_sdk_sessions__session_id__pending_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                session_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CLISessionPendingResponse"];
-                };
-            };
-            /** @description No pending execution */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    session_heartbeat_api_sdk_sessions__session_id__heartbeat_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                session_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    post_cli_log_api_sdk_sessions__session_id__executions__execution_id__log_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                session_id: string;
-                execution_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CLISessionLogRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    post_cli_result_api_sdk_sessions__session_id__executions__execution_id__result_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                session_id: string;
-                execution_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CLISessionResultRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     sdk_list_artifacts_api_sdk_artifacts_get: {
         parameters: {
             query: {
@@ -47816,6 +49998,293 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SDKTableInfo"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_cli_sessions_api_sdk_sessions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CLISessionListResponse"];
+                };
+            };
+        };
+    };
+    register_cli_session_api_sdk_sessions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CLISessionRegisterRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CLISessionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_cli_session_api_sdk_sessions__session_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CLISessionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_cli_session_api_sdk_sessions__session_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    continue_cli_session_api_sdk_sessions__session_id__continue_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CLISessionContinueRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CLISessionContinueResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_pending_execution_api_sdk_sessions__session_id__pending_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CLISessionPendingResponse"];
+                };
+            };
+            /** @description No pending execution */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    session_heartbeat_api_sdk_sessions__session_id__heartbeat_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_cli_log_api_sdk_sessions__session_id__executions__execution_id__log_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+                execution_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CLISessionLogRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_cli_result_api_sdk_sessions__session_id__executions__execution_id__result_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+                execution_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CLISessionResultRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */
@@ -50374,72 +52843,6 @@ export interface operations {
             };
         };
     };
-    discover_model_capabilities_api_admin_llm_model_capabilities_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ModelCapabilityLookupRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ModelCapabilityLookupResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    verify_model_capability_support_api_admin_llm_model_capabilities_verify_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ModelCapabilityVerifyRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ModelCapabilityLookupResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     get_embedding_config_endpoint_api_admin_llm_embedding_config_get: {
         parameters: {
             query?: never;
@@ -50829,6 +53232,46 @@ export interface operations {
             };
         };
     };
+    get_catalog_api_admin_ai_catalog_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelCatalogResponse"];
+                };
+            };
+        };
+    };
+    refresh_catalog_api_admin_ai_catalog_refresh_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlatformJobAccepted"];
+                };
+            };
+        };
+    };
     list_model_profiles_api_admin_ai_profiles_get: {
         parameters: {
             query?: never;
@@ -50979,6 +53422,37 @@ export interface operations {
             };
         };
     };
+    verify_model_profile_api_admin_ai_profiles__profile_id__verify_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                profile_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIModelProfileVerifyResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_model_assignments_api_admin_ai_assignments_get: {
         parameters: {
             query?: never;
@@ -51059,6 +53533,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_model_display_names_api_model_catalog_names_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelDisplayNamesResponse"];
                 };
             };
         };
@@ -51149,7 +53643,10 @@ export interface operations {
     };
     "integrations.update": {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Confirm deletion of config-schema keys and their stored values */
+                force_remove_keys?: boolean;
+            };
             header?: never;
             path: {
                 integration_id: string;
@@ -52091,6 +54588,242 @@ export interface operations {
             };
         };
     };
+    get_audit_retention_settings_api_maintenance_audit_retention_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuditRetentionStatus"];
+                };
+            };
+        };
+    };
+    update_audit_retention_settings_api_maintenance_audit_retention_settings_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AuditRetentionSettingsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuditRetentionStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_audit_archive_api_maintenance_audit_retention_run_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AuditArchiveRunRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlatformJobAccepted"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_audit_expiry_api_maintenance_audit_retention_preview_get: {
+        parameters: {
+            query?: {
+                /** @description Archive window in days; omit to keep archives forever. */
+                archive_days?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuditExpiryPreview"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_run_retention_settings_api_maintenance_run_retention_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunRetentionStatus"];
+                };
+            };
+        };
+    };
+    update_run_retention_settings_api_maintenance_run_retention_settings_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RunRetentionSettingsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunRetentionStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_run_retention_api_maintenance_run_retention_run_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RunRetentionRunRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlatformJobAccepted"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_run_retention_api_maintenance_run_retention_preview_get: {
+        parameters: {
+            query?: {
+                /** @description Retention window in days; omit to keep forever. */
+                days?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunRetentionPreview"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_maintenance_status_api_maintenance_status_get: {
         parameters: {
             query?: never;
@@ -52207,6 +54940,155 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PreflightResponse"];
+                };
+            };
+        };
+    };
+    get_run_retention_api_run_retention_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunRetentionPublic"];
+                };
+            };
+        };
+    };
+    list_identities_api_identities_get: {
+        parameters: {
+            query?: {
+                /** @description Only this organization's identities */
+                organization_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IdentityPublic"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_identity_api_identities_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IdentityCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IdentityPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_identity_api_identities__identity_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                identity_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rename_identity_api_identities__identity_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                identity_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IdentityUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IdentityPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -53331,7 +56213,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["EventSourceResponse"];
+                    "application/json": components["schemas"]["EventSourceSecretResponse"];
                 };
             };
             /** @description Validation Error */
@@ -53429,6 +56311,13 @@ export interface operations {
                     "application/json": components["schemas"]["EventSourceResponse"];
                 };
             };
+            /** @description Invalid event source configuration */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -53458,6 +56347,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EventSourceResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rotate_source_secret_api_events_sources__source_id__rotate_secret_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                source_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WebhookSecretRotate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventSourceSecretResponse"];
                 };
             };
             /** @description Validation Error */
@@ -53524,6 +56448,45 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventSubscriptionResponse"];
+                };
+            };
+            /** @description Invalid subscription target */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    "events.subscriptions.get": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                source_id: string;
+                subscription_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -55566,6 +58529,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SolutionExportJobPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_solution_export_download_link_api_solutions_export_jobs__job_id__download_link_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SolutionExportDownloadLink"];
                 };
             };
             /** @description Validation Error */
@@ -60616,6 +63610,40 @@ export interface operations {
             };
         };
     };
+    "policy.rules.get": {
+        parameters: {
+            query?: {
+                organization_id?: string | null;
+            };
+            header?: never;
+            path: {
+                domain: string;
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PolicyRulePublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     "policy.rules.update": {
         parameters: {
             query?: {
@@ -60707,6 +63735,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PolicyRuleUsagesPublic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    "productupdates.get": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductUpdatesFeedResponse"];
+                };
+            };
+        };
+    };
+    "productupdates.receipts.create": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProductUpdatesReceiptRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductUpdatesReceiptResponse"];
                 };
             };
             /** @description Validation Error */

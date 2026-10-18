@@ -1056,9 +1056,10 @@ Options:
   --workflow TEXT       workflow ref (UUID or name) for workflow_id.
   --agent TEXT          agent ref (UUID or name) for agent_id.
   --event-type TEXT     event_type
-  --criteria TEXT       criteria
   --input-mapping TEXT  input_mapping as JSON literal or @path to a YAML/JSON
                         file.
+  --criteria TEXT       Structured subscription criteria as JSON or
+                        @path/to/file.yaml.
   --json                Emit JSON instead of human-readable output.
   --help                Show this message and exit.
 ```
@@ -1121,11 +1122,12 @@ Usage: events update-subscription [OPTIONS] SOURCE_REF SUBSCRIPTION_ID
 
 Options:
   --event-type TEXT               event_type
-  --criteria TEXT                 criteria
   --is-active / --no-is-active    is_active (tri-state; omit to leave
                                   unchanged).
   --input-mapping TEXT            input_mapping as JSON literal or @path to a
                                   YAML/JSON file.
+  --criteria TEXT                 Structured subscription criteria as JSON or
+                                  @path/to/file.yaml.
   --workflow TEXT                 Rejected: changing the target workflow
                                   requires delete + recreate.
   --agent TEXT                    Rejected: changing the target agent requires
@@ -2158,11 +2160,25 @@ Options:
   --help  Show this message and exit.
 
 Commands:
-  create  Create a new role.
-  delete  Delete a role.
-  get     Get a single role by UUID or name.
-  list    List all roles.
-  update  Update a role.
+  bridge-grants      Read the current bridge grant set and version...
+  create             Create a new role.
+  delete             Delete a role.
+  get                Get a single role by UUID or name.
+  list               List all roles.
+  set-bridge-grants  Replace only bridge grants using the exact prior...
+  update             Update a role.
+```
+
+### `roles bridge-grants`
+
+```
+Usage: roles bridge-grants [OPTIONS] REF
+
+  Read the current bridge grant set and version (Platform Admin only).
+
+Options:
+  --json  Emit JSON instead of human-readable output.
+  --help  Show this message and exit.
 ```
 
 ### `roles create`
@@ -2215,6 +2231,22 @@ Usage: roles list [OPTIONS]
 Options:
   --json  Emit JSON instead of human-readable output.
   --help  Show this message and exit.
+```
+
+### `roles set-bridge-grants`
+
+```
+Usage: roles set-bridge-grants [OPTIONS] REF
+
+  Replace only bridge grants using the exact prior set/version from bridge-
+  grants.
+
+Options:
+  --permission [devices.readwrite|devices.execute|agents.promote]
+  --expected-permission [devices.readwrite|devices.execute|agents.promote]
+  --expected-version TEXT         [required]
+  --json                          Emit JSON instead of human-readable output.
+  --help                          Show this message and exit.
 ```
 
 ### `roles update`

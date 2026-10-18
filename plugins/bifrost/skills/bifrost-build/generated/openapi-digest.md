@@ -66,6 +66,7 @@
 | POST | `/api/agent-runs/{run_id}/verdict` |
 | GET | `/api/agents` |
 | POST | `/api/agents` |
+| GET | `/api/agents/accessible-knowledge` |
 | GET | `/api/agents/accessible-tools` |
 | GET | `/api/agents/stats/fleet` |
 | DELETE | `/api/agents/{agent_id}` |
@@ -352,6 +353,9 @@
 | GET | `/api/knowledge-sources` |
 | GET | `/api/knowledge-sources/documents` |
 | PATCH | `/api/knowledge-sources/documents/scope` |
+| GET | `/api/knowledge-sources/roles` |
+| POST | `/api/knowledge-sources/roles` |
+| DELETE | `/api/knowledge-sources/roles/{assignment_id}` |
 | DELETE | `/api/knowledge-sources/{namespace}` |
 | GET | `/api/knowledge-sources/{namespace}/documents` |
 | POST | `/api/knowledge-sources/{namespace}/documents` |
@@ -503,10 +507,15 @@
 | DELETE | `/api/roles/{role_id}/apps` |
 | GET | `/api/roles/{role_id}/apps` |
 | POST | `/api/roles/{role_id}/apps` |
+| GET | `/api/roles/{role_id}/bridge-grants` |
+| PUT | `/api/roles/{role_id}/bridge-grants` |
 | DELETE | `/api/roles/{role_id}/forms` |
 | GET | `/api/roles/{role_id}/forms` |
 | POST | `/api/roles/{role_id}/forms` |
 | DELETE | `/api/roles/{role_id}/forms/{form_id}` |
+| DELETE | `/api/roles/{role_id}/knowledge` |
+| GET | `/api/roles/{role_id}/knowledge` |
+| POST | `/api/roles/{role_id}/knowledge` |
 | GET | `/api/roles/{role_id}/permissions` |
 | PUT | `/api/roles/{role_id}/permissions` |
 | DELETE | `/api/roles/{role_id}/users` |
@@ -675,6 +684,8 @@
 | DELETE | `/api/users/{user_id}` |
 | GET | `/api/users/{user_id}` |
 | PATCH | `/api/users/{user_id}` |
+| GET | `/api/users/{user_id}/access` |
+| POST | `/api/users/{user_id}/access/check` |
 | GET | `/api/users/{user_id}/external-identities` |
 | POST | `/api/users/{user_id}/external-identities` |
 | DELETE | `/api/users/{user_id}/external-identities/{identity_id}` |
@@ -711,6 +722,7 @@
 | GET | `/api/workflows/{workflow_id}/roles` |
 | POST | `/api/workflows/{workflow_id}/roles` |
 | DELETE | `/api/workflows/{workflow_id}/roles/{role_id}` |
+| GET | `/api/workflows/{workflow_id}/run-identities` |
 | GET | `/api/workspace-promotions/artifacts/{artifact_id}` |
 | POST | `/api/workspace-promotions/artifacts/{artifact_id}/canary` |
 | POST | `/api/workspace-promotions/artifacts/{artifact_id}/prepare` |
@@ -743,6 +755,7 @@
 | POST | `/api/workspace-repo-changesets/{changeset_id}/retry-git-closure` |
 | POST | `/api/workspace-repo-changesets/{changeset_id}/validate` |
 | POST | `/auth/admin/revoke-user` |
+| GET | `/auth/authorization` |
 | GET | `/auth/cli/authorize` |
 | POST | `/auth/cli/start` |
 | POST | `/auth/cli/token` |

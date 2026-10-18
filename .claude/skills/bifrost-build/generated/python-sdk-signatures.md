@@ -209,6 +209,9 @@ Deployment source bytes. Operational files continue to use ``files``.
 
 **`roles.assign_users(role_id: str, user_ids: list[str]) -> None`**
 
+**`roles.bridge_grants(role_id: str)`**
+  Read typed bridge grants/version; requires a Platform Admin.
+
 **`roles.create(name: str, description: str = '') -> Role`**
 
 **`roles.delete(role_id: str) -> None`**
@@ -220,6 +223,9 @@ Deployment source bytes. Operational files continue to use ``files``.
 **`roles.list_forms(role_id: str) -> list[str]`**
 
 **`roles.list_users(role_id: str) -> list[str]`**
+
+**`roles.replace_bridge_grants(role_id: str, request: Any)`**
+  Replace the allowlisted grants with the exact prior set/version.
 
 **`roles.update(role_id: str, updates: Any) -> Role`**
 
