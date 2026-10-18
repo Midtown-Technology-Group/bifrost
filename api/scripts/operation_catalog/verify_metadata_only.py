@@ -87,7 +87,10 @@ def base_source_files(base_commit: str) -> list[str]:
     tree = GitRepo(REPO_ROOT).commit(base_commit).tree
     files: list[str] = []
     for source_path in SOURCE_PATHS:
-        entry = tree / source_path
+        try:
+            entry = tree / source_path
+        except KeyError:
+            continue
         if entry.type == "blob":
             files.append(entry.path)
         else:

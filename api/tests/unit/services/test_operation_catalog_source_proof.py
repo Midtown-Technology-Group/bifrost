@@ -110,6 +110,30 @@ def test_source_proof_reads_git_objects_by_exact_commit(
     assert repo.commit.call_args_list == [call(base_sha)] * 2
 
 
+def test_source_proof_skips_source_paths_missing_from_base_commit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    base_sha = "a" * 40
+    shared_blob = MagicMock(type="blob", path="api/shared/example.py")
+    shared_directory = MagicMock(type="tree")
+    shared_directory.traverse.return_value = [shared_blob]
+    direct_blob = MagicMock(type="blob", path="api/src/main.py")
+    tree = MagicMock()
+    tree.__truediv__.side_effect = [
+        KeyError("api/src/routers"),
+        shared_directory,
+        direct_blob,
+    ]
+    repo = MagicMock()
+    repo.commit.return_value.tree = tree
+    monkeypatch.setattr(proof, "GitRepo", MagicMock(return_value=repo))
+
+    assert proof.base_source_files(base_sha) == [
+        "api/shared/example.py",
+        "api/src/main.py",
+    ]
+
+
 def test_main_writes_a_passing_resolved_commit_report(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
