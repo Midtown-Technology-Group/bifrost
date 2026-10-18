@@ -43,6 +43,7 @@ from src.services.agent_runtime import (
     create_agent_model,
     provider_name_for_config,
     provider_reported_cost,
+    provider_reported_usage,
 )
 from src.services.llm.base import LLMConfig, LLMInputFile, ToolDefinition
 from src.services.llm.base import LLMMessage, ToolCallRequest
@@ -305,6 +306,24 @@ def test_provider_reported_cost_is_preserved_exactly() -> None:
         provider_details={"cost": 0.00012345},
     )
 
+    assert provider_reported_cost(response) == Decimal("0.00012345")
+
+
+def test_budget_estimate_is_separate_from_provider_accounting() -> None:
+    response = ModelResponse(
+        parts=[TextPart("done")],
+        usage=RequestUsage(
+            input_tokens=1_000,
+            output_tokens=100,
+            details={"bifrost_usage_estimated": 1},
+        ),
+        provider_details={"cost": "0.00012345"},
+    )
+
+    accounting_usage = provider_reported_usage(response)
+
+    assert accounting_usage.total_tokens == 0
+    assert response.usage.total_tokens == 1_100
     assert provider_reported_cost(response) == Decimal("0.00012345")
 
 
@@ -1216,7 +1235,7 @@ def test_triage_style_loop_exposes_stable_cache_prefix_and_history_growth() -> N
 
 
 @pytest.mark.asyncio
-async def test_missing_provider_usage_is_not_replaced_by_safety_estimates() -> None:
+async def test_missing_provider_usage_is_replaced_by_safety_estimates() -> None:
     messages = [ModelRequest(parts=[UserPromptPart(content="hello")])]
     parameters = ModelRequestParameters()
     observer = AsyncMock()
@@ -1227,17 +1246,43 @@ async def test_missing_provider_usage_is_not_replaced_by_safety_estimates() -> N
 
     response = await model.request(messages, None, parameters)
 
-    assert response.usage.input_tokens == 0
-    assert response.usage.output_tokens == 0
-    assert "bifrost_usage_estimated" not in response.usage.details
+    assert response.usage.input_tokens > 0
+    assert response.usage.output_tokens > 0
+    assert response.usage.details["bifrost_usage_estimated"] == 1
 
     async with model.request_stream(messages, None, parameters) as response_stream:
         async for _event in response_stream:
             pass
 
-    assert response_stream.usage.input_tokens == 0
-    assert response_stream.usage.output_tokens == 0
-    assert "bifrost_usage_estimated" not in response_stream.usage.details
+    assert response_stream.usage.input_tokens > 0
+    assert response_stream.usage.output_tokens > 0
+    assert response_stream.usage.details["bifrost_usage_estimated"] == 1
+
+
+@pytest.mark.asyncio
+async def test_missing_provider_usage_cannot_bypass_total_token_limit() -> None:
+    observer = AsyncMock()
+    model = ObservedModel(
+        MissingUsageTestModel(custom_output_text="X" * 10_000),
+        observer,
+    )
+    runtime = PydanticAgent(model)
+    budget = AgentRunBudget(max_requests=5, max_total_tokens=1_000)
+
+    with pytest.raises(UsageLimitExceeded):
+        await runtime.run(
+            "produce a long answer",
+            usage_limits=budget.usage_limits(),
+        )
+
+    response_event = next(
+        call.args[0]
+        for call in observer.await_args_list
+        if call.args[0].type == "response"
+    )
+    assert response_event.response is not None
+    assert response_event.response.usage.total_tokens > 1_000
+    assert response_event.response.usage.details["bifrost_usage_estimated"] == 1
 
 
 @pytest.mark.asyncio
@@ -1256,4 +1301,5 @@ async def test_observer_drains_trailing_usage_after_consumer_stops_at_final_even
     response_event = next(event for event in events if event.type == "response")
     assert response_event.response.usage.input_tokens == 12_345
     assert response_event.response.usage.cache_read_tokens == 10_000
+    assert "bifrost_usage_estimated" not in response_event.response.usage.details
     assert response_event.response.state == "complete"

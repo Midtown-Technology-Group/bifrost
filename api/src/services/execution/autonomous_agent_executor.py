@@ -65,6 +65,7 @@ from src.services.agent_runtime import (
     build_chain_model,
     build_runtime_capabilities,
     provider_reported_cost,
+    provider_reported_usage,
 )
 from src.services.agent_runtime.empty_output import EmptyOutputCircuitBreaker
 from src.services.llm import ToolCallRequest
@@ -404,7 +405,8 @@ class AutonomousAgentExecutor:
 
             response = event.response
             assert response is not None
-            request_usage = response.usage
+            budget_usage = response.usage
+            request_usage = provider_reported_usage(response)
             if response.model_name:
                 model_name = response.model_name
             if response.text:
@@ -444,6 +446,16 @@ class AutonomousAgentExecutor:
                             else None
                         ),
                     },
+                    **(
+                        {
+                            "budget_usage_estimate": {
+                                "input_tokens": budget_usage.input_tokens,
+                                "output_tokens": budget_usage.output_tokens,
+                            }
+                        }
+                        if request_usage is not budget_usage
+                        else {}
+                    ),
                 },
                 tokens_used=request_usage.total_tokens,
                 duration_ms=event.duration_ms,

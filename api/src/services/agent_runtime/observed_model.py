@@ -25,6 +25,7 @@ from pydantic_ai.settings import ModelSettings
 from pydantic_ai.usage import RequestUsage
 
 from src.services.agent_runtime.retry_transport import ai_retry_context
+from src.services.agent_runtime.usage import ESTIMATED_USAGE_DETAIL
 
 
 @dataclass(frozen=True)
@@ -77,6 +78,33 @@ class ObservedModel(WrapperModel):
             (messages_serialized_bytes + tool_schema_bytes) / 2
         )
         return max(1, content_tokens + (messages_count * 8) + (tools_count * 16))
+
+    @staticmethod
+    def _apply_missing_usage_estimate(
+        response: ModelResponse,
+        *,
+        context_breakdown: dict[str, int | str],
+    ) -> None:
+        """Fail closed when a provider returns no token accounting.
+
+        Real provider counts remain authoritative whenever either token bucket
+        is populated. A completely empty report is replaced in place so both
+        ordinary and streamed responses reach Pydantic AI's final usage-limit
+        check with a conservative input/output total.
+        """
+
+        if response.usage.total_tokens:
+            return
+
+        response.usage.input_tokens = int(context_breakdown["estimated_input_tokens"])
+        response.usage.output_tokens = max(
+            1,
+            math.ceil(len(pydantic_core.to_json(response.parts, fallback=str)) / 2),
+        )
+        response.usage.details = {
+            **response.usage.details,
+            ESTIMATED_USAGE_DETAIL: 1,
+        }
 
     @staticmethod
     def _context_breakdown(
@@ -219,6 +247,11 @@ class ObservedModel(WrapperModel):
             )
             raise
 
+        self._apply_missing_usage_estimate(
+            response,
+            context_breakdown=context_breakdown,
+        )
+
         await self._observer(
             ModelCallEvent(
                 type="response",
@@ -285,6 +318,10 @@ class ObservedModel(WrapperModel):
             )
             raise
 
+        self._apply_missing_usage_estimate(
+            response,
+            context_breakdown=context_breakdown,
+        )
         await self._observer(
             ModelCallEvent(
                 type="response",

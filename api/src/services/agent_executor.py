@@ -65,6 +65,7 @@ from src.services.agent_runtime import (
     build_chain_model,
     build_runtime_capabilities,
     provider_reported_cost,
+    provider_reported_usage,
 )
 from src.services.model_capabilities import should_offer_tool_calling
 from src.services.execution.agent_helpers import (
@@ -478,7 +479,7 @@ class AgentExecutor:
                 nonlocal final_finish_reason, final_incomplete
                 if event.type != "response" or event.response is None:
                     return
-                response_usage = event.response.usage
+                response_usage = provider_reported_usage(event.response)
                 total_input_tokens += response_usage.input_tokens
                 total_output_tokens += response_usage.output_tokens
                 total_cache_read_tokens += response_usage.cache_read_tokens

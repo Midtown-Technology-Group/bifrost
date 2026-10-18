@@ -1046,6 +1046,61 @@ class TestAutonomousAgentExecutor:
     @pytest.mark.asyncio
     @patch("src.services.agent_runtime.model_factory.create_agent_model")
     @patch("src.services.execution.autonomous_agent_executor.resolve_agent_tools")
+    async def test_missing_usage_estimate_is_not_persisted_as_provider_usage(
+        self,
+        mock_resolve_tools,
+        mock_create_model,
+        mock_session,
+        mock_agent,
+    ):
+        mock_resolve_tools.return_value = ([], {})
+        upstream = AsyncMock()
+        upstream.complete = AsyncMock(
+            return_value=LLMResponse(
+                content="Usage omitted",
+                input_tokens=0,
+                output_tokens=0,
+            )
+        )
+        mock_create_model.return_value = LegacyMockModel(upstream)
+        redis_client = AsyncMock()
+        redis_client.get = AsyncMock(return_value=None)
+        executor = AutonomousAgentExecutor(mock_session, redis_client=redis_client)
+
+        result = await executor.run(
+            agent=mock_agent,
+            input_data={"task": "analyze"},
+            run_id=str(uuid4()),
+        )
+
+        assert result["status"] == "completed"
+        usage = executor._pending_ai_usage[0]
+        assert usage["input_tokens"] == 0
+        assert usage["output_tokens"] == 0
+        assert usage["provider_cost"] is None
+        response_step = next(
+            step for step in executor._pending_steps if step["type"] == "llm_response"
+        )
+        assert response_step["tokens_used"] == 0
+        assert response_step["content"]["usage"]["input_tokens"] == 0
+        assert response_step["content"]["usage"]["output_tokens"] == 0
+        assert response_step["content"]["budget_usage_estimate"]["input_tokens"] > 0
+        assert response_step["content"]["budget_usage_estimate"]["output_tokens"] > 0
+
+        with patch(
+            "src.services.ai_usage_service.record_ai_usage",
+            new_callable=AsyncMock,
+        ) as record_usage:
+            await executor.flush_to_db(mock_session._mock_session)
+
+        persisted = record_usage.await_args.kwargs
+        assert persisted["input_tokens"] == 0
+        assert persisted["output_tokens"] == 0
+        assert persisted["provider_cost"] is None
+
+    @pytest.mark.asyncio
+    @patch("src.services.agent_runtime.model_factory.create_agent_model")
+    @patch("src.services.execution.autonomous_agent_executor.resolve_agent_tools")
     async def test_run_with_tool_calls(self, mock_resolve_tools, mock_create_model, mock_session, mock_agent):
         """Run executes tools and continues the loop until no more tool calls."""
         workflow_id = uuid4()
