@@ -496,8 +496,8 @@ def missing_provider():
     )
 
     assert db.execute.call_count == 2
-    for call in db.execute.call_args_list:
-        compiled = call[0][0].compile()
+    for execute_call in db.execute.call_args_list:
+        compiled = execute_call[0][0].compile()
         params = compiled.params
         assert params["path_1"] == "workflows/unregistered.py"
         assert "solution_id IS NULL" in str(compiled)
