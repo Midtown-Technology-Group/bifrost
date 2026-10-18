@@ -232,13 +232,15 @@ def _install_zip(
 # ---------------------------------------------------------------------------
 
 @pytest.mark.e2e
-class TestFilePolicyDenialDiagnostics:
-    async def test_denied_write_403_detail_identifies_scope(
+class TestFilePolicyDenialRedaction:
+    async def test_denied_write_403_detail_is_opaque(
         self, e2e_client, platform_admin, alice_user, db_session
     ):
-        """A policy denial must identify itself: action, location, and the
-        derived install scope in the 403 detail — a scope-loss bug then reads
-        as `solution_id: null` instead of a bare 'Forbidden'."""
+        """A policy denial must not disclose install, location, or path data.
+
+        Detailed denial evidence remains available in the separately exercised
+        ``policy.deny`` audit-log contract.
+        """
         headers = platform_admin.headers
         slug = f"deny-diag-{uuid.uuid4().hex[:8]}"
         sol = _create_solution(e2e_client, headers, slug)
@@ -258,10 +260,10 @@ class TestFilePolicyDenialDiagnostics:
         )
         assert r.status_code == 403, r.text
         detail = r.json()["detail"]
-        assert detail["action"] == "write"
-        assert detail["location"] == "solutions"
-        assert detail["solution_id"] == sol_id
-        assert "denied" in detail["message"].lower()
+        assert detail == "File policy denied"
+        assert sol_id not in r.text
+        assert "solutions" not in r.text
+        assert "deny/probe.txt" not in r.text
 
 
 @pytest.mark.e2e

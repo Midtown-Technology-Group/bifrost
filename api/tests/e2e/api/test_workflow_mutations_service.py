@@ -160,20 +160,23 @@ def test_scheduled_enqueue_and_cancel(
     assert "Cancelled" in again.json()["detail"]
 
 
-def test_solution_inbound_denied_is_404(
+def test_solution_inbound_denied_is_opaque_404(
     e2e_client, platform_admin, mutation_workflow
 ):
+    denied_solution_id = str(uuid4())
     resp = e2e_client.post(
         "/api/workflows/execute",
         headers=platform_admin.headers,
         json={
             "workflow_id": mutation_workflow["id"],
             "input_data": {},
-            "solution_id": str(uuid4()),
+            "solution_id": denied_solution_id,
         },
     )
     assert resp.status_code == 404, resp.text
-    assert "not found" in resp.json()["detail"]["message"]
+    assert resp.json()["detail"] == "Workflow not found"
+    assert mutation_workflow["id"] not in resp.text
+    assert denied_solution_id not in resp.text
 
 
 def test_cross_org_execute_is_404(
@@ -240,7 +243,7 @@ def test_inline_code_non_admin_is_403(e2e_client, org1_user):
     assert resp.status_code == 403, resp.text
 
 
-def test_unknown_workflow_404_carries_ref_detail(
+def test_unknown_workflow_404_redacts_ref_detail(
     e2e_client, platform_admin
 ):
     missing = str(uuid4())
@@ -250,7 +253,8 @@ def test_unknown_workflow_404_carries_ref_detail(
         json={"workflow_id": missing, "input_data": {}},
     )
     assert resp.status_code == 404, resp.text
-    assert resp.json()["detail"]["workflow_ref"] == missing
+    assert resp.json()["detail"] == "Workflow not found"
+    assert missing not in resp.text
 
 
 def test_cancel_not_found_is_404(e2e_client, platform_admin):
