@@ -647,12 +647,13 @@ async def test_unconfigured_budget_rejects_request_at_platform_ceiling() -> None
     runtime = PydanticAgent(model)
     budget = AgentRunBudget(max_requests=None, max_total_tokens=None)
     usage = RunUsage(requests=PLATFORM_MAX_AGENT_REQUESTS)
+    limits = budget.usage_limits()
 
     with pytest.raises(UsageLimitExceeded):
         await runtime.run(
             "one more request",
             usage=usage,
-            usage_limits=budget.usage_limits(),
+            usage_limits=limits,
         )
 
     assert model.provider_requests == 0
