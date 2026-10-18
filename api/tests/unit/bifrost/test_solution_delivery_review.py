@@ -178,7 +178,8 @@ def test_legacy_source_adapter_allows_body_only_and_rejects_declaration_change()
     result = review_solution_recipe(value, changed, {}, previous_recipe_value=value, previous_files=old)
     assert result["entrypoints"] == ["run.py::run"]
     assert result["workflow_removal_evidence_verified"] is False
-    assert result["removed_workflow_ids"] == [] and result["workflow_removal_evidence_digest"] is None
+    assert result["removed_workflow_ids"] == []
+    assert result["workflow_removal_evidence_digest"] is None
     changed["run.py"] = changed["run.py"].replace(b"count: int = 1", b"count: int = 2")
     with pytest.raises(WorkflowRecipeError, match="registration or signatures"):
         review_solution_recipe(value, changed, {}, previous_recipe_value=value, previous_files=old)
@@ -227,6 +228,78 @@ def test_global_rebinding_in_helper_cannot_replace_executable_decorator(legacy):
     files["run.py"] = code
     with pytest.raises(WorkflowRecipeError, match="shadowed"):
         review_solution_recipe(value, files, resources)
+
+
+def test_identical_installed_baseline_compiles_once_and_still_reports_checked(monkeypatch):
+    from bifrost import solution_delivery_review as review
+    recipe, files, resources = fixture()
+    compiled = {"calls": 0}
+    original = review.compile_workflow_registrations
+    def counting(value, sources, indexer=None):
+        compiled["calls"] += 1
+        return original(value, sources, indexer)
+    monkeypatch.setattr(review, "compile_workflow_registrations", counting)
+    reviewed = review_solution_recipe(deepcopy(recipe), dict(files), dict(resources),
+        previous_recipe_value=deepcopy(recipe), previous_files=dict(files), previous_resources=dict(resources))
+    assert compiled["calls"] == 1
+    assert reviewed["previous_recipe_checked"] is True
+    assert reviewed == {**review_solution_recipe(recipe, files, resources), "previous_recipe_checked": True}
+
+
+def test_float_substituted_baseline_is_not_treated_as_current():
+    recipe, files, resources = fixture()
+    previous = deepcopy(recipe)
+    bounds = previous["workflows"][0]["runtime_bounds"]
+    bounds["max_duration_seconds"] = float(bounds["max_duration_seconds"])
+    assert previous == recipe  # plain dict equality hides the scalar type substitution
+    with pytest.raises(ValueError, match="max_duration_seconds"):
+        review_solution_recipe(recipe, files, resources,
+            previous_recipe_value=previous, previous_files=dict(files), previous_resources=dict(resources))
+
+
+def test_integer_substituted_boolean_baseline_is_not_treated_as_current():
+    recipe, files, resources = fixture()
+    recipe["workflows"][0]["controls"] = {"endpoint_enabled": False}
+    previous = deepcopy(recipe)
+    previous["workflows"][0]["controls"]["endpoint_enabled"] = 0
+    assert previous == recipe  # plain dict equality hides the scalar type substitution
+    with pytest.raises(ValueError, match="endpoint_enabled"):
+        review_solution_recipe(recipe, files, resources,
+            previous_recipe_value=previous, previous_files=dict(files), previous_resources=dict(resources))
+
+
+def test_changed_installed_baseline_still_compiles_twice_and_enforces_workflow_identity(monkeypatch):
+    from bifrost import solution_delivery_review as review
+    recipe, files, resources = fixture()
+    previous = deepcopy(recipe)
+    previous["workflows"][0]["id"] = str(uuid4())
+    compiled = {"calls": 0}
+    original = review.compile_workflow_registrations
+    def counting(value, sources, indexer=None):
+        compiled["calls"] += 1
+        return original(value, sources, indexer)
+    monkeypatch.setattr(review, "compile_workflow_registrations", counting)
+    with pytest.raises(WorkflowRecipeError, match="Workflow removal requires"):
+        review_solution_recipe(recipe, files, resources,
+            previous_recipe_value=previous, previous_files=dict(files), previous_resources=dict(resources))
+    assert compiled["calls"] == 2
+
+
+def test_identical_legacy_baseline_reports_checked_without_second_source_pass(monkeypatch):
+    from bifrost import solution_delivery_review as review
+    recipe = {"schema_version": "bifrost.solution-source-delivery/v1", "solution_id": str(uuid4()),
+        "files": {"run.py": "run.py"}}
+    source = {"run.py": b"from bifrost import workflow\n@workflow\nasync def run(count: int = 1):\n return 1\n"}
+    parsed = {"calls": 0}
+    original = review.require_executable_bindings
+    def counting(tree):
+        parsed["calls"] += 1
+        return original(tree)
+    monkeypatch.setattr(review, "require_executable_bindings", counting)
+    reviewed = review_solution_recipe(recipe, dict(source), {},
+        previous_recipe_value=recipe, previous_files=dict(source), previous_resources={})
+    assert parsed["calls"] == 1
+    assert reviewed["previous_recipe_checked"] is True
 
 
 def test_downloaded_artifact_reviews_source_without_platform_or_source_execution(tmp_path):
@@ -309,7 +382,8 @@ def test_removal_requires_evidence_and_verifies_exact_signed_observations(review
     assert result["workflow_removal_evidence_verified"] is True
     assert result["removed_workflow_ids"] == [args["workflow_removal_evidence"]["observations"][0]["workflow_id"]]
     assert result["workflow_removal_evidence_digest"] == digest(args["workflow_removal_evidence"])
-    assert result["live_state_verified"] is False and result["runtime_verified"] is False
+    assert result["live_state_verified"] is False
+    assert result["runtime_verified"] is False
 
 
 @pytest.mark.parametrize("damage", ["solution_id", "instance_origin", "recipe_path", "base_sha",
