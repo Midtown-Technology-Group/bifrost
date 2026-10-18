@@ -93,7 +93,7 @@ def test_scrub_execution_context_redacts_parameters_and_startup():
     public_context = engine._scrub_execution_context(context)
 
     assert public_context["parameters"] == {
-        "ordinary": "contains [REDACTED]",
+        "ordinary": "[REDACTED]",
         "api_token": "[REDACTED]",
     }
     assert public_context["startup"] == {
