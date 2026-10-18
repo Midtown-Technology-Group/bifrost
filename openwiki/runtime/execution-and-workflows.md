@@ -3,10 +3,11 @@ type: runtime-architecture
 title: Execution and Workflow Runtime
 description: Explains workflow admission, RabbitMQ dispatch, Redis acceleration, process isolation, durable logical executions and attempt fencing.
 tags: [workflows, execution, workers, attempts, runtime]
-verified:
-  - by: openwiki/0.7.2
-    at: 2026-10-18T02:14:28.318Z
 sources:
+  - id: openwiki-source-bf2182bcb312690f213f7ee8
+    resource: repo://api/shared/execution_logs.py
+  - id: openwiki-source-6ff2782f53931ed66f7ddcf6
+    resource: repo://api/shared/sdk_execution_reads.py
   - id: openwiki-source-831be83c4f4d5fe24e4d9d76
     resource: repo://api/src/jobs/consumers/workflow_execution.py
   - id: openwiki-source-be1538d18358c04a07f6013d
@@ -15,9 +16,14 @@ sources:
     resource: repo://api/src/models/orm/execution_attempts.py
   - id: openwiki-source-33752a5fd05810cf391ad12c
     resource: repo://api/src/routers/executions.py
+  - id: openwiki-source-6fe582b161bf99b44765f04f
+    resource: repo://api/tests/unit/shared/test_execution_logs.py
   - id: openwiki-source-b86f97d98fbf2bd787797f6a
     resource: repo://docs/architecture/workflow-execution-attempts.md
-generated: { by: "bifrost-atlas", at: "2026-10-18T02:14:28.318Z" }
+generated: { by: "bifrost-atlas", at: "2026-10-18T09:57:17.518Z" }
+verified:
+  - by: openwiki/0.7.2
+    at: 2026-10-18T09:57:17.518Z
 ---
 
 # Execution and Workflow Runtime
@@ -41,6 +47,8 @@ This division makes PostgreSQL the durable execution authority, RabbitMQ the dis
 Result callbacks acquire the execution lock and finalize the attempt and logical execution together. Missing attempt fences are rejected when attempt history exists; stale callbacks for a run no longer in a running/cancelling state are discarded. This prevents an old child result from overwriting newer or terminal state. Where source policy allows retry after a defined worker/process failure, the consumer evaluates that policy from the durable attempt history; this is distinct from indiscriminately replaying tenant code (`api/src/jobs/consumers/workflow_execution.py`, `api/src/jobs/execution_policy.py`).
 
 Execution detail routes retain caller authorization and return not-found or forbidden responses as appropriate. Result, logs, variables, cancellation, and cleanup have separate routes and semantics; a listing or detail read should not be treated as a cancellation or replay action (`api/src/routers/executions.py`).
+
+Persisted execution-log reads sort rows by stored sequence and database ID, filter DEBUG/TRACEBACK entries for non-superusers, and then expose zero-based response-local IDs while preserving each stored sequence. In-progress Redis-stream reads use the raw stream ordinal for both `id` and `sequence` before filtering hidden levels, so visible IDs may have gaps. The persisted projection therefore does not describe the separate live-stream path (`api/shared/execution_logs.py`, `api/src/routers/executions.py`, `api/shared/sdk_execution_reads.py`).
 
 ## Failure and operational interpretation
 

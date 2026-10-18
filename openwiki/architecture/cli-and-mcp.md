@@ -5,7 +5,7 @@ description: Explains the installed Bifrost CLI and Python API client, their com
 tags: [cli, sdk, mcp, api-contracts, compatibility]
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-18T03:01:08.144Z
+    at: 2026-10-18T09:57:17.518Z
 sources:
   - id: openwiki-source-08fce95810213449179558e2
     resource: repo://api/bifrost/cli.py
@@ -39,9 +39,13 @@ sources:
     resource: repo://api/src/routers/mcp.py
   - id: openwiki-source-a5fa6eff51f3467e0a81e4ee
     resource: repo://api/tests/e2e/mcp/test_mcp_parity.py
+  - id: openwiki-source-a04163824ba9917c0c5c2fe3
+    resource: repo://api/tests/unit/test_cli_command_branch_coverage.py
+  - id: openwiki-source-70d8733a3ef526228a3de330
+    resource: repo://api/tests/unit/test_cli_login_ephemeral.py
   - id: openwiki-source-587bd7b56cd95166a5f2d8e7
     resource: repo://api/tests/unit/test_dto_flags.py
-generated: { by: "bifrost-atlas", at: "2026-10-18T03:01:08.144Z" }
+generated: { by: "bifrost-atlas", at: "2026-10-18T09:57:17.518Z" }
 ---
 
 # CLI, Python SDK, and MCP Surfaces
@@ -51,6 +55,8 @@ Bifrost exposes platform operations through an installable Python package, an in
 ## CLI compatibility and command flow
 
 The CLI checks server compatibility before ordinary commands by reading `/api/version`. A mismatch in the explicit CLI contract version is a hard stop; matching contract versions with different build versions produce a non-blocking update notice. An unreachable or older server produces a visible warning, and the `update` command bypasses the gate so an incompatible CLI can replace itself ([CLI version gate](../../api/bifrost/cli.py#L216-L320), [dispatch](../../api/bifrost/cli.py#L841-L887)).
+
+Email/password login stores the returned access and refresh tokens through the credential backend keyed by API URL. It writes the target URL to the current directory's `.env` and removes legacy `BIFROST_ACCESS_TOKEN` and `BIFROST_REFRESH_TOKEN` entries; if updating `.env` fails, the CLI warns and prints only the API URL, not token values ([password-grant handling](../../api/bifrost/cli.py#L1277-L1300)).
 
 Entity command helpers pass a Bifrost client and reference resolver into async Click handlers. The shared command boundary presents structured errors consistently: unresolved or ambiguous references return a distinct exit code with candidates, guarded file conflicts include current-version detail, ordinary client errors preserve server response bodies, and server failures recommend retrying later ([command error mapping](../../api/bifrost/commands/base.py#L157-L281), [async command wrapper](../../api/bifrost/commands/base.py#L284-L370)). This mapping is the CLI presentation contract; it does not replace server-side authorization or conflict checks.
 

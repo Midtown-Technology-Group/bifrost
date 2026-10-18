@@ -4,6 +4,8 @@ title: Forms, Tables, Files, and Storage
 description: Explains form publication and workflow submission, table document APIs, workspace file policy and object storage, and the adjacent PDF renderer.
 tags: [forms, tables, files, storage, workflows]
 sources:
+  - id: openwiki-source-14cfcf4a7b028170949110e2
+    resource: repo://api/shared/role_cache.py
   - id: openwiki-source-03e9ccab6454d0aa59bf0e74
     resource: repo://api/src/core/paths.py
   - id: openwiki-source-fb512a8b5d42fb8eb0b06f5f
@@ -12,8 +14,12 @@ sources:
     resource: repo://api/src/routers/forms.py
   - id: openwiki-source-920b91302b2b6202914d9824
     resource: repo://api/src/routers/tables.py
+  - id: openwiki-source-d3c77eab95498b62df8594c0
+    resource: repo://api/src/routers/websocket.py
   - id: openwiki-source-907fee5de9a023a7e2c0c2be
     resource: repo://api/src/services/file_storage/service.py
+  - id: openwiki-source-64e27e704af31160ff427dcf
+    resource: repo://api/tests/unit/test_role_cache.py
   - id: openwiki-source-9f72542a66b9f96cecc89924
     resource: repo://client/src/components/tables/DocumentQueryPanel.tsx
   - id: openwiki-source-d4e49a678e9056435147c9c2
@@ -26,10 +32,10 @@ sources:
     resource: repo://client/src/pages/tables/TableActionsMenu.tsx
   - id: openwiki-source-f9687712a4982d2c3de607f9
     resource: repo://doc_renderer_service/README.md
-generated: { by: "bifrost-atlas", at: "2026-10-18T03:01:08.144Z" }
+generated: { by: "bifrost-atlas", at: "2026-10-18T09:57:17.518Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-18T03:01:08.144Z
+    at: 2026-10-18T09:57:17.518Z
 ---
 
 # Forms, Tables, Files, and Storage
@@ -47,6 +53,8 @@ Form publication and runtime are separate: publication controls whether an exter
 Tables are platform-defined metadata containers with organization scope; table creation is a platform-admin operation, and a Solution engine cannot create ad-hoc tables because tables must be declared by the Solution manifest. Table document APIs operate within the selected table identity. Insert assigns actor attribution, updates merge JSON data, and optional revision/data preconditions make conditional updates atomic (`api/src/routers/tables.py`).
 
 Table policies and action checks gate reads and writes at the API boundary. Solution-owned table writes additionally verify active Solution ownership and declared manifest targets. Table metadata is not equivalent to document access: the router resolves the table and operation policy before calling the document repository (`api/src/routers/tables.py`).
+
+For configured table WebSocket policies, the policy loader reloads the user's role IDs and names directly from the database for each evaluation, before resolving custom claims. It does this even when `has_role()` is used only by a custom claim's source policy. File-subscription role hydration is separate: when the principal has no role IDs or names yet, it uses the per-user Redis role cache with a database fallback on miss; it does not share the table loader's per-evaluation refresh (`api/src/routers/websocket.py`, `api/shared/role_cache.py`).
 
 ## Files and storage boundary
 

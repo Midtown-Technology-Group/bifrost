@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:d48faa5578d080b0b4e7ae1f4d7b04cd405c7311cb64a2d0c9a036e1e56e0ec2",
+  "pageVersion": "sha256:2b7b06d93b571930f18a92d95c23bf1119bc27eff761dfa22d0f1058ab064440",
   "claims": [
     {
       "id": "claim_544caeb121be40a0a24f69ebb8315e5f",
@@ -73,7 +73,7 @@
       "statement": "The execution detail route loads a caller-authorized record, uses a pending execution fallback when the durable row is missing, and returns explicit forbidden/not-found responses.",
       "evidence": [
         {
-          "resource": "repo://api/src/routers/executions.py#L1069-L1102",
+          "resource": "repo://api/src/routers/executions.py#L1050-L1083",
           "version": "repo-lines-v1:sha256:dc6829faf20cc373ff231906c0d550dcec147090a00f964ff32499bb1597f0f9:eyJzZWxlY3RlZExpbmVDb3VudCI6MzQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUxY2Q5OWE1YTFmOWM0N2YzMjg4OTcwYTI2NWVmM2QzNDg3ZDYzMWJiNjY2ODNkN2QxYTRmNzViNmI0NTM4OTYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU5NWU4MWZmODViN2ZkN2EyYWRjNDFmMTQ4YTYwMTVlZjI3MGZlYmQ2MjBiMGQzODBkMGVlZDI3YTI4YjQ4MGUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhjYzRhN2QxY2M3OTZhYmEzZTQ2NzIzMzI3ZjUxN2U5ZjgxMTk4MmQyNTBmMDcwMjk4NmU0YjU3NjRhZDk1ODkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRiZDE4NmIwMzg4YzA0YmQ0YmUzNjlmODU2NmJhYmI4MmYxZjY5ZGU3MTllYzc2MGU4Mjk1NDhlMmM2Y2U2YWEifQ"
         }
       ]
@@ -87,10 +87,32 @@
           "version": "repo-lines-v1:sha256:66836456e6b2ab2b262e17f066183abfa8ab3b8bdc9952d94238f7c89625cb1b:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdkM2RiYzRlN2U3Y2JlNWRkYzg5MWIwODA3MTJmNjM1MWM5NGI3MjhlYzhiZDg1NTZmNDYxMmIwNzBkMjdiNDAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU1NTEwZjgxNGVkNDdkZTVlOWY0YTI0NjZhZGYxMWM5NmQ2OGY1NmEwNTllMWVmNzFiMGU2NmU2YWRlOGI0YWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjoyLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRiNGM2ZDdkZWQ0MDczODI0MmFhNDdkYWFjOGJiZTk5NTE0NWNjYWFlNWVhODczODE2M2IyMGI2MjU3ZmUyZDAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUwMDRjNjkzNTNmZDJjYzY5NTJlOTYxODVhZGIzZDdmZGM5YTIwNjQ0NWQ0OGE2NTQ1ZDk4MWI4NjEyY2RjNjgifQ"
         }
       ]
+    },
+    {
+      "id": "claim_ddf0dac40558444aaf47ea4ce6f08879",
+      "statement": "Persisted execution-log reads sort by sequence and database ID, filter DEBUG/TRACEBACK rows from non-superuser views, then project visible rows to zero-based response-local IDs while preserving stored sequence values.",
+      "evidence": [
+        {
+          "resource": "repo://api/shared/execution_logs.py#L9-L21",
+          "version": "repo-lines-v1:sha256:e9fa570f91c4f181c920d3fae5cf98f25710afca0450b44ea92b6892acaa3ced:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlmZGE3YzdiZGJjMTEyZDQwMDZiZjEzMDI1OTYyYjExNmJhMzEwZDlmNjQyMzEzYzhlOWJlOTljY2ExMmMzNzIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFkZDI0NDU4MmI2ZmIwM2QyM2I4NDE1YWJlY2QzNDZiMGM5ZjQ2NmI2Zjc1MmIwNjgxODljZTdlOWEyZGMzNTAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjExZmE5ODY0NTg3ZDIxYThlMTQ4YjRhZjNlZTBiMDEzM2I4YzYwNzZmZjEyY2JkOTZmNWZhZjg2ZGNlODhmODQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        },
+        {
+          "resource": "repo://api/shared/sdk_execution_reads.py#L705-L718",
+          "version": "repo-lines-v1:sha256:1ae7d35810546ba3d2b3ef48a7aca45dccd4ad6e1ed59a4148a64a8c93b0f802:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjViZmZlZDZhZTFmNmE1ODM3MTk4NjQwYzMyNzEwZGY0MTQxYWY2NzVhMmViMzM5MmM5ZDBjODUwNDRiOTdiM2MiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA5M2Q5NGNhMWNmNDVjNDlkYzIwYjE3M2I1NDcyMTVmNzBiZmVkM2RjNGEwYjRiNjkwNWJmZDhhMjU2NDA2ZDUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjJlYjhjZWQ4ZDEyNDg5ZTc1NjM4YzljMjBjOWIxYTNlY2Q5ZDg5NDExN2IyZWZiMzA2NWFmZjc0NGMwOWM1OWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImEzZTFlNmYyNTUwNmFjNzA2MDUyYjcyNzMyYzNkN2JhODVlZTVmMmZkZjNiOWE5NzEwZmMxMGE2OGNjZjA2MjUifQ"
+        },
+        {
+          "resource": "repo://api/src/routers/executions.py#L426-L440",
+          "version": "repo-lines-v1:sha256:2f04f92004a33bcd55b05ff438ffe9333d30c1427639208005fb0e1c32835b4d:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg1OGJhOTZjYzIyNGRhNDBjYTZhZDE2M2RhZjhmNDE5MDBhNzdiNGRkNmJhMGM0YmFmMGU3YjUzNmY4MzcyOWIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNjYTU1OTlhMmMyMTM0MmU0M2JmN2FhMWI5Yzk1MjRkOTJjZDdlMzZhMzQ1N2NmYzEyZjYzOWI5ZDhlYTZiMmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY1ZWExZjBkNWRiZTMyZjQzNWI5MDJlNzAzY2FmYjE0Nzk0YmRkMjJkNGVmNTUyMDRhOWRhNTlhMTM4NzRiZjgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjBjZDA3MTczMDA5ZWM1OWRlYTAxYjJkODAxMjgzYmFmNzczMTY0NTM4ODI1NmRjNWM2MzNhNDNkYWJjMGU5YjYifQ"
+        },
+        {
+          "resource": "repo://api/tests/unit/shared/test_execution_logs.py#L7-L24",
+          "version": "repo-lines-v1:sha256:6819864116dec51b4a2a1ac009adf6cc48e626b124d6fae00d01b71118b7bce6:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA4OTI3NjllMmU1MTEzNWJmYzg0NDczMTNiNzVmYmUyNjY3ZTZiMmI1Nzc4OWMzNmVjYzc1YTFiZWNjYWM4OTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNhZDYxODU5YmVjM2JlZWZmODI4MTJkZDBmNzk1OWQ4Zjg1NzVmMzUwYWIyZjM1YmZlZWY2NGYwMmE3ZThiODUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjExZmE5ODY0NTg3ZDIxYThlMTQ4YjRhZjNlZTBiMDEzM2I4YzYwNzZmZjEyY2JkOTZmNWZhZjg2ZGNlODhmODQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-18T02:14:28.318Z"
+    "at": "2026-10-18T09:57:17.518Z"
   }
 }

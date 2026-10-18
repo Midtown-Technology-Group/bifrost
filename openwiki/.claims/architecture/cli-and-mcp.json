@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:fa269da754e9647f868c566b6ed64bb4a230ee69be7baadc58802d9e446bd909",
+  "pageVersion": "sha256:cbd0ac9804cf65c5325638317a8045ac098f1441fd841b94f2ec7915baaf4a54",
   "claims": [
     {
       "id": "claim_c8bff3a5a44d4192bb2487e6843f3602",
@@ -125,7 +125,7 @@
       "statement": "The CLI sync review TUI returns chosen push/pull/delete/skip actions, and the CLI disables interactive sync interfaces when forced, noninteractive, or without a TTY so unattended flows do not block on progress UI.",
       "evidence": [
         {
-          "resource": "repo://api/bifrost/cli.py#L2346-L2362",
+          "resource": "repo://api/bifrost/cli.py#L2337-L2353",
           "version": "repo-lines-v1:sha256:624aed1e2de39f45a167732aff3441d8b1f92fa3dec19e65715db4af321c5a44:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkwMDZhODE0ZDVlNmU0MGE5OGY3MzkyZWE1YzI0ZWJhMzMyODViMGFmOTJhNGJhMmFhNzI1Yzc3MDUzNGM5YjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwZTJhNDY1MDA5NWZhOTVkMGUyYmI0MWIyZGIyOTA5NGQzNDA0ZDI4Y2UxMjMzOWVjODhiYjRiNWM1YmU4ZjYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYzNzMyYWExOGE2OGViODBiZWQzODU1MzA0NmJiMzgxZTg1MTQzMWUzZmEwODdmNDMzYjNiMjYxNmRjM2RjOGQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZjMWYwMmZkN2VjMWQ0NjJjMGNiODE4Yjk0OGZmZTRmNzE1YjJjMmM0MzI2MzBjMjMyZGZlMzRkNDI3NDNmYTkifQ"
         },
         {
@@ -163,10 +163,28 @@
           "version": "repo-lines-v1:sha256:97a3832a229178d30df8ef33132f8817f33aa8c1b09df480c2f1e3dd299e3b18:eyJzZWxlY3RlZExpbmVDb3VudCI6NTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYzMzM5NmEwODZhMmI5NjI4MjQ2YzU4NWZiMjc4OGM4ZTI1OTUxNmI0ZWZhOTA4NGYyZGE1MDlmOTE3M2ZkMWUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNlZjRiZjA2ZjQ1NzViOGIyMWU4NGQwNjEyMTE0ZGM0MzQ2NmQ3NjVjOWFiYzJhZjkzMDY3ZjRhZmRjYjEwODgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
         }
       ]
+    },
+    {
+      "id": "claim_25b1309996254ca58a7e9047b81cfdca",
+      "statement": "Email/password CLI login stores returned access and refresh tokens through credential storage, writes the target API URL to the current directory's .env while removing legacy token entries, and does not print token values if the .env update fails.",
+      "evidence": [
+        {
+          "resource": "repo://api/bifrost/cli.py#L1277-L1300",
+          "version": "repo-lines-v1:sha256:dbbdaebe22095b453fe2f4d69756dfcc46c648a23bd6994317377d70a02ba51f:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRmYjUxNWMxZDlhNWYyMTU3ZjIxYmZjMDVmOWZlNmJiNWY0NDM3NTU3YmZjNTU1OWE4NDNkYmU4MDEyZjZlYWYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIwYzI5MTM3Mzg3NTUzZWVmMWNiMDZkOTc1ZDU0MzI1YWY4NzZjYjcxNDZhODg2MGYzYzhhZWJmMzkxZWM4NzQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjJiMmMwZDEyYjFlNmNiMDA2YWFhMjQ3NzhiYTU2NDdjMWYwMzI2MmVhNDE1MmEyMDY1NTEwYTI0YzUxNDY1MDciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI4NTNjMjhiMDYwY2ZjNjM5YjViN2IwNjlmNzc0YmFmOGMxY2UwYWI1NGQyMjFhYmQzZTI3OTk0YjZlYThkY2UifQ"
+        },
+        {
+          "resource": "repo://api/tests/unit/test_cli_command_branch_coverage.py#L29-L59",
+          "version": "repo-lines-v1:sha256:10f80585a5d0a231c14f4ed675096738c01b159585d9612ed9f241329e2b77e8:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZjYTM1NWNjZjAxMGQ0YTIwMTc4NDYwYWZjZmEzZjg2MWYwNTQ2ZjcxNDJhNDM1ODZlYjVhZTUwNWNlOGZkMjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImI4NDdiNzc3MGRkZTFhMTg0MzQ3MTVlOGI5M2FmMGJlODc2OTBjMTYwMWRiOTcxMzAyNjM2ZjY2YTJmNzQ2YjkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImJjMjM2NzdhZTZmOGZhZTg4MzkxZTlhZmU5MDJkMmQxNjQ1ZTI5YmE1ZWE5YTgxNTM4NzUwMzk3ZWRiYmE1MjYifQ"
+        },
+        {
+          "resource": "repo://api/tests/unit/test_cli_login_ephemeral.py#L94-L143",
+          "version": "repo-lines-v1:sha256:a9a95c55e42a3f3e15882b0b8502f3235606281258473467f9a633fb858911ad:eyJzZWxlY3RlZExpbmVDb3VudCI6NTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNiMmE5YzNiYWQzYWQ5NjI3YzMzODZlZWU0ZTY5ZjRmNWJhMmZmMGQzNGRhYjQxMTA0Yzc1ZjNlZjRmMzgwMjIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImVjN2M3NzNkOGZiOTU3NDA2ODVhNjkzNDk1MjgxYzY3ZTQzZDQwYzYzN2Y0NzU5OGFjOWNlN2E2MjA3OTRmNzgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhhNGZkZTcyZmQ1ZWRkZjQ2Y2FiZTIwNzgzZGQ5NmQ3ZWNlNDZkY2I4MjYwZTIzOWFlMjk2NDkxZGExZjg3NzYifQ"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-18T03:01:08.144Z"
+    "at": "2026-10-18T09:57:17.518Z"
   }
 }
