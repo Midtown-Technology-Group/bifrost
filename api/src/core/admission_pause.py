@@ -206,13 +206,17 @@ class AdmissionPauseMiddleware:
                 disconnected_task = asyncio.create_task(
                     request_disconnected.wait()
                 )
-                done, pending = await asyncio.wait(
-                    {receive_task, disconnected_task},
-                    return_when=asyncio.FIRST_COMPLETED,
-                )
-                for task in pending:
-                    task.cancel()
-                await asyncio.gather(*pending, return_exceptions=True)
+                tasks = {receive_task, disconnected_task}
+                try:
+                    done, _ = await asyncio.wait(
+                        tasks,
+                        return_when=asyncio.FIRST_COMPLETED,
+                    )
+                finally:
+                    for task in tasks:
+                        if not task.done():
+                            task.cancel()
+                    await asyncio.gather(*tasks, return_exceptions=True)
                 if (
                     disconnected_task in done
                     and request_disconnected.is_set()

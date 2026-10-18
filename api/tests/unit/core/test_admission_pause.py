@@ -183,6 +183,84 @@ async def test_maintenance_disconnects_existing_partial_http_body() -> None:
 
 
 @pytest.mark.asyncio
+async def test_http_receive_delivers_body_and_cleans_up_child_tasks() -> None:
+    delivered = {"type": "http.request", "body": b"ok", "more_body": False}
+
+    async def app(scope, receive, send):
+        assert await receive() == delivered
+
+    async def receive():
+        return delivered
+
+    async def send(message):
+        return None
+
+    middleware = AdmissionPauseMiddleware(app, state_reader=open_state)
+    scope = {
+        "type": "http",
+        "method": "POST",
+        "path": "/auth/login",
+        "headers": [],
+        "query_string": b"",
+        "scheme": "https",
+        "server": ("test", 443),
+        "client": ("test", 1),
+    }
+    existing_tasks = asyncio.all_tasks()
+    await middleware(scope, receive, send)
+
+    assert not (asyncio.all_tasks() - existing_tasks)
+    assert admission_tracker.ordinary_inflight == 0
+    assert admission_tracker.http_disconnects == {}
+
+
+@pytest.mark.asyncio
+async def test_cancelled_http_receive_cleans_up_child_tasks() -> None:
+    receive_started = asyncio.Event()
+    receive_cancelled = asyncio.Event()
+
+    async def app(scope, receive, send):
+        await receive()
+
+    async def receive():
+        receive_started.set()
+        try:
+            await asyncio.Future()
+        except asyncio.CancelledError:
+            receive_cancelled.set()
+            raise
+
+    async def send(message):
+        return None
+
+    middleware = AdmissionPauseMiddleware(app, state_reader=open_state)
+    scope = {
+        "type": "http",
+        "method": "POST",
+        "path": "/auth/login",
+        "headers": [],
+        "query_string": b"",
+        "scheme": "https",
+        "server": ("test", 443),
+        "client": ("test", 1),
+    }
+    existing_tasks = asyncio.all_tasks()
+    request_task = asyncio.create_task(middleware(scope, receive, send))
+    await receive_started.wait()
+    child_tasks = asyncio.all_tasks() - existing_tasks - {request_task}
+    assert len(child_tasks) == 2
+
+    request_task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await request_task
+
+    assert receive_cancelled.is_set()
+    assert all(task.done() for task in child_tasks)
+    assert admission_tracker.ordinary_inflight == 0
+    assert admission_tracker.http_disconnects == {}
+
+
+@pytest.mark.asyncio
 async def test_websocket_message_handler_counts_as_finite_inflight_work():
     started = asyncio.Event()
     handled = asyncio.Event()
