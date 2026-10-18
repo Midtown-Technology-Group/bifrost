@@ -16,7 +16,7 @@ import json
 import logging
 import threading
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Awaitable, cast
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -364,12 +364,18 @@ async def append_log_to_stream_async(
             if isinstance(entry_id, Exception):
                 raise entry_id
             if isinstance(expiry_applied, Exception):
-                await r.eval(_DELETE_UNBOUNDED_STREAM_SCRIPT, 1, stream_key)
+                await cast(
+                    Awaitable[int],
+                    r.eval(_DELETE_UNBOUNDED_STREAM_SCRIPT, 1, stream_key),
+                )
                 raise RuntimeError(
                     "Failed to apply execution log stream expiry"
                 ) from expiry_applied
             if not expiry_applied:
-                await r.eval(_DELETE_UNBOUNDED_STREAM_SCRIPT, 1, stream_key)
+                await cast(
+                    Awaitable[int],
+                    r.eval(_DELETE_UNBOUNDED_STREAM_SCRIPT, 1, stream_key),
+                )
                 raise RuntimeError("Failed to apply execution log stream expiry")
             return entry_id
     except Exception as e:

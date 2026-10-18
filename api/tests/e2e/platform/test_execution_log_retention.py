@@ -1,5 +1,6 @@
 """Execution log streams retain a hard Redis expiry through acknowledgement."""
 
+from typing import Awaitable, cast
 from uuid import uuid4
 
 import pytest
@@ -37,10 +38,18 @@ async def test_expiry_recovery_only_deletes_streams_that_remain_unbounded():
             assert expiry_applied is True
 
             assert (
-                await redis.eval(_DELETE_UNBOUNDED_STREAM_SCRIPT, 1, bounded_key) == 0
+                await cast(
+                    Awaitable[int],
+                    redis.eval(_DELETE_UNBOUNDED_STREAM_SCRIPT, 1, bounded_key),
+                )
+                == 0
             )
             assert (
-                await redis.eval(_DELETE_UNBOUNDED_STREAM_SCRIPT, 1, repaired_key) == 0
+                await cast(
+                    Awaitable[int],
+                    redis.eval(_DELETE_UNBOUNDED_STREAM_SCRIPT, 1, repaired_key),
+                )
+                == 0
             )
 
             assert await redis.xrange(bounded_key) == [
@@ -67,7 +76,11 @@ async def test_expiry_recovery_deletes_a_stream_that_remains_unbounded():
             await redis.xadd(stream_key, {"message": "unbounded"})
 
             assert (
-                await redis.eval(_DELETE_UNBOUNDED_STREAM_SCRIPT, 1, stream_key) == 1
+                await cast(
+                    Awaitable[int],
+                    redis.eval(_DELETE_UNBOUNDED_STREAM_SCRIPT, 1, stream_key),
+                )
+                == 1
             )
             assert await redis.exists(stream_key) == 0
     finally:
