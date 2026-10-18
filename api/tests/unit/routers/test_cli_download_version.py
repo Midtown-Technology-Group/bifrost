@@ -1,13 +1,36 @@
 """CLI build-time artifact generation."""
 
 import os
+import shutil
 import subprocess
 import sys
 import tarfile
 import tomllib
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from shared.cli_artifact import build_cli_artifact, cli_artifact_filename, to_pep440
+
+
+def _extract_generated_artifact(
+    archive: tarfile.TarFile,
+    destination: Path,
+) -> None:
+    """Extract only regular files from the generated CLI source archive."""
+    destination.mkdir(parents=True, exist_ok=True)
+    root = destination.resolve()
+    for member in archive.getmembers():
+        relative_path = PurePosixPath(member.name)
+        if relative_path.is_absolute() or ".." in relative_path.parts:
+            raise ValueError(f"Unsafe CLI artifact member: {member.name}")
+        target = destination.joinpath(*relative_path.parts)
+        if not target.resolve().is_relative_to(root) or not member.isfile():
+            raise ValueError(f"Unsafe CLI artifact member: {member.name}")
+        source = archive.extractfile(member)
+        if source is None:
+            raise ValueError(f"Unreadable CLI artifact member: {member.name}")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with source, target.open("wb") as output:
+            shutil.copyfileobj(source, output)
 
 
 def test_to_pep440_preserves_dev_release_versions() -> None:
@@ -65,7 +88,7 @@ def test_built_cli_artifact_can_verify_vite_listener_ownership(
     artifact = build_cli_artifact(source_dir, tmp_path / "artifacts", "v1.2.3")
     artifact_root = tmp_path / "artifact-root"
     with tarfile.open(artifact, mode="r:gz") as archive:
-        archive.extractall(artifact_root, filter="data")
+        _extract_generated_artifact(archive, artifact_root)
 
     smoke_test = r"""
 import os
