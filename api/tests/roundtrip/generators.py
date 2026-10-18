@@ -34,6 +34,7 @@ def _unwrap_optional(ann: Any) -> Any:
 DOMAIN_VALUES: dict[tuple[str, str] | str, Any] = {
     "access_level": "role_based",
     ("ManifestAgent", "channels"): ["chat"],
+    ("ManifestAgent", "max_run_timeout"): 600,
     ("ManifestEventSource", "source_type"): "schedule",
     ("ManifestEventSource", "overlap_policy"): "skip",
     ("ManifestEventSubscription", "criteria"): {

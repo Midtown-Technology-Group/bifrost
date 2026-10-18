@@ -22,7 +22,7 @@ from uuid import UUID
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from bifrost.agent_limits import validate_agent_run_timeout
+from bifrost.agent_limits import bounded_agent_run_timeout, validate_agent_run_timeout
 from bifrost.contracts.events import EventCriteria
 from bifrost.contracts.workflows import ExecutionRetryPolicy
 from bifrost.field_classes import FieldClass, classify
@@ -439,6 +439,12 @@ class ManifestAgent(EntityCodec, BaseModel):
         in (rather than read from relationships) so the caller controls
         eager-loading and ordering — matching the pattern used for workflow/form roles.
         """
+        stored_run_timeout = getattr(agent, "max_run_timeout", None)
+        if stored_run_timeout is not None:
+            # Incoming manifests remain strict, but existing rows predate the
+            # bound and must stay exportable.  Serialize the same effective
+            # timeout that execution applies to those legacy values.
+            stored_run_timeout = int(bounded_agent_run_timeout(stored_run_timeout))
         return cls(
             id=str(agent.id),
             name=agent.name,
@@ -460,7 +466,7 @@ class ManifestAgent(EntityCodec, BaseModel):
             llm_max_tokens=agent.llm_max_tokens,
             max_iterations=agent.max_iterations,
             max_token_budget=agent.max_token_budget,
-            max_run_timeout=getattr(agent, "max_run_timeout", None),
+            max_run_timeout=stored_run_timeout,
         )
 
     def to_orm_values(self, dest: "Destination") -> "ImportFields":
