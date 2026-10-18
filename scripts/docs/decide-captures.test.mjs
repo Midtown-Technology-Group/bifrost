@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -10,11 +16,15 @@ import { pathChanged, readCaptureManifest } from "./decide-captures.mjs";
 function fixtureRepo() {
   const repo = mkdtempSync(join(tmpdir(), "decide-captures-"));
   execFileSync("git", ["init", "-q"], { cwd: repo });
-  execFileSync("git", ["config", "user.email", "test@example.com"], { cwd: repo });
+  execFileSync("git", ["config", "user.email", "test@example.com"], {
+    cwd: repo,
+  });
   execFileSync("git", ["config", "user.name", "Test"], { cwd: repo });
   writeFileSync(join(repo, "screenshots.yaml"), "entries: []\n");
   writeFileSync(join(repo, "tracked.txt"), "initial\n");
-  execFileSync("git", ["add", "screenshots.yaml", "tracked.txt"], { cwd: repo });
+  execFileSync("git", ["add", "screenshots.yaml", "tracked.txt"], {
+    cwd: repo,
+  });
   execFileSync("git", ["commit", "-qm", "initial"], { cwd: repo });
   const sha = execFileSync("git", ["rev-parse", "HEAD"], {
     cwd: repo,
@@ -27,7 +37,10 @@ test("manifest SHA is data, not shell input", () => {
   const { repo } = fixtureRepo();
   const marker = join(repo, "sha-injected");
   try {
-    assert.equal(pathChanged(repo, `HEAD;touch ${marker}`, ["tracked.txt"]), true);
+    assert.equal(
+      pathChanged(repo, `HEAD;touch ${marker}`, ["tracked.txt"]),
+      true,
+    );
     assert.equal(existsSync(marker), false);
   } finally {
     rmSync(repo, { recursive: true, force: true });
@@ -75,7 +88,9 @@ test("capture manifest cannot be a committed symlink", () => {
     rmSync(join(repo, "screenshots.yaml"));
     symlinkSync("tracked.txt", join(repo, "screenshots.yaml"));
     execFileSync("git", ["add", "screenshots.yaml"], { cwd: repo });
-    execFileSync("git", ["commit", "-qm", "replace manifest with symlink"], { cwd: repo });
+    execFileSync("git", ["commit", "-qm", "replace manifest with symlink"], {
+      cwd: repo,
+    });
     assert.throws(() => readCaptureManifest(repo), /committed regular file/);
   } finally {
     rmSync(repo, { recursive: true, force: true });

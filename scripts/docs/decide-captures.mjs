@@ -24,7 +24,9 @@ function parseArgs(argv) {
     else if (a === "--full") out.full = true;
     else if (a === "--ids") out.ids = argv[++i];
     else if (a === "-h" || a === "--help") {
-      console.log("usage: decide-captures.mjs --docs-repo <path> --bifrost-repo <path> [--full|--ids id1,id2]");
+      console.log(
+        "usage: decide-captures.mjs --docs-repo <path> --bifrost-repo <path> [--full|--ids id1,id2]",
+      );
       process.exit(0);
     } else {
       console.error(`unknown arg: ${a}`);
@@ -43,18 +45,26 @@ export function pathChanged(repo, sinceSha, globs) {
   if (!globs || !globs.length) return true; // no globs = always recapture
   if (!/^[0-9a-f]{40}$/i.test(sinceSha)) return true;
   try {
-    execFileSync("/usr/bin/git", ["rev-parse", "--verify", `${sinceSha}^{commit}`], {
-      cwd: repo,
-      stdio: "ignore",
-    });
+    execFileSync(
+      "/usr/bin/git",
+      ["rev-parse", "--verify", `${sinceSha}^{commit}`],
+      {
+        cwd: repo,
+        stdio: "ignore",
+      },
+    );
   } catch {
     return true; // unknown sha — treat as changed
   }
   try {
-    execFileSync("/usr/bin/git", ["diff", "--quiet", sinceSha, "HEAD", "--", ...globs], {
-      cwd: repo,
-      stdio: "ignore",
-    });
+    execFileSync(
+      "/usr/bin/git",
+      ["diff", "--quiet", sinceSha, "HEAD", "--", ...globs],
+      {
+        cwd: repo,
+        stdio: "ignore",
+      },
+    );
     return false;
   } catch {
     return true;
@@ -85,7 +95,12 @@ export function readCaptureManifest(docsRepo) {
       throw new Error("capture manifest must be committed before capture");
     }
 
-    const entry = gitOutput(docsRepo, ["ls-tree", "HEAD", "--", "screenshots.yaml"]).trim();
+    const entry = gitOutput(docsRepo, [
+      "ls-tree",
+      "HEAD",
+      "--",
+      "screenshots.yaml",
+    ]).trim();
     if (!/^100(?:644|755) blob [0-9a-f]{40}\tscreenshots\.yaml$/.test(entry)) {
       throw new Error("capture manifest must be a committed regular file");
     }
@@ -100,12 +115,18 @@ export function readCaptureManifest(docsRepo) {
 
     return gitOutput(docsRepo, ["show", "HEAD:screenshots.yaml"]);
   } catch (error) {
-    if (error instanceof Error && error.message.startsWith("capture manifest")) {
+    if (
+      error instanceof Error &&
+      error.message.startsWith("capture manifest")
+    ) {
       throw error;
     }
-    throw new Error("docs repository must be a Git checkout with a committed screenshots.yaml", {
-      cause: error,
-    });
+    throw new Error(
+      "docs repository must be a Git checkout with a committed screenshots.yaml",
+      {
+        cause: error,
+      },
+    );
   }
 }
 
@@ -118,7 +139,10 @@ async function main() {
   const captureable = manifest.entries.filter((e) => !e.external);
 
   if (args.ids) {
-    const wanted = args.ids.split(",").map((s) => s.trim()).filter(Boolean);
+    const wanted = args.ids
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
     const valid = new Set(captureable.map((e) => e.id));
     const filtered = wanted.filter((id) => valid.has(id));
     process.stdout.write(filtered.join(","));
@@ -141,6 +165,9 @@ async function main() {
   process.stdout.write(candidates.join(","));
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (
+  process.argv[1] &&
+  import.meta.url === pathToFileURL(process.argv[1]).href
+) {
   await main();
 }
