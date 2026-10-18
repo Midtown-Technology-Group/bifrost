@@ -335,7 +335,9 @@ async def list_sources(
         None, description="Filter by source type"
     ),
     organization_id: UUID | None = Query(None, description="Filter by organization"),
-    scope: str | None = Query(None, description="Filter scope: 'global' for global-only, omit for all"),
+    scope: str | None = Query(
+        None, description="Filter scope: 'global' for global-only, omit for all"
+    ),
     limit: int = Query(100, ge=1, le=1000, description="Max results"),
     offset: int = Query(0, ge=0, description="Skip results"),
 ) -> EventSourceListResponse:
@@ -444,7 +446,9 @@ async def create_source(
     source = EventSource(
         name=request.name,
         source_type=request.source_type,
-        event_type=request.event_type if request.source_type == EventSourceType.TOPIC else None,
+        event_type=request.event_type
+        if request.source_type == EventSourceType.TOPIC
+        else None,
         organization_id=target_org_id,
         is_active=True,
         created_by=ctx.user.email,
@@ -609,6 +613,7 @@ async def get_source(
     response_model=EventSourceResponse,
     summary="Update event source",
     description="Update an event source (Platform admin only).",
+    responses={400: {"description": "Invalid event source configuration"}},
     **operation_route("events.sources.update"),
 )
 async def update_source(
@@ -677,7 +682,10 @@ async def update_source(
                     ws.adapter_name == "microsoft_bot_framework"
                     and integration.name != "Microsoft Teams Bot"
                 ):
-                    raise HTTPException(status_code=400, detail="Expected Microsoft Teams Bot integration")
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Expected Microsoft Teams Bot integration",
+                    )
             ws.integration_id = integration_id
         if request.webhook.config:
             ws.config = request.webhook.config
@@ -903,6 +911,7 @@ async def list_subscriptions(
     status_code=status.HTTP_201_CREATED,
     summary="Create subscription",
     description="Create a subscription to an event source (Platform admin only).",
+    responses={400: {"description": "Invalid subscription target"}},
     **operation_route("events.subscriptions.create"),
 )
 async def create_subscription(
@@ -928,14 +937,20 @@ async def create_subscription(
     # Validate target
     if request.target_type == "agent":
         if not request.agent_id:
-            raise HTTPException(status_code=400, detail="agent_id required when target_type is 'agent'")
+            raise HTTPException(
+                status_code=400, detail="agent_id required when target_type is 'agent'"
+            )
         from src.models.orm.agents import Agent
+
         agent = await db.get(Agent, request.agent_id)
         if not agent:
             raise HTTPException(status_code=404, detail="Agent not found")
     elif request.target_type == "workflow":
         if not request.workflow_id:
-            raise HTTPException(status_code=400, detail="workflow_id required when target_type is 'workflow'")
+            raise HTTPException(
+                status_code=400,
+                detail="workflow_id required when target_type is 'workflow'",
+            )
         # Services run under supervision and cannot be one-shot event targets.
         from src.models.orm.workflows import Workflow as WorkflowORM
 
@@ -976,12 +991,16 @@ async def create_subscription(
     # Reload with workflow and agent relationships
     result = await db.execute(
         select(EventSubscription)
-        .options(joinedload(EventSubscription.workflow), joinedload(EventSubscription.agent))
+        .options(
+            joinedload(EventSubscription.workflow), joinedload(EventSubscription.agent)
+        )
         .where(EventSubscription.id == subscription.id)
     )
     subscription = result.unique().scalar_one()
 
-    logger.info(f"Created subscription {subscription.id} for source {log_safe(source_id)}")
+    logger.info(
+        f"Created subscription {subscription.id} for source {log_safe(source_id)}"
+    )
 
     return await _build_event_subscription_response(subscription, db)
 
@@ -1267,7 +1286,7 @@ async def emit_topic_event(
         )
 
     organization_id: UUID | None = ctx.org_id
-    if request.scope == "GLOBAL":
+    if request.scope and request.scope.casefold() == "global":
         organization_id = None
     elif request.scope:
         try:
@@ -1275,7 +1294,7 @@ async def emit_topic_event(
         except ValueError:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Invalid scope: must be a UUID or 'GLOBAL', got '{request.scope}'",
+                detail=f"Invalid scope: must be a UUID or 'global', got '{request.scope}'",
             )
     if service_caller:
         # Services emit org-scoped only, into their own org: the token's
@@ -1390,8 +1409,7 @@ async def get_event(
         1
         for d in deliveries
         if d.status == EventDeliveryStatus.SKIPPED
-        and (getattr(d, "rule_decision", None) or {}).get("outcome")
-        == "not_matched"
+        and (getattr(d, "rule_decision", None) or {}).get("outcome") == "not_matched"
     )
     evaluation_error_count = sum(
         1
