@@ -269,7 +269,15 @@ class TestSuccessfulExecutionCompletionOrder:
                 patch(
                     "bifrost._sync.flush_pending_changes",
                     new_callable=AsyncMock,
-                    return_value=0,
+                    return_value=2,
+                ),
+                patch(
+                    "bifrost._sync.acknowledge_pending_changes",
+                    new=AsyncMock(
+                        side_effect=lambda _execution_id: call_order.append(
+                            "ack_changes"
+                        )
+                    ),
                 ),
                 patch(
                     "bifrost._logging.flush_logs_to_postgres",
@@ -322,7 +330,7 @@ class TestSuccessfulExecutionCompletionOrder:
                     },
                 )
 
-        assert call_order[:2] == ["durable_commit", "push_result"]
+        assert call_order[:3] == ["durable_commit", "ack_changes", "push_result"]
         assert call_order.index("push_result") < call_order.index("teams_action")
         assert call_order.index("push_result") < call_order.index("daily_metrics")
         assert call_order.index("push_result") < call_order.index("workflow_metrics")
@@ -408,7 +416,15 @@ class TestFailedExecutionCompletionOrder:
                 patch(
                     "bifrost._sync.flush_pending_changes",
                     new_callable=AsyncMock,
-                    return_value=0,
+                    return_value=2,
+                ),
+                patch(
+                    "bifrost._sync.acknowledge_pending_changes",
+                    new=AsyncMock(
+                        side_effect=lambda _execution_id: call_order.append(
+                            "ack_changes"
+                        )
+                    ),
                 ),
                 patch(
                     "bifrost._logging.flush_logs_to_postgres",
@@ -473,7 +489,7 @@ class TestFailedExecutionCompletionOrder:
                     },
                 )
 
-        assert call_order[:2] == ["durable_commit", "push_result"]
+        assert call_order[:3] == ["durable_commit", "ack_changes", "push_result"]
         assert call_order.index("push_result") < call_order.index("teams_action")
         assert call_order.index("push_result") < call_order.index("daily_metrics")
         assert call_order.index("push_result") < call_order.index("metrics_commit")

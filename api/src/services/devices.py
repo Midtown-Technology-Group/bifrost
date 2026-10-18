@@ -118,6 +118,19 @@ async def require_device_execute_permission(
         )
 
 
+async def require_device_control_key_issue_permission(
+    db: AsyncSession, user: UserPrincipal
+) -> None:
+    """Require both registry management and endpoint execution authority.
+
+    Creating or rotating a control key delegates the ability to submit
+    LocalSystem device jobs, so configuration authority alone is insufficient.
+    Metadata reads and revocation remain available to configuration managers.
+    """
+    await require_device_manage_permission(db, user)
+    await require_device_execute_permission(db, user)
+
+
 def resolve_target_org(user: UserPrincipal, requested: UUID | None) -> UUID:
     if user.is_superuser:
         if requested is None:
