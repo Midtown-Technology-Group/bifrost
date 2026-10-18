@@ -29,10 +29,13 @@ def mock_response_ok():
 async def test_emit_calls_correct_endpoint(mock_client, mock_response_ok):
     """events.emit sends POST to /api/events/emit with topic and data."""
     mock_client.engine_request.return_value = mock_response_ok
-    with patch("bifrost.events.get_client", return_value=mock_client), \
-         patch("bifrost.events.raise_for_status_with_detail"), \
-         patch("bifrost.events.resolve_scope", return_value=None):
+    with (
+        patch("bifrost.events.get_client", return_value=mock_client),
+        patch("bifrost.events.raise_for_status_with_detail"),
+        patch("bifrost.events.resolve_scope", return_value=None),
+    ):
         from bifrost.events import events
+
         result = await events.emit("acme.deal_won", {"amount": 50000})
 
     mock_client.engine_request.assert_called_once_with(
@@ -48,10 +51,13 @@ async def test_emit_scope_override(mock_client, mock_response_ok):
     """events.emit passes scope through resolve_scope."""
     mock_client.engine_request.return_value = mock_response_ok
     org_uuid = "11111111-1111-1111-1111-111111111111"
-    with patch("bifrost.events.get_client", return_value=mock_client), \
-         patch("bifrost.events.raise_for_status_with_detail"), \
-         patch("bifrost.events.resolve_scope", return_value=org_uuid) as mock_resolve:
+    with (
+        patch("bifrost.events.get_client", return_value=mock_client),
+        patch("bifrost.events.raise_for_status_with_detail"),
+        patch("bifrost.events.resolve_scope", return_value=org_uuid) as mock_resolve,
+    ):
         from bifrost.events import events
+
         await events.emit("acme.deal_won", {}, scope=org_uuid)
 
     mock_resolve.assert_called_once_with(org_uuid)
@@ -60,17 +66,43 @@ async def test_emit_scope_override(mock_client, mock_response_ok):
 
 
 @pytest.mark.asyncio
+async def test_emit_preserves_explicit_lowercase_global_scope(
+    mock_client, mock_response_ok
+):
+    """The documented SDK token reaches the API without being treated as a UUID."""
+    mock_client.engine_request.return_value = mock_response_ok
+    with (
+        patch("bifrost.events.get_client", return_value=mock_client),
+        patch("bifrost.events.raise_for_status_with_detail"),
+        patch("bifrost.events.resolve_scope", return_value="global") as mock_resolve,
+    ):
+        from bifrost.events import events
+
+        await events.emit("acme.deal_won", {}, scope="global")
+
+    mock_resolve.assert_called_once_with("global")
+    _, kwargs = mock_client.engine_request.call_args
+    assert kwargs["json"]["scope"] == "global"
+
+
+@pytest.mark.asyncio
 async def test_emit_propagates_http_error(mock_client):
     """events.emit re-raises when raise_for_status_with_detail raises."""
     mock_response = MagicMock(spec=httpx.Response, status_code=400)
     mock_client.engine_request.return_value = mock_response
 
-    with patch("bifrost.events.get_client", return_value=mock_client), \
-         patch("bifrost.events.raise_for_status_with_detail", side_effect=httpx.HTTPStatusError(
-             "400", request=MagicMock(), response=mock_response
-         )), \
-         patch("bifrost.events.resolve_scope", return_value=None):
+    with (
+        patch("bifrost.events.get_client", return_value=mock_client),
+        patch(
+            "bifrost.events.raise_for_status_with_detail",
+            side_effect=httpx.HTTPStatusError(
+                "400", request=MagicMock(), response=mock_response
+            ),
+        ),
+        patch("bifrost.events.resolve_scope", return_value=None),
+    ):
         from bifrost.events import events
+
         with pytest.raises(httpx.HTTPStatusError):
             await events.emit("acme.deal_won", {})
 
@@ -79,17 +111,24 @@ async def test_emit_propagates_http_error(mock_client):
 async def test_emit_no_scope_resolves_context_scope(mock_client, mock_response_ok):
     """Omitting scope passes None to resolve_scope (uses execution context org)."""
     mock_client.engine_request.return_value = mock_response_ok
-    with patch("bifrost.events.get_client", return_value=mock_client), \
-         patch("bifrost.events.raise_for_status_with_detail"), \
-         patch("bifrost.events.resolve_scope", return_value="resolved-scope") as mock_resolve:
+    with (
+        patch("bifrost.events.get_client", return_value=mock_client),
+        patch("bifrost.events.raise_for_status_with_detail"),
+        patch(
+            "bifrost.events.resolve_scope", return_value="resolved-scope"
+        ) as mock_resolve,
+    ):
         from bifrost.events import events
+
         await events.emit("user.invited", {"user_id": "xyz"})
 
     mock_resolve.assert_called_once_with(None)
 
 
 @pytest.mark.asyncio
-async def test_emit_includes_solution_from_execution_context(mock_client, mock_response_ok):
+async def test_emit_includes_solution_from_execution_context(
+    mock_client, mock_response_ok
+):
     mock_client.engine_request.return_value = mock_response_ok
     solution_id = "22222222-2222-2222-2222-222222222222"
     org = Organization(id="11111111-1111-1111-1111-111111111111", name="Org")
@@ -106,10 +145,13 @@ async def test_emit_includes_solution_from_execution_context(mock_client, mock_r
     )
     set_execution_context(ctx)
     try:
-        with patch("bifrost.events.get_client", return_value=mock_client), \
-             patch("bifrost.events.raise_for_status_with_detail"), \
-             patch("bifrost.events.resolve_scope", return_value=org.id):
+        with (
+            patch("bifrost.events.get_client", return_value=mock_client),
+            patch("bifrost.events.raise_for_status_with_detail"),
+            patch("bifrost.events.resolve_scope", return_value=org.id),
+        ):
             from bifrost.events import events
+
             await events.emit("acme.deal_won", {})
     finally:
         clear_execution_context()

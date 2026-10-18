@@ -7,7 +7,12 @@ import pytest
 from fastapi import HTTPException, status
 
 from src.models.contracts.events import DynamicValuesRequest, EmitEventRequest
-from src.models.contracts.events import EventSourceCreate, EventSourceUpdate, ScheduleSourceConfig, WebhookSourceConfig
+from src.models.contracts.events import (
+    EventSourceCreate,
+    EventSourceUpdate,
+    ScheduleSourceConfig,
+    WebhookSourceConfig,
+)
 from src.models.enums import (
     EventDeliveryStatus,
     EventSourceType,
@@ -22,7 +27,9 @@ def _now() -> datetime:
 
 
 def _user() -> SimpleNamespace:
-    return SimpleNamespace(user_id=uuid4(), email="admin@example.com", is_superuser=True)
+    return SimpleNamespace(
+        user_id=uuid4(), email="admin@example.com", is_superuser=True
+    )
 
 
 def _ctx() -> SimpleNamespace:
@@ -92,14 +99,20 @@ async def test_managed_webhook_can_bind_only_its_teams_integration():
         updated_at=original_updated_at,
     )
     db = AsyncMock()
-    db.scalar.return_value = SimpleNamespace(id=integration_id, name="Microsoft Teams Bot")
+    db.scalar.return_value = SimpleNamespace(
+        id=integration_id, name="Microsoft Teams Bot"
+    )
     db.execute.return_value = _db_execute_result(source)
     db.execute.return_value.unique.return_value.scalar_one.return_value = source
-    request = EventSourceUpdate(webhook=WebhookSourceConfig(integration_id=integration_id))
+    request = EventSourceUpdate(
+        webhook=WebhookSourceConfig(integration_id=integration_id)
+    )
 
     with (
         patch.object(events, "EventSourceRepository") as repo_cls,
-        patch.object(events, "_build_event_source_response", AsyncMock(return_value="updated")),
+        patch.object(
+            events, "_build_event_source_response", AsyncMock(return_value="updated")
+        ),
     ):
         repo_cls.return_value.get_by_id_with_details = AsyncMock(return_value=source)
         result = await events.update_source(source.id, request, _ctx(), _user(), db)
@@ -120,12 +133,16 @@ async def test_managed_webhook_can_bind_only_its_teams_integration():
 
 @pytest.mark.asyncio
 async def test_managed_webhook_rejects_portable_content_update():
-    source = _source(EventSourceType.WEBHOOK, solution_id=uuid4(), webhook_source=SimpleNamespace())
+    source = _source(
+        EventSourceType.WEBHOOK, solution_id=uuid4(), webhook_source=SimpleNamespace()
+    )
     db = AsyncMock()
     with patch.object(events, "EventSourceRepository") as repo_cls:
         repo_cls.return_value.get_by_id_with_details = AsyncMock(return_value=source)
         with pytest.raises(HTTPException) as error:
-            await events.update_source(source.id, EventSourceUpdate(name="changed"), _ctx(), _user(), db)
+            await events.update_source(
+                source.id, EventSourceUpdate(name="changed"), _ctx(), _user(), db
+            )
     assert error.value.status_code == 409
 
 
@@ -153,7 +170,9 @@ class TestEventResponseBuilders:
         )
 
         with (
-            patch.object(events, "_build_callback_url", return_value="https://hooks/source"),
+            patch.object(
+                events, "_build_callback_url", return_value="https://hooks/source"
+            ),
             patch.object(events, "_get_rate_limited_count", AsyncMock(return_value=2)),
             patch.object(events, "EventSubscriptionRepository") as sub_repo_cls,
             patch.object(events, "EventRepository") as event_repo_cls,
@@ -367,14 +386,17 @@ class TestTopicEndpoints:
         assert emit_event.await_args.kwargs["organization_id"] == ctx.org_id
 
     @pytest.mark.asyncio
-    async def test_emit_topic_event_accepts_global_and_org_scopes(self):
+    @pytest.mark.parametrize("global_scope", ["GLOBAL", "global"])
+    async def test_emit_topic_event_accepts_global_and_org_scopes(self, global_scope):
         event_id = uuid4()
 
         with patch.object(
             events, "emit_event", AsyncMock(return_value=(event_id, 3))
         ) as emit_event:
             global_response = await events.emit_topic_event(
-                EmitEventRequest(topic="ticket.created", data={"id": "T1"}, scope="GLOBAL"),
+                EmitEventRequest(
+                    topic="ticket.created", data={"id": "T1"}, scope=global_scope
+                ),
                 _ctx(),
                 _user(),
             )
@@ -553,7 +575,9 @@ class TestEventDeliveryEndpoints:
         assert exc.value.status_code == status.HTTP_404_NOT_FOUND
 
     @pytest.mark.asyncio
-    async def test_list_deliveries_includes_existing_and_not_delivered_subscriptions(self):
+    async def test_list_deliveries_includes_existing_and_not_delivered_subscriptions(
+        self,
+    ):
         source_id = uuid4()
         event_id = uuid4()
         delivered_subscription_id = uuid4()
@@ -670,7 +694,9 @@ class TestEventDeliveryEndpoints:
 
         processor = MagicMock()
         processor.retry_delivery = AsyncMock(side_effect=fail_retry)
-        with patch("src.services.events.processor.EventProcessor", return_value=processor):
+        with patch(
+            "src.services.events.processor.EventProcessor", return_value=processor
+        ):
             response = await events.retry_delivery(delivery_id, _ctx(), _user(), db)
 
         assert response.delivery_id == delivery_id
