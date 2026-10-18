@@ -92,7 +92,7 @@ class TestPasswordLoginFlagParsing:
 
 
 class TestPasswordLoginSuccess:
-    def test_writes_three_vars_to_env_and_warning_to_stderr(
+    def test_keeps_tokens_out_of_env_and_warning_to_stderr(
         self,
         capsys,
         monkeypatch,
@@ -108,6 +108,9 @@ class TestPasswordLoginSuccess:
         )
         monkeypatch.setattr("httpx.AsyncClient", stub)
         monkeypatch.chdir(tmp_path)
+        (tmp_path / ".env").write_text(
+            "BIFROST_ACCESS_TOKEN=old-access\nBIFROST_REFRESH_TOKEN=old-refresh\n"
+        )
 
         rc = cli.handle_login(
             [
@@ -123,8 +126,10 @@ class TestPasswordLoginSuccess:
 
         env_text = (tmp_path / ".env").read_text()
         assert "BIFROST_API_URL=http://localhost:38421" in env_text
-        assert "BIFROST_ACCESS_TOKEN=at_value" in env_text
-        assert "BIFROST_REFRESH_TOKEN=rt_value" in env_text
+        assert "at_value" not in env_text
+        assert "rt_value" not in env_text
+        assert "old-access" not in env_text
+        assert "old-refresh" not in env_text
         stored = creds_mod.get_credentials("http://localhost:38421")
         assert stored is not None
         assert stored["access_token"] == "at_value"
