@@ -73,7 +73,7 @@ jobs:
           {
             printf 'purpose=diagnostic-input-regeneration-only\nsource_sha=%s\n' "$DIAGNOSTIC_SOURCE_SHA"
             printf 'source_ref=%s\nrun_id=%s\nrun_attempt=%s\n' "$GITHUB_REF" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT"
-            sha256sum pyproject.toml requirements-piptools.lock requirements.lock client/package.json client/package-lock.json api/Dockerfile scripts/rbac-regenerate-inputs.sh scripts/rbac-debug-regenerate.py
+            sha256sum pyproject.toml requirements-piptools.lock requirements.lock client/package.json client/package-lock.json api/Dockerfile scripts/rbac-regenerate-inputs.sh scripts/rbac-debug-regenerate.py scripts/rbac-debug-smoke.py
           } > "$RUNNER_TEMP/rbac-regenerated-inputs/input-identity.txt"
 
       - name: Regenerate Python lock in exact API Python image
@@ -974,6 +974,8 @@ jobs:
       - name: Checkout repository
         if: matrix.total != 0
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
 
       - name: Detect test image input changes
         if: matrix.total != 0
@@ -1000,6 +1002,12 @@ jobs:
         run: |
           chmod +x test.sh
           ./test.sh stack up
+          # Rehearse a real synthetic fork-head dump/restore and full upgrade
+          # once in comprehensive CI. A failure stops this shard and blocks
+          # the existing E2E aggregate gate; the normal stack is retained here.
+          if [ "$TEST_MODE" = "comprehensive" ] && [ "$SHARD_ID" = "1" ]; then
+            ./test.sh rbac-backup-rehearsal
+          fi
           # Retain the served schema from this exact candidate's running API.
           source scripts/lib/test_helpers.sh
           export COMPOSE_PROJECT_NAME="$(compute_project_name .)"
@@ -1034,6 +1042,18 @@ jobs:
       - name: Export E2E service logs and stop stack
         if: always() && matrix.total != 0
         run: ./test.sh stack down
+
+      - name: Preserve RBAC backup rehearsal proof and cleanup receipts
+        if: always() && matrix.shard == 1 && needs.affected-test-plan.outputs.api_e2e_mode == 'comprehensive'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: rbac-backup-rehearsal-${{ github.sha }}-${{ github.run_attempt }}
+          path: |
+            /tmp/bifrost-bifrost-test-*/rbac-backup-*/proof.json
+            /tmp/bifrost-bifrost-test-*/rbac-backup-*/host-provenance.json
+            /tmp/bifrost-bifrost-test-*/rbac-backup-*/*/receipt.json
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Preserve E2E failure diagnostics
         if: failure() && matrix.total != 0

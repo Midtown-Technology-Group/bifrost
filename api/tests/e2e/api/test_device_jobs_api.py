@@ -469,3 +469,76 @@ async def test_cooperative_cancel_loop(
     )
     assert ck_cancel.status_code == 403
     assert ck_cancel.json()["error"]["code"] == "permission_denied"
+
+
+@pytest.mark.e2e
+def test_control_key_own_logs_rotation_scope_and_device_principal_separation(
+    e2e_client, platform_admin, org1, org2,
+):
+    import httpx
+    from tests.e2e.api.test_device_control_keys import _claim_and_log, _create_device
+
+    admin = platform_admin.headers
+    device_id, device_key = _enroll(e2e_client, admin, org1["id"], "key-observer")
+    same_org_unlisted = _create_device(e2e_client, admin, org1["id"], "key-unlisted")
+    foreign_device = _create_device(e2e_client, admin, org2["id"], "key-foreign")
+    foreign_scope = e2e_client.post("/api/device-control-keys", headers=admin, json={
+        "name": "foreign-scope", "organization_id": org1["id"], "device_ids": [device_id, foreign_device],
+    })
+    assert foreign_scope.status_code == 422, foreign_scope.text
+    assert foreign_scope.json()["error"]["code"] == "invalid_parameter"
+    def issue(name):
+        response = e2e_client.post("/api/device-control-keys", headers=admin, json={
+            "name": name, "organization_id": org1["id"], "device_ids": [device_id],
+        })
+        assert response.status_code == 201, response.text
+        return response.json()
+    owner_key, bystander_key = issue("owner"), issue("bystander")
+    owner_headers = {"X-Bifrost-Control-Key": owner_key["key"]}
+    created = e2e_client.post(f"/api/devices/{device_id}/jobs", headers=owner_headers, json=_job_body())
+    assert created.status_code == 201, created.text
+    job_id = created.json()["id"]
+    _claim_and_log(e2e_client, device_key, job_id, "own-key-private-log")
+    detail = e2e_client.get(f"/api/devices/{device_id}/jobs/{job_id}", headers=owner_headers)
+    assert detail.status_code == 200, detail.text
+    assert detail.json()["script_content"] == "Write-Output 'hello'"
+    logs = e2e_client.get(f"/api/devices/{device_id}/jobs/{job_id}/logs", headers=owner_headers)
+    assert logs.status_code == 200, logs.text
+    assert [entry["text"] for entry in logs.json()] == ["own-key-private-log"]
+    other_headers = {"X-Bifrost-Control-Key": bystander_key["key"]}
+    assert e2e_client.get(f"/api/devices/{device_id}/jobs/{job_id}", headers=other_headers).status_code == 404
+    refused_logs = e2e_client.get(f"/api/devices/{device_id}/jobs/{job_id}/logs", headers=other_headers)
+    assert refused_logs.status_code == 404, refused_logs.text
+    assert "own-key-private-log" not in refused_logs.text
+    key_id = owner_key["control_key"]["id"]
+    rotated = e2e_client.post(f"/api/device-control-keys/{key_id}/rotate", headers=admin)
+    assert rotated.status_code == 200, rotated.text
+    old_key = e2e_client.get(f"/api/devices/{device_id}/jobs/{job_id}", headers=owner_headers)
+    assert old_key.status_code == 401, old_key.text
+    new_headers = {"X-Bifrost-Control-Key": rotated.json()["key"]}
+    new_logs = e2e_client.get(f"/api/devices/{device_id}/jobs/{job_id}/logs", headers=new_headers)
+    assert new_logs.status_code == 200, new_logs.text
+    scope = e2e_client.get(f"/api/device-control-keys/{key_id}", headers=admin)
+    assert scope.status_code == 200, scope.text
+    assert scope.json()["device_ids"] == [device_id]
+    assert e2e_client.get(f"/api/devices/{same_org_unlisted}", headers=new_headers).status_code == 403
+    assert e2e_client.get(f"/api/devices/{foreign_device}", headers=new_headers).status_code == 404
+    assert e2e_client.post(f"/api/devices/{same_org_unlisted}/jobs", headers=new_headers, json=_job_body()).status_code == 403
+    assert e2e_client.post(f"/api/devices/{foreign_device}/jobs", headers=new_headers, json=_job_body()).status_code == 404
+    # Device identity keys speak only their typed device protocol, never the
+    # user registry, job observation or key-management lanes.
+    with httpx.Client(base_url=e2e_client.base_url) as device_client:
+        device_headers = {"X-Bifrost-Key": device_key}
+        attempts = [
+            device_client.get(f"/api/devices/{device_id}", headers=device_headers),
+            device_client.get(f"/api/devices/{device_id}/jobs/{job_id}", headers=device_headers),
+            device_client.get(f"/api/devices/{device_id}/jobs/{job_id}/logs", headers=device_headers),
+            device_client.get(f"/api/device-control-keys/{key_id}", headers=device_headers),
+            device_client.post("/api/device-control-keys", headers=device_headers,
+                               json={"name": "device-denied", "device_ids": [device_id]}),
+            device_client.post(f"/api/device-control-keys/{key_id}/rotate", headers=device_headers),
+        ]
+        for attempt in attempts:
+            assert attempt.status_code == 401, attempt.text
+    cleanup = e2e_client.post(f"/api/devices/{device_id}/jobs/{job_id}/cancel", headers=admin)
+    assert cleanup.status_code == 200, cleanup.text

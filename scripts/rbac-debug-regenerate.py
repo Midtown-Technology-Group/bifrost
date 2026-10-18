@@ -13,6 +13,7 @@ import json
 import os
 from pathlib import Path
 import re
+import runpy
 import shutil
 import signal
 import socket
@@ -33,6 +34,10 @@ ENV.pop("NETBIRD_SETUP_KEY", None)
 class DiagnosticFailure(RuntimeError):
     """Failure text must contain no child process output."""
 
+    def __init__(self, message: str, *, captured_output: str = "") -> None:
+        super().__init__(message)
+        self.captured_output = captured_output
+
 
 def record(**fields: object) -> None:
     ARTIFACT.mkdir(parents=True, exist_ok=True)
@@ -42,13 +47,14 @@ def record(**fields: object) -> None:
     print(row, flush=True)
 
 
-def run(stage: str, argv: list[str], *, env: dict[str, str] | None = None) -> str:
+def run(stage: str, argv: list[str], *, env: dict[str, str] | None = None,
+        stdin_data: str | None = None) -> str:
     # Do not tee raw debug output: login and generated credentials are printed
     # by the normal launcher. Suppress all child output rather than guess which
     # credential formats a redactor might miss.
     result = subprocess.run(
         argv, cwd=ROOT, env=env or ENV, stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT, text=True, errors="replace", check=False,
+        stderr=subprocess.STDOUT, text=True, errors="replace", check=False, input=stdin_data,
     )
     failure_markers = [marker for marker in (
         "ModuleNotFoundError", "ImportError", "SyntaxError", "ValidationError",
@@ -59,8 +65,164 @@ def run(stage: str, argv: list[str], *, env: dict[str, str] | None = None) -> st
            suppressed_output_bytes=len(result.stdout.encode("utf-8")),
            suppressed_output_sha256=hashlib.sha256(result.stdout.encode("utf-8")).hexdigest())
     if result.returncode:
-        raise DiagnosticFailure(f"{stage} exited {result.returncode}; child output suppressed")
+        raise DiagnosticFailure(f"{stage} exited {result.returncode}; child output suppressed",
+                                captured_output=result.stdout)
     return result.stdout
+
+
+def sanitized_failure_details(output: str) -> dict[str, object]:
+    """Project log text to bounded locations and fixed categories, never messages."""
+    classes = {
+        "ModuleNotFoundError", "ImportError", "SyntaxError", "IndentationError", "AttributeError",
+        "TypeError", "ValueError", "KeyError", "NameError", "RuntimeError", "AssertionError",
+        "PermissionError", "FileNotFoundError", "OSError", "ConnectionError", "ConnectionRefusedError",
+        "ConnectionResetError", "TimeoutError", "OperationalError", "ProgrammingError", "IntegrityError",
+        "InvalidRequestError", "DBAPIError", "InterfaceError", "PostgresError", "UndefinedTableError",
+        "UndefinedColumnError", "DuplicateTableError", "DuplicateColumnError", "InvalidPasswordError",
+        "InvalidAuthorizationSpecificationError", "InvalidCatalogNameError", "ConnectionDoesNotExistError",
+        "CannotConnectNowError", "TooManyConnectionsError", "DependentObjectsStillExistError",
+        "ObjectNotInPrerequisiteStateError", "CircularDependencyError", "CommandError", "ValidationError",
+        "PydanticImportError", "PydanticUserError", "HTTPError", "HTTPStatusError", "ConnectError",
+        "ConnectTimeout", "ReadTimeout", "RemoteProtocolError", "AuthenticationError",
+    }
+    exceptions = sorted({name for name in classes if re.search(r"\b" + name + r"\s*(?=:|$)", output, re.MULTILINE)})
+    frames = set()
+    for filename, line in re.findall(r'^(?:#[0-9]+ [0-9.]+\s+)?\s*File "([^"\r\n]+)", line ([0-9]{1,7})', output, re.MULTILINE):
+        if (re.fullmatch(r"/(?:app|repo|usr/local/lib/python3\.14)/[A-Za-z0-9_./-]{1,240}\.(?:py|pyx)", filename)
+                and ".." not in Path(filename).parts):
+            frames.add((filename, int(line)))
+    lower = output.lower()
+    categories = {name for name, literal in {
+        "connection_refused": "connection refused", "connection_reset": "connection reset",
+        "connection_timeout": "connection timed out", "dns_failure": "name or service not known",
+        "temporary_dns_failure": "temporary failure in name resolution",
+        "database_hostname_failure": "could not translate host name",
+        "authentication_failure": "authentication failed", "tls_failure": "certificate verify failed",
+        "docker_solve_failure": "failed to solve", "docker_dependency_failure": "dependency failed to start",
+        "docker_unhealthy": "unhealthy", "disk_full": "no space left on device",
+        "package_version_unavailable": "could not find a version that satisfies",
+        "package_distribution_unavailable": "no matching distribution found",
+        "docker_build_failure": "failed to build", "registry_rate_limit": "toomanyrequests",
+        "registry_access_denied": "pull access denied", "registry_manifest_missing": "manifest unknown",
+        "api_readiness_timeout": "api did not become ready",
+    }.items() if literal in lower}
+    statuses = sorted({int(value) for value in re.findall(r'HTTP/[0-9.]+[" ]+([1-5][0-9]{2})\b', output)})
+    return {"exception_classes": exceptions, "traceback_locations": [
+        {"filename": filename, "line": line} for filename, line in sorted(frames)[:100]],
+        "categories": sorted(categories), "http_statuses": statuses}
+
+
+def collect_failed_boot(project: str, boot_output: str) -> None:
+    if not re.fullmatch(r"bifrost-debug-[0-9a-f]{8}", project):
+        raise DiagnosticFailure("Invalid failed-boot project identity")
+    report: dict[str, object] = {"source_sha": os.environ["GITHUB_SHA"], "project": project,
+        "boot_summary": sanitized_failure_details(boot_output), "containers": [], "collection_errors": []}
+    destination = ARTIFACT / "debug-boot-failure.json"
+
+    def save() -> None:
+        destination.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+    save()
+    services = set(re.findall(r"^  ([a-z][a-z0-9_-]{0,63}):$",
+        (ROOT / "docker-compose.debug.yml").read_text(encoding="utf-8").split("\nvolumes:", 1)[0], re.MULTILINE))
+    container_ids = run("failure-container-list", ["docker", "ps", "-a", "--filter",
+        "label=com.docker.compose.project=" + project, "--format", "{{.ID}}" ]).split()
+    if len(container_ids) > 32:
+        raise DiagnosticFailure("Failed-boot container count exceeds the diagnostic bound")
+    inspect_format = ('{"project":{{json (index .Config.Labels "com.docker.compose.project")}},'
+        '"service":{{json (index .Config.Labels "com.docker.compose.service")}},'
+        '"image_id":{{json .Image}},'
+        '"status":{{json .State.Status}},"exit_code":{{json .State.ExitCode}},'
+        '"oom_killed":{{json .State.OOMKilled}},'
+        '"health":{{if .State.Health}}{{json .State.Health.Status}}{{else}}null{{end}}}')
+    containers = []
+    errors = []
+    for container_id in container_ids:
+        if not re.fullmatch(r"[a-f0-9]{12,64}", container_id):
+            raise DiagnosticFailure("Invalid failed-boot container identity")
+        try:
+            state = json.loads(run("failure-container-state", ["docker", "inspect", "--format", inspect_format, container_id]))
+            if (set(state) != {"project", "service", "image_id", "status", "exit_code", "oom_killed", "health"}
+                    or state["project"] != project or state["service"] not in services
+                    or not isinstance(state["image_id"], str) or not re.fullmatch(r"sha256:[a-f0-9]{64}", state["image_id"])
+                    or state["status"] not in {"created", "running", "paused", "restarting", "removing", "exited", "dead"}
+                    or state["health"] not in {None, "starting", "healthy", "unhealthy"}
+                    or type(state["exit_code"]) is not int or type(state["oom_killed"]) is not bool):
+                raise DiagnosticFailure("Unexpected failed-boot state fields")
+            state.pop("project")
+            state["container_id"] = container_id
+            try:
+                logs = run("failure-container-log-scan", ["docker", "logs", "--tail", "500", container_id])
+            except DiagnosticFailure as exc:
+                logs = exc.captured_output
+                state["log_scan_failed"] = True
+            state["log_summary"] = sanitized_failure_details(logs)
+            containers.append(state)
+        except Exception as exc:
+            errors.append({"container_id": container_id, "exception_class": type(exc).__name__})
+        report["containers"] = containers
+        report["collection_errors"] = errors
+        save()
+    record(stage="failed-boot-diagnostics", containers=len(containers), collection_errors=len(errors))
+
+
+def run_debug_smoke(worktree_url: str, status: str, source_sha: str) -> None:
+    login = re.search(r"^Login:\s+(\S+) / (\S+)\s*$", status, re.MULTILINE)
+    if not login:
+        raise DiagnosticFailure("Fresh owned debug status did not provide its login")
+    # The smoke guard requires a literal loopback IP. Retain the printed URL in
+    # identity and use only its validated localhost prefix/unchanged port here.
+    smoke_url = worktree_url.replace("http://localhost:", "http://127.0.0.1:", 1)
+    script = ROOT / "scripts/rbac-debug-smoke.py"
+    failure = None
+    try:
+        output = run("debug-api-smoke", ["python3", str(script), "--diagnostic-branch",
+            os.environ["GITHUB_REF_NAME"], "--allow-fresh-admin-mfa-setup"],
+            stdin_data=json.dumps({"url": smoke_url, "email": login[1], "password": login[2]}))
+    except DiagnosticFailure as exc:
+        output = exc.captured_output
+        failure = exc
+    receipt = json.loads(output)
+    required = {"passed", "checks", "cleanup", "limitations", "candidate_sha", "script_sha256"}
+    if (not isinstance(receipt, dict) or not required <= set(receipt)
+            or set(receipt) - required - {"failure"} or type(receipt["passed"]) is not bool
+            or receipt["candidate_sha"] != source_sha
+            or receipt["script_sha256"] != hashlib.sha256(script.read_bytes()).hexdigest()):
+        raise DiagnosticFailure("Smoke receipt identity or field contract is invalid")
+    if (not isinstance(receipt["checks"], list) or len(receipt["checks"]) > 500
+            or not isinstance(receipt["cleanup"], dict)):
+        raise DiagnosticFailure("Smoke receipt collection contract is invalid")
+    for check in receipt["checks"]:
+        if (not isinstance(check, dict) or not {"check", "passed"} <= set(check)
+                or set(check) - {"check", "passed", "status"} or type(check["passed"]) is not bool
+                or not isinstance(check["check"], str) or not re.fullmatch(r"[a-z][a-z0-9_]{0,120}", check["check"])
+                or ("status" in check and (type(check["status"]) is not int or not 100 <= check["status"] <= 599))):
+            raise DiagnosticFailure("Smoke check contains unexpected fields or values")
+    cleanup_names = {"jobs_cancelled", "keys_revoked", "devices_disabled", "users_deleted",
+                     "roles_deleted", "organizations_disabled"}
+    if (set(receipt["cleanup"]) - cleanup_names
+            or any(type(count) is not int or not 0 <= count <= 1000 for count in receipt["cleanup"].values())):
+        raise DiagnosticFailure("Smoke cleanup receipt is invalid")
+    limitations = {
+        "Synthetic debug stack only; no real device agent or script execution",
+        "No split-org, foreign allowlist, promotion, namespace or complete migration rehearsal proof",
+        "Devices, cancelled jobs and audit records require parent debug-stack teardown for physical removal",
+    }
+    if not isinstance(receipt["limitations"], list) or set(receipt["limitations"]) != limitations:
+        raise DiagnosticFailure("Smoke limitation contract is invalid")
+    if "failure" in receipt:
+        item = receipt["failure"]
+        if (not isinstance(item, dict) or "check" not in item or set(item) - {"check", "status", "type"}
+                or not isinstance(item["check"], str) or not re.fullmatch(r"[a-z][a-z0-9_]{0,120}", item["check"])
+                or ("type" in item and (not isinstance(item["type"], str) or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,80}", item["type"])))
+                or (item.get("status") is not None and (type(item["status"]) is not int or not 100 <= item["status"] <= 599))):
+            raise DiagnosticFailure("Smoke failure receipt is invalid")
+    if receipt["passed"] != (failure is None) or receipt["passed"] == ("failure" in receipt):
+        raise DiagnosticFailure("Smoke receipt outcome is inconsistent")
+    (ARTIFACT / "debug-smoke-proof.json").write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    record(stage="debug-api-smoke-proof", passed=receipt["passed"], checks=len(receipt["checks"]))
+    if failure:
+        raise failure
 
 
 def inventory(project: str, phase: str) -> dict[str, list[str]]:
@@ -86,6 +248,54 @@ def copy_generated(relative: str) -> None:
     shutil.copyfile(source, target)
     record(stage="generated-artifact", path=relative,
            sha256=hashlib.sha256(source.read_bytes()).hexdigest())
+
+
+def copy_mirror_updates() -> None:
+    """Export the supported producer's complete delta, with canonical ownership."""
+    mirror_roots = (".agents/skills", "plugins/bifrost/skills")
+    guard = runpy.run_path(str(ROOT / "scripts/check_skill_mirrors.py"))
+    expected = guard["_expected_mirrors"]()
+    if set(expected) != set(mirror_roots):
+        raise DiagnosticFailure("Unexpected canonical mirror ownership roots")
+    changed = run("mirror-tracked-delta", ["git", "diff", "--name-only", "--no-renames", "-z",
+        "HEAD", "--", *mirror_roots])
+    untracked = run("mirror-new-files", ["git", "ls-files", "--others", "--exclude-standard", "-z",
+        "--", *mirror_roots])
+    files: list[dict[str, object]] = []
+    deletions: list[dict[str, str]] = []
+    for relative in sorted(set((changed + untracked).split("\0")) - {""}):
+        mirror = next((prefix for prefix in mirror_roots if relative.startswith(prefix + "/")), None)
+        if mirror is None or "\\" in relative or Path(relative).as_posix() != relative or ".." in Path(relative).parts:
+            raise DiagnosticFailure("Mirror delta contains an out-of-scope path")
+        suffix = relative[len(mirror) + 1:]
+        destination = ROOT / relative
+        canonical_relative = ".claude/skills/" + suffix
+        canonical = ROOT / canonical_relative
+        if destination.resolve() != ROOT.resolve() / relative or canonical.resolve() != ROOT.resolve() / canonical_relative:
+            raise DiagnosticFailure("Mirror delta contains a linked path")
+        owned = expected[mirror].get(suffix)
+        if owned is None:
+            if destination.exists() or destination.is_symlink():
+                raise DiagnosticFailure("Mirror delta has no canonical owner")
+            prior_blob = run("mirror-deletion-identity", ["git", "rev-parse", "HEAD:" + relative]).strip()
+            if not re.fullmatch(r"[a-f0-9]{40}|[a-f0-9]{64}", prior_blob):
+                raise DiagnosticFailure("Deleted mirror file has no tracked identity")
+            deletions.append({"path": relative, "prior_git_blob": prior_blob})
+            continue
+        content, executable = owned
+        if (not canonical.is_file() or canonical.is_symlink() or not destination.is_file()
+                or destination.is_symlink() or canonical.read_bytes() != content
+                or destination.read_bytes() != content
+                or bool(destination.stat().st_mode & 0o111) != executable):
+            raise DiagnosticFailure("Mirror delta does not match its canonical source")
+        digest = hashlib.sha256(content).hexdigest()
+        copy_generated(relative)
+        files.append({"path": relative, "canonical_source": canonical_relative,
+                      "sha256": digest, "executable": executable})
+    manifest = {"source_sha": os.environ["GITHUB_SHA"], "files": files, "deletions": deletions}
+    (ARTIFACT / "mirror-change-manifest.json").write_text(
+        json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    record(stage="mirror-artifact-closure", files=len(files), deletions=len(deletions))
 
 
 def cleanup() -> None:
@@ -142,7 +352,14 @@ def regenerate() -> None:
     identity["task_owned"] = True
     write_identity(identity)
     try:
-        run("debug-up", ["bash", "debug.sh", "up"])
+        try:
+            run("debug-up", ["bash", "debug.sh", "up"])
+        except DiagnosticFailure as boot_failure:
+            try:
+                collect_failed_boot(project, boot_failure.captured_output)
+            except Exception as diagnostic_error:
+                record(stage="failed-boot-diagnostic-error", exception_class=type(diagnostic_error).__name__)
+            raise
         status = run("debug-status-running", ["bash", "debug.sh", "status"])
         match = re.search(r"^Open:\s+(http://localhost:[0-9]+)\s*$", status, re.MULTILINE)
         if (not match or not re.search(r"^Status:\s+UP\s*$", status, re.MULTILINE)
@@ -159,6 +376,7 @@ def regenerate() -> None:
             raise DiagnosticFailure("API image identity is not immutable")
         identity["api_image"] = api_image
         write_identity(identity)
+        run_debug_smoke(worktree_url, status, source_sha)
         run("generate-client-types", ["npm", "--prefix", "client", "run", "generate:types"],
             env={**ENV, "OPENAPI_URL": worktree_url + "/openapi.json"})
         copy_generated("client/src/lib/v1.d.ts")
@@ -177,10 +395,9 @@ def regenerate() -> None:
         copy_generated(".claude/skills/bifrost-build/generated/operations.md")
         source_python("generate-skill-truth", ["api/scripts/skill-truth/generate.py"])
         run("sync-skill-mirrors", ["bash", "scripts/sync-codex-skills.sh"])
-        for prefix in (".claude/skills/bifrost-build/generated", "plugins/bifrost/skills/bifrost-build/generated",
-                       ".agents/skills/bifrost-build/generated"):
-            for path in sorted((ROOT / prefix).glob("*.md")):
-                copy_generated(path.relative_to(ROOT).as_posix())
+        for path in sorted((ROOT / ".claude/skills/bifrost-build/generated").glob("*.md")):
+            copy_generated(path.relative_to(ROOT).as_posix())
+        copy_mirror_updates()
         fingerprint_output = source_python("record-dto-fingerprint", ["-c",
             "import json,runpy; m=runpy.run_path('api/tests/unit/test_contract_version.py'); "
             "actual=m['_fingerprint'](m['CONTRACT_FINGERPRINT_MODELS'],m['CLI_ROUTES']); "

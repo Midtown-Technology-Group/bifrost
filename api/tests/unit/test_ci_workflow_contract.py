@@ -170,3 +170,36 @@ def test_e2e_failures_export_service_logs_before_runner_cleanup() -> None:
     assert artifact["if"] == "failure() && matrix.total != 0"
     assert "*.log" in artifact["with"]["path"]
     assert "test-results.xml" in artifact["with"]["path"]
+
+
+def test_comprehensive_first_e2e_shard_requires_sanitized_rbac_backup_proof() -> None:
+    jobs = _load_workflow(CI_WORKFLOW)["jobs"]
+    steps = jobs["test-e2e"]["steps"]
+    checkout = next(step for step in steps if step["name"] == "Checkout repository")
+    assert checkout["with"]["fetch-depth"] == "0"  # Frozen fork reader provenance needs its ancestor objects.
+    suite = next(step for step in steps if step["name"].startswith("Run E2E tests (shard"))
+    run = suite["run"]
+    assert 'if [ "$TEST_MODE" = "comprehensive" ] && [ "$SHARD_ID" = "1" ]; then' in run
+    assert run.index("./test.sh stack up") < run.index("./test.sh rbac-backup-rehearsal")
+    assert run.index("./test.sh rbac-backup-rehearsal") < run.index("mapfile -t shard_files")
+    assert "continue-on-error" not in suite
+    invocation = next(line.strip() for line in run.splitlines() if "./test.sh rbac-backup-rehearsal" in line)
+    assert invocation == "./test.sh rbac-backup-rehearsal"
+    assert "test-e2e" in jobs["test-e2e-gate"]["needs"]
+    gate = jobs["test-e2e-gate"]["steps"][0]["run"]
+    assert 'if [ "${{ needs.test-e2e.result }}" != "success" ]; then' in gate
+
+    artifact = next(
+        step for step in steps
+        if step["name"] == "Preserve RBAC backup rehearsal proof and cleanup receipts"
+    )
+    assert artifact["if"] == (
+        "always() && matrix.shard == 1 && needs.affected-test-plan.outputs.api_e2e_mode == 'comprehensive'"
+    )
+    assert artifact["with"]["name"] == "rbac-backup-rehearsal-${{ github.sha }}-${{ github.run_attempt }}"
+    assert artifact["with"]["if-no-files-found"] == "error"
+    assert set(artifact["with"]["path"].splitlines()) == {
+        "/tmp/bifrost-bifrost-test-*/rbac-backup-*/proof.json",
+        "/tmp/bifrost-bifrost-test-*/rbac-backup-*/host-provenance.json",
+        "/tmp/bifrost-bifrost-test-*/rbac-backup-*/*/receipt.json",
+    }

@@ -6,10 +6,12 @@ plus scope validation, permission denial, and org isolation.
 
 from __future__ import annotations
 
-from uuid import uuid4
+from datetime import datetime, timedelta, timezone
+from uuid import UUID, uuid4
 
 import pytest
 
+from tests.e2e.api.test_device_protocol import _enroll
 from tests.e2e.fixtures.device_bridge import set_bridge_grants
 
 
@@ -97,6 +99,15 @@ def test_full_control_key_lifecycle(
     assert rotated.json()["control_key_id"] == key_id
     assert rotated.json()["key"].startswith("bfck_")
     assert rotated.json()["key"] != raw
+    old_raw = e2e_client.get(f"/api/devices/{device_id}", headers={"X-Bifrost-Control-Key": raw})
+    assert old_raw.status_code == 401, old_raw.text
+    fresh = e2e_client.get(f"/api/devices/{device_id}",
+                           headers={"X-Bifrost-Control-Key": rotated.json()["key"]})
+    assert fresh.status_code == 200, fresh.text
+    assert set(fresh.json()) == {"id", "status", "last_seen_at"}
+    scope = e2e_client.get(f"/api/device-control-keys/{key_id}", headers=org1_user.headers)
+    assert scope.status_code == 200, scope.text
+    assert scope.json()["device_ids"] == [device_id]
 
     # Revoke disables (idempotent).
     revoked = e2e_client.post(
@@ -264,6 +275,33 @@ def test_org_isolation(
     assert cross.json()["error"]["code"] == "invalid_parameter"
 
 
+def _claim_and_log(client, device_key, job_id, message):
+    headers = {"X-Bifrost-Key": device_key}
+    claimed = client.post("/api/device/jobs/claim", headers=headers,
+                          json={"agent_session_id": str(uuid4())})
+    assert claimed.status_code == 200, claimed.text
+    assert claimed.json()["job_id"] == job_id
+    written = client.post(f"/api/device/jobs/{job_id}/logs", headers=headers, json={
+        "claim_token": claimed.json()["claim_token"],
+        "entries": [{"seq": 1, "stream": "stdout", "text": message}],
+    })
+    assert written.status_code == 204, written.text
+
+
+def _assert_job_power_denied(client, headers, device_id, job_id):
+    responses = [
+        client.post(f"/api/devices/{device_id}/jobs", headers=headers,
+                    json={"script_name": "denied", "script_content": "Write-Output 'denied'"}),
+        client.get(f"/api/devices/{device_id}/jobs", headers=headers),
+        client.get(f"/api/devices/{device_id}/jobs/{job_id}", headers=headers),
+        client.get(f"/api/devices/{device_id}/jobs/{job_id}/logs", headers=headers),
+        client.post(f"/api/devices/{device_id}/jobs/{job_id}/cancel", headers=headers),
+    ]
+    for response in responses:
+        assert response.status_code == 403, f"{response.request.method} {response.request.url}: {response.text}"
+        assert response.json()["error"]["code"] == "permission_denied"
+
+
 @pytest.mark.parametrize("permissions", [
     [], ["devices.readwrite"], ["devices.execute"], ["devices.readwrite", "devices.execute"],
 ])
@@ -280,13 +318,46 @@ def test_bridge_device_matrix(
                                json={"user_ids": [str(non_admin_user.user_id)]})
     assert assigned.status_code == 204, assigned.text
     try:
-        device_id = _create_device(e2e_client, platform_admin.headers, org1["id"], "matrix")
+        device_id, device_key = _enroll(e2e_client, platform_admin.headers, org1["id"], "matrix")
         managed = "devices.readwrite" in permissions
         executed = "devices.execute" in permissions
         metadata = e2e_client.get(f"/api/devices/{device_id}", headers=non_admin_user.headers)
         assert metadata.status_code == (200 if managed else 403), metadata.text
         history = e2e_client.get(f"/api/devices/{device_id}/jobs", headers=non_admin_user.headers)
         assert history.status_code == (200 if executed else 403), history.text
+        script = "Write-Output 'matrix-private-script'"
+        created_job = e2e_client.post(
+            f"/api/devices/{device_id}/jobs", headers=non_admin_user.headers,
+            json={"script_name": "permission-matrix", "script_content": script},
+        )
+        assert created_job.status_code == (201 if executed else 403), created_job.text
+        if executed:
+            job_id = created_job.json()["id"]
+        else:
+            admin_job = e2e_client.post(
+                f"/api/devices/{device_id}/jobs", headers=platform_admin.headers,
+                json={"script_name": "permission-matrix", "script_content": script},
+            )
+            assert admin_job.status_code == 201, admin_job.text
+            job_id = admin_job.json()["id"]
+        _claim_and_log(e2e_client, device_key, job_id, "matrix-private-log")
+        detail = e2e_client.get(f"/api/devices/{device_id}/jobs/{job_id}", headers=non_admin_user.headers)
+        assert detail.status_code == (200 if executed else 403), detail.text
+        logs = e2e_client.get(f"/api/devices/{device_id}/jobs/{job_id}/logs", headers=non_admin_user.headers)
+        assert logs.status_code == (200 if executed else 403), logs.text
+        if executed:
+            assert detail.json()["script_content"] == script
+            assert [entry["text"] for entry in logs.json()] == ["matrix-private-log"]
+        else:
+            assert "matrix-private-script" not in detail.text
+            assert "matrix-private-log" not in logs.text
+        cancelled = e2e_client.post(f"/api/devices/{device_id}/jobs/{job_id}/cancel", headers=non_admin_user.headers)
+        assert cancelled.status_code == (200 if executed else 403), cancelled.text
+        if executed:
+            assert cancelled.json()["status"] == "cancelled"
+        else:
+            cleaned = e2e_client.post(f"/api/devices/{device_id}/jobs/{job_id}/cancel", headers=platform_admin.headers)
+            assert cleaned.status_code == 200, cleaned.text
         issued = e2e_client.post("/api/device-control-keys", headers=non_admin_user.headers,
                                  json={"name": "matrix", "device_ids": [device_id]})
         assert issued.status_code == (201 if managed and executed else 403), issued.text
@@ -323,7 +394,13 @@ def test_split_role_union_and_revocation_with_unchanged_session(
             assigned = e2e_client.post(f"/api/roles/{role_id}/users", headers=platform_admin.headers,
                                        json={"user_ids": [str(non_admin_user.user_id)]})
             assert assigned.status_code == 204, assigned.text
-        device_id = _create_device(e2e_client, platform_admin.headers, org1["id"], "split")
+        device_id, device_key = _enroll(e2e_client, platform_admin.headers, org1["id"], "split")
+        signed_headers = dict(non_admin_user.headers)
+        created_job = e2e_client.post(f"/api/devices/{device_id}/jobs", headers=signed_headers,
+                                      json={"script_name": "revocation", "script_content": "Write-Output 'private'"})
+        assert created_job.status_code == 201, created_job.text
+        job_id = created_job.json()["id"]
+        _claim_and_log(e2e_client, device_key, job_id, "revocation-private-log")
         body = {"name": "split-key", "device_ids": [device_id]}
         issued = e2e_client.post("/api/device-control-keys", headers=non_admin_user.headers, json=body)
         assert issued.status_code == 201, issued.text
@@ -331,6 +408,7 @@ def test_split_role_union_and_revocation_with_unchanged_session(
         set_bridge_grants(e2e_client, platform_admin.headers, roles[1], [])
         no_grant = e2e_client.post(f"/api/device-control-keys/{key_id}/rotate", headers=non_admin_user.headers)
         assert no_grant.status_code == 403, no_grant.text
+        _assert_job_power_denied(e2e_client, signed_headers, device_id, job_id)
         set_bridge_grants(e2e_client, platform_admin.headers, roles[1], ["devices.execute"])
         restored = e2e_client.post(f"/api/device-control-keys/{key_id}/rotate", headers=non_admin_user.headers)
         assert restored.status_code == 200, restored.text
@@ -344,12 +422,57 @@ def test_split_role_union_and_revocation_with_unchanged_session(
         assert rotation.status_code == 403, rotation.text
         history = e2e_client.get(f"/api/devices/{device_id}/jobs", headers=non_admin_user.headers)
         assert history.status_code == 403, history.text
+        _assert_job_power_denied(e2e_client, signed_headers, device_id, job_id)
         metadata = e2e_client.get(f"/api/device-control-keys/{key_id}", headers=non_admin_user.headers)
         assert metadata.status_code == 200, metadata.text
         revoke = e2e_client.post(f"/api/device-control-keys/{key_id}/revoke", headers=non_admin_user.headers)
         assert revoke.status_code == 200, revoke.text
+        cancelled = e2e_client.post(f"/api/devices/{device_id}/jobs/{job_id}/cancel", headers=platform_admin.headers)
+        assert cancelled.status_code == 200, cancelled.text
     finally:
         for role_id in roles:
             cleanup = e2e_client.delete(f"/api/roles/{role_id}/users/{non_admin_user.user_id}",
                                         headers=platform_admin.headers)
             assert cleanup.status_code in (204, 404), cleanup.text
+
+
+@pytest.mark.e2e
+async def test_expired_existing_key_cannot_rotate_authenticate_or_read_freshness(
+    e2e_client, platform_admin, org1, org1_user, control_key_role, async_session_factory,
+):
+    from sqlalchemy import update
+    from src.models.orm.device_control_keys import DeviceControlKey
+
+    device_id = _create_device(e2e_client, platform_admin.headers, org1["id"], "expire-existing")
+    created = e2e_client.post("/api/device-control-keys", headers=org1_user.headers, json={
+        "name": "expires", "device_ids": [device_id],
+        "expires_at": (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat(),
+    })
+    assert created.status_code == 201, created.text
+    key_id, raw = UUID(created.json()["control_key"]["id"]), created.json()["key"]
+    expired_at = datetime.now(timezone.utc) - timedelta(minutes=1)
+    async with async_session_factory() as db:
+        row = await db.get(DeviceControlKey, key_id)
+        original_hash = row.key_hash
+        await db.execute(update(DeviceControlKey).where(DeviceControlKey.id == key_id).values(expires_at=expired_at))
+        await db.commit()
+    rotate = e2e_client.post(f"/api/device-control-keys/{key_id}/rotate", headers=org1_user.headers)
+    assert rotate.status_code == 409, rotate.text
+    assert rotate.json()["error"]["code"] == "control_key_inactive"
+    headers = {"X-Bifrost-Control-Key": raw}
+    responses = [
+        e2e_client.get(f"/api/devices/{device_id}", headers=headers),
+        e2e_client.get(f"/api/devices/{device_id}/jobs", headers=headers),
+        e2e_client.get(f"/api/devices/{device_id}/jobs/{uuid4()}", headers=headers),
+        e2e_client.get(f"/api/devices/{device_id}/jobs/{uuid4()}/logs", headers=headers),
+        e2e_client.post(f"/api/devices/{device_id}/jobs", headers=headers,
+                        json={"script_name": "expired", "script_content": "Write-Output 'expired'"}),
+    ]
+    for response in responses:
+        assert response.status_code == 401, response.text
+        assert response.json()["error"]["code"] == "invalid_key"
+    async with async_session_factory() as db:
+        unchanged = await db.get(DeviceControlKey, key_id)
+        assert unchanged.key_hash == original_hash
+        assert unchanged.enabled is True
+        assert unchanged.expires_at == expired_at

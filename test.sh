@@ -14,6 +14,7 @@
 #   ./test.sh e2e                       Backend e2e tests.
 #   ./test.sh all                       All backend tests, including slow tests.
 #   ./test.sh reliability               Real-service execution reliability gauntlet.
+#   ./test.sh rbac-backup-rehearsal      Synthetic fork-head pg_dump/restore + full RBAC upgrade.
 #   ./test.sh tests/path/... [args]     Pass through to pytest.
 #
 # Local Kubernetes spike (isolated Kind cluster):
@@ -940,6 +941,34 @@ client_docs() {
     return 0
 }
 
+cmd_rbac_backup_rehearsal() {
+    if [ "$#" -ne 0 ]; then
+        echo 'Usage: ./test.sh rbac-backup-rehearsal' >&2
+        return 2
+    fi
+    # Validate the fixed test lane before stack_up can mutate any surface.
+    if [ "$(realpath "$COMPOSE_FILE")" != "$SCRIPT_DIR/docker-compose.test.yml" ] || \
+       [ "$COMPOSE_PROJECT_NAME" != "$(BIFROST_PROJECT_PREFIX=bifrost-test compute_project_name .)" ]; then
+        echo 'RBAC backup rehearsal requires the canonical isolated test stack.' >&2
+        return 2
+    fi
+    if [ -n "$(git status --porcelain --untracked-files=all)" ]; then
+        echo 'Commit the clean exact candidate before recording RBAC backup evidence.' >&2
+        return 2
+    fi
+    local rehearsal_existing_stack=0
+    if stack_is_up "$COMPOSE_PROJECT_NAME" "$COMPOSE_FILE"; then
+        rehearsal_existing_stack=1
+    else
+        trap 'export_logs "$COMPOSE_PROJECT_NAME" "$COMPOSE_FILE"; stack_down' EXIT
+    fi
+    stack_up
+    BIFROST_RBAC_BACKUP_LOCKED=1 bash "$SCRIPT_DIR/scripts/rehearse-mtg-rbac-backup.sh"
+    if [ "$rehearsal_existing_stack" = 1 ]; then
+        echo 'The pre-existing test stack remains running.'
+    fi
+}
+
 cmd_ci() {
     print_project
     # Install teardown trap BEFORE stack_up so a boot-time failure still tears
@@ -1162,6 +1191,7 @@ case "$1" in
     e2e) shift; cmd_e2e "$@" ;;
     all) shift; cmd_all "$@" ;;
     reliability) shift; cmd_reliability "$@" ;;
+    rbac-backup-rehearsal) shift; cmd_rbac_backup_rehearsal "$@" ;;
     quality) shift; cmd_quality "$@" ;;
     client) shift; cmd_client "$@" ;;
     mcp) shift; cmd_mcp "$@" ;;
