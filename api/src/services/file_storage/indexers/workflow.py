@@ -205,6 +205,12 @@ class WorkflowIndexer(WorkflowParameterCompiler):
                             node, enum_definitions=enum_definitions
                         )
                     except WorkflowParameterSchemaError as exc:
+                        await self._deactivate_invalid_schema_declaration(
+                            existing_workflow,
+                            path=path,
+                            function_name=function_name,
+                            now=now,
+                        )
                         logger.warning(
                             "Skipping declaration %s in %s with invalid parameter "
                             "schema: %s",
@@ -362,6 +368,12 @@ class WorkflowIndexer(WorkflowParameterCompiler):
                             node, enum_definitions=enum_definitions
                         )
                     except WorkflowParameterSchemaError as exc:
+                        await self._deactivate_invalid_schema_declaration(
+                            existing_dp,
+                            path=path,
+                            function_name=function_name,
+                            now=now,
+                        )
                         logger.warning(
                             "Skipping declaration %s in %s with invalid parameter "
                             "schema: %s",
@@ -418,6 +430,81 @@ class WorkflowIndexer(WorkflowParameterCompiler):
 
         # Note: workspace_files update removed — file_index is the sole search index.
         # Entity type/ID routing is handled by path conventions, not DB columns.
+
+    async def _deactivate_invalid_schema_declaration(
+        self,
+        workflow: Workflow,
+        *,
+        path: str,
+        function_name: str,
+        now: datetime,
+    ) -> None:
+        """Fail closed when a registered declaration has an invalid schema."""
+        stmt = (
+            update(Workflow)
+            .where(
+                Workflow.id == workflow.id,
+                Workflow.retirement_evidence.is_(None),
+            )
+            .values(
+                is_active=False,
+                is_orphaned=False,
+                last_seen_at=now,
+                updated_at=now,
+            )
+        )
+        deactivated = await self.db.execute(stmt)
+        if deactivated.rowcount == 0:
+            return
+
+        if getattr(workflow, "type", None) == "service":
+            from src.services.service_lifecycle import (
+                park_definitions_for_workflows,
+            )
+
+            await park_definitions_for_workflows(
+                self.db,
+                [workflow.id],
+                reason="invalid parameter schema",
+            )
+
+        if getattr(workflow, "endpoint_enabled", False):
+            await self.remove_workflow_endpoint(workflow)
+
+        try:
+            from src.core.redis_client import get_redis_client
+
+            redis_client = get_redis_client()
+            await redis_client.invalidate_endpoint_workflow_cache(str(workflow.id))
+            await redis_client.invalidate_workflow_metadata_cache(str(workflow.id))
+        except Exception as exc:
+            logger.warning(
+                "Failed to invalidate caches for declaration %s in %s: %s",
+                log_safe(function_name),
+                log_safe(path),
+                log_safe(exc),
+            )
+
+    async def remove_workflow_endpoint(self, workflow: Workflow) -> None:
+        """Remove the dynamic endpoint for a workflow that became invalid."""
+        try:
+            from src.main import app
+            from src.services.openapi_endpoints import remove_workflow_endpoint
+
+            remove_workflow_endpoint(app, workflow.name)
+            logger.info(
+                "Removed endpoint for workflow with invalid schema: %s",
+                log_safe(workflow.name),
+            )
+        except ImportError:
+            # App not fully initialized yet (during startup)
+            pass
+        except Exception as exc:
+            logger.warning(
+                "Failed to remove endpoint for %s: %s",
+                log_safe(workflow.name),
+                log_safe(exc),
+            )
 
     async def refresh_workflow_endpoint(self, workflow: Workflow) -> None:
         """
