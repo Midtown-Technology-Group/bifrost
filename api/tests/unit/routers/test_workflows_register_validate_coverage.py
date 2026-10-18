@@ -875,7 +875,7 @@ async def test_execute_workflow_binds_new_embed_submission_to_session() -> None:
         patch(
             "src.services.execution.service.run_workflow",
             AsyncMock(return_value=service_result),
-        ),
+        ) as run_workflow,
         patch(
             "src.services.execution.service.get_workflow_for_execution",
             AsyncMock(return_value=_dispatch_metadata(workflow)),
