@@ -239,14 +239,16 @@ async def test_concurrent_refreshes_for_same_stale_token_are_coalesced(
 
 
 @pytest.mark.asyncio
-async def test_concurrent_cwd_refresh_preserves_process_lineage(
-    isolated_credentials, monkeypatch, tmp_path
+@pytest.mark.parametrize("process_url_present", [True, False])
+async def test_concurrent_cwd_refresh_preserves_resolved_lineage(
+    isolated_credentials, monkeypatch, tmp_path, process_url_present
 ) -> None:
     from bifrost import client as client_mod
 
     api_url = "https://api.example.com"
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("BIFROST_API_URL", api_url)
+    if process_url_present:
+        monkeypatch.setenv("BIFROST_API_URL", api_url)
     (tmp_path / ".env").write_text(
         "BIFROST_API_URL=https://api.example.com\n"
         "BIFROST_ACCESS_TOKEN=stale-access-token\n"
@@ -296,6 +298,9 @@ async def test_concurrent_cwd_refresh_preserves_process_lineage(
     env_text = (tmp_path / ".env").read_text()
     assert "BIFROST_ACCESS_TOKEN=fresh-access-token" in env_text
     assert "BIFROST_REFRESH_TOKEN=fresh-refresh-token" in env_text
+    resolved = isolated_credentials.resolve_credentials(api_url)
+    assert resolved is not None
+    assert resolved.source == ("process" if process_url_present else "cwd_dotenv")
 
 
 @pytest.mark.asyncio

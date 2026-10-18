@@ -871,9 +871,17 @@ def _save_refreshed_credentials_locked(
             refresh_token,
             source="cwd_dotenv",
         )
-        # Ephemeral writeback installs the same proved tuple in the process
-        # environment, which wins the next resolution over the CWD .env copy.
-        return "process"
+        # Record the source that actually owns the complete rotated tuple. The
+        # process environment wins only when it also supplies the matching URL;
+        # otherwise resolution correctly remains bound to the CWD .env copy.
+        written = resolve_credentials(normalized_url)
+        if (
+            written is None
+            or written.credentials.access_token != access_token
+            or written.credentials.refresh_token != refresh_token
+        ):
+            return None
+        return written.source
 
     backend = get_persistent_backend()
     current = backend.get(normalized_url)
