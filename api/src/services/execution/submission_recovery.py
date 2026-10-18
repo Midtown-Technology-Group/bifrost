@@ -6,6 +6,7 @@ import hashlib
 import secrets
 from uuid import UUID
 
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.cache.keys import TTL_EMBED_EXECUTION, embed_execution_key
@@ -101,6 +102,44 @@ async def bind_execution_to_embed_session(
         )
 
 
+async def issue_execution_embed_capability(
+    session_jti: str,
+    execution_id: UUID | str,
+) -> None:
+    """Mint the owner capability, then durably release publication.
+
+    The durable execution row is committed before Redis is touched.  Keeping a
+    separate issued bit means a cache failure or cancellation after that commit
+    cannot be mistaken by the deferred promoter for publishable work.  Retrying
+    the same owner is safe: SETEX and the issued transition are idempotent.
+    """
+
+    from src.core.database import get_db_context
+
+    expected_binding = embed_session_binding(session_jti)
+    execution_uuid = UUID(str(execution_id))
+    async with get_db_context() as db:
+        await db.execute(
+            text(
+                "SELECT pg_advisory_xact_lock("
+                "hashtext('bifrost:workflow-execution:' || :execution_id))"
+            ),
+            {"execution_id": str(execution_uuid)},
+        )
+        execution = await db.get(Execution, execution_uuid, with_for_update=True)
+        if execution is None:
+            raise ExecutionSubmissionConflictError(
+                "execution submission identity no longer exists"
+            )
+        assert_persisted_embed_session_binding(execution, expected_binding)
+        # Retain the execution fence through Redis issuance and the durable
+        # release.  A losing session can never receive a transient key, and a
+        # scheduler cannot publish between SETEX and the committed marker.
+        await bind_execution_to_embed_session(session_jti, execution_uuid)
+        execution.embed_capability_issued = True
+        await db.commit()
+
+
 async def assert_execution_bound_to_embed_session(
     session_jti: str,
     execution_id: UUID | str,
@@ -154,7 +193,7 @@ async def recover_execution_submission(
         # Redis is a revocable read capability, not the ownership authority.
         # Re-mint it from the durable binding after a dropped response or cache
         # write failure without allowing a different session to claim the row.
-        await bind_execution_to_embed_session(embed_session_jti, existing.id)
+        await issue_execution_embed_capability(embed_session_jti, existing.id)
 
     return WorkflowExecutionResponse(
         execution_id=str(existing.id),

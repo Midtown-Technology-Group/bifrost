@@ -354,6 +354,7 @@ async def _persist_execution_pin(
             dispatch_evidence=dispatch,
             dispatch_evidence_hash=sha256_digest(canonical_json(dispatch)),
             embed_session_binding=embed_session_binding,
+            embed_capability_issued=False,
             retry_policy=retry_policy,
             attempt_tracking_version="v1",
             # SCHEDULED is the durable, retryable pre-publication state.
@@ -407,6 +408,10 @@ async def _publish_scheduled_once(
         if (
             execution is None
             or execution.status != ExecutionStatus.SCHEDULED
+            or (
+                execution.embed_session_binding is not None
+                and not execution.embed_capability_issued
+            )
             or (
                 execution.scheduled_at is not None
                 and execution.scheduled_at > datetime.now(timezone.utc)
@@ -615,8 +620,8 @@ async def enqueue_workflow_execution_once(
         execution_id = str(uuid.uuid4())
 
     from src.services.execution.submission_recovery import (
-        bind_execution_to_embed_session,
         embed_session_binding,
+        issue_execution_embed_capability,
     )
 
     durable_embed_binding = (
@@ -646,7 +651,7 @@ async def enqueue_workflow_execution_once(
         # been inserted or validated, and before the execution can be queued.
         # A Redis failure leaves the row retryable in SCHEDULED rather than
         # publishing work that its owning session cannot recover.
-        await bind_execution_to_embed_session(embed_session_jti, execution_id)
+        await issue_execution_embed_capability(embed_session_jti, execution_id)
 
     await _publish_scheduled_once(
         execution_id=execution_id,

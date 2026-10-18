@@ -1,13 +1,18 @@
 """E2E tests for workflow execution via embed token."""
 
+import asyncio
 import hashlib
 import hmac as hmac_module
 import uuid
-from concurrent.futures import ThreadPoolExecutor
-from threading import Barrier
+from contextlib import asynccontextmanager
+from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 from urllib.parse import urlparse
 
 import pytest
+from sqlalchemy import select, text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from tests.e2e.conftest import write_and_register
 
@@ -164,13 +169,15 @@ class TestEmbedWorkflowExecution:
         assert other_same_org_session.status_code == 403, other_same_org_session.text
         assert "Access denied to this execution" in other_same_org_session.text
 
-    def test_concurrent_embed_sessions_cannot_claim_same_execution(
+    @pytest.mark.asyncio
+    async def test_concurrent_embed_sessions_cannot_claim_same_execution(
         self,
         e2e_client,
         embed_session,
         recovery_workflow,
+        async_engine,
     ):
-        """The durable admission lock must choose exactly one embed owner."""
+        """Both pre-insert lookups race; the admission lock chooses one owner."""
 
         params = embed_session["verified_params"]
         hmac_val = _compute_hmac(params, embed_session["raw_secret"])
@@ -193,11 +200,9 @@ class TestEmbedWorkflowExecution:
             "input_data": {"marker": "concurrent-owner"},
             "sync": False,
         }
-        barrier = Barrier(2)
 
         def submit(item):
             label, token = item
-            barrier.wait()
             response = e2e_client.post(
                 "/api/workflows/execute",
                 headers={
@@ -208,8 +213,58 @@ class TestEmbedWorkflowExecution:
             )
             return label, token, response
 
-        with ThreadPoolExecutor(max_workers=2) as pool:
-            attempts = list(pool.map(submit, sessions.items()))
+        lock_name = f"bifrost:workflow-execution:{execution_id}"
+        tasks = []
+        wait_error = None
+        async with AsyncSession(async_engine) as lock_db:
+            holder_pid = await lock_db.scalar(text("SELECT pg_backend_pid()"))
+            assert isinstance(holder_pid, int)
+            await lock_db.execute(
+                text("SELECT pg_advisory_xact_lock(hashtext(:lock_name))"),
+                {"lock_name": lock_name},
+            )
+            tasks = [
+                asyncio.create_task(asyncio.to_thread(submit, item))
+                for item in sessions.items()
+            ]
+
+            async def wait_for_both_admissions() -> None:
+                async with AsyncSession(async_engine) as observer:
+                    while True:
+                        waiting = await observer.scalar(
+                            text(
+                                "SELECT count(*) FROM pg_locks waiting "
+                                "JOIN pg_locks held ON "
+                                "waiting.locktype = held.locktype AND "
+                                "waiting.database IS NOT DISTINCT FROM "
+                                "held.database AND "
+                                "waiting.classid = held.classid AND "
+                                "waiting.objid = held.objid AND "
+                                "waiting.objsubid = held.objsubid "
+                                "WHERE held.pid = :holder_pid AND held.granted "
+                                "AND NOT waiting.granted AND waiting.pid <> held.pid"
+                            ),
+                            {"holder_pid": holder_pid},
+                        )
+                        if waiting == 2:
+                            return
+                        if any(task.done() for task in tasks):
+                            raise AssertionError(
+                                "An embed admission completed before reaching the "
+                                "controlled execution lock"
+                            )
+                        await asyncio.sleep(0.01)
+
+            try:
+                await asyncio.wait_for(wait_for_both_admissions(), timeout=10)
+            except (Exception, asyncio.CancelledError) as exc:
+                wait_error = exc
+            finally:
+                await lock_db.commit()
+
+        attempts = await asyncio.wait_for(asyncio.gather(*tasks), timeout=30)
+        if wait_error is not None:
+            raise wait_error
 
         accepted = [attempt for attempt in attempts if attempt[2].status_code == 200]
         denied = [attempt for attempt in attempts if attempt[2].status_code == 403]
@@ -250,6 +305,151 @@ class TestEmbedWorkflowExecution:
         assert owner_retry.status_code == 200, owner_retry.text
         assert owner_retry.json()["execution_id"] == execution_id
         assert losing_retry.status_code == 403, losing_retry.text
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("failure_kind", ["redis", "cancel"])
+    async def test_interrupted_embed_admission_requires_owner_retry_before_publish(
+        self,
+        async_session_factory,
+        platform_admin,
+        recovery_workflow,
+        monkeypatch,
+        failure_kind,
+    ):
+        """A committed row stays unpublished until its owner mints capability."""
+
+        from src.models.enums import ExecutionStatus
+        from src.models.orm.executions import Execution, WorkflowExecutionAttempt
+        from src.services.execution import async_executor, submission_recovery
+        from src.services.execution.submission_recovery import (
+            EmbedExecutionRecoveryDeniedError,
+        )
+
+        @asynccontextmanager
+        async def db_context():
+            async with async_session_factory() as session:
+                yield session
+
+        monkeypatch.setattr("src.core.database.get_db_context", db_context)
+        interruption = (
+            RuntimeError("synthetic Redis failure")
+            if failure_kind == "redis"
+            else asyncio.CancelledError()
+        )
+        original_bind = submission_recovery.bind_execution_to_embed_session
+        bind_calls = 0
+
+        async def interrupt_first_bind(session_jti, bound_execution_id):
+            nonlocal bind_calls
+            bind_calls += 1
+            if bind_calls == 1:
+                raise interruption
+            await original_bind(session_jti, bound_execution_id)
+
+        monkeypatch.setattr(
+            submission_recovery,
+            "bind_execution_to_embed_session",
+            interrupt_first_bind,
+        )
+        publish = AsyncMock()
+        monkeypatch.setattr(async_executor, "_publish_pending", publish)
+
+        execution_id = str(uuid.uuid4())
+        workflow_id = recovery_workflow["id"]
+        owner_jti = "owner-session"
+        context = SimpleNamespace(
+            solution_deployment_id=None,
+            event=None,
+            org_id=(
+                str(platform_admin.organization_id)
+                if platform_admin.organization_id
+                else None
+            ),
+            user_id=str(platform_admin.user_id),
+            name=platform_admin.name,
+            email=platform_admin.email,
+            startup=None,
+            form_inputs={},
+            embed={"agent_id": "42"},
+            is_platform_admin=True,
+            is_provider_org=False,
+            is_external=False,
+        )
+        parameters = {"marker": f"interrupted-{failure_kind}"}
+
+        async def enqueue(session_jti: str):
+            return await async_executor.enqueue_workflow_execution_once(
+                context=context,
+                workflow_id=workflow_id,
+                parameters=parameters,
+                execution_id=execution_id,
+                embed_session_jti=session_jti,
+            )
+
+        expected_error = (
+            RuntimeError if failure_kind == "redis" else asyncio.CancelledError
+        )
+
+        with pytest.raises(expected_error):
+            await enqueue(owner_jti)
+
+        # Keep the independent scheduler away from this row while the test
+        # advances its local publisher clock past the due time.
+        scheduled_at = datetime.now(timezone.utc) + timedelta(days=1)
+        async with async_session_factory() as db:
+            execution = await db.get(Execution, uuid.UUID(execution_id))
+            assert execution is not None
+            assert execution.status == ExecutionStatus.SCHEDULED
+            assert execution.embed_capability_issued is False
+            execution.scheduled_at = scheduled_at
+            await db.commit()
+
+        assert await async_executor._publish_scheduled_once(
+            execution_id=execution_id,
+            publish_kwargs=None,
+        ) is False
+        publish.assert_not_awaited()
+
+        with pytest.raises(EmbedExecutionRecoveryDeniedError, match="Access denied"):
+            await enqueue("losing-session")
+        publish.assert_not_awaited()
+
+        monkeypatch.setattr(
+            async_executor,
+            "datetime",
+            SimpleNamespace(now=lambda _tz: scheduled_at + timedelta(seconds=1)),
+        )
+        recovered_id, reused = await enqueue(owner_jti)
+        assert recovered_id == execution_id
+        assert reused is True
+        publish.assert_awaited_once()
+
+        # A subsequent same-owner retry can re-mint its read capability but
+        # cannot publish or execute the canonical row a second time.
+        retried_id, retried = await enqueue(owner_jti)
+        assert retried_id == execution_id
+        assert retried is True
+        publish.assert_awaited_once()
+
+        async with async_session_factory() as db:
+            execution = await db.get(Execution, uuid.UUID(execution_id))
+            attempts = (
+                await db.execute(
+                    select(WorkflowExecutionAttempt).where(
+                        WorkflowExecutionAttempt.execution_id
+                        == uuid.UUID(execution_id)
+                    )
+                )
+            ).scalars().all()
+            assert execution is not None
+            assert execution.embed_capability_issued is True
+            assert execution.status == ExecutionStatus.PENDING
+            assert len(attempts) == 1
+        await submission_recovery.assert_execution_bound_to_embed_session(
+            owner_jti,
+            execution_id,
+        )
+        assert bind_calls == 3
 
     def test_embed_token_cannot_access_admin_endpoints(self, e2e_client, embed_session):
         """Embed tokens should be blocked from admin endpoints by EmbedScopeMiddleware."""

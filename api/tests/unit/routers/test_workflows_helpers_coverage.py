@@ -326,6 +326,7 @@ async def test_insert_scheduled_execution_persists_expected_execution_fields():
     assert execution.executed_by_name == "Ada"
     assert execution.form_id == form_id
     assert execution.embed_session_binding is None
+    assert execution.embed_capability_issued is False
     assert execution.execution_context == {
         "is_platform_admin": True,
         "is_provider_org": False,
@@ -363,9 +364,9 @@ async def test_scheduled_execution_reuse_validates_durable_embed_owner():
             AsyncMock(),
         ),
         patch(
-            "src.services.execution.submission_recovery.bind_execution_to_embed_session",
+            "src.services.execution.submission_recovery.issue_execution_embed_capability",
             AsyncMock(),
-        ) as bind_execution,
+        ) as issue_capability,
     ):
         reused = await workflows._insert_scheduled_execution(
             db=db,
@@ -383,7 +384,7 @@ async def test_scheduled_execution_reuse_validates_durable_embed_owner():
         )
 
         assert reused == execution_id
-        bind_execution.assert_awaited_once_with("session-a", execution_id)
+        issue_capability.assert_awaited_once_with("session-a", execution_id)
 
         with pytest.raises(EmbedExecutionRecoveryDeniedError, match="Access denied"):
             await workflows._insert_scheduled_execution(

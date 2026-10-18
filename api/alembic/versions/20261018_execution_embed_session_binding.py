@@ -1,4 +1,4 @@
-"""Persist app-embed session ownership at execution admission."""
+"""Persist app-embed ownership and capability issuance at admission."""
 
 import sqlalchemy as sa
 from alembic import op
@@ -14,7 +14,17 @@ def upgrade() -> None:
         "executions",
         sa.Column("embed_session_binding", sa.String(length=71), nullable=True),
     )
+    op.add_column(
+        "executions",
+        sa.Column(
+            "embed_capability_issued",
+            sa.Boolean(),
+            nullable=False,
+            server_default=sa.false(),
+        ),
+    )
 
 
 def downgrade() -> None:
+    op.drop_column("executions", "embed_capability_issued")
     op.drop_column("executions", "embed_session_binding")

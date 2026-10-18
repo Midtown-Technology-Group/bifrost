@@ -6,11 +6,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from src.models.enums import ExecutionStatus
 from src.services.execution import async_executor
 from src.services.execution.async_executor import (
     _dispatch_request_identity,
     _pending_dispatch_envelope,
     _persist_execution_pin,
+    _publish_scheduled_once,
     _publish_pending,
     _validated_pending_dispatch,
     enqueue_workflow_execution_once,
@@ -98,9 +100,9 @@ async def test_embed_capability_is_bound_to_canonical_id_before_publish():
             new=AsyncMock(return_value=({"execution_id": canonical_id}, False)),
         ) as persist,
         patch(
-            "src.services.execution.submission_recovery.bind_execution_to_embed_session",
+            "src.services.execution.submission_recovery.issue_execution_embed_capability",
             new=AsyncMock(side_effect=bind),
-        ) as bind_execution,
+        ) as issue_capability,
         patch(
             "src.services.execution.async_executor._publish_scheduled_once",
             new=AsyncMock(side_effect=publish),
@@ -120,7 +122,7 @@ async def test_embed_capability_is_bound_to_canonical_id_before_publish():
     assert persist.await_args.kwargs["embed_session_binding"] == embed_session_binding(
         "session-a"
     )
-    bind_execution.assert_awaited_once_with("session-a", canonical_id)
+    issue_capability.assert_awaited_once_with("session-a", canonical_id)
     publish_execution.assert_awaited_once_with(
         execution_id=canonical_id,
         publish_kwargs={"execution_id": canonical_id},
@@ -140,7 +142,7 @@ async def test_embed_capability_failure_leaves_execution_unpublished():
             new=AsyncMock(return_value=({"execution_id": canonical_id}, True)),
         ),
         patch(
-            "src.services.execution.submission_recovery.bind_execution_to_embed_session",
+            "src.services.execution.submission_recovery.issue_execution_embed_capability",
             new=AsyncMock(side_effect=RuntimeError("synthetic Redis failure")),
         ),
         patch(
@@ -158,6 +160,40 @@ async def test_embed_capability_failure_leaves_execution_unpublished():
         )
 
     publish_execution.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_canonical_publisher_rejects_unissued_embed_execution(monkeypatch):
+    execution_id = "22222222-2222-2222-2222-222222222222"
+    execution = SimpleNamespace(
+        id=UUID(execution_id),
+        status=ExecutionStatus.SCHEDULED,
+        scheduled_at=None,
+        embed_session_binding=embed_session_binding("session-a"),
+        embed_capability_issued=False,
+    )
+    db = SimpleNamespace(
+        execute=AsyncMock(),
+        get=AsyncMock(return_value=execution),
+        commit=AsyncMock(),
+    )
+
+    @asynccontextmanager
+    async def db_context():
+        yield db
+
+    publish = AsyncMock()
+    monkeypatch.setattr("src.core.database.get_db_context", db_context)
+    monkeypatch.setattr(async_executor, "_publish_pending", publish)
+
+    published = await _publish_scheduled_once(
+        execution_id=execution_id,
+        publish_kwargs={"execution_id": execution_id},
+    )
+
+    assert published is False
+    publish.assert_not_awaited()
+    db.commit.assert_not_awaited()
 
 
 def _context() -> SimpleNamespace:

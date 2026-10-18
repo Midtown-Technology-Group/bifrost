@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
+
 from src.models.enums import ExecutionStatus
 from src.services.execution import submission_recovery
 from src.services.execution.submission_recovery import (
@@ -79,6 +81,118 @@ async def test_binds_execution_to_exact_embed_session(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
+async def test_capability_issue_is_durable_only_after_redis_succeeds(
+    monkeypatch,
+) -> None:
+    redis = SimpleNamespace(setex=AsyncMock())
+    monkeypatch.setattr(
+        submission_recovery,
+        "get_redis",
+        lambda: _RedisContext(redis),
+    )
+    execution_id = uuid4()
+    execution = _execution(
+        id=execution_id,
+        embed_session_binding=embed_session_binding("session-a"),
+        embed_capability_issued=False,
+    )
+    db = SimpleNamespace(
+        execute=AsyncMock(),
+        get=AsyncMock(return_value=execution),
+        commit=AsyncMock(),
+    )
+
+    @asynccontextmanager
+    async def db_context():
+        yield db
+
+    monkeypatch.setattr("src.core.database.get_db_context", db_context)
+
+    await submission_recovery.issue_execution_embed_capability(
+        "session-a",
+        execution_id,
+    )
+
+    redis.setex.assert_awaited_once()
+    db.get.assert_awaited_once()
+    assert execution.embed_capability_issued is True
+    db.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_capability_issue_does_not_release_publication_after_redis_failure(
+    monkeypatch,
+) -> None:
+    redis = SimpleNamespace(setex=AsyncMock(side_effect=RuntimeError("redis down")))
+    monkeypatch.setattr(
+        submission_recovery,
+        "get_redis",
+        lambda: _RedisContext(redis),
+    )
+    execution = _execution(
+        embed_session_binding=embed_session_binding("session-a"),
+        embed_capability_issued=False,
+    )
+    db = SimpleNamespace(
+        execute=AsyncMock(),
+        get=AsyncMock(return_value=execution),
+        commit=AsyncMock(),
+    )
+
+    @asynccontextmanager
+    async def db_context():
+        yield db
+
+    monkeypatch.setattr("src.core.database.get_db_context", db_context)
+
+    with pytest.raises(RuntimeError, match="redis down"):
+        await submission_recovery.issue_execution_embed_capability(
+            "session-a",
+            execution.id,
+        )
+
+    assert execution.embed_capability_issued is False
+    db.commit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_capability_issue_validates_durable_owner_before_redis(
+    monkeypatch,
+) -> None:
+    redis = SimpleNamespace(setex=AsyncMock())
+    monkeypatch.setattr(
+        submission_recovery,
+        "get_redis",
+        lambda: _RedisContext(redis),
+    )
+    execution = _execution(
+        embed_session_binding=embed_session_binding("session-a"),
+        embed_capability_issued=False,
+    )
+    db = SimpleNamespace(
+        execute=AsyncMock(),
+        get=AsyncMock(return_value=execution),
+        commit=AsyncMock(),
+    )
+
+    @asynccontextmanager
+    async def db_context():
+        yield db
+
+    monkeypatch.setattr("src.core.database.get_db_context", db_context)
+
+    with pytest.raises(EmbedExecutionRecoveryDeniedError, match="Access denied"):
+        await submission_recovery.issue_execution_embed_capability(
+            "session-b",
+            execution.id,
+        )
+
+    redis.setex.assert_not_awaited()
+    assert execution.embed_capability_issued is False
+    db.commit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_recovery_requires_exact_embed_session_binding(monkeypatch) -> None:
     redis = SimpleNamespace(exists=AsyncMock(side_effect=[1, 0]))
     monkeypatch.setattr(
@@ -114,11 +228,11 @@ async def test_recovery_remints_capability_from_matching_durable_owner(
     monkeypatch,
 ) -> None:
     existing = _execution(embed_session_binding=embed_session_binding("session-a"))
-    redis = SimpleNamespace(setex=AsyncMock())
+    issue_capability = AsyncMock()
     monkeypatch.setattr(
         submission_recovery,
-        "get_redis",
-        lambda: _RedisContext(redis),
+        "issue_execution_embed_capability",
+        issue_capability,
     )
 
     result = await recover_execution_submission(
@@ -133,11 +247,7 @@ async def test_recovery_remints_capability_from_matching_durable_owner(
     )
 
     assert result is not None
-    redis.setex.assert_awaited_once_with(
-        f"bifrost:embed:exec:session-a:{existing.id}",
-        86400,
-        "1",
-    )
+    issue_capability.assert_awaited_once_with("session-a", existing.id)
 
 
 @pytest.mark.asyncio
@@ -147,11 +257,11 @@ async def test_recovery_rejects_any_non_owner_of_durable_embed_execution(
     session_jti,
 ) -> None:
     existing = _execution(embed_session_binding=embed_session_binding("session-a"))
-    redis = SimpleNamespace(setex=AsyncMock())
+    issue_capability = AsyncMock()
     monkeypatch.setattr(
         submission_recovery,
-        "get_redis",
-        lambda: _RedisContext(redis),
+        "issue_execution_embed_capability",
+        issue_capability,
     )
 
     with pytest.raises(EmbedExecutionRecoveryDeniedError, match="Access denied"):
@@ -166,7 +276,7 @@ async def test_recovery_rejects_any_non_owner_of_durable_embed_execution(
             embed_session_jti=session_jti,
         )
 
-    redis.setex.assert_not_awaited()
+    issue_capability.assert_not_awaited()
 
 
 @pytest.mark.asyncio

@@ -788,8 +788,8 @@ async def _insert_scheduled_execution(
     from src.services.execution.submission_recovery import (
         assert_execution_submission_identity,
         assert_persisted_embed_session_binding,
-        bind_execution_to_embed_session,
         embed_session_binding,
+        issue_execution_embed_capability,
     )
 
     durable_embed_binding = (
@@ -823,7 +823,7 @@ async def _insert_scheduled_execution(
             )
             await db.commit()
             if embed_session_jti is not None:
-                await bind_execution_to_embed_session(
+                await issue_execution_embed_capability(
                     embed_session_jti,
                     existing.id,
                 )
@@ -875,6 +875,7 @@ async def _insert_scheduled_execution(
             else None
         ),
         embed_session_binding=durable_embed_binding,
+        embed_capability_issued=False,
         retry_policy=retry_policy,
         execution_context=execution_context,
     )
@@ -885,7 +886,7 @@ async def _insert_scheduled_execution(
     await ensure_dispatch_attempt(db, execution)
     await db.commit()
     if embed_session_jti is not None:
-        await bind_execution_to_embed_session(embed_session_jti, exec_id)
+        await issue_execution_embed_capability(embed_session_jti, exec_id)
     return exec_id
 
 
