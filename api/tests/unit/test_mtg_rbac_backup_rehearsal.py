@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import hashlib
 import json
 import os
 import re
@@ -57,11 +58,97 @@ def test_public_receipt_omits_raw_rows_and_original_json():
     receipt = _load_helper()._receipt({
         "source_legacy": {"roles": [{"permissions": {"can_execute_devices": True}}]},
         "source_catalog": {"functions": ["synthetic SQL"]},
+        "source_catalog_metadata": {"constraints": ["private structural metadata"]},
+        "failed_restore_catalog": {"functions": ["private restored definitions"]},
+        "failed_restore_catalog_metadata": {"constraints": ["private restored structural metadata"]},
         "source_data": {"synthetic": "rows"}, "owned_databases": ["private ledger"],
         "fixture_ids": {"user_a": "synthetic identity"}, "fixture_documents": {"home": "synthetic content"},
         "dump_sha256": "digest", "source_head": "20261012_work_delivery_started",
     })
     assert receipt == {"dump_sha256": "digest", "source_head": "20261012_work_delivery_started"}
+
+
+def test_schema_difference_diagnostics_exposes_flags_and_hashes_without_raw_definitions():
+    helper = _load_helper()
+    original = {"indexes": [{"relation": "knowledge_namespace_roles", "index_name": "uq_knowledge_ns_role_org",
+                             "indnullsnotdistinct": True, "definition": "sensitive original SQL/default/token"}],
+                "functions": [{"definition": "sensitive function body", "acl": "sensitive ACL"}]}
+    actual = {"indexes": [{"relation": "knowledge_namespace_roles", "index_name": "uq_knowledge_ns_role_org",
+                           "indnullsnotdistinct": False, "definition": "sensitive restored SQL/default/token"}],
+              "functions": [{"definition": "sensitive changed body", "acl": "sensitive changed ACL"}]}
+    before = json.dumps([original, actual], sort_keys=True)
+    result = helper.catalog_difference_diagnostics(original, actual, {}, {},
+                                                   frozenset({"knowledge_namespace_roles", "uq_knowledge_ns_role_org"}))
+    item = result["classes"]["indexes"]["objects"][0]
+    assert item["identity"]["index_name"] == {"canonical_name": "uq_knowledge_ns_role_org"}
+    assert item["changed_fields"] == ["definition", "indnullsnotdistinct"]
+    assert item["expected_structure"] == {"indnullsnotdistinct": True}
+    assert item["actual_structure"] == {"indnullsnotdistinct": False}
+    assert re.fullmatch(r"[0-9a-f]{64}", item["expected_definition_sha256"])
+    assert item["expected_definition_sha256"] != item["actual_definition_sha256"]
+    assert "objects" not in result["classes"]["functions"]
+    assert "sensitive" not in json.dumps(result)
+    assert json.dumps([original, actual], sort_keys=True) == before
+    with pytest.raises(AssertionError, match="Restored schema differs"):
+        helper.assert_restore_parity(original, actual, {}, {})
+
+
+def test_schema_difference_unknown_names_and_fields_are_hashed_and_output_is_bounded():
+    helper = _load_helper()
+    original = {"constraints": [{"relation": "private_customer_table", "conname": f"private_constraint_{i}",
+                                 "definition": "private definition", "private_field": True} for i in range(45)]}
+    result = helper.catalog_difference_diagnostics(original, {}, {}, {}, frozenset())
+    summary = result["classes"]["constraints"]
+    assert summary["changed_objects"] == 45 and summary["objects_truncated"] == 5
+    assert len(summary["objects"]) == 40
+    assert "name_sha256" in summary["objects"][0]["identity"]["conname"]
+    assert "private" not in json.dumps(result)
+
+
+def test_schema_diagnostic_identifier_names_must_come_from_preserved_source(monkeypatch, tmp_path):
+    helper = _load_helper()
+    migration = tmp_path / "migration.py"
+    migration.write_text("op.create_table('roles', sa.Column('id', sa.UUID()))\n"
+                         "unrelated_default = 'private_customer_table'\n"
+                         "statement = 'CREATE TABLE public.knowledge_namespace_roles (id uuid)'\n")
+    script = SimpleNamespace(walk_revisions=lambda **kwargs: [SimpleNamespace(path=migration)] * 330)
+    monkeypatch.setattr(helper, "_helpers", lambda: (None, SimpleNamespace(_alembic_config=lambda: None)))
+    monkeypatch.setattr(helper.ScriptDirectory, "from_config", lambda _config: script)
+    allowed = helper._migration_identifier_allowlist()
+    assert {"roles", "knowledge_namespace_roles"} <= allowed
+    assert "private_customer_table" not in allowed
+
+
+def test_failed_restore_keeps_restricted_difference_receipt_without_accepting_parity(monkeypatch, tmp_path):
+    helper = _load_helper()
+    expected = {"constraints": [{"relation": "roles", "conname": "known_constraint", "convalidated": True,
+                                 "definition": "private original definition"}]}
+    actual = {"constraints": [{"relation": "roles", "conname": "known_constraint", "convalidated": False,
+                               "definition": "private restored definition"}]}
+    archive = b"PGDMPsynthetic archive"
+    (tmp_path / "fork-head.dump").write_bytes(archive)
+    legacy = SimpleNamespace(_direct_database_url=lambda _name: "unused-synthetic-url",
+                             _current_revision=lambda _url: helper.FORK_HEAD)
+    monkeypatch.setattr(helper, "_helpers", lambda: (None, legacy))
+    monkeypatch.setattr(helper, "_catalog", lambda _url: actual)
+    monkeypatch.setattr(helper, "_table_data", lambda _url: {})
+    monkeypatch.setattr(helper, "_schema_diagnostic_metadata", lambda _url: {})
+    monkeypatch.setattr(helper, "_migration_identifier_allowlist", lambda: frozenset({"roles", "known_constraint"}))
+    state = {"restored_database": "bifrost_r2b_rehearsal_abcdef123456", "source_catalog": expected,
+             "source_catalog_metadata": {}, "source_data": {}, "timings_seconds": {},
+             "owned_databases": [], "status": "prepared_for_dump"}
+    args = SimpleNamespace(dump_sha256=hashlib.sha256(archive).hexdigest(), dump_elapsed_ns=1,
+                           restore_elapsed_ns=2, failed_host_step="restored", failed_host_exit_code=1)
+    with pytest.raises(AssertionError, match="Restored schema differs.*constraints"):
+        helper.restored(args, tmp_path / "private-state.json", state)
+    helper.cleanup(args, tmp_path / "private-state.json", state)
+    receipt = helper._receipt(state)
+    assert receipt["status"] == "failed" and receipt["database_cleanup_verified"]
+    assert receipt["dump_sha256"] == args.dump_sha256 and receipt["archive_magic"] == "PGDMP"
+    assert receipt["restore_schema_difference"]["classes"]["constraints"]["changed_objects"] == 1
+    assert "initial_restoration_verified" not in receipt
+    assert "restored_schema_and_all_public_rows_equal" not in receipt
+    assert "private" not in json.dumps(receipt)
 
 
 @pytest.mark.parametrize("broken_contract", ["wrong_source", "writable", "missing_cleanup", "wrong_dependencies"])

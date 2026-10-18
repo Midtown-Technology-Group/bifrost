@@ -9,6 +9,7 @@ it never accepts a connection URL or touches an existing application DB.
 from __future__ import annotations
 
 import argparse
+import ast
 import asyncio
 import hashlib
 import json
@@ -234,6 +235,169 @@ def _table_data(database_url: str) -> dict:
     return result
 
 
+def _schema_diagnostic_metadata(database_url: str) -> dict:
+    """Private structural facts only; these never replace strict catalog parity."""
+    bridge, _ = _helpers()
+    queries = {
+        "constraints": """
+          SELECT r.relname AS relation, c.conname, c.contype, c.convalidated,
+                 c.condeferrable, c.condeferred, c.connoinherit,
+                 c.confupdtype, c.confdeltype, c.confmatchtype,
+                 referenced.relname AS referenced_relation, backing.relname AS backing_index,
+                 ARRAY(SELECT a.attname FROM unnest(c.conkey) WITH ORDINALITY k(num, position)
+                       JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = k.num
+                       ORDER BY k.position) AS key_columns,
+                 ARRAY(SELECT a.attname FROM unnest(c.confkey) WITH ORDINALITY k(num, position)
+                       JOIN pg_attribute a ON a.attrelid = c.confrelid AND a.attnum = k.num
+                       ORDER BY k.position) AS referenced_columns
+          FROM pg_constraint c JOIN pg_class r ON r.oid = c.conrelid
+          JOIN pg_namespace n ON n.oid = r.relnamespace
+          LEFT JOIN pg_class referenced ON referenced.oid = c.confrelid
+          LEFT JOIN pg_class backing ON backing.oid = c.conindid
+          WHERE n.nspname = 'public' ORDER BY r.relname, c.conname
+        """,
+        "indexes": """
+          SELECT r.relname AS relation, i.relname AS index_name, am.amname AS access_method,
+                 x.indisprimary, x.indisexclusion, x.indimmediate, x.indisvalid,
+                 x.indisunique, x.indnullsnotdistinct, x.indisready,
+                 x.indnkeyatts, x.indnatts, (x.indpred IS NOT NULL) AS predicate_present,
+                 (x.indexprs IS NOT NULL) AS expressions_present,
+                 ARRAY(SELECT a.attname FROM unnest(x.indkey) WITH ORDINALITY k(num, position)
+                       LEFT JOIN pg_attribute a ON a.attrelid = x.indrelid AND a.attnum = k.num
+                       ORDER BY k.position) AS key_columns
+          FROM pg_index x JOIN pg_class r ON r.oid = x.indrelid
+          JOIN pg_class i ON i.oid = x.indexrelid JOIN pg_am am ON am.oid = i.relam
+          JOIN pg_namespace n ON n.oid = r.relnamespace
+          WHERE n.nspname = 'public' ORDER BY r.relname, i.relname
+        """,
+    }
+    return {key: [dict(row) for row in bridge._sql(database_url, query)] for key, query in queries.items()}
+
+
+def _migration_identifier_allowlist() -> frozenset[str]:
+    """Only identifier literals/DDL names present in the preserved fork source."""
+    _, legacy = _helpers()
+    revisions = list(ScriptDirectory.from_config(legacy._alembic_config()).walk_revisions(base="base", head=FORK_HEAD))
+    if len(revisions) != 330:
+        raise AssertionError("Diagnostic name disclosure requires the preserved 330-revision source")
+    identifiers = set()
+    ddl_positions = {
+        "Column": (0,), "create_table": (0,), "drop_table": (0,), "rename_table": (0, 1),
+        "create_index": (0, 1, 2), "drop_index": (0, 1), "create_unique_constraint": (0, 1, 2),
+        "create_check_constraint": (0, 1), "create_foreign_key": (0, 1, 2, 3, 4),
+        "drop_constraint": (0, 1), "alter_column": (0, 1), "add_column": (0,), "drop_column": (0, 1),
+    }
+
+    def collect_literal(node):
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            if re.fullmatch(r"[a-z_][a-z0-9_]{0,62}", node.value):
+                identifiers.add(node.value)
+        elif isinstance(node, (ast.List, ast.Tuple)):
+            for item in node.elts:
+                collect_literal(item)
+
+    ddl_identifier = re.compile(
+        r"\b(?:CREATE\s+(?:UNIQUE\s+)?(?:TABLE|INDEX)\s+(?:IF\s+NOT\s+EXISTS\s+)?"
+        r"|ALTER\s+(?:TABLE|INDEX)\s+(?:IF\s+EXISTS\s+)?|CONSTRAINT\s+|RENAME\s+TO\s+)"
+        r"(?:public\.)?([a-z_][a-z0-9_]{0,62})\b", re.IGNORECASE,
+    )
+    for revision in revisions:
+        for node in ast.walk(ast.parse(Path(revision.path).read_text(encoding="utf-8"))):
+            if isinstance(node, ast.Call):
+                operation = getattr(node.func, "attr", getattr(node.func, "id", ""))
+                for position in ddl_positions.get(operation, ()):
+                    if position < len(node.args):
+                        collect_literal(node.args[position])
+                if operation in {"PrimaryKeyConstraint", "ForeignKeyConstraint", "UniqueConstraint"}:
+                    for argument in node.args:
+                        collect_literal(argument)
+                if operation in {"PrimaryKeyConstraint", "ForeignKeyConstraint", "UniqueConstraint", "CheckConstraint"}:
+                    for keyword in node.keywords:
+                        if keyword.arg == "name":
+                            collect_literal(keyword.value)
+            if isinstance(node, ast.Constant) and isinstance(node.value, str):
+                identifiers.update(match.group(1) for match in ddl_identifier.finditer(node.value)
+                                   if match.group(1).islower())
+    return frozenset(identifiers)
+
+
+def _diagnostic_identifier(value, allowlist):
+    if value is None:
+        return None
+    return {"canonical_name": value} if value in allowlist else {"name_sha256": _digest(value)}
+
+
+def _safe_structure(row: dict | None, allowlist: frozenset[str]) -> dict | None:
+    if row is None:
+        return None
+    result = {}
+    boolean_fields = {"convalidated", "condeferrable", "condeferred", "connoinherit", "indisprimary",
+                      "indisexclusion", "indimmediate", "indisvalid", "indisunique", "indnullsnotdistinct",
+                      "indisready", "predicate_present", "expressions_present"}
+    enums = {"contype": {"c", "f", "p", "u", "t", "x", "n"},
+             "confupdtype": {" ", "a", "r", "c", "n", "d"},
+             "confdeltype": {" ", "a", "r", "c", "n", "d"},
+             "confmatchtype": {" ", "f", "p", "s"},
+             "access_method": {"btree", "hash", "gist", "spgist", "gin", "brin", "hnsw", "ivfflat"}}
+    for key, value in row.items():
+        if key in boolean_fields and type(value) is bool:
+            result[key] = value
+        elif key in ("indnkeyatts", "indnatts") and type(value) is int and 0 <= value <= 32767:
+            result[key] = value
+        elif key in enums:
+            result[key] = value if value in enums[key] else {"value_sha256": _digest(value)}
+        elif key in ("referenced_relation", "backing_index"):
+            result[key] = _diagnostic_identifier(value, allowlist)
+        elif key in ("key_columns", "referenced_columns") and isinstance(value, list):
+            result[key] = [_diagnostic_identifier(name, allowlist) for name in value[:16]]
+            result[key + "_count"] = len(value)
+    return result
+
+
+def catalog_difference_diagnostics(expected: dict, actual: dict, expected_metadata: dict,
+                                   actual_metadata: dict, allowlist: frozenset[str]) -> dict:
+    """Bounded identity/flag/hash evidence, with no definitions, data, ACLs or defaults."""
+    result = {"strict_parity_preserved": True, "raw_definitions_exposed": False,
+              "hash_encoding": "sha256_canonical_json_utf8", "classes": {}}
+    identity_fields = {"constraints": ("relation", "conname"), "indexes": ("relation", "index_name")}
+    safe_fields = {"relation", "conname", "contype", "convalidated", "definition", "index_name",
+                   "indisvalid", "indisunique", "indnullsnotdistinct"}
+    for category in sorted(set(expected) | set(actual)):
+        old, new = expected.get(category, []), actual.get(category, [])
+        if old == new:
+            continue
+        public_category = category if category in {
+            "schemas", "columns", "constraints", "indexes", "functions", "triggers", "views", "enums",
+            "extensions", "relation_privileges",
+        } else "unknown_class_sha256_" + _digest(category)
+        summary = {"expected_rows": len(old), "actual_rows": len(new),
+                   "expected_sha256": _digest(old), "actual_sha256": _digest(new)}
+        if category in identity_fields:
+            fields = identity_fields[category]
+            def keyed(rows):
+                return {tuple(row.get(field) for field in fields): row for row in rows}
+            old_rows, new_rows = keyed(old), keyed(new)
+            old_meta, new_meta = keyed(expected_metadata.get(category, [])), keyed(actual_metadata.get(category, []))
+            changed = [key for key in sorted(set(old_rows) | set(new_rows)) if old_rows.get(key) != new_rows.get(key)]
+            summary.update({"changed_objects": len(changed), "objects_truncated": max(0, len(changed) - 40),
+                            "object_rows_equal_but_order_differs": old_rows == new_rows, "objects": []})
+            for key in changed[:40]:
+                before, after = old_rows.get(key), new_rows.get(key)
+                changed_fields = sorted(field for field in set(before or {}) | set(after or {})
+                                        if (before or {}).get(field) != (after or {}).get(field))
+                item = {"identity": {field: _diagnostic_identifier(value, allowlist) for field, value in zip(fields, key)},
+                        "expected_present": before is not None, "actual_present": after is not None,
+                        "changed_fields": [field if field in safe_fields else "field_sha256_" + _digest(field)
+                                           for field in changed_fields],
+                        "expected_definition_sha256": _digest((before or {}).get("definition")),
+                        "actual_definition_sha256": _digest((after or {}).get("definition")),
+                        "expected_structure": _safe_structure({**(before or {}), **old_meta.get(key, {})}, allowlist),
+                        "actual_structure": _safe_structure({**(after or {}), **new_meta.get(key, {})}, allowlist)}
+                summary["objects"].append(item)
+        result["classes"][public_category] = summary
+    return result
+
+
 def assert_restore_parity(expected_catalog: dict, actual_catalog: dict,
                           expected_data: dict, actual_data: dict) -> None:
     if expected_catalog != actual_catalog:
@@ -301,6 +465,7 @@ def prepare(args, path: Path, state: dict) -> None:
         }
     state["source_head"] = legacy._current_revision(source_url)
     state["source_catalog"] = _catalog(source_url)
+    state["source_catalog_metadata"] = _schema_diagnostic_metadata(source_url)
     state["source_data"] = _table_data(source_url)
     state["source_legacy"] = dict(bridge._legacy_snapshot(source_url))
     _save(path.parent / "old-reader-fixture.json", _old_reader_fixture(state), mode=0o644)
@@ -325,17 +490,34 @@ def restored(args, path: Path, state: dict) -> None:
     restored_url = legacy._direct_database_url(state["restored_database"])
     assert legacy._current_revision(restored_url) == FORK_HEAD
     actual_catalog, actual_data = _catalog(restored_url), _table_data(restored_url)
-    assert_restore_parity(state["source_catalog"], actual_catalog, state["source_data"], actual_data)
     state.update({"dump_sha256": digest, "dump_bytes": len(contents), "archive_magic": "PGDMP",
                   "restored_head_before_upgrade": legacy._current_revision(restored_url),
-                  "schema_restore_sha256": _digest(actual_catalog), "data_restore_sha256": _digest(actual_data),
-                  "restored_schema_and_all_public_rows_equal": True, "status": "restored"})
+                  "schema_restore_sha256": _digest(actual_catalog), "data_restore_sha256": _digest(actual_data)})
     state["timings_seconds"].update({"pg_dump": args.dump_elapsed_ns / 1_000_000_000,
                                      "pg_restore": args.restore_elapsed_ns / 1_000_000_000})
     state["postgres_tool_commands"] = [
         "pg_dump --no-password --format=custom",
         'pg_restore --no-password --dbname "$PGDATABASE" --exit-on-error --single-transaction --clean --if-exists',
     ]
+    if state["source_catalog"] != actual_catalog:
+        # Keep the exact failed comparison locally in the 0600 private state;
+        # public receipts and CI artifact allowlists never include this data.
+        state["failed_restore_catalog"] = actual_catalog
+        try:
+            actual_metadata = _schema_diagnostic_metadata(restored_url)
+            state["failed_restore_catalog_metadata"] = actual_metadata
+            state["restore_schema_difference"] = catalog_difference_diagnostics(
+                state["source_catalog"], actual_catalog, state["source_catalog_metadata"],
+                actual_metadata, _migration_identifier_allowlist())
+        except Exception as diagnostic_error:
+            # Diagnostic collection must never replace or suppress the
+            # original strict parity failure, or expose arbitrary SQL text.
+            state["restore_schema_difference"] = {
+                "strict_parity_preserved": True, "diagnostic_failure_type": type(diagnostic_error).__name__,
+                "raw_definitions_exposed": False,
+            }
+    assert_restore_parity(state["source_catalog"], actual_catalog, state["source_data"], actual_data)
+    state.update({"restored_schema_and_all_public_rows_equal": True, "status": "restored"})
     state["initial_restoration_verified"] = True
 
 
@@ -608,7 +790,8 @@ def cleanup(args, path: Path, state: dict) -> None:
 
 def _receipt(state: dict) -> dict:
     # Durable public proof contains hashes/counts/heads, never raw dump rows.
-    omitted = {"source_catalog", "source_data", "source_legacy", "owned_databases", "fixture_ids", "fixture_documents"}
+    omitted = {"source_catalog", "source_catalog_metadata", "source_data", "source_legacy", "owned_databases",
+               "fixture_ids", "fixture_documents", "failed_restore_catalog", "failed_restore_catalog_metadata"}
     return {key: value for key, value in state.items() if key not in omitted}
 
 
