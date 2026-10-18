@@ -113,6 +113,7 @@ def test_solution_deploy_resolves_local_workflows_and_blocks_global_import(
                 "function_name": "answer",
                 "path": "workflows/answer.py",
                 "type": "workflow",
+                "cache_ttl_seconds": 0,
             },
             {
                 "id": str(uuid.uuid4()),
@@ -137,6 +138,18 @@ def test_solution_deploy_resolves_local_workflows_and_blocks_global_import(
             },
         ],
     )
+
+    installed_solution = e2e_client.get(f"/api/solutions/{sid}", headers=headers)
+    assert installed_solution.status_code == 200, installed_solution.text
+    scope = installed_solution.json()["organization_id"] or "global"
+    inventory = e2e_client.get("/api/workflows", headers=headers, params={"scope": scope})
+    assert inventory.status_code == 200, inventory.text
+    installed_answer = [
+        row for row in inventory.json()
+        if row["solution_id"] == sid and row["function_name"] == "answer"
+    ]
+    assert len(installed_answer) == 1
+    assert installed_answer[0]["cache_ttl_seconds"] == 0
 
     # Portable path::fn references resolve within this install, even though
     # manifest UUIDs are remapped during deployment.
