@@ -5797,20 +5797,22 @@ class TestSyncPublicationOrdering:
         assert local_after is None or local_after.is_active is False
         assert foreign_after is not None
         assert global_after is not None
-        assert (
+        foreign_after_snapshot = (
             foreign_after.name,
             foreign_after.function_name,
             foreign_after.path,
             foreign_after.is_active,
             foreign_after.organization_id,
-        ) == foreign_snapshot
-        assert (
+        )
+        global_after_snapshot = (
             global_after.name,
             global_after.function_name,
             global_after.path,
             global_after.is_active,
             global_after.organization_id,
-        ) == global_snapshot
+        )
+        assert foreign_after_snapshot == foreign_snapshot
+        assert global_after_snapshot == global_snapshot
 
     async def test_apply_rejects_a_stale_plan_before_publish(
         self,

@@ -2566,6 +2566,25 @@ class ManifestResolver:
         )
         await self.db.execute(statement)
 
+    async def _load_existing_integration_mappings(
+        self, integ_id: UUID, cache: dict | None
+    ) -> dict[str | None, Any]:
+        """Load mappings keyed by their organization identity."""
+        from src.models.orm.integrations import IntegrationMapping
+
+        if cache is not None:
+            return dict(cache["integ_mappings"].get(integ_id, {}))
+
+        existing_result = await self.db.execute(
+            select(IntegrationMapping).where(
+                IntegrationMapping.integration_id == integ_id
+            )
+        )
+        return {
+            str(mapping.organization_id) if mapping.organization_id else None: mapping
+            for mapping in existing_result.scalars().all()
+        }
+
     async def _sync_integration_mappings(
         self,
         integ_id: UUID,
@@ -2580,20 +2599,9 @@ class ManifestResolver:
 
         from src.models.orm.integrations import IntegrationMapping
 
-        if cache is not None:
-            existing_by_org: dict[str | None, IntegrationMapping] = dict(
-                cache["integ_mappings"].get(integ_id, {})
-            )
-        else:
-            existing_result = await self.db.execute(
-                select(IntegrationMapping).where(
-                    IntegrationMapping.integration_id == integ_id
-                )
-            )
-            existing_by_org = {
-                str(mapping.organization_id) if mapping.organization_id else None: mapping
-                for mapping in existing_result.scalars().all()
-            }
+        existing_by_org = await self._load_existing_integration_mappings(
+            integ_id, cache
+        )
 
         manifest_org_ids = {mapping.organization_id for mapping in manifest_mappings}
         for mapping in manifest_mappings:
