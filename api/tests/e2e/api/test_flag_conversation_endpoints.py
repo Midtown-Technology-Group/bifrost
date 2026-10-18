@@ -61,6 +61,7 @@ async def _create_run(
     *,
     org_id: UUID | None,
     status: str = "completed",
+    verdict: str | None = "down",
 ) -> AgentRun:
     now = datetime.now(timezone.utc)
     run = AgentRun(
@@ -74,8 +75,8 @@ async def _create_run(
         input={"message": "help me"},
         output={"text": "routed to support"},
         completed_at=now if status == "completed" else None,
-        verdict="down" if status == "completed" else None,
-        verdict_set_at=now if status == "completed" else None,
+        verdict=verdict,
+        verdict_set_at=now if verdict is not None else None,
     )
     db_session.add(run)
     await db_session.commit()
@@ -121,6 +122,28 @@ async def queued_run(
         UUID(flag_conv_agent["id"]),
         org_id=org_id,
         status="queued",
+        verdict=None,
+    )
+    yield run
+    await db_session.execute(delete(AgentRun).where(AgentRun.id == run.id))
+    await db_session.commit()
+
+
+@pytest_asyncio.fixture(params=[None, "up"], ids=["unreviewed", "up"])
+async def non_flagged_completed_run(
+    request, flag_conv_agent, db_session: AsyncSession, platform_admin
+) -> AsyncGenerator[AgentRun, None]:
+    """Create a completed run that is not in the thumbs-down review queue."""
+    org_id = (
+        await db_session.execute(
+            select(User.organization_id).where(User.id == platform_admin.user_id)
+        )
+    ).scalar_one()
+    run = await _create_run(
+        db_session,
+        UUID(flag_conv_agent["id"]),
+        org_id=org_id,
+        verdict=request.param,
     )
     yield run
     await db_session.execute(delete(AgentRun).where(AgentRun.id == run.id))
@@ -166,6 +189,24 @@ class TestFlagConversationGet:
         )
         assert res.status_code == 404, res.text
 
+    async def test_get_on_unflagged_completed_run_returns_409(
+        self, e2e_client, platform_admin, non_flagged_completed_run
+    ):
+        res = e2e_client.get(
+            f"/api/agent-runs/{non_flagged_completed_run.id}/flag-conversation",
+            headers=platform_admin.headers,
+        )
+        assert res.status_code == 409, res.text
+
+    async def test_get_on_unreviewed_non_completed_run_returns_409(
+        self, e2e_client, platform_admin, queued_run
+    ):
+        res = e2e_client.get(
+            f"/api/agent-runs/{queued_run.id}/flag-conversation",
+            headers=platform_admin.headers,
+        )
+        assert res.status_code == 409, res.text
+
 
 class TestFlagConversationPostMessage:
     async def test_post_empty_content_returns_422(
@@ -193,6 +234,16 @@ class TestFlagConversationPostMessage:
     ):
         res = e2e_client.post(
             f"/api/agent-runs/{queued_run.id}/flag-conversation/message",
+            json={"content": "hello"},
+            headers=platform_admin.headers,
+        )
+        assert res.status_code == 409, res.text
+
+    async def test_post_on_unflagged_completed_run_returns_409(
+        self, e2e_client, platform_admin, non_flagged_completed_run
+    ):
+        res = e2e_client.post(
+            f"/api/agent-runs/{non_flagged_completed_run.id}/flag-conversation/message",
             json={"content": "hello"},
             headers=platform_admin.headers,
         )

@@ -213,10 +213,11 @@ export function useFormFileUpload(
 					});
 
 					xhr.open("PUT", uploadResponse.upload_url);
-					xhr.setRequestHeader(
-						"Content-Type",
-						file.type || "application/octet-stream",
-					);
+					for (const [name, value] of Object.entries(
+						uploadResponse.upload_headers,
+					)) {
+						xhr.setRequestHeader(name, value);
+					}
 					xhr.send(file);
 				});
 

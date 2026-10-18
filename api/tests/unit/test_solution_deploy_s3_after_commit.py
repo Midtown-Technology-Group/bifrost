@@ -12,6 +12,7 @@ successful ``commit()`` — awaits ``finalize_s3()``.
 from __future__ import annotations
 
 import uuid
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -44,12 +45,23 @@ async def _install(db) -> Solution:
 
 @pytest.mark.e2e
 class TestS3AfterCommit:
-    async def test_deploy_defers_python_write_until_finalize(self, db_session) -> None:
+    async def test_deploy_defers_python_write_until_finalize(self, db_session, caplog) -> None:
         db = db_session
         sol = await _install(db)
         storage = SolutionStorage(sol.id)
 
-        result = await SolutionDeployer(db).deploy(
+        from src.jobs.platform.solution_deploy import _SolutionDeployReporter
+        from src.services.solutions.deploy import (
+            SolutionDeployInstrumentation, solution_deploy_instrumentation,
+        )
+
+        context = AsyncMock()
+        reporter = _SolutionDeployReporter(context)
+        with solution_deploy_instrumentation(
+            SolutionDeployInstrumentation(progress_callback=reporter.progress)
+        ):
+            deployer = SolutionDeployer(db)
+        result = await deployer.deploy(
             SolutionBundle(
                 solution=sol,
                 python_files={"workflows/w1.py": "def run():\n    return 1\n"},
@@ -61,8 +73,14 @@ class TestS3AfterCommit:
         # would leave running code untouched.
         assert await storage.list("") == []
 
-        # Caller runs this only after a durable commit.
+        # A telemetry outage after commit must not prevent source publication.
+        context.report.reset_mock()
+        context.report.side_effect = RuntimeError("private transport detail")
         await result.finalize_s3()
+        assert context.report.await_count == 4
+        assert reporter.last_percent == 97
+        assert "RuntimeError" in caplog.text
+        assert "private transport detail" not in caplog.text
         assert "workflows/w1.py" in set(await storage.list(""))
 
     async def test_finalize_is_idempotent_callable(self, db_session) -> None:

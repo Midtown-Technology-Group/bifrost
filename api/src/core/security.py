@@ -22,6 +22,7 @@ from pwdlib.hashers.bcrypt import BcryptHasher
 from src.config import get_settings
 
 ENGINE_USER_ID = "00000000-0000-0000-0000-000000000001"
+EMBED_DISPLAY_NAME_MAX_LENGTH = 255
 
 # Password hashing using pwdlib with bcrypt
 # This is the modern replacement for passlib, recommended by FastAPI
@@ -313,7 +314,8 @@ def create_embed_access_token(
     }
     data[f"{embed_kind}_id"] = resource_id
     if display_name is not None:
-        data["name"] = display_name
+        # Embed identities flow into Execution.executed_by_name (varchar(255)).
+        data["name"] = display_name[:EMBED_DISPLAY_NAME_MAX_LENGTH]
     if verified_context:
         data["verified_context"] = verified_context
         if embed_kind == "app":
@@ -322,6 +324,45 @@ def create_embed_access_token(
         data["capability_fingerprint"] = capability_fingerprint
 
     return create_access_token(data, expires_delta=expires_delta)
+
+
+def create_form_upload_token(
+    *,
+    form_id: str,
+    org_id: str | None,
+    session_jti: str,
+    session_exp: int,
+    path: str,
+    storage_key: str,
+    field_name: str,
+    file_name: str,
+    content_type: str,
+    file_size: int,
+    expires_delta: timedelta = timedelta(minutes=10),
+) -> str:
+    """Mint a short-lived, single-upload capability for an embed session."""
+    import uuid
+
+    settings = get_settings()
+    expire = datetime.now(timezone.utc) + expires_delta
+    payload = {
+        "exp": expire,
+        "type": "form_upload",
+        "iss": settings.jwt_issuer,
+        "aud": settings.jwt_audience,
+        "jti": str(uuid.uuid4()),
+        "form_id": form_id,
+        "org_id": org_id,
+        "session_jti": session_jti,
+        "session_exp": session_exp,
+        "path": path,
+        "storage_key": storage_key,
+        "field_name": field_name,
+        "file_name": file_name,
+        "content_type": content_type,
+        "file_size": file_size,
+    }
+    return jwt.encode(payload, settings.secret_key, algorithm=settings.algorithm)
 
 
 # =============================================================================

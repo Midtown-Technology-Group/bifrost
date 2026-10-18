@@ -20,12 +20,7 @@ import { Skeleton } from "@/components/ui/skeleton";
  */
 
 import { useRef, useState } from "react";
-import {
-	Link,
-	useNavigate,
-	useParams,
-	useSearchParams,
-} from "react-router";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { RunActionFeedback } from "./RunActionFeedback";
 import {
 	ArrowLeft,
@@ -97,11 +92,18 @@ export function AgentDetailPage() {
 	const [searchParams, setSearchParams] = useSearchParams();
 	const fromSolution = parseSolutionFrom(searchParams.toString());
 	const tabParam = searchParams.get("tab");
+	const { isPlatformAdmin, user } = useAuth();
+	const canManageAgent =
+		isCreate ||
+		isPlatformAdmin ||
+		(agent?.access_level === "private" && agent.owner_user_id === user?.id);
 	const tab: Tab = isCreate
 		? "settings"
-		: tabParam === "runs" || tabParam === "settings"
-			? tabParam
-			: "overview";
+		: tabParam === "settings" && !canManageAgent
+			? "overview"
+			: tabParam === "runs" || tabParam === "settings"
+				? tabParam
+				: "overview";
 
 	const [settingsVisited, setSettingsVisited] = useState(tab === "settings");
 	if (tab === "settings" && !settingsVisited) setSettingsVisited(true);
@@ -119,7 +121,6 @@ export function AgentDetailPage() {
 
 	const updateAgent = useUpdateAgent();
 	const createConversation = useCreateConversation();
-	const { isPlatformAdmin } = useAuth();
 	const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
 	const actionBusy = useRef(false);
 	const [actionFailure, setActionFailure] = useState<{
@@ -261,7 +262,7 @@ export function AgentDetailPage() {
 				<div className="flex flex-wrap items-start justify-between gap-4">
 					<div className="flex items-start gap-3 min-w-0 flex-1">
 						{!isCreate && agent ? (
-							agent.is_solution_managed ? (
+							agent.is_solution_managed || !canManageAgent ? (
 								<EntityLogo
 									entityType="agent"
 									entityId={agent.id}
@@ -351,48 +352,55 @@ export function AgentDetailPage() {
 									</Tooltip>
 								</TooltipProvider>
 							) : null}
-							<Button
-								variant="outline"
-								size="sm"
-								className="min-h-11 sm:min-h-0"
-								onClick={() => setActive(!isActive)}
-								title={
-									agent.is_solution_managed
-										? "Managed by a Solution"
-										: undefined
-								}
-								disabled={
-									actionPending || agent.is_solution_managed
-								}
-							>
-								{isActive ? (
-									<>
-										<Pause className="h-3.5 w-3.5" /> Pause
-									</>
-								) : (
-									<>
-										<PlayCircle className="h-3.5 w-3.5" />{" "}
-										Activate
-									</>
-								)}
-							</Button>
-							<Button
-								variant="outline"
-								size="sm"
-								className="min-h-11 min-w-11 sm:min-h-0 sm:min-w-0 text-destructive hover:text-destructive hover:bg-destructive/10"
-								onClick={() => setConfirmDeleteOpen(true)}
-								disabled={
-									actionPending || agent.is_solution_managed
-								}
-								title={
-									agent.is_solution_managed
-										? "Managed by a Solution"
-										: "Delete agent"
-								}
-								aria-label="Delete agent"
-							>
-								<Trash2 className="h-3.5 w-3.5" />
-							</Button>
+							{canManageAgent ? (
+								<Button
+									variant="outline"
+									size="sm"
+									className="min-h-11 sm:min-h-0"
+									onClick={() => setActive(!isActive)}
+									title={
+										agent.is_solution_managed
+											? "Managed by a Solution"
+											: undefined
+									}
+									disabled={
+										actionPending ||
+										agent.is_solution_managed
+									}
+								>
+									{isActive ? (
+										<>
+											<Pause className="h-3.5 w-3.5" />{" "}
+											Pause
+										</>
+									) : (
+										<>
+											<PlayCircle className="h-3.5 w-3.5" />{" "}
+											Activate
+										</>
+									)}
+								</Button>
+							) : null}
+							{canManageAgent ? (
+								<Button
+									variant="outline"
+									size="sm"
+									className="min-h-11 min-w-11 sm:min-h-0 sm:min-w-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+									onClick={() => setConfirmDeleteOpen(true)}
+									disabled={
+										actionPending ||
+										agent.is_solution_managed
+									}
+									title={
+										agent.is_solution_managed
+											? "Managed by a Solution"
+											: "Delete agent"
+									}
+									aria-label="Delete agent"
+								>
+									<Trash2 className="h-3.5 w-3.5" />
+								</Button>
+							) : null}
 							{isPlatformAdmin ? (
 								<SummaryBackfillButton
 									agentId={agent.id ?? undefined}
@@ -402,7 +410,7 @@ export function AgentDetailPage() {
 					) : null}
 				</div>
 
-				{!isCreate && agent ? (
+				{!isCreate && agent && canManageAgent ? (
 					<AgentDeleteDialog
 						agentId={agent.id}
 						name={agent.name}
@@ -450,7 +458,14 @@ export function AgentDetailPage() {
 							count: runCount,
 							disabled: isCreate,
 						},
-						{ value: "settings", label: "Settings" },
+						...(canManageAgent
+							? [
+									{
+										value: "settings" as const,
+										label: "Settings",
+									},
+								]
+							: []),
 					]}
 					value={tab}
 					onValueChange={(v) => handleTabChange(v as Tab)}
@@ -471,7 +486,7 @@ export function AgentDetailPage() {
 				{tab === "runs" && !isCreate && agentId ? (
 					<AgentRunsTab agentId={agentId} />
 				) : null}
-				{tab === "settings" || settingsVisited ? (
+				{canManageAgent && (tab === "settings" || settingsVisited) ? (
 					<div hidden={tab !== "settings"}>
 						{isCreate ? (
 							<AgentSettingsTab
