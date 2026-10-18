@@ -178,6 +178,7 @@ harness.
 | `applications.publish_github_app_source` | — | — | — |
 | `appservice.app_service_metrics` | — | — | — |
 | `auth.authorize_cli_native_auth` | — | — | — |
+| `auth.inspect_cli_native_auth` | — | — | — |
 | `auth.exchange_cli_native_auth_token` | — | — | — |
 | `auth.start_cli_native_auth` | — | — | — |
 | `chat.submit_teams_event` | — | — | — |

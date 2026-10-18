@@ -10176,6 +10176,57 @@
         "native_builder": false,
         "operation_id": "auth.authorize_cli_native_auth",
         "rest": {
+          "method": "POST",
+          "path": "/auth/cli/authorize",
+          "request_model": null,
+          "response_model": null
+        },
+        "side_effects": [],
+        "summary": "Existing REST binding: POST /auth/cli/authorize",
+        "target_kind": "collection"
+      }
+    },
+    {
+      "observed": {
+        "cli": {
+          "path": null,
+          "status": "intentionally_unsupported"
+        },
+        "manifest": {
+          "entity": null,
+          "status": "intentionally_unsupported"
+        },
+        "mcp": {
+          "name": null,
+          "status": "intentionally_unsupported"
+        },
+        "rest": {
+          "operation_id": "auth.inspect_cli_native_auth",
+          "status": "exact_parity"
+        },
+        "sdk": {
+          "binding": null,
+          "status": "intentionally_unsupported"
+        }
+      },
+      "operation": {
+        "action_scopes": [],
+        "async_policy": "synchronous",
+        "audit_event": null,
+        "authorization_resolver": "src.routers.auth.inspect_cli_native_auth: existing dependencies and handler checks",
+        "cli": null,
+        "exclusions": {
+          "cli": "No canonical binding assigned in this metadata-only slice.",
+          "manifest": "No canonical binding assigned in this metadata-only slice.",
+          "mcp": "No canonical binding assigned in this metadata-only slice.",
+          "native_builder": "No canonical binding assigned in this metadata-only slice.",
+          "sdk": "No canonical binding assigned in this metadata-only slice."
+        },
+        "manifest": null,
+        "mcp": null,
+        "native_builder": false,
+        "operation_id": "auth.inspect_cli_native_auth",
+        "rest": {
           "method": "GET",
           "path": "/auth/cli/authorize",
           "request_model": null,
@@ -16056,7 +16107,7 @@
     "cli": 158,
     "manifest": 16,
     "mcp": 90,
-    "rest": 782,
+    "rest": 783,
     "sdk": 19
   },
   "schema_version": 1,

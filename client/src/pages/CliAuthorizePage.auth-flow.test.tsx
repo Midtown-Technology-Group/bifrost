@@ -78,7 +78,7 @@ describe("CliAuthorizePage authentication flow", () => {
 						transaction_id: "txn-1",
 						client_name: "Bifrost CLI",
 						redirect_uri: "http://127.0.0.1:8247/callback",
-						expires_at: "2099-01-01T00:00:00Z",
+						expires_in: 240,
 					});
 				}
 
