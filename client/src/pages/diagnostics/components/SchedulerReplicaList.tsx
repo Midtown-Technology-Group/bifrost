@@ -49,7 +49,9 @@ function replicaMemory(replica: SchedulerReplica) {
 	return `${current} / ${limit}`;
 }
 
-function ReplicaStatusBadge({ replica }: { replica: SchedulerReplica }) {
+function ReplicaStatusBadge({
+	replica,
+}: Readonly<{ replica: SchedulerReplica }>) {
 	return (
 		<Badge variant={replica.online ? "secondary" : "destructive"}>
 			{replica.online ? "Online" : "Stale"}
@@ -57,11 +59,15 @@ function ReplicaStatusBadge({ replica }: { replica: SchedulerReplica }) {
 	);
 }
 
-function ReplicaRoleBadge({ replica }: { replica: SchedulerReplica }) {
+function ReplicaRoleBadge({
+	replica,
+}: Readonly<{ replica: SchedulerReplica }>) {
 	return <Badge variant="outline">{replicaRole(replica)}</Badge>;
 }
 
-function ReplicaWorkloadBadge({ replica }: { replica: SchedulerReplica }) {
+function ReplicaWorkloadBadge({
+	replica,
+}: Readonly<{ replica: SchedulerReplica }>) {
 	return (
 		<Badge
 			variant={replica.active_platform_jobs > 0 ? "secondary" : "outline"}
@@ -71,7 +77,9 @@ function ReplicaWorkloadBadge({ replica }: { replica: SchedulerReplica }) {
 	);
 }
 
-function ReplicaCard({ replica }: { replica: SchedulerReplica }) {
+function ReplicaCard({
+	replica,
+}: Readonly<{ replica: SchedulerReplica }>) {
 	return (
 		<Card className="@4xl:hidden">
 			<CardContent className="space-y-4 p-[var(--bf-surface-pad)]">
@@ -130,9 +138,9 @@ function ReplicaCard({ replica }: { replica: SchedulerReplica }) {
 
 export function SchedulerReplicaList({
 	replicas,
-}: {
+}: Readonly<{
 	replicas: SchedulerDiagnosticsResponse["replicas"];
-}) {
+}>) {
 	if (replicas.length === 0) return null;
 
 	return (

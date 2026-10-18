@@ -80,7 +80,7 @@ export function ServiceActionDialog({
 	actionError,
 	onConfirm,
 	onOpenChange,
-}: ServiceActionDialogProps) {
+}: Readonly<ServiceActionDialogProps>) {
 	const copy = pending ? dialogCopy(pending) : null;
 	return (
 		<AlertDialog

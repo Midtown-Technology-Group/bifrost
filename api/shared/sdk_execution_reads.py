@@ -29,6 +29,7 @@ socket).
 from __future__ import annotations
 
 import base64
+from shared.execution_logs import project_execution_logs
 import json
 import logging
 from datetime import datetime
@@ -721,7 +722,7 @@ async def get_sdk_execution(
         logs_query = (
             select(ExecutionLogORM)
             .where(ExecutionLogORM.execution_id == execution_id)
-            .order_by(ExecutionLogORM.sequence)
+            .order_by(ExecutionLogORM.sequence, ExecutionLogORM.id)
         )
         if not principal.is_superuser:
             logs_query = logs_query.where(
@@ -730,17 +731,7 @@ async def get_sdk_execution(
         logs_result = await session.execute(logs_query)
         log_entries = logs_result.scalars().all()
 
-        logs = [
-            ExecutionLogPublic(
-                id=log.id,
-                timestamp=log.timestamp.isoformat() if log.timestamp else "",
-                level=log.level or "info",
-                message=log.message or "",
-                data=log.log_metadata,
-                sequence=log.sequence,
-            )
-            for log in log_entries
-        ]
+        logs = project_execution_logs(log_entries)
 
     ai_usage_query = (
         select(AIUsage)
