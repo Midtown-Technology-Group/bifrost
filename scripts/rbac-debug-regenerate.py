@@ -298,6 +298,22 @@ def copy_mirror_updates() -> None:
     record(stage="mirror-artifact-closure", files=len(files), deletions=len(deletions))
 
 
+def regenerate_mirrors_only() -> None:
+    source_sha = run("mirror-only-source-sha", ["git", "rev-parse", "HEAD"]).strip()
+    if source_sha != os.environ.get("GITHUB_SHA"):
+        raise DiagnosticFailure("Mirror checkout is not the dispatched source SHA")
+    if run("mirror-only-clean-source", ["git", "status", "--porcelain", "--untracked-files=all"]).strip():
+        raise DiagnosticFailure("Mirror-only producer requires a fresh clean checkout")
+    inputs = {relative: hashlib.sha256((ROOT / relative).read_bytes()).hexdigest() for relative in (
+        "scripts/rbac-debug-regenerate.py", "scripts/sync-codex-skills.sh", "scripts/check_skill_mirrors.py")}
+    (ARTIFACT / "mirror-input-identity.json").write_text(json.dumps({
+        "purpose": "diagnostic-mirror-production-only-not-candidate-acceptance",
+        "source_sha": source_sha, "source_ref": BRANCH, "producer_sha256": inputs,
+    }, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    run("sync-skill-mirrors", ["bash", "scripts/sync-codex-skills.sh"])
+    copy_mirror_updates()
+
+
 def cleanup() -> None:
     if not IDENTITY.is_file():
         record(stage="cleanup", result="no-owned-debug-stack-recorded")
@@ -434,6 +450,8 @@ def main() -> int:
     try:
         if sys.argv[1:] == ["--cleanup"]:
             cleanup()
+        elif sys.argv[1:] == ["--mirrors-only"]:
+            regenerate_mirrors_only()
         elif not sys.argv[1:]:
             regenerate()
         else:

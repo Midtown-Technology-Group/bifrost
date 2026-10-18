@@ -144,6 +144,34 @@ jobs:
             ${{ runner.temp }}/rbac-python-lock.log
             ${{ runner.temp }}/rbac-client-lock.log
             ${{ runner.temp }}/rbac-client-install.log
+          include-hidden-files: true # Only the assembled allowlist directory and named dependency logs above.
+          if-no-files-found: error
+          retention-days: 14
+
+  # TEMPORARY: independent producer so API boot cannot hide supported mirror fixes.
+  # Remove with the other RBAC diagnostics before the final PR.
+  rbac-mirror-sync-diagnostic:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/codex/upstream-rbac-sync-20261017'
+    name: RBAC Mirror Sync Diagnostic
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout exact mirror source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Run supported mirror producer and validated delta exporter
+        run: python3 scripts/rbac-debug-regenerate.py --mirrors-only
+      - name: Retain SHA-bound canonical mirror delta
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: rbac-mirror-sync-${{ github.sha }}
+          path: ${{ runner.temp }}/rbac-regenerated-inputs/
+          include-hidden-files: true # Assembled validated mirror files and restricted identities only.
           if-no-files-found: error
           retention-days: 14
 
