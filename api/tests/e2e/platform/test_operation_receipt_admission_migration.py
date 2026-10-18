@@ -11,9 +11,10 @@ from alembic.operations import Operations
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.pool import NullPool
 
-from tests.conftest import TEST_DATABASE_URL_SYNC
+from tests.conftest import TEST_DATABASE_URL, TEST_DATABASE_URL_SYNC
 
 MIGRATION = (
     Path(__file__).resolve().parents[3]
@@ -43,12 +44,20 @@ def _run_upgrade(connection, module: ModuleType) -> None:
 
 
 @pytest.mark.e2e
-def test_operation_receipt_migration_recovers_after_partial_commit() -> None:
-    database_url = make_url(TEST_DATABASE_URL_SYNC)
-    if database_url.host == "pgbouncer":
-        database_url = database_url.set(host="postgres")
+@pytest.mark.asyncio
+async def test_operation_receipt_migration_recovers_after_partial_commit() -> None:
+    setup_database_url = make_url(TEST_DATABASE_URL_SYNC)
+    if setup_database_url.host == "pgbouncer":
+        setup_database_url = setup_database_url.set(host="postgres")
+    migration_database_url = make_url(TEST_DATABASE_URL)
+    if migration_database_url.host == "pgbouncer":
+        migration_database_url = migration_database_url.set(host="postgres")
 
-    engine = create_engine(database_url, poolclass=NullPool)
+    setup_engine = create_engine(setup_database_url, poolclass=NullPool)
+    migration_engine = create_async_engine(
+        migration_database_url,
+        poolclass=NullPool,
+    )
     schema = f"receipt_migration_{uuid4().hex}"
     search_path = f'SET search_path TO "{schema}", public'
     migration = _load_migration()
@@ -56,7 +65,7 @@ def test_operation_receipt_migration_recovers_after_partial_commit() -> None:
     try:
         # Reproduce both durable artifacts an interrupted migration may leave:
         # the committed column and an invalid concurrent-index catalog entry.
-        with engine.connect().execution_options(
+        with setup_engine.connect().execution_options(
             isolation_level="AUTOCOMMIT"
         ) as setup:
             setup.execute(text(f'CREATE SCHEMA "{schema}"'))
@@ -106,18 +115,20 @@ def test_operation_receipt_migration_recovers_after_partial_commit() -> None:
             ).scalar_one()
             assert invalid is False
 
-        with engine.connect() as connection:
-            connection.execute(text(search_path))
-            connection.commit()
-            _run_upgrade(connection, migration)
+        async with migration_engine.connect() as connection:
+            await connection.execute(text(search_path))
+            await connection.commit()
+            await connection.run_sync(_run_upgrade, migration)
 
-            legacy_rows = connection.execute(
-                text(
-                    """
-                    SELECT namespace, key_hash, admission_key
-                    FROM operation_receipts
-                    ORDER BY key_hash
-                    """
+            legacy_rows = (
+                await connection.execute(
+                    text(
+                        """
+                        SELECT namespace, key_hash, admission_key
+                        FROM operation_receipts
+                        ORDER BY key_hash
+                        """
+                    )
                 )
             ).all()
             assert legacy_rows == [
@@ -126,7 +137,7 @@ def test_operation_receipt_migration_recovers_after_partial_commit() -> None:
             ]
 
             index = (
-                connection.execute(
+                await connection.execute(
                     text(
                         """
                         SELECT
@@ -155,16 +166,19 @@ def test_operation_receipt_migration_recovers_after_partial_commit() -> None:
             # A retry after the index completed but before Alembic stamped the
             # revision recognizes the exact index rather than replacing it.
             index_oid = index["oid"]
-            connection.commit()
-            _run_upgrade(connection, migration)
-            preserved_oid = connection.execute(
-                text("SELECT to_regclass(:index_name)::oid"),
-                {"index_name": INDEX_NAME},
+            await connection.commit()
+            await connection.run_sync(_run_upgrade, migration)
+            preserved_oid = (
+                await connection.execute(
+                    text("SELECT to_regclass(:index_name)::oid"),
+                    {"index_name": INDEX_NAME},
+                )
             ).scalar_one()
             assert preserved_oid == index_oid
     finally:
-        with engine.connect().execution_options(
+        await migration_engine.dispose()
+        with setup_engine.connect().execution_options(
             isolation_level="AUTOCOMMIT"
         ) as cleanup:
             cleanup.execute(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
-        engine.dispose()
+        setup_engine.dispose()

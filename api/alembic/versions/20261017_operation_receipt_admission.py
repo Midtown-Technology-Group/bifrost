@@ -29,8 +29,8 @@ def _validate_admission_key_column() -> None:
                     format_type(attribute.atttypid, attribute.atttypmod) AS data_type,
                     attribute.attnotnull AS not_null,
                     pg_get_expr(default_value.adbin, default_value.adrelid) AS default_value,
-                    attribute.attidentity AS identity_kind,
-                    attribute.attgenerated AS generated_kind
+                    attribute.attidentity <> '' AS has_identity,
+                    attribute.attgenerated <> '' AS has_generated_value
                 FROM pg_attribute AS attribute
                 LEFT JOIN pg_attrdef AS default_value
                   ON default_value.adrelid = attribute.attrelid
@@ -51,8 +51,8 @@ def _validate_admission_key_column() -> None:
         column["data_type"] == "character varying(64)"
         and not column["not_null"]
         and column["default_value"] is None
-        and not column["identity_kind"]
-        and not column["generated_kind"]
+        and not column["has_identity"]
+        and not column["has_generated_value"]
     )
     if not compatible:
         raise RuntimeError(

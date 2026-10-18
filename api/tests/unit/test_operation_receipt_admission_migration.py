@@ -40,6 +40,10 @@ class _Bind:
     def execute(self, statement: Any) -> _Result:
         sql = str(statement)
         if "FROM pg_attribute AS attribute" in sql:
+            assert "attribute.attidentity <> '' AS has_identity" in sql
+            assert (
+                "attribute.attgenerated <> '' AS has_generated_value" in sql
+            )
             return _Result(self.column)
         if "FROM pg_class AS index_relation" in sql:
             return _Result(self.index)
@@ -96,8 +100,8 @@ def _compatible_column() -> dict[str, Any]:
         "data_type": "character varying(64)",
         "not_null": False,
         "default_value": None,
-        "identity_kind": "",
-        "generated_kind": "",
+        "has_identity": False,
+        "has_generated_value": False,
     }
 
 
@@ -170,10 +174,22 @@ def test_upgrade_preserves_an_already_complete_index() -> None:
     assert not any("CREATE INDEX" in sql for sql in recorder.statements)
 
 
-def test_upgrade_rejects_an_incompatible_existing_column() -> None:
+@pytest.mark.parametrize(
+    ("override", "value"),
+    [
+        ("not_null", True),
+        ("default_value", "'unexpected'::character varying"),
+        ("has_identity", True),
+        ("has_generated_value", True),
+    ],
+)
+def test_upgrade_rejects_an_incompatible_existing_column(
+    override: str,
+    value: Any,
+) -> None:
     module = _load_migration()
     recorder = _RecordingOp(
-        column=_compatible_column() | {"not_null": True},
+        column=_compatible_column() | {override: value},
         index=None,
     )
     module.op = recorder
