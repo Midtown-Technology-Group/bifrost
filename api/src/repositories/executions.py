@@ -60,6 +60,14 @@ def _make_json_safe(value: Any) -> Any:
     return json.loads(json.dumps(value, default=str))
 
 
+def execution_workflow_id(execution: Any) -> str | None:
+    """Return a workflow ID only when the execution has database identity."""
+    workflow_id = getattr(execution, "workflow_id", None)
+    if not workflow_id or getattr(execution, "is_local_execution", False):
+        return None
+    return str(workflow_id)
+
+
 class ExecutionRepository(BaseRepository[Execution]):
     """Repository for execution operations."""
 
@@ -457,7 +465,7 @@ class ExecutionRepository(BaseRepository[Execution]):
         logs_query = (
             select(ExecutionLog)
             .where(ExecutionLog.execution_id == execution_id)
-            .order_by(ExecutionLog.sequence)
+            .order_by(ExecutionLog.sequence, ExecutionLog.id)
         )
         if not user.is_superuser:
             logs_query = logs_query.where(
@@ -468,14 +476,14 @@ class ExecutionRepository(BaseRepository[Execution]):
 
         logs = [
             ExecutionLogPublic(
-                id=log.id,
+                id=public_id,
                 timestamp=log.timestamp.isoformat() if log.timestamp else "",
                 level=log.level or "info",
                 message=log.message or "",
                 data=log.log_metadata,
                 sequence=log.sequence or 0,
             )
-            for log in log_entries
+            for public_id, log in enumerate(log_entries)
         ]
 
         # 3. Fetch AI usage data
@@ -536,7 +544,7 @@ class ExecutionRepository(BaseRepository[Execution]):
         return WorkflowExecution(
             execution_id=str(execution.id),
             workflow_name=execution.workflow_name,
-            workflow_id=str(execution.workflow_id) if execution.workflow_id else None,
+            workflow_id=execution_workflow_id(execution),
             org_id=str(execution.organization_id) if execution.organization_id else None,
             form_id=str(execution.form_id) if execution.form_id else None,
             executed_by=str(execution.executed_by),
@@ -613,7 +621,7 @@ class ExecutionRepository(BaseRepository[Execution]):
         logs_query = (
             select(ExecutionLog)
             .where(ExecutionLog.execution_id == execution_id)
-            .order_by(ExecutionLog.sequence)
+            .order_by(ExecutionLog.sequence, ExecutionLog.id)
         )
 
         # Filter debug logs for non-superusers
@@ -626,14 +634,14 @@ class ExecutionRepository(BaseRepository[Execution]):
         # Convert ORM models to Pydantic models
         logs = [
             ExecutionLogPublic(
-                id=log.id,
+                id=public_id,
                 timestamp=log.timestamp.isoformat() if log.timestamp else "",
                 level=log.level or "info",
                 message=log.message or "",
                 data=log.log_metadata,
                 sequence=log.sequence or 0,
             )
-            for log in log_entries
+            for public_id, log in enumerate(log_entries)
         ]
 
         return logs, None
@@ -757,7 +765,7 @@ class ExecutionRepository(BaseRepository[Execution]):
         return WorkflowExecution(
             execution_id=str(execution.id),
             workflow_name=execution.workflow_name,
-            workflow_id=str(execution.workflow_id) if execution.workflow_id else None,
+            workflow_id=execution_workflow_id(execution),
             org_id=str(execution.organization_id) if execution.organization_id else None,
             form_id=str(execution.form_id) if execution.form_id else None,
             executed_by=str(execution.executed_by),
