@@ -161,6 +161,7 @@ async def test_create_execution_updates_existing_scheduled_row() -> None:
         is_local_execution=True,
         execution_model="process",
         workflow_id=str(uuid4()),
+        lineage=None,
     )
 
     assert result is existing
@@ -194,6 +195,7 @@ async def test_create_execution_does_not_resurrect_cancelled_claim(
         user_id=str(uuid4()),
         user_name="Runner",
         status=ExecutionStatus.RUNNING,
+        lineage=None,
     )
 
     assert existing.status == cancel_status
@@ -215,6 +217,7 @@ async def test_create_execution_adds_new_global_execution() -> None:
         org_id="GLOBAL",
         user_id=str(user_id),
         user_name="Runner",
+        lineage=None,
     )
 
     assert result.id == execution_id
@@ -244,6 +247,7 @@ async def test_create_execution_redacts_sensitive_endpoint_inputs() -> None:
         org_id="GLOBAL",
         user_id=str(uuid4()),
         user_name="API Key",
+        lineage=None,
     )
 
     assert result.parameters == {
@@ -801,6 +805,7 @@ async def test_standalone_create_execution_uses_provided_session_without_commit(
             user_id=str(uuid4()),
             user_name="Runner",
             session=session,
+            lineage=None,
         )
 
     create.assert_awaited_once()
@@ -865,6 +870,7 @@ async def test_standalone_wrappers_create_session_and_commit_when_needed() -> No
             org_id=None,
             user_id=str(uuid4()),
             user_name="Runner",
+            lineage=None,
         )
         await executions.update_execution(
             execution_id=str(uuid4()),

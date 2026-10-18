@@ -22,10 +22,40 @@ regenerate_python_lock() {
     '
 }
 
-regenerate_client_lock() {
+regenerate_client_lock() (
     node -e 'if (Number(process.versions.node.split(".")[0]) !== 26) throw new Error("This diagnostic requires Node 26")'
-    (cd "$repo_root/client" && npm install --package-lock-only --ignore-scripts --no-audit --no-fund)
+    # The inherited lock pins Tiptap's old exact intra-family dependencies.
+    # Resolve the complete candidate manifest in a fresh directory so npm can
+    # select one compatible graph, with normal peer validation and all existing
+    # fork dependencies/overrides intact. Never modify the source lock on failure.
+    temporary_parent="$(realpath "${RUNNER_TEMP:-${TMPDIR:-/tmp}}")"
+    lock_workspace="$(mktemp -d "$temporary_parent/bifrost-rbac-npm.XXXXXXXX")"
+    case "$lock_workspace" in
+        "$temporary_parent"/bifrost-rbac-npm.*) ;;
+        *) echo "Unexpected npm regeneration directory" >&2; exit 1 ;;
+    esac
+    trap 'rm -rf -- "$lock_workspace"' EXIT
+    cp "$repo_root/client/package.json" "$lock_workspace/package.json"
+    (cd "$lock_workspace" && npm install --package-lock-only --ignore-scripts --no-audit --no-fund)
+    node - "$repo_root/client/package.json" "$lock_workspace/package-lock.json" <<'NODE'
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const manifest = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+const lock = JSON.parse(fs.readFileSync(process.argv[3], 'utf8'));
+assert.equal(lock.lockfileVersion, 3);
+for (const field of ['dependencies', 'devDependencies', 'optionalDependencies', 'engines']) {
+  assert.deepEqual(lock.packages[''][field], manifest[field], `Lock root drift: ${field}`);
 }
+const selected = {};
+for (const name of [...Object.keys(manifest.dependencies).filter(name => name.startsWith('@tiptap/')), '@tiptap/core', '@tiptap/pm']) {
+  const entry = lock.packages[`node_modules/${name}`];
+  assert.ok(entry?.version, `Missing Tiptap selection: ${name}`);
+  selected[name] = entry.version;
+}
+console.log(`Fresh Tiptap selection: ${JSON.stringify(selected)}`);
+NODE
+    cp "$lock_workspace/package-lock.json" "$repo_root/client/package-lock.json"
+)
 
 install_client_lock() {
     node -e 'if (Number(process.versions.node.split(".")[0]) !== 26) throw new Error("This diagnostic requires Node 26")'

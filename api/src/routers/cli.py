@@ -2929,6 +2929,7 @@ async def continue_cli_session(
     Creates a real Execution record and sets pending=True so CLI can pick up.
     """
     from src.repositories.executions import ExecutionRepository
+    from shared.run_lineage import person_lineage
     from src.models.enums import ExecutionStatus
 
     repo = CLISessionRepository(db)
@@ -2975,6 +2976,7 @@ async def continue_cli_session(
         # A CLI session executes local source. A same-named database workflow
         # is not its identity and may belong to another tenant.
         workflow_id=None,
+        lineage=person_lineage(current_user.user_id).bound(execution_id),
     )
 
     # Link execution to session

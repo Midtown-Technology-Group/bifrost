@@ -91,6 +91,7 @@ class ExecutionRepository(BaseRepository[Execution]):
         form_id: str | None = None,
         api_key_id: str | None = None,
         status: ExecutionStatus = ExecutionStatus.RUNNING,
+        is_local_execution: bool = False,
         execution_model: str | None = None,
         workflow_id: str | None = None,
         solution_deployment_id: str | None = None,
@@ -175,6 +176,7 @@ class ExecutionRepository(BaseRepository[Execution]):
             existing.organization_id = parsed_org_id
             existing.form_id = parsed_form_id
             existing.api_key_id = parsed_api_key_id
+            existing.is_local_execution = is_local_execution
             existing.execution_model = execution_model
             existing.started_at = datetime.now(timezone.utc)
             if lineage is not None:
@@ -200,6 +202,7 @@ class ExecutionRepository(BaseRepository[Execution]):
             organization_id=parsed_org_id,
             form_id=parsed_form_id,
             api_key_id=parsed_api_key_id,
+            is_local_execution=is_local_execution,
             execution_model=execution_model,
             started_at=datetime.now(timezone.utc),
             **lineage_columns(lineage),
@@ -856,6 +859,7 @@ async def create_execution(
     form_id: str | None = None,
     api_key_id: str | None = None,
     status: ExecutionStatus = ExecutionStatus.RUNNING,
+    is_local_execution: bool = False,
     execution_model: str | None = None,
     workflow_id: str | None = None,
     solution_deployment_id: str | None = None,
@@ -890,6 +894,7 @@ async def create_execution(
             form_id=form_id,
             api_key_id=api_key_id,
             status=status,
+            is_local_execution=is_local_execution,
             execution_model=execution_model,
             workflow_id=workflow_id,
             solution_deployment_id=solution_deployment_id,

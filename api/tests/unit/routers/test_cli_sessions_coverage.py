@@ -275,6 +275,8 @@ class TestCLISessionHttpBranches:
         assert result.status == "pending"
         execution_repo.create_execution.assert_awaited_once()
         assert execution_repo.create_execution.await_args.kwargs["workflow_id"] is None
+        assert execution_repo.create_execution.await_args.kwargs["is_local_execution"] is True
+        assert execution_repo.create_execution.await_args.kwargs["lineage"]["run_user_id"] == str(user.user_id)
         db.execute.assert_awaited_once()
         assert execution.session_id == session.id
 
