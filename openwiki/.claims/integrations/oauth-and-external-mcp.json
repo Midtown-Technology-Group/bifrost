@@ -1,0 +1,114 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:59a3fa695275e170effd043bf25c85fe062ed21acfcd3a218bfea4f84f38c222",
+  "claims": [
+    {
+      "id": "claim_83096e390c7d4d5c8f545bd2a9c95ae6",
+      "statement": "Workflow OAuth authorization builds provider redirects with CSRF state and, for PKCE-enabled providers, a stored verifier and challenge; callbacks consume the verifier once and validate its provider/redirect binding before exchanging the code.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/routers/oauth_connections.py#L342-L369",
+          "version": "repo-lines-v1:sha256:b05574e6a4adbb8187987a65b426e51060753f19fb3fbe238ab96dfbf5b964d0:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNjOWYzYzVjMjg2ZDU2NDY2YWE4NDhkNGRiZDEwOWIxZWJlNDE0OTZhN2Y1MjhmYmVmNmYyYWQyMzgyNWU4NGYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlhYTYyOTZiZmNkMDJmMGU5ODJiOWUwODQ3MzUzM2VkZDczODczMzEwNTVlYWIwYjkyZGQxNmE0ZmI3YzA3YjUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJiMDJhNGUwMDk5ODEyYWNhMmExYTY2NDg0NzUzOTIyMDEzYTY2NGNiOTE1NjU2OWEwZGZlOGZlNWJlMjc5MzIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRjOTg4NjAxOWVjNzQ4Y2VkZGZlYjE3Nzc1ZjFjNjIwMDM3ODQ0ZTc1NzVmOTFhY2YwYjdjYTdiYzM4NDMzNTgifQ"
+        },
+        {
+          "resource": "repo://api/src/routers/oauth_connections.py#L740-L793",
+          "version": "repo-lines-v1:sha256:d31c29bdb3525b000f41acbbbdadc3b34f917fdd508d9610183621c5ab5b68d4:eyJzZWxlY3RlZExpbmVDb3VudCI6NTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVhNzFkYTQxNDRkN2EzMzlkYTBhNTU1MWY4NmZlMjIyZjg3Mzc5NzJlY2JmYzcxMjlkOTQzNGFlODc4MTBhYTIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwYzFmMTg4ZjE0MmVkN2E4MjQ2ODBiMjA3MTcyYzU1MTliYzYxNGE0OGZkYTdjZjE2N2VkYjhkZGY3OTk1NmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNhMWE1MjY1MTY3YmQzODMyMzM4YTU0MmRiM2I1ODg5MmQ4MGE4YTVlOWUwOTJkZWQyN2QyZDdhNjdhNmVhOGMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE1N2JkMzQ0MjRlZjc4NDhhYjNmZDljZGI5NWIyMjg1NDk3Y2M5NmVjOTUzNGI4NGFiNTBiMmMyMWM3OWE2ZDMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_1491204209f848c2b46924586b124a35",
+      "statement": "Per-mapping OAuth callback state resolves the mapping's organization for token storage and consumes its nonce before token exchange to prevent a replay from overwriting another token slot.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/routers/oauth_connections.py#L672-L707",
+          "version": "repo-lines-v1:sha256:431baa28e9328c22a379a8318a1912c39a95c93582c86a95e96e834d94a69d90:eyJzZWxlY3RlZExpbmVDb3VudCI6MzYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBhYTJiZWI0Y2VhZTdiZDhmOTQ4YWIyZjg3Mzg0MGZkODUyYWJjYTRhNWQwNmZlMzI3NjBjYjdjNjExNjA5NzAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU1MDMyZTk2NGQwOTMyMzUxZTVkMTg1MjY5MjgxYjE3MWEzYTA5YjA4YjI4NmU2NjFlYTQ3MDMyM2M4MmViNGQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjBhNGRiOTY4NTgyMzliOTgxMmVhYjc3MTQxYjhhYWUzMzcyMTUxODcyYzI4OTE3NTk4OGI0ODVjYWI5Y2RiYzEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJkNTE5NGEwZTY0NDdlNWFiYTNhYWI3MjdmNGNkZDRlMDRjN2VhNWUwYzEzMGVlYTNlMmE5ZDUxZDEzYjkwMzIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_50d52299ba7e43efb1047ae6509cd5cb",
+      "statement": "External MCP token resolution is centralized and chooses user or service credentials based on the caller and connection fallback flags, attempts refresh for near-expiry tokens, and requires reauthorization when refresh fails without an allowed fallback.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/services/mcp_client/auth_resolution.py#L1-L27",
+          "version": "repo-lines-v1:sha256:d93ba2b32bc0de688b9c1d37a9cb7b82729a00f9ff0e558ce4528ab76439dc39:eyJzZWxlY3RlZExpbmVDb3VudCI6MjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQzMmZhNDYwMTFjMWM2NjgzYjkzNDgzMzAzMjEwMzkwNTE2OGZiODg3Zjc5Yjk5ZjUyMTk0ZTliNjJjYjRkMDEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM4OWEwM2EyYmZhYWY4MDgyMmY0YzI4MjY0NjEwYjRkODU2ZDE0MTUyNmExZWI4YTAyZjY4MDExMjBlZTQ1YTYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFhYWY3NjM3Y2I2ZTdlNWRiODVkNjM0Mjc0NjAxNGRmMDQxY2NkNTU4YTkyMGIyOWViNmFjNzE5ZDdiYWY1YzIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_02bb7b89671f46afae2507f605675fd3",
+      "statement": "The external MCP client uses Streamable HTTP with modern discovery-first negotiation and legacy initialize fallback; auth selection is completed by the caller before the transport sends the token.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/services/mcp_client/client.py#L1-L11",
+          "version": "repo-lines-v1:sha256:925d6b8e2b6ad75b18b7f3907a1125d6073e83c1a4fc45ff7ed049e59ee50af9:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZjYjUxOGY5N2MyZGY2OTM0ODA2MjlhMGZlMmUxYTgzMjMxYzg1M2NjYjRkMTkxNzIyNTgyODdlOTVjY2MzOGUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY1YzYwNTg3NWMxMmQ4OGEzNWRiN2M3NGM4ZGJmNDUzNTg5ZDI0YzIyYTNmYWViOTU4YWE0YjNmODEzMjkyYjEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFhYWY3NjM3Y2I2ZTdlNWRiODVkNjM0Mjc0NjAxNGRmMDQxY2NkNTU4YTkyMGIyOWViNmFjNzE5ZDdiYWY1YzIifQ"
+        },
+        {
+          "resource": "repo://api/src/services/mcp_client/client.py#L30-L60",
+          "version": "repo-lines-v1:sha256:6d21e72e72f11cf284e79fe17e1ddbf72a7e2b897bf41d2d29365167a29f2e2e:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk4NDg3ODU0YzVhNjA2MjQ5ZjI2MjkxZTkyZjQ0YTc5MWNlYTg2MzIyNGE0NTQ3NDBkMDQxMWFmZDJjM2Y5MmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM1Mzk5Y2NlN2Q3ODE4MDllYjZiZDA3OWYyNjQ1YzUwYzJiNTZhMmIxMzQwZWIwODNlNTI5YTc5N2FmY2M0MmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjYyMDA5N2U0YWE1MDA2OGJhMTU3ZjlhMjczOWZhZDg2OTk1ZTFlMGNkY2NkYWRjNTg5N2MyMDM0Yzc0ZDNlZmEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI0NjQ2NTFhMTM5Zjg5NDExZjY2MzYwZGRiOWVmYjJiNDE2OWU0YWQzMWMxZDMyMzFhMjQzMmNlZDA0YTJiYTQifQ"
+        },
+        {
+          "resource": "repo://api/src/services/mcp_client/client.py#L67-L88",
+          "version": "repo-lines-v1:sha256:6ef3086fbe0ef3846056f2f2587091035683f9d2cd2208f4a9bc4db81c5ef493:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwOGIyOTlkNTU4NzQyZDkxYjMzMTY0MDVkODY5ZDY3ODE1YTY3YzVhNGQ4YjM2YjI3ZTNmNGY0OTA3YzFlZjkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZjMjY0ZjZiYjk0Y2FkNzUwNjc1ZjlkN2QzMTZhNTliZWExZTcxYjRmNDU2NjUwZDUzZWZkNTNkNDU0MjZkYzciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk0MDI3NTkxZWE2NDgyZWVlODcxMzA5ZWI4M2NhMGRmZmM0MzczZGNlNmJkMmVmYmVkZjI5YmVlMjAyYmM3MjgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_74852cae22a2489ea0e757bd22f5bc48",
+      "statement": "MCP connection public conversion omits the encrypted client secret and connection lookup is constrained to the caller's organization unless the caller is a platform admin.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/routers/mcp_connections.py#L159-L196",
+          "version": "repo-lines-v1:sha256:aeac4fdab2ca18c4f9843da0ea12669f780af7a68a1a9c86bcdd796203264073:eyJzZWxlY3RlZExpbmVDb3VudCI6MzgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxZWEzMGY5YjU0YmIxYzQxZWE0MDJhMmVjY2Y3NDU4NzBlZDZmNDg5OTY4NzA1MWY0ZjU3YzM0NjQ2OTZhMjkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM2M2IxMWQwMzhlYzgyZDhkYzliMmI1Nzc1NjRlYjI5NjRhNWQyNjA2OTRjZWVlNDQzYjM2NTU1YTkxYjNkNDYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImVhOWIyYWI3NzM2ZjI5Y2FiNTdkYjZiMWUzMWVlNmJhMmUxYmNhMmQ0NzlmYjEwODE0NTdlZDE1MWUyNDgxZTciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjBiN2QyYzY3OGIwOTE3ZGVmOGI2OTk1MmQ3ZTBiZmU5MzE3ZTY3NmM2MzBkNzQ2Mzk3YjkzYjZmNzBlZDI1YzAifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_4f076fdbee7a4ad0b209462c05b183ca",
+      "statement": "Bifrost's hosted MCP auth provider implements OAuth 2.1 discovery, PKCE authorization, dynamic client registration, and Bifrost JWT validation; its tokens are marked with MCP-specific scope and resource claims.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/services/mcp_server/auth.py#L1-L13",
+          "version": "repo-lines-v1:sha256:84c03b634fc46dc8305522423806397945318c2384c502286b2ddc859f5dc356:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEzMDNlY2RkNGE0ZDEwZjE5YzczZmQ0MmZkMTI0MzdmZDMzNTRhODI2ODE2MDVkYTUyNTVhOTdhMzkwNjhkYmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRkMjkwYmYzNDNiZjViNTlmZTFhYWVjOTViNjJmNGE5OWNlMTAwZGMxNjFmNzZhNWZiMjBjMGUwNjczYTAxMTkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk4MWQ1ZDY4OTMzYzZiMDYzOTg0OGNiY2UzMTgxYTExMWIyZDdjYzcyOWY2OTFiZjMzMTFkMWQ1NTE0ODhkMGIifQ"
+        },
+        {
+          "resource": "repo://api/src/services/mcp_server/auth.py#L38-L59",
+          "version": "repo-lines-v1:sha256:751ea5a029f37e441c625a516e59bb614d59bd8505f41c741493c9ef5998d882:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYwYjBjZGVlYzQ3NDkxOGQ1ZWQ2YTEyNDBhNWMxOGQwOTZkZTc1Y2E5NDg0ZTI0NWY2NDJhYjlhZGMwNDIwMDIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU1YzFjNDYyZTJhMzlkNzQ3NTlmNWUxYjEyNmY3NjgzYTJiNzMwMTE4ZTE4ZjUxMjJiMDhjZWRlZWI2NTBlMjMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRlMDE1ZjQ0YjUxOTFlZDUwOWMxNzU5OGY0Nzk1OTk4OGFjMGY4YWIxNzAxMDhhOGY1NjYzNDFiMGI5YWEzNTYifQ"
+        },
+        {
+          "resource": "repo://api/src/services/mcp_server/auth.py#L99-L127",
+          "version": "repo-lines-v1:sha256:62a97ccda927fecc5433869446ac1cbf56410dd925fd998d645fc5965c2d9967:eyJzZWxlY3RlZExpbmVDb3VudCI6MjksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjEyOTdlZDU1YTQ1N2FmMmM2MTJjYTY2MTRjOTMxYTQ1N2FiODlkNTA3OTVmOTU3YWJlZWY5NWMxZjFlMGVmZGYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU5MDlhNTNhNjE4ZDAyOGUxZDMwMDBjMGE3YWJjZWVjYmU1ZmIzN2Y0ZTUxMWVmZTQ2NjQzZmFkNmU2Njg3MmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImI4OTMwMjkxODA3MDEyNDI5NjUyZDZiN2UyY2UzZmUyNzJiNWE3OTM4ZWQ2ZjUyODc5NzM0M2NiOTEwNWU3OTYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjIxMWQwY2M2MzdiMDlkZDE2NWMyODY3MDkyMjQ2MjM1ZjU0ODgyNzg5NWJkZjE1Nzg5ZmQxMDZjY2E4ZTBlZjIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_4eef9141801a439eaf4548d69ccf60cd",
+      "statement": "Hosted MCP tool access is assembled from accessible agents, filtered by global allow/block configuration, and applies the same workflow repository gate used by execution so tool listing and invocation access stay aligned.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/services/mcp_server/tool_access.py#L42-L56",
+          "version": "repo-lines-v1:sha256:85bde9cc664549433c53b33e19142e063d379a506b0a4377353546f9e35565ec:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ3NDIwOGFjZDA0YWY2NmFhNzk5MDFlYTBiMTc2ZTliZmJiN2M1ODQ5Y2MyYmQ4YzI3N2ZjNDZhNDQzNDkxMDMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU2YmY1Y2MwMjA2YjVkNWIxNjdkZDhlNTE3ZDM5MjllM2Q1OWY0ZTJiM2MzNWExY2NmMjBiNzFlYzAxZjA1NWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImJiNjBlODU3Yzk2MmE2ZjNhNGRmNzRmZWE4ZGU5YjY0YmE4ZWIxZmJjMDFlZDJkMGZjMTk1MDk5NGZlNjE5ZmMifQ"
+        },
+        {
+          "resource": "repo://api/src/services/mcp_server/tool_access.py#L73-L112",
+          "version": "repo-lines-v1:sha256:d38b9d68f559fdc18c83d52fe02531680711f949ecb156014183309bc4501be5:eyJzZWxlY3RlZExpbmVDb3VudCI6NDAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZkZjEyNzE0YmU3MGQ3NmZiNDUyZTczNzM1OTY5MTc5MzYxMzA2N2RmNjljY2JjM2RmNTg0ZDA3ZGM1NzJkZWUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJjYTYzOWFiMjAwYWJkZTExNWI5MzUzODRjMzlhMzIwOTk3YzZlNDEzMzI0MDEwNDdkMzM0M2FiNTVmMzJlYjEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZhMDIxZTY0YWJmMDJlNTk3ZjcwYjY2NTFjOTM2ODBiNjI1OTlkZGU5MWVkYWZjMTg4OWRlYjU1N2E5MmE2ZGYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU1NzFhYTU5MzNlZTQ3MTJkZDRjNTk0NjVjMTA1YTkwYzBhMmUxZDRiZjEyMTkwODQ5ZjAwZTZiYjkyNzhjMTcifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_50f31f1213794eb79d25f667b29d89a6",
+      "statement": "OAuth provider configuration distinguishes code flow from client-credentials flow; user authorization explicitly rejects client-credentials providers because they do not require an authorization redirect.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/routers/oauth_connections.py#L305-L338",
+          "version": "repo-lines-v1:sha256:aae661709dc6a34d349690711fead242585db361a599d4dbdcedaf52ff09e54b:eyJzZWxlY3RlZExpbmVDb3VudCI6MzQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ1MzI2OTVmZjkxMTMzNTM5M2YyZWMyMjNmYWE0OWMwZTFjNTJjNDU2YzQ3MmU0ZWE0MzkzYmRkMTNmZDgxOTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQxZDBlMjljYjc0ZmE1MTM3Njc1NzAwM2ZiYmI1ZmQ0Mjg5NTA5N2JiZGNhMGY1YzFkMDIyYjc2YTUxZjExYWIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJjZjhjYzlkNTEwZTBjM2MyY2U1MjllOTBlNjUzYzY4OGY5YjQ5MGRlODM2NmMwZjc3YzA2YjJlYTQ2ZTJjZTgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImJiMDJhNGUwMDk5ODEyYWNhMmExYTY2NDg0NzUzOTIyMDEzYTY2NGNiOTE1NjU2OWEwZGZlOGZlNWJlMjc5MzIifQ"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.7.2",
+    "at": "2026-10-18T02:14:28.318Z"
+  }
+}

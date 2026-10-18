@@ -1,0 +1,246 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:636a2b2d0eca5fa008f3f193bac4fe777a457c32c169964d4f3d866d09bce72d",
+  "claims": [
+    {
+      "id": "claim_294489c6a8ac43e9b519fc6b00d90357",
+      "statement": "The workflow file editor overlay is mounted globally but renders only while open for a platform administrator; this client visibility gate is distinct from API authorization.",
+      "evidence": [
+        {
+          "resource": "repo://client/src/App.tsx#L297-L300",
+          "version": "repo-lines-v1:sha256:2d9007557bef4b3092d0401fa4a201a211e426b7d489f9cde7b2374f150f94b0:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNGUwOTAwYmM4MmY3ZGZmN2YwZGM5NTZiZTE2ZDg0MzA0MjRjYjgyYTZlMWYxMTM1ODVhMmE0MmVkY2RmYzVkZSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZTE0MGIzN2VkNjQ1MzE4YTE1NDg3OGQ3Y2Y4ZWUzYzhhNGRjNzZhMjMwNGMxZGI0ZGM4M2ZmZDA0MWMzMjEwMCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOWUxYzEwY2Y4MTI4YzE0NTI2NzAxZTI5OTNmMTcyM2YyODI2MDFlZWY4ZjRiN2QzNjcyMjc1NWI3NGUwOTYxMCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYTNiZjY4MzllZTMzYzYwMzQwZDYzYmFmODIzMjM5MjA1MzIwZDgzOTViMTMzZGQ3MzEzZDc4MjNhMWNjNmUzMiJ9"
+        },
+        {
+          "resource": "repo://client/src/components/editor/EditorOverlay.tsx#L16-L31",
+          "version": "repo-lines-v1:sha256:857c4bd342e0898fdd162f29e24ce5a981f66793dd629deb395f14fcd1326eb5:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMyYjdmM2JkZGI1ZWNjZGMxZTg5MDZlZTM2M2JkZjg2YWFkYjQyNDhmZTgzYzE3ZDkzMjdmYTMzMjE5MjI3YWMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjcwODBhYzNjZDUwOWY1MTA2N2QwYjJmMzlhMTYzYjc5ZGFhNzA2YzUyZDNhYjYxMzkyODM3YWMyODljMmYxNDYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjkzZjk4MzE2Yzk2MjMwN2E5MWQ2ODU5Mzg4YWRiOTFhYmQwYTJlMDkyMmUxMGM0NTM2ZGQzYzJhMGQyZDBhOTciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVkNjgwOTliMjg5MWFmOTFmMjdmOGI4YmFmMTFhMGUwMDViYzcyNmNiNTY2NmNhNmE2MzM1NDFiZWVjNzM4MzgifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_70c84dae766d49c1bc767f3d65e04339",
+      "statement": "Workflow file autosave uses a one-second debounced sequential queue and writes with the current ETag; conflicts are delivered to a separate editor callback, and the queue carries a successful ETag to a newer edit queued during an in-flight write.",
+      "evidence": [
+        {
+          "resource": "repo://client/src/hooks/useSaveQueue.test.ts#L104-L149",
+          "version": "repo-lines-v1:sha256:d31a92e27faccf2bd908006bd8861dce83f1500db2652675da47cd73c04571a3:eyJzZWxlY3RlZExpbmVDb3VudCI6NDYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjEwMDAzYTM0ZGUzNjI2MzU1OGM4ODE1OGM2M2RlMTk1OTc4N2I3Mzc5NWQyNzY5NDAwYzlmZTc4YWRiNjEzMWUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJiYWUzMDFjMmQ2YTE5YjA2MzkwNjljNDQ5ZDg4ZGZkNDkwZWQzYjBiYTJkYTg1N2NiYzdlMzY5NDA1Yzg1YTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE1M2EyNjc3YjA0OWRjZDYyMDhjMDMxNzM2ZWNhYjFlNGM5NzE4Y2NlYjkwMzNlN2FiYTk2NmEwNDBmODZmZjQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQ2MTc1ZjRkMTg3MGE2NWU2OGMxYjE1NmI0MTY5OTQyMDBjOWQ2YjY3YTU0YzgwYzQ0ZjJmZWJlNDk4ZDc4ODcifQ"
+        },
+        {
+          "resource": "repo://client/src/hooks/useSaveQueue.ts#L122-L187",
+          "version": "repo-lines-v1:sha256:2c97a3e309978f7cf5274d48be5fe8dbbc34ec6247614a6095f2b59ce0149329:eyJzZWxlY3RlZExpbmVDb3VudCI6NjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVkOWQ4Y2EyYmNhNmJiZDE2YjU5Y2JmNTJiNDM1ZDNlNzY3NjA3MTk4NjQ1Njc0YTdjN2ZiOGMyZTA1NjA2YTMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM0OWMxNDIzZWVjZjM2ZmI4MWQ3OWNlMGM1OWZkMzI1ZTI1OTk0ZjE4MmJhYWRiOTQyYjkyYmE4MjFkZGJhNzgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZkZDgwOGJiMTUxMGVjMDc4ZDc0MmZmYTMxMTQ5M2Q5NDVlNDViZWU4M2RmY2YyOTYyYjE5ZTAyYmRlMmJiZWQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImRhNDZmNzRhNGE5MzA1NTg2OWI5NjlkNGE5Yzk5YTRlMGQ5MjIzYjJkYmE1NjA5OGM2MjkwMGY5ZjI0NDBjMjkifQ"
+        },
+        {
+          "resource": "repo://client/src/hooks/useSaveQueue.ts#L35-L41",
+          "version": "repo-lines-v1:sha256:6c62cf919eb125d8f2cdb4e02601a7b4426fb29e4b4ac57b23e92cf76da2c6c3:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZWFmMjJjZjA3MzI1OTJjMjQ3MTQxY2JlNjFlZmExMTAxMjYxMmY1YTMxMjJiOWFmOWJiYWY1MmY1NzI0ZDE5NCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOTcyYTQyOTM4MmIyZTE0NzE4ZTBlMzdiMDU3MGE4YTE3MDI5OTFmY2Q4NDk4Y2Q4NDA2MGE4YmY0ZjA1MDE3YiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNGMyMmM1MGI0NjAyNjlmMzdiMDIzMDQxZTUxOGZiOGM1MDIxZDIyNzZkNzRiMjY4NzFjZWRiZDIxYzUwYTJmNCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYWE0N2Y4ODllM2E1MGM3ODViYzk0MDQ1ZDg4ZGQyODRjZTE2NDU2MGU2MWVlNjljOGQzZDA3YjI5YmMyOTFiOCJ9"
+        },
+        {
+          "resource": "repo://client/src/hooks/useSaveQueue.ts#L64-L100",
+          "version": "repo-lines-v1:sha256:764e99b3186281adf9ec9550d1737c1971288035ed2d69fe5161bc1a29c23c84:eyJzZWxlY3RlZExpbmVDb3VudCI6MzcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJlMjhjZTVlNTg0YWI2OWNhNmM4ZjlkMGRmMDA0YjJiNDExM2M1OWE5MWZiNWZhNjQwNzYxM2YxOGMxMmMxMmMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZkZmY4MDE4NGMyZmIyZTNjMzU1ZGQ5N2FiYjJkN2U1NTZmYTkxYjgzYjg3OGYzNzY1NmQ5M2IzY2Q3ZTViZWIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijc0NmNiZjdjNjU4NDBmYWRjMjkzNTQ0NTA2Zjg0NzYyMDIyMDhkOTZkNGE3YTg0OTk0ZTEwN2FjMDFhZTU4OWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVjZjMzOTUzZmJlZWE3YzY2MjNjODQyZmM4NWYwNjRhNDdiZWZjNzljMGRiNTg5ZDFjMTNiMjBiYTdhNGNiZTcifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_2cb410abf79c42f2ba68829432f65d12",
+      "statement": "Python workflow indexing is staged after the ordinary save: autosave waits for pending writes before requesting an indexing write, then applies returned content and ETag or opens a workflow-ID conflict decision; these are client orchestration details.",
+      "evidence": [
+        {
+          "resource": "repo://client/src/hooks/useAutoSave.test.tsx#L273-L319",
+          "version": "repo-lines-v1:sha256:17872adc7404ece9363204f464f2a4de1e21fe775621f79e40b8e5d9aa5bf5b8:eyJzZWxlY3RlZExpbmVDb3VudCI6NDcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY2MTBkYTAxZGVjYTlkYjA2MDhiOTdkZTUwMDZhZTcxNzk3ZDQ4ZTY5NDBhNTQ0MmM2MzVmNTQxNmNjNGFlNmEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY2ZjViNDBiMTU4NDU3ZDE3ODY0ZjIxNzkwNzg2ZGQ1YTJlY2RiNjRiNjZhNjUxZjc4OGQ0ZTI1Y2QzMzAzZDIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjExMjQzZmNlN2Y4NWNlNzAzZjZkN2Q1Zjg0ZTU1OTA0YmYwNzhhZjcyNzMxMzBhNDBmYTI5MWJkODUwMDEzMTEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        },
+        {
+          "resource": "repo://client/src/hooks/useAutoSave.ts#L135-L185",
+          "version": "repo-lines-v1:sha256:31d5d5dc854fe30a7ea043499c803da82ad2d68791a28a0853c626c8b6ba28a7:eyJzZWxlY3RlZExpbmVDb3VudCI6NTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZkZjg0NTU5NzJjYTJiMzRhZWU1MmJiMzU3MGQyMTRhM2IzNjcwMjMyZGJjMThhMWEyODNkZjgxMmNlN2UzZTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY3OWQ2ZWM3ODVmMDc0NWQ4YWVkNGM2MjQ1OTdjNmRmYmNiMmE1M2U0ZWJjY2M1ZDA4MDY2ZDQ0ZmExOWY4MzIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQyMzNhM2M2ODc1OWJmOTEyNzU0MTVkNDg2N2Q5YmZmYzU3MTJiZDE2MTBmYzkyNjA2ZTNmMmQ4ZWYxNjY0YTYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM1MjRjOGJjOWMyNjNlM2RhMjIzYTU5OWE4ZjY3NzgwNmZiYWJmMjdmMjQ1MDBkOGJjZDc3ZjhkMzMwMTA5MmQifQ"
+        },
+        {
+          "resource": "repo://client/src/hooks/useAutoSave.ts#L71-L101",
+          "version": "repo-lines-v1:sha256:e6e710cc62cbc38c24d6d544c44ad593125f9f9eaedbef09dae63ae5e4b536e6:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg4Y2QzYWU5OGM4YmVmNDI2MDJlNTMwNDQxOGFjOTUxOWM5Y2UxNjEwNjU5OGNhNjg5ZTgxZTIwZWJhZTlhMjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQwMjFkNmIwYjI5ZmU3YjRmZWM3YWE3ODA1NWU1YWIwZjYyNGM0N2FhM2ZiNmUxZDMzYjQ0OTkwOTQ5NWM3OTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjEzNzFkNTRjYTcwZmQ5NDEzOWYyYzE5OWQ1MjU4NWY3OGRiMDIxNzhjZWMxOTZjNzJkY2UwYjQyZjEwOTdiODEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjUzYTAxZWUwMWQwNWQwNTRjNGYyMDg5ZjVkNmRlYWU2ZmM0OTMxMGYxOWExMWZjODA2MjRlZDY5ODJjZWJhZDEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_3a8a4fffb55e43d9aedcee3a66a859d1",
+      "statement": "The workflow editor's test panel submits either open script content or a selected workflow with `transient: true`; immediate responses are rendered directly and responses without immediate logs initialize an execution stream.",
+      "evidence": [
+        {
+          "resource": "repo://client/src/components/editor/RunPanel.test.tsx#L168-L225",
+          "version": "repo-lines-v1:sha256:20d22800c95e5b751730e48f56af1c2e972639ef2896e71b60a273091222a844:eyJzZWxlY3RlZExpbmVDb3VudCI6NTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZiMGRmNWMxMjExODQxZTRkNDhjMjYwMzJiYzhjYmE2ZDZjZDRiZDBmYTgwYjZkZmY3M2E2YzFhNWMzOGY0YWMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVhMGZhNGU1N2FkNzU3MjVjMjBiZjZiY2E5MGViNTcyOGFhMzc0ODRkYWUzNmExYzI2YTVlNDVlZmY1Y2E4YzQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY3NDFiMTE1ZmI5NGQyYzIyNmQ1ZWMxOWM1NjdlOTZiNjdmMmY4MWVlOTY0NDk5YTkwN2FkOWRkNTE4OTc5ZDEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQzNDYwMzA3ZWQwZjg1MmIxMTViYTIyMDcyOGViZmFiZjVkMTY4MjVlZDMwNmZiNjUwODcxZjRlMjBjYWM0ZDMifQ"
+        },
+        {
+          "resource": "repo://client/src/components/editor/RunPanel.tsx#L354-L432",
+          "version": "repo-lines-v1:sha256:462a423d01dfd1134d558faadc36413599782c70442368a4f1bc187fceb68389:eyJzZWxlY3RlZExpbmVDb3VudCI6NzksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIzMjEwYzBmY2E0MGI0ZjcyNzhjMWYwNTY2YmRiNGYwMzQ1NzgzMWUwMWRmYmE5MDA0Yzk0OTM0NTY3OWIyMTUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFlM2ViNTBmMTQ0NzI3Mjc2M2E0M2NlODk4NzMyNThiMjczMjQ1NzgzM2FkNzNmMzNlZDg2OGJlODBhNGZjYzYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY1NmJmYmNlYjZiODc2YTQ3MTBmM2I4YmEwYzhjZGMzNTZlMWY3MmQ1NmJhYWJmNmI5MTQxZGJhMmFkOTAwMzQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQwNmUwMzYwNWIzYjdjNGQ5YWJkZDU1NzJjOThjYmM0MGRmYTMyNmM1NzNlODliZWY1ZjM0YjIwNTM2ZTQzNTgifQ"
+        },
+        {
+          "resource": "repo://client/src/components/editor/RunPanel.tsx#L475-L559",
+          "version": "repo-lines-v1:sha256:785123ae608e8346b1ef0e3826daed2486bfd643bd0466c030ebbb696c87a67b:eyJzZWxlY3RlZExpbmVDb3VudCI6ODUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk4MzUzMDE4ZjIwYTVkMzllODQ0MTYyYmIxZWNhZjE4N2JkNjEwODkxYjM5NWE2MjY4NTA1YWYzYzcxNTk4ZDYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU2ODA2ZjE1NWM1YWMxYWUyNzIyY2EwNmYyYWM5Y2FkY2I4ODFiOTEyM2NiNjI0YTNjMTA0NzViNDQ0OWRjMmUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQ4ODkxZWFkMjNmYjhmODM3ZDFlNDczYTQxOTIwNTY3MTgyYTExOTkzNWZmMmZiZDE4YzU4ZWFiNjIzMjg3OTciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijg3NWJiY2RlYzdmZDM0MTVjODk2NDUwYjFlNDc0MTJmYmU4ODg5MjkxMDMxNjRjY2FiMzMzY2NhZmU4N2Y2NzUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_a91d757a92204d409a87cccc659f32a8",
+      "statement": "Workspace source-control actions queue shared PlatformJobs and observe WebSocket job updates after subscribing before enqueue; the UI exposes fetch, commit, sync, diff, conflict resolution, abort, and discard as operations separate from file writes.",
+      "evidence": [
+        {
+          "resource": "repo://client/src/components/editor/SourceControlPanel.test.tsx#L76-L135",
+          "version": "repo-lines-v1:sha256:9a638d44456c000e55f6f7702f440952b89a40743759da5d012e0c0f86f095b7:eyJzZWxlY3RlZExpbmVDb3VudCI6NjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI1NjNiMjVjMjE3NjRmYzUwMDZmYjNmMzA2YjI4YzZiNDcwZTczYTAwNmUwOTkyNjE3NGRhMzQ0NzIwZDQyNjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBhNzM0OTJkODk0NmIxZDBmOWQ5YzA0YjcwNGE5MjBmMjRmODllZjdjN2Y3MzExYTg1OTlkMTBjN2Y2MzU4ZDAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM1MTE3MWFlODhhZTc3MWJmOTNiN2VjMDQxODdlNDFiMGQ4YjE5NzZiZDhlZWFlNThhNjU0OWFiNjYxYzM0OWIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA0ZjljMjI1M2I5ZjI1ZmMzMWJjN2E5NzQxOTVjYmE0NGQ5MTUxMWYxNTcyNjRkOTkzNWJjZmNhZDNlOTkxNzAifQ"
+        },
+        {
+          "resource": "repo://client/src/components/editor/SourceControlPanel.tsx#L326-L424",
+          "version": "repo-lines-v1:sha256:fa4513396ce7f12f45ff74f845a916ee23540ce42a18e3f5793a0f83a67a0993:eyJzZWxlY3RlZExpbmVDb3VudCI6OTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZjM2UwZTY2YWYxNmFiNGE0NzNjZWQ1ZDcwYjg2ZTlhYzhiMGZjNGU3NDcwN2RlYTNmM2QxZjFjNmI4MTE1NGUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc1YzM1MDI4NTc3ZGMxZTY4NDA2MDQ5ZTRiN2I5ZDZkZDQ3NWZkMTc3MTBhYjY3MWRiZDBiZmQ5MjYwNTMwN2UiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE3NDUyMjIxOGMyYzE4MDVhOGNhOTJmNzNkMDM4ODZmZTAzYjlhODBkMmUxMjJlMjJjZjQzYTVjODQ4ZjU4MjAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImYwMDlmNTUwOTBmZGUxZmQxMzM3MzY5YTE3NGNlZjQyNTlhMDY2MTM4NDNjNDdhNGQyYzQ2MWQwYTQ0ZDYxZGYifQ"
+        },
+        {
+          "resource": "repo://client/src/components/editor/SourceControlPanel.tsx#L527-L687",
+          "version": "repo-lines-v1:sha256:4db2b02ebaec75b2cbf9292399fc05a7f7b2b582ec262d181495b7c249104706:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYxLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI0MWM4MjMxNWRjOTJkZjk1ZGI4NzIxYTJhMzc1NDNmOTI4NjBkMWFiOTUxYzg0YjQ3MjBlZTYzOGU1MDUzZTk4IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIzNmI5OWNmMTNiYTkwMWVhN2FhMGZmNzQ2YWQ1YjQ5ZDYzMjAxNGNiODRiZWRmN2VjNWUzNzYxYThlOTY4ZjM0IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJhYjk2NGRkNjcxYmU3MzhjODc1ZTg1YmYwMzA5NjVhZGQ3MTdhNzFiYmU1NWZjNzRhZDIwZjBkMzZjMDg0YzVlIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI2ODQ2ZTEyYTMwZGMyMTEwNGVkNTU4YmZmNDIyZTZhYTRlNjljYjZkZjE2NDM3OWU1ODk0Y2JmZDA0OTIzZTE0In0"
+        },
+        {
+          "resource": "repo://client/src/components/editor/runGitOperation.ts#L25-L94",
+          "version": "repo-lines-v1:sha256:4765f732adb1c9b773b75f2e43a64ae218ab5081a41ec1fec4fff8cd4b168948:eyJzZWxlY3RlZExpbmVDb3VudCI6NzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZmNWY2NmJiYzYwOTFjZTM2NDVkYjRmMjBiMzcxYzU1NGFiMDZhOGQzNGRmOWZlNzExZTE0MzA4NmUwYzE1MDQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIyMmU4ZDNkNzYxZjMxZWQ3YWI2YTI0YjRlMGMzODJmZGFmNzYwYzRhMDgyYjJiMjU3YTE4MDFhZjIzNzlhMjIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYyOTY0MDc5YzNjNWM4MTUyMGVmMzNhMmI5ZDJlMTVhMWI4NGQ3MjgwZGI4NTkwZGNkNjU3NDdlM2UwMTJhNDAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNhYWM0NWYwMzFlN2JjZDU0M2M0NmZjODI0YjRkNGQxMDg3MDZlMDlmZmJiOTU0NTBjNjAzNDQ4OTczNDY5MTAifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_9fcb51cdae5e411fa610acc0e02647d8",
+      "statement": "V2 app source editing uses separate platform-admin app routes and editor layout; Solution-managed applications are passed to the editor as read-only and omit the Publish action.",
+      "evidence": [
+        {
+          "resource": "repo://client/src/App.tsx#L582-L597",
+          "version": "repo-lines-v1:sha256:9b09219f6e9571a09962bae20b1107244088b1569c5de146fae0446be81bac58:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE4M2EyMzZhMmQxYzY4NGE5YmNhZDVjODg1NjliYTdmODQyMzU0ODU5ZmNiODM1NjEyODJkNGJlZmMzMDllMzIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNkYTJmZGMwMTNkY2Y4ZDk3NTBhOTZjMzBlODMwMGJjNGMwY2Y3OTE5YjlkN2U1MmRkYzBkY2Q2NDk3OTMxYjkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZhNTBjY2ZkNTZjMDFiNDc0MGRiOTU2YzhjMzlmNmFiNmJiMWY4MWJhMDk3MWJlNmViYTg4NGQwN2Y5NzBmNjUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU0NTM5NmNlODk2YmFiYzExMGQ5N2UxNzgzMGVjYzE1NTkxMDM3MDNlNzE2ZjI1Yzc1NGVkMmM0ZjQxMmNjNzYifQ"
+        },
+        {
+          "resource": "repo://client/src/pages/AppCodeEditorPage.tsx#L397-L429",
+          "version": "repo-lines-v1:sha256:2c131a52e2ade4bce5c69da0f5ca0a93d01e7cf9bd5b41ba94a8e814e92be522:eyJzZWxlY3RlZExpbmVDb3VudCI6MzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNkNzU0MmE5MmQ0NmQ4NjhiNWRjMjk4NWZiZjZkMDU1YWJiMjI2MWUyMjQ0ZGUxMGZlZDAxN2E5N2VjY2MxMjciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVmMTk4ZGJhMDc0OTljY2UwYTQ1OWUxZWE5M2EwMjkzYjdmNjhiODczODZiYzU0NDI4MTIzMmQwM2Y5MDVhYjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjNkMGEzMjUxMDMwODNkZWU0MzcyZmMwN2I2ZjY4ZDNhZTYwNzMwMzFmMDcxYTE0NTZiNTBmYTI0YTVlMzEyZGMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImZjYjQ3MGVmYTIxNjAxNWRkODdkMWJjM2I0MjVhZDE5YTYwZmFlNWFjNmE0Zjc3ZGU1MjFlYjk0ZTliNWE5NWIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_3891031360d54499ae73ee2d2f9e4e1c",
+      "statement": "Execution history and detail routes require an organization user; the history page restores URL-backed search, organization, date, view, and log-level filters, while the detail page remains a separate investigation surface.",
+      "evidence": [
+        {
+          "resource": "repo://client/src/App.tsx#L453-L461",
+          "version": "repo-lines-v1:sha256:9481ac0a9e22bd4419ddb395d3daa448e2a4ddacf3ce1bbfba14367f8a41b8ca:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiN2Y2N2U1MTljMDU1NzkzNGE0YjQ1YzAxOTE5MGYyMWI5YTBmNTgwNzQ1OGMzNWQyYWIzYmI3MzUwNDhmOThhMCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiM2RhMmZkYzAxM2RjZjhkOTc1MGE5NmMzMGU4MzAwYmM0YzBjZjc5MTliOWQ3ZTUyZGRjMGRjZDY0OTc5MzFiOSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYzkzYTcyMWU5NjM0MDRjNzZlY2JlZGQ4MGJlYjg0ZTAxMjAyYjY4YTgwNWQxYzZiMGQ3ZmY2YjE5Njc3N2RiMyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiM2M3NmZlMTgwYThmZDliZDM4YWI1YTBlNzM1OWNhZGUwMmQ5ZGM5ZDhjMjJmZDU1NWQ3MjFiMjI1YmUzOTZmYSJ9"
+        },
+        {
+          "resource": "repo://client/src/App.tsx#L834-L842",
+          "version": "repo-lines-v1:sha256:7f2478e67a11c2b4ea60eab90f05af909bc8ea8369790841634a1d256045afa1:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMmJlNzNjMmE1ZjExMjUyMjIxODA5YzdmODk1NWM2ZTgyZDQ0ZDE4MzM2NDYwNTViOTJmYTlmYjExNzNmNzFhZSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiM2RhMmZkYzAxM2RjZjhkOTc1MGE5NmMzMGU4MzAwYmM0YzBjZjc5MTliOWQ3ZTUyZGRjMGRjZDY0OTc5MzFiOSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNmE1MGNjZmQ1NmMwMWI0NzQwZGI5NTZjOGMzOWY2YWI2YmIxZjgxYmEwOTcxYmU2ZWJhODg0ZDA3Zjk3MGY2NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiN2YxOTI1ODhlMDY4MTZmYzBhMjUxYTY4Yzg0NzU5NDZlMGM1MDZiNzZiOTgzMmQ1ZDkxZGM3M2ZjYWMxMWNlMCJ9"
+        },
+        {
+          "resource": "repo://client/src/pages/ExecutionHistory.test.tsx#L521-L550",
+          "version": "repo-lines-v1:sha256:2b5b507453eef5e3aa17bd9f83583861e9395e4508a4490435ac3306e3e08101:eyJzZWxlY3RlZExpbmVDb3VudCI6MzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIzYTZiMmNkY2UyNDM5NzBjZDlkODc0Y2U2NjcyMTJmNjEwMjdjNzJhODRlYjJlNTM5OGIwZDkyZGEyOTE4ZjYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBhNzM0OTJkODk0NmIxZDBmOWQ5YzA0YjcwNGE5MjBmMjRmODllZjdjN2Y3MzExYTg1OTlkMTBjN2Y2MzU4ZDAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQ5Y2Q1MjVmMWZkN2Y0YmIyZTA0MmRiZGJhMjY0MWE1ZDY4MWQ2YTI1ZWJmMTk4YjI0Mjk1YmZmNjM3MGY1NTMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImZmMTcwMDc3ZDAzNGRiZTc0ZTdhODZjYmNiZDg1N2FlNzY2MGI0ZjY3YWQ0OWRkZjhiYWU2ZjNiYThkNzMzMTQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_1d6b1af50d314784b948fdf251b97b20",
+      "statement": "The reusable workflow list surface exposes open-code, scope/endpoint editing, orphan resolution, and execute callbacks, leaving its page owner to provide data and operations.",
+      "evidence": [
+        {
+          "resource": "repo://client/src/components/workflows/WorkflowListSurface.tsx#L46-L78",
+          "version": "repo-lines-v1:sha256:5d7712fe17c494f20077c52c2da51efc9c8c6fcb5c2fab88798ce45353194d65:eyJzZWxlY3RlZExpbmVDb3VudCI6MzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUyMTA1OGRhMmI1YmY0ZGEwZmRhOGY4ZDg3NzM4MzNlZWJmNWU3NTg3ZTYxNDMyYzAzNjAyYWE1NDQ0N2U3ZDUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM1NjBhYjE3ZTBkNGNiY2ZhMjYxZDNiMTg4ZWYyYzc3ZDAzMTg5OTk3ZjM0ZTM4NjM3YTIxZGJlMjA3N2M0ZWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhhOGI1OWExZWNkYzFmYWJmNzA5NzUyZGIwNjU1ZjMxY2YxNDAxNjE1MDEwNWI5OTc3Y2VlMGMxMjE4N2RkMGQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_4304af17eb5a4d699b436826d8015c4a",
+      "statement": "Workspace file tree, file browser, and form-field families provide distinct navigation and editing surfaces: the tree filters by organization scope, the file explorer can pin itself to a Solution install scope, and FieldsPanel delegates CRUD/reordering to field-management hooks.",
+      "evidence": [
+        {
+          "resource": "repo://client/src/components/file-tree/WorkspaceFileTree.tsx#L76-L110",
+          "version": "repo-lines-v1:sha256:960657cca68fca8012505f3ddf9717258f01b77835c5aa8e957c8ed6f2124705:eyJzZWxlY3RlZExpbmVDb3VudCI6MzUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ2M2NiNWY0OGE0OTI5ODUyOWY0ZDFhNzk5MmY1OWYzN2MzNTcxZWQzNGY3OGIyZGNiMTc3NGE1ZjEwMjM0YjkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY5ODMxZjMzODJhYTk5YmJiNGI2NjVjMTM4MjdiMTUxNjJlMWQwMjc5ZWMyNThkYWQxMTg3ZjM3ZWZmMWUzMDciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZmMWIyNDBiZjVlMmU2MWJjM2Y0ZjlhNzk2MWQ5YzRhODYwMDA1MjNiMzliZDk3NTE0MzU3OGJmOTEzZTE5YjAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ2NDQ0NDkzYzU0Yjk1OTY4NzczNTMyNTI0MzI1YjUxNmY0ZGIwYWMwOGI0Njg2Y2ZjZDdiMjgyYjM0OTdjOTgifQ"
+        },
+        {
+          "resource": "repo://client/src/components/files/FilesExplorer.tsx#L52-L105",
+          "version": "repo-lines-v1:sha256:7ae8467024893855d8f71f8cd9f793dd0c9b6d785b51a711ad55bb0a61e4fcfe:eyJzZWxlY3RlZExpbmVDb3VudCI6NTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYxMWE2MWYzNDc3NGVlZTJiNWQwM2Q4ZjcxMjRjZDI3OGYwNDE2YmJmMGU0ZjI3MmE0OWQyODIzMjUxMDc5NzYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU2MDM3YjA0NWEyNTQ0N2ZlZjYyNTEzMjdhY2FiN2Q5ODAzZWJmMWQxZjExOWFhNTU5NWUyZTRjZjZmOTBjOTAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjBjMTYzOGZmMDk3NTEwM2RhOGM3ZmQ2YzlkODVmZWUwZjgyM2FjYjU2NjRkZGJkMmY5MTM4ODZiYjU0NWUyMTYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY1YTkxNDk1NmZkYjhjZmJkNzRlYzc3NjI5YjRjMGM5MzM4YTEzNzVmMDFjYjQxZjAzZWM2YmU4NjcxNGRkM2UifQ"
+        },
+        {
+          "resource": "repo://client/src/components/forms/FieldsPanel.tsx#L117-L145",
+          "version": "repo-lines-v1:sha256:79c1a06e0aae85789c942909520d02898ddd75fc4787f2f22368d67f7a1a4dc0:eyJzZWxlY3RlZExpbmVDb3VudCI6MjksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFkOTNkN2MwOWRiNWE5Y2U2NmQyMjIxNzI1MjI1M2Q4NDgwNTE5NzcwNTUwMzJkY2NmOThiZmI5NTRmODkyOWUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE3ZDBiMzI4NzE1OGU5MWM0ODRhODZlY2M3NGRlMWM5OGEzMDY4MTA2ZmYzYjNjNDMzODk3YzI4ODUyNTM3MGYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjI1YmIxYWY1MjFiZWNkNTVkNzA1NmE4YTlhMGRkMWViY2RhMWZjNzlmZjIzZjc0NTc3NmY0OTk1ODMzNTI5MjMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImEzYTRmMDdmNGIxNDIyNmEzMmRhZWExODY5Y2ZkMDI1ZjUyOTI5MTgyMTM2YWY5OTk1MWYwYjliNjRhNTU5MmEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_0678c994df804dfcb36a0da944bcac55",
+      "statement": "The schedule expression tester calls an API validation endpoint; the event table filters events for a source and observes a source event stream; these controls are browser helpers rather than the scheduler or webhook execution authority.",
+      "evidence": [
+        {
+          "resource": "repo://client/src/components/events/EventsTable.tsx#L118-L155",
+          "version": "repo-lines-v1:sha256:ca8b66aa18f2e732aeb202959b12d73e54801078b88dcf34676a8310721e2aa7:eyJzZWxlY3RlZExpbmVDb3VudCI6MzgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNhZTI1MWMxZjlmNDljOWU1Y2E2NTEwZTFlNWUxNDA3YTRmMmU3OWIyMzQ5MWRmMmNkZWQ0MmNiNmI0ZDdlNzUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMwMmFiNmYyNDM0OWE3Yjg1MjdhZTdlOGJiZDQ4ODZiZTljMmIzMzBlODI0YjYxNWQ4YzZhMDYzYzI3MjQzYmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjI1YmIxYWY1MjFiZWNkNTVkNzA1NmE4YTlhMGRkMWViY2RhMWZjNzlmZjIzZjc0NTc3NmY0OTk1ODMzNTI5MjMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijc0NGUxOGUxYTgwZmM5YWFhMWE0ZDc3NjVjOWMzY2NlMjhlYjA1YjA2MGE0YTRiMWE4MjM5OGU0OTU1ZGIzZGIifQ"
+        },
+        {
+          "resource": "repo://client/src/components/schedules/CronTester.tsx#L29-L80",
+          "version": "repo-lines-v1:sha256:8790d8713fac091a2fac816b3db2970f1aee331aa43ac0bbcd9da14c2944450f:eyJzZWxlY3RlZExpbmVDb3VudCI6NTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE0YWQzN2IyZGVkM2VhZDdhY2U2OTk5ZmE4ODUwMWMzMTNkYTQ2ODZjZDI1ZGE4MmU0ZDVkZDE4OGYxNzczMjciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZhNDUwYmZhNjdmN2RlMDg5ODZkMTliZTM5NjgzN2RiNmQ2YzY4MTA5MjIxYmM1MmJjNmM0ZjRiOTlkOTZlNDUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQ2ZWRlN2EyNWQxMWQ3NDgzNzUwYzU5Y2JiNjc4ZDgwYjdjNTk3NTMxOTI2MjlhYjlmNzY3Nzg0MWZjY2QwNTEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUyMmYwNDg2OTUyNzY5NGI0MTc0Njc1NmNmYzRmZDM4M2EyYTMzODk0NGE2MDE2M2NlZmU3ZGQ4ZDk5OTZlZDIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_ea822e05c99b424ea35c9f6cc90e3c72",
+      "statement": "ExecutionInspector composes result/input/log panels, while table-detail header navigation supports both table and Solution back contexts; these families present execution and table state in the browser.",
+      "evidence": [
+        {
+          "resource": "repo://client/src/components/execution/ExecutionInspector.tsx#L5-L55",
+          "version": "repo-lines-v1:sha256:533b5f8797049598679693249f14035ddad6268a3628f23d094faf696787e663:eyJzZWxlY3RlZExpbmVDb3VudCI6NTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJhZGYwOWU1NDQxNjU3ODBkMjRhNTFiZjJlYzlmNmJlZjM5MjNkNTZiNjdkZTYzOWE4YjMxNjQ2NzU5N2ZkMTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE4ODBhMjdmZDBlNDY5ZDhjNTczZTFlYzNjODc3NjJlYjAyZDBmMzM2ODI1MDNjYzJhNTcwYzQ2ZThhNTY5YTUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjlhNzRhODkzNzliOTZiYWFiMmMwYmNiNjVmYzQ2ZWIwZjNjMWFiZDI4MTFkNmFiOGY3M2I4YjY4ZmEyYjY0MGMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZlNzQ3ZDkxZTk5YjU2MjNlNDNmYjY5NjYyMDFiYmQzMTZkYTNkYWQ3MzgzZjgxYjM1YTc1MmM4YTE3OGFhM2UifQ"
+        },
+        {
+          "resource": "repo://client/src/pages/table-detail/TableDetailHeader.tsx#L12-L60",
+          "version": "repo-lines-v1:sha256:8c3b512ebf758a45afc56f005b0c3ad33c4034bcc1c8508d114512a22cf8daa5:eyJzZWxlY3RlZExpbmVDb3VudCI6NDksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZjNjM0NmM1ZmM2ZGM1MDcyODBkM2ZhMWRmYWFiMzMyNGZlYTNiMzU0NDdkYjdmZTcwYzRiYmNhZjc1ZGQyODkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJhZTNmYTIxYzU1MjkxY2YxZGY3ZWVmYTM2MTQ5ODhmMjcyZTA5OTlhY2ZjMTBkNjYwNWM5ZTAyZDk1NjZhMmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk3NDg1ZGQ3YjQxYjNhMGJiYzIwNGMxMTlmNGJiYjk5ZDJhOTljOTdjYmFjZGQyNTk1Nzc4OWIzY2VkMDVlMGYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJjZDIzMGQ2YmNjM2FjZmM5ZDFmNTk2NTcxZGZkODIyY2QxMWUyNzc0MTcyYjljYzM1ZTM4MDY3Zjc5ZWViYmYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_ca8eb51349a94efc99cac0998ce08351",
+      "statement": "ExecutionHistory's detail drawer presents a sheet around a selected execution, hosts the execution-detail view, and exposes a guarded copy-ID action.",
+      "evidence": [
+        {
+          "resource": "repo://client/src/pages/ExecutionHistory/components/ExecutionDrawer.tsx#L14-L45",
+          "version": "repo-lines-v1:sha256:897366966d090b8579d280b044e1821bca6599a74c28d842288497d5243a3e5f:eyJzZWxlY3RlZExpbmVDb3VudCI6MzIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM1NThmZmM2YzFhOTRhOTlhYmRmZTg3NmI2MDI1ZTUzZGRkYTdjOWUwNzZhNDY2NWViOTVmZTBmMzNiZTE2NGUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI4YTY5MmE2YzNiZGExNTUyZGE1OTRjNjMzY2EwNWYxM2NiYTA0YzM5M2I1MzY5OTRjZDNkNmUyY2UzMTEyMzMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjBiZDE2MzY3MmRkOGE0NjZhYTY1MWQ4NTc0MzExYzU3MDc3YmIxYjY3M2I3OTE4Y2QwMWM4YTY1MWJjMWJjNDkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjYwMjdlMWZiNmUzNWRhZjhlMDNlYzk2MzBjNTAxNjg2ZjU3MWJmOGVhOGUyNzIyZTcyMTU0MmJhOTI0NWY4YjQifQ"
+        },
+        {
+          "resource": "repo://client/src/pages/ExecutionHistory/components/ExecutionDrawer.tsx#L48-L85",
+          "version": "repo-lines-v1:sha256:c6797f366875c65ef2a544f5341c005059c1186b8beb86ff829470e597f61da8:eyJzZWxlY3RlZExpbmVDb3VudCI6MzgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjcwODBhYzNjZDUwOWY1MTA2N2QwYjJmMzlhMTYzYjc5ZGFhNzA2YzUyZDNhYjYxMzkyODM3YWMyODljMmYxNDYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEwYzM5ZTE0NzVhYTljNDJjMzIxYWQwOWZiMWIyZjIzOTJkNjM2MjQ0ZDMxMWY4ODFhNDQ3MDBhOTk1YWQ2MWIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjVjMmQ3ZGZmYTBlOTkzNTYwYWMwYjFhMmEzNzA2YzhlNjJmM2MxODlhY2JkZGZlNjZiNWE1MjZiMjIxNTcyMGQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImNmYzE2OTY0ZWJlM2MzOGZmODIwN2U4ZTA1MzgzMmMyMjVmNDIwZjg2ZDJkNTIwMGExYmNiNmZjNWNmOGM3NTQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_5ff4f430c1ca4fd6adf1d1f2b6ce0437",
+      "statement": "Event source cards link to per-source detail and present source type, scope and graph metadata; the event table requests status/date-filtered records, shapes event-type labels, applies local search and attaches an event-stream subscription.",
+      "evidence": [
+        {
+          "resource": "repo://client/src/components/events/EventsTable.tsx#L118-L150",
+          "version": "repo-lines-v1:sha256:87f340183f3d688783bd96c9281b9c0cdc30b99db66fed3a8681c98470832e29:eyJzZWxlY3RlZExpbmVDb3VudCI6MzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNhZTI1MWMxZjlmNDljOWU1Y2E2NTEwZTFlNWUxNDA3YTRmMmU3OWIyMzQ5MWRmMmNkZWQ0MmNiNmI0ZDdlNzUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMzNGExMDQyZDY5ZmQ1MTMyZGQyZTVhODlkNTUzY2QxMTE3OGU3ZTAxMjM4ZjM3MTFmOWM1ZTVlZjRjZmNiODIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjI1YmIxYWY1MjFiZWNkNTVkNzA1NmE4YTlhMGRkMWViY2RhMWZjNzlmZjIzZjc0NTc3NmY0OTk1ODMzNTI5MjMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImVkMWViYTA1Y2I3ZTc1MzI3MWQ3NjljNzAwYjgyMTQyNDVjMmVlZTVjM2VlZjdiYTk2OGYzMGRmODU4ZmVhMDMifQ"
+        },
+        {
+          "resource": "repo://client/src/pages/events/EventSourceCard.tsx#L49-L78",
+          "version": "repo-lines-v1:sha256:f3e6aa876bd8d243281c5f07ab76795e5d74f1e5fecec4a3bb3dfa5cfcce295f:eyJzZWxlY3RlZExpbmVDb3VudCI6MzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRlNTM4NTUyZWEwZDE5NzI4MGM1MzYyZGE2Mjc5ZmM0OWYyM2U5YmVhZDliYjRjMDExYTFiZmUzZjRiMGYwYzMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk0ZjM3MzMyOGJjMGU5MDBjNTM3ZmUzYjdjN2NkNTAwMWU1NTRhOTE1NDYwNDVmYTA4MjcyYjY1NWY2NWMxYTYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYyOTY0MDc5YzNjNWM4MTUyMGVmMzNhMmI5ZDJlMTVhMWI4NGQ3MjgwZGI4NTkwZGNkNjU3NDdlM2UwMTJhNDAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImU2OGVmZjg2NDY1YWFjZjE5YTlhZGZiOGQ0MGU1MGE2Y2U5OTVlYWU5M2RkYTQ1YjQ1YTQ2ZDI5NjJmODNlYWUifQ"
+        },
+        {
+          "resource": "repo://client/src/pages/events/EventSourceCard.tsx#L88-L124",
+          "version": "repo-lines-v1:sha256:6cf49b7053c70517b49d5c1899023c08701beeff86565c7a625f019b45ba887e:eyJzZWxlY3RlZExpbmVDb3VudCI6MzcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRmZDczYThkMWM3MWY4MTI3ZjlhMjJiZDVmMjdmMTZhMmE0OTEzNDg1YWZkMmM4YTNkYzI2MjY1NzE1YTQwZDgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdlZDBhMzAwMjc4ZjgxMjQ3MDc3ZmU5ZjZiMGI2ZjBjZTMxMjQzMmUwZDBlNGM3NTllNGE0ZDVjNjVlNDIxY2MiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZjMjg2MDM3ZjEwNTY1MjM0ODdhOWY3MGViYjIyZDllODBhNjlmMjQ1MDczYWRlYThiMDc5NTJjYjFiZGM2MjgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFlNzI3ZjE5MzY5NjA3NGNhMjdiOTUyMTVmYWUwZGM5ODBkNWM3YmFiNDkyN2FlNTNiZTgxMjQyOTAyMzRkZWQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_0a564f9c8822407a8b974a7ece972b16",
+      "statement": "Editor search result items render server-returned file path, line and match text and perform local literal highlighting without re-executing server regex expressions; the shared SearchBox supplies controlled debounced input and clear behavior.",
+      "evidence": [
+        {
+          "resource": "repo://client/src/components/editor/SearchResultItem.tsx#L1-L24",
+          "version": "repo-lines-v1:sha256:a56d25d2bb365e5054ba284ad0597e825a0a423dfb2202db6e7ec7d07afc1e4f:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZiYzMwNThjMzhkYjFkMDMzN2FlZWRmYWEwYWU2OGYxODFkNjYzN2M0YmI3YzhiNjIyZDc4M2EzZjJiMmEyZGMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkwN2IzMzUyZDdjMTIzZjJmMjY5NzBhZGZjYmM0N2U5YmJmMDA5MmNkOGU1ZGUwZTFjNmE2NDViMGU0NTc0YTIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgyMzQwNTkwOWU0ODIxMTJiYzFmYzk4NzQxMDE4ZmRmMWNhNDZiOWUzNTVjYTU4ZDZlYTgyYzMxMThlYTdiODgifQ"
+        },
+        {
+          "resource": "repo://client/src/components/editor/SearchResultItem.tsx#L40-L58",
+          "version": "repo-lines-v1:sha256:fdc3e34e4f38dbe183ee125674a38ed61072d5f2cdde5714fbfc664a4e4f724e:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImExMTZiOTE0ZmM2MmMzNDVjNmJmMTlmYjVmOTdjZTE4ODVlMDdjNGZkOGQ4Mzc1NzQwNGNlZWQ2ZjViNWI5NGQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFhMGM4YmQ0ODAzMTUxNDE0ZDI3YTBkNjA2MDE3NzgzMDRmZWVmZjYwM2VmMWUzMWNhMmE0YTQyMDJhODIwYTciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg3YThkNjY4NTRkNzBiZTNkMzE2YWY4Yjg3MDY3YTQ2MGYwMjQ5OTE2YWY0ZjdkMjRlNzYzZTFiNTY4MDJlNzIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEifQ"
+        },
+        {
+          "resource": "repo://client/src/components/search/SearchBox.tsx#L35-L49",
+          "version": "repo-lines-v1:sha256:f6b0397580fdd30f9038897fefbc3f140576c244b27416fb463599032c739927:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc2ZDQ2YmI2ZDExOWM2NmYyNjhmODAyZmMyYTZkOTMzMGEwZTE2NjE2NmVjYTg3NzRmZTVmZWQ1MTlkOTc0NzciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRmNzJmNWQwOGIyYjRhY2I4ZDcwZTlhY2NhNTYxMmMwZTVlOTFmNDdiMjc4ZmI4NDEzYTEwODgxMTZmNWM3NmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA5OWUxYjE2ZmNjMDg3ZDc5NWNiMDMyZTEzNDExZWYyNDU3M2M4ZDg4YjdhOGZmODllYzBjMjk4NDQ5MzNiMTkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk4ZWI3NTBmYmUyNDcyMTEyM2RiZTFjN2EzNTA1NTYwNzczNDVhNTFhMGUxNWY4ZjU0OGQwZDk3MjQyMDcxYTkifQ"
+        },
+        {
+          "resource": "repo://client/src/components/search/SearchBox.tsx#L6-L22",
+          "version": "repo-lines-v1:sha256:978af147e35f0c91d6f06fa0f803c7108c38f89e93cb7feedbcc99307413d495:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc5NWE0OWFmOTNkYTlmNmM2ZmUzOWE1ZTBhNzFjYmIzNjAyMDE2OGFhODViYjEyYzg0ZTQ0YjBkMDNmOTIyNmUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdlZTViNmFmZGFkZmM2MDgyZWFjZDRlOTFiYzViMjBiYmQxMGUxMGQ0YjVkMWMzMzY2ZTRmOTMyZGIxYWQ3ZjEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUwYjk3NmViMDg1MjhlZjMwOTVmODFlYzZjYjE3MWFkODE0ZjUyNTNkMDZhYTFiMDU5Njg4MGEwMjk4ODdlYTMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZlMmJjMDE4MDE1MjkwOGI2OGFmNTQwNzJmODk5ZWJmNmE2YWQ2Mzg1MDBkNzYxMGQ4MmU1MGZjZTM0NWJiMDYifQ"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.7.2",
+    "at": "2026-10-18T03:01:08.144Z"
+  }
+}

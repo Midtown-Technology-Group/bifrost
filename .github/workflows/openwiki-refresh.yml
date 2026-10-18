@@ -1,0 +1,50 @@
+name: Notify ecosystem knowledge
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: openwiki-notification-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  notify:
+    if: github.repository == 'Midtown-Technology-Group/bifrost'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Notify the existing private documentation and knowledge receivers
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          OPENWIKI_DISPATCH_TOKEN: ${{ secrets.OPENWIKI_DISPATCH_TOKEN }}
+        with:
+          script: |
+            const token = process.env.OPENWIKI_DISPATCH_TOKEN;
+            if (!token) throw new Error('OPENWIKI_DISPATCH_TOKEN is not enrolled; daily recovery remains available.');
+            const before = context.payload.before;
+            const commit = context.sha;
+            let sourceChanged = true;
+            if (/^[0-9a-f]{40}$/.test(before) && !/^0+$/.test(before)) {
+              const comparison = await github.rest.repos.compareCommitsWithBasehead({
+                ...context.repo, basehead: `${before}...${commit}`
+              });
+              const files = comparison.data.files ?? [];
+              // GitHub caps this list at 300. Treat truncation conservatively.
+              sourceChanged = files.length >= 300 || files.some(f => !f.filename.startsWith('openwiki/'));
+            }
+            const events = ['bifrost-docs-refresh'];
+            if (sourceChanged) events.push('openwiki-source-updated');
+            for (const event_type of events) {
+              const response = await fetch('https://api.github.com/repos/MTG-Thomas/bifrost-ops/dispatches', {
+                method: 'POST',
+                headers: {Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json',
+                  'X-GitHub-Api-Version': '2022-11-28', 'Content-Type': 'application/json'},
+                body: JSON.stringify({event_type, client_payload: {member: 'bifrost', commit}})
+              });
+              if (response.status !== 204) throw new Error(`Knowledge notification failed: HTTP ${response.status}`);
+              core.notice(`Accepted ${event_type} notification for ${commit}`);
+            }

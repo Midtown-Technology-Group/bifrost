@@ -1,0 +1,110 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:7d9131635e4f809593eab76c82dc26be3a50ee9d00a375a096c0af4dfc5f9fec",
+  "claims": [
+    {
+      "id": "claim_117974ee94114c028672367a35720f1a",
+      "statement": "Agent records store organization/owner/access, Solution ownership, prompts, channel/tool/knowledge references, model-profile override, and runtime budget fields.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/models/orm/agents.py#L28-L83",
+          "version": "repo-lines-v1:sha256:bbb9bcf52c703be18771706487676b9177be7ad484d8eca3511b222002ee1036:eyJzZWxlY3RlZExpbmVDb3VudCI6NTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFkNDFkMDAxZWM4Yzc5YTc4MmE0MWI3YTc5MWNkMjU3ZWZjMzZiYjNhZDJhZGMyZDc1N2M0ZjYwNTFiNWUyMmQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA1MWI3NjFjNThiY2Y5NTBmNWNjNTlhNDVhNGI2ZDcyNDIwYjE5NzI1NGU0N2E2NzQzZmEzNjljZDVhOTE3ZGMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjYyYTZlYjUxZDk0YmQ4N2M4ZmM5NDk0NzM0YTdiZDQ3MTg2YmNhOWQxMTM3NWEwODAyN2NjYWFhNWNkZWI0YmQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjcwMjFmYzNhNmRiYTEwMzY3NDM3Yjc5ZTdlYzM3ZDZiMTgzYWIyYzNiYzFhYWZhMjY1MmNlODNlMDA3ZmVkOTMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_ea1331fdc09245bcae6a2b04f23c7344",
+      "statement": "Agent reference validation checks referenced workflow tools and delegated agents for existence, active state, organization compatibility, and self-delegation.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/routers/agents.py#L66-L145",
+          "version": "repo-lines-v1:sha256:2d0be0d3572a109e4f3b6a6346edbb35b29d3ed6dd2df1f22913eab92e2b9620:eyJzZWxlY3RlZExpbmVDb3VudCI6ODAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI5MGRmYzI4YjZhZmJhMzdiNDQyYTNjMTI4M2IyN2MzY2MwNzZhNTNmMzBlZjVjNmQ3NDZkNWQ2ZDg1NmI4ZjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhmYjhjMDFhZWFmMzYwZDcxMTkxMjQ4NDE0ODQ1NTQ3MDE5MDEyOTliODM0M2ExY2I2ZWQ5MzA5OWY1ZmY0MDgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImVhODg1ZTE5ZTc1NTI5MGQ0MzYyNjVjNjg5ZjQ5YjUxM2IwMzAxZGRjOTUxYzY5MGU1MGYwMDQ2ODdlZDk2MTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImIzZGYyYWNmMDZlOGMzZjAzYzcxMzVjNmU4YWM1YTljYTU0MzJhYmUwNmE3NGFjYTBmZGQ5YTUzYTAwOGY5ODcifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_a54f5d79abc243cd8b62dd305a315b11",
+      "statement": "Chat conversations referencing agents require an active agent and caller access, while Chat model profiles are returned with normalized capability metadata.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/routers/chat.py#L101-L118",
+          "version": "repo-lines-v1:sha256:36737a0ce83a1455a2a3f663cdd79a5c0b8cafeb9f82093541de85cedd8f8f5e:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQzMDk1MDI0OTMyZTM5YWQ4M2MwMGIwNGIxMzAxMWMzNThmNDFlZGJiY2Q5ZmNlMGFlYzY1NjQwNDE2NWUzMDciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwYzFmMTg4ZjE0MmVkN2E4MjQ2ODBiMjA3MTcyYzU1MTliYzYxNGE0OGZkYTdjZjE2N2VkYjhkZGY3OTk1NmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjcxZWUwYWVmY2U0MmU1NGYzMWY0MDk2N2JmOTJkZWFjMDQ0MDc2ODFiOGUxOWE4N2FjMzUzZmQwNzVkNWZlMWQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzN2VkNTI0YzMxMzA4ODg1ZTEzODI1MmI5M2Y1ZTVlNTU5ZTU0OGU5MDgzZDdkMWMwYmQ5Mjk4NTdmMjdiNTIifQ"
+        },
+        {
+          "resource": "repo://api/src/routers/chat.py#L126-L157",
+          "version": "repo-lines-v1:sha256:89a46296b141275e050fb8f1ff433616ee8c7aff72df6eb806da71afb5c8837c:eyJzZWxlY3RlZExpbmVDb3VudCI6MzIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU2MGZjMDE4ZWNjYzBlMGIxZmQyNmY2ZWZiOWY4ZDBhNjRmM2UxYjkyOGRjOTM0YTJmNzhhYjI4OWVmZGIwNjEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU1MDMyZTk2NGQwOTMyMzUxZTVkMTg1MjY5MjgxYjE3MWEzYTA5YjA4YjI4NmU2NjFlYTQ3MDMyM2M4MmViNGQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImVhOWIyYWI3NzM2ZjI5Y2FiNTdkYjZiMWUzMWVlNmJhMmUxYmNhMmQ0NzlmYjEwODE0NTdlZDE1MWUyNDgxZTciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQzZDczOWUzOWU3Mzg3YzYyYjliODEzM2RkMzM1ZGE3ZDgwYTI3MzBlOTUzNDVhOGIzNTU4ZjQxYjllM2ExMzQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_3e08860fcf554aa093365a223b6bfee7",
+      "statement": "Chat run submission allows idempotent resumption only when the stored submission identity matches; otherwise reusing a run ID returns conflict.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/services/chat_runs.py#L135-L205",
+          "version": "repo-lines-v1:sha256:249b91cbca6ef4f2757c981ed97f16a1f61d92dab5bdcbef7f2084da2b3147e5:eyJzZWxlY3RlZExpbmVDb3VudCI6NzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA3YTA5ZmMzMmViNjVjZWJmOGQ1ZjhkYzcxN2JkZTQ2MjdjMWRlMGRjM2E0NDcxYjg1NjAyMGNkZGZlY2ZmZmYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU3MzQwMjIwYzJmYWRmNDc5ZGUxNzk4NTU4M2I2NzlkMWE5NmIxYmQwZDgxNThkOWJlOWQ0NWRhNDU4MWNmNzUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQxYjgwOTFkNDNiMWQxYWFmYzk5YmY3YTkyNGQ3NzkzYmZiMmIwN2FmNmQxMmQyZjhlYWEzM2RkMTY1MTA5MzAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImYwNTY1ODA5OWIwZDYyYjRiOTJiYmQ5NGUzMTRiYzRjOWE2NWVhN2MyNjgzNGNjYjBhNDNhNTMwYTYzZGU2NzcifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_1984527820e742dd80054a880735b5ec",
+      "statement": "AgentRun persists input/output/status, usage, model, summary/verdict metadata, and parent/child run relationships; AgentRunStep persists ordered per-run step records.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/models/orm/agent_runs.py#L132-L151",
+          "version": "repo-lines-v1:sha256:3d99e475a0bf73e98ed4965874c0792f33a98c28e6401bcc4228dd94cc8abeb5:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY5YzAxMjZhYTRjODY2ZDNlMzBmNDZhNmY4Y2UxOTVjNjY5NzJjMTVhYmNlM2VjZjI1MTUzYmI4MmM3YTcwMDAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwYzFmMTg4ZjE0MmVkN2E4MjQ2ODBiMjA3MTcyYzU1MTliYzYxNGE0OGZkYTdjZjE2N2VkYjhkZGY3OTk1NmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhjYzRhN2QxY2M3OTZhYmEzZTQ2NzIzMzI3ZjUxN2U5ZjgxMTk4MmQyNTBmMDcwMjk4NmU0YjU3NjRhZDk1ODkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        },
+        {
+          "resource": "repo://api/src/models/orm/agent_runs.py#L15-L43",
+          "version": "repo-lines-v1:sha256:703aa610659ac5965783396d0030eae236dc0d4ddf437a3793c5ec137130c863:eyJzZWxlY3RlZExpbmVDb3VudCI6MjksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI2OTU2Njc5MzNmZDc4MmE2YjU0NTk4ZTg5NTI5OGJjYjBhNjE2YmQ1M2I3M2U2MGRjMjc3MjlhNzIzM2NkYTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI5YmYyNzliMTcwZTllYjA2MjAxNWFhODlkMWZlZmZjNDBjMWQxODI0NzA1NTNhZGMyNjM2YTU2MWI5MzVlNzkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZhM2NmNTE5MjM1NGY3MTYxNWFjNTEwMzRiM2U5N2MyMGVkYTk5NjQzZmNhZjViYmU2ZDQxYWQ1OWJkMTIxNjciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUwMDMyNzMxODdiNDdlMWVlMTZmZGYxMmQ0NWUzZjgxZmEyZGEzZTRjZWFkNThkZGEyNDNlMWIyMDI2ZjFjYmEifQ"
+        },
+        {
+          "resource": "repo://api/src/models/orm/agent_runs.py#L59-L118",
+          "version": "repo-lines-v1:sha256:f5e3713f08d9dd456ec426863709ab38e6dabe689537b0d3fe0797dbe03059ba:eyJzZWxlY3RlZExpbmVDb3VudCI6NjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJmOTAyYWNhNDEyNTRjZGNiZjgzMDNjODQxNjgyNmE1MTY4OWJmZWVmYTNkYmUxNDJlOWNhNjA5ZjNjN2IyZWMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImViNzAyZGYwMDU4ODYwNDMxZTYxNjIxZDc2ZThlZTc4NzExNzAzYWIxZDg4MGI2OWQ0YmY1NDM1ZGNlNDA3OWIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjlkMDc1M2Y3NzBlOTQ1ZmQ2NGI2OTU4N2VjMWYyMzViNWIyYzZjZGI3MWU3ZjQ5NGNhNDBjZjZiOWY0ODFhMWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjUwNWM3MWI1ODIxMTlhZTU2Yzg4MTRlZTdkNDYzODk3ZDJmYTZlMmEyYjIxMzBkYmQ0MmIxZGE2ZDQ5YmRjMTQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_0d2547f69adb4a0db3e1ce0856e10f18",
+      "statement": "Chat state replays events with sequence numbers, and cancellation is restricted to the caller's conversation; queued runs cancel immediately while active runs receive a cancellation signal.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/services/chat_runs.py#L374-L391",
+          "version": "repo-lines-v1:sha256:92ac066be1011af998c171aa3cf4edab439bff7d902ff0a8884dfecf2dd8cf2d:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU2MjIwY2NlM2Y5OWIwNWRmMGRjNzUwMmM1Njg2ZmFkYWQwZjZlNTFjMjJlMWM3NGFmMmIyZDIxNTIxYWY2MGEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwYzFmMTg4ZjE0MmVkN2E4MjQ2ODBiMjA3MTcyYzU1MTliYzYxNGE0OGZkYTdjZjE2N2VkYjhkZGY3OTk1NmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhjYzRhN2QxY2M3OTZhYmEzZTQ2NzIzMzI3ZjUxN2U5ZjgxMTk4MmQyNTBmMDcwMjk4NmU0YjU3NjRhZDk1ODkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU2ZGYyZjE5NDk0NWQxY2I1YTBlY2Q2OTdlNGNiY2U3ZGFlYjNmN2U1NDkxNzAyNjBmMzhhZmU3MzY1MjgzMjYifQ"
+        },
+        {
+          "resource": "repo://api/src/services/chat_runs.py#L394-L430",
+          "version": "repo-lines-v1:sha256:e73a5011799132d87c7f16bf7283ef63d59441565133b15cdc143c215e6390e4:eyJzZWxlY3RlZExpbmVDb3VudCI6MzcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM4YTRhMjc3NGYyYWNkZGZhODI4YTc5ZWQwNDgxMjM5MmRjZWJkODk1ZjI3YTQ4ODIyZDQxMDExMzI0NDJlNTgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhjYzRhN2QxY2M3OTZhYmEzZTQ2NzIzMzI3ZjUxN2U5ZjgxMTk4MmQyNTBmMDcwMjk4NmU0YjU3NjRhZDk1ODkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ1NGJiOGJlOGJmY2VkM2UwOTYyODUxNmQ3YTJiYTU2NTU2ODQwZmRhNDlkMWYzN2FkNWMyYWU1MzViNDNlYzgifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_073d40ef806c4487bfccdb6c64b22d6e",
+      "statement": "The Bifrost toolset bounds the model-history copy of oversized results while retaining the full result for execution/event storage.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/services/agent_runtime/toolset.py#L36-L68",
+          "version": "repo-lines-v1:sha256:6db2701693b3e649f6ce4f0f6b1255a717a5bbd1285daeaaf06076c3380565d7:eyJzZWxlY3RlZExpbmVDb3VudCI6MzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI2NjkyN2Q2NWFkMjEyNmE3NDJmMjJjZThjNzBkYmExMDM1N2FhYmVkNDZiZmQ3MTZhNmRlOGQ0NjFkNjg0MDMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwYzFmMTg4ZjE0MmVkN2E4MjQ2ODBiMjA3MTcyYzU1MTliYzYxNGE0OGZkYTdjZjE2N2VkYjhkZGY3OTk1NmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY4ZDNkY2IwM2NmMDA5NjZhZDY4N2I2OTZjODk2MGE1NmQzZmNiODQ2OWQ0NDA5ZWMzOTZhYzRlZDA2YTEzMjYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU0M2RmZjc2OGJmMzFjNjM4NzE1Mjc2OTFjNTY2N2IyY2E2OGU0ODY3MmQ2ZjNjYzc3OTgxNmM1OTNjYzJmZTYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_7515a91a3f7a4910a141f01ed0edd203",
+      "statement": "Agent run budgets apply request and total-token limits across the agentic loop, and model failover is restricted to exhausted transport retries with retryable status or connection errors.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/services/agent_runtime/budgets.py#L86-L106",
+          "version": "repo-lines-v1:sha256:cac7196d6f4b0d44c4ec4006178d7d849b159be04abf7139fff21930fbb4dffe:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZmMzNmNjQ4NWQzYTQ5ODViOTEzMDBmNmY3YzRiZWQ3ODdhMWE1MDdiZWUzNGY0YzBhNmM3ZGE5Y2MzYjFjNDkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU5MDlhNTNhNjE4ZDAyOGUxZDMwMDBjMGE3YWJjZWVjYmU1ZmIzN2Y0ZTUxMWVmZTQ2NjQzZmFkNmU2Njg3MmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjExZGI5YmM1YzVmYzg5MDFhNjUwZmNmMzI2ZDZkNjIwYjk3ZjY5Nzg0M2VlNWFmMmM3YzBiOWQ3NDBhMjIyNzAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdmN2IwMWQ5Y2U1YWZkNzc1NjlmODE4ZTI4OTZlNDBiMTQwMTIzMmVkMjk2MGQ0ZjA0NDFhNjdkNThjYzg4YzQifQ"
+        },
+        {
+          "resource": "repo://api/src/services/agent_runtime/model_failover.py#L1-L8",
+          "version": "repo-lines-v1:sha256:1295472f6699ae226c1c00a7c568ca3285e89377c43041026125627e8cf4dd14:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiODU1ZmYwNzIzMTM1ZjY1MTk0ZTExYzI3NDJjNGYwOWU1NzBjYTA0NTczZDE2YjdlOTY1ZDJjNGU4OGJjZjcxNiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYjg2MzQyMTkwZjJmNmEzM2NkOWFlMmE3NGZjMWFjZDA3OGEwMGI4MTAyMzdhMzczZDM1MDE5YTY3YzBjMTJkZiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjAsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMWFhZjc2MzdjYjZlN2U1ZGI4NWQ2MzQyNzQ2MDE0ZGYwNDFjY2Q1NThhOTIwYjI5ZWI2YWM3MTlkN2JhZjVjMiJ9"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.7.2",
+    "at": "2026-10-18T02:14:28.318Z"
+  }
+}

@@ -1,0 +1,96 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:d48faa5578d080b0b4e7ae1f4d7b04cd405c7311cb64a2d0c9a036e1e56e0ec2",
+  "claims": [
+    {
+      "id": "claim_544caeb121be40a0a24f69ebb8315e5f",
+      "statement": "The workflow execution consumer uses a compact RabbitMQ message with full pending context held in Redis and creates durable PostgreSQL execution state before routing work to the process pool.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/jobs/consumers/workflow_execution.py#L1-L21",
+          "version": "repo-lines-v1:sha256:c553b4108448c23a54ff82ef4a64c1e751b55c39208289411bfbd25ae65423ff:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEzMDNlY2RkNGE0ZDEwZjE5YzczZmQ0MmZkMTI0MzdmZDMzNTRhODI2ODE2MDVkYTUyNTVhOTdhMzkwNjhkYmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU1ZDMwMjdjYzY5MzUwOWUxNmZlYzNkOTFmYmYxMjVkNmViMGMyZDVlMzY1NmY3MzE4MjEyZWE5MTVlNjM5ZTgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImVhNjdmYjkyZjdmZjVhYzc5ZmU1MTc5YTYwMzk1ZDk4YjhkNjI4OGVkOGZiNmJlMGU3MzA4ZmIzNTk3YjYzYTAifQ"
+        },
+        {
+          "resource": "repo://api/src/jobs/consumers/workflow_execution.py#L93-L107",
+          "version": "repo-lines-v1:sha256:dfc7efc07db9287b2c5f25d2699c2c6047c0fe76099e1efc25afdb8966d40a00:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc4MGMwMjkwN2Q4NDM5NGE1MjMzMDA3MWEyYzA5OWYzOWQ1MWI3ZjRlZjhlNTg0N2QxMzZhNGFhYTMxNWY2OGIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE2YTcxNTI1NzJlZTg0ZjEwOTA2Yzc0YjlmMmE5MjQzNGRkYWIwZTNjNDI4MTNiMDRlNTk3ZWZjZWM5NTFiMjYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRhMTEwMTZmYzkyYTNhYmMyOWQyOWE3YThkODE2MDNjYTM1YmFkNmQ0Y2Y3ODIzNTE4MDFjZmM3MzRiYTE5MGUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY1NDRhMTlhOTI3NGE4ZmZiOTFlZDZjZDhlZmVlNjZjYjhmY2Y4YTkxMTA4MGQ0YmJkZmUwNWFmZjRjOTBmNzUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_a8c61b75a33145ada6ddc4f0bf00b1bd",
+      "statement": "The workflow consumer starts its process pool before accepting RabbitMQ messages and drains admitted work before shutdown.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/jobs/consumers/workflow_execution.py#L180-L212",
+          "version": "repo-lines-v1:sha256:e73175a37f130694c6b57f6638a08bad61fdf986f8ed8d522447d40a6947fd10:eyJzZWxlY3RlZExpbmVDb3VudCI6MzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFjNmRmYmI3NmM1ZmNjNGJjZDM3MjU4OTUzNThjZThiY2VhYjVjYjVlYjEyNjMwNzZlYzljYWExNjdlZWMwMzQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVkOWVjNzRhYTk5MTk0MWExNjRiMmQ3NTcxODFmODAxMTI4MmNjZDRjMDM1MmExMDM2NWNhYWUyODMyZDM4MjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUwYTYxMTliMWY2ZTA1ZTQxZmJmNTFjNzFjNmE5NTY1NGMyYTYzM2U1ZmYxYTBhZDI5ZmNiOWVkNjhkYjgzZTkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgzODQxNDc5NDNkN2YyNDNkMTNjZjJjYzE3ZDdkODYwMTViMzM0MmFkMzQzMDdjNWJiZTJmNzAwOTcyNTJiNjEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_bafb44ab9ae048faa1d7f00683dc31d5",
+      "statement": "Execution policy describes durable authority, admission, completion, idempotency, worker loss, retry, cancellation, timeout and memory semantics; the workflow execution queue is RabbitMQ and process-pool admitted.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/jobs/execution_policy.py#L191-L207",
+          "version": "repo-lines-v1:sha256:1ca74e4d6379c1f6e3c95c510423e162b83b38810470dc6d66b14f5ec38a24b3:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ3ZjQ3MmQ4MTNlOGE0Zjg2ZDI1Njk5OTBlYjJhYzFiMGY0N2UxMTY1YzI0YWE4YTk5Nzg4NzE3MTY4ZmFjMWEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk0MzNkMGVhOWVjZjJmMzljOWE1MDQwNzM5NWVlNDExNzJmZTY4MmM5Yzg4NWEzNTA4Zjc1YmRlZTE1MWVmZmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhjYzRhN2QxY2M3OTZhYmEzZTQ2NzIzMzI3ZjUxN2U5ZjgxMTk4MmQyNTBmMDcwMjk4NmU0YjU3NjRhZDk1ODkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY3YTcwNjhmYzNlYjUyZTdkYzdjZTlmZGEzMTY4OWQwODQyNmY5MjRmOGFhZWM5MTg2OGI3MTVjM2Y3ZDdjMjIifQ"
+        },
+        {
+          "resource": "repo://api/src/jobs/execution_policy.py#L82-L100",
+          "version": "repo-lines-v1:sha256:83f177cacd1ddce2c51ff38e79f30521298662f7911a993fd2eb13eb5ab00781:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY2OWExMzk3NWMyNTZlYzgzMjBlMjAxNjA4M2M5NmRmNjM3Y2EzZDM1YmViZGUyMzE0YmVlM2E0NzExYjU2Y2EiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJmZTQ3NzMwMTdjZTIzMzI5YmVmZmFjY2NmMGY5ZGFjZWE1NmE2YmYwNmYxNmIyNzdmNGJkZjE1NzNiOGMxYjYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjBhMDAyZjczZTlkNGJkODU4MWFiM2E0NTg2ZmZlMDY2OWE1ODA0MmE5YTg1YTQzMWZiNWVkMGI3NGY4YTQ4MjciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdmNDQ2NGMzNWU3ZWI0YWY2NjQyYTY1NTU4NmRjZDRmYTEyOTQ2ZDU3NjcyNTJlYjE1OTIxMjA3ZjhmNGM2ZGQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_671acc3fa9c14e41b051262f065fb0a3",
+      "statement": "ExecutionAttempt records logical work and attempt number, retry/replay counts, policy, worker/process identity, lease token, failure fields and timing, with uniqueness constraints and active lease index.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/models/orm/execution_attempts.py#L21-L60",
+          "version": "repo-lines-v1:sha256:300cbc8bed31922ea993838352a2c64cf981a0a24aeac1f3d1de61cb58bafc92:eyJzZWxlY3RlZExpbmVDb3VudCI6NDAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA1NzFmYTA1YjVhZWJlMjg5ZWVkMzQ1ODQ1ZmZmY2Y5NzcxZjg5MDc1YWFhNzc3OTRkYjQxMjZmZTIyMzNiNjEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVjMGFiMjEyZjIzZTU3ZGQ2ODYxMDZjOGExMDgxMzA4NGIzYWJjMWI0MzQ0ZjZjM2UxMmQxNDkxMzFmNTEyODQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjkyMGI1Y2JhMzU1NWU4MjliMjg0Y2Q0OWVjNzI1MTEwODg1YjI4Mjg1ZDgyYWE2ODQxNTE4MDhjNDIyZTQ0MmIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY0NGNhMTg2ZTljY2QzMTIzMWE4NzVlYzlmMDEwOTcxMGI3NWI2ZjIyNDk4MWNlZWE4MzE0MWYxY2I0ZmEwMWYifQ"
+        },
+        {
+          "resource": "repo://api/src/models/orm/execution_attempts.py#L85-L105",
+          "version": "repo-lines-v1:sha256:5940567a8cf8fb09f07d8e0f450611a039175e115e4d23f6f0738dd526e32488:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg0NTFlZmE5YzY5MjM3YTljYTIyMjkyMjA2ZjNlYjdjOTQ4Nzc1MjI4MGY3NDNkMWNlZTBlMzBjNTdlNDE3ODEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk0MzNkMGVhOWVjZjJmMzljOWE1MDQwNzM5NWVlNDExNzJmZTY4MmM5Yzg4NWEzNTA4Zjc1YmRlZTE1MWVmZmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQ4M2MxZDc5NTg3OWEzZGQyNmY5YTkyNzJiYmIzM2U5MjI5ZWRjMTg2NmNkNTk4MDRhZDgyNjNjYWM1MWQwMWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjMwYzFmMTg4ZjE0MmVkN2E4MjQ2ODBiMjA3MTcyYzU1MTliYzYxNGE0OGZkYTdjZjE2N2VkYjhkZGY3OTk1NmMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_dea9b3b26686424398023c1efdb97e62",
+      "statement": "Workflow result callbacks require attempt fencing when attempt history exists and reject stale result projections whose execution is no longer running or cancelling.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/jobs/consumers/workflow_execution.py#L425-L485",
+          "version": "repo-lines-v1:sha256:8b0b719fc2300b1cf34fcda645dbd7c126f83abc8394f9dee6e7f0012ab11a6c:eyJzZWxlY3RlZExpbmVDb3VudCI6NjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk5ODdmMmRhYThkOTFlZDQ1OTljZmM3MGVkNjkzNTRkYjVlODhlMmZlYWI2NmUzZTViMGEyYzQzMWEwNTMwOGQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM1NDJkZDJlOTg0YjkwNzU5MDYzOGEyZjQ2MmE0YzlmZTFiYzNkMDk0ZDBiMDEwZDZlYTMwZDc5NDMxYTAwN2IiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZiMTBkYjM1ZWI2MDA4MGQ5ZWEyMGY5MmEwMmEzZmQ0MDRkM2EwOWRjOGFhYmQ5NzhhNzIxNTU0MDA2ZjNhYWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA1MDM2Y2Q1NmJhZjQ1YTJmNzk0M2E0NDNmOWNiZDhmZDQ2ODY4Y2ZkMjUzMTkyMTdkNzk2M2JjY2UwYjQ0MmQifQ"
+        },
+        {
+          "resource": "repo://api/src/jobs/consumers/workflow_execution.py#L724-L781",
+          "version": "repo-lines-v1:sha256:107c1f20ee49916b6f1cf4b2b9fec6835b65b89aaf01208f386a03dca9f61f8e:eyJzZWxlY3RlZExpbmVDb3VudCI6NTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk5ODdmMmRhYThkOTFlZDQ1OTljZmM3MGVkNjkzNTRkYjVlODhlMmZlYWI2NmUzZTViMGEyYzQzMWEwNTMwOGQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFhNzQ3ZWM4MWI5MDYwMzNlM2NjYjM1ZTJlMmFkM2NhMGYwNjE4ODFlYTFiY2Y0Yjg2Y2NiNjdmOGE0ZTdlYjAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU3NDY4YTcwZDZjNzc3OGVjZTE3YmRmNTg3NGM0OWJmMzYyNjFkOWMwN2I3YmMwOWFlYmQ5ODQwN2Q0N2QzZDEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZjMjYwZDNkOTU0OGQxMzRhMTEzNGNiMzY4NDM2Y2QyZmM2YTE5NGQ0YWE5NzQ2ZmM3NjIxOWUxNDcwNmI2N2MifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_16fed1754c9e4adea23d86365e4917fd",
+      "statement": "The execution detail route loads a caller-authorized record, uses a pending execution fallback when the durable row is missing, and returns explicit forbidden/not-found responses.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/routers/executions.py#L1069-L1102",
+          "version": "repo-lines-v1:sha256:dc6829faf20cc373ff231906c0d550dcec147090a00f964ff32499bb1597f0f9:eyJzZWxlY3RlZExpbmVDb3VudCI6MzQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUxY2Q5OWE1YTFmOWM0N2YzMjg4OTcwYTI2NWVmM2QzNDg3ZDYzMWJiNjY2ODNkN2QxYTRmNzViNmI0NTM4OTYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU5NWU4MWZmODViN2ZkN2EyYWRjNDFmMTQ4YTYwMTVlZjI3MGZlYmQ2MjBiMGQzODBkMGVlZDI3YTI4YjQ4MGUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhjYzRhN2QxY2M3OTZhYmEzZTQ2NzIzMzI3ZjUxN2U5ZjgxMTk4MmQyNTBmMDcwMjk4NmU0YjU3NjRhZDk1ODkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRiZDE4NmIwMzg4YzA0YmQ0YmUzNjlmODU2NmJhYmI4MmYxZjY5ZGU3MTllYzc2MGU4Mjk1NDhlMmM2Y2U2YWEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_d8a01b16b6f44ff0b1027c80d9b0dd27",
+      "statement": "Workflow execution attempt documentation distinguishes stable logical execution from per-claim attempts and states that attempt tracking does not make arbitrary Python replayable or enable automatic retry.",
+      "evidence": [
+        {
+          "resource": "repo://docs/architecture/workflow-execution-attempts.md#L3-L13",
+          "version": "repo-lines-v1:sha256:66836456e6b2ab2b262e17f066183abfa8ab3b8bdc9952d94238f7c89625cb1b:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdkM2RiYzRlN2U3Y2JlNWRkYzg5MWIwODA3MTJmNjM1MWM5NGI3MjhlYzhiZDg1NTZmNDYxMmIwNzBkMjdiNDAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU1NTEwZjgxNGVkNDdkZTVlOWY0YTI0NjZhZGYxMWM5NmQ2OGY1NmEwNTllMWVmNzFiMGU2NmU2YWRlOGI0YWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjoyLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRiNGM2ZDdkZWQ0MDczODI0MmFhNDdkYWFjOGJiZTk5NTE0NWNjYWFlNWVhODczODE2M2IyMGI2MjU3ZmUyZDAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUwMDRjNjkzNTNmZDJjYzY5NTJlOTYxODVhZGIzZDdmZGM5YTIwNjQ0NWQ0OGE2NTQ1ZDk4MWI4NjEyY2RjNjgifQ"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.7.2",
+    "at": "2026-10-18T02:14:28.318Z"
+  }
+}

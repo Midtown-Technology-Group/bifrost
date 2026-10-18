@@ -415,3 +415,11 @@ Before opening or queueing a PR, commit a clean candidate containing current `or
 PR CI uses the fail-closed affected planner. Merge-group CI tests the combined tree against its actual base plus authentication/readiness integration checks. Unknown paths, shared contracts, migrations, dependency changes, and unmodeled effects remain comprehensive. Nightly runs exercise all backend unit/E2E and client unit/browser tests, slow contracts, and clean production builds; release tags and manual CI remain comprehensive. Required status checks, candidate image provenance, and merge-queue authorization remain mandatory.
 
 In the final handoff, list the exact checks and tests run, state which broader suites were not run, and disclose any known failure. A known out-of-scope failure must be permanently fixed in the current change or split into a dedicated blocking repair change; it cannot be waived as flaky or left as an unowned follow-up.
+
+<!-- OPENWIKI:START -->
+
+## OpenWiki
+
+@AGENTS.md
+
+<!-- OPENWIKI:END -->

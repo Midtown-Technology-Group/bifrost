@@ -1,0 +1,176 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:9059dacaec32817d1839cddc9ef98c31fc3f3e33c7e26fa312e14a1cf7dacd3f",
+  "claims": [
+    {
+      "id": "claim_72cd936dc6af47e999f23455f41f7f2d",
+      "statement": "The test runner defaults to an isolated per-worktree Compose project and documents distinct commands for backend, client, MCP, quality, Kubernetes, and pre-PR verification.",
+      "evidence": [
+        {
+          "resource": "repo://test.sh#L1-L42",
+          "version": "repo-lines-v1:sha256:f59fdf974766d65809a498dd31bd233c4363ff6ec3bcdfdd8ce020790eb517b1:eyJzZWxlY3RlZExpbmVDb3VudCI6NDIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFkOTVmYzA0YTgwYzk1MmY0OWNlNDE4ODYyN2M1M2IwZmJlOGM0NDA0MWI5NTJkNTkyYWNkMWRlOTk4NjE0NjYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJmZjY2NzVjZDRjZjQzZjI0MmFlZTExMTNmYmMyNGMwYjQzMjk2OGI3ZGFjNTNlNjYwNjU1MzRlZGUyZDQzNWYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImExOTg0ZjI4NTg4NzhjMzQwMjJjYzU0NDQ0NjVjNGY1NjczYTE0ZGVhNGE1N2E1NmRiZTdmOTA2M2E2ODQwYzgifQ"
+        },
+        {
+          "resource": "repo://test.sh#L58-L62",
+          "version": "repo-lines-v1:sha256:a7b163b8b6be122da40a9d363b95327543c3797be8da85e984ff2c7f198b7e2c:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMjJhNjY4NmYzZjAyM2U0MzEzYjQ1YmYwYWMyMTc5Y2MxOWUyNDliMGM1ZWVkNjVkNjlhY2E4Y2FmYmY0YmYwNCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOGY4YjY5MGJiNGJjMmEwMjg0ODdlYTA4NjYwNzFmMmVkMjNmOTQzNzI5ZWNjMWIzZTZmYmVhMzdmMDRlOWRmMiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOTVkYmNmYWM4Njc4ZjVlZGJhNzhlMGM5Y2NjYWQ2NDNkOTZiMjIyZTRiZTE5MDc3Nzk3YTg2ZmU1NTRiODExNSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZGMyYzZhNzdiZGMyNTIxZWI1ZmM2NjhjM2Y4ZTc4NjkyZDg2OTc5MzY4YmI2ZmU1MTNiM2JjYjNmMDQ3ZmIxOCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_22dafd8f23174125be79cd579cfdab0e",
+      "statement": "The test Compose stack isolates communication to its Docker network, uses ephemeral database storage, and includes PgBouncer to mirror the pooled application path.",
+      "evidence": [
+        {
+          "resource": "repo://docker-compose.test.yml#L1-L13",
+          "version": "repo-lines-v1:sha256:6691a9a5f83c3ec59c6aa94d282321dfd315a15d21144245de7308031362b42e:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk3NGUxYmZkNDEwODNjZjQzOTBiZDIzM2Q2MmYwNDc1OTNkZjlhN2U1MDc1YzAxZWU4NGVkNjBhNmE3OWJkN2IiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA1ZGY0NTM3NzBlYzE4NTgwM2M2OTQxZDBiNjk3MmU4YWQ1YjNmZWUxMjA5NTAyNDU0NTJkY2IyMGI1NDg3ZDIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImNlNzUwNDgxMzFhOWExYmQyNGI4ZGQyMGY0MjlkYzAzMWU0ZDRhYTE0YjZlYWZiYmRhNGQxMjBlZjhlYTk0ZTgifQ"
+        },
+        {
+          "resource": "repo://docker-compose.test.yml#L17-L39",
+          "version": "repo-lines-v1:sha256:3ff0503abb2e748e388ed78855610db7e387d320ae56c8c08585014ae25ea881:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZhNzNmY2NkYzk5ZWE4MzU5NjdjN2RlZTdlZmJlZDFmM2NhODcyNjBkOTI5MzE4NTBmZGQ2NmRhOGNiMTJmMWQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAyMTc1YzIyZGJlODFmMDFlYzNjNDNhMWVmMDhkM2MxOGU0NWMwOTEzMGM2MDcyOGQxMWE1ZGY1M2MzZjBmMmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNlNzUwNDgxMzFhOWExYmQyNGI4ZGQyMGY0MjlkYzAzMWU0ZDRhYTE0YjZlYWZiYmRhNGQxMjBlZjhlYTk0ZTgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImVjNTJmYTJjYWRmNzk2NGMwNDU4ZWY2MTNkMjQ5YmNlZTk2NmEzZTY3ODFkNWUxMjJjYTc1NDQyNWRiZjQ5ZTcifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_36e92a4eda6749d4801a733aa52155ef",
+      "statement": "The isolated test init service applies migrations and warms module cache before API and workers start.",
+      "evidence": [
+        {
+          "resource": "repo://docker-compose.test.yml#L117-L140",
+          "version": "repo-lines-v1:sha256:e1fb4d60f75aef000a54db1331f1f239825d134a40f38c48d788764d56475cc7:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhiNGI2OGEwMWRhMDUxMzRiYmYyODMzNDlhMDIxMmFjYzQxY2QwMzYxNjM5MGM4ZmI5MDI4YmE0Njc5NWZhNGEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdlYmQ2NmI5MTFjM2IwMDI3MmJhM2Q3ZjIxZGM1NGEzZTVkNTBhNzNkZjE2MmQ5NWVhMGI2YzdiOGVkMmI3MDkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUxOWUzY2Y2Zjk1MDc1N2QzYjU2M2M2NDcxYmJkYmU1ODc1MmJlNTViNjc2ZmQ4NTAyMjM0Y2JkMjkyMWQ5YWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImFiOTFiNTZiNjc2OWYxNjI0ODMyMmUwZmUxYzQwYzU1Yjk1YjJmNmM5MjA2ZmY5MTQ5ZjAyYzNiMmU2ZjczZDMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_ca69a55c82f54af3b27f3df541ff0d82",
+      "statement": "Client API declarations can be generated from an OpenAPI URL and contributor guidance requires regeneration after contract changes.",
+      "evidence": [
+        {
+          "resource": "repo://CONTRIBUTING.md#L99-L110",
+          "version": "repo-lines-v1:sha256:3b2c3ee59d7e00ed63466d1c85365ccb14ce635f94a85a98fa134a5e678e4a46:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxNWI2YTZkZjdjYmNhY2E1MDZiMGVlOWIzZTNlYWQyOTkxNTM4NDBjMDk4ZjVmMDZkYjk1OWMzNDFhZWZjZmMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRhNTNhZGZiYWMwYmI4YmM0MDY2N2UxMjY3MjUwYzZhOTZjYWRkYjM4ODM2NDE3YzdhOWQwZjRhY2E0ZDEwOTAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjI0OTk5NzBjZWUxMDc5YjY1NmM0MDY1Nzg5Y2NlOWFkNWQxNDJhNzM1MjVkMGFlYmI2OTZhYmNiZjdiNWJiODgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQ0YTU3N2M5NTc0YmZmZTdlNTk4YzI4ZmY1NGYzNDdhMzU4ZDlkZGUyYzBjZTEyM2Q3MzM0NmM3NmI1ZGE3ZWEifQ"
+        },
+        {
+          "resource": "repo://client/package.json#L20-L24",
+          "version": "repo-lines-v1:sha256:b47ca1a750349997489ac6cd306c3055cd02d98d9a78c7bdfb5dcc3e9a988db2:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMGQ3MjVkZDRkZGIyYjQ5Yzc4ZmJkNDRlMmJkM2I2YTJkM2ZmNTcwZmQ1ZDcxMGVlMjBhM2U4MDc0M2ZkMDgzYiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiODY2MTFlM2EzMmJhMTc1ODI1YTAxYzA1ZDZjOTYzNjI3ZjZmNGU3Yzk5ODBkZWIwNmFmMTM2YjU5ZTQ5ZDY5OSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYWI3NjU1Yjk2OGZjOTJkYWY1MTBkNTk2MzEwNWQ1ZjMxYmEyZTU0ZjgwZTUxYmE4ZGVhOTNkZGE3ZmVhNjM5MCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiM2I2ZWUwMDBkY2U1M2NlYTkwZTM3YjZhNTFiYzFlMzJmYjFmMDk2YTQwNmEzY2Y0NDM2MzgwNDQyZDI2OTU5MCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_52cd15e604b947ef82b5c5d7059a77d9",
+      "statement": "CI browser E2E uses two independent stacks, serial Playwright workers per stack, and a full-matrix aggregate; backend E2E uses four stacks with measured weights affecting allocation rather than selection.",
+      "evidence": [
+        {
+          "resource": "repo://docs/dev/ci-test-sharding.md#L1-L24",
+          "version": "repo-lines-v1:sha256:1a07bd3a6be94d67624e3ec55e3406dbe0aec741e0f9be399ed3183fde103e47:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkxMWZhMDkzOWYyZGE3ZmQ2MTg2ZjMyMzBlM2ZkMTQ4YTBlODAwY2Q4OWU2NTUwMTkzOWY5ZTk3N2E0YTIyMWMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ2OTI4NWVlNmZkYTA5ZDQ1MjRhZDI3ZjhmY2JiNDFkZmNiMGUzY2M2YjdmMzU0OTZiYjgwNmM4MDNjYWZhNmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQ3ZWIzZmI4YWJhYjRmNjZiNTIzYThlM2ZlNzE3NjY5MmMwMjczMDNlNzZiYmM5YWZiN2U2YjM3Y2Y0NDFhMzgifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_0bbc49e661114be69fa9761f3a7d47cd",
+      "statement": "`test.sh unit` excludes slow-marked API tests, while `all` runs them; selected pytest targets are passed through the Docker-backed runner, which uses a worktree-scoped lock to prevent simultaneous test processes from mutating shared stack state.",
+      "evidence": [
+        {
+          "resource": "repo://scripts/lib/test_helpers.sh#L5-L25",
+          "version": "repo-lines-v1:sha256:6af5e47399e3be546b6fbfaa3ed83aed8d1c659317dd3f855e79ae49f989f08b:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhhM2NlZmM4NDg3MDJhMDBlMmM3MjU0NGE3MjI3MDcwOTMyMTJkYjk2MmFmOTA3MjgwYTBhODEzYjAxZjc1NzciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjUwMzdkNWVkZWIzMzU5NDM3MGM4ZTg4MWJjYTI0ZjIzYzE3YmJhNzFiYTlkYWVhNWRmMmU0YjE1YTEwZTc4Y2UiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImYyZWQ0M2QwNjI1NTgxMTEwMGNlNGIyYjhkOTc2NGNiMWE0MzEzZDIxOTA1Mjc2MzViN2U2ODZmYmM0Y2Q5NWMifQ"
+        },
+        {
+          "resource": "repo://test.sh#L343-L360",
+          "version": "repo-lines-v1:sha256:837f399f62bb9640942650bb792ea719359832dd8b6fef0692a16cdb9d14dcb0:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA4ZmYyNTQwZmQ5ZDRiZmFkNzc3OTFiN2ZlZTY0OGY4ODM0NDUxMTgwMWVhNWE1ZWVjY2FkY2RlYmU2YjI3MjEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM2MTg5NjE5NTQyOGE5Y2VhMzZjNjZhY2EwZWVhYzZlNDEwNWU4ZjhiMWVlMWQ3NzUzOTA5OGY3YmJkYTE0YTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJjMjEwYjRkZTczYTU2OTBmOTRmZDM0ZDM3ZTVmMDQ2M2NhNzE2ZmI2M2Q1NjcwNGFiYjIwMzEzOWE4YTEyNjQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQ1M2U0YWMxMGM0NTJhMmRjODIxMDViYWEwZGNmYmRjYjNhOTA3NmI1OTVmNzRjNThjMDJjMDdlZWQzZmQ4MDMifQ"
+        },
+        {
+          "resource": "repo://test.sh#L420-L430",
+          "version": "repo-lines-v1:sha256:a4b849007cd09713b232d82ee85614841f76f9791f5431accd17e6a51f2717ab:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFjZDc2ZGVmZDc1ZDE4MzQ1MmUyOTNlYzE0YWUzNzgyZGQyMGY1ZTVjM2M1NDc5NGEzOTVmZGE3MjkyMDU3NGMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdlNTQ0NTM4ZTVhMTA4ZDhjMDU5NWY2NDI3NzVmYTExNjYxMmQxNDMxN2E4MzYxZDJjMDM3OWU4YzljNjRkMzgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM1ODk2YTNlMDMyZDFkY2M1YTVjOTM0NjAxYjUwNTA2MjE2ZDc5NDVmNzk4MGIyZGI3NjBkYjkzOWUyMzE2ZTgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM4YzIwZmNiNTQ0MjQ4ZmViNjQ4ZTNkZWIyZjExZDE2ZWE1NWZlNzU1MDIwODU5NDkxNTkyY2Q4MzUzZTQ1MzcifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_8b9170e3710e448c9aeea46341fe1a55",
+      "statement": "Local `pre-pr` requires a clean worktree containing the latest fetched origin/main, plans against exact HEAD and base SHAs, and rechecks that the candidate did not change; default scoped runs defer comprehensive lanes to required CI, while `--full` explicitly runs comprehensive local stages.",
+      "evidence": [
+        {
+          "resource": "repo://test.sh#L1022-L1094",
+          "version": "repo-lines-v1:sha256:f29c4f1af38b26339b35c0d68de6046da3eec505e8e6e86dbcd344eb733b259f:eyJzZWxlY3RlZExpbmVDb3VudCI6NzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjczNGQ3MGNiODUzNGFkOTkwMjM1NWVmYjZmYjc5ZGIxNzUxMjM3MmIxYmQyZGEzNzM0MzQ4YTVlYTA5NDUwNzYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg0ZTc2MDQyNmE4ZTNhODYwZGQxNTBlNmMxMTc4YmFhNmJmMTgyNGM1N2ZlODI3M2IwMmI0YTVjZTQ1M2FhNzEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImI3YzljOTM1OTY5NmJhYTBmMWE2MzY0ZjNiNzFmZDBmOWRlZDliOGI5MzliZmYwOGFlZjdmMzc0NGYzNmMxNzEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUxMTFjM2ZlMzY1ZWIyYjczZTE4MGI3OTM3NTJkOTM3NDY1YjgyYTdiMzI1OTBiMDc4ODA4YmRjM2NhMGQxNjkifQ"
+        },
+        {
+          "resource": "repo://test.sh#L948-L996",
+          "version": "repo-lines-v1:sha256:00a3c81f2208d8ba32ef88508cbaa2966a86036f67cbaa05996e3f5b800f0ffb:eyJzZWxlY3RlZExpbmVDb3VudCI6NDksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM2YjdiZmEyNjM5NzUzYWRjNzYyMmNmMGZjMDg1ZDkxMDgxNzBiYmY3ODc4Yjc2NzAyMmQ0Y2MwZDY0YzJkYmEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjJiNGU4MWI1ZGE4MmFkNDg5MGEyYzliNzkxNmIyZWU1NTA2MWFkOGZhMjE0YjhkOGJjNzM5NzA4NWEzNTI0ZWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI1ZDkyZWZmOGIyZjJjOGIwMTJiODRjMDViZmEzMzY0MTJkODJiZTI3OWVlYjEyNzg3NDllMTM5ZTVjZTM3YWEifQ"
+        },
+        {
+          "resource": "repo://test.sh#L998-L1020",
+          "version": "repo-lines-v1:sha256:e618bdea39add8f61f3d030d8117b14222283fb58183366efd76c432ee26508a:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE5ZTA3NWY1ZmZiN2Q2MWQwNGY5OTM3NTE1ZWFjMTYzMjUxMzAwZGYyMTJhMDhjYWE2OGU3MDg1NjhkZDg2ZTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjMyNDUwNzhhYWU3ODY3NzZlMDI0ZWNmMzZmZTFhYWQ5ZjZhZjM3NTkwZWVmMWM3MWExNWFmN2FlNDQyMWE5NmUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjliNWE0MzI0N2M2MjRjMzQzNjA4Mjg0ODYxY2EzMjg1ODc1ZmZkYzUyMDU0YTc2ZjdkYzYzYzlhYjk5MDRkZjUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_9fa04fc74f374a7483d25d7a6db660fc",
+      "statement": "The resumable pre-PR ledger captures the candidate, repository and Compose state, configured images, test environment digest, tool versions, and browser configuration; it reuses a stage only when it completed with matching context and signature and the current worktree remains clean.",
+      "evidence": [
+        {
+          "resource": "repo://scripts/lib/pre_pr_stage_evidence.py#L151-L173",
+          "version": "repo-lines-v1:sha256:59bf45142607089256a0ae91964a573f918827586fffae1ffb56e765698c1b18:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc4OTQyZDRkOWNjNTYzM2JlZjdiMjk4Yjg5ZWZmMTEzZTgyMTc3NGUxY2E4YjY3YWJiMDEyMmRlOWZmNzBkNmUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZmZDJmMTFjZGQxYzg2MDA4MzZmYzc3OGRhMTExZWE4OWQyZDA0Njk0NDdiZjE5NGJjNjNmMTA3MzFhNzY3YzciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRjNzYyZWY2ZmU3ZGUzYWFiYWI4MDM3NzM1NmJkOTQxNmU1ZjVjNjRiNzgzNjgxODcxNjNlNmQ3MzVhMTM2YzkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJlZDJlZmM4NzM3ODUzMjk3MzkwODRlZjI0YjRhYjU3MDdhYWY5YTc4NmU4ZGY0MDE3MjI2ZjAwNDczZDVmNjEifQ"
+        },
+        {
+          "resource": "repo://scripts/lib/pre_pr_stage_evidence.py#L39-L80",
+          "version": "repo-lines-v1:sha256:ed501a9de75ca80d0c8399754455dcb3e0ae40f8cb8af7dda2427b2401a3d3fb:eyJzZWxlY3RlZExpbmVDb3VudCI6NDIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVjZDM3NDI0M2Q5MTYxNGJkNDc5YTA5ZjIyOGVmNTQ3OTlkZjk3NTc2ZDFhZjc5ZDVjZTY2NWJmNTVlYzQ0YjAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg1ODczMjg5ZjAwZGQ4NjFmMzM2MjNiZmE3OTUxOGYzM2IxYzhlZDU0YjE5YjkwMjcyYjY0OTU3ZmE3MDJkN2EiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjBmM2E3MDRmODI2ZmU2NTc2ZDViNzljZmRjODlhMzI1NzI2MDMwNTRmYzE1MTU4NWJmYWJhNWI0Y2U1ZDE4MmUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ3MjIzMTA2ZmQ4NzQyYjcwZWEyMzNmOWRjMzU5ZjRiMDJiYmIwNjliNzI4M2VlZjc2MjQ5OTUxNmJkN2I5YzgifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_caf42dfa78564bbeb2aca942306b9729",
+      "statement": "The development and sharding documents describe intended verification organization, but a plan or stage ledger alone does not prove all selected or comprehensive tests ran; results must be tied to the completed command and its artifact or exit status.",
+      "evidence": [
+        {
+          "resource": "repo://docs/dev/ci-test-sharding.md#L1-L19",
+          "version": "repo-lines-v1:sha256:d466bd37502639706c00e06adec1a7caa82b1ae70d180cab124fe55e569e3226:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkxMWZhMDkzOWYyZGE3ZmQ2MTg2ZjMyMzBlM2ZkMTQ4YTBlODAwY2Q4OWU2NTUwMTkzOWY5ZTk3N2E0YTIyMWMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZjOTU4YWQxYThhNTQxMmYyYWY3Yzg0M2U2MzM3NTJhODdmZDk4OWYwMjMwNzQxZmQ1YmEwMzYxYzM2MWZmYjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE4OWJmOGEyMWEwNjFkNmM1YzM4MTA5YThhNDg3MDQyNDhkMWY4NGIxOWI1Y2VjNzY3Nzk1MmIxMDI5MGY1MTUifQ"
+        },
+        {
+          "resource": "repo://docs/dev/delivery-lanes.md#L24-L41",
+          "version": "repo-lines-v1:sha256:4f10143ce16854b0ca56d1c714f83a76b05dc1305018a33bb64bd52ba31e4929:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgzN2I2YTJlYjk4MTBhMmNjY2QwYTQwZjAxZGRmZWExODEyZmY0MDM4ZmUxMTUyOGQ5MTkxNzlhNTJlMDJjMzMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjMwZDQ5MDAwMWYzNDY3ZjViYjc0MTI2ODRkMDkxOWYzYjM1ODNlZmJmOTdhMDRiNGUwZTgyMzc4YzY0MTAyZDIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU5M2RmMDEyZjFjOGEwZmU1MTE3OTVkZDkwNDVlZjYxMThhMjViMGJmZmZlYjAzOTAxNTQzMTlkYTlhYzM2ZGMifQ"
+        },
+        {
+          "resource": "repo://test.sh#L1022-L1094",
+          "version": "repo-lines-v1:sha256:f29c4f1af38b26339b35c0d68de6046da3eec505e8e6e86dbcd344eb733b259f:eyJzZWxlY3RlZExpbmVDb3VudCI6NzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjczNGQ3MGNiODUzNGFkOTkwMjM1NWVmYjZmYjc5ZGIxNzUxMjM3MmIxYmQyZGEzNzM0MzQ4YTVlYTA5NDUwNzYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg0ZTc2MDQyNmE4ZTNhODYwZGQxNTBlNmMxMTc4YmFhNmJmMTgyNGM1N2ZlODI3M2IwMmI0YTVjZTQ1M2FhNzEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImI3YzljOTM1OTY5NmJhYTBmMWE2MzY0ZjNiNzFmZDBmOWRlZDliOGI5MzliZmYwOGFlZjdmMzc0NGYzNmMxNzEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUxMTFjM2ZlMzY1ZWIyYjczZTE4MGI3OTM3NTJkOTM3NDY1YjgyYTdiMzI1OTBiMDc4ODA4YmRjM2NhMGQxNjkifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_a3bd651e22e2447f92f9ff7616080e53",
+      "statement": "The TypeScript/Vite benchmark harness requires Linux, Python and GNU time, enforces at least ten measured runs plus a separate warmup, and runs selected checker scenarios against a disposable source copy with shared installed dependencies.",
+      "evidence": [
+        {
+          "resource": "repo://scripts/benchmarks/typescript.py#L1-L8",
+          "version": "repo-lines-v1:sha256:ede426a137436d55a70ef0bbb4a56c75b3de3e199d01ef4167a1b7451de01fc8:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZDY4MmNiZGI0YzhiMDc1MThiZjQ4NmM1ODk5MGZjMzkxNzgzYWEyMGE5MTZiZmIyN2FkMjExZWIxZDVjMzY0MiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYTMwM2VjZGQ0YTRkMTBmMTljNzNmZDQyZmQxMjQzN2ZkMzM1NGE4MjY4MTYwNWRhNTI1NWE5N2EzOTA2OGRiYiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjAsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMDBkYWU0MDZkYmE3YzA4ZjQ1YmQyZTdjODg1NjQ5YjQ3ZmM0YWMxMzEzNWIyNDQxODdiYTdiNzA3ZGQzZmMzYiJ9"
+        },
+        {
+          "resource": "repo://scripts/benchmarks/typescript.py#L183-L213",
+          "version": "repo-lines-v1:sha256:375c4845cec7c32bc74a21dabd8f0377cca79bfab9cb31bc32d5f07d7e3d62de:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMyZTMxMjU3ZGMwYWUxZDU5MzAzN2MyODBjOWFkNTA4MTliOGE2YzhjZjcyOGJlMDcxNmQwMGEzZWVjYzA0YmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM3OTU0YWNiMDI2NWFiYzlkNDYwNjMwMGY1YmQ0YjM2OTU4NTFjZTRiZGM0M2U3YzJiNGU2NmQ3M2Q1ODQ1NWYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjJhM2VhOTI3Zjg3MmU2MzU0MDc4YWU5YmY5NDdmMWM5NzI0ZTI2MTM3MmQ3YWE0Y2U1MzdlYjU2NGEzMGQ0YTEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNkNDEzNDBjYzIzOWExNTljZTliNjAyMmU5ZjYzMjI4MzJlMmVhZDc2Y2FlOWU0NzU0ZDIxMGViOGZiNmQ1ZTgifQ"
+        },
+        {
+          "resource": "repo://scripts/benchmarks/typescript.py#L91-L145",
+          "version": "repo-lines-v1:sha256:bf90384378df5d6246e11cad12705c5509922dea025a3672380a7f87bb9e108c:eyJzZWxlY3RlZExpbmVDb3VudCI6NTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIwZGZkNDhmZDMwY2E3ZGJiZTA3OWJmZDY2YTE2MmI1ZjYzN2NmZDIwODIyN2RjNTUzYThlZWI0ODUxZWMyYWEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI1NWFlOTA4NWU5ODNjZDEwYzEzMDRkMDRjY2NmYzZhNDJiZGRkOWE0Nzk4OTk5OWQ1MzQyYzZmZGQ1Njc4YzMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImI1YzUwMjA3NjRmYTc3YTVjZDdlZDM5MjdkNTA0NzlmOWQyN2E1YzhjZjE1NjE4ODk3YzEzOWFiY2ExZTY2ZjYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjEwY2ViZmE1MTkwZTVmNDU2OTc0NzExODZiM2E3Zjk5Mjc4ODZiMDRiYTE2MmIwZWEyMjlhNDc2MzhjN2ZjODYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_65543818936d4bb7858704e5f6f9f413",
+      "statement": "Benchmark safety tests check source/build/cache isolation, scenario and sample validation, process-tree termination on timeout, and propagation of failed benchmark phases rather than emitting a success summary.",
+      "evidence": [
+        {
+          "resource": "repo://scripts/benchmarks/test_typescript.py#L120-L140",
+          "version": "repo-lines-v1:sha256:2477cb4e79a6e9f5699d466a4fb4d0fd1809ed596a9c53149d6384ca5bfb5a50:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM5MTE1YzFiYTA0YWE5NzVhNGM2YjQ3YTZiMjRiMDgxZWRiODA4MzU4NjZjMTRhZGM3ZGE4ZDBhOGU0MTY0OWUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM5ZDBiZDE5MTc0YjkyYTc0ZGJlZGY4MjU5ZGY1ZjExZTA3MTRmYjFkNDNhMTg1MDQ0OTVhZDU4NjVlZmE5ZDIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIyZjkwMjU1MGZhYjNmZGYxYmI4MGZiZWRjZGNhZTg0YjBiODM2ZDFkZjlkZWRiMTNhMjQwZTAzNGJjYWVmY2YiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk1MWYwNDM4MDZjNDE5MjljNjY0OTRjYWNkNzYyZmY4MjQzMzVmYWUyMTRjNWViYzU2ZTFhOGI2YzBjYWY4MzEifQ"
+        },
+        {
+          "resource": "repo://scripts/benchmarks/test_typescript.py#L33-L83",
+          "version": "repo-lines-v1:sha256:0211d5a32f4680ecca07947887a336b9ff3640dbb706076880b0074008f0239f:eyJzZWxlY3RlZExpbmVDb3VudCI6NTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxMmYyNzJmMzE5M2Y5NWZhZTk5OGY5ZGFlMWMyYTFlY2IyOWRlOGViYjgxYzEwMzYxN2NjMjY5Y2M4ZDUxZDAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJhZDJkYmE5MTk5ZDk5NjliYzc4YWYxZTllZjQxYTMyN2M2ZWU1OWVmZmFhMzJjMDAwZTU3OWM5OGUyOWFkMzYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU2YzE1NWU1OWE3ODNiMDk4MDc4OGVhYjhlMWY2Y2U3NTdhNTYxMzRjY2IwYWFjODQzNjExMWNiYzdiMTM4MGEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjBhOGI2ODg2MDc1ODQ3Y2UzNjM4NjhhNjEwNmMzNTQwMjMzZDRkYzFlNGQ2NjcwMWM0NGYxMDk0YmUwZjNhZWIifQ"
+        },
+        {
+          "resource": "repo://scripts/benchmarks/test_typescript.py#L85-L118",
+          "version": "repo-lines-v1:sha256:863b18f77ff10f46451ae0278a95b4ba0693366a18cbad6111df7d4cacbfec3d:eyJzZWxlY3RlZExpbmVDb3VudCI6MzQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVjOTZmOGY1OTQ0YWI5ODVjZDlhYjliMWE3YjI4YjY1YWM0NzViMjRkYWIzZmE3M2UxZGQyYjgzZjM4MTk3MzYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIwYmZjYWRhMDc4Mzc0OTkyNDllMmUzMzQ5ODkzYzZiZTI1MDc1ZThlMGZiYjNjZDUxNDdiZWVmNjYyMDNmMmUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjIwYWQ0NzJiMWI0YTI0MzczZTE3OTE0N2VjMDdlNDQ3MGVjZWUwNGY1ZWQ2NDRjZTk3ZjgxMDg2YmIwMTAwNGQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijc3YmY3ZDBlNTgyMDk0NGRhYWY0ZWE5NjlhYzU1ZTI1YTAzMDg5MDU0ZmFhY2VkNGRmMTdiOWUzZmZiZWJlYjMifQ"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.7.2",
+    "at": "2026-10-18T02:51:00.673Z"
+  }
+}

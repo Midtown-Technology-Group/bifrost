@@ -1,0 +1,172 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:fa269da754e9647f868c566b6ed64bb4a230ee69be7baadc58802d9e446bd909",
+  "claims": [
+    {
+      "id": "claim_c8bff3a5a44d4192bb2487e6843f3602",
+      "statement": "The Bifrost CLI checks the server's explicit contract version before ordinary commands and stops on a mismatch; a build-version difference with a matching contract is only a notice, and the update command bypasses the gate so an incompatible CLI can recover.",
+      "evidence": [
+        {
+          "resource": "repo://api/bifrost/cli.py#L216-L234",
+          "version": "repo-lines-v1:sha256:f4617d3132186005fe2d8f07fd9a624e52e0133108d9d4cf876e8e40c37d7a3c:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMyN2I5MmY1MmVmMTM0NTNkMWIwNGE1N2JlMDk3ODQ4YjgxNDAxNWY3MmJmMjVhNzQ1NGE4YjVhMGM3ZWQ3YzYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3NzRiZGI4MWQ2NWJiYzVhOWVkNTBhMzhhMDk1YjY5N2RjN2RiYmNjYThhYjM3ZjFkZTc5OThmZWU1MjM5YWIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImFkNWQwZTQzZTg0YjRmNzY1MWM4ZTY4ZTI2MTViNGY0MDAwN2M3YTFhMGUxNjk1ZTBkOGNhNzFiYzQxYTNkZTQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRmNjg5MzA1YTUyZTU3NTZhNmQ4Y2MwNGFkNzhmZGU4NjM5NTliZmY2Y2E5YmM1NTc2MDBmNjc1MDhiZGE3YTEifQ"
+        },
+        {
+          "resource": "repo://api/bifrost/cli.py#L283-L310",
+          "version": "repo-lines-v1:sha256:b89bc942fe385d705c9ae2209395ba9ba4ee2d2c6266597550089512bc4d7430:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRjMTVhZGU5ZWFmMTI5ZDU3YmM5N2FmNTAyMTMzOGRhYTA1NDYyZTdmYmUzMjkyYzVkNGIwMzMyZDk0OGRmMWQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFiNWM4MjYzMmZjODJkNGIyYzM0MGY0MjU1OGJhM2RmYTMxYzc2NTVkZjZmY2MxNjhiNGZkY2U1N2ZhYzYwNDMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQ4ZDFhYzczMTI1NTE0ZjM5MzNlMjU5Njc1ZTdjZmViZjM0NmViMjMzYTM5NmIzYzg4NGNlYzAzNzI1ODJkMjAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU1ZDM3NzYzYzcyY2RkZGQ3ZWVmMzFjNjE3NTY1ZjFiMzNiNzM0YTU2NDg1YjMxOGZkZjExZWRlZWRjNDVkZjAifQ"
+        },
+        {
+          "resource": "repo://api/bifrost/cli.py#L873-L885",
+          "version": "repo-lines-v1:sha256:e021e64f78ea3553363acab653256738bf87fa12d71eec4db9760e1fcef816f1:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZkM2U0MTcxNGI2ZDAwNTY1MmY1ODkwYTYyY2JlNDVhZWU1MGQxNjgxMGUzMWM2YThhOTYyY2Y3NWU3Y2E3N2IiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjlhNjk1N2FkMGE3ZWM0MjEyNTZiNGViYTBhZWVjYTA2MTY1YmRlYTE4NDM4NzIzZTFjYjk1M2UyZjExZjUxZDkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImNkYmRhYmE5N2U1YTYyNGE5NTg1MDA3N2FhZWE4ZWQ1YTlhNGIzMDg4YzRhMzc1MGQzMzVmOTdmNjIwMGMzNTIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_20d7fe6fbaeb4bcda8a7d9212d9822ac",
+      "statement": "The Bifrost Python client serves CLI and platform-injected SDK callers with operation-aware retries; ordinary writes are not replayed after an uncertain transport error, and engine-local SDK requests use a trusted injected Unix socket without falling back to network API transport.",
+      "evidence": [
+        {
+          "resource": "repo://api/bifrost/client.py#L1020-L1042",
+          "version": "repo-lines-v1:sha256:c1e4b29280f46456654fcd54c4aad9e119b14b13bbc66a5634f91269b3de36fe:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEzYzUwZTY1NjlkOWU0MTFmMDZhYmY5YTJlYjFkMjMxMzJhNjI0NzEwOTBlNzRmYmM5OTQ5MjFlYjEzMDQwM2MiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU5MDlhNTNhNjE4ZDAyOGUxZDMwMDBjMGE3YWJjZWVjYmU1ZmIzN2Y0ZTUxMWVmZTQ2NjQzZmFkNmU2Njg3MmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImMyNGQ4NWQ3MDRkNzcwZDIwOWM3ODc4NmFkOTYxZjI1MjE4Y2I0YWQ3OGI1ZmQ3M2NkY2FhMmVhMzdlOTRkOWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjljYjJjMDIxYzNiNmNhODMwNmY4MmViN2Y3MmIyZjE1NmUzMmNjNmVlNzMxMDYwNTMzMDdkZTlmZjAwNmQ0ODQifQ"
+        },
+        {
+          "resource": "repo://api/bifrost/client.py#L111-L152",
+          "version": "repo-lines-v1:sha256:395d7149bdd7b49bf8cd4fa5f8487c368f330690336e2cea6b11be034649b0ee:eyJzZWxlY3RlZExpbmVDb3VudCI6NDIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFmYThiMjdjNjViZGQ3NjM4Y2U4Y2I4ZjY4ZTI0NDI3YTI2ZGY0MWMwOWI1NjAyOGE0NTZlYWVkNWUyOWFjN2UiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY5NjRmN2YzMGQ0NDI1MGY1NTk2YzFjYTFiZjU5ZWY3M2UxOWIxZTg3ZWQxOGQ4NGRiOGEyY2Q0ZDU1YTBhNTciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQ0MDQ2NGU0ZGJlZjc1Nzg1YjE4ZmNmYmFlMzE2NzI5NjljMzdkZGZmZjIyYTQ2Yzg5ZWYyZTVmZTU3ZTI0Y2IiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjYyYTk0YTQzYjRlZjkzNzViZTMzNzNhNWM5NmU0Yzg2MDJlYjE3Njk1MmMwZjlmODllN2ViOTdmNDUwM2Y0MzcifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_f3191a958a40495986c0abe0af350204",
+      "statement": "CLI entity flags are generated from server create/update DTOs with explicit exclusions, and unit parity tests fail when a writable DTO field is neither exposed nor deliberately excluded.",
+      "evidence": [
+        {
+          "resource": "repo://api/bifrost/dto_flags.py#L1-L25",
+          "version": "repo-lines-v1:sha256:5153cecab8c06768bdaaa538dc78ded4419f03e63d4711ebd43b7c6cab43b572:eyJzZWxlY3RlZExpbmVDb3VudCI6MjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEzMDNlY2RkNGE0ZDEwZjE5YzczZmQ0MmZkMTI0MzdmZDMzNTRhODI2ODE2MDVkYTUyNTVhOTdhMzkwNjhkYmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhmOGQzNzk4YmFlOWRlMzBiNzM5M2I5YmJlMzQ5ODdjYmJjODc1OTIzMGRkMWE0MGE1ODNhMWY0NDY5ZTc3MzYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFhYWY3NjM3Y2I2ZTdlNWRiODVkNjM0Mjc0NjAxNGRmMDQxY2NkNTU4YTkyMGIyOWViNmFjNzE5ZDdiYWY1YzIifQ"
+        },
+        {
+          "resource": "repo://api/bifrost/dto_flags.py#L42-L118",
+          "version": "repo-lines-v1:sha256:ee17a70a4c4a31e24989cd4e77f6ee46867dcc664e18e64eac024562f1472d3b:eyJzZWxlY3RlZExpbmVDb3VudCI6NzcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZhMGMyMWFlYzI4ZTY2MjBmZWMyMjQ1ODllOWEwMjQ2OTllZjNiZThlZmNhZGRhYTE2YjQzNTNiZWFiMmU1NWUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZhOGIwMzEwYjBmZmNjMmIwMWM1MmVkNDY5ODM5Y2IzZWYwMWM0NjFhOTQ4ZDRkYjJlMTAyYTZlYWJmOTdkNmIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNhMjJkNDJhMThiNjUwZTlhNDZmZTU3ODUwMDI4YzE1ZjgzNDdjMDg3OTQxNGQ2MWZlMmRhZmVjODU3MTAwMDQifQ"
+        },
+        {
+          "resource": "repo://api/tests/unit/test_dto_flags.py#L111-L150",
+          "version": "repo-lines-v1:sha256:407b6023eebf44de9a89389f92e4dc02fe064b4ea1921f9657097cc6ea2dc6e4:eyJzZWxlY3RlZExpbmVDb3VudCI6NDAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU2MzVmMDM0NDUzMDkyZGI3OWU2NjZiYTk3Nzc0M2IwMTBkNDFiZmFmY2IxOGI3YTdjNmFjYTcwNGUwMGY1YjAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU5Y2ViMjY1MTgyMjA0ZTZlYjJlYzhlMmNkZDgwMDE3ZGMwZGFjN2I0Mjc4NjA1Mzg3MmExOTViMmFiZDI4NTciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjIzNjFiYTY2OTBkMDhmMzg2NDZjY2MwODBhNzkxNTRkM2M0NDk5M2FjMWRmNDg3NTI1OTQ1MTFhZGVkYWY4ZjgifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_d613a7121a494e8aa3c5a00a93a81dff",
+      "statement": "The selected CLI/MCP mutation parity E2E tests compare MCP tool signatures with the same writable DTO fields and exercise CRUD round-trips through a test API bridge; the test scope is explicit rather than an assertion about every MCP tool.",
+      "evidence": [
+        {
+          "resource": "repo://api/tests/e2e/mcp/test_mcp_parity.py#L101-L117",
+          "version": "repo-lines-v1:sha256:3277c9c087cb0412f6986794e696f8f2401c6aa6a92ce8f8ad66a6ea19457602:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY2OTNiZjc3MGM0MDFhNWMzYmU3MzRlMWUxOTg4Mjg4MmIzMjRhNjlhNGQxMzdmMTljYTljMjliNTZiODRkN2EiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjczMjcxNmY4ZjcwMjcwMDQzZTY3Y2Y5OTcwYWViZDE1NWM5MjNjZTFmNTA5N2Q5NzZhZDQwMWRiYjc5ZDcwZTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhjYzRhN2QxY2M3OTZhYmEzZTQ2NzIzMzI3ZjUxN2U5ZjgxMTk4MmQyNTBmMDcwMjk4NmU0YjU3NjRhZDk1ODkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAzNjg3NWJiNGIzMzY2YzQyYzRhNDFmZWM2YTgxYzczYmI5OTI0ZmQ4ODBkZGZiNjdiMjY1MzE0MzUwMzYzODAifQ"
+        },
+        {
+          "resource": "repo://api/tests/e2e/mcp/test_mcp_parity.py#L18-L27",
+          "version": "repo-lines-v1:sha256:5ca06f2cc9d23f8e706d0f7432202677eb906f6418d964fb5e43070769240315:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ5MTc1YTdjZmFkZmE3MjRiZTdhODY4NTViNjZmNDQ0MWU5ZWFmZTRhOTlhOGRlYzMzZjA0MDNkM2JjYTg3ZmEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEzMDNlY2RkNGE0ZDEwZjE5YzczZmQ0MmZkMTI0MzdmZDMzNTRhODI2ODE2MDVkYTUyNTVhOTdhMzkwNjhkYmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjIyZGE0ZjFmMWRjYzExMWNhZmE3OWE3MmQ2MjMxZTFlM2E2NWQ2OGNlYjlmMTRmMmU5MzQ3YzJhYzMyMTU1ODciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU1YjZlODcwNmI0MzA0N2YyYTZkYjY3ZjEzMjYzODU5NTYwNGU2N2YzNjk2Njg3NmNlMDE1OGYwMDUzZTZiZDEifQ"
+        },
+        {
+          "resource": "repo://api/tests/e2e/mcp/test_mcp_parity.py#L232-L283",
+          "version": "repo-lines-v1:sha256:df008f0b3d658bdf049a56bf79c137ea686f7eed07b3ba6b1bd7e3bf02fa6b18:eyJzZWxlY3RlZExpbmVDb3VudCI6NTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIxZjIwYTg0ODU1NjM0OGQyZTMyMTQ3Njg1NTFkODVjMDA5ZTAwYzc0NDE4NzliNTc0YmI4Y2I1ZTNiZjRhZDYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJmMDVhZDkzZTU0MDQzZTRiNjRhOWMzOTU4Nzk1MTIwNTdjNGU0MjliNzliMjhlMzVhMzg0ZWI0ODA5MTEzMTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQzZTMyYjYzNDJiYmQ4NmQyNTVhYWY1NGRmNTY0OTY2Nzc3ODliZGU4MDE2ZWU0YTM2MTZiM2RlZTU2NzJiMWQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjBjNTllMGI5MmE0MjUyMGMxNjc2MTMyYjA2N2YxMzdlOGNkZGUxZGRiNGZiNjczZmMxZDBlNGM5Y2M2MDBjNTMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_071ad8f872964a88ae7761295fab5bce",
+      "statement": "The MCP protocol endpoint derives each caller's scope from its validated MCP token, while its default context is used only to construct tool schemas; CLI/MCP parity therefore does not make their auth contexts interchangeable.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/routers/mcp.py#L344-L418",
+          "version": "repo-lines-v1:sha256:72e23d11f683bed7119b79f02683deb341c1f59baa379350c8551c46350d584e:eyJzZWxlY3RlZExpbmVDb3VudCI6NzUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlmZDJhMzc0MmJjN2VkN2NkZTM0MjRmOGMxOGMwOTEwOTMwOTU3ZmQxNjdmZTVlMWNiZmMzN2ZkNzY1ZTFiZjIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE1NjQ4NzM4MzY0ZDA1YTA5MjZhOWM0YWQzMDQxMWZjNWE3NWI4MzViNDg2YTM0YmZmYTE5NTkzOWZkM2E4NTAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZmZmYzYWUwMTM5NDQzNmQ1NDM0ZGZiMjc2MDdjZDIzOTY3MTZiMDM3YzZlOTVkZjhlMmZmNjNlNjBjZTU3OTgifQ"
+        },
+        {
+          "resource": "repo://api/src/routers/mcp.py#L4-L16",
+          "version": "repo-lines-v1:sha256:a2b3691024e8da7d121584f7ab71152359ea76ed377da78040e2aedd3229f23c:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY1YzdmMTE2YzFhNGYzZjJhMzlhNmQ3NTUxNjQ3MzNmNTU3MzgxNzQ5NzcwODBjMGMzNDI4ZWY3NGU4NzdkN2YiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIwNzAyY2VkMWNlMWEwNGU3ZmI0YmVlYmJjOGU0MzU5NTU5NWVkNGE5NmJhMzFmZGJkMmQyN2IwZjcyN2VjYzAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImVhMTRjNGRlODk2MzQ3ZGIyYzlhNDc0M2Q0Y2IxZWM2Y2Y0M2IyZDJmNWYyNWNlOGZiZDE0ZDFiZWU2MzZhNWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImJkMmMzMTU3YzkzZjBhODIwMTEwNWNiNGE0NDhhYWJjNGRiNTE5MWM4ZDdjMGQzMzNkNWE2MzY3ZjhkMmQ2ZmIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_e6610d6374a8442688078e28bfc9c3b6",
+      "statement": "Entity CLI subgroups are registered by platform domain and handlers share an authenticated client plus a per-invocation reference resolver; the common Click layer defines JSON output and structured error mapping, while entity operations call the API.",
+      "evidence": [
+        {
+          "resource": "repo://api/bifrost/commands/__init__.py#L1-L54",
+          "version": "repo-lines-v1:sha256:3cc976fd8bf22464166d2aa425f2c301dbf2b056d489e9074867e975db1d07ad:eyJzZWxlY3RlZExpbmVDb3VudCI6NTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUwZDNmZDQ3ZDhlOTQ4Yzk2OTRlMzQ1OGFlODJkMzA2MzM4ZjhhMDEwY2QxYjcyZjE1NjU4YTdiMzdjYTM4ZGYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk3Yjc1YWVmNjEzYTU1NGFiYmU3YzQxYTZjNmVlODA0YzZiY2U3ZmYxNGE3MTIzZDNkZWI2OWNjMjA3Yjc1MzkifQ"
+        },
+        {
+          "resource": "repo://api/bifrost/commands/base.py#L331-L353",
+          "version": "repo-lines-v1:sha256:904d9d3d85ce579928a2c49b03fea4645679afd48726f57eac197b8eb60d9d78:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRiMWFmYjAzZmU5YmYzNDViNTUzODQ3YzJhNzRiNzQ0NmQ0YjBjNjRhMTM2MGVkZGRkYmEzNTdlY2RmMDFiZmQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk4Y2Y0NTY4MTgzOTk3YWU2OWVmYTkzOTZiZDM0YzYwYTAzMDQyYWU0OGY0YmEwYzhkNDU5NmQ0NThmZTQ1YmUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE2MDVjNmFjN2JmYzk3NjEwZjBhN2YyNWFiYmMzNzM2MTY4OWUxYjNlYmJkZDU3MGRiMzU2MTE5YjQwYzllNTkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUxMmVkZmQwMjhmNmJiN2IyMjUxZTE3NzBiZmM1ZjkxMjQzZjk0YzEyNDFhOTQwNzk0NWUzOWYxMGE3N2M5NzYifQ"
+        },
+        {
+          "resource": "repo://api/bifrost/commands/base.py#L48-L85",
+          "version": "repo-lines-v1:sha256:a93d6a948c620e41a61e816bd475362ea926fe99f40fb9ee80df9f26d59f8fcf:eyJzZWxlY3RlZExpbmVDb3VudCI6MzgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZkZTg0NWQ5NmViMWE0NDUyYzEyN2JlYjQ1NWRmNTRjMjk0YTA4NTIwNGQ4ZDUzNWM1Y2U4Y2Y3ZmFhYmJjZGEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkzMDk0NTg3ZWRiYTU1MzRhYWUwNzU1MGQyYjUyMTk0YjFhZDhjZTQ0ZjliODJkOGJhYTdiOTVjMmQ2YTRkMGIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjllOTEyMGFmMDc3ZGYxZmEwZjVkMjBjZTYwMmQ4MGM0ZjkxMjA3OGFiZWUzYmIwMTE1NjcyNTU5OGY5NDk3ZDYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImYzYWQzZDZmZTMxYTBlMmM2ZGM4YTg4ZDVmNzk4MmQ4NWU1ZGY2MmIwZmU5NzBhNTY0NDMzOTYzMjBlNTNlYmEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_34326132dbac4ad2b35cbac503d37427",
+      "statement": "The `bifrost solution start` development path selects standalone V2 apps from `.bifrost/apps.yaml`, indexes local workflow functions against manifest references, and exposes Vite/API/WebSocket plus local workflow-execution routes through a development proxy; it does not itself establish deployment.",
+      "evidence": [
+        {
+          "resource": "repo://api/bifrost/solution_dev/app_select.py#L21-L52",
+          "version": "repo-lines-v1:sha256:9c3c6c1f4451932b930f1f4888821521be05211911a7fe5f8c525215dcce0e29:eyJzZWxlY3RlZExpbmVDb3VudCI6MzIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ2ZWI0N2M4ZDkwM2NmNmVjMjY2ODhmYWRlMDllMDQ1ZGJkZjM4ZDc5MzRlN2MwZjU5NjA0MzBjZTA0NDRlMzAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJiNzdkMDcyNTkwNWUwMTMwOWYyMjg4MzNkM2M2ZTI3MTM3YTAwZDY3NDZlMDc0Y2VjMTI2YWVkMDgxM2M2MmUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU1NWY0OTRiZGE5ZGJmNjQ4MDc4ODAxNzZjZjBlYThlOGVhNDQxYmQwODVkMjgxYzM5NTg0OGI5YTY4ZjIxMjQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRmM2E1NDMxYWJiMWRlYjdiM2E2NjIwODFkMmMwNjg4YzgwNzZmYTE5MWRmOTU3M2Y2NTkwNWVmODU5MWI5MTAifQ"
+        },
+        {
+          "resource": "repo://api/bifrost/solution_dev/function_host.py#L63-L105",
+          "version": "repo-lines-v1:sha256:f13f99509f94eee8348582efc12c25803aa001955ecc0abc0c4ab31e509e748a:eyJzZWxlY3RlZExpbmVDb3VudCI6NDMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ1NWE3ZTcxNjNiZmY5MDBiMWVmYjBmZDNmZTcxN2VkOThkYTdmMGNmM2JjOTljZjI5YTk5NzE2NmUwYTI5ZTMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFhNGZlYjEyMTgxZDg2YjZhYjgwODk0ZDBhMGE0ZmE0ZDE5NjQwNDUwMzViNmFhNzIxYTMwODFiZWUzMTY3NzIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY2ODI4NTc2MTRmZTZlNjcyY2Y5Mjc5NDJlYTg3YTg4ZjRlMTAwMTZiMTc3OGYwNmE2MjlkZTM5NDg0ODVmMmMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjlkZTE0MDBmY2UzZDNjOWFiZjI5ZjNkMmI5ODY1ZGMyMmM4OWZjZTVjMmM4MWY2NTE3ODY0OWQ2MjJhZDRlY2UifQ"
+        },
+        {
+          "resource": "repo://api/bifrost/solution_dev/proxy.py#L145-L164",
+          "version": "repo-lines-v1:sha256:36d820fc6eac92f6891e99b30e690bddfb42407776f3a8ce8b34b93ac7f70ede:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg5ODdhNDdmYTgzNjdiYWQ1NGQ4OWQ0ODIzYWYyM2ZkODQ3ZWMwZDU0MjdhZmY1Yzg1NmRhYTAwOGVmYWZiOWQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJkNjdiNDY2Mzc4NzVjM2JiN2Y5MDNiMWRiODczNGI0YTI5NjY4NWRmNGRiZTY2YTRmNmNlZjdmZGM0MTE2M2UiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhmNTZkNzBkMDFhYTEwNjk3ODAyODQ2MzEyMjNkNzAxMGQzMWM1MDY0MWVjMzBkYzc5YjI5ZGI0NmE5NmZjMTMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjUyZDAwMTFiZjhiMzYwZGM1MmYzYjVmZDMzMjhjMTU2M2JhZDg3YmE4OWUyYTBkMzI2ZjZlZDIwNzNlYTJiMjEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_50f25cbbc67349df830671dbc49e255d",
+      "statement": "The CLI sync review TUI returns chosen push/pull/delete/skip actions, and the CLI disables interactive sync interfaces when forced, noninteractive, or without a TTY so unattended flows do not block on progress UI.",
+      "evidence": [
+        {
+          "resource": "repo://api/bifrost/cli.py#L2346-L2362",
+          "version": "repo-lines-v1:sha256:624aed1e2de39f45a167732aff3441d8b1f92fa3dec19e65715db4af321c5a44:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkwMDZhODE0ZDVlNmU0MGE5OGY3MzkyZWE1YzI0ZWJhMzMyODViMGFmOTJhNGJhMmFhNzI1Yzc3MDUzNGM5YjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwZTJhNDY1MDA5NWZhOTVkMGUyYmI0MWIyZGIyOTA5NGQzNDA0ZDI4Y2UxMjMzOWVjODhiYjRiNWM1YmU4ZjYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYzNzMyYWExOGE2OGViODBiZWQzODU1MzA0NmJiMzgxZTg1MTQzMWUzZmEwODdmNDMzYjNiMjYxNmRjM2RjOGQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZjMWYwMmZkN2VjMWQ0NjJjMGNiODE4Yjk0OGZmZTRmNzE1YjJjMmM0MzI2MzBjMjMyZGZlMzRkNDI3NDNmYTkifQ"
+        },
+        {
+          "resource": "repo://api/bifrost/tui/sync_app.py#L198-L207",
+          "version": "repo-lines-v1:sha256:0427f9f6d950d0ec558c01ee4bdbc1e992d69d353afa1f89d17a61c6f729ff7a:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhjYWQ5YmQyNWYwNjZjZTYyOWYwMDZkZTg5OTc2ODdhYzFjNmY3MTY2MjA0MWQ1OTBlM2E5NmUyOWFhM2UwNTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFkZDI0NDU4MmI2ZmIwM2QyM2I4NDE1YWJlY2QzNDZiMGM5ZjQ2NmI2Zjc1MmIwNjgxODljZTdlOWEyZGMzNTAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg5MmMyMmFjMDUwMzgzZmRiYzI1ZDQyM2Y1N2QxMzdlOGU2MzI4ZWZkZDVlNmQ0N2IzYjM2ZDkyYjNmNGJmZDIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQzMzEwOTVkNWZkOTQ5N2Y0M2RkNjkwMWE5M2Y3NDNiYjY1NTUwNmEwNTBlMTVjMjgxNWJmMWM5ZDRmMTMyOTgifQ"
+        },
+        {
+          "resource": "repo://api/bifrost/tui/sync_app.py#L42-L53",
+          "version": "repo-lines-v1:sha256:dabc665ba85cbabb884f77ba033f406b7f25987a211e24560aa080c7f47eab3e:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ3NGQ2YjVjZTAwOGNjOGQ2NjVjMDJiMDgxMzNlODY0MDA1OTk5NDQ2MTU0MDJmZmQ4YTk5MDNkN2IwZGM5MmUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImExNThhODJlMmJjMzE1OWE3ZDZmMmQyNGNhY2YzMDZmNWU3NzhjMGJhZGY0OWQ3OWE5MjZmMGJjNzVjMjU4YzIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjIwMzg4ZDQ1NmRlOTcyMDNkNzNlMWI2Nzk3OGY0ZTNhZmJkMDU3MmM5NWVlMjYwNTQwM2M1NzVlNWU5ZWI0NWUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_0e586ef5eae1468f8e6ad3baae3e1c12",
+      "statement": "The installed CLI has a domain-organized Pydantic contract package that mirrors the subset of create/update wire DTOs consumed by commands; command modules import those types for flag generation and request assembly, with workflow creation remaining a Python-function registration path rather than a CLI create DTO.",
+      "evidence": [
+        {
+          "resource": "repo://api/bifrost/commands/agents.py#L37-L50",
+          "version": "repo-lines-v1:sha256:734db6427b391fd22da6897aa3a998bafb37541c867e01f8316d369d3953f6af:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk1ZmRlYjIxMmRiNzFhODI1NDljOTI4YzUxYTk2MTQwMmQ3ZTdhZTk4ZTZkMGNiZWVhMTI1M2MxM2M3YzU3NGUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRmNDU0MTk2OTJjZGQxYjllZTQ2MGRkZjQzNzc4YzJjYzkyY2M4N2UwZTZkMWE4NGRmZTgwOTZlYjhjYjQ2MjIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU5NmM4OGMzN2Y2YzA2MjM2ZWJiZTVlZDMwYWNkNGI2NGVkN2QwNzhlY2RmMjc5OGNhNGU1MzAyZTliODAwOWMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFlNmE5ZTkxNjI4MzgxZWM3N2IwZmZiOGU3NzVhMjU0N2MwN2M3ZTMxNGRiMzUzNmZhYjFhNTA2YTQyYmNlMGMifQ"
+        },
+        {
+          "resource": "repo://api/bifrost/commands/forms.py#L35-L45",
+          "version": "repo-lines-v1:sha256:41d7938c2bef3d730ab93cd9856a1005a7a69cf0617011649001eae28b6cce18:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFmMTMzZTM1MDMzNWQ2MWUzZDViMGVhMjk3OTQyMGI5ODgwOThiNmI5MDhiMjU5ZjA0YTliNGE1NjczMTU4YjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY1NTllOTMyODBiNjhlYmJiNGJkNmQ3ZmNmMjQxM2JmYjU2ZTEzZTU1ZTI4NDEzODI2MjkwNTYwMjAzMTlhMjgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImZmYmUyMDFhMmMyNjY3MWM0MDUzYTFhNzEyMjM3YzdjZjE1ODQwOWMyYWYyMThlMDBjNDVjNjI0YzZjYzBkNTkifQ"
+        },
+        {
+          "resource": "repo://api/bifrost/commands/workflows.py#L56-L65",
+          "version": "repo-lines-v1:sha256:a854472a4798cf203ce6ade93804153434a1269ff971194222243266dd43d021:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY0YTI2OWYyZDUyMzc5MzZkYjJhNzc2MWY2N2ZhODk2NDMyYjEwMmU0NDU1MjhhZDJmNjVkNzAwYzY3YjI5ZjYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVkZTlmYjYxMzgxYjQyZTJjMjZhZThlYmY0M2ZhYmJlN2EyMzU2MjQ4NTgzMTNkYjY0M2EzZWJmYTYxNjM5MTgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU1OTFkZmQxYTA1NDg0YjY2MzM5M2JhZmY4ZWQwMGUwNGNjNjk4NDI5YmQxM2ZlNGQ0NTNmN2Q4MDc0MGE2NTAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAxMWYxOWU3ODUzODBhMDNmNjJmOTJkYmQyNDIzMDJiYzFhNzQwMzkxY2Y0OTFmM2EzYzliOTcwZDBkOWJkYjcifQ"
+        },
+        {
+          "resource": "repo://api/bifrost/contracts/agents.py#L12-L52",
+          "version": "repo-lines-v1:sha256:13f1f198e792b9b2831be26f87b7e0d34b764774a7533f065196b41d94ca6a57:eyJzZWxlY3RlZExpbmVDb3VudCI6NDEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUxZTU2ODgxYTBkNDFiZGEwOWI1ZGFkNzg0NGIyMjkxZmQwMzU5ZmYxMjU5NmI5N2EwZmNhNjg4ODUzM2Y4ZTgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIzZmMyM2JmNjNjZTFkNjlkMjcxYWM5ZjIzZDU2NjkyNWVkNTYwNDExNGJmYWIwNDkyMjRkZDkzNmI5MTBiNjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY3Y2MxYjIzMGNjY2U4Mzg3MGQ2YzkzM2MxMGU0YzZkNDUwZDgxZDEwY2Q2MDYyZTI5MDBiOWQ1YTNlOGNlOWQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI4YTdmMjcwMWI3Mzg5YTZhNDFlNGMyYzc3OTQ4YWRlZjgzMDU2MmE0MjVhMzFkMzBkYWY1ZDIzMzhlY2ExMDkifQ"
+        },
+        {
+          "resource": "repo://api/bifrost/contracts/workflows.py#L1-L56",
+          "version": "repo-lines-v1:sha256:97a3832a229178d30df8ef33132f8817f33aa8c1b09df480c2f1e3dd299e3b18:eyJzZWxlY3RlZExpbmVDb3VudCI6NTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYzMzM5NmEwODZhMmI5NjI4MjQ2YzU4NWZiMjc4OGM4ZTI1OTUxNmI0ZWZhOTA4NGYyZGE1MDlmOTE3M2ZkMWUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNlZjRiZjA2ZjQ1NzViOGIyMWU4NGQwNjEyMTE0ZGM0MzQ2NmQ3NjVjOWFiYzJhZjkzMDY3ZjRhZmRjYjEwODgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.7.2",
+    "at": "2026-10-18T03:01:08.144Z"
+  }
+}

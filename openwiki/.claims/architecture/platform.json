@@ -1,0 +1,116 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:32a2ac757351f22424b0cab2bf9e1cb4147e2ef7192500496cb94a2a582a8e8a",
+  "claims": [
+    {
+      "id": "claim_c75821f8ab6e48198974cf61f00f6c38",
+      "statement": "The FastAPI application exposes OpenAPI at /openapi.json and installs a combined FastAPI/FastMCP lifespan; startup initializes the database, registers entity hooks and dynamic workflow endpoints, while shutdown closes shared clients and database resources.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/main.py#L134-L218",
+          "version": "repo-lines-v1:sha256:413ca43f9ab2cf5203afbc114179ef533d823b15b031eac902998753451e90ae:eyJzZWxlY3RlZExpbmVDb3VudCI6ODUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg3Y2ZmM2YxNzg0MmRlYzZlN2U5MWMzZTNiOGZjZTBhODIyZmMzMTEyNzM4MWIwMGY0NGE5ZjEzMzMzMDNhMmUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQxZGZiMDYzZTY2OGVjODlmMzIzMzk5NjI4Yjk4ZGFkZDVkYWY1N2Q5Njk2NTk4ZGJjNjk0MDM0NTU2MjJjNjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjYyMDA5N2U0YWE1MDA2OGJhMTU3ZjlhMjczOWZhZDg2OTk1ZTFlMGNkY2NkYWRjNTg5N2MyMDM0Yzc0ZDNlZmEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImZkYWE3ZWFiOTA3ZjNkNTBjNDA1YTFiYzI2MzgwNjBkYzE1NTg0ZjFlOWQ1YjU1ZDk1OGE3OGZlNWM0MzVmNzkifQ"
+        },
+        {
+          "resource": "repo://api/src/main.py#L237-L253",
+          "version": "repo-lines-v1:sha256:9c649ec4fd0fef20e5759e43d51be980600e56376c1bf55bcfdc1eff0a091084:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg3Y2ZmM2YxNzg0MmRlYzZlN2U5MWMzZTNiOGZjZTBhODIyZmMzMTEyNzM4MWIwMGY0NGE5ZjEzMzMzMDNhMmUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjI2NmM1MmMxZTYxMTY3YTQ5YWRkZmZhZDJkMTE4NWVlNWM5ODA4ZmZlNzFlNmRkMmRlMmI4ZjBmMzBmNDIxMTkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA1YzUwODZmMGE2NmRiYzc2Y2Q0ZjZkZjI1NTBmOTQ5Yzc4ODhlYmY4YjA2NDg0ZjVhNDUzZTgyMzBiN2ZkNWMifQ"
+        },
+        {
+          "resource": "repo://api/src/main.py#L339-L347",
+          "version": "repo-lines-v1:sha256:e5ece8c7a8ed1bbf68727d033fd5e1ec0a3e1429663dc6ab010271f1394bcbe3:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiY2NiZmQ0MzhmZDdlYTM5OGQzMzlhNTQzZDEwMTE5NDA2YzIyMTc1YTI1MDc4ODczNjRkNDkyY2M1OWVjZjBiZSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMzBjMWYxODhmMTQyZWQ3YTgyNDY4MGIyMDcxNzJjNTUxOWJjNjE0YTQ4ZmRhN2NmMTY3ZWRiOGRkZjc5OTU2YyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYWUyOTc4MmZmMjQyYzM4MmU1ODE2M2I5ZDUyYmQzOTkxMTM0YmUzMTU5ZmY0Zjc3MjY3YTBjNzVhNjU1MmQ0MiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZjY1ZWI3MDRlN2RlNWI0MDFkMjU0MDBhNzZiNDcxZGQ4NjkxMTRhNDQ5ZDQ1MTEwMzE0NTAxM2QyNzI4MTBkNSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_290a3c2cac1d47a299accb2e0dea4d74",
+      "statement": "Bifrost registers REST routers before mounting the root FastMCP ASGI app, and mounts MCP OAuth routes outside the OpenAPI schema before the catch-all MCP mount.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/main.py#L421-L515",
+          "version": "repo-lines-v1:sha256:bfaf2a97a5a35ac0251e12853839058dd5bd85fa0cfa8df5d0c7fc2e6b94820e:eyJzZWxlY3RlZExpbmVDb3VudCI6OTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFmMTlkY2Q0ZjYxNmY2YzExNWRmOWQ0MTA3MzlmZWY3ODliOGU4ZGY1N2M2OTI0Mjg5ODJhZGU3NDA0MjNhNjkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImI0MmE4YmMzZWNkNmIxNTY4MjQyMzllYTIwNDJhYjE2ODQzZjAzZDM0YjM1N2RjZmU3NzljZTg2MWViOTE5ZjkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVmNTZjNGJjMGU1MzIwNWY4YmJiMjVjNTY3ZDA3MGFkYzQ4YzdkYzY5NWI2ZGE5ZTU1MmJhMjRmYjNlNjA2OTMifQ"
+        },
+        {
+          "resource": "repo://api/src/main.py#L516-L537",
+          "version": "repo-lines-v1:sha256:2996e336d8f4d40a27cedb872c3c1e7fa23bbea795901c74e67624e2afca2248:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBmMzU3N2M2ODQ3M2IzMDU5Zjc0YTI5NmFmZWQ2YTA1NjE4NWY1Zjk1OTZjNmFjNGZkYzE0YTIyOWY5NjU0ZjkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjEzOTZjMWJiZjhjZTgwZWIxNmRiNjNmNDZjMTcyYWEzY2MyM2E2MjQ2NTI3ZTc1YTE1OTdkYzcwZjAyY2EzODIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImMwYTk3ZGRjMWQ1YWZiYjk4OGE3Y2I1MTc4Y2JhODBkZWM3ZGU2ODdlZDlmYjgyOGViYWJhZWU0NTU2MWVlNGIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVkNTE3OGVkYTcwYmZhYjUwMjBlN2FiOGZiOGExMTY5ZWVhNGRlYzVjYjVhYzkwYzMyNDlkZDI0ZTczMTA4MTkifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_9520ff0b70a6473b9cc910153e3ae594",
+      "statement": "The main API app and worker-local SDK app share exception handlers and request-context middleware so SDK calls over HTTP and the worker Unix socket have consistent error mapping and attribution.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/core/app_wiring.py#L1-L10",
+          "version": "repo-lines-v1:sha256:31a330da02a2aa6bb68604d453f7aabf78e9f2f6318b9f652bdfb5308547962f:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg0MmJmNGE2Y2Q0YThlMDdjZWJkODhhNjdlZmQ0NTA0MGI0NzIyYzE2MjhmNjcyYjQyNTU0NjRmMWNiOGRhZGIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM2NjZlNGQ0ZDMxNjE2NDM1Nzc4ODg2NjYxOTU4ZTBkMzA4OWRmMzNmNDRiM2YxMTMwZGNhZWI1Yzk5ZGYyYmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFhYWY3NjM3Y2I2ZTdlNWRiODVkNjM0Mjc0NjAxNGRmMDQxY2NkNTU4YTkyMGIyOWViNmFjNzE5ZDdiYWY1YzIifQ"
+        },
+        {
+          "resource": "repo://api/src/core/app_wiring.py#L168-L177",
+          "version": "repo-lines-v1:sha256:69c5be6d02129ecde95b61137c28c13debf24e99c1c82c3a5a2e29b2a1cc8c1c:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgyMjZiNThhOTBhMWYwZDY0YjM2YjE1YzI1M2E0MDliOTg0MzdkOGJjZjFkMTdmMDY0NmQ2NzNhOTJkMzNkZjEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE2YTcxNTI1NzJlZTg0ZjEwOTA2Yzc0YjlmMmE5MjQzNGRkYWIwZTNjNDI4MTNiMDRlNTk3ZWZjZWM5NTFiMjYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIzZGYyYWNmMDZlOGMzZjAzYzcxMzVjNmU4YWM1YTljYTU0MzJhYmUwNmE3NGFjYTBmZGQ5YTUzYTAwOGY5ODciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNmNTdkZDNlZTI5Y2RhODlhMjg5MDRlMDc0N2RkZTQzY2NiMzljYmFjNjY1YWI0NDUyOTc4YjhkNGExZTA5NDIifQ"
+        },
+        {
+          "resource": "repo://api/src/main.py#L352-L359",
+          "version": "repo-lines-v1:sha256:dabe92619ee77523e88f344c1573330996ace620b2b2eced6b9deef96623eb1c:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMTAzYWQwOTJkMGU2ZjRhN2Y4ZDFjODg5NjM5MDM2MWVhMzgwMDkyZWYwMGEzODk4MzYzNjFlMGEwYTI1MDZhMiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYTA1NTc5OTMwNGEwOTQyNDc3MjYxZjJhZGY1ZWZjMzc3MzQwYTgyMTJiZjE5YjA5NGNlNTZkNTM5NDAxZGNhOSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNTg2NjJmMjEyMzkwNzNhNmRlNjZhMDZlOTQ4YjkxOWExY2FlYmYxOGQxYmYyNjEzNjA2NGQ0NjFmZWUzM2Q4ZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMmE2NjI5YzdhZjdmNTE4YWZmZDAwNzkzZTFmZDU3MGI2MzhlMDM3NjgxNWRjM2NhMzJmMTYzYTg5ODRlMGM1ZiJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_26057bda81744766ae1e607ae7caf672",
+      "statement": "The browser entrypoint wraps the React app in theme and query providers and installs organization-scope invalidation; App composes auth/scope providers, route protection, and lazy-loaded page components.",
+      "evidence": [
+        {
+          "resource": "repo://client/src/App.tsx#L1-L40",
+          "version": "repo-lines-v1:sha256:c5631231d3ce2fa2cd05acb01d929207aecbe1d88baa78d68c9cb7cf31111876:eyJzZWxlY3RlZExpbmVDb3VudCI6NDAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc5Zjg0MThlNmEwNzhjNDI0YzYzMTdmNjI3Mjk3MDQzM2IxNTNmNGI0Y2Q4NmE2MzU0OGZjNTJiNWVmNWZhNDQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4ZmMzYzZjY2EwNGU4ZDk3NWFjMTNiN2ZlOGNlODAyNDlkMDU3ZDIzYTY2YTQwMzM5ZWVjMmNkOTYxODgxMjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImJjMTU3NDY2OTdmMzU0MGZhNmNhMWNlMTEwNzQ3OGRjM2MyYzhkNmRhNGRkMzFmZWJiMDNhYzA2NjJjY2QzNDYifQ"
+        },
+        {
+          "resource": "repo://client/src/main.tsx#L1-L39",
+          "version": "repo-lines-v1:sha256:c54ae1a9991bfcc0be80ac0c16458555699b788f11dd4f7e897ca70cd9909d5f:eyJzZWxlY3RlZExpbmVDb3VudCI6MzksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBkYmExYjEyYjI4YzUxZjI2NzQwNWY3MTEzYWE4ZjRlMGY3NTU3MTVlYTViOWM4MDRkZTZhYzU3MDkxNWQ2ZjQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ5OTY3ZWMxZWQzODM2ZjhlYjE3YWZmMTcyYjViZmVmN2RlNjA0ODVhNDM5YzZjYTExYzU5MWUxNzU1NzM5YWUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_e033df1fc613421fa89bb9abce0297d0",
+      "statement": "The repository describes PostgreSQL as application storage, Redis as cache/coordination, S3-compatible storage for objects, and configurable work delivery where Compose defaults to RabbitMQ while MTG production uses PostgreSQL.",
+      "evidence": [
+        {
+          "resource": "repo://README.md#L13-L20",
+          "version": "repo-lines-v1:sha256:d63a7a96b620bb9e634dd121dda571fadb4d6e4c58b1e5cd32585fb94a0ccf80:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMjRlYzcxMDJhMDgxZjg5ODNlNWZhNjMxOTQyZTcxMjYwZGY1MjU2MWY0MjYyMzM2MmVkNjVmOTEyNWIzMjU4MCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMGMwMDM1OWYxMzNiNTJhMDE0Mzk5YTRhNTNkNTcwN2VhZmRkZDI0MmNkMmU1NDRkYjA2MDgwZmQ2MjIxMjM4YiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYjdmODUyNmY1NjA4N2E5NmFiZDdmZjY5MjBiZTYzODkyYTY2NzU0NWI5NzQ2OWYwZmE2ZDk4Y2ExNjI4NmZmYiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMTIwNDk0MTA5MzJhN2I5NzhhNDBkZmU2MWIzMWI0ZjQ2MWE4MWExNjFhZTI0NzdmZWEwMjUyYTkzYzkzNzE2ZCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_537eb6ac0b8b468bab3cb7dfa1daedab",
+      "statement": "The Redis data-provider cache builds keys from global or organization scope, provider name, and a deterministic parameter hash; results default to a five-minute TTL, support targeted/provider-wide invalidation, and use short SET-NX locks for duplicate-computation protection.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/core/cache/data_provider_cache.py#L136-L229",
+          "version": "repo-lines-v1:sha256:2c81d3a65c0fdaf2b1b3398c1041e89c9780a1d2f424bf606da4ff1ecacdbf6f:eyJzZWxlY3RlZExpbmVDb3VudCI6OTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZjNjRkNGRkM2YzNTEzN2ViNGE4YmJlNzlkZDM1ZWVmYTYzZjUyODY1OGI4ODZmYmEzYjdiOGFlMzc5NDExMjAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQxZGNmNGQ3ZmMxZGI5M2FiZWQ5NjcxMGVmOWU3YTZjYTNjNjBjNmI3ZGUyYzdhMWYyNzVkNzVhYzU2OGVmY2YiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjczM2U4NDg3Yzg1ZGZkY2Y5ZmE3YjkzYzc0NmM5NDYyNWFlNDdlMTIwYzc5N2U3OTFlNzM3ZjllZDdmZmM3M2QiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ3ZTk4Y2RjNTMzYmI5ODQ2NTZhMTFkYzJjYjdhYTU2MzRkYWZlZjRiNjE4YjdkN2QxMzA0MWQ3M2I1ZDA0MWMifQ"
+        },
+        {
+          "resource": "repo://api/src/core/cache/data_provider_cache.py#L232-L265",
+          "version": "repo-lines-v1:sha256:653c3f41e4bfa2fb231f16298e54424b84a23ed669604bc11f2590f7e2e209e1:eyJzZWxlY3RlZExpbmVDb3VudCI6MzQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQyNTNkMDdiNGI0OTgxNDBmZWIzNmEwMGM2ZTFiNjI1ZDc4ZTIzNjkxYzU0ODQwZDU5NWU5ZWY4MzI3YTQ4ZTAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQxMDQyNGJkZTNhZDkxZmY4ZGFlYTgxYTRhYTUwNGIyZmU5ZDM3OTIzZjU5Mzc5MTUyZDU0M2Q3YjRkZWFmNzEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjI5NWVkODU3NDk2NTMzNzRhZjc1NjUxMmJhYmExZjMyMGQ3MzkwMzYxOGIwNzI5MjY1MDY1MTA0YTA4MGFmMjYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhhYjYwZjMyZjZkZmUyZjZjMjc1N2E3OTFjZGUxNjNhMzUyZjQzMjk2OGYyNDE4MjRjNTZiMDJjOWY4ODczNmYifQ"
+        },
+        {
+          "resource": "repo://api/src/core/cache/data_provider_cache.py#L25-L82",
+          "version": "repo-lines-v1:sha256:0f269938feb9ae2d312e28b9910f61e12e05aed54e2902cbcf363c63a5907620:eyJzZWxlY3RlZExpbmVDb3VudCI6NTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQzOTQ4ZjFiMWExYTgzZTQzN2U0OTY2OThlNmVkODlmMDY0ZGRhY2Y3N2RkZGQwZGJlYzZmMjdjYzNiZDNhOTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjEwMWRhNTZkYWEyODg2NmVmMzA2ZDhkZDNjYjE5ZTQ0MzJiODE4NTI3MWY4ZDZjMGEwOWQwODkyYmVhNzdhNGQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU1YzFjNDYyZTJhMzlkNzQ3NTlmNWUxYjEyNmY3NjgzYTJiNzMwMTE4ZTE4ZjUxMjJiMDhjZWRlZWI2NTBlMjMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ3YWY5ODY5ZDVmMGE0MjM2NDlhOTUzNDE4MWVlYzU1Yjc4NDY3OTFiNWRkZTMxM2QwNWYwNmQzNzQxMjcwNTAifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_659cf8f290ae4096a193cc1163f119aa",
+      "statement": "Organization config cache keys embed a global-config version, which advances on global invalidation to rotate merged organization cache views; invalidation failures are best effort and rely on TTL for eventual cleanup.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/core/cache/invalidation.py#L134-L167",
+          "version": "repo-lines-v1:sha256:f6dd282d34951fb54bc01d100ea0aed01cfc9ab2c28027c26cf625ec1786dfeb:eyJzZWxlY3RlZExpbmVDb3VudCI6MzQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJjMjZlNmU4MDlkYTFlNmRiMjExNzc1ZDRjYTdiYWEwZjVkNjc0Njc0OTZkOTU5ZmQyYzBkMDg1MzBkYzgzZTciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIwM2IxMWUyMjk1OTlhNmE4MGY4Y2YzYmEyYmI2MjA5NGI2MmM2OTg1MWE2Y2M3MWE2ZjI5ZjhmMjlkNGRkNWMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjlhY2IyYjA4ODAzMDUxZmI3ZDBhOWFlZWQwOGNjZWM2MDc5NDdkOGFiZTFiMjk0ZjJmYWVmMmZkMjNlOGJjZmYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImJmYTgzNzkyOTM2MDE0ZTMyMmY0YWZlOTk1NmZkMDY5YWYxMmIyN2NhYWM0NjBmZjY1ZDZiYTY4YTRiYzZiN2YifQ"
+        },
+        {
+          "resource": "repo://api/src/core/cache/keys.py#L59-L97",
+          "version": "repo-lines-v1:sha256:dda85f79b2e2ede80240034672fca164cd13fa9285f6773d67be0d5fff0b238f:eyJzZWxlY3RlZExpbmVDb3VudCI6MzksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI3NTYwNGE0MzhiOTU0NjI5NzU2YzNlNGRiMGUyNzQ5Yzc5NjhiNDJlODQ0N2E1ODA2ZmRmYzg4N2JhMTllNTgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE4N2Q0NTMyOWQ0M2ZkNTQ5NzBjYTFhZjg1MGJkODM5NzIyMjQ1Y2RlOTRhOGExOWU4ZTc0NWZkNjRkYmNjNzQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjEzMWEwMDJmN2JiNjNmNWY5OWJjMTdhOWFkZjFmZmMxYzY5OWQzYzE4MWQ3ZWM3N2E2NWMwOTIyZjYzYWY3MDMifQ"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.7.2",
+    "at": "2026-10-18T02:51:00.673Z"
+  }
+}

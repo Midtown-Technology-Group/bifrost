@@ -1,0 +1,96 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:8c1546e6bb781f4d780e243b24e84bfe71425603656cb0e6fd8369e35e1d4c00",
+  "claims": [
+    {
+      "id": "claim_2acf69877b2244ebb72e3366feca4ad5",
+      "statement": "REST authentication accepts access credentials from a bearer header or browser cookies, rejects MCP- and actor-scoped tokens, and requires a user identifier and email claim; non-superusers without an organization are rejected except for typed embed sessions.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/core/auth.py#L147-L165",
+          "version": "repo-lines-v1:sha256:3b1848e978be70c21ab10383cfbf8eb717ea7704c19547bc4dc1d2ce35610019:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ3NDI3YmRhZTI0OTcxZDk0M2I3N2ZjYzdiZTVmN2MwYjE5YjNiMzBkODc2OGJmYjA2MWQxMzgxZDM1NzA4YjciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdlYjcyMjIyYmE2MjBlMGU0ZWQ3NzRmMDliNzk3MDk3Y2E4N2MyMzFhYmI2ZjFhZmRmOTAyNjgwNWVlZDA3NjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE4YzgxMWFmODUyYmE3Mzk2OWJkZTRhYzU3ZGNmYzkzMzRhMDc3NmU0OTYxYWJkMTA4YjdjNzFjOTRlY2EyOTAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE3MzNiYTIzZDAzZTZiYzI1N2ZjZGEwMmIzNmE2ZDVhNWQyMzFkMGZhNjFmYmM0YTNlZGMxOWMwNWNiYzQxZTYifQ"
+        },
+        {
+          "resource": "repo://api/src/core/auth.py#L176-L247",
+          "version": "repo-lines-v1:sha256:b8c8bc0777c17385997954e24ba6027f4cdf5ebb0ff92b4371a318c014f524f8:eyJzZWxlY3RlZExpbmVDb3VudCI6NzIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE4ZjI4ZjVhNjc2ZWVkYjRlYmNlZjA1Mjg3YWQzZDQ5YWE4OGZmMzY4YmNkNTZlMmQ1MjQxZjM5YWI2YThhZDgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgyOTBmMjA0MGY3NDE4NDZhNTIzMWVlYjhiNjNiNjFiYWVkMjNlNzVlZjExYjczMzU2ODI4NTFjNzBhM2M0YmUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU3ZWQzMDc4NjI2MjZjMDE0Y2I5ZmVkMjYzMjE1NmMyYzA5NzA0ZWQwNDdkMjY3NzM5NWU1ZjllZWJiZTY1YzgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijc1MDY2YmVjNjU5MTc3OWM5ZDhlMmMzYjMxYWFlODA5ZTgzNmQzMmI4MmEwZmZkZTA4MWEwMDI2OTJkMzgxMjQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_ce0130eb0c5e454a84d24deacb728ca8",
+      "statement": "Execution-context construction verifies renewable engine credentials against an active execution attempt and obtains role IDs/names from the per-user role cache with database fallback when absent.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/core/auth.py#L443-L489",
+          "version": "repo-lines-v1:sha256:7a994d87a3e7b509fdf95408a0126f81f7a91a4649e820b77c08868d2611ba0b:eyJzZWxlY3RlZExpbmVDb3VudCI6NDcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNlOTE2ZGNmMjM3OTU0ZjBmMjA1YmY0OGEwMzQwMmU3NjBkM2Y1OTlkNTQ4Y2JiOWE2N2VhZTE5MTdkMWIxYmUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUwNWQ4ODVmZDQ0MmU0YTEyOGU1ODc3Nzc4ZDA0MTYyNDA4Zjk4ZGNhOTU3ZjBiOTdlMmY1NmQ5MzUxZTExMDIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU2NGY0OWM2ZDc1ZTA0MTBmZjEwMWNhNTdiZTAwZTEyNWNjNWUzYjQ1YzY1MGIwZjljNGIyNzdiY2FhMjcyOTMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjUxY2Y3YjZhZDFiMjMzMDQ5Mjk3ZmE2NzY5ODRkZjMwMmI0NTJkYzQ1NjgyNTdiMGZmZWEyNDI2M2UzYTc3MGQifQ"
+        },
+        {
+          "resource": "repo://api/src/core/auth.py#L52-L73",
+          "version": "repo-lines-v1:sha256:2df6ef6586f1aa69395e474d3fa7e338816da1b1e81fa034384b3f25bc6f918f:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIwYjkxNjhiOWFjYWY0NmNkNzY1NmNkNjMzOTJhZDFiNTlhZGRiNzY4MGEwZGIyNWNkYWMyYjg5MWVkMjYwYTMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijc1YmMyMWNhYzkyYWNkMTMyOTQzN2RiNmMzMjllMjc5ZjQwN2U2ZDAyYWM3MGVlNjVkNDVjMWM4YjcyODg5MDQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjIxMmRhNjQxZjRhNDQ4OWJjNjMzMTg2YWRhM2M5NDA5ZGU0MGRiMjU0YjM4YzAwMzQxOTk4ZTc2YmE5MmZlYTYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_8006dd5277be45a6bcbb47e927272267",
+      "statement": "Organization list filtering lets superusers choose all, global-only, or one organization, while ordinary users are always restricted to their own organization plus global rows regardless of the supplied scope parameter.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/core/org_filter.py#L65-L125",
+          "version": "repo-lines-v1:sha256:c0969d1c55b207aa0fad33231ca054d8a04785a05e6fe15cb45ba822889d49bf:eyJzZWxlY3RlZExpbmVDb3VudCI6NjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY3YmE2OGUyODgyNTMwMWUwY2RiZGM4M2Y5ZWM5NmNmNGQ1YmM0MWY5Y2VkNmI1NzE0YzI1YjdmM2I0YjFiMWIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxODQ3NzdhN2ZlNTM1OTE4ZDRjNjM2OWNjZjBjODg3NTA2MWE0OGVjOTczZDViNzNmN2E1ZjlkNmRkZDQ5YmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJlZDlhMmI5YzVkMDFlNWI1NTE0NjJjMmQyMGUwZDIyNmI5Nzk5YzZlYTJmY2Q1NDc4NmFjYTRhZmJmNzEzNDUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQ1ZjllNzljODljMGQ2OTQ1YjQ3NTU3MjMyMTIwODcwOWFlZmViZDkxMWYyNjc3ZTJmNWJiZGRhNWRiYTdmZTMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_8482c20285784fada6e9b4b19d9f9b25",
+      "statement": "Organization-scoped entity access is centralized in OrgScopedRepository, which applies organization/global cascade and optional role checks based on the principal context passed at construction.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/repositories/org_scoped.py#L118-L162",
+          "version": "repo-lines-v1:sha256:d78596be1d4e7b550b8ba683b0bfa11f9e5f292145dbb79bbdf0fec8426e4596:eyJzZWxlY3RlZExpbmVDb3VudCI6NDUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlmZDdhMDdhODNkZDE5OTZmYjUxNjg0YjQyYWVjYWY0ZTkwZmI3OGJhNzIzMGU1NDJlZDdiZDAxZDQyMzAxYmUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJkNGUyZWNmMGNkYjRlZjFiOTYzOTkyZWNjZWY4MjJhNjIwOGYzMWYyYTJiZDQ5YTYwMDE1Y2JjMzJjZDY1ZDYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjUzYTQ0NDhlZmI3MzBkOTY4NDIzNThkMjhiNDRhYzAxMzFkYzY2YjYwMjFlMGJhY2M2MmZmZDI4YjM4ZjA5NmYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk1ZWQ4ZDNmMjZmMGU3N2MzNDdjMTMxMmNkZDI0NWViMmNmMzJlNzJkOWIzODI1NDg0NWJlOWYxYThmN2JjZGYifQ"
+        },
+        {
+          "resource": "repo://api/src/repositories/org_scoped.py#L54-L112",
+          "version": "repo-lines-v1:sha256:f72ac26c3bc0d10dabb1f1e58c2f336cac0f32f6058c6970f281bf408ac76513:eyJzZWxlY3RlZExpbmVDb3VudCI6NTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA0OWY4MWYxNGY0ZThjMWZlZmVlOGM0MmFlZjg2MWFlYmIxZTc4NzcwYWU5MDZkMGFlOTU3MThhNzhiZjVlMzkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE2YTcxNTI1NzJlZTg0ZjEwOTA2Yzc0YjlmMmE5MjQzNGRkYWIwZTNjNDI4MTNiMDRlNTk3ZWZjZWM5NTFiMjYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE2Y2U2MmQyMjE3N2Q1OTZkYzM3ZmJhNGMwZDA4ZTdmNzlkZWU5MjFmNWVjMWVmYzM5YzRkNWY4ZGFmZTIxNjciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImEwY2RkYjBlNDUxNzc0NTcyNjZlYjIyMDdkZGRlNTFkYzg2MTk4MzAwMDkxODVlZTZhYTc3YzUzOWFjMjY0NTAifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_b1395af675c4472c8a8b17e638ff700d",
+      "statement": "Table access policy evaluation defaults to deny when no rule grants the action and pushes read filtering into SQL; file policies are evaluated by path as a sibling access mechanism.",
+      "evidence": [
+        {
+          "resource": "repo://api/shared/file_policies.py#L24-L65",
+          "version": "repo-lines-v1:sha256:19b3ebed8e43fce3d5e4379cea779390e20e4c87193599c46fc2dfba529f3c56:eyJzZWxlY3RlZExpbmVDb3VudCI6NDIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY3NjExZWRhYWVmNjI3YmYwY2M1NTc1ZWQ3MTYxOTRhMmUzMDk5ZmU5Zjk0ZjFmMWNkOWM1OWU2NWQyNTYyNmEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZiYjRlNDlkNDViODJkMzA2Mjg2MjkwZmZjODQ3MmRkMzA5MTBlNmYwYmU3YTc4OTRlNzlkNjM1ZTcxZDdkOGYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjcwY2UzZjI0YWI0N2MyZjVhOWQzMzdmMzc3ZWQ4NTczZmE1NjU4NDA3NjQwMmYxYWYwNTRhM2RlZDYxOTQ2MmYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjIyOWQ2NWEyZWVhYmRiYThkYjUzZjAzYzgxNmU2MTBmYjcxOWZmNDE5M2E4NjU0NDA1MjljOTY3MjhkMzM1YzYifQ"
+        },
+        {
+          "resource": "repo://api/shared/policies/probe.py#L20-L57",
+          "version": "repo-lines-v1:sha256:2c940a6bfaf86b51b6d2d864faa655e11885a514db8d30b414c1f685c8fff5b7:eyJzZWxlY3RlZExpbmVDb3VudCI6MzgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVjNzgxZGI1YmJjZmQxOTY2YzVkZjE5MTYxOWUzNzk5M2VjOTk5NjE4NDU5ODE2ODM4MGNjOTMyN2MwOTUyYjkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhmNWNjZGQ4OTVjOGE5OTE4OWYwNDY3YjdiZmQxZjZlZGZkNWE0MTg2MmExOTZhZGY5NjRkZmU3ZTIyMWNhNWUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjkwNzkyMTI3NWMxYzc4NmUwMGMyMzUxMzE4ZGJkZjg3NDc3MjQyY2U3NGM4YmExNWE1NDMwMTRiNDQ0ODllZTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImYzMjA4YmE4MmQwNzdjY2ExOGRhZDMxMmFkMDVhYWI5NDZlZTMzY2ExMmY2OGE4MjZlZTEwNTJhZWRhYTE4ZTcifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_e8e4967cc7a64a8f8862b62eaa200607",
+      "statement": "A distinct dependency protects platform-superuser routes, while execution engine or bypass credentials are accepted through a separate dependency from ordinary user sessions.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/core/auth.py#L366-L418",
+          "version": "repo-lines-v1:sha256:bc49a0d4b46b5d72fa3afefd489df7a63a6b9ac7093d2d4a4f185d7d29b5ff9d:eyJzZWxlY3RlZExpbmVDb3VudCI6NTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZlYmZkNGIyOTkzODY4MzZmNmEyOTU5OTIwY2M5NDg4NjAxNTFkNzJlN2MxN2JkMWYwMmI0YzJiNGJiYWIxMGMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIyNDVjOTM2MDU2YmI0YmNmZmQ4NDQ4N2I0YjQyYjkzNWExNzE0NmY3MDI3YTVjODhiNGI4MzRlMDlkZDE5NGYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRjNmY4NDU3ZmUwYjMxZjMyZDEyZjA0OWM1ZDgzOTc0ZWFiYTQ3ODdjZTgzMWNhODJmMzhjMDlkOTUwZjg0OGYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE5YTVkNzg1MjJkMmUzMGRhY2VmMzlkMzUyNDcxYWU3YzgxYTg1MTRmMGVlZTg2ZmE3OWY4ZDE1MDkxMjNlYzIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_755011515acf40859de67ffdf62d31e3",
+      "statement": "Organization-scope enforcement tests check for inline router scoping, organization-scoped ORM models without a repository, and scoped SDK endpoints without resolver use.",
+      "evidence": [
+        {
+          "resource": "repo://api/tests/unit/test_org_scoping_enforcement.py#L1-L18",
+          "version": "repo-lines-v1:sha256:3a1d9320e789921d6bab86dbd12f01d616f6162960a7eeee684d78cba7b60248:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ2OGFlMTdmOTQ0N2I5ODFlMjY0OTE4NzlhMmMzMTY0N2ZjMmJjNGNiZjg1ZWMzM2IzYWQ3Y2M1OWE3YjUwYWYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQyNGVlZjgyOTFiNmU2YmQ4M2ZjNzQwNjFmYjNjOTIwZWNiNTc0ZTdkZjU3ZTZiMGE1ZjFiNDA5NDQ2MDFlMDMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImNlNjIzMTY0ODNkYzE2NjA0MGVlZDA0NmE5ZGU2ZTQ4ODFmMTRmNmZjYTdjOTY4N2MxMGUwYWJmNzdlYzAwZmYifQ"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.7.2",
+    "at": "2026-10-18T02:14:28.318Z"
+  }
+}

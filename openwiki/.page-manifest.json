@@ -1,0 +1,236 @@
+{
+  "schemaVersion": 1,
+  "pages": {
+    "/openwiki/architecture/cli-and-mcp.md": {
+      "gitHead": "5085cc467ffb1ed35de9c9ca48890ab0d929e1d0",
+      "sourceFingerprint": "sha256:fbdc7261c0b5a45ad70e9e711671ca2d46c77969cd8420df1f2c4fd40fcd587c",
+      "pageVersion": "sha256:fa269da754e9647f868c566b6ed64bb4a230ee69be7baadc58802d9e446bd909",
+      "completedBy": "bifrost-atlas",
+      "completedRunId": "5fe37b3b-d19e-4090-a430-e68a4e21624d"
+    },
+    "/openwiki/architecture/data-and-contracts.md": {
+      "gitHead": "5085cc467ffb1ed35de9c9ca48890ab0d929e1d0",
+      "sourceFingerprint": "sha256:fbdc7261c0b5a45ad70e9e711671ca2d46c77969cd8420df1f2c4fd40fcd587c",
+      "pageVersion": "sha256:40f306bf95558e90e31599875d6b7ba5ef7e8ac97be96070527a9f8f1dd447ba",
+      "completedBy": "bifrost-atlas",
+      "completedRunId": "105b185b-7bc4-4345-b11b-a06fca8bfcc4"
+    },
+    "/openwiki/architecture/identity-and-authorization.md": {
+      "gitHead": "5085cc467ffb1ed35de9c9ca48890ab0d929e1d0",
+      "sourceFingerprint": "sha256:9ddcf80e7940e7901c4cae65e89c73d4cd09fd2c9746060bcc7bbef5c9bd6d61",
+      "pageVersion": "sha256:8c1546e6bb781f4d780e243b24e84bfe71425603656cb0e6fd8369e35e1d4c00",
+      "completedBy": "bifrost-atlas",
+      "completedRunId": "05110ba3-1c53-49be-b9e3-3d246c3f102e"
+    },
+    "/openwiki/architecture/platform.md": {
+      "gitHead": "5085cc467ffb1ed35de9c9ca48890ab0d929e1d0",
+      "sourceFingerprint": "sha256:fbdc7261c0b5a45ad70e9e711671ca2d46c77969cd8420df1f2c4fd40fcd587c",
+      "pageVersion": "sha256:32a2ac757351f22424b0cab2bf9e1cb4147e2ef7192500496cb94a2a582a8e8a",
+      "completedBy": "bifrost-atlas",
+      "completedRunId": "105b185b-7bc4-4345-b11b-a06fca8bfcc4"
+    },
+    "/openwiki/architecture/runtime-protocol-conformance.md": {
+      "gitHead": "5085cc467ffb1ed35de9c9ca48890ab0d929e1d0",
+      "sourceFingerprint": "sha256:fbdc7261c0b5a45ad70e9e711671ca2d46c77969cd8420df1f2c4fd40fcd587c",
+      "pageVersion": "sha256:76e24cd3da2fa0dd342f9a1bb6a7ba742f56a339a047febb6d26e9912c4ed83e",
+      "completedBy": "bifrost-atlas",
+      "completedRunId": "105b185b-7bc4-4345-b11b-a06fca8bfcc4"
+    },
+    "/openwiki/client/agents-chat-and-ai-configuration.md": {
+      "gitHead": "5085cc467ffb1ed35de9c9ca48890ab0d929e1d0",
+      "sourceFingerprint": "sha256:fbdc7261c0b5a45ad70e9e711671ca2d46c77969cd8420df1f2c4fd40fcd587c",
+      "pageVersion": "sha256:3afd8c3d69b078d433cf03d0a7151335e6ae420a97c57076cad80c3a8f1ed883",
+      "completedBy": "bifrost-atlas",
+      "completedRunId": "105b185b-7bc4-4345-b11b-a06fca8bfcc4"
+    },
+    "/openwiki/client/application-authoring.md": {
+      "gitHead": "5085cc467ffb1ed35de9c9ca48890ab0d929e1d0",
+      "sourceFingerprint": "sha256:fbdc7261c0b5a45ad70e9e711671ca2d46c77969cd8420df1f2c4fd40fcd587c",
+      "pageVersion": "sha256:0e11e473e2f498f21b97cedd6e4f871731ccd9fa5e63f4d21d650bc0590451b7",
+      "completedBy": "bifrost-atlas",
+      "completedRunId": "5fe37b3b-d19e-4090-a430-e68a4e21624d"
+    },
+    "/openwiki/client/frontend-architecture.md": {
+      "gitHead": "5085cc467ffb1ed35de9c9ca48890ab0d929e1d0",
+      "sourceFingerprint": "sha256:fbdc7261c0b5a45ad70e9e711671ca2d46c77969cd8420df1f2c4fd40fcd587c",
+      "pageVersion": "sha256:19caed6195bf8404842a2a7a42e020172e11b6c1bdc7e132609ac141f5a01dba",
+      "completedBy": "bifrost-atlas",
+      "completedRunId": "63d733dd-b8aa-4cfa-b66a-958fe4fac308"
+    },
+    "/openwiki/client/operations-console.md": {
+      "gitHead": "5085cc467ffb1ed35de9c9ca48890ab0d929e1d0",
+      "sourceFingerprint": "sha256:fbdc7261c0b5a45ad70e9e711671ca2d46c77969cd8420df1f2c4fd40fcd587c",
+      "pageVersion": "sha256:b9b72ac4b5ea481dd4043caf1bdb60316fe4d27955b366a79ddf0cb21f71aa97",
+      "completedBy": "bifrost-atlas",
+      "completedRunId": "5fe37b3b-d19e-4090-a430-e68a4e21624d"
+    },
+    "/openwiki/client/platform-administration.md": {
+      "gitHead": "5085cc467ffb1ed35de9c9ca48890ab0d929e1d0",
+      "sourceFingerprint": "sha256:fbdc7261c0b5a45ad70e9e711671ca2d46c77969cd8420df1f2c4fd40fcd587c",
+      "pageVersion": "sha256:10154b6af9dc14e37557054ed0bd329fd5bf2f9084b2a24c7bfa63a6fd23d1e6",
+      "completedBy": "bifrost-atlas",
+      "completedRunId": "5fe37b3b-d19e-4090-a430-e68a4e21624d"
+    },
+    "/openwiki/client/workflow-runtime-and-source-editor.md": {
+      "gitHead": "5085cc467ffb1ed35de9c9ca48890ab0d929e1d0",
+      "sourceFingerprint": "sha256:fbdc7261c0b5a45ad70e9e711671ca2d46c77969cd8420df1f2c4fd40fcd587c",
+      "pageVersion": "sha256:636a2b2d0eca5fa008f3f193bac4fe777a457c32c169964d4f3d866d09bce72d",
+      "completedBy": "bifrost-atlas",
+      "completedRunId": "5fe37b3b-d19e-4090-a430-e68a4e21624d"
+    },
+    "/openwiki/integrations/devices-and-workers.md": {
+      "gitHead": "5085cc467ffb1ed35de9c9ca48890ab0d929e1d0",
+      "sourceFingerprint": "sha256:9ddcf80e7940e7901c4cae65e89c73d4cd09fd2c9746060bcc7bbef5c9bd6d61",
+      "pageVersion": "sha256:174a4fa5f65c7421a1d5a3e95abd1e61e4e288580c1698cf1819b603d8963a7b",
+      "completedBy": "bifrost-atlas",
+      "completedRunId": "05110ba3-1c53-49be-b9e3-3d246c3f102e"
+    },
+    "/openwiki/integrations/git-and-ecosystem.md": {
+      "gitHead": "5085cc467ffb1ed35de9c9ca48890ab0d929e1d0",
+      "sourceFingerprint": "sha256:9ddcf80e7940e7901c4cae65e89c73d4cd09fd2c9746060bcc7bbef5c9bd6d61",
+      "pageVersion": "sha256:90c59d63bd230e595f76d753d768379bd8d2047692e2a239114ed7a776b69e1d",
+      "completedBy": "bifrost-atlas",
+      "completedRunId": "05110ba3-1c53-49be-b9e3-3d246c3f102e"
+    },
+    "/openwiki/integrations/oauth-and-external-mcp.md": {
+      "gitHead": "5085cc467ffb1ed35de9c9ca48890ab0d929e1d0",
+      "sourceFingerprint": "sha256:9ddcf80e7940e7901c4cae65e89c73d4cd09fd2c9746060bcc7bbef5c9bd6d61",
+      "pageVersion": "sha256:59a3fa695275e170effd043bf25c85fe062ed21acfcd3a218bfea4f84f38c222",
+      "completedBy": "bifrost-atlas",
+      "completedRunId": "05110ba3-1c53-49be-b9e3-3d246c3f102e"
+    },
+    "/openwiki/operations/ci-and-release-evidence.md": {
+      "pageVersion": "sha256:3fe4afbff42817f63850c48a8a6c366497810151cfeed72f214dc252a826cd02",
+      "completedBy": "bifrost-atlas",
+      "completedRunId": "ca5afa0a-d868-4280-a3e1-16b0f05602f1",
+      "gitHead": "f49200f29916950db1a9ab5eb91faa1292124a18",
+      "sourceFingerprint": "sha256:6d60a0ea9567cdc979fae76d0cd8a4be71154c27b03560652a39b0e0ec4fc04b"
+    },
+    "/openwiki/operations/deployment-and-infrastructure.md": {
+      "gitHead": "5085cc467ffb1ed35de9c9ca48890ab0d929e1d0",
+      "sourceFingerprint": "sha256:fbdc7261c0b5a45ad70e9e711671ca2d46c77969cd8420df1f2c4fd40fcd587c",
+      "pageVersion": "sha256:3c6a3705a94ead7b3bd98d1dce6dfde9d7030b26c45142134271c1b6a28473f1",
+      "completedBy": "bifrost-atlas",
+      "completedRunId": "105b185b-7bc4-4345-b11b-a06fca8bfcc4"
+    },
+    "/openwiki/operations/development-and-verification.md": {
+      "gitHead": "5085cc467ffb1ed35de9c9ca48890ab0d929e1d0",
+      "sourceFingerprint": "sha256:fbdc7261c0b5a45ad70e9e711671ca2d46c77969cd8420df1f2c4fd40fcd587c",
+      "pageVersion": "sha256:9059dacaec32817d1839cddc9ef98c31fc3f3e33c7e26fa312e14a1cf7dacd3f",
+      "completedBy": "bifrost-atlas",
+      "completedRunId": "105b185b-7bc4-4345-b11b-a06fca8bfcc4"
+    },
+    "/openwiki/operations/extension-points.md": {
+      "gitHead": "5085cc467ffb1ed35de9c9ca48890ab0d929e1d0",
+      "sourceFingerprint": "sha256:9ddcf80e7940e7901c4cae65e89c73d4cd09fd2c9746060bcc7bbef5c9bd6d61",
+      "pageVersion": "sha256:c73e7cf062cec789c1355bc6abe867f9442037ba8f0bbbc01bc3cd2e0ee98f3a",
+      "completedBy": "bifrost-atlas",
+      "completedRunId": "05110ba3-1c53-49be-b9e3-3d246c3f102e"
+    },
+    "/openwiki/operations/kubernetes-and-local-cluster.md": {
+      "gitHead": "5085cc467ffb1ed35de9c9ca48890ab0d929e1d0",
+      "sourceFingerprint": "sha256:fbdc7261c0b5a45ad70e9e711671ca2d46c77969cd8420df1f2c4fd40fcd587c",
+      "pageVersion": "sha256:bf663405dafec53c3afb40083292b8be97ca901e7beedfa90ba0489f09fad998",
+      "completedBy": "bifrost-atlas",
+      "completedRunId": "105b185b-7bc4-4345-b11b-a06fca8bfcc4"
+    },
+    "/openwiki/operations/observability-and-operations.md": {
+      "gitHead": "5085cc467ffb1ed35de9c9ca48890ab0d929e1d0",
+      "sourceFingerprint": "sha256:9ddcf80e7940e7901c4cae65e89c73d4cd09fd2c9746060bcc7bbef5c9bd6d61",
+      "pageVersion": "sha256:3d32b48c4130d8a10607415f5c7b2438ca06eb226613610e7bbe0cae806b784c",
+      "completedBy": "bifrost-atlas",
+      "completedRunId": "05110ba3-1c53-49be-b9e3-3d246c3f102e"
+    },
+    "/openwiki/operations/release-process.md": {
+      "gitHead": "5085cc467ffb1ed35de9c9ca48890ab0d929e1d0",
+      "sourceFingerprint": "sha256:fbdc7261c0b5a45ad70e9e711671ca2d46c77969cd8420df1f2c4fd40fcd587c",
+      "pageVersion": "sha256:543bdb86e7352482ffc4932ab95728e85dbfcd608b577f4419c6f77d892712dc",
+      "completedBy": "bifrost-atlas",
+      "completedRunId": "105b185b-7bc4-4345-b11b-a06fca8bfcc4"
+    },
+    "/openwiki/operations/security-and-audit.md": {
+      "gitHead": "5085cc467ffb1ed35de9c9ca48890ab0d929e1d0",
+      "sourceFingerprint": "sha256:9ddcf80e7940e7901c4cae65e89c73d4cd09fd2c9746060bcc7bbef5c9bd6d61",
+      "pageVersion": "sha256:2ba274941dfe700569553cea72786cf2d1411b82abf7e022ec8ce7f4f117a428",
+      "completedBy": "bifrost-atlas",
+      "completedRunId": "05110ba3-1c53-49be-b9e3-3d246c3f102e"
+    },
+    "/openwiki/quickstart.md": {
+      "gitHead": "5085cc467ffb1ed35de9c9ca48890ab0d929e1d0",
+      "sourceFingerprint": "sha256:fbdc7261c0b5a45ad70e9e711671ca2d46c77969cd8420df1f2c4fd40fcd587c",
+      "pageVersion": "sha256:b1b1375bd5516ae0b6b56d1d9658821c2ef010bbdb2df44cf742de50db3438cd",
+      "completedBy": "bifrost-atlas",
+      "completedRunId": "105b185b-7bc4-4345-b11b-a06fca8bfcc4"
+    },
+    "/openwiki/runtime/agents-and-chat.md": {
+      "gitHead": "5085cc467ffb1ed35de9c9ca48890ab0d929e1d0",
+      "sourceFingerprint": "sha256:9ddcf80e7940e7901c4cae65e89c73d4cd09fd2c9746060bcc7bbef5c9bd6d61",
+      "pageVersion": "sha256:7d9131635e4f809593eab76c82dc26be3a50ee9d00a375a096c0af4dfc5f9fec",
+      "completedBy": "bifrost-atlas",
+      "completedRunId": "05110ba3-1c53-49be-b9e3-3d246c3f102e"
+    },
+    "/openwiki/runtime/events-and-schedules.md": {
+      "gitHead": "5085cc467ffb1ed35de9c9ca48890ab0d929e1d0",
+      "sourceFingerprint": "sha256:fbdc7261c0b5a45ad70e9e711671ca2d46c77969cd8420df1f2c4fd40fcd587c",
+      "pageVersion": "sha256:7175ec0035cbfdc4560060d27f76ce218811986d67c36111c559ee3ef68c06bf",
+      "completedBy": "bifrost-atlas",
+      "completedRunId": "105b185b-7bc4-4345-b11b-a06fca8bfcc4"
+    },
+    "/openwiki/runtime/execution-and-workflows.md": {
+      "gitHead": "5085cc467ffb1ed35de9c9ca48890ab0d929e1d0",
+      "sourceFingerprint": "sha256:9ddcf80e7940e7901c4cae65e89c73d4cd09fd2c9746060bcc7bbef5c9bd6d61",
+      "pageVersion": "sha256:d48faa5578d080b0b4e7ae1f4d7b04cd405c7311cb64a2d0c9a036e1e56e0ec2",
+      "completedBy": "bifrost-atlas",
+      "completedRunId": "05110ba3-1c53-49be-b9e3-3d246c3f102e"
+    },
+    "/openwiki/runtime/jobs-and-schedulers.md": {
+      "gitHead": "5085cc467ffb1ed35de9c9ca48890ab0d929e1d0",
+      "sourceFingerprint": "sha256:fbdc7261c0b5a45ad70e9e711671ca2d46c77969cd8420df1f2c4fd40fcd587c",
+      "pageVersion": "sha256:519fa2fe1ea6eec73cdeb3709c95f73f428778cc400ee56300bdd72aad0484f1",
+      "completedBy": "bifrost-atlas",
+      "completedRunId": "105b185b-7bc4-4345-b11b-a06fca8bfcc4"
+    },
+    "/openwiki/runtime/knowledge-and-memory.md": {
+      "gitHead": "5085cc467ffb1ed35de9c9ca48890ab0d929e1d0",
+      "sourceFingerprint": "sha256:9ddcf80e7940e7901c4cae65e89c73d4cd09fd2c9746060bcc7bbef5c9bd6d61",
+      "pageVersion": "sha256:bc48153c5df58dac732ab20773304a9eb48c2fe0d59a53aeafd496e8124098fd",
+      "completedBy": "bifrost-atlas",
+      "completedRunId": "05110ba3-1c53-49be-b9e3-3d246c3f102e"
+    },
+    "/openwiki/runtime/model-inference-and-code-apps.md": {
+      "gitHead": "5085cc467ffb1ed35de9c9ca48890ab0d929e1d0",
+      "sourceFingerprint": "sha256:fbdc7261c0b5a45ad70e9e711671ca2d46c77969cd8420df1f2c4fd40fcd587c",
+      "pageVersion": "sha256:8973775c65453ba1e0b12d0a5d29c70ee3f4f8ac21eb1276eb769a83db745095",
+      "completedBy": "bifrost-atlas",
+      "completedRunId": "105b185b-7bc4-4345-b11b-a06fca8bfcc4"
+    },
+    "/openwiki/runtime/provider-webhooks.md": {
+      "gitHead": "5085cc467ffb1ed35de9c9ca48890ab0d929e1d0",
+      "sourceFingerprint": "sha256:fbdc7261c0b5a45ad70e9e711671ca2d46c77969cd8420df1f2c4fd40fcd587c",
+      "pageVersion": "sha256:978c5022eda180ff0a4873d010d1e3a04a011083a8e3fdefcc5163b0702fe05b",
+      "completedBy": "bifrost-atlas",
+      "completedRunId": "105b185b-7bc4-4345-b11b-a06fca8bfcc4"
+    },
+    "/openwiki/workflows/apps-and-sdk.md": {
+      "gitHead": "5085cc467ffb1ed35de9c9ca48890ab0d929e1d0",
+      "sourceFingerprint": "sha256:fbdc7261c0b5a45ad70e9e711671ca2d46c77969cd8420df1f2c4fd40fcd587c",
+      "pageVersion": "sha256:f97af1952f30a832e4f45c360d3317ff83d0b21596062fa11cf13abbcae77af7",
+      "completedBy": "bifrost-atlas",
+      "completedRunId": "105b185b-7bc4-4345-b11b-a06fca8bfcc4"
+    },
+    "/openwiki/workflows/forms-tables-and-files.md": {
+      "gitHead": "5085cc467ffb1ed35de9c9ca48890ab0d929e1d0",
+      "sourceFingerprint": "sha256:fbdc7261c0b5a45ad70e9e711671ca2d46c77969cd8420df1f2c4fd40fcd587c",
+      "pageVersion": "sha256:3caface1a463e9d49d153784ae9d55c3a87808eb734e22c589c8cf71c0733bb9",
+      "completedBy": "bifrost-atlas",
+      "completedRunId": "5fe37b3b-d19e-4090-a430-e68a4e21624d"
+    },
+    "/openwiki/workflows/solutions-and-workspace-promotion.md": {
+      "gitHead": "5085cc467ffb1ed35de9c9ca48890ab0d929e1d0",
+      "sourceFingerprint": "sha256:fbdc7261c0b5a45ad70e9e711671ca2d46c77969cd8420df1f2c4fd40fcd587c",
+      "pageVersion": "sha256:10f93970f30b800fa38e28be718e74d1e00001473e756a818b68da5113547c8f",
+      "completedBy": "bifrost-atlas",
+      "completedRunId": "105b185b-7bc4-4345-b11b-a06fca8bfcc4"
+    }
+  }
+}

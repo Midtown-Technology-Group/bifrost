@@ -1,0 +1,168 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:3fe4afbff42817f63850c48a8a6c366497810151cfeed72f214dc252a826cd02",
+  "claims": [
+    {
+      "id": "claim_733d3c76bfdf448aaad35f19736f94bd",
+      "statement": "The CI affected-test planner compares an exact base/head diff, emits per-lane modes and targets as a review artifact, and forces comprehensive scope for deletions, risky or CI-owned paths, and unmodelled paths; the plan describes selection rather than tests already run.",
+      "evidence": [
+        {
+          "resource": "repo://.github/workflows/ci.yml#L141-L171",
+          "version": "repo-lines-v1:sha256:32bad79fbb8c565e6b4c2ff7ee92e2cc51621f95050ef066ccef63adacbaeede:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIxYWFmMDgyNGZkNjg5ZWE5NjkwMWMwN2I0Y2U0NTJiZWEzYjQzMTdiZjBjMWYxYjgxMmI0OGY3ZDIyZTkwMzUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE2NmQwNGZhNzkyMDQxYWEwNGMxY2ZmYjZkN2IxNWFkYTc1N2UxZGU4OTFlNDY2MzFmYmZmYzU2YTFhZThmNjkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE0NDU4ZTU1M2M2MGU0M2QyZDk5MzQ4NmRjY2MzZmQ5Y2M0ZWNlYzAxOTg4MmUyOTE0MDI5Y2UxODc2NzU2NjkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE2Njk0NGM1MDUyOWMxNmI3MjU4YjgyNDA5Y2ZjNmM2NmZhNTBlNDNhZWE0YjkwNTY4MzAzN2NlMmQ5MTRlMjAifQ"
+        },
+        {
+          "resource": "repo://api/scripts/plan_affected_tests.py#L744-L774",
+          "version": "repo-lines-v1:sha256:1e2c14352be1467d11f988ce17b775d08e81f96e521dd1bded7499a3a8d950ec:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNlM2RjNTZkYjQ4NDlmNDk1NzIzNWVjMTEyZWZmMTk4MzNlMmFiNTE1NmE4OTU4MmIzMGQ3NTRjMjA2ZThkNTMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU5MDlhNTNhNjE4ZDAyOGUxZDMwMDBjMGE3YWJjZWVjYmU1ZmIzN2Y0ZTUxMWVmZTQ2NjQzZmFkNmU2Njg3MmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhjYzRhN2QxY2M3OTZhYmEzZTQ2NzIzMzI3ZjUxN2U5ZjgxMTk4MmQyNTBmMDcwMjk4NmU0YjU3NjRhZDk1ODkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjcwZDUwMDExOWE5YWNlZGFiN2I2YjdmZTU5MzQ1NDc2ZDFkZWJlNmVjNmQzNzE4OGY4N2JjNWNkMTQyNzU3NjIifQ"
+        },
+        {
+          "resource": "repo://api/scripts/plan_affected_tests.py#L884-L967",
+          "version": "repo-lines-v1:sha256:693bb1da15c2f17f87ea9fa70c29ddf2a451d50c22b216790fa26788f7ca79a2:eyJzZWxlY3RlZExpbmVDb3VudCI6ODQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNiODRlYjQyMzY2NzVmMTIyNDUyMGQzNzZkZDBiMmY0MzU4Y2Q4OGE1MWMyOWU4ZTlkOThiMDE4YjQxYjJkN2EiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ3MTVmODdkZDdjYWI5Y2UwOGY3MTEyOTAxZGY1ZGVhMjk0NzJiM2FiOTJjYzRmNjcyYjlhOGExM2ViM2YzZjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE3MTc2ODQ5NGEwMTdiMTA4MmU1MTQxNTkwMTZhMTJhZTA0OTExNTljMmIyYzk5OTBlN2E1NmQxMGMxN2E4MDciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ3YjcyN2E3Yjc3NzYyODY0MTYzMGMzMGE5NGYyOTI2YWRiZGZjMjU2MjMyNmI4MDkwN2RmYjc3Mjk0YzVjOWIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_0bc79f5df03f42dca342e5480a4239ec",
+      "statement": "The required `E2E Tests` aggregate validates planning and prerequisite results and accepts a skipped backend or browser shard only when the affected plan explicitly marks that lane skipped; failures, cancellations, and unexpected skips fail the aggregate.",
+      "evidence": [
+        {
+          "resource": "repo://.github/workflows/ci.yml#L1062-L1111",
+          "version": "repo-lines-v1:sha256:8b05d628aa3964c798f21e7ef54458a1c22a92d097831bdc2f55d1fa7b8e74dd:eyJzZWxlY3RlZExpbmVDb3VudCI6NTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNhNjU2NmJmOTNmM2E0YWQzYjJjMjM3OTI3NmM3YjA1MzI5MTliZjlhZGMyODZlMTVjNTJhOGM4Y2Y5MmE0YjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE0MDM2MzRjZWJhZGUyOTRhMzJlZjE0NzYyZGVlNWNhMTM0NjMxNzcyZGJhNzljZWExOTM4NWEyMjBmYTlhNzMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUxY2VjZGQ3YjNlZmI0ZGI4NTExMWUyNjUxOGUxODk0NDQ1MjcxMGNhMGU2ZjhiMmIyZDYwYTU0M2Y3OTFmZWQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk0MTE2ZDBlOTE3NjAxNWVhNzgwNmM4ODJiYzE4MTA1ODU4ODNhMDliMjljNjQ0ZmI5YWZjN2Y4YTI3ODRiMDgifQ"
+        },
+        {
+          "resource": "repo://.github/workflows/ci.yml#L829-L850",
+          "version": "repo-lines-v1:sha256:5f02c7b7fcb7b64274cdb8668b4f7a741ac00689a7346e4d5da12f37973985c1:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQzMGE5ZWZlODI2YTJjNDk2YjYzYjUwYzM5NzI0ZjU3ZGFhZTg4NmQ4NWE2OWY1MTgzYzQxYWE2YTkwYTQ2ZTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIxODdjZTRmMDJhYjRmY2Y3Y2Q4MTc2ODMxNTgzNDVjN2ZjNTI0OTc5MzEwMWMxYWVkNWM4NGMxNGViMjg3ZmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImEwZWFlMzI4OTA5YTljNDllNjAyODkwZDk0NzU5ZGQ0NjFiYTQ0ZTc1MWU2MjhiZDE2ODM5YTVhNmU5OGYxZjgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImFjZDc0NmE5YmQ2OTg4YmVlNDQ2MTQxNjZlZTkyYTkxYTQ0M2MzZThjNDgxY2MxMjkxYTk2MzZjZjI0Nzk5MWIifQ"
+        },
+        {
+          "resource": "repo://.github/workflows/ci.yml#L958-L1028",
+          "version": "repo-lines-v1:sha256:18f41a34395c6dae70366f2fff6a8af9db66d232594f693e3b62ddc9508a769a:eyJzZWxlY3RlZExpbmVDb3VudCI6NzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFjY2IwZjZmYWJjY2FjY2U2YWJjYzdlYjA0YTBmZGM4NzBkODkwMWNjMDI3MGYzNDg2NTY3YWNjMjhiZmNhZWYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZjZjk5M2U0ZTdmMWI2YjFlMjNkNzdhZDJkMzJkYzU5NjQ1NWFjZjhiYWZmMTQ1N2VmNzQ3Nzk2YjhmNGE4ZGYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA4OTNmMGM2YTk0YTU1MjFiZjYxNjE3YzliYTExOTU5OWQ1MGViZDA0YTMxNDQ2ODEzYjJlYTZiNjQ2Y2JlZTMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY4MjZkZGI4ZjU0NTlmMjk0NTNkMzVjZWFiMWNhZTdkZGE0ZjAxMDg3NWU2NTVmNGVmZDIxZGEwZTgzMWRhMGMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_3038aaa8ee1a496a9ae97e5c63566cc1",
+      "statement": "Sonar coverage evidence is bound to exact source revisions and validated against tracked source inventory, but its manifest explicitly does not claim test success, full line coverage, scanner acceptance, or a quality-gate result; report-only mode does not submit analysis.",
+      "evidence": [
+        {
+          "resource": "repo://.github/workflows/sonar-coverage.yml#L245-L310",
+          "version": "repo-lines-v1:sha256:78fcb3122dd8470859d1056ca6582d4cf890cb0fa2ffc314461b80299c90b1c5:eyJzZWxlY3RlZExpbmVDb3VudCI6NjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdjZGJhNDUxNzJjYzFhZjE2MWJjMGI1YzBjZjc5MTg0MWE4YzE1NjZjZTM2ZjU0ODA3Y2YzODA4ZWE5Zjg0ZDIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA4MmMwOGVjOGZlM2Y4NjFkZTY1MjY0MTMxNmY5MjFmZmE4NzZhNGUzYTQ5MjRlZGI2YzA4Nzg4NjZmYjAxYmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQ0N2ZmNTk5OGExNGMyYzliMjBjNWVmZTYzYzJlOTk3M2VjZTZkNGQzMmFkNDI3OWE3ZjU1NmM2ZjBkYmFlOTQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ3YTdkYmQwMmYxMGIwYzkwMTI3NDdkNjIyZDI2YWNkNTU5MmY0YzlhYWNiMzdhZGI2ZDJjMzVhNTEzOGUxYTIifQ"
+        },
+        {
+          "resource": "repo://.github/workflows/sonar-coverage.yml#L48-L105",
+          "version": "repo-lines-v1:sha256:ebc6dc67b5d5e93663fcdc293d0268c8dc83065b71cfa4e5fd428695d71e4f30:eyJzZWxlY3RlZExpbmVDb3VudCI6NTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdiMDc4NDhhNDM2NjY1NmIyYmE2MTk3YmUwMmI5MjA4MTQ1NDZmOWQ5YWQwYjUzMzllNGMyNmEyYzk0NjUxMTUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM5OTc4NDYwYTRlYzdkYmZlOGViZjQxNTBkYjY3YzkxNDgzNmZlYTA0Y2IxOWY0MjdkZGU5NmM5Mzk4N2ZjNGUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjI3ODU2ZjM2NWUxYTk1ZjU4ZmRjYTY1ZTQ3MzNlYmI5OTMwMDc2YjM1ZDM5ZWIzMDI5OTQ2MDVlMmJjNDc1NjkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNiYTVmMzc4M2JjNmFjOTAwNDA0ZDBhZTczOWZlMTU0ZTVmNmRmZDMyNDI0NDhmN2NkYzk0YmFiMTk2NmNkNjkifQ"
+        },
+        {
+          "resource": "repo://scripts/sonar/preflight.py#L705-L720",
+          "version": "repo-lines-v1:sha256:3d75a174e422dbda1094ca6bacb5a2c508d6bd5f81952a65858129a305968f8c:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlhYmUwZmRkZjZmMDBiZDM4MWU4YzI3N2ZiNWQyNjZiM2RiZDhhNGYxNTQ2MzI3NTRiNWViNzE3MjVjZDNmNTciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVhZTkyMjA4NDZkMzNhNDI1ZDhkMDQ4MzQ1ZDQ0YjA1ODRmN2VjNDA5YzM2NGI1MDE5MzQwNmZjYmUzZTQ4ZDciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY0MTJmMDQ3NmYyM2U1MzM5OGI0NGI3NjhiZmI1MGQ0MzEzNDZiMmExMWE5ZGY2MzE3NzYyMmVkOWM1OTJhMzAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVlNjM4NDlhOGQ3NzY5NWJlZGQ3NDM4NzA1NjM3Mjg3NjA5MmUzYzg0M2U0M2I1YTA3Yjk0ZjUxZWE1NGI1MzgifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_dd3afc81037f48cb992377a6b83e059c",
+      "statement": "The CI enforcement-chain ownership audit runs in advisory report mode because CODEOWNERS ownership is not yet established; it is not evidence that owner review is an enforced gate.",
+      "evidence": [
+        {
+          "resource": "repo://.github/workflows/ci.yml#L506-L513",
+          "version": "repo-lines-v1:sha256:c30079941e4bc3b4cf93cf9086da4d8e98ebf8c47878bc90556f8dcf0354abaa:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMzEzY2NiMTg0YzY0NDcxMTUxYzhkODRjOWUzNzIzMmQxMjliN2FjNDc3ZDVkZmFjNGY1ZTJiYTQxMGRiYWE1YiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNjM4ZjliMjg1ZTIxMzNhOGZhMGVjNTJmYWE0MTViZDZkMzFiZjNiNDk0NjkzOTM0NWEyMzUxMzkyOTBjNTdmYyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNDdmYmVkOTc2MzUyNjI5OTgxOTY3MjIxZDVlODhjNDliNmRkMWNjYTZmNTVjNmRhYzc2NzJjZjcwYTk5ODdjYyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYzlkODE1ZDc4MTAzMzhlODI5MWNiYzU1ZDAwYzQ2MzcwNGIwM2U0ZGQ3NGI4NWJiNzY3ZDZhNzA2YzUwNjM4NCJ9"
+        },
+        {
+          "resource": "repo://scripts/ci/enforce_closure.py#L1-L19",
+          "version": "repo-lines-v1:sha256:db1b0ef327b6afff5029d33914f34dc18675495f6621bca36a7d5032677507ed:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ2ODJjYmRiNGM4YjA3NTE4YmY0ODZjNTg5OTBmYzM5MTc4M2FhMjBhOTE2YmZiMjdhZDIxMWViMWQ1YzM2NDIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM5NDdiZTBkNmZlOWExZmU1ZmU1NjAwNTM4OWJjYTcwMWU1NjBjOWRhMmY3YjFmNDA4OWI0ZjhlNTZkZmU3MTciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRkOGI5NjlkMGZhODIzYmM5YTZiMDIxM2I0ZDA2OTNmZWQ5NDQ5ZmFkMGU4NTZiN2ExNGFkZDZhZWNiZDFmMDIifQ"
+        },
+        {
+          "resource": "repo://scripts/ci/enforce_closure.py#L219-L240",
+          "version": "repo-lines-v1:sha256:b2020307a59893944be348172aa6a6a1621959a756e317a7eca622fb9e3dcd48:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkwZTVmNzQ5MjNjYmQyOGM1NzY5NGQ3M2Q4ZTAxNTExYzhkYWMxMTUxNTgyMmQwZDAyNWY0ZjYxNGZiYWFhMGIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQwMmIyYzIzODhkYWMwODk5OWNiMDUxMWNiZWJjYWUyMjYzYzUwYjM3MmQ1YjVjNTExZDY1MWNlZTJlNzdjMWIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU1MjU0NmZlMjlhMDc3ZjA0Nzc3MTY1ZDY3OWM0YWIzZmUxM2JlZDgyMmQ2OGI1Y2VjZWZlYmM1ZTBjOWFiM2EiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjliNzE0NDZlNjQ1Mjk4ZDNjYjI5Y2U1ZDYyZmIzN2UyMGE4YjIxMTlkOTQzMzJiN2Y1NjNkMzFlMWU2NjVjMmIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_94e809c363b04310b779c86ffa614eba",
+      "statement": "Stable release packaging binds a manifest to the exact tag source, build run, and image digests, then performs read-only container content checks for baked versions, server/CLI contract parity, migration heads, bundled CLI metadata, and client entrypoint; the acceptance script explicitly does not establish production or canary readiness.",
+      "evidence": [
+        {
+          "resource": "repo://.github/workflows/ci.yml#L1986-L2014",
+          "version": "repo-lines-v1:sha256:03691c225160e98956bceebdce5f5a374596cfb7433fefd9bbf0ac52f91e3193:eyJzZWxlY3RlZExpbmVDb3VudCI6MjksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIxZGNmNDdkODI4ZmE3MjRlMTU3Mzg5NTU2NWE4ZWJmODZjNmFjZDg2NTNjYzkxZjBmYzRhNjRkZjhmYWNiNmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMzOGMzMjM5MWUzNjg0ODk5NGNmMmUwZjI5ODBjYWFlMWU5NDRiZGZmZjFhM2E4ZWUzNWYwZTAwODFmMTYwZDgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImEzNTQxMTA3ZTI5ZWRmZWFhYWI2Mjk4M2ZiMWQ4YzllNGMzM2U5OTc3YTQ4MGYxNjFjNzkzMTk1OTg5YWI4MGUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM4YWE3NWZlNzBlNWY0NmEyMTdlMjViNjA1NjAwZGU4ZWNiNmYxOTlkZjQ3NzU2YzU3ZGQ1NzQ5NDg0NTZjZDMifQ"
+        },
+        {
+          "resource": "repo://scripts/release/accept_release_images.py#L1-L75",
+          "version": "repo-lines-v1:sha256:0eb7e1de2a9e5f86387c572e4eda708848014db0ea89d4b1adb59196b5828144:eyJzZWxlY3RlZExpbmVDb3VudCI6NzUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ2ODJjYmRiNGM4YjA3NTE4YmY0ODZjNTg5OTBmYzM5MTc4M2FhMjBhOTE2YmZiMjdhZDIxMWViMWQ1YzM2NDIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ5MzkwMmQyY2VjMjM5Y2VjYzcxMjBkMGMxYjljODQ1Mzc2NGI5MWVhMmM1NTU0MmYyN2ZlNDI1ODQ3MWU0ZTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk2ZDIxNzdhY2MzODBhMzg1ODkwMGUyMzNhMjUzNjkxZjM4Y2VmYzVkNmU5Nzk5ZjFiNDc5NmMwZDk1ZjJjMmIifQ"
+        },
+        {
+          "resource": "repo://scripts/release/release_manifest.py#L1-L18",
+          "version": "repo-lines-v1:sha256:5a680605627935df973530c1171f30122864cf4bd21d323296e2bc87ddd569b3:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ2ODJjYmRiNGM4YjA3NTE4YmY0ODZjNTg5OTBmYzM5MTc4M2FhMjBhOTE2YmZiMjdhZDIxMWViMWQ1YzM2NDIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUxYmI4ZjM5YTUwODg0ZTFiYTE4MjEzZmYxODI1ZGU3ZWEzMzM3ZTRiYjJlNmFjMDhkYWFkZjcyNGY0YTkzNTIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdhMzBiMTJlNTYwM2VmMDMxNjQ2MzgzNzQwOGM1ODI1OWI0MTYyNjEyZGE0YmYyNTg1N2M0OWUwYWQwMzMxMWYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_306adcb7e8f54145b3d36b2888e65736",
+      "statement": "The release workflow publishes only after upload and readback of the expected immutable release assets; package publication is downstream of version-tag CI and remains separate from production deployment.",
+      "evidence": [
+        {
+          "resource": "repo://.github/workflows/ci.yml#L1548-L1616",
+          "version": "repo-lines-v1:sha256:f78b5d33a00763482d021ab570c8c2fe6722c77fb8b9a342320b3874bbcb13db:eyJzZWxlY3RlZExpbmVDb3VudCI6NjksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVkZWE2Y2RiZTc5ZjQzOGYwZWZkMTc1YTViOThmOWRkYTJkMGVhYzg1N2EwN2U5NzRmYTNmMmU4OTk0MjJmOTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJmNTU5NzljZTczMDIwMzNlNmIyZmQ3ZDg4ZjUzN2EzYjhlMDkxZWEzMDVjODExZmZhMTI3NGJmNTc2NGVhNWUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjI5ZjBhYjlkYTBjZDgyZGE4ODFjNmYyMzZlNDI4MzcxZWFjZTdkYjhmYTY3NzcyNDkzMDNkOGIyMDEyYjVlZGIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI1MDhiNjZkNDBhMTk3MDg5NjlhM2QyZDU3OTNmYmFjODUzOGY5MDA1ZDI1MjBkOTljOTY4NWVkNDBkNWYwYzYifQ"
+        },
+        {
+          "resource": "repo://.github/workflows/ci.yml#L2065-L2125",
+          "version": "repo-lines-v1:sha256:ea1e816539b9f01c0f2012eba6dbd47a54e252c56d75eafdda12d4862f006ecf:eyJzZWxlY3RlZExpbmVDb3VudCI6NjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBhNjMwYTdlOGI4ZWM5YjdmYmU3MWUxN2U2Njg1N2QwZmZhOGM5NTQxZGMzYTNmOTkyN2IzYmY1MjljOTA5Y2MiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJkYzFkYmY2ZTViZTA0OGExYjk4MTQ4NzUwN2U2NGRlODEyNDgxMDkyM2E1YWYzNTg0ZDg2ZDQxYTEyYTk0ZjUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE3ZGRkMDc3OGE5NWFjMmRlNWZkMWM0ZWNiNTA3ZjkwMTcyMjk4NzY0MWVjYzE5ZDlkNzg2YzU5YTRkMGU4Y2UiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoyLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijc1YTExZGE0NGM4MDI0ODZiYzZmNjU2NDBhYTQ4YTczMGYwZjY4NGM1YzA3YTQyYmEzY2QxNzM1ZWIzZmIwNzAifQ"
+        },
+        {
+          "resource": "repo://.github/workflows/release-tag.yml#L24-L50",
+          "version": "repo-lines-v1:sha256:e0300d7570c2747f7feaaf4c9a71651931e02e333aeca8293e6396a5a1dafdac:eyJzZWxlY3RlZExpbmVDb3VudCI6MjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU4MjU0YzkxNmE0NDgxMjNlMmQzZDk1ZWJhYTJlNGIxZGIwZmE3YjU0M2UxMmMzZTFiMTFjZjM2MjE2ZjIwMGEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI2ZmE0N2EwYWUwMDdlNWZmNzE2ZWY1ZjE5MzkwNjBlOTJlMDA2YmQzOTljMmY0NzA2MWU5NjY1M2U3YTQzMDciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY3YWM4MzZhMGFiNmNhNDEyNWRmMGRmZWRiMGNlMDE4NWI4ZGVjODM0ZjQ5NDQ4NDYyNGY5NDA1MzZkMzJhYmIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_b55f711b52ee498ea106f892cca1aec0",
+      "statement": "The OpenWiki notification workflow runs on main-branch pushes only in the Midtown Bifrost repository, uses read-only contents permission, serializes notifications without cancellation, and bounds the job to five minutes.",
+      "evidence": [
+        {
+          "resource": "repo://.github/workflows/openwiki-refresh.yml#L1-L21",
+          "version": "repo-lines-v1:sha256:da3cf08b8c63240082046a06a87175c16b7c0c7cbdc581af306937480804d588:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMyNzdlZmNjMTMzYzU5ZTE1MjM3OWUzNTM2OWFlOGQ1NjQ4YjI3ZDE5NzMxM2MzNTQwZmYwYTU3YzhmZmY4N2YiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE1MWQ1MDE1YzlhNmIzZDk5NTc1ODJmYmRmYzViMTE1YTFmNzgzNzI3ZjhjMzE0ZTE1Njk1ODlmNDkxYmRlNDciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImIxNjk1M2JhZjkwOTZlZjdlZmUyMTgzYTZkYzFjOTVmMzhjNzFiZDVlYTQ5NWE1YTJiZjFjZjA4ODA2NDU1NTAifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_4b32d2bc5bda49408547b35fe3d0fc4b",
+      "statement": "The notifier compares a valid nonzero push base with the new commit, treats missing or invalid bases as source changes, classifies any non-openwiki path as source-changing, and conservatively treats comparisons at the GitHub 300-file cap as source-changing.",
+      "evidence": [
+        {
+          "resource": "repo://.github/workflows/openwiki-refresh.yml#L28-L38",
+          "version": "repo-lines-v1:sha256:71498ece131dcc3299225152be4027bd511917f82ceccc8245f1b9b50c3b3d36:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhkZTZjZmVhZGQ2NzRmZDIzZTcyZWYzOTIzMDQyZGY1MWUyMzAyYWZmNTQwNWNiYTIyMjIyOGM0ZjY5MDRlODAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU1MjJjNDJjZDE5YzZkMDNkODA4YzQ1MjcyMDU1MjgyNWI3ZWExYzViNDkxYjIxODUxMWNhYzc0MTVjZjlkOWIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM1NjUwNThjN2FmNzIyMGIzNjM1M2EyYjAzNTc4YzAwYzI3YzczMzZjYTVmNTFkMWFjYzExYmZlMTE0ZWVkNzUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA3MzUyZmM3MDJmYzE2YzcwZGNiODBmNWJiOGFmZjkzYThlYzA5ZDQwNDNhNmU2MTMxNmMzNDJhMjI2MWQ3M2MifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_0008f80bf504477bafa431a7651e601e",
+      "statement": "Every push dispatches bifrost-docs-refresh to the private Bifrost operations repository with the member and commit payload; openwiki-source-updated is dispatched only when the push is classified as source-changing, so wiki-only changes request documentation refresh without a source-update event.",
+      "evidence": [
+        {
+          "resource": "repo://.github/workflows/openwiki-refresh.yml#L39-L49",
+          "version": "repo-lines-v1:sha256:bddb3da61421cf273e40a2d7c74ad72e03143062454062b150a876a3d56e9a8a:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgxOTA4Yzc1NWZmMmFhYjRmMzU2ZDc2MjcwZmQ1MDlhNjYzYzA4MmU0ZjNkYmEwYTViNTgyNDZlMjU5YjE5NmYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQwNzFjNDlmNTk2Yjc0NGRmMDBjNDUyNjhjM2I4YzA2MGMyYzg1NjQzNDFhZTMxMmY1ZTY3ZWVlYTU2YjcyZGEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA3M2ExN2EzMTRjYjQ0ODQ0M2RjZTQyNjk3OGE0Yzk0MTljNWE1YTc2NzViZjA4YjZmYzNkODkwNThkNmUzMWMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU1MjJjNDJjZDE5YzZkMDNkODA4YzQ1MjcyMDU1MjgyNWI3ZWExYzViNDkxYjIxODUxMWNhYzc0MTVjZjlkOWIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_23fa4a27035e4bffbb1db630afc78c72",
+      "statement": "The workflow reads OPENWIKI_DISPATCH_TOKEN from repository secrets and fails with a message that daily recovery remains available when the secret is absent; the workflow source does not prove the token is enrolled or that dispatches succeeded.",
+      "evidence": [
+        {
+          "resource": "repo://.github/workflows/openwiki-refresh.yml#L20-L27",
+          "version": "repo-lines-v1:sha256:97debaa4c8f98c413e23515f03fe2cf227928822e53da4341dfc734acd061a5a:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNGUxYTU2NDM0Mzg4YzJmZGZkZTU4ODQ0ZjI0OTMwYTIwZmY1OWZlMGExOGM1Njg2MDU5NmQyNDMwYTMxYTkwMiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZDIzMTllZmE1NmQ5ZmM3ZjA3ZmM0ZGZkOWFlODc5OTZlMjhiZGFhNWFkNmNjYjllZjMxNDljMGU0OTVlODJiZiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNzVmMGYxMGZjMzkwZjE2ZGU4Y2I2NWM2YWFkZmE3YmIxNjQ4NzcwN2FiMDEyM2Q1YmE4ZDM0Mjg4MDljYjkxZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZjM1ZjAzNzBmODc3N2ZkMjczZDViZGQwMmE2N2U1MjJiOTBkNjQwNjNmOTJmMzY4ZTYyNjJmNDNkZTQ4OTM1MSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_936a9fd961b74f928a8ac67ea18012f4",
+      "statement": "Repository guidance directs contributors to the private architecture atlas and focused local OpenWiki retrieval, and links a portable reader/maintenance guide for linked workspaces and CLI access across harnesses.",
+      "evidence": [
+        {
+          "resource": "repo://AGENTS.md#L67-L69",
+          "version": "repo-lines-v1:sha256:5d90238d71f2cdf99eecc8956a85ab7a5accce6d97aad94e581a435ff69eb6a0:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMDc0NzlkMzEzNGI0MDFhZjA0NTdhNjEwOTYzZjRkZjIyYmVjY2Q2ZGU1M2Y0ZDgxNTY3MzQ0MDk4NmY0YjJiZCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMGUzZWFlOGFkZDUwZmY4ODMzMWQyNjRhNGViZDNkNzA3Zjg1NDNhZjcxNTM2N2JhZTViOWFiZjNkYzdlY2EyNiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNjkzOTEyY2QzYzMzZWRmZDIzZDM3NjRlMTdhYjI5NzQ3YjM3OTM3NDIzNmM2NGE3NmIwYTVmZmU0OGFkMzgwZSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjAsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSJ9"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.7.2",
+    "at": "2026-10-18T03:14:43.328Z"
+  }
+}
