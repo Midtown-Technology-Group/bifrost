@@ -54,9 +54,11 @@ async def test_success_releases_exact_owner_token(client):
 
 @pytest.mark.asyncio
 async def test_transport_error_retains_lease_and_does_not_retry(client):
+    vendor_call = AsyncMock(side_effect=RuntimeError("uncertain"))
     with pytest.raises(RuntimeError, match="uncertain"):
         async with sdk.integrations.request_slot("Example"):
-            raise RuntimeError("uncertain")
+            await vendor_call()
+    vendor_call.assert_awaited_once_with()
     assert client.engine_request.await_count == 1
 
 
