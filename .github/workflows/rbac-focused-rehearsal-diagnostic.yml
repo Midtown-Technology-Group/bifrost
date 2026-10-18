@@ -132,11 +132,160 @@ jobs:
           public="$RUNNER_TEMP/rbac-focused-public"
           printf '%s\n' './test.sh rbac-backup-rehearsal' > "$public/backup-command.txt"
           trap 'result=$?; printf "%s\n" "$result" > "$RUNNER_TEMP/rbac-focused-public/backup-exit-code.txt"; exit "$result"' EXIT
+          export BACKUP_PROJECT="${{ steps.ownership.outputs.compose_project }}"
+          python3 - <<'PY'
+          import json, os, pathlib, re, subprocess, time
+          project = os.environ['BACKUP_PROJECT']
+          assert re.fullmatch(r'bifrost-test-[0-9a-f]{8}', project)
+          assert subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip() == os.environ['DIAGNOSTIC_SOURCE_SHA']
+          root = pathlib.Path('/tmp') / ('bifrost-' + project)
+          assert root.is_dir() and not root.is_symlink()
+          assert not list(root.glob('rbac-backup-*')), 'A previous backup run exists in this owned stack'
+          assert re.fullmatch(r'[0-9]{1,20}', os.environ['GITHUB_RUN_ID'])
+          assert re.fullmatch(r'[0-9]{1,5}', os.environ['GITHUB_RUN_ATTEMPT'])
+          assert os.environ['GITHUB_JOB'] == 'focused-rehearsal'
+          receipt = {'source_sha': os.environ['DIAGNOSTIC_SOURCE_SHA'], 'compose_project': project,
+                     'github_run_id': os.environ['GITHUB_RUN_ID'], 'github_run_attempt': os.environ['GITHUB_RUN_ATTEMPT'],
+                     'github_job': 'focused-rehearsal', 'preexisting_backup_runs': 0, 'started_unix_ns': time.time_ns()}
+          target = pathlib.Path(os.environ['RUNNER_TEMP']) / 'rbac-focused-public' / 'backup-invocation.json'
+          with target.open('x', encoding='utf-8') as stream:
+              json.dump(receipt, stream, sort_keys=True, indent=2)
+              stream.write('\n')
+          PY
           ./test.sh rbac-backup-rehearsal
+
+      - name: Verify same-invocation synthetic database cleanup before independent tests
+        id: backup_cleanup
+        if: ${{ always() && steps.stack.outcome == 'success' && !cancelled() }}
+        shell: bash
+        env:
+          BACKUP_PROJECT: ${{ steps.ownership.outputs.compose_project }}
+          BACKUP_OUTCOME: ${{ steps.backup.outcome }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib, json, os, pathlib, re, subprocess
+          expected_variants = ('clean', 'delivery_started_historical_stamp', 'withdrawn_builder_residue')
+          public = pathlib.Path(os.environ['RUNNER_TEMP']) / 'rbac-focused-public'
+          phase = 'invocation'
+          eligible = False
+          verified_variants = []
+          run_id = None
+          def require(value):
+              if not value:
+                  raise ValueError('unverified')
+          def unique(pairs):
+              result = {}
+              for key, value in pairs:
+                  require(key not in result)
+                  result[key] = value
+              return result
+          def load(path, maximum=2 * 1024 * 1024):
+              require(path.is_file() and not path.is_symlink() and path.stat().st_size <= maximum)
+              return json.loads(path.read_text(encoding='utf-8'), object_pairs_hook=unique)
+          def command(*arguments):
+              return subprocess.check_output(arguments, text=True, stderr=subprocess.PIPE, timeout=30).strip()
+          try:
+              project = os.environ['BACKUP_PROJECT']
+              source = os.environ['DIAGNOSTIC_SOURCE_SHA']
+              require(re.fullmatch(r'bifrost-test-[0-9a-f]{8}', project) is not None)
+              require(re.fullmatch(r'[0-9a-f]{40}', source) is not None)
+              require(os.environ['BACKUP_OUTCOME'] in ('success', 'failure'))
+              invocation = load(public / 'backup-invocation.json', 4096)
+              require(invocation == {
+                  'source_sha': source, 'compose_project': project, 'github_run_id': os.environ['GITHUB_RUN_ID'],
+                  'github_run_attempt': os.environ['GITHUB_RUN_ATTEMPT'], 'github_job': 'focused-rehearsal',
+                  'preexisting_backup_runs': 0, 'started_unix_ns': invocation.get('started_unix_ns'),
+              })
+              require(os.environ['GITHUB_JOB'] == 'focused-rehearsal')
+              require(type(invocation['started_unix_ns']) is int and invocation['started_unix_ns'] > 0)
+              phase = 'source'
+              require(command('git', 'rev-parse', 'HEAD') == source)
+              require(not command('git', 'status', '--porcelain', '--untracked-files=all'))
+              phase = 'run_directory'
+              log_root = pathlib.Path('/tmp') / ('bifrost-' + project)
+              require(log_root.is_dir() and not log_root.is_symlink())
+              runs = list(log_root.glob('rbac-backup-*'))
+              require(len(runs) == 1)
+              run = runs[0]
+              require(run.is_dir() and not run.is_symlink() and run.resolve().parent == log_root.resolve())
+              match = re.fullmatch(r'rbac-backup-([0-9a-f]{32})', run.name)
+              require(match is not None)
+              run_id = match.group(1)
+              require(run.stat().st_ctime_ns >= invocation['started_unix_ns'])
+              phase = 'host_provenance'
+              host = load(run / 'host-provenance.json')
+              require(host.get('git_head') == source and host.get('compose_project') == project)
+              require(host.get('clean_candidate') is True and host.get('synthetic_data_only') is True)
+              require(host.get('worktree') == str(pathlib.Path.cwd()))
+              require(host.get('phase_user_uid') == os.getuid() and host.get('phase_user_gid') == os.getgid())
+              require(host.get('phase_entrypoint_recursive_chown') is False)
+              expected_sources = ('test.sh', 'scripts/lib/test_helpers.sh', 'scripts/rehearse-mtg-rbac-backup.sh',
+                  'scripts/rehearse-mtg-rbac-backup.py', 'scripts/rehearse-mtg-rbac-old-readers.sh',
+                  'scripts/rehearse-mtg-rbac-old-readers.py')
+              require(host.get('harness_source_sha256') == {
+                  name: hashlib.sha256(pathlib.Path(name).read_bytes()).hexdigest() for name in expected_sources})
+              os.environ['COMPOSE_PROJECT_NAME'] = project
+              postgres = command('docker', 'compose', '-f', 'docker-compose.test.yml', 'ps', '-q', 'postgres')
+              require(re.fullmatch(r'[0-9a-f]{64}', postgres) is not None)
+              require(host.get('postgres_container') == postgres)
+              require(host.get('postgres_image_id') == command('docker', 'inspect', '--format', '{{.Image}}', postgres))
+              image = command('docker', 'image', 'inspect', 'bifrost-test-api-dev:latest', '--format', '{{.Id}}')
+              require(host.get('runner_image_id') == image == load(public / 'image-identity.json')['image_id'])
+              phase = 'variant_receipts'
+              directories = [child for child in run.iterdir() if child.is_dir() or child.is_symlink()]
+              require(1 <= len(directories) <= 3)
+              names = {child.name for child in directories}
+              require(names == set(expected_variants[:len(directories)]))
+              for variant in expected_variants[:len(directories)]:
+                  directory = run / variant
+                  require(not directory.is_symlink() and directory.resolve().parent == run.resolve())
+                  receipt_path = directory / 'receipt.json'
+                  require(receipt_path.stat().st_mtime_ns >= invocation['started_unix_ns'])
+                  receipt = load(receipt_path)
+                  require(receipt.get('run_id') == run_id and receipt.get('variant') == variant)
+                  require(receipt.get('contract_version') == 1 and receipt.get('synthetic_data_only') is True)
+                  require(receipt.get('database_cleanup_verified') is True)
+                  require(receipt.get('cleanup_failure_types', []) == [])
+                  require(receipt.get('status') in ('passed', 'failed'))
+                  require(all(re.fullmatch(r'bifrost_r2b_rehearsal_[0-9a-f]{12}', receipt.get(key, '')) is not None
+                              for key in ('source_database', 'restored_database')))
+                  verified_variants.append(variant)
+              if os.environ['BACKUP_OUTCOME'] == 'success':
+                  require(tuple(verified_variants) == expected_variants)
+                  proof = load(run / 'proof.json')
+                  require(proof.get('status') == 'passed' and proof.get('git_head') == source)
+                  require(proof.get('compose_project') == project and set(proof.get('variants', {})) == set(expected_variants))
+                  require(all(proof['variants'][variant].get('database_cleanup_verified') is True
+                              and proof['variants'][variant].get('status') == 'passed' for variant in expected_variants))
+              phase = 'remaining_synthetic_databases'
+              # Read only the exact, provenance-bound test PostgreSQL container.
+              # Credential values stay in its environment; only a count is returned.
+              remaining = command('docker', 'exec', postgres, 'sh', '-eu', '-c',
+                  'export PGUSER="${POSTGRES_USER:?}" PGPASSWORD="${POSTGRES_PASSWORD:?}" '
+                  'PGDATABASE=postgres PGHOST=127.0.0.1 PGPORT=5432 PGOPTIONS="-c default_transaction_read_only=on"; '
+                  'exec psql --no-password --tuples-only --no-align --command="'
+                  "SELECT count(*) FROM pg_database WHERE datname ~ '^bifrost_r2b_rehearsal_[0-9a-f]{12}$'" + '"')
+              require(remaining == '0')
+              eligible = True
+              phase = 'verified'
+          except (ValueError, OSError, TypeError, KeyError, AttributeError, RecursionError, subprocess.SubprocessError):
+              eligible = False
+          receipt = {'schema_version': 1, 'purpose': 'independent-diagnostic-evidence-only',
+                     'cleanup_verified_for_independent_tests': eligible, 'verification_stage': phase,
+                     'backup_failure_waived': False, 'verified_variants': verified_variants}
+          if eligible:
+              receipt.update(source_sha=source, compose_project=project, rehearsal_run_id=run_id,
+                             remaining_synthetic_databases=0)
+          (public / 'backup-cleanup-proof.json').write_text(json.dumps(receipt, sort_keys=True, indent=2) + '\n')
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as output:
+              output.write('eligible=' + ('true' if eligible else 'false') + '\n')
+          raise SystemExit(0 if eligible else 1)
+          PY
 
       - name: Run explicit bridge and authorization unit suites
         id: unit
-        if: ${{ !cancelled() && steps.backup.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.stack.outcome == 'success' && steps.backup_cleanup.outputs.eligible == 'true' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -194,8 +343,9 @@ jobs:
 
       - name: Run explicit migration, device, promotion, grants, knowledge and MCP rehearsals
         id: e2e
-        # Independent evidence after unit failures; never retry or waive a failure.
-        if: ${{ !cancelled() && steps.backup.outcome == 'success' }}
+        # Independent evidence only after same-invocation backup DB cleanup is
+        # proven. A failed backup remains red; no failure is retried or waived.
+        if: ${{ !cancelled() && steps.stack.outcome == 'success' && steps.backup_cleanup.outputs.eligible == 'true' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -328,6 +478,8 @@ jobs:
             ${{ runner.temp }}/rbac-focused-public/image-identity.json
             ${{ runner.temp }}/rbac-focused-public/backup-command.txt
             ${{ runner.temp }}/rbac-focused-public/backup-exit-code.txt
+            ${{ runner.temp }}/rbac-focused-public/backup-invocation.json
+            ${{ runner.temp }}/rbac-focused-public/backup-cleanup-proof.json
             ${{ runner.temp }}/rbac-focused-public/unit-command.txt
             ${{ runner.temp }}/rbac-focused-public/unit-exit-code.txt
             ${{ runner.temp }}/rbac-focused-public/e2e-command.txt
