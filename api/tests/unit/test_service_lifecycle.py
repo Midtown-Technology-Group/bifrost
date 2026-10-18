@@ -9,7 +9,7 @@ lease expiry, and observed-state derivation.
 from uuid import uuid4
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import event, select
 
 from src.models.orm.services import ServiceAttempt
 from src.services import service_lifecycle
@@ -544,9 +544,44 @@ async def test_list_attempts_paginates(db_session):
     await db_session.flush()
     await service_lifecycle.claim_eligible_service(db_session, worker_id="w1")
 
-    items, total = await service_lifecycle.list_attempts(db_session, definition.id)
+    statements: list[str] = []
+    connection = await db_session.connection()
+
+    def capture_statement(_conn, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(statement)
+
+    event.listen(connection.sync_connection, "before_cursor_execute", capture_statement)
+    try:
+        items, total = await service_lifecycle.list_attempts(db_session, definition.id)
+    finally:
+        event.remove(connection.sync_connection, "before_cursor_execute", capture_statement)
+
+    assert len(statements) == 1
     assert total == 2
     assert items[0].created_at >= items[1].created_at
+
+    page, total = await service_lifecycle.list_attempts(
+        db_session, definition.id, limit=1, offset=1
+    )
+    assert len(page) == 1
+    assert total == 2
+
+    empty_page, total = await service_lifecycle.list_attempts(
+        db_session, definition.id, limit=1, offset=2
+    )
+    assert empty_page == []
+    assert total == 2
+
+
+@pytest.mark.asyncio
+async def test_list_attempts_empty_history(db_session):
+    """An empty page still returns the count row from the same query."""
+    definition, _ = await _ensure(db_session)
+
+    items, total = await service_lifecycle.list_attempts(db_session, definition.id)
+
+    assert items == []
+    assert total == 0
 
 
 # --- Codex review fixes ---
