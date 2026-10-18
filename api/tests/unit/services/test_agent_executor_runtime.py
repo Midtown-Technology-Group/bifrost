@@ -1,6 +1,7 @@
 """Chat contract coverage for the Pydantic AI loop."""
 
 from contextlib import asynccontextmanager
+from dataclasses import replace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
@@ -34,6 +35,20 @@ class CountingTestModel(TestModel):
         model_request_parameters: ModelRequestParameters,
     ) -> RequestUsage:
         return RequestUsage(input_tokens=10)
+
+
+class MissingUsageTestModel(CountingTestModel):
+    """Stream-capable provider fake that omits usage in its final response."""
+
+    async def request(self, *args, **kwargs):
+        response = await super().request(*args, **kwargs)
+        return replace(response, usage=RequestUsage())
+
+    @asynccontextmanager
+    async def request_stream(self, *args, **kwargs):
+        async with super().request_stream(*args, **kwargs) as response_stream:
+            yield response_stream
+            response_stream._usage = RequestUsage()
 
 
 class CapturingTestModel(CountingTestModel):
@@ -154,15 +169,6 @@ async def test_chat_persists_only_provider_reported_usage_when_budget_is_estimat
     client = PydanticAIClient(
         LLMConfig(provider="openai", model="test-model", api_key="test-key")
     )
-    upstream = AsyncMock()
-    upstream.complete = AsyncMock(
-        return_value=LLMResponse(
-            content="Usage omitted",
-            input_tokens=0,
-            output_tokens=0,
-        )
-    )
-
     with (
         patch(
             "src.services.agent_executor.get_llm_client",
@@ -170,7 +176,7 @@ async def test_chat_persists_only_provider_reported_usage_when_budget_is_estimat
         ),
         patch(
             "src.services.agent_runtime.model_factory.create_agent_model",
-            return_value=LegacyMockModel(upstream),
+            return_value=MissingUsageTestModel(custom_output_text="Usage omitted"),
         ),
     ):
         chunks = [
@@ -184,6 +190,8 @@ async def test_chat_persists_only_provider_reported_usage_when_budget_is_estimat
             )
         ]
 
+    done = next(chunk for chunk in chunks if chunk.type == "done")
+    assert done.content == "Usage omitted"
     usage_call = executor._record_ai_usage.await_args.kwargs
     assert usage_call["input_tokens"] == 0
     assert usage_call["output_tokens"] == 0
@@ -195,7 +203,6 @@ async def test_chat_persists_only_provider_reported_usage_when_budget_is_estimat
     )
     assert assistant_call.kwargs["token_count_input"] == 0
     assert assistant_call.kwargs["token_count_output"] == 0
-    done = next(chunk for chunk in chunks if chunk.type == "done")
     assert done.token_count_input == 0
     assert done.token_count_output == 0
 

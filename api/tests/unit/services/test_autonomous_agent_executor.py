@@ -1063,14 +1063,17 @@ class TestAutonomousAgentExecutor:
             )
         )
         mock_create_model.return_value = LegacyMockModel(upstream)
-        executor = AutonomousAgentExecutor(mock_session, redis_client=AsyncMock())
+        redis_client = AsyncMock()
+        redis_client.get = AsyncMock(return_value=None)
+        executor = AutonomousAgentExecutor(mock_session, redis_client=redis_client)
 
-        await executor.run(
+        result = await executor.run(
             agent=mock_agent,
             input_data={"task": "analyze"},
             run_id=str(uuid4()),
         )
 
+        assert result["status"] == "completed"
         usage = executor._pending_ai_usage[0]
         assert usage["input_tokens"] == 0
         assert usage["output_tokens"] == 0
