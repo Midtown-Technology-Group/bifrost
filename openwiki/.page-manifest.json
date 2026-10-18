@@ -100,11 +100,11 @@
       "completedRunId": "05110ba3-1c53-49be-b9e3-3d246c3f102e"
     },
     "/openwiki/operations/ci-and-release-evidence.md": {
+      "gitHead": "4a9a1148030400c80d8462b6363f5ab9ec0d95fe",
+      "sourceFingerprint": "sha256:de91163849e94cfdf263b05c9afbe3f28a65559551a35111842503535f41114e",
       "pageVersion": "sha256:3fe4afbff42817f63850c48a8a6c366497810151cfeed72f214dc252a826cd02",
       "completedBy": "bifrost-atlas",
-      "completedRunId": "ca5afa0a-d868-4280-a3e1-16b0f05602f1",
-      "gitHead": "f49200f29916950db1a9ab5eb91faa1292124a18",
-      "sourceFingerprint": "sha256:6d60a0ea9567cdc979fae76d0cd8a4be71154c27b03560652a39b0e0ec4fc04b"
+      "completedRunId": "ca5afa0a-d868-4280-a3e1-16b0f05602f1"
     },
     "/openwiki/operations/deployment-and-infrastructure.md": {
       "gitHead": "5085cc467ffb1ed35de9c9ca48890ab0d929e1d0",
