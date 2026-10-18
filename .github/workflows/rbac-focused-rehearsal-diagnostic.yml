@@ -283,6 +283,192 @@ jobs:
           raise SystemExit(0 if eligible else 1)
           PY
 
+      - name: Prove the OAuth single-use regression against frozen old source
+        id: oauth_red_before
+        if: ${{ !cancelled() && steps.stack.outcome == 'success' && steps.backup_cleanup.outputs.eligible == 'true' }}
+        shell: bash
+        env:
+          RED_PROJECT: ${{ steps.ownership.outputs.compose_project }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib, json, os, pathlib, re, shutil, subprocess, tempfile, time, xml.etree.ElementTree as ET
+          old_commit = '649e50916f78bc3eff818fdf8cefe215e28a76fc'
+          auth_path = 'api/src/services/mcp_server/auth.py'
+          test_path = 'api/tests/unit/services/mcp_server/test_auth_code_binding.py'
+          test_name = 'test_concurrent_exchanges_have_exactly_one_winner'
+          target = test_path.removeprefix('api/') + '::' + test_name
+          public = pathlib.Path(os.environ['RUNNER_TEMP']) / 'rbac-focused-public'
+          private = None
+          process = None
+          container_name = None
+          container_id = None
+          expected_red = False
+          phase = 'inputs'
+          receipt = {'schema_version': 1, 'purpose': 'oauth-single-use-red-before-diagnostic-only',
+                     'expected_failure_verified': False, 'private_cleanup_verified': False,
+                     'owned_container_removed': False, 'source_unchanged': False, 'image_unchanged': False}
+          def require(value):
+              if not value:
+                  raise ValueError('unverified')
+          def command(*args):
+              return subprocess.check_output(args, stderr=subprocess.PIPE, text=True).strip()
+          def sha(path):
+              return hashlib.sha256(path.read_bytes()).hexdigest()
+          def inspect_owned():
+              inspected = subprocess.run(['docker', 'inspect', container_name], capture_output=True, text=True)
+              if inspected.returncode:
+                  require(inspected.returncode == 1)
+                  return None
+              records = json.loads(inspected.stdout)
+              require(len(records) == 1)
+              item = records[0]
+              require(item['Name'] == '/' + container_name)
+              labels = item['Config']['Labels']
+              require(labels.get('com.docker.compose.project') == project)
+              require(labels.get('com.docker.compose.service') == 'test-runner')
+              require(item['Config']['User'] == f'{os.getuid()}:{os.getgid()}')
+              require(item['Image'] == expected_image and item['HostConfig']['AutoRemove'] is True)
+              require(item['HostConfig']['Privileged'] is False and not item['HostConfig'].get('CapAdd'))
+              mounts = item['Mounts']
+              for destination, source, writable in (
+                  ('/app/src/services/mcp_server/auth.py', private / 'auth.py', False),
+                  ('/bifrost-oauth-red', private / 'output', True),
+              ):
+                  matches = [mount for mount in mounts if mount['Destination'] == destination]
+                  require(len(matches) == 1)
+                  require(matches[0]['Type'] == 'bind' and matches[0]['Source'] == str(source))
+                  require(matches[0]['RW'] is writable)
+              require(re.fullmatch(r'[0-9a-f]{64}', item['Id']) is not None)
+              return item
+          try:
+              project = os.environ['RED_PROJECT']
+              source = os.environ['DIAGNOSTIC_SOURCE_SHA']
+              require(re.fullmatch(r'bifrost-test-[0-9a-f]{8}', project) is not None)
+              require(re.fullmatch(r'[0-9a-f]{40}', source) is not None and os.getuid() != 0)
+              require(command('git', 'rev-parse', 'HEAD') == source)
+              require(not command('git', 'status', '--porcelain', '--untracked-files=all'))
+              cleanup = json.loads((public / 'backup-cleanup-proof.json').read_text())
+              require(cleanup.get('cleanup_verified_for_independent_tests') is True)
+              require(cleanup.get('source_sha') == source and cleanup.get('compose_project') == project)
+              image = json.loads((public / 'image-identity.json').read_text())
+              require(image['source_sha'] == source)
+              expected_image = image['image_id']
+              require(re.fullmatch(r'sha256:[0-9a-f]{64}', expected_image) is not None)
+              require(command('docker', 'image', 'inspect', 'bifrost-test-api-dev:latest', '--format', '{{.Id}}') == expected_image)
+              runner_temp = pathlib.Path(os.environ['RUNNER_TEMP']).resolve(strict=True)
+              private = pathlib.Path(tempfile.mkdtemp(prefix='rbac-oauth-red-', dir=runner_temp))
+              require(private.resolve().parent == runner_temp and not private.is_symlink())
+              output = private / 'output'
+              output.mkdir(mode=0o700)
+              # Preserve exact Git bytes. The only source override is this frozen file.
+              frozen = subprocess.check_output(['git', 'show', old_commit + ':' + auth_path], stderr=subprocess.PIPE)
+              (private / 'auth.py').write_bytes(frozen)
+              old_blob = command('git', 'rev-parse', old_commit + ':' + auth_path)
+              require(command('git', 'hash-object', str(private / 'auth.py')) == old_blob)
+              auth_hash, test_hash = sha(pathlib.Path(auth_path)), sha(pathlib.Path(test_path))
+              require(command('git', 'hash-object', auth_path) == command('git', 'rev-parse', 'HEAD:' + auth_path))
+              require(command('git', 'hash-object', test_path) == command('git', 'rev-parse', 'HEAD:' + test_path))
+              receipt.update(source_sha=source, source_tree=command('git', 'rev-parse', 'HEAD^{tree}'),
+                  old_commit=old_commit, old_auth_blob=old_blob, old_auth_sha256=sha(private / 'auth.py'),
+                  new_auth_sha256=auth_hash, new_test_sha256=test_hash, test_target=target,
+                  new_test_blob=command('git', 'rev-parse', 'HEAD:' + test_path), image_id=expected_image,
+                  compose_project=project, run_id=os.environ['GITHUB_RUN_ID'], run_attempt=os.environ['GITHUB_RUN_ATTEMPT'],
+                  runner_uid=os.getuid(), runner_gid=os.getgid())
+              container_name = project + '-oauth-red-' + private.name.removeprefix('rbac-oauth-red-')
+              require(not command('docker', 'ps', '-aq', '--filter', 'name=^/' + container_name + '$'))
+              environment = dict(os.environ, COMPOSE_PROJECT_NAME=project, LOG_DIR='/tmp/bifrost-' + project)
+              # Bytecode is private so stale canonical pyc files cannot shadow the override.
+              # Pre-pytest hashes also prove the new test and old source seen in-container.
+              runner = (
+                  'import hashlib,os,pathlib,sys; '
+                  'assert os.getuid()!=0; '
+                  'assert hashlib.sha256(pathlib.Path("/app/src/services/mcp_server/auth.py").read_bytes()).hexdigest()==sys.argv[1]; '
+                  'assert hashlib.sha256(pathlib.Path("/app/' + test_path.removeprefix('api/') + '").read_bytes()).hexdigest()==sys.argv[2]; '
+                  'import pytest; raise SystemExit(pytest.main(sys.argv[3:]))'
+              )
+              invocation = ['docker', 'compose', '-f', 'docker-compose.test.yml', '--profile', 'test',
+                  'run', '--rm', '--no-deps', '--no-build', '--pull', 'never', '--name', container_name,
+                  '--user', f'{os.getuid()}:{os.getgid()}',
+                  '--volume', str(private / 'auth.py') + ':/app/src/services/mcp_server/auth.py:ro',
+                  '--volume', str(output) + ':/bifrost-oauth-red',
+                  '--env', 'PYTHONPYCACHEPREFIX=/bifrost-oauth-red/pycache',
+                  'test-runner', 'python', '-c', runner, receipt['old_auth_sha256'], test_hash,
+                  target, '--junitxml=/bifrost-oauth-red/result.xml', '-o', 'cache_dir=/bifrost-oauth-red/pytest-cache', '-v']
+              phase = 'container_identity'
+              with (private / 'console.log').open('xb') as console:
+                  process = subprocess.Popen(invocation, env=environment, stdout=console, stderr=subprocess.STDOUT)
+                  # Read back this one invocation; never retry the test command.
+                  for _ in range(100):
+                      item = inspect_owned()
+                      if item is not None:
+                          container_id = item['Id']
+                          break
+                      if process.poll() is not None:
+                          break
+                      time.sleep(0.1)
+                  exit_code = process.wait()
+              require(container_id is not None)
+              receipt.update(observed_container_image_id=expected_image, single_read_only_source_override=True,
+                             pytest_exit_code=exit_code)
+              phase = 'exact_expected_failure'
+              require(exit_code == 1)
+              report = output / 'result.xml'
+              require(report.is_file() and not report.is_symlink() and report.stat().st_size <= 2 * 1024 * 1024)
+              root = ET.parse(report).getroot()
+              suites = [root] if root.tag == 'testsuite' else list(root.iter('testsuite'))
+              require(len(suites) == 1)
+              counts = {key: int(suites[0].get(key, '-1')) for key in ('tests', 'failures', 'errors', 'skipped')}
+              require(counts == {'tests': 1, 'failures': 1, 'errors': 0, 'skipped': 0})
+              cases = list(root.iter('testcase'))
+              require(len(cases) == 1 and cases[0].get('name') == test_name)
+              require(cases[0].get('classname') == 'tests.unit.services.mcp_server.test_auth_code_binding')
+              require(not list(root.iter('error')) and not list(root.iter('skipped')))
+              failures = list(root.iter('failure'))
+              require(len(failures) == 1 and failures[0].get('type') in (None, 'AssertionError'))
+              message = failures[0].get('message', '')
+              require(message.splitlines()[0] == 'assert [200, 200] == [200, 400]')
+              require('assert [200, 200] == [200, 400]' in (failures[0].text or ''))
+              receipt.update(counts=counts, expected_observed_status_codes=[200, 200], required_fixed_status_codes=[200, 400],
+                             expected_failure_verified=True)
+              phase = 'source_and_image_readback'
+              require(command('git', 'rev-parse', 'HEAD') == source)
+              require(not command('git', 'status', '--porcelain', '--untracked-files=all'))
+              require(sha(pathlib.Path(auth_path)) == auth_hash and sha(pathlib.Path(test_path)) == test_hash)
+              require(command('docker', 'image', 'inspect', 'bifrost-test-api-dev:latest', '--format', '{{.Id}}') == expected_image)
+              receipt.update(source_unchanged=True, image_unchanged=True)
+              expected_red = True
+              phase = 'verified'
+          except (ValueError, OSError, TypeError, KeyError, IndexError, AttributeError, ET.ParseError, subprocess.SubprocessError):
+              expected_red = False
+          finally:
+              try:
+                  if container_name is not None:
+                      item = inspect_owned()
+                      if item is not None:
+                          require(container_id is None or item['Id'] == container_id)
+                          command('docker', 'rm', '--force', item['Id'])
+                      require(not command('docker', 'ps', '-aq', '--filter', 'name=^/' + container_name + '$'))
+                      receipt['owned_container_removed'] = True
+                  if process is not None and process.poll() is None:
+                      process.wait(timeout=30)
+                  if private is not None:
+                      require(private.resolve().parent == runner_temp and not private.is_symlink())
+                      shutil.rmtree(private)
+                      require(not private.exists())
+                      receipt['private_cleanup_verified'] = True
+              except (ValueError, OSError, TypeError, KeyError, subprocess.SubprocessError):
+                  expected_red = False
+                  phase = 'cleanup_unverified'
+              receipt['verification_stage'] = phase
+              receipt['verified'] = expected_red and receipt['owned_container_removed'] and receipt['private_cleanup_verified']
+              with (public / 'oauth-single-use-red-before.json').open('x', encoding='utf-8') as stream:
+                  json.dump(receipt, stream, sort_keys=True, indent=2)
+                  stream.write('\n')
+          # Unexpected failures, skips, collection errors or changed inputs fail closed.
+          raise SystemExit(0 if receipt['verified'] else 1)
+          PY
+
       - name: Run explicit bridge and authorization unit suites
         id: unit
         if: ${{ !cancelled() && steps.stack.outcome == 'success' && steps.backup_cleanup.outputs.eligible == 'true' }}
@@ -311,6 +497,7 @@ jobs:
             tests/unit/services/mcp_server/test_auth_provider_claims.py \
             tests/unit/services/mcp_server/test_auth_code_binding.py \
             tests/unit/services/test_mcp_auth.py \
+            tests/unit/test_mcp_oauth_external_claim.py \
             tests/unit/jobs/schedulers/test_deferred_execution_promoter.py \
             -v)
           printf '%q ' "${test_command[@]}" > "$RUNNER_TEMP/rbac-focused-public/unit-command.txt"
@@ -480,6 +667,7 @@ jobs:
             ${{ runner.temp }}/rbac-focused-public/backup-exit-code.txt
             ${{ runner.temp }}/rbac-focused-public/backup-invocation.json
             ${{ runner.temp }}/rbac-focused-public/backup-cleanup-proof.json
+            ${{ runner.temp }}/rbac-focused-public/oauth-single-use-red-before.json
             ${{ runner.temp }}/rbac-focused-public/unit-command.txt
             ${{ runner.temp }}/rbac-focused-public/unit-exit-code.txt
             ${{ runner.temp }}/rbac-focused-public/e2e-command.txt
