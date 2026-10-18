@@ -53,7 +53,7 @@ def _key(user_id: UUID) -> str:
 
 
 async def get_user_roles(
-    user_id: UUID, db: "AsyncSession"
+    user_id: UUID, db: AsyncSession
 ) -> tuple[list[UUID], list[str]]:
     """Return ``(role_ids, role_names)`` for a user. Cache-first, DB on miss.
 
@@ -96,18 +96,7 @@ async def get_user_roles(
             )
 
     # Miss -> DB
-    from sqlalchemy import select
-
-    from src.models.orm.users import Role, UserRole
-
-    result = await db.execute(
-        select(Role.id, Role.name)
-        .join(UserRole, UserRole.role_id == Role.id)
-        .where(UserRole.user_id == user_id)
-    )
-    rows = result.all()
-    role_ids = [r.id for r in rows]
-    role_names = [r.name for r in rows]
+    role_ids, role_names = await load_user_roles_uncached(user_id, db)
 
     # Populate cache (best-effort)
     payload = {
@@ -123,6 +112,29 @@ async def get_user_roles(
             f"Role cache populate failed for user {log_safe(user_id)}: {log_safe(e)}"
         )
 
+    return role_ids, role_names
+
+
+async def load_user_roles_uncached(
+    user_id: UUID, db: AsyncSession
+) -> tuple[list[UUID], list[str]]:
+    """Load current role membership directly from the authoritative database.
+
+    Long-lived authorization contexts such as WebSocket subscriptions use this
+    path so a cache entry populated while a role-removal transaction was still
+    committing cannot extend revoked access.
+    """
+    from sqlalchemy import select
+    from src.models.orm.users import Role, UserRole
+
+    result = await db.execute(
+        select(Role.id, Role.name)
+        .join(UserRole, UserRole.role_id == Role.id)
+        .where(UserRole.user_id == user_id)
+    )
+    rows = result.all()
+    role_ids = [r.id for r in rows]
+    role_names = [r.name for r in rows]
     return role_ids, role_names
 
 
