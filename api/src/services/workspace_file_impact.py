@@ -99,6 +99,14 @@ class WorkspaceFileImpactInvalid(ValueError):
     """The requested graph cannot be proven safely."""
 
 
+class _WorkspacePythonParseInvalid(WorkspaceFileImpactInvalid):
+    """A specific durable Python file could not be parsed."""
+
+    def __init__(self, path: str, message: str):
+        super().__init__(message)
+        self.path = path
+
+
 class WorkspaceFileImpactConflict(RuntimeError):
     """The durable graph no longer matches the reviewed candidate."""
 
@@ -505,7 +513,11 @@ class WorkspaceFileImpactService:
             else None
         )
 
-    async def _load_python_snapshot(self) -> _WorkspaceSnapshot:
+    async def _load_python_snapshot(
+        self,
+        *,
+        index_overrides: Mapping[str, bytes] | None = None,
+    ) -> _WorkspaceSnapshot:
         started = time.perf_counter()
         snapshot_duration, snapshot_files, _ = _impact_metric_instruments()
         paths: list[str] = []
@@ -533,9 +545,16 @@ class WorkspaceFileImpactService:
                 files = dict(await asyncio.gather(*(read(path) for path in paths)))
             hashes = {path: _sha256(raw) for path, raw in files.items()}
             try:
-                impact_index = index_workspace_impact(files)
+                impact_index = index_workspace_impact(
+                    {**files, **(index_overrides or {})}
+                )
             except PromotionBundleError as exc:
-                raise WorkspaceFileImpactInvalid(str(exc)) from exc
+                message = str(exc)
+                parse_prefix = "cannot parse "
+                if message.startswith(parse_prefix):
+                    failed_path = message[len(parse_prefix):].split(":", 1)[0]
+                    raise _WorkspacePythonParseInvalid(failed_path, message) from exc
+                raise WorkspaceFileImpactInvalid(message) from exc
             success = True
             return _WorkspaceSnapshot(
                 files=files,
@@ -565,6 +584,32 @@ class WorkspaceFileImpactService:
             generation=get_workspace_generation,
             load=self._load_python_snapshot,
         )
+
+    async def _repair_snapshot(
+        self,
+        path: str,
+        proposed: bytes,
+        *,
+        use_cache: bool,
+    ) -> _WorkspaceSnapshot:
+        """Load an uncached repair overlay without weakening generation fencing."""
+        if not use_cache or self._snapshot_cache is None:
+            return await self._load_python_snapshot(index_overrides={path: proposed})
+
+        from src.core.module_cache import get_workspace_generation
+
+        before = await get_workspace_generation()
+        if before.startswith("updating:"):
+            raise WorkspaceFileImpactInvalid(
+                "workspace source update is in progress; retry impact analysis"
+            )
+        snapshot = await self._load_python_snapshot(index_overrides={path: proposed})
+        after = await get_workspace_generation()
+        if after != before or after.startswith("updating:"):
+            raise WorkspaceFileImpactInvalid(
+                "workspace source changed during impact analysis; retry"
+            )
+        return snapshot
 
     async def guarded_write(
         self,
@@ -620,11 +665,25 @@ class WorkspaceFileImpactService:
             raise WorkspaceFileImpactInvalid(
                 f"Workspace impact analysis supports authored roots only: {roots}"
             )
-        workspace = (
-            await self._python_snapshot()
-            if use_cache
-            else await self._load_python_snapshot()
+        proposed_override = (
+            request.content.encode("utf-8") if request.content is not None else None
         )
+        repaired_invalid_target = False
+        try:
+            workspace = (
+                await self._python_snapshot()
+                if use_cache
+                else await self._load_python_snapshot()
+            )
+        except _WorkspacePythonParseInvalid as exc:
+            if proposed_override is None or exc.path != path:
+                raise
+            workspace = await self._repair_snapshot(
+                path,
+                proposed_override,
+                use_cache=use_cache,
+            )
+            repaired_invalid_target = True
         live = workspace.files
         current = live.get(path)
         if request.content is None:
@@ -634,10 +693,12 @@ class WorkspaceFileImpactService:
                 )
             proposed = current
         else:
-            proposed = request.content.encode("utf-8")
+            proposed = proposed_override
 
         try:
-            if proposed == current:
+            if repaired_invalid_target:
+                analysis = workspace.impact_index.analysis
+            elif proposed == current:
                 analysis = workspace.impact_index.analysis
             elif current is not None:
                 analysis = workspace.impact_index.overlay(path, proposed)
@@ -659,7 +720,11 @@ class WorkspaceFileImpactService:
             forward_paths=forward_paths,
             reverse_paths=reverse_paths,
             analysis=analysis,
-            base_analysis=workspace.impact_index.analysis,
+            base_analysis=(
+                analysis
+                if repaired_invalid_target
+                else workspace.impact_index.analysis
+            ),
             proposed_unchanged=request.content is not None and current == proposed,
         )
         diagnostics.extend(
@@ -669,7 +734,11 @@ class WorkspaceFileImpactService:
                 changed=current != proposed,
                 reverse_paths=reverse_paths,
                 analysis=analysis,
-                base_analysis=workspace.impact_index.analysis,
+                base_analysis=(
+                    analysis
+                    if repaired_invalid_target
+                    else workspace.impact_index.analysis
+                ),
             )
         )
 
