@@ -110,22 +110,24 @@ async def seed_agent_with_flagged_runs(db_session, seed_agent):
         db_session.add(run)
         runs.append(run)
     await db_session.commit()
+    run_ids = [run.id for run in runs]
+    agent_id = seed_agent.id
 
     yield seed_agent, runs
 
-    for run in runs:
+    for run_id in run_ids:
         await db_session.execute(
             delete(AgentRunFlagConversation).where(
-                AgentRunFlagConversation.run_id == run.id
+                AgentRunFlagConversation.run_id == run_id
             )
         )
         await db_session.execute(
-            delete(AIUsage).where(AIUsage.agent_run_id == run.id)
+            delete(AIUsage).where(AIUsage.agent_run_id == run_id)
         )
-        await db_session.execute(delete(AgentRun).where(AgentRun.id == run.id))
+        await db_session.execute(delete(AgentRun).where(AgentRun.id == run_id))
     await db_session.execute(
         delete(AgentPromptHistory).where(
-            AgentPromptHistory.agent_id == seed_agent.id
+            AgentPromptHistory.agent_id == agent_id
         )
     )
     await db_session.commit()
