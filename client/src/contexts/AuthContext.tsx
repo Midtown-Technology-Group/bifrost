@@ -24,7 +24,7 @@ import {
 	isEmbedSession,
 } from "@/lib/auth-token";
 import { clearPreferredSsoRedirectAttempt } from "@/services/auth";
-import { refreshAccessToken } from "@/lib/api-client";
+import { getCsrfToken, refreshAccessToken } from "@/lib/api-client";
 
 // Consume the fragment before AuthProvider performs its initial auth check.
 // api-client does the same defensively before requests; this keeps auth state
@@ -398,11 +398,45 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
 	// Logout
 	const logout = useCallback(() => {
-		clearAuthTokens();
-		localStorage.removeItem(USER_KEY);
-		sessionStorage.removeItem("userId");
-		setUser(null);
-		navigate("/login");
+		void (async () => {
+			const requestServerLogout = () => {
+				const headers = new Headers();
+				const accessToken = localStorage.getItem(ACCESS_TOKEN_KEY);
+				if (accessToken)
+					headers.set("Authorization", `Bearer ${accessToken}`);
+				const csrfToken = getCsrfToken();
+				if (csrfToken) headers.set("X-CSRF-Token", csrfToken);
+				return fetch("/auth/logout", {
+					method: "POST",
+					credentials: "same-origin",
+					headers,
+				});
+			};
+
+			try {
+				let response = await requestServerLogout();
+				if (response.status === 401) {
+					if (!(await refreshAccessToken())) {
+						console.error("Server logout failed");
+						return;
+					}
+					response = await requestServerLogout();
+				}
+				if (!response.ok) {
+					console.error("Server logout failed");
+					return;
+				}
+			} catch {
+				console.error("Server logout failed");
+				return;
+			}
+
+			clearAuthTokens();
+			localStorage.removeItem(USER_KEY);
+			sessionStorage.removeItem("userId");
+			setUser(null);
+			navigate("/login");
+		})();
 	}, [navigate]);
 
 	// Refresh token
