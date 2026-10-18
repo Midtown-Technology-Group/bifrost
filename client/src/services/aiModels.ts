@@ -27,7 +27,13 @@ export type AIModelProfileMergeResponse =
 	components["schemas"]["AIModelProfileMergeResponse"];
 export type AIConnectionTestResponse =
 	components["schemas"]["AIConnectionTestResponse"];
+export type AIModelProfileVerifyResponse =
+	components["schemas"]["AIModelProfileVerifyResponse"];
 export type AIModelsResponse = components["schemas"]["AIModelsResponse"];
+export type ProviderModel = components["schemas"]["LLMModelInfo"];
+export type ModelCatalog = components["schemas"]["ModelCatalogResponse"];
+export type ModelCatalogProvider = components["schemas"]["ModelCatalogProvider"];
+export type PlatformJobAccepted = components["schemas"]["PlatformJobAccepted"];
 
 function throwApiError(action: string, error: unknown): never {
 	const detail =
@@ -118,6 +124,18 @@ export async function listProviderModels(
 	return data as AIModelsResponse;
 }
 
+export async function getModelCatalog(): Promise<ModelCatalog> {
+	const { data, error } = await apiClient.GET("/api/admin/ai/catalog");
+	if (error) throwApiError("load the model catalog", error);
+	return data as ModelCatalog;
+}
+
+export async function refreshModelCatalog(): Promise<PlatformJobAccepted> {
+	const { data, error } = await apiClient.POST("/api/admin/ai/catalog/refresh");
+	if (error) throwApiError("refresh the model catalog", error);
+	return data as PlatformJobAccepted;
+}
+
 export async function listModelProfiles(): Promise<AIModelProfile[]> {
 	const { data, error } = await apiClient.GET("/api/admin/ai/profiles");
 	if (error) throwApiError("list model profiles", error);
@@ -148,6 +166,18 @@ export async function updateModelProfile(
 	);
 	if (error) throwApiError("update model profile", error);
 	return responseData as AIModelProfile;
+}
+
+/** Sends one short request through the profile's runtime path. */
+export async function verifyModelProfile(
+	id: string,
+): Promise<AIModelProfileVerifyResponse> {
+	const { data, error } = await apiClient.POST(
+		"/api/admin/ai/profiles/{profile_id}/verify",
+		{ params: { path: { profile_id: id } } },
+	);
+	if (error) throwApiError("verify model profile", error);
+	return data as AIModelProfileVerifyResponse;
 }
 
 export async function deleteModelProfile(id: string): Promise<void> {

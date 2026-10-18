@@ -78,16 +78,58 @@ def test_scaffold_files_shape_and_dev_wiring() -> None:
     assert "return () => root.unmount()" in main
     assert "VITE_BIFROST_TOKEN" in main
     assert "BrowserRouter basename={bootstrap.basename}" in main
+    assert "solutionId={bootstrap.solutionId}" in main
     assert "if (import.meta.env.DEV)" in main
     assert "import.meta.url" in main
     assert "__BIFROST_APP__" not in main
     assert "registerUnmount" not in main
     assert 'searchParams.get("m")' not in main
 
-    # App.tsx composes the optional platform header + shows a workflow call.
+    # App.tsx composes the optional platform header.
     app = files["src/App.tsx"]
     assert "BifrostHeader" in app
-    assert "useWorkflow" in app
+
+
+def test_scaffold_app_ships_top_nav_shell() -> None:
+    """App.tsx is the navigation shell new Apps copy: one header carrying the
+    NAV list (rendered with the router's NavLink, collapsed into its menu on
+    phones), `main` as the only scroller, nested routes with a catch-all, and
+    semantic token classes instead of inline styles."""
+    app = _v2_scaffold_files("my-app")["src/App.tsx"]
+
+    assert app.count("<BifrostHeader") == 1
+    assert "const NAV = [" in app
+    assert "nav={{ items: NAV, link: NavLink }}" in app
+    # The header owns the nav; the shell must not render a second nav row.
+    assert "<nav" not in app
+    assert 'className="flex h-full min-h-0 flex-col' in app
+    assert '<main className="min-h-0 flex-1 overflow-auto">' in app
+    assert "<Outlet />" in app
+    assert "<Route element={<Shell />}>" in app
+    assert 'path="*"' in app
+    # App.tsx must not import UI components the scaffold doesn't ship.
+    assert "@/components/" not in app
+    assert "style={{" not in app
+    assert "crimson" not in app
+
+
+def test_scaffold_app_starter_button_is_an_unwired_placeholder() -> None:
+    """The starter button calls no workflow: a fresh App or Solution has no
+    workflow to call, so a default ref would fail on first click. The comment
+    beside it shows how to wire it with the workflow hooks."""
+    app = _v2_scaffold_files("my-app")["src/App.tsx"]
+
+    code = "\n".join(
+        line for line in app.splitlines() if not line.lstrip().startswith("//")
+    )
+    assert "Run workflow" in code
+    assert "useWorkflow" not in code
+    assert "onClick" not in code
+    assert "hello.py" not in app
+    # The wiring guidance names both hooks and the mutation pattern.
+    assert "useWorkflowQuery(ref)" in app
+    assert "useWorkflowMutation(ref)" in app
+    assert "wf.mutate({})" in app
 
 
 def test_scaffold_ships_tailwind_v4_shadcn_and_theme() -> None:
@@ -157,10 +199,8 @@ def test_scaffold_app_nested_path_anchors_manifests_at_root(tmp_path, monkeypatc
 
     # Manifests at the root — and no stray src/.bifrost.
     assert (tmp_path / ".bifrost" / "apps.yaml").is_file()
-    assert (tmp_path / ".bifrost" / "workflows.yaml").is_file()
     assert not (tmp_path / "src" / ".bifrost").exists()
-    # Sample workflow at the root, app files at the nested path.
-    assert (tmp_path / "functions" / "hello.py").is_file()
+    # App files at the nested path.
     assert (tmp_path / "src" / "apps" / "dash" / "package.json").is_file()
 
     data = yaml.safe_load((tmp_path / ".bifrost" / "apps.yaml").read_text())

@@ -29,11 +29,17 @@ from apscheduler.triggers.interval import IntervalTrigger
 
 from src.config import get_settings
 from src.core.sentry import configure_sentry
-from src.core.database import init_db, close_db, get_db_context
+from shared.schema_gate import wait_for_schema
+from src.core.database import close_db, get_db_context, get_engine, init_db
 from src.jobs.schedulers.cron_scheduler import process_schedule_sources
 from src.jobs.schedulers.execution_cleanup import cleanup_stuck_executions
 from src.jobs.schedulers.platform_jobs import platform_job_worker_loop
-from src.scheduler.health import heartbeat_loop, write_heartbeat
+from src.scheduler.health import (
+    clear_ready,
+    heartbeat_loop,
+    mark_ready,
+    write_heartbeat,
+)
 from src.scheduler.leadership import SchedulerLeadershipLease
 from src.scheduler.registry import (
     SCHEDULED_TASKS_BY_ID,
@@ -116,8 +122,13 @@ class Scheduler:
         await init_db()
         logger.info("Database connection established")
 
+        # Liveness (heartbeat) starts before the schema gate so a scheduler
+        # waiting on migrations is alive but not ready.
+        clear_ready()
         write_heartbeat()
         self._heartbeat_task = asyncio.create_task(heartbeat_loop())
+        await wait_for_schema(get_engine())
+
         self._diagnostics_task = asyncio.create_task(
             self._diagnostics_heartbeat_loop(),
             name="scheduler-diagnostics-heartbeat",
@@ -151,6 +162,7 @@ class Scheduler:
             task.add_done_callback(self._background_task_done)
         self._leadership_task.add_done_callback(self._background_task_done)
 
+        mark_ready()
         logger.info("Bifrost Scheduler replica started")
         logger.info("Running... (Ctrl+C to stop)")
 
@@ -312,6 +324,22 @@ class Scheduler:
             args=["workspace_bundle_preview_cleanup", cleanup_workspace_bundle_previews],
             **misfire_options,
         )
+
+        # Workflow operation usage flush — every 15 minutes.
+        from src.jobs.schedulers.workflow_operation_usage_flush import (
+            flush_workflow_operation_usage,
+        )
+        scheduler.add_job(
+            self._run_scheduled_task,
+            IntervalTrigger(minutes=15),
+            id="workflow_operation_usage_flush",
+            name="Flush workflow operation usage counters",
+            replace_existing=True,
+            next_run_time=datetime.now(timezone.utc),
+            args=["workflow_operation_usage_flush", flush_workflow_operation_usage],
+            **misfire_options,
+        )
+        logger.info("Workflow operation usage flush scheduled (every 15 min)")
 
         # Legacy entity-logo normalization — bounded batches, immediate at startup.
         from src.jobs.schedulers.logo_thumbnail_backfill import (
@@ -478,6 +506,23 @@ class Scheduler:
         except ImportError:
             logger.warning("Solution update check job not available")
 
+        # Model catalog (models.dev) - every 4 hours, and once at startup so a
+        # new install moves off the bundled snapshot promptly.
+        from src.jobs.platform.system_maintenance import (
+            enqueue_automatic_model_catalog_refresh,
+        )
+        scheduler.add_job(
+            self._run_scheduled_task,
+            IntervalTrigger(hours=4),
+            id="model_catalog_refresh",
+            name="Refresh the models.dev provider and model catalog",
+            replace_existing=True,
+            next_run_time=datetime.now(timezone.utc),
+            args=["model_catalog_refresh", enqueue_automatic_model_catalog_refresh],
+            **misfire_options,
+        )
+        logger.info("Model catalog refresh scheduled (every 4 hours)")
+
         # Completed Solution backup artifacts expire independently of execution.
         try:
             from src.jobs.schedulers.solution_export_jobs import (
@@ -572,21 +617,33 @@ class Scheduler:
         )
         logger.info("MCP operation receipt payload cleanup scheduled (hourly)")
 
-        # Event cleanup - daily at 3:00 AM UTC (30-day retention)
-        try:
-            from src.jobs.schedulers.event_cleanup import cleanup_old_events
-            scheduler.add_job(
-                self._run_scheduled_task,
-                CronTrigger(hour=3, minute=0),  # Daily at 3:00 AM UTC
-                id="event_cleanup",
-                name="Cleanup old events (30-day retention)",
-                replace_existing=True,
-                args=["event_cleanup", cleanup_old_events],
-                **misfire_options,
-            )
-            logger.info("Event cleanup job scheduled (daily at 3:00 AM)")
-        except ImportError:
-            logger.warning("Event cleanup job not available")
+        # Audit archive - daily at 2:30 AM UTC
+        from src.jobs.schedulers.audit_archive import archive_audit_events_schedule
+
+        scheduler.add_job(
+            self._run_scheduled_task,
+            CronTrigger(hour=2, minute=30),
+            id="audit_archive",
+            name="Archive aged audit events to object storage",
+            replace_existing=True,
+            args=["audit_archive", archive_audit_events_schedule],
+            **misfire_options,
+        )
+        logger.info("Audit archive scheduled (daily at 2:30 AM)")
+
+        # Run retention - daily at 3:00 AM UTC
+        from src.jobs.schedulers.run_retention import delete_expired_runs_schedule
+
+        scheduler.add_job(
+            self._run_scheduled_task,
+            CronTrigger(hour=3, minute=0),
+            id="run_retention",
+            name="Delete finished runs and events past the retention window",
+            replace_existing=True,
+            args=["run_retention", delete_expired_runs_schedule],
+            **misfire_options,
+        )
+        logger.info("Run retention scheduled (daily at 3:00 AM)")
 
         # Stuck event delivery cleanup - every 5 minutes (run immediately at startup)
         try:

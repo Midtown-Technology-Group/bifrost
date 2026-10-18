@@ -280,10 +280,9 @@ class FileStorageService:
         (existing behaviour for non-solution writes).
         """
         if location == "workspace":
-            await self._file_ops.record_signed_upload_metadata(
-                path,
-                updated_by=updated_by,
-            )
+            from src.services.file_index_service import FileIndexService
+
+            await FileIndexService(self.db).index_existing_object(path, updated_by=updated_by)
 
         from src.services.file_policy_service import FilePolicyService
 

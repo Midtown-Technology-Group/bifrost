@@ -25,6 +25,7 @@ from uuid import UUID
 
 from fastmcp.tools import ToolResult
 
+from shared import access_checks
 from shared.scope_resolver import has_scope_bypass
 
 if TYPE_CHECKING:
@@ -193,6 +194,8 @@ class MCPContext:
     user_email: str = ""
     user_name: str = ""
     operation_id: str | None = None
+    # User whose agent run the REST bridge and access checks act for.
+    run_user_id: UUID | str | None = None
 
     # Knowledge namespaces accessible to this user (from agent.knowledge_sources)
     accessible_namespaces: list[str] = field(default_factory=list)
@@ -208,6 +211,8 @@ class MCPContext:
             self.user_id = UUID(self.user_id)
         if isinstance(self.org_id, str) and self.org_id:
             self.org_id = UUID(self.org_id)
+        if isinstance(self.run_user_id, str) and self.run_user_id:
+            self.run_user_id = UUID(self.run_user_id)
 
     @property
     def has_scope_bypass(self) -> bool:
@@ -570,7 +575,7 @@ def get_system_tool_function(tool_id: str) -> Any | None:
     Get the callable function for a system tool by ID.
 
     Args:
-        tool_id: The tool ID (e.g., "execute_workflow", "list_agents")
+        tool_id: The tool ID (e.g., "execute_workflow", "bifrost_agent_list")
 
     Returns:
         The async callable function, or None if not found.
@@ -698,6 +703,10 @@ if HAS_FASTMCP:
                                         "ArtifactRef output was not found or is outside this MCP scope.",
                                         result,
                                     )
+                                if artifact.created_by_user_id != UUID(str(context.user_id)):
+                                    access_checks.note_power(
+                                        "artifacts.read.all", artifact.organization_id, subject=f"artifact:{artifact.id}"
+                                    )
                                 if ref.content_type.startswith("image/"):
                                     data = await artifact_service.read(artifact)
                                     content_blocks.append(
@@ -823,6 +832,7 @@ async def _execute_workflow_tool_impl(
     **inputs: Any,
 ) -> Any:
     """Execute a specific workflow tool by ID."""
+    from shared.run_lineage import person_lineage
     from src.core.database import get_db_context
     from src.repositories.workflows import WorkflowRepository
     from src.services.execution.service import execute_tool
@@ -855,6 +865,7 @@ async def _execute_workflow_tool_impl(
                 user_name=context.user_name or "MCP User",
                 org_id=str(context.org_id) if context.org_id else None,
                 is_platform_admin=context.is_platform_admin,
+                lineage=person_lineage(context.user_id),
             )
 
             success = result.status.value == "Success"

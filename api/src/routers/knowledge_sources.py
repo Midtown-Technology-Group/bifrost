@@ -4,7 +4,7 @@ Knowledge Sources Router
 Namespace-based knowledge management.
 Namespaces are derived from the knowledge_store table.
 Documents are stored via the KnowledgeRepository with embeddings.
-Role assignments use the knowledge_namespace_roles table.
+Namespace-role assignments remain selection/sharing metadata, not a content ACL.
 """
 
 import logging
@@ -663,7 +663,7 @@ async def delete_namespace(
     if deleted == 0:
         raise HTTPException(404, f"Namespace '{namespace}' not found or empty")
 
-    # Also clean up any role assignments for this namespace
+    # Preserve legacy namespace assignment cleanup alongside document deletion.
     await db.execute(
         delete(KnowledgeNamespaceRole).where(
             KnowledgeNamespaceRole.namespace == namespace

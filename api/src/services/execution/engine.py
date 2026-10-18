@@ -175,6 +175,12 @@ class ExecutionRequest:
     # no variable tracing) and attempt-scoped log streaming.
     service: ServiceRunConfig | None = None
 
+    # The pre-minted engine token this process installed as its SDK
+    # credentials (see worker.py::_set_process_engine_credentials).
+    # Registered as a dynamic secret so _scrub_outputs redacts it from
+    # results, logs, variables and error messages.
+    engine_token: str | None = None
+
 
 @dataclass
 class ExecutionResult:
@@ -414,6 +420,11 @@ async def execute(request: ExecutionRequest) -> ExecutionResult:
         solution_id=request.solution_id,  # install scope for SDK name lookups
         solution_deployment_id=request.solution_deployment_id,
     )
+
+    # The engine token this process installed as its SDK credentials is a
+    # secret like any other: register it so _scrub_outputs redacts it from
+    # the result, logs, variables and error message.
+    context._register_dynamic_secret(request.engine_token)
 
     # Set bifrost SDK context if available
     if BIFROST_CONTEXT_AVAILABLE:

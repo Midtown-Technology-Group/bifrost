@@ -16,9 +16,11 @@ attribution, the org scope, the run visibility rule, and the
 steps/usage/totals detail construction — so HTTP and worker-local results are
 identical by construction.
 
-Only the SDK-consumed ``enqueue`` / ``get_run`` operations live here.
-``/execute``, agent definitions, backfill, summaries, rerun, cancel,
-verdict, flag conversations, and dry-run keep their router-level logic.
+Only the SDK-consumed ``enqueue`` / ``get_run`` operations live here, plus
+the ``run_as`` decision (``resolve_agent_run_actor`` /
+``resolve_rerun_actor``) that ``/execute`` and rerun share with
+``enqueue``. Agent definitions, backfill, summaries, cancel, verdict, flag
+conversations, and dry-run keep their router-level logic.
 
 Parent-side only: imports SQLAlchemy models and Redis. A workflow child
 never imports this module (it stays DB-free and reaches it over the
@@ -36,7 +38,7 @@ import json
 import logging
 from datetime import datetime
 from decimal import Decimal
-from typing import Any
+from typing import Any, NamedTuple
 from uuid import UUID
 
 from sqlalchemy import func, select
@@ -45,6 +47,7 @@ from sqlalchemy.orm import joinedload, selectinload
 
 from typing import TYPE_CHECKING
 
+from shared import access_checks
 from src.core.cache.keys import agent_run_steps_stream_key
 from src.core.cache.redis_client import get_redis
 from src.core.log_safety import log_safe
@@ -60,7 +63,9 @@ from src.models.contracts.executions import AIUsagePublicSimple, AIUsageTotalsSi
 from src.services.execution.agent_run_access import agent_run_visibility_conditions
 
 if TYPE_CHECKING:
+    from src.models.orm.agent_runs import AgentRun
     from src.models.orm.agents import Agent
+    from src.services.authorization.explain import RunAsTarget
 
 logger = logging.getLogger(__name__)
 
@@ -123,8 +128,101 @@ async def resolve_executable_agent(
                 f"Agent '{agent.name}' belongs to an inactive solution. "
                 "Reinstall the solution to execute this agent.",
             )
+    access_checks.note_launch("agents.execute", agent.organization_id, principal.organization_id, subject=f"agent:{agent.id}")
 
     return agent
+
+
+class AgentRunActor(NamedTuple):
+    """Where an agent run runs and who it acts as."""
+
+    org_id: UUID | None
+    # None: the caller acts.
+    run_as_user_id: UUID | None
+
+
+async def authorize_agent_run_as(
+    session: AsyncSession, principal: UserPrincipal, run_as_user_id: UUID
+) -> RunAsTarget | None:
+    """The user an agent run acts as when ``run_as`` names ``run_as_user_id``;
+    None when it names the caller, who then acts as without ``run_as``.
+
+    ``impersonation.acting_target`` decides, and its refusal keeps its
+    status.
+
+    Raises:
+        SdkAgentRunError: the helper's 403/404/400.
+    """
+    from src.services.authorization.impersonation import RunAsError, acting_target
+
+    try:
+        return await acting_target(session, principal, run_as_user_id)
+    except RunAsError as exc:
+        raise SdkAgentRunError(exc.status_code, exc.detail) from None
+
+
+def _acting_org(agent_org_id: UUID | None, target: RunAsTarget) -> UUID | None:
+    """Where a run acting as ``target`` runs: the agent's organization, which
+    must be the user's, or the user's home organization for a Global agent."""
+    if agent_org_id is None:
+        return target.organization_id
+    if target.organization_id != agent_org_id:
+        raise SdkAgentRunError(400, "Run As user must belong to the agent's organization")
+    return agent_org_id
+
+
+async def resolve_agent_run_actor(
+    session: AsyncSession,
+    principal: UserPrincipal,
+    agent: Agent,
+    run_as: UUID | None,
+) -> AgentRunActor:
+    """The run's organization and acting user for a launch by ``principal``.
+
+    Without ``run_as``, or when it names the caller, the run is in the
+    caller's organization and the caller acts. Otherwise the run acts as the
+    authorized user: in the agent's organization when the agent is
+    org-scoped (the user must belong to it), otherwise in the user's home
+    organization.
+
+    Raises:
+        SdkAgentRunError: as ``authorize_agent_run_as``; 400 when an
+            org-scoped agent's organization is not the user's.
+    """
+    caller_acts = AgentRunActor(principal.organization_id, None)
+    if run_as is None:
+        return caller_acts
+    target = await authorize_agent_run_as(session, principal, run_as)
+    if target is None:
+        return caller_acts
+    return AgentRunActor(_acting_org(agent.organization_id, target), target.user_id)
+
+
+async def resolve_rerun_actor(
+    session: AsyncSession, principal: UserPrincipal, run: AgentRun
+) -> AgentRunActor:
+    """The organization and acting user for ``principal`` rerunning ``run``.
+
+    A run that acted as someone keeps acting as them, decided again for
+    this caller, and the organization follows the user's current home
+    organization as a launch's does. Otherwise (or when the acting user is
+    the caller) the rerun keeps the run's organization and the caller acts.
+
+    Raises:
+        SdkAgentRunError: as ``resolve_agent_run_actor``.
+    """
+    from src.models.orm.agents import Agent
+
+    keep = AgentRunActor(run.org_id, None)
+    if run.run_as_user_id is None:
+        return keep
+    target = await authorize_agent_run_as(session, principal, run.run_as_user_id)
+    if target is None:
+        return keep
+    agent_org_id = (
+        await session.execute(select(Agent.organization_id).where(Agent.id == run.agent_id))
+    ).scalar_one()
+    return AgentRunActor(_acting_org(agent_org_id, target), target.user_id)
 
 
 async def enqueue_sdk_agent_run(
@@ -134,6 +232,7 @@ async def enqueue_sdk_agent_run(
     agent_name: str,
     input_data: dict[str, Any] | None = None,
     output_schema: dict[str, Any] | None = None,
+    run_as: UUID | None = None,
 ) -> AgentRunEnqueueResponse | PausedResponse:
     """Queue an agent run for the SDK ``agents.enqueue`` operation.
 
@@ -142,11 +241,15 @@ async def enqueue_sdk_agent_run(
     2. Agent bound to a non-active Solution → 409.
     3. Paused agent (``is_active=False``) → ``PausedResponse`` (the
        caller maps this to HTTP 200, not an error).
+    4. ``run_as`` refused → the status ``resolve_agent_run_actor`` gives.
 
     The queue payload and actor attribution match the historical
     handler: ``trigger_type="api"``, the caller's org, user id, email,
-    and name, ``sync=False``. The durable row commit and queue publish
-    (including failure marking) stay inside ``enqueue_agent_run``.
+    and name, ``sync=False``. With ``run_as`` the row also records the
+    acting user and the run's org follows ``resolve_agent_run_actor``;
+    the caller fields and lineage stay the caller's. The durable row
+    commit and queue publish (including failure marking) stay inside
+    ``enqueue_agent_run``.
 
     Args:
         session: Database session (agent lookup only; the run row is
@@ -155,10 +258,12 @@ async def enqueue_sdk_agent_run(
         agent_name: Agent name as validated on the request.
         input_data: Structured input for the run.
         output_schema: Optional JSON Schema for the expected output.
+        run_as: The user to act as, when not the caller.
 
     Raises:
         SdkAgentRunError: 404 when the agent name is unknown; 409 when
-            the agent belongs to an inactive Solution.
+            the agent belongs to an inactive Solution; a refused
+            ``run_as``.
     """
     agent = await resolve_executable_agent(session, agent_name=agent_name, principal=principal)
 
@@ -168,20 +273,24 @@ async def enqueue_sdk_agent_run(
             agent_id=agent.id,
         )
 
+    from shared.run_lineage import principal_lineage
     from src.services.execution.agent_run_service import enqueue_agent_run
 
+    actor = await resolve_agent_run_actor(session, principal, agent, run_as)
     run_id = await enqueue_agent_run(
         agent_id=str(agent.id),
         trigger_type="api",
         input_data=input_data,
         output_schema=output_schema,
-        org_id=str(principal.organization_id) if principal.organization_id else None,
+        org_id=str(actor.org_id) if actor.org_id else None,
         caller_user_id=str(principal.user_id),
         caller_email=principal.email,
         caller_name=getattr(principal, "name", None),
         sync=False,
+        lineage=await principal_lineage(session, principal),
+        run_as_user_id=actor.run_as_user_id,
     )
-    return AgentRunEnqueueResponse(run_id=UUID(run_id))
+    return AgentRunEnqueueResponse(run_id=UUID(run_id), run_as_user_id=actor.run_as_user_id)
 
 
 async def get_sdk_agent_run(
@@ -213,7 +322,7 @@ async def get_sdk_agent_run(
 
     query = (
         select(AgentRun)
-        .options(selectinload(AgentRun.steps))
+        .options(selectinload(AgentRun.steps), selectinload(AgentRun.run_as_user))
         .where(AgentRun.id == run_id)
     )
 
@@ -245,6 +354,7 @@ async def get_sdk_agent_run(
                 output_tokens=entry.output_tokens,
                 cache_read_tokens=entry.cache_read_tokens,
                 cache_write_tokens=entry.cache_write_tokens,
+                reasoning_tokens=entry.reasoning_tokens,
                 provider_cost=(str(entry.provider_cost) if entry.provider_cost is not None else None),
                 cost=str(entry.cost) if entry.cost else None,
                 duration_ms=entry.duration_ms,
@@ -261,6 +371,7 @@ async def get_sdk_agent_run(
                 func.sum(AIUsage.output_tokens).label("total_output"),
                 func.sum(AIUsage.cache_read_tokens).label("total_cache_read"),
                 func.sum(AIUsage.cache_write_tokens).label("total_cache_write"),
+                func.sum(AIUsage.reasoning_tokens).label("total_reasoning"),
                 func.sum(AIUsage.provider_cost).label("total_provider_cost"),
                 func.sum(AIUsage.cost).label("total_cost"),
                 func.sum(AIUsage.duration_ms).label("total_duration"),
@@ -273,11 +384,16 @@ async def get_sdk_agent_run(
             total_output_tokens=int(totals_row.total_output or 0),
             total_cache_read_tokens=int(totals_row.total_cache_read or 0),
             total_cache_write_tokens=int(totals_row.total_cache_write or 0),
+            total_reasoning_tokens=int(totals_row.total_reasoning or 0),
             total_provider_cost=str(totals_row.total_provider_cost or Decimal("0")),
             total_cost=str(totals_row.total_cost or Decimal("0")),
             total_duration_ms=int(totals_row.total_duration or 0),
             call_count=int(totals_row.call_count or 0),
         )
+
+    from src.services.agent_run_usage_summary import summarize_run_usage
+
+    usage_summary = (await summarize_run_usage(session, [run_id])).get(run_id)
 
     # Fetch delegation sub-runs and their agents in one ordered query. Keep the
     # legacy ID list while also returning enough context for a user-facing view.
@@ -367,6 +483,9 @@ async def get_sdk_agent_run(
         caller_user_id=run.caller_user_id,
         caller_email=run.caller_email,
         caller_name=run.caller_name,
+        run_as_user_id=run.run_as_user_id,
+        run_as_user_name=run.run_as_user.name if run.run_as_user else None,
+        run_as_user_email=run.run_as_user.email if run.run_as_user else None,
         iterations_used=run.iterations_used,
         tokens_used=run.tokens_used,
         budget_max_iterations=run.budget_max_iterations,
@@ -394,4 +513,5 @@ async def get_sdk_agent_run(
         steps=steps_response,
         ai_usage=ai_usage_list,
         ai_totals=ai_totals_response,
+        usage_summary=usage_summary,
     )

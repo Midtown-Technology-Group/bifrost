@@ -58,6 +58,15 @@ class WorkspacePropagationError(RuntimeError):
     """Durable workspace bytes changed but runtime cache proof did not converge."""
 
 
+async def get_module_resolution_generation(cache_key: str) -> str:
+    """Capture a generation before probing storage; expired tokens never revive."""
+    redis_conn = await get_redis_client()._get_redis()
+    return await cast(Awaitable[str], redis_conn.eval(
+        MODULE_RESOLUTION_GENERATION_SCRIPT, 1,
+        module_resolution_generation_key(cache_key), uuid4().hex, MODULE_RESOLUTION_TTL,
+    ))
+
+
 async def get_module_resolution_cache(cache_key: str) -> dict | None:
     """Read metadata only while its name generation is still current."""
     redis_conn = await get_redis_client()._get_redis()
@@ -916,12 +925,3 @@ async def clear_module_cache() -> int:
 
     logger.info(f"Cleared {count} modules from cache")
     return count
-
-
-async def get_module_resolution_generation(cache_key: str) -> str:
-    """Capture a generation before probing storage; expired tokens never revive."""
-    redis_conn = await get_redis_client()._get_redis()
-    return await cast(Awaitable[str], redis_conn.eval(
-        MODULE_RESOLUTION_GENERATION_SCRIPT, 1,
-        module_resolution_generation_key(cache_key), uuid4().hex, MODULE_RESOLUTION_TTL,
-    ))

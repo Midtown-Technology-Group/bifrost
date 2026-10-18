@@ -144,8 +144,10 @@ def test_contract_package_exports_are_lazy_and_resolve_public_symbols() -> None:
         "src.models.contracts.organizations",
     ]
     assert result["user_create_name"] == "UserCreate"
+    # users imports role_assignments for RoleUserSummary.boundaries.
     assert result["loaded_after_user"] == [
         "src.models.contracts.organizations",
+        "src.models.contracts.role_assignments",
         "src.models.contracts.users",
     ]
 
@@ -173,6 +175,7 @@ def test_contract_all_resolves_every_public_export_and_alias() -> None:
                 "ExecutionAttemptPublic",
                 "CodexGatewayKeyContext",
                 "PackageInstallationProgressResponse",
+                "GrantPermissionsRequest", "RolePlacementSummary", "PermissionsData",
             ) if name in contracts.__all__),
         }))
         """
@@ -185,6 +188,7 @@ def test_contract_all_resolves_every_public_export_and_alias() -> None:
         "ExecutionAttemptPublic",
         "CodexGatewayKeyContext",
         "PackageInstallationProgressResponse",
+        "GrantPermissionsRequest", "RolePlacementSummary", "PermissionsData",
     ])
 
 

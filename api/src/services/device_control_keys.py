@@ -15,7 +15,7 @@ from fastapi import status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.core.org_filter import OrgFilterType, org_filter_clause, resolve_org_filter
+from src.core.org_filter import OrgFilterType, org_filter_clause
 from src.core.principal import UserPrincipal
 from src.models.contracts.device_control_keys import ControlKeyCreate
 from src.models.orm.device_control_keys import DeviceControlKey
@@ -28,7 +28,12 @@ from src.services.device_keys import (
     rotate_control_key,
     validate_control_key_scope,
 )
-from src.services.devices import DeviceOperationError, resolve_target_org
+from src.services.devices import (
+    DeviceOperationError,
+    require_device_control_key_issue_permission,
+    resolve_device_org_filter,
+    resolve_target_org,
+)
 
 
 async def create_control_key(
@@ -111,7 +116,7 @@ async def get_control_key_scoped(
     eligibility checks followed by writes — e.g. rotate's enabled-check then
     hash update — serialize against a concurrent revoke instead of racing it.
     """
-    filter_type, filter_org_id = resolve_org_filter(user)
+    filter_type, filter_org_id = resolve_device_org_filter(user)
     stmt = select(DeviceControlKey).where(DeviceControlKey.id == key_id)
     clause = org_filter_clause(
         DeviceControlKey.organization_id, filter_type, filter_org_id
@@ -119,7 +124,7 @@ async def get_control_key_scoped(
     if clause is not None:
         stmt = stmt.where(clause)
     if with_lock:
-        stmt = stmt.with_for_update()
+        stmt = stmt.with_for_update().execution_options(populate_existing=True)
     row = (await db.execute(stmt)).scalar_one_or_none()
     if row is None:
         raise DeviceOperationError(
@@ -135,7 +140,7 @@ def list_control_keys_stmt(
     scope: str | None = None,
 ) -> "object":
     """Build the org-scoped list statement (no inline org comparisons)."""
-    filter_type, filter_org_id = resolve_org_filter(user, scope)
+    filter_type, filter_org_id = resolve_device_org_filter(user, scope)
     stmt = select(DeviceControlKey)
     clause = org_filter_clause(
         DeviceControlKey.organization_id, filter_type, filter_org_id
@@ -153,6 +158,7 @@ async def rotate_control_key_route(
     # Row lock: serialize against a concurrent revoke so the eligibility
     # check and the hash update commit atomically w.r.t. it.
     row = await get_control_key_scoped(db, user, key_id, with_lock=True)
+    await require_device_control_key_issue_permission(db, user, row.organization_id)
     # Rotation preserves enabled/expiry, so it cannot make an unusable key
     # usable — reject instead of minting a new raw secret that would silently
     # fail at verification (revoked keys must be replaced, not rotated).

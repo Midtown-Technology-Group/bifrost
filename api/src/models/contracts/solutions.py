@@ -619,6 +619,10 @@ class SolutionDeletionSummary(BaseModel):
     claims: int = 0
     config_declarations: int = 0
     events: int = 0
+    # Subscriptions NOT owned by the install (operator-created listeners) that
+    # the hard-delete still removes by FK cascade: they sit on one of the
+    # install's event sources or target one of its workflows/agents.
+    external_event_subscriptions: int = 0
 
 
 class SolutionDeployEnqueued(BaseModel):
@@ -710,6 +714,14 @@ class SolutionExportJobsList(BaseModel):
     """Recent durable async backup export jobs for one Solution."""
 
     jobs: list[SolutionExportJobPublic] = Field(default_factory=list)
+
+
+class SolutionExportDownloadLink(BaseModel):
+    """Short-lived direct download for one authorized backup artifact."""
+
+    url: str
+    filename: str
+    expires_in: int = Field(ge=1, le=600)
 
 
 class SolutionCaptureRequest(BaseModel):

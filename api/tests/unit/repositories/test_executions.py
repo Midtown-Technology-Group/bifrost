@@ -34,6 +34,8 @@ def _execution(**overrides):
         "organization_id": uuid4(),
         "form_id": uuid4(),
         "executed_by": uuid4(),
+        "started_by_user_id": None,
+        "root_execution_id": None,
         "executed_by_name": "Runner",
         "status": ExecutionStatus.SUCCESS.value,
         "parameters": {"ticket_id": 123},
@@ -540,6 +542,7 @@ async def test_get_execution_includes_logs_ai_usage_totals_and_admin_fields() ->
         output_tokens=7,
         cache_read_tokens=3,
         cache_write_tokens=2,
+        reasoning_tokens=0,
         provider_cost=Decimal("0.1000"),
         cost=Decimal("0.1234"),
         duration_ms=250,
@@ -551,6 +554,7 @@ async def test_get_execution_includes_logs_ai_usage_totals_and_admin_fields() ->
         total_output=7,
         total_cache_read=3,
         total_cache_write=2,
+        total_reasoning=0,
         total_provider_cost=Decimal("0.1000"),
         total_cost=Decimal("0.1234"),
         total_duration=250,
@@ -608,8 +612,8 @@ async def test_get_execution_logs_handles_access_and_filters_to_public_logs() ->
     session.execute = AsyncMock(
         side_effect=[
             OneOrNoneResult(None),
-            OneOrNoneResult(SimpleNamespace(executed_by=owner.user_id)),
-            OneOrNoneResult(SimpleNamespace(executed_by=owner.user_id)),
+            OneOrNoneResult(_execution(executed_by=owner.user_id)),
+            OneOrNoneResult(_execution(executed_by=owner.user_id)),
             ExecuteResult(scalars=[log]),
         ]
     )
@@ -679,12 +683,12 @@ async def test_cancel_execution_handles_not_found_and_forbidden() -> None:
 async def test_get_execution_result_and_variables_enforce_access() -> None:
     owner = _user()
     other = _user()
-    row = SimpleNamespace(result={"ok": True}, result_type="json", executed_by=owner.user_id)
+    row = _execution(result={"ok": True}, result_type="json", executed_by=owner.user_id)
     session = AsyncMock()
     session.execute = AsyncMock(side_effect=[
         OneOrNoneResult(row),
         OneOrNoneResult(row),
-        OneOrNoneResult((uuid4(), None)),
+        OneOrNoneResult(SimpleNamespace(id=uuid4(), variables=None, organization_id=owner.organization_id)),
     ])
     repo = ExecutionRepository(session)
 
@@ -852,3 +856,37 @@ async def test_standalone_wrappers_create_session_and_commit_when_needed() -> No
     update.assert_awaited_once()
     create_session.commit.assert_awaited_once()
     update_session.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("relation,admin,allowed,permission", [
+    ("acting", False, True, None),
+    ("root_starter", False, True, None),
+    ("child_starter", False, False, None),
+    ("foreign", False, False, None),
+    ("foreign", True, True, "executions.read.all"),
+])
+async def test_result_reader_preserves_root_visibility_and_records_elevated_power(
+    relation, admin, allowed, permission,
+):
+    from shared import access_checks
+
+    user = _user(is_superuser=admin)
+    row = _execution()
+    if relation == "acting":
+        row.executed_by = user.user_id
+    if relation in {"root_starter", "child_starter"}:
+        row.started_by_user_id = user.user_id
+        row.root_execution_id = row.id if relation == "root_starter" else uuid4()
+    session = AsyncMock()
+    session.execute.return_value = OneOrNoneResult(row)
+    token = access_checks.collect_person(user.user_id)
+    try:
+        result, error = await ExecutionRepository(session).get_execution_result(row.id, user)
+        notes = list(access_checks.current().notes)
+    finally:
+        access_checks.stop_collecting(token)
+    assert (error is None) is allowed
+    assert (result is not None) is allowed
+    powers = [(note.facts["permission"], note.target) for note in notes if note.kind == "permission"]
+    assert powers == ([(permission, row.organization_id)] if permission else [])

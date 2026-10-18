@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from src.models import WorkflowMetadata as WorkflowMetadataModel
+from src.services.workflow_permissions import DEFAULT_WORKFLOW_PERMISSION_MODE
 
 logger = logging.getLogger(__name__)
 
@@ -123,6 +124,9 @@ def _convert_workflow_metadata_to_model(
             else 1800
         ),
         schedule=None,
+        # A pending workflow has no mode of its own yet; the platform default
+        # is stored data this conversion doesn't read.
+        permission_mode=DEFAULT_WORKFLOW_PERMISSION_MODE,
         endpoint_enabled=False,
         disable_global_key=False,
         public_endpoint=False,

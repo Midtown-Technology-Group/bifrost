@@ -53,3 +53,31 @@ def test_canary_context_uses_persisted_user_uuid() -> None:
     assert context.email == "operator@example.com"
     assert context.org_id is None
     assert context.is_platform_admin is True
+    assert context.artifact_workspace_id is None
+    assert UUID(context.execution_id)
+
+
+@pytest.mark.asyncio
+async def test_canary_dispatches_with_context_identity_and_lineage(monkeypatch):
+    from unittest.mock import AsyncMock
+    from shared.run_lineage import person_lineage
+    from src.jobs import workflow_canary
+
+    user_id = uuid4()
+    context = canary_context(SimpleNamespace(id=user_id, name="Canary", email="canary@example.com"))
+    enqueue = AsyncMock(return_value=context.execution_id)
+    monkeypatch.setenv("BIFROST_WORKFLOW_QUEUE_NAME", "workflow-verification-canary")
+    monkeypatch.setattr(workflow_canary, "init_db", AsyncMock())
+    monkeypatch.setattr(workflow_canary, "close_db", AsyncMock())
+    monkeypatch.setattr(workflow_canary, "resolve_canary_context", AsyncMock(return_value=context))
+    monkeypatch.setattr(workflow_canary, "poison_depth", AsyncMock(return_value=0))
+    monkeypatch.setattr(workflow_canary, "enqueue_code_execution", enqueue)
+    monkeypatch.setattr(workflow_canary.rabbitmq, "close", AsyncMock())
+    redis = SimpleNamespace(wait_for_result=AsyncMock(return_value={"status": "Success", "result": {"canary": "ok"}}))
+    monkeypatch.setattr(workflow_canary, "get_redis_client", lambda: redis)
+
+    await workflow_canary.run_canary()
+
+    assert enqueue.await_args.args == (context,)
+    assert enqueue.await_args.kwargs["execution_id"] == context.execution_id
+    assert enqueue.await_args.kwargs["lineage"] == person_lineage(user_id)

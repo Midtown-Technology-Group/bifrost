@@ -21,6 +21,7 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import select
 
+from shared import access_checks
 from src.core.auth import CurrentActiveUser
 from src.core.database import get_session_factory
 from src.core.db_deps import DbSession
@@ -66,14 +67,19 @@ async def _load_agent_with_access(
             detail=f"Agent {agent_id} not found",
         )
 
-    if not is_admin and (
-        agent.access_level != AgentAccessLevel.PRIVATE
-        or agent.owner_user_id != user.user_id
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="You can only tune your own private agents",
-        )
+    if not is_admin:
+        if (
+            agent.access_level != AgentAccessLevel.PRIVATE
+            or agent.owner_user_id != user.user_id
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Agent {agent_id} not found",
+            )
+    elif agent.access_level != AgentAccessLevel.PRIVATE:
+        access_checks.note_power("agents.readwrite", agent.organization_id, subject=f"agent:{agent.id}")
+    elif agent.owner_user_id != user.user_id:
+        access_checks.note_power("agents.readwrite.all", agent.organization_id, subject=f"agent:{agent.id}")
 
     return agent
 

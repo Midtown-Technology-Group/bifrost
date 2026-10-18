@@ -185,6 +185,7 @@ async def bifrost_execute_tool(
     tool_ref: str,
     arguments: dict[str, Any],
     operation_id: str,
+    async_execution: bool | None = None,
 ) -> ToolResult:
     """Validate and execute one live tool through its selected agent."""
     from src.services.mcp_server.tasks import is_mcp_task_requested
@@ -198,12 +199,15 @@ async def bifrost_execute_tool(
             "arguments": arguments,
             "operation_id": operation_id,
             "task_requested": task_requested,
+            "async": async_execution,
         },
     )
     if status_code != 200 or not isinstance(data, dict):
         return _rest_error("Tool execution", status_code, data)
     if task_requested:
         return gateway_execute_result(data)
+    if data.get("async"):
+        return direct_result(data)
     result = data["result"]
     if data.get("source") == "workflow" and isinstance(result, dict):
         result = result.get("result")

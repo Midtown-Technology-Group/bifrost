@@ -10,10 +10,11 @@ Implements Task 5b of the CLI mutation surface plan:
   :class:`RoleUpdate`; unset flags omitted by :func:`assemble_body`)
 * ``bifrost roles delete <ref>`` → ``DELETE /api/roles/{uuid}``
 
-Flags are generated from the DTOs via :func:`build_cli_flags`. Since
-``RoleCreate``/``RoleUpdate`` carry ``permissions`` as a ``dict`` in the DTO
-contract, the generated flag is ``--permissions`` accepting a JSON literal
-or ``@path`` to a YAML/JSON file (see :func:`load_dict_value`).
+Flags are generated from the DTOs via :func:`build_cli_flags`.
+
+Builtin roles (Platform Admin, User, Platform Operator) are hidden from
+list/get and refuse update/delete with 409 — see
+``api/shared/builtin_roles.py``.
 """
 
 from __future__ import annotations
@@ -156,3 +157,64 @@ async def delete_role(
 
 
 __all__ = ["roles_group"]
+
+
+@roles_group.command("bridge-grants")
+@click.argument("ref")
+@click.pass_context
+@pass_resolver
+@run_async
+async def get_bridge_grants(
+    ctx: click.Context, ref: str, *, client: BifrostClient, resolver: RefResolver
+) -> None:
+    """Read the current bridge grant set and version (Platform Admin only)."""
+    role_id = await resolver.resolve("role", ref)
+    response = await client.get(f"/api/roles/{role_id}/bridge-grants")
+    response.raise_for_status()
+    output_result(response.json(), ctx=ctx)
+
+
+@roles_group.command("set-bridge-grants")
+@click.argument("ref")
+@click.option(
+    "--permission",
+    "permissions",
+    multiple=True,
+    type=click.Choice(["devices.readwrite", "devices.execute", "agents.promote"]),
+)
+@click.option(
+    "--expected-permission",
+    "expected_permissions",
+    multiple=True,
+    type=click.Choice(["devices.readwrite", "devices.execute", "agents.promote"]),
+)
+@click.option("--expected-version", required=True)
+@click.pass_context
+@pass_resolver
+@run_async
+async def set_bridge_grants(
+    ctx: click.Context,
+    ref: str,
+    permissions: tuple[str, ...],
+    expected_permissions: tuple[str, ...],
+    expected_version: str,
+    *,
+    client: BifrostClient,
+    resolver: RefResolver,
+) -> None:
+    """Replace only bridge grants using the exact prior set/version from bridge-grants."""
+    from bifrost.contracts.bridge_grants import RoleBridgeGrantsUpdate
+
+    role_id = await resolver.resolve("role", ref)
+    request = RoleBridgeGrantsUpdate.model_validate(
+        {
+            "permissions": list(permissions),
+            "expected_permissions": list(expected_permissions),
+            "expected_version": expected_version,
+        }
+    )
+    response = await client.put(
+        f"/api/roles/{role_id}/bridge-grants", json=request.model_dump(mode="json")
+    )
+    response.raise_for_status()
+    output_result(response.json(), ctx=ctx)

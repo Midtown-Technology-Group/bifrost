@@ -33,6 +33,7 @@ _SOLUTION_SCOPED_OPERATIONAL_MODELS = {
     "PendingCaptureORM",
     "SolutionDeployObligation",
     "SolutionExportJob",
+    "SolutionWorkflowPermissionRequest",
 }
 
 

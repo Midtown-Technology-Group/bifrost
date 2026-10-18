@@ -12,6 +12,7 @@ Handles the core event processing logic:
 Events are always processed asynchronously and return 202 immediately.
 """
 
+import base64
 import logging
 import re
 import uuid
@@ -277,11 +278,13 @@ class EventProcessor:
 
         try:
             await self.queue_event_deliveries(delivery.event_id)
+            if delivery.status == EventDeliveryStatus.FAILED:
+                delivery.completed_at = datetime.now(timezone.utc)
+                await self.session.flush()
+                return f"Failed to queue retry: {delivery.error_message}"
             return "Delivery queued for retry"
         except Exception as exc:
-            error_message = format_exception_message(
-                exc, context="queueing event delivery retry"
-            )
+            error_message = format_exception_message(exc, context="queueing event delivery retry")
             logger.error("Failed to queue retry: %s", error_message, exc_info=True)
             delivery.status = EventDeliveryStatus.FAILED
             delivery.error_message = error_message
@@ -535,6 +538,7 @@ class EventProcessor:
             received_at=datetime.now(timezone.utc),
             headers=deliver.raw_headers,
             data=deliver.data,
+            raw_body=request.body,
             source_ip=request.client_ip,
             status=EventStatus.RECEIVED,
         )
@@ -852,9 +856,10 @@ class EventProcessor:
         Uses the same execution infrastructure as the rest of the platform.
 
         If the subscription has an input_mapping defined, it is processed to build
-        workflow parameters using template substitution. Otherwise, the raw event
-        data is used as parameters (legacy behavior).
+        workflow parameters using template substitution. Otherwise, the parsed event
+        payload is used as parameters (legacy behavior).
         """
+        from shared.run_lineage import unattended_lineage
         from src.services.execution.async_executor import enqueue_system_workflow_execution
 
         # Get workflow details
@@ -896,16 +901,20 @@ class EventProcessor:
                 },
             )
         else:
-            # Legacy behavior: extract body fields as flat params
+            # Legacy behavior: extract parsed payload fields as flat parameters
             if isinstance(event.data, dict):
                 parameters.update(event.data)
 
-        # Always include full event context under reserved key
-        # This includes the COMPLETE raw body for complex/non-dict payloads
+        # Always include parsed payload and original accepted bytes under the reserved key.
         parameters["_event"] = {
             "id": str(event.id),
             "type": event.event_type,
-            "body": event.data,  # Full raw body (dict, list, string, whatever)
+            "body": event.data,  # Parsed payload (dict, list, string, whatever)
+            "raw_body_base64": (
+                base64.b64encode(event.raw_body).decode("ascii")
+                if event.raw_body is not None
+                else None
+            ),
             "headers": event.headers,
             "received_at": event.received_at.isoformat() if event.received_at else None,
             "source_ip": event.source_ip,
@@ -945,6 +954,7 @@ class EventProcessor:
             org_id=str(execution_org_id),
             event=event_context,
             event_delivery_id=str(delivery.id),
+            lineage=await unattended_lineage(self.session, workflow.id),
         )
 
         # The execution pin transaction bound this delivery before publication.
@@ -966,6 +976,8 @@ class EventProcessor:
         event: Event,
     ) -> None:
         """Queue an agent run for an event delivery targeting an agent."""
+        from shared.run_lineage import identity_lineage, person_lineage
+        from src.services.access_check_entry import check_agent_run_entry
         from src.services.execution.agent_run_service import enqueue_agent_run
 
         subscription = delivery.subscription
@@ -1021,6 +1033,11 @@ class EventProcessor:
             "id": str(event.id),
             "type": event.event_type,
             "body": event.data,
+            "raw_body_base64": (
+                base64.b64encode(event.raw_body).decode("ascii")
+                if event.raw_body is not None
+                else None
+            ),
             "headers": event.headers,
             "received_at": event.received_at.isoformat() if event.received_at else None,
             "source_ip": event.source_ip,
@@ -1061,6 +1078,13 @@ class EventProcessor:
                     strict=True,
                 )
 
+        lineage = (
+            person_lineage(principal.user_id)
+            if event.authenticated_actor is not None
+            else await identity_lineage(self.session, agent.organization_id)
+        )
+        await check_agent_run_entry(lineage.run_user_id, agent.id, agent.organization_id)
+
         run_id = await enqueue_agent_run(
             agent_id=str(agent.id),
             trigger_type="event",
@@ -1070,6 +1094,7 @@ class EventProcessor:
             event_delivery_id=str(delivery.id),
             run_id=str(run_uuid),
             **caller_kwargs,
+            lineage=lineage,
         )
 
         delivery.agent_run_id = uuid.UUID(run_id)

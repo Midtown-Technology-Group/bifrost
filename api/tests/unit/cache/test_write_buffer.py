@@ -206,47 +206,23 @@ class TestWriteBufferRoleOperations:
         return WriteBuffer("exec-test", "org-test", "user-test")
 
     @pytest.mark.asyncio
-    async def test_add_role_change_create(self, buffer, mock_redis):
-        """add_role_change generates ID for create operation."""
-        with patch("src.core.cache.get_redis") as mock_get_redis:
-            mock_get_redis.return_value.__aenter__.return_value = mock_redis
-
-            role_id = await buffer.add_role_change(
-                operation="create",
-                role_id=None,
-                data={"name": "Admin", "description": "Administrator role"},
-            )
-
-            # Should return a generated UUID
-            assert role_id is not None
-            assert len(role_id) == 36  # UUID format
+    @pytest.mark.parametrize("operation", ["create", "update", "delete"])
+    async def test_role_changes_refuse_before_any_cache_write(self, buffer, operation):
+        with patch("src.core.cache.get_redis") as redis:
+            with pytest.raises(ValueError, match="canonical role assignment API"):
+                await buffer.add_role_change(
+                    operation=operation,
+                    role_id="role",
+                    data={"permissions": {"can_execute_devices": True}},
+                )
+        redis.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_add_role_change_update(self, buffer, mock_redis):
-        """add_role_change uses existing ID for update operation."""
-        with patch("src.core.cache.get_redis") as mock_get_redis:
-            mock_get_redis.return_value.__aenter__.return_value = mock_redis
-
-            role_id = await buffer.add_role_change(
-                operation="update",
-                role_id="existing-role-123",
-                data={"name": "Updated Name"},
-            )
-
-            assert role_id == "existing-role-123"
-
-    @pytest.mark.asyncio
-    async def test_add_role_users_change(self, buffer, mock_redis):
-        """add_role_users_change buffers user assignment."""
-        with patch("src.core.cache.get_redis") as mock_get_redis:
-            mock_get_redis.return_value.__aenter__.return_value = mock_redis
-
-            await buffer.add_role_users_change(
-                role_id="role-123",
-                user_ids=["user-1", "user-2", "user-3"],
-            )
-
-            mock_redis.hset.assert_called()
+    async def test_membership_changes_refuse_before_any_cache_write(self, buffer):
+        with patch("src.core.cache.get_redis") as redis:
+            with pytest.raises(ValueError, match="canonical role assignment API"):
+                await buffer.add_role_users_change(role_id="role", user_ids=["user"])
+        redis.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_add_role_forms_change(self, buffer, mock_redis):
@@ -364,7 +340,9 @@ class TestWriteBufferUtilityMethods:
             assert has_changes is False
 
     @pytest.mark.asyncio
-    async def test_has_pending_changes_true_when_changes_exist(self, buffer, mock_redis):
+    async def test_has_pending_changes_true_when_changes_exist(
+        self, buffer, mock_redis
+    ):
         """has_pending_changes returns True when changes exist."""
         mock_redis.hlen = AsyncMock(return_value=3)
 

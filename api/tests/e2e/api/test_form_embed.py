@@ -361,8 +361,9 @@ class TestEmbedFormCrossTenantBinding:
     binds form embeds to their exact form and denies app embeds because there
     is no persisted app-to-form capability grant.
 
-    These tests exercise all four sites with both attack vectors (form-embed
-    token and app-embed token) and confirm the legitimate paths still work.
+    These tests exercise all four sites for the form-embed attack vector and
+    confirm app-embed tokens are denied outright, while the legitimate
+    form-embed path still works.
     """
 
     @pytest.fixture

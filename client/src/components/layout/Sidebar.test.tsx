@@ -4,10 +4,16 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, renderWithProviders, screen, waitFor } from "@/test-utils";
 import { TerminologyContext, mergeTerminology } from "@/lib/terminology";
 import type { HomeCollection } from "@/services/home";
+import {
+	meetsRequirement,
+	type AuthorizationSummary,
+	type PermissionRequirement,
+} from "@/lib/authorization";
 import { Sidebar } from "./Sidebar";
 
 const state = vi.hoisted(() => ({
 	isPlatformAdmin: true,
+	authorization: undefined as AuthorizationSummary | undefined,
 	home: {
 		data: undefined as
 			{ resources: []; collections: HomeCollection[] } | undefined,
@@ -18,6 +24,32 @@ const state = vi.hoisted(() => ({
 vi.mock("@/contexts/AuthContext", () => ({
 	useAuth: () => ({ isPlatformAdmin: state.isPlatformAdmin }),
 }));
+
+vi.mock("@/services/authorization", () => ({
+	useAuthorization: () => ({
+		meets: (requirement: PermissionRequirement) =>
+			meetsRequirement(state.authorization, requirement),
+	}),
+}));
+
+function summary(
+	isPlatformAdmin: boolean,
+	permissions: string[] = [],
+): AuthorizationSummary {
+	return {
+		is_platform_admin: isPlatformAdmin,
+		home_organization_id: "00000000-0000-0000-0000-000000000002",
+		provider_organization_id: "00000000-0000-0000-0000-000000000002",
+		base_role: {
+			id: "r",
+			name: isPlatformAdmin ? "Platform Admin" : "User",
+		},
+		grants: permissions.map((permission) => ({
+			permission,
+			boundary: { kind: "managed_organizations", organization_id: null },
+		})),
+	};
+}
 
 vi.mock("@/components/branding/Logo", () => ({
 	Logo: () => <div aria-label="Logo" />,
@@ -56,13 +88,14 @@ const collections: HomeCollection[] = [
 
 beforeEach(() => {
 	state.isPlatformAdmin = true;
+	state.authorization = summary(true);
 	state.home = { data: { resources: [], collections } };
 	state.useQuery.mockReset();
 	state.useQuery.mockReturnValue(state.home);
 });
 
 describe("Sidebar terminology", () => {
-	it("renders branded product nouns in navigation", () => {
+	it("renders branded product nouns in navigation", async () => {
 		const terminology = mergeTerminology({
 			app: { singular: "Game", plural: "Games" },
 			agent: { singular: "Character", plural: "Characters" },
@@ -122,8 +155,102 @@ describe("Sidebar terminology", () => {
 });
 
 describe("Sidebar structure", () => {
+	it("shows an operator the identity pages their roles grant, not Roles", () => {
+		state.isPlatformAdmin = false;
+		state.authorization = summary(false, [
+			"users.read",
+			"organizations.read",
+		]);
+
+		renderWithProviders(
+			<Sidebar
+				isMobileMenuOpen={false}
+				setIsMobileMenuOpen={vi.fn()}
+				isCollapsed={false}
+			/>,
+		);
+
+		expect(
+			screen.getByRole("heading", { name: "Platform" }),
+		).toBeInTheDocument();
+		expect(
+			screen.getByRole("link", { name: "Organizations" }),
+		).toBeInTheDocument();
+		expect(screen.getByRole("link", { name: "Users" })).toBeInTheDocument();
+		expect(
+			screen.queryByRole("link", { name: "Roles" }),
+		).not.toBeInTheDocument();
+		expect(
+			screen.queryByRole("link", { name: "Settings" }),
+		).not.toBeInTheDocument();
+	});
+
+	it("shows Access Checks only to holders of roleassignments.read", () => {
+		state.isPlatformAdmin = false;
+		state.authorization = summary(false, ["users.read"]);
+		const { unmount } = renderWithProviders(
+			<Sidebar
+				isMobileMenuOpen={false}
+				setIsMobileMenuOpen={vi.fn()}
+				isCollapsed={false}
+			/>,
+		);
+		expect(
+			screen.queryByRole("link", { name: "Access Checks" }),
+		).not.toBeInTheDocument();
+		unmount();
+
+		state.authorization = summary(false, ["roleassignments.read"]);
+		renderWithProviders(
+			<Sidebar
+				isMobileMenuOpen={false}
+				setIsMobileMenuOpen={vi.fn()}
+				isCollapsed={false}
+			/>,
+		);
+		expect(
+			screen.getByRole("link", { name: "Access Checks" }),
+		).toHaveAttribute("href", "/audit/access-checks");
+		expect(
+			screen.queryByRole("link", { name: "Audit Log" }),
+		).not.toBeInTheDocument();
+	});
+
+	it("marks only Access Checks current on its page, not the Audit Log", () => {
+		renderWithProviders(
+			<Sidebar
+				isMobileMenuOpen={false}
+				setIsMobileMenuOpen={vi.fn()}
+				isCollapsed={false}
+			/>,
+			{ initialEntries: ["/audit/access-checks"] },
+		);
+
+		expect(
+			screen.getByRole("link", { name: "Access Checks" }),
+		).toHaveAttribute("aria-current", "page");
+		expect(
+			screen.getByRole("link", { name: "Audit Log" }),
+		).not.toHaveAttribute("aria-current");
+	});
+
+	it("shows a platform admin the whole Platform section", () => {
+		renderWithProviders(
+			<Sidebar
+				isMobileMenuOpen={false}
+				setIsMobileMenuOpen={vi.fn()}
+				isCollapsed={false}
+			/>,
+		);
+
+		for (const name of ["Organizations", "Users", "Roles", "Settings"]) {
+			expect(screen.getByRole("link", { name })).toBeInTheDocument();
+		}
+	});
+
 	it("keeps launch destinations visible for ordinary users and hides admin management", () => {
 		state.isPlatformAdmin = false;
+		state.authorization = summary(false);
 
 		renderWithProviders(
 			<Sidebar
@@ -152,6 +279,9 @@ describe("Sidebar structure", () => {
 		).not.toBeInTheDocument();
 		expect(
 			screen.queryByRole("link", { name: "Dashboard" }),
+		).not.toBeInTheDocument();
+		expect(
+			screen.queryByRole("heading", { name: "Platform" }),
 		).not.toBeInTheDocument();
 	});
 

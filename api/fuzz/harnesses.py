@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from src.services.cron_parser import cron_to_human_readable, validate_cron_expression
-from src.services.editor.search import _search_content
+from src.services.source_search.matching import build_matcher, iter_line_hits
 from src.services.webhooks.protocol import WebhookRequest
 
 
@@ -13,13 +13,13 @@ def fuzz_editor_search(data: bytes) -> None:
     query = text[:pivot] or "x"
     content = text[pivot:]
 
-    _search_content(content, "fuzz.txt", query, case_sensitive=False, is_regex=False)
+    list(iter_line_hits(content, build_matcher(query, False, False), context_lines=0))
 
     pattern = query[:80]
     try:
-        _search_content(content, "fuzz.txt", pattern, case_sensitive=False, is_regex=True)
+        list(iter_line_hits(content, build_matcher(pattern, True, False), context_lines=0))
     except ValueError as exc:
-        if "nested quantifiers" not in str(exc) and "exceeds" not in str(exc):
+        if not any(reason in str(exc) for reason in ("nested quantifiers", "exceeds", "Invalid regex", "took too long")):
             raise
 
 

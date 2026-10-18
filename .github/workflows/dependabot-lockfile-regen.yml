@@ -43,6 +43,7 @@ jobs:
           # dependency metadata without granting this workflow write authority.
           ref: ${{ github.head_ref }}
           repository: ${{ github.event.pull_request.head.repo.full_name }}
+          persist-credentials: false
 
       - name: Validate requirements.lock
         # Use the same Python minor as api/Dockerfile's FROM line (3.14-slim).

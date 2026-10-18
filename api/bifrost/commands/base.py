@@ -61,7 +61,7 @@ def _build_json_option() -> click.Option:
 
     ``json_output_option`` (the decorator form) is what subcommand callbacks
     use during decoration. For appending the option to a built ``Command``
-    after the fact (see ``_EntityGroup.add_command``) we need the raw
+    after the fact (see ``EntityGroup.add_command``) we need the raw
     ``Option`` object rather than running the decorator against an empty
     callback.
     """
@@ -79,7 +79,7 @@ def json_output_option(fn: Callable[..., Any]) -> Callable[..., Any]:
     """Add a shared ``--json`` flag that routes through the Click context obj.
 
     Used directly only by the group-level decorator built in ``entity_group``;
-    subcommands get the same flag attached automatically by ``_EntityGroup.add_command``
+    subcommands get the same flag attached automatically by ``EntityGroup.add_command``
     via ``_build_json_option``.
     """
     return click.option(
@@ -100,16 +100,24 @@ def _json_requested(ctx: click.Context | None) -> bool:
     return bool(obj and obj.get("json_output"))
 
 
-def output_result(result: Any, *, ctx: click.Context | None = None) -> None:
+def output_result(
+    result: Any,
+    *,
+    ctx: click.Context | None = None,
+    human: Callable[[Any], None] | None = None,
+) -> None:
     """Write ``result`` to stdout.
 
-    Uses JSON output when ``--json`` is set on the context, otherwise writes
-    a compact human-readable rendering. The human rendering is deliberately
-    minimal: dicts become ``key: value`` lines, lists become one item per
-    line. Rich per-entity formatting is each command's responsibility.
+    Uses JSON output when ``--json`` is set on the context. Otherwise a
+    command's own ``human`` renderer runs when given, else a compact default
+    rendering: dicts become ``key: value`` lines, lists become one item per
+    line.
     """
     if _json_requested(ctx):
         click.echo(json.dumps(result, indent=2, sort_keys=True, default=str))
+        return
+    if human is not None:
+        human(result)
         return
     if isinstance(result, dict):
         for key in sorted(result):
@@ -353,7 +361,7 @@ def pass_resolver(fn: Callable[..., Any]) -> Callable[..., Any]:
     return wrapper
 
 
-class _EntityGroup(click.Group):
+class EntityGroup(click.Group):
     """Click group that auto-applies ``--json`` to every subcommand.
 
     Click's parser only accepts options at the position they're declared,
@@ -382,7 +390,7 @@ def entity_group(name: str, help_text: str) -> click.Group:
     subcommand name.
     """
 
-    @click.group(name=name, help=help_text, cls=_EntityGroup)
+    @click.group(name=name, help=help_text, cls=EntityGroup)
     @json_output_option
     @click.pass_context
     def group(ctx: click.Context) -> None:
@@ -392,6 +400,7 @@ def entity_group(name: str, help_text: str) -> click.Group:
 
 
 __all__ = [
+    "EntityGroup",
     "_apply_flags",
     "entity_group",
     "json_output_option",

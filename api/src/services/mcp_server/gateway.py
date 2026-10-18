@@ -14,6 +14,9 @@ import pydantic_core
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
+from shared import access_checks
+from shared.execution_visibility import is_own_execution, is_own_pending_execution
+from shared.run_lineage import RunLineage
 from shared.scope_resolver import has_scope_bypass
 from src.core.org_filter import OrgFilterType
 from src.models.orm.agents import Agent
@@ -22,6 +25,7 @@ from src.models.orm.executions import Execution
 from src.models.orm.external_mcp import MCPConnection, MCPServer
 from src.repositories.agents import AgentRepository
 from src.services.execution.agent_helpers import (
+    caller_can_access_delegated_agent,
     find_delegated_agent,
     parse_mcp_tool_name,
     resolve_agent_tools,
@@ -37,6 +41,7 @@ from src.services.mcp_client.errors import (
     NeedsReauthError,
     ToolDispatchError,
 )
+from src.services.run_retention.settings import run_not_found_suffix
 from src.services.tool_schema import validate_arguments_against_schema
 from src.services.mcp_server.config_service import MCPConfig, MCPConfigService
 from src.services.operation_receipts import (
@@ -63,7 +68,7 @@ GATEWAY_TOOL_NAMESPACE = UUID("bcf3f4d7-b95e-53cc-9b7f-35e7081d0d84")
 GATEWAY_OPERATION_NAMESPACE = UUID("fdb6cc27-6fa9-53a3-a3e8-88d356822ba1")
 GATEWAY_OPERATION_RECEIPT_NAMESPACE = "mcp.gateway.execute.v1"
 MAX_AGENT_RESULTS = 20
-MCP_TASK_PLATFORM_JOB_TOOLS = frozenset({"publish_app"})
+MCP_TASK_PLATFORM_JOB_TOOLS = frozenset({"bifrost_app_publish"})
 MAX_CAPABILITY_RESULTS = 20
 MAX_CAPABILITY_RESPONSE_BYTES = 24_000
 MAX_EXECUTION_RESULT_BYTES = 24_000
@@ -256,6 +261,11 @@ class MCPAgentGatewayService:
             is_provider_org=self.context.is_provider_org,
         )
 
+    @property
+    def _caller_org(self) -> UUID | None:
+        org_id = self.context.org_id
+        return None if org_id is None else UUID(str(org_id))
+
     def _agent_repo(self, session: Any) -> AgentRepository:
         return AgentRepository(
             session,
@@ -323,6 +333,7 @@ class MCPAgentGatewayService:
         bounded_limit = min(max(limit, 1), MAX_CAPABILITY_RESULTS)
         if agent_id is not None:
             snapshot = await self.get_agent_snapshot(agent_id)
+            access_checks.note_launch("agents.readbasic", snapshot.agent.organization_id, self._caller_org, subject=f"agent:{snapshot.agent.id}")
             return self._search_agent_snapshot(
                 snapshot,
                 query=query,
@@ -338,6 +349,7 @@ class MCPAgentGatewayService:
                 retryable=True,
             )
 
+        access_checks.note_launch("agents.readbasic", None, self._caller_org, subject="agents")
         snapshots: list[AgentToolSnapshot] = []
         for agent in await self._list_discovery_agents(discovery_scope):
             snapshots.append(await self.get_agent_snapshot(str(agent.id)))
@@ -617,10 +629,13 @@ class MCPAgentGatewayService:
         *,
         operation_id: str,
         task_requested: bool = False,
+        async_execution: bool | None = None,
+        lineage: RunLineage | None,
     ) -> dict[str, Any]:
         """Re-resolve and execute one permanently idempotent tool operation."""
         snapshot = await self.get_agent_snapshot(agent_id)
         tool = self.find_tool(snapshot, tool_ref)
+        access_checks.note_launch("agents.execute", snapshot.agent.organization_id, self._caller_org, subject=f"agent:{snapshot.agent.id}")
         scope_key = canonical_operation_scope_key({
             "version": 1,
             "caller_user_id": str(self.context.user_id),
@@ -636,6 +651,15 @@ class MCPAgentGatewayService:
                 "tool_ref": tool.tool_ref,
                 "arguments": arguments,
                 "task_requested": task_requested,
+                "async_execution": async_execution,
+                "lineage": (
+                    {
+                        "run_user_id": str(lineage.run_user_id),
+                        "started_by_user_id": str(lineage.started_by_user_id),
+                        "root_execution_id": str(lineage.root_execution_id) if lineage.root_execution_id else None,
+                    }
+                    if lineage is not None else None
+                ),
             }
         )
         claim = await claim_operation_receipt(
@@ -654,6 +678,7 @@ class MCPAgentGatewayService:
             tool=tool,
             operation_id=operation_id,
             task_requested=task_requested,
+            async_execution=async_execution,
         )
         if replay is not None:
             return replay
@@ -667,6 +692,8 @@ class MCPAgentGatewayService:
                 arguments,
                 operation_id=operation_id,
                 task_requested=task_requested,
+                async_execution=async_execution,
+                lineage=lineage,
             )
         except GatewayError as exc:
             stored_error = bounded_replay_envelope({
@@ -704,6 +731,7 @@ class MCPAgentGatewayService:
         tool: ResolvedGatewayTool,
         operation_id: str,
         task_requested: bool,
+        async_execution: bool | None = None,
     ) -> dict[str, Any] | None:
         """Return or raise a non-owner receipt disposition."""
         details = {
@@ -743,6 +771,7 @@ class MCPAgentGatewayService:
             tool=tool,
             operation_id=operation_id,
             task_requested=task_requested,
+            async_execution=async_execution,
         )
         if recovered is not None:
             return recovered
@@ -782,7 +811,11 @@ class MCPAgentGatewayService:
         result: Any,
         *,
         duration_ms: int = 0,
+        async_execution: bool = False,
+        task_requested: bool = False,
     ) -> dict[str, Any]:
+        handle = self._durable_handle(tool, result)
+        is_async = async_execution or task_requested
         return {
             "agent_id": str(snapshot.agent.id),
             "agent_name": snapshot.agent.name,
@@ -790,8 +823,12 @@ class MCPAgentGatewayService:
             "tool_name": tool.definition.name,
             "source": tool.source,
             "duration_ms": duration_ms,
-            "result": result,
-            "durable_handle": self._durable_handle(tool, result),
+            "result": None if async_execution and not task_requested else result,
+            "durable_handle": handle,
+            "async": is_async,
+            "execution_id": handle["id"] if is_async and handle and handle["kind"] in {"execution", "agent-run"} else None,
+            "execution_type": ("agent_run" if tool.source == "delegation" else "workflow") if is_async and tool.source in {"workflow", "delegation"} else None,
+            "status": result.get("status") if is_async and isinstance(result, dict) else None,
         }
 
     async def _recover_started_receipt(
@@ -802,6 +839,7 @@ class MCPAgentGatewayService:
         tool: ResolvedGatewayTool,
         operation_id: str,
         task_requested: bool,
+        async_execution: bool | None = None,
     ) -> dict[str, Any] | None:
         """Reconcile a fenced retry from an authorized canonical lifecycle."""
         from src.services.mcp_server.tools._http_bridge import call_rest
@@ -812,7 +850,7 @@ class MCPAgentGatewayService:
                 "kind": "execution",
                 "id": self._operation_execution_id(snapshot.agent, tool, operation_id),
             }
-        elif handle is None and tool.source == "delegation" and task_requested:
+        elif handle is None and tool.source == "delegation":
             handle = {
                 "kind": "agent-run",
                 "id": self._operation_execution_id(snapshot.agent, tool, operation_id),
@@ -835,7 +873,8 @@ class MCPAgentGatewayService:
 
         raw_status = str(body.get("status") or "")
         normalized_status = raw_status.lower()
-        if task_requested:
+        resolved_async = tool.source == "delegation" if async_execution is None else async_execution
+        if task_requested or resolved_async:
             if kind == "execution":
                 recovered_result: dict[str, Any] = {
                     "execution_id": str(durable_id),
@@ -860,7 +899,10 @@ class MCPAgentGatewayService:
                     },
                 }
             response = bounded_replay_envelope(
-                self._gateway_response(snapshot, tool, recovered_result)
+                self._gateway_response(
+                    snapshot, tool, recovered_result,
+                    async_execution=resolved_async, task_requested=task_requested,
+                )
             )
             await reconcile_operation_receipt_success(
                 claim.receipt_id,
@@ -938,13 +980,20 @@ class MCPAgentGatewayService:
                 agent_run = agent_result.scalar_one_or_none()
 
         if execution is not None:
-            if (
-                not self.context.is_platform_admin
-                and execution.executed_by != UUID(str(self.context.user_id))
+            if not is_own_execution(
+                self.context.user_id,
+                execution_id=execution.id,
+                executed_by=execution.executed_by,
+                started_by_user_id=execution.started_by_user_id,
+                root_execution_id=execution.root_execution_id,
             ):
-                raise GatewayError(
-                    "EXECUTION_NOT_FOUND_OR_FORBIDDEN",
-                    "Execution not found or you do not have access.",
+                if not self.context.is_platform_admin:
+                    raise GatewayError(
+                        "EXECUTION_NOT_FOUND_OR_FORBIDDEN",
+                        "Execution not found or you do not have access.",
+                    )
+                access_checks.note_power(
+                    "executions.read.all", execution.organization_id, subject=f"execution:{execution.id}"
                 )
             result_available = execution.result is not None
             result_value = None
@@ -977,14 +1026,13 @@ class MCPAgentGatewayService:
             }
 
         if agent_run is not None:
-            if (
-                not self.context.is_platform_admin
-                and agent_run.caller_user_id != str(self.context.user_id)
-            ):
-                raise GatewayError(
-                    "EXECUTION_NOT_FOUND_OR_FORBIDDEN",
-                    "Execution not found or you do not have access.",
-                )
+            if agent_run.caller_user_id != str(self.context.user_id):
+                if not self.context.is_platform_admin:
+                    raise GatewayError(
+                        "EXECUTION_NOT_FOUND_OR_FORBIDDEN",
+                        "Execution not found or you do not have access.",
+                    )
+                access_checks.note_power("agentruns.read.all", agent_run.org_id, subject=f"agent_run:{agent_run.id}")
             result_available = agent_run.output is not None
             result_value = None
             result_page = None
@@ -1015,14 +1063,21 @@ class MCPAgentGatewayService:
 
         pending = await get_redis_client().get_pending_execution(execution_id)
         if pending is not None:
-            if (
-                not self.context.is_platform_admin
-                and pending.get("user_id") != str(self.context.user_id)
-            ):
-                raise GatewayError(
-                    "EXECUTION_NOT_FOUND_OR_FORBIDDEN",
-                    "Execution not found or you do not have access.",
-                )
+            if not is_own_pending_execution(self.context.user_id, execution_id, pending):
+                if not self.context.is_platform_admin:
+                    raise GatewayError(
+                        "EXECUTION_NOT_FOUND_OR_FORBIDDEN",
+                        "Execution not found or you do not have access.",
+                    )
+                pending_org = pending.get("org_id")
+                try:
+                    target = UUID(pending_org) if pending_org else None
+                except (AttributeError, TypeError, ValueError) as exc:
+                    # A malformed org id (not a string, or not a UUID) is
+                    # recorded as a gap; it never fails the request.
+                    access_checks.note_failure("permission", None, exc)
+                else:
+                    access_checks.note_power("executions.read.all", target, subject=f"execution:{execution_id}")
             created_at = pending.get("created_at")
             return {
                 "execution_id": execution_id,
@@ -1044,9 +1099,11 @@ class MCPAgentGatewayService:
                 "result_page": None,
             }
 
+        async with get_db_context() as db:
+            suffix = await run_not_found_suffix(db)
         raise GatewayError(
             "EXECUTION_NOT_FOUND_OR_FORBIDDEN",
-            "Execution not found or you do not have access.",
+            "Execution not found or you do not have access." + suffix,
         )
 
     @staticmethod
@@ -1338,12 +1395,20 @@ class MCPAgentGatewayService:
         *,
         operation_id: str,
         task_requested: bool = False,
+        async_execution: bool | None = None,
+        lineage: RunLineage | None,
     ) -> dict[str, Any]:
         started = time.monotonic()
-        resolved_async = tool.source == "delegation"
+        resolved_async = tool.source == "delegation" if async_execution is None else async_execution
 
         try:
             self.validate_arguments(tool, arguments)
+            if resolved_async and tool.source not in {"workflow", "delegation"}:
+                raise GatewayError(
+                    "ASYNC_NOT_SUPPORTED",
+                    "Async execution is supported only for workflow and delegation tools.",
+                    retryable=True,
+                )
             if task_requested and not self._supports_tasks(tool):
                 raise GatewayError(
                     "TASKS_UNSUPPORTED",
@@ -1359,6 +1424,7 @@ class MCPAgentGatewayService:
                 operation_id=operation_id,
                 task_requested=task_requested,
                 async_execution=resolved_async,
+                lineage=lineage,
             )
         except GatewayError as exc:
             duration_ms = int((time.monotonic() - started) * 1000)
@@ -1420,16 +1486,10 @@ class MCPAgentGatewayService:
                     "source": tool.source,
                 },
             )
-        return {
-            "agent_id": str(snapshot.agent.id),
-            "agent_name": snapshot.agent.name,
-            "tool_ref": tool.tool_ref,
-            "tool_name": tool.definition.name,
-            "source": tool.source,
-            "duration_ms": duration_ms,
-            "result": result,
-            "durable_handle": durable_handle,
-        }
+        return self._gateway_response(
+            snapshot, tool, result, duration_ms=duration_ms,
+            async_execution=resolved_async, task_requested=task_requested,
+        )
 
     @staticmethod
     def _supports_tasks(tool: ResolvedGatewayTool) -> bool:
@@ -1467,7 +1527,7 @@ class MCPAgentGatewayService:
             if execution_id:
                 return {"kind": "execution", "id": str(execution_id)}
         if tool.source == "delegation" and isinstance(result, dict):
-            run_id = result.get("run_id")
+            run_id = result.get("run_id") or (result.get("execution_id") if result.get("execution_type") == "agent_run" else None)
             if run_id:
                 return {"kind": "agent-run", "id": str(run_id)}
         if isinstance(result, dict):
@@ -1491,6 +1551,7 @@ class MCPAgentGatewayService:
         operation_id: str,
         task_requested: bool,
         async_execution: bool = False,
+        lineage: RunLineage | None,
     ) -> Any:
         if tool.source in {"system", "knowledge"}:
             return await self._dispatch_system_tool(
@@ -1498,6 +1559,7 @@ class MCPAgentGatewayService:
                 tool,
                 arguments,
                 operation_id=operation_id,
+                lineage=lineage,
             )
         if tool.source == "workflow":
             return await self._dispatch_workflow(
@@ -1506,6 +1568,8 @@ class MCPAgentGatewayService:
                 arguments,
                 operation_id=operation_id,
                 task_requested=task_requested,
+                async_execution=async_execution,
+                lineage=lineage,
             )
         if tool.source == "delegation":
             if task_requested:
@@ -1514,12 +1578,15 @@ class MCPAgentGatewayService:
                     tool,
                     arguments,
                     operation_id=operation_id,
+                    lineage=lineage,
                 )
             return await self._dispatch_delegation(
                 agent,
                 tool,
                 arguments,
+                operation_id=operation_id,
                 async_execution=async_execution,
+                lineage=lineage,
             )
         if tool.source == "external_mcp":
             return await self._dispatch_external_mcp(tool, arguments)
@@ -1535,6 +1602,7 @@ class MCPAgentGatewayService:
         arguments: dict[str, Any],
         *,
         operation_id: str,
+        lineage: RunLineage | None,
     ) -> Any:
         from src.services.mcp_server.server import (
             MCPContext,
@@ -1562,6 +1630,7 @@ class MCPAgentGatewayService:
                 tool,
                 operation_id,
             ),
+            run_user_id=lineage.run_user_id if lineage is not None else None,
             accessible_namespaces=list(agent.knowledge_sources or []),
         )
         result = await func(context, **arguments)
@@ -1588,6 +1657,8 @@ class MCPAgentGatewayService:
         *,
         operation_id: str,
         task_requested: bool,
+        async_execution: bool = False,
+        lineage: RunLineage | None,
     ) -> Any:
         if tool.source_id is None:
             raise GatewayError(
@@ -1611,8 +1682,9 @@ class MCPAgentGatewayService:
                 tool,
                 operation_id,
             ),
-            sync=not task_requested,
+            sync=not (task_requested or async_execution),
             task_requested=task_requested,
+            lineage=lineage,
         )
         data = {
             "execution_id": response.execution_id,
@@ -1628,7 +1700,7 @@ class MCPAgentGatewayService:
             data["details"] = response.details
             return data
         if response.status.value != "Success" and not (
-            task_requested and response.status.value == "Pending"
+            (task_requested or async_execution) and response.status.value == "Pending"
         ):
             raise GatewayError(
                 "TOOL_EXECUTION_FAILED",
@@ -1644,6 +1716,7 @@ class MCPAgentGatewayService:
         arguments: dict[str, Any],
         *,
         operation_id: str,
+        lineage: RunLineage | None,
     ) -> dict[str, Any]:
         """Enqueue delegation on the canonical agent-run infrastructure."""
         from src.core.database import get_db_context
@@ -1662,20 +1735,23 @@ class MCPAgentGatewayService:
                 retryable=True,
             )
         async with get_db_context() as db:
-            delegated = await AgentRepository(
-                db,
-                org_id=agent.organization_id,
-                user_id=self.context.user_id,
-                is_superuser=True,
-                is_external=False,
-            ).get_agent(tool.source_id)
-        if delegated is None or not delegated.is_active:
+            delegated = await self._agent_repo(db).get_agent(tool.source_id)
+            allowed = delegated is not None and await caller_can_access_delegated_agent(
+                delegated, agent, db,
+                caller_user_id=self.context.user_id,
+                caller_is_platform_admin=self.context.is_platform_admin,
+            )
+        if not allowed or delegated is None or not delegated.is_active:
             raise GatewayError(
                 "TOOL_NOT_FOUND_OR_FORBIDDEN",
                 "Delegated agent is no longer available.",
                 retryable=True,
             )
 
+        access_checks.note_launch(
+            "agents.execute", delegated.organization_id, self._caller_org,
+            subject=f"agent:{delegated.id}",
+        )
         run_id = self._operation_execution_id(agent, tool, operation_id)
         _run_id, reused = await enqueue_agent_run_once(
             agent_id=str(delegated.id),
@@ -1688,6 +1764,7 @@ class MCPAgentGatewayService:
             caller_name=self.context.user_name,
             sync=False,
             run_id=run_id,
+            lineage=lineage,
         )
         return {
             "run_id": run_id,
@@ -1701,11 +1778,13 @@ class MCPAgentGatewayService:
         tool: ResolvedGatewayTool,
         arguments: dict[str, Any],
         *,
+        operation_id: str,
         async_execution: bool = False,
+        lineage: RunLineage | None,
     ) -> Any:
         from src.core.database import get_db_context
         from src.services.execution.agent_run_service import (
-            enqueue_agent_run,
+            enqueue_agent_run_once,
             wait_for_agent_run_result,
         )
 
@@ -1723,21 +1802,24 @@ class MCPAgentGatewayService:
             )
 
         async with get_db_context() as db:
-            delegated = await AgentRepository(
-                db,
-                org_id=agent.organization_id,
-                user_id=self.context.user_id,
-                is_superuser=True,
-                is_external=False,
-            ).get_agent(tool.source_id)
-        if delegated is None or not delegated.is_active:
+            delegated = await self._agent_repo(db).get_agent(tool.source_id)
+            allowed = delegated is not None and await caller_can_access_delegated_agent(
+                delegated, agent, db,
+                caller_user_id=self.context.user_id,
+                caller_is_platform_admin=self.context.is_platform_admin,
+            )
+        if not allowed or delegated is None or not delegated.is_active:
             raise GatewayError(
                 "TOOL_NOT_FOUND_OR_FORBIDDEN",
                 "Delegated agent is no longer available.",
                 retryable=True,
             )
 
-        run_id = await enqueue_agent_run(
+        access_checks.note_launch(
+            "agents.execute", delegated.organization_id, self._caller_org,
+            subject=f"agent:{delegated.id}",
+        )
+        run_id, _reused = await enqueue_agent_run_once(
             agent_id=str(delegated.id),
             trigger_type="delegation",
             trigger_source=f"mcp_gateway:{agent.id}",
@@ -1751,6 +1833,8 @@ class MCPAgentGatewayService:
             caller_email=self.context.user_email,
             caller_name=self.context.user_name,
             sync=not async_execution,
+            run_id=self._operation_execution_id(agent, tool, operation_id),
+            lineage=lineage,
         )
         if async_execution:
             return {

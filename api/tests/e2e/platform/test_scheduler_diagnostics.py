@@ -32,6 +32,7 @@ class TestSchedulerDiagnostics:
                         "webhook_renewal",
                         "solution_update_check",
                         "file_index_reconciliation",
+                        "model_catalog_refresh",
                     )
                 )
             ):
@@ -53,18 +54,22 @@ class TestSchedulerDiagnostics:
             "file_index_reconciliation",
             "webhook_renewal",
             "solution_update_check",
+            "model_catalog_refresh",
             "solution_export_job_cleanup",
             "workspace_promotion_draft_cleanup",
             "workspace_release_accountability",
             "mcp_operation_receipt_cleanup",
             "event_cleanup",
+            "run_retention",
             "stuck_event_cleanup",
             "worker_metrics_sampling",
             "worker_metrics_cleanup",
             "scheduler_diagnostics_cleanup",
             "summary_backfill_reconciliation",
             "artifact_retention_cleanup",
+            "audit_archive",
             "workspace_bundle_preview_cleanup",
+            "workflow_operation_usage_flush",
         }
         assert set(tasks) == expected
         for task_id in (
@@ -72,10 +77,13 @@ class TestSchedulerDiagnostics:
             "webhook_renewal",
             "solution_update_check",
             "file_index_reconciliation",
+            "model_catalog_refresh",
         ):
             assert tasks[task_id]["execution_mode"] == "durable_job"
             assert tasks[task_id]["last_run"]["status"] == "enqueued"
         assert tasks["artifact_retention_cleanup"]["execution_mode"] == "durable_job"
+        assert tasks["audit_archive"]["execution_mode"] == "durable_job"
+        assert tasks["run_retention"]["execution_mode"] == "durable_job"
         deadline = time.monotonic() + 20
         history = {}
         while time.monotonic() < deadline:

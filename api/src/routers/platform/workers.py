@@ -84,7 +84,7 @@ async def _get_redis() -> aioredis.Redis:
 )
 async def get_worker_metrics(
     _admin: CurrentSuperuser,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
     range: str = Query(
         default="1h",
         pattern=r"^(1h|6h|24h|7d)$",
@@ -721,7 +721,7 @@ stuck_router = APIRouter(
 async def get_stuck_history(
     _admin: CurrentSuperuser,
     hours: int = Query(24, ge=1, le=720, description="Time window in hours"),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ) -> StuckHistoryResponse:
     """
     Get aggregated stuck workflow statistics.

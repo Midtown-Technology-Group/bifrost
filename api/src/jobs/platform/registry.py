@@ -9,6 +9,8 @@ from src.jobs.platform.application_publish import APPLICATION_PUBLISH_DEFINITION
 from src.jobs.platform.application_sdk_update import (
     APPLICATION_SDK_UPDATE_DEFINITION,
 )
+from src.jobs.platform.audit_archive import AUDIT_ARCHIVE_DEFINITION
+from src.jobs.platform.audit_query import AUDIT_QUERY_DEFINITION
 from src.jobs.platform.base import PlatformJobDefinition
 from src.jobs.platform.device_peer_sessions import DEVICE_PEER_START_DEFINITION, DEVICE_PEER_REVOKE_DEFINITION
 from src.jobs.platform.embedding_reindex import EMBEDDING_REINDEX_DEFINITION
@@ -20,9 +22,11 @@ from src.jobs.platform.solution_accountability_reconcile import SOLUTION_ACCOUNT
 from src.jobs.platform.solution_export import SOLUTION_EXPORT_DEFINITION
 from src.jobs.platform.summary_backfill import SUMMARY_BACKFILL_DEFINITION
 from src.jobs.platform.workspace_bundle_import import WORKSPACE_BUNDLE_IMPORT_DEFINITION
+from src.jobs.platform.run_retention import RUN_RETENTION_DEFINITION
 from src.jobs.platform.system_maintenance import (
     ARTIFACT_RETENTION_CLEANUP_DEFINITION,
     FILE_INDEX_RECONCILIATION_DEFINITION,
+    MODEL_CATALOG_REFRESH_DEFINITION,
     OAUTH_REFRESH_DEFINITION,
     SOLUTION_UPDATE_CHECK_DEFINITION,
     WEBHOOK_RENEWAL_DEFINITION,
@@ -53,6 +57,10 @@ _DEFINITIONS = {
     SOLUTION_UPDATE_CHECK_DEFINITION.job_type: SOLUTION_UPDATE_CHECK_DEFINITION,
     FILE_INDEX_RECONCILIATION_DEFINITION.job_type: FILE_INDEX_RECONCILIATION_DEFINITION,
     ARTIFACT_RETENTION_CLEANUP_DEFINITION.job_type: ARTIFACT_RETENTION_CLEANUP_DEFINITION,
+    AUDIT_ARCHIVE_DEFINITION.job_type: AUDIT_ARCHIVE_DEFINITION,
+    AUDIT_QUERY_DEFINITION.job_type: AUDIT_QUERY_DEFINITION,
+    RUN_RETENTION_DEFINITION.job_type: RUN_RETENTION_DEFINITION,
+    MODEL_CATALOG_REFRESH_DEFINITION.job_type: MODEL_CATALOG_REFRESH_DEFINITION,
     SOLUTION_EXPORT_DEFINITION.job_type: SOLUTION_EXPORT_DEFINITION,
     SOLUTION_DEPLOY_DEFINITION.job_type: SOLUTION_DEPLOY_DEFINITION,
     SOLUTION_GIT_SYNC_DEFINITION.job_type: SOLUTION_GIT_SYNC_DEFINITION,

@@ -6,7 +6,16 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_serializer, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    EmailStr,
+    Field,
+    field_serializer,
+    model_validator,
+)
+
+from src.models.contracts.role_assignments import RoleBoundaryPublic
 
 if TYPE_CHECKING:
     pass
@@ -17,32 +26,45 @@ if TYPE_CHECKING:
 
 class User(BaseModel):
     """User entity"""
+
     id: str = Field(..., description="User ID from Azure AD")
     email: str
     display_name: str
     is_superuser: bool = Field(
-        default=False, description="Whether user is a platform admin (superuser)")
+        default=False, description="Whether user is a platform admin (superuser)"
+    )
     organization_id: str | None = Field(
-        default=None, description="Organization ID (null for system accounts)")
+        default=None, description="Organization ID (null for system accounts)"
+    )
     is_active: bool = Field(default=True)
     last_login: datetime | None = None
     created_at: datetime
 
     # NEW: Entra ID fields for enhanced authentication (T007)
     entra_user_id: str | None = Field(
-        None, description="Azure AD user object ID (oid claim) for duplicate prevention")
+        None, description="Azure AD user object ID (oid claim) for duplicate prevention"
+    )
     last_entra_id_sync: datetime | None = Field(
-        None, description="Last synchronization timestamp from Azure AD")
+        None, description="Last synchronization timestamp from Azure AD"
+    )
 
 
 class CreateUserRequest(BaseModel):
     """Request model for creating a user"""
-    email: str = Field(..., description="User email address")
-    display_name: str = Field(..., min_length=1, max_length=200, description="User display name")
-    is_platform_admin: bool = Field(..., description="Whether user is a platform administrator")
-    org_id: str | None = Field(default=None, description="Organization ID (required if is_platform_admin=false)")
 
-    @model_validator(mode='after')
+    email: str = Field(..., description="User email address")
+    display_name: str = Field(
+        ..., min_length=1, max_length=200, description="User display name"
+    )
+    is_platform_admin: bool = Field(
+        ..., description="Whether user is a platform administrator"
+    )
+    org_id: str | None = Field(
+        default=None,
+        description="Organization ID (required if is_platform_admin=false)",
+    )
+
+    @model_validator(mode="after")
     def validate_org_requirement(self):
         """Validate that org_id is provided for non-platform-admin users"""
         if not self.is_platform_admin and not self.org_id:
@@ -54,22 +76,33 @@ class CreateUserRequest(BaseModel):
 
 class UpdateUserRequest(BaseModel):
     """Request model for updating a user"""
-    display_name: str | None = Field(default=None, min_length=1, max_length=200, description="User display name")
-    is_active: bool | None = Field(default=None, description="Whether user is active")
-    is_platform_admin: bool | None = Field(default=None, description="Whether user is a platform administrator")
-    org_id: str | None = Field(default=None, description="Organization ID (required when changing to is_platform_admin=false)")
 
-    @model_validator(mode='after')
+    display_name: str | None = Field(
+        default=None, min_length=1, max_length=200, description="User display name"
+    )
+    is_active: bool | None = Field(default=None, description="Whether user is active")
+    is_platform_admin: bool | None = Field(
+        default=None, description="Whether user is a platform administrator"
+    )
+    org_id: str | None = Field(
+        default=None,
+        description="Organization ID (required when changing to is_platform_admin=false)",
+    )
+
+    @model_validator(mode="after")
     def validate_org_requirement(self):
         """Validate that org_id is provided when demoting to non-platform-admin"""
         if self.is_platform_admin is False and not self.org_id:
-            raise ValueError("org_id is required when setting is_platform_admin to false")
+            raise ValueError(
+                "org_id is required when setting is_platform_admin to false"
+            )
         return self
 
 
 # CRUD Pattern Models for User
 class UserBase(BaseModel):
     """Shared user fields."""
+
     email: EmailStr = Field(max_length=320)
     name: str | None = Field(default=None, max_length=255)
     is_active: bool = Field(default=True)
@@ -89,6 +122,7 @@ class UserBase(BaseModel):
 
 class UserCreate(BaseModel):
     """Input for creating a user."""
+
     email: EmailStr
     name: str | None = None
     password: str | None = None  # Plain text, will be hashed
@@ -97,11 +131,14 @@ class UserCreate(BaseModel):
     is_external: bool = False  # External (portal/guest) user — settable at invite
     organization_id: UUID | None = None
     invite: bool = True  # If True, generate invite record; link returned and event optionally fired
-    trigger_automation: bool | None = None  # None treated as True for contract compat during transition
+    trigger_automation: bool | None = (
+        None  # None treated as True for contract compat during transition
+    )
 
 
 class UserUpdate(BaseModel):
     """Input for updating a user."""
+
     email: EmailStr | None = None
     name: str | None = None
     password: str | None = None
@@ -115,6 +152,7 @@ class UserUpdate(BaseModel):
 
 class UserPublic(UserBase):
     """User output for API responses (excludes sensitive fields)."""
+
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
@@ -122,8 +160,21 @@ class UserPublic(UserBase):
     last_login: datetime | None
     created_at: datetime
     updated_at: datetime
+    identity_kind: str | None = Field(
+        default=None,
+        description="org_default, global_default or custom for an identity; null for a person.",
+    )
     invite_status: str = "active"  # one of InviteStatus values; populated by router
-    registration_url: str | None = None  # only populated immediately after invite creation
+    registration_url: str | None = (
+        None  # only populated immediately after invite creation
+    )
+    is_protected: bool = Field(
+        default=False,
+        description=(
+            "The user holds privileged access somewhere (or is a Platform "
+            "Admin), so only a Platform Admin can change them."
+        ),
+    )
 
     @field_serializer("created_at", "updated_at", "last_login")
     def serialize_dt(self, dt: datetime | None) -> str | None:
@@ -132,6 +183,7 @@ class UserPublic(UserBase):
 
 class UserResponse(BaseModel):
     """User response model."""
+
     id: str
     email: str
     name: str
@@ -149,8 +201,11 @@ class BulkUserOperation(BaseModel):
     Exactly one of `organization_id`, `role_ids`, or `is_active` is required;
     `operation` identifies which.
     """
+
     user_ids: list[UUID] = Field(..., min_length=1, max_length=500)
-    operation: str = Field(..., description="One of: move_org, replace_roles, set_active")
+    operation: str = Field(
+        ..., description="One of: move_org, replace_roles, set_active"
+    )
     organization_id: UUID | None = Field(
         default=None,
         description="Target org for move_org. None means move to platform/provider org.",
@@ -159,7 +214,9 @@ class BulkUserOperation(BaseModel):
         default=None,
         description="Full role set for replace_roles. Empty list clears all roles.",
     )
-    is_active: bool | None = Field(default=None, description="Target active state for set_active.")
+    is_active: bool | None = Field(
+        default=None, description="Target active state for set_active."
+    )
 
     @model_validator(mode="after")
     def validate_operation(self):
@@ -181,14 +238,26 @@ class BulkUserOperation(BaseModel):
 
 class BulkUserFailure(BaseModel):
     """A single user the bulk op couldn't apply to."""
+
     user_id: UUID
     reason: str
 
 
 class BulkUserResponse(BaseModel):
     """Result of a bulk user operation."""
+
     succeeded: list[UUID]
     failed: list[BulkUserFailure]
+
+
+class UserMfaResetResponse(BaseModel):
+    """What an administrator's MFA reset removed."""
+
+    totp_removed: bool
+    recovery_codes_removed: int
+    passkeys_removed: int
+    trusted_devices_revoked: int
+    sessions_revoked: int
 
 
 # ==================== ROLE MODELS ====================
@@ -196,10 +265,10 @@ class BulkUserResponse(BaseModel):
 
 class Role(BaseModel):
     """Role entity for organization users"""
+
     id: str = Field(..., description="Role ID (GUID)")
     name: str = Field(..., min_length=1, max_length=100)
     description: str | None = None
-    permissions: dict = Field(default_factory=dict)
     created_by: str
     created_at: datetime
     updated_at: datetime
@@ -207,21 +276,26 @@ class Role(BaseModel):
 
 class CreateRoleRequest(BaseModel):
     """Request model for creating a role"""
+
+    model_config = ConfigDict(extra="forbid")
+
     name: str = Field(..., min_length=1, max_length=100)
     description: str | None = None
-    permissions: dict | None = Field(default=None)
 
 
 class UpdateRoleRequest(BaseModel):
     """Request model for updating a role"""
+
+    model_config = ConfigDict(extra="forbid")
+
     name: str | None = Field(default=None, min_length=1, max_length=100)
     description: str | None = None
-    permissions: dict | None = Field(default=None)
 
 
 # CRUD Pattern Models for Role
 class RoleBase(BaseModel):
     """Shared role fields."""
+
     name: str = Field(max_length=100)
     description: str | None = Field(default=None)
 
@@ -231,14 +305,27 @@ class RoleCreate(RoleBase):
 
     Roles are globally defined - org scoping happens at the entity level.
     """
-    permissions: dict | None = Field(default=None)
+
+    model_config = ConfigDict(extra="forbid")
 
 
 class RoleUpdate(BaseModel):
     """Input for updating a role."""
+
+    model_config = ConfigDict(extra="forbid")
+
     name: str | None = None
     description: str | None = None
-    permissions: dict | None = Field(default=None)
+
+
+class RolePlacementSummary(BaseModel):
+    """Where a role's assignments apply, across everyone who holds it."""
+
+    organizations: int = Field(
+        description="Distinct organizations the role is placed on"
+    )
+    managed: bool = Field(description="Placed on every managed (customer) organization")
+    platform: bool = Field(description="Placed platform-wide")
 
 
 class RolePublic(RoleBase):
@@ -246,10 +333,12 @@ class RolePublic(RoleBase):
 
     Roles are globally defined - org scoping happens at the entity level.
     """
+
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
-    permissions: dict = Field(default_factory=dict)
+    is_base: bool = False
+    is_builtin: bool = False
     created_by: str
     created_at: datetime
     updated_at: datetime
@@ -260,6 +349,21 @@ class RolePublic(RoleBase):
             "Roles UI; may be None on single-role responses where it's not needed."
         ),
     )
+    holders: int | None = Field(
+        default=None,
+        description=(
+            "Distinct users holding the role as their base role or an additional role. "
+            "Populated with consumer_counts."
+        ),
+    )
+    grants: list[str] | None = Field(
+        default=None,
+        description="Permissions the role grants, sorted. Populated with consumer_counts.",
+    )
+    placements: RolePlacementSummary | None = Field(
+        default=None,
+        description="Where the role's assignments are placed. Populated with consumer_counts.",
+    )
 
     @field_serializer("created_at", "updated_at")
     def serialize_dt(self, dt: datetime | None) -> str | None:
@@ -268,6 +372,7 @@ class RolePublic(RoleBase):
 
 class UserRole(BaseModel):
     """User-to-Role assignment entity"""
+
     user_id: str
     role_id: str
     assigned_by: str
@@ -276,6 +381,7 @@ class UserRole(BaseModel):
 
 class FormRole(BaseModel):
     """Form-to-Role access control entity"""
+
     form_id: str
     role_id: str
     assigned_by: str
@@ -284,48 +390,59 @@ class FormRole(BaseModel):
 
 class AssignUsersToRoleRequest(BaseModel):
     """Request model for assigning users to a role"""
-    user_ids: list[str] = Field(..., min_length=1,
-                               description="List of user IDs to assign")
+
+    user_ids: list[str] = Field(
+        ..., min_length=1, description="List of user IDs to assign"
+    )
 
 
 class AssignFormsToRoleRequest(BaseModel):
     """Request model for assigning forms to a role"""
-    form_ids: list[str] = Field(..., min_length=1,
-                               description="List of form IDs to assign")
+
+    form_ids: list[str] = Field(
+        ..., min_length=1, description="List of form IDs to assign"
+    )
 
 
 class UnassignUsersFromRoleRequest(BaseModel):
     """Request body for bulk unassigning users from a role."""
+
     user_ids: list[str] = Field(..., min_length=1, max_length=500)
 
 
 class UnassignFormsFromRoleRequest(BaseModel):
     """Request body for bulk unassigning forms from a role."""
+
     form_ids: list[str] = Field(..., min_length=1, max_length=500)
 
 
 class UnassignAgentsFromRoleRequest(BaseModel):
     """Request body for bulk unassigning agents from a role."""
+
     agent_ids: list[str] = Field(..., min_length=1, max_length=500)
 
 
 class AssignAppsToRoleRequest(BaseModel):
     """Request body for bulk assigning apps to a role."""
+
     app_ids: list[str] = Field(..., min_length=1, max_length=500)
 
 
 class UnassignAppsFromRoleRequest(BaseModel):
     """Request body for bulk unassigning apps from a role."""
+
     app_ids: list[str] = Field(..., min_length=1, max_length=500)
 
 
 class AssignWorkflowsToRoleRequest(BaseModel):
     """Request body for bulk assigning workflows to a role."""
+
     workflow_ids: list[str] = Field(..., min_length=1, max_length=500)
 
 
 class UnassignWorkflowsFromRoleRequest(BaseModel):
     """Request body for bulk unassigning workflows from a role."""
+
     workflow_ids: list[str] = Field(..., min_length=1, max_length=500)
 
 
@@ -338,11 +455,22 @@ class RoleUserSummary(BaseModel):
     organization_id: UUID | None
     organization_name: str | None
     organization_is_provider: bool = False
+    identity_kind: str | None = Field(
+        default=None,
+        description="org_default, global_default or custom for an identity; null for a person.",
+    )
+    boundaries: list[RoleBoundaryPublic] = Field(
+        default_factory=list,
+        description="Where the role applies for this user.",
+    )
 
 
 class RoleUsersResponse(BaseModel):
     """Response model for getting users assigned to a role"""
-    user_ids: list[str] = Field(..., description="List of user IDs assigned to the role")
+
+    user_ids: list[str] = Field(
+        ..., description="List of user IDs assigned to the role"
+    )
     users: list[RoleUserSummary] = Field(
         default_factory=list,
         description="Display-ready summaries for users assigned to the role",
@@ -355,21 +483,29 @@ class RoleUsersResponse(BaseModel):
 
 class RoleFormsResponse(BaseModel):
     """Response model for getting forms assigned to a role"""
-    form_ids: list[str] = Field(..., description="List of form IDs assigned to the role")
+
+    form_ids: list[str] = Field(
+        ..., description="List of form IDs assigned to the role"
+    )
 
 
 class RoleAppsResponse(BaseModel):
     """Response model for getting apps assigned to a role."""
+
     app_ids: list[str] = Field(..., description="App IDs assigned to the role")
 
 
 class RoleWorkflowsResponse(BaseModel):
     """Response model for getting workflows assigned to a role."""
-    workflow_ids: list[str] = Field(..., description="Workflow IDs assigned to the role")
+
+    workflow_ids: list[str] = Field(
+        ..., description="Workflow IDs assigned to the role"
+    )
 
 
 class RoleKnowledgeEntry(BaseModel):
     """A single knowledge-namespace assignment under a role."""
+
     id: UUID
     namespace: str
     organization_id: UUID | None = None
@@ -377,27 +513,32 @@ class RoleKnowledgeEntry(BaseModel):
 
 class RoleKnowledgeResponse(BaseModel):
     """Response model for getting knowledge namespaces assigned to a role."""
+
     entries: list[RoleKnowledgeEntry] = Field(default_factory=list)
 
 
 class KnowledgeAssignmentInput(BaseModel):
     """One namespace+org pair to assign to a role."""
+
     namespace: str = Field(..., min_length=1, max_length=255)
     organization_id: UUID | None = None
 
 
 class AssignKnowledgeToRoleRequest(BaseModel):
     """Request body for bulk assigning knowledge namespaces to a role."""
+
     entries: list[KnowledgeAssignmentInput] = Field(..., min_length=1, max_length=500)
 
 
 class UnassignKnowledgeFromRoleRequest(BaseModel):
     """Request body for bulk unassigning knowledge namespaces from a role."""
+
     assignment_ids: list[UUID] = Field(..., min_length=1, max_length=500)
 
 
 class RoleConsumerCounts(BaseModel):
     """Inline counts of every consumer type for a role."""
+
     users: int = 0
     forms: int = 0
     agents: int = 0
@@ -411,6 +552,7 @@ class RoleConsumerCounts(BaseModel):
 
 class UserPermission(BaseModel):
     """User permission entity"""
+
     user_id: str
     org_id: str
     can_execute_workflows: bool = Field(default=False)
@@ -423,6 +565,7 @@ class UserPermission(BaseModel):
 
 class PermissionsData(BaseModel):
     """Permissions data for grant request"""
+
     can_execute_workflows: bool
     can_manage_config: bool
     can_manage_forms: bool
@@ -431,6 +574,7 @@ class PermissionsData(BaseModel):
 
 class GrantPermissionsRequest(BaseModel):
     """Request model for granting permissions"""
+
     user_id: str
     org_id: str
     permissions: PermissionsData
@@ -438,11 +582,20 @@ class GrantPermissionsRequest(BaseModel):
 
 class UserRolesResponse(BaseModel):
     """Response model for getting roles assigned to a user"""
-    role_ids: list[str] = Field(..., description="List of role IDs assigned to the user")
+
+    role_ids: list[str] = Field(
+        ..., description="List of role IDs assigned to the user"
+    )
 
 
 class UserFormsResponse(BaseModel):
     """Response model for getting forms accessible to a user"""
+
     is_superuser: bool = Field(..., description="Whether user is a platform admin")
-    has_access_to_all_forms: bool = Field(..., description="Whether user has access to all forms")
-    form_ids: list[str] = Field(default_factory=list, description="List of form IDs user can access (empty if has_access_to_all_forms=true)")
+    has_access_to_all_forms: bool = Field(
+        ..., description="Whether user has access to all forms"
+    )
+    form_ids: list[str] = Field(
+        default_factory=list,
+        description="List of form IDs user can access (empty if has_access_to_all_forms=true)",
+    )

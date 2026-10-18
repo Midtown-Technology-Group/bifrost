@@ -25,6 +25,34 @@ class roles:
     """
 
     @staticmethod
+    async def bridge_grants(role_id: str):
+        """Read typed bridge grants/version; requires a Platform Admin."""
+        from .contracts.bridge_grants import RoleBridgeGrantsResponse
+
+        response = await get_client().engine_request(
+            "GET", f"/api/roles/{role_id}/bridge-grants"
+        )
+        raise_for_status_with_detail(response)
+        return RoleBridgeGrantsResponse.model_validate(response.json())
+
+    @staticmethod
+    async def replace_bridge_grants(role_id: str, request):
+        """Replace the allowlisted grants with the exact prior set/version."""
+        from .contracts.bridge_grants import (
+            RoleBridgeGrantsResponse,
+            RoleBridgeGrantsUpdate,
+        )
+
+        validated = RoleBridgeGrantsUpdate.model_validate(request)
+        response = await get_client().engine_request(
+            "PUT",
+            f"/api/roles/{role_id}/bridge-grants",
+            json=validated.model_dump(mode="json"),
+        )
+        raise_for_status_with_detail(response)
+        return RoleBridgeGrantsResponse.model_validate(response.json())
+
+    @staticmethod
     async def create(name: str, description: str = "") -> Role:
         """
         Create a new role.
@@ -57,8 +85,7 @@ class roles:
             json={
                 "name": name,
                 "description": description,
-                "is_active": True,
-            }
+            },
         )
         raise_for_status_with_detail(response)
         return Role.model_validate(response.json())
@@ -195,9 +222,7 @@ class roles:
             ...     print(user_id)
         """
         client = get_client()
-        response = await client.engine_request(
-            "GET", f"/api/roles/{role_id}/users"
-        )
+        response = await client.engine_request("GET", f"/api/roles/{role_id}/users")
         if response.status_code == 404:
             raise ValueError(f"Role not found: {role_id}")
         raise_for_status_with_detail(response)
@@ -226,9 +251,7 @@ class roles:
             ...     print(form_id)
         """
         client = get_client()
-        response = await client.engine_request(
-            "GET", f"/api/roles/{role_id}/forms"
-        )
+        response = await client.engine_request("GET", f"/api/roles/{role_id}/forms")
         if response.status_code == 404:
             raise ValueError(f"Role not found: {role_id}")
         raise_for_status_with_detail(response)
@@ -257,9 +280,7 @@ class roles:
         """
         client = get_client()
         response = await client.engine_request(
-            "POST",
-            f"/api/roles/{role_id}/users",
-            json={"user_ids": user_ids}
+            "POST", f"/api/roles/{role_id}/users", json={"user_ids": user_ids}
         )
         if response.status_code == 404:
             raise ValueError(f"Role not found: {role_id}")
@@ -287,9 +308,7 @@ class roles:
         """
         client = get_client()
         response = await client.engine_request(
-            "POST",
-            f"/api/roles/{role_id}/forms",
-            json={"form_ids": form_ids}
+            "POST", f"/api/roles/{role_id}/forms", json={"form_ids": form_ids}
         )
         if response.status_code == 404:
             raise ValueError(f"Role not found: {role_id}")

@@ -2,9 +2,9 @@
 
 ``patch_content``, ``replace_content``, and ``delete_content`` all require
 platform-admin authority to touch any `_repo/`
-path — own-org ownership of the underlying Application/Workflow is no
+path â€” own-org ownership of the underlying Application/Workflow is no
 longer sufficient, matching REST's admin-only `_repo/` write routes.
-``list_content``, ``search_content``, ``read_content_lines``, and
+``list_content``, ``read_content_lines``, and
 ``get_content`` require the same bypass to read, matching REST's
 admin-only `_repo/` read routes (files.py's `/editor`, `/editor/content`).
 """

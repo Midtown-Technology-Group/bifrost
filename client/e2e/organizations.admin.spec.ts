@@ -109,6 +109,12 @@ test.describe("Organization Management", () => {
 		await expect(
 			page.getByRole("heading", { name: /organizations/i }).first(),
 		).toBeVisible({ timeout: 10000 });
+		// The nightly full suite creates many organizations before this test
+		// runs, so a new row can land past the first page. Scope the list to
+		// this test's unique suffix so the row assertions don't depend on
+		// list position.
+		const search = page.getByLabel("Search organizations");
+		await search.fill(String(unique));
 
 		try {
 			await page

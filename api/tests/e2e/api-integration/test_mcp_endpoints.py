@@ -209,10 +209,10 @@ class TestMCPToolsEndpoint:
                 "system_prompt": "Test agent for MCP tool listing",
                 "channels": ["chat"],
                 "system_tools": [
-                    "execute_workflow",
-                    "list_workflows",
+                    "bifrost_workflow_execute",
+                    "bifrost_workflow_list",
                     "list_integrations",
-                    "list_forms",
+                    "bifrost_form_list",
                     "get_docs",
                     "search_knowledge",
                 ],
@@ -287,10 +287,10 @@ class TestMCPToolsEndpoint:
 
         # Expected system tool IDs
         expected_tools = [
-            "execute_workflow",
-            "list_workflows",
+            "bifrost_workflow_execute",
+            "bifrost_workflow_list",
             "list_integrations",
-            "list_forms",
+            "bifrost_form_list",
             "get_docs",
             "search_knowledge",
         ]
@@ -568,20 +568,20 @@ class TestMCPConfigToolFiltering:
             f"{TEST_API_URL}/api/mcp/config",
             json={
                 "enabled": True,
-                "allowed_tool_ids": ["execute_workflow", "list_workflows"],
+                "allowed_tool_ids": ["bifrost_workflow_execute", "bifrost_workflow_list"],
             },
             headers=headers,
         )
 
         assert response.status_code == 200
         data = response.json()
-        assert data["allowed_tool_ids"] == ["execute_workflow", "list_workflows"]
+        assert data["allowed_tool_ids"] == ["bifrost_workflow_execute", "bifrost_workflow_list"]
 
         # Verify it persisted
         response = requests.get(f"{TEST_API_URL}/api/mcp/config", headers=headers)
         assert response.status_code == 200
         data = response.json()
-        assert data["allowed_tool_ids"] == ["execute_workflow", "list_workflows"]
+        assert data["allowed_tool_ids"] == ["bifrost_workflow_execute", "bifrost_workflow_list"]
 
     @pytest.mark.e2e
     def test_config_saves_blocked_tool_ids(self):
@@ -679,7 +679,7 @@ class TestMCPConfigToolFiltering:
             f"{TEST_API_URL}/api/mcp/config",
             json={
                 "enabled": False,
-                "allowed_tool_ids": ["execute_workflow"],
+                "allowed_tool_ids": ["bifrost_workflow_execute"],
             },
             headers=headers,
         )

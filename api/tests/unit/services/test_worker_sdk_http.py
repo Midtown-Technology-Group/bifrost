@@ -94,6 +94,25 @@ def _reset_engine_transport_globals():
     _clear_client()
 
 
+_ENGINE_TOKEN_EXECUTION_ID = str(uuid4())
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def _engine_execution_is_live(async_session_factory):
+    """Every ``_engine_token()`` in this file shares one execution_id.
+
+    Authentication requires the execution to be live (see src/core/auth.py,
+    which reads the execution row's status); create a real, running
+    execution row for it so these route-reuse tests exercise a
+    still-running child the way production does.
+    """
+    from tests.helpers.live_execution import create_live_execution, delete_live_execution
+
+    await create_live_execution(async_session_factory, _ENGINE_TOKEN_EXECUTION_ID)
+    yield
+    await delete_live_execution(async_session_factory, _ENGINE_TOKEN_EXECUTION_ID)
+
+
 @pytest_asyncio.fixture
 async def committed_config(async_session_factory):
     """Seed globally-scoped config rows in committed sessions.
@@ -405,7 +424,7 @@ class TestRouteReuse:
             for method in (route.methods or set())
         }
 
-        # Only the selected routes, and the exact registered objects — no
+        # Only the selected routes, and the exact registered objects â€” no
         # copied handlers and no rest of the API surface.
         assert set(mounted_cli) == cli_path_only
         for path, route in mounted_cli.items():
@@ -1569,9 +1588,8 @@ class TestEngineLocalTransportSelection:
                 )
                 listed = await bifrost_config.list(scope="global")
                 assert listed[key] == "socket-crud"
-                assert (
-                    await bifrost_config.delete(key, scope="global") is True
-                )
+                deleted = await bifrost_config.delete(key, scope="global")
+                assert deleted is True
                 assert (
                     await bifrost_config.get(
                         key, default="gone", scope="global"
@@ -1597,7 +1615,8 @@ class TestEngineLocalTransportSelection:
             with _no_cache():
                 await bifrost_config.set(key, big, scope="global")
                 assert await bifrost_config.get(key, scope="global") == big
-                assert await bifrost_config.delete(key, scope="global") is True
+                deleted = await bifrost_config.delete(key, scope="global")
+                assert deleted is True
         finally:
             await server.stop()
 
@@ -1781,7 +1800,7 @@ class TestEngineLocalArtifactsFallback:
             await artifacts.create_text(
                 "note", format="markdown", content="# note"
             )
-        # ``create_video`` fails at enqueue with the transport error — never a
+        # ``create_video`` fails at enqueue with the transport error â€” never a
         # made-up channel deadline.
         with pytest.raises(httpx.ConnectError):
             await artifacts.create_video("launch", prompt="A launch video")
@@ -2217,18 +2236,94 @@ class TestSocketAgentRuns:
                         headers=headers,
                     )
             assert response.status_code == 202, response.text
-            assert response.json() == {"run_id": run_id, "status": "queued"}
+            receipt = response.json()
+            assert receipt == {
+                "run_id": run_id,
+                "status": "queued",
+                "run_as_user_id": None,
+            }
             assert mock_enqueue.await_count == 1
             kwargs = mock_enqueue.call_args.kwargs
             assert kwargs["agent_id"] == str(agent_id)
             assert kwargs["trigger_type"] == "api"
             assert kwargs["input_data"] == {"ticket_id": 1}
             assert kwargs["sync"] is False
+            assert kwargs["run_as_user_id"] is None
         finally:
             await server.stop()
             async with async_session_factory() as session:
                 await session.execute(
                     delete(AgentModel).where(AgentModel.id == agent_id)
+                )
+                await session.commit()
+
+    @pytest.mark.asyncio
+    async def test_enqueue_over_socket_forwards_run_as(self, async_session_factory):
+        from sqlalchemy import delete
+
+        from src.models.orm.agents import Agent as AgentModel
+        from src.models.orm.organizations import Organization as OrganizationModel
+        from src.models.orm.users import User as UserModel
+
+        stem = uuid4().hex[:8]
+        contoso_id = uuid4()
+        async with async_session_factory() as session:
+            contoso = OrganizationModel(
+                id=contoso_id,
+                name=f"Contoso {stem}",
+                is_active=True,
+                created_by="worker-sdk-http-test",
+            )
+            target = UserModel(
+                email=f"wsdk-run-as-{stem}@contoso.example.com",
+                name="Contoso Technician",
+                organization_id=contoso_id,
+            )
+            agent = AgentModel(
+                name=f"wsdk-run-as-agent-{stem}",
+                system_prompt="Socket Run As agent.",
+                is_active=True,
+                created_by="worker-sdk-http-test",
+            )
+            session.add_all([contoso, target, agent])
+            await session.commit()
+            target_id, agent_id, agent_name = target.id, agent.id, agent.name
+
+        run_id = str(uuid4())
+        server = WorkerSdkHttpServer()
+        await server.start()
+        try:
+            # Only the broker-publishing leaf is stubbed: the route, auth,
+            # Run As decision and the shared service run for real.
+            with patch(
+                "src.services.execution.agent_run_service.enqueue_agent_run",
+                new=AsyncMock(return_value=run_id),
+            ) as mock_enqueue:
+                async with _socket_client(server) as client:
+                    response = await client.post(
+                        "/api/agent-runs/enqueue",
+                        json={"agent_name": agent_name, "run_as": str(target_id)},
+                        headers={"Authorization": f"Bearer {_engine_token()}"},
+                    )
+            assert response.status_code == 202, response.text
+            receipt = response.json()
+            assert receipt == {
+                "run_id": run_id,
+                "status": "queued",
+                "run_as_user_id": str(target_id),
+            }
+            assert mock_enqueue.await_count == 1
+            kwargs = mock_enqueue.call_args.kwargs
+            assert kwargs["agent_id"] == str(agent_id)
+            assert kwargs["run_as_user_id"] == target_id
+            assert kwargs["org_id"] == str(contoso_id)
+        finally:
+            await server.stop()
+            async with async_session_factory() as session:
+                await session.execute(delete(AgentModel).where(AgentModel.id == agent_id))
+                await session.execute(delete(UserModel).where(UserModel.id == target_id))
+                await session.execute(
+                    delete(OrganizationModel).where(OrganizationModel.id == contoso_id)
                 )
                 await session.commit()
 
@@ -2542,7 +2637,7 @@ class TestSocketEventsForms:
             assert scoped.status_code == 200, scoped.text
             assert durable.call_args.kwargs["organization_id"] == org_id
             assert durable.call_args.kwargs["solution_id"] is None
-            # Unknown Solution resolves to None → 404, before the emit.
+            # Unknown Solution resolves to None â†’ 404, before the emit.
             assert unknown_solution.status_code == 404, unknown_solution.text
             # Malformed scope and invalid topic are 400/400 like the HTTP path.
             assert malformed_scope.status_code == 400, malformed_scope.text
@@ -2812,7 +2907,15 @@ class TestSocketOrganizationsUsers:
                 from sqlalchemy import delete
                 from uuid import UUID
 
+                from src.models.orm.users import User as UserModel
+
                 async with async_session_factory() as session:
+                    # The organization's default identity was created with it.
+                    await session.execute(
+                        delete(UserModel).where(
+                            UserModel.organization_id == UUID(created_id)
+                        )
+                    )
                     await session.execute(
                         delete(OrganizationModel).where(
                             OrganizationModel.id == UUID(created_id)
@@ -2900,6 +3003,12 @@ class TestSocketOrganizationsUsers:
                         delete(UserModel).where(UserModel.id == UUID(user_id))
                     )
                 if org_id is not None:
+                    # The organization's default identity was created with it.
+                    await session.execute(
+                        delete(UserModel).where(
+                            UserModel.organization_id == UUID(org_id)
+                        )
+                    )
                     await session.execute(
                         delete(OrganizationModel).where(
                             OrganizationModel.id == UUID(org_id)
@@ -3381,9 +3490,10 @@ class TestSocketErrorParityAndActorContext:
         }
 
     @pytest.mark.asyncio
-    async def test_request_context_attributes_engine_caller(self):
+    async def test_request_context_attributes_engine_caller(self, async_session_factory):
         from src.core.security import mint_engine_token
         from src.services.audit_context import current_actor
+        from tests.helpers.live_execution import create_live_execution, delete_live_execution
 
         caller_id = uuid4()
         org_id = uuid4()
@@ -3398,47 +3508,132 @@ class TestSocketErrorParityAndActorContext:
             caller_email="caller@example.com",
             caller_name="Caller Name",
         )
+        await create_live_execution(async_session_factory, str(execution_id))
+        try:
+            app = build_worker_sdk_app()
+
+            @app.get("/__test__/actor")
+            async def _actor():
+                actor = current_actor()
+                assert actor is not None
+                return {
+                    "user_id": str(actor.user_id) if actor.user_id else None,
+                    "organization_id": (
+                        str(actor.organization_id) if actor.organization_id else None
+                    ),
+                    "email": actor.email,
+                    "name": actor.name,
+                    "source": actor.source,
+                    "execution_id": (
+                        str(actor.execution_id) if actor.execution_id else None
+                    ),
+                    "ip_address": actor.ip_address,
+                }
+
+            transport = httpx.ASGITransport(app=app)
+            async with httpx.AsyncClient(
+                transport=transport, base_url="http://bifrost-engine"
+            ) as client:
+                response = await client.get(
+                    "/__test__/actor",
+                    headers={"Authorization": f"Bearer {token}"},
+                )
+
+            assert response.status_code == 200, response.text
+            body = response.json()
+            assert body["source"] == "workflow"
+            assert body["user_id"] == str(caller_id)
+            assert body["organization_id"] == str(org_id)
+            assert body["email"] == "caller@example.com"
+            assert body["name"] == "Caller Name"
+            assert body["execution_id"] == str(execution_id)
+            # No client on an ASGI transport unless the test sets one; either way
+            # the actor must never carry the sentinel "unknown".
+            assert body["ip_address"] != "unknown"
+
+            # The actor is request-scoped and cleared once the response is done.
+            assert current_actor() is None
+        finally:
+            await delete_live_execution(async_session_factory, str(execution_id))
+
+
+class TestOperationIdCapture:
+    """R2a-2 (post-review rework): emit_audit resolves ``operation_id`` from
+    ``request.scope["route"]`` live, via the scope dict the request-context
+    middleware stashes â€” no per-route wiring needed, so a route added after
+    the app was built (like these ad-hoc test routes) is captured exactly
+    like every other worker-local SDK route."""
+
+    @pytest.mark.asyncio
+    async def test_catalogued_route_records_operation_id(self, async_session_factory):
+        from sqlalchemy import delete, select
+
+        from src.core.database import get_db_context
+        from src.models.orm.audit import AuditLog
+        from src.services.audit import emit_audit
 
         app = build_worker_sdk_app()
+        action = f"__test__.socket.catalogued.{uuid4().hex[:8]}"
 
-        @app.get("/__test__/actor")
-        async def _actor():
-            actor = current_actor()
-            assert actor is not None
-            return {
-                "user_id": str(actor.user_id) if actor.user_id else None,
-                "organization_id": (
-                    str(actor.organization_id) if actor.organization_id else None
-                ),
-                "email": actor.email,
-                "name": actor.name,
-                "source": actor.source,
-                "execution_id": (
-                    str(actor.execution_id) if actor.execution_id else None
-                ),
-                "ip_address": actor.ip_address,
-            }
+        @app.get("/__test__/catalogued-op", operation_id="__test__.catalogued_op")
+        async def _catalogued():
+            async with get_db_context() as db:
+                await emit_audit(db, action)
+            return {"ok": True}
 
         transport = httpx.ASGITransport(app=app)
-        async with httpx.AsyncClient(
-            transport=transport, base_url="http://bifrost-engine"
-        ) as client:
-            response = await client.get(
-                "/__test__/actor",
-                headers={"Authorization": f"Bearer {token}"},
-            )
+        try:
+            async with httpx.AsyncClient(
+                transport=transport, base_url="http://bifrost-engine"
+            ) as client:
+                response = await client.get("/__test__/catalogued-op")
+            assert response.status_code == 200, response.text
 
-        assert response.status_code == 200, response.text
-        body = response.json()
-        assert body["source"] == "workflow"
-        assert body["user_id"] == str(caller_id)
-        assert body["organization_id"] == str(org_id)
-        assert body["email"] == "caller@example.com"
-        assert body["name"] == "Caller Name"
-        assert body["execution_id"] == str(execution_id)
-        # No client on an ASGI transport unless the test sets one; either way
-        # the actor must never carry the sentinel "unknown".
-        assert body["ip_address"] != "unknown"
+            async with async_session_factory() as session:
+                row = (
+                    await session.execute(
+                        select(AuditLog).where(AuditLog.action == action)
+                    )
+                ).scalar_one()
+            assert row.operation_id == "__test__.catalogued_op"
+        finally:
+            async with async_session_factory() as cleanup:
+                await cleanup.execute(delete(AuditLog).where(AuditLog.action == action))
+                await cleanup.commit()
 
-        # The actor is request-scoped and cleared once the response is done.
-        assert current_actor() is None
+    @pytest.mark.asyncio
+    async def test_uncatalogued_route_records_none(self, async_session_factory):
+        from sqlalchemy import delete, select
+
+        from src.core.database import get_db_context
+        from src.models.orm.audit import AuditLog
+        from src.services.audit import emit_audit
+
+        app = build_worker_sdk_app()
+        action = f"__test__.socket.uncatalogued.{uuid4().hex[:8]}"
+
+        @app.get("/__test__/uncatalogued-op")
+        async def _uncatalogued():
+            async with get_db_context() as db:
+                await emit_audit(db, action)
+            return {"ok": True}
+
+        transport = httpx.ASGITransport(app=app)
+        try:
+            async with httpx.AsyncClient(
+                transport=transport, base_url="http://bifrost-engine"
+            ) as client:
+                response = await client.get("/__test__/uncatalogued-op")
+            assert response.status_code == 200, response.text
+
+            async with async_session_factory() as session:
+                row = (
+                    await session.execute(
+                        select(AuditLog).where(AuditLog.action == action)
+                    )
+                ).scalar_one()
+            assert row.operation_id is None
+        finally:
+            async with async_session_factory() as cleanup:
+                await cleanup.execute(delete(AuditLog).where(AuditLog.action == action))
+                await cleanup.commit()

@@ -101,13 +101,13 @@ def _poll_notification(e2e_client, headers, notification_id: str, status: str) -
 
 
 def test_publish_success_deduplication_and_requester_visibility(
-    e2e_client, platform_admin, org1, org1_user, app_factory
+    e2e_client, platform_admin, second_platform_admin, provider_org_user, org1_user, app_factory
 ):
     """Publish one immutable build and restrict the durable job status to its requester."""
     app = app_factory(
         platform_admin.headers,
         f"async-publish-{uuid.uuid4().hex[:8]}",
-        organization_id=org1["id"],
+        organization_id=None,
     )
     barrier = Barrier(2)
 
@@ -143,6 +143,17 @@ def test_publish_success_deduplication_and_requester_visibility(
     assert duplicate.json()["detail"] == (
         f"Application '{app['id']}' not found"
     )
+    refused = e2e_client.post(
+        f"/api/applications/{app['id']}/publish",
+        headers=provider_org_user.headers,
+    )
+    assert refused.status_code == 404, refused.text
+    other_admin = e2e_client.post(
+        f"/api/applications/{app['id']}/publish",
+        headers=second_platform_admin.headers,
+    )
+    assert other_admin.status_code == 409, other_admin.text
+    assert other_admin.json()["detail"] == "An application publish is already in progress"
     visible = e2e_client.get(
         f"/api/platform-jobs/{accepted['job_id']}",
         headers=platform_admin.headers,

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable
 from typing import Any
 
@@ -97,6 +98,35 @@ _POLICY_RULE_MANIFEST_EXCLUSION = (
     "Policy rules are workspace/org access administration, not a portable "
     "manifest entity."
 )
+#: Every MCP tool name follows ``bifrost_<noun...>_<verb>`` — noun singular,
+#: verb last. Enforced by :func:`validate_operation_catalog`.
+_MCP_NAME_RE = re.compile(r"^bifrost_[a-z][a-z0-9]*(_[a-z][a-z0-9]*)+$")
+
+#: Closed set of recognized trailing verbs for MCP tool names.
+_MCP_VERBS = frozenset(
+    {
+        "list",
+        "get",
+        "create",
+        "update",
+        "delete",
+        "set",
+        "grant",
+        "revoke",
+        "validate",
+        "publish",
+        "replace",
+        "sync",
+        "register",
+        "execute",
+        "search",
+        "read",
+        "stat",
+        "exists",
+        "write",
+    }
+)
+
 _CONFIG_MANIFEST_EXCLUSION = (
     "Config values are serialized into .bifrost/configs.yaml for export, but git "
     "sync never reconciles them back: github_sync.py has no _resolve_config and "
@@ -108,6 +138,48 @@ _CONFIG_MANIFEST_EXCLUSION = (
 
 OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
     OperationDefinition(
+        operation_id="productupdates.get",
+        summary="Get this build's Product Updates feed",
+        target_kind=OperationTargetKind.PLATFORM,
+        rest=RestOperationBinding(
+            method="GET",
+            path="/api/product-updates",
+            response_model="ProductUpdatesFeedResponse",
+        ),
+        native_builder=False,
+        action_scopes=("settings.read",),
+        authorization_resolver="RequirePlatformAdmin",
+        exclusions={
+            "cli": "Product Updates are presented in the authenticated platform shell.",
+            "mcp": "Product Updates are an authenticated platform-shell feed.",
+            "manifest": "The immutable build bundle, not a workspace manifest, is the content source.",
+            "sdk": "Application runtimes do not present platform administrator announcements.",
+            "native_builder": "Product Updates are not a Builder authoring target.",
+        },
+    ),
+    OperationDefinition(
+        operation_id="productupdates.receipts.create",
+        summary="Record Product Updates presented to the authenticated administrator",
+        target_kind=OperationTargetKind.PLATFORM,
+        rest=RestOperationBinding(
+            method="POST",
+            path="/api/product-updates/receipts",
+            request_model="ProductUpdatesReceiptRequest",
+            response_model="ProductUpdatesReceiptResponse",
+        ),
+        native_builder=False,
+        action_scopes=("settings.readwrite",),
+        authorization_resolver="RequirePlatformAdmin; receipt owner is CurrentSuperuser",
+        side_effects=("persist Product Updates presentation receipts",),
+        exclusions={
+            "cli": "Product Updates are presented in the authenticated platform shell.",
+            "mcp": "Product Updates are an authenticated platform-shell feed.",
+            "manifest": "Presentation receipts are per-admin runtime state.",
+            "sdk": "Application runtimes do not present platform administrator announcements.",
+            "native_builder": "Product Updates are not a Builder authoring target.",
+        },
+    ),
+    OperationDefinition(
         operation_id="agents.list",
         summary="List Agents visible to the caller",
         target_kind=OperationTargetKind.COLLECTION,
@@ -117,9 +189,9 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             response_model="list[AgentSummary]",
         ),
         cli=CliOperationBinding(path=("agents", "list")),
-        mcp=McpOperationBinding(name="bifrost_list_agents"),
+        mcp=McpOperationBinding(name="bifrost_agent_list"),
         native_builder=True,
-        action_scopes=("agents.read",),
+        action_scopes=("agents.readbasic",),
         authorization_resolver="AgentRepository.list_agents",
         exclusions={
             "manifest": "Manifests reconcile Agent state; they do not perform collection reads.",
@@ -136,9 +208,9 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             response_model="AgentPublic",
         ),
         cli=CliOperationBinding(path=("agents", "get")),
-        mcp=McpOperationBinding(name="bifrost_get_agent"),
+        mcp=McpOperationBinding(name="bifrost_agent_get"),
         native_builder=True,
-        action_scopes=("agents.read",),
+        action_scopes=("agents.readbasic",),
         authorization_resolver="AgentRepository.get_agent_with_access_check",
         exclusions={
             "manifest": "Manifests reconcile Agent state; they do not perform resource reads.",
@@ -156,7 +228,7 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             response_model="AgentPublic",
         ),
         cli=CliOperationBinding(path=("agents", "create")),
-        mcp=McpOperationBinding(name="bifrost_create_agent"),
+        mcp=McpOperationBinding(name="bifrost_agent_create"),
         native_builder=True,
         manifest=ManifestOperationBinding(entity="agents"),
         action_scopes=("agents.readwrite",),
@@ -180,7 +252,7 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             response_model="AgentPublic",
         ),
         cli=CliOperationBinding(path=("agents", "update")),
-        mcp=McpOperationBinding(name="bifrost_update_agent"),
+        mcp=McpOperationBinding(name="bifrost_agent_update"),
         native_builder=True,
         manifest=ManifestOperationBinding(entity="agents"),
         action_scopes=("agents.readwrite",),
@@ -202,7 +274,7 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             path="/api/agents/{agent_id}",
         ),
         cli=CliOperationBinding(path=("agents", "delete")),
-        mcp=McpOperationBinding(name="bifrost_delete_agent"),
+        mcp=McpOperationBinding(name="bifrost_agent_delete"),
         native_builder=True,
         manifest=ManifestOperationBinding(entity="agents", behavior="remove"),
         action_scopes=("agents.readwrite",),
@@ -224,9 +296,9 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             response_model="list[FormPublic]",
         ),
         cli=CliOperationBinding(path=("forms", "list")),
-        mcp=McpOperationBinding(name="bifrost_list_forms"),
+        mcp=McpOperationBinding(name="bifrost_form_list"),
         native_builder=True,
-        action_scopes=("forms.read",),
+        action_scopes=("forms.readbasic",),
         authorization_resolver="FormRepository.list_forms",
         exclusions={
             "manifest": "Manifests reconcile Form state; they do not perform collection reads.",
@@ -243,9 +315,9 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             response_model="FormPublic",
         ),
         cli=CliOperationBinding(path=("forms", "get")),
-        mcp=McpOperationBinding(name="bifrost_get_form"),
+        mcp=McpOperationBinding(name="bifrost_form_get"),
         native_builder=True,
-        action_scopes=("forms.read",),
+        action_scopes=("forms.readbasic",),
         authorization_resolver="FormRepository plus form access policy",
         exclusions={
             "manifest": "Manifests reconcile Form state; they do not perform resource reads.",
@@ -263,7 +335,7 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             response_model="FormPublic",
         ),
         cli=CliOperationBinding(path=("forms", "create")),
-        mcp=McpOperationBinding(name="bifrost_create_form"),
+        mcp=McpOperationBinding(name="bifrost_form_create"),
         native_builder=True,
         manifest=ManifestOperationBinding(entity="forms"),
         action_scopes=("forms.readwrite",),
@@ -288,7 +360,7 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             response_model="FormPublic",
         ),
         cli=CliOperationBinding(path=("forms", "update")),
-        mcp=McpOperationBinding(name="bifrost_update_form"),
+        mcp=McpOperationBinding(name="bifrost_form_update"),
         native_builder=True,
         manifest=ManifestOperationBinding(entity="forms"),
         action_scopes=("forms.readwrite",),
@@ -311,7 +383,7 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             path="/api/forms/{form_id}",
         ),
         cli=CliOperationBinding(path=("forms", "delete")),
-        mcp=McpOperationBinding(name="bifrost_delete_form"),
+        mcp=McpOperationBinding(name="bifrost_form_delete"),
         native_builder=True,
         manifest=ManifestOperationBinding(entity="forms", behavior="remove"),
         action_scopes=("forms.readwrite",),
@@ -334,7 +406,7 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             response_model="TableListResponse",
         ),
         cli=CliOperationBinding(path=("tables", "list")),
-        mcp=McpOperationBinding(name="bifrost_list_tables"),
+        mcp=McpOperationBinding(name="bifrost_table_list"),
         native_builder=True,
         action_scopes=("tables.read",),
         authorization_resolver="events.read and selected collection boundary",
@@ -353,7 +425,7 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             response_model="TablePublic",
         ),
         cli=CliOperationBinding(path=("tables", "get")),
-        mcp=McpOperationBinding(name="bifrost_get_table"),
+        mcp=McpOperationBinding(name="bifrost_table_get"),
         native_builder=True,
         action_scopes=("tables.read",),
         authorization_resolver="Table repository access in the selected boundary",
@@ -373,7 +445,7 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             response_model="TablePublic",
         ),
         cli=CliOperationBinding(path=("tables", "create")),
-        mcp=McpOperationBinding(name="bifrost_create_table"),
+        mcp=McpOperationBinding(name="bifrost_table_create"),
         native_builder=True,
         manifest=ManifestOperationBinding(entity="tables"),
         action_scopes=("tables.readwrite",),
@@ -396,7 +468,7 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             response_model="TablePublic",
         ),
         cli=CliOperationBinding(path=("tables", "update")),
-        mcp=McpOperationBinding(name="bifrost_update_table"),
+        mcp=McpOperationBinding(name="bifrost_table_update"),
         native_builder=True,
         manifest=ManifestOperationBinding(entity="tables"),
         action_scopes=("tables.readwrite",),
@@ -418,7 +490,7 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             path="/api/tables/{table_id}",
         ),
         cli=CliOperationBinding(path=("tables", "delete")),
-        mcp=McpOperationBinding(name="bifrost_delete_table"),
+        mcp=McpOperationBinding(name="bifrost_table_delete"),
         native_builder=True,
         manifest=ManifestOperationBinding(entity="tables", behavior="remove"),
         action_scopes=("tables.readwrite",),
@@ -440,9 +512,9 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             response_model="ApplicationListResponse",
         ),
         cli=CliOperationBinding(path=("apps", "list")),
-        mcp=McpOperationBinding(name="bifrost_list_apps"),
+        mcp=McpOperationBinding(name="bifrost_app_list"),
         native_builder=True,
-        action_scopes=("apps.read",),
+        action_scopes=("apps.readbasic",),
         authorization_resolver="ApplicationRepository.list_applications",
         exclusions={
             "manifest": "Manifests reconcile Application state; they do not perform collection reads.",
@@ -459,9 +531,9 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             response_model="ApplicationPublic",
         ),
         cli=CliOperationBinding(path=("apps", "get")),
-        mcp=McpOperationBinding(name="bifrost_get_app"),
+        mcp=McpOperationBinding(name="bifrost_app_get"),
         native_builder=True,
-        action_scopes=("apps.read",),
+        action_scopes=("apps.readbasic",),
         authorization_resolver="ApplicationRepository plus role and Solution visibility",
         exclusions={
             "manifest": "Manifests reconcile Application state; they do not perform resource reads.",
@@ -479,7 +551,7 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             response_model="ApplicationPublic",
         ),
         cli=CliOperationBinding(path=("apps", "create")),
-        mcp=McpOperationBinding(name="bifrost_create_app"),
+        mcp=McpOperationBinding(name="bifrost_app_create"),
         native_builder=True,
         manifest=ManifestOperationBinding(entity="apps"),
         action_scopes=("apps.readwrite",),
@@ -503,7 +575,7 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             response_model="ApplicationPublic",
         ),
         cli=CliOperationBinding(path=("apps", "update")),
-        mcp=McpOperationBinding(name="bifrost_update_app"),
+        mcp=McpOperationBinding(name="bifrost_app_update"),
         native_builder=True,
         manifest=ManifestOperationBinding(entity="apps"),
         action_scopes=("apps.readwrite",),
@@ -525,7 +597,7 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             path="/api/applications/{app_id}",
         ),
         cli=CliOperationBinding(path=("apps", "delete")),
-        mcp=McpOperationBinding(name="bifrost_delete_app"),
+        mcp=McpOperationBinding(name="bifrost_app_delete"),
         native_builder=True,
         manifest=ManifestOperationBinding(entity="apps", behavior="remove"),
         action_scopes=("apps.readwrite",),
@@ -547,9 +619,9 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             response_model="dict[str, str]",
         ),
         cli=CliOperationBinding(path=("apps", "get-dependencies")),
-        mcp=McpOperationBinding(name="bifrost_get_app_dependencies"),
+        mcp=McpOperationBinding(name="bifrost_app_dependencies_get"),
         native_builder=True,
-        action_scopes=("apps.read",),
+        action_scopes=("apps.readbasic",),
         authorization_resolver="ApplicationRepository access check",
         exclusions={
             "manifest": "The read does not mutate the Application manifest.",
@@ -567,7 +639,7 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             response_model="dict[str, str]",
         ),
         cli=CliOperationBinding(path=("apps", "update-dependencies")),
-        mcp=McpOperationBinding(name="bifrost_update_app_dependencies"),
+        mcp=McpOperationBinding(name="bifrost_app_dependencies_update"),
         native_builder=True,
         manifest=ManifestOperationBinding(entity="apps"),
         action_scopes=("apps.readwrite",),
@@ -590,9 +662,9 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             response_model="AppValidationResponse",
         ),
         cli=CliOperationBinding(path=("apps", "validate")),
-        mcp=McpOperationBinding(name="bifrost_validate_app"),
+        mcp=McpOperationBinding(name="bifrost_app_validate"),
         native_builder=True,
-        action_scopes=("apps.read",),
+        action_scopes=("apps.readbasic",),
         authorization_resolver="ApplicationRepository access check",
         exclusions={
             "manifest": "Validation does not mutate the Application manifest.",
@@ -610,9 +682,9 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             response_model="PlatformJobAccepted",
         ),
         cli=CliOperationBinding(path=("apps", "publish")),
-        mcp=McpOperationBinding(name="bifrost_publish_app"),
+        mcp=McpOperationBinding(name="bifrost_app_publish"),
         native_builder=True,
-        action_scopes=("apps.deploy.execute",),
+        action_scopes=("apps.publish",),
         authorization_resolver="Application management and Solution-management guards",
         audit_event="app.publish",
         side_effects=(
@@ -634,9 +706,9 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             response_model="PlatformJobPublic",
         ),
         cli=CliOperationBinding(path=("platform-jobs", "get")),
-        mcp=McpOperationBinding(name="bifrost_get_platform_job"),
+        mcp=McpOperationBinding(name="bifrost_platform_job_get"),
         native_builder=True,
-        action_scopes=(),
+        action_scopes=("platformjobs.read.all",),
         authorization_resolver="Platform-job requester identity or platform administrator",
         exclusions={
             "manifest": "Reading job progress does not change manifest state.",
@@ -654,7 +726,7 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             response_model="ApplicationPublic",
         ),
         cli=CliOperationBinding(path=("apps", "replace")),
-        mcp=McpOperationBinding(name="bifrost_replace_app"),
+        mcp=McpOperationBinding(name="bifrost_app_replace"),
         native_builder=True,
         manifest=ManifestOperationBinding(entity="apps"),
         action_scopes=("apps.readwrite",),
@@ -672,7 +744,7 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             path="/api/solutions",
             response_model="SolutionsList",
         ),
-        mcp=McpOperationBinding(name="bifrost_list_solutions"),
+        mcp=McpOperationBinding(name="bifrost_solution_list"),
         native_builder=True,
         action_scopes=("solutions.read",),
         authorization_resolver="Selected Organization, Managed, or Platform collection filter",
@@ -691,7 +763,7 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             path="/api/solutions/{solution_id}",
             response_model="Solution",
         ),
-        mcp=McpOperationBinding(name="bifrost_get_solution"),
+        mcp=McpOperationBinding(name="bifrost_solution_get"),
         native_builder=True,
         action_scopes=("solutions.read",),
         authorization_resolver="Solution capability and exact resource boundary",
@@ -712,7 +784,7 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             response_model="Solution",
         ),
         cli=CliOperationBinding(path=("solution", "create")),
-        mcp=McpOperationBinding(name="bifrost_create_solution"),
+        mcp=McpOperationBinding(name="bifrost_solution_create"),
         native_builder=True,
         action_scopes=("solutions.readwrite",),
         authorization_resolver="Solution capability and selected target boundary",
@@ -733,7 +805,7 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             request_model="SolutionUpdate",
             response_model="Solution",
         ),
-        mcp=McpOperationBinding(name="bifrost_update_solution"),
+        mcp=McpOperationBinding(name="bifrost_solution_update"),
         native_builder=True,
         action_scopes=("solutions.readwrite",),
         authorization_resolver="Solution capability and exact source/destination boundaries",
@@ -754,9 +826,9 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             path="/api/solutions/{solution_id}",
             response_model="SolutionDeleteSummary",
         ),
-        mcp=McpOperationBinding(name="bifrost_delete_solution"),
+        mcp=McpOperationBinding(name="bifrost_solution_delete"),
         native_builder=True,
-        action_scopes=("solutions.readwrite", "solutions.deploy.execute"),
+        action_scopes=("solutions.readwrite", "solutions.deploy"),
         authorization_resolver="Solution capability, exact resource boundary, and slug confirmation",
         audit_event="solution.delete",
         side_effects=("delete the install and all Solution-owned data",),
@@ -774,9 +846,9 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             method="POST",
             path="/api/solutions/{solution_id}/sync",
         ),
-        mcp=McpOperationBinding(name="bifrost_sync_solution"),
+        mcp=McpOperationBinding(name="bifrost_solution_sync"),
         native_builder=True,
-        action_scopes=("solutions.readwrite", "solutions.deploy.execute"),
+        action_scopes=("solutions.readwrite", "solutions.deploy"),
         authorization_resolver="Solution capability and exact resource boundary",
         audit_event="solution.sync",
         side_effects=("pull the configured repository and deploy its current bundle",),
@@ -796,7 +868,7 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
         ),
         cli=CliOperationBinding(path=("solution", "export")),
         native_builder=False,
-        action_scopes=("solutions.read", "solutions.build.execute"),
+        action_scopes=("solutions.read", "solutions.build"),
         authorization_resolver="Solution capability and exact resource boundary",
         audit_event="solution.export",
         side_effects=("materialize a shareable or encrypted backup archive",),
@@ -818,7 +890,7 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
         ),
         cli=CliOperationBinding(path=("solution", "deploy")),
         native_builder=False,
-        action_scopes=("solutions.readwrite", "solutions.deploy.execute"),
+        action_scopes=("solutions.readwrite", "solutions.deploy"),
         authorization_resolver="Solution capability and exact resource boundary",
         audit_event="solution.deploy",
         async_policy=OperationAsyncPolicy.PLATFORM_JOB,
@@ -841,7 +913,7 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
         ),
         cli=CliOperationBinding(path=("solution", "install")),
         native_builder=False,
-        action_scopes=("solutions.deploy.execute",),
+        action_scopes=("solutions.deploy",),
         authorization_resolver="Selected target boundary and Solution deploy capability",
         audit_event="solution.install",
         async_policy=OperationAsyncPolicy.PLATFORM_JOB,
@@ -867,7 +939,7 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
         native_builder=False,
         action_scopes=(
             "solutions.readwrite",
-            "solutions.build.execute",
+            "solutions.build",
         ),
         authorization_resolver="Solution capability and exact resource boundary",
         audit_event="solution.capture",
@@ -889,7 +961,7 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             response_model="list[WorkflowMetadata]",
         ),
         cli=CliOperationBinding(path=("workflows", "list")),
-        mcp=McpOperationBinding(name="bifrost_list_workflows"),
+        mcp=McpOperationBinding(name="bifrost_workflow_list"),
         native_builder=True,
         action_scopes=("workflows.read",),
         authorization_resolver="WorkflowRepository tenant, role, and private-Solution visibility",
@@ -909,7 +981,7 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             response_model="WorkflowValidationResponse",
         ),
         cli=CliOperationBinding(path=("workflows", "validate")),
-        mcp=McpOperationBinding(name="bifrost_validate_workflow"),
+        mcp=McpOperationBinding(name="bifrost_workflow_validate"),
         native_builder=True,
         action_scopes=("workflows.read",),
         authorization_resolver="Authenticated caller and workspace file policy",
@@ -929,7 +1001,7 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             response_model="RegisterWorkflowResponse",
         ),
         cli=CliOperationBinding(path=("workflows", "register")),
-        mcp=McpOperationBinding(name="bifrost_register_workflow"),
+        mcp=McpOperationBinding(name="bifrost_workflow_register"),
         native_builder=True,
         manifest=ManifestOperationBinding(entity="workflows"),
         action_scopes=("workflows.readwrite", "repository.read"),
@@ -955,7 +1027,7 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             response_model="WorkflowExecutionResponse",
         ),
         cli=CliOperationBinding(path=("workflows", "execute")),
-        mcp=McpOperationBinding(name="bifrost_execute_workflow"),
+        mcp=McpOperationBinding(name="bifrost_workflow_execute"),
         native_builder=True,
         action_scopes=("workflows.execute",),
         authorization_resolver="WorkflowRepository execution access and execution-context policy",
@@ -965,6 +1037,25 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
         async_policy=OperationAsyncPolicy.EXECUTION_WORKER,
         exclusions={
             "manifest": "Execution does not mutate portable Workflow definitions.",
+        },
+    ),
+    OperationDefinition(
+        operation_id="workflows.get",
+        summary="Get a Workflow by ID, from any organization",
+        target_kind=OperationTargetKind.RESOURCE,
+        rest=RestOperationBinding(
+            method="GET",
+            path="/api/workflows/{workflow_id}",
+            response_model="WorkflowMetadata",
+        ),
+        cli=CliOperationBinding(path=("workflows", "get")),
+        mcp=McpOperationBinding(name="bifrost_workflow_get"),
+        native_builder=True,
+        action_scopes=("workflows.read",),
+        authorization_resolver="Platform-admin only; exact id lookup, no cascade",
+        exclusions={
+            "manifest": "Manifests reconcile Workflow state; they do not perform resource reads.",
+            "sdk": _WORKFLOW_SDK_EXCLUSION,
         },
     ),
     OperationDefinition(
@@ -978,7 +1069,7 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             response_model="WorkflowMetadata",
         ),
         cli=CliOperationBinding(path=("workflows", "update")),
-        mcp=McpOperationBinding(name="bifrost_update_workflow"),
+        mcp=McpOperationBinding(name="bifrost_workflow_update"),
         native_builder=True,
         manifest=ManifestOperationBinding(entity="workflows"),
         action_scopes=("workflows.readwrite",),
@@ -1002,7 +1093,7 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             request_model="DeleteWorkflowRequest",
         ),
         cli=CliOperationBinding(path=("workflows", "delete")),
-        mcp=McpOperationBinding(name="bifrost_delete_workflow"),
+        mcp=McpOperationBinding(name="bifrost_workflow_delete"),
         native_builder=True,
         manifest=ManifestOperationBinding(entity="workflows", behavior="remove"),
         action_scopes=("workflows.readwrite", "repository.readwrite"),
@@ -1026,10 +1117,10 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             request_model="AssignRolesToWorkflowRequest",
         ),
         cli=CliOperationBinding(path=("workflows", "grant-role")),
-        mcp=McpOperationBinding(name="bifrost_grant_workflow_role"),
+        mcp=McpOperationBinding(name="bifrost_workflow_role_grant"),
         native_builder=True,
         manifest=ManifestOperationBinding(entity="workflows"),
-        action_scopes=("workflows.readwrite", "roles.readwrite"),
+        action_scopes=("workflows.readwrite",),
         authorization_resolver="Platform-admin and Solution-management guards",
         audit_event="workflow.roles.grant",
         side_effects=(
@@ -1047,10 +1138,10 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             path="/api/workflows/{workflow_id}/roles/{role_id}",
         ),
         cli=CliOperationBinding(path=("workflows", "revoke-role")),
-        mcp=McpOperationBinding(name="bifrost_revoke_workflow_role"),
+        mcp=McpOperationBinding(name="bifrost_workflow_role_revoke"),
         native_builder=True,
         manifest=ManifestOperationBinding(entity="workflows"),
-        action_scopes=("workflows.readwrite", "roles.readwrite"),
+        action_scopes=("workflows.readwrite",),
         authorization_resolver="Platform-admin and Solution-management guards",
         audit_event="workflow.roles.revoke",
         side_effects=(
@@ -1069,7 +1160,7 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             response_model="IntegrationListResponse",
         ),
         cli=CliOperationBinding(path=("integrations", "list")),
-        mcp=McpOperationBinding(name="bifrost_list_integrations"),
+        mcp=McpOperationBinding(name="bifrost_integration_list"),
         native_builder=True,
         action_scopes=("integrations.read",),
         authorization_resolver=(
@@ -1090,7 +1181,7 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             response_model="IntegrationDetailResponse",
         ),
         cli=CliOperationBinding(path=("integrations", "get")),
-        mcp=McpOperationBinding(name="bifrost_get_integration"),
+        mcp=McpOperationBinding(name="bifrost_integration_get"),
         native_builder=True,
         action_scopes=("integrations.read",),
         authorization_resolver=(
@@ -1112,7 +1203,7 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             response_model="IntegrationResponse",
         ),
         cli=CliOperationBinding(path=("integrations", "create")),
-        mcp=McpOperationBinding(name="bifrost_create_integration"),
+        mcp=McpOperationBinding(name="bifrost_integration_create"),
         native_builder=True,
         manifest=ManifestOperationBinding(entity="integrations"),
         action_scopes=("integrations.readwrite",),
@@ -1135,7 +1226,7 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             response_model="IntegrationResponse",
         ),
         cli=CliOperationBinding(path=("integrations", "update")),
-        mcp=McpOperationBinding(name="bifrost_update_integration"),
+        mcp=McpOperationBinding(name="bifrost_integration_update"),
         native_builder=True,
         manifest=ManifestOperationBinding(entity="integrations"),
         action_scopes=("integrations.readwrite",),
@@ -1239,7 +1330,7 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
         ),
         exclusions={
             "cli": "Used internally by integrations update-mapping.",
-            "mcp": "Used internally by bifrost_update_integration_mapping.",
+            "mcp": "Used internally by bifrost_integration_mapping_update.",
             "native_builder": (
                 "Used internally by the Integration mapping update operation."
             ),
@@ -1258,7 +1349,7 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             response_model="IntegrationMappingResponse",
         ),
         cli=CliOperationBinding(path=("integrations", "create-mapping")),
-        mcp=McpOperationBinding(name="bifrost_create_integration_mapping"),
+        mcp=McpOperationBinding(name="bifrost_integration_mapping_create"),
         native_builder=True,
         manifest=ManifestOperationBinding(entity="integrations"),
         action_scopes=("integrations.readwrite",),
@@ -1283,7 +1374,7 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             response_model="IntegrationMappingResponse",
         ),
         cli=CliOperationBinding(path=("integrations", "update-mapping")),
-        mcp=McpOperationBinding(name="bifrost_update_integration_mapping"),
+        mcp=McpOperationBinding(name="bifrost_integration_mapping_update"),
         native_builder=True,
         manifest=ManifestOperationBinding(entity="integrations"),
         action_scopes=("integrations.readwrite",),
@@ -1584,9 +1675,9 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             response_model="ExecutionsListResponse",
         ),
         cli=CliOperationBinding(path=("workflows", "list-executions")),
-        mcp=McpOperationBinding(name="bifrost_list_workflow_executions"),
+        mcp=McpOperationBinding(name="bifrost_execution_list"),
         native_builder=True,
-        action_scopes=("executions.read",),
+        action_scopes=("executions.readbasic",),
         authorization_resolver="ExecutionRepository.list_executions and caller scope resolver",
         exclusions={
             "manifest": "Execution history is runtime state, not portable manifest content.",
@@ -1603,9 +1694,9 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             response_model="WorkflowExecution",
         ),
         cli=CliOperationBinding(path=("workflows", "get-execution")),
-        mcp=McpOperationBinding(name="bifrost_get_workflow_execution"),
+        mcp=McpOperationBinding(name="bifrost_execution_get"),
         native_builder=True,
-        action_scopes=("executions.read",),
+        action_scopes=("executions.readbasic",),
         authorization_resolver="ExecutionRepository.get_execution access check",
         exclusions={
             "manifest": "Execution results are runtime state, not portable manifest content.",
@@ -1622,7 +1713,7 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             response_model="list[KnowledgeNamespaceInfo]",
         ),
         cli=CliOperationBinding(path=("knowledge", "list-namespaces")),
-        mcp=McpOperationBinding(name="bifrost_list_knowledge_namespaces"),
+        mcp=McpOperationBinding(name="bifrost_knowledge_namespace_list"),
         native_builder=True,
         action_scopes=("knowledge.read",),
         authorization_resolver="knowledge.read plus selected Platform, Organization, or Managed collection boundary",
@@ -1641,7 +1732,7 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             response_model="list[KnowledgeDocumentSummary]",
         ),
         cli=CliOperationBinding(path=("knowledge", "list-documents")),
-        mcp=McpOperationBinding(name="bifrost_list_knowledge_documents"),
+        mcp=McpOperationBinding(name="bifrost_knowledge_document_list"),
         native_builder=True,
         action_scopes=("knowledge.read",),
         authorization_resolver="knowledge.read plus selected Platform, Organization, or Managed collection boundary",
@@ -1660,7 +1751,7 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             response_model="KnowledgeDocumentPublic",
         ),
         cli=CliOperationBinding(path=("knowledge", "get-document")),
-        mcp=McpOperationBinding(name="bifrost_get_knowledge_document"),
+        mcp=McpOperationBinding(name="bifrost_knowledge_document_get"),
         native_builder=True,
         action_scopes=("knowledge.read",),
         authorization_resolver="knowledge.read plus selected visible resource boundary",
@@ -1680,7 +1771,7 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             response_model="KnowledgeDocumentPublic",
         ),
         cli=CliOperationBinding(path=("knowledge", "create-document")),
-        mcp=McpOperationBinding(name="bifrost_create_knowledge_document"),
+        mcp=McpOperationBinding(name="bifrost_knowledge_document_create"),
         native_builder=True,
         action_scopes=("knowledge.readwrite",),
         authorization_resolver="knowledge.readwrite plus selected exact Platform or Organization boundary",
@@ -1702,7 +1793,7 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             response_model="KnowledgeDocumentPublic",
         ),
         cli=CliOperationBinding(path=("knowledge", "update-document")),
-        mcp=McpOperationBinding(name="bifrost_update_knowledge_document"),
+        mcp=McpOperationBinding(name="bifrost_knowledge_document_update"),
         native_builder=True,
         action_scopes=("knowledge.readwrite",),
         authorization_resolver="knowledge.readwrite plus persisted and selected exact resource boundaries",
@@ -1725,7 +1816,7 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             path="/api/knowledge-sources/{namespace}/documents/{doc_id}",
         ),
         cli=CliOperationBinding(path=("knowledge", "delete-document")),
-        mcp=McpOperationBinding(name="bifrost_delete_knowledge_document"),
+        mcp=McpOperationBinding(name="bifrost_knowledge_document_delete"),
         native_builder=True,
         action_scopes=("knowledge.readwrite",),
         authorization_resolver="knowledge.readwrite plus persisted exact resource boundary",
@@ -1746,10 +1837,10 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             response_model="list[RolePublic]",
         ),
         cli=CliOperationBinding(path=("roles", "list")),
-        mcp=McpOperationBinding(name="bifrost_list_roles"),
+        mcp=McpOperationBinding(name="bifrost_role_list"),
         native_builder=True,
         action_scopes=("roles.read",),
-        authorization_resolver="roles.read in the selected boundary",
+        authorization_resolver="roles.read in the Platform boundary",
         exclusions={
             "manifest": "Manifests reconcile Role state; they do not perform collection reads.",
             "sdk": _ROLE_SDK_EXCLUSION,
@@ -1765,10 +1856,10 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             response_model="RolePublic",
         ),
         cli=CliOperationBinding(path=("roles", "get")),
-        mcp=McpOperationBinding(name="bifrost_get_role"),
+        mcp=McpOperationBinding(name="bifrost_role_get"),
         native_builder=True,
         action_scopes=("roles.read",),
-        authorization_resolver="roles.read in the selected boundary",
+        authorization_resolver="roles.read in the Platform boundary",
         exclusions={
             "manifest": "Manifests reconcile Role state; they do not perform resource reads.",
             "sdk": _ROLE_SDK_EXCLUSION,
@@ -1785,7 +1876,7 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             response_model="RolePublic",
         ),
         cli=CliOperationBinding(path=("roles", "create")),
-        mcp=McpOperationBinding(name="bifrost_create_role"),
+        mcp=McpOperationBinding(name="bifrost_role_create"),
         native_builder=True,
         manifest=ManifestOperationBinding(entity="roles"),
         action_scopes=("roles.readwrite",),
@@ -1809,7 +1900,7 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             response_model="RolePublic",
         ),
         cli=CliOperationBinding(path=("roles", "update")),
-        mcp=McpOperationBinding(name="bifrost_update_role"),
+        mcp=McpOperationBinding(name="bifrost_role_update"),
         native_builder=True,
         manifest=ManifestOperationBinding(entity="roles"),
         action_scopes=("roles.readwrite",),
@@ -1831,7 +1922,7 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             path="/api/roles/{role_id}",
         ),
         cli=CliOperationBinding(path=("roles", "delete")),
-        mcp=McpOperationBinding(name="bifrost_delete_role"),
+        mcp=McpOperationBinding(name="bifrost_role_delete"),
         native_builder=True,
         manifest=ManifestOperationBinding(entity="roles", behavior="remove"),
         action_scopes=("roles.readwrite",),
@@ -1847,6 +1938,47 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
         exclusions={"sdk": _ROLE_SDK_EXCLUSION},
     ),
     OperationDefinition(
+        operation_id="roles.bridge_grants.get",
+        summary="Read explicit MTG device and promotion grants",
+        target_kind=OperationTargetKind.RESOURCE,
+        rest=RestOperationBinding(
+            method="GET", path="/api/roles/{role_id}/bridge-grants",
+            response_model="RoleBridgeGrantsResponse",
+        ),
+        cli=CliOperationBinding(path=("roles", "bridge-grants")),
+        mcp=McpOperationBinding(name="bifrost_role_bridge_grants_get"),
+        action_scopes=("roles.read",),
+        authorization_resolver="Platform Admin only, independently checked by the bridge-grant row service; delegated roles.read never admits this surface",
+        exclusions={
+            "native_builder": "Privileged bridge-grant maintenance is an administrator task.",
+            "manifest": "Bridge grants are explicit deployment-local privileged authorization state.",
+            "sdk": _ROLE_SDK_EXCLUSION,
+        },
+    ),
+    OperationDefinition(
+        operation_id="roles.bridge_grants.update",
+        summary="Replace explicit MTG device and promotion grants with a current-set/version precondition",
+        target_kind=OperationTargetKind.RESOURCE,
+        rest=RestOperationBinding(
+            method="PUT", path="/api/roles/{role_id}/bridge-grants",
+            request_model="RoleBridgeGrantsUpdate", response_model="RoleBridgeGrantsResponse",
+        ),
+        cli=CliOperationBinding(path=("roles", "set-bridge-grants")),
+        mcp=McpOperationBinding(name="bifrost_role_bridge_grants_update"),
+        action_scopes=("roles.readwrite",),
+        authorization_resolver="Platform Admin only; exact three-permission allowlist, current grant set and version, built-in refusal and legal home-org boundaries for every holder; delegated roles.readwrite never admits this surface",
+        audit_event="role.bridge_grants_updated",
+        side_effects=(
+            "replace only bridge permission rows, retaining unrelated identity permissions",
+            "emit strict audit and invalidate role and affected holder caches",
+        ),
+        exclusions={
+            "native_builder": "Privileged bridge-grant maintenance is an administrator task.",
+            "manifest": "Bridge grants are explicit deployment-local privileged authorization state.",
+            "sdk": _ROLE_SDK_EXCLUSION,
+        },
+    ),
+    OperationDefinition(
         operation_id="roles.users.list",
         summary="List users assigned to a Role in the active boundary",
         target_kind=OperationTargetKind.COLLECTION,
@@ -1855,7 +1987,7 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             path="/api/roles/{role_id}/users",
             response_model="RoleUsersResponse",
         ),
-        action_scopes=("roles.read",),
+        action_scopes=("roleassignments.read",),
         authorization_resolver="Boundary-aware Role assignment visibility",
         exclusions=_ROLE_ASSIGNMENT_SURFACE_EXCLUSIONS,
     ),
@@ -1868,9 +2000,9 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             path="/api/roles/{role_id}/users",
             request_model="AssignUsersToRoleRequest",
         ),
-        action_scopes=("roles.readwrite",),
+        action_scopes=("roleassignments.readwrite",),
         authorization_resolver=(
-            "Role assignment service requires roles.readwrite at every existing and requested boundary"
+            "Role assignment service requires roleassignments.readwrite at every existing and requested boundary"
         ),
         audit_event="role.user_assigned",
         side_effects=(
@@ -1888,9 +2020,9 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             method="DELETE",
             path="/api/roles/{role_id}/users/{user_id}",
         ),
-        action_scopes=("roles.readwrite",),
+        action_scopes=("roleassignments.readwrite",),
         authorization_resolver=(
-            "Role assignment service requires roles.readwrite at every existing boundary"
+            "Role assignment service requires roleassignments.readwrite at every existing boundary"
         ),
         audit_event="role.user_unassigned",
         side_effects=(
@@ -1909,9 +2041,9 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             path="/api/roles/{role_id}/users",
             request_model="UnassignUsersFromRoleRequest",
         ),
-        action_scopes=("roles.readwrite",),
+        action_scopes=("roleassignments.readwrite",),
         authorization_resolver=(
-            "Role assignment service requires roles.readwrite at every existing boundary"
+            "Role assignment service requires roleassignments.readwrite at every existing boundary"
         ),
         audit_event="role.users_bulk_unassigned",
         side_effects=(
@@ -1943,8 +2075,8 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             path="/api/roles/{role_id}/forms",
             request_model="AssignFormsToRoleRequest",
         ),
-        action_scopes=("roles.readwrite",),
-        authorization_resolver="roles.readwrite in the selected boundary, exact form boundary, and Solution-management guard",
+        action_scopes=("forms.readwrite",),
+        authorization_resolver="forms.readwrite in the selected boundary, exact form boundary, and Solution-management guard",
         side_effects=(
             "verify each form exists before assignment",
             "reject solution-managed forms",
@@ -1960,8 +2092,8 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             method="DELETE",
             path="/api/roles/{role_id}/forms/{form_id}",
         ),
-        action_scopes=("roles.readwrite",),
-        authorization_resolver="roles.readwrite in the selected boundary, exact form boundary, and Solution-management guard",
+        action_scopes=("forms.readwrite",),
+        authorization_resolver="forms.readwrite in the selected boundary, exact form boundary, and Solution-management guard",
         side_effects=(
             "reject solution-managed forms",
             "delete the role-form junction row and invalidate role form caches",
@@ -1977,8 +2109,8 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             path="/api/roles/{role_id}/forms",
             request_model="UnassignFormsFromRoleRequest",
         ),
-        action_scopes=("roles.readwrite",),
-        authorization_resolver="roles.readwrite in the selected boundary, exact form boundaries, and Solution-management guard",
+        action_scopes=("forms.readwrite",),
+        authorization_resolver="forms.readwrite in the selected boundary, exact form boundaries, and Solution-management guard",
         side_effects=(
             "reject solution-managed forms",
             "delete role-form junction rows and invalidate role form caches",
@@ -2007,8 +2139,8 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             path="/api/roles/{role_id}/agents",
             request_model="AssignAgentsToRoleRequest",
         ),
-        action_scopes=("roles.readwrite",),
-        authorization_resolver="roles.readwrite in the selected boundary, exact Agent boundary, and Solution-management guard",
+        action_scopes=("agents.readwrite",),
+        authorization_resolver="agents.readwrite in the selected boundary, exact Agent boundary, and Solution-management guard",
         side_effects=(
             "verify each agent exists before assignment",
             "reject solution-managed agents",
@@ -2024,8 +2156,8 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             method="DELETE",
             path="/api/roles/{role_id}/agents/{agent_id}",
         ),
-        action_scopes=("roles.readwrite",),
-        authorization_resolver="roles.readwrite in the selected boundary, exact Agent boundary, and Solution-management guard",
+        action_scopes=("agents.readwrite",),
+        authorization_resolver="agents.readwrite in the selected boundary, exact Agent boundary, and Solution-management guard",
         side_effects=(
             "reject solution-managed agents",
             "delete the role-agent junction row and invalidate role agent caches",
@@ -2041,8 +2173,8 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             path="/api/roles/{role_id}/agents",
             request_model="UnassignAgentsFromRoleRequest",
         ),
-        action_scopes=("roles.readwrite",),
-        authorization_resolver="roles.readwrite in the selected boundary, exact Agent boundaries, and Solution-management guard",
+        action_scopes=("agents.readwrite",),
+        authorization_resolver="agents.readwrite in the selected boundary, exact Agent boundaries, and Solution-management guard",
         side_effects=(
             "reject solution-managed agents",
             "delete role-agent junction rows and invalidate role agent caches",
@@ -2071,8 +2203,8 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             path="/api/roles/{role_id}/apps",
             request_model="AssignAppsToRoleRequest",
         ),
-        action_scopes=("roles.readwrite",),
-        authorization_resolver="roles.readwrite in the selected boundary, exact Application boundary, and Solution-management guard",
+        action_scopes=("apps.readwrite",),
+        authorization_resolver="apps.readwrite in the selected boundary, exact Application boundary, and Solution-management guard",
         side_effects=(
             "verify each application exists before assignment",
             "reject solution-managed applications",
@@ -2089,8 +2221,8 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             path="/api/roles/{role_id}/apps",
             request_model="UnassignAppsFromRoleRequest",
         ),
-        action_scopes=("roles.readwrite",),
-        authorization_resolver="roles.readwrite in the selected boundary, exact Application boundaries, and Solution-management guard",
+        action_scopes=("apps.readwrite",),
+        authorization_resolver="apps.readwrite in the selected boundary, exact Application boundaries, and Solution-management guard",
         side_effects=(
             "reject solution-managed applications",
             "delete role-app junction rows and emit an audit event",
@@ -2119,8 +2251,8 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             path="/api/roles/{role_id}/workflows",
             request_model="AssignWorkflowsToRoleRequest",
         ),
-        action_scopes=("roles.readwrite",),
-        authorization_resolver="roles.readwrite in the selected boundary, exact Workflow boundary, and Solution-management guard",
+        action_scopes=("workflows.readwrite",),
+        authorization_resolver="workflows.readwrite in the selected boundary, exact Workflow boundary, and Solution-management guard",
         side_effects=(
             "verify each workflow exists before assignment",
             "reject solution-managed workflows",
@@ -2137,8 +2269,8 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             path="/api/roles/{role_id}/workflows",
             request_model="UnassignWorkflowsFromRoleRequest",
         ),
-        action_scopes=("roles.readwrite",),
-        authorization_resolver="roles.readwrite in the selected boundary, exact Workflow boundaries, and Solution-management guard",
+        action_scopes=("workflows.readwrite",),
+        authorization_resolver="workflows.readwrite in the selected boundary, exact Workflow boundaries, and Solution-management guard",
         side_effects=(
             "reject solution-managed workflows",
             "delete role-workflow junction rows and emit an audit event",
@@ -2155,7 +2287,7 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             response_model="RoleKnowledgeResponse",
         ),
         action_scopes=("roles.read",),
-        authorization_resolver="roles.read in the selected boundary and knowledge organization filtering",
+        authorization_resolver="Platform Admin only; retained namespace-role rows and exact global/organization assignment scope",
         exclusions=_ROLE_RESOURCE_ASSIGNMENT_SURFACE_EXCLUSIONS,
     ),
     OperationDefinition(
@@ -2168,7 +2300,7 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             request_model="AssignKnowledgeToRoleRequest",
         ),
         action_scopes=("roles.readwrite",),
-        authorization_resolver="roles.readwrite in the selected boundary and each knowledge namespace organization",
+        authorization_resolver="Platform Admin only; exact namespace-role assignments, without converting namespace identity to knowledge.read",
         audit_event="role.knowledge_assigned",
         side_effects=(
             "create knowledge namespace-role junction rows",
@@ -2186,7 +2318,7 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             request_model="UnassignKnowledgeFromRoleRequest",
         ),
         action_scopes=("roles.readwrite",),
-        authorization_resolver="roles.readwrite in the selected boundary and each persisted knowledge assignment organization",
+        authorization_resolver="Platform Admin only; exact persisted namespace-role assignment IDs and scope",
         audit_event="role.knowledge_bulk_unassigned",
         side_effects=(
             "delete knowledge namespace-role junction rows",
@@ -2203,7 +2335,7 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             path="/api/users",
             response_model="list[UserPublic]",
         ),
-        action_scopes=("organizations.read",),
+        action_scopes=("users.read",),
         authorization_resolver="Organization-boundary user visibility",
         exclusions=_USER_ADMIN_SURFACE_EXCLUSIONS,
     ),
@@ -2216,7 +2348,7 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             path="/api/users/{user_id}",
             response_model="UserPublic",
         ),
-        action_scopes=("organizations.read",),
+        action_scopes=("users.read",),
         authorization_resolver="Exact organization-boundary user visibility",
         exclusions=_USER_ADMIN_SURFACE_EXCLUSIONS,
     ),
@@ -2230,8 +2362,11 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             request_model="UserCreate",
             response_model="UserPublic",
         ),
-        action_scopes=("organizations.readwrite",),
-        authorization_resolver="Exact target organization boundary",
+        action_scopes=("users.readwrite", "userlifecycle.readwrite"),
+        authorization_resolver=(
+            "users.readwrite at the target organization for an ordinary invite; "
+            "userlifecycle.readwrite at Global for a Global or Platform Admin user"
+        ),
         audit_event="user.create",
         side_effects=(
             "persist the user identity",
@@ -2250,7 +2385,7 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             request_model="UserUpdate",
             response_model="UserPublic",
         ),
-        action_scopes=("organizations.readwrite",),
+        action_scopes=("userlifecycle.readwrite",),
         authorization_resolver="Existing and destination organization boundaries",
         audit_event="user.update",
         side_effects=(
@@ -2267,7 +2402,7 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             method="DELETE",
             path="/api/users/{user_id}",
         ),
-        action_scopes=("organizations.readwrite",),
+        action_scopes=("userlifecycle.readwrite",),
         authorization_resolver="Exact organization-boundary user mutation",
         audit_event="user.delete",
         side_effects=(
@@ -2286,7 +2421,7 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             request_model="BulkUserOperation",
             response_model="BulkUserResponse",
         ),
-        action_scopes=("organizations.readwrite",),
+        action_scopes=("userlifecycle.readwrite",),
         authorization_resolver=(
             "Per-user source/destination organization checks plus Role-boundary checks for assignment replacement"
         ),
@@ -2307,7 +2442,7 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             path="/api/users/{user_id}/invite/resend",
             response_model="CreateInviteResponse",
         ),
-        action_scopes=("organizations.readwrite",),
+        action_scopes=("users.readwrite",),
         authorization_resolver="Exact organization-boundary user mutation",
         audit_event="user.invite_resend",
         side_effects=("replace the registration invite", "emit the invite event"),
@@ -2323,7 +2458,7 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             request_model="SendInviteRequest",
             response_model="CreateInviteResponse",
         ),
-        action_scopes=("organizations.readwrite",),
+        action_scopes=("users.readwrite",),
         authorization_resolver="Exact organization-boundary user mutation",
         audit_event="user.invite_send",
         side_effects=("emit the invite event",),
@@ -2338,7 +2473,7 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             path="/api/users/{user_id}/invite/regenerate",
             response_model="CreateInviteResponse",
         ),
-        action_scopes=("organizations.readwrite",),
+        action_scopes=("users.readwrite",),
         authorization_resolver="Exact organization-boundary user mutation",
         audit_event="user.invite_regenerate",
         side_effects=("replace the registration invite",),
@@ -2352,10 +2487,28 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             method="DELETE",
             path="/api/users/{user_id}/invite",
         ),
-        action_scopes=("organizations.readwrite",),
+        action_scopes=("users.readwrite",),
         authorization_resolver="Exact organization-boundary user mutation",
         audit_event="user.invite_revoke",
         side_effects=("revoke the active registration invite",),
+        exclusions=_USER_ADMIN_SURFACE_EXCLUSIONS,
+    ),
+    OperationDefinition(
+        operation_id="users.mfa.reset",
+        summary="Reset one admitted user's MFA and sign them out everywhere",
+        target_kind=OperationTargetKind.RESOURCE,
+        rest=RestOperationBinding(
+            method="POST",
+            path="/api/users/{user_id}/mfa/reset",
+            response_model="UserMfaResetResponse",
+        ),
+        action_scopes=("users.readwrite",),
+        authorization_resolver="Exact organization-boundary user mutation",
+        audit_event="user.mfa_reset",
+        side_effects=(
+            "remove the authenticator app, recovery codes, passkeys and remembered devices",
+            "revoke every refresh token",
+        ),
         exclusions=_USER_ADMIN_SURFACE_EXCLUSIONS,
     ),
     OperationDefinition(
@@ -2365,9 +2518,9 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
         rest=RestOperationBinding(
             method="GET",
             path="/api/users/{user_id}/roles",
-            response_model="UserRolesResponse",
+            response_model="list[RoleAssignmentPublic]",
         ),
-        action_scopes=("roles.read",),
+        action_scopes=("roleassignments.read",),
         authorization_resolver="Organization-boundary user visibility",
         exclusions=_ROLE_ASSIGNMENT_SURFACE_EXCLUSIONS,
     ),
@@ -2380,7 +2533,7 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             path="/api/users/{user_id}/forms",
             response_model="UserFormsResponse",
         ),
-        action_scopes=("roles.read",),
+        action_scopes=("roleassignments.read",),
         authorization_resolver="Organization-boundary user visibility and resource Role projection",
         exclusions=_ROLE_ASSIGNMENT_SURFACE_EXCLUSIONS,
     ),
@@ -2394,7 +2547,7 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             response_model="ClaimsList",
         ),
         cli=CliOperationBinding(path=("claims", "list")),
-        mcp=McpOperationBinding(name="bifrost_list_claims"),
+        mcp=McpOperationBinding(name="bifrost_claim_list"),
         native_builder=True,
         action_scopes=("claims.read",),
         authorization_resolver="claims.read in the selected exact or Managed organizations boundary",
@@ -2413,7 +2566,7 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             response_model="CustomClaim",
         ),
         cli=CliOperationBinding(path=("claims", "get")),
-        mcp=McpOperationBinding(name="bifrost_get_claim"),
+        mcp=McpOperationBinding(name="bifrost_claim_get"),
         native_builder=True,
         action_scopes=("claims.read",),
         authorization_resolver="claims.read plus the exact Custom Claim organization boundary",
@@ -2433,7 +2586,7 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             response_model="CustomClaim",
         ),
         cli=CliOperationBinding(path=("claims", "create")),
-        mcp=McpOperationBinding(name="bifrost_create_claim"),
+        mcp=McpOperationBinding(name="bifrost_claim_create"),
         native_builder=True,
         manifest=ManifestOperationBinding(entity="claims"),
         action_scopes=("claims.readwrite",),
@@ -2457,7 +2610,7 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             response_model="CustomClaim",
         ),
         cli=CliOperationBinding(path=("claims", "update")),
-        mcp=McpOperationBinding(name="bifrost_update_claim"),
+        mcp=McpOperationBinding(name="bifrost_claim_update"),
         native_builder=True,
         manifest=ManifestOperationBinding(entity="claims"),
         action_scopes=("claims.readwrite",),
@@ -2479,7 +2632,7 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             path="/api/claims/{name}",
         ),
         cli=CliOperationBinding(path=("claims", "delete")),
-        mcp=McpOperationBinding(name="bifrost_delete_claim"),
+        mcp=McpOperationBinding(name="bifrost_claim_delete"),
         native_builder=True,
         manifest=ManifestOperationBinding(entity="claims", behavior="remove"),
         action_scopes=("claims.readwrite",),
@@ -2501,7 +2654,7 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             response_model="FilePolicyListResponse",
         ),
         cli=CliOperationBinding(path=("files", "policies", "list")),
-        mcp=McpOperationBinding(name="bifrost_list_file_policies"),
+        mcp=McpOperationBinding(name="bifrost_file_policy_list"),
         native_builder=True,
         action_scopes=("filepolicies.read",),
         authorization_resolver=(
@@ -2523,7 +2676,7 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             response_model="FilePolicyPublic",
         ),
         cli=CliOperationBinding(path=("files", "policies", "get")),
-        mcp=McpOperationBinding(name="bifrost_get_file_policy"),
+        mcp=McpOperationBinding(name="bifrost_file_policy_get"),
         native_builder=True,
         action_scopes=("filepolicies.read",),
         authorization_resolver=(
@@ -2546,7 +2699,7 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             response_model="FilePolicyPublic",
         ),
         cli=CliOperationBinding(path=("files", "policies", "set")),
-        mcp=McpOperationBinding(name="bifrost_set_file_policy"),
+        mcp=McpOperationBinding(name="bifrost_file_policy_set"),
         native_builder=True,
         action_scopes=("filepolicies.readwrite",),
         authorization_resolver=(
@@ -2573,7 +2726,7 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             path="/api/files/policies/{policy_path}",
         ),
         cli=CliOperationBinding(path=("files", "policies", "delete")),
-        mcp=McpOperationBinding(name="bifrost_delete_file_policy"),
+        mcp=McpOperationBinding(name="bifrost_file_policy_delete"),
         native_builder=True,
         action_scopes=("filepolicies.readwrite",),
         authorization_resolver=(
@@ -2648,10 +2801,30 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             response_model="list[ConfigResponse]",
         ),
         cli=CliOperationBinding(path=("configs", "list")),
-        mcp=McpOperationBinding(name="bifrost_list_configs"),
+        mcp=McpOperationBinding(name="bifrost_config_list"),
         native_builder=True,
         action_scopes=("configs.read",),
         authorization_resolver="configs.read in the selected exact, Managed organizations, or Platform boundary",
+        side_effects=("mask secret-type values as [SECRET]",),
+        exclusions={
+            "manifest": _CONFIG_MANIFEST_EXCLUSION,
+            "sdk": _CONFIG_SDK_EXCLUSION,
+        },
+    ),
+    OperationDefinition(
+        operation_id="configs.get",
+        summary="Get a Config value by ID",
+        target_kind=OperationTargetKind.RESOURCE,
+        rest=RestOperationBinding(
+            method="GET",
+            path="/api/config/{config_id}",
+            response_model="ConfigResponse",
+        ),
+        cli=CliOperationBinding(path=("configs", "get")),
+        mcp=McpOperationBinding(name="bifrost_config_get"),
+        native_builder=True,
+        action_scopes=("configs.read",),
+        authorization_resolver="configs.read at the Platform boundary (no org cascade on an ID lookup)",
         side_effects=("mask secret-type values as [SECRET]",),
         exclusions={
             "manifest": _CONFIG_MANIFEST_EXCLUSION,
@@ -2669,7 +2842,7 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             response_model="ConfigResponse",
         ),
         cli=CliOperationBinding(path=("configs", "create")),
-        mcp=McpOperationBinding(name="bifrost_create_config"),
+        mcp=McpOperationBinding(name="bifrost_config_create"),
         native_builder=True,
         action_scopes=("configs.readwrite",),
         authorization_resolver="configs.readwrite plus the selected exact Organization or Platform target",
@@ -2695,7 +2868,7 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             response_model="ConfigResponse",
         ),
         cli=CliOperationBinding(path=("configs", "update")),
-        mcp=McpOperationBinding(name="bifrost_update_config"),
+        mcp=McpOperationBinding(name="bifrost_config_update"),
         native_builder=True,
         action_scopes=("configs.readwrite",),
         authorization_resolver="configs.readwrite plus both the persisted and destination Config boundaries",
@@ -2721,7 +2894,7 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             path="/api/config/{config_id}",
         ),
         cli=CliOperationBinding(path=("configs", "delete")),
-        mcp=McpOperationBinding(name="bifrost_delete_config"),
+        mcp=McpOperationBinding(name="bifrost_config_delete"),
         native_builder=True,
         action_scopes=("configs.readwrite",),
         authorization_resolver="configs.readwrite plus the persisted Config organization boundary",
@@ -2745,7 +2918,7 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             response_model="list[PolicyRulePublic]",
         ),
         cli=CliOperationBinding(path=("policy-rules", "list")),
-        mcp=McpOperationBinding(name="bifrost_list_policy_rules"),
+        mcp=McpOperationBinding(name="bifrost_policy_rule_list"),
         native_builder=True,
         action_scopes=("policyrules.read",),
         authorization_resolver="policyrules.read in the selected exact, Managed organizations, or Platform boundary",
@@ -2765,7 +2938,7 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             response_model="PolicyRulePublic",
         ),
         cli=CliOperationBinding(path=("policy-rules", "create")),
-        mcp=McpOperationBinding(name="bifrost_create_policy_rule"),
+        mcp=McpOperationBinding(name="bifrost_policy_rule_create"),
         native_builder=True,
         action_scopes=("policyrules.readwrite",),
         authorization_resolver="policyrules.readwrite plus the exact Organization or Platform target",
@@ -2774,6 +2947,26 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             "validate the rule body against its domain's action vocabulary",
             "persist the policy rule under the (name, domain) natural key",
         ),
+        exclusions={
+            "manifest": _POLICY_RULE_MANIFEST_EXCLUSION,
+            "sdk": _POLICY_RULE_SDK_EXCLUSION,
+        },
+    ),
+    OperationDefinition(
+        operation_id="policy.rules.get",
+        summary="Get a named Policy Rule by domain and name",
+        target_kind=OperationTargetKind.RESOURCE,
+        rest=RestOperationBinding(
+            method="GET",
+            path="/api/policy-rules/{domain}/{name}",
+            response_model="PolicyRulePublic",
+        ),
+        cli=CliOperationBinding(path=("policy-rules", "get")),
+        mcp=McpOperationBinding(name="bifrost_policy_rule_get"),
+        native_builder=True,
+        action_scopes=("policyrules.read",),
+        authorization_resolver="policyrules.read plus the persisted Policy Rule organization boundary",
+        side_effects=("read a solution-managed rule (writes to it stay blocked)",),
         exclusions={
             "manifest": _POLICY_RULE_MANIFEST_EXCLUSION,
             "sdk": _POLICY_RULE_SDK_EXCLUSION,
@@ -2790,7 +2983,7 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             response_model="PolicyRulePublic",
         ),
         cli=CliOperationBinding(path=("policy-rules", "update")),
-        mcp=McpOperationBinding(name="bifrost_update_policy_rule"),
+        mcp=McpOperationBinding(name="bifrost_policy_rule_update"),
         native_builder=True,
         action_scopes=("policyrules.readwrite",),
         authorization_resolver="policyrules.readwrite plus the persisted Policy Rule organization boundary",
@@ -2815,7 +3008,7 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             path="/api/policy-rules/{domain}/{name}",
         ),
         cli=CliOperationBinding(path=("policy-rules", "delete")),
-        mcp=McpOperationBinding(name="bifrost_delete_policy_rule"),
+        mcp=McpOperationBinding(name="bifrost_policy_rule_delete"),
         native_builder=True,
         action_scopes=("policyrules.readwrite",),
         authorization_resolver="policyrules.readwrite plus the persisted Policy Rule organization boundary",
@@ -2842,7 +3035,7 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             response_model="PolicyRuleUsagesPublic",
         ),
         cli=CliOperationBinding(path=("policy-rules", "list-usages")),
-        mcp=McpOperationBinding(name="bifrost_list_policy_rule_usages"),
+        mcp=McpOperationBinding(name="bifrost_policy_rule_usage_list"),
         native_builder=True,
         action_scopes=("policyrules.read",),
         authorization_resolver="policyrules.read plus the persisted Policy Rule organization boundary",
@@ -2861,13 +3054,12 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             response_model="list[OrganizationPublic]",
         ),
         cli=CliOperationBinding(path=("organizations", "list")),
-        mcp=McpOperationBinding(name="bifrost_list_organizations"),
+        mcp=McpOperationBinding(name="bifrost_organization_list"),
         action_scopes=("organizations.read",),
         authorization_resolver="events.read and Event Source visibility",
         exclusions={
             "native_builder": _ORGANIZATION_BUILDER_EXCLUSION,
             "manifest": "Organization records are deployment-local, not portable manifest content.",
-            "sdk": _ORGANIZATION_SDK_EXCLUSION,
         },
     ),
     OperationDefinition(
@@ -2880,7 +3072,7 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             response_model="OrganizationPublic",
         ),
         cli=CliOperationBinding(path=("organizations", "get")),
-        mcp=McpOperationBinding(name="bifrost_get_organization"),
+        mcp=McpOperationBinding(name="bifrost_organization_get"),
         action_scopes=("organizations.read",),
         authorization_resolver="Platform-admin gate",
         exclusions={
@@ -2900,7 +3092,7 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             response_model="OrganizationPublic",
         ),
         cli=CliOperationBinding(path=("organizations", "create")),
-        mcp=McpOperationBinding(name="bifrost_create_organization"),
+        mcp=McpOperationBinding(name="bifrost_organization_create"),
         action_scopes=("organizations.readwrite",),
         authorization_resolver="Platform-admin gate",
         audit_event="organization.create",
@@ -2925,7 +3117,7 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             response_model="OrganizationPublic",
         ),
         cli=CliOperationBinding(path=("organizations", "update")),
-        mcp=McpOperationBinding(name="bifrost_update_organization"),
+        mcp=McpOperationBinding(name="bifrost_organization_update"),
         action_scopes=("organizations.readwrite",),
         authorization_resolver="Platform-admin and provider-Organization invariant",
         audit_event="organization.update",
@@ -2945,7 +3137,7 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             path="/api/organizations/{org_id}",
         ),
         cli=CliOperationBinding(path=("organizations", "delete")),
-        mcp=McpOperationBinding(name="bifrost_delete_organization"),
+        mcp=McpOperationBinding(name="bifrost_organization_delete"),
         action_scopes=("organizations.readwrite",),
         authorization_resolver="Platform-admin and provider-Organization invariant",
         audit_event="organization.delete",
@@ -2969,7 +3161,7 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             response_model="EventSourceListResponse",
         ),
         cli=CliOperationBinding(path=("events", "list-sources")),
-        mcp=McpOperationBinding(name="bifrost_list_event_sources"),
+        mcp=McpOperationBinding(name="bifrost_event_source_list"),
         native_builder=True,
         action_scopes=("events.read",),
         authorization_resolver="Platform-admin gate and organization filter",
@@ -2988,7 +3180,7 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             response_model="EventSourceResponse",
         ),
         cli=CliOperationBinding(path=("events", "get-source")),
-        mcp=McpOperationBinding(name="bifrost_get_event_source"),
+        mcp=McpOperationBinding(name="bifrost_event_source_get"),
         native_builder=True,
         action_scopes=("events.read",),
         authorization_resolver="Platform-admin gate",
@@ -3005,10 +3197,10 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             method="POST",
             path="/api/events/sources",
             request_model="EventSourceCreate",
-            response_model="EventSourceResponse",
+            response_model="EventSourceSecretResponse",
         ),
         cli=CliOperationBinding(path=("events", "create-source")),
-        mcp=McpOperationBinding(name="bifrost_create_event_source"),
+        mcp=McpOperationBinding(name="bifrost_event_source_create"),
         native_builder=True,
         manifest=ManifestOperationBinding(entity="events"),
         action_scopes=("events.readwrite",),
@@ -3032,7 +3224,7 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             response_model="EventSourceResponse",
         ),
         cli=CliOperationBinding(path=("events", "update-source")),
-        mcp=McpOperationBinding(name="bifrost_update_event_source"),
+        mcp=McpOperationBinding(name="bifrost_event_source_update"),
         native_builder=True,
         manifest=ManifestOperationBinding(entity="events"),
         action_scopes=("events.readwrite",),
@@ -3054,7 +3246,7 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             path="/api/events/sources/{source_id}",
         ),
         cli=CliOperationBinding(path=("events", "delete-source")),
-        mcp=McpOperationBinding(name="bifrost_delete_event_source"),
+        mcp=McpOperationBinding(name="bifrost_event_source_delete"),
         native_builder=True,
         manifest=ManifestOperationBinding(entity="events", behavior="remove"),
         action_scopes=("events.readwrite",),
@@ -3077,7 +3269,26 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             response_model="EventSubscriptionListResponse",
         ),
         cli=CliOperationBinding(path=("events", "list-subscriptions")),
-        mcp=McpOperationBinding(name="bifrost_list_event_subscriptions"),
+        mcp=McpOperationBinding(name="bifrost_event_subscription_list"),
+        native_builder=True,
+        action_scopes=("events.read",),
+        authorization_resolver="events.read and parent Event Source visibility",
+        exclusions={
+            "manifest": "The read does not mutate Event Subscription manifest state.",
+            "sdk": _EVENT_SDK_EXCLUSION,
+        },
+    ),
+    OperationDefinition(
+        operation_id="events.subscriptions.get",
+        summary="Get one Event Subscription",
+        target_kind=OperationTargetKind.RESOURCE,
+        rest=RestOperationBinding(
+            method="GET",
+            path="/api/events/sources/{source_id}/subscriptions/{subscription_id}",
+            response_model="EventSubscriptionResponse",
+        ),
+        cli=CliOperationBinding(path=("events", "get-subscription")),
+        mcp=McpOperationBinding(name="bifrost_event_subscription_get"),
         native_builder=True,
         action_scopes=("events.read",),
         authorization_resolver="events.read and parent Event Source visibility",
@@ -3097,7 +3308,7 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             response_model="EventSubscriptionResponse",
         ),
         cli=CliOperationBinding(path=("events", "create-subscription")),
-        mcp=McpOperationBinding(name="bifrost_create_event_subscription"),
+        mcp=McpOperationBinding(name="bifrost_event_subscription_create"),
         native_builder=True,
         manifest=ManifestOperationBinding(entity="events"),
         action_scopes=("events.readwrite",),
@@ -3120,7 +3331,7 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             response_model="EventSubscriptionResponse",
         ),
         cli=CliOperationBinding(path=("events", "update-subscription")),
-        mcp=McpOperationBinding(name="bifrost_update_event_subscription"),
+        mcp=McpOperationBinding(name="bifrost_event_subscription_update"),
         native_builder=True,
         manifest=ManifestOperationBinding(entity="events"),
         action_scopes=("events.readwrite",),
@@ -3141,7 +3352,7 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             path="/api/events/sources/{source_id}/subscriptions/{subscription_id}",
         ),
         cli=CliOperationBinding(path=("events", "delete-subscription")),
-        mcp=McpOperationBinding(name="bifrost_delete_event_subscription"),
+        mcp=McpOperationBinding(name="bifrost_event_subscription_delete"),
         native_builder=True,
         manifest=ManifestOperationBinding(entity="events"),
         action_scopes=("events.readwrite",),
@@ -3163,7 +3374,7 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             response_model="WebhookAdapterListResponse",
         ),
         cli=CliOperationBinding(path=("events", "list-webhook-adapters")),
-        mcp=McpOperationBinding(name="bifrost_list_event_webhook_adapters"),
+        mcp=McpOperationBinding(name="bifrost_event_webhook_adapter_list"),
         native_builder=True,
         action_scopes=("events.read",),
         authorization_resolver="events.read at the selected boundary",
@@ -3183,7 +3394,7 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             response_model="FileListResponse",
         ),
         cli=CliOperationBinding(path=("files", "list")),
-        mcp=McpOperationBinding(name="bifrost_list_files"),
+        mcp=McpOperationBinding(name="bifrost_file_list"),
         native_builder=True,
         action_scopes=("repository.read",),
         authorization_resolver="repository.read at the explicit Platform boundary",
@@ -3202,7 +3413,7 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             response_model="SearchResponse",
         ),
         cli=CliOperationBinding(path=("files", "search")),
-        mcp=McpOperationBinding(name="bifrost_search_files"),
+        mcp=McpOperationBinding(name="bifrost_file_search"),
         native_builder=True,
         action_scopes=("repository.read",),
         authorization_resolver="repository.read at the explicit Platform boundary",
@@ -3222,7 +3433,7 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             response_model="FileReadResponse",
         ),
         cli=CliOperationBinding(path=("files", "read")),
-        mcp=McpOperationBinding(name="bifrost_read_file"),
+        mcp=McpOperationBinding(name="bifrost_file_read"),
         native_builder=True,
         action_scopes=("repository.read",),
         authorization_resolver="repository.read at the explicit Platform boundary",
@@ -3239,7 +3450,7 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             response_model="FileStatResponse",
         ),
         cli=CliOperationBinding(path=("files", "stat")),
-        mcp=McpOperationBinding(name="bifrost_stat_file"),
+        mcp=McpOperationBinding(name="bifrost_file_stat"),
         native_builder=True,
         action_scopes=("repository.read",),
         authorization_resolver="repository.read at the explicit Platform boundary",
@@ -3259,7 +3470,7 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             response_model="FileExistsResponse",
         ),
         cli=CliOperationBinding(path=("files", "exists")),
-        mcp=McpOperationBinding(name="bifrost_exists_file"),
+        mcp=McpOperationBinding(name="bifrost_file_exists"),
         native_builder=True,
         action_scopes=("repository.read",),
         authorization_resolver="repository.read at the explicit Platform boundary",
@@ -3278,7 +3489,7 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             request_model="FileWriteRequest",
         ),
         cli=CliOperationBinding(path=("files", "write")),
-        mcp=McpOperationBinding(name="bifrost_write_file"),
+        mcp=McpOperationBinding(name="bifrost_file_write"),
         native_builder=True,
         action_scopes=("repository.readwrite",),
         authorization_resolver="repository.readwrite at Platform plus Solution-managed source guards",
@@ -3301,7 +3512,7 @@ OPERATION_CATALOG: tuple[OperationDefinition, ...] = (
             request_model="FileDeleteRequest",
         ),
         cli=CliOperationBinding(path=("files", "delete")),
-        mcp=McpOperationBinding(name="bifrost_delete_file"),
+        mcp=McpOperationBinding(name="bifrost_file_delete"),
         native_builder=True,
         action_scopes=("repository.readwrite",),
         authorization_resolver="repository.readwrite at Platform plus Solution-managed source guards",
@@ -3550,18 +3761,6 @@ def operation_route(operation_id: str) -> dict[str, Any]:
     }
 
 
-def _singularize(segment: str) -> str:
-    """Singularize one CLI path segment.
-
-    Only the two plural forms the CLI actually uses are handled: ``-ies``
-    (policies -> policy) and a plain trailing ``s``. Anything else is already
-    singular as far as this rule is concerned.
-    """
-    if segment.endswith("ies"):
-        return f"{segment[:-3]}y"
-    return segment[:-1] if segment.endswith("s") else segment
-
-
 def validate_operation_catalog(
     operations: Iterable[OperationDefinition] = OPERATION_CATALOG,
 ) -> None:
@@ -3598,31 +3797,23 @@ def validate_operation_catalog(
     # catalog it validates against exists.
 
     for operation in materialized:
-        if operation.cli and operation.mcp:
-            # A CLI path is (resource, *nested_resources, verb).  The resource
-            # nearest the verb is the one the operation acts on, so it carries
-            # the plural/singular rule; every ancestor is always singularized
-            # and prefixes it: ("files", "policies", "list") -> file_policies.
-            *resource_path, verb = operation.cli.path
-            owning_resource = resource_path[-1].replace("-", "_")
-            ancestors = [
-                _singularize(segment.replace("-", "_"))
-                for segment in resource_path[:-1]
-            ]
-            verb_parts = verb.replace("-", "_").split("_")
-            action, subresource = verb_parts[0], verb_parts[1:]
-            noun = (
-                _singularize(owning_resource)
-                if action not in {"list", "search"} or subresource
-                else owning_resource
+        if operation.mcp is None:
+            continue
+        name = operation.mcp.name
+        if len(name) > 64 or not _MCP_NAME_RE.match(name):
+            errors.append(
+                f"{operation.operation_id}: MCP name {name!r} does not match "
+                "the bifrost_<noun>..._<verb> naming convention "
+                f"({_MCP_NAME_RE.pattern})"
             )
-            suffix = "_".join((*ancestors, noun, *subresource))
-            expected = f"bifrost_{action}_{suffix}"
-            if operation.mcp.name != expected:
-                errors.append(
-                    f"{operation.operation_id} maps {operation.cli.path!r} to "
-                    f"{operation.mcp.name!r}; expected {expected!r}"
-                )
+            continue
+        verb = name.rsplit("_", 1)[-1]
+        if verb not in _MCP_VERBS:
+            errors.append(
+                f"{operation.operation_id}: MCP name {name!r} ends in "
+                f"{verb!r}, which is not a recognized verb "
+                f"({sorted(_MCP_VERBS)})"
+            )
 
     if errors:
         raise ValueError("; ".join(errors))

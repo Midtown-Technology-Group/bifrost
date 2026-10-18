@@ -36,6 +36,7 @@ from src.models.orm.workflows import Workflow
 from src.core.cache.keys import agent_run_steps_stream_key
 from src.core.pubsub import publish_agent_run_step
 from src.core.system_agents import is_privileged_agent_management_tool
+from src.services.agent_run_step_streams import append_agent_run_step
 from src.services.execution.agent_helpers import (
     agent_mcp_granted,
     agent_workflow_granted,
@@ -46,6 +47,7 @@ from src.services.execution.agent_helpers import (
     parse_mcp_tool_name,
     resolve_agent_tools,
 )
+from shared.run_lineage import run_user_lineage
 from src.services.execution.agent_workflow_tools import (
     AgentWorkflowCaller,
     execute_agent_workflow_tool,
@@ -62,14 +64,17 @@ from src.services.agent_runtime import (
     BifrostToolset,
     ModelCallEvent,
     ToolEvent,
+    bound_tool_result_for_model,
     build_chain_model,
     build_runtime_capabilities,
     provider_reported_cost,
+    reasoning_tokens,
 )
 from src.services.agent_runtime.empty_output import EmptyOutputCircuitBreaker
 from src.services.llm import ToolCallRequest
 from src.services.llm.factory import get_llm_configs
 from src.services.openai_transport_detection import OpenAITransportProbe
+from src.services.model_pricing import chain_context_window
 from src.services.knowledge.search_budget import (
     KNOWLEDGE_FULL_CONTENT_HINT,
     KnowledgeSearchBudget,
@@ -91,6 +96,8 @@ logger = logging.getLogger(__name__)
 
 MAX_DELEGATION_DEPTH = 5  # Prevent infinite delegation chains
 DELEGATION_TIMEOUT_SECONDS = 600  # 10 minutes per delegation
+MAX_DELEGATION_TIMEOUT_RECEIPT_CHARS = 20_000
+MAX_DELEGATION_TIMEOUT_EVIDENCE_ITEM_CHARS = 4_000
 
 _JSON_FENCE_RE = re.compile(r"^```[a-zA-Z]*\s*\n(.*)\n\s*```$", re.DOTALL)
 
@@ -118,6 +125,56 @@ class ToolError(Exception):
 
 
 @dataclass(frozen=True)
+class ActingUser:
+    """Whose identity a run's tool calls and delegated children use.
+
+    For a Run As run it is the target user, loaded from the database by the
+    consumer. Otherwise it is the run's caller, or the system account when
+    nobody started the run. It never changes the run user (lineage).
+    """
+
+    user_id: str
+    email: str
+    name: str
+    organization_id: UUID | None
+    is_platform_admin: bool
+    is_external: bool
+    is_provider_org: bool
+
+
+def _acting_user_from_caller(
+    caller_user_id: UUID | None,
+    caller: dict[str, Any] | None,
+    agent: Agent,
+) -> ActingUser:
+    """The caller as the acting user, or the system account with the agent's name.
+
+    The organization is the caller's, or the agent's for a run nobody started.
+    """
+    # ``caller_user_id`` is parsed from ``caller``, so it is never set alone.
+    if caller_user_id is None or caller is None:
+        return ActingUser(
+            user_id=SYSTEM_USER_ID,
+            email=SYSTEM_USER_EMAIL,
+            name=agent.name,
+            organization_id=agent.organization_id,
+            is_platform_admin=False,
+            is_external=False,
+            is_provider_org=False,
+        )
+    raw_org_id = caller.get("organization_id")
+    return ActingUser(
+        user_id=str(caller_user_id),
+        email=str(caller.get("email")) if caller.get("email") else SYSTEM_USER_EMAIL,
+        name=str(caller.get("name")) if caller.get("name") else agent.name,
+        organization_id=None if raw_org_id is None else UUID(str(raw_org_id)),
+        is_platform_admin=bool(caller.get("is_platform_admin", False)),
+        is_external=False,
+        is_provider_org=False,
+    )
+
+
+@dataclass(frozen=True)
 class DelegationOutcome:
     """Canonical internal result for a delegated child run."""
 
@@ -127,10 +184,177 @@ class DelegationOutcome:
     output: str | dict | None
     error: str | None
     duration_ms: int
+    evidence: str | None = None
 
     @property
     def succeeded(self) -> bool:
         return self.status == "completed"
+
+
+def _truncate_timeout_evidence_item(value: Any) -> tuple[str, bool]:
+    """Keep one saved tool fact small without pretending it is structured JSON."""
+    text = str(value)
+    if len(text) <= MAX_DELEGATION_TIMEOUT_EVIDENCE_ITEM_CHARS:
+        return text, False
+    omitted = len(text) - MAX_DELEGATION_TIMEOUT_EVIDENCE_ITEM_CHARS
+    return (
+        text[:MAX_DELEGATION_TIMEOUT_EVIDENCE_ITEM_CHARS]
+        + f" [stored result truncated; {omitted} characters omitted]",
+        True,
+    )
+
+
+def _capture_tool_result_for_timeout_evidence(value: Any) -> tuple[str, bool]:
+    """Keep the durable step copy bounded and make loss explicit at capture."""
+    text = str(value)
+    if len(text) <= MAX_DELEGATION_TIMEOUT_RECEIPT_CHARS:
+        return text, False
+    omitted = len(text) - MAX_DELEGATION_TIMEOUT_RECEIPT_CHARS
+    while True:
+        marker = f" [stored result truncated; {omitted} characters omitted]"
+        actual_omitted = len(text) - (
+            MAX_DELEGATION_TIMEOUT_RECEIPT_CHARS - len(marker)
+        )
+        if actual_omitted == omitted:
+            break
+        omitted = actual_omitted
+    return (
+        text[:MAX_DELEGATION_TIMEOUT_RECEIPT_CHARS - len(marker)] + marker,
+        True,
+    )
+
+
+def _delegation_evidence_lines(executor: Any) -> list[str]:
+    """Extract only the executor's captured, non-LLM tool lifecycle facts."""
+    lines: list[str] = []
+    completed_child_runs: set[str] = set()
+    settled_by_tool: dict[str, int] = {}
+    calls: list[tuple[str, str]] = []
+
+    for step in executor._pending_steps:
+        content = step.get("content") or {}
+        step_type = step.get("type")
+        if step_type == "tool_call":
+            tool_name = content.get("tool_name")
+            if tool_name:
+                calls.append((str(step.get("id")), str(tool_name)))
+            continue
+        if step_type not in {"tool_result", "tool_error"}:
+            continue
+
+        tool_name = str(content.get("tool_name") or "unknown tool")
+        settled_by_tool[tool_name] = settled_by_tool.get(tool_name, 0) + 1
+        step_id = str(step.get("id"))
+        ids = ""
+        if content.get("execution_id"):
+            ids += f" execution_id={content['execution_id']}"
+        if content.get("child_run_id"):
+            child_run_id = str(content["child_run_id"])
+            completed_child_runs.add(child_run_id)
+            ids += f" child_run_id={child_run_id}"
+
+        is_error = step_type == "tool_error" or bool(content.get("is_error"))
+        if is_error:
+            detail, _ = _truncate_timeout_evidence_item(
+                content.get("error") or content.get("result") or "tool failed"
+            )
+            lines.append(f"failed step {step_id} ({tool_name}): {detail}{ids}")
+            continue
+
+        detail, was_truncated = _truncate_timeout_evidence_item(
+            content.get("result", "")
+        )
+        truncation = " [stored result truncated]" if (
+            was_truncated or content.get("result_truncated")
+        ) else ""
+        lines.append(
+            f"completed step {step_id} ({tool_name}): {detail}{truncation}{ids}"
+        )
+
+    for step_id, tool_name in calls:
+        remaining_settled = settled_by_tool.get(tool_name, 0)
+        if remaining_settled:
+            settled_by_tool[tool_name] = remaining_settled - 1
+            continue
+        lines.append(
+            f"unfinished step {step_id} ({tool_name}); side effects are unverified"
+        )
+
+    for outcome in executor._finalized_delegation_outcomes:
+        if str(outcome.child_run_id) in completed_child_runs:
+            continue
+        status = outcome.status
+        prefix = (
+            f"nested delegation child_run_id={outcome.child_run_id} "
+            f"({outcome.agent_name}) status={status}"
+        )
+        if outcome.evidence:
+            detail, _ = _truncate_timeout_evidence_item(outcome.evidence)
+            lines.append(f"{prefix}; captured evidence: {detail}")
+        if status == "completed" and outcome.output is not None:
+            detail, _ = _truncate_timeout_evidence_item(outcome.output)
+            lines.append(f"{prefix}; completed receipt: {detail}")
+        elif status != "completed":
+            lines.append(f"{prefix}; side effects are unverified")
+
+    return lines
+
+
+def _bounded_timeout_receipt(
+    lines: list[str],
+    *,
+    max_chars: int = MAX_DELEGATION_TIMEOUT_RECEIPT_CHARS,
+) -> str:
+    """Apply one global evidence cap and say explicitly when facts were omitted."""
+    if not lines:
+        return "No completed tool evidence was captured before the deadline."
+
+    selected: list[str] = []
+    used = 0
+    for index, line in enumerate(lines):
+        addition = len(line) + (1 if selected else 0)
+        if used + addition <= max_chars:
+            selected.append(line)
+            used += addition
+            continue
+        omitted = len(lines) - index
+        while True:
+            marker = f"[partial evidence truncated; {omitted} item(s) omitted]"
+            if used + len(marker) + (1 if selected else 0) <= max_chars:
+                selected.append(marker)
+                break
+            if not selected:
+                # The normal timeout prefix leaves far more than this marker,
+                # but retain a valid explicit omission if a caller supplies a
+                # deliberately tiny evidence budget.
+                return marker[:max_chars]
+            removed = selected.pop()
+            used -= len(removed) + (1 if selected else 0)
+            omitted += 1
+        return "\n".join(selected)
+    return "\n".join(selected)
+
+
+def format_delegation_timeout_receipt(
+    agent_name: str,
+    executor: Any,
+) -> str:
+    """Build caller-safe timeout evidence from one executing child's own subtree."""
+    prefix = (
+        f"Delegation to {agent_name} timed out after {DELEGATION_TIMEOUT_SECONDS}s.\n"
+        "Partial execution evidence follows. Captured tool receipts do not establish "
+        "overall completion. "
+        "Unfinished side effects are unverified.\n"
+    )
+    evidence = _bounded_timeout_receipt(
+        _delegation_evidence_lines(executor),
+        max_chars=MAX_DELEGATION_TIMEOUT_RECEIPT_CHARS - len(prefix),
+    )
+    receipt = prefix + evidence
+    # Keep the model-facing copy on the shared 32K result policy even though
+    # the durable receipt has the stricter 20K cap above.
+    bounded = bound_tool_result_for_model(receipt)
+    return bounded if isinstance(bounded, str) else str(bounded)
 
 
 class AutonomousAgentExecutor:
@@ -169,15 +393,46 @@ class AutonomousAgentExecutor:
         self._caller_is_platform_admin = False
         self._caller: dict[str, Any] | None = None
         self._external_actor: tuple[dict, UUID, UUID, UUID] | None = None
+        # Whose identity tool calls use; run() sets it (see ActingUser).
+        self._acting: ActingUser | None = None
+        # The Run As user, handed unchanged to delegated children.
+        self._run_as: ActingUser | None = None
+        # The acting person MCP connections authenticate as. ``None`` means
+        # the run is autonomous (scheduled / webhook / event-trigger), in
+        # which case dispatch resolves to the service token only.
+        self._acting_user_id: UUID | None = None
+        self._run_user_id: UUID | None = None
         # Buffers for Redis-first pattern (flushed to DB after run completes)
         self._pending_steps: list[dict[str, Any]] = []
         self._pending_ai_usage: list[dict[str, Any]] = []
+        # Terminal child outcomes belonging to this executor. This closes the
+        # cancellation gap where a nested child is finalized but its parent
+        # never receives a BifrostToolset result event before cancellation.
+        self._finalized_delegation_outcomes: list[DelegationOutcome] = []
         self._knowledge_search_budget = KnowledgeSearchBudget()
         # Delegated executors receive these same objects. Pydantic AI mutates
         # RunUsage in place, so every model request in the delegation tree is
         # charged to the root run instead of giving each child a fresh budget.
         self._active_usage: RunUsage | None = None
         self._active_budget: AgentRunBudget | None = None
+        # Reported totals for this run's subtree: its own model calls plus
+        # every delegate's subtree. Unlike a delta on the shared ledger, this
+        # never absorbs a concurrent sibling's calls, and it survives a
+        # timeout or cancellation because it is updated per response.
+        self._own_tokens = 0
+        self._delegated_tokens = 0
+
+    @property
+    def acting_user(self) -> ActingUser:
+        """The active run's acting user; run() sets it before any tool call."""
+        if self._acting is None:
+            raise RuntimeError("run() sets the acting user before any tool call")
+        return self._acting
+
+    @property
+    def subtree_tokens(self) -> int:
+        """Tokens used by this run's own calls plus all of its delegates."""
+        return self._own_tokens + self._delegated_tokens
 
     async def _external_caller_access(self, db: AsyncSession) -> tuple[UUID, UUID, bool] | None:
         """Recheck an external provider grant before planning or dispatch."""
@@ -209,6 +464,8 @@ class AutonomousAgentExecutor:
         _caller: dict | None = None,
         _shared_usage: RunUsage | None = None,
         _shared_budget: AgentRunBudget | None = None,
+        run_user_id: UUID | None,
+        run_as: ActingUser | None,
     ) -> dict:
         """Execute an autonomous agent run.
 
@@ -221,6 +478,10 @@ class AutonomousAgentExecutor:
             _shared_usage: Internal cumulative usage ledger inherited from a
                 parent run during delegation.
             _shared_budget: Internal hard ceiling inherited from a parent run.
+            run_user_id: The run's run user (AgentRun.run_user_id); its tool
+                calls and delegations run for the same user.
+            run_as: The Run As user, loaded from the database; None means the
+                caller acts. Delegated children get the same value.
 
         Returns:
             Dict with keys: output, iterations_used, tokens_used, status, llm_model
@@ -229,6 +490,9 @@ class AutonomousAgentExecutor:
         run_id = run_id or str(uuid4())
         self._current_run_id = run_id
         self._knowledge_search_budget.reset()
+        self._own_tokens = 0
+        self._delegated_tokens = 0
+        self._finalized_delegation_outcomes = []
 
         # Resolve caller_user_id from server-created run context. If an ordinary
         # webhook ran without a verified external actor, _caller has no
@@ -251,7 +515,10 @@ class AutonomousAgentExecutor:
         self._caller_is_platform_admin = False
         self._caller = dict(_caller) if _caller else None
         self._external_actor = None
-
+        self._run_user_id = run_user_id
+        self._run_as = run_as
+        self._acting = run_as or _acting_user_from_caller(caller_user_id, self._caller, agent)
+        self._acting_user_id = UUID(run_as.user_id) if run_as is not None else caller_user_id
         configured_iterations = agent.max_iterations
         configured_tokens = agent.max_token_budget
         usage = _shared_usage or RunUsage()
@@ -344,6 +611,7 @@ class AutonomousAgentExecutor:
                     "status": "budget_exceeded",
                     "llm_model": None,
                 }
+            context_window = await chain_context_window(db, llm_configs)
             # Transport detection updates are intentionally durable before the
             # run proceeds. No connection is held across model/tool execution.
             await db.commit()
@@ -364,11 +632,21 @@ class AutonomousAgentExecutor:
                 caller = await db.get(User, caller_user_id)
                 self._caller_is_platform_admin = bool(caller and caller.is_superuser)
             external_access = await self._external_caller_access(db)
+            if self._run_as is None:
+                self._acting = _acting_user_from_caller(caller_user_id, self._caller, agent)
+                from dataclasses import replace
+
+                self._acting = replace(
+                    self._acting,
+                    is_platform_admin=self._caller_is_platform_admin,
+                    is_external=bool(self._caller and self._caller.get("is_external", False)),
+                    is_provider_org=bool(self._caller and self._caller.get("is_provider_org", False)),
+                )
             tool_definitions, self._tool_workflow_id_map = await resolve_agent_tools(
                 agent,
                 db,
-                caller_user_id=caller_user_id,
-                **({"caller_access": external_access} if external_access else {}),
+                caller_user_id=self._acting_user_id,
+                **({"caller_access": external_access} if external_access and self._run_as is None else {}),
             )
         last_response_content = ""
 
@@ -409,15 +687,18 @@ class AutonomousAgentExecutor:
                 model_name = response.model_name
             if response.text:
                 last_response_content = response.text
+            self._own_tokens += request_usage.total_tokens
+            request_reasoning_tokens = reasoning_tokens(request_usage)
             self._buffer_ai_usage(
                 agent=agent,
                 run_id=run_id,
-                provider=response.provider_name or llm_config.provider,
+                provider=event.billing_provider or llm_config.provider,
                 model=response.model_name or model_name,
                 input_tokens=request_usage.input_tokens,
                 output_tokens=request_usage.output_tokens,
                 cache_read_tokens=request_usage.cache_read_tokens,
                 cache_write_tokens=request_usage.cache_write_tokens,
+                reasoning_tokens=request_reasoning_tokens,
                 provider_cost=provider_reported_cost(response),
                 duration_ms=event.duration_ms or 0,
             )
@@ -438,6 +719,7 @@ class AutonomousAgentExecutor:
                         "output_tokens": request_usage.output_tokens,
                         "cache_read_tokens": request_usage.cache_read_tokens,
                         "cache_write_tokens": request_usage.cache_write_tokens,
+                        "reasoning_tokens": request_reasoning_tokens,
                         "provider_cost": (
                             str(cost)
                             if (cost := provider_reported_cost(response)) is not None
@@ -480,7 +762,12 @@ class AutonomousAgentExecutor:
             if event.type == "tool_error":
                 content["error"] = event.error
             else:
-                content["result"] = str(event.result)[:20000]
+                result, result_truncated = _capture_tool_result_for_timeout_evidence(
+                    event.result
+                )
+                content["result"] = result
+                if result_truncated:
+                    content["result_truncated"] = True
             if event.tool_name.startswith("delegate_to_") and self._last_delegation_run_id:
                 content["child_run_id"] = self._last_delegation_run_id
             if self._last_workflow_execution_id:
@@ -527,7 +814,7 @@ class AutonomousAgentExecutor:
             ),
             toolsets=[toolset] if tool_definitions else [],
             capabilities=[
-                *build_runtime_capabilities(budget),
+                *build_runtime_capabilities(budget, context_window=context_window),
                 empty_output_guard,
             ],
             model_settings=chain.primary_settings,
@@ -627,7 +914,7 @@ class AutonomousAgentExecutor:
         response = {
             "output": output or None,
             "iterations_used": usage.requests - usage_start_requests,
-            "tokens_used": usage.total_tokens - usage_start_tokens,
+            "tokens_used": self.subtree_tokens,
             "status": status,
             "llm_model": model_name,
         }
@@ -679,15 +966,6 @@ class AutonomousAgentExecutor:
     # Tool dispatch
     # ------------------------------------------------------------------
 
-    def _execution_org_id(self, agent: Agent) -> UUID | None:
-        """Use authenticated caller scope, or agent scope for autonomous runs."""
-        if self._caller_user_id is not None:
-            raw_org_id = self._caller.get("organization_id") if self._caller else None
-            if raw_org_id is None:
-                return None
-            return UUID(str(raw_org_id))
-        return agent.organization_id
-
     async def _execute_tool(self, tool_call: ToolCallRequest, agent: Agent) -> str:
         """Execute a tool call, mirroring AgentExecutor's dispatch logic."""
         external_access = None
@@ -709,15 +987,15 @@ class AutonomousAgentExecutor:
                 raise ToolError(
                     f"System tool '{tool_call.name}' cannot be executed from autonomous agents"
                 )
-            return await self._execute_system_tool(tool_call, agent)
+            return await self._execute_system_tool(tool_call)
 
         # External MCP tools — namespaced ``mcp__<connection_id>__<tool>``.
         # Routed BEFORE workflow tools because the workflow id_map maps
         # MCP qualified names to ``MCPConnection.id`` and dispatch needs
         # to go through ``mcp_dispatch.invoke`` rather than the workflow
-        # execution service. The threaded ``self._caller_user_id`` is
-        # what differentiates a chat-claim webhook (per-user OAuth) from
-        # a fully autonomous run (service token only).
+        # execution service. The threaded ``self._acting_user_id`` is
+        # what differentiates a chat-claim webhook or Run As (per-user
+        # OAuth) from a fully autonomous run (service token only).
         mcp_route = parse_mcp_tool_name(tool_call.name)
         if mcp_route is not None:
             if tool_call.name not in self._tool_workflow_id_map:
@@ -741,42 +1019,23 @@ class AutonomousAgentExecutor:
                 workflow,
                 agent,
                 db,
-                caller_user_id=self._caller_user_id,
-                caller_is_platform_admin=self._caller_is_platform_admin,
-                **({"caller_access": external_access} if external_access else {}),
+                caller_user_id=self._acting_user_id,
+                caller_is_platform_admin=self.acting_user.is_platform_admin,
+                **({"caller_access": external_access} if external_access and self._run_as is None else {}),
             ):
                 raise ToolError(f"Unknown tool: {tool_call.name}")
 
+        acting = self.acting_user
         response = await execute_agent_workflow_tool(
             workflow_id=workflow_id,
             workflow_name=tool_call.name,
             parameters=tool_call.arguments or {},
             caller=AgentWorkflowCaller(
-                user_id=(
-                    str(self._caller_user_id)
-                    if self._caller_user_id
-                    else SYSTEM_USER_ID
-                ),
-                email=(
-                    str(self._caller.get("email"))
-                    if self._caller_user_id
-                    and self._caller
-                    and self._caller.get("email")
-                    else SYSTEM_USER_EMAIL
-                ),
-                name=(
-                    str(self._caller.get("name"))
-                    if self._caller_user_id
-                    and self._caller
-                    and self._caller.get("name")
-                    else agent.name
-                ),
-                organization_id=self._execution_org_id(agent),
-                is_platform_admin=(
-                    bool(self._caller.get("is_platform_admin", False))
-                    if self._caller_user_id and self._caller
-                    else False
-                ),
+                user_id=acting.user_id,
+                email=acting.email,
+                name=acting.name,
+                organization_id=acting.organization_id,
+                is_platform_admin=acting.is_platform_admin,
                 agent_id=agent.id,
                 agent_run_id=UUID(self._current_run_id) if self._current_run_id else None,
             ),
@@ -785,6 +1044,7 @@ class AutonomousAgentExecutor:
                 if self._ancestor_run_ids
                 else self._current_run_id or None
             ),
+            lineage=run_user_lineage(self._run_user_id),
         )
         self._last_workflow_execution_id = response.execution_id
         self._last_workflow_execution_is_error = response.status.value != "Success"
@@ -813,11 +1073,14 @@ class AutonomousAgentExecutor:
         plain-string envelope the autonomous loop expects rather than
         the chat-surface ``ToolResult``.
 
-        For autonomous runs ``self._caller_user_id`` is typically
+        For autonomous runs ``self._acting_user_id`` is typically
         ``None`` — auth resolution then routes to the connection's
         service token, gated by ``available_to_autonomous``. A verified
         external actor that resolved to a Bifrost user gets user-token
         resolution.
+        service token, gated by ``available_to_autonomous``. Webhook
+        deliveries that pass a user_id (signed claim) and Run As runs
+        get user-token resolution for the acting user.
 
         ``NeedsReauthError`` and ``MisconfigError`` cannot be remediated
         by an autonomous run, so they're raised as ``ToolError`` and
@@ -851,7 +1114,7 @@ class AutonomousAgentExecutor:
                     connection=connection,
                     tool_name=remote_tool_name,
                     arguments=tool_call.arguments or {},
-                    caller_user_id=self._caller_user_id,
+                    caller_user_id=self._acting_user_id,
                     db=db,
                 )
         except NeedsReauthError as exc:
@@ -1042,8 +1305,14 @@ class AutonomousAgentExecutor:
         caller: dict[str, Any] | None = None,
         _shared_usage: RunUsage | None = None,
         _shared_budget: AgentRunBudget | None = None,
+        run_user_id: UUID | None,
+        run_as: ActingUser | None,
     ) -> DelegationOutcome:
-        """Run one delegated child with a durable, caller-neutral lifecycle."""
+        """Run one delegated child with a durable, caller-neutral lifecycle.
+
+        The child keeps the delegating run's user (``run_user_id``) and its
+        Run As user (``run_as``).
+        """
         if parent_run_id and await self._check_cancelled(parent_run_id):
             raise ToolError("Agent run was cancelled")
         if self._delegation_depth >= MAX_DELEGATION_DEPTH:
@@ -1078,7 +1347,10 @@ class AutonomousAgentExecutor:
 
         sub_run_id = uuid4()
         delegation_org_id = parent_agent.organization_id
-        if (
+        if delegation_org_id is None and run_as is not None:
+            # A Run As run's children stay in the organization its tools use.
+            delegation_org_id = run_as.organization_id
+        elif (
             delegation_org_id is None
             and caller
             and caller.get("organization_id")
@@ -1103,16 +1375,17 @@ class AutonomousAgentExecutor:
                         parent_agent.id,
                         caller.get("user_id"),
                     )
+            delegated_acting_user_id = UUID(run_as.user_id) if run_as else delegated_caller_user_id
             delegated_caller = (
-                await db.get(User, delegated_caller_user_id)
-                if delegated_caller_user_id is not None
+                await db.get(User, delegated_acting_user_id)
+                if delegated_acting_user_id is not None
                 else None
             )
             if not await caller_can_access_delegated_agent(
                 target_agent,
                 parent_agent,
                 db,
-                caller_user_id=delegated_caller_user_id,
+                caller_user_id=delegated_acting_user_id,
                 caller_is_platform_admin=bool(
                     delegated_caller and delegated_caller.is_superuser
                 ),
@@ -1189,6 +1462,8 @@ class AutonomousAgentExecutor:
                     if parent_run
                     else caller.get("name") if caller else None
                 ),
+                run_user_id=run_user_id,
+                run_as_user_id=UUID(run_as.user_id) if run_as else None,
                 parent_run_id=UUID(parent_run_id) if parent_run_id else None,
                 budget_max_iterations=target_agent.max_iterations,
                 budget_max_tokens=target_agent.max_token_budget,
@@ -1227,6 +1502,8 @@ class AutonomousAgentExecutor:
                     _caller=caller,
                     _shared_usage=shared_usage,
                     _shared_budget=shared_budget,
+                    run_user_id=run_user_id,
+                    run_as=run_as,
                 ),
                 timeout=DELEGATION_TIMEOUT_SECONDS,
             )
@@ -1235,8 +1512,11 @@ class AutonomousAgentExecutor:
                 f"Delegation to '{target_agent.name}' timed out after "
                 f"{DELEGATION_TIMEOUT_SECONDS}s"
             )
+            receipt = format_delegation_timeout_receipt(target_agent.name, sub_executor)
             sub_result = {
-                "output": None,
+                # Durable, sanitized facts from the interrupted subtree are
+                # useful for the run record, but do not change timeout status.
+                "output": receipt,
                 "iterations_used": 0,
                 "tokens_used": 0,
                 "status": "timeout",
@@ -1295,6 +1575,10 @@ class AutonomousAgentExecutor:
         sub_start: float,
     ) -> DelegationOutcome:
         duration_ms = int((time.time() - sub_start) * 1000)
+        # The child's own counter is authoritative even when it timed out or
+        # was cancelled before returning a result.
+        sub_tokens = sub_executor.subtree_tokens
+        self._delegated_tokens += sub_tokens
         status = str(sub_result.get("status") or "completed")
         if status not in {
             "completed",
@@ -1312,13 +1596,24 @@ class AutonomousAgentExecutor:
             status = "failed"
 
         error = self._delegation_error(target_agent.name, status, sub_result)
+        evidence = (
+            None
+            if status == "completed"
+            else _bounded_timeout_receipt(_delegation_evidence_lines(sub_executor))
+        )
+        caller_error = error
+        if status == "timeout":
+            caller_error = format_delegation_timeout_receipt(
+                target_agent.name, sub_executor
+            )
         outcome = DelegationOutcome(
             child_run_id=sub_run_id,
             agent_name=target_agent.name,
             status=status,
             output=sub_result.get("output"),
-            error=error,
+            error=caller_error,
             duration_ms=duration_ms,
+            evidence=evidence,
         )
 
         async with self._session_factory() as db:
@@ -1333,7 +1628,7 @@ class AutonomousAgentExecutor:
                 output if isinstance(output, dict) else {"text": output}
             )
             sub_run_obj.iterations_used = sub_result.get("iterations_used", 0)
-            sub_run_obj.tokens_used = sub_result.get("tokens_used", 0)
+            sub_run_obj.tokens_used = sub_tokens
             sub_run_obj.llm_model = sub_result.get("llm_model")
             sub_run_obj.duration_ms = duration_ms
             sub_run_obj.completed_at = datetime.now(timezone.utc)
@@ -1374,6 +1669,8 @@ class AutonomousAgentExecutor:
         logger.info(
             f"Delegation to '{target_agent.name}' completed with status={status}"
         )
+
+        self._finalized_delegation_outcomes.append(outcome)
         return outcome
 
     @staticmethod
@@ -1411,6 +1708,8 @@ class AutonomousAgentExecutor:
             tool_call=tool_call,
             parent_run_id=self._current_run_id,
             caller=self._caller,
+            run_user_id=self._run_user_id,
+            run_as=self._run_as,
         )
         if not outcome.succeeded:
             raise ToolError(
@@ -1422,7 +1721,7 @@ class AutonomousAgentExecutor:
             return "Delegation completed with no output."
         return str(outcome.output)
 
-    async def _execute_system_tool(self, tool_call: ToolCallRequest, agent: Agent) -> str:
+    async def _execute_system_tool(self, tool_call: ToolCallRequest) -> str:
         """Execute a system tool."""
         from src.services.mcp_server.server import MCPContext, get_system_tool_function
 
@@ -1432,33 +1731,21 @@ class AutonomousAgentExecutor:
 
         try:
             # Brief DB session scoped to the tool call
+            acting = self.acting_user
             async with self._session_factory() as db:
                 context = MCPContext(
-                    user_id=(
-                        str(self._caller_user_id)
-                        if self._caller_user_id
-                        else SYSTEM_USER_ID
-                    ),
+                    user_id=acting.user_id,
                     org_id=(
-                        str(execution_org_id)
-                        if (execution_org_id := self._execution_org_id(agent))
+                        str(acting.organization_id)
+                        if acting.organization_id
                         else None
                     ),
-                    is_platform_admin=self._caller_is_platform_admin,
-                    user_email=(
-                        str(self._caller.get("email"))
-                        if self._caller_user_id
-                        and self._caller
-                        and self._caller.get("email")
-                        else SYSTEM_USER_EMAIL
-                    ),
-                    user_name=(
-                        str(self._caller.get("name"))
-                        if self._caller_user_id
-                        and self._caller
-                        and self._caller.get("name")
-                        else agent.name
-                    ),
+                    is_platform_admin=acting.is_platform_admin,
+                    is_provider_org=acting.is_provider_org,
+                    is_external=acting.is_external,
+                    user_email=acting.email,
+                    user_name=acting.name,
+                    run_user_id=self._run_user_id,
                     session=db,
                 )
 
@@ -1515,6 +1802,7 @@ class AutonomousAgentExecutor:
         output_tokens: int,
         cache_read_tokens: int = 0,
         cache_write_tokens: int = 0,
+        reasoning_tokens: int = 0,
         provider_cost: Decimal | None = None,
         duration_ms: int | None = None,
     ) -> None:
@@ -1528,6 +1816,7 @@ class AutonomousAgentExecutor:
             "output_tokens": output_tokens,
             "cache_read_tokens": cache_read_tokens,
             "cache_write_tokens": cache_write_tokens,
+            "reasoning_tokens": reasoning_tokens,
             "provider_cost": provider_cost,
             "duration_ms": duration_ms,
             "agent_run_id": UUID(run_id),
@@ -1584,10 +1873,10 @@ class AutonomousAgentExecutor:
         # Write to Redis Stream for dual-read (API reads from Redis when run is in-progress)
         if self.redis_client:
             try:
-                stream_key = agent_run_steps_stream_key(str(run_id))
-                await self.redis_client.xadd(
-                    stream_key,
-                    {
+                await append_agent_run_step(
+                    self.redis_client,
+                    run_id=run_id,
+                    fields={
                         "id": step_id,
                         "run_id": str(run_id),
                         "step_number": str(step_number),
@@ -1597,7 +1886,6 @@ class AutonomousAgentExecutor:
                         "duration_ms": str(duration_ms) if duration_ms is not None else "",
                         "created_at": datetime.now(timezone.utc).isoformat(),
                     },
-                    maxlen=1000,
                 )
             except Exception:
                 pass  # Don't fail the run if Redis write fails

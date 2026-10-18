@@ -7,8 +7,9 @@ without a live database.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
@@ -36,8 +37,12 @@ from src.services.devices import (
     rotate_device_key_route,
     set_device_enabled,
     user_can_manage_devices,
+    require_device_manage_permission,
+    require_device_execute_permission,
 )
 from src.core.principal import UserPrincipal
+from src.services.authorization.context import AuthorizationContext, Boundary, BoundaryKind, RoleGrant
+from src.services.authorization.enforce import Caller
 
 
 def make_user(
@@ -74,58 +79,133 @@ def mock_session() -> AsyncMock:
     return session
 
 
+def device_caller(user, *, home=None, base=(), grants=()):
+    return Caller(user, AuthorizationContext(
+        user_id=user.user_id, home_organization_id=home, base_role_id=uuid4(),
+        is_external=False, base_permissions=frozenset(base), role_grants=tuple(grants),
+    ))
+
+
+def device_grant(permissions, org=None, *, kind=BoundaryKind.ORGANIZATION):
+    boundaries = () if kind is None else (Boundary(kind, org),)
+    return RoleGrant(uuid4(), frozenset(permissions), boundaries)
+
+
 class TestPermissionGate:
-    async def test_superuser_bypasses(self):
-        session = mock_session()
-        assert await user_can_manage_devices(session, make_user(is_superuser=True)) is True
+    @pytest.mark.parametrize("manage,execute", [(False, False), (True, False), (False, True), (True, True)])
+    async def test_device_permission_matrix_and_same_org_union(self, manage, execute):
+        org = uuid4()
+        user = make_user(org_id=org)
+        grants = []
+        if manage:
+            grants.append(device_grant({"devices.readwrite"}, org))
+        if execute:
+            grants.append(device_grant({"devices.execute"}, org))
+        caller = device_caller(user, home=org, grants=grants)
+        with patch("src.services.devices.load_caller", new=AsyncMock(return_value=caller)) as load:
+            assert await user_can_manage_devices(mock_session(), user) is manage
+            if manage and execute:
+                assert await require_device_control_key_issue_permission(mock_session(), user) == user
+            else:
+                with pytest.raises(DeviceOperationError) as denied:
+                    await require_device_control_key_issue_permission(mock_session(), user)
+                assert denied.value.code == "permission_denied"
+            assert load.await_count == 2
 
-    async def test_role_permission_grants(self):
-        session = mock_session()
-        result = MagicMock()
-        result.scalars.return_value.all.return_value = [{"can_manage_config": True}]
-        session.execute.return_value = result
+    @pytest.mark.parametrize("kind", [BoundaryKind.ORGANIZATION, BoundaryKind.PLATFORM, BoundaryKind.MANAGED_ORGANIZATIONS, None])
+    async def test_split_org_and_non_org_execution_do_not_issue_keys(self, kind):
+        home, foreign = uuid4(), uuid4()
+        user = make_user(org_id=home)
+        caller = device_caller(user, home=home, grants=[
+            device_grant({"devices.readwrite"}, home),
+            device_grant({"devices.execute"}, foreign if kind == BoundaryKind.ORGANIZATION else None, kind=kind),
+        ])
+        with patch("src.services.devices.load_caller", new=AsyncMock(return_value=caller)):
+            with pytest.raises(DeviceOperationError) as denied:
+                await require_device_control_key_issue_permission(mock_session(), user, home)
+            assert "devices.execute" in denied.value.message
+            with pytest.raises(DeviceOperationError):
+                await require_device_control_key_issue_permission(mock_session(), user, foreign)
+
+    async def test_platform_admin_wildcard_uses_current_rows(self):
+        user = make_user(org_id=uuid4())
+        caller = device_caller(user, grants=[device_grant({"*"}, kind=BoundaryKind.PLATFORM)])
+        with patch("src.services.devices.load_caller", new=AsyncMock(return_value=caller)):
+            principal = await require_device_control_key_issue_permission(mock_session(), user, uuid4())
+        assert principal.is_superuser
+        assert principal.organization_id is None
+
+    @pytest.mark.parametrize("provider,superuser", [(False, True), (True, False), (True, True)])
+    async def test_token_admin_or_provider_claim_cannot_replace_current_grants(self, provider, superuser):
+        user = make_user(org_id=uuid4(), is_superuser=superuser)
+        user.is_provider_org = provider
+        with patch("src.services.devices.load_caller", new=AsyncMock(return_value=device_caller(user, home=user.organization_id))):
+            assert not await user_can_manage_devices(mock_session(), user)
+
+    @pytest.mark.parametrize("admin", [False, True])
+    async def test_inactive_context_cannot_issue_even_with_direct_stale_caller(self, admin):
+        org = uuid4()
+        user = make_user(org_id=org, is_superuser=True)
+        caller = device_caller(user, home=org, grants=[
+            device_grant({"*"}, kind=BoundaryKind.PLATFORM) if admin
+            else device_grant({"devices.readwrite", "devices.execute"}, org),
+        ])
+        caller = replace(caller, ctx=replace(caller.ctx, is_active=False))
+        with patch("src.services.devices.load_caller", new=AsyncMock(return_value=caller)):
+            with pytest.raises(DeviceOperationError):
+                await require_device_control_key_issue_permission(mock_session(), user, org)
+        assert not caller.ctx.is_platform_admin
+
+    async def test_missing_home_never_infers_platform(self):
         user = make_user()
-        assert await user_can_manage_devices(session, user) is True
-        # The permission query joins user_roles — no inline org comparisons.
-        session.execute.assert_awaited_once()
+        caller = device_caller(user, base={"devices.readwrite", "devices.execute"}, grants=[
+            device_grant({"devices.readwrite", "devices.execute"}, kind=BoundaryKind.PLATFORM),
+        ])
+        with patch("src.services.devices.load_caller", new=AsyncMock(return_value=caller)):
+            with pytest.raises(DeviceOperationError):
+                await require_device_control_key_issue_permission(mock_session(), user)
 
-    async def test_missing_permission_denies(self):
-        session = mock_session()
-        result = MagicMock()
-        result.scalars.return_value.all.return_value = [{}, {"can_manage_config": False}]
-        session.execute.return_value = result
-        assert await user_can_manage_devices(session, make_user()) is False
+    async def test_current_home_replaces_stale_token_scope(self):
+        current_home = uuid4()
+        user = make_user(org_id=uuid4(), is_superuser=True)
+        user.is_provider_org = True
+        caller = device_caller(user, home=current_home, base={"devices.readwrite"})
+        with patch("src.services.devices.load_caller", new=AsyncMock(return_value=caller)):
+            principal = await require_device_manage_permission(mock_session(), user)
+        assert principal.organization_id == current_home
+        assert not principal.is_superuser
+        assert not principal.is_provider_org
+        assert user.organization_id != current_home
 
-    async def test_control_key_issue_requires_management_and_execution(self):
-        session = mock_session()
-        manager = MagicMock()
-        manager.scalars.return_value.all.return_value = [{"can_manage_config": True}]
-        no_execution = MagicMock()
-        no_execution.scalars.return_value.all.return_value = [
-            {"can_execute_devices": False}
-        ]
-        session.execute.side_effect = [manager, no_execution]
+    async def test_revocation_is_not_hidden_by_role_session_cache(self):
+        org = uuid4()
+        user = make_user(org_id=org)
+        user.roles = ["Platform Admin"]
+        user.role_ids = [uuid4()]
+        before = device_caller(user, home=org, grants=[device_grant({"devices.execute"}, org)])
+        after = device_caller(user, home=org)
+        with patch("src.services.devices.load_caller", new=AsyncMock(side_effect=[before, after])) as load:
+            await require_device_execute_permission(mock_session(), user)
+            with pytest.raises(DeviceOperationError):
+                await require_device_execute_permission(mock_session(), user)
+            assert load.await_count == 2
 
-        with pytest.raises(DeviceOperationError) as exc:
-            await require_device_control_key_issue_permission(session, make_user())
+    @pytest.mark.parametrize("lane", ["embed", "engine_execution_id", "service_id"])
+    async def test_non_person_lanes_do_not_borrow_user_grants(self, lane):
+        org = uuid4()
+        user = make_user(org_id=org)
+        setattr(user, lane, True if lane == "embed" else uuid4())
+        caller = device_caller(user, home=org, base={"devices.readwrite", "devices.execute"})
+        with patch("src.services.devices.load_caller", new=AsyncMock(return_value=caller)):
+            with pytest.raises(DeviceOperationError):
+                await require_device_control_key_issue_permission(mock_session(), user)
 
-        assert exc.value.code == "permission_denied"
-        assert "can_execute_devices" in exc.value.message
-        assert session.execute.await_count == 2
-
-    async def test_control_key_issue_allows_both_permissions(self):
-        session = mock_session()
-        manager = MagicMock()
-        manager.scalars.return_value.all.return_value = [{"can_manage_config": True}]
-        executor = MagicMock()
-        executor.scalars.return_value.all.return_value = [
-            {"can_execute_devices": True}
-        ]
-        session.execute.side_effect = [manager, executor]
-
-        await require_device_control_key_issue_permission(session, make_user())
-
-        assert session.execute.await_count == 2
+    async def test_existing_explicit_engine_superuser_lane(self):
+        user = make_user(is_superuser=True)
+        user.is_engine_token = True
+        user.engine_execution_id = uuid4()
+        with patch("src.services.devices.load_caller", new=AsyncMock(return_value=Caller(user, None))):
+            assert await user_can_manage_devices(mock_session(), user)
 
 
 class TestCreateDevice:
@@ -360,6 +440,19 @@ class TestOrgScopedStatements:
         stmt = list_devices_stmt(user)
         rendered = str(stmt)
         assert "WHERE devices.organization_id" in rendered
+
+    def test_ordinary_scope_never_cascades_to_global(self):
+        org = uuid4()
+        user = make_user(org_id=org)
+        user.is_provider_org = True
+        stmt = list_devices_stmt(user, str(uuid4()))
+        assert "IS NULL" not in str(stmt)
+        assert stmt.compile().params["organization_id_1"] == org
+
+    def test_missing_home_scope_is_empty_instead_of_global(self):
+        stmt = list_devices_stmt(make_user())
+        assert "false" in str(stmt).lower()
+        assert "IS NULL" not in str(stmt)
 
     def test_superuser_unscoped_statement(self):
         user = make_user(is_superuser=True, org_id=None)

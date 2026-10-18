@@ -14,8 +14,8 @@ REPO_ROOT = API_ROOT.parent
 
 def test_every_observed_surface_is_classified_with_a_reason() -> None:
     inventory = build_operation_inventory(app, REPO_ROOT)
-    # MTG R1a snapshot: existing tool names and authorization are unchanged.
-    # REST-only MTG identities carry no new scope/capability decisions.
+    # Combined MTG/upstream surface snapshot. Refresh against the merged application
+    # after route, CLI and MCP integration; stale values remain a blocking gate.
     assert inventory["counts"] == {
         "cli": 158,
         "manifest": 16,
@@ -28,6 +28,20 @@ def test_every_observed_surface_is_classified_with_a_reason() -> None:
         for row in rows:
             assert row["status"]
             assert row["reason"]
+
+
+def test_organization_listing_is_available_to_application_sdks() -> None:
+    inventory = build_operation_inventory(app, REPO_ROOT)
+    operation = next(
+        row for row in inventory["catalog_operations"]
+        if row["operation"]["operation_id"] == "organizations.list"
+    )
+
+    assert operation["observed"]["sdk"] == {
+        "status": "exact_parity",
+        "binding": {"method": "GET", "path": "/api/organizations"},
+    }
+    assert "sdk" not in operation["operation"]["exclusions"]
 
 
 def test_documentation_mcp_tool_is_dispositioned_not_pending() -> None:
@@ -102,3 +116,28 @@ def test_inventory_walks_included_routers_and_counts_hidden_multi_method_routes(
         {"method": method, "path": "/api/parent/nested/{item_path}", "operation_id": "inventory.test"}
         for method in ("GET", "POST")
     ]
+
+
+def test_operation_reference_marks_scopes_that_only_widen() -> None:
+    import importlib.util
+
+    generator_path = API_ROOT / "scripts" / "operation_catalog" / "generate.py"
+    spec = importlib.util.spec_from_file_location(
+        "operation_catalog_generate", generator_path
+    )
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    rows = {
+        line.split(" | ")[0].strip("| `"): line
+        for line in module.render_operations().splitlines()
+        if line.startswith("| `")
+    }
+    assert rows["platform.jobs.get"].endswith(
+        "| `platformjobs.read.all` (only for other people's items) |"
+    )
+    assert rows["agents.create"].endswith(
+        "| `agents.readwrite` (not for your own private agents) |"
+    )
+    assert rows["tables.list"].endswith("| `tables.read` |")

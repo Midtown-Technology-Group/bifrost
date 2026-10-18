@@ -418,9 +418,9 @@ async def test_accounting_waits_for_admission_selected_before_pointer_activation
             if dispatch_path == "async":
                 return await async_executor._persist_execution_pin(caller, str(execution_id),
                     str(f.workflow_id), {}, None, form_id=None, sync=False, api_key_id=None, file_path=None)
-            from src.routers.workflows import _insert_scheduled_execution
+            from shared.sdk_workflow_execution import insert_scheduled_execution
             async with async_session_factory() as db:
-                return await _insert_scheduled_execution(db=db, workflow_id=f.workflow_id,
+                return await insert_scheduled_execution(db=db, workflow_id=f.workflow_id,
                     workflow_name="Admission fixture", parameters={}, scheduled_at=datetime.now(UTC),
                     organization_id=PROVIDER_ORG_ID, executed_by=platform_admin.user_id,
                     executed_by_name=caller.name, form_id=None, is_platform_admin=True,

@@ -430,9 +430,6 @@ class TestMetrics:
 
     def test_get_metrics_unauthenticated(self, e2e_client):
         """Unauthenticated request should fail."""
-        # Clear any cookies from previous authenticated tests
-        # (e2e_client is session-scoped and may have access_token cookie)
-        e2e_client.cookies.clear()
         response = e2e_client.get(
             "/api/metrics",
             headers={},  # No auth header
@@ -678,27 +675,15 @@ class TestMetrics:
             )
             for offset, status in enumerate(previous_statuses, start=1)
         )
-        executions.extend(
-            [
-                Execution(
-                    workflow_name=workflow_name,
-                    status=ExecutionStatus.RUNNING,
-                    started_at=now - timedelta(seconds=1),
-                    executed_by=platform_admin.user_id,
-                    executed_by_name=platform_admin.name,
-                    organization_id=organization.id,
-                ),
-                Execution(
-                    workflow_name=workflow_name,
-                    status=ExecutionStatus.SUCCESS,
-                    started_at=now - timedelta(seconds=1),
-                    completed_at=now,
-                    executed_by=platform_admin.user_id,
-                    executed_by_name=platform_admin.name,
-                    organization_id=organization.id,
-                    is_local_execution=True,
-                ),
-            ]
+        executions.append(
+            Execution(
+                workflow_name=workflow_name,
+                status=ExecutionStatus.RUNNING,
+                started_at=now - timedelta(seconds=1),
+                executed_by=platform_admin.user_id,
+                executed_by_name=platform_admin.name,
+                organization_id=organization.id,
+            )
         )
         db_session.add_all(executions)
         await db_session.commit()
@@ -736,12 +721,15 @@ class TestMetrics:
     async def test_execution_timeseries_matches_history_visibility(
         self,
         e2e_client,
-        org1_user,
         platform_admin,
         org1,
         db_session,
     ):
-        """Org users only aggregate their own non-local executions."""
+        """Org users only aggregate their own non-local executions.
+
+        Uses a person of its own: the count covers every run the user made in
+        the window, so a shared fixture user would count other tests' runs.
+        """
         from datetime import datetime, timedelta, timezone
         from uuid import UUID, uuid4
 
@@ -749,6 +737,26 @@ class TestMetrics:
 
         from src.models.enums import ExecutionStatus
         from src.models.orm.executions import Execution
+        from tests.e2e.fixtures.setup import _register_and_authenticate_user
+        from tests.e2e.fixtures.users import E2EUser
+
+        tag = uuid4().hex[:8]
+        created = e2e_client.post(
+            "/api/users",
+            headers=platform_admin.headers,
+            json={"email": f"timeseries-{tag}@example.com", "name": "Timeseries User", "organization_id": org1["id"]},
+        )
+        assert created.status_code == 201, created.text
+        org1_user = _register_and_authenticate_user(
+            E2EUser(
+                email=f"timeseries-{tag}@example.com",
+                password=f"Ts-{tag}-Pass1!",
+                name="Timeseries User",
+                organization_id=UUID(org1["id"]),
+            ),
+            skip_registration=False,
+        )
+        org1_user.user_id = UUID(created.json()["id"])
 
         workflow_name = f"timeseries-scope-{uuid4()}"
         now = datetime.now(timezone.utc)
@@ -792,6 +800,7 @@ class TestMetrics:
                 delete(Execution).where(Execution.workflow_name == workflow_name)
             )
             await db_session.commit()
+            e2e_client.delete(f"/api/users/{org1_user.user_id}", headers=platform_admin.headers)
 
 
 # TestLogs removed: the /api/logs stub endpoint was replaced by /api/audit.

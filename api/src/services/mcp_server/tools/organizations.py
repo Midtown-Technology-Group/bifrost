@@ -21,11 +21,6 @@ from src.services.mcp_server.tools._http_bridge import call_rest, rest_client
 logger = logging.getLogger(__name__)
 
 
-def _require_platform_admin(context: Any) -> ToolResult | None:
-    if not getattr(context, "is_platform_admin", False):
-        return error_result("Platform administrator privileges are required for organization tools.")
-    return None
-
 
 def _ref_error_payload(exc: Exception) -> dict[str, Any]:
     from bifrost.refs import AmbiguousRefError, RefNotFoundError
@@ -37,15 +32,13 @@ def _ref_error_payload(exc: Exception) -> dict[str, Any]:
     return {"detail": str(exc)}
 
 
-async def list_organizations(context: Any) -> ToolResult:
+async def bifrost_organization_list(context: Any) -> ToolResult:
     """List all organizations — thin wrapper over ``GET /api/organizations``."""
-    logger.info("MCP list_organizations called")
-    if denied := _require_platform_admin(context):
-        return denied
+    logger.info("MCP bifrost_organization_list called")
 
     status_code, resp = await call_rest(context, "GET", "/api/organizations")
     if status_code != 200:
-        return error_result(f"list_organizations failed: HTTP {status_code}", {"body": resp})
+        return error_result(f"bifrost_organization_list failed: HTTP {status_code}", {"body": resp})
 
     orgs = resp if isinstance(resp, list) else []
     orgs_data = [
@@ -61,7 +54,7 @@ async def list_organizations(context: Any) -> ToolResult:
     return success_result(display_text, {"organizations": orgs_data, "count": len(orgs_data)})
 
 
-async def get_organization(
+async def bifrost_organization_get(
     context: Any,
     organization_id: str | None = None,
     domain: str | None = None,
@@ -72,9 +65,7 @@ async def get_organization(
     Domain lookup filters the thin-wrapped list result (REST has no
     by-domain route) — both paths inherit REST's platform-admin gate.
     """
-    logger.info(f"MCP get_organization called with id={organization_id}, domain={domain}")
-    if denied := _require_platform_admin(context):
-        return denied
+    logger.info(f"MCP bifrost_organization_get called with id={organization_id}, domain={domain}")
 
     if not organization_id and not domain:
         return error_result("Either organization_id or domain is required")
@@ -93,7 +84,7 @@ async def get_organization(
     else:
         status_code, resp = await call_rest(context, "GET", "/api/organizations")
         if status_code != 200:
-            return error_result(f"get_organization failed: HTTP {status_code}", {"body": resp})
+            return error_result(f"bifrost_organization_get failed: HTTP {status_code}", {"body": resp})
         org = next((o for o in (resp or []) if o.get("domain") == domain), None)
         if org is None:
             return error_result(f"Organization not found: {domain}")
@@ -102,7 +93,7 @@ async def get_organization(
     return success_result(display_text, org)
 
 
-async def create_organization(
+async def bifrost_organization_create(
     context: Any,
     name: str,
     domain: str | None = None,
@@ -117,9 +108,7 @@ async def create_organization(
     Returns:
         ToolResult with created organization details
     """
-    logger.info(f"MCP create_organization called with name={name}")
-    if denied := _require_platform_admin(context):
-        return denied
+    logger.info(f"MCP bifrost_organization_create called with name={name}")
 
     if not name:
         return error_result("name is required")
@@ -135,7 +124,7 @@ async def create_organization(
         context, "POST", "/api/organizations", json_body={"name": name, "domain": domain}
     )
     if status_code not in (200, 201):
-        return error_result(f"create_organization failed: HTTP {status_code}", {"body": resp})
+        return error_result(f"bifrost_organization_create failed: HTTP {status_code}", {"body": resp})
 
     org = resp if isinstance(resp, dict) else {}
     display_text = f"Created organization: {org.get('name', name)}"
@@ -147,7 +136,7 @@ async def create_organization(
 # ---------------------------------------------------------------------------
 
 
-async def update_organization(
+async def bifrost_organization_update(
     context: Any,
     organization_ref: str,
     name: str | None = None,
@@ -160,9 +149,6 @@ async def update_organization(
     :data:`bifrost.dto_flags.DTO_EXCLUDES` — ``domain`` is
     auto-provisioning policy, ``settings`` is a UI-managed JSON blob).
     """
-    if denied := _require_platform_admin(context):
-        return denied
-
     if not organization_ref:
         return error_result("organization_ref is required")
 
@@ -197,7 +183,7 @@ async def update_organization(
     )
     if status_code != 200:
         return error_result(
-            f"update_organization failed: HTTP {status_code}", {"body": resp}
+            f"bifrost_organization_update failed: HTTP {status_code}", {"body": resp}
         )
     return success_result(
         f"Updated organization {org_uuid}",
@@ -205,15 +191,12 @@ async def update_organization(
     )
 
 
-async def delete_organization(context: Any, organization_ref: str) -> ToolResult:
+async def bifrost_organization_delete(context: Any, organization_ref: str) -> ToolResult:
     """Delete an organization — ``DELETE /api/organizations/{uuid}``.
 
     ``organization_ref`` is a UUID or organization name. Soft-delete
     semantics are owned by the REST endpoint.
     """
-    if denied := _require_platform_admin(context):
-        return denied
-
     if not organization_ref:
         return error_result("organization_ref is required")
 
@@ -234,18 +217,18 @@ async def delete_organization(context: Any, organization_ref: str) -> ToolResult
     )
     if status_code not in (200, 204):
         return error_result(
-            f"delete_organization failed: HTTP {status_code}", {"body": resp}
+            f"bifrost_organization_delete failed: HTTP {status_code}", {"body": resp}
         )
     return success_result(f"Deleted organization {org_uuid}", {"deleted": org_uuid})
 
 
 # Tool metadata for registration
 TOOLS = [
-    ("list_organizations", "List Organizations", "List all organizations in the platform."),
-    ("get_organization", "Get Organization", "Get organization details by ID or domain."),
-    ("create_organization", "Create Organization", "Create a new organization."),
-    ("update_organization", "Update Organization", "Update an organization (name, is_active)."),
-    ("delete_organization", "Delete Organization", "Delete (soft-delete) an organization."),
+    ("bifrost_organization_list", "List Organizations", "List all organizations in the platform."),
+    ("bifrost_organization_get", "Get Organization", "Get organization details by ID or domain."),
+    ("bifrost_organization_create", "Create Organization", "Create a new organization."),
+    ("bifrost_organization_update", "Update Organization", "Update an organization (name, is_active)."),
+    ("bifrost_organization_delete", "Delete Organization", "Delete (soft-delete) an organization."),
 ]
 
 
@@ -254,11 +237,11 @@ def register_tools(mcp: Any, get_context_fn: Any) -> None:
     from src.services.mcp_server.generators.fastmcp_generator import register_tool_with_context
 
     tool_funcs = {
-        "list_organizations": list_organizations,
-        "get_organization": get_organization,
-        "create_organization": create_organization,
-        "update_organization": update_organization,
-        "delete_organization": delete_organization,
+        "bifrost_organization_list": bifrost_organization_list,
+        "bifrost_organization_get": bifrost_organization_get,
+        "bifrost_organization_create": bifrost_organization_create,
+        "bifrost_organization_update": bifrost_organization_update,
+        "bifrost_organization_delete": bifrost_organization_delete,
     }
 
     for tool_id, name, description in TOOLS:

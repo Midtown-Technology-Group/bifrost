@@ -1,17 +1,24 @@
-"""MCP direct-ORM mutation tools refuse solution-managed entities with the
-locked read-only message (criterion 6, MCP surface).
+"""MCP mutation tools refuse solution-managed entities with the locked
+read-only message (criterion 6, MCP surface).
 
-The MCP tools for tables/agents/forms/events mutate the ORM object directly
-(e.g. ``table.name = ...``) and rely on the session-wide before_flush backstop
-(``install_solution_write_guard``), which fires on AsyncSession flush. The tool's
-``except Exception`` wraps the raised ``SolutionManagedWriteError`` — whose
-message IS the locked wording — into a clean ``error_result``. So an MCP edit of
-a managed entity returns the same read-only message the REST guard returns, not
-a generic 500.
+``tables``, ``agents``, and ``forms`` are now thin REST wrappers (RBAC R1b
+batches 2/4) â€” the guard lives exclusively in the REST handler
+(``assert_not_solution_managed`` / ``assert_entity_id_not_solution_managed``),
+and these tests just assert the wrapper forwards that REST failure cleanly
+(mocking ``call_rest``) rather than masking it as a generic error.
+
+The remaining (not yet converted) MCP tools below mutate the ORM object
+directly (e.g. ``table.name = ...``) and rely on the session-wide
+before_flush backstop (``install_solution_write_guard``), which fires on
+AsyncSession flush. Their ``except Exception`` wraps the raised
+``SolutionManagedWriteError`` â€” whose message IS the locked wording â€” into a
+clean ``error_result``. So an MCP edit of a managed entity returns the same
+read-only message the REST guard returns, not a generic 500.
 """
 from __future__ import annotations
 
 import uuid
+from contextlib import asynccontextmanager
 from types import SimpleNamespace
 
 import pytest
@@ -30,42 +37,39 @@ def _guard_installed():
     yield
 
 
-async def _managed_table(db) -> uuid.UUID:
-    from src.models.orm.solutions import Solution
-    from src.models.orm.tables import Table
-
-    sol = Solution(id=uuid.uuid4(), slug=f"mcp-{uuid.uuid4().hex[:8]}", name="MCP", organization_id=None)
-    db.add(sol)
-    await db.flush()
-    tid = uuid.uuid4()
-    db.add(Table(
-        id=tid, name=f"t_{uuid.uuid4().hex[:8]}", organization_id=None,
-        solution_id=sol.id, schema={"columns": []}, access={"policies": []},
-    ))
-    await db.flush()
-    return tid
-
-
-async def test_mcp_update_table_refuses_managed(db_session, monkeypatch):
-    from contextlib import asynccontextmanager
-
+async def test_mcp_update_table_refuses_managed(monkeypatch):
+    """``bifrost_table_update`` is a thin REST wrapper (no ORM access at all â€”
+    enforced structurally by ``test_mcp_thin_wrapper.py``). The solution-managed
+    guard lives exclusively in the REST handler (``assert_entity_id_not_solution_managed``
+    in ``src/routers/tables.py``, 409). This test only asserts the wrapper
+    forwards that REST failure cleanly.
+    """
     from src.services.mcp_server.tools import tables as mcp_tables
 
-    tid = await _managed_table(db_session)
+    tid = uuid.uuid4()
 
-    # Point the MCP tool's db at this test session (it normally opens its own).
-    @asynccontextmanager
-    async def _fake_tool_db(_context):
-        yield db_session
+    async def _fake_call_rest(_context, method, path, **_kwargs):
+        assert method == "PATCH"
+        assert path == f"/api/tables/{tid}"
+        return 409, {"detail": SOLUTION_MANAGED_MESSAGE}
 
-    monkeypatch.setattr(mcp_tables, "get_tool_db", _fake_tool_db)
+    monkeypatch.setattr(mcp_tables, "call_rest", _fake_call_rest)
+
+    async def _fake_resolve_ref(_context, kind, value):
+        assert kind == "table"
+        return value
+
+    monkeypatch.setattr(mcp_tables, "_resolve_ref", _fake_resolve_ref)
+
+    async def _fake_assemble(_context, fields, *, is_update, scope):
+        return {k: v for k, v in fields.items() if v is not None}
+
+    monkeypatch.setattr(mcp_tables, "_assemble_table_body", _fake_assemble)
 
     context = SimpleNamespace(is_platform_admin=True, org_id=None, user_id=uuid.uuid4())
-    result = await mcp_tables.update_table(context, table_id=str(tid), name="hijacked-via-mcp")
+    result = await mcp_tables.bifrost_table_update(context, table_ref=str(tid), name="hijacked-via-mcp")
 
-    # The tool returns an error result carrying the locked read-only message.
-    payload = result.model_dump() if hasattr(result, "model_dump") else result
-    text = str(payload)
+    text = str(result.model_dump() if hasattr(result, "model_dump") else result)
     assert SOLUTION_MANAGED_MESSAGE in text, text
 
 
@@ -99,38 +103,6 @@ def _fake_db_cm(db_session):
 
     return _cm
 
-
-async def test_mcp_publish_app_refuses_managed_without_s3_write(db_session, monkeypatch):
-    """publish_app delegates the managed-app guard to canonical REST."""
-    from src.services.app_storage import AppStorageService
-    from src.services.mcp_server.tools import apps as mcp_apps
-
-    aid = await _managed_app(db_session, repo_path="apps/managed-pub")
-
-    # Sentinel: publish() (the preview→live S3 copy) must never be invoked.
-    published = {"called": False}
-
-    async def _boom_publish(self, app_id):  # noqa: ANN001
-        published["called"] = True
-        raise AssertionError("S3 publish must not run for a solution-managed app")
-
-    monkeypatch.setattr(AppStorageService, "publish", _boom_publish)
-
-    async def _guarded_rest(context, method, path, *, json_body=None):  # noqa: ANN001
-        assert method == "POST"
-        assert path == f"/api/applications/{aid}/publish"
-        assert json_body == {}
-        return 409, {"detail": SOLUTION_MANAGED_MESSAGE}
-
-    monkeypatch.setattr(mcp_apps, "call_rest", _guarded_rest)
-
-    context = SimpleNamespace(is_platform_admin=True, org_id=None, user_id=uuid.uuid4())
-    result = await mcp_apps.publish_app(context, app_id=str(aid))
-
-    payload = result.model_dump() if hasattr(result, "model_dump") else result
-    text = str(payload)
-    assert SOLUTION_MANAGED_MESSAGE in text, text
-    assert published["called"] is False
 
 
 async def test_mcp_push_files_refuses_managed_without_s3_write(db_session, monkeypatch):
@@ -225,7 +197,7 @@ async def test_mcp_push_files_delete_sweep_refuses_managed(db_session, monkeypat
 
 async def test_mcp_push_files_delete_sweep_refuses_parent_of_managed(db_session, monkeypatch):
     """A delete prefix that CONTAINS a managed prefix (e.g. 'apps/' sweeping
-    'apps/managed-...') must also be refused — the sweep would touch managed files."""
+    'apps/managed-...') must also be refused â€” the sweep would touch managed files."""
     from src.services.file_storage import FileStorageService
     from src.services.mcp_server.tools import apps as mcp_apps
 
@@ -255,7 +227,7 @@ async def test_mcp_push_files_delete_sweep_refuses_parent_of_managed(db_session,
 
 
 async def test_mcp_push_files_delete_sweep_allows_unmanaged(db_session, monkeypatch):
-    """A delete-sweep under a NON-managed prefix still deletes normally — the
+    """A delete-sweep under a NON-managed prefix still deletes normally â€” the
     guard must not over-block."""
     from src.models.orm.file_index import FileIndex
     from src.services.file_storage import FileStorageService
@@ -294,7 +266,7 @@ async def test_mcp_push_files_delete_sweep_allows_unmanaged(db_session, monkeypa
 
 
 async def test_mcp_push_files_allows_unmanaged(db_session, monkeypatch):
-    """An ad-hoc (non-managed) app's files still push — the guard is a no-op for them."""
+    """An ad-hoc (non-managed) app's files still push â€” the guard is a no-op for them."""
     from src.services.app_storage import AppStorageService
     from src.services.file_storage import FileStorageService
     from src.services.mcp_server.tools import apps as mcp_apps
@@ -325,7 +297,7 @@ async def test_mcp_push_files_allows_unmanaged(db_session, monkeypatch):
 
 
 async def _two_install_apps(db, slug: str) -> tuple[uuid.UUID, uuid.UUID, uuid.UUID, uuid.UUID]:
-    """Two solution-managed Application rows sharing one slug across two orgs —
+    """Two solution-managed Application rows sharing one slug across two orgs â€”
     the multi-install shape (criterion 9, permitted by the per-install partial
     unique indexes). Returns (org_a_id, org_b_id, app_a_id, app_b_id)."""
     from src.models.orm.applications import Application
@@ -360,107 +332,121 @@ async def _two_install_apps(db, slug: str) -> tuple[uuid.UUID, uuid.UUID, uuid.U
     return org_a.id, org_b.id, app_ids[0], app_ids[1]
 
 
-async def test_mcp_get_app_multi_install_slug_does_not_error(db_session, monkeypatch):
-    """A slug held by two installs must resolve to ONE app for a platform admin
-    (prefer caller-org row), not blow up with MultipleResultsFound."""
-    from src.services.app_storage import AppStorageService
-    from src.services.mcp_server.tools import apps as mcp_apps
-
-    slug = f"multi-{uuid.uuid4().hex[:8]}"
-    org_a, _org_b, app_a, app_b = await _two_install_apps(db_session, slug)
-
-    monkeypatch.setattr(mcp_apps, "get_tool_db", _fake_db_cm(db_session))
-
-    async def _no_files(self, app_id, target):  # noqa: ANN001
-        return []
-
-    monkeypatch.setattr(AppStorageService, "list_files", _no_files)
-
-    context = SimpleNamespace(is_platform_admin=True, org_id=org_a, user_id=uuid.uuid4())
-    result = await mcp_apps.get_app(context, app_slug=slug)
-
-    text = str(result.model_dump() if hasattr(result, "model_dump") else result)
-    assert "Multiple rows" not in text, text
-    assert "Error getting app" not in text, text
-    # Caller-org row preferred over the other install's row.
-    assert str(app_a) in text, text
-    assert str(app_b) not in text, text
 
 
-async def test_mcp_get_app_dependencies_multi_install_slug_does_not_error(db_session, monkeypatch):
-    """Same multi-install seed for get_app_dependencies: one deterministic app,
-    no MultipleResultsFound."""
-    from src.services.mcp_server.tools import apps as mcp_apps
 
-    slug = f"multi-{uuid.uuid4().hex[:8]}"
-    org_a, _org_b, app_a, app_b = await _two_install_apps(db_session, slug)
+async def test_mcp_update_form_forwards_managed_refusal_from_rest(monkeypatch):
+    """``bifrost_form_update`` is a thin REST wrapper (no ORM access at all â€”
+    enforced structurally by ``test_mcp_thin_wrapper.py``). The solution-managed
+    guard now lives exclusively in the REST handler (``assert_not_solution_managed``
+    in ``src/routers/forms.py``, 409). This test only asserts the wrapper forwards
+    that REST failure cleanly instead of masking it as a generic error.
+    """
+    from src.services.mcp_server.tools import forms as mcp_forms
 
-    monkeypatch.setattr(mcp_apps, "get_tool_db", _fake_db_cm(db_session))
+    fid = uuid.uuid4()
 
-    context = SimpleNamespace(is_platform_admin=True, org_id=org_a, user_id=uuid.uuid4())
-    result = await mcp_apps.get_app_dependencies(context, app_slug=slug)
+    async def _fake_call_rest(_context, method, path, **_kwargs):
+        assert method == "PATCH"
+        assert path == f"/api/forms/{fid}"
+        return 409, {"detail": SOLUTION_MANAGED_MESSAGE}
+
+    monkeypatch.setattr(mcp_forms, "call_rest", _fake_call_rest)
+
+    async def _fake_resolve_ref(_context, kind, value):
+        assert kind == "form"
+        return value
+
+    monkeypatch.setattr(mcp_forms, "_resolve_ref", _fake_resolve_ref)
+
+    async def _fake_assemble(_context, fields, *, is_update, scope):
+        return {k: v for k, v in fields.items() if v is not None}
+
+    monkeypatch.setattr(mcp_forms, "_assemble_form_body", _fake_assemble)
+
+    context = SimpleNamespace(is_platform_admin=True, org_id=None, user_id=uuid.uuid4())
+    result = await mcp_forms.bifrost_form_update(context, form_ref=str(fid), name="new name")
 
     text = str(result.model_dump() if hasattr(result, "model_dump") else result)
-    assert "Multiple rows" not in text, text
-    assert "Error getting dependencies" not in text, text
-    assert str(app_a) in text, text
-    assert str(app_b) not in text, text
+    assert SOLUTION_MANAGED_MESSAGE in text, text
 
 
-async def test_mcp_create_app_allows_repo_slug_shadowing_solution(db_session, monkeypatch):
-    """A SOLUTION-managed row (another org's install) holding slug X must not
-    block create_app(slug=X) — the partial unique index only constrains the
-    solution_id IS NULL namespace."""
-    from src.models.orm.organizations import Organization
-    from src.models.orm.solutions import Solution
-    from src.models.orm.applications import Application
-    from src.services.file_storage import FileStorageService
-    from src.services.mcp_server.tools import apps as mcp_apps
+# â”€â”€ audit M-MCP: legacy tools that lacked the EARLY guard â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# These returned the locked message only via the before_flush backstop (a raised
+# SolutionManagedWriteError wrapped into error_result â€” but a 500-shaped path
+# that leaves the shared session dirty). An explicit early guard makes them
+# refuse cleanly BEFORE mutating. The tests assert the locked message AND that
+# the entity was not mutated.
 
-    slug = f"shadow-{uuid.uuid4().hex[:8]}"
 
-    org_a = Organization(id=uuid.uuid4(), name=f"A-{uuid.uuid4().hex[:6]}", created_by="dev@x")
-    org_b = Organization(id=uuid.uuid4(), name=f"B-{uuid.uuid4().hex[:6]}", created_by="dev@x")
-    db_session.add_all([org_a, org_b])
-    await db_session.flush()
-    sol = Solution(
-        id=uuid.uuid4(), slug=f"mcp-{uuid.uuid4().hex[:8]}", name="MCP",
-        organization_id=org_b.id,
-    )
-    db_session.add(sol)
-    await db_session.flush()
-    db_session.add(Application(
-        id=uuid.uuid4(),
-        name=f"app_{uuid.uuid4().hex[:8]}",
-        slug=slug,
-        organization_id=org_b.id,
-        solution_id=sol.id,
-        repo_path=f"solutions/{sol.slug}/apps/{slug}",
-        created_by="system",
-    ))
-    await db_session.flush()
+async def test_mcp_delete_table_refuses_managed(monkeypatch):
+    """``bifrost_table_delete`` is a thin REST wrapper; see the update test
+    above for why the guard is only asserted at the REST boundary now."""
+    from src.services.mcp_server.tools import tables as mcp_tables
 
-    monkeypatch.setattr(mcp_apps, "get_tool_db", _fake_db_cm(db_session))
+    tid = uuid.uuid4()
 
-    async def _noop_write(self, *args, **kwargs):  # noqa: ANN001
-        pass
+    async def _fake_call_rest(_context, method, path, **_kwargs):
+        assert method == "DELETE"
+        assert path == f"/api/tables/{tid}"
+        return 409, {"detail": SOLUTION_MANAGED_MESSAGE}
 
-    monkeypatch.setattr(FileStorageService, "write_file", _noop_write)
+    monkeypatch.setattr(mcp_tables, "call_rest", _fake_call_rest)
 
-    context = SimpleNamespace(
-        is_platform_admin=True, org_id=org_a.id, user_id=uuid.uuid4()
-    )
-    result = await mcp_apps.create_app(
-        context,
-        name=f"Shadow {slug}",
-        slug=slug,
-        scope="organization",
-        organization_id=str(org_a.id),
-    )
+    async def _fake_resolve_ref(_context, kind, value):
+        assert kind == "table"
+        return value
+
+    monkeypatch.setattr(mcp_tables, "_resolve_ref", _fake_resolve_ref)
+
+    context = SimpleNamespace(is_platform_admin=True, org_id=None, user_id=uuid.uuid4())
+    result = await mcp_tables.bifrost_table_delete(context, table_ref=str(tid))
 
     text = str(result.model_dump() if hasattr(result, "model_dump") else result)
-    assert "already exists" not in text, text
-    assert "Created application" in text, text
+    assert SOLUTION_MANAGED_MESSAGE in text, text
+
+
+# â”€â”€ Apps: thin REST wrappers forward REST's Solution-managed refusal â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# The guard lives in the REST handlers (e2e: tests/e2e/platform/
+# test_solution_readonly_full.py covers update/publish/replace/rollback/files/
+# dependencies). Multi-install slug resolution is the shared
+# ApplicationRepository.get_by_slug_global used by GET /api/applications/{slug}.
+
+
+@asynccontextmanager
+async def _no_http(_context):  # noqa: ANN001
+    yield object()
+
+
+@pytest.mark.parametrize(
+    ("tool", "method", "path_suffix", "kwargs"),
+    [
+        ("bifrost_app_update", "PATCH", "", {"name": "renamed"}),
+        ("bifrost_app_publish", "POST", "/publish", {}),
+        ("bifrost_app_dependencies_update", "PUT", "/dependencies", {"dependencies": {"left-pad": "1.0.0"}}),
+    ],
+)
+async def test_mcp_app_write_forwards_managed_refusal_from_rest(
+    monkeypatch, tool, method, path_suffix, kwargs
+):
+    from src.services.mcp_server.tools import apps as mcp_apps
+
+    app_id = str(uuid.uuid4())
+
+    async def _fake_call_rest(_context, m, path, **_kwargs):
+        assert m == method
+        assert path == f"/api/applications/{app_id}{path_suffix}"
+        return 409, {"detail": SOLUTION_MANAGED_MESSAGE}
+
+    monkeypatch.setattr(mcp_apps, "call_rest", _fake_call_rest)
+    monkeypatch.setattr(mcp_apps, "rest_client", _no_http)
+
+    context = SimpleNamespace(is_platform_admin=True, org_id=None, user_id=uuid.uuid4())
+    ref_kw = "app_ref" if tool == "bifrost_app_update" else "app_id"
+    result = await getattr(mcp_apps, tool)(context, **{ref_kw: app_id}, **kwargs)
+
+    text = str(result.model_dump() if hasattr(result, "model_dump") else result)
+    assert SOLUTION_MANAGED_MESSAGE in text, text
 
 
 async def _managed_agent_with_tool(db) -> tuple[uuid.UUID, uuid.UUID]:
@@ -488,43 +474,6 @@ async def _managed_agent_with_tool(db) -> tuple[uuid.UUID, uuid.UUID]:
     await db.flush()
     return aid, wf.id
 
-
-async def test_mcp_update_agent_refuses_managed_without_deleting_tools(db_session, monkeypatch):
-    """Codex #13: update_agent on a solution-managed agent returns the read-only
-    error AND does NOT bulk-delete its AgentTool bindings (the Core delete must
-    not run / persist)."""
-    from contextlib import asynccontextmanager
-
-    from sqlalchemy import func, select
-
-    from src.models.orm.agents import AgentTool
-    from src.services.mcp_server.tools import agents as mcp_agents
-
-    aid, _wf = await _managed_agent_with_tool(db_session)
-
-    @asynccontextmanager
-    async def _fake_tool_db(_context):
-        yield db_session
-
-    monkeypatch.setattr(mcp_agents, "get_tool_db", _fake_tool_db)
-
-    context = SimpleNamespace(
-        is_platform_admin=True,
-        has_scope_bypass=True,
-        org_id=None,
-        user_id=uuid.uuid4(),
-    )
-    result = await mcp_agents.update_agent(context, agent_id=str(aid), tool_ids=[])
-
-    text = str(result.model_dump() if hasattr(result, "model_dump") else result)
-    assert SOLUTION_MANAGED_MESSAGE in text, text
-    # The binding SURVIVED — the bulk delete never persisted.
-    count = (await db_session.execute(
-        select(func.count()).select_from(AgentTool).where(AgentTool.agent_id == aid)
-    )).scalar()
-    assert count == 1
-
-
 async def _managed_form_with_field(db) -> uuid.UUID:
     from src.models.orm.forms import Form, FormField
     from src.models.orm.solutions import Solution
@@ -543,139 +492,51 @@ async def _managed_form_with_field(db) -> uuid.UUID:
     return fid
 
 
-async def test_mcp_update_form_refuses_managed_without_deleting_fields(db_session, monkeypatch):
-    """Codex #13: update_form on a solution-managed form returns the read-only
-    error AND does NOT bulk-delete its FormField rows."""
-    from contextlib import asynccontextmanager
-
+async def test_rest_update_agent_refuses_managed_without_deleting_tools(db_session):
+    from fastapi import HTTPException
     from sqlalchemy import func, select
+    from src.core.principal import UserPrincipal
+    from src.models.contracts.agents import AgentUpdate
+    from src.models.orm.agents import AgentTool
+    from src.routers.agents import update_agent
 
-    from src.models.orm.forms import FormField
-    from src.services.mcp_server.tools import forms as mcp_forms
-
-    fid = await _managed_form_with_field(db_session)
-
-    @asynccontextmanager
-    async def _fake_tool_db(_context):
-        yield db_session
-
-    monkeypatch.setattr(mcp_forms, "get_tool_db", _fake_tool_db)
-
-    context = SimpleNamespace(is_platform_admin=True, org_id=None, user_id=uuid.uuid4())
-    result = await mcp_forms.update_form(
-        context, form_id=str(fid), fields=[{"name": "new", "field_type": "text", "label": "New"}]
-    )
-
-    text = str(result.model_dump() if hasattr(result, "model_dump") else result)
-    assert SOLUTION_MANAGED_MESSAGE in text, text
-    count = (await db_session.execute(
-        select(func.count()).select_from(FormField).where(FormField.form_id == fid)
-    )).scalar()
+    agent_id, _ = await _managed_agent_with_tool(db_session)
+    user = UserPrincipal(user_id=uuid.uuid4(), email="test@example.com", organization_id=None, is_superuser=True)
+    with pytest.raises(HTTPException) as refused:
+        await update_agent(agent_id, AgentUpdate(tool_ids=[]), db_session, user)
+    assert refused.value.status_code == 409
+    assert SOLUTION_MANAGED_MESSAGE in refused.value.detail
+    count = await db_session.scalar(select(func.count()).select_from(AgentTool).where(AgentTool.agent_id == agent_id))
     assert count == 1
 
 
-# ── audit M-MCP: legacy tools that lacked the EARLY guard ────────────────────
-# These returned the locked message only via the before_flush backstop (a raised
-# SolutionManagedWriteError wrapped into error_result — but a 500-shaped path
-# that leaves the shared session dirty). An explicit early guard makes them
-# refuse cleanly BEFORE mutating. The tests assert the locked message AND that
-# the entity was not mutated.
+async def test_rest_update_form_refuses_managed_without_deleting_fields(db_session):
+    from fastapi import HTTPException
+    from sqlalchemy import func, select
+    from src.core.principal import UserPrincipal
+    from src.models.contracts.forms import FormUpdate
+    from src.models.orm.forms import FormField
+    from src.routers.forms import update_form
+
+    form_id = await _managed_form_with_field(db_session)
+    user = UserPrincipal(user_id=uuid.uuid4(), email="test@example.com", organization_id=None, is_superuser=True)
+    ctx = SimpleNamespace(org_id=None, user=user, db=db_session)
+    with pytest.raises(HTTPException) as refused:
+        await update_form(form_id, FormUpdate(form_schema={"fields": []}), ctx, user, db_session)
+    assert refused.value.status_code == 409
+    assert SOLUTION_MANAGED_MESSAGE in refused.value.detail
+    count = await db_session.scalar(select(func.count()).select_from(FormField).where(FormField.form_id == form_id))
+    assert count == 1
 
 
-async def test_mcp_delete_agent_refuses_managed(db_session, monkeypatch):
-    from sqlalchemy import select
 
-    from src.models.orm.agents import Agent
-    from src.services.mcp_server.tools import agents as mcp_agents
+async def test_rest_app_reference_prefers_active_org_for_multi_install_slug(db_session):
+    from src.repositories.applications import ApplicationRepository
 
-    aid, _wf = await _managed_agent_with_tool(db_session)
-
-    async def _fake_call_rest(_context, method, path):
-        assert method == "DELETE"
-        assert path == f"/api/agents/{aid}"
-        return 409, {"detail": SOLUTION_MANAGED_MESSAGE}
-
-    monkeypatch.setattr(mcp_agents, "call_rest", _fake_call_rest)
-
-    context = SimpleNamespace(is_platform_admin=True, org_id=None, user_id=uuid.uuid4())
-    result = await mcp_agents.delete_agent(context, agent_id=str(aid))
-
-    text = str(result.model_dump() if hasattr(result, "model_dump") else result)
-    assert SOLUTION_MANAGED_MESSAGE in text, text
-    # The canonical REST endpoint refused the delete, so the agent is unchanged.
-    is_active = (await db_session.execute(
-        select(Agent.is_active).where(Agent.id == aid)
-    )).scalar_one()
-    assert is_active is True
-
-
-async def test_mcp_delete_table_refuses_managed(db_session, monkeypatch):
-    from contextlib import asynccontextmanager
-
-    from sqlalchemy import select
-
-    from src.models.orm.tables import Table
-    from src.services.mcp_server.tools import tables as mcp_tables
-
-    tid = await _managed_table(db_session)
-
-    @asynccontextmanager
-    async def _fake_tool_db(_context):
-        yield db_session
-
-    monkeypatch.setattr(mcp_tables, "get_tool_db", _fake_tool_db)
-
-    context = SimpleNamespace(is_platform_admin=True, org_id=None, user_id=uuid.uuid4())
-    result = await mcp_tables.delete_table(context, table_id=str(tid))
-
-    text = str(result.model_dump() if hasattr(result, "model_dump") else result)
-    assert SOLUTION_MANAGED_MESSAGE in text, text
-    # The table still exists — the delete never ran.
-    still = (await db_session.execute(
-        select(Table.id).where(Table.id == tid)
-    )).scalar_one_or_none()
-    assert still == tid
-
-
-async def test_mcp_update_app_refuses_managed(db_session, monkeypatch):
-    from sqlalchemy import select
-
-    from src.models.orm.applications import Application
-    from src.services.mcp_server.tools import apps as mcp_apps
-
-    aid = await _managed_app(db_session, repo_path="apps/managed-upd")
-
-    monkeypatch.setattr(mcp_apps, "get_tool_db", _fake_db_cm(db_session))
-
-    context = SimpleNamespace(is_platform_admin=True, org_id=None, user_id=uuid.uuid4())
-    result = await mcp_apps.update_app(context, app_id=str(aid), name="hijacked")
-
-    text = str(result.model_dump() if hasattr(result, "model_dump") else result)
-    assert SOLUTION_MANAGED_MESSAGE in text, text
-    name = (await db_session.execute(
-        select(Application.name).where(Application.id == aid)
-    )).scalar_one()
-    assert name != "hijacked"
-
-
-async def test_mcp_update_app_dependencies_refuses_managed(db_session, monkeypatch):
-    from sqlalchemy import select
-
-    from src.models.orm.applications import Application
-    from src.services.mcp_server.tools import apps as mcp_apps
-
-    aid = await _managed_app(db_session, repo_path="apps/managed-deps")
-
-    monkeypatch.setattr(mcp_apps, "get_tool_db", _fake_db_cm(db_session))
-
-    context = SimpleNamespace(is_platform_admin=True, org_id=None, user_id=uuid.uuid4())
-    result = await mcp_apps.update_app_dependencies(
-        context, app_id=str(aid), dependencies={"left-pad": "1.0.0"}
-    )
-
-    text = str(result.model_dump() if hasattr(result, "model_dump") else result)
-    assert SOLUTION_MANAGED_MESSAGE in text, text
-    deps = (await db_session.execute(
-        select(Application.dependencies).where(Application.id == aid)
-    )).scalar_one()
-    assert deps != {"left-pad": "1.0.0"}
+    slug = f"multi-{uuid.uuid4().hex[:8]}"
+    org_a, org_b, app_a, app_b = await _two_install_apps(db_session, slug)
+    for org_id, expected_id in ((org_a, app_a), (org_b, app_b)):
+        repo = ApplicationRepository(db_session, org_id=org_id, is_superuser=True)
+        resolved = await repo.get_by_slug_global(slug)
+        assert resolved is not None
+        assert resolved.id == expected_id

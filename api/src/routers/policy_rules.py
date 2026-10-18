@@ -52,7 +52,7 @@ async def create_policy_rule(
 ) -> PolicyRulePublic:
     """Create a new (name, domain) policy rule in the caller's org (or global when no org)."""
     svc = PolicyRuleService(ctx.db)
-    row = await svc.create(body, actor=user)
+    row = await svc.create(body)
     await ctx.db.commit()
     return PolicyRulePublic.model_validate(row)
 
@@ -78,6 +78,30 @@ async def list_policy_rules(
     return [PolicyRulePublic.model_validate(r) for r in rows]
 
 
+@router.get(
+    "/{domain}/{name}",
+    response_model=PolicyRulePublic,
+    summary="Get a named policy rule",
+**operation_route("policy.rules.get"))
+async def get_policy_rule(
+    domain: str,
+    name: str,
+    ctx: Context,
+    user: CurrentSuperuser,
+    organization_id: UUID | None = Query(default=None),
+) -> PolicyRulePublic:
+    """Get a single policy rule by domain and name.
+
+    Solution-managed rules are readable here (writes stay blocked).
+    """
+    svc = PolicyRuleService(ctx.db)
+    try:
+        row = await svc.get(name, domain, org_id=organization_id)
+    except PolicyRuleNotFoundError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Policy rule '{name}' not found")
+    return PolicyRulePublic.model_validate(row)
+
+
 @router.put(
     "/{domain}/{name}",
     response_model=PolicyRulePublic,
@@ -95,7 +119,7 @@ async def update_policy_rule(
     """Update an existing policy rule."""
     svc = PolicyRuleService(ctx.db)
     try:
-        row = await svc.update(name, domain, body, org_id=organization_id, actor=user)
+        row = await svc.update(name, domain, body, org_id=organization_id)
     except PolicyRuleNotFoundError:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Policy rule '{name}' not found")
     except PolicyRuleReadOnly:
@@ -120,7 +144,7 @@ async def delete_policy_rule(
     """Delete a policy rule. Fails with 409 if the rule is in use or read-only."""
     svc = PolicyRuleService(ctx.db)
     try:
-        await svc.delete(name, domain, org_id=organization_id, actor=user)
+        await svc.delete(name, domain, org_id=organization_id)
     except PolicyRuleNotFoundError:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Policy rule '{name}' not found")
     except PolicyRuleReadOnly:

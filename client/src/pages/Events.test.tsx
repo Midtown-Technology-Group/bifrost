@@ -130,6 +130,21 @@ describe("Events page", () => {
 		expect(screen.queryByRole("table")).not.toBeInTheDocument();
 	});
 
+	it("leads the mobile source summary with the organization", () => {
+		useMediaQueryMock.mockReturnValue(true);
+
+		renderWithProviders(<Events />, {
+			initialEntries: ["/event-sources"],
+		});
+
+		const organization = screen.getByText("Northwind Automation");
+		const created = screen.getByText(/1 day ago/i);
+		expect(
+			organization.compareDocumentPosition(created) &
+				Node.DOCUMENT_POSITION_FOLLOWING,
+		).toBeTruthy();
+	});
+
 	it("renders the desktop table on wide screens", () => {
 		useMediaQueryMock.mockReturnValue(false);
 
@@ -154,9 +169,12 @@ describe("Events page", () => {
 			initialEntries: ["/event-sources"],
 		});
 
-		fireEvent.click(screen.getByRole("cell", { name: /northwind automation/i }), {
-			ctrlKey: true,
-		});
+		fireEvent.click(
+			screen.getByRole("cell", { name: /northwind automation/i }),
+			{
+				ctrlKey: true,
+			},
+		);
 
 		expect(open).toHaveBeenCalledWith(
 			"/event-sources/source-1",

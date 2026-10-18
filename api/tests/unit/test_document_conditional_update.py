@@ -132,7 +132,7 @@ async def test_conditional_route_retains_all_write_gates(monkeypatch, gate):
         "_check_update_or_403",
         AsyncMock(side_effect=error if gate == "policy" else None),
     )
-    monkeypatch.setattr(routes, "_resolve_attribution", lambda *args: (None, None))
+    monkeypatch.setattr(routes, "_resolve_attribution", lambda *args, **kwargs: (None, None))
     monkeypatch.setattr(
         routes,
         "_row_from_doc",
@@ -168,7 +168,7 @@ async def test_stale_or_racing_snapshot_returns409_without_publication(
         routes, "_assert_solution_write_targets_owned_table", AsyncMock()
     )
     monkeypatch.setattr(routes, "_check_update_or_403", AsyncMock())
-    monkeypatch.setattr(routes, "_resolve_attribution", lambda *args: (None, None))
+    monkeypatch.setattr(routes, "_resolve_attribution", lambda *args, **kwargs: (None, None))
     monkeypatch.setattr(
         routes,
         "_row_from_doc",

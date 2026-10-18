@@ -13,11 +13,12 @@ from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query, Response, status
 from sqlalchemy import desc, func, literal_column, or_, select, text
-from sqlalchemy.orm import joinedload, selectinload
+from sqlalchemy.orm import selectinload
 
+from shared import access_checks
+from shared.access_checks import ALL_ORGS
+from shared.run_lineage import principal_lineage
 from src.core.auth import CurrentActiveUser
-from src.core.cache.keys import agent_run_steps_stream_key
-from src.core.cache.redis_client import get_redis
 from src.core.database import get_session_factory
 from src.core.db_deps import DbSession
 from src.core.log_safety import log_safe
@@ -32,14 +33,13 @@ from src.models.contracts.agent_run_flag_conversations import (
 )
 from src.models.contracts.agent_runs import (
     AgentRunCreateRequest,
-    AgentRunChildResponse,
     AgentRunDetailResponse,
     AgentRunEnqueueRequest,
     AgentRunEnqueueResponse,
     AgentRunListResponse,
     AgentRunRerunResponse,
     AgentRunResponse,
-    AgentRunStepResponse,
+    AgentRunUsageSummary,
     BackfillEligibleResponse,
     BackfillSummariesRequest,
     BackfillSummariesResponse,
@@ -53,7 +53,13 @@ from src.models.contracts.agent_runs import (
     VerdictRequest,
     VerdictResponse,
 )
-from src.models.contracts.executions import AIUsagePublicSimple, AIUsageTotalsSimple
+from shared.sdk_agent_runs import (
+    SdkAgentRunError,
+    enqueue_sdk_agent_run,
+    get_sdk_agent_run,
+    resolve_agent_run_actor,
+    resolve_rerun_actor,
+)
 from src.models.orm.agent_run_verdict_history import AgentRunVerdictHistory
 from src.models.enums import AgentAccessLevel
 from src.models.orm.agents import Agent
@@ -61,6 +67,7 @@ from src.models.orm.agent_runs import AgentRun
 from src.models.orm.ai_usage import AIUsage
 from src.models.orm.summary_backfill_job import SummaryBackfillJob
 from src.core.redis_client import get_redis_client
+from src.services.agent_run_usage_summary import summarize_run_usage
 from src.services.execution.agent_run_access import agent_run_visibility_conditions
 from src.services.execution.agent_run_service import (
     enqueue_agent_run,
@@ -73,6 +80,7 @@ from src.services.execution.tuning_service import (
     append_user_message_and_reply,
     get_or_create_conversation,
 )
+from src.services.run_retention.settings import run_not_found_suffix
 
 logger = logging.getLogger(__name__)
 
@@ -91,6 +99,8 @@ async def _require_own_private_agent_run(
     visible to them.
     """
     if user.has_platform_admin_grant():
+        if run.caller_user_id != str(user.user_id):
+            access_checks.note_power("agentruns.readwrite.all", run.org_id, subject=f"agent_run:{run.id}")
         return
 
     agent = (
@@ -119,7 +129,10 @@ def _require_flagged_completed_run(run: AgentRun) -> None:
         )
 
 
-def _run_to_response(run: AgentRun) -> AgentRunResponse:
+def _run_to_response(
+    run: AgentRun,
+    usage_summary: AgentRunUsageSummary | None = None,
+) -> AgentRunResponse:
     """Convert AgentRun ORM to AgentRunResponse."""
     return AgentRunResponse(
         id=run.id,
@@ -137,6 +150,9 @@ def _run_to_response(run: AgentRun) -> AgentRunResponse:
         caller_user_id=run.caller_user_id,
         caller_email=run.caller_email,
         caller_name=run.caller_name,
+        run_as_user_id=run.run_as_user_id,
+        run_as_user_name=run.run_as_user.name if run.run_as_user else None,
+        run_as_user_email=run.run_as_user.email if run.run_as_user else None,
         iterations_used=run.iterations_used,
         tokens_used=run.tokens_used,
         budget_max_iterations=run.budget_max_iterations,
@@ -159,6 +175,7 @@ def _run_to_response(run: AgentRun) -> AgentRunResponse:
         started_at=run.started_at,
         completed_at=run.completed_at,
         parent_run_id=run.parent_run_id,
+        usage_summary=usage_summary,
     )
 
 
@@ -309,7 +326,12 @@ async def list_agent_runs(
     total = total_result.scalar_one()
 
     # Fetch paginated results
-    query = query.order_by(desc(AgentRun.created_at)).limit(limit + 1).offset(page_offset)
+    query = (
+        query.options(selectinload(AgentRun.run_as_user))
+        .order_by(desc(AgentRun.created_at))
+        .limit(limit + 1)
+        .offset(page_offset)
+    )
     result = await db.execute(query)
     runs = list(result.scalars().all())
     has_more = len(runs) > limit
@@ -318,8 +340,9 @@ async def list_agent_runs(
 
     next_cursor = str(page_offset + len(runs)) if has_more else None
 
+    usage_summaries = await summarize_run_usage(db, [run.id for run in runs])
     return AgentRunListResponse(
-        items=[_run_to_response(run) for run in runs],
+        items=[_run_to_response(run, usage_summaries.get(run.id)) for run in runs],
         total=total,
         next_cursor=next_cursor,
     )
@@ -518,194 +541,13 @@ async def get_agent_run(
     user: CurrentActiveUser,
 ) -> AgentRunDetailResponse:
     """Get agent run detail with steps."""
-    run = await load_agent_run_for_user(
-        db,
-        run_id,
-        user,
-        options=[selectinload(AgentRun.steps)],
-    )
-
-    if not run:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Agent run {run_id} not found",
-        )
-
-    # Fetch AI usage records for this run
-    ai_usage_result = await db.execute(
-        select(AIUsage)
-        .where(AIUsage.agent_run_id == run_id)
-        .order_by(AIUsage.timestamp)
-    )
-    ai_usage_entries = ai_usage_result.scalars().all()
-
-    ai_usage_list: list[AIUsagePublicSimple] | None = None
-    ai_totals_response: AIUsageTotalsSimple | None = None
-
-    if ai_usage_entries:
-        ai_usage_list = [
-            AIUsagePublicSimple(
-                provider=entry.provider,
-                model=entry.model,
-                input_tokens=entry.input_tokens,
-                output_tokens=entry.output_tokens,
-                cache_read_tokens=entry.cache_read_tokens,
-                cache_write_tokens=entry.cache_write_tokens,
-                provider_cost=(str(entry.provider_cost) if entry.provider_cost is not None else None),
-                cost=str(entry.cost) if entry.cost else None,
-                duration_ms=entry.duration_ms,
-                timestamp=entry.timestamp.isoformat(),
-                sequence=entry.sequence,
-            )
-            for entry in ai_usage_entries
-        ]
-
-        # Calculate totals
-        totals_result = await db.execute(
-            select(
-                func.sum(AIUsage.input_tokens).label("total_input"),
-                func.sum(AIUsage.output_tokens).label("total_output"),
-                func.sum(AIUsage.cache_read_tokens).label("total_cache_read"),
-                func.sum(AIUsage.cache_write_tokens).label("total_cache_write"),
-                func.sum(AIUsage.provider_cost).label("total_provider_cost"),
-                func.sum(AIUsage.cost).label("total_cost"),
-                func.sum(AIUsage.duration_ms).label("total_duration"),
-                func.count(AIUsage.id).label("call_count"),
-            ).where(AIUsage.agent_run_id == run_id)
-        )
-        totals_row = totals_result.one()
-        ai_totals_response = AIUsageTotalsSimple(
-            total_input_tokens=int(totals_row.total_input or 0),
-            total_output_tokens=int(totals_row.total_output or 0),
-            total_cache_read_tokens=int(totals_row.total_cache_read or 0),
-            total_cache_write_tokens=int(totals_row.total_cache_write or 0),
-            total_provider_cost=str(totals_row.total_provider_cost or Decimal("0")),
-            total_cost=str(totals_row.total_cost or Decimal("0")),
-            total_duration_ms=int(totals_row.total_duration or 0),
-            call_count=int(totals_row.call_count or 0),
-        )
-
-    # Fetch delegation sub-runs and their agents in one ordered query. Keep the
-    # legacy ID list while also returning enough context for a user-facing view.
-    child_runs_result = await db.execute(
-        select(AgentRun)
-        .options(joinedload(AgentRun.agent))
-        .where(AgentRun.parent_run_id == run_id)
-        .order_by(AgentRun.created_at, AgentRun.id)
-    )
-    child_runs = child_runs_result.scalars().all()
-    child_run_ids = [child.id for child in child_runs]
-    child_runs_response = [
-        AgentRunChildResponse(
-            id=child.id,
-            agent_id=child.agent_id,
-            agent_name=child.agent.name,
-            status=child.status,
-            asked=child.asked,
-            did=child.did,
-            answered=child.answered,
-            duration_ms=child.duration_ms,
-            created_at=child.created_at,
-        )
-        for child in child_runs
-    ]
-
-    # Dual-read steps: Redis Stream when in-progress, DB when complete
-    steps_response: list[AgentRunStepResponse] = []
-    is_in_progress = run.status in (
-        "scheduled",
-        "queued",
-        "running",
-        "cancelling",
-    )
-
-    if is_in_progress:
-        # Read from Redis Stream (steps are uncommitted in DB during execution)
-        try:
-            async with get_redis() as r:
-                stream_key = agent_run_steps_stream_key(str(run_id))
-                entries = await r.xrange(stream_key, min="-", max="+")  # type: ignore[misc]
-                for _entry_id, data in entries:
-                    content_raw = data.get("content", "{}")
-                    content = json.loads(content_raw) if content_raw else None
-                    tokens_str = data.get("tokens_used", "")
-                    duration_str = data.get("duration_ms", "")
-                    steps_response.append(AgentRunStepResponse(
-                        id=UUID(data["id"]),
-                        run_id=UUID(data["run_id"]),
-                        step_number=int(data["step_number"]),
-                        type=data["type"],
-                        content=content,
-                        tokens_used=int(tokens_str) if tokens_str else None,
-                        duration_ms=int(duration_str) if duration_str else None,
-                        created_at=datetime.fromisoformat(data["created_at"]),
-                    ))
-        except Exception:
-            logger.warning(f"Failed to read steps from Redis for run {log_safe(run_id)}, falling back to DB")
-            # Fall back to DB steps (may be empty if uncommitted)
-            steps_response = [
-                AgentRunStepResponse(
-                    id=step.id, run_id=step.run_id, step_number=step.step_number,
-                    type=step.type, content=step.content, tokens_used=step.tokens_used,
-                    duration_ms=step.duration_ms, created_at=step.created_at,
-                )
-                for step in run.steps
-            ]
-    else:
-        # Completed — read from DB (steps are committed)
-        steps_response = [
-            AgentRunStepResponse(
-                id=step.id, run_id=step.run_id, step_number=step.step_number,
-                type=step.type, content=step.content, tokens_used=step.tokens_used,
-                duration_ms=step.duration_ms, created_at=step.created_at,
-            )
-            for step in run.steps
-        ]
-
-    return AgentRunDetailResponse(
-        id=run.id,
-        agent_id=run.agent_id,
-        agent_name=run.agent.name if run.agent else None,
-        trigger_type=run.trigger_type,
-        trigger_source=run.trigger_source,
-        conversation_id=run.conversation_id,
-        event_delivery_id=run.event_delivery_id,
-        input=run.input,
-        output=run.output,
-        status=run.status,
-        error=run.error,
-        org_id=run.org_id,
-        caller_user_id=run.caller_user_id,
-        caller_email=run.caller_email,
-        caller_name=run.caller_name,
-        iterations_used=run.iterations_used,
-        tokens_used=run.tokens_used,
-        budget_max_iterations=run.budget_max_iterations,
-        budget_max_tokens=run.budget_max_tokens,
-        duration_ms=run.duration_ms,
-        llm_model=run.llm_model,
-        asked=run.asked,
-        did=run.did,
-        answered=run.answered,
-        metadata=run.run_metadata or {},
-        confidence=run.confidence,
-        confidence_reason=run.confidence_reason,
-        summary_status=run.summary_status,
-        summary_error=run.summary_error,
-        verdict=run.verdict,
-        verdict_note=run.verdict_note,
-        verdict_set_at=run.verdict_set_at,
-        verdict_set_by=run.verdict_set_by,
-        created_at=run.created_at,
-        started_at=run.started_at,
-        completed_at=run.completed_at,
-        parent_run_id=run.parent_run_id,
-        child_run_ids=child_run_ids,
-        child_runs=child_runs_response,
-        steps=steps_response,
-        ai_usage=ai_usage_list,
-        ai_totals=ai_totals_response,
-    )
+    try:
+        return await get_sdk_agent_run(db, user, run_id=run_id)
+    except SdkAgentRunError as e:
+        detail = e.detail
+        if e.status_code == status.HTTP_404_NOT_FOUND:
+            detail = f"Agent run {run_id} not found." + await run_not_found_suffix(db)
+        raise HTTPException(status_code=e.status_code, detail=detail) from None
 
 
 @router.post("/{run_id}/rerun")
@@ -723,6 +565,12 @@ async def rerun_agent_run(
             detail=f"Agent run {run_id} not found",
         )
     await _require_own_private_agent_run(db, user, original)
+    access_checks.note_launch("agents.execute", original.org_id, user.organization_id, subject=f"agent:{original.agent_id}")
+
+    try:
+        actor = await resolve_rerun_actor(db, user, original)
+    except SdkAgentRunError as e:
+        raise HTTPException(status_code=e.status_code, detail=e.detail) from None
 
     new_run_id = await enqueue_agent_run(
         agent_id=str(original.agent_id),
@@ -730,11 +578,13 @@ async def rerun_agent_run(
         input_data=original.input,
         trigger_source=str(run_id),
         output_schema=original.output_schema,
-        org_id=str(original.org_id) if original.org_id else None,
+        org_id=str(actor.org_id) if actor.org_id else None,
         caller_user_id=str(user.user_id),
         caller_email=user.email,
         caller_name=getattr(user, "name", None),
         sync=False,
+        lineage=await principal_lineage(db, user),
+        run_as_user_id=actor.run_as_user_id,
     )
 
     return AgentRunRerunResponse(run_id=UUID(new_run_id))
@@ -805,6 +655,7 @@ async def cancel_agent_run(
 
     # Running — set to cancelling and signal via Redis
     agent_run.status = "cancelling"
+    agent_run.cancel_requested_at = datetime.now(timezone.utc)
     await db.commit()
 
     await redis_client.set_agent_run_cancel_flag(str(run_id))
@@ -1031,6 +882,7 @@ async def dry_run_agent_run(
             detail=f"Agent run {run_id} not found",
         )
     await _require_own_private_agent_run(db, user, run)
+    access_checks.note_launch("agents.execute", run.org_id, user.organization_id, subject=f"agent:{run.agent_id}")
     if run.status != "completed":
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -1068,27 +920,20 @@ async def enqueue_agent_run_request(
     user: CurrentActiveUser,
 ) -> AgentRunEnqueueResponse | PausedResponse:
     """Queue an agent run and return without waiting for execution."""
-    agent = await get_executable_agent(db, request.agent_name, user)
-
-    if not agent.is_active:
-        response.status_code = status.HTTP_200_OK
-        return PausedResponse(
-            message=f"Agent '{agent.name}' is paused. Request not processed.",
-            agent_id=agent.id,
+    try:
+        result = await enqueue_sdk_agent_run(
+            db,
+            user,
+            agent_name=request.agent_name,
+            input_data=request.input,
+            output_schema=request.output_schema,
+            run_as=request.run_as,
         )
-
-    run_id = await enqueue_agent_run(
-        agent_id=str(agent.id),
-        trigger_type="api",
-        input_data=request.input,
-        output_schema=request.output_schema,
-        org_id=str(user.organization_id) if user.organization_id else None,
-        caller_user_id=str(user.user_id),
-        caller_email=user.email,
-        caller_name=getattr(user, "name", None),
-        sync=False,
-    )
-    return AgentRunEnqueueResponse(run_id=UUID(run_id))
+    except SdkAgentRunError as e:
+        raise HTTPException(status_code=e.status_code, detail=e.detail) from None
+    if isinstance(result, PausedResponse):
+        response.status_code = status.HTTP_200_OK
+    return result
 
 
 @router.post("/execute")
@@ -1100,12 +945,10 @@ async def execute_agent_run(
     """Execute an agent synchronously via the SDK."""
     agent = await get_executable_agent(db, request.agent_name, user)
     agent_id, agent_name, agent_active = agent.id, agent.name, agent.is_active
-    # The synchronous wait can last minutes; release the read transaction first.
-    await db.rollback()
-
     # Paused agents short-circuit gracefully — HTTP 200 with structured body.
     # Downstream consumers (webhook senders, SDK) discriminate on status="paused".
     if not agent_active:
+        await db.rollback()
         return {
             "status": "paused",
             "accepted": False,
@@ -1113,17 +956,29 @@ async def execute_agent_run(
             "agent_id": str(agent_id),
         }
 
+    try:
+        actor = await resolve_agent_run_actor(db, user, agent, request.run_as)
+    except SdkAgentRunError as e:
+        raise HTTPException(status_code=e.status_code, detail=e.detail) from None
+
+    lineage = await principal_lineage(db, user)
+    # Capture ORM-dependent authorization before rollback expires the agent.
+    # The synchronous wait can last minutes; release the read transaction first.
+    await db.rollback()
+
     # Enqueue the agent run for sync execution
     run_id = await enqueue_agent_run(
         agent_id=str(agent_id),
         trigger_type="api",
         input_data=request.input,
         output_schema=request.output_schema,
-        org_id=str(user.organization_id) if user.organization_id else None,
+        org_id=str(actor.org_id) if actor.org_id else None,
         caller_user_id=str(user.user_id),
         caller_email=user.email,
         caller_name=getattr(user, "name", None),
         sync=True,
+        lineage=lineage,
+        run_as_user_id=actor.run_as_user_id,
     )
 
     # Wait for the result
@@ -1135,6 +990,8 @@ async def execute_agent_run(
             detail="Agent run timed out",
         )
 
+    if actor.run_as_user_id is not None:
+        return {**result_data, "run_as_user_id": str(actor.run_as_user_id)}
     return result_data
 
 
@@ -1146,7 +1003,11 @@ _BACKFILL_FALLBACK_PER_RUN_COST = Decimal("0.002")
 
 
 def _is_platform_admin(user) -> bool:  # type: ignore[no-untyped-def]
-    return user.has_platform_admin_grant()
+    """Gate for summary maintenance across every organization's runs."""
+    if not user.has_platform_admin_grant():
+        return False
+    access_checks.note_power("agentruns.readwrite.all", ALL_ORGS, subject="agent_runs:summaries")
+    return True
 
 
 async def _estimate_per_run_cost(db) -> tuple[Decimal, str]:  # type: ignore[no-untyped-def]

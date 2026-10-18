@@ -1,32 +1,17 @@
-"""Write-scope enforcement for the MCP update_agent tool.
+"""MTG agent mutation security at the REST boundary used by canonical MCP tools."""
 
-Mirrors the REST rule enforced in ``routers/agents.py::update_agent``
-(owner_user_id == caller AND access_level == PRIVATE for non-bypass
-callers), and fixes a specific bug where a caller with no organization
-skipped the org check entirely (``if context.org_id and ...`` is False
-when ``context.org_id`` is falsy, silently letting the update through).
-"""
-
-from contextlib import asynccontextmanager
 from uuid import uuid4
 
 import pytest
+from fastapi import HTTPException
 
+from src.core.principal import UserPrincipal
+from src.models.contracts.agents import AgentUpdate
 from src.models.enums import AgentAccessLevel
 from src.models.orm.agents import Agent
 from src.models.orm.organizations import Organization
 from src.models.orm.users import User
-from src.services.mcp_server.tools import agents as mcp_agents
-
-
-def _fake_tool_db(db_session):
-    """Bind MCP database access to the test session without opening a separate transaction."""
-    @asynccontextmanager
-    async def _cm(_context):
-        """Yield the existing test session for an MCP tool database context."""
-        yield db_session
-
-    return _cm
+from src.routers.agents import update_agent
 
 
 async def _org(db) -> Organization:
@@ -35,7 +20,6 @@ async def _org(db) -> Organization:
     db.add(row)
     await db.flush()
     return row
-
 
 async def _user(db, org: Organization | None, *, superuser: bool = False) -> User:
     """Persist a verified caller with the chosen organization and admin grant."""
@@ -49,7 +33,6 @@ async def _user(db, org: Organization | None, *, superuser: bool = False) -> Use
     db.add(row)
     await db.flush()
     return row
-
 
 async def _agent(
     db,
@@ -72,121 +55,61 @@ async def _agent(
     return row
 
 
-def _ctx(*, user_id, org_id=None, is_platform_admin=False, is_provider_org=False):
-    """Build a caller context with explicit organization scope and privilege flags."""
-    from src.services.mcp_server.server import MCPContext
-
-    return MCPContext(
-        user_id=user_id,
-        org_id=org_id,
-        is_platform_admin=is_platform_admin,
-        is_provider_org=is_provider_org,
-    )
-
-
-def _error_text(result) -> str:
-    """Serialize an MCP result so tests can inspect its authorization error details."""
-    payload = result.model_dump() if hasattr(result, "model_dump") else result
-    return str(payload)
+def _principal(user_id, org_id=None, *, admin=False):
+    return UserPrincipal(user_id=user_id, email="test@example.com", organization_id=org_id, is_superuser=admin)
 
 
 @pytest.mark.asyncio
-async def test_non_owner_org_member_denied(db_session, monkeypatch):
-    """A caller in the same org as a role-based (non-private) agent they
-    don't own may not update it via this tool — REST only allows
-    non-bypass callers to edit their own PRIVATE agents."""
-    monkeypatch.setattr(mcp_agents, "get_tool_db", _fake_tool_db(db_session))
-
+async def test_non_owner_org_member_denied(db_session):
     org = await _org(db_session)
     owner = await _user(db_session, org)
-    agent = await _agent(
-        db_session,
-        organization_id=org.id,
-        owner_user_id=owner.id,
-        access_level=AgentAccessLevel.ROLE_BASED,
-    )
-
-    ctx = _ctx(user_id=uuid4(), org_id=org.id)
-    result = await mcp_agents.update_agent(ctx, str(agent.id), name="hijacked")
-
-    assert "not found" in _error_text(result).lower() or "only update your own private agents" in _error_text(result)
+    agent = await _agent(db_session, organization_id=org.id, owner_user_id=owner.id)
+    with pytest.raises(HTTPException) as refused:
+        await update_agent(agent.id, AgentUpdate(name="hijacked"), db_session, _principal(uuid4(), org.id))
+    assert refused.value.status_code == 403
+    await db_session.refresh(agent)
+    assert agent.name != "hijacked"
 
 
 @pytest.mark.asyncio
-async def test_owner_of_private_agent_allowed(db_session, monkeypatch):
-    """Allow a private agent's owner to update it through MCP."""
-    monkeypatch.setattr(mcp_agents, "get_tool_db", _fake_tool_db(db_session))
-
+async def test_owner_of_private_agent_allowed(db_session):
     org = await _org(db_session)
     owner = await _user(db_session, org)
-    agent = await _agent(
-        db_session,
-        organization_id=org.id,
-        owner_user_id=owner.id,
-        access_level=AgentAccessLevel.PRIVATE,
-    )
-
-    ctx = _ctx(user_id=owner.id, org_id=org.id)
-    result = await mcp_agents.update_agent(ctx, str(agent.id), name="renamed-by-owner")
-
-    text = _error_text(result)
-    assert "error" not in text.lower() or "renamed-by-owner" in text
+    agent = await _agent(db_session, organization_id=org.id, owner_user_id=owner.id, access_level=AgentAccessLevel.PRIVATE)
+    await update_agent(agent.id, AgentUpdate(name="renamed-by-owner"), db_session, _principal(owner.id, org.id))
     await db_session.refresh(agent)
     assert agent.name == "renamed-by-owner"
 
 
 @pytest.mark.asyncio
-async def test_caller_with_no_org_denied_for_org_owned_agent(db_session, monkeypatch):
-    """Regression: the pre-fix check ``if context.org_id and ...`` skipped
-    the org comparison entirely when the caller had no org, letting a
-    no-org caller update any org-owned agent. A no-org caller must be
-    denied, not let through."""
-    monkeypatch.setattr(mcp_agents, "get_tool_db", _fake_tool_db(db_session))
-
+async def test_caller_with_no_org_denied_for_org_owned_agent(db_session):
     org = await _org(db_session)
     owner = await _user(db_session, org)
-    agent = await _agent(
-        db_session,
-        organization_id=org.id,
-        owner_user_id=owner.id,
-        access_level=AgentAccessLevel.PRIVATE,
-    )
-
-    # The caller is not the owner and has no org — a real "no-org, non-admin"
-    # principal need not be persisted as a User row (the constraint that a
-    # user with no org must be a superuser is a DB invariant on real
-    # accounts, not a constraint this MCP tool itself enforces).
-    ctx = _ctx(user_id=uuid4(), org_id=None)
-    result = await mcp_agents.update_agent(ctx, str(agent.id), name="hijacked-no-org")
-
-    assert "Organization context is required" in _error_text(result)
+    agent = await _agent(db_session, organization_id=org.id, owner_user_id=owner.id, access_level=AgentAccessLevel.PRIVATE)
+    with pytest.raises(HTTPException) as refused:
+        await update_agent(agent.id, AgentUpdate(name="hijacked-no-org"), db_session, _principal(uuid4()))
+    assert refused.value.status_code == 403
     await db_session.refresh(agent)
     assert agent.name != "hijacked-no-org"
 
 
 @pytest.mark.asyncio
-async def test_platform_admin_allowed_for_global_agent(db_session, monkeypatch):
-    """Allow a platform admin to update a globally scoped agent."""
-    monkeypatch.setattr(mcp_agents, "get_tool_db", _fake_tool_db(db_session))
-
+async def test_platform_admin_allowed_for_global_agent(db_session):
     agent = await _agent(db_session, organization_id=None)
-
-    ctx = _ctx(user_id=uuid4(), is_platform_admin=True)
-    await mcp_agents.update_agent(ctx, str(agent.id), name="admin-renamed")
-
+    await update_agent(agent.id, AgentUpdate(name="admin-renamed"), db_session, _principal(uuid4(), admin=True))
     await db_session.refresh(agent)
     assert agent.name == "admin-renamed"
 
 
 @pytest.mark.asyncio
-async def test_non_admin_budget_update_denied_before_database_access(monkeypatch):
-    """Deny regular callers token-budget updates before database access."""
-    from unittest.mock import MagicMock
-
-    database = MagicMock(side_effect=AssertionError("denied requests must not access the database"))
-    monkeypatch.setattr(mcp_agents, "get_tool_db", database)
-    context = _ctx(user_id=uuid4(), org_id=uuid4())
-    result = await mcp_agents.update_agent(context, str(uuid4()), llm_max_tokens=1000)
-
-    assert "Only platform admins can set agent token budgets" in _error_text(result)
-    database.assert_not_called()
+async def test_non_admin_budget_update_denied_without_mutation(db_session):
+    org = await _org(db_session)
+    owner = await _user(db_session, org)
+    agent = await _agent(db_session, organization_id=org.id, owner_user_id=owner.id, access_level=AgentAccessLevel.PRIVATE)
+    original = agent.llm_max_tokens
+    with pytest.raises(HTTPException) as refused:
+        await update_agent(agent.id, AgentUpdate(llm_max_tokens=1000), db_session, _principal(owner.id, org.id))
+    assert refused.value.status_code == 403
+    assert "platform administrators" in refused.value.detail
+    await db_session.refresh(agent)
+    assert agent.llm_max_tokens == original

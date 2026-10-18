@@ -25,6 +25,7 @@ from src.services.execution_attempts import (
     start_execution_attempt,
     transition_execution_attempt,
 )
+from src.models.orm.solution_export_jobs import SolutionExportJob
 from src.services.execution.memory_monitor import get_cgroup_memory
 from src.services.execution_admission import (
     AdmissionOutcome,
@@ -73,6 +74,41 @@ def _clear_lease(job: PlatformJob) -> None:
     job.lease_token = None
     job.heartbeat_at = None
     job.lease_expires_at = None
+
+
+async def _fail_linked_solution_export(
+    db,
+    platform_job: PlatformJob,
+    *,
+    completed_at: datetime,
+) -> None:
+    """Fail an active export projection when its final runner attempt is lost.
+
+    Export rows carry encrypted options until their worker reaches a terminal
+    state. A child-process loss bypasses the export worker's own cleanup, so
+    the platform-job terminal transition must also make that projection safe
+    and observable. The platform job's curated error is deliberately not
+    copied: its detail is for operators, while the export API stays generic.
+    """
+    if platform_job.job_type != "solution.export" or not platform_job.resource_id:
+        return
+    try:
+        export_id = UUID(platform_job.resource_id)
+    except (TypeError, ValueError):
+        logger.warning(
+            "Solution export platform job has an invalid resource identifier",
+            extra={"platform_job_id": str(platform_job.id)},
+        )
+        return
+    export = await db.get(SolutionExportJob, export_id, with_for_update=True)
+    if export is None or export.status not in {"pending", "running"}:
+        return
+    export.status = "failed"
+    export.progress_percent = 100
+    export.message = "Backup failed"
+    export.failure_message = "Backup export runner stopped before completion"
+    export.encrypted_options = None
+    export.completed_at = completed_at
 
 
 def _memory_allows_start(
@@ -152,6 +188,7 @@ async def recover_expired_platform_jobs() -> tuple[int, int]:
                 )
                 job.error_retryable = False
                 job.completed_at = now
+                await _fail_linked_solution_export(db, job, completed_at=now)
                 failed += 1
             if lease_token is not None:
                 await transition_execution_attempt(
@@ -547,6 +584,8 @@ async def _handle_runner_loss(
                 None if terminal_attempt_status == "cancelled" else error_message
             ),
         )
+        if job.status == "failed":
+            await _fail_linked_solution_export(db, job, completed_at=now)
         await record_platform_job_memory_profile(db, job)
         _clear_lease(job)
         job.revision += 1

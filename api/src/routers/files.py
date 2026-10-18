@@ -56,9 +56,10 @@ from src.models import (
     WorkflowIdConflict,
 )
 from src.services.audit import emit_file_policy_deny
-from src.services.editor.search import search_files_db
+from src.services.source_search import InvalidSearchRequest, search_source
 from src.services.file_backend import get_backend
 from src.services.file_storage import FileStorageService
+from shared import access_checks
 from shared.role_cache import get_user_roles
 
 # Watch session TTL — must be > CLI heartbeat interval (WATCH_HEARTBEAT_SECONDS in bifrost.cli)
@@ -466,7 +467,14 @@ async def _authorize_file_policy(
     from src.services.file_policy_service import FilePolicyService
 
     if location == "workspace":
-        return ctx.user.is_superuser
+        if not ctx.user.is_superuser:
+            return False
+        access_checks.note_power(
+            "repository.read" if action in ("read", "exists", "signed_get", "list") else "repository.readwrite",
+            None,
+            subject="repository",
+        )
+        return True
 
     # Past this point location is never "workspace" (handled above).
     policy_organization_id: UUID | None = None
@@ -496,7 +504,7 @@ async def _authorize_file_policy(
     }.get(action, action)
 
     service = FilePolicyService(ctx.db)
-    return await service.is_allowed(
+    allowed = await service.is_allowed(
         cast(FileAction, policy_action),
         organization_id=policy_organization_id,
         location=location,
@@ -504,6 +512,19 @@ async def _authorize_file_policy(
         user=ctx.user,
         solution_id=resolved_solution_id,
     )
+
+    from src.services.access_check_policies import check_file
+
+    await check_file(
+        ctx.db,
+        policy_action,
+        organization_id=policy_organization_id,
+        location=location,
+        path=path,
+        solution_id=resolved_solution_id,
+        allowed_today=allowed,
+    )
+    return allowed
 
 
 async def _deny_file_policy(
@@ -619,12 +640,17 @@ def _tiers_for_backend_mode(tiers: list[_T], mode: str) -> list[_T]:
     return tiers
 
 
-def _require_local_mode_superuser(mode: str, user: UserPrincipal) -> None:
+def _require_local_mode_superuser(mode: str, user: UserPrincipal, *, write: bool = False) -> None:
     if mode == "local" and not user.is_superuser:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Local file mode is restricted to superusers.",
         )
+    if mode == "local":
+        if write:
+            access_checks.note_power("repository.readwrite", None, subject="local-files")
+        else:
+            access_checks.note_power("repository.read", None, subject="local-files")
 
 
 async def _filter_listed_paths(
@@ -698,6 +724,7 @@ async def _test_principal(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"User not found: {user_id}",
         )
+    access_checks.note_power("filepolicies.read", target.organization_id, subject=f"user:{target.id}")
     role_ids, role_names = await get_user_roles(target.id, db)
     return UserPrincipal(
         user_id=target.id,
@@ -726,7 +753,7 @@ async def list_file_policies(
     scope: str | None = Query(default=None),
     organization_id: str | None = Query(default=None),
     solution: str | None = Query(default=None),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ) -> FilePolicyListResponse:
     """List file policies for a location and optional org/solution scope.
 
@@ -761,7 +788,7 @@ async def test_file_policy_access(
     request: FilePolicyAccessTestRequest,
     ctx: Context,
     user: CurrentSuperuser,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ) -> FilePolicyAccessTestResponse:
     """Evaluate effective access for a path using the real file policy service."""
     from src.services.file_policy_service import FilePolicyService
@@ -773,6 +800,7 @@ async def test_file_policy_access(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
     principal = await _test_principal(ctx, db, request.user_id)
+    access_checks.note_power("filepolicies.read", org_id, subject=f"file:{request.location}:{request.path}")
 
     # workspace is superuser-only and never policy-governed — mirror the real
     # enforcement in _authorize_file_policy so Test Access reports what actually
@@ -820,7 +848,7 @@ async def list_file_structure(
     request: FileStructureRequest,
     ctx: Context,
     user: CurrentSuperuser,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ) -> FileStructureResponse:
     """Admin-only STRUCTURAL listing (not policy-gated): what physically exists
     in a scope, so the explorer tree never orphans a file. Excludes reserved
@@ -855,7 +883,7 @@ async def get_file_policy(
     location: str = Query(default="workspace"),
     scope: str | None = Query(default=None),
     solution: str | None = Query(default=None),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ) -> FilePolicyPublic:
     """Get the exact file policy for a location/path prefix.
 
@@ -896,7 +924,7 @@ async def set_file_policy(
     location: str = Query(default="workspace"),
     scope: str | None = Query(default=None),
     solution: str | None = Query(default=None),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ) -> FilePolicyPublic:
     """Create or replace the file policy for a location/path prefix.
 
@@ -952,7 +980,7 @@ async def delete_file_policy(
     location: str = Query(default="workspace"),
     scope: str | None = Query(default=None),
     solution: str | None = Query(default=None),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ) -> None:
     """Delete the exact file policy for a location/path prefix.
 
@@ -1232,7 +1260,7 @@ async def read_file(
     request: FileReadRequest,
     ctx: Context,
     user: CurrentActiveUser,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ) -> FileReadResponse:
     """Read a file from a managed or custom location."""
     try:
@@ -1437,7 +1465,7 @@ async def write_file(
     request: FileWriteRequest,
     ctx: Context,
     user: CurrentActiveUser,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ) -> None:
     """Write a file to a managed or custom location."""
     try:
@@ -1451,7 +1479,7 @@ async def write_file(
             content = base64.b64decode(request.content, validate=True) if request.binary else request.content.encode("utf-8")
             root_access.validate_bytes(content, create=True)
             request = request.model_copy(update={"create_only": True})
-        _require_local_mode_superuser(request.mode, ctx.user)
+        _require_local_mode_superuser(request.mode, ctx.user, write=True)
         effective_scope = _resolve_effective_scope(ctx, request.location, request.scope)
         solution_id = _ctx_solution_id(ctx, request.location)
         await _require_declared_solution_file_location(
@@ -1558,6 +1586,7 @@ async def write_file(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail="checked Workspace source writes require a platform administrator",
                 )
+            access_checks.note_power("repository.readwrite", None, subject=f"file:{request.location}:{request.path}")
             from src.models.contracts.workspace_file_impact import (
                 WorkspaceFileImpactRequest,
             )
@@ -1671,11 +1700,11 @@ async def delete_file(
     request: FileDeleteRequest,
     ctx: Context,
     user: CurrentActiveUser,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ) -> None:
     """Delete a file from a managed or custom location."""
     try:
-        _require_local_mode_superuser(request.mode, ctx.user)
+        _require_local_mode_superuser(request.mode, ctx.user, write=True)
         effective_scope = _resolve_effective_scope(ctx, request.location, request.scope)
         solution_id = _ctx_solution_id(ctx, request.location)
         await _require_declared_solution_file_location(
@@ -1876,7 +1905,7 @@ async def list_files_simple(
     request: FileListRequest,
     ctx: Context,
     user: CurrentActiveUser,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ) -> FileListResponse:
     """List files in a directory (simple SDK-focused endpoint)."""
     try:
@@ -2093,7 +2122,7 @@ async def file_exists(
     request: FileExistsRequest,
     ctx: Context,
     user: CurrentActiveUser,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ) -> FileExistsResponse:
     """Check if a file exists."""
     try:
@@ -2174,7 +2203,7 @@ async def file_stat(
     request: FileReadRequest,
     ctx: Context,
     user: CurrentActiveUser,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ) -> FileStatResponse:
     """Return file metadata for guarded CLI workflows."""
     try:
@@ -2247,7 +2276,7 @@ async def get_signed_url(
     request: SignedUrlRequest,
     ctx: Context,
     user: CurrentActiveUser,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ) -> SignedUrlResponse:
     """Generate a presigned S3 URL for direct file upload or download.
 
@@ -2263,7 +2292,7 @@ async def complete_signed_upload(
     request: SignedUploadCompleteRequest,
     ctx: Context,
     user: CurrentActiveUser,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ) -> None:
     """Finalize a successful direct browser upload."""
     await _record_completed_signed_upload(request, ctx, db)
@@ -2274,7 +2303,7 @@ async def get_signed_urls(
     request: SignedUrlBatchRequest,
     ctx: Context,
     user: CurrentActiveUser,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ) -> SignedUrlBatchResponse:
     """Generate presigned URLs with per-path allow/deny results."""
     results: list[SignedUrlBatchResult] = []
@@ -2314,7 +2343,7 @@ async def pull_files(
     request: FilePullRequest,
     ctx: Context,
     user: CurrentSuperuser,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ) -> FilePullResponse:
     """
     Pull manifest files from server that differ from local state.
@@ -2356,7 +2385,7 @@ async def pull_files(
 async def get_manifest(
     ctx: Context,
     user: CurrentSuperuser,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ) -> dict[str, str]:
     """Return regenerated manifest files from DB state."""
     from src.services.manifest_generator import generate_manifest
@@ -2446,7 +2475,7 @@ async def list_files_editor(
     user: CurrentSuperuser,
     path: str = Query(..., description="Directory path relative to workspace root"),
     recursive: bool = Query(default=False, description="If true, return all files recursively"),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ) -> list[FileMetadata]:
     """
     List files and folders in a directory with rich metadata.
@@ -2557,7 +2586,7 @@ async def get_file_content_editor(
     ctx: Context,
     user: CurrentSuperuser,
     path: str = Query(..., description="File path relative to workspace root"),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ) -> FileContentResponse:
     """
     Read file content with rich metadata.
@@ -2614,7 +2643,7 @@ async def put_file_content_editor(
     request: FileContentRequest,
     ctx: Context,
     user: CurrentSuperuser,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ) -> FileContentResponse:
     """
     Write file content with conflict detection.
@@ -2781,7 +2810,7 @@ async def create_folder_editor(
     ctx: Context,
     user: CurrentSuperuser,
     path: str = Query(..., description="Folder path relative to workspace root"),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ) -> FileMetadata:
     """
     Create a new folder.
@@ -2817,7 +2846,7 @@ async def delete_file_editor(
     ctx: Context,
     user: CurrentSuperuser,
     path: str = Query(..., description="File or folder path"),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ) -> None:
     """
     Delete a file or folder recursively.
@@ -2882,7 +2911,7 @@ async def rename_file_editor(
     user: CurrentSuperuser,
     old_path: str = Query(..., description="Current path"),
     new_path: str = Query(..., description="New path"),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ) -> FileMetadata:
     """
     Rename or move a file or folder.
@@ -2932,13 +2961,13 @@ async def search_file_contents(
     request: SearchRequest,
     ctx: Context,
     user: CurrentSuperuser,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ) -> SearchResponse:
-    """
-    Search file contents for text or regex patterns.
+    """Search workspace and Solution source like grep, one bounded page at a time.
 
     Immutable Live Workspace source overlays the mutable file index. Other
     non-release files continue to come from the database projection.
+    Follow ``next_cursor`` (or the ``guidance`` sentence) for more results.
     """
     try:
         from src.services.workspace_release_files import (
@@ -2952,14 +2981,13 @@ async def search_file_contents(
             paths = await release_view.list()
             immutable_overlay = await release_view.read_many(paths)
             release_id = release_view.release.release_id
-        results = await search_files_db(
+        results = await search_source(
             db,
             request,
-            root_path="",
             immutable_overlay=immutable_overlay,
             workspace_release_id=release_id,
         )
         return results
 
-    except ValueError as e:
+    except (InvalidSearchRequest, ValueError) as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))

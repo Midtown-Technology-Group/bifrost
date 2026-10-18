@@ -36,9 +36,11 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import selectinload
 
 from shared.scope_resolver import has_scope_bypass
+from shared.chat_context import store_chat_context_usage
 from src.core.principal import UserPrincipal
 from src.models.contracts.agents import (
     AgentSwitch,
+    ChatContextUsage,
     ChatStreamChunk,
     ContextWarning,
     ToolCall,
@@ -65,8 +67,12 @@ from src.services.agent_runtime import (
     build_chain_model,
     build_runtime_capabilities,
     provider_reported_cost,
+    reasoning_tokens,
 )
 from src.services.model_capabilities import should_offer_tool_calling
+from src.services.model_pricing import chain_context_window, config_context_window
+from src.services.model_catalog import get_model_catalog
+from src.services.agent_runtime.model_factory import provider_name_for_config
 from src.services.execution.agent_helpers import (
     agent_mcp_granted,
     agent_workflow_granted,
@@ -75,6 +81,7 @@ from src.services.execution.agent_helpers import (
     parse_mcp_tool_name,
     resolve_agent_tools,
 )
+from shared.run_lineage import run_user_lineage
 from src.services.execution.agent_workflow_tools import (
     AgentWorkflowCaller,
     execute_agent_workflow_tool,
@@ -151,6 +158,7 @@ class AgentExecutor:
         self._active_budget: AgentRunBudget | None = None
         self._active_llm_model: str | None = None
         self._active_failover_path: list[str] | None = None
+        self._run_user_id: UUID | None = None
 
     @asynccontextmanager
     async def _db(self):
@@ -246,6 +254,7 @@ class AgentExecutor:
         model_profile_id: UUID | None = None,
         user_message_id: UUID | None = None,
         agent_run_id: UUID | None = None,
+        run_user_id: UUID | None,
     ) -> AsyncIterator[ChatStreamChunk]:
         """
         Process a user message and generate a response.
@@ -262,6 +271,8 @@ class AgentExecutor:
             user: Current user for permission-aware agent routing
             user_message_id: Persisted user message id when the caller already
                 inserted the user row before invoking chat.
+            run_user_id: Who the chat run is for (shared.run_lineage); its tool
+                calls and delegations run for the same user.
 
         Yields:
             ChatStreamChunk objects with response content, tool calls, etc.
@@ -271,6 +282,7 @@ class AgentExecutor:
         start_time = time.time()
         self._agent_run_id = agent_run_id
         self._knowledge_search_budget.reset()
+        self._run_user_id = run_user_id
         router = AgentRouter(
             self._session_factory,
             user_id=user.user_id if user else None,
@@ -444,6 +456,25 @@ class AgentExecutor:
             # 6. Get LLM client
             async with self._db() as session:
                 llm_client = await get_llm_client(session, profile_id=chat_profile.id)
+                context_window = await chain_context_window(
+                    session,
+                    [llm_client.config, *llm_client.fallback_configs],
+                    primary_model=model_override,
+                )
+                catalog = await get_model_catalog(session)
+                request_context_windows = {
+                    (
+                        provider_name_for_config(config),
+                        model_override if index == 0 else config.model,
+                    ): config_context_window(
+                        catalog,
+                        config,
+                        model=model_override if index == 0 else config.model,
+                    )
+                    for index, config in enumerate(
+                        [llm_client.config, *llm_client.fallback_configs]
+                    )
+                }
 
             # 7. Hand the full loop to Pydantic AI. Bifrost remains responsible
             # for authorization, persistence, and its stable stream contract;
@@ -466,23 +497,40 @@ class AgentExecutor:
             total_output_tokens = 0
             total_cache_read_tokens = 0
             total_cache_write_tokens = 0
+            total_reasoning_tokens = 0
             total_provider_cost = Decimal("0")
             provider_cost_seen = False
             final_finish_reason: str | None = None
             final_incomplete: bool | None = None
+            pending_context_chunks: list[ChatStreamChunk] = []
 
             async def record_model_event(event: ModelCallEvent) -> None:
                 nonlocal total_input_tokens, total_output_tokens, model_name
                 nonlocal total_cache_read_tokens, total_cache_write_tokens
+                nonlocal total_reasoning_tokens
                 nonlocal total_provider_cost, provider_cost_seen
                 nonlocal final_finish_reason, final_incomplete
                 if event.type != "response" or event.response is None:
                     return
                 response_usage = event.response.usage
+                context_usage = ChatContextUsage(
+                    input_tokens=response_usage.input_tokens,
+                    context_window=request_context_windows.get(
+                        (event.billing_provider, event.request_model)
+                    ),
+                    cache_read_tokens=response_usage.cache_read_tokens,
+                    model_profile_id=chat_profile.id,
+                )
+                async with self._db() as session:
+                    await store_chat_context_usage(session, conversation.id, context_usage)
+                pending_context_chunks.append(
+                    ChatStreamChunk(type="context_usage", context_usage=context_usage)
+                )
                 total_input_tokens += response_usage.input_tokens
                 total_output_tokens += response_usage.output_tokens
                 total_cache_read_tokens += response_usage.cache_read_tokens
                 total_cache_write_tokens += response_usage.cache_write_tokens
+                total_reasoning_tokens += reasoning_tokens(response_usage)
                 request_provider_cost = provider_reported_cost(event.response)
                 if request_provider_cost is not None:
                     total_provider_cost += request_provider_cost
@@ -666,7 +714,9 @@ class AgentExecutor:
                 # history already contains its original system part.
                 instructions=system_prompt,
                 toolsets=[toolset] if tool_definitions else [],
-                capabilities=build_runtime_capabilities(budget),
+                capabilities=build_runtime_capabilities(
+                    budget, context_window=context_window
+                ),
                 model_settings=chain.primary_settings,
                 # Permit one schema/tool-name correction. It is charged to the
                 # same pre-request budget, so a malformed provider response can
@@ -690,6 +740,9 @@ class AgentExecutor:
                     conversation_id=str(conversation.id),
                 ) as events:
                     async for event in events:
+                        for chunk in pending_context_chunks:
+                            yield chunk
+                        pending_context_chunks.clear()
                         if pending_tool_chunks:
                             for pending_chunk in pending_tool_chunks:
                                 yield pending_chunk
@@ -797,6 +850,10 @@ class AgentExecutor:
                     ),
                 )
 
+            for chunk in pending_context_chunks:
+                yield chunk
+            pending_context_chunks.clear()
+
             # 9. Save final assistant message (using pre-generated ID)
             duration_ms = int((time.time() - start_time) * 1000)
             assistant_msg = await self._save_message(
@@ -819,6 +876,7 @@ class AgentExecutor:
                     output_tokens=total_output_tokens,
                     cache_read_tokens=total_cache_read_tokens,
                     cache_write_tokens=total_cache_write_tokens,
+                    reasoning_tokens=total_reasoning_tokens,
                     provider_cost=(total_provider_cost if provider_cost_seen else None),
                     duration_ms=duration_ms,
                     conversation_id=conversation.id,
@@ -1491,6 +1549,7 @@ class AgentExecutor:
                 ),
                 execution_id=execution_id,
                 artifact_workspace_id=str(conversation.id) if conversation else None,
+                lineage=run_user_lineage(self._run_user_id),
             )
 
             duration_ms = int((time.time() - start_time) * 1000)
@@ -1994,6 +2053,9 @@ class AgentExecutor:
                 caller=caller,
                 _shared_usage=self._active_usage,
                 _shared_budget=self._active_budget,
+                run_user_id=self._run_user_id,
+                # Chat runs have no Run As user; the caller acts.
+                run_as=None,
             )
             metadata = {
                 "child_run_id": str(outcome.child_run_id),
@@ -2091,6 +2153,7 @@ class AgentExecutor:
                 is_platform_admin=user.is_superuser if user else False,
                 user_email=user.email if user else "",
                 user_name=user.name if user else "",
+                run_user_id=self._run_user_id,
                 session=None,
             )
 
@@ -2139,6 +2202,7 @@ class AgentExecutor:
         output_tokens: int,
         cache_read_tokens: int = 0,
         cache_write_tokens: int = 0,
+        reasoning_tokens: int = 0,
         provider_cost: Decimal | None = None,
         duration_ms: int | None = None,
         conversation_id: UUID | None = None,
@@ -2174,6 +2238,7 @@ class AgentExecutor:
                 output_tokens=output_tokens,
                 cache_read_tokens=cache_read_tokens,
                 cache_write_tokens=cache_write_tokens,
+                reasoning_tokens=reasoning_tokens,
                 provider_cost=provider_cost,
                 duration_ms=duration_ms,
                 conversation_id=conversation_id,

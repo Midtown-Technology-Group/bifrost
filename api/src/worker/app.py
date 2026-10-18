@@ -21,7 +21,9 @@ import signal
 from pathlib import Path
 
 from src.config import get_settings
-from src.core.database import close_db, get_db_context, init_db
+from shared.schema_gate import wait_for_schema
+from src.worker.health import clear_ready, mark_ready
+from src.core.database import close_db, get_db_context, get_engine, init_db
 from src.jobs.rabbitmq import rabbitmq
 from src.jobs.consumers.workflow_execution import WorkflowExecutionConsumer
 from src.jobs.consumers.package_install import PackageInstallConsumer
@@ -177,6 +179,7 @@ class Worker:
         logger.info("Starting Bifrost Worker...")
         logger.info(f"Environment: {self.settings.environment}")
 
+        clear_ready()
         try:
             async with self._startup_lock:
                 if not self._stopping:
@@ -185,6 +188,13 @@ class Worker:
                     await init_db()
 
                 if not self._stopping:
+                    # Do not consume work against a schema older than this image.
+                    await wait_for_schema(get_engine())
+
+                if not self._stopping:
+                    # Configure the ORM before accepting queue messages. Lazy mapper
+                    # setup otherwise lands on the first execution-row insert and can
+                    # add hundreds of milliseconds to the first workflow after start.
                     from sqlalchemy.orm import configure_mappers
                     from src.services.execution_attempts import (
                         require_execution_operations_schema,
@@ -213,6 +223,7 @@ class Worker:
             raise
 
         if not self._stopping:
+            mark_ready()
             logger.info("Bifrost Worker started")
             logger.info("Waiting for messages... (Ctrl+C to stop)")
 

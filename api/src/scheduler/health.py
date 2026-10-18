@@ -15,6 +15,7 @@ HEARTBEAT_PATH = Path(
         Path.home() / ".cache" / "bifrost" / "runtime",
     )
 ) / "scheduler-heartbeat"
+READY_PATH = HEARTBEAT_PATH.parent / "scheduler-ready"
 
 
 def _ensure_private_runtime_directory() -> None:
@@ -34,10 +35,10 @@ def _ensure_private_runtime_directory() -> None:
         raise PermissionError(f"Scheduler runtime directory is not private: {runtime_directory}")
 
 
-def _open_heartbeat(flags: int) -> int:
+def _open_heartbeat(flags: int, *, path: Path | None = None) -> int:
     _ensure_private_runtime_directory()
     descriptor = os.open(
-        HEARTBEAT_PATH,
+        path if path is not None else HEARTBEAT_PATH,
         flags | os.O_CLOEXEC | os.O_NOFOLLOW,
         0o600,
     )
@@ -60,6 +61,15 @@ def write_heartbeat() -> None:
         os.close(descriptor)
 
 
+def clear_ready() -> None:
+    READY_PATH.unlink(missing_ok=True)
+
+
+def mark_ready() -> None:
+    descriptor = _open_heartbeat(os.O_WRONLY | os.O_CREAT, path=READY_PATH)
+    os.close(descriptor)
+
+
 async def heartbeat_loop(interval_seconds: float = 10) -> None:
     while True:
         write_heartbeat()
@@ -78,11 +88,27 @@ def heartbeat_is_fresh(max_age_seconds: float = 60) -> bool:
         os.close(descriptor)
 
 
+def is_ready(max_age_seconds: float = 60) -> bool:
+    """Ready once startup gates have passed and the event loop is still alive."""
+    try:
+        descriptor = _open_heartbeat(os.O_RDONLY, path=READY_PATH)
+    except OSError:
+        return False
+    os.close(descriptor)
+    return heartbeat_is_fresh(max_age_seconds)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--max-age", type=float, default=60)
+    parser.add_argument(
+        "--ready",
+        action="store_true",
+        help="Readiness check: also require startup gates to have passed.",
+    )
     args = parser.parse_args()
-    return 0 if heartbeat_is_fresh(args.max_age) else 1
+    check = is_ready if args.ready else heartbeat_is_fresh
+    return 0 if check(args.max_age) else 1
 
 
 if __name__ == "__main__":

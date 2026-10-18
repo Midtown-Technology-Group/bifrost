@@ -33,6 +33,20 @@ const FILE_RULE_NAME = `e2e-file-ref-rule-${UNIQUE}`;
 const TABLE_RULE_NAME = `e2e-table-ref-rule-${UNIQUE}`;
 const SHARE_NAME = `e2e-ref-share-${UNIQUE}`.replace(/[^a-z0-9-]/g, "-");
 const TABLE_NAME = `e2e_ref_table_${UNIQUE}`.replace(/[^a-z0-9_]/g, "_");
+
+/**
+ * The Files "Add Shared Rule…" combobox renders a humanized label
+ * (FilePolicyEditor.tsx's `readableRuleName`), not the raw rule name —
+ * mirror that transform so the option locator matches what's on screen.
+ */
+function readableRuleName(name: string) {
+	if (name === "admin_bypass") return "Administrator Access";
+	return name
+		.split(/[_-]+/)
+		.filter(Boolean)
+		.map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+		.join(" ");
+}
 let tableId: string | undefined;
 
 async function expectCleanupStatus(

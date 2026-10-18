@@ -908,6 +908,8 @@ export interface BifrostAppBootstrap {
   token: string;
   orgScope: string | null;
   appId: string | null;
+  /** Owning Solution supplied by the platform host. */
+  solutionId?: string | null;
   onLogout: () => void;
   theme: "light" | "dark";
 }
@@ -931,6 +933,7 @@ export function mount(mountEl: HTMLElement, bootstrap: BifrostAppBootstrap) {
         token={bootstrap.token}
         orgScope={bootstrap.orgScope}
         appId={bootstrap.appId}
+        solutionId={bootstrap.solutionId}
         theme={bootstrap.theme}
         supportsTheme
         onLogout={bootstrap.onLogout}
@@ -964,54 +967,81 @@ if (import.meta.env.DEV) {
 }
 """
     app_tsx = """\
-import { Routes, Route, Link } from "react-router-dom";
+import { Link, NavLink, Outlet, Route, Routes } from "react-router-dom";
 import { BifrostHeader, useWorkflowMutation } from "bifrost";
 
+// One list drives the navigation. To add a section, add an entry here and a
+// matching <Route> below. Paths are relative to the App's base URL.
+const NAV = [
+  { to: "/", label: "Home", end: true },
+  { to: "/about", label: "About" },
+];
+
+// The shell renders once: the header, then `main` as the only scroller. The
+// header shows NAV as a tab row on wide screens and inside its menu button on
+// phones; NavLink marks the active section. Pages render into <Outlet />.
+function Shell() {
+  return (
+    <div className="flex h-full min-h-0 flex-col bg-background text-foreground">
+      <BifrostHeader title="My App" nav={{ items: NAV, link: NavLink }} />
+      <main className="min-h-0 flex-1 overflow-auto">
+        <Outlet />
+      </main>
+    </div>
+  );
+}
+
 function Home() {
-  // Workflow hooks (pick by intent — same mental model as React Query):
-  //   useWorkflowQuery(ref)    → READ: auto-runs on mount, has { data, refresh }.
-  //   useWorkflowMutation(ref) → ACTION: runs on mutate(), has { mutate }.
-  // This sample is a button (an action), so it uses the mutation hook. The ref
-  // is a portable `path::function` ref (e.g. "functions/hello.py::main",
-  // shipped with this scaffold) or a workflow name — both resolve to THIS
-  // install's own workflow when deployed, and `bifrost solution start` runs
-  // both from your local files. (Avoid raw UUID refs: deploy remaps entity
-  // ids per install, so a hardcoded UUID won't resolve on a deployed install.)
+  // Portable refs resolve inside this Solution; local start executes the sample.
   const wf = useWorkflowMutation<{ message: string }>("functions/hello.py::main");
   return (
-    <main style={{ padding: 24 }}>
-      <h1>Hello from your Bifrost app</h1>
-      <p>
-        <Link to="/about">About</Link>
-      </p>
-      <button onClick={() => wf.mutate({})} disabled={wf.loading}>
-        {wf.loading ? "Running…" : "Run workflow"}
+    <section className="mx-auto w-full max-w-3xl space-y-4 p-4 md:p-6">
+      <h1 className="text-lg font-semibold">Hello from your Bifrost app</h1>
+      <button
+        type="button"
+        onClick={() => wf.mutate({})}
+        disabled={wf.loading}
+        className="rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+      >
+        {wf.loading ? "Running?" : "Run workflow"}
       </button>
-      {wf.error && <pre style={{ color: "crimson" }}>{wf.error.message}</pre>}
+      {wf.error && <p role="alert" className="text-sm text-destructive">{wf.error.message}</p>}
       {wf.data && <pre>{JSON.stringify(wf.data, null, 2)}</pre>}
-    </main>
+    </section>
   );
 }
 
 function About() {
   return (
-    <main style={{ padding: 24 }}>
-      <h1>About</h1>
-      <p>This route is at /about — refresh works because the URL is real.</p>
-      <Link to="/">Home</Link>
-    </main>
+    <section className="mx-auto w-full max-w-3xl space-y-2 p-4 md:p-6">
+      <h1 className="text-lg font-semibold">About</h1>
+      <p className="text-sm text-muted-foreground">
+        This route is at /about. Refresh works because the URL is real.
+      </p>
+    </section>
+  );
+}
+
+function NotFound() {
+  return (
+    <section className="mx-auto w-full max-w-3xl space-y-2 p-4 md:p-6">
+      <h1 className="text-lg font-semibold">Page not found</h1>
+      <Link to="/" className="text-sm text-primary hover:underline">
+        Back to Home
+      </Link>
+    </section>
   );
 }
 
 export default function App() {
   return (
-    <>
-      <BifrostHeader title="My App" />
-      <Routes>
-        <Route path="/" element={<Home />} />
-        <Route path="/about" element={<About />} />
-      </Routes>
-    </>
+    <Routes>
+      <Route element={<Shell />}>
+        <Route index element={<Home />} />
+        <Route path="about" element={<About />} />
+        <Route path="*" element={<NotFound />} />
+      </Route>
+    </Routes>
   );
 }
 """
@@ -2138,6 +2168,10 @@ def _collect_apps(workspace: pathlib.Path) -> list[dict]:
             # UTF-8-encoding the base64 text (which would corrupt the asset).
             "dist_files": body.get("dist_files"),
             "bin_dist_files": body.get("bin_dist_files"),
+            # Set only on the deployment ZIP overlay after a local build reads
+            # the exact SDK package npm installed. It is not portable manifest
+            # content and is stripped from later exports.
+            "prebuilt_sdk_metadata": body.get("prebuilt_sdk_metadata"),
         })
     return entries
 
@@ -2231,6 +2265,33 @@ def _run_local_vite_build(
     )
 
 
+def _installed_sdk_build_metadata(app_dir: pathlib.Path) -> dict[str, str | int] | None:
+    """Return the complete SDK stamp from the package the local build installed."""
+    pkg_file = app_dir / "node_modules" / "bifrost" / "package.json"
+    try:
+        package = json.loads(pkg_file.read_text(encoding="utf-8-sig"))
+    except (OSError, ValueError):
+        return None
+    stamp = package.get("bifrost")
+    package_version = package.get("version")
+    fingerprint = stamp.get("fingerprint") if isinstance(stamp, dict) else None
+    contract_version = stamp.get("contract") if isinstance(stamp, dict) else None
+    if (
+        not isinstance(package_version, str)
+        or not package_version
+        or not isinstance(fingerprint, str)
+        or not fingerprint
+        or not isinstance(contract_version, int)
+        or isinstance(contract_version, bool)
+    ):
+        return None
+    return {
+        "package_version": package_version,
+        "fingerprint": fingerprint,
+        "contract_version": contract_version,
+    }
+
+
 def _prebuild_apps(
     workspace: pathlib.Path,
     apps: list[dict],
@@ -2291,6 +2352,7 @@ def _prebuild_apps(
                     npx=npx,
                     base=f"/api/applications/{deployed_id}/dist/",
                 )
+                sdk_metadata = _installed_sdk_build_metadata(workdir)
                 dist_dir = workdir / "dist"
                 dist_paths = [p for p in dist_dir.rglob("*") if p.is_file()]
                 if not dist_paths:
@@ -2322,6 +2384,8 @@ def _prebuild_apps(
             "dist_files": dist_files,
             "bin_dist_files": bin_dist_files,
         }
+        if sdk_metadata is not None:
+            built[app_id_text]["prebuilt_sdk_metadata"] = sdk_metadata
     return built
 
 
@@ -2349,6 +2413,8 @@ def _apps_manifest_with_prebuilt_dist(
             continue
         body["dist_files"] = dist["dist_files"]
         body["bin_dist_files"] = dist["bin_dist_files"]
+        if "prebuilt_sdk_metadata" in dist:
+            body["prebuilt_sdk_metadata"] = dist["prebuilt_sdk_metadata"]
         remaining.discard(app_id)
     if remaining:
         raise click.ClickException(

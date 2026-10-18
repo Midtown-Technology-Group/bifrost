@@ -18,6 +18,8 @@ export default defineConfig({
 		sourceDirty: process.env.TEST_SOURCE_DIRTY ?? "unrecorded",
 	},
 	testDir: "./e2e",
+	// Preview specs use their own live Vite config.
+	testIgnore: "**/preview/**",
 	outputDir: "playwright-results/test-results",
 	// ponytail: one shared workspace => one worker; parallelize after fixtures own isolated workspaces.
 	fullyParallel: false,

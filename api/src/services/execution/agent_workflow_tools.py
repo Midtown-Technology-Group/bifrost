@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Any
 from uuid import UUID, uuid4
 
+from shared.run_lineage import RunLineage
 from src.models.contracts.executions import WorkflowExecutionResponse
 
 
@@ -30,6 +31,7 @@ async def execute_agent_workflow_tool(
     artifact_workspace_id: str | None = None,
     sync: bool = True,
     task_requested: bool = False,
+    lineage: RunLineage | None,
 ) -> WorkflowExecutionResponse:
     """Execute a workflow tool with one canonical agent execution context."""
     from src.core.database import get_db_context
@@ -109,4 +111,5 @@ async def execute_agent_workflow_tool(
         execution_id=execution_id,
         artifact_workspace_id=artifact_workspace_id,
         sync=sync,
+        lineage=lineage,
     )

@@ -311,7 +311,7 @@ class TestProcessPoolManagerStart:
                 try:
                     await task
                 except asyncio.CancelledError:
-                    # Expected — we just cancelled the task during cleanup
+                    # Expected â€” we just cancelled the task during cleanup
                     pass
 
         # start() also boots the worker-local SDK socket server; stop it so
@@ -406,6 +406,178 @@ class TestProcessPoolManagerRouting:
         assert datetime.fromisoformat(queued_context["workflow_deadline"]) == (
             h.current_execution.started_at + timedelta(seconds=300)
         )
+
+    @pytest.mark.asyncio
+    async def test_write_context_to_redis_excludes_engine_token(self):
+        """The Redis diagnostic copy must not carry the execution's credential.
+
+        The child still receives the full context (including its token)
+        over the private work pipe - only the Redis record read by queue
+        display/diagnostics is scrubbed.
+        """
+        pool = ProcessPoolManager(max_workers=5)
+        fake_redis = AsyncMock()
+
+        with patch.object(pool, "_get_redis", AsyncMock(return_value=fake_redis)):
+            context = {
+                "execution_id": "exec-secret",
+                "workflow_id": "workflow-1",
+                "name": "long_scan",
+                "engine_token": "super-secret-jwt-value",
+            }
+            await pool._write_context_to_redis("exec-secret", context)
+
+        fake_redis.setex.assert_awaited_once()
+        stored_key, stored_ttl, stored_json = fake_redis.setex.call_args.args
+        assert stored_key == "bifrost:exec:exec-secret:context"
+        assert stored_ttl == 3600
+        stored = json.loads(stored_json)
+        assert "engine_token" not in stored
+        assert stored["workflow_id"] == "workflow-1"
+        # The original context object (handed to the child) is untouched.
+        assert context["engine_token"] == "super-secret-jwt-value"
+
+    @pytest.mark.asyncio
+    async def test_route_execution_sends_full_context_to_child_despite_redis_scrub(self):
+        """route_execution must still hand the child its engine token."""
+        pool = ProcessPoolManager(max_workers=5)
+
+        new_process = MagicMock()
+        new_process.is_alive.return_value = True
+        new_process.pid = 55555
+        handle = ProcessHandle(
+            id="process-1",
+            process=new_process,
+            pid=new_process.pid,
+            state=ProcessState.BUSY,
+            work_queue=MagicMock(),
+            result_queue=MagicMock(),
+            started_at=datetime.now(timezone.utc),
+        )
+        pool.processes[handle.id] = handle
+        pool._fork_process = lambda: handle
+
+        fake_redis = AsyncMock()
+
+        with patch.object(pool, "_get_redis", AsyncMock(return_value=fake_redis)), \
+             patch.object(pool, "_register_result_reader"), \
+             patch("src.services.execution.process_pool.has_sufficient_memory_cgroup", return_value=True):
+            await pool.route_execution(
+                "exec-secret",
+                {"timeout_seconds": 300, "engine_token": "super-secret-jwt-value"},
+                _active_execution("exec-secret"),
+            )
+
+        # Redis never saw the token...
+        stored_json = fake_redis.setex.call_args.args[2]
+        assert "engine_token" not in json.loads(stored_json)
+        # ...but the child did, over its private work pipe.
+        queued_id, queued_context = handle.work_queue.put_nowait.call_args.args[0]
+        assert queued_id == "exec-secret"
+        assert queued_context["engine_token"] == "super-secret-jwt-value"
+
+    @pytest.mark.asyncio
+    async def test_drain_active_executions_waits_until_child_result_clears_handle(self):
+        """Graceful shutdown must track child work after queue dispatch returns."""
+        pool = ProcessPoolManager(max_workers=5)
+        process = MagicMock()
+        process.is_alive.return_value = True
+        handle = ProcessHandle(
+            id="process-active",
+            process=process,
+            pid=12345,
+            state=ProcessState.BUSY,
+            work_queue=MagicMock(),
+            result_queue=MagicMock(),
+            started_at=datetime.now(timezone.utc),
+            current_execution=ExecutionInfo(
+                execution_id="exec-active",
+                started_at=datetime.now(timezone.utc),
+                timeout_seconds=300,
+                active_execution=_active_execution("exec-active"),
+            ),
+        )
+        pool.processes[handle.id] = handle
+
+        sleep_calls = 0
+
+        async def finish_on_sleep(_delay: float) -> None:
+            nonlocal sleep_calls
+            sleep_calls += 1
+            pool.processes.pop(handle.id, None)
+
+        with patch("src.services.execution.process_pool.asyncio.sleep", finish_on_sleep):
+            drained = await pool.drain_active_executions(drain_timeout=1.0)
+
+        assert drained is True
+        assert sleep_calls == 1
+        assert pool.active_execution_count() == 0
+
+    @pytest.mark.asyncio
+    async def test_drain_active_executions_reports_bounded_timeout(self):
+        """A stuck child should consume only the supplied shutdown grace."""
+        callback = AsyncMock()
+        pool = ProcessPoolManager(max_workers=5, on_result=callback)
+        process = MagicMock()
+        process.is_alive.return_value = True
+        handle = ProcessHandle(
+            id="process-stuck",
+            process=process,
+            pid=12345,
+            state=ProcessState.BUSY,
+            work_queue=MagicMock(),
+            result_queue=MagicMock(),
+            started_at=datetime.now(timezone.utc),
+            current_execution=ExecutionInfo(
+                execution_id="exec-stuck",
+                started_at=datetime.now(timezone.utc),
+                timeout_seconds=300,
+                active_execution=_active_execution("exec-stuck"),
+            ),
+        )
+        pool.processes[handle.id] = handle
+
+        drained = await pool.drain_active_executions(drain_timeout=0.01)
+
+        assert drained is False
+        callback.assert_awaited_once()
+        result = callback.await_args.args[0]
+        assert result["execution_id"] == "exec-stuck"
+        assert result["success"] is False
+        assert result["error_type"] == "WorkerShutdown"
+        assert handle.result_reported is True
+        assert pool.active_execution_count() == 1
+
+    @pytest.mark.asyncio
+    async def test_drain_active_executions_counts_in_progress_terminal_callback(self):
+        """A callback already in progress must keep shutdown ownership bounded."""
+        callback = AsyncMock()
+        pool = ProcessPoolManager(max_workers=5, on_result=callback)
+        process = MagicMock()
+        process.is_alive.return_value = True
+        handle = ProcessHandle(
+            id="process-reporting",
+            process=process,
+            pid=12345,
+            state=ProcessState.BUSY,
+            work_queue=MagicMock(),
+            result_queue=MagicMock(),
+            started_at=datetime.now(timezone.utc),
+            current_execution=ExecutionInfo(
+                execution_id="exec-reporting",
+                started_at=datetime.now(timezone.utc),
+                timeout_seconds=300,
+                active_execution=_active_execution("exec-reporting"),
+            ),
+            result_reported=True,
+        )
+        pool.processes[handle.id] = handle
+
+        drained = await pool.drain_active_executions(drain_timeout=0.01)
+
+        assert drained is False
+        callback.assert_not_awaited()
+        assert pool.active_execution_count() == 1
 
     @pytest.mark.asyncio
     async def test_restart_cannot_begin_between_context_write_and_dispatch(self):
@@ -510,7 +682,7 @@ class TestProcessPoolManagerRouting:
         with patch.object(pool, "_write_context_to_redis", new_callable=AsyncMock), \
              patch.object(pool, "_register_result_reader"), \
              patch("src.services.execution.process_pool.has_sufficient_memory_cgroup", return_value=True):
-            # Kick off the route — it should park on _slot_condition.
+            # Kick off the route â€” it should park on _slot_condition.
             route_task = asyncio.create_task(
                 pool.route_execution(
                     "exec-456",
@@ -651,7 +823,7 @@ class TestProcessPoolManagerCrashDetection:
     async def test_crash_detection_removes_handle(self):
         """Should detect a crashed process, fire the crash callback, and remove the handle.
 
-        One-shot workers are not replaced here — the next execution's
+        One-shot workers are not replaced here â€” the next execution's
         route_execution will fork on demand.
         """
         pool = ProcessPoolManager(max_workers=10)
@@ -960,12 +1132,12 @@ class TestProcessPoolManagerResultHandling:
         )
         pool.processes["process-1"] = handle
 
-        # Spawn a waiter — pool is full so it parks on _slot_condition.
+        # Spawn a waiter â€” pool is full so it parks on _slot_condition.
         waiter = asyncio.create_task(pool._wait_for_slot(timeout=5.0))
         await asyncio.sleep(0.1)
         assert not waiter.done(), "waiter should be parked"
 
-        # Result handling deletes the handle and notifies — waiter should wake.
+        # Result handling deletes the handle and notifies â€” waiter should wake.
         await pool._handle_result(handle, {"success": True})
         got_slot = await asyncio.wait_for(waiter, timeout=1.0)
         assert got_slot is True
@@ -1153,13 +1325,13 @@ class TestProcessPoolManagerIntegration:
 
     @pytest.mark.asyncio
     async def test_full_execution_cycle(self):
-        """Test routing and completing an execution (one-shot fork → result)."""
+        """Test routing and completing an execution (one-shot fork â†’ result)."""
         callback = AsyncMock()
         pool = ProcessPoolManager(on_result=callback)
         pool._started = True
         pool._template = MagicMock(is_alive=MagicMock(return_value=True))
 
-        # Mock the fork — route_execution will create a fresh BUSY handle.
+        # Mock the fork â€” route_execution will create a fresh BUSY handle.
         mock_work_queue = MagicMock()
 
         def mock_spawn() -> ProcessHandle:
@@ -1441,7 +1613,7 @@ class TestOrphanedKilledHandleSweep:
                 active_execution=_active_execution("exec-mid-cancel"),
             ),
             result_reported=False,
-            killed_at=datetime.now(timezone.utc),  # JUST killed — inside grace window
+            killed_at=datetime.now(timezone.utc),  # JUST killed â€” inside grace window
         )
         pool.processes["proc-1"] = handle
 
@@ -1449,7 +1621,7 @@ class TestOrphanedKilledHandleSweep:
 
         # The in-flight cancel will report; we must not duplicate
         callback.assert_not_awaited()
-        # Handle still in pool — not orphan-removed yet
+        # Handle still in pool â€” not orphan-removed yet
         assert "proc-1" in pool.processes
 
 
@@ -1460,7 +1632,7 @@ class TestCrashedProcessReport:
     _check_process_health (state != KILLED, is_alive == False), which calls
     _report_crash. This is the *crash* path, not the orphan path. The orphan
     path (Case B) covers KILLED-state handles where the cancel/timeout handler
-    crashed before it could fire the result callback — that is covered by
+    crashed before it could fire the result callback â€” that is covered by
     TestOrphanedKilledHandleSweep. This class proves the crash path fires the
     on_result callback immediately (no waiting) and sets result_reported=True so
     the reaper-of-last-resort never double-fires it.
@@ -1470,7 +1642,7 @@ class TestCrashedProcessReport:
     async def test_sigkilled_worker_crashes_get_reported_within_seconds(self):
         """A BUSY worker whose process died unexpectedly (e.g. SIGKILL) should
         have on_result called with success=False and error_type='ProcessCrashError'
-        synchronously within _check_process_health — no reaper wait needed."""
+        synchronously within _check_process_health â€” no reaper wait needed."""
         callback = AsyncMock()
         pool = ProcessPoolManager(max_workers=5, on_result=callback)
 
@@ -1489,7 +1661,7 @@ class TestCrashedProcessReport:
             id="process-sigkill",
             process=mock_process,
             pid=99999,
-            state=ProcessState.BUSY,  # still BUSY — crash was unexpected
+            state=ProcessState.BUSY,  # still BUSY â€” crash was unexpected
             work_queue=MagicMock(),
             result_queue=MagicMock(),
             started_at=datetime.now(timezone.utc),
@@ -1510,7 +1682,7 @@ class TestCrashedProcessReport:
         # Handle must be removed from the pool
         assert "process-sigkill" not in pool.processes
 
-        # result_reported must be True — reaper-of-last-resort must not re-fire
+        # result_reported must be True â€” reaper-of-last-resort must not re-fire
         assert handle.result_reported is True
 
     @pytest.mark.asyncio
@@ -1547,7 +1719,7 @@ class TestCrashedProcessReport:
 
         await pool._check_process_health()
 
-        # Callback must not fire — already reported
+        # Callback must not fire â€” already reported
         callback.assert_not_awaited()
 
         # Handle still removed from pool (cleanup still happens)
@@ -1887,7 +2059,7 @@ class TestBurstRaceRegression:
     unconditional `del self.processes[id]`. If a peer coroutine
     (_handle_result, another health-check pass, a cancellation) removes the
     same id during that await, the `del` raises KeyError and aborts the
-    cleanup before `_notify_slot_free()` runs — leaving slot waiters parked
+    cleanup before `_notify_slot_free()` runs â€” leaving slot waiters parked
     until the 30s _wait_for_slot timeout.
     """
 
@@ -1954,7 +2126,7 @@ class TestBurstRaceRegression:
     @pytest.mark.asyncio
     async def test_check_process_health_notifies_waiters_even_on_concurrent_delete(self):
         """If a concurrent delete races the cleanup loop, slot waiters must
-        still be notified — otherwise route_execution parks for 30s.
+        still be notified â€” otherwise route_execution parks for 30s.
 
         Mirrors the reporter's `No worker slot available after timeout` at
         30s on a 30-burst test: the KeyError aborted cleanup so the
@@ -2003,7 +2175,7 @@ class TestBurstRaceRegression:
 
         # Race: peer deletes the id during _report_crash's await. In real
         # code, the peer is _handle_result which ALSO notifies on its own
-        # removal — simulate that complete behavior here. The cleanup loop
+        # removal â€” simulate that complete behavior here. The cleanup loop
         # must not crash; the waiter must wake from one of the notifies.
         pool.processes.pop("process-race-2", None)
         await pool._notify_slot_free()
@@ -2013,7 +2185,7 @@ class TestBurstRaceRegression:
 
         got_slot = await asyncio.wait_for(waiter, timeout=1.0)
         assert got_slot is True, (
-            "waiter never woke — _notify_slot_free was skipped because "
+            "waiter never woke â€” _notify_slot_free was skipped because "
             "cleanup aborted with KeyError"
         )
 

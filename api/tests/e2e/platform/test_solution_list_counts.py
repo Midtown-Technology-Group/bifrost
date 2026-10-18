@@ -104,6 +104,11 @@ async def test_solution_list_and_detail_include_entity_counts(
         )
         assert detail.status_code == 200, detail.text
         assert detail.json()["entity_counts"] == solution["entity_counts"]
+        entities = e2e_client.get(
+            f"/api/solutions/{solution_id}/entities", headers=platform_admin.headers
+        )
+        assert entities.status_code == 200, entities.text
+        assert entities.json()["solution"]["entity_counts"] == solution["entity_counts"]
     finally:
         # The global solution and all counted entities are test-owned. Leaving
         # them behind makes later manifest validation see a dangling global

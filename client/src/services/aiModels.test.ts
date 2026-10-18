@@ -12,6 +12,8 @@ vi.mock("@/lib/api-client", () => ({ apiClient }));
 
 import {
 	createModelProfile,
+	getModelCatalog,
+	refreshModelCatalog,
 	createProviderConnection,
 	listProviderModels,
 	listModelAssignments,
@@ -19,6 +21,7 @@ import {
 	listProviderConnections,
 	mergeModelProfiles,
 	setModelAssignment,
+	verifyModelProfile,
 	verifyProviderConnection,
 } from "./aiModels";
 
@@ -174,6 +177,37 @@ describe("aiModels service", () => {
 
 		await expect(listModelProfiles()).rejects.toThrow(
 			"Profile is assigned",
+		);
+	});
+
+	it("loads the catalog and queues a refresh", async () => {
+		apiClient.GET.mockResolvedValueOnce({ data: { providers: [] } });
+		apiClient.POST.mockResolvedValueOnce({ data: { job_id: "job-1" } });
+
+		await expect(getModelCatalog()).resolves.toEqual({ providers: [] });
+		await expect(refreshModelCatalog()).resolves.toEqual({ job_id: "job-1" });
+		expect(apiClient.GET).toHaveBeenCalledWith("/api/admin/ai/catalog");
+		expect(apiClient.POST).toHaveBeenCalledWith("/api/admin/ai/catalog/refresh");
+	});
+
+	it("reports a refresh failure with its detail", async () => {
+		apiClient.POST.mockResolvedValueOnce({ error: { detail: "busy" } });
+		await expect(refreshModelCatalog()).rejects.toThrow(
+			"Failed to refresh the model catalog: busy",
+		);
+	});
+	it("verifies a saved profile", async () => {
+		apiClient.POST.mockResolvedValueOnce({
+			data: { success: false, message: "401 invalid api key" },
+		});
+
+		await expect(verifyModelProfile("profile-1")).resolves.toEqual({
+			success: false,
+			message: "401 invalid api key",
+		});
+		expect(apiClient.POST).toHaveBeenCalledWith(
+			"/api/admin/ai/profiles/{profile_id}/verify",
+			{ params: { path: { profile_id: "profile-1" } } },
 		);
 	});
 });

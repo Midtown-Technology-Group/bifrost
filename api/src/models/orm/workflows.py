@@ -142,6 +142,17 @@ class Workflow(Base):
         String(20), default="role_based", server_default="role_based"
     )
 
+    # Values: 'full' | 'restricted'. NULL follows the platform default; nothing
+    # reads this until delegated execution.
+    permission_mode: Mapped[str | None] = mapped_column(String(16), default=None)
+
+    # Identity this workflow runs as when no person starts it; NULL = its
+    # organization's default identity. Not read for execution until run
+    # lineage lands.
+    run_identity_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), default=None, index=True
+    )
+
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), server_default=text("NOW()")
@@ -179,6 +190,10 @@ class Workflow(Base):
             "endpoint_enabled IS FALSE AND public_endpoint IS FALSE AND "
             "api_key_enabled IS FALSE)",
             name="ck_workflow_retirement_terminal",
+        ),
+        CheckConstraint(
+            "permission_mode IN ('full', 'restricted')",
+            name="ck_workflows_permission_mode",
         ),
         Index(
             "ix_workflows_api_key_hash",

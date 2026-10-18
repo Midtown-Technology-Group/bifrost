@@ -151,6 +151,14 @@ class MCPGatewayExecuteRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     arguments: dict[str, Any] = Field(default_factory=dict)
+    async_: bool | None = Field(
+        default=None,
+        alias="async",
+        description=(
+            "Override the capability's default execution mode. When omitted, "
+            "delegations run asynchronously and other tools run synchronously."
+        ),
+    )
     operation_id: str = Field(
         min_length=1,
         max_length=200,
@@ -187,8 +195,12 @@ class MCPGatewayExecuteResponse(BaseModel):
     tool_name: str
     source: str
     duration_ms: int
-    result: Any
+    result: Any = None
     durable_handle: MCPGatewayDurableHandle | None = None
+    async_: bool = Field(default=False, alias="async")
+    execution_id: str | None = None
+    execution_type: Literal["workflow", "agent_run"] | None = None
+    status: str | None = None
 
 
 class MCPOperationReceiptResolutionRequest(BaseModel):

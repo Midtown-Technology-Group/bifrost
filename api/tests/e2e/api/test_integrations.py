@@ -7,8 +7,10 @@ Tests OAuth configuration and authorization endpoints.
 
 import pytest
 import pytest_asyncio
-from uuid import uuid4
-from src.models.orm import OAuthProvider
+from uuid import UUID, uuid4
+from sqlalchemy import select
+
+from src.models.orm import Config, IntegrationMapping, OAuthProvider, OAuthToken
 from tests.fixtures.auth import auth_headers, create_test_jwt
 
 
@@ -170,6 +172,240 @@ class TestIntegrationsCRUD:
         integrations = response.json().get("items", response.json())
         ids = [i["id"] for i in integrations]
         assert integration["id"] not in ids
+
+    async def test_delete_integration_removes_oauth_credentials(
+        self, e2e_client, platform_admin, org1, db_session
+    ):
+        """Deleting an integration removes its OAuth provider and tokens so
+        the refresh scheduler stops refreshing them."""
+        create = e2e_client.post(
+            "/api/integrations",
+            headers=platform_admin.headers,
+            json={"name": f"e2e_delete_oauth_{uuid4().hex[:8]}"},
+        )
+        assert create.status_code == 201, create.text
+        integration_id = UUID(create.json()["id"])
+        org_id = UUID(str(org1["id"]))
+
+        provider = OAuthProvider(
+            provider_name=f"e2e_delete_oauth_{uuid4().hex[:6]}",
+            oauth_flow_type="authorization_code",
+            client_id="client",
+            encrypted_client_secret=b"secret",
+            token_url="https://login.example.com/token",
+            integration_id=integration_id,
+        )
+        db_session.add(provider)
+        await db_session.flush()
+        token = OAuthToken(
+            provider_id=provider.id,
+            organization_id=org_id,
+            encrypted_access_token=b"access",
+            encrypted_refresh_token=b"refresh",
+        )
+        db_session.add(token)
+        await db_session.flush()
+        mapping = IntegrationMapping(
+            integration_id=integration_id,
+            organization_id=org_id,
+            entity_id="tenant",
+            oauth_token_id=token.id,
+        )
+        db_session.add(mapping)
+        await db_session.commit()
+        provider_id, token_id, mapping_id = provider.id, token.id, mapping.id
+
+        response = e2e_client.delete(
+            f"/api/integrations/{integration_id}", headers=platform_admin.headers
+        )
+        assert response.status_code == 204, response.text
+
+        db_session.expunge_all()
+        assert await db_session.get(OAuthProvider, provider_id) is None
+        assert await db_session.get(OAuthToken, token_id) is None
+        remaining_mapping = (
+            await db_session.execute(
+                select(IntegrationMapping).where(IntegrationMapping.id == mapping_id)
+            )
+        ).scalar_one()
+        assert remaining_mapping.oauth_token_id is None
+
+    async def test_recreate_soft_deleted_name_has_fresh_configuration_and_mappings(
+        self, e2e_client, platform_admin, org1, db_session
+    ):
+        """A reused name is a new connection, never a credential revival."""
+        name = f"e2e_recreate_deleted_{uuid4().hex[:8]}"
+        create_old = e2e_client.post(
+            "/api/integrations",
+            headers=platform_admin.headers,
+            json={
+                "name": name,
+                "config_schema": [
+                    {"key": "old_endpoint", "type": "string", "required": True}
+                ],
+            },
+        )
+        assert create_old.status_code == 201, create_old.text
+        old = create_old.json()
+        old_id = old["id"]
+        update_old = e2e_client.put(
+            f"/api/integrations/{old_id}/config",
+            headers=platform_admin.headers,
+            json={"config": {"old_endpoint": "https://old.example"}},
+        )
+        assert update_old.status_code == 200, update_old.text
+        create_old_mapping = e2e_client.post(
+            f"/api/integrations/{old_id}/mappings",
+            headers=platform_admin.headers,
+            json={
+                "organization_id": str(org1["id"]),
+                "entity_id": "old-tenant",
+            },
+        )
+        assert create_old_mapping.status_code == 201, create_old_mapping.text
+
+        delete_old = e2e_client.delete(
+            f"/api/integrations/{old_id}", headers=platform_admin.headers
+        )
+        assert delete_old.status_code == 204, delete_old.text
+
+        recreate = e2e_client.post(
+            "/api/integrations",
+            headers=platform_admin.headers,
+            json={
+                "name": name,
+                "config_schema": [
+                    {"key": "new_endpoint", "type": "string", "required": True}
+                ],
+            },
+        )
+        assert recreate.status_code == 201, recreate.text
+        fresh = recreate.json()
+        assert fresh["id"] != old_id
+        assert {item["key"] for item in fresh["config_schema"]} == {"new_endpoint"}
+
+        old_configs = (
+            await db_session.execute(Config.__table__.select().where(Config.integration_id == old_id))
+        ).all()
+        fresh_configs = (
+            await db_session.execute(Config.__table__.select().where(Config.integration_id == fresh["id"]))
+        ).all()
+        fresh_mappings = (
+            await db_session.execute(
+                IntegrationMapping.__table__.select().where(
+                    IntegrationMapping.integration_id == fresh["id"]
+                )
+            )
+        ).all()
+        assert old_configs
+        assert fresh_configs == []
+        assert fresh_mappings == []
+
+    def test_active_integration_name_remains_unique(self, e2e_client, platform_admin):
+        name = f"e2e_active_name_{uuid4().hex[:8]}"
+        create = e2e_client.post(
+            "/api/integrations", headers=platform_admin.headers, json={"name": name}
+        )
+        assert create.status_code == 201, create.text
+
+        duplicate = e2e_client.post(
+            "/api/integrations", headers=platform_admin.headers, json={"name": name}
+        )
+        assert duplicate.status_code == 409, duplicate.text
+
+
+@pytest.mark.e2e
+class TestIntegrationSchemaRemovalGuard:
+    """PUT /api/integrations/{id} refuses to drop config-schema keys that
+    have saved Config values, unless ?force_remove_keys=true."""
+
+    @pytest.fixture
+    def integration_two_keys(self, e2e_client, platform_admin):
+        name = f"e2e_schema_guard_{uuid4().hex[:8]}"
+        response = e2e_client.post(
+            "/api/integrations",
+            headers=platform_admin.headers,
+            json={
+                "name": name,
+                "config_schema": [
+                    {"key": "endpoint", "type": "string", "required": True},
+                    {"key": "timeout", "type": "string", "required": False},
+                ],
+            },
+        )
+        assert response.status_code == 201, response.text
+        return response.json()
+
+    def test_409_when_removed_key_has_saved_value(
+        self, e2e_client, platform_admin, integration_two_keys
+    ):
+        integration_id = integration_two_keys["id"]
+        # Set a default value for the "timeout" key (which we'll then drop).
+        set_resp = e2e_client.put(
+            f"/api/integrations/{integration_id}/config",
+            headers=platform_admin.headers,
+            json={"config": {"endpoint": "https://example.com", "timeout": "30"}},
+        )
+        assert set_resp.status_code == 200, set_resp.text
+
+        response = e2e_client.put(
+            f"/api/integrations/{integration_id}",
+            headers=platform_admin.headers,
+            json={
+                "config_schema": [
+                    {"key": "endpoint", "type": "string", "required": True},
+                ],
+            },
+        )
+        assert response.status_code == 409, response.text
+        detail = response.json()["detail"]
+        assert detail["code"] == "integration_schema_removal_requires_confirmation"
+        assert detail["removed_keys"] == ["timeout"]
+        assert detail["affected_config_values"] >= 1
+
+    def test_200_with_force_remove_keys(
+        self, e2e_client, platform_admin, integration_two_keys
+    ):
+        integration_id = integration_two_keys["id"]
+        set_resp = e2e_client.put(
+            f"/api/integrations/{integration_id}/config",
+            headers=platform_admin.headers,
+            json={"config": {"endpoint": "https://example.com", "timeout": "30"}},
+        )
+        assert set_resp.status_code == 200, set_resp.text
+
+        response = e2e_client.put(
+            f"/api/integrations/{integration_id}",
+            headers=platform_admin.headers,
+            params={"force_remove_keys": "true"},
+            json={
+                "config_schema": [
+                    {"key": "endpoint", "type": "string", "required": True},
+                ],
+            },
+        )
+        assert response.status_code == 200, response.text
+        keys = {i["key"] for i in response.json().get("config_schema") or []}
+        assert keys == {"endpoint"}
+
+    def test_200_without_force_when_no_saved_values(
+        self, e2e_client, platform_admin, integration_two_keys
+    ):
+        """Dropping a key with no saved Config values needs no confirmation."""
+        integration_id = integration_two_keys["id"]
+
+        response = e2e_client.put(
+            f"/api/integrations/{integration_id}",
+            headers=platform_admin.headers,
+            json={
+                "config_schema": [
+                    {"key": "endpoint", "type": "string", "required": True},
+                ],
+            },
+        )
+        assert response.status_code == 200, response.text
+        keys = {i["key"] for i in response.json().get("config_schema") or []}
+        assert keys == {"endpoint"}
 
 
 @pytest.mark.e2e
@@ -1381,6 +1617,137 @@ class TestIntegrationConfigSecrets:
                 f"/api/integrations/{integration['id']}/mappings/{mapping['id']}",
                 headers=platform_admin.headers,
             )
+
+    def test_admin_default_config_routes_redact_secrets(
+        self, e2e_client, platform_admin, integration_with_secret_schema
+    ):
+        """Default-config admin reads and the PUT echo mask secret fields."""
+        integration = integration_with_secret_schema
+        plaintext = f"default-plain-{uuid4().hex}"
+
+        put = e2e_client.put(
+            f"/api/integrations/{integration['id']}/config",
+            headers=platform_admin.headers,
+            json={"config": {"base_url": "https://api.example.com", "api_key": plaintext}},
+        )
+        get = e2e_client.get(
+            f"/api/integrations/{integration['id']}/config",
+            headers=platform_admin.headers,
+        )
+        detail = e2e_client.get(
+            f"/api/integrations/{integration['id']}",
+            headers=platform_admin.headers,
+        )
+
+        for response in (put, get, detail):
+            assert response.status_code == 200, response.text
+            assert plaintext not in response.text
+        for config in (put.json()["config"], get.json()["config"], detail.json()["config_defaults"]):
+            assert config == {"base_url": "https://api.example.com", "api_key": "[SECRET]"}
+
+    def test_admin_mapping_routes_redact_secret_overrides(
+        self, e2e_client, platform_admin, integration_with_secret_schema, org1
+    ):
+        """Mapping create/get/by-org/update and the detail view mask org secrets."""
+        integration = integration_with_secret_schema
+        base = f"/api/integrations/{integration['id']}"
+        plaintext = f"org-plain-{uuid4().hex}"
+        rotated = f"org-rotated-{uuid4().hex}"
+
+        create = e2e_client.post(
+            f"{base}/mappings",
+            headers=platform_admin.headers,
+            json={
+                "organization_id": str(org1["id"]),
+                "entity_id": "redaction-test",
+                "config": {"api_key": plaintext},
+            },
+        )
+        assert create.status_code == 201, create.text
+        mapping = create.json()
+
+        try:
+            reads = [
+                create,
+                e2e_client.get(f"{base}/mappings/{mapping['id']}", headers=platform_admin.headers),
+                e2e_client.get(f"{base}/mappings/by-org/{org1['id']}", headers=platform_admin.headers),
+                e2e_client.put(
+                    f"{base}/mappings/{mapping['id']}",
+                    headers=platform_admin.headers,
+                    json={"config": {"api_key": rotated}},
+                ),
+            ]
+            detail = e2e_client.get(base, headers=platform_admin.headers)
+
+            for response in [*reads, detail]:
+                assert response.status_code in (200, 201), response.text
+                assert plaintext not in response.text
+                assert rotated not in response.text
+            for response in reads:
+                assert response.json()["config"] == {"api_key": "[SECRET]"}
+            detail_mapping = next(m for m in detail.json()["mappings"] if m["id"] == mapping["id"])
+            assert detail_mapping["config"] == {"api_key": "[SECRET]"}
+
+            # The rotation still reached the engine-facing SDK path.
+            sdk = _sdk_get(e2e_client, platform_admin.headers, name=integration["name"], org_id=org1["id"])
+            assert sdk.status_code == 200, sdk.text
+            assert sdk.json()["config"]["api_key"] == rotated
+        finally:
+            e2e_client.delete(f"{base}/mappings/{mapping['id']}", headers=platform_admin.headers)
+
+    def test_saving_redacted_placeholder_keeps_stored_secret(
+        self, e2e_client, platform_admin, integration_with_secret_schema, org1
+    ):
+        """The admin UI saves the config it read back; the placeholder must not
+        overwrite the stored secret at either the default or the org tier."""
+        integration = integration_with_secret_schema
+        base = f"/api/integrations/{integration['id']}"
+        default_secret = f"default-keep-{uuid4().hex}"
+        org_secret = f"org-keep-{uuid4().hex}"
+
+        e2e_client.put(
+            f"{base}/config",
+            headers=platform_admin.headers,
+            json={"config": {"base_url": "https://api.example.com", "api_key": default_secret}},
+        )
+        echoed = e2e_client.get(f"{base}/config", headers=platform_admin.headers).json()["config"]
+        resave = e2e_client.put(
+            f"{base}/config",
+            headers=platform_admin.headers,
+            json={"config": {**echoed, "base_url": "https://api.changed.example.com"}},
+        )
+        assert resave.status_code == 200, resave.text
+
+        mapping = e2e_client.post(
+            f"{base}/mappings",
+            headers=platform_admin.headers,
+            json={"organization_id": str(org1["id"]), "entity_id": "keep-test"},
+        ).json()
+        try:
+            # Global tier: mapping has no org override, so the SDK resolves the default.
+            sdk = _sdk_get(e2e_client, platform_admin.headers, name=integration["name"], org_id=org1["id"])
+            assert sdk.json()["config"]["api_key"] == default_secret
+            assert sdk.json()["config"]["base_url"] == "https://api.changed.example.com"
+
+            e2e_client.put(
+                f"{base}/mappings/{mapping['id']}",
+                headers=platform_admin.headers,
+                json={"config": {"api_key": org_secret}},
+            )
+            echoed_org = e2e_client.get(
+                f"{base}/mappings/{mapping['id']}", headers=platform_admin.headers
+            ).json()["config"]
+            resave_org = e2e_client.put(
+                f"{base}/mappings/{mapping['id']}",
+                headers=platform_admin.headers,
+                json={"config": echoed_org},
+            )
+            assert resave_org.status_code == 200, resave_org.text
+
+            sdk = _sdk_get(e2e_client, platform_admin.headers, name=integration["name"], org_id=org1["id"])
+            assert sdk.json()["config"]["api_key"] == org_secret
+        finally:
+            e2e_client.delete(f"{base}/mappings/{mapping['id']}", headers=platform_admin.headers)
 
 
 @pytest.mark.e2e

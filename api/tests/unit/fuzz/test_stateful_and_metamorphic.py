@@ -7,7 +7,7 @@ from hypothesis import strategies as st
 from hypothesis.stateful import RuleBasedStateMachine, invariant, rule
 
 from src.services.cron_parser import cron_to_human_readable, validate_cron_expression
-from src.services.editor.search import _search_content
+from src.services.source_search.matching import build_matcher, iter_line_hits
 
 
 def _property_examples(default: int) -> int:
@@ -97,20 +97,12 @@ def test_case_insensitive_literal_search_survives_case_transform(
     suffix: str,
 ):
     content = f"{prefix}{token}{suffix}"
-    lower_results = _search_content(
-        content.lower(),
-        "fuzz.txt",
-        token.upper(),
-        case_sensitive=False,
-        is_regex=False,
-    )
-    upper_results = _search_content(
-        content.upper(),
-        "fuzz.txt",
-        token.lower(),
-        case_sensitive=False,
-        is_regex=False,
-    )
+    lower_results = list(iter_line_hits(
+        content.lower(), build_matcher(token.upper(), False, False), context_lines=0,
+    ))
+    upper_results = list(iter_line_hits(
+        content.upper(), build_matcher(token.lower(), False, False), context_lines=0,
+    ))
 
     assert len(lower_results) == len(upper_results)
     assert len(lower_results) >= 1

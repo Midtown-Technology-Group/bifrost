@@ -30,6 +30,15 @@ class AgentRun(Base):
     caller_user_id: Mapped[str | None] = mapped_column(String(255), default=None)
     caller_email: Mapped[str | None] = mapped_column(String(255), default=None)
     caller_name: Mapped[str | None] = mapped_column(String(255), default=None)
+    # Who this run is for (the person, or an identity when no person started
+    # it). Recorded by shared.run_lineage; nothing decides on it yet.
+    run_user_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), default=None
+    )
+    # Whose identity tools use when it isn't the caller's; see run_as.
+    run_as_user_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), default=None
+    )
     iterations_used: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     tokens_used: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     budget_max_iterations: Mapped[int | None] = mapped_column(Integer, default=None)
@@ -97,6 +106,7 @@ class AgentRun(Base):
     )
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
+    cancel_requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
     parent_run_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("agent_runs.id", ondelete="CASCADE"), default=None
     )
@@ -106,8 +116,13 @@ class AgentRun(Base):
     steps: Mapped[list["AgentRunStep"]] = relationship(
         back_populates="run", cascade="all, delete-orphan", order_by="AgentRunStep.step_number"
     )
-    ai_usages: Mapped[list["AIUsage"]] = relationship(back_populates="agent_run")
+    ai_usages: Mapped[list["AIUsage"]] = relationship(
+        back_populates="agent_run",
+        primaryjoin="AIUsage.agent_run_id == AgentRun.id",
+        foreign_keys="AIUsage.agent_run_id",
+    )
     conversation = relationship("Conversation", lazy="select")
+    run_as_user = relationship("User", foreign_keys=[run_as_user_id], lazy="select")
     child_runs: Mapped[list["AgentRun"]] = relationship(
         back_populates="parent_run",
         foreign_keys="AgentRun.parent_run_id",
@@ -124,8 +139,10 @@ class AgentRun(Base):
         Index("ix_agent_runs_status", "status"),
         Index("ix_agent_runs_trigger_type", "trigger_type"),
         Index("ix_agent_runs_created_at", "created_at"),
+        Index("ix_agent_runs_completed_id", "completed_at", "id"),
         Index("ix_agent_runs_parent_run_id", "parent_run_id"),
         Index("ix_agent_runs_agent_verdict_status", "agent_id", "verdict", "status"),
+        Index("ix_agent_runs_run_user_id", "run_user_id", postgresql_where=run_user_id.isnot(None)),
     )
 
 

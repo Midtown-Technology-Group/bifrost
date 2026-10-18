@@ -27,6 +27,7 @@ const VARIANTS = [
 	"ghost",
 	"link",
 	"warning",
+	"power",
 ] as const;
 
 describe("Badge theme-token contract", () => {
@@ -37,6 +38,13 @@ describe("Badge theme-token contract", () => {
 		expect(classes).toContain("bg-warning/15");
 		expect(classes).toContain("text-warning");
 		expect(classes).toContain("[a]:hover:bg-warning/25");
+	});
+
+	it("draws permission badges from the power tokens", () => {
+		render(<Badge variant="power">Read Users</Badge>);
+		const badge = screen.getByText("Read Users");
+		expect(badge).toHaveClass("bg-[var(--bf-power-soft)]", "text-[var(--bf-power)]");
+		expect(badge).not.toHaveClass("bg-secondary");
 	});
 
 	it("no variant uses raw Tailwind palette colors", () => {

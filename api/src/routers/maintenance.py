@@ -6,15 +6,18 @@ Platform admin resource - no org scoping.
 """
 
 import logging
+from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.auth import Context, CurrentSuperuser
 from src.core.database import get_db
+from src.jobs.platform.audit_archive import enqueue_manual_audit_archive
+from src.jobs.platform.run_retention import enqueue_manual_run_retention
 from src.jobs.platform.system_maintenance import (
     ARTIFACT_RETENTION_CLEANUP_DEFINITION,
     EmptyMaintenancePayload,
@@ -32,12 +35,28 @@ from src.models.contracts.artifact_retention import (
     ArtifactRetentionSettings,
     ArtifactRetentionSettingsUpdate,
 )
+from src.models.contracts.audit_retention import (
+    AuditArchiveRunRequest,
+    AuditExpiryPreview,
+    AuditRetentionInfo,
+    AuditRetentionSettings,
+    AuditRetentionSettingsUpdate,
+    AuditRetentionStatus,
+)
 from src.models.contracts.notifications import (
     NotificationCategory,
     NotificationCreate,
     NotificationStatus,
 )
 from src.models.contracts.platform_jobs import PlatformJobAccepted
+from src.models.contracts.run_retention import (
+    RunRetentionInfo,
+    RunRetentionPreview,
+    RunRetentionRunRequest,
+    RunRetentionSettings,
+    RunRetentionSettingsUpdate,
+    RunRetentionStatus,
+)
 from src.models.orm import (
     Application,
     Workflow,
@@ -45,10 +64,24 @@ from src.models.orm import (
 from src.models.orm.file_index import FileIndex
 from src.services.app_dependencies import parse_dependencies
 from src.services.artifact_retention import ArtifactRetentionSettingsService
+from src.services.audit import emit_audit
+from src.services.audit_retention.archiver import (
+    latest_audit_archive_job,
+    plan_expiry,
+    retention_info,
+)
+from src.services.audit_retention.settings import AuditRetentionSettingsService
 from src.services.notification_service import get_notification_service
+from src.services.run_retention.deleter import (
+    latest_run_retention_job,
+    plan_run_retention,
+    run_retention_info,
+)
+from src.services.run_retention.settings import RunRetentionSettingsService
 from src.services.platform_jobs import (
     ensure_platform_job_notification,
     enqueue_platform_job,
+    platform_job_to_public,
     publish_platform_job_update,
 )
 from src.services.workspace_release_files import active_workspace_release_file_view
@@ -69,7 +102,7 @@ router = APIRouter(prefix="/api/maintenance", tags=["Maintenance"])
 )
 async def get_artifact_retention_settings(
     user: CurrentSuperuser,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ) -> ArtifactRetentionSettings:
     return await ArtifactRetentionSettingsService(db).get_settings()
 
@@ -82,7 +115,7 @@ async def get_artifact_retention_settings(
 async def update_artifact_retention_settings(
     request: ArtifactRetentionSettingsUpdate,
     user: CurrentSuperuser,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ) -> ArtifactRetentionSettings:
     service = ArtifactRetentionSettingsService(db)
     settings = await service.update_settings(
@@ -102,7 +135,7 @@ async def update_artifact_retention_settings(
 async def cleanup_artifact_retention(
     response: Response,
     user: CurrentSuperuser,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ) -> PlatformJobAccepted:
     job, reused = await enqueue_platform_job(
         db,
@@ -141,6 +174,192 @@ async def cleanup_artifact_retention(
     )
 
 
+async def _audit_retention_status(
+    db: AsyncSession, settings: AuditRetentionSettings
+) -> AuditRetentionStatus:
+    last_run = await latest_audit_archive_job(db)
+    return AuditRetentionStatus(
+        settings=settings,
+        info=AuditRetentionInfo(**await retention_info(db, settings)),
+        last_run=platform_job_to_public(last_run) if last_run else None,
+    )
+
+
+@router.get(
+    "/audit-retention/settings",
+    response_model=AuditRetentionStatus,
+    summary="Get audit retention settings and archive status",
+)
+async def get_audit_retention_settings(
+    user: CurrentSuperuser,
+    db: AsyncSession = Depends(get_db, scope="function"),
+) -> AuditRetentionStatus:
+    settings = await AuditRetentionSettingsService(db).get_settings()
+    return await _audit_retention_status(db, settings)
+
+
+@router.put(
+    "/audit-retention/settings",
+    response_model=AuditRetentionStatus,
+    summary="Update audit retention settings",
+)
+async def update_audit_retention_settings(
+    body: AuditRetentionSettingsUpdate,
+    user: CurrentSuperuser,
+    db: AsyncSession = Depends(get_db, scope="function"),
+) -> AuditRetentionStatus:
+    service = AuditRetentionSettingsService(db)
+    before = await service.get_settings()
+    after = await service.update_settings(
+        AuditRetentionSettings(**body.model_dump()), updated_by=user.email
+    )
+    await emit_audit(
+        db,
+        "settings.audit_retention.update",
+        resource_type="system_config",
+        details={"before": before.model_dump(), "after": after.model_dump()},
+    )
+    await db.commit()
+    return await _audit_retention_status(db, after)
+
+
+@router.post(
+    "/audit-retention/run",
+    response_model=PlatformJobAccepted,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Archive aged audit events now, or preview the run",
+)
+async def start_audit_archive(
+    body: AuditArchiveRunRequest,
+    response: Response,
+    user: CurrentSuperuser,
+    db: AsyncSession = Depends(get_db, scope="function"),
+) -> PlatformJobAccepted:
+    job, reused = await enqueue_manual_audit_archive(db, user, dry_run=body.dry_run)
+    response.headers["Location"] = f"/api/platform-jobs/{job.id}"
+    return PlatformJobAccepted(
+        job_id=job.id,
+        notification_id=job.notification_id,
+        status=job.status,
+        reused=reused,
+    )
+
+
+@router.get(
+    "/audit-retention/preview",
+    response_model=AuditExpiryPreview,
+    summary="Preview which archived audit events an archive window would delete",
+)
+async def preview_audit_expiry(
+    user: CurrentSuperuser,
+    archive_days: int | None = Query(
+        None, ge=1, description="Archive window in days; omit to keep archives forever."
+    ),
+    db: AsyncSession = Depends(get_db, scope="function"),
+) -> AuditExpiryPreview:
+    expiry = (
+        datetime.now(timezone.utc) - timedelta(days=archive_days)
+        if archive_days is not None
+        else None
+    )
+    return AuditExpiryPreview(**await plan_expiry(db, expiry=expiry))
+
+
+async def _run_retention_status(
+    db: AsyncSession, settings: RunRetentionSettings
+) -> RunRetentionStatus:
+    last_run = await latest_run_retention_job(db)
+    return RunRetentionStatus(
+        settings=settings,
+        info=RunRetentionInfo(**await run_retention_info(db, settings)),
+        last_run=platform_job_to_public(last_run) if last_run else None,
+    )
+
+
+@router.get(
+    "/run-retention/settings",
+    response_model=RunRetentionStatus,
+    summary="Get run retention settings and status",
+)
+async def get_run_retention_settings(
+    user: CurrentSuperuser,
+    db: AsyncSession = Depends(get_db, scope="function"),
+) -> RunRetentionStatus:
+    settings = await RunRetentionSettingsService(db).get_settings()
+    return await _run_retention_status(db, settings)
+
+
+@router.put(
+    "/run-retention/settings",
+    response_model=RunRetentionStatus,
+    summary="Update run retention settings",
+)
+async def update_run_retention_settings(
+    body: RunRetentionSettingsUpdate,
+    user: CurrentSuperuser,
+    db: AsyncSession = Depends(get_db, scope="function"),
+) -> RunRetentionStatus:
+    service = RunRetentionSettingsService(db)
+    before = await service.get_settings()
+    after = await service.update_settings(
+        RunRetentionSettings(**body.model_dump()), updated_by=user.email
+    )
+    await emit_audit(
+        db,
+        "settings.run_retention.update",
+        resource_type="system_config",
+        details={"before": before.model_dump(), "after": after.model_dump()},
+    )
+    await db.commit()
+    return await _run_retention_status(db, after)
+
+
+@router.post(
+    "/run-retention/run",
+    response_model=PlatformJobAccepted,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Delete expired runs and events now, or preview the run",
+)
+async def start_run_retention(
+    body: RunRetentionRunRequest,
+    response: Response,
+    user: CurrentSuperuser,
+    db: AsyncSession = Depends(get_db, scope="function"),
+) -> PlatformJobAccepted:
+    job, reused = await enqueue_manual_run_retention(db, user, dry_run=body.dry_run)
+    response.headers["Location"] = f"/api/platform-jobs/{job.id}"
+    return PlatformJobAccepted(
+        job_id=job.id,
+        notification_id=job.notification_id,
+        status=job.status,
+        reused=reused,
+    )
+
+
+@router.get(
+    "/run-retention/preview",
+    response_model=RunRetentionPreview,
+    summary="Preview how many runs and events a retention window would delete",
+)
+async def preview_run_retention(
+    user: CurrentSuperuser,
+    days: int | None = Query(
+        None, ge=30, le=3650, description="Retention window in days; omit to keep forever."
+    ),
+    db: AsyncSession = Depends(get_db, scope="function"),
+) -> RunRetentionPreview:
+    if days is None:
+        return RunRetentionPreview(days=None, cutoff=None, workflow_runs=0, agent_runs=0, events=0)
+    plan = await plan_run_retention(db, cutoff=datetime.now(timezone.utc) - timedelta(days=days))
+    return RunRetentionPreview(
+        days=days,
+        cutoff=plan["cutoff"],
+        workflow_runs=plan["workflow_runs"],
+        agent_runs=plan["agent_runs"],
+        events=plan["events"],
+    )
+
+
 @router.get(
     "/status",
     response_model=MaintenanceStatus,
@@ -150,7 +369,7 @@ async def cleanup_artifact_retention(
 async def get_maintenance_status(
     ctx: Context,
     user: CurrentSuperuser,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ) -> MaintenanceStatus:
     """
     Get the current maintenance status of the workspace.
@@ -190,7 +409,7 @@ async def get_maintenance_status(
 async def index_documentation(
     ctx: Context,
     user: CurrentSuperuser,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ) -> DocsIndexResponse:
     """
     Manually index platform documentation into the knowledge store.
@@ -312,7 +531,7 @@ async def reimport_from_repo(
 )
 async def cleanup_orphaned(
     user: CurrentSuperuser,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ) -> CleanupOrphanedResponse:
     """
     Find and deactivate workflows that reference files no longer in FileIndex.
@@ -422,7 +641,7 @@ class AppDependencyScanResponse(BaseModel):
 async def scan_app_dependencies(
     ctx: Context,
     user: CurrentSuperuser,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ) -> AppDependencyScanResponse:
     """
     Scan app file dependencies from source code in file_index.
@@ -576,7 +795,7 @@ async def scan_app_dependencies(
 )
 async def run_preflight(
     user: CurrentSuperuser,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ) -> PreflightResponse:
     """Run preflight validation on the current workspace state."""
     import ast

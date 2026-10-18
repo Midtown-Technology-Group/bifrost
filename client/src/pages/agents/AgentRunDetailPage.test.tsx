@@ -55,8 +55,15 @@ vi.mock("@/hooks/useMediaQuery", () => ({
 }));
 
 const mockUseExecution = vi.fn();
-vi.mock("@/hooks/useExecutions", () => ({
+vi.mock("@/hooks/useExecutions", async (importOriginal) => ({
+	isNotFoundError: (
+		await importOriginal<typeof import("@/hooks/useExecutions")>()
+	).isNotFoundError,
 	useExecution: (id: string | undefined) => mockUseExecution(id),
+}));
+
+vi.mock("@/services/runRetention", () => ({
+	useRunRetentionDays: () => 30,
 }));
 
 vi.mock("@/hooks/useAgentRunUpdates", () => ({
@@ -346,6 +353,61 @@ describe("AgentRunDetailPage — header + summary", () => {
 			"href",
 			"/agents/actual-agent",
 		);
+	});
+
+	it("shows the user the run acts as next to the caller", async () => {
+		mockUseAgentRun.mockReturnValue({
+			data: makeRun({
+				run_as_user_id: "user-2",
+				run_as_user_name: "Contoso Helpdesk",
+				run_as_user_email: "helpdesk@contoso.com",
+			}),
+			isLoading: false,
+		});
+
+		await renderPage();
+		expect(screen.getByText(/Alice · test/)).toBeVisible();
+		expect(screen.getByTestId("run-as")).toHaveTextContent(
+			"· Run As Contoso Helpdesk",
+		);
+	});
+
+	it("names the Run As user by email when they have no name", async () => {
+		mockUseAgentRun.mockReturnValue({
+			data: makeRun({
+				run_as_user_id: "user-2",
+				run_as_user_name: null,
+				run_as_user_email: "helpdesk@contoso.com",
+			}),
+			isLoading: false,
+		});
+
+		await renderPage();
+		expect(screen.getByTestId("run-as")).toHaveTextContent(
+			"· Run As helpdesk@contoso.com",
+		);
+	});
+
+	it("names the Run As user by email when their name is empty", async () => {
+		mockUseAgentRun.mockReturnValue({
+			data: makeRun({
+				run_as_user_id: "user-2",
+				run_as_user_name: "  ",
+				run_as_user_email: "helpdesk@contoso.com",
+			}),
+			isLoading: false,
+		});
+
+		await renderPage();
+		expect(screen.getByTestId("run-as")).toHaveTextContent(
+			"· Run As helpdesk@contoso.com",
+		);
+	});
+
+	it("shows no Run As when the caller acts as themselves", async () => {
+		await renderPage();
+		expect(screen.queryByTestId("run-as")).not.toBeInTheDocument();
+		expect(screen.queryByText(/Run As/)).not.toBeInTheDocument();
 	});
 
 	it("renders the RunReviewPanel with the run id", async () => {
@@ -748,6 +810,25 @@ it("distinguishes failed run reads from missing runs and offers retry", async ()
 	);
 	await user.click(screen.getByRole("button", { name: "Retry run details" }));
 	expect(refetch).toHaveBeenCalledOnce();
+});
+it("says a removed run is gone instead of offering retry", async () => {
+	mockUseAgentRun.mockReturnValue({
+		isLoading: false,
+		isError: true,
+		error: {
+			detail: "Agent run x not found. Finished runs are removed after 30 days.",
+		},
+		isFetching: false,
+		refetch: vi.fn(),
+	});
+	await renderPage();
+	expect(screen.getByRole("status")).toHaveTextContent(
+		"This run isn't available. Finished runs are removed after 30 days (retention). It may also be outside your access.",
+	);
+	expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+	expect(
+		screen.queryByRole("button", { name: "Retry run details" }),
+	).not.toBeInTheDocument();
 });
 it("retains the execution when refreshing its run fails", async () => {
 	mockUseAgentRun.mockReturnValue({

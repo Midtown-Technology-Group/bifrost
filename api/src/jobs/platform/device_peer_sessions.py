@@ -24,7 +24,7 @@ async def _authorize(context: PlatformJobContext, device_id: UUID, *, active: bo
             raise PlatformJobFailure("peer_permission_denied", "Device session permission was revoked")
         principal = UserPrincipal(user_id=actor.id, email=actor.email, organization_id=actor.organization_id,
                                   is_superuser=actor.is_superuser, is_active=actor.is_active)
-        await require_device_execute_permission(db, principal)
+        principal = await require_device_execute_permission(db, principal)
         device = await get_device_scoped(db, principal, device_id)
         if str(device.organization_id) != str(context.organization_id) or active and device.status != "active":
             raise PlatformJobFailure("peer_permission_denied", "Device session permission was revoked")

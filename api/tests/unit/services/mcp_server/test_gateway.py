@@ -8,7 +8,9 @@ from uuid import uuid4
 
 import pytest
 
+from src.models.enums import ExecutionStatus
 from src.models.orm.agents import Agent
+from src.models.orm.executions import Execution
 from src.services.llm import ToolDefinition
 from src.services.mcp_server.config_service import MCPConfig
 from src.services.mcp_server.gateway import (
@@ -41,7 +43,7 @@ def _agent() -> MagicMock:
     agent.description = "Handles operational tasks"
     agent.system_prompt = "Use the tools carefully."
     agent.is_active = True
-    agent.system_tools = ["list_workflows"]
+    agent.system_tools = ["bifrost_workflow_list"]
     agent.knowledge_sources = ["runbooks"]
     agent.delegated_agents = []
     agent.organization_id = uuid4()
@@ -149,7 +151,7 @@ def test_live_config_filters_underlying_tools_by_name_or_source_id():
     workflow_id = uuid4()
     definitions = [
         ToolDefinition(
-            name="list_workflows",
+            name="bifrost_workflow_list",
             description="List",
             parameters={"type": "object"},
         ),
@@ -403,6 +405,135 @@ async def test_get_execution_hides_another_users_redis_only_receipt():
     assert exc_info.value.code == "EXECUTION_NOT_FOUND_OR_FORBIDDEN"
 
 
+def _workflow_row_db(execution: Execution | None) -> MagicMock:
+    db = AsyncMock()
+    db_result = MagicMock()
+    db_result.scalar_one_or_none.return_value = execution
+    db.execute.return_value = db_result
+    db_context = MagicMock()
+    db_context.__aenter__ = AsyncMock(return_value=db)
+    db_context.__aexit__ = AsyncMock(return_value=None)
+    return db_context
+
+
+def _execution_row(*, executed_by, started_by_user_id, root_is_self: bool) -> Execution:
+    execution_id = uuid4()
+    return Execution(
+        id=execution_id,
+        workflow_name="Contoso Report",
+        status=ExecutionStatus.SUCCESS,
+        result={"total": 3},
+        executed_by=executed_by,
+        executed_by_name="Contoso User",
+        started_by_user_id=started_by_user_id,
+        root_execution_id=execution_id if root_is_self else uuid4(),
+    )
+
+
+@pytest.mark.asyncio
+async def test_get_execution_returns_a_root_run_the_caller_started_as_someone_else():
+    context = _context()
+    service = MCPAgentGatewayService(context)
+    execution = _execution_row(executed_by=uuid4(), started_by_user_id=context.user_id, root_is_self=True)
+
+    with patch("src.core.database.get_db_context", return_value=_workflow_row_db(execution)):
+        result = await service.get_execution(str(execution.id))
+
+    assert result["execution_id"] == str(execution.id)
+    assert result["result"] == {"total": 3}
+
+
+@pytest.mark.asyncio
+async def test_get_execution_returns_the_acting_users_own_row():
+    context = _context()
+    service = MCPAgentGatewayService(context)
+    execution = _execution_row(executed_by=context.user_id, started_by_user_id=uuid4(), root_is_self=False)
+
+    with patch("src.core.database.get_db_context", return_value=_workflow_row_db(execution)):
+        result = await service.get_execution(str(execution.id))
+
+    assert result["execution_id"] == str(execution.id)
+
+
+@pytest.mark.parametrize("started_by_caller", [True, False], ids=["child_of_callers_run", "unrelated"])
+@pytest.mark.asyncio
+async def test_get_execution_hides_executions_not_the_callers(started_by_caller: bool):
+    context = _context()
+    service = MCPAgentGatewayService(context)
+    execution = _execution_row(
+        executed_by=uuid4(),
+        started_by_user_id=context.user_id if started_by_caller else uuid4(),
+        root_is_self=not started_by_caller,
+    )
+
+    with patch("src.core.database.get_db_context", return_value=_workflow_row_db(execution)):
+        with pytest.raises(GatewayError) as exc_info:
+            await service.get_execution(str(execution.id))
+
+    assert exc_info.value.code == "EXECUTION_NOT_FOUND_OR_FORBIDDEN"
+
+
+@pytest.mark.asyncio
+async def test_get_execution_authorizes_the_initiator_of_a_pending_root_run():
+    context = _context()
+    service = MCPAgentGatewayService(context)
+    execution_id = str(uuid4())
+    redis = MagicMock()
+    redis.get_pending_execution = AsyncMock(
+        return_value={
+            "execution_id": execution_id,
+            "workflow_id": str(uuid4()),
+            "script_name": None,
+            "user_id": str(uuid4()),
+            "created_at": "2026-08-13T12:00:00+00:00",
+            "lineage": {
+                "run_user_id": str(context.user_id),
+                "started_by_user_id": str(context.user_id),
+                "root_execution_id": execution_id,
+            },
+        }
+    )
+
+    with (
+        patch("src.core.database.get_db_context", return_value=_workflow_row_db(None)),
+        patch("src.core.redis_client.get_redis_client", return_value=redis),
+    ):
+        result = await service.get_execution(execution_id)
+
+    assert result["execution_id"] == execution_id
+    assert result["status"] == "Pending"
+
+
+@pytest.mark.asyncio
+async def test_get_execution_missing_everywhere_names_the_retention_window():
+    service = MCPAgentGatewayService(_context())
+    db = AsyncMock()
+    db_result = MagicMock()
+    db_result.scalar_one_or_none.return_value = None
+    db.execute.return_value = db_result
+    db_context = MagicMock()
+    db_context.__aenter__ = AsyncMock(return_value=db)
+    db_context.__aexit__ = AsyncMock(return_value=None)
+    redis = MagicMock()
+    redis.get_pending_execution = AsyncMock(return_value=None)
+
+    async def suffix(db: object) -> str:
+        return " Finished runs are removed after 45 days."
+
+    with (
+        patch("src.core.database.get_db_context", return_value=db_context),
+        patch("src.core.redis_client.get_redis_client", return_value=redis),
+        patch("src.services.mcp_server.gateway.run_not_found_suffix", suffix),
+    ):
+        with pytest.raises(GatewayError) as exc_info:
+            await service.get_execution(str(uuid4()))
+
+    assert exc_info.value.code == "EXECUTION_NOT_FOUND_OR_FORBIDDEN"
+    assert exc_info.value.message == (
+        "Execution not found or you do not have access. Finished runs are removed after 45 days."
+    )
+
+
 @pytest.mark.asyncio
 async def test_get_execution_returns_owned_queued_agent_run():
     context = _context()
@@ -561,6 +692,7 @@ async def test_execute_validates_before_dispatch():
                 tool,
                 {"ticket_id": "invalid"},
                 operation_id="invalid-operation",
+                lineage=None,
             )
 
     assert exc_info.value.code == "INVALID_ARGUMENTS"
@@ -592,19 +724,20 @@ async def test_execute_distinguishes_legacy_and_explicit_empty_schemas(
         if accepted:
             result = await service.execute_tool(
                 snapshot, tool, arguments, operation_id="empty-schema-operation"
-            )
+            , lineage=None)
             assert result["result"] == {"output": "ok"}
             dispatch.assert_awaited_once_with(
                 agent, tool, arguments,
                 operation_id="empty-schema-operation",
                 task_requested=False,
                 async_execution=False,
+                lineage=None,
             )
         else:
             with pytest.raises(GatewayError) as exc_info:
                 await service.execute_tool(
                     snapshot, tool, arguments, operation_id="empty-schema-operation"
-                )
+                , lineage=None)
             assert exc_info.value.code == "INVALID_ARGUMENTS"
             dispatch.assert_not_awaited()
 
@@ -626,6 +759,7 @@ async def test_execute_returns_auditable_envelope():
             tool,
             {"ticket_id": 42},
             operation_id="lookup-42",
+            lineage=None,
         )
 
     assert result["agent_id"] == str(agent.id)
@@ -661,7 +795,7 @@ async def test_workflow_dispatch_preserves_durable_metadata_and_domain_result():
             {"ticket_id": 42},
             operation_id="workflow-operation",
             task_requested=False,
-        )
+         lineage=None)
 
     assert result == {
         "execution_id": execution_id,
@@ -700,6 +834,7 @@ async def test_workflow_task_dispatch_returns_pending_durable_metadata():
             {"ticket_id": 42},
             operation_id="workflow-task-operation",
             task_requested=True,
+            lineage=None,
         )
 
     assert result["execution_id"] == execution_id
@@ -727,7 +862,7 @@ async def test_workflow_approval_proposal_returns_approval_id_and_rejects_task()
     ) as execute:
         result = await service._dispatch_workflow(
             agent, tool, {}, operation_id="approval-proposal", task_requested=False,
-        )
+         lineage=None)
     assert result["details"] == {"approval_id": approval_id}
     assert result["status"] == "Pending"
     assert execute.await_args.kwargs["task_requested"] is False
@@ -740,7 +875,7 @@ async def test_workflow_approval_proposal_returns_approval_id_and_rejects_task()
         with pytest.raises(GatewayError) as exc_info:
             await service._dispatch_workflow(
                 agent, tool, {}, operation_id="approval-task", task_requested=True,
-            )
+             lineage=None)
     assert exc_info.value.code == "TASKS_UNSUPPORTED"
     assert execute.await_args.kwargs["task_requested"] is True
 
@@ -766,6 +901,7 @@ async def test_task_request_rejects_unsupported_tool_before_side_effect():
                 {"ticket_id": 42},
                 operation_id="unsupported-task",
                 task_requested=True,
+                lineage=None,
             )
 
     assert exc_info.value.code == "TASKS_UNSUPPORTED"
@@ -873,7 +1009,7 @@ async def test_operation_receipt_replays_every_gateway_source_once(
             {"ticket_id": 42},
             operation_id="stable-operation",
             task_requested=task_requested,
-        )
+         lineage=None)
         claim.return_value = _receipt_claim(
             OperationReceiptDisposition.SUCCEEDED,
             response=first,
@@ -890,7 +1026,7 @@ async def test_operation_receipt_replays_every_gateway_source_once(
             {"ticket_id": 42},
             operation_id="stable-operation",
             task_requested=task_requested,
-        )
+         lineage=None)
 
     assert second == first
     dispatch.assert_awaited_once()
@@ -945,7 +1081,7 @@ async def test_operation_receipt_replays_structured_gateway_error() -> None:
                 tool.tool_ref,
                 {"ticket_id": 42},
                 operation_id="failed-operation",
-            )
+             lineage=None)
         stored_error = complete_error.await_args.args[2]
         claim.return_value = _receipt_claim(
             OperationReceiptDisposition.FAILED,
@@ -957,7 +1093,7 @@ async def test_operation_receipt_replays_structured_gateway_error() -> None:
                 tool.tool_ref,
                 {"ticket_id": 42},
                 operation_id="failed-operation",
-            )
+             lineage=None)
 
     assert replayed_error.value.as_dict() == first_error.value.as_dict()
     dispatch.assert_awaited_once()
@@ -1012,7 +1148,7 @@ async def test_non_owner_receipts_reject_without_dispatch(
                 tool.tool_ref,
                 {"ticket_id": 42},
                 operation_id="contested-operation",
-            )
+             lineage=None)
 
     assert exc_info.value.code == expected_code
     dispatch.assert_not_awaited()
@@ -1089,14 +1225,14 @@ async def test_terminal_receipt_write_failure_recovers_from_durable_handle() -> 
                 {"ticket_id": 42},
                 operation_id="recoverable-operation",
                 task_requested=True,
-            )
+             lineage=None)
         recovered = await service.execute_agent_tool(
             str(agent.id),
             tool.tool_ref,
             {"ticket_id": 42},
             operation_id="recoverable-operation",
             task_requested=True,
-        )
+         lineage=None)
 
     execute.assert_awaited_once()
     record.assert_awaited_once()
@@ -1134,7 +1270,7 @@ async def test_oversized_first_response_exactly_matches_bounded_replay() -> None
             tool.tool_ref,
             {"ticket_id": 42},
             operation_id="large-operation",
-        )
+         lineage=None)
         stored = complete.await_args.args[2]
         claim.return_value = _receipt_claim(
             OperationReceiptDisposition.SUCCEEDED,
@@ -1145,7 +1281,7 @@ async def test_oversized_first_response_exactly_matches_bounded_replay() -> None
             tool.tool_ref,
             {"ticket_id": 42},
             operation_id="large-operation",
-        )
+         lineage=None)
 
     assert first == stored == replay
     assert len(json.dumps(first).encode("utf-8")) <= 64 * 1024
@@ -1180,7 +1316,7 @@ async def test_expired_tombstone_refuses_redispatch() -> None:
                 tool.tool_ref,
                 {"ticket_id": 42},
                 operation_id="expired-operation",
-            )
+             lineage=None)
 
     assert exc_info.value.code == "OPERATION_RESULT_EXPIRED"
     dispatch.assert_not_awaited()
@@ -1214,7 +1350,7 @@ async def test_system_rest_bridge_receives_scoped_operation_identity() -> None:
             tool,
             {"ticket_id": 42},
             operation_id="raw-operation-id",
-        )
+         lineage=None)
 
     assert seen_context is not None
     assert seen_context.operation_id == service._operation_execution_id(
@@ -1268,3 +1404,348 @@ def test_external_dispatch_preserves_structured_error_details():
     assert error.message == "Invalid project"
     assert error.retryable is True
     assert error.details["underlying_result"] == underlying
+
+
+@pytest.mark.asyncio
+async def test_gateway_workflow_tool_runs_with_the_callers_lineage():
+    from shared.run_lineage import RunLineage
+
+    service = MCPAgentGatewayService(_context())
+    tool = _resolved_tool()
+    run_user, root = uuid4(), uuid4()
+    lineage = RunLineage(run_user, run_user, root)
+    response = MagicMock(execution_id=str(uuid4()), status=MagicMock(value="Success"), result={})
+
+    with patch(
+        "src.services.mcp_server.gateway.execute_agent_workflow_tool",
+        new_callable=AsyncMock,
+        return_value=response,
+    ) as execute:
+        await service._dispatch(
+            _agent(), tool, {"ticket_id": 1}, operation_id="lineage-operation",
+            task_requested=False, lineage=lineage,
+        )
+
+    assert execute.await_args.kwargs["lineage"] == lineage
+
+
+@pytest.mark.asyncio
+async def test_delegation_defaults_to_async_execution():
+    service = MCPAgentGatewayService(_context())
+    agent = _agent()
+    tool = replace(_resolved_tool(), source="delegation")
+    snapshot = AgentToolSnapshot(agent=agent, tools=[tool])
+    execution_id = str(uuid4())
+
+    with patch.object(
+        service,
+        "_dispatch",
+        new=AsyncMock(
+            return_value={
+                "execution_id": execution_id,
+                "execution_type": "agent_run",
+                "status": "Pending",
+            }
+        ),
+    ) as dispatch:
+        result = await service.execute_tool(
+            snapshot,
+            tool,
+            {"ticket_id": 42},
+            lineage=None,
+         operation_id="upstream-delegation-operation")
+
+    assert dispatch.await_args.kwargs["async_execution"] is True
+    assert result["async"] is True
+    assert result["execution_id"] == execution_id
+    assert result["execution_type"] == "agent_run"
+    assert result["result"] is None
+
+
+
+@pytest.mark.asyncio
+async def test_delegation_allows_explicit_synchronous_execution():
+    service = MCPAgentGatewayService(_context())
+    agent = _agent()
+    tool = replace(_resolved_tool(), source="delegation")
+    snapshot = AgentToolSnapshot(agent=agent, tools=[tool])
+
+    with patch.object(
+        service,
+        "_dispatch",
+        new=AsyncMock(return_value={"text": "Done"}),
+    ) as dispatch:
+        result = await service.execute_tool(
+            snapshot,
+            tool,
+            {"ticket_id": 42},
+            async_execution=False,
+            lineage=None,
+         operation_id="upstream-delegation-operation")
+
+    assert dispatch.await_args.kwargs["async_execution"] is False
+    assert result["async"] is False
+    assert result["result"] == {"text": "Done"}
+
+
+
+@pytest.mark.asyncio
+async def test_async_delegation_enqueues_agent_run():
+    context = _context()
+    service = MCPAgentGatewayService(context)
+    parent = _agent()
+    delegated = _agent()
+    delegated.name = "Process Agent"
+    delegated.is_active = True
+    tool = replace(
+        _resolved_tool(
+            name="delegate_to_process_agent",
+            parameters={
+                "type": "object",
+                "properties": {"task": {"type": "string"}},
+                "required": ["task"],
+            },
+        ),
+        source="delegation",
+        source_id=delegated.id,
+    )
+    db_context = MagicMock()
+    db_context.__aenter__ = AsyncMock(return_value=AsyncMock())
+    db_context.__aexit__ = AsyncMock(return_value=None)
+    repository = MagicMock()
+    repository.get_agent = AsyncMock(return_value=delegated)
+    execution_id = str(uuid4())
+
+    with (
+        patch("src.core.database.get_db_context", return_value=db_context),
+        patch("src.services.mcp_server.gateway.caller_can_access_delegated_agent", new=AsyncMock(return_value=True)),
+        patch(
+            "src.services.mcp_server.gateway.AgentRepository",
+            return_value=repository,
+        ),
+        patch(
+            "src.services.execution.agent_run_service.enqueue_agent_run_once",
+            new=AsyncMock(return_value=(execution_id, False)),
+        ) as enqueue,
+    ):
+        result = await service._dispatch_delegation(
+            parent,
+            tool,
+            {"task": "Assemble the customer report"},
+            operation_id="delegation-operation",
+            async_execution=True,
+            lineage=None,
+        )
+
+    assert result == {
+        "execution_id": execution_id,
+        "execution_type": "agent_run",
+        "status": "Pending",
+    }
+    assert enqueue.await_args.kwargs["sync"] is False
+    assert enqueue.await_args.kwargs["run_id"] == service._operation_execution_id(parent, tool, "delegation-operation")
+    assert enqueue.await_args.kwargs["trigger_type"] == "delegation"
+    assert enqueue.await_args.kwargs["caller_user_id"] == str(context.user_id)
+
+
+
+@pytest.mark.asyncio
+async def test_sync_delegation_waits_for_queued_agent_run_result():
+    service = MCPAgentGatewayService(_context())
+    parent = _agent()
+    delegated = _agent()
+    delegated.name = "Process Agent"
+    delegated.is_active = True
+    delegated.max_run_timeout = 240
+    tool = replace(
+        _resolved_tool(
+            name="delegate_to_process_agent",
+            parameters={
+                "type": "object",
+                "properties": {"task": {"type": "string"}},
+                "required": ["task"],
+            },
+        ),
+        source="delegation",
+        source_id=delegated.id,
+    )
+    db_context = MagicMock()
+    db_context.__aenter__ = AsyncMock(return_value=AsyncMock())
+    db_context.__aexit__ = AsyncMock(return_value=None)
+    repository = MagicMock()
+    repository.get_agent = AsyncMock(return_value=delegated)
+    execution_id = str(uuid4())
+
+    with (
+        patch("src.core.database.get_db_context", return_value=db_context),
+        patch("src.services.mcp_server.gateway.caller_can_access_delegated_agent", new=AsyncMock(return_value=True)),
+        patch(
+            "src.services.mcp_server.gateway.AgentRepository",
+            return_value=repository,
+        ),
+        patch(
+            "src.services.execution.agent_run_service.enqueue_agent_run_once",
+            new=AsyncMock(return_value=(execution_id, False)),
+        ) as enqueue,
+        patch(
+            "src.services.execution.agent_run_service.wait_for_agent_run_result",
+            new=AsyncMock(
+                return_value={
+                    "status": "completed",
+                    "output": {"text": "Done"},
+                    "iterations_used": 1,
+                }
+            ),
+        ) as wait_for_result,
+    ):
+        result = await service._dispatch_delegation(
+            parent,
+            tool,
+            {"task": "Assemble the customer report"},
+            operation_id="delegation-operation",
+            async_execution=False,
+            lineage=None,
+        )
+
+    assert result == {
+        "status": "completed",
+        "output": {"text": "Done"},
+        "iterations_used": 1,
+    }
+    assert enqueue.await_args.kwargs["sync"] is True
+    wait_for_result.assert_awaited_once_with(execution_id, timeout=240)
+
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("source", ["workflow", "delegation"])
+async def test_async_retry_recovers_receipt_without_dispatch(source):
+    service = MCPAgentGatewayService(_context())
+    agent = _agent()
+    tool = replace(_resolved_tool(), source=source)
+    snapshot = AgentToolSnapshot(agent=agent, tools=[tool])
+    started = _receipt_claim(OperationReceiptDisposition.STARTED)
+    durable_id = service._operation_execution_id(agent, tool, "recover-async")
+    with (
+        patch.object(service, "get_agent_snapshot", new=AsyncMock(return_value=snapshot)),
+        patch.object(service, "_dispatch", new_callable=AsyncMock) as dispatch,
+        patch("src.services.mcp_server.gateway.claim_operation_receipt", new=AsyncMock(return_value=started)),
+        patch("src.services.mcp_server.gateway.wait_for_operation_receipt", new=AsyncMock(return_value=started)),
+        patch("src.services.mcp_server.tools._http_bridge.call_rest", new=AsyncMock(return_value=(200, {"status": "Pending"}))),
+        patch("src.services.mcp_server.gateway.reconcile_operation_receipt_success", new=AsyncMock(return_value=True)) as reconcile,
+    ):
+        response = await service.execute_agent_tool(
+            str(agent.id), tool.tool_ref, {"ticket_id": 42},
+            operation_id="recover-async", async_execution=True, lineage=None,
+        )
+    assert response["async"] is True
+    assert response["execution_id"] == durable_id
+    assert response["execution_type"] == ("agent_run" if source == "delegation" else "workflow")
+    assert response["result"] is None
+    assert response["durable_handle"]["id"] == durable_id
+    dispatch.assert_not_awaited()
+    reconcile.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("change", ["async", "lineage", "legacy"])
+async def test_gateway_receipt_fingerprints_bind_async_and_lineage(change):
+    from shared.run_lineage import RunLineage
+    from src.services.operation_receipts import canonical_request_fingerprint
+
+    service = MCPAgentGatewayService(_context())
+    agent, tool = _agent(), _resolved_tool()
+    snapshot = AgentToolSnapshot(agent=agent, tools=[tool])
+    run_user = uuid4()
+    lineage = RunLineage(run_user, run_user, None)
+    fingerprints = []
+
+    async def claim(**kwargs):
+        fingerprints.append(kwargs["request_fingerprint"])
+        return _receipt_claim(OperationReceiptDisposition.MISMATCH)
+
+    with (
+        patch.object(service, "get_agent_snapshot", new=AsyncMock(return_value=snapshot)),
+        patch.object(service, "_dispatch", new_callable=AsyncMock) as dispatch,
+        patch("src.services.mcp_server.gateway.claim_operation_receipt", new=claim),
+    ):
+        modes = [(None, None), (True, None)] if change == "async" else [(None, None), (None, lineage)]
+        for async_mode, run_lineage in modes:
+            with pytest.raises(GatewayError) as exc_info:
+                await service.execute_agent_tool(
+                    str(agent.id), tool.tool_ref, {"ticket_id": 42},
+                    operation_id="same-operation", async_execution=async_mode,
+                    lineage=run_lineage,
+                )
+            assert exc_info.value.code == "OPERATION_ID_REUSED"
+    if change == "legacy":
+        legacy = canonical_request_fingerprint({
+            "version": 1, "agent_id": str(agent.id), "tool_ref": tool.tool_ref,
+            "arguments": {"ticket_id": 42}, "task_requested": False,
+        })
+        assert fingerprints[0] != legacy
+    else:
+        assert fingerprints[0] != fingerprints[1]
+    dispatch.assert_not_awaited()
+
+
+def test_gateway_async_receipt_survives_response_validation():
+    from src.models.contracts.mcp import MCPGatewayExecuteRequest, MCPGatewayExecuteResponse
+
+    request = MCPGatewayExecuteRequest.model_validate({
+        "arguments": {}, "operation_id": "durable-call", "async": True,
+    })
+    assert request.async_ is True
+    payload = {
+        "agent_id": str(uuid4()), "agent_name": "Agent", "tool_ref": str(uuid4()),
+        "tool_name": "tool", "source": "workflow", "duration_ms": 0,
+        "result": None, "async": True, "execution_id": str(uuid4()),
+        "execution_type": "workflow", "status": "Pending",
+        "durable_handle": {"kind": "execution", "id": str(uuid4())},
+    }
+    assert MCPGatewayExecuteResponse.model_validate(payload).model_dump(by_alias=True) == payload
+
+
+@pytest.mark.asyncio
+async def test_gateway_mcp_forwards_async_and_returns_pollable_receipt(monkeypatch):
+    from src.services.mcp_server.tools import gateway
+
+    payload = {
+        "agent_name": "Agent", "tool_name": "Delegate", "source": "delegation",
+        "async": True, "execution_id": str(uuid4()), "execution_type": "agent_run",
+        "status": "Pending", "result": None,
+    }
+    call = AsyncMock(return_value=(200, payload))
+    monkeypatch.setattr(gateway, "call_rest", call)
+    result = await gateway.bifrost_execute_tool(
+        _context(), str(uuid4()), str(uuid4()), {}, "stable-call", async_execution=True,
+    )
+    assert call.await_args.kwargs["json_body"]["async"] is True
+    assert json.loads(result.content[0].text) == payload
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("task_requested", [False, True])
+async def test_delegation_dispatch_rechecks_live_caller_before_enqueue(task_requested):
+    service = MCPAgentGatewayService(_context())
+    parent, delegated = _agent(), _agent()
+    tool = replace(_resolved_tool(), source="delegation", source_id=delegated.id)
+    db_context = MagicMock()
+    db_context.__aenter__ = AsyncMock(return_value=AsyncMock())
+    db_context.__aexit__ = AsyncMock(return_value=None)
+    repository = MagicMock()
+    repository.get_agent = AsyncMock(return_value=delegated)
+    with (
+        patch("src.core.database.get_db_context", return_value=db_context),
+        patch("src.services.mcp_server.gateway.AgentRepository", return_value=repository),
+        patch("src.services.mcp_server.gateway.caller_can_access_delegated_agent", new=AsyncMock(return_value=False)) as authorize,
+        patch("src.services.execution.agent_run_service.enqueue_agent_run_once", new_callable=AsyncMock) as enqueue,
+    ):
+        with pytest.raises(GatewayError) as exc_info:
+            await service._dispatch(
+                parent, tool, {"task": "Do the work"}, operation_id="revoked-call",
+                task_requested=task_requested, async_execution=True, lineage=None,
+            )
+    assert exc_info.value.code == "TOOL_NOT_FOUND_OR_FORBIDDEN"
+    assert authorize.await_args.kwargs["caller_user_id"] == service.context.user_id
+    enqueue.assert_not_awaited()

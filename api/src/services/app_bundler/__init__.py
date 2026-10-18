@@ -32,11 +32,14 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Literal
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from bifrost.platform_names import PLATFORM_EXPORT_NAMES
 from src.core.log_safety import log_safe
 from src.core.malloc import trim_malloc
 from src.services.app_storage import AppStorageService
 from src.services.inline_app_source import InlineAppSourceSnapshot
+from src.services.node_subprocess import run_node_script
 from src.services.repo_storage import RepoStorage
 
 logger = logging.getLogger(__name__)
@@ -758,14 +761,8 @@ class BundlerService:
           {"success": False, "errors": [...], "warnings": [...], "duration_ms": N}
         """
         input_data = json.dumps(cfg).encode()
-        proc = await asyncio.create_subprocess_exec(
-            "node", str(BUNDLE_SCRIPT),
-            stdin=asyncio.subprocess.PIPE,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        stdout, stderr = await proc.communicate(input=input_data)
-        if proc.returncode != 0:
+        returncode, stdout, stderr = await run_node_script(BUNDLE_SCRIPT, input_data)
+        if returncode != 0:
             err_text = stderr.decode(errors="replace").strip() or "non-zero exit from node"
             return {"success": False, "errors": [{"text": err_text}]}
         try:
@@ -779,6 +776,8 @@ async def build_with_migrate(
     repo_prefix: str,
     mode: Mode,
     dependencies: dict[str, str] | None = None,
+    *,
+    db: AsyncSession,
 ) -> tuple[BundleResult, bool]:
     """Run auto-migration, then bundle.
 
@@ -797,7 +796,7 @@ async def build_with_migrate(
     # which is cheap, but sub-modules of app_bundler can import this one.
     from src.services.app_bundler.auto_migrate import auto_migrate_repo_prefix
 
-    migrated, _results = await auto_migrate_repo_prefix(app_id, repo_prefix)
+    migrated, _results = await auto_migrate_repo_prefix(app_id, repo_prefix, db)
     result = await BundlerService().build(app_id, repo_prefix, mode, dependencies)
     return result, migrated
 

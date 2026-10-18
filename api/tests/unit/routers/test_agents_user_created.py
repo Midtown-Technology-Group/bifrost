@@ -7,7 +7,7 @@ Tests the key authorization scenarios for the loosened agent endpoints:
 - Non-admin can edit/delete their own private agents
 - Non-admin cannot edit/delete other users' agents
 - Promote works with correct permissions
-- Promote denied without can_promote_agent permission
+- Promote denied without agents.promote permission
 """
 
 import pytest
@@ -235,78 +235,44 @@ class TestDeleteAgentAuthorization:
 
 
 class TestPromoteAgentPermission:
-    """Test promote endpoint permission logic."""
+    """Promotion grants require a current home-organization boundary."""
 
     @pytest.mark.asyncio
-    async def test_user_has_permission_returns_true(self):
-        """_user_has_permission returns True when role has the permission."""
-        from src.routers.agents import _user_has_permission
+    @pytest.mark.parametrize("permission,has_boundary,expected", [
+        ("agents.promote", True, True),
+        ("agents.promote", False, False),
+        ("agents.readwrite", True, False),
+        ("agents.readwrite.all", True, False),
+    ])
+    async def test_current_target_grant(self, db_session, permission, has_boundary, expected):
+        from src.core.principal import UserPrincipal
+        from src.models.orm.users import Role, RolePermission, User, UserRole, UserRoleBoundary
+        from src.models.orm.organizations import Organization
+        from src.services.authorization.enforce import load_caller
+        from src.services.bridge_authorization import bridge_permission_allowed
 
-        user_id = uuid4()
+        org = Organization(name=f"org-{uuid4().hex[:8]}", is_active=True, created_by="test")
+        db_session.add(org)
+        await db_session.flush()
+        user = User(email=f"promoter-{uuid4().hex[:8]}@test.local", name="Promoter", organization_id=org.id)
+        role = Role(name=f"Promoters-{uuid4().hex[:8]}", created_by="test")
+        db_session.add_all([user, role])
+        await db_session.flush()
+        db_session.add(RolePermission(role_id=role.id, permission=permission))
+        db_session.add(UserRole(user_id=user.id, role_id=role.id, assigned_by="test"))
+        await db_session.flush()
+        if has_boundary:
+            db_session.add(UserRoleBoundary(user_id=user.id, role_id=role.id,
+                                           kind="organization", organization_id=org.id))
+            await db_session.flush()
+        principal = UserPrincipal(user_id=user.id, email=user.email, organization_id=org.id)
+        caller = await load_caller(db_session, principal)
+        assert bridge_permission_allowed(caller, "agents.promote", org.id) is expected
 
-        # Mock the DB session
-        mock_session = AsyncMock()
-        mock_result = MagicMock()
-        mock_result.scalars.return_value.all.return_value = [{"can_promote_agent": True}]
-        mock_session.execute = AsyncMock(return_value=mock_result)
-
-        result = await _user_has_permission(mock_session, user_id, "can_promote_agent")
-        assert result is True
-
-    @pytest.mark.asyncio
-    async def test_user_has_permission_returns_false_when_no_permission(self):
-        """_user_has_permission returns False when no role has the permission."""
-        from src.routers.agents import _user_has_permission
-
-        user_id = uuid4()
-
-        mock_session = AsyncMock()
-        mock_result = MagicMock()
-        mock_result.scalars.return_value.all.return_value = [{}]
-        mock_session.execute = AsyncMock(return_value=mock_result)
-
-        result = await _user_has_permission(mock_session, user_id, "can_promote_agent")
-        assert result is False
-
-    @pytest.mark.asyncio
-    async def test_non_admin_cannot_promote_agent_outside_own_org(self):
-        """A promote-capable user cannot promote a private agent in another tenant."""
-        from fastapi import HTTPException
-        from src.models.contracts.agents import AgentPromoteRequest
-        from src.routers.agents import promote_agent
-
-        user_id = uuid4()
-        user_org_id = uuid4()
-        foreign_org_id = uuid4()
-        agent = make_agent(
-            owner_user_id=user_id,
-            access_level=AgentAccessLevel.PRIVATE,
-            organization_id=foreign_org_id,
-        )
-        user = make_user(user_id=user_id, organization_id=user_org_id)
-
-        agent_lookup = MagicMock()
-        agent_lookup.scalar_one_or_none.return_value = agent
-        permission_lookup = MagicMock()
-        permission_lookup.scalars.return_value.all.return_value = [
-            {"can_promote_agent": True}
-        ]
-        reload_lookup = MagicMock()
-        reload_lookup.scalar_one.return_value = agent
-
-        mock_session = AsyncMock()
-        mock_session.execute = AsyncMock(
-            side_effect=[agent_lookup, permission_lookup, reload_lookup]
-        )
-        mock_session.flush = AsyncMock()
-
-        with pytest.raises(HTTPException) as exc:
-            await promote_agent(
-                agent.id,
-                AgentPromoteRequest(access_level=AgentAccessLevel.AUTHENTICATED),
-                mock_session,
-                user,
-            )
-
-        assert exc.value.status_code == 403
-        assert "own organization" in exc.value.detail
+        # Revocation takes effect on the next request despite the same token.
+        if expected:
+            from sqlalchemy import delete
+            await db_session.execute(delete(UserRole).where(UserRole.user_id == user.id))
+            await db_session.flush()
+            caller = await load_caller(db_session, principal)
+            assert not bridge_permission_allowed(caller, "agents.promote", org.id)

@@ -216,6 +216,7 @@ def test_build_sdk_tarball_shape_and_exports():
             "BifrostProvider", "useWorkflow", "useWorkflowQuery",
             "useWorkflowMutation", "useTable", "tables", "BifrostHeader",
             "isWebMcpAvailable", "registerWebMcpTool", "useWebMcpTool",
+            "useUser", "RequireRole", "useBranding", "useOrganizations",
         ):
             assert sym in bundle, f"{sym} missing from bundle"
         # React + lucide stay external (imported, not inlined).

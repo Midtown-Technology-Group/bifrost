@@ -633,3 +633,60 @@ class TestManifestAppPathSafety:
 
         with pytest.raises(ValueError, match="does not match slug"):
             _safe_app_repo_path(mapp)
+class TestWorkflowRunIdentity:
+    """A workflow the manifest moves away from the identity it runs as is refused by name and place."""
+
+    def test_refusal_names_the_identity_and_its_place(self):
+        from uuid import uuid4
+
+        from sqlalchemy.ext.asyncio import AsyncSession
+
+        from bifrost.manifest import ManifestWorkflow
+        from src.models.enums import IdentityKind
+        from src.models.orm.users import User
+        from src.services.manifest_import import ManifestResolver
+
+        contoso, fabrikam, workflow_id = uuid4(), uuid4(), uuid4()
+        identity = User(name="Default Identity", organization_id=contoso, identity_kind=IdentityKind.ORG_DEFAULT)
+        mwf = ManifestWorkflow(
+            id=str(workflow_id), path="workflows/sync.py", function_name="sync", organization_id=str(fabrikam)
+        )
+        cache = {
+            "wf_by_natural": {},
+            "wf_run_identity": {workflow_id: identity},
+            "org_name_by_id": {contoso: "Contoso", fabrikam: "Fabrikam"},
+        }
+
+        with pytest.raises(ValueError) as refused:
+            ManifestResolver(AsyncSession())._resolve_workflow("sync", mwf, cache)
+        assert str(refused.value) == (
+            "Workflow workflows/sync.py::sync runs unattended as Default Identity (Contoso) "
+            f"(run_identity_id), which can't run workflows of organization {fabrikam}; "
+            "change its run_identity_id first"
+        )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("integration_owned", [True, False])
+async def test_mcp_manifest_requires_independent_oauth_provider(integration_owned):
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+    from uuid import uuid4
+
+    from bifrost.manifest import ManifestMCPServer
+    from src.services.manifest_import import ManifestResolver
+
+    db = AsyncMock()
+    db.get.return_value = SimpleNamespace(integration_id=uuid4() if integration_owned else None)
+    server = ManifestMCPServer(
+        id=str(uuid4()), name="MCP", server_url="https://example.com/mcp",
+        oauth_provider_id=str(uuid4()),
+    )
+    resolver = ManifestResolver(db)
+    if integration_owned:
+        with pytest.raises(ValueError, match="independent MCP OAuth provider"):
+            await resolver._resolve_mcp_server("MCP", server)
+        db.execute.assert_not_awaited()
+    else:
+        await resolver._resolve_mcp_server("MCP", server)
+        db.execute.assert_awaited_once()

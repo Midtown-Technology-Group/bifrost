@@ -1,12 +1,13 @@
-import { CheckCircle2, Loader2, MessageSquareText, Pencil, Trash2 } from "lucide-react";
+import { CheckCircle2, Loader2, MessageSquareText, Pencil, RefreshCw, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
+import { reasoningLabel } from "@/lib/model-info";
 import type { AIModelProfile } from "@/services/aiModels";
 
-export function ModelProfileCard({ profile, description, assignments, selectionMode, selected, isDefault, chatPending, defaultPending, defaultDisabled, onSelect, onEdit, onDelete, onChatChange, onSetDefault }: {
+export function ModelProfileCard({ profile, description, assignments, selectionMode, selected, isDefault, chatPending, defaultPending, defaultDisabled, testing, onSelect, onEdit, onTest, onDelete, onChatChange, onSetDefault }: {
 	profile: AIModelProfile;
 	description: string;
 	assignments: string[];
@@ -16,8 +17,10 @@ export function ModelProfileCard({ profile, description, assignments, selectionM
 	chatPending: boolean;
 	defaultPending: boolean;
 	defaultDisabled: boolean;
+	testing: boolean;
 	onSelect: (selected: boolean) => void;
 	onEdit: () => void;
+	onTest: () => void;
 	onDelete: () => void;
 	onChatChange: (enabled: boolean) => void;
 	onSetDefault: () => void;
@@ -29,10 +32,11 @@ export function ModelProfileCard({ profile, description, assignments, selectionM
 			<CardDescription className="min-w-0 [overflow-wrap:anywhere]">{description}</CardDescription>
 		</CardHeader>
 		<CardContent className="space-y-4">
-		{(profile.enabled_for_chat || isDefault || assignments.length > 0 || profile.default_max_tokens != null || profile.failover_profile_name != null) && <div className="flex flex-wrap gap-2">
+		{(profile.enabled_for_chat || isDefault || assignments.length > 0 || profile.default_max_tokens != null || profile.reasoning_effort != null || profile.failover_profile_name != null) && <div className="flex flex-wrap gap-2">
 			{profile.enabled_for_chat && <Badge variant="secondary"><MessageSquareText className="size-3" />Chat</Badge>}
 			{isDefault && <Badge><CheckCircle2 className="size-3" />Default</Badge>}
 			{profile.default_max_tokens != null && <Badge variant="outline" className="h-auto whitespace-normal">Default cap {profile.default_max_tokens?.toLocaleString()}</Badge>}
+			{profile.reasoning_effort != null && <Badge variant="outline">Reasoning: {reasoningLabel(profile.reasoning_effort)}</Badge>}
 			{profile.failover_profile_name != null && <Badge variant="outline" className="h-auto whitespace-normal [overflow-wrap:anywhere]">Fallback → {profile.failover_profile_name}</Badge>}
 			{assignments.map((name) => <Badge key={name} variant="outline" className="h-auto whitespace-normal [overflow-wrap:anywhere]">{name}</Badge>)}
 		</div>}
@@ -42,6 +46,7 @@ export function ModelProfileCard({ profile, description, assignments, selectionM
 			</div>
 			{!selectionMode && <div role="group" aria-label={`Actions for ${profile.name}`} className="flex flex-wrap gap-2">
 				<Button type="button" variant="outline" className="min-h-11" aria-label={`Edit ${profile.name}`} onClick={onEdit}><Pencil className="size-4" />Edit</Button>
+				<Button type="button" variant="outline" className="min-h-11" aria-label={`Test ${profile.name}`} disabled={testing} onClick={onTest}><RefreshCw aria-hidden="true" className={`size-4 ${testing ? "animate-spin motion-reduce:animate-none" : ""}`} />{testing ? "Testing…" : "Test"}</Button>
 				<Button type="button" variant="ghost" className="min-h-11" aria-label={`Delete ${profile.name}`} onClick={onDelete}><Trash2 className="size-4" />Delete</Button>
 			</div>}
 		</CardContent>

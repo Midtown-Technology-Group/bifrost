@@ -3,7 +3,6 @@ E2E for the new role-consumer endpoints:
 
 - /api/roles/{id}/apps         GET / POST / DELETE
 - /api/roles/{id}/workflows    GET / POST / DELETE
-- /api/roles/{id}/knowledge    GET / POST / DELETE
 
 Plus: GET /api/roles now includes consumer_counts per role.
 """
@@ -196,59 +195,6 @@ class TestRoleWorkflows:
 
 
 # =============================================================================
-# Knowledge namespaces
-# =============================================================================
-
-
-@pytest.mark.e2e
-class TestRoleKnowledge:
-    def test_assign_list_unassign_knowledge(self, e2e_client, platform_admin, org1):
-        role = _create_role(e2e_client, platform_admin.headers, "K")
-        ns = f"role-ns-{uuid.uuid4().hex[:6]}"
-
-        # Empty initial state.
-        initial = e2e_client.get(
-            f"/api/roles/{role}/knowledge", headers=platform_admin.headers
-        ).json()
-        assert initial == {"entries": []}
-
-        post = e2e_client.post(
-            f"/api/roles/{role}/knowledge",
-            headers=platform_admin.headers,
-            json={
-                "entries": [
-                    {"namespace": ns, "organization_id": None},
-                    {"namespace": ns, "organization_id": org1["id"]},
-                ]
-            },
-        )
-        assert post.status_code == 204, post.text
-
-        entries = e2e_client.get(
-            f"/api/roles/{role}/knowledge", headers=platform_admin.headers
-        ).json()["entries"]
-        assert len(entries) == 2
-        namespaces = {e["namespace"] for e in entries}
-        assert namespaces == {ns}
-
-        # Bulk unassign by assignment id.
-        first_id = entries[0]["id"]
-        dele = e2e_client.request(
-            "DELETE",
-            f"/api/roles/{role}/knowledge",
-            headers=platform_admin.headers,
-            json={"assignment_ids": [first_id]},
-        )
-        assert dele.status_code == 204, dele.text
-
-        remaining = e2e_client.get(
-            f"/api/roles/{role}/knowledge", headers=platform_admin.headers
-        ).json()["entries"]
-        assert len(remaining) == 1
-        assert remaining[0]["id"] != first_id
-
-
-# =============================================================================
 # Inline consumer counts on GET /api/roles
 # =============================================================================
 
@@ -272,7 +218,6 @@ class TestRoleConsumerCounts:
                 "agents": 0,
                 "apps": 0,
                 "workflows": 0,
-                "knowledge": 0,
             }
 
             # Add one of each type.
@@ -343,13 +288,6 @@ class TestRoleConsumerCounts:
                 json={"workflow_ids": [wf_id]},
             )
 
-            ns = f"cnt-ns-{uuid.uuid4().hex[:6]}"
-            e2e_client.post(
-                f"/api/roles/{role}/knowledge",
-                headers=platform_admin.headers,
-                json={"entries": [{"namespace": ns, "organization_id": None}]},
-            )
-
             # Now every count should be 1.
             roles_after = e2e_client.get(
                 "/api/roles", headers=platform_admin.headers
@@ -361,7 +299,6 @@ class TestRoleConsumerCounts:
                 "agents": 1,
                 "apps": 1,
                 "workflows": 1,
-                "knowledge": 1,
             }
 
             # Unassign the user — counts.users drops back to 0.
@@ -388,3 +325,99 @@ class TestRoleConsumerCounts:
                 e2e_client.delete(
                     f"/api/workflows/{wf_id}", headers=platform_admin.headers
                 )
+
+
+# =============================================================================
+# Holders, grants and placements on GET /api/roles
+# =============================================================================
+
+USER_ROLE_ID = "00000000-0000-0000-0000-000000000006"
+
+
+def _listed(e2e_client, headers, role_id: str) -> dict:
+    roles = e2e_client.get(
+        "/api/roles", params={"include_builtin": True}, headers=headers
+    ).json()
+    return next(r for r in roles if r["id"] == role_id)
+
+
+def _create_user(e2e_client, headers, org_id: str) -> str:
+    resp = e2e_client.post(
+        "/api/users",
+        headers=headers,
+        json={
+            "email": f"holders-{uuid.uuid4().hex[:8]}@example.com",
+            "name": "Holder",
+            "organization_id": org_id,
+            "invite": False,
+        },
+    )
+    assert resp.status_code == 201, resp.text
+    return resp.json()["id"]
+
+
+@pytest.mark.e2e
+class TestRoleAccessSummary:
+    def test_holders_grants_and_placements(
+        self, e2e_client, platform_admin, org1
+    ):
+        role = _create_role(e2e_client, platform_admin.headers, "Summary")
+        user_ids: list[str] = []
+        try:
+            assert _listed(e2e_client, platform_admin.headers, role)[
+                "placements"
+            ] == {"organizations": 0, "managed": False, "platform": False}
+
+            set_resp = e2e_client.put(
+                f"/api/roles/{role}/permissions",
+                headers=platform_admin.headers,
+                json={"permissions": ["users.read", "roles.read"]},
+            )
+            assert set_resp.status_code == 200, set_resp.text
+
+            placements = [
+                [{"kind": "organization", "organization_id": org1["id"]}],
+                [{"kind": "managed_organizations"}],
+            ]
+            for boundaries in placements:
+                user_id = _create_user(e2e_client, platform_admin.headers, org1["id"])
+                user_ids.append(user_id)
+                resp = e2e_client.put(
+                    f"/api/users/{user_id}/role-assignments",
+                    headers=platform_admin.headers,
+                    json={
+                        "base_role_id": USER_ROLE_ID,
+                        "additional": [{"role_id": role, "boundaries": boundaries}],
+                    },
+                )
+                assert resp.status_code == 200, resp.text
+
+            listed = _listed(e2e_client, platform_admin.headers, role)
+            assert listed["holders"] == 2
+            assert listed["grants"] == ["roles.read", "users.read"]
+            assert listed["placements"] == {
+                "organizations": 1,
+                "managed": True,
+                "platform": False,
+            }
+
+            single = e2e_client.get(
+                f"/api/roles/{role}", headers=platform_admin.headers
+            ).json()
+            assert single["holders"] == 2
+            assert single["placements"] == listed["placements"]
+        finally:
+            for user_id in user_ids:
+                e2e_client.delete(f"/api/users/{user_id}", headers=platform_admin.headers)
+            e2e_client.delete(f"/api/roles/{role}", headers=platform_admin.headers)
+
+    def test_builtin_user_role_holders_count_base_role_users(
+        self, e2e_client, platform_admin, org1
+    ):
+        before = _listed(e2e_client, platform_admin.headers, USER_ROLE_ID)["holders"]
+        user_id = _create_user(e2e_client, platform_admin.headers, org1["id"])
+        try:
+            after = _listed(e2e_client, platform_admin.headers, USER_ROLE_ID)["holders"]
+            assert after == before + 1
+        finally:
+            e2e_client.delete(f"/api/users/{user_id}", headers=platform_admin.headers)

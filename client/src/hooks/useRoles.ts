@@ -9,6 +9,8 @@ import {
 } from "@tanstack/react-query";
 import { $api, apiClient } from "@/lib/api-client";
 import type { components } from "@/lib/v1";
+import { invalidateAuthorization } from "@/lib/authorization";
+import { USER_ACCESS_QUERY_KEY } from "@/services/access";
 import { toast } from "sonner";
 type RoleCreate = components["schemas"]["RoleCreate"];
 type AssignUsersToRoleRequest =
@@ -38,6 +40,8 @@ export function useRolesPage(params: RolesPageParams) {
 					params: {
 						query: {
 							search: params.search?.trim() || undefined,
+							// The Roles page lists built-in roles too (read-only).
+							include_builtin: true,
 							sort_by: params.sortBy,
 							sort_direction: params.sortDirection,
 							limit: params.limit,
@@ -58,13 +62,58 @@ export function useRolesPage(params: RolesPageParams) {
 	});
 }
 
+/** A role by id, builtin roles included (they show read-only). */
 export function useRole(roleId: string | undefined) {
 	return $api.useQuery(
 		"get",
 		"/api/roles/{role_id}",
+		{
+			params: {
+				path: { role_id: roleId ?? "" },
+				query: { include_builtin: true },
+			},
+		},
+		{ enabled: !!roleId },
+	);
+}
+
+/** Every permission a role holds, and the identity permissions an editor
+ * may choose from. */
+export function useRolePermissions(roleId: string | undefined) {
+	return $api.useQuery(
+		"get",
+		"/api/roles/{role_id}/permissions",
 		{ params: { path: { role_id: roleId ?? "" } } },
 		{ enabled: !!roleId },
 	);
+}
+
+/** Replace a role's identity permissions; its other permissions are kept. */
+export function useUpdateRolePermissions() {
+	const queryClient = useQueryClient();
+	return $api.useMutation("put", "/api/roles/{role_id}/permissions", {
+		onSuccess: (data, variables) => {
+			queryClient.setQueryData(
+				[
+					"get",
+					"/api/roles/{role_id}/permissions",
+					{
+						params: {
+							path: { role_id: variables.params.path.role_id },
+						},
+					},
+				],
+				data,
+			);
+			// Holders may have become (or stopped being) protected users.
+			queryClient.invalidateQueries({ queryKey: ["get", "/api/users"] });
+			queryClient.invalidateQueries({
+				queryKey: ["get", "/api/users/{user_id}/role-assignments"],
+			});
+			queryClient.invalidateQueries({ queryKey: USER_ACCESS_QUERY_KEY });
+			void invalidateAuthorization(queryClient);
+		},
+	});
 }
 
 export function useCreateRole() {
@@ -298,7 +347,7 @@ export async function assignRolesToForm(
 }
 
 // =============================================================================
-// Agents / Apps / Workflows / Knowledge — consumer-tab hooks (Block 5)
+// Agents / Apps / Workflows — consumer-tab hooks (Block 5)
 // =============================================================================
 
 function invalidateRoleList(qc: ReturnType<typeof useQueryClient>) {

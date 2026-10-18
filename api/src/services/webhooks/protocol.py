@@ -10,10 +10,12 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
-from starlette.requests import Request
+if TYPE_CHECKING:
+    # Type-only: the scheduler imports this module and must not load starlette.
+    from starlette.requests import Request
 
 
 @dataclass
@@ -34,7 +36,7 @@ class WebhookRequest:
     _json_cache: dict[str, Any] | None = field(default=None, repr=False)
 
     @classmethod
-    async def from_starlette(cls, request: Request) -> "WebhookRequest":
+    async def from_starlette(cls, request: "Request") -> "WebhookRequest":
         """Create WebhookRequest from a Starlette/FastAPI request."""
         body = await request.body()
         headers = {k.lower(): v for k, v in request.headers.items()}

@@ -133,7 +133,8 @@ class AccessibleTool(BaseModel):
 
 
 class AccessibleKnowledgeSource(BaseModel):
-    """A knowledge source the current user can assign to their agents."""
+    """A knowledge namespace the caller may select for an agent."""
+
     id: str
     name: str
     namespace: str
@@ -545,6 +546,19 @@ class ToolProgress(BaseModel):
     log: ToolProgressLog | None = Field(default=None, description="Log entry if this is a log update")
 
 
+class ChatContextUsage(BaseModel):
+    """Context and cached input for the latest request in the Chat conversation."""
+
+    input_tokens: int = Field(ge=0)
+    context_window: int | None = Field(default=None, gt=0)
+    cache_read_tokens: int = Field(ge=0)
+    model_profile_id: UUID
+
+    @field_serializer("model_profile_id")
+    def serialize_model_profile_id(self, value: UUID) -> str:
+        return str(value)
+
+
 class ChatStreamChunk(BaseModel):
     """
     Unified streaming chat response chunk.
@@ -565,6 +579,7 @@ class ChatStreamChunk(BaseModel):
         "artifact_failed",
         "agent_switch",
         "context_warning",
+        "context_usage",
         "run_status",
         "title_update",
         "done",
@@ -585,6 +600,7 @@ class ChatStreamChunk(BaseModel):
     # Agent switch and context warning
     agent_switch: AgentSwitch | None = None
     context_warning: ContextWarning | None = None
+    context_usage: ChatContextUsage | None = None
 
     # Message IDs
     message_id: str | None = None
@@ -675,6 +691,7 @@ class ChatRunStateResponse(BaseModel):
     messages: list[MessagePublic] = Field(default_factory=list)
     events: list[ChatRunEventPublic] = Field(default_factory=list)
     latest_sequence: int = 0
+    context_usage: ChatContextUsage | None = None
 
 
 class ChatRunCancelResponse(BaseModel):

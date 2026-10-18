@@ -74,6 +74,35 @@ async def get_config(
     return await repo.list_configs(filter_type, include_orphaned=include_orphaned)
 
 
+@router.get(
+    "/api/config/{config_id}",
+    response_model=ConfigResponse,
+    summary="Get a configuration value by ID",
+    description="Get a single configuration value by its UUID",
+**operation_route("configs.get"))
+async def get_config_by_id(
+    config_id: UUID,
+    ctx: Context,
+    user: CurrentSuperuser,
+) -> ConfigResponse:
+    """Get one configuration by UUID.
+
+    No org cascade — an ID lookup resolves directly, matching
+    ``update_config`` and ``delete_config`` (also id-only), so a platform
+    admin can read any org's config by id. Secret values are masked as
+    ``[SECRET]``, matching the list endpoint.
+    """
+    repo = ConfigRepository(ctx.db, org_id=ctx.org_id, is_superuser=True)
+
+    config = await repo.get_config_by_id(config_id)
+    if config is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Configuration not found",
+        )
+    return config
+
+
 @router.post(
     "/api/config",
     response_model=ConfigResponse,
@@ -102,16 +131,16 @@ async def set_config(
     repo = ConfigRepository(ctx.db, org_id=target_org_id, is_superuser=True)
 
     try:
-        result = await repo.set_config(request, updated_by=user.email)
+        write = await repo.set_config(request, updated_by=user.email)
 
-        # Upsert to cache after successful write (dual-write pattern)
+        # Upsert to cache after successful write (dual-write pattern).
+        # The cache holds the stored value (ciphertext for secrets); the
+        # response carries the masked one.
         org_id_str = str(target_org_id) if target_org_id else None
         config_type_str = request.type.value if request.type else "string"
-        # Note: For secrets, stored_value is already encrypted by the repository
-        stored_value = result.value
-        await upsert_config(org_id_str, request.key, stored_value, config_type_str)
+        await upsert_config(org_id_str, request.key, write.stored_value, config_type_str)
 
-        return result
+        return write.response
     except Exception as e:
         logger.error(f"Error setting config: {str(e)}", exc_info=True)
         raise HTTPException(
@@ -151,7 +180,8 @@ async def update_config(
             detail="Configuration not found",
         )
 
-    result, old_org_id, old_key = update
+    write, old_org_id, old_key = update
+    result = write.response
 
     new_org_id_str = str(result.org_id) if result.org_id else None
     old_org_id_str = str(old_org_id) if old_org_id else None
@@ -178,8 +208,7 @@ async def update_config(
             logger.warning(f"Failed to bump global config version on transition: {e}")
 
     config_type_str = result.type.value if result.type else "string"
-    stored_value = result.value
-    await upsert_config(new_org_id_str, result.key, stored_value, config_type_str)
+    await upsert_config(new_org_id_str, result.key, write.stored_value, config_type_str)
 
     return result
 

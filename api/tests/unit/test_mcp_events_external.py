@@ -1,275 +1,69 @@
-"""
-Event source / subscription MCP tools are platform-admin only.
-
-Historically this file proved a per-org cascade (NEW-2): a non-bypass
-caller was scoped to their own org + global, and an external principal
-got the same cascade as any org user. That model is superseded — REST
-reserves ALL event-source/webhook/schedule/subscription administration
-for platform admins (every route in ``routers/events.py`` is
-``CurrentSuperuser``), even within the caller's own org. So every tool in
-this module now denies any non-platform-admin caller outright, regardless
-of org, external status, or the broader ``has_scope_bypass`` provider-org
-allowance. This file is rewritten to prove that law instead of the old
-cascade.
-"""
+"""Event administration uses REST's real admin dependency after MCP conversion."""
 
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
+import httpx
 import pytest
+from fastapi import FastAPI
 
-from src.services.mcp_server.tools import events as events_tool
-
-
-def _ctx(*, is_platform_admin=False, is_provider_org=False, is_external=False, org_id=...):
-    """Build a caller context with explicit organization scope and privilege flags."""
-    session = AsyncMock()
-    session.add = MagicMock()
-    session.execute = AsyncMock()
-    result = MagicMock()
-    result.scalars.return_value.all.return_value = []
-    result.unique.return_value.scalars.return_value.all.return_value = []
-    result.unique.return_value.scalar_one_or_none = MagicMock(return_value=None)
-    result.scalar_one_or_none = MagicMock(return_value=None)
-    result.scalar = MagicMock(return_value=0)
-    session.execute.return_value = result
-    return SimpleNamespace(
-        user_id=uuid4(),
-        org_id=uuid4() if org_id is ... else org_id,
-        is_platform_admin=is_platform_admin,
-        is_provider_org=is_provider_org,
-        is_external=is_external,
-        user_email="x@y.z",
-        user_name="X",
-        session=session,
-    )
+from src.core.auth import get_current_active_user, get_execution_context
+from src.core.database import get_db
+from src.core.principal import UserPrincipal
+from src.routers.events import router
 
 
-def _source(org_id):
-    src = MagicMock()
-    src.id = uuid4()
-    src.name = "src"
-    src.organization_id = org_id
-    src.source_type = MagicMock(value="topic")
-    src.is_active = True
-    src.error_message = None
-    src.created_by = "x"
-    src.created_at = None
-    src.webhook_source = None
-    src.schedule_source = None
-    return src
+@pytest.fixture
+def event_rest_boundary():
+    """Keep the real router and admin dependency; replace only authentication and IO."""
+    principal = UserPrincipal(user_id=uuid4(), email="test@example.com", organization_id=uuid4())
+    database = AsyncMock()
+    app = FastAPI()
+    app.include_router(router)
+    app.dependency_overrides[get_current_active_user] = lambda: principal
+    app.dependency_overrides[get_execution_context] = lambda: SimpleNamespace(user=principal, org_id=principal.organization_id, db=database)
+
+    async def db_override():
+        yield database
+
+    app.dependency_overrides[get_db] = db_override
+    return app, principal, database
 
 
-def _subscription(source_id):
-    """Build an active workflow subscription tied to the specified event source."""
-    sub = MagicMock()
-    sub.id = uuid4()
-    sub.event_source_id = source_id
-    sub.workflow_id = uuid4()
-    sub.workflow = None
-    sub.event_type = None
-    sub.input_mapping = None
-    sub.is_active = True
-    return sub
-
-
-def _ctx_returning(source, **kw):
-    """A context whose by-id fetch returns the given source; sub-count = 0."""
-    ctx = _ctx(**kw)
-    result = MagicMock()
-    result.unique.return_value.scalar_one_or_none = MagicMock(return_value=source)
-    result.scalar = MagicMock(return_value=0)
-    ctx.session.execute.return_value = result
-    return ctx
-
-
-def _ctx_source_then(source, then=None, **kw):
-    """Context whose FIRST by-id fetch returns ``source``; later statements
-    return ``then`` (a scalar_one_or_none-able object) or empty shapes."""
-    ctx = _ctx(**kw)
-    first = MagicMock()
-    first.unique.return_value.scalar_one_or_none = MagicMock(return_value=source)
-    first.scalar_one_or_none = MagicMock(return_value=source)
-    first.scalars.return_value.all.return_value = []
-    rest = MagicMock()
-    rest.unique.return_value.scalar_one_or_none = MagicMock(return_value=then)
-    rest.scalar_one_or_none = MagicMock(return_value=then)
-    rest.scalars.return_value.all.return_value = []
-    rest.scalar = MagicMock(return_value=0)
-    ctx.session.execute = AsyncMock(side_effect=[first] + [rest] * 8)
-    return ctx
-
-
-def _is_error(tool_result) -> bool:
-    sc = getattr(tool_result, "structured_content", None)
-    return isinstance(sc, dict) and "error" in sc
+_SOURCE = "00000000-0000-4000-8000-000000000001"
+_SUB = "00000000-0000-4000-8000-000000000002"
 
 
 @pytest.mark.asyncio
-class TestListEventSourcesAdminOnly:
-    async def test_non_admin_denied(self):
-        """Require platform-admin authority to list event sources."""
-        ctx = _ctx(is_external=False)
-        res = await events_tool.list_event_sources(ctx)
-        assert _is_error(res)
-
-    async def test_external_denied(self):
-        """Deny external callers event-source or subscription administration."""
-        ctx = _ctx(is_external=True)
-        res = await events_tool.list_event_sources(ctx)
-        assert _is_error(res)
-
-    async def test_provider_org_non_admin_denied(self):
-        """The broader has_scope_bypass provider-org allowance does NOT
-        apply here — REST's CurrentSuperuser gate is platform-admin only."""
-        ctx = _ctx(is_provider_org=True)
-        res = await events_tool.list_event_sources(ctx)
-        assert _is_error(res)
-
-    async def test_platform_admin_allowed(self):
-        """Allow platform admins to list event sources."""
-        ctx = _ctx(is_platform_admin=True)
-        res = await events_tool.list_event_sources(ctx)
-        assert not _is_error(res)
+@pytest.mark.parametrize("persona", ["member", "external", "provider"])
+@pytest.mark.parametrize(("method", "path", "body"), [
+    ("GET", "/sources", None),
+    ("GET", f"/sources/{_SOURCE}", None),
+    ("POST", "/sources", {"name": "topic", "source_type": "topic", "event_type": "test.topic"}),
+    ("PATCH", f"/sources/{_SOURCE}", {"name": "renamed"}),
+    ("DELETE", f"/sources/{_SOURCE}", None),
+    ("GET", f"/sources/{_SOURCE}/subscriptions", None),
+    ("POST", f"/sources/{_SOURCE}/subscriptions", {"workflow_id": _SUB}),
+    ("PATCH", f"/sources/{_SOURCE}/subscriptions/{_SUB}", {"is_active": False}),
+    ("DELETE", f"/sources/{_SOURCE}/subscriptions/{_SUB}", None),
+    ("GET", "/adapters", None),
+])
+async def test_event_administration_refuses_non_admin_before_io(event_rest_boundary, persona, method, path, body):
+    app, principal, database = event_rest_boundary
+    principal.is_external = persona == "external"
+    principal.is_provider_org = persona == "provider"
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.request(method, "/api/events" + path, json=body)
+    assert response.status_code == 403, response.text
+    database.execute.assert_not_awaited()
+    database.flush.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-class TestCreateEventSourceAdminOnly:
-    async def test_non_admin_cannot_create(self):
-        """Deny regular callers event-source creation."""
-        ctx = _ctx(is_external=False)
-        res = await events_tool.create_event_source(
-            ctx, name="x", source_type="topic"
-        )
-        assert _is_error(res)
-
-    async def test_external_cannot_create(self):
-        """Deny external callers event-source creation even with an organization supplied."""
-        ctx = _ctx(is_external=True)
-        res = await events_tool.create_event_source(
-            ctx, name="x", source_type="topic", organization_id=str(uuid4())
-        )
-        assert _is_error(res)
-
-    async def test_platform_admin_can_create(self):
-        """Persist a valid event source for a platform admin."""
-        ctx = _ctx(is_platform_admin=True)
-        added = []
-        ctx.session.add = added.append
-        res = await events_tool.create_event_source(ctx, name="x", source_type="topic")
-        assert not _is_error(res)
-        sources = [o for o in added if type(o).__name__ == "EventSource"]
-        assert sources, "expected an EventSource to be created"
-
-
-@pytest.mark.asyncio
-class TestGetEventSourceAdminOnly:
-    async def test_non_admin_denied_even_for_own_org_source(self):
-        """Require admin authority to read an event source even within the caller's organization."""
-        org = uuid4()
-        ctx = _ctx_returning(_source(org), is_external=False, org_id=org)
-        res = await events_tool.get_event_source(ctx, source_id=str(uuid4()))
-        assert _is_error(res)
-
-    async def test_non_admin_denied_for_global_source(self):
-        """Deny regular callers administration of globally scoped event sources."""
-        ctx = _ctx_returning(_source(None), is_external=False)
-        res = await events_tool.get_event_source(ctx, source_id=str(uuid4()))
-        assert _is_error(res)
-
-    async def test_external_denied_for_global_source(self):
-        """Deny external callers reads of globally scoped event sources."""
-        ctx = _ctx_returning(_source(None), is_external=True)
-        res = await events_tool.get_event_source(ctx, source_id=str(uuid4()))
-        assert _is_error(res)
-
-    async def test_admin_allowed_any_source(self):
-        ctx = _ctx_returning(_source(uuid4()), is_platform_admin=True)
-        res = await events_tool.get_event_source(ctx, source_id=str(uuid4()))
-        assert not _is_error(res)
-
-
-@pytest.mark.asyncio
-class TestListEventSubscriptionsAdminOnly:
-    async def test_non_admin_denied_even_for_global_source(self):
-        """Deny regular callers subscription administration even for globally scoped sources."""
-        ctx = _ctx_source_then(_source(None), is_external=False)
-        res = await events_tool.list_event_subscriptions(ctx, source_id=str(uuid4()))
-        assert _is_error(res)
-
-    async def test_external_denied_even_for_own_org_source(self):
-        """Deny external callers subscription access even within their own organization."""
-        org = uuid4()
-        ctx = _ctx_source_then(_source(org), is_external=True, org_id=org)
-        res = await events_tool.list_event_subscriptions(ctx, source_id=str(uuid4()))
-        assert _is_error(res)
-
-    async def test_admin_allowed(self):
-        """Allow a platform admin to list subscriptions for an accessible event source."""
-        ctx = _ctx_source_then(_source(uuid4()), is_platform_admin=True)
-        res = await events_tool.list_event_subscriptions(ctx, source_id=str(uuid4()))
-        assert not _is_error(res)
-
-
-@pytest.mark.asyncio
-class TestCreateEventSubscriptionAdminOnly:
-    async def test_non_admin_denied_even_for_global_source(self):
-        """Deny regular callers subscription administration even for globally scoped sources."""
-        ctx = _ctx_source_then(_source(None), is_external=False)
-        res = await events_tool.create_event_subscription(
-            ctx, source_id=str(uuid4()), workflow_id=str(uuid4())
-        )
-        assert _is_error(res)
-
-    async def test_external_denied(self):
-        """Deny external callers event-source or subscription administration."""
-        ctx = _ctx_source_then(_source(None), is_external=True)
-        res = await events_tool.create_event_subscription(
-            ctx, source_id=str(uuid4()), workflow_id=str(uuid4())
-        )
-        assert _is_error(res)
-
-
-@pytest.mark.asyncio
-class TestUpdateDeleteEventSubscriptionAdminOnly:
-    async def test_update_denied_for_non_admin_even_for_own_org_source(self):
-        """Deny regular callers subscription updates even within their own organization."""
-        org = uuid4()
-        source_id = uuid4()
-        ctx = _ctx_source_then(
-            _source(org), then=_subscription(source_id), is_external=False, org_id=org
-        )
-        res = await events_tool.update_event_subscription(
-            ctx,
-            source_id=str(source_id),
-            subscription_id=str(uuid4()),
-            is_active=False,
-        )
-        assert _is_error(res)
-
-    async def test_delete_denied_for_external_on_global_source(self):
-        """Deny external callers subscription deletion on globally scoped sources."""
-        source_id = uuid4()
-        ctx = _ctx_source_then(
-            _source(None), then=_subscription(source_id), is_external=True
-        )
-        res = await events_tool.delete_event_subscription(
-            ctx, source_id=str(source_id), subscription_id=str(uuid4())
-        )
-        assert _is_error(res)
-
-    async def test_update_allowed_for_admin(self):
-        """Allow a platform admin to update an event subscription."""
-        org = uuid4()
-        source_id = uuid4()
-        ctx = _ctx_source_then(
-            _source(org), then=_subscription(source_id), is_platform_admin=True
-        )
-        res = await events_tool.update_event_subscription(
-            ctx,
-            source_id=str(source_id),
-            subscription_id=str(uuid4()),
-            is_active=False,
-        )
-        assert not _is_error(res)
+async def test_platform_admin_can_list_adapters(event_rest_boundary):
+    app, principal, _ = event_rest_boundary
+    principal.is_superuser = True
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get("/api/events/adapters")
+    assert response.status_code == 200, response.text

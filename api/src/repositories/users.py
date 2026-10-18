@@ -83,6 +83,7 @@ class UserRepository(BaseRepository[User]):  # type: ignore[type-var]
         Excludes:
         - System user (SYSTEM_USER_UUID) - automated execution account
         - Users with NULL organization_id - system/global accounts
+        - Identities - accounts that run work no person started
 
         Returns:
             True if at least one real human user exists, False otherwise
@@ -96,6 +97,7 @@ class UserRepository(BaseRepository[User]):  # type: ignore[type-var]
                 User.id.isnot(None),
                 User.id != SYSTEM_USER_UUID,
                 User.organization_id.isnot(None),
+                User.identity_kind.is_(None),
             ))
         )
         return result.scalar() or False
@@ -126,13 +128,18 @@ class UserRepository(BaseRepository[User]):  # type: ignore[type-var]
         Returns:
             Created user
         """
+        from shared.builtin_roles import USER_ROLE_ID
+        from shared.sdk_users import set_platform_admin, set_user_base_role
+
         user = User(
             email=email,
             hashed_password=hashed_password,
             name=name or email.split("@")[0],
-            is_superuser=is_superuser,
             is_active=True,
             is_verified=False,
             organization_id=organization_id,
         )
-        return await self.create(user)
+        await set_user_base_role(self.session, user, USER_ROLE_ID)
+        created = await self.create(user)
+        await set_platform_admin(self.session, created, is_superuser, assigned_by="system")
+        return created

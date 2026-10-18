@@ -79,7 +79,9 @@ async def test_flush_pending_changes_returns_zero_when_redis_empty(
 ) -> None:
     redis = FakeRedis()
     monkeypatch.setattr(_sync, "get_shared_redis", _redis_provider(redis))
-    monkeypatch.setattr(_sync, "pending_changes_key", lambda execution_id: f"pending:{execution_id}")
+    monkeypatch.setattr(
+        _sync, "pending_changes_key", lambda execution_id: f"pending:{execution_id}"
+    )
 
     assert await _sync.flush_pending_changes("exec-1", session=FakeSession()) == 0
     assert redis.deleted == []
@@ -91,15 +93,16 @@ async def test_shared_session_flush_waits_for_commit_before_acknowledgement(
 ) -> None:
     redis = FakeRedis(
         {
-            "a": json.dumps({"sequence": 2, "entity_type": "role"}),
-            "b": "not-json",
+            "a": json.dumps({"sequence": 2, "entity_type": "organization"}),
             "c": json.dumps({"sequence": 1, "entity_type": "config"}),
         }
     )
     applied: list[str] = []
     session = FakeSession()
     monkeypatch.setattr(_sync, "get_shared_redis", _redis_provider(redis))
-    monkeypatch.setattr(_sync, "pending_changes_key", lambda execution_id: f"pending:{execution_id}")
+    monkeypatch.setattr(
+        _sync, "pending_changes_key", lambda execution_id: f"pending:{execution_id}"
+    )
 
     async def apply_change(db, change):
         assert db is session
@@ -108,7 +111,7 @@ async def test_shared_session_flush_waits_for_commit_before_acknowledgement(
     monkeypatch.setattr(_sync, "_apply_change", apply_change)
 
     assert await _sync.flush_pending_changes("exec-1", session=session) == 2
-    assert applied == ["config", "role"]
+    assert applied == ["config", "organization"]
     assert redis.deleted == []
     assert session.commits == 0
 
@@ -122,7 +125,9 @@ async def test_flush_pending_changes_retries_and_raises_sync_error(
 ) -> None:
     redis = FakeRedis({"a": json.dumps({"sequence": 1, "entity_type": "config"})})
     monkeypatch.setattr(_sync, "get_shared_redis", _redis_provider(redis))
-    monkeypatch.setattr(_sync, "pending_changes_key", lambda execution_id: f"pending:{execution_id}")
+    monkeypatch.setattr(
+        _sync, "pending_changes_key", lambda execution_id: f"pending:{execution_id}"
+    )
 
     async def fail_apply(db, change):
         raise RuntimeError("db down")
@@ -142,7 +147,9 @@ async def test_flush_pending_changes_creates_session_when_none(
     redis = FakeRedis({"a": json.dumps({"sequence": 1, "entity_type": "config"})})
     session = FakeSession()
     monkeypatch.setattr(_sync, "get_shared_redis", _redis_provider(redis))
-    monkeypatch.setattr(_sync, "pending_changes_key", lambda execution_id: f"pending:{execution_id}")
+    monkeypatch.setattr(
+        _sync, "pending_changes_key", lambda execution_id: f"pending:{execution_id}"
+    )
 
     async def apply_change(db, change):
         assert db is session
@@ -255,47 +262,18 @@ async def test_apply_config_change_deletes_matching_config() -> None:
 
 
 @pytest.mark.asyncio
-async def test_apply_role_change_create_update_delete() -> None:
-    role_id = str(uuid4())
-    org_id = str(uuid4())
+@pytest.mark.parametrize("operation", ["create", "update", "delete"])
+async def test_legacy_role_mutations_are_refused_before_database_access(operation):
     session = FakeEntitySession()
-
-    await _sync._apply_role_change(
-        session,
-        {
-            "entity_id": role_id,
-            "org_id": org_id,
-            "operation": "create",
-            "user_id": "admin",
-            "data": {"name": "Approver", "description": "Can approve"},
-        },
-    )
-
-    assert len(session.added) == 1
-    role = session.added[0]
-    assert str(role.id) == role_id
-    assert role.name == "Approver"
-    assert role.created_by == "admin"
-
-    existing = SimpleNamespace(name="Old", description="Old desc")
-    update_session = FakeEntitySession(existing)
-    await _sync._apply_role_change(
-        update_session,
-        {
-            "entity_id": role_id,
-            "operation": "update",
-            "data": {"name": "New", "description": "New desc", "ignored": True},
-        },
-    )
-    assert existing.name == "New"
-    assert existing.description == "New desc"
-
-    delete_session = FakeEntitySession(existing)
-    await _sync._apply_role_change(
-        delete_session,
-        {"entity_id": role_id, "operation": "delete"},
-    )
-    assert delete_session.deleted == [existing]
+    with pytest.raises(_sync.SyncError, match="canonical role assignment API"):
+        await _sync._apply_role_change(
+            session,
+            {
+                "operation": operation,
+                "data": {"permissions": {"can_execute_devices": True}},
+            },
+        )
+    assert session.executed == session.added == session.deleted == []
 
 
 @pytest.mark.asyncio
@@ -335,34 +313,16 @@ async def test_apply_org_change_create_update_delete() -> None:
     assert existing.is_active is False
 
     delete_session = FakeEntitySession(existing)
-    await _sync._apply_org_change(delete_session, {"entity_id": org_id, "operation": "delete"})
+    await _sync._apply_org_change(
+        delete_session, {"entity_id": org_id, "operation": "delete"}
+    )
     assert existing.is_active is False
 
 
 @pytest.mark.asyncio
-async def test_apply_user_and_form_role_changes_skip_existing_and_add_missing() -> None:
+async def test_form_role_changes_skip_existing_and_add_missing() -> None:
     role_id = str(uuid4())
-    user_id = str(uuid4())
     form_id = str(uuid4())
-
-    existing_user_assignment = object()
-    existing_user_session = FakeEntitySession(existing_user_assignment)
-    await _sync._apply_user_role_change(
-        existing_user_session,
-        {"entity_id": role_id, "user_id": "admin", "data": {"user_ids": [user_id]}},
-    )
-    assert existing_user_session.added == []
-
-    new_user_session = FakeEntitySession()
-    await _sync._apply_user_role_change(
-        new_user_session,
-        {"entity_id": role_id, "user_id": "admin", "data": {"user_ids": [user_id]}},
-    )
-    assert len(new_user_session.added) == 1
-    user_role = new_user_session.added[0]
-    assert str(user_role.role_id) == role_id
-    assert str(user_role.user_id) == user_id
-    assert user_role.assigned_by == "admin"
 
     existing_form_session = FakeEntitySession(object())
     await _sync._apply_form_role_change(
@@ -381,3 +341,28 @@ async def test_apply_user_and_form_role_changes_skip_existing_and_add_missing() 
     assert str(form_role.role_id) == role_id
     assert str(form_role.form_id) == form_id
     assert form_role.assigned_by == "admin"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "bad",
+    [
+        "not-json",
+        "null",
+        "[]",
+        json.dumps({"entity_type": "role"}),
+        json.dumps({"entity_type": "user_role"}),
+    ],
+)
+async def test_malformed_and_legacy_rbac_buffer_refuses_whole_flush_before_database(
+    monkeypatch, bad
+):
+    redis = FakeRedis(
+        {"safe": json.dumps({"entity_type": "config", "sequence": 0}), "bad": bad}
+    )
+    monkeypatch.setattr(_sync, "get_shared_redis", _redis_provider(redis))
+    session = FakeEntitySession()
+    with pytest.raises(_sync.SyncError):
+        await _sync.flush_pending_changes("refused", session=session)
+    assert session.executed == session.added == session.deleted == []
+    assert redis.deleted == []

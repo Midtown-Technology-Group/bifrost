@@ -382,6 +382,7 @@ class AzureBlobStorageClient:
 
         return SimpleNamespace(
             content_length=properties.size,
+            last_modified=properties.last_modified,
             content_type=properties.content_settings.content_type,
             etag=str(properties.etag or "").strip('"'),
         )

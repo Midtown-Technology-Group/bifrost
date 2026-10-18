@@ -2,20 +2,22 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class RoleCreate(BaseModel):
     """Input for creating a role (CLI mirror)."""
 
+    model_config = ConfigDict(extra="forbid")
+
     name: str = Field(max_length=100)
     description: str | None = Field(default=None)
-    permissions: dict | None = Field(default=None)
 
 
 class RoleUpdate(BaseModel):
     """Input for updating a role (CLI mirror)."""
 
+    model_config = ConfigDict(extra="forbid")
+
     name: str | None = None
     description: str | None = None
-    permissions: dict | None = Field(default=None)

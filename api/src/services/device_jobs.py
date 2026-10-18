@@ -29,7 +29,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from src.core.org_filter import org_filter_clause, resolve_org_filter
+from src.core.org_filter import org_filter_clause
 from src.core.principal import UserPrincipal
 from src.core.pubsub import manager as pubsub_manager
 from src.models.orm.device_job_logs import DeviceJobLog
@@ -56,7 +56,7 @@ from src.models.orm.device_jobs import (
     TIMEOUT_MAX_SECONDS,
     DeviceJob,
 )
-from src.services.devices import DeviceOperationError
+from src.services.devices import DeviceOperationError, resolve_device_org_filter
 
 logger = logging.getLogger(__name__)
 
@@ -708,7 +708,7 @@ async def get_job_scoped(
     agent's concurrent ``mark_running`` — serializes against the agent
     path instead of racing it.
     """
-    filter_type, filter_org_id = resolve_org_filter(user)
+    filter_type, filter_org_id = resolve_device_org_filter(user)
     stmt = select(DeviceJob).where(DeviceJob.id == job_id)
     clause = org_filter_clause(DeviceJob.organization_id, filter_type, filter_org_id)
     if clause is not None:
@@ -729,7 +729,7 @@ def list_jobs_stmt(
     scope: str | None = None,
 ):
     """Org-scoped (optionally device-filtered) job history statement."""
-    filter_type, filter_org_id = resolve_org_filter(user, scope)
+    filter_type, filter_org_id = resolve_device_org_filter(user, scope)
     stmt = select(DeviceJob)
     clause = org_filter_clause(DeviceJob.organization_id, filter_type, filter_org_id)
     if clause is not None:

@@ -18,6 +18,7 @@ import os
 import re
 import tempfile
 import zipfile
+from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated
@@ -65,6 +66,7 @@ from src.models.contracts.solutions import (
     SolutionExportJobCreate,
     SolutionExportJobPublic,
     SolutionExportJobsList,
+    SolutionExportDownloadLink,
     SolutionInstallPreview,
     PullAckRequest,
     PullAckResponse,
@@ -131,7 +133,7 @@ from src.services.solutions.workspace_bundle_import import (
     WorkspaceBundleDecisionError,
     require_workspace_config_values,
 )
-from src.services.solutions.zip_install import MAX_SOLUTION_ARCHIVE_BYTES
+from src.services.solutions.zip_install import (MAX_SOLUTION_ARCHIVE_BYTES, MAX_SOLUTION_BACKUP_ARCHIVE_BYTES)
 from src.services.platform_jobs import (
     ACTIVE_PLATFORM_JOB_STATUSES,
     enqueue_platform_job,
@@ -147,11 +149,14 @@ from src.services.application_sdk_status import (
 )
 from src.services.platform_job_memory_profiles import build_solution_memory_profile_key
 from src.services.solutions.deploy_job_storage import SolutionDeployJobStorage
+from shared.solution_deploy_status import project_solution_deploy_job_status
 from src.services.solutions.deploy import (
     SolutionDeployConflict,
+    SolutionDeployInstrumentation,
     SolutionDowngradeBlocked,
     SolutionFinalizeIncomplete,
     SolutionWorkflowNameMismatch,
+    solution_deploy_instrumentation,
 )
 from src.services.solutions.export_jobs import (
     create_export_job,
@@ -532,15 +537,18 @@ def _same_workspace_bundle_decisions(
     )
 
 
-async def _spool_upload_to_temp(file: UploadFile, *, prefix: str) -> Path:
-    tmp = tempfile.NamedTemporaryFile(prefix=prefix, suffix=".zip", delete=False)  # NOSONAR - async endpoint spools UploadFile chunks into a local temporary zip.
+async def _spool_upload_to_temp(
+    file: UploadFile, *, prefix: str, max_bytes: int | None = None,
+) -> Path:
+    limit = MAX_SOLUTION_ARCHIVE_BYTES if max_bytes is None else max_bytes
+    tmp = tempfile.NamedTemporaryFile(prefix=prefix, suffix=".zip", delete=False)  # NOSONAR - UploadFile is spooled to a local temporary zip.
     path = Path(tmp.name)
     try:
         with tmp:
             compressed_size = 0
             while chunk := await file.read(UPLOAD_CHUNK_SIZE):
                 compressed_size += len(chunk)
-                if compressed_size > MAX_SOLUTION_ARCHIVE_BYTES:
+                if compressed_size > limit:
                     raise HTTPException(
                         status_code=status.HTTP_413_CONTENT_TOO_LARGE,
                         detail="Solution archive exceeds the compressed upload limit.",
@@ -1414,12 +1422,10 @@ async def export_solution(
                     )
         _cleanup_file(source_path)
         # Commit the SolutionConnectionSchema rows that _connection_entries
-        # upserts as a side-effect of a fresh _repo/ scan. Without this the only
-        # commit is get_db()'s teardown, which FastAPI runs AFTER the FileResponse
-        # body is streamed — so a caller that queries these rows right after the
-        # response races the commit (flaky under load), and a deferred-commit
-        # failure would silently drop the persisted declarations. Every other
-        # mutating endpoint in this router commits explicitly; match that.
+        # upserts as a side-effect of a fresh _repo/ scan, so a commit failure
+        # surfaces here (and the export temp files are cleaned up) rather
+        # than after the archive has been built. Every other mutating
+        # endpoint in this router commits explicitly; match that.
         await ctx.db.commit()
     except Exception:
         _cleanup_file(out_path)
@@ -1552,6 +1558,56 @@ async def get_solution_export_job(
     return public_job(row)
 
 
+async def _downloadable_export_job(db: AsyncSession, job_id: UUID) -> SolutionExportJob:
+    row = await db.get(SolutionExportJob, job_id)
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Export job not found")
+    if (
+        row.status != "completed"
+        or not row.artifact_storage_key
+        or public_job(row).download_url is None
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Export job is not downloadable",
+        )
+    return row
+
+
+@router.post(
+    "/export-jobs/{job_id}/download-link",
+    response_model=SolutionExportDownloadLink,
+    summary="Create a direct backup download link (admin only)",
+)
+async def create_solution_export_download_link(
+    job_id: UUID,
+    ctx: Context,
+    user: CurrentSuperuser,
+    response: Response,
+) -> SolutionExportDownloadLink:
+    from src.services.file_storage import FileStorageService
+
+    row = await _downloadable_export_job(ctx.db, job_id)
+    # The shared guard requires a storage key and a future artifact expiry.
+    assert row.artifact_storage_key is not None
+    assert row.expires_at is not None
+    expiry = row.expires_at
+    if expiry.tzinfo is None:
+        expiry = expiry.replace(tzinfo=timezone.utc)
+    expires_in = min(600, int((expiry - datetime.now(timezone.utc)).total_seconds()))
+    if expires_in < 1:
+        raise HTTPException(status_code=409, detail="Export job is not downloadable")
+    filename = _safe_zip_filename(row.artifact_filename or f"solution-export-{row.id}.zip")
+    url = await FileStorageService(ctx.db).generate_presigned_download_url(
+        row.artifact_storage_key,
+        expires_in=expires_in,
+        response_content_type="application/zip",
+        response_content_disposition=f'attachment; filename="{filename}"',
+    )
+    response.headers["Cache-Control"] = "no-store"
+    return SolutionExportDownloadLink(url=url, filename=filename, expires_in=expires_in)
+
+
 @router.get(
     "/export-jobs/{job_id}/download",
     summary="Download a completed durable Solution backup export artifact (admin only)",
@@ -1568,19 +1624,8 @@ async def download_solution_export_job(
 ) -> StreamingResponse:
     from src.services.file_storage import FileStorageService
 
-    row = await ctx.db.get(SolutionExportJob, job_id)
-    if row is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Export job not found")
-    if (
-        row.status != "completed"
-        or not row.artifact_storage_key
-        or public_job(row).download_url is None
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Export job is not downloadable",
-        )
-
+    row = await _downloadable_export_job(ctx.db, job_id)
+    assert row.artifact_storage_key is not None
     filename = _safe_zip_filename(row.artifact_filename or f"solution-export-{row.id}.zip")
     return StreamingResponse(
         FileStorageService(ctx.db).iter_raw_s3_chunks(row.artifact_storage_key),
@@ -1647,8 +1692,13 @@ async def get_solution_entities(
     ]
     required_unset = [d.key for d in decls if d.required and d.key not in set_keys]
 
+    entity_counts = await _solution_entity_counts(ctx, [sol.id])
+
     return SolutionEntities(
-        solution=SolutionDTO.model_validate(sol),
+        solution=_solution_to_public(
+            sol,
+            entity_counts=entity_counts.get(sol.id, SolutionEntityCounts()),
+        ),
         workflows=workflows,
         apps=apps,
         forms=forms,
@@ -2235,6 +2285,28 @@ async def get_solution_deletion_summary(
 
     file_entries = await enumerate_solution_files(ctx.db, solution_id)
 
+    # Operator-created subscriptions (solution_id IS NULL) are not owned, but
+    # the hard-delete still cascades them away through the install's sources,
+    # workflows, or agents. Surface them so the confirmation doesn't undercount.
+    external_subs = (
+        await ctx.db.execute(
+            select(func.count())
+            .select_from(EventSubscription)
+            .where(
+                EventSubscription.solution_id.is_(None),
+                EventSubscription.event_source_id.in_(
+                    select(EventSource.id).where(EventSource.solution_id == solution_id)
+                )
+                | EventSubscription.workflow_id.in_(
+                    select(Workflow.id).where(Workflow.solution_id == solution_id)
+                )
+                | EventSubscription.agent_id.in_(
+                    select(Agent.id).where(Agent.solution_id == solution_id)
+                ),
+            )
+        )
+    ).scalar_one()
+
     return SolutionDeletionSummary(
         solution_id=solution_id,
         files=len(file_entries),
@@ -2246,6 +2318,7 @@ async def get_solution_deletion_summary(
         claims=await _count(CustomClaim),
         config_declarations=await _count(SolutionConfigSchema),
         events=await _count(EventSource) + await _count(EventSubscription),
+        external_event_subscriptions=external_subs,
     )
 
 
@@ -2397,6 +2470,9 @@ async def _run_deploy_job(
     candidate_id: str = "",
     accountability_organization_id: UUID | None = None,
     allow_connected_install: bool = False,
+    delete_install_on_failure: bool = False,
+    progress_callback: Callable[[str, float], Awaitable[None]] | None = None,
+    timing_callback: Callable[[str, int], Awaitable[None]] | None = None,
 ) -> None:
     """Execute the deploy under a fresh session (background task).
 
@@ -2411,6 +2487,14 @@ async def _run_deploy_job(
     the install row is created git-connected by the same request that enqueues
     this job, so the one-writer refusal below would deadlock creation. Manual
     deploys to connected installs stay refused (auto-pull is their only writer).
+
+    ``delete_install_on_failure`` is also from-repo-first-deploy-only: the
+    install row is brand new and has no user-visible content yet, so a failed
+    first deploy should leave no trace. The delete happens in the SAME
+    transaction as the job's ``failed`` status write (below) so the two are
+    never observably out of sync — a poller must never see the job reported
+    failed while ``GET /api/solutions`` still lists the orphan (it would also
+    block an immediate retry with the same slug).
     """
     from src.core.database import get_db_context
     from src.services.solutions.zip_install import (
@@ -2436,10 +2520,20 @@ async def _run_deploy_job(
             job.status = status_value
             job.error = error
             job.result = result
+            if status_value == "failed" and delete_install_on_failure:
+                job.install_id = None
+                await db.flush()
+                orphan = await db.get(SolutionORM, solution_id)
+                if orphan is not None:
+                    await db.delete(orphan)
             return True
 
     async def _set_phase(phase: str) -> None:
         await _set_status("running", result={"phase": phase})
+
+    async def _report(phase: str, percent: float) -> None:
+        if progress_callback is not None:
+            await progress_callback(phase, percent)
 
     if not await _set_status("running"):
         _cleanup_file(zip_path)
@@ -2464,14 +2558,23 @@ async def _run_deploy_job(
                         "deploy is disabled (auto-pull is the only writer)."
                     )
                 await _set_phase("validating bundle and applying resources")
-                result = await deploy_zip_to_solution_path(
-                    db, solution, zip_path, force=force
+                await _report("Validating Solution bundle", 12)
+                instrumentation = SolutionDeployInstrumentation(
+                    progress_callback=progress_callback,
+                    timing_callback=timing_callback,
                 )
+                with solution_deploy_instrumentation(instrumentation):
+                    result = await deploy_zip_to_solution_path(
+                        db, solution, zip_path, force=force
+                    )
+                await _report("Committing Solution resources", 65)
                 await db.commit()
                 # S3 only after the DB is durable — a failed commit changes no running
                 # code (P1-c). Still inside the lock so finalize can't race another deploy.
                 await _set_phase("storing source artifact and runtime files")
                 await result.finalize_s3()
+                await _report("Persisting Solution source index", 98)
+                await db.commit()  # source search index rows written by finalize
                 accountability = {"state": "not_tracked"}
                 if accountability_organization_id is not None:
                     from src.services.solution_deploy_obligations import (
@@ -2613,6 +2716,8 @@ async def _run_install_job(
     reactivate: bool,
     candidate_id: str = "",
     accountability_organization_id: UUID | None = None,
+    progress_callback: Callable[[str, float], Awaitable[None]] | None = None,
+    timing_callback: Callable[[str, int], Awaitable[None]] | None = None,
 ) -> None:
     """Execute a zip install under a fresh session (background task).
 
@@ -2664,21 +2769,32 @@ async def _run_install_job(
         return
     install_result: dict | None = None
 
+    async def _report(phase: str, percent: float) -> None:
+        if progress_callback is not None:
+            await progress_callback(phase, percent)
+
     async def _execute() -> None:
         nonlocal install_result
         async with get_db_context() as db:
-            solution = await install_zip_path(
-                db,
-                zip_path,
-                organization_id=organization_id,
-                config_values=config_values,
-                deployer_email=deployer_email,
-                force=force,
-                password=password,
-                replace_secrets=replace_secrets,
-                replace_data=replace_data,
-                reactivate=reactivate,
+            await _report("Validating Solution install bundle", 12)
+            instrumentation = SolutionDeployInstrumentation(
+                progress_callback=progress_callback,
+                timing_callback=timing_callback,
             )
+            with solution_deploy_instrumentation(instrumentation):
+                solution = await install_zip_path(
+                    db,
+                    zip_path,
+                    organization_id=organization_id,
+                    config_values=config_values,
+                    deployer_email=deployer_email,
+                    force=force,
+                    password=password,
+                    replace_secrets=replace_secrets,
+                    replace_data=replace_data,
+                    reactivate=reactivate,
+                )
+            await _report("Finalizing Solution installation", 98)
             accountability = {"state": "not_tracked"}
             if accountability_organization_id is not None:
                 from src.services.solution_deploy_obligations import (
@@ -2888,12 +3004,19 @@ async def deploy_solution(
 async def get_deploy_job(
     job_id: UUID, ctx: Context, user: CurrentSuperuser
 ) -> SolutionDeployJobStatus:
-    job = await ctx.db.get(SolutionDeployJob, job_id)
-    if job is None:
+    projection = await ctx.db.get(SolutionDeployJob, job_id)
+    canonical = await ctx.db.get(PlatformJob, job_id)
+    if (
+        projection is None
+        or canonical is None
+        or canonical.job_type != "solution.deploy"
+        or canonical.resource_type != "solution_deploy"
+        or canonical.resource_id != str(job_id)
+    ):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Deploy job not found"
         )
-    return SolutionDeployJobStatus.model_validate(job)
+    return project_solution_deploy_job_status(projection, canonical)
 
 
 @router.post(
@@ -3179,7 +3302,9 @@ async def install_preview(
                 detail=f"Invalid organization_id: {organization_id}",
             ) from exc
 
-    zip_path = await _spool_upload_to_temp(file, prefix="bifrost-solution-preview-")
+    zip_path = await _spool_upload_to_temp(
+        file, prefix="bifrost-solution-preview-", max_bytes=MAX_SOLUTION_BACKUP_ARCHIVE_BYTES,
+    )
     try:
         result = preview_zip_path(zip_path)
     except (ValueError, zipfile.BadZipFile) as exc:
@@ -3461,10 +3586,12 @@ async def install_solution(
             detail="config_values must be a JSON object mapping key → value",
         )
 
-    zip_path = await _spool_upload_to_temp(file, prefix="bifrost-solution-install-")
-    # Fail-fast validation BEFORE the job row exists: a corrupt zip / non-workspace
-    # / wrong-or-missing secrets password returns a synchronous 4xx, not a failed
-    # job (mirrors deploy's synchronous preview_zip_path guard).
+    zip_path = await _spool_upload_to_temp(
+        file, prefix="bifrost-solution-install-", max_bytes=MAX_SOLUTION_BACKUP_ARCHIVE_BYTES,
+    )
+    # Fail-fast validation BEFORE the job row exists: corrupt source/metadata,
+    # a non-workspace or a wrong/missing password returns a synchronous 4xx.
+    # The job scans encrypted payload checksums before any installation writes.
     try:
         preview = validate_install_zip(zip_path, password=password)
     except BadExportPassword as exc:

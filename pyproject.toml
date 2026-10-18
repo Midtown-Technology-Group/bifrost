@@ -85,12 +85,12 @@ dependencies = [
     "python-docx>=1.2.0",  # Typed DOCX artifacts
     "openpyxl>=3.1.5",  # Typed XLSX artifacts
     "jmespath>=1.0.1",  # Safe event subscription payload filters
+    "regex>=2024.11.6",  # Source search regex matching with a per-call timeout (ReDoS bound)
 
     # =========================================================================
     # Code Transformation
     # =========================================================================
     "libcst",  # Concrete Syntax Tree for Python - preserves formatting when modifying code
-    "regex",  # Timeout-capable regex engine for user-provided editor searches
 
     # =========================================================================
     # Templating
@@ -142,8 +142,8 @@ dependencies = [
     # Exact pins are intentional: the Harness API is still pre-1.0 and is the
     # execution boundary for every Bifrost agent surface. The `typesafe` extra
     # (TypeSafe Jev `DecisionModel`) is for the MIDT-274 spike; no live calls.
-    "pydantic-ai-slim[openai,anthropic,google,retries,typesafe]==2.53.0",
-    "pydantic-ai-harness==0.36.0",
+    "pydantic-ai-slim[openai,anthropic,google,retries,typesafe]==2.55.0",
+    "pydantic-ai-harness==0.55.0",
 
     # =========================================================================
     # MCP (Model Context Protocol)

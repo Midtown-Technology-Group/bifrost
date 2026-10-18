@@ -20,7 +20,7 @@ import json
 import logging
 import secrets
 from datetime import UTC, datetime
-from typing import Annotated, Awaitable, cast
+from typing import Annotated, Awaitable, NoReturn, cast
 from urllib.parse import quote, urlencode, urlparse
 from uuid import UUID
 
@@ -33,11 +33,11 @@ from shared.external_access import (
     resolve_external_claim,
     resolve_provider_org_claim,
 )
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import get_settings
 from src.core.auth import (
     CurrentActiveUser,
-    CurrentSuperuser,
     UserPrincipal,
     get_current_user_optional,
     renew_engine_access_token,
@@ -87,9 +87,11 @@ from src.models.contracts.passkeys import (
     SetupPasskeyVerifyResponse,
 )
 from src.repositories.users import UserRepository
+from src.core.rate_limit import device_token_limiter
 from src.services.audit import emit_audit
 from src.services.audit_context import ActorContext, current_actor
 from src.services.user_provisioning import ensure_user_provisioned, get_user_roles
+from shared.identities import is_identity, refuse_identity_sign_in
 
 logger = logging.getLogger(__name__)
 
@@ -302,6 +304,36 @@ class UserCreate(BaseModel):
     name: str | None = None
 
 
+async def _refuse_login(
+    db: AsyncSession,
+    *,
+    email: str,
+    reason: str,
+    user=None,
+    status_code: int = status.HTTP_401_UNAUTHORIZED,
+    detail: str = "Incorrect email or password",
+) -> NoReturn:
+    """Record a refused sign-in, then refuse it.
+
+    The record is committed before raising: the request's session rolls back
+    when the refusal propagates, which would otherwise take the record with it.
+    """
+    await emit_audit(
+        db,
+        "auth.login.failed",
+        resource_type="user" if user is not None else None,
+        resource_id=user.id if user is not None else None,
+        outcome="failure",
+        details={"email": email, "reason": reason},
+    )
+    await db.commit()
+    raise HTTPException(
+        status_code=status_code,
+        detail=detail,
+        headers={"WWW-Authenticate": "Bearer"} if status_code == status.HTTP_401_UNAUTHORIZED else None,
+    )
+
+
 # =============================================================================
 # Endpoints
 # =============================================================================
@@ -349,58 +381,25 @@ async def login(
     user = await user_repo.get_by_email(form_data.username)
 
     if not user:
-        await emit_audit(
-            db,
-            "auth.login.failed",
-            outcome="failure",
-            details={"email": form_data.username, "reason": "user_not_found"},
-        )
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
+        await _refuse_login(db, email=form_data.username, reason="user_not_found")
+    if is_identity(user):
+        await _refuse_login(db, email=user.email, reason="identity", user=user, detail="Invalid credentials")
     if not user.hashed_password:
-        await emit_audit(
+        await _refuse_login(
             db,
-            "auth.login.failed",
-            resource_type="user",
-            resource_id=user.id,
-            outcome="failure",
-            details={"email": user.email, "reason": "no_password"},
-        )
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
+            email=user.email,
+            reason="no_password",
+            user=user,
             detail="Account does not have password authentication enabled",
-            headers={"WWW-Authenticate": "Bearer"},
         )
-
     if not verify_password(form_data.password, user.hashed_password):
-        await emit_audit(
-            db,
-            "auth.login.failed",
-            resource_type="user",
-            resource_id=user.id,
-            outcome="failure",
-            details={"email": user.email, "reason": "wrong_password"},
-        )
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
+        await _refuse_login(db, email=user.email, reason="wrong_password", user=user)
     if not user.is_active:
-        await emit_audit(
+        await _refuse_login(
             db,
-            "auth.login.failed",
-            resource_type="user",
-            resource_id=user.id,
-            outcome="failure",
-            details={"email": user.email, "reason": "inactive"},
-        )
-        raise HTTPException(
+            email=user.email,
+            reason="inactive",
+            user=user,
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Account is inactive",
         )
@@ -554,6 +553,7 @@ async def mfa_initial_setup(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="User not found or inactive",
         )
+    refuse_identity_sign_in(user)
 
     force_new = setup_request.force_new if setup_request else False
 
@@ -643,6 +643,7 @@ async def mfa_initial_verify(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="User not found or inactive",
         )
+    refuse_identity_sign_in(user)
 
     mfa_service = MFAService(db)
 
@@ -743,6 +744,7 @@ async def verify_mfa_login(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="User not found or inactive",
         )
+    refuse_identity_sign_in(user)
 
     mfa_service = MFAService(db)
 
@@ -808,6 +810,7 @@ async def _generate_login_tokens(
     Returns:
         LoginResponse with tokens
     """
+    refuse_identity_sign_in(user)
     # Update last login (use naive datetime for DB compatibility)
     user.last_login = datetime.now(UTC)
     await db.commit()
@@ -859,6 +862,10 @@ async def _generate_login_tokens(
         ip_address=base_actor.ip_address if base_actor else None,
         user_agent=base_actor.user_agent if base_actor else None,
         source="http",
+        # Same request as the middleware's pre-auth actor — carry over its
+        # already-resolved surface rather than defaulting. operation_id is
+        # resolved separately, at emit time, from the request scope.
+        surface=base_actor.surface if base_actor else "web",
     )
     await emit_audit(
         db,
@@ -991,6 +998,7 @@ async def refresh_token(
             detail="User not found or inactive",
             headers={"WWW-Authenticate": "Bearer"},
         )
+    refuse_identity_sign_in(user)
 
     # Get fresh user roles from database
     db_roles = await get_user_roles(db, user.id)
@@ -1177,28 +1185,41 @@ class AdminRevokeRequest(BaseModel):
 @router.post("/admin/revoke-user", response_model=RevokeAllResponse)
 async def admin_revoke_user_sessions(
     revoke_data: AdminRevokeRequest,
-    current_user: CurrentSuperuser,
+    current_user: CurrentActiveUser,
     db: DbSession,
 ) -> RevokeAllResponse:
     """
-    Revoke all refresh tokens for a specific user (admin only).
+    Revoke all refresh tokens for a specific user.
 
-    Allows platform administrators to forcibly log out a user from all
-    devices. Useful for security incidents or account compromises.
-
-    Requires platform admin (superuser) privileges.
+    Signs a user out of every device: users.readwrite at the user's
+    organization, and only a Platform Admin for a privileged user. Useful
+    for security incidents or account compromises.
 
     Args:
         revoke_data: Target user ID to revoke
-        current_user: Current authenticated user (must be admin)
+        current_user: Current authenticated user
         db: Database session
 
     Returns:
         Number of sessions revoked
 
     Raises:
-        HTTPException: If not admin or user not found
+        HTTPException: If not permitted or user not found
     """
+    from src.services.authorization.enforce import (
+        load_caller,
+        operation_reach,
+        org_target,
+        privileged_user_ids,
+        require_operation,
+        require_unprotected,
+    )
+    from shared.bridge_grants import lock_bridge_writes, refresh_mutation_caller, require_bridge_target_admin
+
+    operation = "POST /auth/admin/revoke-user"
+    await lock_bridge_writes(db)
+    caller = await refresh_mutation_caller(db, await load_caller(db, current_user))
+    operation_reach(caller, operation)
     # Verify target user exists
     user_repo = UserRepository(db)
     target_user = await user_repo.get_by_id(revoke_data.user_id)
@@ -1207,6 +1228,10 @@ async def admin_revoke_user_sessions(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User not found",
         )
+    await db.refresh(target_user)
+    require_operation(caller, operation, org_target(target_user.organization_id))
+    await require_bridge_target_admin(db, caller, target_user.id)
+    require_unprotected(caller, target_user.id in await privileged_user_ids(db, [target_user.id]))
 
     # Revoke all sessions for target user
     count = await revoke_all_user_refresh_tokens(revoke_data.user_id)
@@ -1282,6 +1307,7 @@ async def register_user(
     existing_user = await user_repo.get_by_email(user_data.email)
 
     if existing_user:
+        refuse_identity_sign_in(existing_user)
         # Check if this is a pre-created user completing registration
         if not existing_user.is_registered:
             # Pre-created user - complete their registration
@@ -1843,7 +1869,7 @@ async def exchange_device_token(
     """
     # Rate limiting (more lenient for polling)
     client_ip = get_client_ip(request)
-    await auth_limiter.check("device_token", client_ip)
+    await device_token_limiter.check("device_token", client_ip)
 
     r = await get_shared_redis()
 

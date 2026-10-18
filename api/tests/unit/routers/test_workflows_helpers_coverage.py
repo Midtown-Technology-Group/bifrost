@@ -7,6 +7,9 @@ import pytest
 
 from src.models.enums import ExecutionStatus
 from src.routers import workflows
+from shared import sdk_execution_reads
+from shared.sdk_workflow_execution import insert_scheduled_execution
+from src.models.contracts.workflow_permissions import WorkflowPermissionMode
 from src.services.solution_scope import SolutionInboundDenied, derive_execution_solution_scope
 
 
@@ -84,6 +87,8 @@ def test_convert_workflow_orm_to_schema_normalizes_defaults():
         type="tool",
         organization_id=None,
         solution_id=solution_id,
+        run_identity_id=None,
+        permission_mode=None,
         access_level=None,
         parameters_schema=[{"name": "ticket_id", "type": "string", "required": True}],
         execution_mode="invalid",
@@ -100,7 +105,7 @@ def test_convert_workflow_orm_to_schema_normalizes_defaults():
         created_at=datetime.now(UTC),
     )
 
-    result = workflows._convert_workflow_orm_to_schema(row, used_by_count=3)
+    result = workflows._convert_workflow_orm_to_schema(row, WorkflowPermissionMode.FULL, used_by_count=3)
 
     assert result.id == str(workflow_id)
     assert result.category == "General"
@@ -230,7 +235,7 @@ async def test_get_form_workflow_ids_collects_uuid_refs_and_skips_portable_refs(
         ],
     )
 
-    result = await workflows._get_form_workflow_ids(_Db(form), uuid4())
+    result = await sdk_execution_reads.get_form_workflow_ids(_Db(form), uuid4())
 
     assert result == {workflow_id, launch_id, provider_id}
 
@@ -240,8 +245,8 @@ async def test_get_form_workflow_ids_collects_uuid_refs_and_skips_portable_refs(
         fields=[],
     )
 
-    assert await workflows._get_form_workflow_ids(_Db(portable_form), uuid4()) == set()
-    assert await workflows._get_form_workflow_ids(_Db(None), uuid4()) == set()
+    assert await sdk_execution_reads.get_form_workflow_ids(_Db(portable_form), uuid4()) == set()
+    assert await sdk_execution_reads.get_form_workflow_ids(_Db(None), uuid4()) == set()
 
 
 @pytest.mark.asyncio
@@ -266,14 +271,14 @@ async def test_get_app_workflow_ids_resolves_file_dependencies_to_active_workflo
         "src.services.app_dependencies.parse_dependencies",
         side_effect=[{"sync_records"}, {str(matched_id)}],
     ) as parse_dependencies:
-        result = await workflows._get_app_workflow_ids(
+        result = await sdk_execution_reads.get_app_workflow_ids(
             _Db(app, file_rows, workflow_rows),
             uuid4(),
         )
 
     assert result == {matched_id}
     assert parse_dependencies.call_count == 2
-    assert await workflows._get_app_workflow_ids(_Db(None), uuid4()) == set()
+    assert await sdk_execution_reads.get_app_workflow_ids(_Db(None), uuid4()) == set()
 
 
 @pytest.mark.asyncio
@@ -295,7 +300,7 @@ async def test_insert_scheduled_execution_persists_expected_execution_fields():
             return_value=None,
         ),
     ):
-        execution_id = await workflows._insert_scheduled_execution(
+        execution_id = await insert_scheduled_execution(
             db=db,
             workflow_id=workflow_id,
             workflow_name="sync_records",

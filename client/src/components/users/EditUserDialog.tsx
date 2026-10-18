@@ -1,59 +1,20 @@
-import { UserLookupNotice } from "./UserLookupNotice";
-import { useState, useMemo, useEffect, useRef } from "react";
-import { getErrorMessage } from "@/lib/api-error";
+import { UserProfileForm, useUserProfileAbilities } from "./UserProfileForm";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
 	Dialog,
 	DialogContent,
 	DialogDescription,
-	DialogFooter,
 	DialogHeader,
 	DialogTitle,
 } from "@/components/ui/dialog";
-import { Combobox } from "@/components/ui/combobox";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Switch } from "@/components/ui/switch";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
-import {
-	Popover,
-	PopoverContent,
-	PopoverTrigger,
-} from "@/components/ui/popover";
-import {
-	Command,
-	CommandEmpty,
-	CommandGroup,
-	CommandInput,
-	CommandItem,
-	CommandList,
-} from "@/components/ui/command";
-import {
-	Shield,
-	AlertCircle,
-	Loader2,
-	AlertTriangle,
-	ChevronsUpDown,
-	X,
-} from "lucide-react";
-import { cn } from "@/lib/utils";
-import { useQueryClient } from "@tanstack/react-query";
-import { useUpdateUser, useUserRoles } from "@/hooks/useUsers";
-import {
-	useRoles,
-	useAssignUsersToRole,
-	useRemoveUserFromRole,
-} from "@/hooks/useRoles";
-import { useOrganizations } from "@/hooks/useOrganizations";
-import { useAuth } from "@/contexts/AuthContext";
-import { toast } from "sonner";
+import { Info, ShieldAlert, X } from "lucide-react";
+import { useAuthorization } from "@/services/authorization";
 import type { components } from "@/lib/v1";
 
 type User = components["schemas"]["UserPublic"];
-type Organization = components["schemas"]["OrganizationPublic"];
-type Role = components["schemas"]["RolePublic"];
-type UserRolesResponse = components["schemas"]["UserRolesResponse"];
 
 interface EditUserDialogProps {
 	user: User | undefined;
@@ -69,274 +30,44 @@ function EditUserDialogContent({
 	user: User;
 	onOpenChange: (open: boolean) => void;
 }) {
-	const [displayName, setDisplayName] = useState(user.name || "");
-	const [isActive, setIsActive] = useState(user.is_active);
-	const [isPlatformAdmin, setIsPlatformAdmin] = useState(user.is_superuser);
-	const [isExternal, setIsExternal] = useState(user.is_external);
-	const [orgId, setOrgId] = useState<string>(user.organization_id || "");
-	const [validationError, setValidationError] = useState<string | null>(null);
-	const errorRef = useRef<HTMLDivElement>(null);
-	const submitBusy = useRef(false);
-	const [submitting, setSubmitting] = useState(false);
-	useEffect(() => {
-		if (validationError) {
-			errorRef.current?.focus();
-			errorRef.current?.scrollIntoView?.({ block: "nearest" });
-		}
-	}, [validationError]);
-	const [rolesPopoverOpen, setRolesPopoverOpen] = useState(false);
-	const [rolesInitialized, setRolesInitialized] = useState(false);
-
-	const queryClient = useQueryClient();
-	const updateMutation = useUpdateUser();
-	const assignUsersToRole = useAssignUsersToRole({ toast: false });
-	const removeUserFromRole = useRemoveUserFromRole({ toast: false });
-	const organizationQuery = useOrganizations();
-	const { data: organizations, isLoading: orgsLoading } = organizationQuery;
-	const roleCatalog = useRoles();
-	const { data: allRoles } = roleCatalog;
-	const userRoleQuery = useUserRoles(user.id);
-	const { data: userRolesData } = userRoleQuery;
-	const { user: currentUser } = useAuth();
-
-	const [initialRoleIds, setInitialRoleIds] = useState<Set<string>>(
-		new Set(),
-	);
-
-	// selectedRoleIds tracks the user's current selection; initialized from API on first data load
-	const [selectedRoleIds, setSelectedRoleIds] = useState<Set<string>>(
-		new Set(),
-	);
-
-	// Initialize once when role data first arrives
-	if (userRolesData && !rolesInitialized) {
-		setRolesInitialized(true);
-		const loaded = new Set(
-			(userRolesData as UserRolesResponse).role_ids ?? [],
-		);
-		setInitialRoleIds(loaded);
-		setSelectedRoleIds(loaded);
-	}
-
-	const roles = useMemo(() => (allRoles ?? []) as Role[], [allRoles]);
-
-	// Find the provider org (for auto-selecting when promoting to platform admin)
-	const providerOrg = organizations?.find(
-		(org: Organization) => org.is_provider,
-	);
-
-	// Check if editing own account
-	const isEditingSelf = !!(currentUser && user.id === currentUser.id);
-	const orgReady =
-		isEditingSelf ||
-		(organizations !== undefined && !organizationQuery.isError);
-	const roleReadError = userRoleQuery.isError || roleCatalog.isError;
-	const rolesReady =
-		isEditingSelf ||
-		(rolesInitialized && allRoles !== undefined && !roleReadError);
-	const rolesRefreshing = userRoleQuery.isFetching || roleCatalog.isFetching;
-
-	const isRoleChanging = user.is_superuser !== isPlatformAdmin;
-	const isDemoting = user.is_superuser && !isPlatformAdmin;
-	const isPromoting = !user.is_superuser && isPlatformAdmin;
-
-	// Auto-select provider org when promoting to platform admin
-	const handleUserTypeChange = (value: string) => {
-		const isAdmin = value === "platform";
-		setIsPlatformAdmin(isAdmin);
-		if (isAdmin && providerOrg) {
-			setOrgId(providerOrg.id);
-		} else if (!isAdmin && orgId === providerOrg?.id) {
-			// Clear provider org if switching to org user
-			setOrgId("");
-		}
-	};
-
-	const toggleRole = (roleId: string) => {
-		setSelectedRoleIds((prev) => {
-			const next = new Set(prev);
-			if (next.has(roleId)) {
-				next.delete(roleId);
-			} else {
-				next.add(roleId);
-			}
-			return next;
-		});
-	};
-
-	const removeRole = (roleId: string) => {
-		setSelectedRoleIds((prev) => {
-			const next = new Set(prev);
-			next.delete(roleId);
-			return next;
-		});
-	};
-
-	const selectedRoleNames = useMemo(() => {
-		return roles
-			.filter((r) => selectedRoleIds.has(r.id))
-			.map((r) => ({ id: r.id, name: r.name }));
-	}, [roles, selectedRoleIds]);
-
-	const validateForm = (): boolean => {
-		if (!displayName || displayName.trim().length === 0) {
-			setValidationError("Please enter a display name");
-			return false;
-		}
-		if (!isEditingSelf && !orgId) {
-			setValidationError("Please select an organization");
-			return false;
-		}
-		setValidationError(null);
-		return true;
-	};
-
-	const handleSubmit = async (e: React.FormEvent) => {
-		e.preventDefault();
-		if (submitBusy.current || !rolesReady || !orgReady) return;
-
-		if (!validateForm()) {
-			return;
-		}
-
-		// Build request body - only send changed fields
-		const body = {
-			name:
-				displayName.trim() !== (user.name || "")
-					? displayName.trim()
-					: null,
-			is_active:
-				!isEditingSelf && isActive !== user.is_active ? isActive : null,
-			is_superuser:
-				!isEditingSelf && isRoleChanging ? isPlatformAdmin : null,
-			organization_id:
-				!isEditingSelf && orgId !== (user.organization_id || "")
-					? orgId || null
-					: null,
-			is_external:
-				!isEditingSelf && isExternal !== user.is_external
-					? isExternal
-					: null,
-		};
-
-		// Compute role changes
-		const rolesToAdd = [...selectedRoleIds].filter(
-			(id) => !initialRoleIds.has(id),
-		);
-		const rolesToRemove = [...initialRoleIds].filter(
-			(id) => !selectedRoleIds.has(id),
-		);
-		const hasRoleChanges =
-			rolesToAdd.length > 0 || rolesToRemove.length > 0;
-
-		// If no actual changes, just close
-		if (
-			body.name === null &&
-			body.is_active === null &&
-			body.is_superuser === null &&
-			body.organization_id === null &&
-			body.is_external === null &&
-			!hasRoleChanges
-		) {
-			toast.info("No changes to save");
-			onOpenChange(false);
-			return;
-		}
-
-		submitBusy.current = true;
-		setSubmitting(true);
-		try {
-			// Update user fields if changed
-			if (
-				body.name !== null ||
-				body.is_active !== null ||
-				body.is_superuser !== null ||
-				body.organization_id !== null ||
-				body.is_external !== null
-			) {
-				await updateMutation.mutateAsync({
-					params: { path: { user_id: user.id } },
-					body,
-				});
-			}
-
-			// Update role assignments
-			for (const roleId of rolesToAdd) {
-				await assignUsersToRole.mutateAsync({
-					params: { path: { role_id: roleId } },
-					body: { user_ids: [user.id] },
-				});
-				setInitialRoleIds((previous) => new Set([...previous, roleId]));
-			}
-			for (const roleId of rolesToRemove) {
-				await removeUserFromRole.mutateAsync({
-					params: { path: { role_id: roleId, user_id: user.id } },
-				});
-				setInitialRoleIds((previous) => {
-					const next = new Set(previous);
-					next.delete(roleId);
-					return next;
-				});
-			}
-
-			// Invalidate user roles cache so reopening reflects changes
-			if (hasRoleChanges) {
-				await queryClient.invalidateQueries({
-					queryKey: ["get", "/api/users/{user_id}/roles"],
-				});
-			}
-
-			toast.success("User updated successfully", {
-				description: `Changes to ${user.name || user.email} have been saved`,
-			});
-
-			onOpenChange(false);
-		} catch (error) {
-			const errorMessage = getErrorMessage(
-				error,
-				"Failed to update user",
-			);
-			setValidationError(errorMessage);
-		} finally {
-			submitBusy.current = false;
-			setSubmitting(false);
-		}
-	};
-
-	const isSaving =
-		submitting ||
-		updateMutation.isPending ||
-		assignUsersToRole.isPending ||
-		removeUserFromRole.isPending;
+	const [saving, setSaving] = useState(false);
+	const authorization = useAuthorization();
+	const { canSave } = useUserProfileAbilities(user);
+	const close = () => onOpenChange(false);
 
 	return (
 		<DialogContent
 			onEscapeKeyDown={(event) => {
-				if (submitBusy.current) event.preventDefault();
+				if (saving) event.preventDefault();
 			}}
 			onInteractOutside={(event) => {
-				if (submitBusy.current) event.preventDefault();
+				if (saving) event.preventDefault();
 			}}
 			showCloseButton={false}
-			className="flex h-[100dvh] w-full max-w-none flex-col gap-0 overflow-hidden rounded-none border-border/70 p-0 shadow-xl motion-reduce:transition-none motion-reduce:animate-none sm:h-auto sm:max-h-[min(90dvh,46rem)] sm:w-[min(92vw,500px)] sm:rounded-[var(--bf-radius-feature)]"
+			className="flex h-[100dvh] w-full max-w-none flex-col gap-0 overflow-hidden rounded-none border-border/70 p-0 shadow-xl motion-reduce:transition-none motion-reduce:animate-none sm:h-auto sm:max-h-[min(90dvh,48rem)] sm:w-[min(92vw,560px)] sm:rounded-[var(--bf-radius-feature)]"
 		>
 			<DialogHeader className="shrink-0 border-b border-border/70 px-4 pb-4 pt-[max(1rem,env(safe-area-inset-top))] text-left sm:px-6">
 				<div className="flex items-start gap-3">
 					<div className="min-w-0 flex-1">
-						<DialogTitle className="text-pretty break-words">
-							Edit User
+						<DialogTitle className="flex flex-wrap items-center gap-2 text-pretty break-words">
+							{canSave ? "Edit User" : "User Details"}
+							{user.is_protected && (
+								<Badge variant="warning">Protected</Badge>
+							)}
 						</DialogTitle>
-						<DialogDescription className="mt-1.5 text-sm leading-5">
-							Update user details and permissions for {user.email}
+						<DialogDescription className="mt-1.5 text-sm leading-5 [overflow-wrap:anywhere]">
+							{user.name
+								? `${user.name} · ${user.email}`
+								: user.email}
 						</DialogDescription>
 					</div>
 					<Button
 						type="button"
 						variant="ghost"
 						size="icon-lg"
-						onClick={() => onOpenChange(false)}
+						onClick={close}
 						aria-label="Close dialog"
-						disabled={isSaving}
+						disabled={saving}
 						className="h-11 w-11 shrink-0 rounded-[var(--bf-radius-control)] border border-border/70 bg-background/90 text-foreground hover:bg-muted motion-reduce:transition-none"
 					>
 						<X className="h-5 w-5" />
@@ -344,353 +75,29 @@ function EditUserDialogContent({
 				</div>
 			</DialogHeader>
 
-			<form
-				onSubmit={handleSubmit}
-				className="flex min-h-0 flex-1 flex-col overflow-hidden"
-			>
-				<div
-					inert={isSaving}
-					aria-busy={isSaving}
-					className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4 sm:px-6"
-				>
-					{!rolesReady && (
-						<div
-							role={roleReadError ? "alert" : "status"}
-							className="space-y-2 rounded-[var(--bf-radius-surface)] border border-border/70 p-3 text-sm"
-						>
-							<p>
-								{roleReadError
-									? "Could not load role assignments. Load them before saving to preserve access settings."
-									: "Loading role assignments…"}
-							</p>
-							{roleReadError && (
-								<Button
-									type="button"
-									variant="outline"
-									className="min-h-11"
-									disabled={rolesRefreshing}
-									onClick={() =>
-										void Promise.all([
-											userRoleQuery.refetch(),
-											roleCatalog.refetch(),
-										])
-									}
-								>
-									Retry roles
-								</Button>
-							)}
-						</div>
+			{user.is_protected && (
+				<Alert className="mx-4 mt-4 w-auto shrink-0 sm:mx-6">
+					{authorization.isPlatformAdmin ? (
+						<Info className="h-4 w-4" />
+					) : (
+						<ShieldAlert className="h-4 w-4" />
 					)}
-					{isEditingSelf && (
-						<Alert>
-							<AlertCircle className="h-4 w-4" />
-							<AlertDescription>
-								You are editing your own account. You can only
-								change your display name. Role and status
-								changes must be made by another administrator.
-							</AlertDescription>
-						</Alert>
-					)}
+					<AlertTitle>Protected Account</AlertTitle>
+					<AlertDescription>
+						{authorization.isPlatformAdmin
+							? "This person holds privileged access. Only Platform Admins can change their profile, sign-in, or roles."
+							: "This person holds privileged access, so only a Platform Admin can change them. You can still view their details."}
+					</AlertDescription>
+				</Alert>
+			)}
 
-					{validationError && (
-						<Alert
-							variant="destructive"
-							ref={errorRef}
-							tabIndex={-1}
-							className="outline-none"
-						>
-							<AlertCircle className="h-4 w-4" />
-							<AlertDescription>
-								{validationError}
-							</AlertDescription>
-						</Alert>
-					)}
-
-					<div className="space-y-2">
-						<Label htmlFor="email-display">Email Address</Label>
-						<Input
-							id="email-display"
-							type="email"
-							value={user.email}
-							disabled
-							className="bg-muted"
-						/>
-						<p className="text-xs text-muted-foreground">
-							Email address cannot be changed
-						</p>
-					</div>
-
-					<div className="space-y-2">
-						<Label htmlFor="displayName">Display Name</Label>
-						<Input
-							id="displayName"
-							type="text"
-							placeholder="John Doe"
-							value={displayName}
-							onChange={(e) => setDisplayName(e.target.value)}
-							required
-						/>
-					</div>
-
-					<div className="flex items-center justify-between rounded-[var(--bf-radius-surface)] bg-muted/50 p-4 ring-1 ring-foreground/5">
-						<div className="space-y-0.5">
-							<Label htmlFor="active">Account Status</Label>
-							<p className="text-xs text-muted-foreground">
-								{isActive
-									? "User can access the platform"
-									: "User access is disabled"}
-							</p>
-						</div>
-						<Switch
-							id="active"
-							checked={isActive}
-							onCheckedChange={setIsActive}
-							disabled={isEditingSelf}
-						/>
-					</div>
-
-					<div className="space-y-2">
-						<Label htmlFor="userType">User Type</Label>
-						<Combobox
-							id="userType"
-							value={isPlatformAdmin ? "platform" : "org"}
-							onValueChange={handleUserTypeChange}
-							disabled={isEditingSelf}
-							options={[
-								{
-									value: "platform",
-									label: "Platform Administrator",
-									description:
-										"Full access to all organizations and settings",
-								},
-								{
-									value: "org",
-									label: "Organization User",
-									description:
-										"Access limited to specific organization",
-								},
-							]}
-							placeholder="Select user type"
-						/>
-					</div>
-
-					<div className="space-y-2">
-						<Label htmlFor="organization">Organization</Label>
-						<UserLookupNotice
-							resource="organizations"
-							loading={orgsLoading}
-							failed={Boolean(organizationQuery.isError)}
-							retrying={organizationQuery.isFetching}
-							onRetry={() => void organizationQuery.refetch()}
-						/>
-						<Combobox
-							id="organization"
-							value={orgId}
-							onValueChange={setOrgId}
-							disabled={
-								isPlatformAdmin ||
-								isEditingSelf ||
-								orgsLoading ||
-								organizationQuery.isError
-							}
-							options={
-								organizations?.map((org: Organization) => {
-									const option: {
-										value: string;
-										label: string;
-										description?: string;
-									} = {
-										value: org.id,
-										label: org.is_provider
-											? `${org.name} (Provider)`
-											: org.name,
-									};
-									if (org.domain) {
-										option.description = `@${org.domain}`;
-									}
-									return option;
-								}) ?? []
-							}
-							placeholder="Select an organization..."
-							searchPlaceholder="Search organizations..."
-							emptyText="No organizations found."
-							isLoading={orgsLoading}
-						/>
-						<p className="text-xs text-muted-foreground">
-							{isPlatformAdmin
-								? "Platform administrators are assigned to the provider organization"
-								: "The organization this user belongs to"}
-						</p>
-					</div>
-
-					{!isPlatformAdmin && (
-						<div className="flex items-center justify-between rounded-[var(--bf-radius-surface)] border p-4">
-							<div className="space-y-0.5">
-								<Label htmlFor="external">External user</Label>
-								<p className="text-xs text-muted-foreground">
-									Sees only what the Everyone tier or an
-									explicit role grant allows — excluded from
-									&ldquo;Everyone except external users&rdquo;
-									content
-								</p>
-							</div>
-							<Switch
-								id="external"
-								checked={isExternal}
-								onCheckedChange={setIsExternal}
-								disabled={isEditingSelf}
-							/>
-						</div>
-					)}
-
-					{/* Roles multi-select */}
-					{!isPlatformAdmin && !isEditingSelf && (
-						<div className="space-y-2">
-							<Label htmlFor="edit-user-roles">Roles</Label>
-							<Popover
-								open={rolesPopoverOpen}
-								onOpenChange={setRolesPopoverOpen}
-							>
-								<PopoverTrigger asChild>
-									<Button
-										variant="outline"
-										role="combobox"
-										id="edit-user-roles"
-										aria-label="Roles"
-										disabled={!rolesReady}
-										aria-expanded={rolesPopoverOpen}
-										className="w-full justify-between font-normal"
-									>
-										<span
-											className={cn(
-												"truncate",
-												selectedRoleIds.size === 0 &&
-													"text-muted-foreground",
-											)}
-										>
-											{selectedRoleIds.size === 0
-												? "Select roles..."
-												: `${selectedRoleIds.size} role${selectedRoleIds.size === 1 ? "" : "s"} selected`}
-										</span>
-										<ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-									</Button>
-								</PopoverTrigger>
-								<PopoverContent variant="picker"
-									className="p-0"
-									align="start"
-								>
-									<Command>
-										<CommandInput placeholder="Search roles..." />
-										<CommandList className="max-h-48 overflow-y-auto">
-											<CommandEmpty>
-												No roles found.
-											</CommandEmpty>
-											<CommandGroup>
-												{roles.map((role) => (
-													<CommandItem
-														key={role.id}
-														value={role.id}
-														keywords={[role.name]}
-														data-checked={selectedRoleIds.has(
-															role.id,
-														)}
-														onSelect={() =>
-															toggleRole(role.id)
-														}
-													>
-														<div className="flex flex-col flex-1">
-															<span className="font-medium">
-																{role.name}
-															</span>
-															{role.description && (
-																<span className="text-xs text-muted-foreground">
-																	{
-																		role.description
-																	}
-																</span>
-															)}
-														</div>
-													</CommandItem>
-												))}
-											</CommandGroup>
-										</CommandList>
-									</Command>
-								</PopoverContent>
-							</Popover>
-							{selectedRoleNames.length > 0 && (
-								<div className="flex flex-wrap gap-1 mt-1">
-									{selectedRoleNames.map(({ id, name }) => (
-										<Badge
-											key={id}
-											variant="secondary"
-											className="h-auto min-h-11 max-w-full pr-0 text-xs whitespace-normal [overflow-wrap:anywhere]"
-										>
-											{name}
-											<button
-												type="button"
-												className="ml-1 flex size-11 shrink-0 items-center justify-center rounded-[var(--bf-radius-control)] hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-												aria-label={`Remove ${name} role`}
-												disabled={!rolesReady}
-												onClick={() => removeRole(id)}
-											>
-												<X className="h-3 w-3" />
-											</button>
-										</Badge>
-									))}
-								</div>
-							)}
-							<p className="text-xs text-muted-foreground">
-								Roles determine which forms this user can access
-							</p>
-						</div>
-					)}
-
-					{isPlatformAdmin && isPromoting && (
-						<Alert>
-							<Shield className="h-4 w-4" />
-							<AlertDescription>
-								You are promoting this user to Platform
-								Administrator. They will gain unrestricted
-								access to all features, organizations, and
-								settings.
-							</AlertDescription>
-						</Alert>
-					)}
-
-					{isDemoting && (
-						<Alert variant="destructive">
-							<AlertTriangle className="h-4 w-4" />
-							<AlertDescription>
-								You are demoting this user from Platform
-								Administrator to Organization User. They will
-								lose access to all other organizations and
-								platform settings.
-							</AlertDescription>
-						</Alert>
-					)}
-				</div>
-				<DialogFooter className="shrink-0 border-t border-border/70 px-4 py-4 sm:px-6">
-					<Button
-						type="button"
-						variant="outline"
-						onClick={() => onOpenChange(false)}
-						disabled={isSaving}
-						className="h-11"
-					>
-						Cancel
-					</Button>
-					<Button
-						type="submit"
-						disabled={isSaving || !rolesReady || !orgReady}
-						className="h-11"
-					>
-						{isSaving && (
-							<Loader2 className="mr-2 h-4 w-4 motion-safe:animate-spin" />
-						)}
-						Save Changes
-					</Button>
-				</DialogFooter>
-			</form>
+			<UserProfileForm
+				user={user}
+				variant="dialog"
+				onDone={close}
+				onCancel={close}
+				onBusyChange={setSaving}
+			/>
 		</DialogContent>
 	);
 }

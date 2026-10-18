@@ -7,8 +7,9 @@ from uuid import uuid4
 import pytest
 from fastapi import HTTPException, Request
 
+from shared import sdk_execution_reads
+from shared.sdk_execution_reads import SdkExecutionReadError
 from src.models.enums import ExecutionStatus
-from src.core.org_filter import OrgFilterType
 from src.routers import executions
 
 
@@ -125,6 +126,8 @@ async def test_list_logs_parses_filters_and_legacy_or_keyset_tokens(token, expec
             _ctx(),
             organization_id=logs[0]["organization_id"],
             workflow_name="Sync",
+            workflow_id=None,
+            global_only=False,
             levels="error, warning",
             message_search="fail",
             start_date="2026-07-05T10:00:00Z",
@@ -153,28 +156,19 @@ async def test_list_logs_rejects_malformed_cursor_before_querying():
 
 
 @pytest.mark.asyncio
-async def test_list_executions_resolves_org_scope_and_parses_filters():
+async def test_list_executions_passes_scope_and_parsed_filters_to_shared_reader():
     org_id = uuid4()
     workflow_id = uuid4()
     user = SimpleNamespace(is_superuser=True, user_id=uuid4())
-    expected_execution = executions.ExecutionRepository.__new__(
-        executions.ExecutionRepository
-    )._to_pydantic(_execution_row(), user)
+    ctx = _ctx(user=user)
+    expected_execution = sdk_execution_reads.to_execution_summary(_execution_row())
 
-    with (
-        patch.object(
-            executions,
-            "resolve_org_filter",
-            return_value=(OrgFilterType.ORG_PLUS_GLOBAL, org_id),
-        ) as resolve_org_filter,
-        patch.object(executions, "ExecutionRepository") as repo_cls,
-    ):
-        repo_cls.return_value.list_executions = AsyncMock(
-            return_value=([expected_execution], "75")
-        )
-
+    with patch.object(
+        sdk_execution_reads, "list_sdk_executions",
+        AsyncMock(return_value=([expected_execution], "75")),
+    ) as reader:
         response = await executions.list_executions(
-            _ctx(user=user),
+            ctx,
             Request({"type": "http", "query_string": b""}),
             scope=str(org_id),
             workflowName="Sync Tickets",
@@ -189,32 +183,22 @@ async def test_list_executions_resolves_org_scope_and_parses_filters():
 
     assert response.executions == [expected_execution]
     assert response.continuation_token == "75"
-    resolve_org_filter.assert_called_once_with(user, str(org_id))
-    assert repo_cls.return_value.list_executions.await_args.kwargs == {
-        "user": user,
-        "org_id": org_id,
-        "workflow_name": "Sync Tickets",
-        "workflow_id": workflow_id,
-        "status_filter": "Failed,Timeout",
-        "start_date": "2026-07-05T10:00:00Z",
-        "end_date": "2026-07-05T11:00:00Z",
-        "exclude_local": False,
-        "limit": 25,
-        "offset": 50,
-        "cursor": None,
-    }
+    reader.assert_awaited_once_with(
+        ctx.db, user, scope=str(org_id),
+        workflow_name="Sync Tickets", workflow_id=workflow_id,
+        status_filter="Failed,Timeout",
+        start_date="2026-07-05T10:00:00Z", end_date="2026-07-05T11:00:00Z",
+        exclude_local=False, limit=25, offset=50, cursor=None,
+    )
 
 
 @pytest.mark.asyncio
 async def test_history_orders_by_consistent_execution_timeline():
     db = SimpleNamespace(execute=AsyncMock(return_value=_DbResult(rows=[])))
-    repo = executions.ExecutionRepository(db)
     user = SimpleNamespace(is_superuser=True, user_id=uuid4())
 
-    rows, token = await repo.list_executions(
-        user=user,
-        org_id=None,
-        limit=25,
+    rows, token = await sdk_execution_reads.list_sdk_executions(
+        db, user, scope=None, limit=25,
     )
 
     assert rows == []
@@ -225,16 +209,17 @@ async def test_history_orders_by_consistent_execution_timeline():
 
 
 @pytest.mark.asyncio
-async def test_list_executions_maps_invalid_scope_to_422():
+async def test_list_executions_maps_shared_scope_error_to_422():
     with patch.object(
-        executions,
-        "resolve_org_filter",
-        side_effect=ValueError("invalid scope"),
+        sdk_execution_reads, "list_sdk_executions",
+        AsyncMock(side_effect=SdkExecutionReadError(422, "invalid scope")),
     ):
         with pytest.raises(HTTPException) as exc:
             await executions.list_executions(
                 _ctx(), Request({"type": "http", "query_string": b""}),
-                scope="not-a-scope",
+                scope="not-a-scope", workflowName=None, workflowId=None,
+                status_filter=None, startDate=None, endDate=None,
+                excludeLocal=True, limit=25, continuationToken=None,
             )
 
     assert exc.value.status_code == 422
@@ -242,20 +227,42 @@ async def test_list_executions_maps_invalid_scope_to_422():
 
 
 @pytest.mark.asyncio
-async def test_get_execution_endpoint_maps_repository_errors():
+@pytest.mark.parametrize("status_code", [403, 404])
+async def test_get_execution_endpoint_maps_shared_read_errors(status_code):
     execution_id = uuid4()
-
-    with patch.object(executions, "ExecutionRepository") as repo_cls:
-        repo_cls.return_value.get_execution = AsyncMock(return_value=(None, "Forbidden"))
+    ctx = _ctx()
+    with (
+        patch.object(
+            sdk_execution_reads, "get_sdk_execution",
+            AsyncMock(side_effect=SdkExecutionReadError(status_code, "read denied")),
+        ) as reader,
+        patch.object(executions, "run_not_found_suffix", AsyncMock(return_value=" Retained for 30 days.")),
+    ):
         with pytest.raises(HTTPException) as exc:
-            await executions.get_execution(execution_id, _ctx())
-    assert exc.value.status_code == 403
+            await executions.get_execution(execution_id, ctx)
 
-    with patch.object(executions, "ExecutionRepository") as repo_cls:
-        repo_cls.return_value.get_execution = AsyncMock(return_value=(None, "NotFound"))
-        with pytest.raises(HTTPException) as exc:
-            await executions.get_execution(execution_id, _ctx())
-    assert exc.value.status_code == 404
+    reader.assert_awaited_once_with(ctx.db, ctx.user, execution_id)
+    assert exc.value.status_code == status_code
+    assert exc.value.detail == (
+        f"Execution {execution_id} not found. Retained for 30 days."
+        if status_code == 404 else "read denied"
+    )
+
+
+@pytest.mark.asyncio
+async def test_get_execution_endpoint_returns_shared_detail():
+    ctx = _ctx()
+    execution_id = uuid4()
+    detail = executions.ExecutionRepository.__new__(executions.ExecutionRepository)._to_pydantic(
+        _execution_row(id=execution_id), ctx.user,
+    )
+    with patch.object(
+        sdk_execution_reads, "get_sdk_execution", AsyncMock(return_value=detail),
+    ) as reader:
+        response = await executions.get_execution(execution_id, ctx)
+
+    assert response is detail
+    reader.assert_awaited_once_with(ctx.db, ctx.user, execution_id)
 
 
 @pytest.mark.asyncio
@@ -272,7 +279,10 @@ async def test_result_logs_and_variables_endpoints_map_repository_errors():
 
     with patch.object(executions, "ExecutionRepository") as repo_cls:
         repo_cls.return_value.get_execution_logs = AsyncMock(return_value=(None, "NotFound"))
-        with pytest.raises(HTTPException) as exc:
+        with (
+            patch.object(executions, "run_not_found_suffix", AsyncMock(return_value="")),
+            pytest.raises(HTTPException) as exc,
+        ):
             await executions.get_execution_logs(execution_id, _ctx())
     assert exc.value.status_code == 404
 
@@ -296,6 +306,9 @@ async def test_get_execution_result_authorizes_owner_and_superuser():
                     result={"ok": True},
                     result_type="json",
                     executed_by=owner_id,
+                    started_by_user_id=None,
+                    root_execution_id=None,
+                    organization_id=None,
                 )
             )
         )
@@ -323,7 +336,10 @@ async def test_get_execution_result_returns_forbidden_and_not_found():
     owner_id = uuid4()
     repo = executions.ExecutionRepository(
         SimpleNamespace(
-            execute=AsyncMock(return_value=_DbResult(row=SimpleNamespace(executed_by=owner_id)))
+            execute=AsyncMock(return_value=_DbResult(row=SimpleNamespace(
+                executed_by=owner_id, started_by_user_id=None,
+                root_execution_id=None, organization_id=None,
+            )))
         )
     )
 
@@ -369,7 +385,7 @@ async def test_get_execution_variables_forbidden_not_found_and_empty_defaults():
     assert error == "NotFound"
 
     repo = executions.ExecutionRepository(
-        SimpleNamespace(execute=AsyncMock(return_value=_DbResult(row=(execution_id, None))))
+        SimpleNamespace(execute=AsyncMock(return_value=_DbResult(row=SimpleNamespace(id=execution_id, variables=None, organization_id=None))))
     )
     variables, error = await repo.get_execution_variables(
         execution_id,
@@ -388,6 +404,9 @@ async def test_get_execution_logs_reads_redis_and_filters_hidden_levels():
             return_value=_DbResult(
                 row=SimpleNamespace(
                     executed_by=owner_id,
+                    started_by_user_id=None,
+                    root_execution_id=None,
+                    organization_id=None,
                     status=ExecutionStatus.RUNNING,
                 )
             )
@@ -440,6 +459,9 @@ async def test_get_execution_logs_falls_back_to_db_when_redis_read_fails():
                 _DbResult(
                     row=SimpleNamespace(
                         executed_by=owner_id,
+                        started_by_user_id=None,
+                        root_execution_id=None,
+                        organization_id=None,
                         status=ExecutionStatus.PENDING,
                     )
                 ),

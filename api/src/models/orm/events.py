@@ -15,6 +15,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    LargeBinary,
     String,
     Text,
     text,
@@ -342,6 +343,8 @@ class Event(Base):
     # Payload
     headers: Mapped[dict | None] = mapped_column(JSONB, default=None)
     data: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    # Original accepted webhook bytes. This is not included in event API or WebSocket payloads.
+    raw_body: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True, default=None)
 
     # Source metadata
     source_ip: Mapped[str | None] = mapped_column(String(45), default=None)  # IPv6 max
@@ -376,7 +379,7 @@ class Event(Base):
         Index("ix_events_received_at", "received_at"),
         Index("ix_events_status", "status"),
         Index("ix_events_event_type", "event_type"),
-        # For cleanup job: events older than 30 days
+        # For the run.retention job's `created_at < cutoff` query (configurable window)
         Index(
             "ix_events_created_at",
             "created_at",

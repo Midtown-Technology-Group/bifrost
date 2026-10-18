@@ -1,8 +1,7 @@
 """REST-only identities for routes present in MTG but absent from upstream R1a.
 
-These entries classify existing bindings; they introduce no capabilities or
-permission policy. Empty action_scopes deliberately defer scope decisions to
-R2a. The existing handler/dependencies remain the authorization authority.
+These entries describe the reviewed MTG access contracts. They introduce no
+capabilities: the existing handler/dependencies remain the authorization authority.
 """
 
 from src.models.contracts.operation_catalog import (
@@ -11,6 +10,10 @@ from src.models.contracts.operation_catalog import (
     OperationTargetKind,
     RestOperationBinding,
 )
+from src.services.access_list_mtg import MTG_ACCESS_LIST
+
+
+_ACCESS_BY_ROUTE = {(entry.method, entry.path): entry for entry in MTG_ACCESS_LIST}
 
 
 def _rest_only(
@@ -22,6 +25,15 @@ def _rest_only(
     *,
     async_policy: OperationAsyncPolicy = OperationAsyncPolicy.SYNCHRONOUS,
 ) -> OperationDefinition:
+    entry = _ACCESS_BY_ROUTE.get((method, path))
+    scopes = (entry.permission,) if entry is not None and entry.permission else ()
+    # A usable key is a conjunction at one target, never possession of either
+    # grant somewhere. Preserve this stronger contract in generated references.
+    if operation_id in {
+        "devicecontrolkeys.create_control_key_route",
+        "devicecontrolkeys.rotate_control_key_endpoint",
+    }:
+        scopes = ("devices.readwrite", "devices.execute")
     return OperationDefinition(
         operation_id=operation_id,
         summary=f"Existing REST binding: {method} {path}",
@@ -32,8 +44,8 @@ def _rest_only(
                 "PlatformJobAccepted" if async_policy == OperationAsyncPolicy.PLATFORM_JOB else None
             ),
         ),
-        action_scopes=(),
-        authorization_resolver=f"{handler}: existing dependencies and handler checks",
+        action_scopes=scopes,
+        authorization_resolver=f"{handler}: {entry.reason if entry is not None else 'existing dependencies and handler checks'}",
         async_policy=async_policy,
         exclusions={
             surface: "No canonical binding assigned in this metadata-only slice."

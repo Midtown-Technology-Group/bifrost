@@ -3,9 +3,11 @@ import asyncio
 import json
 
 import pytest
+
+from shared.run_lineage import RunLineage
 from pydantic_ai.usage import RunUsage
 from unittest.mock import ANY, AsyncMock, MagicMock, patch
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from tests.unit.services.agent_runtime_fakes import LegacyMockModel
 from src.core.constants import SYSTEM_USER_EMAIL, SYSTEM_USER_ID
@@ -17,15 +19,21 @@ from src.repositories.knowledge import KnowledgeDocument
 from src.services.agent_runtime import AgentRunBudget
 from src.services.execution.agent_helpers import find_delegated_agent
 from src.services.execution.autonomous_agent_executor import (
+    ActingUser,
     AutonomousAgentExecutor,
     DELEGATION_TIMEOUT_SECONDS,
     DelegationOutcome,
     MAX_DELEGATION_DEPTH,
     ToolError,
+    _acting_user_from_caller,
     _parse_structured_output,
+    format_delegation_timeout_receipt,
 )
 from src.services.llm.base import LLMConfig, LLMResponse, ToolCallRequest, ToolDefinition
 from src.services.openai_transport_detection import OpenAITransportProbe
+
+
+UUID_SYSTEM_USER = UUID(SYSTEM_USER_ID)
 
 
 def _tool(name: str) -> ToolDefinition:
@@ -34,6 +42,108 @@ def _tool(name: str) -> ToolDefinition:
         description=f"Test tool {name}",
         parameters={"type": "object", "properties": {}},
     )
+
+
+def _redis_with_transactional_pipeline() -> MagicMock:
+    """Redis double whose queued transaction commands are synchronous."""
+    redis = MagicMock()
+    pipeline = MagicMock()
+    pipeline.xadd = MagicMock()
+    pipeline.expire = MagicMock()
+    pipeline.execute = AsyncMock(return_value=["1-0", True])
+    pipeline.__aenter__ = AsyncMock(return_value=pipeline)
+    pipeline.__aexit__ = AsyncMock(return_value=False)
+    redis.pipeline = MagicMock(return_value=pipeline)
+    redis.delete = AsyncMock()
+    redis.get = AsyncMock(return_value=None)
+    return redis
+
+
+def test_timeout_receipt_keeps_only_sanitized_terminal_tool_evidence() -> None:
+    """A timeout receipt contains finished tool facts, never prompts or LLM text."""
+    executor = AutonomousAgentExecutor(MagicMock())
+    executor._pending_steps = [
+        {
+            "id": "completed-step",
+            "step_number": 1,
+            "type": "tool_result",
+            "content": {
+                "tool_name": "read_device",
+                "result": "device reachable",
+                "execution_id": "exec-1",
+                "child_run_id": "child-1",
+            },
+        },
+        {
+            "id": "failed-step",
+            "step_number": 2,
+            "type": "tool_error",
+            "content": {
+                "tool_name": "apply_patch",
+                "error": "access denied",
+            },
+        },
+        {
+            "id": "unfinished-step",
+            "step_number": 3,
+            "type": "tool_call",
+            "content": {
+                "tool_name": "restart_service",
+                "arguments": {"secret": "must not leak"},
+            },
+        },
+        {
+            "id": "llm-step",
+            "step_number": 4,
+            "type": "llm_response",
+            "content": {"content": "must not leak", "tool_calls": []},
+        },
+    ]
+    executor._finalized_delegation_outcomes = [
+        DelegationOutcome(
+            child_run_id=uuid4(),
+            agent_name="Nested Specialist",
+            status="completed",
+            output="nested completed receipt",
+            error=None,
+            duration_ms=10,
+        )
+    ]
+
+    receipt = format_delegation_timeout_receipt("Slow Specialist", executor)
+
+    assert "Delegation to Slow Specialist timed out after 600s" in receipt
+    assert "completed step completed-step (read_device)" in receipt
+    assert "device reachable" in receipt
+    assert "execution_id=exec-1" in receipt
+    assert "child_run_id=child-1" in receipt
+    assert "failed step failed-step (apply_patch): access denied" in receipt
+    assert "unfinished step unfinished-step (restart_service)" in receipt
+    assert "side effects are unverified" in receipt
+    assert "Nested Specialist) status=completed; completed receipt: nested completed receipt" in receipt
+    assert "must not leak" not in receipt
+
+
+def test_timeout_receipt_has_a_global_evidence_bound_and_omission_marker() -> None:
+    executor = AutonomousAgentExecutor(MagicMock())
+    executor._pending_steps = [
+        {
+            "id": f"step-{index}",
+            "step_number": index,
+            "type": "tool_result",
+            "content": {
+                "tool_name": "read_status",
+                "result": "x" * 10_000,
+                "is_error": False,
+            },
+        }
+        for index in range(10)
+    ]
+
+    receipt = format_delegation_timeout_receipt("Slow Specialist", executor)
+
+    assert len(receipt) <= 20_000
+    assert "[partial evidence truncated;" in receipt
 
 
 @pytest.fixture(autouse=True)
@@ -232,6 +342,8 @@ class TestAutonomousAgentExecutor:
             agent=mock_agent,
             input_data={"message": "hello"},
             run_id=str(uuid4()),
+            run_user_id=None,
+            run_as=None,
         )
 
         assert result["status"] == "completed"
@@ -441,6 +553,7 @@ class TestAutonomousAgentExecutor:
         executor = AutonomousAgentExecutor(mock_session)
         shared_usage = RunUsage()
         shared_budget = AgentRunBudget(max_requests=10, max_total_tokens=20_000)
+        run_user_id = uuid4()
 
         with (
             patch.object(
@@ -467,6 +580,8 @@ class TestAutonomousAgentExecutor:
                 caller=caller,
                 _shared_usage=shared_usage,
                 _shared_budget=shared_budget,
+                run_user_id=run_user_id,
+                run_as=None,
             )
 
         assert outcome.status == "completed"
@@ -479,6 +594,8 @@ class TestAutonomousAgentExecutor:
         assert child_run.caller_user_id == caller["user_id"]
         assert child_run.caller_email == caller["email"]
         assert child_run.caller_name == caller["name"]
+        # A delegated run keeps the delegating run's user.
+        assert child_run.run_user_id == run_user_id
         assert child_run.status == "completed"
         assert child_run.completed_at is not None
         mock_enqueue_summarize.assert_awaited_once_with(child_run.id)
@@ -492,6 +609,8 @@ class TestAutonomousAgentExecutor:
             _caller=caller,
             _shared_usage=shared_usage,
             _shared_budget=shared_budget,
+            run_user_id=run_user_id,
+            run_as=None,
         )
 
     @pytest.mark.asyncio
@@ -518,6 +637,18 @@ class TestAutonomousAgentExecutor:
         workflow.id = workflow_id
         workflow.organization_id = mock_agent.organization_id
         mock_session._mock_session.get = AsyncMock(return_value=workflow)
+        executor._run_user_id = caller_user_id
+        executor._acting = _acting_user_from_caller(
+            caller_user_id,
+            {
+                "user_id": str(caller_user_id),
+                "email": "person@example.com",
+                "name": "Person",
+                "organization_id": str(caller_org_id),
+                "is_platform_admin": True,
+            },
+            mock_agent,
+        )
 
         with (
             patch(
@@ -553,6 +684,7 @@ class TestAutonomousAgentExecutor:
         assert dispatch["caller"].user_id == str(caller_user_id)
         assert dispatch["caller"].organization_id == caller_org_id
         assert dispatch["caller"].is_platform_admin is True
+        assert dispatch["lineage"] == RunLineage(caller_user_id, caller_user_id, None)
 
     @pytest.mark.asyncio
     async def test_autonomous_workflow_without_caller_uses_system_identity(
@@ -561,12 +693,16 @@ class TestAutonomousAgentExecutor:
         mock_agent,
     ):
         workflow_id = uuid4()
+        identity_id = uuid4()
         executor = AutonomousAgentExecutor(mock_session)
         executor._tool_workflow_id_map = {"scheduled_tool": workflow_id}
         workflow = MagicMock()
         workflow.id = workflow_id
         workflow.organization_id = mock_agent.organization_id
         mock_session._mock_session.get = AsyncMock(return_value=workflow)
+        # An event-started run is for its organization's identity.
+        executor._run_user_id = identity_id
+        executor._acting = _acting_user_from_caller(None, None, mock_agent)
 
         with (
             patch(
@@ -603,22 +739,24 @@ class TestAutonomousAgentExecutor:
         assert dispatch["caller"].email == SYSTEM_USER_EMAIL
         assert dispatch["caller"].organization_id == mock_agent.organization_id
         assert dispatch["caller"].is_platform_admin is False
+        assert dispatch["lineage"] == RunLineage(identity_id, identity_id, None)
 
     def test_global_caller_scope_does_not_fall_back_to_agent_org(
         self, mock_session, mock_agent
     ):
-        executor = AutonomousAgentExecutor(mock_session)
-        executor._caller_user_id = uuid4()
-        executor._caller = {"organization_id": None}
+        caller_user_id = uuid4()
+        acting = _acting_user_from_caller(
+            caller_user_id,
+            {"user_id": str(caller_user_id), "organization_id": None},
+            mock_agent,
+        )
 
-        assert executor._execution_org_id(mock_agent) is None
+        assert acting.organization_id is None
 
     def test_run_without_caller_uses_agent_org(self, mock_session, mock_agent):
-        executor = AutonomousAgentExecutor(mock_session)
-        executor._caller_user_id = None
-        executor._caller = None
+        acting = _acting_user_from_caller(None, None, mock_agent)
 
-        assert executor._execution_org_id(mock_agent) == mock_agent.organization_id
+        assert acting.organization_id == mock_agent.organization_id
 
     @pytest.mark.asyncio
     async def test_delegated_system_tool_inherits_caller_identity(
@@ -645,6 +783,17 @@ class TestAutonomousAgentExecutor:
             "is_platform_admin": True,
         }
         executor._caller_is_platform_admin = True
+        executor._acting = _acting_user_from_caller(
+            caller_user_id,
+            {
+                "user_id": str(caller_user_id),
+                "email": "person@example.com",
+                "name": "Person",
+                "organization_id": str(caller_org_id),
+                "is_platform_admin": True,
+            },
+            mock_agent,
+        )
 
         with patch(
             "src.services.mcp_server.server.get_system_tool_function",
@@ -656,7 +805,6 @@ class TestAutonomousAgentExecutor:
                     name="specialist_system_tool",
                     arguments={},
                 ),
-                mock_agent,
             )
 
         assert captured_context is not None
@@ -665,6 +813,44 @@ class TestAutonomousAgentExecutor:
         assert captured_context.user_name == "Person"
         assert captured_context.org_id == caller_org_id
         assert captured_context.is_platform_admin is True
+        assert captured_context.is_external is False
+        assert captured_context.is_provider_org is False
+
+    @pytest.mark.asyncio
+    async def test_system_tool_of_an_agent_nobody_started_carries_its_run_user(
+        self,
+        mock_session,
+        mock_agent,
+    ):
+        identity = uuid4()
+        captured_context = None
+
+        async def system_tool(context, **_arguments):
+            nonlocal captured_context
+            captured_context = context
+            return "ok"
+
+        executor = AutonomousAgentExecutor(mock_session)
+        executor._acting = _acting_user_from_caller(None, None, mock_agent)
+        executor._run_user_id = identity
+
+        with patch(
+            "src.services.mcp_server.server.get_system_tool_function",
+            return_value=system_tool,
+        ):
+            await executor._execute_system_tool(
+                ToolCallRequest(id="tc1", name="specialist_system_tool", arguments={}),
+            )
+
+        assert captured_context is not None
+        assert captured_context.run_user_id == identity
+        assert captured_context.user_id == UUID_SYSTEM_USER
+        assert captured_context.user_email == SYSTEM_USER_EMAIL
+        assert captured_context.user_name == mock_agent.name
+        assert captured_context.org_id == mock_agent.organization_id
+        assert captured_context.is_platform_admin is False
+        assert captured_context.is_external is False
+        assert captured_context.is_provider_org is False
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
@@ -773,6 +959,8 @@ class TestAutonomousAgentExecutor:
                 parent_agent=mock_agent,
                 tool_call=tool_call,
                 parent_run_id=parent_run_id,
+                run_user_id=None,
+                run_as=None,
             )
 
         assert outcome.status == expected_status
@@ -836,6 +1024,8 @@ class TestAutonomousAgentExecutor:
                     arguments={"task": "Crash"},
                 ),
                 parent_run_id=parent_run_id,
+                run_user_id=None,
+                run_as=None,
             )
 
         assert outcome.status == "failed"
@@ -843,6 +1033,158 @@ class TestAutonomousAgentExecutor:
         assert created_runs[0].status == "failed"
         assert created_runs[0].error == "Connection lost"
         assert created_runs[0].completed_at is not None
+
+    @pytest.mark.asyncio
+    async def test_run_delegation_keeps_completed_evidence_when_wait_for_times_out(
+        self, mock_session, mock_agent
+    ):
+        """The deadline retains completed facts and marks unfinished work unverified."""
+        delegated = MagicMock()
+        delegated.id = uuid4()
+        delegated.name = "Slow Specialist"
+        delegated.is_active = True
+        delegated.tools = []
+        delegated.delegated_agents = []
+        delegated.max_iterations = 5
+        delegated.max_token_budget = 1000
+        delegated.organization_id = mock_agent.organization_id
+        mock_agent.delegated_agents = [delegated]
+
+        query_result = MagicMock()
+        query_result.scalar_one_or_none.return_value = delegated
+        mock_session._mock_session.execute = AsyncMock(return_value=query_result)
+        created_runs: list[AgentRun] = []
+        mock_session._mock_session.add.side_effect = (
+            lambda value: created_runs.append(value)
+            if isinstance(value, AgentRun)
+            else None
+        )
+        mock_session._mock_session.get.side_effect = (
+            lambda model, _run_id: created_runs[0]
+            if model is AgentRun and created_runs
+            else None
+        )
+
+        completed_step_id = str(uuid4())
+        unfinished_step_id = str(uuid4())
+
+        async def child_run_until_deadline(child_executor, **_kwargs):
+            # Two model responses land before the delegation deadline.
+            child_executor._own_tokens = 1_200 + 800
+            child_executor._current_run_id = _kwargs["run_id"]
+            child_executor._pending_steps = [
+                {
+                    "id": completed_step_id,
+                    "run_id": _kwargs["run_id"],
+                    "step_number": 1,
+                    "type": "tool_result",
+                    "content": {
+                        "tool_name": "inspect_device",
+                        "result": "device reachable",
+                        "is_error": False,
+                    },
+                },
+                {
+                    "id": unfinished_step_id,
+                    "run_id": _kwargs["run_id"],
+                    "step_number": 2,
+                    "type": "tool_call",
+                    "content": {
+                        "tool_name": "restart_device",
+                        "arguments": {"device": "must not leak"},
+                    },
+                },
+            ]
+            await asyncio.Event().wait()
+
+        executor = AutonomousAgentExecutor(mock_session)
+        original_wait_for = asyncio.wait_for
+
+        async def shortened_deadline(coro, timeout):
+            if timeout == DELEGATION_TIMEOUT_SECONDS:
+                return await original_wait_for(coro, timeout=0.01)
+            return await original_wait_for(coro, timeout=timeout)
+
+        with patch.object(
+            AutonomousAgentExecutor,
+            "run",
+            autospec=True,
+            side_effect=child_run_until_deadline,
+        ), patch(
+            "src.services.execution.autonomous_agent_executor.asyncio.wait_for",
+            new=shortened_deadline,
+        ):
+            outcome = await executor.run_delegation(
+                parent_agent=mock_agent,
+                tool_call=ToolCallRequest(
+                    id="tc1",
+                    name="delegate_to_slow_specialist",
+                    arguments={"task": "Take too long"},
+                ),
+                parent_run_id=str(uuid4()),
+                run_user_id=None,
+                run_as=None,
+            )
+
+        assert outcome.status == "timeout"
+        assert f"completed step {completed_step_id} (inspect_device)" in (outcome.error or "")
+        assert f"unfinished step {unfinished_step_id} (restart_device)" in (outcome.error or "")
+        assert "must not leak" not in (outcome.error or "")
+        assert created_runs[0].tokens_used == 2_000
+        assert created_runs[0].output["text"] == outcome.output
+        assert "device reachable" in created_runs[0].output["text"]
+        assert created_runs[0].error == "Delegation to Slow Specialist timed out after 600s"
+        assert executor.subtree_tokens == 2_000
+
+    @pytest.mark.asyncio
+    @patch("src.services.agent_runtime.model_factory.create_agent_model")
+    @patch("src.services.execution.autonomous_agent_executor.resolve_agent_tools")
+    async def test_run_excludes_concurrent_sibling_usage_on_shared_ledger(
+        self, mock_resolve_tools, mock_create_model, mock_session, mock_agent
+    ):
+        """A delegate's total is its own calls, not whatever siblings charged meanwhile."""
+        mock_agent.system_tools = ["system_tool"]
+        mock_resolve_tools.return_value = ([_tool("system_tool")], {})
+        mock_llm = AsyncMock()
+        mock_llm.complete = AsyncMock(side_effect=[
+            LLMResponse(
+                content=None,
+                tool_calls=[ToolCallRequest(id="tc1", name="system_tool", arguments={})],
+                finish_reason="tool_use",
+                input_tokens=100,
+                output_tokens=50,
+            ),
+            LLMResponse(
+                content="Final answer",
+                tool_calls=None,
+                finish_reason="end_turn",
+                input_tokens=200,
+                output_tokens=100,
+            ),
+        ])
+        mock_create_model.return_value = LegacyMockModel(mock_llm)
+        shared_usage = RunUsage(input_tokens=1_000)
+
+        async def sibling_charges_ledger(*_args, **_kwargs):
+            # A concurrent sibling delegate records usage mid-run.
+            shared_usage.input_tokens += 7_000
+            return "system output"
+
+        executor = AutonomousAgentExecutor(mock_session)
+        executor._execute_system_tool = AsyncMock(side_effect=sibling_charges_ledger)
+        result = await executor.run(
+            agent=mock_agent,
+            input_data={"task": "do something"},
+            run_id=str(uuid4()),
+            _shared_usage=shared_usage,
+            _shared_budget=AgentRunBudget(max_requests=10, max_total_tokens=50_000),
+            run_user_id=None,
+            run_as=None,
+        )
+
+        assert result["status"] == "completed"
+        assert result["tokens_used"] == 450
+        assert shared_usage.total_tokens == 1_000 + 7_000 + 450
 
     @pytest.mark.asyncio
     async def test_run_delegation_rejects_cross_org_target(
@@ -865,6 +1207,8 @@ class TestAutonomousAgentExecutor:
                     arguments={"task": "Cross a boundary"},
                 ),
                 parent_run_id=str(uuid4()),
+                run_user_id=None,
+                run_as=None,
             )
 
         mock_session._mock_session.add.assert_not_called()
@@ -899,6 +1243,8 @@ class TestAutonomousAgentExecutor:
                     arguments={"task": "Use a stale parent relationship"},
                 ),
                 parent_run_id=str(uuid4()),
+                run_user_id=None,
+                run_as=None,
             )
 
         statement = mock_session._mock_session.execute.await_args.args[0]
@@ -948,12 +1294,28 @@ class TestAutonomousAgentExecutor:
 
         mock_session._mock_session.get.side_effect = get_run
 
+        nested_child_run_id = uuid4()
+
+        async def cancel_after_nested_child_finalizes(child_executor, **_kwargs):
+            child_executor._finalized_delegation_outcomes.append(
+                DelegationOutcome(
+                    child_run_id=nested_child_run_id,
+                    agent_name="Nested Specialist",
+                    status="cancelled",
+                    output=None,
+                    error="Delegation to Nested Specialist was cancelled",
+                    duration_ms=5,
+                    evidence="completed step nested-tool-step (read_device): reachable",
+                )
+            )
+            raise asyncio.CancelledError()
+
         executor = AutonomousAgentExecutor(mock_session)
         with patch.object(
             AutonomousAgentExecutor,
             "run",
-            new_callable=AsyncMock,
-            side_effect=asyncio.CancelledError(),
+            autospec=True,
+            side_effect=cancel_after_nested_child_finalizes,
         ), pytest.raises(asyncio.CancelledError):
             await executor.run_delegation(
                 parent_agent=mock_agent,
@@ -963,10 +1325,23 @@ class TestAutonomousAgentExecutor:
                     arguments={"task": "Wait"},
                 ),
                 parent_run_id=parent_run_id,
+                run_user_id=None,
+                run_as=None,
             )
 
         assert created_runs[0].status == "cancelled"
         assert created_runs[0].completed_at is not None
+        assert executor._finalized_delegation_outcomes[0].status == "cancelled"
+        assert "completed step nested-tool-step" in (
+            executor._finalized_delegation_outcomes[0].evidence or ""
+        )
+        outer_timeout_receipt = format_delegation_timeout_receipt(
+            "Outer Specialist", executor
+        )
+        assert "status=cancelled" in outer_timeout_receipt
+        assert "completed step nested-tool-step (read_device): reachable" in (
+            outer_timeout_receipt
+        )
 
     @pytest.mark.asyncio
     async def test_child_checks_ancestor_cancel_flags(self, mock_session):
@@ -1014,6 +1389,37 @@ class TestAutonomousAgentExecutor:
             )
 
     @pytest.mark.asyncio
+    async def test_autonomous_delegation_exposes_timeout_receipt_as_tool_error(
+        self, mock_session, mock_agent
+    ):
+        executor = AutonomousAgentExecutor(mock_session)
+        executor._current_run_id = str(uuid4())
+        receipt = (
+            "Delegation to Slow Specialist timed out after 600s\n"
+            "completed step evidence-step (read_device): reachable"
+        )
+        executor.run_delegation = AsyncMock(
+            return_value=DelegationOutcome(
+                child_run_id=uuid4(),
+                agent_name="Slow Specialist",
+                status="timeout",
+                output=receipt,
+                error=receipt,
+                duration_ms=600_000,
+            )
+        )
+
+        with pytest.raises(ToolError, match="completed step evidence-step"):
+            await executor._execute_delegation(
+                ToolCallRequest(
+                    id="tc1",
+                    name="delegate_to_slow_specialist",
+                    arguments={"task": "Do work"},
+                ),
+                mock_agent,
+            )
+
+    @pytest.mark.asyncio
     @patch("src.services.agent_runtime.model_factory.create_agent_model")
     @patch("src.services.execution.autonomous_agent_executor.resolve_agent_tools")
     async def test_run_records_steps(self, mock_resolve_tools, mock_create_model, mock_session, mock_agent):
@@ -1035,6 +1441,8 @@ class TestAutonomousAgentExecutor:
             agent=mock_agent,
             input_data={"task": "analyze"},
             run_id=str(uuid4()),
+            run_user_id=None,
+            run_as=None,
         )
 
         # Verify steps were buffered (Redis-first: steps are in _pending_steps, not DB)
@@ -1105,6 +1513,8 @@ class TestAutonomousAgentExecutor:
                 agent=mock_agent,
                 input_data={"task": "do something"},
                 run_id=str(uuid4()),
+                run_user_id=None,
+                run_as=None,
             )
 
         assert result["status"] == "completed"
@@ -1196,7 +1606,7 @@ class TestAutonomousAgentExecutor:
             )
 
             executor = AutonomousAgentExecutor(mock_session)
-            await executor.run(agent=mock_agent, run_id=str(uuid4()))
+            await executor.run(agent=mock_agent, run_id=str(uuid4()), run_user_id=None, run_as=None)
 
         tool_result = next(
             step["content"]
@@ -1236,11 +1646,14 @@ class TestAutonomousAgentExecutor:
             result = await executor.run(
                 agent=mock_agent,
                 run_id=str(uuid4()),
+                run_user_id=None,
+                run_as=None,
             )
 
         assert result["status"] == "completed"
         assert result["iterations_used"] == 2
         assert "configured run budget" in str(result["output"])
+        assert mock_exec_tool.await_count == 1
 
     @pytest.mark.asyncio
     @patch("src.services.agent_runtime.model_factory.create_agent_model")
@@ -1257,6 +1670,8 @@ class TestAutonomousAgentExecutor:
         result = await executor.run(
             agent=mock_agent,
             run_id=str(uuid4()),
+            run_user_id=None,
+            run_as=None,
         )
 
         assert result["status"] == "failed"
@@ -1292,6 +1707,8 @@ class TestAutonomousAgentExecutor:
             agent=mock_agent,
             output_schema={"type": "object", "properties": {"result": {"type": "integer"}}},
             run_id=str(uuid4()),
+            run_user_id=None,
+            run_as=None,
         )
 
         assert result["status"] == "completed"
@@ -1357,6 +1774,8 @@ class TestAutonomousAgentExecutor:
             result = await executor.run(
                 agent=mock_agent,
                 run_id=str(uuid4()),
+                run_user_id=None,
+                run_as=None,
             )
 
         assert result["status"] == "completed"
@@ -1441,6 +1860,8 @@ class TestAutonomousAgentExecutor:
             agent=mock_agent,
             input_data={"task": "Delegate work"},
             run_id=str(uuid4()),
+            run_user_id=None,
+            run_as=None,
         )
 
         assert result["status"] == "completed"
@@ -1534,6 +1955,8 @@ class TestAutonomousAgentExecutor:
             agent=mock_agent,
             input_data={"task": "Triage this ticket"},
             run_id=str(uuid4()),
+            run_user_id=None,
+            run_as=None,
         )
 
         assert result["status"] == "completed"
@@ -1621,7 +2044,7 @@ class TestAutonomousAgentExecutor:
 
         mock_session._mock_session.get.side_effect = get_run
 
-        mock_redis = MagicMock()
+        mock_redis = _redis_with_transactional_pipeline()
         executor = AutonomousAgentExecutor(mock_session, redis_client=mock_redis)
 
         with patch.object(
@@ -1633,6 +2056,8 @@ class TestAutonomousAgentExecutor:
                 agent=mock_agent,
                 input_data={"task": "Delegate"},
                 run_id=parent_run_id,
+                run_user_id=None,
+                run_as=None,
             )
 
         assert result["status"] == "completed"
@@ -1689,6 +2114,8 @@ class TestAutonomousAgentExecutor:
             agent=mock_agent,
             input_data={"task": "Deep delegation"},
             run_id=str(uuid4()),
+            run_user_id=None,
+            run_as=None,
         )
 
         assert result["status"] == "completed"
@@ -1766,6 +2193,8 @@ class TestAutonomousAgentExecutor:
                 agent=mock_agent,
                 input_data={"task": "Delegate to slow agent"},
                 run_id=str(uuid4()),
+                run_user_id=None,
+                run_as=None,
             )
 
         assert result["status"] == "completed"
@@ -1805,6 +2234,8 @@ class TestAutonomousAgentExecutor:
         result = await executor.run(
             agent=mock_agent,
             run_id=str(uuid4()),
+            run_user_id=None,
+            run_as=None,
         )
 
         assert result["status"] == "completed"
@@ -1920,6 +2351,8 @@ class TestAutonomousAgentExecutor:
                 input_data={"task": "Delegate"},
                 run_id=parent_run_id,
                 _caller=fallback_caller,
+                run_user_id=None,
+                run_as=None,
             )
 
         assert result["status"] == "completed"
@@ -1973,7 +2406,7 @@ class TestAutonomousAgentExecutor:
         mock_create_model.return_value = LegacyMockModel(mock_llm)
 
         # Mock Redis client to return cancel flag after first iteration
-        mock_redis = AsyncMock()
+        mock_redis = _redis_with_transactional_pipeline()
         call_count = 0
 
         async def mock_get(key):
@@ -1995,6 +2428,8 @@ class TestAutonomousAgentExecutor:
             result = await executor.run(
                 agent=mock_agent,
                 run_id=str(uuid4()),
+                run_user_id=None,
+                run_as=None,
             )
 
         assert result["status"] == "cancelled"
@@ -2023,6 +2458,321 @@ class TestAutonomousAgentExecutor:
         result = await executor.run(
             agent=mock_agent,
             run_id=str(uuid4()),
+            run_user_id=None,
+            run_as=None,
         )
 
         assert result["status"] == "completed"
+
+
+def _contoso_lead(organization_id) -> dict:
+    """The person who started the run (the initiator)."""
+    return {
+        "user_id": str(uuid4()),
+        "email": "helpdesk.lead@contoso.example",
+        "name": "Contoso Helpdesk Lead",
+        "organization_id": str(organization_id),
+        "is_platform_admin": True,
+    }
+
+
+def _contoso_portal_user(organization_id) -> ActingUser:
+    """A Run As user as the consumer loads it from the database."""
+    return ActingUser(
+        user_id=str(uuid4()),
+        email="portal.user@contoso.example",
+        name="Contoso Portal User",
+        organization_id=organization_id,
+        is_platform_admin=False,
+        is_external=True,
+        is_provider_org=False,
+    )
+
+
+def _calls_one_tool(name: str) -> LegacyMockModel:
+    llm = AsyncMock()
+    llm.complete = AsyncMock(side_effect=[
+        LLMResponse(
+            content=None,
+            tool_calls=[ToolCallRequest(id="tc1", name=name, arguments={})],
+            finish_reason="tool_use",
+            input_tokens=10,
+            output_tokens=5,
+        ),
+        LLMResponse(
+            content="Done",
+            tool_calls=None,
+            finish_reason="end_turn",
+            input_tokens=10,
+            output_tokens=5,
+        ),
+    ])
+    return LegacyMockModel(llm)
+
+
+class TestRunAsActingUser:
+    """Every tool and delegated child of a run uses its acting user."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("with_run_as", [True, False], ids=["run_as", "caller"])
+    @patch("src.services.agent_runtime.model_factory.create_agent_model")
+    @patch("src.services.execution.autonomous_agent_executor.resolve_agent_tools")
+    async def test_workflow_tool_runs_as_the_acting_user_for_the_run_user(
+        self, mock_resolve_tools, mock_create_model, mock_session, mock_agent, with_run_as
+    ):
+        contoso, provider = uuid4(), uuid4()
+        mock_agent.organization_id = contoso
+        caller = _contoso_lead(provider)
+        run_user_id = UUID(caller["user_id"])
+        run_as = _contoso_portal_user(contoso) if with_run_as else None
+        workflow_id = uuid4()
+        mock_resolve_tools.return_value = (
+            [_tool("contoso_lookup")],
+            {"contoso_lookup": workflow_id},
+        )
+        mock_create_model.return_value = _calls_one_tool("contoso_lookup")
+        run_id = str(uuid4())
+
+        with patch(
+            "src.services.execution.service.execute_tool",
+            new_callable=AsyncMock,
+            return_value=MagicMock(
+                execution_id=str(uuid4()),
+                status=ExecutionStatus.SUCCESS,
+                result={"ok": True},
+            ),
+        ) as mock_execute_tool:
+            await AutonomousAgentExecutor(mock_session).run(
+                agent=mock_agent,
+                run_id=run_id,
+                _caller=caller,
+                run_user_id=run_user_id,
+                run_as=run_as,
+            )
+
+        if run_as is not None:
+            identity = {
+                "user_id": run_as.user_id,
+                "user_email": "portal.user@contoso.example",
+                "user_name": "Contoso Portal User",
+                "org_id": str(contoso),
+                "is_platform_admin": False,
+            }
+        else:
+            # Pinned: a run without Run As acts exactly as before.
+            identity = {
+                "user_id": caller["user_id"],
+                "user_email": "helpdesk.lead@contoso.example",
+                "user_name": "Contoso Helpdesk Lead",
+                "org_id": str(provider),
+                "is_platform_admin": True,
+            }
+        mock_execute_tool.assert_awaited_once_with(
+            workflow_id=str(workflow_id),
+            workflow_name="contoso_lookup",
+            parameters={},
+            **identity,
+            is_agent=True,
+            execution_id=None,
+            artifact_workspace_id=run_id,
+            sync=True,
+            # The run user never changes.
+            lineage=RunLineage(run_user_id, run_user_id, None),
+        )
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("with_run_as", [True, False], ids=["run_as", "caller"])
+    @patch("src.services.agent_runtime.model_factory.create_agent_model")
+    @patch("src.services.execution.autonomous_agent_executor.resolve_agent_tools")
+    async def test_system_tool_context_carries_the_acting_users_flags(
+        self, mock_resolve_tools, mock_create_model, mock_session, mock_agent, with_run_as
+    ):
+        contoso, provider = uuid4(), uuid4()
+        mock_agent.organization_id = contoso
+        mock_agent.system_tools = ["contoso_system_tool"]
+        caller = _contoso_lead(provider)
+        run_user_id = UUID(caller["user_id"])
+        run_as = _contoso_portal_user(contoso) if with_run_as else None
+        mock_resolve_tools.return_value = ([_tool("contoso_system_tool")], {})
+        mock_create_model.return_value = _calls_one_tool("contoso_system_tool")
+        contexts = []
+
+        async def system_tool(context):
+            contexts.append(context)
+            return "ok"
+
+        with patch(
+            "src.services.mcp_server.server.get_system_tool_function",
+            return_value=system_tool,
+        ):
+            await AutonomousAgentExecutor(mock_session).run(
+                agent=mock_agent,
+                run_id=str(uuid4()),
+                _caller=caller,
+                run_user_id=run_user_id,
+                run_as=run_as,
+            )
+
+        [context] = contexts
+        seen = (
+            context.user_id,
+            context.user_email,
+            context.user_name,
+            context.org_id,
+            context.is_platform_admin,
+            context.is_external,
+            context.is_provider_org,
+            context.run_user_id,
+        )
+        if run_as is not None:
+            target = UUID(run_as.user_id)
+            assert seen == (
+                target,
+                "portal.user@contoso.example",
+                "Contoso Portal User",
+                contoso,
+                False,
+                True,
+                False,
+                run_user_id,
+            )
+        else:
+            # Pinned: a run without Run As acts exactly as before.
+            assert seen == (
+                run_user_id,
+                "helpdesk.lead@contoso.example",
+                "Contoso Helpdesk Lead",
+                provider,
+                True,
+                False,
+                False,
+                run_user_id,
+            )
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("with_run_as", [True, False], ids=["run_as", "caller"])
+    @patch("src.services.agent_runtime.model_factory.create_agent_model")
+    @patch("src.services.execution.autonomous_agent_executor.resolve_agent_tools")
+    async def test_delegation_hands_the_child_the_same_run_as(
+        self, mock_resolve_tools, mock_create_model, mock_session, mock_agent, with_run_as
+    ):
+        contoso = uuid4()
+        mock_agent.organization_id = contoso
+        caller = _contoso_lead(contoso)
+        run_user_id = UUID(caller["user_id"])
+        run_as = _contoso_portal_user(contoso) if with_run_as else None
+        mock_resolve_tools.return_value = ([_tool("delegate_to_contoso_specialist")], {})
+        mock_create_model.return_value = _calls_one_tool("delegate_to_contoso_specialist")
+        run_id = str(uuid4())
+
+        with patch.object(
+            AutonomousAgentExecutor,
+            "run_delegation",
+            new_callable=AsyncMock,
+            return_value=DelegationOutcome(
+                child_run_id=uuid4(),
+                agent_name="Contoso Specialist",
+                status="completed",
+                output="checked",
+                error=None,
+                duration_ms=5,
+            ),
+        ) as mock_run_delegation:
+            await AutonomousAgentExecutor(mock_session).run(
+                agent=mock_agent,
+                run_id=run_id,
+                _caller=caller,
+                run_user_id=run_user_id,
+                run_as=run_as,
+            )
+
+        mock_run_delegation.assert_awaited_once_with(
+            parent_agent=mock_agent,
+            tool_call=ToolCallRequest(
+                id="tc1", name="delegate_to_contoso_specialist", arguments={}
+            ),
+            parent_run_id=run_id,
+            caller=caller,
+            run_user_id=run_user_id,
+            run_as=run_as,
+        )
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("with_run_as", [True, False], ids=["run_as", "caller"])
+    async def test_delegated_child_row_keeps_run_as_caller_and_run_user(
+        self, mock_session, mock_agent, with_run_as
+    ):
+        contoso, provider = uuid4(), uuid4()
+        delegated = MagicMock()
+        delegated.id = uuid4()
+        delegated.name = "Contoso Specialist"
+        delegated.organization_id = None
+        delegated.max_iterations = 5
+        delegated.max_token_budget = 1000
+        delegated.llm_profile_id = None
+        # A Global parent: the child's organization follows the acting user.
+        mock_agent.organization_id = None
+        mock_agent.delegated_agents = [delegated]
+        query_result = MagicMock()
+        query_result.scalar_one_or_none.return_value = delegated
+        mock_session._mock_session.execute = AsyncMock(return_value=query_result)
+        created_runs: list[AgentRun] = []
+
+        def capture_add(value):
+            if isinstance(value, AgentRun):
+                created_runs.append(value)
+
+        mock_session._mock_session.add.side_effect = capture_add
+
+        async def get_created(model, run_id):
+            if model is AgentRun and created_runs and created_runs[0].id == run_id:
+                return created_runs[0]
+            return None
+
+        mock_session._mock_session.get.side_effect = get_created
+        caller = _contoso_lead(provider)
+        run_user_id = UUID(caller["user_id"])
+        run_as = _contoso_portal_user(contoso) if with_run_as else None
+        executor = AutonomousAgentExecutor(mock_session)
+
+        with (
+            patch.object(
+                AutonomousAgentExecutor,
+                "run",
+                new_callable=AsyncMock,
+                return_value={"output": "checked", "status": "completed"},
+            ) as mock_child_run,
+            patch(
+                "src.services.execution.run_summarizer.enqueue_summarize",
+                new_callable=AsyncMock,
+            ),
+        ):
+            await executor.run_delegation(
+                parent_agent=mock_agent,
+                tool_call=ToolCallRequest(
+                    id="tc1",
+                    name="delegate_to_contoso_specialist",
+                    arguments={"task": "Check the mailbox"},
+                ),
+                parent_run_id=str(uuid4()),
+                caller=caller,
+                run_user_id=run_user_id,
+                run_as=run_as,
+            )
+
+        [child] = created_runs
+        assert child.caller_user_id == caller["user_id"]
+        assert child.caller_email == "helpdesk.lead@contoso.example"
+        assert child.caller_name == "Contoso Helpdesk Lead"
+        assert child.run_user_id == run_user_id
+        if run_as is not None:
+            target = UUID(run_as.user_id)
+            assert child.run_as_user_id == target
+            assert child.org_id == contoso
+        else:
+            assert child.run_as_user_id is None
+            assert child.org_id == provider
+        assert mock_child_run.await_args is not None
+        assert mock_child_run.await_args.kwargs["run_as"] == run_as
+        assert mock_child_run.await_args.kwargs["_caller"] == caller
+        assert mock_child_run.await_args.kwargs["run_user_id"] == run_user_id

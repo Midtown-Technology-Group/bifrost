@@ -33,15 +33,21 @@ import json
 import logging
 from datetime import datetime
 from decimal import Decimal
+from typing import TYPE_CHECKING
 from uuid import UUID
 
 from sqlalchemy import and_, desc, func, or_, select, union_all
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import defer, selectinload
 
+from shared import access_checks
+from shared.execution_visibility import is_own_execution, own_executions
 from src.core.log_safety import log_safe
-from src.core.org_filter import OrgFilterType, resolve_org_filter
+from src.core.org_filter import OrgFilterType, filter_target, resolve_org_filter
 from src.core.principal import UserPrincipal
+
+if TYPE_CHECKING:
+    from src.models.contracts.workflow_permissions import WorkflowPermissionMode
 
 logger = logging.getLogger(__name__)
 
@@ -104,21 +110,29 @@ def decode_history_cursor(token: str) -> tuple[datetime | None, UUID] | None:
 
 def convert_workflow_orm_to_schema(
     workflow,
+    default_permission_mode: WorkflowPermissionMode,
     used_by_count: int = 0,
     role_ids: list[UUID] | None = None,
 ):
-    """Convert ORM model to Pydantic schema for API response."""
+    """Convert ORM model to Pydantic schema for API response.
+
+    ``default_permission_mode`` is the platform default a workflow with no
+    mode of its own takes (``get_default_workflow_permission_mode``).
+    """
     from typing import Literal
 
     from src.models import WorkflowMetadata, WorkflowParameter
     from src.models.contracts.workflows import ExecutableType
+    from src.services.workflow_permissions import resolve_workflow_permission_mode
     from src.services.workflow_validation import _extract_relative_path
     from src.services.execution.retry_policy import normalize_retry_policy
 
-    parameters = []
-    for param in workflow.parameters_schema or []:
-        if isinstance(param, dict):
-            parameters.append(WorkflowParameter(**param))
+    from src.services.tool_registry import workflow_json_schema_to_parameter_records
+
+    parameters = [
+        WorkflowParameter(**param)
+        for param in workflow_json_schema_to_parameter_records(workflow.parameters_schema)
+    ]
 
     raw_mode = workflow.execution_mode or "sync"
     execution_mode: Literal["sync", "async"] = "async" if raw_mode == "async" else "sync"
@@ -137,6 +151,8 @@ def convert_workflow_orm_to_schema(
         organization_id=str(workflow.organization_id) if workflow.organization_id else None,
         is_solution_managed=workflow.solution_id is not None,
         solution_id=workflow.solution_id,
+        run_identity_id=workflow.run_identity_id,
+        permission_mode=resolve_workflow_permission_mode(workflow, default_permission_mode),
         access_level=workflow.access_level or "role_based",
         role_ids=[str(role_id) for role_id in (role_ids or [])],
         parameters=parameters,
@@ -344,6 +360,7 @@ async def list_sdk_workflows(
     """
     from src.models import Workflow as WorkflowORM
     from src.models.orm.agents import AgentTool
+    from src.services.workflow_permissions import get_default_workflow_permission_mode
 
     if not principal.is_superuser:
         raise SdkExecutionReadError(403, "Superuser privileges required")
@@ -405,12 +422,14 @@ async def list_sdk_workflows(
         used_by_counts = await compute_used_by_counts(session, workflow_ids)
         role_ids_by_workflow = await get_workflow_role_ids(session, workflow_ids)
 
+    default_permission_mode = await get_default_workflow_permission_mode(session)
     workflow_list = []
     for w in workflows:
         try:
             workflow_list.append(
                 convert_workflow_orm_to_schema(
                     w,
+                    default_permission_mode,
                     used_by_count=used_by_counts.get(w.id, 0),
                     role_ids=role_ids_by_workflow.get(w.id, []),
                 )
@@ -488,9 +507,10 @@ async def list_sdk_executions(
     Preserves the historical ``GET /api/executions`` behavior exactly:
     org scope via ``resolve_org_filter`` (org users pinned to their org,
     superusers unfiltered unless scoped), non-superusers restricted to
-    their own rows, ``workflow_id`` winning over ``workflow_name``,
+    their own rows (``shared.execution_visibility``),
+    ``workflow_id`` winning over ``workflow_name``,
     comma-separated status match-any, silently-ignored malformed
-    start/end dates, ``exclude_local`` default-true, the
+    start/end dates, the
     ``started_at/scheduled_at/completed_at/created_at`` timeline anchor,
     keyset cursor with legacy numeric-offset fallback, and keyset
     continuation tokens.
@@ -528,7 +548,9 @@ async def list_sdk_executions(
         query = query.where(ExecutionModel.organization_id == org_filter)
 
     if not principal.is_superuser:
-        query = query.where(ExecutionModel.executed_by == principal.user_id)
+        query = query.where(own_executions(principal.user_id))
+    else:
+        access_checks.note_power("executions.read.all", filter_target(filter_type, filter_org), subject="executions")
 
     if workflow_id:
         query = query.where(ExecutionModel.workflow_id == workflow_id)
@@ -558,7 +580,7 @@ async def list_sdk_executions(
             logger.debug(f"invalid end_date {log_safe(end_date)!r}, ignoring filter: {log_safe(e)}")
 
     if exclude_local:
-        query = query.where(ExecutionModel.is_local_execution == False)  # noqa: E712
+        query = query.where(ExecutionModel.is_local_execution.is_(False))
 
     timeline_at = func.coalesce(
         ExecutionModel.started_at,
@@ -627,7 +649,8 @@ async def get_sdk_execution(
 
     Preserves the historical ``GET /api/executions/{id}`` behavior
     exactly: 404 when the row is missing (including a Redis-pending
-    fallback miss), 403 when a non-superuser views another user's row,
+    fallback miss), 403 when a non-superuser views a row not their own
+    (``shared.execution_visibility``),
     dual-read logs (Redis Stream when in-progress, Postgres when
     complete, DEBUG/TRACEBACK filtered for non-admins), AI usage rows
     plus totals, admin-only variables/context/resource fields, and the
@@ -647,6 +670,8 @@ async def get_sdk_execution(
     )
     from src.models.enums import ExecutionStatus
     from src.models.orm.ai_usage import AIUsage
+    from src.services.execution.retry_policy import snapshot_retry_policy
+    from shared.execution_attempt_reads import load_attempt_history
 
     result = await session.execute(
         select(ExecutionModel)
@@ -671,10 +696,23 @@ async def get_sdk_execution(
             )
         return pending
 
-    if not principal.is_superuser and execution.executed_by != principal.user_id:
-        raise SdkExecutionReadError(
-            403, "You do not have permission to view this execution"
+    if not is_own_execution(
+        principal.user_id,
+        execution_id=execution.id,
+        executed_by=execution.executed_by,
+        started_by_user_id=execution.started_by_user_id,
+        root_execution_id=execution.root_execution_id,
+    ):
+        if not principal.is_superuser:
+            raise SdkExecutionReadError(
+                403, "You do not have permission to view this execution"
+            )
+        access_checks.note_power(
+            "executions.read.all", execution.organization_id, subject=f"execution:{execution_id}"
         )
+    if principal.is_superuser:
+        # Debug and traceback lines, variables, context and resource use are diagnostics.
+        access_checks.note_power("executions.read", execution.organization_id, subject=f"execution:{execution_id}")
 
     is_in_progress = execution.status in (
         ExecutionStatus.PENDING, ExecutionStatus.RUNNING, ExecutionStatus.CANCELLING,
@@ -742,6 +780,7 @@ async def get_sdk_execution(
             output_tokens=entry.output_tokens,
             cache_read_tokens=entry.cache_read_tokens,
             cache_write_tokens=entry.cache_write_tokens,
+            reasoning_tokens=entry.reasoning_tokens,
             provider_cost=(str(entry.provider_cost) if entry.provider_cost is not None else None),
             cost=str(entry.cost) if entry.cost else None,
             duration_ms=entry.duration_ms,
@@ -758,6 +797,7 @@ async def get_sdk_execution(
             func.coalesce(func.sum(AIUsage.output_tokens), 0).label("total_output"),
             func.coalesce(func.sum(AIUsage.cache_read_tokens), 0).label("total_cache_read"),
             func.coalesce(func.sum(AIUsage.cache_write_tokens), 0).label("total_cache_write"),
+            func.coalesce(func.sum(AIUsage.reasoning_tokens), 0).label("total_reasoning"),
             func.coalesce(func.sum(AIUsage.provider_cost), Decimal("0")).label("total_provider_cost"),
             func.coalesce(func.sum(AIUsage.cost), Decimal("0")).label("total_cost"),
             func.coalesce(func.sum(AIUsage.duration_ms), 0).label("total_duration"),
@@ -772,6 +812,7 @@ async def get_sdk_execution(
             total_output_tokens=int(totals_row.total_output or 0),
             total_cache_read_tokens=int(totals_row.total_cache_read or 0),
             total_cache_write_tokens=int(totals_row.total_cache_write or 0),
+            total_reasoning_tokens=int(totals_row.total_reasoning or 0),
             total_provider_cost=str(totals_row.total_provider_cost or Decimal("0")),
             total_cost=str(totals_row.total_cost or Decimal("0")),
             total_duration_ms=int(totals_row.total_duration or 0),
@@ -783,6 +824,11 @@ async def get_sdk_execution(
     else:
         org_name = "Global"
 
+    attempt_history = await load_attempt_history(
+        session, execution_id, principal,
+        tracking_enabled=getattr(execution, "attempt_tracking_version", None) is not None,
+        organization_id=execution.organization_id,
+    )
     return WorkflowExecution(
         execution_id=str(execution.id),
         workflow_name=execution.workflow_name,
@@ -795,6 +841,9 @@ async def get_sdk_execution(
         executed_by_email=execution.executed_by_user.email if execution.executed_by_user else None,
         status=ExecutionStatus(execution.status),
         input_data=execution.parameters or {},
+        retry_policy=snapshot_retry_policy(getattr(execution, "retry_policy", None)),
+        attempt_history=attempt_history,
+        created_at=execution.created_at,
         result=execution.result,
         result_type=execution.result_type,
         error_message=execution.error_message,
@@ -802,6 +851,7 @@ async def get_sdk_execution(
         started_at=execution.started_at,
         completed_at=execution.completed_at,
         scheduled_at=execution.scheduled_at,
+        session_id=str(execution.session_id) if execution.session_id else None,
         logs=[log.model_dump() for log in logs],
         variables=execution.variables if principal.is_superuser else None,
         execution_context=execution.execution_context if principal.is_superuser else None,

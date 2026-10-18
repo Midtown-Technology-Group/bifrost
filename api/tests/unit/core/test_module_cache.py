@@ -21,6 +21,11 @@ class TestModuleCacheAsync:
         """Create a mock async Redis client."""
         mock_client = AsyncMock()
         mock_redis = AsyncMock()
+        pipeline = MagicMock()
+        pipeline.__aenter__ = AsyncMock(return_value=pipeline)
+        pipeline.__aexit__ = AsyncMock()
+        pipeline.execute = AsyncMock()
+        mock_redis.pipeline = MagicMock(return_value=pipeline)
         mock_client._get_redis = AsyncMock(return_value=mock_redis)
         mock_client.get = AsyncMock()
         mock_client.setex = AsyncMock()
@@ -1076,32 +1081,6 @@ class TestKeyPatterns:
 
         assert MODULE_INDEX_KEY == "bifrost:module:index"
 
-
-@pytest.mark.asyncio
-async def test_set_module_invalidates_resolution_cache_for_exact_and_ancestors():
-    from src.core.module_cache import set_module
-
-    from src.core.module_cache_contract import MODULE_RESOLUTION_GENERATION_PREFIX
-
-    redis = AsyncMock()
-    pipeline = MagicMock()
-    pipeline.__aenter__ = AsyncMock(return_value=pipeline)
-    pipeline.__aexit__ = AsyncMock(return_value=None)
-    pipeline.execute = AsyncMock(return_value=[])
-    redis._get_redis.return_value = redis
-    redis.get.return_value = "generation-1"
-    redis.pipeline = MagicMock(return_value=pipeline)
-    with patch("src.core.module_cache.get_redis_client", return_value=redis):
-        await set_module("modules/helpers/tool.py", "VALUE = 1", "hash")
-    assert [c.args[0] for c in pipeline.set.call_args_list] == [
-        f"{MODULE_RESOLUTION_GENERATION_PREFIX}{name}"
-        for name in ["modules", "modules.helpers", "modules.helpers.tool"]
-    ]
-    assert all(c.kwargs == {"ex": 86400} for c in pipeline.set.call_args_list)
-    redis.pipeline.assert_called_once_with(transaction=True)
-    pipeline.execute.assert_awaited_once()
-    redis.scan_iter.assert_not_called()
-
     def test_key_patterns_consistent(self):
         """Verify async and sync modules use same key patterns."""
         from src.core.module_cache import MODULE_INDEX_KEY as ASYNC_INDEX
@@ -1112,3 +1091,96 @@ async def test_set_module_invalidates_resolution_cache_for_exact_and_ancestors()
         # Both modules should import from module_cache, so these should be identical
         assert ASYNC_PREFIX == SYNC_PREFIX
         assert ASYNC_INDEX == SYNC_INDEX
+
+
+@pytest.mark.asyncio
+async def test_set_module_invalidates_resolution_cache_for_exact_and_ancestors():
+    path = "modules/helpers/tool.py"
+    names = ["modules", "modules.helpers", "modules.helpers.tool"]
+    from src.core.module_cache import set_module
+    from src.core.module_cache_contract import MODULE_RESOLUTION_GENERATION_PREFIX
+
+    pipeline = MagicMock()
+    pipeline.__aenter__ = AsyncMock(return_value=pipeline)
+    pipeline.__aexit__ = AsyncMock()
+    pipeline.execute = AsyncMock()
+    connection = AsyncMock()
+    connection.pipeline = MagicMock(return_value=pipeline)
+    client = AsyncMock()
+    client._get_redis.return_value = connection
+    with patch("src.core.module_cache.get_redis_client", return_value=client):
+        await set_module(path, "VALUE = 1", "hash")
+
+    assert [call.args[0] for call in pipeline.set.call_args_list] == [
+        f"{MODULE_RESOLUTION_GENERATION_PREFIX}{name}" for name in names
+    ]
+    assert all(call.kwargs == {"ex": 86400} for call in pipeline.set.call_args_list)
+    connection.pipeline.assert_called_once_with(transaction=True)
+    connection.scan_iter.assert_not_called()
+    connection.delete.assert_not_awaited()
+    pipeline.execute.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_invalidate_module_resolution_cache_handles_solution_package_paths():
+    path = "_solutions/solution-a/workflows/triage/__init__.py"
+    names = ["workflows", "workflows.triage"]
+    from src.core.module_cache import invalidate_module_resolution_cache
+    from src.core.module_cache_contract import MODULE_RESOLUTION_GENERATION_PREFIX
+
+    pipeline = MagicMock()
+    pipeline.__aenter__ = AsyncMock(return_value=pipeline)
+    pipeline.__aexit__ = AsyncMock()
+    pipeline.execute = AsyncMock()
+    connection = AsyncMock()
+    connection.pipeline = MagicMock(return_value=pipeline)
+    client = AsyncMock()
+    client._get_redis.return_value = connection
+    with patch("src.core.module_cache.get_redis_client", return_value=client):
+        await invalidate_module_resolution_cache(path)
+
+    assert [call.args[0] for call in pipeline.set.call_args_list] == [
+        f"{MODULE_RESOLUTION_GENERATION_PREFIX}{name}" for name in names
+    ]
+    assert all(call.kwargs == {"ex": 86400} for call in pipeline.set.call_args_list)
+    connection.pipeline.assert_called_once_with(transaction=True)
+    connection.scan_iter.assert_not_called()
+    connection.delete.assert_not_awaited()
+    pipeline.execute.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_invalidate_module_resolution_cache_skips_delete_when_no_names_match():
+    """Invalidation never enumerates or deletes scoped result keys, even cold."""
+    path = "modules/helpers/tool.py"
+    names = ["modules", "modules.helpers", "modules.helpers.tool"]
+    from src.core.module_cache import invalidate_module_resolution_cache
+    from src.core.module_cache_contract import MODULE_RESOLUTION_GENERATION_PREFIX
+
+    pipeline = MagicMock()
+    pipeline.__aenter__ = AsyncMock(return_value=pipeline)
+    pipeline.__aexit__ = AsyncMock()
+    pipeline.execute = AsyncMock()
+    connection = AsyncMock()
+    connection.pipeline = MagicMock(return_value=pipeline)
+    client = AsyncMock()
+    client._get_redis.return_value = connection
+    with patch("src.core.module_cache.get_redis_client", return_value=client):
+        await invalidate_module_resolution_cache(path)
+
+    assert [call.args[0] for call in pipeline.set.call_args_list] == [
+        f"{MODULE_RESOLUTION_GENERATION_PREFIX}{name}" for name in names
+    ]
+    assert all(call.kwargs == {"ex": 86400} for call in pipeline.set.call_args_list)
+    connection.pipeline.assert_called_once_with(transaction=True)
+    connection.scan_iter.assert_not_called()
+    connection.delete.assert_not_awaited()
+    pipeline.execute.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_invalidate_module_resolution_cache_skips_empty_names():
+    from src.core.module_cache import invalidate_module_resolution_cache
+    with patch("src.core.module_cache.get_redis_client") as client:
+        await invalidate_module_resolution_cache("")
+    client.assert_not_called()

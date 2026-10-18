@@ -8,6 +8,7 @@ docs/architecture/device-control-plane/error.schema.json.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from uuid import UUID, uuid4
 
@@ -16,7 +17,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.responses import JSONResponse
 
-from src.core.org_filter import org_filter_clause, resolve_org_filter
+from src.core.org_filter import OrgFilterType, org_filter_clause, resolve_org_filter
 from src.core.principal import UserPrincipal
 from src.models.contracts.devices import DeviceCreate
 from src.models.orm.devices import (
@@ -25,6 +26,8 @@ from src.models.orm.devices import (
     DEVICE_STATUS_PENDING_ENROLLED,
     Device,
 )
+from src.services.authorization.enforce import Caller, load_caller
+from src.services.bridge_authorization import bridge_permission_allowed
 from src.services.device_keys import (
     ENROLLMENT_TOKEN_PREFIX,
     generate_device_key,
@@ -66,69 +69,97 @@ class DeviceOperationError(Exception):
         )
 
 
+def _device_permission_allowed(
+    caller: Caller, permission: str, organization_id: UUID | None
+) -> bool:
+    """The bridge is home-org only, regardless of broader role boundaries.
+
+    User contexts come from current rows, never JWT permission/admin claims.
+    Engine/service credentials retain their existing explicit superuser lane.
+    """
+    if caller.principal.embed:
+        return False
+    if caller.is_execution_credential or caller.principal.is_engine_token:
+        return caller.principal.is_superuser
+    return bridge_permission_allowed(caller, permission, organization_id)
+
+
+def _device_principal(caller: Caller) -> UserPrincipal:
+    """Pin scope to current database home/admin state, clearing provider bypass."""
+    if caller.is_execution_credential or caller.principal.is_engine_token:
+        return caller.principal
+    return replace(
+        caller.principal,
+        organization_id=caller.ctx.home_organization_id if caller.ctx else None,
+        is_superuser=caller.is_platform_admin,
+        is_provider_org=False,
+    )
+
+
+async def _require_device_permissions(
+    db: AsyncSession,
+    user: UserPrincipal,
+    permissions: tuple[str, ...],
+    organization_id: UUID | None = None,
+) -> UserPrincipal:
+    # Deliberately bypass token/session role caches on every authorization.
+    caller = await load_caller(db, user)
+    principal = _device_principal(caller)
+    target_org = organization_id if organization_id is not None else principal.organization_id
+    for permission in permissions:
+        if not _device_permission_allowed(caller, permission, target_org):
+            raise DeviceOperationError(
+                status.HTTP_403_FORBIDDEN,
+                "permission_denied",
+                f"{permission} permission required for device operations in this organization",
+            )
+    return principal
+
+
 async def user_can_manage_devices(db: AsyncSession, user: UserPrincipal) -> bool:
-    """Registry management gate: platform superuser bypass or the
-    ``can_manage_config`` role permission (M0 authorization matrix)."""
-    if user.is_superuser:
-        return True
-    return await _user_has_role_permission(db, user.user_id, "can_manage_config")
+    try:
+        await require_device_manage_permission(db, user)
+    except DeviceOperationError:
+        return False
+    return True
 
 
 async def user_can_execute_devices(db: AsyncSession, user: UserPrincipal) -> bool:
-    """Job execution gate: platform superuser bypass or the
-    ``can_execute_devices`` role permission (M0 authorization matrix)."""
-    if user.is_superuser:
-        return True
-    return await _user_has_role_permission(db, user.user_id, "can_execute_devices")
+    try:
+        await require_device_execute_permission(db, user)
+    except DeviceOperationError:
+        return False
+    return True
 
 
-async def _user_has_role_permission(
-    db: AsyncSession, user_id: UUID, permission: str
-) -> bool:
-    from src.models.orm.users import Role, UserRole
-
-    result = await db.execute(
-        select(Role.permissions)
-        .join(UserRole, UserRole.role_id == Role.id)
-        .where(UserRole.user_id == user_id)
-    )
-    for permissions in result.scalars().all():
-        if permissions and permissions.get(permission):
-            return True
-    return False
-
-
-async def require_device_manage_permission(db: AsyncSession, user: UserPrincipal) -> None:
-    if not await user_can_manage_devices(db, user):
-        raise DeviceOperationError(
-            status.HTTP_403_FORBIDDEN,
-            "permission_denied",
-            "can_manage_config permission required for device registry operations",
-        )
+async def require_device_manage_permission(
+    db: AsyncSession, user: UserPrincipal, organization_id: UUID | None = None
+) -> UserPrincipal:
+    return await _require_device_permissions(db, user, ("devices.readwrite",), organization_id)
 
 
 async def require_device_execute_permission(
-    db: AsyncSession, user: UserPrincipal
-) -> None:
-    if not await user_can_execute_devices(db, user):
-        raise DeviceOperationError(
-            status.HTTP_403_FORBIDDEN,
-            "permission_denied",
-            "can_execute_devices permission required for device job operations",
-        )
+    db: AsyncSession, user: UserPrincipal, organization_id: UUID | None = None
+) -> UserPrincipal:
+    return await _require_device_permissions(db, user, ("devices.execute",), organization_id)
 
 
 async def require_device_control_key_issue_permission(
-    db: AsyncSession, user: UserPrincipal
-) -> None:
-    """Require both registry management and endpoint execution authority.
+    db: AsyncSession, user: UserPrincipal, organization_id: UUID | None = None
+) -> UserPrincipal:
+    """Require both permissions at the SAME target using one current context."""
+    return await _require_device_permissions(
+        db, user, ("devices.readwrite", "devices.execute"), organization_id
+    )
 
-    Creating or rotating a control key delegates the ability to submit
-    LocalSystem device jobs, so configuration authority alone is insufficient.
-    Metadata reads and revocation remain available to configuration managers.
-    """
-    await require_device_manage_permission(db, user)
-    await require_device_execute_permission(db, user)
+
+def resolve_device_org_filter(
+    user: UserPrincipal, scope: str | None = None
+) -> tuple[OrgFilterType, UUID | None]:
+    """Use only a gate-returned principal; devices never cascade to Global."""
+    if user.is_superuser:
+        return resolve_org_filter(user, scope)
+    return OrgFilterType.ORG_ONLY, user.organization_id
 
 
 def resolve_target_org(user: UserPrincipal, requested: UUID | None) -> UUID:
@@ -195,7 +226,7 @@ async def get_device_scoped(
     device_id: UUID,
 ) -> Device:
     """Load one device under the caller's resolved org scope."""
-    filter_type, filter_org_id = resolve_org_filter(user)
+    filter_type, filter_org_id = resolve_device_org_filter(user)
     stmt = select(Device).where(Device.id == device_id)
     clause = org_filter_clause(Device.organization_id, filter_type, filter_org_id)
     if clause is not None:
@@ -235,7 +266,7 @@ def list_devices_stmt(
     scope: str | None = None,
 ) -> "object":
     """Build the org-scoped list statement (no inline org comparisons)."""
-    filter_type, filter_org_id = resolve_org_filter(user, scope)
+    filter_type, filter_org_id = resolve_device_org_filter(user, scope)
     stmt = select(Device)
     clause = org_filter_clause(Device.organization_id, filter_type, filter_org_id)
     if clause is not None:

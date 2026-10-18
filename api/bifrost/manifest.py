@@ -115,6 +115,21 @@ class ManifestRole(EntityCodec, BaseModel):
         return ImportFields(direct={"id": self.id, "name": self.name})
 
 
+class ManifestWorkflowPermissionGrant(BaseModel):
+    """A permission a Solution workflow requests (portable: a boundary is a kind, never an org id)."""
+    permission: str = Field(description="Permission, '<domain>.<read|readwrite|execute>'", **classify(FieldClass.CONTENT))
+    boundary: Literal["organization", "managed_organizations", "platform"] | None = Field(
+        default=None, description="Cross-org boundary; null = the run's own organization",
+        **classify(FieldClass.CONTENT),
+    )
+
+
+class ManifestRequestedPermissions(BaseModel):
+    """A Solution workflow's requested permission mode and grants."""
+    mode: Literal["full", "restricted"] = Field(description="full | restricted", **classify(FieldClass.CONTENT))
+    grants: list[ManifestWorkflowPermissionGrant] = Field(default_factory=list, description="Grants; empty when mode is full", **classify(FieldClass.CONTENT))
+
+
 class ManifestWorkflow(EntityCodec, BaseModel):
     """Workflow entry in manifest."""
     id: str = Field(description="Workflow UUID", **classify(FieldClass.IDENTITY))
@@ -150,6 +165,19 @@ class ManifestWorkflow(EntityCodec, BaseModel):
     )
     category: str = Field(default="General", description="Category for organization", **classify(FieldClass.CONTENT))
     tags: list[str] = Field(default_factory=list, description="Tags for filtering", **classify(FieldClass.CONTENT, install_view="keep_empty_list"))
+    # Portable, but not a `workflows` column: deploy writes it to
+    # solution_workflow_permission_requests. Git sync (plain _repo/) ignores it.
+    requested_permissions: ManifestRequestedPermissions | None = Field(
+        default=None,
+        description="Solution only: the permission mode and grants this workflow requests (needs admin approval on install)",
+        **classify(FieldClass.CONTENT),
+    )
+
+    def view(self, dest: Destination, *, extras: dict[str, Any] | None = None) -> dict:
+        out = super().view(dest, extras=extras)
+        if dest is Destination.GIT_SYNC:
+            out.pop("requested_permissions", None)
+        return out
 
     @classmethod
     def from_row(cls, wf, *, roles: list[str] | None = None) -> "ManifestWorkflow":
@@ -1282,6 +1310,16 @@ class ManifestEventSource(EntityCodec, BaseModel):
     rate_limit_enabled: bool = Field(default=True, description="Per-source kill switch.", **classify(FieldClass.CONTENT))
     # Subscriptions
     subscriptions: list[ManifestEventSubscription] = Field(default_factory=list, description="Workflow subscriptions", **classify(FieldClass.CONTENT))
+
+    @field_validator("webhook_config")
+    @classmethod
+    def _without_signing_secret(cls, value: dict | None) -> dict | None:
+        """The HMAC signing secret is write-only instance state (encrypted in
+        the webhook source's state), so no manifest carries it. This also drops
+        the plaintext copy that manifests written before that change contain."""
+        if value is None:
+            return None
+        return {key: item for key, item in value.items() if key != "secret"}
 
     @classmethod
     def from_row(

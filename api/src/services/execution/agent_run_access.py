@@ -4,6 +4,9 @@ from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import aliased
 from sqlalchemy.sql.elements import ColumnElement
 
+from shared import access_checks
+from shared.access_checks import ALL_ORGS
+from shared.scope_resolver import has_scope_bypass
 from src.core.principal import UserPrincipal
 from src.models.orm.agent_runs import AgentRun
 
@@ -20,7 +23,12 @@ def agent_run_visibility_conditions(
     PARENT run's own caller is this user (a correlated subquery against the
     parent row), not merely because some ``parent_run_id`` is set.
     """
-    if user.is_superuser:
+    if has_scope_bypass(
+        is_platform_admin=user.is_platform_admin,
+        is_provider_org=user.is_provider_org,
+    ):
+        # No filter: every user's runs in every organization.
+        access_checks.note_power("agentruns.read.all", ALL_ORGS, subject="agent_runs")
         return ()
 
     caller_id = str(user.user_id)

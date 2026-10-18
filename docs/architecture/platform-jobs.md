@@ -83,9 +83,12 @@ remain leader-only scheduler work.
 
 The elected leader retains only short trigger and housekeeping callbacks:
 workflow schedule processing, deferred execution promotion, stuck execution and
-event cleanup, metric snapshots, knowledge-storage metrics, artifact retention,
+stuck event-delivery cleanup, metric snapshots, knowledge-storage metrics, artifact retention,
 and diagnostics/backfill reconciliation. Recurring OAuth, webhook, and Solution
-update callbacks enqueue singleton high-priority platform jobs. User-initiated
+update callbacks enqueue singleton high-priority platform jobs. The daily
+maintenance callbacks `audit.archive` and `run.retention` (finished runs and
+events past the retention window) enqueue deduplicated platform jobs that take
+a resource lock, so they never overlap a manual run. User-initiated
 long-running work is claimed by any replica.
 
 A handler may release its scheduler slot in `waiting` state after dispatching
@@ -98,10 +101,11 @@ isolated build process does not occupy scheduler capacity.
 Platform jobs run locally by default. When
 `BIFROST_PLATFORM_BUILD_BACKEND=kubernetes` is configured, build-class jobs for
 independent App deploys and App SDK updates (`application.deploy` and
-`application.sdk_update`) are durably placed on the Kubernetes backend at
-enqueue time. The row stores that placement in `execution_backend` so scheduler
-replicas do not disagree after restart or configuration changes. Broader
-Solution build routing is not implemented by this path.
+`application.sdk_update`), Solution deploys and Git syncs (`solution.deploy`
+and `solution.git_sync`), and Solution backup exports (`solution.export`) are
+durably placed on the Kubernetes backend at enqueue time. The row stores that
+placement in `execution_backend` so scheduler replicas do not disagree after
+restart or configuration changes.
 
 The scheduler still owns the control loop. A separate Kubernetes build
 controller task watches `execution_backend='kubernetes'` rows and creates one

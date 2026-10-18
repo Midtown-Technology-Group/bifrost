@@ -17,10 +17,12 @@ from uuid import UUID
 from fastapi import APIRouter, Body, HTTPException, Query, status
 from pydantic import ValidationError
 from sqlalchemy import String, bindparam, cast, false, func, literal_column, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import ColumnElement
 
 from src.services.operation_catalog import operation_route
+from shared import access_checks
 from shared.claims.preresolve import preresolve_for_policies
 from shared.claims.registry import referenced_claim_names
 from shared.policies.probe import (
@@ -69,6 +71,8 @@ from src.models.contracts.tables import (
 from src.models.orm.custom_claims import CustomClaim as CustomClaimORM
 from src.models.orm.solutions import Solution as SolutionORM
 from src.models.orm.tables import Document, Table
+from src.models.orm.organizations import Organization
+from src.services.audit import emit_audit
 from src.services.solutions.guard import assert_entity_id_not_solution_managed
 from src.services.solution_scope import (
     check_inbound_allowed,
@@ -95,6 +99,8 @@ def _resolve_attribution(
     user: UserPrincipal,
     body_created_by: str | None,
     body_updated_by: str | None,
+    *,
+    organization_id: UUID | None,
 ) -> tuple[str, str]:
     """Decide attribution (created_by, updated_by) for a document write.
 
@@ -116,6 +122,7 @@ def _resolve_attribution(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="created_by/updated_by override requires engine or platform-admin caller",
             )
+        access_checks.note_power("tableattribution.readwrite", organization_id)
     caller = str(user.user_id)
     created_by = body_created_by or caller
     updated_by = body_updated_by or body_created_by or caller
@@ -834,6 +841,29 @@ async def _assert_explicit_scope_targets_table(
     )
 
 
+async def _validate_table_target_org(
+    db: AsyncSession,
+    organization_id: UUID | None,
+) -> None:
+    """Reject a non-existent target organization before a foreign-key flush."""
+    if organization_id is None:
+        return
+    exists = await db.scalar(
+        select(Organization.id).where(Organization.id == organization_id)
+    )
+    if exists is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "message": "Invalid Table target",
+                "errors": [
+                    f"organization_id '{organization_id}' does not reference "
+                    "an existing organization"
+                ],
+            },
+        )
+
+
 # =============================================================================
 # Table Endpoints
 # =============================================================================
@@ -869,6 +899,7 @@ async def create_table(
         target_org_id = _resolve_target_org_safe(ctx, scope)
     else:
         target_org_id = ctx.org_id
+    await _validate_table_target_org(ctx.db, target_org_id)
     try:
         await _validate_table_policy_claim_refs(ctx.db, target_org_id, data.policies)
     except ValueError as e:
@@ -880,12 +911,25 @@ async def create_table(
     repo = TableRepository(ctx.db, target_org_id, is_superuser=True)
     try:
         table = await repo.create_table(data, created_by=user.email)
-        return TablePublic.model_validate(table)
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=str(e),
         )
+
+    await emit_audit(
+        ctx.db,
+        "table.create",
+        resource_type="table",
+        resource_id=table.id,
+        details={
+            "name": table.name,
+            "organization_id": (
+                str(table.organization_id) if table.organization_id else None
+            ),
+        },
+    )
+    return TablePublic.model_validate(table)
 
 
 @router.get(
@@ -1132,20 +1176,38 @@ async def update_table(
     Row DATA (documents) stays editable — that's runtime state (criterion 7).
     """
     await assert_entity_id_not_solution_managed(ctx.db, Table, table_id)
-    if "policies" in data.model_fields_set:
-        existing_table = (
-            await ctx.db.execute(select(Table).where(Table.id == table_id))
-        ).scalar_one_or_none()
-        if existing_table is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Table '{table_id}' not found",
+    existing_table = (
+        await ctx.db.execute(select(Table).where(Table.id == table_id))
+    ).scalar_one_or_none()
+    if existing_table is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Table '{table_id}' not found",
+        )
+    policy_or_scope_changed = bool(
+        {"policies", "organization_id"} & data.model_fields_set
+    )
+    if policy_or_scope_changed:
+        effective_org_id = (
+            data.organization_id
+            if "organization_id" in data.model_fields_set
+            else existing_table.organization_id
+        )
+        effective_policies = (
+            data.policies
+            if "policies" in data.model_fields_set
+            else (
+                TablePolicies.model_validate(existing_table.access)
+                if existing_table.access is not None
+                else None
             )
+        )
+        await _validate_table_target_org(ctx.db, effective_org_id)
         try:
             await _validate_table_policy_claim_refs(
                 ctx.db,
-                existing_table.organization_id,
-                data.policies,
+                effective_org_id,
+                effective_policies,
                 existing_table.solution_id,
             )
         except ValueError as e:
@@ -1154,13 +1216,21 @@ async def update_table(
                 detail=str(e),
             )
 
+    original_org_id = existing_table.organization_id
+
     repo = TableRepository(ctx.db, ctx.org_id, is_superuser=True)
     try:
         table = await repo.update_table(table_id, data)
-    except ValueError as e:
+    except (IntegrityError, ValueError) as e:
+        await ctx.db.rollback()
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=str(e),
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"Table '{data.name or existing_table.name}' already exists "
+                "in the target scope"
+                if isinstance(e, IntegrityError)
+                else str(e)
+            ),
         )
 
     if not table:
@@ -1168,6 +1238,25 @@ async def update_table(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Table '{table_id}' not found",
         )
+
+    audit_details: dict[str, Any] = {
+        "name": table.name,
+        "fields": sorted(data.model_fields_set),
+    }
+    if "organization_id" in data.model_fields_set:
+        audit_details["organization_id_before"] = (
+            str(original_org_id) if original_org_id else None
+        )
+        audit_details["organization_id_after"] = (
+            str(table.organization_id) if table.organization_id else None
+        )
+    await emit_audit(
+        ctx.db,
+        "table.update",
+        resource_type="table",
+        resource_id=table.id,
+        details=audit_details,
+    )
 
     if "policies" in data.model_fields_set:
         # Subscribers re-read policies on a separate database connection when
@@ -1192,14 +1281,36 @@ async def delete_table(
 ) -> None:
     """Delete a table and all its documents by ID (platform admin only)."""
     await assert_entity_id_not_solution_managed(ctx.db, Table, table_id)
-    repo = TableRepository(ctx.db, ctx.org_id, is_superuser=True)
-    success = await repo.delete_table(table_id)
+    from shared.sdk_table_metadata import SDKTableMetadataError, delete_sdk_table
+
+    existing_table = (
+        await ctx.db.execute(select(Table).where(Table.id == table_id))
+    ).scalar_one_or_none()
+    table_name = existing_table.name if existing_table else None
+
+    try:
+        success = await delete_sdk_table(
+            ctx.db, table_id=table_id, org_id=ctx.org_id
+        )
+    except SDKTableMetadataError as e:
+        raise HTTPException(
+            status_code=e.status_code,
+            detail=e.detail,
+        ) from None
 
     if not success:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Table '{table_id}' not found",
         )
+
+    await emit_audit(
+        ctx.db,
+        "table.delete",
+        resource_type="table",
+        resource_id=table_id,
+        details={"name": table_name},
+    )
 
 
 # =============================================================================
@@ -1227,7 +1338,7 @@ async def insert_document(
     await _assert_solution_write_targets_owned_table(ctx, table)
     repo = DocumentRepository(ctx.db, table)
     created_by, updated_by = _resolve_attribution(
-        ctx.user, body.created_by, body.updated_by
+        ctx.user, body.created_by, body.updated_by, organization_id=table.organization_id
     )
 
     if body.upsert and body.id:
@@ -1308,7 +1419,7 @@ async def upsert_document(
     await _assert_solution_write_targets_owned_table(ctx, table)
     repo = DocumentRepository(ctx.db, table)
     created_by, updated_by = _resolve_attribution(
-        ctx.user, body.created_by, body.updated_by
+        ctx.user, body.created_by, body.updated_by, organization_id=table.organization_id
     )
 
     existing = await repo.get(body.id)
@@ -1436,7 +1547,7 @@ async def update_document(
     table = await get_table_or_404(ctx, table_id, scope=scope)
     await _assert_solution_write_targets_owned_table(ctx, table)
     repo = DocumentRepository(ctx.db, table)
-    _, updated_by = _resolve_attribution(ctx.user, None, body.updated_by)
+    _, updated_by = _resolve_attribution(ctx.user, None, body.updated_by, organization_id=table.organization_id)
     existing = await repo.get(doc_id)
     if existing is None:
         raise HTTPException(status_code=404, detail="Document not found")
@@ -1610,7 +1721,7 @@ async def batch_documents(
     rows: list[BatchWriteRow] = []
     for index, item in enumerate(body.documents):
         created_by, updated_by = _resolve_attribution(
-            ctx.user, item.created_by, item.updated_by
+            ctx.user, item.created_by, item.updated_by, organization_id=table.organization_id
         )
         rows.append(
             BatchWriteRow(

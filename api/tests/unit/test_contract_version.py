@@ -32,6 +32,11 @@ from bifrost.contract_version import CONTRACT_VERSION as CLI_CONTRACT_VERSION  #
 from shared.contract_version import CONTRACT_VERSION as SERVER_CONTRACT_VERSION  # noqa: E402
 
 # DTOs the CLI sends/receives. Server-canonical classes (the wire truth).
+from src.models.contracts.agent_runs import (  # noqa: E402
+    AgentRunCreateRequest,
+    AgentRunEnqueueRequest,
+    AgentRunEnqueueResponse,
+)
 from src.models.contracts.agents import AgentCreate, AgentUpdate  # noqa: E402
 from src.models.contracts.applications import (  # noqa: E402
     ApplicationCreate,
@@ -41,6 +46,23 @@ from src.models.contracts.platform_jobs import (  # noqa: E402
     PlatformJobAccepted,
     PlatformJobPublic,
 )
+from src.models.contracts.access_checks import (  # noqa: E402
+    AccessExplanation,
+    AccessTrace,
+)
+from src.models.contracts.audit import AuditLogListResponse  # noqa: E402
+from src.models.contracts.audit_retention import AuditRetentionStatus  # noqa: E402
+from src.models.contracts.bridge_grants import (  # noqa: E402
+    RoleBridgeGrantsResponse,
+    RoleBridgeGrantsUpdate,
+)
+from src.models.contracts.identities import IdentityCreate, IdentityPublic  # noqa: E402
+from src.models.contracts.permissions import PermissionCatalogEntry  # noqa: E402
+from src.models.contracts.role_assignments import (  # noqa: E402
+    UserRoleAssignmentsResponse,
+)
+from src.models.contracts.run_retention import RunRetentionStatus  # noqa: E402
+from src.models.contracts.user_access import UserAccessMap  # noqa: E402
 from src.models.contracts.claims import CustomClaimCreate, CustomClaimUpdate  # noqa: E402
 from src.models.contracts.config import ConfigCreate, ConfigUpdate  # noqa: E402
 from src.models.contracts.events import (  # noqa: E402
@@ -80,6 +102,7 @@ from src.models.contracts.tables import (  # noqa: E402
     TableCreate,
     TableUpdate,
 )
+from src.models.contracts.recommended_access import RecommendedAccess  # noqa: E402
 from src.models.contracts.users import RoleCreate, RoleUpdate  # noqa: E402
 from src.models.contracts.workflows import WorkflowUpdateRequest  # noqa: E402
 from src.models.contracts.workspace_promotions import (  # noqa: E402
@@ -110,6 +133,10 @@ _COMMAND_DTOS: list[type] = [
     OrganizationUpdate,
     RoleCreate,
     RoleUpdate,
+    # Manual bridge-grant CLI flags and SDK calls consume these REST DTOs;
+    # they are outside the auto-discovered /api/sdk/* contract module.
+    RoleBridgeGrantsUpdate,
+    RoleBridgeGrantsResponse,
     WorkflowUpdateRequest,
     WorkflowExecutionRequest,
     WorkflowExecutionResponse,
@@ -117,6 +144,9 @@ _COMMAND_DTOS: list[type] = [
     FormUpdate,
     AgentCreate,
     AgentUpdate,
+    AgentRunCreateRequest,
+    AgentRunEnqueueRequest,
+    AgentRunEnqueueResponse,
     ApplicationCreate,
     ApplicationUpdate,
     PlatformJobAccepted,
@@ -150,6 +180,17 @@ _COMMAND_DTOS: list[type] = [
     WorkspaceReleaseActivateRequest,
     WorkspaceReleaseStatusResponse,
     WorkspaceLiveStatusResponse,
+    UserAccessMap,
+    PermissionCatalogEntry,
+    UserRoleAssignmentsResponse,
+    AccessExplanation,
+    AccessTrace,
+    AuditLogListResponse,
+    RunRetentionStatus,
+    AuditRetentionStatus,
+    IdentityCreate,
+    IdentityPublic,
+    RecommendedAccess,
 ]
 
 #: Every request/response DTO the in-workflow SDK sends/parses against
@@ -299,7 +340,119 @@ EXPECTED_CONTRACT_FINGERPRINT = (
     # existing clients ignore the placement detail.
     # ServicePolicyUpdate is a new CLI contract for supervised services.
     # PlatformJobStatus.requires_action breaks older CLI job pollers; contract 13.
-    "3db82b5ac581f8f38bbe504d934637546749565e2c9bcc52670484c0f979e630"
+    # LLM configuration provider enums gained `google` (2026-08-14). ADDITIVE:
+    # old clients can keep selecting OpenAI-compatible or Anthropic providers.
+    #
+    # SDK AI completion requests gained optional file inputs (2026-08-15).
+    # ADDITIVE: old SDK clients omit the field and keep text-only behavior.
+    #
+    # PlatformJobPublic gained optional memory_required_bytes (2026-08-23).
+    # ADDITIVE: old clients ignore the scheduler admission detail.
+    #
+    # Agent create/update replaced the raw llm_model field with llm_profile_id
+    # (2026-08-22). BREAKING: older CLIs cannot express reusable model profiles,
+    # and SDK AI model info no longer reports the removed profile max_tokens
+    # value. Both ship behind the same unreleased 1.2.3 minimum CLI boundary.
+    #
+    # SDK AI completion requests gained optional `profile` (2026-08-23).
+    # ADDITIVE: older SDKs omit it and continue using the Primary assignment.
+    #
+    # EventSubscriptionCreate's filter_expression description now documents
+    # its enforced JMESPath-compatible behavior (2026-08-26). COSMETIC: the
+    # field shape is unchanged; fingerprint refreshed only.
+    #
+    # WorkflowParameter gained optional python_type and json_schema fields
+    # (2026-09-04). ADDITIVE: older clients ignore the richer tool-contract
+    # metadata, so the fingerprint is refreshed without raising MIN_CLI_VERSION.
+    #
+    # IntegrationCreate/IntegrationUpdate gained optional description
+    # (2026-09-09). ADDITIVE: older clients omit it and keep existing behavior.
+    #
+    # Solution access flags renamed with dual-name compat (2026-09-16, SPIKE).
+    # allow_outbound_access is canonical; global_repo_access is still accepted
+    # on input and emitted (deprecated) on output. allow_inbound_access added
+    # (default true). WorkflowExecutionRequest/EmitEventRequest gained optional
+    # caller_solution(_id). ADDITIVE: old clients use the old key / omit the
+    # new fields and keep prior behavior; fingerprint refreshed only.
+    #
+    # PlatformJobPublic gained execution_backend (2026-09-17). ADDITIVE: old
+    # clients ignore the placement detail and keep polling status as before.
+    #
+    # MTG preserves its local runner and session_id contracts. requires_action
+    # already raised the fork contract to v13. Upstream's unpublished 1.4.2
+    # minimum is not a compatible replacement for the fork's contract gate.
+    #
+    # TableUpdate gained optional organization_id (2026-09-27, RBAC R1b batch
+    # 4): rescoping a table is now supported via PATCH. ADDITIVE: old CLIs
+    # simply never send it and retain the prior no-rescope behavior.
+    # Fingerprint refreshed only.
+    #
+    # RBAC bridge merge (2026-10-18): RoleCreate/RoleUpdate/RolePublic remove
+    # legacy permissions and adopt base roles / typed role_permissions.
+    # BREAKING: both fork contract versions advance to v14; v13 clients must
+    # upgrade. The legacy minimum stays frozen at the published bridge build.
+    # The new Platform Admin-only bridge editor's request and response are
+    # explicitly fingerprinted: its manual CLI flags are not auto-discovered.
+    # The endpoints are additive, within the same v14 RBAC contract decision.
+    #
+    # WebhookSourceConfig.config description (2026-10-01): documents that a
+    # "secret" key is write-only (stored encrypted, never returned; omit to
+    # keep, null/"" to clear). COSMETIC: the schema shape is unchanged and old
+    # CLIs send the same body. Fingerprint refreshed only.
+    #
+    # Access and retention response shapes newly fingerprinted (2026-10-06):
+    # `bifrost users access/roles`, `permissions catalog`, `audit list/explain`
+    # and `retention` parse UserAccessMap, PermissionCatalogEntry,
+    # UserRoleAssignmentsResponse, AccessExplanation/AccessTrace,
+    # AuditLogListResponse, RunRetentionStatus and AuditRetentionStatus. The
+    # commands ship with these DTOs, so no released CLI parses an older shape
+    # (greenfield coverage). Fingerprint refreshed only.
+    #
+    # PermissionCatalogEntry gained `names` and Title Case `area` values
+    # (2026-10-06, Graph-style permission display names). Same unreleased
+    # commands as above, so no released CLI parses the older shape.
+    # Fingerprint refreshed only.
+    #
+    # Identity shapes newly fingerprinted (2026-10-06): `bifrost users create
+    # --identity` sends IdentityCreate and parses IdentityPublic, and
+    # `bifrost workflows requirements/grant` parse WorkflowRequirements. The
+    # commands ship with these DTOs (greenfield coverage). Fingerprint
+    # refreshed only.
+    #
+    # WorkflowRequirement gained `organization_id` (2026-10-06): the
+    # organization a reach item targets or a policy role's grant is placed at.
+    # ADDITIVE: the same unreleased commands, and the CLI reads items by key.
+    # Fingerprint refreshed only.
+    #
+    # Requirements became Recommended Access (2026-10-06): WorkflowRequirements
+    # is now RecommendedAccess (items RecommendedAccessItem, grant
+    # RecommendedGrant), served at /recommended-access and parsed by `bifrost
+    # workflows recommendations/grant`. Same shape, renamed; the route and the
+    # commands are unreleased. Fingerprint refreshed only.
+    #
+    # AccessExplanation.then became nullable and NowUnavailable gained
+    # `inputs_not_stored` (2026-10-07): older and worker-written access checks
+    # stored no trace, or no inputs either. `bifrost audit explain` is
+    # unreleased and ships handling both. Fingerprint refreshed only.
+    #
+    # AuditLogEntry gained `workflow_name`, AuditLogActor `home_organization_id`
+    # and `home_organization_name`, and RoleUserSummary `identity_kind`
+    # (2026-10-07): optional additive fields the CLI ignores. Fingerprint
+    # refreshed only.
+    #
+    # NowUnavailable gained `run_as_user_missing` (2026-10-09): a stored
+    # `run_as` check whose user no longer exists. `bifrost audit explain` is
+    # still unreleased and ships handling it. Fingerprint refreshed only.
+    #
+    # WorkflowExecutionRequest.run_as description now names Impersonate Users
+    # (2026-10-09). COSMETIC: description text only. Fingerprint refreshed only.
+    #
+    # Agent run launch shapes newly fingerprinted, with optional `run_as`
+    # (2026-10-10): the SDK sends AgentRunEnqueueRequest and parses
+    # AgentRunEnqueueResponse (which echoes `run_as_user_id`), and
+    # AgentRunCreateRequest is the /execute body. ADDITIVE: old clients omit
+    # `run_as` and ignore the echo. Fingerprint refreshed only.
+    "8af658bc3908620526f16736393dff529c5d12e4cf36a5a113303809a178395e"
 )
 
 
@@ -315,12 +468,12 @@ def _fingerprint(models: list[type], routes: tuple[str, ...]) -> str:
 
 
 def test_cli_and_server_contract_version_agree() -> None:
-    """The two copies of the frozen transition marker must match."""
+    """The server and standalone CLI enforce the same breaking-change gate."""
     assert CLI_CONTRACT_VERSION == SERVER_CONTRACT_VERSION, (
         f"CONTRACT_VERSION drift: CLI={CLI_CONTRACT_VERSION} "
         f"(api/bifrost/contract_version.py) vs "
         f"server={SERVER_CONTRACT_VERSION} (api/shared/contract_version.py). "
-        "The runtime compatibility marker must remain synchronized."
+        "The runtime compatibility gate must remain synchronized."
     )
 
 

@@ -7,7 +7,9 @@ Supports webhooks as event sources with adapter-based configuration.
 
 import logging
 from datetime import datetime, timedelta, timezone
+from typing import Any
 from uuid import UUID
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import APIRouter, HTTPException, Query, status
 from sqlalchemy import select
@@ -33,6 +35,7 @@ from src.models.contracts.events import (
     EventSourceCreate,
     EventSourceListResponse,
     EventSourceResponse,
+    EventSourceSecretResponse,
     EventSourceUpdate,
     EventSubscriptionCreate,
     EventSubscriptionListResponse,
@@ -45,9 +48,11 @@ from src.models.contracts.events import (
     TopicsRegistryResponse,
     WebhookAdapterInfo,
     WebhookAdapterListResponse,
+    WebhookSecretRotate,
     WebhookSourceResponse,
 )
 from src.models.enums import EventDeliveryStatus, EventSourceType
+from src.models.orm.agents import Agent
 from src.models.orm.events import (
     Event,
     EventDelivery,
@@ -57,6 +62,8 @@ from src.models.orm.events import (
     WebhookSource,
 )
 from src.models.orm.integrations import Integration
+from src.models.orm.organizations import Organization
+from src.models.orm.workflows import Workflow
 from src.repositories.events import (
     EventDeliveryRepository,
     EventRepository,
@@ -64,9 +71,12 @@ from src.repositories.events import (
     EventSubscriptionRepository,
 )
 from src.core.cache import get_shared_redis
+from src.services.audit import emit_audit
+from src.services.cron_parser import is_cron_expression_valid
 from src.services.events import emit_event
 from src.services.events.registry import CURATED_TOPICS
 from src.services.events.validation import validate_topic
+from src.services.solutions.guard import assert_not_solution_managed
 from src.services.webhooks.registry import get_adapter_registry
 from src.services.webhooks.auth import (
     build_webhook_integration_credentials,
@@ -75,6 +85,14 @@ from src.services.webhooks.auth import (
 from src.services.webhooks.lifecycle import (
     resubscribe_provider,
     unsubscribe_provider,
+)
+from src.services.webhooks.signing_secret import (
+    carry_signing_secret,
+    generate_signing_secret,
+    signing_secret_set,
+    split_signing_secret,
+    uses_signing_secret,
+    with_signing_secret,
 )
 
 logger = logging.getLogger(__name__)
@@ -124,6 +142,7 @@ async def _build_event_source_response(
             integration_id=ws.integration_id,
             integration_name=ws.integration.name if ws.integration else None,
             config=ws.config or {},
+            secret_set=signing_secret_set(ws.state),
             callback_url=_build_callback_url(source.id),
             external_id=ws.external_id,
             provider_metadata=(
@@ -166,6 +185,34 @@ async def _build_event_source_response(
         webhook=webhook_response,
         schedule=schedule_response,
     )
+
+
+def _split_webhook_secret(config: dict[str, Any], adapter: Any) -> tuple[dict[str, Any], bool, str | None]:
+    """Separate the write-only signing secret from adapter config, rejecting
+    a secret the adapter would never verify."""
+    try:
+        remaining, sent, secret = split_signing_secret(config)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
+    if secret and not uses_signing_secret(adapter):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Adapter '{adapter.name}' does not verify a signing secret",
+        )
+    return remaining, sent, secret
+
+
+async def _build_event_source_secret_response(
+    source: EventSource,
+    db: DbSession,
+    raw_secret: str | None,
+) -> EventSourceSecretResponse:
+    """The create/rotate response: the source plus the secret this call set."""
+    response = await _build_event_source_response(source, db)
+    return EventSourceSecretResponse(**response.model_dump(), raw_secret=raw_secret)
 
 
 async def _build_event_subscription_response(
@@ -215,6 +262,225 @@ async def _build_event_subscription_response(
 # =============================================================================
 # Webhook Adapters
 # =============================================================================
+
+
+async def _validate_target_organization(
+    db: DbSession,
+    organization_id: UUID | None,
+) -> None:
+    """Reject references to organizations that do not exist."""
+    if organization_id is None:
+        return
+    if await db.get(Organization, organization_id) is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Organization not found",
+        )
+
+
+def _validate_subscription_scope(
+    source_organization_id: UUID | None,
+    target_organization_id: UUID | None,
+) -> None:
+    """Keep an org Event Source's targets inside its organization.
+
+    A global source may fan out to targets in any organization (a shared
+    webhook routed to per-org workflows is a supported pattern); an org-scoped
+    source may only target its own organization or global targets.
+    """
+    if target_organization_id is None or source_organization_id is None:
+        return
+    if source_organization_id != target_organization_id:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                "Subscription target must be global or belong to the Event "
+                "Source organization"
+            ),
+        )
+
+
+async def _validate_subscription_target(
+    db: DbSession,
+    source: EventSource,
+    request: "EventSubscriptionCreate",
+) -> tuple[UUID, "Workflow | Agent"]:
+    """Resolve and validate the one target selected by a subscription request."""
+    if request.target_type == "workflow":
+        if request.workflow_id is None or request.agent_id is not None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=(
+                    "target_type='workflow' requires workflow_id and forbids agent_id"
+                ),
+            )
+        target = await db.get(Workflow, request.workflow_id)
+        if target is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Workflow not found",
+            )
+        if target.type == "service":
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=(
+                    f"Workflow '{target.name}' is a long-lived service "
+                    "(type='service') and cannot be an event subscription target"
+                ),
+            )
+        if not target.is_active or target.is_orphaned:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Subscription target must be an active Workflow",
+            )
+        target_id = request.workflow_id
+    else:
+        if request.agent_id is None or request.workflow_id is not None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="target_type='agent' requires agent_id and forbids workflow_id",
+            )
+        target = await db.get(Agent, request.agent_id)
+        if target is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Agent not found",
+            )
+        if not target.is_active:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Subscription target must be an active Agent",
+            )
+        target_id = request.agent_id
+
+    _validate_subscription_scope(source.organization_id, target.organization_id)
+
+    target_column = (
+        EventSubscription.workflow_id
+        if request.target_type == "workflow"
+        else EventSubscription.agent_id
+    )
+    duplicate = (
+        await db.execute(
+            select(EventSubscription.id).where(
+                EventSubscription.event_source_id == source.id,
+                EventSubscription.target_type == request.target_type,
+                target_column == target_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if duplicate is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="An Event Subscription already exists for this target",
+        )
+
+    return target_id, target
+
+
+async def _validate_rescoped_subscriptions(
+    source: EventSource,
+    organization_id: UUID | None,
+) -> None:
+    """Reject a source move that would strand an organization-scoped target."""
+    for subscription in source.subscriptions:
+        target = (
+            subscription.agent
+            if subscription.target_type == "agent"
+            else subscription.workflow
+        )
+        if target is not None:
+            _validate_subscription_scope(organization_id, target.organization_id)
+
+
+def _validate_schedule_config(cron_expression: str, timezone_name: str) -> None:
+    """Reject schedule values the scheduler cannot execute."""
+    if not is_cron_expression_valid(cron_expression):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Invalid CRON expression",
+        )
+    try:
+        ZoneInfo(timezone_name)
+    except ZoneInfoNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Unknown timezone: {timezone_name}",
+        ) from exc
+
+
+async def _resolve_webhook_integration(
+    db: DbSession,
+    source: EventSource,
+    adapter: Any,
+    integration_id: UUID | None,
+) -> Any | None:
+    """Resolve the auth object an adapter's subscribe/unsubscribe call needs."""
+    if integration_id is None:
+        return None
+    credentials = await build_webhook_integration_credentials(
+        db, integration_id, source.organization_id
+    )
+    return await resolve_webhook_integration_auth(credentials)
+
+
+async def _resubscribe_webhook_on_change(
+    db: DbSession,
+    source: EventSource,
+    ws: WebhookSource,
+    adapter: Any,
+    new_integration_id: UUID | None,
+) -> None:
+    """Swap the provider subscription when the adapter/integration/config changed.
+
+    Subscribes with the NEW adapter/integration/config FIRST, before touching
+    any existing state or unsubscribing the old one. If the new subscribe
+    call fails, this raises immediately — no ORM attribute has been mutated
+    yet, so the request aborts with the DB unchanged (no half-applied state).
+    Only after the new subscription succeeds do we best-effort unsubscribe
+    the old one; a failure there is logged and does not fail the request,
+    matching the existing ``resubscribe_provider`` lifecycle helper's
+    tolerance for a provider that already dropped the old registration.
+    """
+    new_integration = await _resolve_webhook_integration(db, source, adapter, new_integration_id)
+    try:
+        subscribe_result = await adapter.subscribe(
+            callback_url=_build_public_callback_url(source.id),
+            config=ws.config or {},
+            integration=new_integration,
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Failed to subscribe the updated webhook with the provider: {exc}",
+        ) from exc
+
+    old_adapter = get_adapter_registry().get(ws.adapter_name) if ws.adapter_name else None
+    if old_adapter is not None and ws.external_id:
+        try:
+            old_integration = await _resolve_webhook_integration(
+                db, source, old_adapter, ws.integration_id
+            )
+            await old_adapter.unsubscribe(
+                external_id=ws.external_id,
+                state=ws.state or {},
+                integration=old_integration,
+            )
+        except Exception as exc:
+            logger.warning(
+                "Failed to unsubscribe the previous webhook during update: %s", exc
+            )
+
+    ws.external_id = subscribe_result.external_id
+    # The stored signing secret outlives the provider registration, unless the
+    # new adapter has no use for one.
+    ws.state = (
+        carry_signing_secret(ws.state, subscribe_result.state)
+        if uses_signing_secret(adapter)
+        else subscribe_result.state
+    )
+    ws.expires_at = subscribe_result.expires_at
+    source.error_message = None
 
 
 @router.get(
@@ -397,10 +663,13 @@ async def list_sources(
 
 @router.post(
     "/sources",
-    response_model=EventSourceResponse,
+    response_model=EventSourceSecretResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Create event source",
-    description="Create a new event source (Platform admin only).",
+    description=(
+        "Create a new event source (Platform admin only). A webhook signing "
+        "secret supplied as webhook.config.secret is returned once, in raw_secret."
+    ),
     **operation_route("events.sources.create"),
 )
 async def create_source(
@@ -408,14 +677,14 @@ async def create_source(
     ctx: Context,
     user: CurrentSuperuser,
     db: DbSession,
-) -> EventSourceResponse:
+) -> EventSourceSecretResponse:
     """
     Create a new event source.
 
     For webhooks, this will:
     1. Generate a unique callback URL
     2. Call the adapter's subscribe method (if needed)
-    3. Store the webhook configuration
+    3. Store the webhook configuration, and the signing secret encrypted
     """
     now = datetime.now(timezone.utc)
 
@@ -433,6 +702,26 @@ async def create_source(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=str(exc),
             )
+        if request.webhook is not None or request.schedule is not None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Topic sources cannot include webhook or schedule configuration",
+            )
+    elif request.event_type is not None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="event_type is only valid for topic sources",
+        )
+    if request.source_type == EventSourceType.WEBHOOK and request.schedule is not None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Webhook sources cannot include schedule configuration",
+        )
+    if request.source_type == EventSourceType.SCHEDULE and request.webhook is not None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Schedule sources cannot include webhook configuration",
+        )
 
     # Org targeting follows the unified --org standard: an OMITTED
     # organization_id (HOME) defaults to the caller's org, so a bare create
@@ -441,6 +730,7 @@ async def create_source(
         target_org_id = request.organization_id
     else:
         target_org_id = ctx.org_id
+    await _validate_target_organization(db, target_org_id)
 
     # Create base event source
     source = EventSource(
@@ -458,6 +748,8 @@ async def create_source(
     db.add(source)
     await db.flush()
 
+    signing_secret: str | None = None
+
     # Handle webhook-specific configuration
     if request.source_type == EventSourceType.WEBHOOK:
         if not request.webhook:
@@ -474,13 +766,20 @@ async def create_source(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Unknown adapter: {adapter_name}",
             )
+        config, _, signing_secret = _split_webhook_secret(request.webhook.config, adapter)
 
         # Validate integration if required
         integration = None
+        if request.webhook.integration_id:
+            if await db.get(Integration, request.webhook.integration_id) is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Integration not found",
+                )
         if adapter.requires_integration:
             if not request.webhook.integration_id:
                 raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                     detail=f"Adapter '{adapter_name}' requires integration",
                 )
             try:
@@ -501,7 +800,7 @@ async def create_source(
             event_source_id=source.id,
             adapter_name=adapter_name,
             integration_id=request.webhook.integration_id,
-            config=request.webhook.config,
+            config=config,
             rate_limit_per_minute=request.webhook.rate_limit_per_minute,
             rate_limit_window_seconds=request.webhook.rate_limit_window_seconds,
             rate_limit_enabled=request.webhook.rate_limit_enabled,
@@ -518,29 +817,57 @@ async def create_source(
         # the caller's perspective.
         await db.commit()
 
-        # Call adapter subscribe (for external subscriptions)
-        callback_url = _build_public_callback_url(source.id)
+        # Keep provider setup and metadata commit inside one compensation
+        # boundary. A lost final commit must not orphan a live registration.
+        source_id = source.id
+        callback_url = _build_public_callback_url(source_id)
+        provider_result = None
         try:
-            result = await adapter.subscribe(
+            provider_result = await adapter.subscribe(
                 callback_url=callback_url,
-                config=request.webhook.config,
+                config=config,
                 integration=integration,
             )
-
-            webhook_source.external_id = result.external_id
-            webhook_source.state = result.state
-            webhook_source.expires_at = result.expires_at
-
-        except Exception as e:
-            logger.error(f"Failed to subscribe webhook: {e}", exc_info=True)
-            await db.delete(source)
+            webhook_source.external_id = provider_result.external_id
+            webhook_source.state = with_signing_secret(provider_result.state, signing_secret)
+            webhook_source.expires_at = provider_result.expires_at
             await db.commit()
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail=f"Failed to create provider subscription: {e}",
-            ) from e
-
-        await db.flush()
+        except Exception as exc:
+            logger.exception("Failed to finalize provider subscription")
+            await db.rollback()
+            cleanup_error = None
+            if provider_result is not None:
+                try:
+                    await adapter.unsubscribe(
+                        external_id=provider_result.external_id,
+                        state=provider_result.state,
+                        integration=integration,
+                    )
+                except Exception as unsubscribe_error:
+                    logger.exception("Failed to compensate provider subscription")
+                    cleanup_error = unsubscribe_error
+            # Rollback expires the original ORM objects; reload durable rows.
+            source = await db.get(EventSource, source_id)
+            if source is not None:
+                if cleanup_error is None:
+                    await db.delete(source)
+                else:
+                    retained_webhook = await db.scalar(
+                        select(WebhookSource).where(WebhookSource.event_source_id == source_id)
+                    )
+                    if retained_webhook is not None and provider_result is not None:
+                        retained_webhook.external_id = provider_result.external_id
+                        retained_webhook.state = with_signing_secret(provider_result.state, signing_secret)
+                        retained_webhook.expires_at = provider_result.expires_at
+                    source.is_active = False
+                    source.error_message = "Provider subscription cleanup required"
+                await db.commit()
+            detail = (
+                f"Failed to finalize provider subscription; cleanup required for source {source_id}"
+                if cleanup_error is not None
+                else f"Failed to create provider subscription: {exc}"
+            )
+            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=detail) from exc
 
     # Handle schedule-specific configuration
     if request.source_type == EventSourceType.SCHEDULE:
@@ -549,6 +876,7 @@ async def create_source(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Schedule configuration required for schedule source type",
             )
+        _validate_schedule_config(request.schedule.cron_expression, request.schedule.timezone)
 
         # Create schedule source record
         schedule_source = ScheduleSource(
@@ -579,7 +907,21 @@ async def create_source(
 
     logger.info(f"Created event source {source.id}: {source.name}")
 
-    return await _build_event_source_response(source, db)
+    await emit_audit(
+        db,
+        "event_source.create",
+        resource_type="event_source",
+        resource_id=source.id,
+        details={
+            "name": source.name,
+            "source_type": source.source_type.value,
+            "organization_id": (
+                str(source.organization_id) if source.organization_id else None
+            ),
+        },
+    )
+
+    return await _build_event_source_secret_response(source, db, signing_secret)
 
 
 @router.get(
@@ -649,6 +991,17 @@ async def update_source(
     elif source.webhook_source is None:
         raise HTTPException(status_code=400, detail="Source is not a webhook")
 
+    if request.webhook is not None and source.source_type != EventSourceType.WEBHOOK:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Webhook configuration is only valid for webhook sources",
+        )
+    if request.schedule is not None and source.source_type != EventSourceType.SCHEDULE:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Schedule configuration is only valid for schedule sources",
+        )
+
     # Update basic fields
     if request.name is not None:
         source.name = request.name
@@ -659,6 +1012,8 @@ async def update_source(
             source.error_message = None
 
     if "organization_id" in request.model_fields_set:
+        await _validate_target_organization(db, request.organization_id)
+        await _validate_rescoped_subscriptions(source, request.organization_id)
         source.organization_id = request.organization_id
 
     if not binding_only:
@@ -667,44 +1022,80 @@ async def update_source(
     # Update webhook-specific fields
     if request.webhook and source.webhook_source:
         ws = source.webhook_source
-        if "integration_id" in request.webhook.model_fields_set:
-            integration_id = request.webhook.integration_id
-            if integration_id is not None:
+        webhook_fields = request.webhook.model_fields_set
+        secret_sent = False
+        signing_secret: str | None = None
+
+        desired_adapter_name = (
+            request.webhook.adapter_name
+            if "adapter_name" in webhook_fields
+            else ws.adapter_name
+        )
+        desired_integration_id = (
+            request.webhook.integration_id
+            if "integration_id" in webhook_fields
+            else ws.integration_id
+        )
+        adapter_changed = webhook_fields.intersection(
+            {"adapter_name", "integration_id", "config"}
+        )
+        if adapter_changed:
+            adapter = get_adapter_registry().get(desired_adapter_name)
+            if adapter is None:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=f"Unknown adapter: {desired_adapter_name}",
+                )
+            if "config" in webhook_fields:
+                # Absent "secret" keeps the stored secret; a value replaces it
+                # and an empty one clears it, after the resubscribe below.
+                ws.config, secret_sent, signing_secret = _split_webhook_secret(
+                    request.webhook.config, adapter
+                )
+            if desired_integration_id is not None:
                 integration = await db.scalar(
                     select(Integration).where(
-                        Integration.id == integration_id,
+                        Integration.id == desired_integration_id,
                         Integration.is_deleted.is_(False),
                     )
                 )
                 if integration is None:
-                    raise HTTPException(status_code=404, detail="Integration not found")
-                if (
-                    ws.adapter_name == "microsoft_bot_framework"
-                    and integration.name != "Microsoft Teams Bot"
-                ):
                     raise HTTPException(
-                        status_code=400,
-                        detail="Expected Microsoft Teams Bot integration",
+                        status_code=status.HTTP_404_NOT_FOUND,
+                        detail="Integration not found",
                     )
-            ws.integration_id = integration_id
-        if request.webhook.config:
-            ws.config = request.webhook.config
-            # Sync secret to state (adapter reads from state, not config)
-            if request.webhook.config.get("secret"):
-                new_state = dict(ws.state or {})
-                new_state["secret"] = request.webhook.config["secret"]
-                ws.state = new_state
-        if "rate_limit_per_minute" in request.webhook.model_fields_set:
+                if desired_adapter_name == "microsoft_bot_framework" and integration.name != "Microsoft Teams Bot":
+                    raise HTTPException(status_code=400, detail="Expected Microsoft Teams Bot integration")
+            if adapter.requires_integration and desired_integration_id is None:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=f"Adapter '{desired_adapter_name}' requires integration",
+                )
+            # Subscribes the new adapter/integration/config first, THEN
+            # unsubscribes the old one on success. See
+            # ``_resubscribe_webhook_on_change`` for why this order matters:
+            # a provider failure on the new subscribe leaves the DB
+            # untouched (no ORM attribute is mutated before that call).
+            await _resubscribe_webhook_on_change(db, source, ws, adapter, desired_integration_id)
+            if secret_sent:
+                ws.state = with_signing_secret(ws.state, signing_secret)
+
+        ws.adapter_name = desired_adapter_name
+        ws.integration_id = desired_integration_id
+        if "rate_limit_per_minute" in webhook_fields:
             ws.rate_limit_per_minute = request.webhook.rate_limit_per_minute
-        if "rate_limit_window_seconds" in request.webhook.model_fields_set:
+        if "rate_limit_window_seconds" in webhook_fields:
             ws.rate_limit_window_seconds = request.webhook.rate_limit_window_seconds
-        if "rate_limit_enabled" in request.webhook.model_fields_set:
+        if "rate_limit_enabled" in webhook_fields:
             ws.rate_limit_enabled = request.webhook.rate_limit_enabled
         ws.updated_at = datetime.now(timezone.utc)
 
     # Update schedule-specific fields
     if request.schedule and source.schedule_source:
         ss = source.schedule_source
+        next_cron = request.schedule.cron_expression or ss.cron_expression
+        next_timezone = request.schedule.timezone or ss.timezone
+        _validate_schedule_config(next_cron, next_timezone)
         if request.schedule.cron_expression is not None:
             ss.cron_expression = request.schedule.cron_expression
         if request.schedule.timezone is not None:
@@ -733,6 +1124,14 @@ async def update_source(
     source = result.unique().scalar_one()
 
     logger.info(f"Updated event source {log_safe(source_id)}")
+
+    await emit_audit(
+        db,
+        "event_source.update",
+        resource_type="event_source",
+        resource_id=source.id,
+        details={"name": source.name, "fields": sorted(request.model_fields_set)},
+    )
 
     return await _build_event_source_response(source, db)
 
@@ -794,6 +1193,59 @@ async def resubscribe_source(
     return await _build_event_source_response(source, db)
 
 
+@router.post(
+    "/sources/{source_id}/rotate-secret",
+    response_model=EventSourceSecretResponse,
+    summary="Rotate a webhook source's signing secret",
+    description=(
+        "Replace the HMAC signing secret with a supplied or generated one. The "
+        "response returns the new secret once, in raw_secret; no later call "
+        "returns it (Platform admin only)."
+    ),
+)
+async def rotate_source_secret(
+    source_id: UUID,
+    request: WebhookSecretRotate,
+    ctx: Context,
+    user: CurrentSuperuser,
+    db: DbSession,
+) -> EventSourceSecretResponse:
+    """Set a new signing secret on a webhook source.
+
+    No Solution bundle carries the secret, and deploy keeps the stored one, so
+    Solution-managed sources may rotate it too.
+    """
+    repo = EventSourceRepository(db)
+    source = await repo.get_by_id_with_details(source_id)
+    if not source:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Event source not found",
+        )
+    ws = source.webhook_source
+    adapter = get_adapter_registry().get(ws.adapter_name) if ws else None
+    if ws is None or adapter is None or not uses_signing_secret(adapter):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only webhook sources whose adapter verifies a signing secret can rotate it",
+        )
+
+    signing_secret = request.secret or generate_signing_secret()
+    ws.state = with_signing_secret(ws.state, signing_secret)
+    ws.updated_at = datetime.now(timezone.utc)
+    await db.flush()
+
+    await emit_audit(
+        db,
+        "event_source.rotate_secret",
+        resource_type="event_source",
+        resource_id=source.id,
+        details={"name": source.name, "generated": request.secret is None},
+    )
+
+    return await _build_event_source_secret_response(source, db, signing_secret)
+
+
 @router.delete(
     "/sources/{source_id}",
     status_code=status.HTTP_204_NO_CONTENT,
@@ -826,8 +1278,6 @@ async def delete_source(
     # Solution-managed triggers are deploy-owned — uninstall removes them, not
     # this endpoint. Refuse with a clean 409 (the DELETE cascade would otherwise
     # strip a managed source's deploy-owned rows outside deploy).
-    from src.services.solutions.guard import assert_not_solution_managed
-
     assert_not_solution_managed(source)
 
     # Confirm provider cleanup before deleting the local source. Retaining the
@@ -857,10 +1307,19 @@ async def delete_source(
                 ),
             ) from exc
 
+    source_name = source.name
     await db.delete(source)
     await db.flush()
 
     logger.info(f"Deleted event source {log_safe(source_id)}")
+
+    await emit_audit(
+        db,
+        "event_source.delete",
+        resource_type="event_source",
+        resource_id=source_id,
+        details={"name": source_name},
+    )
 
 
 # =============================================================================
@@ -934,39 +1393,8 @@ async def create_subscription(
             detail="Event source not found",
         )
 
-    # Validate target
-    if request.target_type == "agent":
-        if not request.agent_id:
-            raise HTTPException(
-                status_code=400, detail="agent_id required when target_type is 'agent'"
-            )
-        from src.models.orm.agents import Agent
-
-        agent = await db.get(Agent, request.agent_id)
-        if not agent:
-            raise HTTPException(status_code=404, detail="Agent not found")
-    elif request.target_type == "workflow":
-        if not request.workflow_id:
-            raise HTTPException(
-                status_code=400,
-                detail="workflow_id required when target_type is 'workflow'",
-            )
-        # Services run under supervision and cannot be one-shot event targets.
-        from src.models.orm.workflows import Workflow as WorkflowORM
-
-        target = await db.get(WorkflowORM, request.workflow_id)
-        if target is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Workflow '{request.workflow_id}' not found",
-            )
-        if target.type == "service":
-            raise HTTPException(
-                status_code=400,
-                detail=f"Workflow '{target.name}' is a long-lived service "
-                "(type='service') and cannot be an event subscription target. "
-                "Services emit events; workflows and agents consume them.",
-            )
+    # Target existence, active/type, cross-org scope, and duplicate checks.
+    await _validate_subscription_target(db, source, request)
 
     subscription = EventSubscription(
         event_source_id=source_id,
@@ -975,7 +1403,7 @@ async def create_subscription(
         agent_id=request.agent_id,
         event_type=request.event_type,
         criteria=(
-            request.criteria.model_dump(mode="json")
+            request.criteria.model_dump(mode="json", exclude_unset=True)
             if request.criteria is not None
             else None
         ),
@@ -1000,6 +1428,17 @@ async def create_subscription(
 
     logger.info(
         f"Created subscription {subscription.id} for source {log_safe(source_id)}"
+    )
+
+    await emit_audit(
+        db,
+        "event_subscription.create",
+        resource_type="event_subscription",
+        resource_id=subscription.id,
+        details={
+            "event_source_id": str(source_id),
+            "target_type": subscription.target_type,
+        },
     )
 
     return await _build_event_subscription_response(subscription, db)
@@ -1052,8 +1491,6 @@ async def update_subscription(
         )
 
     # Solution-managed subscriptions are deploy-owned, read-only here.
-    from src.services.solutions.guard import assert_not_solution_managed
-
     assert_not_solution_managed(subscription)
 
     # Update fields - use model_fields_set to distinguish "not provided" from "set to null"
@@ -1061,7 +1498,7 @@ async def update_subscription(
         subscription.event_type = request.event_type
     if "criteria" in request.model_fields_set:
         subscription.criteria = (
-            request.criteria.model_dump(mode="json")
+            request.criteria.model_dump(mode="json", exclude_unset=True)
             if request.criteria is not None
             else None
         )
@@ -1075,6 +1512,14 @@ async def update_subscription(
     await db.flush()
 
     logger.info(f"Updated subscription {log_safe(subscription_id)}")
+
+    await emit_audit(
+        db,
+        "event_subscription.update",
+        resource_type="event_subscription",
+        resource_id=subscription.id,
+        details={"fields": sorted(request.model_fields_set)},
+    )
 
     return await _build_event_subscription_response(subscription, db)
 
@@ -1120,14 +1565,60 @@ async def delete_subscription(
         )
 
     # Solution-managed subscriptions are deploy-owned, read-only here.
-    from src.services.solutions.guard import assert_not_solution_managed
-
     assert_not_solution_managed(subscription)
 
     await db.delete(subscription)
     await db.flush()
 
     logger.info(f"Deleted subscription {log_safe(subscription_id)}")
+
+    await emit_audit(
+        db,
+        "event_subscription.delete",
+        resource_type="event_subscription",
+        resource_id=subscription_id,
+        details={"event_source_id": str(source_id)},
+    )
+
+
+@router.get(
+    "/sources/{source_id}/subscriptions/{subscription_id}",
+    response_model=EventSubscriptionResponse,
+    summary="Get subscription",
+    description="Get a specific event subscription by ID (Platform admin only).",
+**operation_route("events.subscriptions.get"))
+async def get_subscription(
+    source_id: UUID,
+    subscription_id: UUID,
+    ctx: Context,
+    user: CurrentSuperuser,
+    db: DbSession,
+) -> EventSubscriptionResponse:
+    """Get a single Event Subscription by ID (platform admin only)."""
+    source_repo = EventSourceRepository(db)
+    source = await source_repo.get_by_id(source_id)
+    if not source:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Event source not found",
+        )
+
+    result = await db.execute(
+        select(EventSubscription)
+        .options(joinedload(EventSubscription.workflow), joinedload(EventSubscription.agent))
+        .where(
+            EventSubscription.id == subscription_id,
+            EventSubscription.event_source_id == source_id,
+        )
+    )
+    subscription = result.unique().scalar_one_or_none()
+    if not subscription:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Subscription not found",
+        )
+
+    return await _build_event_subscription_response(subscription, db)
 
 
 # =============================================================================

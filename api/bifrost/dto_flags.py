@@ -62,6 +62,7 @@ DTO_EXCLUDES: dict[str, set[str]] = {
     # the DTO flag generator. See _ORG_TARGET_EXCLUDE above.
     "ConfigCreate": set(_ORG_TARGET_EXCLUDE),
     "TableCreate": set(_ORG_TARGET_EXCLUDE),
+    "TableUpdate": set(_ORG_TARGET_EXCLUDE),
     # File policies use the files-specific ``--scope`` option to target an
     # organization; it maps to organization_id in the REST payload.
     "FilePolicyCreate": set(_ORG_TARGET_EXCLUDE),
@@ -83,6 +84,8 @@ DTO_EXCLUDES: dict[str, set[str]] = {
         "allowed_methods",
         "execution_mode",
         "disable_global_key",
+        # Named by ``--run-as <identity>`` (a ref to the identity, not its raw id).
+        "run_identity_id",
     },
     # Integrations: ``oauth_provider`` (out-of-scope) — declared even when
     # absent so adding the field later flags the new surface.

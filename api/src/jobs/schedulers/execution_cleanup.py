@@ -3,6 +3,10 @@ Execution Cleanup Scheduler
 
 Cleans up stuck workflow executions and stale autonomous agent runs that
 remain in claimed or otherwise recoverably orphaned states for too long.
+Cleans up stuck workflow executions and stale agent runs that remain in
+in-progress states for too long. Executions and agent runs stuck in
+cancelling are marked cancelled once the worker has had
+CANCELLING_TIMEOUT_MINUTES to finish the cancellation.
 
 Runs every 5 minutes to find and timeout stuck executions.
 """
@@ -10,7 +14,7 @@ Runs every 5 minutes to find and timeout stuck executions.
 import logging
 import os
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Any, Literal
 
 from sqlalchemy import and_, delete, func, select, text
 
@@ -206,6 +210,7 @@ async def cleanup_stuck_executions() -> dict[str, Any]:
         "errors": [],
         "agent_run_queued_timeouts": 0,
         "agent_run_running_timeouts": 0,
+        "agent_run_cancelling_timeouts": 0,
         "agent_run_total_cleaned": 0,
         "agent_run_errors": [],
     }
@@ -620,6 +625,7 @@ async def cleanup_stuck_executions() -> dict[str, Any]:
                 extra={
                     "agent_run_queued_timeouts": results["agent_run_queued_timeouts"],
                     "agent_run_running_timeouts": results["agent_run_running_timeouts"],
+                    "agent_run_cancelling_timeouts": results["agent_run_cancelling_timeouts"],
                     "agent_run_total_cleaned": results["agent_run_total_cleaned"],
                 },
             )
@@ -663,13 +669,29 @@ def _agent_run_timeout_seconds(agent: Agent | None) -> int:
     return DEFAULT_AGENT_RUN_TIMEOUT_SECONDS
 
 
+def _agent_run_sweep_policy(run: AgentRun, agent: Agent | None) -> tuple[datetime | None, int]:
+    """Return the reference time and stale threshold (seconds) for a run.
+
+    A cancelling run is measured from when cancellation was requested, so a
+    long run cancelled moments ago keeps the full window to wind down.
+    """
+    if run.status == "cancelling":
+        return run.cancel_requested_at, CANCELLING_TIMEOUT_MINUTES * 60
+    if run.status == "queued":
+        reference_time = run.created_at
+    else:
+        reference_time = run.started_at or run.created_at
+    return reference_time, _agent_run_timeout_seconds(agent) + AGENT_RUN_TIMEOUT_GRACE_SECONDS
+
+
 async def _cleanup_stale_agent_runs(now: datetime) -> dict[str, Any]:
-    """Terminalize stale queued/running AgentRun rows without replaying them."""
+    """Terminalize stale queued/running/cancelling AgentRun rows without replaying them."""
     session_factory = get_session_factory()
     updates: list[dict[str, Any]] = []
     results: dict[str, Any] = {
         "agent_run_queued_timeouts": 0,
         "agent_run_running_timeouts": 0,
+        "agent_run_cancelling_timeouts": 0,
         "agent_run_total_cleaned": 0,
         "agent_run_errors": [],
     }
@@ -679,24 +701,18 @@ async def _cleanup_stale_agent_runs(now: datetime) -> dict[str, Any]:
             query = (
                 select(AgentRun, Agent)
                 .outerjoin(Agent, AgentRun.agent_id == Agent.id)
-                .where(AgentRun.status.in_(("queued", "running")))
+                .where(AgentRun.status.in_(("queued", "running", "cancelling")))
                 .order_by(AgentRun.created_at.asc())
             )
             runs = (await db.execute(query)).all()
 
             for candidate, agent in runs:
-                timeout_seconds = _agent_run_timeout_seconds(agent)
-                timeout_with_grace = timeout_seconds + AGENT_RUN_TIMEOUT_GRACE_SECONDS
-                reference_time = (
-                    candidate.created_at
-                    if candidate.status == "queued"
-                    else (candidate.started_at or candidate.created_at)
-                )
+                reference_time, threshold_seconds = _agent_run_sweep_policy(candidate, agent)
                 if reference_time is None:
                     continue
 
                 elapsed = (now - reference_time).total_seconds()
-                if elapsed <= timeout_with_grace:
+                if elapsed <= threshold_seconds:
                     continue
 
                 # Lock only the row already identified as stale. The status
@@ -715,29 +731,34 @@ async def _cleanup_stale_agent_runs(now: datetime) -> dict[str, Any]:
                 if run is None:
                     continue
 
-                reference_time = (
-                    run.created_at
-                    if run.status == "queued"
-                    else (run.started_at or run.created_at)
-                )
+                reference_time, threshold_seconds = _agent_run_sweep_policy(run, agent)
                 if reference_time is None:
                     continue
                 elapsed = (now - reference_time).total_seconds()
-                if elapsed <= timeout_with_grace:
+                if elapsed <= threshold_seconds:
                     continue
 
                 agent_name = agent.name if agent is not None else "Chat"
+                chat_kind: Literal["error", "cancelled"] = "error"
                 if run.status == "queued":
                     final_status = "failed"
                     timeout_reason = (
                         f"Agent run timed out waiting in queue after "
-                        f"{timeout_with_grace} seconds."
+                        f"{threshold_seconds} seconds."
                     )
                     results["agent_run_queued_timeouts"] += 1
+                elif run.status == "cancelling":
+                    final_status = "cancelled"
+                    chat_kind = "cancelled"
+                    timeout_reason = (
+                        f"Agent run stuck in cancelling for {CANCELLING_TIMEOUT_MINUTES}+ "
+                        f"minutes; worker likely stopped during cancellation."
+                    )
+                    results["agent_run_cancelling_timeouts"] += 1
                 else:
                     final_status = "timeout"
                     timeout_reason = (
-                        f"Agent run timed out after {timeout_with_grace} seconds."
+                        f"Agent run timed out after {threshold_seconds} seconds."
                     )
                     results["agent_run_running_timeouts"] += 1
 
@@ -749,8 +770,7 @@ async def _cleanup_stale_agent_runs(now: datetime) -> dict[str, Any]:
                         "agent_name": agent_name,
                         "stuck_status": run.status,
                         "stuck_for_seconds": int(elapsed),
-                        "timeout_seconds": timeout_seconds,
-                        "timeout_with_grace": timeout_with_grace,
+                        "threshold_seconds": threshold_seconds,
                     },
                 )
 
@@ -765,6 +785,7 @@ async def _cleanup_stale_agent_runs(now: datetime) -> dict[str, Any]:
                             {
                                 "conversation_id": run.conversation_id,
                                 "run_id": str(run.id),
+                                "kind": chat_kind,
                                 "status": final_status,
                                 "error": timeout_reason,
                             }
@@ -786,10 +807,10 @@ async def _cleanup_stale_agent_runs(now: datetime) -> dict[str, Any]:
                     await publish_chat_run_event(
                         conversation_id=chat_event["conversation_id"],
                         run_id=chat_event["run_id"],
-                        kind="error",
+                        kind=chat_event["kind"],
                         status=chat_event["status"],
                         payload=ChatStreamChunk(
-                            type="error",
+                            type=chat_event["kind"],
                             error=chat_event["error"],
                             run_status=chat_event["status"],
                         ),

@@ -171,7 +171,9 @@ class WriteBuffer:
             entity_id=None,
             entity_key=key,
             org_id=org_id or self.org_id,
-            data={"value": value, "config_type": config_type} if value is not None else {},
+            data={"value": value, "config_type": config_type}
+            if value is not None
+            else {},
             timestamp=datetime.now(timezone.utc).isoformat(),
             user_id=self.user_id,
             sequence=self._next_sequence(),
@@ -206,50 +208,10 @@ class WriteBuffer:
         data: dict[str, Any],
         org_id: str | None = None,
     ) -> str:
-        """
-        Buffer a role change.
-
-        Args:
-            operation: "create", "update", or "delete"
-            role_id: Role ID (None for create, will generate)
-            data: Role data
-            org_id: Organization ID
-
-        Returns:
-            str: Role ID (generated if create)
-        """
-        entity_key = role_id or str(uuid4())
-
-        change = ChangeRecord(
-            entity_type="role",
-            operation=operation,
-            entity_id=role_id,
-            entity_key=entity_key,
-            org_id=org_id or self.org_id,
-            data=data,
-            timestamp=datetime.now(timezone.utc).isoformat(),
-            user_id=self.user_id,
-            sequence=self._next_sequence(),
+        """Legacy role buffering has no authenticated grant-maintenance contract."""
+        raise ValueError(
+            "Legacy buffered RBAC mutations are unsupported; use the canonical role assignment API"
         )
-        await self._async_buffer_change(change)
-
-        # Update read cache
-        if operation != "delete":
-            await self._update_role_cache(entity_key, data, org_id or self.org_id)
-
-        return entity_key
-
-    async def _update_role_cache(
-        self,
-        role_id: str,
-        data: dict[str, Any],
-        org_id: str | None,
-    ) -> None:
-        """Update the read cache after a role write."""
-        from src.core.cache import get_redis, roles_hash_key
-
-        async with get_redis() as r:
-            await r.hset(roles_hash_key(org_id), role_id, json.dumps(data))  # type: ignore[misc]
 
     async def add_role_users_change(
         self,
@@ -257,19 +219,10 @@ class WriteBuffer:
         user_ids: list[str],
         org_id: str | None = None,
     ) -> None:
-        """Buffer a role-users assignment change."""
-        change = ChangeRecord(
-            entity_type="user_role",
-            operation="assign",
-            entity_id=role_id,
-            entity_key=f"{role_id}:users",
-            org_id=org_id or self.org_id,
-            data={"user_ids": user_ids},
-            timestamp=datetime.now(timezone.utc).isoformat(),
-            user_id=self.user_id,
-            sequence=self._next_sequence(),
+        """Assignments must be authorized through the canonical API immediately."""
+        raise ValueError(
+            "Legacy buffered RBAC mutations are unsupported; use the canonical role assignment API"
         )
-        await self._async_buffer_change(change)
 
     async def add_role_forms_change(
         self,

@@ -181,6 +181,7 @@ services:
       - /app/src/services/sdk_package/node_modules  # preserve npm deps from image
       - /app/src/services/sdk_package/sdk_src  # preserve image-baked SDK source (masked by :ro src mount)
       - ./api/shared:/app/shared:ro
+      - ./api/product-updates.bundle.json:/app/product-updates.bundle.json:ro
       - ./api/bifrost:/app/bifrost:ro
       - ./api/.coveragerc:/app/.coveragerc:ro
       - ./api/alembic:/app/alembic:ro
@@ -264,9 +265,19 @@ services:
       - /app/src/services/sdk_package/node_modules  # preserve npm deps from image
       - /app/src/services/sdk_package/sdk_src  # preserve image-baked SDK source (masked by :ro src mount)
       - ./api/shared:/app/shared:ro
+      - ./api/alembic:/app/alembic:ro
+      - ./api/alembic.ini:/app/alembic.ini:ro
       - ./api/bifrost:/app/bifrost:ro
       - ./api/.coveragerc:/app/.coveragerc:ro
+    healthcheck:
+      test: ["CMD", "python", "-m", "src.worker.health", "--ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
     depends_on:
+      init:
+        condition: service_completed_successfully
       pgbouncer:
         condition: service_healthy
       rabbitmq:
@@ -316,6 +327,8 @@ services:
       - /app/src/services/sdk_package/node_modules  # preserve npm deps from image
       - /app/src/services/sdk_package/sdk_src  # preserve image-baked SDK source (masked by :ro src mount)
       - ./api/shared:/app/shared:ro
+      - ./api/alembic:/app/alembic:ro
+      - ./api/alembic.ini:/app/alembic.ini:ro
       - ./api/bifrost:/app/bifrost:ro
       - ./api/.coveragerc:/app/.coveragerc:ro
       - test-mounts:/mounts
@@ -325,7 +338,15 @@ services:
       # server-side. Same safety shape as the api mount: only the
       # uid-1000-created fixture subdir, never the LOG_DIR root.
       - ${LOG_DIR:-/tmp/bifrost}/solution-repo-fixtures:/tmp/bifrost/solution-repo-fixtures
+    healthcheck:
+      test: ["CMD", "python", "-m", "src.scheduler.health", "--ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
     depends_on:
+      init:
+        condition: service_completed_successfully
       pgbouncer:
         condition: service_healthy
       rabbitmq:
@@ -411,6 +432,7 @@ services:
       - /app/src/services/sdk_package/node_modules  # preserve npm deps from image
       - /app/src/services/sdk_package/sdk_src  # preserve image-baked SDK source (masked by :ro src mount)
       - ./api/shared:/app/shared:ro
+      - ./api/product-updates.bundle.json:/app/product-updates.bundle.json:ro
       - ./api/bifrost:/app/bifrost:ro
       - ./doc_renderer_service:/app/doc_renderer_service:ro
       - ./api/fuzz:/app/fuzz:ro
@@ -547,6 +569,11 @@ services:
         VITE_BIFROST_VERSION: test
     network_mode: none
     security_opt: ["no-new-privileges:true"]
+    command: ["sh", "-c", "npm run tsc && npm run lint && npm test"]
+    # Client tests read generated repository files (access list) at the
+    # repository root, which resolves to / inside /app.
+    volumes:
+      - ./docs/generated:/docs/generated:ro
     profiles:
       - client-check
 
@@ -600,6 +627,8 @@ services:
       CI: "true"
     volumes:
       - ./client/e2e:/app/e2e
+      # SDK browser fixtures compile the current source with production React.
+      - ./client/src/lib/app-sdk:/app/src/lib/app-sdk:ro
       - ./client/playwright.config.ts:/app/playwright.config.ts:ro
       - ./client/package.json:/app/package.json:ro
       - ./client/tsconfig.json:/app/tsconfig.json:ro

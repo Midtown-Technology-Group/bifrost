@@ -15,7 +15,7 @@ from src.models.orm.agent_action_approvals import AgentActionApproval
 from src.models.orm.summary_backfill_job import SummaryBackfillJob
 from src.models.orm.agents import Agent, AgentDelegation, AgentRole, AgentTool, Conversation, Message, MessageAttachment
 from src.models.orm.ai_usage import AIModelPricing, AIUsage
-from src.models.orm.ai_models import AIEmbeddingConfig, AIModelAssignment, AIModelProfile, AIProviderConnection
+from src.models.orm.ai_models import AIEmbeddingConfig, AIModelAssignment, AIModelCatalog, AIModelProfile, AIProviderConnection
 from src.models.orm.app_embed_secrets import AppEmbedSecret
 from src.models.orm.artifacts import Artifact
 from src.models.orm.platform_jobs import PlatformJob
@@ -33,6 +33,7 @@ from src.models.orm.form_publications import FormPublication
 from src.models.orm.app_roles import AppRole
 from src.models.orm.applications import Application
 from src.models.orm.audit import AuditLog
+from src.models.orm.audit_archive import AuditArchiveSegment
 from src.models.orm.base import Base
 from src.models.orm.branding import GlobalBranding
 from src.models.orm.cli import CLISession
@@ -79,17 +80,22 @@ from src.models.orm.solution_deployments import (
 )
 from src.models.orm.solution_connection_schema import SolutionConnectionSchema
 from src.models.orm.solution_file_location import SolutionFileLocation
+from src.models.orm.solution_workflow_permission_requests import SolutionWorkflowPermissionRequest
 from src.models.orm.solutions import Solution
 from src.models.orm.solution_export_jobs import SolutionExportJob
 from src.models.orm.custom_claims import CustomClaim
 from src.models.orm.tables import Document, Table
-from src.models.orm.users import Role, User, UserRole
+from src.models.orm.users import Role, RolePermission, User, UserRole, UserRoleBoundary
 from src.models.orm.user_invites import UserInvite
+from src.models.orm.workflow_operation_usage import WorkflowOperationUsage
+from src.models.orm.workflow_permissions import WorkflowPermissionGrant
 from src.models.orm.workflow_roles import WorkflowRole
+from src.models.orm.workflow_run_daily import WorkflowRunDaily
 from src.models.orm.workflows import Workflow
-from src.models.orm.file_index import FileIndex
+from src.models.orm.file_index import FileIndex, SolutionFileIndex
 from src.models.orm.file_metadata import FileMetadata, FilePolicy
 from src.models.orm.policy_rule import PolicyRule
+from src.models.orm.product_updates import ProductUpdateReceipt
 from src.models.orm.services import ServiceAttempt, ServiceDefinition, ServiceLog
 from src.models.orm.worker_metric import WorkerMetric
 from src.models.orm.workspace_repo_changesets import WorkspaceRepoChangeset
@@ -112,6 +118,7 @@ __all__ = [
     "SolutionConfigSchema",
     "SolutionConnectionSchema",
     "SolutionFileLocation",
+    "SolutionWorkflowPermissionRequest",
     "SolutionDeployJob",
     "SolutionDeployment",
     "SolutionDeploymentDependency",
@@ -134,8 +141,11 @@ __all__ = [
     # Users and Roles
     "User",
     "Role",
+    "RolePermission",
     "UserRole",
+    "UserRoleBoundary",
     "UserInvite",
+    "ProductUpdateReceipt",
     # Agent Runs
     "AgentRun",
     "AgentActionApproval",
@@ -157,6 +167,7 @@ __all__ = [
     "AIUsage",
     "AIModelAssignment",
     "AIEmbeddingConfig",
+    "AIModelCatalog",
     "AIModelProfile",
     "AIProviderConnection",
     # Forms
@@ -187,6 +198,8 @@ __all__ = [
     "SystemConfig",
     # Workflows
     "Workflow",
+    "WorkflowOperationUsage",
+    "WorkflowPermissionGrant",
     "WorkflowRole",
     # Services (supervised executables)
     "ServiceDefinition",
@@ -202,13 +215,13 @@ __all__ = [
     "IntegrationMapping",
     # Knowledge Store
     "KnowledgeStore",
-    # Knowledge Namespace Roles
     "KnowledgeNamespaceRole",
     # Memory
     "MemoryStore",
     "MemoryEntry",
     # Audit
     "AuditLog",
+    "AuditArchiveSegment",
     # MFA
     "UserMFAMethod",
     "MFARecoveryCode",
@@ -221,8 +234,10 @@ __all__ = [
     "KnowledgeStorageDaily",
     "PlatformMetricsSnapshot",
     "WorkflowROIDaily",
+    "WorkflowRunDaily",
     # Workspace
     "FileIndex",
+    "SolutionFileIndex",
     "FileMetadata",
     "FilePolicy",
     # Policy Rules

@@ -12,26 +12,25 @@ from uuid import UUID, uuid4
 
 import pytest
 
+from tests.e2e.fixtures.device_bridge import set_bridge_grants
+
 from tests.e2e.api.test_device_protocol import _enroll
 
 
 @pytest.fixture(scope="module")
 def execute_device_role(e2e_client, platform_admin, org1_user, org2_user):
-    """Grant can_manage_config+can_execute_devices to both org users."""
+    """Grant devices.readwrite+devices.execute to both org users."""
     response = e2e_client.post(
         "/api/roles",
         headers=platform_admin.headers,
         json={
             "name": "E2E Device Executors",
             "description": "Granted by test_device_jobs_api e2e",
-            "permissions": {
-                "can_execute_devices": True,
-                "can_manage_config": True,
-            },
         },
     )
     assert response.status_code in (200, 201), response.text
     role_id = response.json()["id"]
+    set_bridge_grants(e2e_client, platform_admin.headers, role_id, ["devices.readwrite", "devices.execute"])
     assign = e2e_client.post(
         f"/api/roles/{role_id}/users",
         headers=platform_admin.headers,
@@ -89,7 +88,7 @@ async def test_create_busy_and_observation(
         e2e_client, platform_admin.headers, org1["id"], "job-device"
     )
 
-    # User create (Bearer JWT + can_execute_devices).
+    # User create (Bearer JWT + devices.execute).
     created = e2e_client.post(
         f"/api/devices/{device_id}/jobs",
         headers=org1_user.headers,
@@ -165,7 +164,7 @@ async def test_permission_and_auth_denials(
     assert anon.status_code == 401, anon.text
     assert anon.json()["error"]["code"] == "unauthenticated"
 
-    # Org user without can_execute_devices → 403 permission_denied.
+    # Org user without devices.execute → 403 permission_denied.
     denied = e2e_client.post(
         f"/api/devices/{device_id}/jobs",
         headers=non_admin_user.headers,

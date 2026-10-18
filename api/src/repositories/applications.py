@@ -17,6 +17,7 @@ from uuid import UUID
 from sqlalchemy import select, text
 from sqlalchemy.orm import defer
 
+from shared import access_checks
 from src.core.log_safety import log_safe
 from src.core.org_filter import OrgFilterType
 from src.models.contracts.applications import (
@@ -240,6 +241,8 @@ class ApplicationRepository(OrgScopedRepository[Application]):
         await self._update_slug(application, data.slug)
         self._update_scope(application, data.scope, is_platform_admin)
         await self._replace_role_associations(application, data.role_ids, updated_by)
+        if data.scope is not None and is_platform_admin:
+            access_checks.note_power("apps.readwrite", application.organization_id, subject=f"application:{app_id}")
 
         await self.session.flush()
         await self.session.refresh(application)
@@ -504,6 +507,7 @@ class ApplicationRepository(OrgScopedRepository[Application]):
             bundle_result, _migrated = await build_with_migrate(
                 str(app_id), application.repo_prefix, "preview",
                 dependencies=application.dependencies or {},
+                db=self.session,
             )
         else:
             bundle_result = await BundlerService().build(str(app_id), application.repo_prefix,

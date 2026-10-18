@@ -320,6 +320,7 @@ async def _run_sync_once(
     await db.commit()
     try:
         await result.finalize_s3()
+        await db.commit()  # source search index rows written by finalize
     except SolutionFinalizeIncomplete:
         # The DB phase is committed; the durable caller records a retryable
         # failure so a later full-replace sync can finish publication.

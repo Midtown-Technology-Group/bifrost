@@ -16,6 +16,7 @@ from src.models.contracts.workflows import (
 )
 from src.models.contracts.executions import WorkflowExecutionRequest, WorkflowExecutionResponse
 from src.models.enums import ExecutionStatus
+from src.core.principal import UserPrincipal
 from src.routers import workflows
 
 
@@ -133,7 +134,7 @@ def _exec_user(**overrides):
         "app_id": None,
     }
     data.update(overrides)
-    return SimpleNamespace(**data)
+    return UserPrincipal(**data)
 
 
 def _workflow(**overrides):
@@ -628,7 +629,7 @@ async def test_execute_workflow_schedules_workflow_with_delay() -> None:
 
     with (
         patch("src.repositories.WorkflowRepository", return_value=repo),
-        patch.object(workflows, "_insert_scheduled_execution", AsyncMock(return_value=scheduled_id)) as insert_scheduled,
+        patch("shared.sdk_workflow_execution.insert_scheduled_execution", AsyncMock(return_value=scheduled_id)) as insert_scheduled,
     ):
         result = await workflows.execute_workflow(
             WorkflowExecutionRequest(
@@ -676,8 +677,8 @@ async def test_execute_workflow_preserves_explicit_org_override_for_dispatch() -
             "src.services.execution.service.run_workflow",
             AsyncMock(return_value=service_result),
         ) as run_workflow,
-        patch.object(workflows, "publish_execution_update", AsyncMock()),
-        patch.object(workflows, "publish_history_update", AsyncMock()),
+        patch("src.core.pubsub.publish_execution_update", AsyncMock()),
+        patch("src.core.pubsub.publish_history_update", AsyncMock()),
     ):
         await workflows.execute_workflow(
             WorkflowExecutionRequest(
@@ -761,8 +762,8 @@ async def test_execute_workflow_propagates_new_submission_identity() -> None:
             "src.services.execution.service.get_workflow_for_execution",
             AsyncMock(return_value=_dispatch_metadata(workflow)),
         ),
-        patch.object(workflows, "publish_execution_update", AsyncMock()),
-        patch.object(workflows, "publish_history_update", AsyncMock()),
+        patch("src.core.pubsub.publish_execution_update", AsyncMock()),
+        patch("src.core.pubsub.publish_history_update", AsyncMock()),
     ):
         result = await workflows.execute_workflow(
             WorkflowExecutionRequest(workflow_id="sync_records"),
@@ -941,8 +942,8 @@ async def test_execute_workflow_runs_as_user_without_duplicate_terminal_publish(
             AsyncMock(return_value=_dispatch_metadata(workflow)),
         ),
         patch("src.services.execution.service.run_workflow", AsyncMock(return_value=service_result)) as run_workflow,
-        patch.object(workflows, "publish_execution_update", AsyncMock()) as publish_execution_update,
-        patch.object(workflows, "publish_history_update", AsyncMock()) as publish_history_update,
+        patch("src.core.pubsub.publish_execution_update", AsyncMock()) as publish_execution_update,
+        patch("src.core.pubsub.publish_history_update", AsyncMock()) as publish_history_update,
     ):
         result = await workflows.execute_workflow(
             WorkflowExecutionRequest(
@@ -991,8 +992,8 @@ async def test_execute_workflow_runs_inline_code_for_admin_without_publish_when_
             "src.services.execution.service.run_code",
             AsyncMock(side_effect=run_code_after_request_commit),
         ) as run_code,
-        patch.object(workflows, "publish_execution_update", AsyncMock()) as publish_execution_update,
-        patch.object(workflows, "publish_history_update", AsyncMock()) as publish_history_update,
+        patch("src.core.pubsub.publish_execution_update", AsyncMock()) as publish_execution_update,
+        patch("src.core.pubsub.publish_history_update", AsyncMock()) as publish_history_update,
     ):
         result = await workflows.execute_workflow(
             WorkflowExecutionRequest(

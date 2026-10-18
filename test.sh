@@ -503,8 +503,9 @@ cmd_client() {
         smoke) client_smoke "$@" ;;
         nightly) client_nightly "$@" ;;
         docs) client_docs "$@" ;;
+        preview) client_product_updates_preview "$@" ;;
         *)
-            echo "Usage: ./test.sh client {unit|e2e|smoke|nightly|docs} [args]" >&2
+            echo "Usage: ./test.sh client {unit|e2e|smoke|nightly|docs|preview} [args]" >&2
             exit 2
             ;;
     esac
@@ -659,6 +660,10 @@ client_unit() {
         client-check-runner npm test -- "$@"
 }
 
+client_product_updates_preview() {
+    bash scripts/test-product-updates-preview.sh "$@"
+}
+
 client_ci_checks() {
     echo "Building the production client and running Node 26 CI checks..."
     docker compose -f "$COMPOSE_FILE" --profile client-check build client-check-runner
@@ -699,6 +704,12 @@ repository_ci_checks() {
     bash scripts/lib/pre_pr_lanes_test.sh
     node --test .github/scripts/authorize-merge-queue.test.mjs
     python3 -m unittest scripts.test_codeql_changed_lines
+    python3 -m unittest scripts.test_e2e_shard
+    python3 -m unittest scripts.test_product_updates
+    python3 -m unittest scripts.test_release_gate
+    bash scripts/test_release_check.sh
+    bash scripts/test_prepare_release_body.sh
+    node --test scripts/test_product_updates_scope.cjs
     echo "Checking GitHub Action pins..."
     candidate_action_pin_checks
 

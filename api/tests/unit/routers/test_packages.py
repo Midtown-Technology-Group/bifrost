@@ -6,6 +6,7 @@ from uuid import UUID
 
 import pytest
 
+from shared.subprocess_env import package_tool_env
 from src.models import InstallPackageRequest
 from src.routers.packages import check_package_updates, check_updates, install_package
 
@@ -28,6 +29,7 @@ async def test_package_updates_parse_pip_result_without_network() -> None:
         "pip", "list", "--outdated", "--format=json",
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
+        env=package_tool_env(),
     )
     assert [(item.name, item.current_version, item.latest_version) for item in updates] == [
         ("humanize", "4.12.0", "4.13.0")
@@ -59,7 +61,7 @@ async def test_install_persists_requirements_before_broadcasting_recycle() -> No
     run_id = UUID("d2e87d6a-fb8e-4a64-a9b4-7eecc3fac49e")
     events: list[str] = []
 
-    async def save(content: str) -> None:
+    async def save(content: str, db: object) -> None:
         assert content == "requests==2.31.0\nhumanize==4.13.0\n"
         events.append("saved")
 

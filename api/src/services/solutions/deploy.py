@@ -43,6 +43,7 @@ from sqlalchemy.orm import selectinload
 
 from src.jobs.platform.base import PlatformJobCancelled
 from src.models.contracts.events import EventCriteria
+from src.models.contracts.workflow_permissions import RequestedWorkflowPermissions
 from src.models.orm.agents import Agent, AgentRole
 from src.models.orm.events import (
     EventSource,
@@ -62,6 +63,8 @@ from src.models.orm.workflows import Workflow
 from src.services.solution_deploy_preflight import preflight_workflows
 from src.services.solutions.storage import SolutionStorage
 from src.services.sync_ops import Upsert
+from src.services.webhooks.signing_secret import carry_signing_secret
+from src.services.workflow_permissions import sync_solution_permission_requests
 from shared.logo_processing import ProcessedLogo, process_logo
 
 logger = logging.getLogger(__name__)
@@ -111,6 +114,7 @@ def solution_deploy_instrumentation(
         yield
     finally:
         _deploy_instrumentation.reset(token)
+
 
 
 def _decode_logo(
@@ -302,6 +306,36 @@ class PreparedSolutionDeployment:
     compiled_apps: tuple[CompiledSolutionAppDeployment, ...] = field(repr=False)
 
 
+def _prebuilt_sdk_metadata(value: object) -> "CurrentApplicationSdkMetadata | None":
+    """Accept the complete stamp emitted after a CLI-installed SDK build.
+
+    Generic prebuilt bundles have no trusted build provenance and intentionally
+    remain unknown. The CLI records this only after reading the exact SDK package
+    npm installed for its local Vite build.
+    """
+    if not isinstance(value, dict):
+        return None
+    package_version = value.get("package_version")
+    fingerprint = value.get("fingerprint")
+    contract_version = value.get("contract_version")
+    if (
+        not isinstance(package_version, str)
+        or not package_version
+        or not isinstance(fingerprint, str)
+        or not fingerprint
+        or not isinstance(contract_version, int)
+        or isinstance(contract_version, bool)
+    ):
+        return None
+    from src.services.application_sdk_status import CurrentApplicationSdkMetadata
+
+    return CurrentApplicationSdkMetadata(
+        package_version=package_version,
+        fingerprint=fingerprint,
+        contract_version=contract_version,
+    )
+
+
 @dataclass
 class DeployResult:
     """Counts from one full-replace deploy.
@@ -385,6 +419,9 @@ class SolutionBundle:
     # Travels as password-encrypted .bifrost/secrets.enc; never in plaintext export.
     config_values: dict[str, str] = field(default_factory=dict)
     table_data: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+    # Parallel to table_data when captured by a new full backup. Keeping document
+    # ids separate from row JSON preserves references without changing user data.
+    table_document_ids: dict[str, list[str]] = field(default_factory=dict)
     # Solution-owned file sidecars — only populated when include_data=True (full mode).
     # Each entry carries content_bytes loaded from S3; travels encrypted in secrets.enc.
     solution_files: list[Any] = field(default_factory=list)
@@ -613,6 +650,7 @@ class SolutionDeployer:
         """
         solution = bundle.solution
         sid = solution.id
+        await self._report_phase("Reconciling Solution resources", 20)
 
         # The caller can load this object before immutable activation commits.
         # Serialize the guard with activation and read the current DB pointer.
@@ -817,11 +855,13 @@ class SolutionDeployer:
             # dropped from the bundle must NOT delete the previously-installed
             # file (user may have modified it).
             if bundle.solution_files:
-                await _retry_idempotent(
-                    "write bundle file sidecars",
-                    sid,
-                    lambda: self._write_bundle_files(
-                        sid, bundle.solution_files, file_mode
+                await self._timed(
+                    "bundle_files_s3",
+                    lambda: _retry_idempotent(
+                        "write bundle file sidecars", sid,
+                        lambda: self._write_bundle_files(
+                            sid, bundle.solution_files, file_mode
+                        ),
                     ),
                 )
 
@@ -1130,8 +1170,10 @@ class SolutionDeployer:
     async def _write_python(self, sid: UUID, python_files: dict[str, str]) -> None:
         """Full-replace source and cache using one operation-owned transport."""
         from src.core.module_cache import invalidate_module, set_module
+        from src.services.file_index_service import FileIndexService
 
-        timings = {"runtime_source_storage": 0.0, "redis_module_cache": 0.0}
+        timings = {"runtime_source_storage": 0.0, "file_index": 0.0, "redis_module_cache": 0.0}
+        index = FileIndexService(self.db)
 
         async def measure(
             category: str, operation: Callable[[], Awaitable[Any]]
@@ -1153,6 +1195,12 @@ class SolutionDeployer:
                         "runtime_source_storage",
                         lambda: storage.write(rel_path, content.encode("utf-8")),
                     )
+                    await measure(
+                        "file_index",
+                        lambda: index.index_solution(
+                            sid, rel_path, content.encode("utf-8"), content_hash
+                        ),
+                    )
                     if rel_path.endswith(".py"):
                         await measure(
                             "redis_module_cache",
@@ -1164,11 +1212,15 @@ class SolutionDeployer:
                     await measure(
                         "runtime_source_storage", lambda: storage.delete(rel_path)
                     )
+                    await measure(
+                        "file_index", lambda: index.unindex_solution(sid, rel_path)
+                    )
                     if rel_path.endswith(".py"):
                         await measure(
                             "redis_module_cache",
                             lambda: invalidate_module(storage._key(rel_path)),
                         )
+                await self.db.flush()
         finally:
             if self._instrumentation is not None:
                 for category, elapsed_seconds in timings.items():
@@ -1190,6 +1242,7 @@ class SolutionDeployer:
         sid = solution.id
         indexer = WorkflowIndexer(self.db)
         source_files = python_files or {}
+        permission_requests: dict[UUID, RequestedWorkflowPermissions] = {}
         for mwf in workflows:
             wf_id = UUID(mwf["id"])
 
@@ -1213,6 +1266,16 @@ class SolutionDeployer:
                     )
 
             mwf_model = ManifestWorkflow(**mwf)
+            if mwf_model.requested_permissions is not None:
+                try:
+                    permission_requests[wf_id] = RequestedWorkflowPermissions.model_validate(
+                        mwf_model.requested_permissions.model_dump()
+                    )
+                except ValidationError as exc:
+                    raise SolutionDeployConflict(
+                        f"workflow '{mwf_model.name}': invalid requested_permissions: "
+                        + "; ".join(e["msg"] for e in exc.errors())
+                    ) from exc
             values = {
                 **mwf_model.to_orm_values(Destination.INSTALL).direct,
                 # Scope is inherited from the install — no per-entity binding.
@@ -1246,6 +1309,9 @@ class SolutionDeployer:
             await self._sync_entity_roles(
                 WorkflowRole, "workflow_id", wf_id, await self._resolve_roles(mwf)
             )
+        await sync_solution_permission_requests(
+            self.db, solution_id=sid, requests=permission_requests
+        )
 
     async def _upsert_tables(
         self, solution: Solution, tables: list[dict[str, Any]]
@@ -1586,6 +1652,10 @@ class SolutionDeployer:
                 # UTF-8-encoded (which would corrupt them).
                 "dist": mapp.get("dist_files"),
                 "bin_dist": mapp.get("bin_dist_files"),
+                # The CLI adds this transport-only value only after reading the
+                # SDK package npm installed for its local Vite build. A generic
+                # prebuilt bundle lacks it and therefore remains SDK-unknown.
+                "prebuilt_sdk_metadata": mapp.get("prebuilt_sdk_metadata"),
                 "dependencies": mapp.get("dependencies") or {},
             })
         return builds
@@ -1634,6 +1704,7 @@ class SolutionDeployer:
             for rel, b64 in (b.get("bin") or {}).items():
                 src_bytes[rel] = _b64.b64decode(b64)
             source_built = prebuilt_bytes is None
+            sdk_metadata = None
             # compile_dist is subprocess-bound (npm/vite) → run off the loop.
             dist = await asyncio.to_thread(
                 builder.compile_dist,
@@ -1646,6 +1717,10 @@ class SolutionDeployer:
             expected_old = b["expected_old_deployment_id"]
             if source_built and current_metadata is None:
                 current_metadata = await asyncio.to_thread(current_sdk_metadata)
+            if source_built:
+                sdk_metadata = current_metadata
+            else:
+                sdk_metadata = _prebuilt_sdk_metadata(b.get("prebuilt_sdk_metadata"))
             out.append(
                 CompiledSolutionAppDeployment(
                     app_id=b["app_id"],
@@ -1662,7 +1737,7 @@ class SolutionDeployer:
                         outputs=dist,
                         source_built=source_built,
                     ),
-                    sdk_metadata=current_metadata if source_built else None,
+                    sdk_metadata=sdk_metadata,
                     source_built=source_built,
                     source_available={"package.json", "index.html"}.issubset(src_bytes),
                 )
@@ -1679,6 +1754,7 @@ class SolutionDeployer:
             return
         builder = SolutionAppBuilder()
         uploaded: list[CompiledSolutionAppDeployment] = []
+        upload_started_at = perf_counter()
         try:
             for item in compiled:
                 await builder.upload_deployment(
@@ -1697,6 +1773,13 @@ class SolutionDeployer:
                         exc_info=True,
                     )
             raise
+        finally:
+            if self._instrumentation is not None:
+                await self._instrumentation.record_timing(
+                    "app_artifacts_s3", perf_counter() - upload_started_at
+                )
+        await self._report_phase("Activating Solution applications", 95)
+        activation_started_at = perf_counter()
         try:
             await self._report_phase("Activating Solution applications", 95)
             await self._timed(
@@ -1713,6 +1796,11 @@ class SolutionDeployer:
                 exc_info=True,
             )
             raise
+        finally:
+            if self._instrumentation is not None:
+                await self._instrumentation.record_timing(
+                    "app_finalization_db", perf_counter() - activation_started_at
+                )
         for item in compiled:
             old = item.superseded_deployment_id
             if old is not None and old != item.deployment_id:
@@ -1934,18 +2022,30 @@ class SolutionDeployer:
         from src.services.manifest_import import _agent_content_from_manifest
 
         sid = solution.id
+        await self._check_agent_delegations(agents)
         indexer = AgentIndexer(self.db)
+        bundle_ids = {UUID(a["id"]) for a in agents}
+        indexed: set[UUID] = set()
+        # The indexer links only delegation targets that already exist, so a
+        # parent indexed before its in-bundle child is indexed again once every
+        # bundle agent is in place.
+        reindex: list[tuple[str, bytes]] = []
         for magent in agents:
             agent_id = UUID(magent["id"])
             await self._guard_owner(Agent, agent_id, sid)
             ma = ManifestAgent.model_validate({**magent, "id": str(agent_id)})
             content = _agent_content_from_manifest(ma)
+            path = f"agents/{agent_id}.agent.yaml"
             try:
-                await indexer.index_agent(f"agents/{agent_id}.agent.yaml", content)
+                await indexer.index_agent(path, content)
             except ValueError as exc:
                 raise SolutionDeployConflict(
                     f"agent {agent_id}: {exc}"
                 ) from exc
+            indexed.add(agent_id)
+            children = {UUID(str(c)) for c in magent.get("delegated_agent_ids") or []}
+            if children & (bundle_ids - indexed):
+                reindex.append((path, content))
             # access_level is deploy-owned (manifest-declared); apply it here —
             # the indexer preserves it and the entity is read-only outside deploy
             # (Codex #14). org/solution scope is stamped alongside.
@@ -1997,6 +2097,39 @@ class SolutionDeployer:
             if "mcp_connection_ids" in magent:
                 mcp_ids = self._parse_uuids(magent.get("mcp_connection_ids") or [])
                 await self._sync_agent_mcp_connections(agent_id, mcp_ids)
+        for path, content in reindex:
+            await indexer.index_agent(path, content)
+
+    async def _check_agent_delegations(self, agents: list[dict[str, Any]]) -> None:
+        """Fail the deploy when an agent delegates to an agent that is neither
+        in this bundle nor already present on the instance; the indexer would
+        otherwise drop the delegation with only a log warning."""
+        bundle_ids = {UUID(a["id"]) for a in agents}
+        targets: list[tuple[str, str, UUID | None]] = []
+        for magent in agents:
+            for ref in magent.get("delegated_agent_ids") or []:
+                try:
+                    child: UUID | None = UUID(str(ref))
+                except ValueError:
+                    child = None
+                if child not in bundle_ids:
+                    targets.append((magent.get("name") or magent["id"], str(ref), child))
+        if not targets:
+            return
+        outside = {child for _, _, child in targets if child is not None}
+        existing = set(
+            (await self.db.execute(select(Agent.id).where(Agent.id.in_(outside)))).scalars()
+        ) if outside else set()
+        missing = [
+            f"agent {name!r} delegates to agent {ref}"
+            for name, ref, child in targets
+            if child not in existing
+        ]
+        if missing:
+            raise SolutionDeployConflict(
+                "delegation target not in this bundle and not found on this instance: "
+                + "; ".join(missing)
+            )
 
     async def _upsert_config_schemas(
         self, solution: Solution, config_schemas: list[dict[str, Any]]
@@ -2272,13 +2405,22 @@ class SolutionDeployer:
 
         Each entry is a ManifestEventSource-shaped dict (flat schedule/webhook
         config + nested ``subscriptions``). For each: guard ownership, full-replace
-        the source row + its child schedule/webhook row + its subscriptions, all
-        via Core statements (the always-on read-only guard rejects ORM-object
+        the source row + its child schedule/webhook row + the subscriptions THIS
+        install manages (``solution_id == sid``), all via Core statements (the always-on read-only guard rejects ORM-object
         mutation of managed rows — Core insert/update/delete is the contract).
         Subscription ``workflow_id``/``agent_id`` were already remapped by
         ``_remapped_bundle``. Webhook instance secrets are absent (capture scrubs
         them); the install keeps an existing integration binding but otherwise
         starts from a clean shell the operator re-establishes.
+        ``_remapped_bundle``; webhook instance state is absent (capture scrubs
+        it) so the install starts the webhook from a clean shell the operator
+        re-establishes. The one exception is the encrypted signing secret: no
+        bundle carries it, so a redeploy keeps the one already stored.
+
+        Subscriptions an operator added to a Solution-owned source outside the
+        Solution (``solution_id IS NULL`` — e.g. a workspace workflow listening
+        to the Solution's topic or schedule) are NOT this deploy's to manage:
+        they survive every redeploy and only go away with the source itself.
         """
         from src.models.enums import ScheduleOverlapPolicy
         from src.models.orm.integrations import Integration
@@ -2315,7 +2457,8 @@ class SolutionDeployer:
             # Full-replace children + subs for a clean idempotent redeploy.
             await self.db.execute(
                 delete(EventSubscription).where(
-                    EventSubscription.event_source_id == source_id
+                    EventSubscription.event_source_id == source_id,
+                    EventSubscription.solution_id == sid,
                 )
             )
             await self.db.execute(
@@ -2323,14 +2466,17 @@ class SolutionDeployer:
                     ScheduleSource.event_source_id == source_id
                 )
             )
-            await self.db.execute(
-                delete(WebhookSource).where(
-                    WebhookSource.event_source_id == source_id
+            previous_webhook_state = (
+                await self.db.execute(
+                    delete(WebhookSource)
+                    .where(WebhookSource.event_source_id == source_id)
+                    .returning(WebhookSource.state)
                 )
-            )
+            ).scalar_one_or_none()
 
             # Source parent field dict from the model; install stamps org/solution/created_by.
-            _direct = ManifestEventSource.model_validate(mevent).to_orm_values(Destination.INSTALL).direct
+            manifest_event = ManifestEventSource.model_validate(mevent)
+            _direct = manifest_event.to_orm_values(Destination.INSTALL).direct
             source_values: dict[str, Any] = {
                 **_direct,
                 "organization_id": solution.organization_id,
@@ -2380,7 +2526,8 @@ class SolutionDeployer:
                         event_source_id=source_id,
                         adapter_name=mevent.get("adapter_name"),
                         integration_id=bound_integration_id,
-                        config=mevent.get("webhook_config") or {},
+                        config=manifest_event.webhook_config or {},
+                        state=carry_signing_secret(previous_webhook_state, {}),
                         rate_limit_per_minute=mevent.get("rate_limit_per_minute", 60),
                         rate_limit_window_seconds=mevent.get(
                             "rate_limit_window_seconds", 60
@@ -2395,14 +2542,18 @@ class SolutionDeployer:
                 sub_agent = msub.get("agent_id")
                 criteria = (
                     EventCriteria.model_validate(msub["criteria"]).model_dump(
-                        mode="json"
+                        mode="json", exclude_unset=True
                     )
                     if msub.get("criteria") is not None
                     else None
                 )
+                sub_id = UUID(str(msub["id"])) if msub.get("id") else uuid4()
+                # Managed subs were deleted above, so a surviving row with this
+                # id belongs to someone else — refuse rather than hijack it.
+                await self._guard_owner(EventSubscription, sub_id, sid)
                 await self.db.execute(
                     insert(EventSubscription).values(
-                        id=UUID(str(msub["id"])) if msub.get("id") else uuid4(),
+                        id=sub_id,
                         event_source_id=source_id,
                         workflow_id=UUID(str(sub_workflow)) if sub_workflow else None,
                         agent_id=UUID(str(sub_agent)) if sub_agent else None,

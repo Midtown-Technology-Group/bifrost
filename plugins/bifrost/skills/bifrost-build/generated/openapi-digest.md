@@ -11,6 +11,8 @@
 | PUT | `/api/admin/ai/assignments/{assignment_key}` |
 | GET | `/api/admin/ai/behavior` |
 | PUT | `/api/admin/ai/behavior` |
+| GET | `/api/admin/ai/catalog` |
+| POST | `/api/admin/ai/catalog/refresh` |
 | GET | `/api/admin/ai/connections` |
 | POST | `/api/admin/ai/connections` |
 | POST | `/api/admin/ai/connections/verify` |
@@ -23,6 +25,7 @@
 | POST | `/api/admin/ai/profiles/merge` |
 | DELETE | `/api/admin/ai/profiles/{profile_id}` |
 | PATCH | `/api/admin/ai/profiles/{profile_id}` |
+| POST | `/api/admin/ai/profiles/{profile_id}/verify` |
 | GET | `/api/admin/kubernetes/execution` |
 | PUT | `/api/admin/kubernetes/execution` |
 | GET | `/api/admin/kubernetes/status` |
@@ -31,8 +34,6 @@
 | POST | `/api/admin/llm/embedding-config` |
 | POST | `/api/admin/llm/embedding-reindex` |
 | POST | `/api/admin/llm/embedding-test` |
-| POST | `/api/admin/llm/model-capabilities` |
-| POST | `/api/admin/llm/model-capabilities/verify` |
 | GET | `/api/admin/memory/settings` |
 | PUT | `/api/admin/memory/settings` |
 | GET | `/api/admin/required-instructions` |
@@ -65,7 +66,6 @@
 | POST | `/api/agent-runs/{run_id}/verdict` |
 | GET | `/api/agents` |
 | POST | `/api/agents` |
-| GET | `/api/agents/accessible-knowledge` |
 | GET | `/api/agents/accessible-tools` |
 | GET | `/api/agents/stats/fleet` |
 | DELETE | `/api/agents/{agent_id}` |
@@ -118,6 +118,9 @@
 | POST | `/api/applications/{app_id}/validate` |
 | GET | `/api/applications/{slug}` |
 | GET | `/api/audit` |
+| POST | `/api/audit/exports` |
+| GET | `/api/audit/exports/{job_id}/download` |
+| GET | `/api/audit/{event_id}/explain` |
 | DELETE | `/api/branding` |
 | GET | `/api/branding` |
 | PUT | `/api/branding` |
@@ -161,6 +164,7 @@
 | GET | `/api/config` |
 | POST | `/api/config` |
 | DELETE | `/api/config/{config_id}` |
+| GET | `/api/config/{config_id}` |
 | PUT | `/api/config/{config_id}` |
 | GET | `/api/decorator-properties` |
 | PUT | `/api/decorator-properties` |
@@ -207,9 +211,11 @@
 | PATCH | `/api/events/sources/{source_id}` |
 | GET | `/api/events/sources/{source_id}/events` |
 | POST | `/api/events/sources/{source_id}/resubscribe` |
+| POST | `/api/events/sources/{source_id}/rotate-secret` |
 | GET | `/api/events/sources/{source_id}/subscriptions` |
 | POST | `/api/events/sources/{source_id}/subscriptions` |
 | DELETE | `/api/events/sources/{source_id}/subscriptions/{subscription_id}` |
+| GET | `/api/events/sources/{source_id}/subscriptions/{subscription_id}` |
 | PATCH | `/api/events/sources/{source_id}/subscriptions/{subscription_id}` |
 | GET | `/api/events/topics` |
 | GET | `/api/events/{event_id}` |
@@ -311,6 +317,10 @@
 | PUT | `/api/home/collections/{collection_id}` |
 | PUT | `/api/home/preferences/{resource_key}` |
 | GET | `/api/hooks/health` |
+| GET | `/api/identities` |
+| POST | `/api/identities` |
+| DELETE | `/api/identities/{identity_id}` |
+| PATCH | `/api/identities/{identity_id}` |
 | GET | `/api/integrations` |
 | POST | `/api/integrations` |
 | GET | `/api/integrations/by-name/{name}` |
@@ -342,9 +352,6 @@
 | GET | `/api/knowledge-sources` |
 | GET | `/api/knowledge-sources/documents` |
 | PATCH | `/api/knowledge-sources/documents/scope` |
-| GET | `/api/knowledge-sources/roles` |
-| POST | `/api/knowledge-sources/roles` |
-| DELETE | `/api/knowledge-sources/roles/{assignment_id}` |
 | DELETE | `/api/knowledge-sources/{namespace}` |
 | GET | `/api/knowledge-sources/{namespace}/documents` |
 | POST | `/api/knowledge-sources/{namespace}/documents` |
@@ -355,10 +362,18 @@
 | POST | `/api/maintenance/artifact-retention/cleanup` |
 | GET | `/api/maintenance/artifact-retention/settings` |
 | PUT | `/api/maintenance/artifact-retention/settings` |
+| GET | `/api/maintenance/audit-retention/preview` |
+| POST | `/api/maintenance/audit-retention/run` |
+| GET | `/api/maintenance/audit-retention/settings` |
+| PUT | `/api/maintenance/audit-retention/settings` |
 | POST | `/api/maintenance/cleanup-orphaned` |
 | POST | `/api/maintenance/index-docs` |
 | POST | `/api/maintenance/preflight` |
 | POST | `/api/maintenance/reimport` |
+| GET | `/api/maintenance/run-retention/preview` |
+| POST | `/api/maintenance/run-retention/run` |
+| GET | `/api/maintenance/run-retention/settings` |
+| PUT | `/api/maintenance/run-retention/settings` |
 | POST | `/api/maintenance/scan-app-dependencies` |
 | GET | `/api/maintenance/status` |
 | GET | `/api/mcp-connections` |
@@ -402,6 +417,7 @@
 | GET | `/api/metrics/resources` |
 | GET | `/api/metrics/snapshot` |
 | GET | `/api/metrics/workflows` |
+| GET | `/api/model-catalog/names` |
 | GET | `/api/notifications` |
 | DELETE | `/api/notifications/locks/upload` |
 | GET | `/api/notifications/locks/upload` |
@@ -431,6 +447,7 @@
 | GET | `/api/packages/installations/{run_id}` |
 | GET | `/api/packages/updates` |
 | DELETE | `/api/packages/{package_name}` |
+| GET | `/api/permissions/catalog` |
 | GET | `/api/platform-jobs` |
 | GET | `/api/platform-jobs/{job_id}` |
 | POST | `/api/platform-jobs/{job_id}/cancel` |
@@ -456,8 +473,11 @@
 | GET | `/api/policy-rules` |
 | POST | `/api/policy-rules` |
 | DELETE | `/api/policy-rules/{domain}/{name}` |
+| GET | `/api/policy-rules/{domain}/{name}` |
 | PUT | `/api/policy-rules/{domain}/{name}` |
 | GET | `/api/policy-rules/{domain}/{name}/usages` |
+| GET | `/api/product-updates` |
+| POST | `/api/product-updates/receipts` |
 | GET | `/api/profile` |
 | PATCH | `/api/profile` |
 | DELETE | `/api/profile/avatar` |
@@ -487,9 +507,8 @@
 | GET | `/api/roles/{role_id}/forms` |
 | POST | `/api/roles/{role_id}/forms` |
 | DELETE | `/api/roles/{role_id}/forms/{form_id}` |
-| DELETE | `/api/roles/{role_id}/knowledge` |
-| GET | `/api/roles/{role_id}/knowledge` |
-| POST | `/api/roles/{role_id}/knowledge` |
+| GET | `/api/roles/{role_id}/permissions` |
+| PUT | `/api/roles/{role_id}/permissions` |
 | DELETE | `/api/roles/{role_id}/users` |
 | GET | `/api/roles/{role_id}/users` |
 | POST | `/api/roles/{role_id}/users` |
@@ -497,6 +516,7 @@
 | DELETE | `/api/roles/{role_id}/workflows` |
 | GET | `/api/roles/{role_id}/workflows` |
 | POST | `/api/roles/{role_id}/workflows` |
+| GET | `/api/run-retention` |
 | POST | `/api/schedules/validate` |
 | POST | `/api/sdk/ai/complete` |
 | GET | `/api/sdk/ai/info` |
@@ -573,6 +593,7 @@
 | GET | `/api/solutions/deploy-jobs/{job_id}` |
 | GET | `/api/solutions/export-jobs/{job_id}` |
 | GET | `/api/solutions/export-jobs/{job_id}/download` |
+| POST | `/api/solutions/export-jobs/{job_id}/download-link` |
 | POST | `/api/solutions/import-workspace` |
 | POST | `/api/solutions/import-workspace/preview` |
 | POST | `/api/solutions/import-workspace/preview-repo` |
@@ -662,6 +683,9 @@
 | POST | `/api/users/{user_id}/invite/regenerate` |
 | POST | `/api/users/{user_id}/invite/resend` |
 | POST | `/api/users/{user_id}/invite/send` |
+| POST | `/api/users/{user_id}/mfa/reset` |
+| GET | `/api/users/{user_id}/role-assignments` |
+| PUT | `/api/users/{user_id}/role-assignments` |
 | GET | `/api/users/{user_id}/roles` |
 | POST | `/api/v1/responses` |
 | GET | `/api/version` |
@@ -676,9 +700,11 @@
 | GET | `/api/workflows/usage-stats` |
 | POST | `/api/workflows/validate` |
 | DELETE | `/api/workflows/{workflow_id}` |
+| GET | `/api/workflows/{workflow_id}` |
 | PATCH | `/api/workflows/{workflow_id}` |
 | GET | `/api/workflows/{workflow_id}/compatible-replacements` |
 | POST | `/api/workflows/{workflow_id}/deactivate` |
+| GET | `/api/workflows/{workflow_id}/recommended-access` |
 | POST | `/api/workflows/{workflow_id}/recreate` |
 | POST | `/api/workflows/{workflow_id}/remap` |
 | POST | `/api/workflows/{workflow_id}/replace` |

@@ -5,16 +5,17 @@ from __future__ import annotations
 import asyncio
 import base64
 import os
-from types import SimpleNamespace
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from sqlalchemy import func, select
+from shared.run_lineage import person_lineage
 
 from src.config import get_settings
 from src.core.database import close_db, get_db_context, init_db
 from src.core.redis_client import get_redis_client
 from src.jobs.rabbitmq import rabbitmq
 from src.models.orm.users import User
+from src.sdk.context import ExecutionContext
 from src.services.execution.async_executor import enqueue_code_execution
 
 
@@ -63,20 +64,23 @@ def require_successful_canary_result(result: dict | None) -> None:
         raise RuntimeError(f"isolated workflow canary failed: {result!r}")
 
 
-def canary_context(user: User) -> SimpleNamespace:
+def canary_context(user: User) -> ExecutionContext:
     """Build an auditable execution context from a persisted administrator."""
-    return SimpleNamespace(
-        org_id=None,
+    return ExecutionContext(
+        organization=None,
+        scope="GLOBAL",
         user_id=str(UUID(str(user.id))),
         name=user.name or "Deployment Canary",
         email=user.email,
         is_platform_admin=True,
         is_provider_org=False,
         is_external=False,
+        is_function_key=False,
+        execution_id=str(uuid4()),
     )
 
 
-async def resolve_canary_context() -> SimpleNamespace:
+async def resolve_canary_context() -> ExecutionContext:
     """Resolve a stable, FK-backed administrator for canary execution telemetry."""
     async with get_db_context() as db:
         user = await db.scalar(
@@ -104,6 +108,8 @@ async def run_canary() -> None:
             parameters={},
             sync=True,
             queue_name=queue_name,
+            execution_id=context.execution_id,
+            lineage=person_lineage(context.user_id),
         )
         result = await get_redis_client().wait_for_result(
             execution_id, timeout_seconds=90

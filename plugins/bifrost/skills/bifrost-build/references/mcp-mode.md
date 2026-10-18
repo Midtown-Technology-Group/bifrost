@@ -16,11 +16,12 @@ Common entity patterns are:
 
 - `list_*` and `get_*` for discovery;
 - `create_*`, `update_*`, and `delete_*` for live entities;
-- `list_content`, `search_content`, `read_content_lines`, and `get_content` for `_repo` files;
+- `list_content`, `read_content_lines`, and `get_content` for `_repo` files;
+- `bifrost_file_search` for grep-style search over workspace and Solution source. It returns 25 results per page; follow its `guidance` / `next_cursor` for more, or pass `output_mode="files"` to find where something lives first;
 - `patch_content` for focused source edits;
 - `replace_content` for complete replacement;
-- `register_workflow`, `validate_workflow`, and `execute_workflow` for loose workflows;
-- `validate_app`, publish/status tools, and dependency tools for v1 apps.
+- `bifrost_workflow_register`, `bifrost_workflow_validate`, and `bifrost_workflow_execute` for loose workflows;
+- `bifrost_app_validate`, publish/status tools, and dependency tools for v1 apps.
 
 Always read the current entity/file before mutation. Prefer `patch_content` when it can express the change safely; use full replacement only after preserving unrelated content. Read back and validate after writing.
 

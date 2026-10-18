@@ -30,18 +30,21 @@ SCHEDULED_TASKS: tuple[ScheduledTaskDefinition, ...] = (
     ScheduledTaskDefinition("file_index_reconciliation", "Reconcile Workspace File Index", "Daily at 01:00 UTC", "durable_job"),
     ScheduledTaskDefinition("webhook_renewal", "Renew Webhook Subscriptions", "Every 6 hours", "durable_job"),
     ScheduledTaskDefinition("solution_update_check", "Check Solution Updates", "Every 6 hours", "durable_job"),
+    ScheduledTaskDefinition("model_catalog_refresh", "Refresh Model Catalog", "Every 4 hours", "durable_job"),
     ScheduledTaskDefinition("solution_export_job_cleanup", "Clean Up Solution Export Artifacts", "Hourly"),
+    ScheduledTaskDefinition("audit_archive", "Archive Audit Events", "Daily at 02:30 UTC", "durable_job"),
     ScheduledTaskDefinition("artifact_retention_cleanup", "Clean Up Artifacts", "Daily at 03:30 UTC", "durable_job"),
     ScheduledTaskDefinition("workspace_promotion_draft_cleanup", "Clean Up Workspace Promotion Drafts", "Hourly"),
     ScheduledTaskDefinition("workspace_release_accountability", "Check Workspace Release Accountability", "Every minute"),
     ScheduledTaskDefinition("mcp_operation_receipt_cleanup", "Expire MCP Operation Replay Payloads", "Hourly"),
-    ScheduledTaskDefinition("event_cleanup", "Clean Up Old Events", "Daily at 03:00 UTC"),
+    ScheduledTaskDefinition("run_retention", "Run Retention", "Daily at 03:00 UTC", "durable_job"),
     ScheduledTaskDefinition("stuck_event_cleanup", "Clean Up Stuck Event Deliveries", "Every 5 minutes"),
     ScheduledTaskDefinition("worker_metrics_sampling", "Sample Worker Metrics", "Every minute"),
     ScheduledTaskDefinition("worker_metrics_cleanup", "Clean Up Worker Metrics", "Daily at 04:00 UTC"),
     ScheduledTaskDefinition("scheduler_diagnostics_cleanup", "Clean Up Scheduler Diagnostics", "Hourly"),
     ScheduledTaskDefinition("summary_backfill_reconciliation", "Reconcile Summary Backfills", "Every minute"),
     ScheduledTaskDefinition("workspace_bundle_preview_cleanup", "Clean Up Workspace Bundle Previews", "Hourly"),
+    ScheduledTaskDefinition("workflow_operation_usage_flush", "Flush Workflow Operation Usage Counters", "Every 15 minutes"),
 )
 
 SCHEDULED_TASKS_BY_ID = {task.task_id: task for task in SCHEDULED_TASKS}

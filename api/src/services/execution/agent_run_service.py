@@ -1,7 +1,10 @@
 """Agent run enqueue and result waiting."""
+from __future__ import annotations
+
 import json
 import logging
 from collections.abc import Awaitable, Callable
+from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 from typing import Any
 
@@ -17,6 +20,9 @@ from src.jobs.rabbitmq import publish_message
 from src.models.orm.agents import Agent
 from src.models.orm.solutions import Solution
 from src.services.agent_run_access import load_agent_by_name_for_user
+
+if TYPE_CHECKING:
+    from shared.run_lineage import RunLineage
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +80,8 @@ async def enqueue_agent_run(
     sync: bool = False,
     run_id: str | None = None,
     before_queue_publish: Callable[[str], Awaitable[None]] | None = None,
+    lineage: RunLineage | None,
+    run_as_user_id: UUID | None = None,
 ) -> str:
     """Enqueue an agent run for worker processing. Returns run_id."""
     queued_id, _reused = await enqueue_agent_run_once(
@@ -95,6 +103,8 @@ async def enqueue_agent_run(
         sync=sync,
         run_id=run_id,
         before_queue_publish=before_queue_publish,
+        lineage=lineage,
+        run_as_user_id=run_as_user_id,
     )
     return queued_id
 
@@ -119,6 +129,8 @@ async def enqueue_agent_run_once(
     sync: bool = False,
     run_id: str | None = None,
     before_queue_publish: Callable[[str], Awaitable[None]] | None = None,
+    lineage: RunLineage | None,
+    run_as_user_id: UUID | None = None,
 ) -> tuple[str, bool]:
     """Atomically publish or reuse one canonical agent-run identity.
 
@@ -162,6 +174,8 @@ async def enqueue_agent_run_once(
                 caller_user_id=caller_user_id,
                 caller_email=caller_email,
                 caller_name=caller_name,
+                run_user_id=lineage.run_user_id if lineage else None,
+                run_as_user_id=run_as_user_id,
             ))
             await db.commit()
             created = True

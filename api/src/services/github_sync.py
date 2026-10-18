@@ -12,6 +12,7 @@ Key principles:
 """
 
 import asyncio
+import base64
 import hashlib
 import logging
 import shutil
@@ -19,7 +20,7 @@ import subprocess
 import tempfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, Mapping
+from typing import TYPE_CHECKING, Any, Literal, Mapping
 from uuid import uuid4
 
 import yaml
@@ -31,6 +32,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import Settings, get_settings
 from src.models.contracts.github import (
+    EntityChange,
     GitConnectItem,
     GitConnectPreview,
     GitConnectRequest,
@@ -39,7 +41,12 @@ from src.models.contracts.github import (
     WorkspaceFileChange,
     WorkspaceSyncPlan,
 )
-from src.services.git_repo_manager import GitRepoManager, hash_file, iter_tree_metadata
+from src.services.git_repo_manager import (
+    GitRepoManager,
+    hash_file,
+    iter_tree_metadata,
+    merge_in_progress,
+)
 from src.services.github_sync_entity_metadata import extract_entity_metadata
 
 if TYPE_CHECKING:
@@ -140,6 +147,11 @@ class WorkspacePlanStale(SyncError):
     pass
 
 
+class WorkspaceSourceMissing(SyncError):
+    """The incoming workspace is empty, so applying it would delete every workspace entity."""
+    pass
+
+
 class GitConnectPreviewError(SyncError):
     """A first-connect preview is unavailable, expired, or not owned by this caller."""
 
@@ -165,6 +177,13 @@ class _GitConnectPreviewRecord(BaseModel):
     items: list[GitConnectItem]
 
 
+class ReimportResult(BaseModel):
+    """Outcome of a Maintenance Reimport, which imports but never deletes."""
+
+    entities_imported: int
+    pending_deletes: list[EntityChange]
+
+
 def _delete_keys(changes: list) -> set[tuple[str, str]]:
     """Return the stable identities that a deletion confirmation authorizes."""
     keys = {
@@ -180,6 +199,52 @@ def _delete_keys(changes: list) -> set[tuple[str, str]]:
 # =============================================================================
 # Helpers
 # =============================================================================
+
+
+def _git_auth_env(token: str | None) -> dict[str, str]:
+    """Per-command git environment that sends the GitHub token without persisting it.
+
+    The token travels as an HTTP header that git reads from its environment
+    (GIT_CONFIG_*), so it is never written into .git/config, which is mirrored
+    to workspace storage and into retry checkpoints.
+    """
+    if not token:
+        return {}
+    credentials = base64.b64encode(f"x-access-token:{token}".encode()).decode()
+    return {
+        "GIT_CONFIG_COUNT": "1",
+        "GIT_CONFIG_KEY_0": "http.https://github.com/.extraheader",
+        "GIT_CONFIG_VALUE_0": f"Authorization: Basic {credentials}",
+        "GIT_TERMINAL_PROMPT": "0",
+    }
+
+
+def redact_token(value: Any, token: str | None) -> Any:
+    """Replace the token in every string of a JSON-shaped result or message."""
+    if not token:
+        return value
+    if isinstance(value, str):
+        return value.replace(token, "***")
+    if isinstance(value, dict):
+        return {key: redact_token(item, token) for key, item in value.items()}
+    if isinstance(value, list):
+        return [redact_token(item, token) for item in value]
+    return value
+
+
+def _manifest_is_empty(manifest: Manifest) -> bool:
+    """True when a manifest declares no entities at all."""
+    return not (get_all_entity_ids(manifest) or manifest.organizations or manifest.roles)
+
+
+def _has_workspace_files(root: Path) -> bool:
+    """True when the tree holds any file outside Git internals and .bifrost/."""
+    for entry in root.iterdir():
+        if entry.name in (".git", ".bifrost"):
+            continue
+        if entry.is_file() or any(path.is_file() for path in entry.rglob("*")):
+            return True
+    return False
 
 
 def _workspace_fingerprint(root: Path) -> str:
@@ -352,9 +417,13 @@ class GitHubSyncService:
         repo_url: str,
         branch: str = "main",
         settings: Settings | None = None,
+        token: str | None = None,
     ):
         self.db = db
+        # A credential-free URL: it is written into .git/config. The token
+        # reaches git only through _git_env.
         self.repo_url = repo_url
+        self._git_env = _git_auth_env(token)
         self.branch = branch
         self.repo_manager = GitRepoManager(settings or get_settings())
         self._resolver = ManifestResolver(db)
@@ -363,11 +432,12 @@ class GitHubSyncService:
     def _connect_preview_key(token: str) -> str:
         return f"{_GIT_CONNECT_PREVIEW_KEY_PREFIX}{token}"
 
-    @staticmethod
-    def _clone_connect_remote(destination: Path, repository_url: str, branch: str) -> GitRepo | None:
+    def _clone_connect_remote(self, destination: Path, repository_url: str, branch: str) -> GitRepo | None:
         """Clone the reviewed remote branch, treating an empty remote as an empty tree."""
         try:
-            repo = GitRepo.clone_from(repository_url, str(destination), branch=branch)
+            repo = GitRepo.clone_from(
+                repository_url, str(destination), branch=branch, env=self._git_env,
+            )
         except Exception as exc:
             message = str(exc).lower()
             if "empty repository" in message:
@@ -380,7 +450,9 @@ class GitHubSyncService:
                 if destination.exists():
                     shutil.rmtree(destination)
                 try:
-                    fallback = GitRepo.clone_from(repository_url, str(destination))
+                    fallback = GitRepo.clone_from(
+                        repository_url, str(destination), env=self._git_env,
+                    )
                 except Exception as fallback_exc:
                     if "empty repository" in str(fallback_exc).lower():
                         return None
@@ -503,6 +575,7 @@ class GitHubSyncService:
         shutil.copy2(source, destination)
 
     def _configure_connect_repo(self, repo: GitRepo) -> None:
+        repo.git.update_environment(**self._git_env)
         if "origin" in [remote.name for remote in repo.remotes]:
             repo.remotes.origin.set_url(self.repo_url)
         else:
@@ -1158,6 +1231,7 @@ class GitHubSyncService:
 
         try:
             async with self.repo_manager.lock() as work_dir:
+                await self.repo_manager.ensure_storage_unchanged(work_dir, self.branch)
                 repo = self._open_or_init(work_dir)
                 return await self._do_commit(work_dir, repo, message)
         except Exception as e:
@@ -1342,6 +1416,13 @@ class GitHubSyncService:
             self._resolver.configs_touched = configs_touched_before
             self.db.expire_all()
         pending_removals = [change for change in pending_deletes if change.action != "keep"]
+        if pending_removals and _manifest_is_empty(read_manifest_from_dir(work_dir / ".bifrost")):
+            raise WorkspaceSourceMissing(
+                "Sync refused: the repository has no .bifrost/ manifest, or its manifest "
+                f"lists no entities, so applying it would delete {len(pending_removals)} "
+                "workspace entities. Nothing was changed. Restore the .bifrost/ manifest "
+                "in the repository, then sync again."
+            )
         return WorkspaceSyncPlan(
             base_sha=base_sha,
             merge_sha=merge_sha,
@@ -1519,6 +1600,7 @@ class GitHubSyncService:
 
         try:
             async with self.repo_manager.lock() as work_dir:
+                await self.repo_manager.ensure_storage_unchanged(work_dir, self.branch)
                 if retry_plan and retry_plan.db_applied:
                     if not retry_plan.checkpoint_id:
                         raise SyncError("Publication retry is missing its workspace checkpoint")
@@ -1665,7 +1747,17 @@ class GitHubSyncService:
 
         try:
             async with self.repo_manager.lock() as work_dir:
+                await self.repo_manager.ensure_storage_unchanged(work_dir, self.branch)
                 repo = self._open_or_init(work_dir)
+                if merge_in_progress(work_dir, repo):
+                    # Syncing up would publish the conflict markers to storage.
+                    return DiscardResult(
+                        success=False,
+                        error=(
+                            "A merge is in progress. Resolve the conflicts or abort "
+                            "the merge before discarding changes. Nothing was changed."
+                        ),
+                    )
                 discarded = []
 
                 for path in paths:
@@ -1687,8 +1779,11 @@ class GitHubSyncService:
                     except Exception as e:
                         logger.warning(f"Failed to discard {path}: {e}")
 
-                # S3 sync up so other containers see the reverted files
+                # S3 sync up so other containers see the reverted files, and
+                # keep source search in step with what storage now holds
                 await self.repo_manager.sync_up(work_dir)
+                await self._update_file_index(work_dir)
+                await self.db.commit()
 
                 # Refresh Redis module cache so editor + workers see reverted .py content
                 from src.core.module_cache import refresh_modules_from_directory
@@ -1708,12 +1803,15 @@ class GitHubSyncService:
         """Open existing .git/ or clone fresh. Ensure remote URL and user identity are set."""
         if (work_dir / ".git").exists():
             repo = GitRepo(str(work_dir))
+            # Also rewrites a remote that an earlier release stored with the
+            # token embedded in its URL.
             if "origin" in [r.name for r in repo.remotes]:
                 repo.remotes.origin.set_url(self.repo_url)
             else:
                 repo.create_remote("origin", self.repo_url)
         else:
             repo = self._clone_or_init(work_dir)
+        repo.git.update_environment(**self._git_env)
 
         # Ensure git user identity is configured (needed for merge/commit)
         with repo.config_writer() as cw:
@@ -1762,7 +1860,6 @@ class GitHubSyncService:
 
         Returns tuple of (count, non-delete entity changes, explicit removed IDs).
         """
-        from src.models.contracts.github import EntityChange
         from src.services.manifest_generator import generate_manifest
         from src.services.manifest_import import _diff_and_collect
 
@@ -1913,17 +2010,37 @@ class GitHubSyncService:
     # Reimport from repo (no git operations)
     # -----------------------------------------------------------------
 
-    async def reimport_from_repo(self) -> int:
+    async def reimport_from_repo(self) -> ReimportResult:
         """Re-import all entities from S3 _repo/ without git operations.
 
         Downloads the working tree from S3, imports entities into DB,
         updates file_index, and syncs app previews.
 
-        Returns count of entities imported.
+        Reimport never deletes. Entities whose files are missing from storage
+        are returned as ``pending_deletes``; removing them goes through a git
+        sync, which asks for confirmation.
         """
         async with self.repo_manager.checkout() as work_dir:
+            storage_is_empty = not _has_workspace_files(work_dir)
+
             # Regenerate manifest from current DB state
             await self._regenerate_manifest_to_dir(self.db, work_dir)
+
+            # The regenerated manifest drops entities whose files are missing.
+            pending_deletes = [
+                change
+                for change in await self._resolver._resolve_deletions(
+                    work_dir=work_dir, dry_run=True,
+                )
+                if change.action != "keep"
+            ]
+            if storage_is_empty and pending_deletes:
+                raise WorkspaceSourceMissing(
+                    "Reimport refused: workspace storage has no workspace files, but "
+                    f"{len(pending_deletes)} workspace entities expect files there. "
+                    "Nothing was changed. Restore the workspace files (for example "
+                    "with a git sync), then reimport again."
+                )
 
             # Import entities atomically with savepoint
             async with self.db.begin_nested():
@@ -1942,8 +2059,11 @@ class GitHubSyncService:
             # Sync app preview files
             await self._sync_app_previews(work_dir)
 
-            logger.info(f"Reimport complete: {count} entities")
-            return count
+            logger.info(
+                f"Reimport complete: {count} entities, "
+                f"{len(pending_deletes)} pending deletions kept"
+            )
+            return ReimportResult(entities_imported=count, pending_deletes=pending_deletes)
 
     # -----------------------------------------------------------------
     # Internal: git operations
@@ -1967,6 +2087,7 @@ class GitHubSyncService:
                     self.repo_url,
                     str(clone_dir),
                     branch=self.branch,
+                    env=self._git_env,
                 )
                 # Move .git/ to the target
                 shutil.move(str(clone_dir / ".git"), str(target / ".git"))
@@ -2002,16 +2123,19 @@ class GitHubSyncService:
     ) -> None:
         """Update file_index from all files in the working tree, remove stale entries.
 
-        Optimized: prefetches existing (path, content_hash) pairs in one query,
-        skips files whose hash hasn't changed, and batch-upserts the rest in
-        chunks of 100.
+        Prefetches existing (path, content_hash) pairs in one query, skips files
+        whose hash hasn't changed, and batch-upserts the rest through
+        FileIndexService under the shared index policy.
         """
-        from sqlalchemy import delete, text
-        from sqlalchemy.dialects.postgresql import insert
-
         from src.models.orm.file_index import FileIndex
-        from src.services.file_index_service import MAX_INDEXABLE_TEXT_BYTES, _is_text_file
+        from src.services.file_index_service import (
+            MAX_INDEXABLE_TEXT_BYTES,
+            FileIndexService,
+            indexable_text,
+            is_tracked_path,
+        )
 
+        index = FileIndexService(self.db)
         files = iter_tree_metadata(work_dir)
         repo_paths: set[str] = set()
 
@@ -2021,9 +2145,9 @@ class GitHubSyncService:
         )
         existing_hashes = {row[0]: row[1] for row in existing_result.all()}
 
-        # Flush changed text rows as they are discovered.  A row's content must
-        # be materialized for the database write, but retaining every changed
-        # text file until traversal completes can otherwise exhaust a worker.
+        # Flush changed rows as they are discovered. A row's content must be
+        # materialized for the database write, but retaining every changed text
+        # file until traversal completes can otherwise exhaust a worker.
         pending_upserts: list[dict] = []
         pending_bytes = 0
         upserted_count = 0
@@ -2032,51 +2156,36 @@ class GitHubSyncService:
             nonlocal pending_bytes, upserted_count
             if not pending_upserts:
                 return
-            stmt = insert(FileIndex).values(pending_upserts).on_conflict_do_update(
-                index_elements=[FileIndex.path],
-                set_={
-                    "content": insert(FileIndex).excluded.content,
-                    "content_hash": insert(FileIndex).excluded.content_hash,
-                    "updated_at": text("NOW()"),
-                },
-            )
-            await self.db.execute(stmt)
+            await index.upsert_many(pending_upserts)
             upserted_count += len(pending_upserts)
             pending_upserts.clear()
             pending_bytes = 0
 
         for entry in files:
             rel_path = entry.path
+            if not is_tracked_path(rel_path):
+                continue
             repo_paths.add(rel_path)
-            if not _is_text_file(rel_path):
+            if existing_hashes.get(rel_path) == entry.sha256:
                 continue
-            if entry.size > MAX_INDEXABLE_TEXT_BYTES:
-                # Search indexing is a bounded projection. Delete a prior
-                # smaller-file entry so searches cannot return stale content,
-                # without loading the oversized repository file into memory.
-                await self.db.execute(delete(FileIndex).where(FileIndex.path == rel_path))
-                continue
-            try:
-                content_str = (work_dir / rel_path).read_text(encoding="utf-8")
-            except UnicodeDecodeError:
-                continue
-            content_hash = entry.sha256
-
-            # Skip if hash hasn't changed
-            if existing_hashes.get(rel_path) == content_hash:
-                continue
-
+            # Oversized files get a path-only row without loading them.
+            content = (
+                indexable_text((work_dir / rel_path).read_bytes())
+                if entry.size <= MAX_INDEXABLE_TEXT_BYTES
+                else None
+            )
+            row_bytes = entry.size if content is not None else 0
             if pending_upserts and (
                 len(pending_upserts) >= FILE_INDEX_UPSERT_MAX_ROWS
-                or pending_bytes + entry.size > FILE_INDEX_UPSERT_MAX_BYTES
+                or pending_bytes + row_bytes > FILE_INDEX_UPSERT_MAX_BYTES
             ):
                 await flush_pending_upserts()
             pending_upserts.append({
                 "path": rel_path,
-                "content": content_str,
-                "content_hash": content_hash,
+                "content": content,
+                "content_hash": entry.sha256,
             })
-            pending_bytes += entry.size
+            pending_bytes += row_bytes
             if (
                 len(pending_upserts) >= FILE_INDEX_UPSERT_MAX_ROWS
                 or pending_bytes >= FILE_INDEX_UPSERT_MAX_BYTES
@@ -2095,9 +2204,7 @@ class GitHubSyncService:
         if removed_paths is not None:
             stale_paths &= removed_paths
         if stale_paths:
-            await self.db.execute(
-                delete(FileIndex).where(FileIndex.path.in_(stale_paths))
-            )
+            await index.unindex_many(sorted(stale_paths))
 
     # -----------------------------------------------------------------
     # Internal: preflight validation

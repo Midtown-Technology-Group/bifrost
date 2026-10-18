@@ -74,6 +74,9 @@ class PendingExecution(TypedDict):
     is_external: bool  # Trusted caller external-access restriction
     event: dict[str, Any] | None  # EventContext fields if event-triggered; None otherwise
     artifact_workspace_id: str | None
+    # Run lineage bound to this execution (shared.run_lineage). Absent on
+    # records written before lineage was recorded.
+    lineage: NotRequired[dict[str, str] | None]
     created_at: str  # ISO format
     cancelled: bool
     execution_attempt_id: NotRequired[str]
@@ -145,6 +148,8 @@ class RedisClient:
         runtime_evidence: dict[str, Any] | None = None,
         runtime_mode: str = "legacy",
         artifact_workspace_id: str | None = None,
+        *,
+        lineage: dict[str, str] | None,
     ) -> PendingExecution:
         """
         Store pending execution in Redis.
@@ -165,6 +170,7 @@ class RedisClient:
             startup: Optional startup data from launch workflow (available via context.startup)
             api_key_id: Optional workflow ID whose API key triggered this execution
             sync: If True, worker will push result to Redis for sync execution
+            lineage: Run lineage bound to this execution (RunLineage.bound)
         """
         redis_client = await self._get_redis()
         key = f"{PENDING_KEY_PREFIX}{execution_id}{PENDING_KEY_SUFFIX}"
@@ -193,6 +199,7 @@ class RedisClient:
             "is_external": is_external,
             "event": event,
             "artifact_workspace_id": artifact_workspace_id,
+            "lineage": lineage,
             "created_at": datetime.now(timezone.utc).isoformat(),
             "cancelled": False,
         }
@@ -230,7 +237,7 @@ class RedisClient:
         try:
             data = await redis_client.get(key)
             if data is None:
-                logger.warning(f"Pending execution not found: {execution_id}")
+                logger.warning("Pending execution not found: %s", log_safe(execution_id))
                 return None
             return json.loads(data)
         except Exception as e:

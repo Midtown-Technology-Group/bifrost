@@ -113,10 +113,13 @@ SOLUTION_GIT_SYNC_DEFINITION = PlatformJobDefinition(
         retry_on_failure=True,
         min_memory_headroom_mb=512,
         allow_running_cancellation=True,
+        execution_class="build",
     ),
     operations_policy=platform_job_operations_policy(
         "solution.git_sync",
         workload_class=WorkloadClass.PLATFORM_INTERACTIVE,
         cancellation=CancellationMode.QUEUED_AND_RUNNING,
     ),
+    display_name="Solution Git syncs",
+    description="Pulls and compiles connected Solution apps in an isolated job pod.",
 )

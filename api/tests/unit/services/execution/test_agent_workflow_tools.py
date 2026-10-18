@@ -6,6 +6,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
+
+from shared.run_lineage import RunLineage, run_user_lineage
+
 from src.services.execution.agent_workflow_tools import (
     AgentWorkflowCaller,
     execute_agent_workflow_tool,
@@ -16,6 +19,7 @@ from src.services.execution.agent_workflow_tools import (
 async def test_execute_agent_workflow_tool_builds_canonical_agent_context():
     workflow_id = uuid4()
     organization_id = uuid4()
+    run_user_id = uuid4()
     response = MagicMock()
     caller = AgentWorkflowCaller(
         user_id=str(uuid4()),
@@ -50,6 +54,7 @@ async def test_execute_agent_workflow_tool_builds_canonical_agent_context():
             execution_id="execution-1",
             artifact_workspace_id="workspace-1",
             sync=False,
+            lineage=RunLineage(run_user_id, run_user_id, None),
         )
 
     assert result is response
@@ -66,6 +71,7 @@ async def test_execute_agent_workflow_tool_builds_canonical_agent_context():
         execution_id="execution-1",
         artifact_workspace_id="workspace-1",
         sync=False,
+        lineage=RunLineage(run_user_id, run_user_id, None),
     )
 
 
@@ -219,3 +225,8 @@ async def test_ungranted_workflow_tool_never_executes():
                 parameters={}, caller=caller,
             )
     execute.assert_not_awaited()
+def test_agent_run_tools_run_for_the_agent_run_user():
+    run_user_id = uuid4()
+
+    assert run_user_lineage(run_user_id) == RunLineage(run_user_id, run_user_id, None)
+    assert run_user_lineage(None) is None

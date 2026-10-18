@@ -8,7 +8,7 @@ live database.
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
@@ -124,6 +124,35 @@ class TestCreateControlKey:
 
 
 class TestScopedAccess:
+    @pytest.fixture(autouse=True)
+    def authority(self):
+        with patch(
+            "src.services.device_control_keys.require_device_control_key_issue_permission",
+            new=AsyncMock(side_effect=lambda _db, user, _target: user),
+        ) as gate:
+            yield gate
+
+    async def test_rotate_authorizes_locked_target_before_mutating_secret(self, authority):
+        org = uuid4()
+        existing = DeviceControlKey(
+            id=uuid4(), organization_id=org, name="k", key_hash="original-hash",
+            enabled=True, device_ids=[uuid4()], created_by=str(uuid4()),
+        )
+        session = mock_session()
+        result = MagicMock()
+        result.scalar_one_or_none.return_value = existing
+        session.execute.return_value = result
+        user = make_user(org_id=org)
+        authority.side_effect = DeviceOperationError(403, "permission_denied", "revoked")
+        with pytest.raises(DeviceOperationError):
+            await rotate_control_key_route(session, user, existing.id)
+        authority.assert_awaited_once_with(session, user, org)
+        locked = session.execute.await_args.args[0]
+        assert "FOR UPDATE" in str(locked)
+        assert locked.get_execution_options()["populate_existing"] is True
+        assert existing.key_hash == "original-hash"
+        session.commit.assert_not_awaited()
+
     async def test_missing_key_404(self):
         session = mock_session()
         result = MagicMock()

@@ -25,6 +25,7 @@ from src.models import WorkflowExecutionResponse
 from src.models.enums import ExecutionStatus
 
 if TYPE_CHECKING:
+    from shared.run_lineage import RunLineage
     from src.sdk.context import ExecutionContext
 
 logger = logging.getLogger(__name__)
@@ -355,6 +356,8 @@ async def run_workflow(
     sync: bool = False,
     dispatch_metadata: dict[str, Any] | None = None,
     org_id_override: str | None = None,
+    *,
+    lineage: RunLineage | None,
 ) -> WorkflowExecutionResponse:
     """
     Execute a workflow by ID.
@@ -425,6 +428,7 @@ async def run_workflow(
         timeout_seconds=timeout_seconds,
         dispatch_metadata=dispatch_metadata,
         org_id_override=org_id_override,
+        lineage=lineage,
     )
 
 
@@ -434,6 +438,8 @@ async def run_code(
     script_name: str = "inline_script",
     input_data: dict[str, Any] | None = None,
     transient: bool = False,
+    *,
+    lineage: RunLineage | None,
 ) -> WorkflowExecutionResponse:
     """
     Execute inline Python code.
@@ -457,6 +463,7 @@ async def run_code(
         script_name=script_name,
         code_base64=code_base64,
         parameters=parameters,
+        lineage=lineage,
     )
 
 
@@ -470,6 +477,8 @@ async def _enqueue_workflow_async(
     timeout_seconds: int | None = None,
     dispatch_metadata: dict[str, Any] | None = None,
     org_id_override: str | None = None,
+    *,
+    lineage: RunLineage | None,
 ) -> WorkflowExecutionResponse:
     """
     Enqueue workflow for execution via RabbitMQ.
@@ -489,6 +498,7 @@ async def _enqueue_workflow_async(
         sync=sync,
         dispatch_metadata=dispatch_metadata,
         org_id_override=org_id_override,
+        lineage=lineage,
     )
 
     if not sync:
@@ -623,6 +633,8 @@ async def _enqueue_code_async(
     script_name: str,
     code_base64: str,
     parameters: dict[str, Any],
+    *,
+    lineage: RunLineage | None,
 ) -> WorkflowExecutionResponse:
     """Enqueue inline code for async execution via RabbitMQ."""
     from src.services.execution.async_executor import enqueue_code_execution
@@ -632,6 +644,7 @@ async def _enqueue_code_async(
         script_name=script_name,
         code_base64=code_base64,
         parameters=parameters,
+        lineage=lineage,
     )
 
     return WorkflowExecutionResponse(
@@ -655,6 +668,8 @@ async def execute_tool(
     execution_id: str | None = None,
     artifact_workspace_id: str | None = None,
     sync: bool = True,
+    *,
+    lineage: RunLineage | None,
 ) -> WorkflowExecutionResponse:
     """
     Execute a workflow as a tool (for AI agent tool calls).
@@ -674,6 +689,7 @@ async def execute_tool(
         is_platform_admin: Whether user is platform admin
         execution_id: Optional pre-generated execution ID (for streaming)
         sync: Whether to wait for the result instead of returning Pending
+        lineage: The agent run's run user (shared.run_lineage)
 
     Returns:
         WorkflowExecutionResponse with execution results
@@ -724,4 +740,5 @@ async def execute_tool(
         workflow_name=workflow_name,
         parameters=parameters,
         sync=sync,
+        lineage=lineage,
     )

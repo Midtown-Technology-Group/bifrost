@@ -41,9 +41,11 @@ from shared.table_documents import (
     DocumentRepository,
     check_table_action_or_403,
 )
+from shared import access_checks
 from src.core.constants import SYSTEM_USER_UUID
 from src.core.principal import UserPrincipal
 from src.models.orm.tables import Document, Table
+from src.services.access_check_policies import check_table_write
 from src.services.audit import emit_table_policy_deny
 from src.services.table_policy_loader import load_resolved_table_policies
 from src.core.pubsub import (
@@ -102,6 +104,8 @@ def resolve_attribution(
             raise TableWriteForbidden(
                 "created_by/updated_by override requires engine or platform-admin caller"
             )
+        # The table's organization is not known here; noted at the caller's.
+        access_checks.note_power("tableattribution.readwrite", user.organization_id, subject="table_document")
     caller = str(user.user_id)
     created_by = body_created_by or caller
     updated_by = body_updated_by or body_created_by or caller
@@ -130,9 +134,11 @@ async def require_update_policy(
         table.organization_id,
         table.solution_id,
     )
-    if evaluate_action("update", policies, old_row, user) and evaluate_action(
+    allowed = evaluate_action("update", policies, old_row, user) and evaluate_action(
         "update", policies, new_row, user
-    ):
+    )
+    await check_table_write(db, "update", table, [old_row, new_row], policies, allowed_today=allowed)
+    if allowed:
         return
 
     raw_id = old_row.get("id")
@@ -510,6 +516,8 @@ async def batch_delete_table_documents(
         if not evaluate_action("delete", policies, _row_from_doc(existing), user):
             denied.append(i)
 
+    rows = [_row_from_doc(doc) for doc in existing_by_index.values()]
+    await check_table_write(db, "delete", table, rows, policies, allowed_today=not denied)
     if denied:
         raise TableWriteForbidden({"denied_row_indices": denied})
 

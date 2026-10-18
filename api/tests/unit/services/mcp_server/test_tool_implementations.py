@@ -111,14 +111,14 @@ class TestSearchKnowledgeImpl:
 
 
 class TestValidateWorkflowImpl:
-    """Tests for validate_workflow tool."""
+    """Tests for bifrost_workflow_validate tool."""
 
     @pytest.mark.asyncio
     async def test_returns_error_when_path_empty(self, context):
         """Should return error message when file_path is empty."""
-        from src.services.mcp_server.tools.workflow import validate_workflow
+        from src.services.mcp_server.tools.workflow import bifrost_workflow_validate
 
-        result = await validate_workflow(context, "")
+        result = await bifrost_workflow_validate(context, "")
         # The implementation returns a ToolResult with error when path is empty
         assert is_error_result(result)
         # Check that the content contains error info
@@ -295,32 +295,32 @@ class TestAppToolImpl:
 
 
 class TestGetWorkflowImpl:
-    """Tests for get_workflow tool."""
+    """Tests for bifrost_workflow_get tool."""
 
     @pytest.mark.asyncio
-    async def test_returns_error_when_no_id_or_name(self, context):
-        """Should return error when neither workflow_id nor workflow_name provided."""
-        from src.services.mcp_server.tools.workflow import get_workflow
+    async def test_returns_error_when_no_ref(self, context):
+        """Should return error when workflow_ref is empty."""
+        from src.services.mcp_server.tools.workflow import bifrost_workflow_get
 
-        result = await get_workflow(context, None, None)
+        result = await bifrost_workflow_get(context, "")
         assert is_error_result(result)
         assert result.structured_content is not None
         assert "error" in result.structured_content
-        assert "workflow_id or workflow_name" in result.structured_content["error"]
+        assert "workflow_ref" in result.structured_content["error"]
 
 
 # ==================== Execution Tool Tests ====================
 
 
 class TestGetExecutionImpl:
-    """Tests for get_execution tool."""
+    """Tests for bifrost_execution_get tool."""
 
     @pytest.mark.asyncio
     async def test_returns_error_when_id_empty(self, context):
         """Should return error when execution_id is empty."""
-        from src.services.mcp_server.tools.execution import get_execution
+        from src.services.mcp_server.tools.execution import bifrost_execution_get
 
-        result = await get_execution(context, "")
+        result = await bifrost_execution_get(context, "")
         assert is_error_result(result)
         assert result.structured_content is not None
         assert result.structured_content["error"] == "execution_id is required"
@@ -347,7 +347,7 @@ class TestSystemToolsRegistry:
         tools = get_system_tools()
         code_editor_tool_ids = [
             "list_content",
-            "search_content",
+            "bifrost_file_search",
             "read_content_lines",
             "get_content",
             "patch_content",
@@ -367,10 +367,10 @@ class TestSystemToolsRegistry:
 
         tools = get_system_tools()
         workflow_tool_ids = [
-            "execute_workflow",
-            "list_workflows",
-            "list_executions",
-            "get_execution",
+            "bifrost_workflow_execute",
+            "bifrost_workflow_list",
+            "bifrost_execution_list",
+            "bifrost_execution_get",
         ]
 
         for tool_id in workflow_tool_ids:

@@ -125,7 +125,7 @@ class TestGetToolsForAgent:
         agent.name = "Test Agent"
         agent.access_level = MagicMock()
         agent.access_level.__eq__ = lambda self, other: str(self) == str(other)
-        agent.system_tools = ["execute_workflow", "list_workflows"]
+        agent.system_tools = ["bifrost_workflow_execute", "bifrost_workflow_list"]
         agent.tools = []
         agent.roles = []
         agent.knowledge_sources = ["docs", "wiki"]

@@ -58,6 +58,8 @@ interface MessageWithToolCardsProps {
 	message: MessagePublic;
 	/** Map of tool_call_id -> tool result message (for getting execution_id) */
 	toolResultMessages: Map<string, MessagePublic>;
+	/** Map of tool_call_id -> tool call message (its recorded outcome) */
+	toolCallMessages: Map<string, MessagePublic>;
 	/** Conversation ID for retrieving saved tool execution state */
 	conversationId: string;
 	isStreaming?: boolean;
@@ -66,6 +68,7 @@ interface MessageWithToolCardsProps {
 function MessageWithToolCards({
 	message,
 	toolResultMessages,
+	toolCallMessages,
 	conversationId,
 	isStreaming,
 }: MessageWithToolCardsProps) {
@@ -159,6 +162,9 @@ function MessageWithToolCards({
 									toolCall={tc}
 									execution={savedExecution}
 									hasResultMessage={!!resultMsg}
+									toolCallMessage={toolCallMessages.get(
+										tc.id,
+									)}
 								/>
 							),
 						)}
@@ -227,6 +233,11 @@ export function ChatWindow({ conversationId, agentName }: ChatWindowProps) {
 	const streamingMessageId = useChatStore((state) =>
 		conversationId ? state.streamingMessageIds[conversationId] : null,
 	);
+	const contextUsage = useChatStore((state) =>
+		conversationId
+			? (state.projectionsByConversation[conversationId]?.context_usage ?? null)
+			: null,
+	);
 	const todos = useTodos();
 	const setActiveConversation = useChatStore(
 		(state) => state.setActiveConversation,
@@ -237,13 +248,31 @@ export function ChatWindow({ conversationId, agentName }: ChatWindowProps) {
 	const [selectedModelProfileId, setSelectedModelProfileId] =
 		useState<ChatModelProfileId | null>(null);
 	const modelProfiles = modelProfileData?.profiles ?? [];
+	const contextModelProfileId = modelProfiles.some(
+		(profile) => profile.id === contextUsage?.model_profile_id,
+	)
+		? (contextUsage?.model_profile_id ?? null)
+		: null;
 	const effectiveModelProfileId = modelProfiles.some(
 		(profile) => profile.id === selectedModelProfileId,
 	)
 		? selectedModelProfileId
-		: (modelProfileData?.default_profile_id ??
+		: (contextModelProfileId ??
+			modelProfileData?.default_profile_id ??
 			modelProfiles[0]?.id ??
 			null);
+
+	const previousConversationIdRef = useRef(conversationId);
+	useEffect(() => {
+		const previousConversationId = previousConversationIdRef.current;
+		if (
+			previousConversationId !== undefined &&
+			previousConversationId !== conversationId
+		) {
+			setSelectedModelProfileId(null);
+		}
+		previousConversationIdRef.current = conversationId;
+	}, [conversationId]);
 
 	// Use WebSocket streaming
 	const {
@@ -270,6 +299,18 @@ export function ChatWindow({ conversationId, agentName }: ChatWindowProps) {
 		for (const msg of messages) {
 			// Tool result messages have tool_call_id set
 			if (msg.tool_call_id) {
+				map.set(msg.tool_call_id, msg);
+			}
+		}
+		return map;
+	}, [messages]);
+
+	// Tool call messages keep the tool's outcome after run retention removes
+	// the execution it ran as.
+	const toolCallMessages = useMemo(() => {
+		const map = new Map<string, MessagePublic>();
+		for (const msg of messages) {
+			if (msg.role === "tool_call" && msg.tool_call_id) {
 				map.set(msg.tool_call_id, msg);
 			}
 		}
@@ -487,6 +528,7 @@ export function ChatWindow({ conversationId, agentName }: ChatWindowProps) {
 					modelProfiles={modelProfiles}
 					modelProfileId={effectiveModelProfileId}
 					onModelProfileChange={setSelectedModelProfileId}
+					contextUsage={contextUsage}
 				/>
 			</div>
 		);
@@ -519,6 +561,7 @@ export function ChatWindow({ conversationId, agentName }: ChatWindowProps) {
 					modelProfiles={modelProfiles}
 					modelProfileId={effectiveModelProfileId}
 					onModelProfileChange={setSelectedModelProfileId}
+					contextUsage={contextUsage}
 				/>
 			</div>
 		);
@@ -555,6 +598,7 @@ export function ChatWindow({ conversationId, agentName }: ChatWindowProps) {
 					modelProfiles={modelProfiles}
 					modelProfileId={effectiveModelProfileId}
 					onModelProfileChange={setSelectedModelProfileId}
+					contextUsage={contextUsage}
 				/>
 			</div>
 		);
@@ -585,6 +629,7 @@ export function ChatWindow({ conversationId, agentName }: ChatWindowProps) {
 					modelProfiles={modelProfiles}
 					modelProfileId={effectiveModelProfileId}
 					onModelProfileChange={setSelectedModelProfileId}
+					contextUsage={contextUsage}
 				/>
 			</div>
 		);
@@ -663,6 +708,7 @@ export function ChatWindow({ conversationId, agentName }: ChatWindowProps) {
 				key={msg.id}
 				message={msg}
 				toolResultMessages={toolResultMessages}
+				toolCallMessages={toolCallMessages}
 				conversationId={conversationId}
 				isStreaming={
 					(msg as ChatRuntimeMessage).is_streaming ||
@@ -841,6 +887,7 @@ export function ChatWindow({ conversationId, agentName }: ChatWindowProps) {
 				modelProfiles={modelProfiles}
 				modelProfileId={effectiveModelProfileId}
 				onModelProfileChange={setSelectedModelProfileId}
+				contextUsage={contextUsage}
 			/>
 		</div>
 	);

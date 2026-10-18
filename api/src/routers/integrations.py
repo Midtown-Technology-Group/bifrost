@@ -16,7 +16,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from typing import Any
 
-from sqlalchemy import and_, delete, func, select, union
+from sqlalchemy import and_, delete, func, select, union, update
 
 from src.services.operation_catalog import operation_route
 from src.core.auth import Context, CurrentSuperuser
@@ -60,6 +60,7 @@ from src.services.oauth_pkce import (
     provider_uses_pkce,
     store_pkce_verifier,
 )
+from src.services.audit import emit_audit
 from src.services.oauth_state import encode_state, remember_nonce
 from shared.logo_processing import (
     LogoProcessingError,
@@ -393,13 +394,35 @@ class IntegrationsRepository:
         return await self.get_integration_by_id(integration_id)
 
     async def delete_integration(self, integration_id: UUID) -> bool:
-        """Soft delete an integration."""
+        """Soft delete an integration and remove its OAuth credentials.
+
+        The integration row is kept, but its OAuth provider and tokens are
+        deleted: a soft-deleted integration can't be managed from the UI,
+        so leaving them would keep the refresh scheduler refreshing (and
+        alerting on) a connection nobody can disconnect.
+        """
         integration = await self.get_integration_by_id(integration_id)
         if not integration:
             return False
 
         integration.is_deleted = True
         integration.updated_at = datetime.now(timezone.utc)
+
+        provider_ids = select(OAuthProvider.id).where(
+            OAuthProvider.integration_id == integration_id
+        )
+        token_ids = select(OAuthToken.id).where(OAuthToken.provider_id.in_(provider_ids))
+        await self.db.execute(
+            update(IntegrationMapping)
+            .where(IntegrationMapping.oauth_token_id.in_(token_ids))
+            .values(oauth_token_id=None)
+        )
+        await self.db.execute(
+            delete(OAuthToken).where(OAuthToken.provider_id.in_(provider_ids))
+        )
+        await self.db.execute(
+            delete(OAuthProvider).where(OAuthProvider.integration_id == integration_id)
+        )
         await self.db.flush()
         return True
 
@@ -528,6 +551,8 @@ class IntegrationsRepository:
 
         For each key-value pair:
         - If value is None or empty string, delete the entry (fall back to default)
+        - If a secret key carries ``SECRET_PLACEHOLDER``, keep the stored value
+          (admin reads return the placeholder, and the UI saves back what it read)
         - Otherwise, upsert the entry
         - Sets config_type based on integration config schema
         - Encrypts secret values before storage
@@ -535,7 +560,7 @@ class IntegrationsRepository:
         Uses explicit SELECT + INSERT/UPDATE pattern because PostgreSQL's
         ON CONFLICT doesn't work with functional indexes (COALESCE for NULL handling).
         """
-        from src.core.security import encrypt_secret
+        from src.core.security import SECRET_PLACEHOLDER, encrypt_secret
         from src.models.enums import ConfigType as ConfigTypeEnum
 
         # Look up schema items for this integration to get config_schema_id
@@ -566,6 +591,9 @@ class IntegrationsRepository:
             db_config_type = ConfigTypeEnum.STRING
             if schema_item:
                 db_config_type = SCHEMA_TYPE_MAP.get(schema_item.type, ConfigTypeEnum.STRING)
+
+            if db_config_type == ConfigTypeEnum.SECRET and value == SECRET_PLACEHOLDER:
+                continue
 
             # Build the WHERE clause for matching existing config
             # Handle NULL comparison properly with IS NULL
@@ -599,7 +627,6 @@ class IntegrationsRepository:
 
                 if existing:
                     # Update existing record
-                    from sqlalchemy import update
                     await self.db.execute(
                         update(ConfigModel)
                         .where(ConfigModel.id == existing)
@@ -672,23 +699,21 @@ class IntegrationsRepository:
         return True
 
     async def _extract_config_value(self, entry: ConfigModel) -> Any:
-        """Extract config value, decrypting secrets."""
-        from src.core.security import decrypt_secret
+        """Extract a config value for an admin response, masking secrets.
+
+        Every caller is a human-facing admin route; the engine reads decrypted
+        values through ``src.repositories.integrations`` on the /api/sdk paths.
+        """
+        from src.core.security import SECRET_PLACEHOLDER
         from src.models.enums import ConfigType as ConfigTypeEnum
+
+        if entry.config_type == ConfigTypeEnum.SECRET:
+            return SECRET_PLACEHOLDER
 
         value = entry.value
         if isinstance(value, dict) and "value" in value:
-            raw = value["value"]
-        else:
-            raw = value
-
-        if entry.config_type == ConfigTypeEnum.SECRET and isinstance(raw, str):
-            try:
-                return decrypt_secret(raw)
-            except Exception:
-                # Value may not be encrypted yet (pre-migration data)
-                return raw
-        return raw
+            return value["value"]
+        return value
 
     async def get_integration_defaults(
         self, integration_id: UUID, *, external: bool
@@ -699,9 +724,11 @@ class IntegrationsRepository:
         These are stored in the configs table with integration_id set
         but organization_id is NULL.
 
+        Secret values come back as ``SECRET_PLACEHOLDER``.
+
         ``external`` is REQUIRED (no default — EXT-1 NEW-G/NEW-H defense in
-        depth). These defaults ARE the global (org_id=NULL) tier and may carry
-        decrypted SECRETs. An EXTERNAL portal caller passes True and gets {};
+        depth). These defaults ARE the global (org_id=NULL) tier. An EXTERNAL
+        portal caller passes True and gets {};
         the superuser admin routes that use this class pass False explicitly.
         No default so a future call site can't silently leak the global tier
         (this is the class behind the now-deleted cross-tenant /sdk/{name}).
@@ -774,34 +801,6 @@ class IntegrationsRepository:
 
         return configs_by_org
 
-    async def get_config_for_mapping(
-        self, integration_id: UUID, org_id: UUID, *, external: bool
-    ) -> dict[str, Any]:
-        """
-        Get merged configuration for an integration mapping.
-
-        Config resolution order:
-        1. Integration-level defaults (integration_id set, org_id is NULL)
-        2. Per-org overrides (both integration_id and org_id set)
-
-        Per-org values override integration defaults.
-
-        ``external`` is REQUIRED (no default — EXT-1 NEW-G/NEW-H). An EXTERNAL
-        portal caller passes True and gets org-specific overrides ONLY (no
-        global defaults — a decrypted SECRET never crosses to a portal user);
-        the superuser admin routes pass False explicitly.
-        """
-        # Integration-level defaults (skipped entirely for external callers).
-        config = await self.get_integration_defaults(
-            integration_id, external=external
-        )
-
-        # Merge org overrides (always the caller's own resolved org).
-        org_overrides = await self.get_org_config_overrides(integration_id, org_id)
-        config.update(org_overrides)
-
-        return config
-
     async def get_oauth_provider(self, integration_id: UUID):
         """Get the OAuth provider associated with an integration."""
         integration = await self.get_integration_by_id(integration_id)
@@ -841,6 +840,14 @@ async def create_integration(
 
     integration = await repo.create_integration(request)
     logger.info(f"Created integration: {log_safe(integration.name)}")
+
+    await emit_audit(
+        ctx.db,
+        "integration.create",
+        resource_type="integration",
+        resource_id=integration.id,
+        details={"name": integration.name},
+    )
 
     response = _integration_to_response(integration)
     await ctx.db.commit()
@@ -1016,9 +1023,53 @@ async def update_integration(
     request: IntegrationUpdate,
     ctx: Context,
     user: CurrentSuperuser,
+    force_remove_keys: bool = Query(
+        False,
+        description="Confirm deletion of config-schema keys and their stored values",
+    ),
 ) -> IntegrationResponse:
-    """Update an integration."""
+    """Update an integration.
+
+    If the new ``config_schema`` drops keys that have saved ``Config``
+    values, this refuses with 409 ``integration_schema_removal_requires_confirmation``
+    (reporting the affected count) unless ``force_remove_keys=true``.
+    """
     repo = IntegrationsRepository(ctx.db)
+
+    current = await repo.get_integration_by_id(integration_id)
+    if not current:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Integration not found",
+        )
+
+    if request.config_schema is not None:
+        current_by_key = {item.key: item for item in current.config_schema}
+        incoming_keys = {item.key for item in request.config_schema}
+        removed_keys = sorted(set(current_by_key) - incoming_keys)
+        if removed_keys and not force_remove_keys:
+            removed_ids = [current_by_key[key].id for key in removed_keys]
+            affected_values = await ctx.db.scalar(
+                select(func.count())
+                .select_from(ConfigModel)
+                .where(ConfigModel.config_schema_id.in_(removed_ids))
+            )
+            affected_count = int(affected_values or 0)
+            if affected_count > 0:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail={
+                        "code": "integration_schema_removal_requires_confirmation",
+                        "message": (
+                            "Removing integration config-schema keys deletes stored "
+                            "default and organization values"
+                        ),
+                        "removed_keys": removed_keys,
+                        "affected_config_values": affected_count,
+                        "force_remove_keys": True,
+                    },
+                )
+
     integration = await repo.update_integration(integration_id, request)
 
     if not integration:
@@ -1028,6 +1079,15 @@ async def update_integration(
         )
 
     logger.info(f"Updated integration: {log_safe(integration.name)}")
+    changed_fields = sorted(request.model_dump(exclude_unset=True))
+    await emit_audit(
+        ctx.db,
+        "integration.update",
+        resource_type="integration",
+        resource_id=integration.id,
+        details={"name": integration.name, "changed_fields": changed_fields},
+    )
+    await ctx.db.commit()
     return _integration_to_response(integration)
 
 
@@ -1357,6 +1417,16 @@ async def create_mapping(
     logger.info(
         f"Created mapping for integration {log_safe(integration_id)} in org {log_safe(request.organization_id)}"
     )
+    await emit_audit(
+        ctx.db,
+        "integration_mapping.create",
+        resource_type="integration_mapping",
+        resource_id=mapping.id,
+        details={
+            "integration_id": str(integration_id),
+            "organization_id": str(request.organization_id),
+        },
+    )
 
     # Get org-specific overrides only (not merged with defaults)
     org_config = await repo.get_org_config_overrides(integration_id, request.organization_id)
@@ -1478,6 +1548,13 @@ async def update_mapping(
         )
 
     logger.info(f"Updated mapping {log_safe(mapping_id)} for integration {log_safe(integration_id)}")
+    await emit_audit(
+        ctx.db,
+        "integration_mapping.update",
+        resource_type="integration_mapping",
+        resource_id=mapping.id,
+        details={"integration_id": str(integration_id)},
+    )
 
     # Get org-specific overrides only (not merged with defaults)
     org_config = await repo.get_org_config_overrides(integration_id, mapping.organization_id)
@@ -2210,6 +2287,7 @@ async def test_integration_connection(
     import time
     from uuid import uuid4
     from src.sdk.context import ExecutionContext as SharedContext, Organization
+    from shared.run_lineage import principal_lineage
     from src.services.execution.async_executor import enqueue_code_execution
     from src.core.redis_client import get_redis_client
 
@@ -2252,6 +2330,7 @@ async def test_integration_connection(
     )
 
     script_name = f"test_integration_{integration.name}"
+    lineage = await principal_lineage(ctx.db, user)
     scope_label = f"org {request.organization_id}" if request.organization_id else "global"
     start_time = time.time()
 
@@ -2268,6 +2347,7 @@ async def test_integration_connection(
             user_name=shared_ctx.name,
             user_email=shared_ctx.email,
             form_id=None,
+            lineage=lineage.bound(execution_id) if lineage else None,
         )
 
         # Queue with sync=True to wait for result
@@ -2278,6 +2358,7 @@ async def test_integration_connection(
             parameters={},
             execution_id=execution_id,
             sync=True,
+            lineage=lineage,
         )
 
         # Wait for result from worker via Redis BLPOP

@@ -23,6 +23,7 @@ import tempfile
 from typing import Any
 
 from src.jobs.execution_policy import broker_execution_policies
+from shared.subprocess_env import package_tool_env
 from src.jobs.rabbitmq import BroadcastConsumer
 from src.services.execution.install_progress import report_phase
 
@@ -125,6 +126,7 @@ class PackageInstallConsumer(BroadcastConsumer):
                 sys.executable, "-m", "pip", "uninstall", "-y", package, "--quiet",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
+                env=package_tool_env(),
             )
             _, stderr = await _communicate_with_timeout(proc, timeout=120)
             if proc.returncode == 0:
@@ -161,6 +163,7 @@ class PackageInstallConsumer(BroadcastConsumer):
                 sys.executable, "-m", "pip", "install", package_spec, "--quiet",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
+                env=package_tool_env(),
             )
             _, stderr = await _communicate_with_timeout(proc, timeout=300)
 
@@ -200,6 +203,7 @@ class PackageInstallConsumer(BroadcastConsumer):
                 sys.executable, "-m", "pip", "install", "-r", temp_path, "--quiet",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
+                env=package_tool_env(),
             )
             _, stderr = await _communicate_with_timeout(proc, timeout=300)
 

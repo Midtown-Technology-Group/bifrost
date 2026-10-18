@@ -224,6 +224,10 @@ Entity mutations have three parallel surfaces: **CLI** (`bifrost <entity> ...`),
 
 **MCP vs REST routers (existing drift):** the MCP tools for `agents`, `forms`, `tables`, `apps`, `events` re-implement router logic and have diverged (different permission models, missing side effects, divergent validation). See `docs/plans/2026-04-18-mcp-router-reconciliation.md` for the catalog and reconciliation sequence. **New MCP tools must be thin HTTP wrappers that call the REST endpoints** (see `api/src/services/mcp_server/tools/roles.py` / `configs.py` / `_http_bridge.py` for the pattern) — no direct ORM access, no repository imports. A unit test (`api/tests/unit/test_mcp_thin_wrapper.py`) enforces this.
 
+## Product Updates
+
+For a user-visible change, classify the PR in its canonical disposition file, `product-updates/dispositions/pr-<number>.json`, and author approved entry prose in the shared `product-updates/` source. The PR template is a proposal, not the durable decision. Read [`docs/product-updates-authoring.md`](docs/product-updates-authoring.md) before editing entries, preparing a release, or validating Product Updates; it defines draft versus approved content, source/credit evidence, and deterministic release-body preparation.
+
 ## Project Structure
 
 ```
@@ -277,6 +281,7 @@ Summarizer-generated `AIUsage` rows roll up into `AgentStats.total_cost_7d` (the
     -   Never manually write TypeScript types for API endpoints
 -   **API Services**: Create service files in `client/src/services/` for new endpoints
 -   **Scrollable content sizing**: Prefer "content-sized until constrained" for lists, tables, drawers, panels, and other scrollable regions. Let the region size to its contents when short; cap it with available-space `max-height` and apply `overflow-auto` only after it reaches that cap. Avoid `flex-1` / forced full-height scroll containers for short content unless the design explicitly calls for a fill-height workspace. In drawers and dialogs, keep fixed headers/metadata outside the scroller and put `overflow-auto` on the long content region itself.
+-   **Copy**: Title Case for anything that isn't a sentence (buttons, headings, tabs, labels, badges, menu items, permission names); sentence case for sentences. See the Copy rule in `DESIGN.md`.
 
 Example service pattern:
 ```typescript
@@ -364,6 +369,8 @@ export async function getDataProviders() {
 2. Edit the migration file
 3. Restart `bifrost-init` to run alembic: `docker compose restart bifrost-init`
 4. Restart API: `docker compose restart api`
+
+**Withdrawing a migration:** never turn an already-applied migration into a no-op without a forward migration that removes what it created. Databases that ran it keep that schema, fresh databases never get it, and later migrations collide with the difference. Fresh-database tests cannot see this, so add a rehearsal that applies the residue to a disposable database at the prior revision and upgrades to head (see `api/tests/e2e/platform/test_builder_residue_migration_rehearsal.py`), and register the tombstone in `api/tests/unit/test_migration_tombstones.py`.
 
 **After adding a Python dependency:**
 1. Add to `pyproject.toml` (root)

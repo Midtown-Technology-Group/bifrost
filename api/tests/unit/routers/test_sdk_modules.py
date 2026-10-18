@@ -11,16 +11,14 @@ from src.core.principal import UserPrincipal
 
 SERVICE = "shared.sdk_modules"
 
-@pytest.fixture(autouse=True)
-def resolver_generation(monkeypatch):
-    monkeypatch.setattr(
-        f"{SERVICE}.get_module_resolution_generation",
-        AsyncMock(return_value="test-generation"),
-    )
-
-
 SOLUTION_A = "12345678-1234-5678-1234-567812345678"
 SOLUTION_B = "87654321-4321-8765-4321-876543218765"
+
+
+@pytest.fixture(autouse=True)
+def resolver_generation():
+    with patch(f"{SERVICE}.get_module_resolution_generation", new_callable=AsyncMock, return_value="generation"):
+        yield
 
 
 def _system_user() -> UserPrincipal:

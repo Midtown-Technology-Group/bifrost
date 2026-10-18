@@ -268,6 +268,8 @@ async def sync_service(db_session: AsyncSession, bare_repo, tmp_path):
     service.repo_manager.checkpoint_workspace = checkpoint_workspace  # type: ignore[assignment]
     service.repo_manager.restore_workspace_checkpoint = restore_workspace_checkpoint  # type: ignore[assignment]
     service.repo_manager.delete_workspace_checkpoint = delete_workspace_checkpoint  # type: ignore[assignment]
+    # The simulated storage is the persistent dir itself, so it is never stale.
+    service.repo_manager.ensure_storage_unchanged = AsyncMock()  # type: ignore[assignment]
     service._sync_up_calls = sync_up_calls  # type: ignore[attr-defined]
     # Patch the module-level PERSISTENT_WORK_DIR so is_initialized checks the test dir
     import src.services.git_repo_manager as grm_mod
@@ -427,11 +429,18 @@ async def cleanup_test_data(db_session: AsyncSession):
     await db_session.execute(
         delete(Table).where(Table.created_by == "git-sync")
     )
+    # Policy rules imported by TestPolicyRuleRoundTrip. A leftover rule is a
+    # workspace entity, so a later first Git connection would refuse to sync.
+    from src.models.orm.policy_rule import PolicyRule
+
+    await db_session.execute(
+        delete(PolicyRule).where(PolicyRule.name.in_(["ops_read_only", "ops_access"]))
+    )
 
     # Clean up orgs and roles last (entities FK into these)
     from src.models.orm.executions import Execution
     from src.models.orm.organizations import Organization
-    from src.models.orm.users import Role
+    from src.models.orm.users import Role, User
 
     # Limit the sweep to organizations owned by this module. Other suites and
     # the shared E2E seed also use created_by="test"; deleting those rows here
@@ -441,6 +450,10 @@ async def cleanup_test_data(db_session: AsyncSession):
     )
     await db_session.execute(
         delete(Execution).where(Execution.organization_id.in_(cohort_orgs))
+    )
+    # Default identity users must be removed before their test-owned organizations.
+    await db_session.execute(
+        delete(User).where(User.organization_id.in_(cohort_orgs), User.identity_kind.is_not(None))
     )
     await db_session.execute(
         delete(Organization).where(
@@ -3396,6 +3409,196 @@ class TestPullUpsertNaturalKeys:
         assert len(rows) == 1, f"Expected 1 workflow row, got {len(rows)}"
         assert rows[0].id == id_b, f"Expected manifest ID {id_b}, got {rows[0].id}"
 
+    async def test_workflow_import_keeps_its_identity_suited_to_its_organization(
+        self,
+        db_session: AsyncSession,
+        sync_service,
+        working_clone,
+    ):
+        """A pull that keeps a workflow's organization keeps the identity it runs
+        unattended as; a pull that moves it to an organization that identity
+        can't serve is refused and changes nothing."""
+        from shared.identities import ensure_default_identity
+        from src.core.constants import PROVIDER_ORG_ID
+        from src.models.orm.organizations import Organization
+        from src.models.orm.users import User
+
+        path = "workflows/identity_import_test.py"
+        provider_identity = (
+            await db_session.execute(
+                select(User.id).where(
+                    User.organization_id == PROVIDER_ORG_ID, User.identity_kind == "org_default"
+                )
+            )
+        ).scalar_one()
+        organization = Organization(id=uuid4(), name="Identity Import Org", is_active=True, created_by="git-sync")
+        db_session.add(organization)
+        await db_session.flush()
+        await ensure_default_identity(db_session, organization)
+        wf_id = uuid4()
+        db_session.add(Workflow(
+            id=wf_id, name="identity_import_wf", function_name="git_sync_test_wf", path=path,
+            is_active=True, organization_id=None, run_identity_id=provider_identity,
+        ))
+        await db_session.commit()
+        organization_id = organization.id
+
+        def push(org_id, message: str) -> None:
+            clone_dir = Path(working_clone.working_dir)
+            (clone_dir / "workflows").mkdir(exist_ok=True)
+            (clone_dir / path).write_text(SAMPLE_WORKFLOW_PY)
+            (clone_dir / ".bifrost").mkdir(exist_ok=True)
+            entry = {"id": str(wf_id), "path": path, "function_name": "git_sync_test_wf", "type": "workflow"}
+            if org_id is not None:
+                entry["organization_id"] = str(org_id)
+            (clone_dir / ".bifrost" / "workflows.yaml").write_text(
+                yaml.dump({"workflows": {"identity_import_wf": entry}}, default_flow_style=False)
+            )
+            working_clone.index.add([path, ".bifrost/workflows.yaml"])
+            working_clone.index.commit(message)
+            working_clone.remotes.origin.push("main")
+
+        async def stored():
+            db_session.expire_all()
+            return (
+                await db_session.execute(
+                    select(Workflow.organization_id, Workflow.run_identity_id).where(Workflow.id == wf_id)
+                )
+            ).one()
+
+        try:
+            push(None, "Workflow stays global")
+            kept = await sync_service.desktop_sync(confirm_deletes=True)
+            assert kept.success, f"Sync failed: {kept.error}"
+            assert tuple(await stored()) == (None, provider_identity)
+
+            push(organization_id, "Workflow moves to a customer organization")
+            moved = await sync_service.desktop_sync(confirm_deletes=True)
+            assert not moved.success
+            assert "run_identity_id" in (moved.error or "")
+            assert tuple(await stored()) == (None, provider_identity)
+        finally:
+            await db_session.execute(delete(Workflow).where(Workflow.id == wf_id))
+            await db_session.commit()
+
+    async def test_workspace_sync_leaves_solution_workflow_with_same_path(
+        self,
+        db_session: AsyncSession,
+        sync_service,
+        bare_repo,
+        working_clone,
+    ):
+        """A workspace manifest entry sharing (path, function_name) with a
+        Solution-owned workflow becomes its own row; the Solution row keeps its
+        id and ownership."""
+        from sqlalchemy import insert
+        from src.models.orm.solutions import Solution
+
+        path = "workflows/git_sync_test_solution_owned.py"
+        solution = Solution(
+            id=uuid4(),
+            slug=f"git-sync-guard-{uuid4().hex[:8]}",
+            name="Git sync guard",
+            organization_id=None,
+        )
+        solution_id = solution.id
+        db_session.add(solution)
+        await db_session.flush()
+        solution_wf_id = uuid4()
+        await db_session.execute(insert(Workflow).values(
+            id=solution_wf_id,
+            name="Solution copy",
+            function_name="git_sync_test_wf",
+            path=path,
+            solution_id=solution_id,
+        ))
+        await db_session.commit()
+
+        try:
+            workspace_wf_id = uuid4()
+            clone_dir = Path(working_clone.working_dir)
+            (clone_dir / "workflows").mkdir(exist_ok=True)
+            (clone_dir / path).write_text(SAMPLE_WORKFLOW_PY)
+            (clone_dir / ".bifrost").mkdir(exist_ok=True)
+            (clone_dir / ".bifrost" / "workflows.yaml").write_text(yaml.dump({
+                "workflows": {
+                    "git_sync_test_wf": {
+                        "id": str(workspace_wf_id),
+                        "path": path,
+                        "function_name": "git_sync_test_wf",
+                        "type": "workflow",
+                    }
+                }
+            }, default_flow_style=False))
+            working_clone.index.add([path, ".bifrost/workflows.yaml"])
+            working_clone.index.commit("Add workspace workflow at a Solution path")
+            working_clone.remotes.origin.push("main")
+
+            sync_result = await sync_service.desktop_sync(confirm_deletes=True)
+            assert sync_result.success, f"Sync failed: {sync_result.error}"
+
+            db_session.expire_all()
+            rows = (await db_session.execute(
+                select(Workflow.id, Workflow.solution_id).where(Workflow.path == path)
+            )).all()
+            assert {row.id: row.solution_id for row in rows} == {
+                solution_wf_id: solution_id,
+                workspace_wf_id: None,
+            }
+        finally:
+            await db_session.execute(delete(Workflow).where(Workflow.path == path))
+            await db_session.execute(delete(Solution).where(Solution.id == solution_id))
+            await db_session.commit()
+
+    async def test_workspace_prefetch_excludes_solution_owned_rows(
+        self,
+        db_session: AsyncSession,
+    ):
+        """Every natural-key map the workspace importer matches against omits
+        Solution-owned rows, so no manifest entry can re-key or overwrite one."""
+        from src.models.orm.applications import Application
+        from src.models.orm.custom_claims import CustomClaim
+        from src.models.orm.policy_rule import PolicyRule
+        from src.models.orm.solutions import Solution
+        from src.models.orm.tables import Table
+        from src.services.manifest_import import ManifestResolver
+
+        suffix = uuid4().hex[:8]
+        solution = Solution(
+            id=uuid4(),
+            slug=f"git-sync-prefetch-{suffix}",
+            name="Prefetch guard",
+            organization_id=None,
+        )
+        db_session.add(solution)
+        await db_session.flush()
+        db_session.add_all([
+            Workflow(
+                name="wf", function_name="wf", path=f"workflows/prefetch_{suffix}.py",
+                solution_id=solution.id,
+            ),
+            Application(name="app", slug=f"prefetch-{suffix}", solution_id=solution.id),
+            Table(name=f"prefetch_{suffix}", solution_id=solution.id),
+            CustomClaim(name=f"prefetch_{suffix}", query={}, solution_id=solution.id),
+            PolicyRule(
+                name=f"prefetch_{suffix}", domain="table", body={},
+                solution_id=solution.id,
+            ),
+        ])
+        await db_session.flush()
+
+        try:
+            cache = await ManifestResolver(db_session)._prefetch_existing_entities()
+        finally:
+            # This module's cleanup fixture commits; keep the seeded rows out of it.
+            await db_session.rollback()
+
+        assert (f"workflows/prefetch_{suffix}.py", "wf") not in cache["wf_by_natural"]
+        assert f"prefetch-{suffix}" not in cache["app_by_slug"]
+        assert (f"prefetch_{suffix}", None) not in cache["table_by_natural"]
+        assert (f"prefetch_{suffix}", None) not in cache["claim_by_natural"]
+        assert (f"prefetch_{suffix}", "table", None) not in cache["policy_rule_by_natural"]
+
     async def test_integration_import_with_different_id(
         self,
         db_session: AsyncSession,
@@ -4017,8 +4220,11 @@ class TestOrgImport:
     async def test_create_org(
         self, db_session: AsyncSession, sync_service, working_clone,
     ):
-        """Org in manifest, not in DB → created."""
+        """Org in manifest, not in DB → created, with its default identity."""
+        from uuid import UUID
+
         from src.models.orm.organizations import Organization
+        from src.models.orm.users import User
 
         org_id = str(uuid4())
         work_dir = Path(working_clone.working_dir)
@@ -4038,6 +4244,14 @@ class TestOrgImport:
         assert org is not None, "Org not created"
         assert org.name == "TestOrg"
         assert org.is_active is True
+        identity_kinds = (
+            await db_session.scalars(
+                select(User.identity_kind).where(
+                    User.organization_id == UUID(org_id), User.identity_kind.is_not(None)
+                )
+            )
+        ).all()
+        assert identity_kinds == ["org_default"], "Imported org has its default identity"
 
     async def test_update_org_by_id_rename(
         self, db_session: AsyncSession, sync_service, working_clone,
@@ -4070,12 +4284,18 @@ class TestOrgImport:
     async def test_update_org_by_name_new_id(
         self, db_session: AsyncSession, sync_service, working_clone,
     ):
-        """Org exists by name with different UUID → ID updated (cross-env)."""
+        """Org exists by name with different UUID → ID updated (cross-env),
+        and its accounts (here its default identity) follow it."""
+        from shared.identities import ensure_default_identity
         from src.models.orm.organizations import Organization
+        from src.models.orm.users import User
 
         old_id = uuid4()
         new_id = uuid4()
-        db_session.add(Organization(id=old_id, name="SharedOrg", is_active=True, created_by="git-sync"))
+        organization = Organization(id=old_id, name="SharedOrg", is_active=True, created_by="git-sync")
+        db_session.add(organization)
+        await db_session.flush()
+        identity_id = (await ensure_default_identity(db_session, organization)).id
         await db_session.commit()
 
         work_dir = Path(working_clone.working_dir)
@@ -4096,6 +4316,10 @@ class TestOrgImport:
         )).scalar_one_or_none()
         assert row is not None, "Org should have new ID"
         assert row.name == "SharedOrg"
+        identity_org = (
+            await db_session.execute(select(User.organization_id).where(User.id == identity_id))
+        ).scalar_one()
+        assert identity_org == new_id
 
     async def test_org_preserves_domain(
         self, db_session: AsyncSession, sync_service, working_clone,
@@ -4154,7 +4378,9 @@ class TestOrgImport:
     async def test_deactivate_removed_org(
         self, db_session: AsyncSession, sync_service, working_clone,
     ):
-        """Org in DB (is_active=True, created_by=git-sync), not in manifest → is_active=False."""
+        """Org in DB (is_active=True, created_by=git-sync), not in manifest → is_active=False.
+        The provider organization is never in a manifest and stays active."""
+        from src.core.constants import PROVIDER_ORG_ID
         from src.models.orm.organizations import Organization
 
         org_id = uuid4()
@@ -4186,6 +4412,11 @@ class TestOrgImport:
             select(Organization).where(Organization.id == keep_id)
         )).scalar_one()
         assert kept.is_active is True
+
+        provider = (await db_session.execute(
+            select(Organization).where(Organization.id == PROVIDER_ORG_ID)
+        )).scalar_one()
+        assert provider.is_active is True
 
     async def test_reactivate_org(
         self, db_session: AsyncSession, sync_service, working_clone,
@@ -4305,16 +4536,20 @@ class TestRoleImport:
         assert row is not None
         assert row.name == "SharedRole"
 
-    async def test_role_preserves_permissions(
+    async def test_role_preserves_description(
         self, db_session: AsyncSession, sync_service, working_clone,
     ):
-        """Role exists with permissions/description → preserved on pull."""
+        """Role exists with a description → preserved on pull.
+
+        Roles aren't portable manifest content: the manifest carries only
+        identity (id/name), never `role_permissions` grants (R2b removed the
+        old free-form `permissions` JSONB this test used to check)."""
         from src.models.orm.users import Role
 
         role_id = uuid4()
         db_session.add(Role(
             id=role_id, name="PermRole", created_by="git-sync",
-            description="Important role", permissions={"read": True},
+            description="Important role",
         ))
         await db_session.commit()
 
@@ -4325,7 +4560,7 @@ class TestRoleImport:
             "roles": [{"id": str(role_id), "name": "PermRole"}]
         }, default_flow_style=False))
         working_clone.index.add([".bifrost/roles.yaml"])
-        working_clone.index.commit("Preserve perms")
+        working_clone.index.commit("Preserve description")
         working_clone.remotes.origin.push("main")
 
         result = await sync_service.desktop_sync(confirm_deletes=True)
@@ -4335,7 +4570,6 @@ class TestRoleImport:
             select(Role).where(Role.id == role_id)
         )).scalar_one()
         assert row.description == "Important role"
-        assert row.permissions == {"read": True}
 
     async def test_delete_removed_role(
         self, db_session: AsyncSession, sync_service, working_clone,
@@ -6079,6 +6313,214 @@ class TestDeleteConfirmation:
         deleted_wf = row.scalar_one_or_none()
         # Either deleted or deactivated
         assert deleted_wf is None or deleted_wf.is_active is False
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+class TestMissingManifestGuard:
+    """A source with no workspace manifest must never become a delete-everything plan."""
+
+    async def test_sync_refuses_remote_without_manifest(
+        self,
+        db_session: AsyncSession,
+        sync_service,
+        bare_repo,
+        working_clone,
+    ):
+        wf_id = uuid4()
+        db_session.add(Workflow(
+            id=wf_id,
+            name="Missing Manifest Guard",
+            function_name="git_sync_test_wf",
+            path="workflows/git_sync_test_guard.py",
+            is_active=True,
+        ))
+        await db_session.commit()
+
+        clone_dir = Path(working_clone.working_dir)
+        (clone_dir / "workflows").mkdir(exist_ok=True)
+        (clone_dir / "workflows" / "git_sync_test_guard.py").write_text(SAMPLE_WORKFLOW_PY)
+        working_clone.index.add(["workflows/git_sync_test_guard.py"])
+        working_clone.index.commit("Remote without .bifrost/")
+        working_clone.remotes.origin.push("main")
+
+        result = await sync_service.desktop_sync(confirm_deletes=True)
+
+        assert result.success is False
+        assert "Nothing was changed" in (result.error or "")
+        db_session.expire_all()
+        assert await db_session.get(Workflow, wf_id) is not None
+
+    async def test_reimport_refuses_empty_workspace_storage(
+        self,
+        db_session: AsyncSession,
+        sync_service,
+    ):
+        from src.services.github_sync import WorkspaceSourceMissing
+
+        wf_id = uuid4()
+        db_session.add(Workflow(
+            id=wf_id,
+            name="Empty Storage Guard",
+            function_name="git_sync_test_wf",
+            path="workflows/git_sync_test_reimport_guard.py",
+            is_active=True,
+        ))
+        await db_session.commit()
+
+        with pytest.raises(WorkspaceSourceMissing, match="Nothing was changed"):
+            await sync_service.reimport_from_repo()
+
+        db_session.expire_all()
+        assert await db_session.get(Workflow, wf_id) is not None
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+class TestDeletionSweepMatchesExport:
+    """The deletion sweep only considers rows the workspace export would write."""
+
+    async def test_sweep_never_removes_rows_the_export_excludes(
+        self,
+        db_session: AsyncSession,
+    ):
+        from bifrost.manifest import get_all_entity_ids
+        from src.models.orm.agents import Agent
+        from src.models.orm.applications import Application
+        from src.models.orm.events import EventSource, EventSubscription
+        from src.services.manifest_generator import generate_manifest
+        from src.services.manifest_import import ManifestResolver
+
+        suffix = uuid4().hex[:8]
+        wf = Workflow(
+            id=uuid4(), name="Sweep WF", function_name="sweep_wf",
+            path=f"workflows/git_sync_test_sweep_{suffix}.py", is_active=True,
+        )
+        active_source = EventSource(
+            id=uuid4(), name=f"sweep-active-{suffix}", source_type="schedule",
+            is_active=True, created_by="test",
+        )
+        excluded = [
+            Agent(
+                id=uuid4(), name=f"sweep-inactive-{suffix}", system_prompt="x",
+                channels=["chat"], is_active=False, created_by="test",
+            ),
+            Application(
+                id=uuid4(), name="Independent V2", slug=f"sweep-v2-{suffix}",
+                repo_path=None,
+            ),
+            EventSource(
+                id=uuid4(), name=f"sweep-inactive-{suffix}", source_type="schedule",
+                is_active=False, created_by="test",
+            ),
+        ]
+        db_session.add_all([wf, active_source, *excluded])
+        await db_session.flush()
+        inactive_sub = EventSubscription(
+            id=uuid4(), event_source_id=active_source.id, workflow_id=wf.id,
+            is_active=False, created_by="test",
+        )
+        exported_agent = Agent(
+            id=uuid4(), name=f"sweep-active-{suffix}", system_prompt="x",
+            channels=["chat"], is_active=True, created_by="test",
+        )
+        db_session.add_all([inactive_sub, exported_agent])
+        await db_session.flush()
+        excluded_ids = {str(row.id) for row in [*excluded, inactive_sub]}
+
+        try:
+            manifest = await generate_manifest(db_session)
+            assert not excluded_ids & get_all_entity_ids(manifest)
+            # Removing an exported row from the manifest still sweeps it.
+            del manifest.agents[str(exported_agent.id)]
+            changes = await ManifestResolver(db_session)._resolve_deletions(
+                manifest=manifest, dry_run=True,
+            )
+        finally:
+            await db_session.rollback()
+
+        removed = {c.entity_id for c in changes if c.action == "removed"}
+        assert not removed & excluded_ids
+        assert str(exported_agent.id) in removed
+
+    async def test_workspace_export_omits_solution_owned_events(
+        self,
+        db_session: AsyncSession,
+    ):
+        """A Solution's event source subscribes a Solution workflow the workspace
+        manifest excludes, so exporting it would fail manifest validation."""
+        from bifrost.manifest import validate_manifest
+        from src.models.orm.events import EventSource, EventSubscription
+        from src.models.orm.solutions import Solution
+        from src.services.manifest_generator import generate_manifest
+        from src.services.manifest_import import ManifestResolver
+
+        suffix = uuid4().hex[:8]
+        solution = Solution(
+            id=uuid4(), slug=f"git-sync-events-{suffix}", name="Events guard",
+            organization_id=None,
+        )
+        db_session.add(solution)
+        await db_session.flush()
+        wf = Workflow(
+            id=uuid4(), name="Solution WF", function_name="solution_wf",
+            path=f"workflows/solution_events_{suffix}.py", is_active=True,
+            solution_id=solution.id,
+        )
+        source = EventSource(
+            id=uuid4(), name=f"solution-events-{suffix}", source_type="schedule",
+            is_active=True, created_by="test", solution_id=solution.id,
+        )
+        db_session.add_all([wf, source])
+        await db_session.flush()
+        sub = EventSubscription(
+            id=uuid4(), event_source_id=source.id, workflow_id=wf.id,
+            is_active=True, created_by="test", solution_id=solution.id,
+        )
+        db_session.add(sub)
+        await db_session.flush()
+
+        try:
+            manifest = await generate_manifest(db_session)
+            changes = await ManifestResolver(db_session)._resolve_deletions(
+                manifest=manifest, dry_run=True,
+            )
+        finally:
+            await db_session.rollback()
+
+        assert str(source.id) not in manifest.events
+        assert not [error for error in validate_manifest(manifest) if str(wf.id) in error]
+        removed = {c.entity_id for c in changes if c.action == "removed"}
+        assert not removed & {str(source.id), str(sub.id)}
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+class TestReimportNonDestructive:
+    """Maintenance Reimport imports, but leaves deletions to a confirmed git sync."""
+
+    async def test_reimport_reports_missing_entities_instead_of_deleting(
+        self,
+        db_session: AsyncSession,
+        sync_service,
+    ):
+        kept_path = "workflows/git_sync_test_reimport_kept.py"
+        write_entity_to_repo(sync_service._persistent_dir, kept_path, SAMPLE_WORKFLOW_PY)
+        missing_id = uuid4()
+        db_session.add(Workflow(
+            id=missing_id,
+            name="Reimport Missing File",
+            function_name="git_sync_test_wf",
+            path="workflows/git_sync_test_reimport_missing.py",
+            is_active=True,
+        ))
+        await db_session.commit()
+
+        result = await sync_service.reimport_from_repo()
+
+        db_session.expire_all()
+        assert await db_session.get(Workflow, missing_id) is not None
+        assert str(missing_id) in {change.entity_id for change in result.pending_deletes}
 
 
 @pytest.mark.e2e

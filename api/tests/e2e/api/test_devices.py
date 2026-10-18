@@ -8,24 +8,23 @@ from __future__ import annotations
 
 import pytest
 
+from tests.e2e.fixtures.device_bridge import set_bridge_grants
+
 
 @pytest.fixture(scope="module")
 def device_manager_role(e2e_client, platform_admin, org1_user, org2_user):
-    """Grant can_manage_config + can_execute_devices to both org users."""
+    """Grant devices.readwrite + devices.execute to both org users."""
     response = e2e_client.post(
         "/api/roles",
         headers=platform_admin.headers,
         json={
             "name": "E2E Device Managers",
             "description": "Granted by test_device_registry e2e",
-            "permissions": {
-                "can_manage_config": True,
-                "can_execute_devices": True,
-            },
         },
     )
     assert response.status_code in (200, 201), response.text
     role_id = response.json()["id"]
+    set_bridge_grants(e2e_client, platform_admin.headers, role_id, ["devices.readwrite", "devices.execute"])
     assign = e2e_client.post(
         f"/api/roles/{role_id}/users",
         headers=platform_admin.headers,

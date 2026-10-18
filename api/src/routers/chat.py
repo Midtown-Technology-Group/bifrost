@@ -23,6 +23,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.orm import selectinload
 
 from src.services.operation_catalog import operation_route
+from shared import access_checks
 from shared.scope_resolver import has_scope_bypass
 from src.core.auth import CurrentActiveUser, CurrentSuperuser
 from src.core.db_deps import DbSession
@@ -110,7 +111,7 @@ async def get_model_profiles(db: DbSession, user: CurrentActiveUser) -> ChatMode
                 id=profile.id,
                 name=profile.name,
                 label=profile.name,
-                capabilities=service.normalized_profile_capabilities(profile),
+                capabilities=await service.profile_capabilities(profile),
             )
             for profile in profiles
         ],
@@ -777,17 +778,30 @@ async def send_message(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You don't have access to this agent",
         )
+    if conversation.agent:
+        access_checks.note_launch(
+            "agents.execute",
+            conversation.agent.organization_id,
+            user.organization_id,
+            subject=f"agent:{conversation.agent.id}",
+        )
+    else:
+        # Chat without an agent spends AI directly.
+        access_checks.note_launch("ai.execute", None, user.organization_id, subject="ai:chat")
 
     # Agent is now optional - agentless chat uses default system prompt
 
     # Execute chat — executor manages its own short-lived sessions
+    from shared.run_lineage import principal_lineage
     from src.core.database import get_session_factory
     executor = AgentExecutor(get_session_factory())
+    lineage = await principal_lineage(db, user)
     collected = await _collect_non_streaming_chat(
         executor=executor,
         conversation=conversation,
         request=request,
         user=user,
+        lineage=lineage,
     )
 
     return ChatResponse(
@@ -807,6 +821,7 @@ async def _collect_non_streaming_chat(
     conversation: Conversation,
     request: ChatRequest,
     user,
+    lineage=None,
 ) -> NonStreamingChatResult:
     # Collect streaming response into a single response
     final_content = ""
@@ -825,6 +840,7 @@ async def _collect_non_streaming_chat(
         user=user,
         attachment_ids=request.attachment_ids,
         model_profile_id=request.model_profile_id,
+        run_user_id=lineage.run_user_id if lineage else None,
     ):
         if chunk.type == "delta" and chunk.content:
             final_content += chunk.content

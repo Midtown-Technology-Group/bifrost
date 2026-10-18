@@ -39,7 +39,9 @@ upgrade notice.
 #      removed (2026-09-12).
 # v13: PlatformJobStatus gained requires_action for reviewed workspace imports;
 #      older CLIs cannot parse that status while polling a job (2026-09-25).
-CONTRACT_VERSION: int = 13
+# v14: RBAC base roles and typed grants replace the removed Role.permissions
+#      wire field. Existing v13 CLIs must upgrade before dispatch.
+CONTRACT_VERSION: int = 14
 
 
 def get_contract_version() -> int:

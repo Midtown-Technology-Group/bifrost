@@ -9,10 +9,11 @@ Covers ``shared.sdk_execution_reads`` and the fork canonical handlers for
   non-superuser; executions: 422 scope),
 - workflow type/entity filters, used-by counts, and role IDs,
 - execution keyset pagination, legacy offset, status match-any,
-  workflow_id-wins, and owner-only visibility,
+  workflow_id-wins, and owner-only visibility (plus root runs the
+  caller started as someone else),
 - execution detail shape, admin-only fields, and 403/404 precedence,
 - cursor encode/decode round-trip,
-- canonical handler response, authorization, and socket route parity.
+- canonical shared-service handler delegation and socket route parity.
 
 DB-backed via the ``db_session`` fixture.
 """
@@ -22,7 +23,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 import pytest
 from fastapi import HTTPException
@@ -120,6 +121,7 @@ async def _seed_execution(
         started_at=kwargs.get("started_at"),
         completed_at=kwargs.get("completed_at"),
         created_at=kwargs.get("created_at"),
+        started_by_user_id=kwargs.get("started_by_user_id"),
     )
     db_session.add(row)
     await db_session.flush()
@@ -229,6 +231,19 @@ class TestListSdkWorkflows:
 
 @pytest.mark.asyncio
 class TestListSdkExecutions:
+    async def test_local_runs_are_excluded_by_default_but_explicitly_readable(self, db_session):
+        owner = await _seed_user(db_session, is_superuser=True)
+        row = await _seed_execution(db_session, "reads-local", user_id=owner.id)
+        row.is_local_execution = True
+        await db_session.flush()
+        principal = _admin(user_id=owner.id)
+        hidden, _ = await list_sdk_executions(db_session, principal, workflow_name="reads-local")
+        visible, _ = await list_sdk_executions(
+            db_session, principal, workflow_name="reads-local", exclude_local=False,
+        )
+        assert hidden == []
+        assert [item.execution_id for item in visible] == [str(row.id)]
+
     async def _seed_history(self, db_session, admin_user_id):
         base = datetime(2026, 8, 27, 18, 0, tzinfo=timezone.utc)
         wf = await _seed_workflow(db_session, "reads-history-wf")
@@ -333,41 +348,35 @@ class TestListSdkExecutions:
             )
         assert exc_info.value.status_code == 422
 
-    async def test_exclude_local_default_true(self, db_session):
-        admin = await _seed_user(db_session, is_superuser=True)
-        from src.models.orm.executions import Execution as ExecutionModel
-
-        local = ExecutionModel(
-            workflow_name="reads-local-wf",
-            status=ExecutionStatus.SUCCESS,
-            parameters={},
-            executed_by=admin.id,
-            executed_by_name="Admin",
-            is_local_execution=True,
-        )
-        db_session.add(local)
-        await db_session.flush()
-
-        result, _ = await list_sdk_executions(
-            db_session,
-            _admin(user_id=admin.id),
-            workflow_name="reads-local-wf",
-            limit=100,
-        )
-        assert str(local.id) not in {e.execution_id for e in result}
-
-        included, _ = await list_sdk_executions(
-            db_session,
-            _admin(user_id=admin.id),
-            workflow_name="reads-local-wf",
-            limit=100,
-            exclude_local=False,
-        )
-        assert str(local.id) in {e.execution_id for e in included}
-
 
 @pytest.mark.asyncio
 class TestGetSdkExecution:
+    async def test_retry_and_attempt_evidence_are_preserved_and_redacted(self, db_session):
+        from src.models.orm.executions import WorkflowExecutionAttempt
+
+        org = await _seed_org(db_session)
+        owner = await _seed_user(db_session, org_id=org.id)
+        row = await _seed_execution(db_session, "reads-attempts", user_id=owner.id, org_id=org.id)
+        row.attempt_tracking_version = "v1"
+        row.retry_policy = {"enabled": True, "max_attempts": 3, "retry_on": ["worker_lost"]}
+        attempt = WorkflowExecutionAttempt(
+            execution_id=row.id, attempt_number=1, status="failed", phase="terminal",
+            failure_phase="execution", failure_code="test_failure", worker_id="worker-private",
+            process_id="process-private", runtime_evidence_hash="hash-private",
+        )
+        db_session.add(attempt)
+        await db_session.flush()
+        result = await get_sdk_execution(db_session, _user(org.id, user_id=owner.id), row.id)
+        assert result.retry_policy.max_attempts == 3
+        assert result.retry_policy.enabled is True
+        assert result.attempt_history.coverage == "recorded"
+        public = result.attempt_history.attempts[0]
+        assert public.failure_code == "test_failure"
+        assert public.worker_id is None
+        assert public.process_id is None
+        assert public.runtime_evidence_hash is None
+        assert result.created_at == row.created_at
+
     async def test_admin_gets_full_detail(self, db_session):
         org = await _seed_org(db_session)
         admin = await _seed_user(db_session, is_superuser=True)
@@ -431,6 +440,68 @@ class TestGetSdkExecution:
         assert exc_info.value.status_code == 404
 
 
+@pytest.mark.asyncio
+class TestInitiatorVisibility:
+    """A root run started with Run As belongs to its initiator as well."""
+
+    async def _seed_run_as_tree(self, db_session):
+        org = await _seed_org(db_session)
+        initiator = await _seed_user(db_session, org_id=org.id)
+        colleague = await _seed_user(db_session, org_id=org.id)
+        root = await _seed_execution(
+            db_session,
+            "contoso-run-as-root",
+            user_id=colleague.id,
+            org_id=org.id,
+            started_by_user_id=initiator.id,
+        )
+        root.root_execution_id = root.id
+        child = await _seed_execution(
+            db_session,
+            "contoso-run-as-child",
+            user_id=colleague.id,
+            org_id=org.id,
+            started_by_user_id=initiator.id,
+        )
+        child.root_execution_id = root.id
+        await db_session.flush()
+        return org, initiator, root, child
+
+    async def test_root_run_as_another_user_is_visible_to_its_initiator(self, db_session):
+        org, initiator, root, _ = await self._seed_run_as_tree(db_session)
+        caller = _user(org.id, user_id=initiator.id)
+
+        listed, _ = await list_sdk_executions(db_session, caller, limit=25)
+        detail = await get_sdk_execution(db_session, caller, root.id)
+
+        assert [e.execution_id for e in listed] == [str(root.id)]
+        assert detail.execution_id == str(root.id)
+        assert detail.variables is None
+
+    async def test_child_of_the_initiators_run_stays_invisible(self, db_session):
+        org, initiator, _, child = await self._seed_run_as_tree(db_session)
+        caller = _user(org.id, user_id=initiator.id)
+
+        listed, _ = await list_sdk_executions(db_session, caller, limit=25)
+        with pytest.raises(SdkExecutionReadError) as exc_info:
+            await get_sdk_execution(db_session, caller, child.id)
+
+        assert str(child.id) not in [e.execution_id for e in listed]
+        assert exc_info.value.status_code == 403
+
+    async def test_another_users_run_stays_invisible(self, db_session):
+        org, _, root, _ = await self._seed_run_as_tree(db_session)
+        stranger = await _seed_user(db_session, org_id=org.id)
+        caller = _user(org.id, user_id=stranger.id)
+
+        listed, _ = await list_sdk_executions(db_session, caller, limit=25)
+        with pytest.raises(SdkExecutionReadError) as exc_info:
+            await get_sdk_execution(db_session, caller, root.id)
+
+        assert listed == []
+        assert exc_info.value.status_code == 403
+
+
 class TestHistoryCursor:
     def test_round_trip(self):
         moment = datetime(2026, 9, 25, 12, 0, tzinfo=timezone.utc)
@@ -448,56 +519,140 @@ class TestHistoryCursor:
 
 @pytest.mark.asyncio
 class TestRouterBoundaries:
-    """Worker SDK reads use the fork's canonical handlers and auth dependencies."""
+    """Handlers delegate to the shared service and map its errors."""
 
-    async def test_list_workflows_returns_metadata_and_requires_admin(self, db_session):
-        from src.routers.workflows import list_workflows, router
-        from src.core.auth import get_current_user
-        from fastapi import FastAPI
-        from fastapi.testclient import TestClient
-        row = await _seed_workflow(db_session, "boundary-workflow", type="tool")
-        result = await list_workflows(_admin(), db_session, type="tool", is_tool=None,
-            scope=None, filter_by_form=None, filter_by_app=None, filter_by_agent=None)
-        assert row.id in {UUID(item.id) for item in result}
-        app = FastAPI()
-        app.include_router(router)
-        app.dependency_overrides[get_current_user] = lambda: _user(uuid4())
-        with TestClient(app) as client:
-            response = client.get("/api/workflows")
-        assert response.status_code == 403
+    async def test_list_workflows_delegates_and_maps_403(self):
+        from src.routers.workflows import list_workflows
+
+        principal = _admin()
+        sentinel = ["WF"]
+        with patch(
+            "shared.sdk_execution_reads.list_sdk_workflows",
+            new=AsyncMock(return_value=sentinel),
+        ) as mock_list:
+            result = await list_workflows(
+                principal,
+                AsyncMock(),
+                type="tool",
+                is_tool=None,
+                scope=None,
+                filter_by_form=None,
+                filter_by_app=None,
+                filter_by_agent=None,
+            )
+        assert result == sentinel
+        mock_list.assert_awaited_once()
+        assert mock_list.call_args[1]["type"] == "tool"
+
+        with patch(
+            "shared.sdk_execution_reads.list_sdk_workflows",
+            new=AsyncMock(side_effect=SdkExecutionReadError(403, "denied")),
+        ):
+            with pytest.raises(HTTPException) as exc_info:
+                await list_workflows(
+                    principal,
+                    AsyncMock(),
+                    type=None,
+                    is_tool=None,
+                    scope=None,
+                    filter_by_form=None,
+                    filter_by_app=None,
+                    filter_by_agent=None,
+                )
+        assert exc_info.value.status_code == 403
 
     async def test_list_executions_handler_maps_422(self):
         from src.routers.executions import list_executions
+
         ctx = SimpleNamespace(user=_admin(), db=AsyncMock())
         request = SimpleNamespace(query_params={})
-        with patch("src.routers.executions.ExecutionRepository") as repo:
-            repo.return_value.list_executions = AsyncMock(return_value=([], None))
-            result = await list_executions(ctx, request, scope=None, workflowName=None,
-                workflowId=None, status_filter=None, startDate=None, endDate=None,
-                excludeLocal=True, limit=25, continuationToken=None)
-            assert result.executions == []
-            assert repo.return_value.list_executions.await_args.kwargs["org_id"] is None
+        with patch(
+            "shared.sdk_execution_reads.list_sdk_executions",
+            new=AsyncMock(return_value=([], None)),
+        ) as mock_list:
+            result = await list_executions(
+                ctx,
+                request,
+                scope=None,
+                workflowName=None,
+                workflowId=None,
+                status_filter=None,
+                startDate=None,
+                endDate=None,
+                excludeLocal=True,
+                limit=25,
+                continuationToken=None,
+            )
+        assert result.executions == []
+        mock_list.assert_awaited_once()
+        assert mock_list.call_args[1]["scope"] is None
+        assert mock_list.call_args[1]["exclude_local"] is True
+
+        with patch(
+            "shared.sdk_execution_reads.list_sdk_executions",
+            new=AsyncMock(side_effect=SdkExecutionReadError(422, "bad scope")),
+        ):
             with pytest.raises(HTTPException) as exc_info:
-                await list_executions(ctx, request, scope="bad", workflowName=None,
-                    workflowId=None, status_filter=None, startDate=None, endDate=None,
-                    excludeLocal=True, limit=25, continuationToken=None)
+                await list_executions(
+                    ctx,
+                    request,
+                    scope="bad",
+                    workflowName=None,
+                    workflowId=None,
+                    status_filter=None,
+                    startDate=None,
+                    endDate=None,
+                    excludeLocal=True,
+                    limit=25,
+                    continuationToken=None,
+                )
         assert exc_info.value.status_code == 422
 
     async def test_get_execution_handler_maps_404_and_403(self):
         from src.routers.executions import get_execution
+
         execution_id = uuid4()
         ctx = SimpleNamespace(user=_admin(), db=AsyncMock())
-        with patch("src.routers.executions.ExecutionRepository") as repo, patch(
-            "src.routers.executions.get_pending_execution_fallback",
-            new=AsyncMock(return_value=(None, "NotFound"))):
-            repo.return_value.get_execution = AsyncMock(return_value=("EXEC", None))
+        with patch(
+            "shared.sdk_execution_reads.get_sdk_execution",
+            new=AsyncMock(return_value="EXEC"),
+        ) as mock_get:
             assert await get_execution(execution_id, ctx) == "EXEC"
-            repo.return_value.get_execution.assert_awaited_once_with(execution_id, ctx.user)
-            for error, code in [("NotFound", 404), ("Forbidden", 403)]:
-                repo.return_value.get_execution.return_value = (None, error)
-                with pytest.raises(HTTPException) as exc_info:
-                    await get_execution(execution_id, ctx)
-                assert exc_info.value.status_code == code
+        mock_get.assert_awaited_once_with(ctx.db, ctx.user, execution_id)
+
+        async def retention_suffix(db: object) -> str:
+            return " Finished runs are removed after 30 days."
+
+        with (
+            patch(
+                "shared.sdk_execution_reads.get_sdk_execution",
+                new=AsyncMock(side_effect=SdkExecutionReadError(404, "missing")),
+            ),
+            patch("src.routers.executions.run_not_found_suffix", retention_suffix),
+        ):
+            with pytest.raises(HTTPException) as exc_info:
+                await get_execution(execution_id, ctx)
+        assert exc_info.value.status_code == 404
+        assert exc_info.value.detail == (
+            f"Execution {execution_id} not found. Finished runs are removed after 30 days."
+        )
+
+        with patch(
+            "shared.sdk_execution_reads.get_sdk_execution",
+            new=AsyncMock(side_effect=SdkExecutionReadError(403, "denied")),
+        ):
+            with pytest.raises(HTTPException) as exc_info:
+                await get_execution(execution_id, ctx)
+        assert exc_info.value.status_code == 403
+
+    async def test_execution_repository_exposes_no_read_compatibility_shims(self):
+        """SDK reads have one public implementation in the shared service."""
+        from src.routers.executions import ExecutionRepository
+
+        assert not hasattr(ExecutionRepository, "list_executions")
+        assert not hasattr(ExecutionRepository, "get_execution")
+        assert not hasattr(ExecutionRepository, "_to_summary")
+
 
     async def test_socket_reuses_canonical_execution_read_routes(self):
         from src.routers import executions
@@ -505,7 +660,6 @@ class TestRouterBoundaries:
         routes = {route.path: route for route in build_worker_sdk_app().routes}
         assert routes["/api/executions"].endpoint is executions.list_executions
         assert routes["/api/executions/{execution_id}"].endpoint is executions.get_execution
-
 
 def test_shared_service_has_no_transport_imports():
     """The shared service must stay callable without FastAPI/router imports."""

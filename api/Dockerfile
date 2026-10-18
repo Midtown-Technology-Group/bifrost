@@ -47,10 +47,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     nodejs npm \
     && rm -rf /var/lib/apt/lists/*
 
-# npm 10.9.3 still crashes in Arborist peer-set resolution (edgesOut) on
-# the source-app accountability fixture. Pin the same Node-20-compatible npm
-# in production and CI; retain normal peer validation and the real build test.
-RUN npm install --global npm@11.21.1 --ignore-scripts --no-audit --no-fund
+# npm 10.9.3 still crashes in Arborist peer-set resolution on the
+# source-app accountability fixture. Keep MTG's npm 11.21.1 fix
+# and upstream's checksum verification before global installation.
+COPY api/scripts/install-npm.sh /usr/local/bin/install-npm.sh
+RUN sh /usr/local/bin/install-npm.sh && rm /usr/local/bin/install-npm.sh
 
 # Copy installed packages from builder
 COPY --from=builder /usr/local/lib/python3.14/site-packages /usr/local/lib/python3.14/site-packages
@@ -78,6 +79,7 @@ RUN printf '#!/bin/sh\nexec python -m bifrost "$@"\n' > /usr/local/bin/bifrost \
 COPY api/src/ /app/src/
 COPY api/shared/ /app/shared/
 COPY api/_bifrost_workspace_effects.py /app/
+COPY api/product-updates.bundle.json /app/product-updates.bundle.json
 COPY api/alembic/ /app/alembic/
 COPY api/alembic.ini /app/
 COPY api/bifrost/ /app/bifrost/
@@ -109,6 +111,12 @@ COPY client/src/lib/app-sdk/provider.tsx \
      client/src/lib/app-sdk/use-workflow-hooks.ts \
      client/src/lib/app-sdk/files.ts \
      client/src/lib/app-sdk/use-files.ts \
+     client/src/lib/app-sdk/use-user.tsx \
+     client/src/lib/app-sdk/use-api-query.ts \
+     client/src/lib/app-sdk/use-branding.ts \
+     client/src/lib/app-sdk/use-organizations.ts \
+     client/src/lib/app-sdk/branding-theme.ts \
+     client/src/lib/app-sdk/brand-palette.ts \
      client/src/lib/app-sdk/bifrost-header.tsx \
      client/src/lib/app-sdk/webmcp.ts \
      /app/src/services/sdk_package/sdk_src/

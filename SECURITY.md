@@ -19,8 +19,7 @@ Report privately through GitHub's private vulnerability reporting flow:
 
 ### 1. GitHub private vulnerability reporting (preferred)
 
-Go to https://github.com/gobifrost/bifrost/security/advisories/new
-and submit a draft advisory. This keeps the report confidential and lets
+Submit a draft advisory through [GitHub private vulnerability reporting](https://github.com/Midtown-Technology-Group/bifrost/security/advisories/new). This keeps the report confidential and lets
 us discuss, patch, and coordinate disclosure inside GitHub's tooling.
 
 If you cannot use that flow, contact a repository maintainer through a

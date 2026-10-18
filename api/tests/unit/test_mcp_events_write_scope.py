@@ -1,125 +1,64 @@
-"""Write-scope enforcement for the event source MCP mutation tools.
+"""Canonical event MCP mutations preserve REST's actual admin authorization."""
 
-REST reserves ALL event-source/webhook/schedule/subscription
-administration for platform admins, even within the caller's own org —
-every route in ``routers/events.py`` is ``CurrentSuperuser``. ``update_event_source``
-and ``delete_event_source`` (and every other mutation in this module) are
-therefore platform-admin only: neither org membership nor the broader
-``has_scope_bypass`` provider-org allowance is sufficient. This supersedes
-the earlier per-org cascade this file used to test.
-"""
-
+from contextlib import asynccontextmanager
 from types import SimpleNamespace
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
+import httpx
 import pytest
+from fastapi import FastAPI
 
+from src.core.auth import get_current_active_user, get_execution_context
+from src.core.database import get_db
+from src.core.principal import UserPrincipal
+from src.routers.events import router
 from src.services.mcp_server.tools import events as events_tool
 
 
-def _ctx(*, is_platform_admin=False, is_provider_org=False, is_external=False, org_id=...):
-    """Build a caller context with explicit organization scope and privilege flags."""
-    from unittest.mock import AsyncMock
-
-    session = AsyncMock()
-    session.add = MagicMock()
-    session.execute = AsyncMock()
-    return SimpleNamespace(
-        user_id=uuid4(),
-        org_id=uuid4() if org_id is ... else org_id,
-        is_platform_admin=is_platform_admin,
-        is_provider_org=is_provider_org,
-        is_external=is_external,
-        user_email="x@y.z",
-        user_name="X",
-        session=session,
-    )
-
-
-def _source(org_id):
-    """Build an active topic event source with the specified organization scope."""
-    src = MagicMock()
-    src.id = uuid4()
-    src.name = "src"
-    src.organization_id = org_id
-    src.source_type = MagicMock(value="topic")
-    src.is_active = True
-    src.error_message = None
-    src.webhook_source = None
-    src.schedule_source = None
-    return src
-
-
-def _ctx_returning(source, **kw):
-    """Configure the MCP session to return the supplied source from its access lookup."""
-    ctx = _ctx(**kw)
-    result = MagicMock()
-    result.unique.return_value.scalar_one_or_none = MagicMock(return_value=source)
-    ctx.session.execute.return_value = result
-    return ctx
-
-
-def _is_error(tool_result) -> bool:
-    """Identify a structured MCP error without treating a successful tool response as a denial."""
-    sc = getattr(tool_result, "structured_content", None)
-    return isinstance(sc, dict) and "error" in sc
-
-
 @pytest.mark.asyncio
-class TestUpdateEventSourceWriteScope:
-    async def test_non_admin_denied_for_own_org_source(self):
-        """Own-org membership alone no longer grants write access."""
-        org = uuid4()
-        ctx = _ctx_returning(_source(org), is_external=False, org_id=org)
-        res = await events_tool.update_event_source(ctx, source_id=str(uuid4()), name="renamed")
-        assert _is_error(res)
+@pytest.mark.parametrize("persona", ["member", "external", "provider"])
+@pytest.mark.parametrize("global_scope", [True, False])
+@pytest.mark.parametrize("operation", ["update", "delete"])
+async def test_mcp_event_mutation_is_denied_by_real_rest_gate(monkeypatch, persona, global_scope, operation):
+    principal = UserPrincipal(user_id=uuid4(), email="test@example.com", organization_id=uuid4(),
+                              is_external=persona == "external", is_provider_org=persona == "provider")
+    database = AsyncMock()
+    app = FastAPI()
+    app.include_router(router)
+    app.dependency_overrides[get_current_active_user] = lambda: principal
+    app.dependency_overrides[get_execution_context] = lambda: SimpleNamespace(user=principal, org_id=principal.organization_id, db=database)
 
-    async def test_non_admin_denied_for_global_source(self):
-        """Deny regular callers administration of globally scoped event sources."""
-        ctx = _ctx_returning(_source(None), is_external=False)
-        res = await events_tool.update_event_source(ctx, source_id=str(uuid4()), name="renamed")
-        assert _is_error(res)
+    async def db_override():
+        yield database
 
-    async def test_provider_org_non_admin_denied(self):
-        """The broader has_scope_bypass provider-org allowance does NOT
-        apply here — REST's CurrentSuperuser gate is platform-admin only."""
-        ctx = _ctx_returning(_source(None), is_provider_org=True)
-        res = await events_tool.update_event_source(ctx, source_id=str(uuid4()), name="renamed")
-        assert _is_error(res)
+    app.dependency_overrides[get_db] = db_override
+    source_id = str(uuid4())
+    calls = []
 
-    async def test_platform_admin_allowed_for_global_source(self):
-        """Allow a platform admin to update a globally scoped event source."""
-        ctx = _ctx_returning(_source(None), is_platform_admin=True)
-        res = await events_tool.update_event_source(ctx, source_id=str(uuid4()), name="renamed")
-        assert not _is_error(res)
+    @asynccontextmanager
+    async def no_http(_context):
+        yield object()
 
-    async def test_platform_admin_allowed_for_own_org_source(self):
-        """Allow platform-admin event-source writes within the caller's organization."""
-        org = uuid4()
-        ctx = _ctx_returning(_source(org), is_platform_admin=True, org_id=org)
-        res = await events_tool.update_event_source(ctx, source_id=str(uuid4()), name="renamed")
-        assert not _is_error(res)
+    async def resolve_ref(_context, kind, value):
+        assert kind == "event_source"
+        assert value == source_id
+        return value
 
+    async def real_rest(_context, method, path, **kwargs):
+        calls.append((method, path))
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.request(method, path, json=kwargs.get("json_body"), params=kwargs.get("params"))
+        return response.status_code, response.json()
 
-@pytest.mark.asyncio
-class TestDeleteEventSourceWriteScope:
-    async def test_non_admin_denied_for_own_org_source(self):
-        """Deny regular callers event-source deletion within their own organization."""
-        org = uuid4()
-        ctx = _ctx_returning(_source(org), is_external=False, org_id=org)
-        res = await events_tool.delete_event_source(ctx, source_id=str(uuid4()))
-        assert _is_error(res)
-
-    async def test_non_admin_denied_for_global_source(self):
-        """Deny regular callers administration of globally scoped event sources."""
-        ctx = _ctx_returning(_source(None), is_external=False)
-        res = await events_tool.delete_event_source(ctx, source_id=str(uuid4()))
-        assert _is_error(res)
-
-    async def test_platform_admin_allowed_for_own_org_source(self):
-        """Allow platform-admin event-source writes within the caller's organization."""
-        org = uuid4()
-        ctx = _ctx_returning(_source(org), is_platform_admin=True, org_id=org)
-        res = await events_tool.delete_event_source(ctx, source_id=str(uuid4()))
-        assert not _is_error(res)
+    monkeypatch.setattr(events_tool, "call_rest", real_rest)
+    monkeypatch.setattr(events_tool, "rest_client", no_http)
+    monkeypatch.setattr(events_tool, "_resolve_ref", resolve_ref)
+    if operation == "update":
+        result = await events_tool.bifrost_event_source_update(principal, source_id, name="renamed", scope="global" if global_scope else None)
+    else:
+        result = await events_tool.bifrost_event_source_delete(principal, source_id)
+    assert calls == [("PATCH" if operation == "update" else "DELETE", f"/api/events/sources/{source_id}")]
+    assert result.structured_content["status_code"] == 403
+    database.execute.assert_not_awaited()
+    database.flush.assert_not_awaited()

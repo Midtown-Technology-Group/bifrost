@@ -22,6 +22,8 @@ parity follow-up:
   (body from :class:`EventSubscriptionUpdate`)
 * ``bifrost events create-graph-source`` → ergonomic Microsoft Graph source creation
 * ``bifrost events resubscribe-source <ref>`` → replace the provider registration
+* ``bifrost events rotate-secret <ref>`` → generate a new webhook signing secret,
+  shown once
 * ``bifrost events delete-source <ref>`` → remove the provider registration and source
 
 Flat-to-nested translation
@@ -99,13 +101,13 @@ _SOURCE_UPDATE_FLAGS = build_cli_flags(
 
 _SUBSCRIPTION_CREATE_FLAGS = build_cli_flags(
     EventSubscriptionCreate,
-    exclude=DTO_EXCLUDES.get("EventSubscriptionCreate", set()),
+    exclude=DTO_EXCLUDES.get("EventSubscriptionCreate", set()) | {"criteria"},
     verb_ref_lookups=DTO_REF_LOOKUPS.get("EventSubscriptionCreate", {}),
 )
 
 _SUBSCRIPTION_UPDATE_FLAGS = build_cli_flags(
     EventSubscriptionUpdate,
-    exclude=DTO_EXCLUDES.get("EventSubscriptionUpdate", set()),
+    exclude=DTO_EXCLUDES.get("EventSubscriptionUpdate", set()) | {"criteria"},
     verb_ref_lookups=DTO_REF_LOOKUPS.get("EventSubscriptionUpdate", {}),
 )
 
@@ -113,6 +115,22 @@ _SUBSCRIPTION_UPDATE_FLAGS = build_cli_flags(
 # ---------------------------------------------------------------------------
 # Flat-flag decorators for the nested ``schedule`` / ``webhook`` configs.
 # ---------------------------------------------------------------------------
+
+
+def _criteria_flag(fn: Callable[..., Any]) -> Callable[..., Any]:
+    """Keep structured criteria as a JSON/YAML object through body assembly."""
+    def parse_criteria(_ctx: click.Context, _param: click.Parameter, value: str | None) -> dict[str, Any] | None:
+        if value is None:
+            return None
+        try:
+            return load_dict_value(value)
+        except (OSError, ValueError) as exc:
+            raise click.BadParameter(str(exc)) from exc
+
+    return click.option(
+        "--criteria", type=str, default=None, callback=parse_criteria,
+        help="Structured subscription criteria as JSON or @path/to/file.yaml.",
+    )(fn)
 
 
 def _schedule_flags(
@@ -335,25 +353,13 @@ async def get_subscription(
     client: BifrostClient,
     resolver: RefResolver,
 ) -> None:
-    """Get a single subscription by source ref + subscription UUID.
-
-    The server has no per-subscription GET endpoint, so this lists the
-    source's subscriptions and filters client-side.
-    """
+    """Get a single subscription by source ref + subscription UUID."""
     source_uuid = await resolver.resolve("event_source", source_ref)
     response = await client.get(
-        f"/api/events/sources/{source_uuid}/subscriptions"
+        f"/api/events/sources/{source_uuid}/subscriptions/{subscription_id}"
     )
     response.raise_for_status()
-    data = response.json()
-    items = data.get("items", []) if isinstance(data, dict) else data
-    for item in items:
-        if str(item.get("id")) == subscription_id:
-            output_result(item, ctx=ctx)
-            return
-    raise click.ClickException(
-        f"subscription {subscription_id!r} not found on source {source_ref!r}"
-    )
+    output_result(response.json(), ctx=ctx)
 
 
 @events_group.command("create-source")
@@ -559,6 +565,32 @@ async def resubscribe_source(
     output_result(response.json(), ctx=ctx)
 
 
+@events_group.command("rotate-secret")
+@click.argument("ref")
+@click.pass_context
+@pass_resolver
+@run_async
+async def rotate_secret(
+    ctx: click.Context,
+    ref: str,
+    *,
+    client: BifrostClient,
+    resolver: RefResolver,
+) -> None:
+    """Generate a new signing secret for a webhook source.
+
+    The output's ``raw_secret`` is the only time the new secret is shown;
+    configure it in the sending service before it is lost. Requests signed
+    with the previous secret are rejected from now on.
+    """
+    source_uuid = await resolver.resolve("event_source", ref)
+    response = await client.post(
+        f"/api/events/sources/{source_uuid}/rotate-secret", json={}
+    )
+    response.raise_for_status()
+    output_result(response.json(), ctx=ctx)
+
+
 @events_group.command("delete-source")
 @click.argument("ref")
 @click.pass_context
@@ -586,6 +618,7 @@ async def delete_source(
 @events_group.command("subscribe")
 @click.argument("source_ref")
 @_apply_flags(_SUBSCRIPTION_CREATE_FLAGS)
+@_criteria_flag
 @click.pass_context
 @pass_resolver
 @run_async
@@ -635,6 +668,7 @@ async def subscribe(
 @click.argument("source_ref")
 @click.argument("subscription_id")
 @_apply_flags(_SUBSCRIPTION_UPDATE_FLAGS)
+@_criteria_flag
 # Additional rejection-only flags: not part of EventSubscriptionUpdate — surfaced
 # here so we can detect and refuse the attempt with a clear error instead of
 # silently ignoring ``--workflow new_wf``.

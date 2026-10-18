@@ -7,6 +7,7 @@ the subscription's target_type, and that _queue_agent_run calls
 enqueue_agent_run with the expected parameters.
 """
 
+import base64
 import uuid
 import sys
 import types
@@ -38,6 +39,7 @@ def _make_event(
     event.headers = {"content-type": "application/json"}
     event.received_at = datetime(2026, 1, 1, tzinfo=timezone.utc)
     event.source_ip = "10.0.0.1"
+    event.raw_body = None
     event.status = "processing"
     event.authenticated_actor = None
     event.external_identity_id = None
@@ -392,3 +394,83 @@ async def test_retry_delivery_preserves_attempt_timing_and_nonblank_failure():
     assert delivery.attempt_started_at is not None
     assert delivery.completed_at >= delivery.attempt_started_at
     assert processor.session.flush.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_queue_deliveries_rechecks_filter_before_dispatch():
+    """A pending or retried delivery cannot bypass a non-matching filter."""
+    processor = _create_processor()
+
+    event_id = uuid.uuid4()
+    event = _make_event(event_id=event_id, data={"priority": "low"})
+    delivery = _make_delivery(target_type="workflow")
+    delivery.subscription.filter_expression = "$.priority == 'high'"
+
+    processor._delivery_repo.get_by_event = AsyncMock(return_value=[delivery])
+    processor._event_repo.get_by_id = AsyncMock(return_value=event)
+    processor._queue_agent_run = AsyncMock()
+    processor._queue_workflow_execution = AsyncMock()
+    processor._broadcast_event_update = AsyncMock()
+
+    count = await processor.queue_event_deliveries(event_id)
+
+    assert count == 0
+    assert delivery.status == EventDeliveryStatus.SKIPPED
+    assert delivery.completed_at is not None
+    assert delivery.error_message == "Subscription filter did not match the event payload"
+    processor._queue_agent_run.assert_not_awaited()
+    processor._queue_workflow_execution.assert_not_awaited()
+    processor._delivery_repo.update_event_status.assert_awaited_once_with(event_id)
+
+
+
+@pytest.mark.asyncio
+async def test_queue_agent_run_receives_trusted_byte_exact_raw_webhook_body():
+    """Agent dispatch receives raw bytes under reserved event context only."""
+    processor = _create_processor()
+    agent = MagicMock()
+    agent.id = uuid.uuid4()
+    agent.organization_id = uuid.uuid4()
+    delivery = _make_delivery(target_type="agent", agent=agent)
+    raw_body = b'{"a":1, "_event":{"raw_body_base64":"caller-spoofed"}}'
+    event = _make_event(data={"a": 1, "_event": {"raw_body_base64": "caller-spoofed"}})
+    event.raw_body = raw_body
+
+    with patch(
+        "src.services.execution.agent_run_service.enqueue_agent_run",
+        new_callable=AsyncMock,
+        return_value=str(uuid.uuid4()),
+    ) as mock_enqueue:
+        await processor._queue_agent_run(delivery, event)
+
+    input_data = mock_enqueue.await_args.kwargs["input_data"]
+    assert input_data["_event"]["body"] == event.data
+    assert input_data["_event"]["raw_body_base64"] == base64.b64encode(raw_body).decode("ascii")
+
+
+
+@pytest.mark.asyncio
+async def test_event_agent_run_is_for_the_agent_organization_identity():
+    """No person started it: the run is for the agent's organization identity."""
+    from shared.run_lineage import RunLineage
+
+    processor = _create_processor()
+    agent = MagicMock()
+    agent.id = uuid.uuid4()
+    agent.organization_id = uuid.uuid4()
+    delivery = _make_delivery(target_type="agent", agent=agent)
+    identity = uuid.uuid4()
+    lineage = RunLineage(identity, identity, None)
+
+    with (
+        patch("shared.run_lineage.identity_lineage", new=AsyncMock(return_value=lineage)) as resolve,
+        patch(
+            "src.services.execution.agent_run_service.enqueue_agent_run",
+            new_callable=AsyncMock,
+            return_value=str(uuid.uuid4()),
+        ) as mock_enqueue,
+    ):
+        await processor._queue_agent_run(delivery, _make_event())
+
+    resolve.assert_awaited_once_with(processor.session, agent.organization_id)
+    assert mock_enqueue.call_args.kwargs["lineage"] == lineage

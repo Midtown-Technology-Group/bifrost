@@ -17,6 +17,15 @@ Design notes:
   the User record keyed by ``executed_by``. ``startup=None`` for the same
   reason — startup results are per-session context and would be stale by
   the time a scheduled row matures.
+- A row that acts as another user (``execution_context.run_as``) is decided
+  again before it is promoted (``impersonation.recheck_run_as``). A row that
+  is no longer permitted is marked Failed and never published. A refusal is
+  written to the audit log as a live one is (a person's enforced, a
+  workflow's report-only), judged in a collector of its own.
+- ``execution_context.run_as`` lives only until the row runs: the worker
+  overwrites ``execution_context`` on completion. ``executed_by`` (the
+  acting user) and ``started_by_user_id`` (the initiator) keep the record
+  of who acted as whom.
 """
 import logging
 from collections.abc import AsyncIterator
@@ -25,6 +34,7 @@ from uuid import UUID
 
 from sqlalchemy import and_, or_, select, tuple_
 
+from shared.run_lineage import RunLineage
 from src.core.database import get_db_context
 from src.models.enums import ExecutionStatus
 from src.models.orm.executions import Execution
@@ -37,6 +47,8 @@ from src.services.execution.fault_injection import (
 logger = logging.getLogger(__name__)
 
 BATCH_LIMIT = 500
+# The operation a refused Run As re-check is audited under.
+RECHECK_OPERATION = "scheduler.deferred_execution_promoter"
 
 
 async def _capacity_aware_batch_limit() -> int:
@@ -162,6 +174,10 @@ async def promote_due_executions() -> tuple[int, int]:
                     "runtime_evidence": row.runtime_evidence,
                     "runtime_mode": row.runtime_mode,
                     "execution_record_exists": True,
+                    "lineage": (
+                        RunLineage(row.run_user_id, row.started_by_user_id, row.root_execution_id).bound(row.id)
+                        if row.run_user_id is not None else None
+                    ),
                 }
                 if row.dispatch_evidence is not None:
                     # The canonical publisher validates pinned context under

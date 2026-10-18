@@ -22,6 +22,20 @@ class AgentRunStepResponse(BaseModel):
     created_at: datetime
 
 
+class AgentRunUsageSummary(BaseModel):
+    """What a single run cost and how heavy its model calls were.
+
+    ``cost`` and ``cache_hit_rate`` cover the whole run tree (delegates at any
+    depth, plus the summarizer). ``peak_context_tokens`` is the largest single
+    request in this run's own conversation.
+    """
+
+    cost: str | None = None  # Decimal as string
+    delegate_cost: str | None = None  # Portion of cost spent by delegates
+    peak_context_tokens: int | None = None
+    cache_hit_rate: float | None = None  # 0.0-1.0 of input read from cache
+
+
 class AgentRunResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -40,6 +54,9 @@ class AgentRunResponse(BaseModel):
     caller_user_id: str | None = None
     caller_email: str | None = None
     caller_name: str | None = None
+    run_as_user_id: UUID | None = None
+    run_as_user_name: str | None = None
+    run_as_user_email: str | None = None
     iterations_used: int
     tokens_used: int
     budget_max_iterations: int | None = None
@@ -63,6 +80,7 @@ class AgentRunResponse(BaseModel):
     started_at: datetime | None = None
     completed_at: datetime | None = None
     parent_run_id: UUID | None = None
+    usage_summary: AgentRunUsageSummary | None = None
 
 
 class AgentRunChildResponse(BaseModel):
@@ -93,22 +111,28 @@ class AgentRunListResponse(BaseModel):
     next_cursor: str | None = None
 
 
+_RUN_AS_DESCRIPTION = "Run the agent as this user. Requires Impersonate Users in that user's organization."
+
+
 class AgentRunCreateRequest(BaseModel):
     agent_name: str
     input: dict | None = None
     output_schema: dict | None = None
     timeout: int = 1800
+    run_as: UUID | None = Field(default=None, description=_RUN_AS_DESCRIPTION)
 
 
 class AgentRunEnqueueRequest(BaseModel):
     agent_name: str
     input: dict | None = None
     output_schema: dict | None = None
+    run_as: UUID | None = Field(default=None, description=_RUN_AS_DESCRIPTION)
 
 
 class AgentRunEnqueueResponse(BaseModel):
     run_id: UUID
     status: Literal["queued"] = "queued"
+    run_as_user_id: UUID | None = None
 
 
 class AgentRunRerunResponse(BaseModel):

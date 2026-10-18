@@ -40,6 +40,7 @@ function makeRun(overrides: Partial<Run> = {}): Run {
 				output_tokens: 50,
 				cache_read_tokens: 0,
 				cache_write_tokens: 0,
+				reasoning_tokens: 0,
 				timestamp: "2026-04-20T12:00:00Z",
 				sequence: 1,
 				cost: "0.05",
@@ -49,6 +50,7 @@ function makeRun(overrides: Partial<Run> = {}): Run {
 			call_count: 1,
 			total_cache_read_tokens: 0,
 			total_cache_write_tokens: 0,
+			total_reasoning_tokens: 0,
 			total_provider_cost: "0.05",
 			total_duration_ms: 900,
 			total_input_tokens: 200,
@@ -76,7 +78,7 @@ describe("AgentRunOverviewFooter", () => {
 		expect(
 			screen.getByRole("button", { name: /run metadata/i }),
 		).toHaveAttribute("aria-expanded", "false");
-		expect(screen.queryByText("Input tokens")).not.toBeInTheDocument();
+		expect(screen.queryByText("Output tokens")).not.toBeInTheDocument();
 		expect(screen.queryByText("Captured data")).not.toBeInTheDocument();
 	});
 
@@ -91,11 +93,11 @@ describe("AgentRunOverviewFooter", () => {
 		);
 
 		await user.click(screen.getByRole("button", { name: /ai usage/i }));
-		expect(screen.getAllByText("Input tokens").length).toBeGreaterThan(0);
+		expect(screen.getAllByText("Output tokens").length).toBeGreaterThan(0);
 		expect(screen.queryByText("Captured data")).not.toBeInTheDocument();
 
 		await user.click(screen.getByRole("button", { name: /run metadata/i }));
-		expect(screen.queryByText("Input tokens")).not.toBeInTheDocument();
+		expect(screen.queryByText("Output tokens")).not.toBeInTheDocument();
 		expect(screen.getByText("Captured data")).toBeInTheDocument();
 		expect(
 			screen.getByRole("link", { name: /tier-1 triage/i }),

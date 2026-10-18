@@ -240,6 +240,9 @@ ROLES_ROUTE_METHODS: dict[str, frozenset[str]] = {
     "/api/roles/{role_id}": frozenset({"GET", "PATCH", "DELETE"}),
     "/api/roles/{role_id}/users": frozenset({"GET", "POST"}),
     "/api/roles/{role_id}/forms": frozenset({"GET", "POST"}),
+    # Mount canonical handlers so engine SDK calls receive their explicit
+    # management refusal, with no network fallback or copied authorization.
+    "/api/roles/{role_id}/bridge-grants": frozenset({"GET", "PUT"}),
 }
 
 # The SDK AI facade routes, selected from ``src.routers.cli`` by path AND
@@ -568,6 +571,7 @@ def build_worker_sdk_app() -> Any:
             "worker-local SDK app could not mount every SDK route "
             f"({selected}/{expected}); route selection is stale"
         )
+
     return app
 
 

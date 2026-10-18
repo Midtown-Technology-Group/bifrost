@@ -6,10 +6,44 @@ const mockUseAuth = vi.fn();
 
 vi.mock("@/hooks/useAuditLog", () => ({
 	useAuditLog: (...args: unknown[]) => mockUseAuditLog(...args),
+	useAuditExplain: () => ({
+		data: undefined,
+		error: null,
+		isFetching: false,
+	}),
+}));
+
+vi.mock("@/hooks/useTraceNames", () => ({
+	useTraceNames: () => ({
+		names: {
+			role: () => undefined,
+			organization: () => undefined,
+			permission: (permission: string) => permission,
+		},
+		organizationNames: new Map(),
+	}),
+}));
+
+vi.mock("@/hooks/useWorkflows", () => ({
+	useWorkflowsMetadata: () => ({ data: { workflows: [] } }),
+}));
+
+vi.mock("@/services/authorization", () => ({
+	useAuthorization: () => ({ canAnywhere: () => true }),
 }));
 
 vi.mock("@/contexts/AuthContext", () => ({
 	useAuth: () => mockUseAuth(),
+}));
+
+vi.mock("@/hooks/useOrganizations", () => ({
+	useOrganizations: () => ({
+		data: [],
+		isLoading: false,
+		isFetching: false,
+		error: null,
+		refetch: vi.fn(),
+	}),
 }));
 
 import { AuditLogPage } from "./AuditLogPage";
@@ -210,5 +244,90 @@ describe("AuditLogPage policy filters", () => {
 		expect(screen.getByText(`reports / ${filePath}`)).toBeInTheDocument();
 		expect(screen.getByLabelText("Loading page")).toBeInTheDocument();
 		expect(screen.getByRole("button", { name: "Next" })).toBeDisabled();
+	});
+
+	it("shows the retention window and exports with the current action filter", async () => {
+		mockUseAuditLog.mockReturnValue({
+			data: {
+				entries: [],
+				continuation_token: null,
+				retention: {
+					hot_days: 90,
+					archive_days: 365,
+					oldest_in_database: "2026-07-06T09:30:00Z",
+					archived_through: "2026-07-05T23:59:00Z",
+					archived_segments: 12,
+					archived_rows: 4200,
+				},
+			},
+			isLoading: false,
+			error: null,
+			refetch: vi.fn(),
+		});
+		const { user } = renderWithProviders(<AuditLogPage />);
+
+		const banner = screen.getByRole("region", { name: "Audit retention" });
+		expect(banner).toHaveTextContent("Older events are archived through");
+		await user.click(
+			screen.getByRole("combobox", { name: "Action filter" }),
+		);
+		await user.click(
+			await screen.findByRole("option", { name: "Policy denials" }),
+		);
+		await user.click(screen.getByRole("button", { name: "Export" }));
+
+		const dialog = await screen.findByRole("dialog", {
+			name: "Export audit events",
+		});
+		expect(dialog).toBeVisible();
+		expect(screen.getByLabelText("Action prefix (optional)")).toHaveValue(
+			"policy.deny",
+		);
+	});
+
+	it("shows no retention window when the list omits it", () => {
+		renderWithProviders(<AuditLogPage />);
+
+		expect(
+			screen.queryByRole("region", { name: "Audit retention" }),
+		).not.toBeInTheDocument();
+	});
+
+	it("opens an event from the keyboard and returns focus to its row on close", async () => {
+		const { user } = renderWithProviders(<AuditLogPage />);
+
+		const open = screen.getByRole("button", {
+			name: "organization.update",
+		});
+		open.focus();
+		await user.keyboard("{Enter}");
+
+		const dialog = await screen.findByRole("dialog", {
+			name: "Audit Event",
+		});
+		expect(dialog).toHaveTextContent("organization.update");
+		await user.keyboard("{Escape}");
+
+		await waitFor(() =>
+			expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+		);
+		expect(open).toHaveFocus();
+	});
+
+	it("opens an event from a click anywhere on its row", async () => {
+		const { user } = renderWithProviders(<AuditLogPage />);
+
+		await user.click(screen.getByText("192.0.2.11"));
+
+		expect(
+			await screen.findByRole("dialog", { name: "Audit Event" }),
+		).toHaveTextContent("organization.update");
+		await user.keyboard("{Escape}");
+		await waitFor(() =>
+			expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+		);
+		expect(
+			screen.getByRole("button", { name: "organization.update" }),
+		).toHaveFocus();
 	});
 });

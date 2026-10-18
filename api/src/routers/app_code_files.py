@@ -26,9 +26,11 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, Path, status
 from shared.app_authorization import require_platform_admin
 
+from shared import access_checks
 from src.core.auth import Context, CurrentUser
 from src.core.exceptions import AccessDeniedError
 from src.core.log_safety import log_safe
+from src.services.audit import emit_audit
 from src.models.contracts.applications import (
     AppFileUpdate,
     AppRenderResponse,
@@ -282,12 +284,15 @@ async def get_application_or_404(ctx: Context, app_id: UUID) -> Application:
         is_external=ctx.user.is_external,
     )
     try:
-        return await repo.can_access(id=app_id)
+        app = await repo.can_access(id=app_id)
     except AccessDeniedError:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Application '{app_id}' not found",
         )
+    if ctx.user.is_platform_admin:
+        access_checks.note_power("apps.read", app.organization_id, subject=f"application:{app_id}")
+    return app
 
 
 async def get_application_for_write_or_404(ctx: Context, app_id: UUID) -> Application:
@@ -306,6 +311,7 @@ async def get_application_for_write_or_404(ctx: Context, app_id: UUID) -> Applic
     app = await get_application_or_404(ctx, app_id)
     is_bypass = ctx.user.is_platform_admin
     if is_bypass:
+        access_checks.note_power("apps.readwrite", app.organization_id, subject=f"application:{app_id}")
         return app
     raise HTTPException(
         status_code=status.HTTP_404_NOT_FOUND,
@@ -583,6 +589,7 @@ async def render_app(
     Unlike /files, this returns only `path` + `code` (no source).
     """
     app = await get_application_or_404(ctx, app_id)
+    access_checks.note_launch("apps.readbasic", app.organization_id, ctx.org_id, subject=f"application:{app_id}")
     app_storage = AppStorageService()
     storage_mode = "preview" if mode == FileMode.draft else "live"
     app_id_str = str(app.id)
@@ -781,7 +788,7 @@ async def get_bundle_manifest(
                 "organization_id": str(app.organization_id) if app.organization_id else None,
                 "app_model": app.app_model,
             }
-
+        access_checks.note_power("apps.read", app.organization_id, subject=f"application:{app_id}")
         repo_prefix = app.repo_prefix
         # Serialize migrate+rebuild across concurrent first-viewers so two
         # requests don't double-migrate or race on writes. Hold the lock
@@ -828,6 +835,7 @@ async def get_bundle_manifest(
             result, migrated = await build_with_migrate(
                 app_id_str, repo_prefix, storage_mode,
                 dependencies=app.dependencies or {},
+                db=ctx.db,
             )
             if not migrated:
                 logger.info(f"No migration needed for app={app_id_str}")
@@ -892,6 +900,7 @@ async def get_bundle_asset(
     if mode == FileMode.draft:
         require_platform_admin(_user)
     app = await get_application_or_404(ctx, app_id)
+    access_checks.note_launch("apps.readbasic", app.organization_id, ctx.org_id, subject=f"application:{app_id}")
     app_storage = AppStorageService()
     storage_mode = "preview" if mode == FileMode.draft else "live"
 
@@ -944,6 +953,7 @@ async def get_v2_dist_asset(
     from src.services.solutions.app_build import SolutionAppBuilder
 
     app = await get_application_or_404(ctx, app_id)
+    access_checks.note_launch("apps.readbasic", app.organization_id, ctx.org_id, subject=f"application:{app_id}")
     rel = path or "index.html"
     try:
         data = await SolutionAppBuilder().read_dist(
@@ -1044,6 +1054,13 @@ async def put_dependencies(
 
     # Update DB
     app.dependencies = deps if deps else None
+    await emit_audit(
+        ctx.db,
+        "app.dependencies.update",
+        resource_type="application",
+        resource_id=app.id,
+        details={"dependencies": deps},
+    )
     await ctx.db.commit()
 
     # Invalidate render cache

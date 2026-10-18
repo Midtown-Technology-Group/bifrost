@@ -30,6 +30,25 @@ class _ScalarResult:
         return self._value
 
 
+def test_agent_list_channel_notes_only_accepted_admin_scope(monkeypatch):
+    own_org, foreign_org = uuid4(), uuid4()
+    notes = Mock()
+    monkeypatch.setattr(ws_mod.access_checks, "note_power", notes)
+    ordinary = _user(org_id=own_org)
+    assert ws_mod._resolve_agent_runs_channel(ordinary, f"agent-runs:org:{own_org}") is None
+    notes.assert_not_called()
+    admin = _user(org_id=own_org, is_superuser=True)
+    assert ws_mod._resolve_agent_runs_channel(admin, f"agent-runs:org:{foreign_org}") is None
+    notes.assert_not_called()
+    assert ws_mod._resolve_agent_runs_channel(admin, "agent-runs") == f"agent-runs:org:{own_org}"
+    notes.assert_called_once_with("agentruns.read.all", own_org, subject=f"agent-runs:org:{own_org}")
+    notes.reset_mock()
+    global_admin = _user(is_superuser=True)
+    global_admin.organization_id = None
+    assert ws_mod._resolve_agent_runs_channel(global_admin, f"agent-runs:org:{foreign_org}") == f"agent-runs:org:{foreign_org}"
+    notes.assert_called_once_with("agentruns.read.all", foreign_org, subject=f"channel:agent-runs:org:{foreign_org}")
+
+
 class _OneResult:
     def __init__(self, value):
         self._value = value

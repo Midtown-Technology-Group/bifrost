@@ -14,7 +14,7 @@ from uuid import uuid4
 
 import pytest
 
-from src.services.mcp_server.auth import BifrostAuthProvider
+from src.services.mcp_server.auth import BifrostAuthProvider, _seal_auth_code_record
 
 
 def _external_user():
@@ -25,6 +25,7 @@ def _external_user():
         is_superuser=False,
         is_external=True,
         organization_id=uuid4(),
+        identity_kind=None,
     )
 
 
@@ -110,7 +111,7 @@ async def test_auth_code_grant_stamps_is_external():
         hashlib.sha256("verifier".encode()).digest()
     ).rstrip(b"=").decode()
     auth_code_data["code_challenge"] = expected
-    redis.get = AsyncMock(return_value=json.dumps(auth_code_data))
+    redis.get = AsyncMock(return_value=_seal_auth_code_record("thecode", auth_code_data))
 
     with patch("src.core.cache.get_shared_redis", new=AsyncMock(return_value=redis)):
         for p in ctx:

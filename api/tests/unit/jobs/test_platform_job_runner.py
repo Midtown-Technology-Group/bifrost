@@ -2,7 +2,7 @@
 
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
@@ -32,15 +32,16 @@ async def test_runner_restores_requesting_actor_for_handler(monkeypatch) -> None
         payload_version=1,
         payload={"value": "ok"},
         encrypted_payload=None,
-        result=None,
         organization_id=organization_id,
         requested_by_user_id=str(user_id),
         requested_by_email="operator@example.com",
         requested_by_name="Operator",
+        result=None,
     )
-    db = SimpleNamespace(
-        execute=AsyncMock(return_value=SimpleNamespace(scalar_one_or_none=lambda: job))
-    )
+    db = AsyncMock()
+    result = MagicMock()
+    result.scalar_one_or_none.return_value = job
+    db.execute.return_value = result
 
     @asynccontextmanager
     async def db_context():

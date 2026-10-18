@@ -9,6 +9,9 @@ import {
 	useQueryClient,
 } from "@tanstack/react-query";
 import { $api, apiClient } from "@/lib/api-client";
+import { parseApiError } from "@/lib/api-error";
+import { invalidateAuthorization } from "@/lib/authorization";
+import { USER_ACCESS_QUERY_KEY } from "@/services/access";
 
 export interface UsersPageParams {
 	scope?: string | null;
@@ -95,39 +98,72 @@ export function useUsersFiltered(
 }
 
 /**
- * Fetch a specific user by ID
+ * Fetch a specific user by ID. A failed read rejects with an `ApiError`
+ * carrying the status, so a page can tell "not allowed" from "not found".
  */
 export function useUser(userId: string | undefined) {
+	const init = { params: { path: { user_id: userId! } } };
+	return useQuery({
+		queryKey: ["get", "/api/users/{user_id}", init],
+		queryFn: async () => {
+			const { data, error, response } = await apiClient.GET(
+				"/api/users/{user_id}",
+				init,
+			);
+			if (error) throw parseApiError(error, response.status);
+			return data;
+		},
+		enabled: !!userId,
+	});
+}
+
+/**
+ * A user's base role, additional roles (with where each applies), and the
+ * roles the caller may grant them.
+ */
+export function useUserRoleAssignments(
+	userId: string | undefined,
+	enabled = true,
+) {
 	return $api.useQuery(
 		"get",
-		"/api/users/{user_id}",
+		"/api/users/{user_id}/role-assignments",
 		{ params: { path: { user_id: userId! } } },
-		{ enabled: !!userId },
+		{ enabled: !!userId && enabled },
 	);
 }
 
 /**
- * Fetch roles for a specific user
+ * Replace a user's base role and additional roles in one request.
  */
-export function useUserRoles(userId: string | undefined) {
-	return $api.useQuery(
-		"get",
-		"/api/users/{user_id}/roles",
-		{ params: { path: { user_id: userId! } } },
-		{ enabled: !!userId },
-	);
-}
-
-/**
- * Fetch forms accessible to a specific user
- */
-export function useUserForms(userId: string | undefined) {
-	return $api.useQuery(
-		"get",
-		"/api/users/{user_id}/forms",
-		{ params: { path: { user_id: userId! } } },
-		{ enabled: !!userId },
-	);
+export function useReplaceUserRoleAssignments() {
+	const queryClient = useQueryClient();
+	return $api.useMutation("put", "/api/users/{user_id}/role-assignments", {
+		onSuccess: (data, variables) => {
+			queryClient.setQueryData(
+				[
+					"get",
+					"/api/users/{user_id}/role-assignments",
+					{
+						params: {
+							path: { user_id: variables.params.path.user_id },
+						},
+					},
+				],
+				data,
+			);
+			queryClient.invalidateQueries({ queryKey: ["get", "/api/users"] });
+			queryClient.invalidateQueries({
+				queryKey: ["get", "/api/users/{user_id}"],
+			});
+			queryClient.invalidateQueries({ queryKey: ["get", "/api/roles"] });
+			queryClient.invalidateQueries({
+				queryKey: ["get", "/api/roles/{role_id}/users"],
+			});
+			queryClient.invalidateQueries({ queryKey: USER_ACCESS_QUERY_KEY });
+			void invalidateAuthorization(queryClient);
+		},
+	});
 }
 
 /**
@@ -150,6 +186,14 @@ export function useUpdateUser() {
 	return $api.useMutation("patch", "/api/users/{user_id}", {
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: ["get", "/api/users"] });
+			queryClient.invalidateQueries({
+				queryKey: ["get", "/api/users/{user_id}"],
+			});
+			// A move changes which roles the user can hold and where.
+			queryClient.invalidateQueries({
+				queryKey: ["get", "/api/users/{user_id}/role-assignments"],
+			});
+			queryClient.invalidateQueries({ queryKey: USER_ACCESS_QUERY_KEY });
 		},
 	});
 }
@@ -164,6 +208,21 @@ export function useDeleteUser() {
 			queryClient.invalidateQueries({ queryKey: ["get", "/api/users"] });
 		},
 	});
+}
+
+/**
+ * Reset a user's MFA: removes their authenticator app, recovery codes,
+ * passkeys and remembered devices, and signs them out everywhere.
+ */
+export function useResetUserMfa() {
+	return $api.useMutation("post", "/api/users/{user_id}/mfa/reset");
+}
+
+/**
+ * Sign a user out of every device.
+ */
+export function useSignOutUserEverywhere() {
+	return $api.useMutation("post", "/auth/admin/revoke-user");
 }
 
 /**

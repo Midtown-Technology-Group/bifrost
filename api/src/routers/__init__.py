@@ -1,11 +1,13 @@
 # FastAPI Routers
 from src.routers.auth import router as auth_router
+from src.routers.authorization import router as authorization_router
 from src.routers.mfa import router as mfa_router
 from src.routers.oauth_sso import router as oauth_router
 from src.routers.passkeys import router as passkeys_router
 from src.routers.health import router as health_router
 from src.routers.organizations import router as organizations_router
 from src.routers.users import router as users_router
+from src.routers.permissions import router as permissions_router
 from src.routers.roles import router as roles_router
 from src.routers.executions import router as executions_router
 from src.routers.workflows import router as workflows_router
@@ -40,9 +42,12 @@ from src.routers.agent_tuning import router as agent_tuning_router
 from src.routers.chat import router as chat_router
 from src.routers.llm_config import router as llm_config_router
 from src.routers.ai_models import router as ai_models_router
+from src.routers.model_catalog import router as model_catalog_router
 from src.routers.integrations import router as integrations_router
 from src.routers.decorator_properties import router as decorator_properties_router
 from src.routers.maintenance import router as maintenance_router
+from src.routers.run_retention import router as run_retention_router
+from src.routers.identities import router as identities_router
 from src.routers.roi_settings import router as roi_settings_router
 from src.routers.roi_reports import router as roi_reports_router
 from src.routers.usage_reports import router as usage_reports_router
@@ -89,6 +94,7 @@ from src.routers.mcp_connections import (
 from src.routers.mcp_oauth_callback import router as mcp_oauth_callback_router
 from src.routers.sdk_modules import router as sdk_modules_router
 from src.routers.policy_rules import router as policy_rules_router
+from src.routers.product_updates import router as product_updates_router
 
 __all__ = [
     "auth_router",
@@ -98,6 +104,8 @@ __all__ = [
     "health_router",
     "organizations_router",
     "users_router",
+    "authorization_router",
+    "permissions_router",
     "roles_router",
     "executions_router",
     "workflows_router",
@@ -132,9 +140,12 @@ __all__ = [
     "chat_router",
     "llm_config_router",
     "ai_models_router",
+    "model_catalog_router",
     "integrations_router",
     "decorator_properties_router",
     "maintenance_router",
+    "run_retention_router",
+    "identities_router",
     "roi_settings_router",
     "roi_reports_router",
     "usage_reports_router",
@@ -177,4 +188,5 @@ __all__ = [
     "mcp_oauth_callback_router",
     "sdk_modules_router",
     "policy_rules_router",
+    "product_updates_router",
 ]

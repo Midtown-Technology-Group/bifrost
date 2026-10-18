@@ -55,6 +55,7 @@ class AIUsagePublicSimple(BaseModel):
     output_tokens: int
     cache_read_tokens: int = 0
     cache_write_tokens: int = 0
+    reasoning_tokens: int = 0  # Included in output_tokens
     provider_cost: str | None = None
     cost: str | None = None  # Decimal as string
     duration_ms: int | None = None
@@ -68,6 +69,7 @@ class AIUsageTotalsSimple(BaseModel):
     total_output_tokens: int = 0
     total_cache_read_tokens: int = 0
     total_cache_write_tokens: int = 0
+    total_reasoning_tokens: int = 0
     total_provider_cost: str = "0"
     total_cost: str = "0"  # Decimal as string
     total_duration_ms: int = 0
@@ -205,7 +207,7 @@ class WorkflowExecutionRequest(BaseModel):
     code: str | None = Field(default=None, description="Optional: Python code to execute as script (base64 encoded). If provided, executes code instead of looking up workflow by ID.")
     script_name: str | None = Field(default=None, description="Optional: Name/identifier for the script (used for logging when code is provided)")
     org_id: str | None = Field(default=None, description="Override execution org context. Requires platform admin.")
-    run_as: str | None = Field(default=None, description="Execute as this user UUID (impersonation). Requires platform admin.")
+    run_as: str | None = Field(default=None, description="Execute as this user UUID. Requires Impersonate Users in that user's organization.")
     scheduled_at: datetime | None = Field(
         default=None,
         description=(

@@ -282,28 +282,28 @@ class TestToolConflictDetection:
 
     @pytest.mark.asyncio
     async def test_system_tools_win_over_workflow_tools(self, executor, mock_agent):
-        """System tools take priority — resolve_agent_tools returns only the system tool."""
-        mock_agent.system_tools = ["execute_workflow"]
+        """System tools take priority â€” resolve_agent_tools returns only the system tool."""
+        mock_agent.system_tools = ["bifrost_workflow_execute"]
 
         # resolve_agent_tools handles the conflict internally and returns only the winner
         mock_tools = [
-            ToolDefinition(name="execute_workflow", description="Execute a workflow", parameters={"type": "object", "properties": {}}),
+            ToolDefinition(name="bifrost_workflow_execute", description="Execute a workflow", parameters={"type": "object", "properties": {}}),
         ]
 
         with patch("src.services.agent_executor.resolve_agent_tools", new_callable=AsyncMock, return_value=(mock_tools, {})):
             tools = await executor._get_agent_tools(mock_agent)
 
         tool_names = [t.name for t in tools]
-        assert tool_names.count("execute_workflow") == 1
+        assert tool_names.count("bifrost_workflow_execute") == 1
 
     @pytest.mark.asyncio
     async def test_no_conflict_with_prefixed_workflow_tools(self, executor, mock_agent):
         """Workflow tools with category prefix don't conflict with system tools."""
-        mock_agent.system_tools = ["execute_workflow"]
+        mock_agent.system_tools = ["bifrost_workflow_execute"]
 
         workflow_id = uuid4()
         mock_tools = [
-            ToolDefinition(name="execute_workflow", description="Execute a workflow", parameters={"type": "object", "properties": {}}),
+            ToolDefinition(name="bifrost_workflow_execute", description="Execute a workflow", parameters={"type": "object", "properties": {}}),
             ToolDefinition(name="halopsa_execute_workflow", description="HaloPSA workflow", parameters={"type": "object", "properties": {}}),
         ]
 
@@ -311,7 +311,7 @@ class TestToolConflictDetection:
             tools = await executor._get_agent_tools(mock_agent)
 
         tool_names = [t.name for t in tools]
-        assert "execute_workflow" in tool_names
+        assert "bifrost_workflow_execute" in tool_names
         assert "halopsa_execute_workflow" in tool_names
 
 
@@ -517,7 +517,7 @@ class TestWorkflowToolIdResolution:
         """An unadvertised tool name cannot select a workflow by name."""
         from src.services.llm.base import ToolCallRequest
 
-        # Don't populate _tool_workflow_id_map — simulate an unknown tool.
+        # Don't populate _tool_workflow_id_map â€” simulate an unknown tool.
 
         tool_call = ToolCallRequest(
             id="call_456",
@@ -852,6 +852,8 @@ class TestChatDelegation:
             caller=caller,
             _shared_usage=None,
             _shared_budget=None,
+            run_user_id=None,
+            run_as=None,
         )
 
     def test_parent_history_prefers_error_over_partial_result(self):
@@ -929,6 +931,8 @@ class TestChatDelegation:
             caller=None,
             _shared_usage=None,
             _shared_budget=None,
+            run_user_id=None,
+            run_as=None,
         )
         assert result.error is None
 
@@ -1154,8 +1158,11 @@ class TestChatDelegation:
                     child_run_id=child_run_id,
                     agent_name="Slow Agent",
                     status="timeout",
-                    output=None,
-                    error="Delegation to Slow Agent timed out after 600s",
+                    output="completed step evidence-step (read_device): reachable",
+                    error=(
+                        "Delegation to Slow Agent timed out after 600s\n"
+                        "completed step evidence-step (read_device): reachable"
+                    ),
                     duration_ms=600_000,
                 )
             )
@@ -1163,6 +1170,7 @@ class TestChatDelegation:
 
             result = await executor._execute_delegation(tool_call, agent)
 
+        assert result.result is None
         assert result.error is not None
         assert "timed out" in result.error
 

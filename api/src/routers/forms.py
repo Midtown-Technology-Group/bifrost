@@ -33,6 +33,7 @@ from src.core.security import create_form_upload_token, decode_token
 from src.models.enums import FormAccessLevel
 from src.repositories.forms import FormRepository
 from src.repositories.workflows import WorkflowRepository
+from src.services.audit import emit_audit
 from src.models import Execution as ExecutionORM
 from src.models import Form as FormORM, FormField as FormFieldORM, FormRole as FormRoleORM
 from src.models import FormPublication as FormPublicationORM
@@ -57,6 +58,7 @@ from src.models.contracts.forms import (
     FormSubmissionRequest,
     FormSubmissionResponse,
 )
+from shared import access_checks
 from shared.form_publication import build_publication_review
 from shared.form_captcha import (
     FormCaptchaError,
@@ -64,6 +66,7 @@ from shared.form_captcha import (
     redeem_form_captcha_solution,
 )
 from shared.form_provider import FormProviderError, execute_form_field_provider
+from shared.run_lineage import principal_lineage
 from shared.form_runtime import (
     MAX_EMBED_UPLOAD_BYTES,
     FormRuntimeValidationError,
@@ -331,6 +334,11 @@ async def _replace_form_roles(
     form and inserts the new set. Empty list clears all assignments.
     """
     if role_ids:
+        if len(role_ids) != len(set(role_ids)):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="role_ids contains duplicate references",
+            )
         existing = await db.execute(
             select(RoleORM.id).where(RoleORM.id.in_(role_ids))
         )
@@ -505,6 +513,24 @@ async def create_form(
     if CACHE_INVALIDATION_AVAILABLE and invalidate_form:
         org_id = str(form.organization_id) if form.organization_id else None
         await invalidate_form(org_id, str(form.id))
+
+    await emit_audit(
+        db,
+        "form.create",
+        resource_type="form",
+        resource_id=form.id,
+        details={
+            "name": form.name,
+            "organization_id": (
+                str(form.organization_id) if form.organization_id else None
+            ),
+            "access_level": (
+                form.access_level.value
+                if isinstance(form.access_level, FormAccessLevel)
+                else form.access_level
+            ),
+        },
+    )
 
     form.role_ids = await _load_form_role_ids(db, form.id)  # type: ignore[attr-defined]
     return attach_form_logo_fields(FormPublic.model_validate(form), form, include_inline_logo=True)
@@ -689,6 +715,8 @@ async def get_form_runtime(
     form = await repo.get_form(form_id)
     if form is None or not form.is_active:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Form not found")
+    if ctx.user.is_superuser:
+        access_checks.note_power("forms.read", form.organization_id, subject=f"form:{form.id}")
 
     publication = await _authorize_form_runtime(db, ctx, form)
     await _limit_embed_action(http_request, ctx, "runtime")
@@ -823,7 +851,7 @@ async def update_form(
         form.description = request.description
     if request.confirmation_markdown is not None:
         form.confirmation_markdown = request.confirmation_markdown
-    if request.workflow_id is not None:
+    if "workflow_id" in request.model_fields_set:
         form.workflow_id = request.workflow_id
     if "launch_workflow_id" in request.model_fields_set:
         form.launch_workflow_id = request.launch_workflow_id
@@ -895,6 +923,17 @@ async def update_form(
     if CACHE_INVALIDATION_AVAILABLE and invalidate_form:
         org_id = str(form.organization_id) if form.organization_id else None
         await invalidate_form(org_id, str(form_id))
+
+    await emit_audit(
+        db,
+        "form.update",
+        resource_type="form",
+        resource_id=form.id,
+        details={
+            "name": form.name,
+            "fields": sorted(request.model_fields_set),
+        },
+    )
 
     form.role_ids = await _load_form_role_ids(db, form_id)  # type: ignore[attr-defined]
     return attach_form_logo_fields(FormPublic.model_validate(form), form, include_inline_logo=True)
@@ -999,6 +1038,10 @@ async def get_form_logo(
         is_external=ctx.user.is_external,
     ):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Logo not set")
+    else:
+        if ctx.user.is_superuser:
+            access_checks.note_power("forms.read", form.organization_id, subject=f"form:{form.id}")
+        access_checks.note_launch("forms.readbasic", form.organization_id, ctx.org_id, subject=f"form:{form.id}")
 
     thumbnail_ready = bool(form.logo_thumbnail_data and form.logo_thumbnail_version)
     headers = (
@@ -1085,6 +1128,8 @@ async def delete_form(
 
     # Solution-managed forms are read-only here; deploy is the writer.
     assert_not_solution_managed(form)
+    form_name = form.name
+    form_org_id = form.organization_id
 
     if purge:
         if form.is_active:
@@ -1116,8 +1161,16 @@ async def delete_form(
 
     # Invalidate cache
     if CACHE_INVALIDATION_AVAILABLE and invalidate_form:
-        org_id = str(form.organization_id) if form.organization_id else None
+        org_id = str(form_org_id) if form_org_id else None
         await invalidate_form(org_id, str(form_id))
+
+    await emit_audit(
+        db,
+        "form.delete",
+        resource_type="form",
+        resource_id=form_id,
+        details={"name": form_name, "purged": purge},
+    )
 
 
 # =============================================================================
@@ -1179,6 +1232,9 @@ async def _authorize_form_runtime(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Access denied to form",
         )
+    if ctx.user.is_superuser:
+        access_checks.note_power("forms.read", form.organization_id, subject=f"form:{form.id}")
+    access_checks.note_launch("forms.readbasic", form.organization_id, ctx.org_id, subject=f"form:{form.id}")
     return None
 
 
@@ -1348,6 +1404,9 @@ async def submit_form(
             detail=f"Workflow not found: {form.workflow_id}",
         )
     resolved_workflow_id = str(_resolved_wf.id)
+    access_checks.note_launch(
+        "workflows.execute", form.organization_id, ctx.org_id, subject=f"workflow:{resolved_workflow_id}"
+    )
 
     # Keep signed embed context out of top-level workflow parameters. Validated
     # form inputs remain top-level for workflow signature compatibility and are
@@ -1362,11 +1421,11 @@ async def submit_form(
         scheduled_at = datetime.now(timezone.utc) + timedelta(seconds=request.delay_seconds)
 
     if scheduled_at is not None:
-        from src.routers.workflows import _insert_scheduled_execution
+        from shared.sdk_workflow_execution import insert_scheduled_execution
 
         workflow = _resolved_wf
 
-        exec_id = await _insert_scheduled_execution(
+        exec_id = await insert_scheduled_execution(
             db=db,
             workflow_id=workflow.id,
             workflow_name=workflow.name,
@@ -1379,6 +1438,8 @@ async def submit_form(
             is_platform_admin=ctx.user.is_superuser,
             is_provider_org=getattr(ctx.user, "is_provider_org", False),
             is_external=getattr(ctx.user, "is_external", False),
+            lineage=await principal_lineage(db, ctx.user),
+            run_as=None,
         )
         logger.info(
             f"Form {log_safe(form_id)} scheduled by user {ctx.user.email}, "
@@ -1464,6 +1525,7 @@ async def submit_form(
             workflow_id=resolved_workflow_id,
             input_data=merged_params,
             form_id=str(form.id),
+            lineage=await principal_lineage(db, ctx.user),
         )
         external_workflow_accepted = ctx.user.embed
 
@@ -1510,15 +1572,9 @@ async def submit_form(
                         detail="Invalid form session",
                     )
 
-                from src.core.cache.keys import embed_execution_key, TTL_EMBED_EXECUTION
-                from src.core.cache.redis_client import get_redis
+                from src.core.embed_middleware import register_embed_execution
 
-                async with get_redis() as redis:
-                    await redis.setex(
-                        embed_execution_key(ctx.user.jti, str(response.execution_id)),
-                        TTL_EMBED_EXECUTION,
-                        "1",
-                    )
+                await register_embed_execution(ctx.user.jti, str(response.execution_id))
                 return FormExecutionResponse.model_validate(
                     {"mode": "execution", **response.model_dump()}
                 )
@@ -1661,6 +1717,9 @@ async def execute_startup_workflow(
             detail=f"Launch workflow not found: {form.launch_workflow_id}",
         )
     resolved_launch_workflow_id = str(_resolved_launch.id)
+    access_checks.note_launch(
+        "workflows.execute", form.organization_id, ctx.org_id, subject=f"workflow:{resolved_launch_workflow_id}"
+    )
 
     # Signed HMAC values stay in context.embed and are never flattened into
     # browser-editable workflow parameters.
@@ -1700,6 +1759,7 @@ async def execute_startup_workflow(
             form_id=str(form.id),
             transient=True,
             sync=True,
+            lineage=await principal_lineage(db, ctx.user),
         )
 
         logger.info(f"Launch workflow executed for form {log_safe(form_id)} by user {ctx.user.email}")
@@ -1773,6 +1833,7 @@ async def get_form_field_options(
     field = next((item for item in form.fields if item.name == field_name), None)
     if field is None or field.data_provider_id is None:
         raise HTTPException(status_code=404, detail="Field options unavailable")
+    access_checks.note_launch("workflows.execute", form.organization_id, ctx.org_id, subject=f"workflow:{field.data_provider_id}")
 
     try:
         options = await execute_form_field_provider(
@@ -1784,14 +1845,11 @@ async def get_form_field_options(
             browser_inputs=request.inputs,
         )
     except FormProviderError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=(
-                str(exc)
-                if ctx.user.is_superuser and not ctx.user.embed
-                else "Unable to load field options"
-            ),
-        ) from exc
+        detail = "Unable to load field options"
+        if ctx.user.is_superuser and not ctx.user.embed:
+            access_checks.note_power("forms.read", form.organization_id, subject=f"form:{form.id}")
+            detail = str(exc)
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=detail) from exc
     except Exception as exc:
         logger.warning(
             "Form provider failed for form %s field %s",

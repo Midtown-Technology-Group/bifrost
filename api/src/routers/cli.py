@@ -62,9 +62,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.services.operation_catalog import operation_route
+from shared import access_checks
 from src.core.auth import Context, CurrentEngineOrBypassUser, CurrentUser
 from src.core.principal import UserPrincipal
-from src.core.database import get_db
+from src.core.database import get_db, get_db_context
 from src.core.log_safety import log_safe
 from src.models import Organization, User
 from src.models.contracts.cli import (
@@ -245,64 +246,6 @@ class DeveloperContextResponse(BaseModel):
 
 
 # =============================================================================
-# Helper Functions
-# =============================================================================
-
-
-def _session_to_response(
-    session,
-    is_connected: bool,
-) -> CLISessionResponse:
-    """Convert CLISession ORM to response model."""
-    from sqlalchemy import inspect as sa_inspect
-
-    executions = []
-    # Use SQLAlchemy inspect to check if executions were eagerly loaded
-    # This avoids triggering a lazy load which would fail in async context
-    state = sa_inspect(session)
-    if "executions" in state.dict and state.dict["executions"]:
-        for ex in sorted(
-            state.dict["executions"], key=lambda e: e.created_at, reverse=True
-        )[:10]:
-            executions.append(
-                CLISessionExecutionSummary(
-                    id=str(ex.id),
-                    workflow_name=ex.workflow_name,
-                    status=ex.status.value
-                    if hasattr(ex.status, "value")
-                    else str(ex.status),
-                    created_at=ex.created_at,
-                    duration_ms=ex.duration_ms,
-                )
-            )
-
-    workflows = []
-    if session.workflows:
-        for w in session.workflows:
-            workflows.append(
-                CLIRegisteredWorkflow(
-                    name=w.get("name", ""),
-                    description=w.get("description", ""),
-                    parameters=w.get("parameters", []),
-                )
-            )
-
-    return CLISessionResponse(
-        id=str(session.id),
-        user_id=str(session.user_id),
-        file_path=session.file_path,
-        workflows=workflows,
-        selected_workflow=session.selected_workflow,
-        params=session.params,
-        pending=session.pending,
-        last_seen=session.last_seen,
-        created_at=session.created_at,
-        is_connected=is_connected,
-        executions=executions,
-    )
-
-
-# =============================================================================
 # Context Endpoints
 # =============================================================================
 
@@ -314,7 +257,7 @@ def _session_to_response(
 )
 async def get_dev_context(
     current_user: CurrentUser,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
     org_id: UUID | None = None,
 ) -> DeveloperContextResponse:
     """Get development context for CLI initialization.
@@ -497,7 +440,7 @@ async def _resolve_sdk_org_id(
 async def cli_get_config(
     request: CLIConfigGetRequest,
     current_user: CurrentEngineOrBypassUser,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ) -> CLIConfigValue | None:
     """Get a config value via CLI API."""
     from src.repositories.config import ConfigRepository
@@ -580,7 +523,7 @@ async def cli_get_config(
 async def cli_set_config(
     request: CLIConfigSetRequest,
     current_user: CurrentEngineOrBypassUser,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ) -> None:
     """Set a config value via CLI API."""
     from src.models import Config as ConfigModel
@@ -655,7 +598,7 @@ async def cli_set_config(
 async def cli_list_config(
     request: CLIConfigListRequest,
     current_user: CurrentEngineOrBypassUser,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ) -> dict[str, Any]:
     """List all config values via CLI API."""
     from src.repositories.config import ConfigRepository
@@ -706,7 +649,7 @@ async def cli_list_config(
 async def cli_delete_config(
     request: CLIConfigDeleteRequest,
     current_user: CurrentEngineOrBypassUser,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ) -> bool:
     """Delete a config value via CLI API."""
     from src.models import Config as ConfigModel
@@ -841,7 +784,7 @@ async def _connection_is_declared(
 async def sdk_integrations_get(
     request: SDKIntegrationsGetRequest,
     current_user: CurrentEngineOrBypassUser,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ) -> SDKIntegrationsGetResponse | None:
     """Get integration mapping data for an organization via SDK.
 
@@ -1150,7 +1093,7 @@ async def _build_oauth_data(
 async def sdk_integrations_list_mappings(
     request: SDKIntegrationsListMappingsRequest,
     current_user: CurrentEngineOrBypassUser,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ) -> SDKIntegrationsListMappingsResponse | None:
     """List all mappings for an integration via SDK."""
     from src.repositories.integrations import IntegrationsRepository
@@ -1244,7 +1187,7 @@ async def sdk_integrations_list_mappings(
 async def sdk_integrations_get_mapping(
     request: SDKIntegrationsGetMappingRequest,
     current_user: CurrentEngineOrBypassUser,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ) -> SDKIntegrationsMappingItem | None:
     """Get a specific integration mapping by org_id or entity_id via SDK."""
     from src.repositories.integrations import IntegrationsRepository
@@ -1334,7 +1277,7 @@ async def _sdk_find_integration_mapping(
 async def sdk_integrations_upsert_mapping(
     request: SDKIntegrationsUpsertMappingRequest,
     current_user: CurrentEngineOrBypassUser,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ) -> SDKIntegrationsMappingItem:
     """Create or update an integration mapping for an organization via SDK."""
     from src.repositories.integrations import IntegrationsRepository
@@ -1442,7 +1385,7 @@ async def sdk_integrations_upsert_mapping(
 async def sdk_integrations_delete_mapping(
     request: SDKIntegrationsDeleteMappingRequest,
     current_user: CurrentEngineOrBypassUser,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ) -> dict:
     """Delete an integration mapping for an organization via SDK."""
     from src.repositories.integrations import IntegrationsRepository
@@ -1498,7 +1441,7 @@ async def sdk_integrations_delete_mapping(
 async def sdk_integrations_refresh_token(
     request: SDKIntegrationsRefreshTokenRequest,
     current_user: CurrentEngineOrBypassUser,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db, scope="function"),
 ) -> SDKIntegrationsRefreshTokenResponse:
     """Programmatically refresh an OAuth token for an integration.
 
@@ -1660,8 +1603,1168 @@ async def sdk_integrations_refresh_token(
 
 
 # =============================================================================
-# CLI Session Endpoints (Database-backed)
+# SDK AI Endpoints
 # =============================================================================
+
+
+@router.post("/artifacts")
+async def sdk_store_artifact(
+    current_user: CurrentUser,
+    file: UploadFile = File(...),
+    workspace_id: UUID | None = None,
+    db: AsyncSession = Depends(get_db, scope="function"),
+) -> ArtifactRef:
+    """Validate and store workflow-produced bytes behind an opaque identity."""
+    from shared.artifact_generation import validate_artifact_content
+    from src.services.artifacts import ArtifactService, artifact_ref
+
+    filename = file.filename or "Artifact"
+    content_type = file.content_type or "application/octet-stream"
+    content = await file.read()
+    validate_artifact_content(
+        filename=filename,
+        content_type=content_type,
+        content=content,
+    )
+    artifact = await ArtifactService(db).store(
+        filename=filename,
+        content_type=content_type,
+        content=content,
+        created_by_user_id=current_user.user_id,
+        organization_id=current_user.organization_id,
+        workspace_id=workspace_id,
+        logical_path=filename,
+        bypass=current_user.is_platform_admin,
+    )
+    await db.commit()
+    return artifact_ref(artifact)
+
+
+@router.get("/artifacts", response_model=list[ArtifactRef])
+async def sdk_list_artifacts(
+    current_user: CurrentUser,
+    workspace_id: UUID,
+    db: AsyncSession = Depends(get_db, scope="function"),
+) -> list[ArtifactRef]:
+    """List the latest logical files in one authorized execution workspace."""
+    from src.services.artifacts import ArtifactService, artifact_ref
+
+    stored = await ArtifactService(db).list_workspace(
+        workspace_id,
+        user_id=current_user.user_id,
+        bypass=current_user.is_platform_admin,
+    )
+    return [artifact_ref(item) for item in stored]
+
+
+@router.post("/artifacts/document")
+async def sdk_render_document_artifact(
+    request: DocumentArtifactSpec,
+    current_user: CurrentUser,
+    workspace_id: UUID | None = None,
+    db: AsyncSession = Depends(get_db, scope="function"),
+) -> ArtifactRef:
+    """Render and store a trusted PDF or DOCX artifact."""
+
+    from shared.artifact_generation import (
+        generate_document,
+        generate_document_with_images,
+    )
+    from src.services.artifacts import ArtifactService, artifact_ref
+
+    service = ArtifactService(db)
+    image_content: dict[str, bytes] = {}
+    if workspace_id is not None:
+        for image in (
+            image for section in request.sections for image in section.images
+        ):
+            stored_image = await service.resolve_workspace_path(
+                workspace_id,
+                image.path,
+                user_id=current_user.user_id,
+                bypass=current_user.is_platform_admin,
+            )
+            if not stored_image.content_type.startswith("image/"):
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=f"{image.path} is not an image artifact.",
+                )
+            image_content[image.path] = await service.read(stored_image)
+    generated = await asyncio.to_thread(
+        generate_document_with_images if image_content else generate_document,
+        request,
+        *([image_content] if image_content else []),
+    )
+    artifact = await service.store(
+        filename=generated.filename,
+        content_type=generated.content_type,
+        content=generated.content,
+        created_by_user_id=current_user.user_id,
+        organization_id=current_user.organization_id,
+        workspace_id=workspace_id,
+        logical_path=generated.filename,
+        bypass=current_user.is_platform_admin,
+    )
+    await db.commit()
+    return artifact_ref(artifact)
+
+
+@router.post("/artifacts/spreadsheet")
+async def sdk_render_spreadsheet_artifact(
+    request: SpreadsheetArtifactSpec,
+    current_user: CurrentUser,
+    workspace_id: UUID | None = None,
+    db: AsyncSession = Depends(get_db, scope="function"),
+) -> ArtifactRef:
+    """Render and store a trusted XLSX artifact."""
+
+    from shared.artifact_generation import generate_spreadsheet
+    from src.services.artifacts import ArtifactService, artifact_ref
+
+    generated = await asyncio.to_thread(generate_spreadsheet, request)
+    artifact = await ArtifactService(db).store(
+        filename=generated.filename,
+        content_type=generated.content_type,
+        content=generated.content,
+        created_by_user_id=current_user.user_id,
+        organization_id=current_user.organization_id,
+        workspace_id=workspace_id,
+        logical_path=generated.filename,
+        bypass=current_user.is_platform_admin,
+    )
+    await db.commit()
+    return artifact_ref(artifact)
+
+
+@router.post("/artifacts/text")
+async def sdk_render_text_artifact(
+    request: TextArtifactSpec,
+    current_user: CurrentUser,
+    workspace_id: UUID | None = None,
+    db: AsyncSession = Depends(get_db, scope="function"),
+) -> ArtifactRef:
+    """Render and store a trusted text-family artifact."""
+
+    from shared.artifact_generation import generate_text
+    from src.services.artifacts import ArtifactService, artifact_ref
+
+    generated = await asyncio.to_thread(generate_text, request)
+    artifact = await ArtifactService(db).store(
+        filename=generated.filename,
+        content_type=generated.content_type,
+        content=generated.content,
+        created_by_user_id=current_user.user_id,
+        organization_id=current_user.organization_id,
+        workspace_id=workspace_id,
+        logical_path=generated.filename,
+        bypass=current_user.is_platform_admin,
+    )
+    await db.commit()
+    return artifact_ref(artifact)
+
+
+@router.post("/artifacts/image")
+async def sdk_generate_image_artifact(
+    request: ImageArtifactSpec,
+    current_user: CurrentUser,
+    workspace_id: UUID | None = None,
+    execution_id: UUID | None = None,
+    db: AsyncSession = Depends(get_db, scope="function"),
+) -> ArtifactRef:
+    """Generate and store an image with the configured provider."""
+
+    from src.services.artifacts import ArtifactService, artifact_ref
+    from src.services.media_generation import generate_image, record_media_usage
+
+    generated = await generate_image(
+        db,
+        filename=request.filename,
+        prompt=request.prompt,
+    )
+    artifact = await ArtifactService(db).store(
+        filename=generated.filename,
+        content_type=generated.content_type,
+        content=generated.content,
+        created_by_user_id=current_user.user_id,
+        organization_id=current_user.organization_id,
+        workspace_id=workspace_id,
+        logical_path=generated.filename,
+        bypass=current_user.is_platform_admin,
+    )
+    await record_media_usage(
+        db,
+        generated,
+        execution_id=execution_id,
+        organization_id=current_user.organization_id,
+        user_id=current_user.user_id,
+    )
+    await db.commit()
+    return artifact_ref(artifact)
+
+
+@router.post(
+    "/artifacts/video",
+    response_model=PlatformJobAccepted,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def sdk_generate_video_artifact(
+    request: VideoArtifactSpec,
+    current_user: CurrentUser,
+    response: Response,
+    workspace_id: UUID | None = None,
+    execution_id: UUID | None = None,
+    db: AsyncSession = Depends(get_db, scope="function"),
+) -> PlatformJobAccepted:
+    """Queue durable video generation into canonical artifact storage."""
+    from src.jobs.platform.video_generation import (
+        SDK_VIDEO_GENERATION_DEFINITION,
+        SDKVideoGenerationPayload,
+    )
+    from src.services.platform_jobs import (
+        enqueue_platform_job,
+        ensure_platform_job_notification,
+        publish_platform_job_update,
+    )
+
+    job, reused = await enqueue_platform_job(
+        db,
+        SDK_VIDEO_GENERATION_DEFINITION,
+        SDKVideoGenerationPayload(
+            filename=request.filename,
+            prompt=request.prompt,
+            workspace_id=workspace_id,
+            execution_id=execution_id,
+        ),
+        dedupe_key=None,
+        organization_id=current_user.organization_id,
+        requested_by_user_id=current_user.user_id,
+        requested_by_email=current_user.email,
+        requested_by_name=current_user.name or current_user.email,
+        resource_type="artifact",
+        resource_id=request.filename,
+        title=f"Generating {request.filename}",
+        action_url=None,
+    )
+    try:
+        await ensure_platform_job_notification(db, job)
+    except Exception:
+        logger.warning(
+            "SDK video generation queued without a progress notification",
+            extra={"platform_job_id": str(job.id)},
+            exc_info=True,
+        )
+    await db.commit()
+    await db.refresh(job)
+    await publish_platform_job_update(job)
+    response.headers["Location"] = f"/api/platform-jobs/{job.id}"
+    return PlatformJobAccepted(
+        job_id=job.id,
+        notification_id=job.notification_id,
+        status=job.status,
+        reused=reused,
+    )
+
+
+@router.get("/artifacts/{artifact_id}/content")
+async def sdk_read_artifact(
+    artifact_id: UUID,
+    current_user: CurrentUser,
+    db: AsyncSession = Depends(get_db, scope="function"),
+    preview: bool = False,
+) -> Response:
+    """Read an opaque artifact after enforcing caller scope."""
+    from src.services.artifacts import (
+        ArtifactAccessError,
+        ArtifactService,
+        is_browser_active_content_type,
+    )
+
+    service = ArtifactService(db)
+    try:
+        artifact = await service.get_authorized(
+            artifact_id,
+            user_id=current_user.user_id,
+            bypass=current_user.is_platform_admin,
+        )
+    except ArtifactAccessError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
+        ) from exc
+    content = await service.read(artifact)
+    if preview:
+        from shared.artifact_preview import preview_office_artifact
+
+        preview_html = await asyncio.to_thread(
+            preview_office_artifact,
+            content,
+            artifact.content_type,
+        )
+        if preview_html is not None:
+            return Response(
+                content=preview_html,
+                media_type="text/html",
+                headers={
+                    "Content-Security-Policy": (
+                        "default-src 'none'; style-src 'unsafe-inline'; img-src data:"
+                    ),
+                    "X-Content-Type-Options": "nosniff",
+                },
+            )
+    headers = {"X-Content-Type-Options": "nosniff"}
+    if is_browser_active_content_type(artifact.content_type):
+        headers["Content-Disposition"] = "attachment"
+    return Response(
+        content=content,
+        media_type=artifact.content_type,
+        headers=headers,
+    )
+
+
+@router.get("/artifacts/{artifact_id}/download-url")
+async def sdk_artifact_download_url(
+    artifact_id: UUID,
+    current_user: CurrentUser,
+    db: AsyncSession = Depends(get_db, scope="function"),
+) -> ArtifactDownloadResponse:
+    """Create a short-lived download URL for an opaque artifact."""
+    from src.services.artifacts import ArtifactAccessError, ArtifactService
+
+    try:
+        service = ArtifactService(db)
+        artifact = await service.get_authorized(
+            artifact_id,
+            user_id=current_user.user_id,
+            bypass=current_user.is_platform_admin,
+        )
+    except ArtifactAccessError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
+        ) from exc
+    url = await service.generate_download_url(artifact)
+    return ArtifactDownloadResponse(url=url)
+
+
+@router.post(
+    "/ai/complete",
+    summary="Generate AI completion",
+)
+async def cli_ai_complete(
+    request: "CLIAICompleteRequest",
+    current_user: CurrentUser,
+    db: AsyncSession = Depends(get_db, scope="function"),
+) -> "CLIAICompleteResponse":
+    """Generate an AI completion using platform-configured LLM.
+
+    Thin HTTP adapter over the shared operation
+    (``shared.sdk_ai.complete_sdk_ai``), which the engine-local
+    dispatcher calls for the same inputs.
+    """
+    from src.models.contracts.cli import CLIAICompleteResponse
+
+    from shared.sdk_ai import SdkAIError, complete_sdk_ai
+
+    # AI is used in the caller's organization; a scope only attributes usage.
+    access_checks.note_launch("ai.execute", None, current_user.organization_id, subject="ai:complete")
+    try:
+        result = await complete_sdk_ai(
+            db,
+            current_user,
+            messages=request.messages,
+            max_tokens=request.max_tokens,
+            model=request.model,
+            profile=request.profile,
+            execution_id=request.execution_id,
+            scope=request.org_id,
+            input_files=request.input_files,
+        )
+    except SdkAIError as e:
+        raise HTTPException(status_code=e.status_code, detail=e.detail) from None
+
+    return CLIAICompleteResponse(**result)
+
+
+@router.post(
+    "/ai/stream",
+    summary="Stream AI completion",
+)
+async def cli_ai_stream(
+    request: CLIAICompleteRequest,
+    current_user: CurrentUser,
+    db: AsyncSession = Depends(get_db, scope="function"),
+) -> StreamingResponse:
+    """Generate a streaming AI completion using SSE.
+
+    Thin HTTP adapter over the shared operation
+    (``shared.sdk_ai.stream_sdk_ai``), which the engine-local
+    dispatcher calls for the same inputs. Scope is resolved here —
+    before headers are sent — so authorization failures stay HTTP
+    status errors; everything after the stream starts surfaces as SSE
+    error events. Each shared payload dict is serialized to one
+    ``data:`` line, with the terminal ``[DONE]`` appended after the
+    done payload.
+    """
+    from shared.sdk_ai import stream_sdk_ai
+
+    # Resolve scope upfront against the authenticated user so the
+    # streaming body doesn't have to re-derive bypass after CurrentUser
+    # falls out of scope. 403/422 here stay HTTP errors (headers not
+    # yet sent); later failures are SSE error events.
+    resolved_org_id = await _resolve_sdk_org_id(current_user, request.org_id, db)
+    # AI is used in the caller's organization; a scope only attributes usage.
+    access_checks.note_launch("ai.execute", None, current_user.organization_id, subject="ai:stream")
+
+    async def sse():
+        # The request session is committed and closed before the response
+        # is sent, so the stream owns its own session.
+        async with get_db_context() as stream_db:
+            async for event in stream_sdk_ai(
+                stream_db,
+                current_user,
+                messages=request.messages,
+                max_tokens=request.max_tokens,
+                model=request.model,
+                # The established HTTP stream endpoint always selected the
+                # platform default profile. Keep that SDK-visible behavior;
+                # worker-local callers may select a profile directly.
+                execution_id=request.execution_id,
+                resolved_org_id=resolved_org_id,
+                input_files=request.input_files,
+            ):
+                yield f"data: {json.dumps(event)}\n\n"
+                if event.get("done") is True:
+                    yield "data: [DONE]\n\n"
+
+    return StreamingResponse(
+        sse(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",  # Disable nginx buffering
+        },
+    )
+
+
+@router.get(
+    "/ai/info",
+    summary="Get AI model information",
+)
+async def cli_ai_info(
+    current_user: CurrentUser,
+    db: AsyncSession = Depends(get_db, scope="function"),
+) -> "CLIAIInfoResponse":
+    """Get information about the configured LLM.
+
+    Thin HTTP adapter over the shared operation
+    (``shared.sdk_ai.get_sdk_model_info``), which the engine-local
+    dispatcher calls for the same inputs.
+    """
+    from src.models.contracts.cli import CLIAIInfoResponse
+
+    from shared.sdk_ai import SdkAIError, get_sdk_model_info
+
+    access_checks.note_launch("ai.read", None, current_user.organization_id, subject="ai:info")
+    try:
+        result = await get_sdk_model_info(db, current_user)
+    except SdkAIError as e:
+        raise HTTPException(status_code=e.status_code, detail=e.detail) from None
+
+    return CLIAIInfoResponse(**result)
+
+
+# =============================================================================
+# SDK Knowledge Store Endpoints
+# =============================================================================
+
+
+def _deny_external_knowledge(current_user: UserPrincipal) -> None:
+    """403 an external principal off the direct knowledge surface.
+
+    The knowledge store has no grant axis (no roles, no access_level, no row
+    policies), so its direct endpoints are implicitly "any signed-in user" —
+    a tier external (portal/guest) users are excluded from. Externals reach
+    knowledge content only THROUGH workflows/agents they were granted (the
+    engine sentinel keeps the full cascade).
+    """
+    if current_user.is_external:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="External users cannot access the knowledge store directly",
+        )
+
+
+@router.post(
+    "/knowledge/store",
+    summary="Store a document in knowledge store",
+)
+async def cli_knowledge_store(
+    request: "CLIKnowledgeStoreRequest",
+    current_user: CurrentEngineOrBypassUser,
+    db: AsyncSession = Depends(get_db, scope="function"),
+) -> dict:
+    """Store a document with its embedding in the knowledge store."""
+    _deny_external_knowledge(current_user)
+    from src.repositories.knowledge import KnowledgeRepository
+    from src.services.embeddings import get_embedding_client
+
+    try:
+        org_id = await _resolve_sdk_org_id(current_user, request.scope, db)
+        org_uuid = UUID(org_id) if org_id else None
+
+        embedding_client = await get_embedding_client(db)
+
+        # Store document
+        # Externals were 403'd at the top of this endpoint
+        # (_deny_external_knowledge); every caller past the gate gets the
+        # SDK trust this surface has always extended.
+        repo = KnowledgeRepository(db, org_id=org_uuid)
+        doc_ids = await repo.store_chunked(
+            content=request.content,
+            namespace=request.namespace,
+            key=request.key,
+            metadata=request.metadata,
+            created_by=current_user.user_id,
+            embedder=embedding_client,
+        )
+        doc_id = doc_ids[0]
+
+        await db.commit()
+
+        logger.info(
+            f"CLI knowledge store: namespace={log_safe(request.namespace)}, key={log_safe(request.key)}, doc_id={doc_id}"
+        )
+
+        return {"id": doc_id}
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(e),
+        )
+    except HTTPException:
+        # Auth/scope failures (e.g. 403 from _resolve_sdk_org_id) must surface.
+        raise
+    except Exception as e:
+        logger.error(f"CLI knowledge store failed: {log_safe(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Knowledge store failed: {str(e)}",
+        )
+
+
+@router.post(
+    "/knowledge/store-many",
+    summary="Store multiple documents",
+)
+async def cli_knowledge_store_many(
+    request: "CLIKnowledgeStoreManyRequest",
+    current_user: CurrentEngineOrBypassUser,
+    db: AsyncSession = Depends(get_db, scope="function"),
+) -> dict:
+    """Store multiple documents with batch embedding."""
+    _deny_external_knowledge(current_user)
+    from src.repositories.knowledge import KnowledgeRepository
+    from src.services.embeddings import get_embedding_client
+
+    try:
+        org_id = await _resolve_sdk_org_id(current_user, request.scope, db)
+        org_uuid = UUID(org_id) if org_id else None
+
+        embedding_client = await get_embedding_client(db)
+
+        # Store each document
+        # Externals were 403'd at the top of this endpoint
+        # (_deny_external_knowledge); every caller past the gate gets the
+        # SDK trust this surface has always extended.
+        repo = KnowledgeRepository(db, org_id=org_uuid)
+        doc_ids = []
+        for doc in request.documents:
+            inserted_ids = await repo.store_chunked(
+                content=doc["content"],
+                namespace=request.namespace,
+                key=doc.get("key"),
+                metadata=doc.get("metadata"),
+                created_by=current_user.user_id,
+                embedder=embedding_client,
+            )
+            doc_id = inserted_ids[0]
+            doc_ids.append(doc_id)
+
+        await db.commit()
+
+        logger.info(
+            f"CLI knowledge store-many: namespace={log_safe(request.namespace)}, count={len(doc_ids)}"
+        )
+
+        return {"ids": doc_ids}
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(e),
+        )
+    except HTTPException:
+        # Auth/scope failures (e.g. 403 from _resolve_sdk_org_id) must surface.
+        raise
+    except Exception as e:
+        logger.error(f"CLI knowledge store-many failed: {log_safe(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Knowledge store failed: {str(e)}",
+        )
+
+
+@router.post(
+    "/knowledge/search",
+    summary="Hybrid-search knowledge documents",
+)
+async def cli_knowledge_search(
+    request: "CLIKnowledgeSearchRequest",
+    current_user: CurrentUser,
+    db: AsyncSession = Depends(get_db, scope="function"),
+) -> list[CLIKnowledgeDocumentResponse]:
+    """Search knowledge using fused lexical and vector rankings."""
+    _deny_external_knowledge(current_user)
+    from src.models.contracts.cli import CLIKnowledgeDocumentResponse
+    from src.repositories.knowledge import KnowledgeRepository
+    from src.services.embeddings import get_embedding_client
+
+    try:
+        if getattr(current_user, "is_external", False):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="External users cannot search the knowledge store directly",
+            )
+
+        org_id = await _resolve_sdk_org_id(current_user, request.scope, db)
+        org_uuid = UUID(org_id) if org_id else None
+
+        # Generate query embedding
+        embedding_client = await get_embedding_client(db)
+        query_embedding = await embedding_client.embed_single(request.query)
+
+        # Search
+        # Externals were 403'd at the top of this endpoint
+        # (_deny_external_knowledge); every caller past the gate gets the
+        # SDK trust this surface has always extended.
+        repo = KnowledgeRepository(db, org_id=org_uuid)
+        results = await repo.search(
+            query_embedding=query_embedding,
+            namespace=request.namespace,
+            query_text=request.query,
+            limit=request.limit,
+            min_score=request.min_score,
+            metadata_filter=request.metadata_filter,
+            fallback=request.fallback,
+        )
+
+        logger.info(
+            f"CLI knowledge search: query={log_safe(request.query[:50])}..., results={len(results)}"
+        )
+
+        return [
+            CLIKnowledgeDocumentResponse(
+                id=doc.id,
+                namespace=doc.namespace,
+                content=doc.content,
+                metadata=doc.metadata,
+                score=doc.score,
+                organization_id=doc.organization_id,
+                key=doc.key,
+                created_at=doc.created_at.isoformat() if doc.created_at else None,
+            )
+            for doc in results
+        ]
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(e),
+        )
+    except HTTPException:
+        # Auth/scope failures (e.g. 403 from _resolve_sdk_org_id) must surface.
+        raise
+    except Exception as e:
+        logger.error(f"CLI knowledge search failed: {log_safe(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Knowledge search failed: {str(e)}",
+        )
+
+
+@router.post(
+    "/knowledge/delete",
+    summary="Delete a document by key",
+)
+async def cli_knowledge_delete(
+    request: "CLIKnowledgeDeleteRequest",
+    current_user: CurrentEngineOrBypassUser,
+    db: AsyncSession = Depends(get_db, scope="function"),
+) -> dict:
+    """Delete a document by key from the knowledge store."""
+    _deny_external_knowledge(current_user)
+    from src.repositories.knowledge import KnowledgeRepository
+
+    try:
+        org_id = await _resolve_sdk_org_id(current_user, request.scope, db)
+        org_uuid = UUID(org_id) if org_id else None
+
+        # Externals were 403'd at the top of this endpoint
+        # (_deny_external_knowledge); every caller past the gate gets the
+        # SDK trust this surface has always extended.
+        repo = KnowledgeRepository(db, org_id=org_uuid)
+        deleted = await repo.delete_by_key(
+            key=request.key,
+            namespace=request.namespace,
+        )
+
+        await db.commit()
+
+        logger.info(
+            f"CLI knowledge delete: namespace={log_safe(request.namespace)}, key={log_safe(request.key)}, deleted={deleted}"
+        )
+
+        return {"deleted": deleted}
+    except HTTPException:
+        # Auth/scope failures (e.g. 403 from _resolve_sdk_org_id) must surface.
+        raise
+    except Exception as e:
+        logger.error(f"CLI knowledge delete failed: {log_safe(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Knowledge delete failed: {str(e)}",
+        )
+
+
+@router.delete(
+    "/knowledge/namespace/{namespace}",
+    summary="Delete all documents in namespace",
+)
+async def cli_knowledge_delete_namespace(
+    namespace: str,
+    scope: str | None = None,
+    current_user: CurrentEngineOrBypassUser = None,
+    db: AsyncSession = Depends(get_db, scope="function"),
+) -> dict:
+    """Delete all documents in a namespace."""
+    _deny_external_knowledge(current_user)
+    from src.repositories.knowledge import KnowledgeRepository
+
+    try:
+        if await _is_external_user_db(current_user, db):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="External users cannot list knowledge namespaces",
+            )
+        org_id = await _resolve_sdk_org_id(current_user, scope, db)
+        org_uuid = UUID(org_id) if org_id else None
+
+        # Externals were 403'd at the top of this endpoint
+        # (_deny_external_knowledge); every caller past the gate gets the
+        # SDK trust this surface has always extended.
+        repo = KnowledgeRepository(db, org_id=org_uuid)
+        deleted_count = await repo.delete_namespace(
+            namespace=namespace,
+        )
+
+        await db.commit()
+
+        logger.info(
+            f"CLI knowledge delete namespace: namespace={log_safe(namespace)}, deleted_count={deleted_count}"
+        )
+
+        return {"deleted_count": deleted_count}
+    except HTTPException:
+        # Auth/scope failures (e.g. 403 from _resolve_sdk_org_id) must surface.
+        raise
+    except Exception as e:
+        logger.error(f"CLI knowledge delete namespace failed: {log_safe(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Knowledge delete namespace failed: {str(e)}",
+        )
+
+
+@router.get(
+    "/knowledge/namespaces",
+    summary="List namespaces with document counts",
+)
+async def cli_knowledge_list_namespaces(
+    scope: str | None = None,
+    include_global: bool = True,
+    current_user: CurrentUser = None,
+    db: AsyncSession = Depends(get_db, scope="function"),
+) -> list[CLIKnowledgeNamespaceInfo]:
+    """List all namespaces with document counts per scope."""
+    _deny_external_knowledge(current_user)
+    from src.models.contracts.cli import CLIKnowledgeNamespaceInfo
+    from src.repositories.knowledge import KnowledgeRepository
+
+    try:
+        if await _is_external_user_db(current_user, db):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="External users cannot list knowledge namespaces",
+            )
+        org_id = await _resolve_sdk_org_id(current_user, scope, db)
+        org_uuid = UUID(org_id) if org_id else None
+
+        # Externals were 403'd at the top of this endpoint
+        # (_deny_external_knowledge); every caller past the gate gets the
+        # SDK trust this surface has always extended.
+        repo = KnowledgeRepository(db, org_id=org_uuid)
+        results = await repo.list_namespaces(
+            include_global=include_global,
+        )
+
+        return [
+            CLIKnowledgeNamespaceInfo(
+                namespace=ns.namespace,
+                scopes=ns.scopes,
+            )
+            for ns in results
+        ]
+    except HTTPException:
+        # Auth/scope failures (e.g. 403 from _resolve_sdk_org_id) must surface.
+        raise
+    except Exception as e:
+        logger.error(f"CLI knowledge list namespaces failed: {log_safe(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Knowledge list namespaces failed: {str(e)}",
+        )
+
+
+@router.get(
+    "/knowledge/get",
+    summary="Get a document by key",
+)
+async def cli_knowledge_get(
+    key: str,
+    namespace: str = "default",
+    scope: str | None = None,
+    current_user: CurrentUser = None,
+    db: AsyncSession = Depends(get_db, scope="function"),
+) -> CLIKnowledgeDocumentResponse | None:
+    """Get a document by key from the knowledge store."""
+    _deny_external_knowledge(current_user)
+    from src.models.contracts.cli import CLIKnowledgeDocumentResponse
+    from src.repositories.knowledge import KnowledgeRepository
+
+    try:
+        org_id = await _resolve_sdk_org_id(current_user, scope, db)
+        org_uuid = UUID(org_id) if org_id else None
+
+        # Externals were 403'd at the top of this endpoint
+        # (_deny_external_knowledge); every caller past the gate gets the
+        # SDK trust this surface has always extended.
+        repo = KnowledgeRepository(db, org_id=org_uuid)
+        result = await repo.get_by_key(
+            key=key,
+            namespace=namespace,
+        )
+
+        if not result:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Document not found",
+            )
+
+        return CLIKnowledgeDocumentResponse(
+            id=result.id,
+            namespace=result.namespace,
+            content=result.content,
+            metadata=result.metadata,
+            organization_id=result.organization_id,
+            key=result.key,
+            created_at=result.created_at.isoformat() if result.created_at else None,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"CLI knowledge get failed: {log_safe(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Knowledge get failed: {str(e)}",
+        )
+
+
+# =============================================================================
+# CLI Download (generates installable package)
+# =============================================================================
+
+
+@install_router.get(
+    "/download",
+    summary="Legacy CLI download URL",
+    description="Redirect to the installer-compatible CLI download URL",
+)
+async def download_cli() -> RedirectResponse:
+    """Preserve the historical URL for HTTP clients that follow redirects."""
+    return RedirectResponse(
+        url=f"/api/cli/download/{CLI_DOWNLOAD_ALIAS}",
+        status_code=status.HTTP_307_TEMPORARY_REDIRECT,
+    )
+
+
+@install_router.get(
+    "/download/bifrost-cli.tar.gz",
+    summary="Download CLI package",
+    description="Redirect to the versioned, pip-installable CLI artifact",
+)
+async def download_cli_alias() -> RedirectResponse:
+    """Give uv/pipx a suffix-bearing URL before any network request occurs."""
+    from shared.cli_artifact import cli_artifact_filename
+    from shared.version import get_version
+
+    filename = cli_artifact_filename(get_version())
+    return RedirectResponse(
+        url=f"/api/cli/artifacts/{filename}",
+        status_code=status.HTTP_307_TEMPORARY_REDIRECT,
+    )
+
+
+@install_router.get(
+    "/artifacts/{filename}",
+    summary="Serve a versioned CLI artifact",
+    description="Serve the immutable CLI artifact bundled into the API image",
+)
+async def download_cli_artifact(filename: str) -> FileResponse:
+    """Serve only the artifact matching this API build."""
+    from shared.cli_artifact import cli_artifact_filename
+    from shared.version import get_version
+
+    expected_filename = cli_artifact_filename(get_version())
+    if filename != expected_filename:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="CLI artifact not found",
+        )
+
+    artifact_path = CLI_ARTIFACT_DIR / expected_filename
+    if not artifact_path.is_file():
+        logger.error("Bundled CLI artifact is missing: %s", artifact_path)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="CLI artifact unavailable",
+        )
+
+    return FileResponse(
+        path=artifact_path,
+        media_type="application/gzip",
+        filename=expected_filename,
+    )
+
+
+@router.get(
+    "/download",
+    summary="Download the bifrost web SDK package",
+    description=(
+        "Serve the `bifrost` web SDK as an npm-installable tarball. The Solution "
+        "CLI installs it transiently from the selected instance for local "
+        "development; the platform vendors its local SDK into server-side builds."
+    ),
+)
+async def download_sdk() -> Response:
+    """Build + serve the installable ``bifrost`` SDK package (npm tarball).
+
+    Like ``/api/cli/download/bifrost-cli.tar.gz`` (the Python CLI tarball), this
+    package is tied to the API build. The web SDK remains bundled on demand from
+    source shipped in the image, while the Python CLI artifact is built into the
+    image ahead of time.
+    """
+    from shared.version import get_version
+    from src.services.sdk_package import build_sdk_tarball
+
+    version = get_version()
+    tarball = await asyncio.to_thread(build_sdk_tarball, version)
+    return Response(
+        content=tarball,
+        media_type="application/gzip",
+        headers={
+            "Content-Disposition": f"attachment; filename=bifrost-sdk-{version}.tgz",
+        },
+    )
+
+
+# =============================================================================
+# Tables SDK Endpoints
+# =============================================================================
+
+
+@router.post(
+    "/tables/create",
+    summary="Create a table",
+)
+async def cli_create_table(
+    request: SDKTableCreateRequest,
+    ctx: Context,
+    current_user: CurrentEngineOrBypassUser,
+    db: AsyncSession = Depends(get_db, scope="function"),
+) -> SDKTableInfo:
+    """Create a new table via SDK."""
+    from src.models.orm.tables import Table
+    from src.services.solution_scope import solution_context_id
+
+    # A solution execution context (?solution= or X-Bifrost-App, resolved by
+    # auth onto ctx) may not create tables ad hoc — tables are declared by the
+    # solution manifest and created at deploy.
+    if await solution_context_id(db, ctx) is not None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Tables must be declared by the solution manifest",
+        )
+
+    org_id = await _resolve_sdk_org_id(current_user, request.scope, db)
+    org_uuid = UUID(org_id) if org_id else None
+
+    # Exact-scope uniqueness check (not a cascade): "is there already a
+    # table named X in MY scope?" Cascade would mask collisions when a
+    # global Table with the same name exists. See repositories/README.md.
+    stmt = select(Table).where(
+        Table.name == request.name,
+        Table.organization_id == org_uuid,
+        Table.solution_id.is_(None),
+    )
+    result = await db.execute(stmt)
+    existing = result.scalar_one_or_none()
+
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Table '{request.name}' already exists",
+        )
+
+    # Seed admin_bypass so platform admins can still operate on tables
+    # created via the SDK. SDK callers can override this later by setting
+    # explicit policies through the REST `PATCH /api/tables/{id}` endpoint.
+    from shared.policies.probe import make_seed_admin_bypass
+
+    table = Table(
+        name=request.name,
+        description=request.description,
+        schema=request.table_schema,
+        organization_id=org_uuid,
+        created_by=current_user.email,
+        access=make_seed_admin_bypass(),
+    )
+    db.add(table)
+    await db.commit()
+    await db.refresh(table)
+
+    logger.info(
+        f"CLI created table '{log_safe(request.name)}' for user {current_user.email}"
+    )
+
+    return SDKTableInfo(
+        id=str(table.id),
+        name=table.name,
+        organization_id=str(table.organization_id) if table.organization_id else None,
+        table_schema=table.schema,
+        description=table.description,
+        created_at=table.created_at.isoformat(),
+        updated_at=table.updated_at.isoformat(),
+    )
+
+
+@router.post(
+    "/tables/list",
+    summary="List tables",
+)
+async def cli_list_tables(
+    request: SDKTableListRequest,
+    current_user: CurrentEngineOrBypassUser,
+    db: AsyncSession = Depends(get_db, scope="function"),
+) -> list[SDKTableInfo]:
+    """List tables via SDK.
+
+    Engine sentinel: the SDK has already resolved scope, so non-external
+    principals get is_superuser=True and we trust the org_uuid. The base
+    class handles the cascade (org + global) for us. EXTERNAL principals
+    do not inherit sentinel trust (OPEN-B) — they get the normal user
+    cascade (org + global table names/schemas; row data is policy-gated).
+    """
+    # Local import keeps the router file's top-level imports lean.
+    from src.repositories.tables import TableRepository
+
+    org_id = await _resolve_sdk_org_id(current_user, request.scope, db)
+    org_uuid = UUID(org_id) if org_id else None
+
+    # Principal-derived sentinel trust (OPEN-B): the sentinel/admins keep
+    # is_superuser=True (their is_external claim is neutralized at mint); an
+    # EXTERNAL principal must not inherit it — they get the regular-user
+    # cascade instead.
+    repo = TableRepository(
+        db,
+        org_id=org_uuid,
+        is_superuser=not current_user.is_external,
+        is_external=current_user.is_external,
+    )
+    tables = await repo.list()
+    tables = sorted(tables, key=lambda t: t.name)
+
+    return [
+        SDKTableInfo(
+            id=str(t.id),
+            name=t.name,
+            organization_id=str(t.organization_id) if t.organization_id else None,
+            table_schema=t.schema,
+            description=t.description,
+            created_at=t.created_at.isoformat(),
+            updated_at=t.updated_at.isoformat(),
+        )
+        for t in tables
+    ]
+
+
+def _session_to_response(
+    session,
+    is_connected: bool,
+) -> CLISessionResponse:
+    """Convert CLISession ORM to response model."""
+    from sqlalchemy import inspect as sa_inspect
+
+    executions = []
+    # Use SQLAlchemy inspect to check if executions were eagerly loaded
+    # This avoids triggering a lazy load which would fail in async context
+    state = sa_inspect(session)
+    if "executions" in state.dict and state.dict["executions"]:
+        for ex in sorted(
+            state.dict["executions"], key=lambda e: e.created_at, reverse=True
+        )[:10]:
+            executions.append(
+                CLISessionExecutionSummary(
+                    id=str(ex.id),
+                    workflow_name=ex.workflow_name,
+                    status=ex.status.value
+                    if hasattr(ex.status, "value")
+                    else str(ex.status),
+                    created_at=ex.created_at,
+                    duration_ms=ex.duration_ms,
+                )
+            )
+
+    workflows = []
+    if session.workflows:
+        for w in session.workflows:
+            workflows.append(
+                CLIRegisteredWorkflow(
+                    name=w.get("name", ""),
+                    description=w.get("description", ""),
+                    parameters=w.get("parameters", []),
+                )
+            )
+
+    return CLISessionResponse(
+        id=str(session.id),
+        user_id=str(session.user_id),
+        file_path=session.file_path,
+        workflows=workflows,
+        selected_workflow=session.selected_workflow,
+        params=session.params,
+        pending=session.pending,
+        last_seen=session.last_seen,
+        created_at=session.created_at,
+        is_connected=is_connected,
+        executions=executions,
+    )
 
 
 @router.post(
@@ -2287,1107 +3390,3 @@ async def post_cli_result(
         "logs_flushed": logs_flushed,
         "total_logs": total_logs,
     }
-
-
-# =============================================================================
-# SDK AI Endpoints
-# =============================================================================
-
-
-@router.post("/artifacts")
-async def sdk_store_artifact(
-    current_user: CurrentUser,
-    file: UploadFile = File(...),
-    workspace_id: UUID | None = None,
-    db: AsyncSession = Depends(get_db),
-) -> ArtifactRef:
-    """Validate and store workflow-produced bytes behind an opaque identity."""
-    from shared.artifact_generation import validate_artifact_content
-    from src.services.artifacts import ArtifactService, artifact_ref
-
-    filename = file.filename or "Artifact"
-    content_type = file.content_type or "application/octet-stream"
-    content = await file.read()
-    validate_artifact_content(
-        filename=filename,
-        content_type=content_type,
-        content=content,
-    )
-    artifact = await ArtifactService(db).store(
-        filename=filename,
-        content_type=content_type,
-        content=content,
-        created_by_user_id=current_user.user_id,
-        organization_id=current_user.organization_id,
-        workspace_id=workspace_id,
-        logical_path=filename,
-        bypass=current_user.is_platform_admin,
-    )
-    await db.commit()
-    return artifact_ref(artifact)
-
-
-@router.get("/artifacts", response_model=list[ArtifactRef])
-async def sdk_list_artifacts(
-    current_user: CurrentUser,
-    workspace_id: UUID,
-    db: AsyncSession = Depends(get_db),
-) -> list[ArtifactRef]:
-    """List the latest logical files in one authorized execution workspace."""
-    from src.services.artifacts import ArtifactService, artifact_ref
-
-    stored = await ArtifactService(db).list_workspace(
-        workspace_id,
-        user_id=current_user.user_id,
-        bypass=current_user.is_platform_admin,
-    )
-    return [artifact_ref(item) for item in stored]
-
-
-@router.post("/artifacts/document")
-async def sdk_render_document_artifact(
-    request: DocumentArtifactSpec,
-    current_user: CurrentUser,
-    workspace_id: UUID | None = None,
-    db: AsyncSession = Depends(get_db),
-) -> ArtifactRef:
-    """Render and store a trusted PDF or DOCX artifact."""
-
-    from shared.artifact_generation import (
-        generate_document,
-        generate_document_with_images,
-    )
-    from src.services.artifacts import ArtifactService, artifact_ref
-
-    service = ArtifactService(db)
-    image_content: dict[str, bytes] = {}
-    if workspace_id is not None:
-        for image in (
-            image for section in request.sections for image in section.images
-        ):
-            stored_image = await service.resolve_workspace_path(
-                workspace_id,
-                image.path,
-                user_id=current_user.user_id,
-                bypass=current_user.is_platform_admin,
-            )
-            if not stored_image.content_type.startswith("image/"):
-                raise HTTPException(
-                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                    detail=f"{image.path} is not an image artifact.",
-                )
-            image_content[image.path] = await service.read(stored_image)
-    generated = await asyncio.to_thread(
-        generate_document_with_images if image_content else generate_document,
-        request,
-        *([image_content] if image_content else []),
-    )
-    artifact = await service.store(
-        filename=generated.filename,
-        content_type=generated.content_type,
-        content=generated.content,
-        created_by_user_id=current_user.user_id,
-        organization_id=current_user.organization_id,
-        workspace_id=workspace_id,
-        logical_path=generated.filename,
-        bypass=current_user.is_platform_admin,
-    )
-    await db.commit()
-    return artifact_ref(artifact)
-
-
-@router.post("/artifacts/spreadsheet")
-async def sdk_render_spreadsheet_artifact(
-    request: SpreadsheetArtifactSpec,
-    current_user: CurrentUser,
-    workspace_id: UUID | None = None,
-    db: AsyncSession = Depends(get_db),
-) -> ArtifactRef:
-    """Render and store a trusted XLSX artifact."""
-
-    from shared.artifact_generation import generate_spreadsheet
-    from src.services.artifacts import ArtifactService, artifact_ref
-
-    generated = await asyncio.to_thread(generate_spreadsheet, request)
-    artifact = await ArtifactService(db).store(
-        filename=generated.filename,
-        content_type=generated.content_type,
-        content=generated.content,
-        created_by_user_id=current_user.user_id,
-        organization_id=current_user.organization_id,
-        workspace_id=workspace_id,
-        logical_path=generated.filename,
-        bypass=current_user.is_platform_admin,
-    )
-    await db.commit()
-    return artifact_ref(artifact)
-
-
-@router.post("/artifacts/text")
-async def sdk_render_text_artifact(
-    request: TextArtifactSpec,
-    current_user: CurrentUser,
-    workspace_id: UUID | None = None,
-    db: AsyncSession = Depends(get_db),
-) -> ArtifactRef:
-    """Render and store a trusted text-family artifact."""
-
-    from shared.artifact_generation import generate_text
-    from src.services.artifacts import ArtifactService, artifact_ref
-
-    generated = await asyncio.to_thread(generate_text, request)
-    artifact = await ArtifactService(db).store(
-        filename=generated.filename,
-        content_type=generated.content_type,
-        content=generated.content,
-        created_by_user_id=current_user.user_id,
-        organization_id=current_user.organization_id,
-        workspace_id=workspace_id,
-        logical_path=generated.filename,
-        bypass=current_user.is_platform_admin,
-    )
-    await db.commit()
-    return artifact_ref(artifact)
-
-
-@router.post("/artifacts/image")
-async def sdk_generate_image_artifact(
-    request: ImageArtifactSpec,
-    current_user: CurrentUser,
-    workspace_id: UUID | None = None,
-    execution_id: UUID | None = None,
-    db: AsyncSession = Depends(get_db),
-) -> ArtifactRef:
-    """Generate and store an image with the configured provider."""
-
-    from src.services.artifacts import ArtifactService, artifact_ref
-    from src.services.media_generation import generate_image, record_media_usage
-
-    generated = await generate_image(
-        db,
-        filename=request.filename,
-        prompt=request.prompt,
-    )
-    artifact = await ArtifactService(db).store(
-        filename=generated.filename,
-        content_type=generated.content_type,
-        content=generated.content,
-        created_by_user_id=current_user.user_id,
-        organization_id=current_user.organization_id,
-        workspace_id=workspace_id,
-        logical_path=generated.filename,
-        bypass=current_user.is_platform_admin,
-    )
-    await record_media_usage(
-        db,
-        generated,
-        execution_id=execution_id,
-        organization_id=current_user.organization_id,
-        user_id=current_user.user_id,
-    )
-    await db.commit()
-    return artifact_ref(artifact)
-
-
-@router.post(
-    "/artifacts/video",
-    response_model=PlatformJobAccepted,
-    status_code=status.HTTP_202_ACCEPTED,
-)
-async def sdk_generate_video_artifact(
-    request: VideoArtifactSpec,
-    current_user: CurrentUser,
-    response: Response,
-    workspace_id: UUID | None = None,
-    execution_id: UUID | None = None,
-    db: AsyncSession = Depends(get_db),
-) -> PlatformJobAccepted:
-    """Queue durable video generation into canonical artifact storage."""
-    from src.jobs.platform.video_generation import (
-        SDK_VIDEO_GENERATION_DEFINITION,
-        SDKVideoGenerationPayload,
-    )
-    from src.services.platform_jobs import (
-        enqueue_platform_job,
-        ensure_platform_job_notification,
-        publish_platform_job_update,
-    )
-
-    job, reused = await enqueue_platform_job(
-        db,
-        SDK_VIDEO_GENERATION_DEFINITION,
-        SDKVideoGenerationPayload(
-            filename=request.filename,
-            prompt=request.prompt,
-            workspace_id=workspace_id,
-            execution_id=execution_id,
-        ),
-        dedupe_key=None,
-        organization_id=current_user.organization_id,
-        requested_by_user_id=current_user.user_id,
-        requested_by_email=current_user.email,
-        requested_by_name=current_user.name or current_user.email,
-        resource_type="artifact",
-        resource_id=request.filename,
-        title=f"Generating {request.filename}",
-        action_url=None,
-    )
-    try:
-        await ensure_platform_job_notification(db, job)
-    except Exception:
-        logger.warning(
-            "SDK video generation queued without a progress notification",
-            extra={"platform_job_id": str(job.id)},
-            exc_info=True,
-        )
-    await db.commit()
-    await db.refresh(job)
-    await publish_platform_job_update(job)
-    response.headers["Location"] = f"/api/platform-jobs/{job.id}"
-    return PlatformJobAccepted(
-        job_id=job.id,
-        notification_id=job.notification_id,
-        status=job.status,
-        reused=reused,
-    )
-
-
-@router.get("/artifacts/{artifact_id}/content")
-async def sdk_read_artifact(
-    artifact_id: UUID,
-    current_user: CurrentUser,
-    db: AsyncSession = Depends(get_db),
-    preview: bool = False,
-) -> Response:
-    """Read an opaque artifact after enforcing caller scope."""
-    from src.services.artifacts import (
-        ArtifactAccessError,
-        ArtifactService,
-        is_browser_active_content_type,
-    )
-
-    service = ArtifactService(db)
-    try:
-        artifact = await service.get_authorized(
-            artifact_id,
-            user_id=current_user.user_id,
-            bypass=current_user.is_platform_admin,
-        )
-    except ArtifactAccessError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
-        ) from exc
-    content = await service.read(artifact)
-    if preview:
-        from shared.artifact_preview import preview_office_artifact
-
-        preview_html = await asyncio.to_thread(
-            preview_office_artifact,
-            content,
-            artifact.content_type,
-        )
-        if preview_html is not None:
-            return Response(
-                content=preview_html,
-                media_type="text/html",
-                headers={
-                    "Content-Security-Policy": (
-                        "default-src 'none'; style-src 'unsafe-inline'; img-src data:"
-                    ),
-                    "X-Content-Type-Options": "nosniff",
-                },
-            )
-    headers = {"X-Content-Type-Options": "nosniff"}
-    if is_browser_active_content_type(artifact.content_type):
-        headers["Content-Disposition"] = "attachment"
-    return Response(
-        content=content,
-        media_type=artifact.content_type,
-        headers=headers,
-    )
-
-
-@router.get("/artifacts/{artifact_id}/download-url")
-async def sdk_artifact_download_url(
-    artifact_id: UUID,
-    current_user: CurrentUser,
-    db: AsyncSession = Depends(get_db),
-) -> ArtifactDownloadResponse:
-    """Create a short-lived download URL for an opaque artifact."""
-    from src.services.artifacts import ArtifactAccessError, ArtifactService
-
-    try:
-        service = ArtifactService(db)
-        artifact = await service.get_authorized(
-            artifact_id,
-            user_id=current_user.user_id,
-            bypass=current_user.is_platform_admin,
-        )
-    except ArtifactAccessError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
-        ) from exc
-    url = await service.generate_download_url(artifact)
-    return ArtifactDownloadResponse(url=url)
-
-
-@router.post(
-    "/ai/complete",
-    summary="Generate AI completion",
-)
-async def cli_ai_complete(
-    request: "CLIAICompleteRequest",
-    current_user: CurrentUser,
-    db: AsyncSession = Depends(get_db),
-) -> "CLIAICompleteResponse":
-    """Generate an AI completion using platform-configured LLM.
-
-    Thin HTTP adapter over the shared operation
-    (``shared.sdk_ai.complete_sdk_ai``), which the engine-local
-    dispatcher calls for the same inputs.
-    """
-    from src.models.contracts.cli import CLIAICompleteResponse
-
-    from shared.sdk_ai import SdkAIError, complete_sdk_ai
-
-    try:
-        result = await complete_sdk_ai(
-            db,
-            current_user,
-            messages=request.messages,
-            max_tokens=request.max_tokens,
-            model=request.model,
-            profile=request.profile,
-            execution_id=request.execution_id,
-            scope=request.org_id,
-            input_files=request.input_files,
-        )
-    except SdkAIError as e:
-        raise HTTPException(status_code=e.status_code, detail=e.detail) from None
-
-    return CLIAICompleteResponse(**result)
-
-
-@router.post(
-    "/ai/stream",
-    summary="Stream AI completion",
-)
-async def cli_ai_stream(
-    request: CLIAICompleteRequest,
-    current_user: CurrentUser,
-    db: AsyncSession = Depends(get_db),
-) -> StreamingResponse:
-    """Generate a streaming AI completion using SSE.
-
-    Thin HTTP adapter over the shared operation
-    (``shared.sdk_ai.stream_sdk_ai``), which the engine-local
-    dispatcher calls for the same inputs. Scope is resolved here —
-    before headers are sent — so authorization failures stay HTTP
-    status errors; everything after the stream starts surfaces as SSE
-    error events. Each shared payload dict is serialized to one
-    ``data:`` line, with the terminal ``[DONE]`` appended after the
-    done payload.
-    """
-    from shared.sdk_ai import stream_sdk_ai
-
-    # Resolve scope upfront against the authenticated user so the
-    # streaming body doesn't have to re-derive bypass after CurrentUser
-    # falls out of scope. 403/422 here stay HTTP errors (headers not
-    # yet sent); later failures are SSE error events.
-    resolved_org_id = await _resolve_sdk_org_id(current_user, request.org_id, db)
-
-    async def sse():
-        async for event in stream_sdk_ai(
-            db,
-            current_user,
-            messages=request.messages,
-            max_tokens=request.max_tokens,
-            model=request.model,
-            # The established HTTP stream endpoint always selected the
-            # platform default profile. Keep that SDK-visible behavior;
-            # worker-local callers may select a profile directly.
-            execution_id=request.execution_id,
-            resolved_org_id=resolved_org_id,
-            input_files=request.input_files,
-        ):
-            yield f"data: {json.dumps(event)}\n\n"
-            if event.get("done") is True:
-                yield "data: [DONE]\n\n"
-
-    return StreamingResponse(
-        sse(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",  # Disable nginx buffering
-        },
-    )
-
-
-@router.get(
-    "/ai/info",
-    summary="Get AI model information",
-)
-async def cli_ai_info(
-    current_user: CurrentUser,
-    db: AsyncSession = Depends(get_db),
-) -> "CLIAIInfoResponse":
-    """Get information about the configured LLM.
-
-    Thin HTTP adapter over the shared operation
-    (``shared.sdk_ai.get_sdk_model_info``), which the engine-local
-    dispatcher calls for the same inputs.
-    """
-    from src.models.contracts.cli import CLIAIInfoResponse
-
-    from shared.sdk_ai import SdkAIError, get_sdk_model_info
-
-    try:
-        result = await get_sdk_model_info(db, current_user)
-    except SdkAIError as e:
-        raise HTTPException(status_code=e.status_code, detail=e.detail) from None
-
-    return CLIAIInfoResponse(**result)
-
-
-# =============================================================================
-# SDK Knowledge Store Endpoints
-# =============================================================================
-
-
-def _deny_external_knowledge(current_user: UserPrincipal) -> None:
-    """403 an external principal off the direct knowledge surface.
-
-    The knowledge store has no grant axis (no roles, no access_level, no row
-    policies), so its direct endpoints are implicitly "any signed-in user" —
-    a tier external (portal/guest) users are excluded from. Externals reach
-    knowledge content only THROUGH workflows/agents they were granted (the
-    engine sentinel keeps the full cascade).
-    """
-    if current_user.is_external:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="External users cannot access the knowledge store directly",
-        )
-
-
-@router.post(
-    "/knowledge/store",
-    summary="Store a document in knowledge store",
-)
-async def cli_knowledge_store(
-    request: "CLIKnowledgeStoreRequest",
-    current_user: CurrentEngineOrBypassUser,
-    db: AsyncSession = Depends(get_db),
-) -> dict:
-    """Store a document with its embedding in the knowledge store."""
-    _deny_external_knowledge(current_user)
-    from src.repositories.knowledge import KnowledgeRepository
-    from src.services.embeddings import get_embedding_client
-
-    try:
-        org_id = await _resolve_sdk_org_id(current_user, request.scope, db)
-        org_uuid = UUID(org_id) if org_id else None
-
-        embedding_client = await get_embedding_client(db)
-
-        # Store document
-        # Externals were 403'd at the top of this endpoint
-        # (_deny_external_knowledge); every caller past the gate gets the
-        # SDK trust this surface has always extended.
-        repo = KnowledgeRepository(db, org_id=org_uuid)
-        doc_ids = await repo.store_chunked(
-            content=request.content,
-            namespace=request.namespace,
-            key=request.key,
-            metadata=request.metadata,
-            created_by=current_user.user_id,
-            embedder=embedding_client,
-        )
-        doc_id = doc_ids[0]
-
-        await db.commit()
-
-        logger.info(
-            f"CLI knowledge store: namespace={log_safe(request.namespace)}, key={log_safe(request.key)}, doc_id={doc_id}"
-        )
-
-        return {"id": doc_id}
-    except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=str(e),
-        )
-    except HTTPException:
-        # Auth/scope failures (e.g. 403 from _resolve_sdk_org_id) must surface.
-        raise
-    except Exception as e:
-        logger.error(f"CLI knowledge store failed: {log_safe(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Knowledge store failed: {str(e)}",
-        )
-
-
-@router.post(
-    "/knowledge/store-many",
-    summary="Store multiple documents",
-)
-async def cli_knowledge_store_many(
-    request: "CLIKnowledgeStoreManyRequest",
-    current_user: CurrentEngineOrBypassUser,
-    db: AsyncSession = Depends(get_db),
-) -> dict:
-    """Store multiple documents with batch embedding."""
-    _deny_external_knowledge(current_user)
-    from src.repositories.knowledge import KnowledgeRepository
-    from src.services.embeddings import get_embedding_client
-
-    try:
-        org_id = await _resolve_sdk_org_id(current_user, request.scope, db)
-        org_uuid = UUID(org_id) if org_id else None
-
-        embedding_client = await get_embedding_client(db)
-
-        # Store each document
-        # Externals were 403'd at the top of this endpoint
-        # (_deny_external_knowledge); every caller past the gate gets the
-        # SDK trust this surface has always extended.
-        repo = KnowledgeRepository(db, org_id=org_uuid)
-        doc_ids = []
-        for doc in request.documents:
-            inserted_ids = await repo.store_chunked(
-                content=doc["content"],
-                namespace=request.namespace,
-                key=doc.get("key"),
-                metadata=doc.get("metadata"),
-                created_by=current_user.user_id,
-                embedder=embedding_client,
-            )
-            doc_id = inserted_ids[0]
-            doc_ids.append(doc_id)
-
-        await db.commit()
-
-        logger.info(
-            f"CLI knowledge store-many: namespace={log_safe(request.namespace)}, count={len(doc_ids)}"
-        )
-
-        return {"ids": doc_ids}
-    except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=str(e),
-        )
-    except HTTPException:
-        # Auth/scope failures (e.g. 403 from _resolve_sdk_org_id) must surface.
-        raise
-    except Exception as e:
-        logger.error(f"CLI knowledge store-many failed: {log_safe(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Knowledge store failed: {str(e)}",
-        )
-
-
-@router.post(
-    "/knowledge/search",
-    summary="Hybrid-search knowledge documents",
-)
-async def cli_knowledge_search(
-    request: "CLIKnowledgeSearchRequest",
-    current_user: CurrentUser,
-    db: AsyncSession = Depends(get_db),
-) -> list[CLIKnowledgeDocumentResponse]:
-    """Search knowledge using fused lexical and vector rankings."""
-    _deny_external_knowledge(current_user)
-    from src.models.contracts.cli import CLIKnowledgeDocumentResponse
-    from src.repositories.knowledge import KnowledgeRepository
-    from src.services.embeddings import get_embedding_client
-
-    try:
-        if getattr(current_user, "is_external", False):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="External users cannot search the knowledge store directly",
-            )
-
-        org_id = await _resolve_sdk_org_id(current_user, request.scope, db)
-        org_uuid = UUID(org_id) if org_id else None
-
-        # Generate query embedding
-        embedding_client = await get_embedding_client(db)
-        query_embedding = await embedding_client.embed_single(request.query)
-
-        # Search
-        # Externals were 403'd at the top of this endpoint
-        # (_deny_external_knowledge); every caller past the gate gets the
-        # SDK trust this surface has always extended.
-        repo = KnowledgeRepository(db, org_id=org_uuid)
-        results = await repo.search(
-            query_embedding=query_embedding,
-            namespace=request.namespace,
-            query_text=request.query,
-            limit=request.limit,
-            min_score=request.min_score,
-            metadata_filter=request.metadata_filter,
-            fallback=request.fallback,
-        )
-
-        logger.info(
-            f"CLI knowledge search: query={log_safe(request.query[:50])}..., results={len(results)}"
-        )
-
-        return [
-            CLIKnowledgeDocumentResponse(
-                id=doc.id,
-                namespace=doc.namespace,
-                content=doc.content,
-                metadata=doc.metadata,
-                score=doc.score,
-                organization_id=doc.organization_id,
-                key=doc.key,
-                created_at=doc.created_at.isoformat() if doc.created_at else None,
-            )
-            for doc in results
-        ]
-    except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=str(e),
-        )
-    except HTTPException:
-        # Auth/scope failures (e.g. 403 from _resolve_sdk_org_id) must surface.
-        raise
-    except Exception as e:
-        logger.error(f"CLI knowledge search failed: {log_safe(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Knowledge search failed: {str(e)}",
-        )
-
-
-@router.post(
-    "/knowledge/delete",
-    summary="Delete a document by key",
-)
-async def cli_knowledge_delete(
-    request: "CLIKnowledgeDeleteRequest",
-    current_user: CurrentEngineOrBypassUser,
-    db: AsyncSession = Depends(get_db),
-) -> dict:
-    """Delete a document by key from the knowledge store."""
-    _deny_external_knowledge(current_user)
-    from src.repositories.knowledge import KnowledgeRepository
-
-    try:
-        org_id = await _resolve_sdk_org_id(current_user, request.scope, db)
-        org_uuid = UUID(org_id) if org_id else None
-
-        # Externals were 403'd at the top of this endpoint
-        # (_deny_external_knowledge); every caller past the gate gets the
-        # SDK trust this surface has always extended.
-        repo = KnowledgeRepository(db, org_id=org_uuid)
-        deleted = await repo.delete_by_key(
-            key=request.key,
-            namespace=request.namespace,
-        )
-
-        await db.commit()
-
-        logger.info(
-            f"CLI knowledge delete: namespace={log_safe(request.namespace)}, key={log_safe(request.key)}, deleted={deleted}"
-        )
-
-        return {"deleted": deleted}
-    except HTTPException:
-        # Auth/scope failures (e.g. 403 from _resolve_sdk_org_id) must surface.
-        raise
-    except Exception as e:
-        logger.error(f"CLI knowledge delete failed: {log_safe(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Knowledge delete failed: {str(e)}",
-        )
-
-
-@router.delete(
-    "/knowledge/namespace/{namespace}",
-    summary="Delete all documents in namespace",
-)
-async def cli_knowledge_delete_namespace(
-    namespace: str,
-    scope: str | None = None,
-    current_user: CurrentEngineOrBypassUser = None,
-    db: AsyncSession = Depends(get_db),
-) -> dict:
-    """Delete all documents in a namespace."""
-    _deny_external_knowledge(current_user)
-    from src.repositories.knowledge import KnowledgeRepository
-
-    try:
-        if await _is_external_user_db(current_user, db):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="External users cannot list knowledge namespaces",
-            )
-        org_id = await _resolve_sdk_org_id(current_user, scope, db)
-        org_uuid = UUID(org_id) if org_id else None
-
-        # Externals were 403'd at the top of this endpoint
-        # (_deny_external_knowledge); every caller past the gate gets the
-        # SDK trust this surface has always extended.
-        repo = KnowledgeRepository(db, org_id=org_uuid)
-        deleted_count = await repo.delete_namespace(
-            namespace=namespace,
-        )
-
-        await db.commit()
-
-        logger.info(
-            f"CLI knowledge delete namespace: namespace={log_safe(namespace)}, deleted_count={deleted_count}"
-        )
-
-        return {"deleted_count": deleted_count}
-    except HTTPException:
-        # Auth/scope failures (e.g. 403 from _resolve_sdk_org_id) must surface.
-        raise
-    except Exception as e:
-        logger.error(f"CLI knowledge delete namespace failed: {log_safe(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Knowledge delete namespace failed: {str(e)}",
-        )
-
-
-@router.get(
-    "/knowledge/namespaces",
-    summary="List namespaces with document counts",
-)
-async def cli_knowledge_list_namespaces(
-    scope: str | None = None,
-    include_global: bool = True,
-    current_user: CurrentUser = None,
-    db: AsyncSession = Depends(get_db),
-) -> list[CLIKnowledgeNamespaceInfo]:
-    """List all namespaces with document counts per scope."""
-    _deny_external_knowledge(current_user)
-    from src.models.contracts.cli import CLIKnowledgeNamespaceInfo
-    from src.repositories.knowledge import KnowledgeRepository
-
-    try:
-        if await _is_external_user_db(current_user, db):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="External users cannot list knowledge namespaces",
-            )
-        org_id = await _resolve_sdk_org_id(current_user, scope, db)
-        org_uuid = UUID(org_id) if org_id else None
-
-        # Externals were 403'd at the top of this endpoint
-        # (_deny_external_knowledge); every caller past the gate gets the
-        # SDK trust this surface has always extended.
-        repo = KnowledgeRepository(db, org_id=org_uuid)
-        results = await repo.list_namespaces(
-            include_global=include_global,
-        )
-
-        return [
-            CLIKnowledgeNamespaceInfo(
-                namespace=ns.namespace,
-                scopes=ns.scopes,
-            )
-            for ns in results
-        ]
-    except HTTPException:
-        # Auth/scope failures (e.g. 403 from _resolve_sdk_org_id) must surface.
-        raise
-    except Exception as e:
-        logger.error(f"CLI knowledge list namespaces failed: {log_safe(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Knowledge list namespaces failed: {str(e)}",
-        )
-
-
-@router.get(
-    "/knowledge/get",
-    summary="Get a document by key",
-)
-async def cli_knowledge_get(
-    key: str,
-    namespace: str = "default",
-    scope: str | None = None,
-    current_user: CurrentUser = None,
-    db: AsyncSession = Depends(get_db),
-) -> CLIKnowledgeDocumentResponse | None:
-    """Get a document by key from the knowledge store."""
-    _deny_external_knowledge(current_user)
-    from src.models.contracts.cli import CLIKnowledgeDocumentResponse
-    from src.repositories.knowledge import KnowledgeRepository
-
-    try:
-        org_id = await _resolve_sdk_org_id(current_user, scope, db)
-        org_uuid = UUID(org_id) if org_id else None
-
-        # Externals were 403'd at the top of this endpoint
-        # (_deny_external_knowledge); every caller past the gate gets the
-        # SDK trust this surface has always extended.
-        repo = KnowledgeRepository(db, org_id=org_uuid)
-        result = await repo.get_by_key(
-            key=key,
-            namespace=namespace,
-        )
-
-        if not result:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Document not found",
-            )
-
-        return CLIKnowledgeDocumentResponse(
-            id=result.id,
-            namespace=result.namespace,
-            content=result.content,
-            metadata=result.metadata,
-            organization_id=result.organization_id,
-            key=result.key,
-            created_at=result.created_at.isoformat() if result.created_at else None,
-        )
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"CLI knowledge get failed: {log_safe(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Knowledge get failed: {str(e)}",
-        )
-
-
-# =============================================================================
-# CLI Download (generates installable package)
-# =============================================================================
-
-
-@install_router.get(
-    "/download",
-    summary="Legacy CLI download URL",
-    description="Redirect to the installer-compatible CLI download URL",
-)
-async def download_cli() -> RedirectResponse:
-    """Preserve the historical URL for HTTP clients that follow redirects."""
-    return RedirectResponse(
-        url=f"/api/cli/download/{CLI_DOWNLOAD_ALIAS}",
-        status_code=status.HTTP_307_TEMPORARY_REDIRECT,
-    )
-
-
-@install_router.get(
-    "/download/bifrost-cli.tar.gz",
-    summary="Download CLI package",
-    description="Redirect to the versioned, pip-installable CLI artifact",
-)
-async def download_cli_alias() -> RedirectResponse:
-    """Give uv/pipx a suffix-bearing URL before any network request occurs."""
-    from shared.cli_artifact import cli_artifact_filename
-    from shared.version import get_version
-
-    filename = cli_artifact_filename(get_version())
-    return RedirectResponse(
-        url=f"/api/cli/artifacts/{filename}",
-        status_code=status.HTTP_307_TEMPORARY_REDIRECT,
-    )
-
-
-@install_router.get(
-    "/artifacts/{filename}",
-    summary="Serve a versioned CLI artifact",
-    description="Serve the immutable CLI artifact bundled into the API image",
-)
-async def download_cli_artifact(filename: str) -> FileResponse:
-    """Serve only the artifact matching this API build."""
-    from shared.cli_artifact import cli_artifact_filename
-    from shared.version import get_version
-
-    expected_filename = cli_artifact_filename(get_version())
-    if filename != expected_filename:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="CLI artifact not found",
-        )
-
-    artifact_path = CLI_ARTIFACT_DIR / expected_filename
-    if not artifact_path.is_file():
-        logger.error("Bundled CLI artifact is missing: %s", artifact_path)
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="CLI artifact unavailable",
-        )
-
-    return FileResponse(
-        path=artifact_path,
-        media_type="application/gzip",
-        filename=expected_filename,
-    )
-
-
-@router.get(
-    "/download",
-    summary="Download the bifrost web SDK package",
-    description=(
-        "Serve the `bifrost` web SDK as an npm-installable tarball. The Solution "
-        "CLI installs it transiently from the selected instance for local "
-        "development; the platform vendors its local SDK into server-side builds."
-    ),
-)
-async def download_sdk() -> Response:
-    """Build + serve the installable ``bifrost`` SDK package (npm tarball).
-
-    Like ``/api/cli/download/bifrost-cli.tar.gz`` (the Python CLI tarball), this
-    package is tied to the API build. The web SDK remains bundled on demand from
-    source shipped in the image, while the Python CLI artifact is built into the
-    image ahead of time.
-    """
-    from shared.version import get_version
-    from src.services.sdk_package import build_sdk_tarball
-
-    version = get_version()
-    tarball = await asyncio.to_thread(build_sdk_tarball, version)
-    return Response(
-        content=tarball,
-        media_type="application/gzip",
-        headers={
-            "Content-Disposition": f"attachment; filename=bifrost-sdk-{version}.tgz",
-        },
-    )
-
-
-# =============================================================================
-# Tables SDK Endpoints
-# =============================================================================
-
-
-@router.post(
-    "/tables/create",
-    summary="Create a table",
-)
-async def cli_create_table(
-    request: SDKTableCreateRequest,
-    ctx: Context,
-    current_user: CurrentEngineOrBypassUser,
-    db: AsyncSession = Depends(get_db),
-) -> SDKTableInfo:
-    """Create a new table via SDK."""
-    from src.models.orm.tables import Table
-    from src.services.solution_scope import solution_context_id
-
-    # A solution execution context (?solution= or X-Bifrost-App, resolved by
-    # auth onto ctx) may not create tables ad hoc — tables are declared by the
-    # solution manifest and created at deploy.
-    if await solution_context_id(db, ctx) is not None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Tables must be declared by the solution manifest",
-        )
-
-    org_id = await _resolve_sdk_org_id(current_user, request.scope, db)
-    org_uuid = UUID(org_id) if org_id else None
-
-    # Exact-scope uniqueness check (not a cascade): "is there already a
-    # table named X in MY scope?" Cascade would mask collisions when a
-    # global Table with the same name exists. See repositories/README.md.
-    stmt = select(Table).where(
-        Table.name == request.name,
-        Table.organization_id == org_uuid,
-        Table.solution_id.is_(None),
-    )
-    result = await db.execute(stmt)
-    existing = result.scalar_one_or_none()
-
-    if existing:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"Table '{request.name}' already exists",
-        )
-
-    # Seed admin_bypass so platform admins can still operate on tables
-    # created via the SDK. SDK callers can override this later by setting
-    # explicit policies through the REST `PATCH /api/tables/{id}` endpoint.
-    from shared.policies.probe import make_seed_admin_bypass
-
-    table = Table(
-        name=request.name,
-        description=request.description,
-        schema=request.table_schema,
-        organization_id=org_uuid,
-        created_by=current_user.email,
-        access=make_seed_admin_bypass(),
-    )
-    db.add(table)
-    await db.commit()
-    await db.refresh(table)
-
-    logger.info(
-        f"CLI created table '{log_safe(request.name)}' for user {current_user.email}"
-    )
-
-    return SDKTableInfo(
-        id=str(table.id),
-        name=table.name,
-        organization_id=str(table.organization_id) if table.organization_id else None,
-        table_schema=table.schema,
-        description=table.description,
-        created_at=table.created_at.isoformat(),
-        updated_at=table.updated_at.isoformat(),
-    )
-
-
-@router.post(
-    "/tables/list",
-    summary="List tables",
-)
-async def cli_list_tables(
-    request: SDKTableListRequest,
-    current_user: CurrentEngineOrBypassUser,
-    db: AsyncSession = Depends(get_db),
-) -> list[SDKTableInfo]:
-    """List tables via SDK.
-
-    Engine sentinel: the SDK has already resolved scope, so non-external
-    principals get is_superuser=True and we trust the org_uuid. The base
-    class handles the cascade (org + global) for us. EXTERNAL principals
-    do not inherit sentinel trust (OPEN-B) — they get the normal user
-    cascade (org + global table names/schemas; row data is policy-gated).
-    """
-    # Local import keeps the router file's top-level imports lean.
-    from src.repositories.tables import TableRepository
-
-    org_id = await _resolve_sdk_org_id(current_user, request.scope, db)
-    org_uuid = UUID(org_id) if org_id else None
-
-    # Principal-derived sentinel trust (OPEN-B): the sentinel/admins keep
-    # is_superuser=True (their is_external claim is neutralized at mint); an
-    # EXTERNAL principal must not inherit it — they get the regular-user
-    # cascade instead.
-    repo = TableRepository(
-        db,
-        org_id=org_uuid,
-        is_superuser=not current_user.is_external,
-        is_external=current_user.is_external,
-    )
-    tables = await repo.list()
-    tables = sorted(tables, key=lambda t: t.name)
-
-    return [
-        SDKTableInfo(
-            id=str(t.id),
-            name=t.name,
-            organization_id=str(t.organization_id) if t.organization_id else None,
-            table_schema=t.schema,
-            description=t.description,
-            created_at=t.created_at.isoformat(),
-            updated_at=t.updated_at.isoformat(),
-        )
-        for t in tables
-    ]

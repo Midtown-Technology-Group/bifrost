@@ -40,7 +40,7 @@ MAX_AVATAR_SIZE = 2 * 1024 * 1024  # 2MB
 )
 async def get_profile(
     current_user: CurrentUser,
-    db: Annotated[AsyncSession, Depends(get_db)],
+    db: Annotated[AsyncSession, Depends(get_db, scope="function")],
 ) -> ProfileResponse:
     """Get current user's profile."""
     # Load user from DB to get latest data including avatar info
@@ -74,7 +74,7 @@ async def get_profile(
 async def update_profile(
     request: ProfileUpdate,
     current_user: CurrentUser,
-    db: Annotated[AsyncSession, Depends(get_db)],
+    db: Annotated[AsyncSession, Depends(get_db, scope="function")],
 ) -> ProfileResponse:
     """Update current user's profile."""
     # Build update values
@@ -126,7 +126,7 @@ async def update_profile(
 )
 async def get_avatar(
     current_user: CurrentUser,
-    db: Annotated[AsyncSession, Depends(get_db)],
+    db: Annotated[AsyncSession, Depends(get_db, scope="function")],
 ) -> Response:
     """Get current user's avatar image."""
     stmt = select(User).where(User.id == current_user.user_id)
@@ -153,7 +153,7 @@ async def get_avatar(
 )
 async def upload_avatar(
     current_user: CurrentUser,
-    db: Annotated[AsyncSession, Depends(get_db)],
+    db: Annotated[AsyncSession, Depends(get_db, scope="function")],
     file: UploadFile = File(...),
 ) -> ProfileResponse:
     """Upload avatar image."""
@@ -207,7 +207,7 @@ async def upload_avatar(
 )
 async def delete_avatar(
     current_user: CurrentUser,
-    db: Annotated[AsyncSession, Depends(get_db)],
+    db: Annotated[AsyncSession, Depends(get_db, scope="function")],
 ) -> ProfileResponse:
     """Remove user's avatar."""
     await db.execute(
@@ -250,7 +250,7 @@ async def delete_avatar(
 async def change_password(
     request: PasswordChange,
     current_user: CurrentUser,
-    db: Annotated[AsyncSession, Depends(get_db)],
+    db: Annotated[AsyncSession, Depends(get_db, scope="function")],
 ) -> None:
     """Change a user's existing password."""
     # Load user to verify current password

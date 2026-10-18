@@ -1,10 +1,10 @@
 """Device registry REST: CRUD, enrollment, key rotation (M1 #831).
 
 Authorization follows the M0 matrix (docs/architecture/device-control-plane.md):
-registry operations require org membership plus ``can_manage_config`` (or
+registry operations require org membership plus ``devices.readwrite`` (or
 platform superuser); ``POST /api/devices/enroll`` authenticates with the
 single-use enrollment token only (CSRF-exempt). Org scoping goes through
-``resolve_org_filter`` + ``org_filter_clause`` — never inline comparisons.
+``resolve_device_org_filter`` + ``org_filter_clause`` — never inline comparisons.
 """
 
 import logging
@@ -12,6 +12,8 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, Query, status
 from starlette.responses import JSONResponse
+
+from shared import access_checks
 
 from src.services.operation_catalog import operation_route
 from src.core.auth import Context, CurrentUser, get_current_user_optional
@@ -92,7 +94,7 @@ async def create_device_route(
     user: CurrentUser,
 ) -> DeviceCreateResponse | JSONResponse:
     try:
-        await require_device_manage_permission(ctx.db, user)
+        user = await require_device_manage_permission(ctx.db, user, body.organization_id)
         device, raw_token, expires_at = await create_device(ctx.db, user, body)
     except DeviceOperationError as exc:
         return exc.to_response()
@@ -140,7 +142,7 @@ async def list_devices_route(
     scope: str | None = Query(default=None),
 ) -> list[DevicePublic] | JSONResponse:
     try:
-        await require_device_manage_permission(ctx.db, user)
+        user = await require_device_manage_permission(ctx.db, user)
     except DeviceOperationError as exc:
         return exc.to_response()
     stmt = list_devices_stmt(user, scope)
@@ -187,7 +189,7 @@ async def get_device_route(
                 "unauthenticated",
                 "user permission or device-scoped control key required",
             )
-        await require_device_manage_permission(db, user)
+        user = await require_device_manage_permission(db, user)
         device = await get_device_scoped(db, user, device_id)
         return DevicePublic.model_validate(device)
     except DeviceOperationError as exc:
@@ -206,7 +208,7 @@ async def rotate_device_key_endpoint(
     user: CurrentUser,
 ) -> DeviceKeyResponse | JSONResponse:
     try:
-        await require_device_manage_permission(ctx.db, user)
+        user = await require_device_manage_permission(ctx.db, user)
         device, raw_key = await rotate_device_key_route(ctx.db, user, device_id)
     except DeviceOperationError as exc:
         return exc.to_response()
@@ -248,7 +250,7 @@ async def _set_enabled(
     user: CurrentUser,
 ) -> DevicePublic | JSONResponse:
     try:
-        await require_device_manage_permission(ctx.db, user)
+        user = await require_device_manage_permission(ctx.db, user)
         device = await set_device_enabled(ctx.db, user, device_id, enabled)
     except DeviceOperationError as exc:
         return exc.to_response()
@@ -258,7 +260,7 @@ async def _set_enabled(
 # ---------------------------------------------------------------------------
 # Device jobs: create, observation, cooperative cancel (M2.4 #836)
 #
-# Dual auth (M0 matrix): user JWT + can_execute_devices, OR an
+# Dual auth (M0 matrix): user JWT + devices.execute, OR an
 # X-Bifrost-Control-Key whose allow-list targets the device. DbSession (not
 # Context) keeps cookie-less control-key callers out of user auth.
 # ---------------------------------------------------------------------------
@@ -283,7 +285,7 @@ async def _create_job(
             )
         attribution = {"requested_by_api_key_id": key.id}
     elif user is not None:
-        await require_device_execute_permission(db, user)
+        user = await require_device_execute_permission(db, user)
         device = await get_device_scoped(db, user, device_id)
         attribution = {"requested_by_user_id": user.user_id}
     else:
@@ -364,12 +366,12 @@ async def _authorize_job_read(
                 raise DeviceOperationError(
                     status.HTTP_404_NOT_FOUND, "unknown_job", "job not found"
                 )
-            return key, job
+            return key, job, user
         if device_id is not None:
             await get_device_for_org(db, device_id, key.organization_id)
-        return key, None
+        return key, None, user
     if user is not None:
-        await require_device_execute_permission(db, user)
+        user = await require_device_execute_permission(db, user)
         if device_id is not None:
             await get_device_scoped(db, user, device_id)  # 404 when out of scope
         if job_id is not None:
@@ -378,8 +380,8 @@ async def _authorize_job_read(
                 raise DeviceOperationError(
                     status.HTTP_404_NOT_FOUND, "unknown_job", "job not found"
                 )
-            return None, job
-        return None, None
+            return None, job, user
+        return None, None, user
     raise DeviceOperationError(
         status.HTTP_401_UNAUTHORIZED,
         "unauthenticated",
@@ -404,7 +406,7 @@ async def list_jobs_route(
     ),
 ) -> list[DeviceJobPublic] | JSONResponse:
     try:
-        key, _ = await _authorize_job_read(
+        key, _, user = await _authorize_job_read(
             db, user, x_bifrost_control_key, device_id=device_id
         )
         if key is not None:
@@ -436,7 +438,7 @@ async def get_job_route(
     ),
 ) -> DeviceJobDetail | JSONResponse:
     try:
-        _key, job = await _authorize_job_read(
+        _key, job, _user = await _authorize_job_read(
             db, user, x_bifrost_control_key, job_id=job_id, device_id=device_id
         )
         return DeviceJobDetail.model_validate(job)
@@ -462,7 +464,7 @@ async def get_job_logs_route(
     ),
 ) -> list[DeviceJobLogPublic] | JSONResponse:
     try:
-        _key, job = await _authorize_job_read(
+        _key, job, _user = await _authorize_job_read(
             db, user, x_bifrost_control_key, job_id=job_id, device_id=device_id
         )
         rows = await list_job_logs(db, job.id, after_seq=after_seq, limit=limit)
@@ -500,7 +502,7 @@ async def cancel_job_route(
                 "unauthenticated",
                 "user permission or device-scoped control key required",
             )
-        await require_device_execute_permission(db, user)
+        user = await require_device_execute_permission(db, user)
         device = await get_device_scoped(db, user, device_id)
         job = await get_job_scoped(db, user, job_id)
         if job.device_id != device.id:
@@ -526,7 +528,7 @@ async def create_peer_session_route(device_id: UUID, body: DevicePeerSessionCrea
     try:
         if user.is_engine_token or user.embed or user.is_system_account:
             raise DeviceOperationError(403, "permission_denied", "User device session permission required")
-        await require_device_execute_permission(ctx.db, user)
+        user = await require_device_execute_permission(ctx.db, user)
         device = await get_device_scoped(ctx.db, user, device_id)
         if device.status != DEVICE_STATUS_ACTIVE:
             raise DeviceOperationError(403, "device_disabled", "Device is disabled")
@@ -557,11 +559,16 @@ async def revoke_peer_session_route(device_id: UUID, session_job_id: UUID, ctx: 
     try:
         if user.is_engine_token or user.embed or user.is_system_account:
             raise DeviceOperationError(403, "permission_denied", "User device session permission required")
-        await require_device_execute_permission(ctx.db, user)
+        user = await require_device_execute_permission(ctx.db, user)
         device = await get_device_scoped(ctx.db, user, device_id)
         session = await ctx.db.get(PlatformJob, session_job_id)
         if session is None or session.job_type != "device.peer_lighthouse.start" or session.resource_id != str(device.id) or not (user.is_platform_admin or session.requested_by_user_id == str(user.user_id)):
             raise DeviceOperationError(404, "unknown_session", "Device session not found")
+        if session.requested_by_user_id != str(user.user_id):
+            access_checks.note_power(
+                "platformjobs.readwrite.all", session.organization_id,
+                subject=f"platform_job:{session.id}",
+            )
         job, reused = await enqueue_platform_job(ctx.db, DEVICE_PEER_REVOKE_DEFINITION,
             DevicePeerRevokePayload(device_id=device.id, session_job_id=session.id),
             dedupe_key=str(session.id), organization_id=device.organization_id,
@@ -586,7 +593,7 @@ async def get_peer_revoke_status_route(device_id: UUID, session_job_id: UUID, jo
     try:
         if user.is_engine_token or user.embed or user.is_system_account:
             raise DeviceOperationError(403, "permission_denied", "User device session permission required")
-        await require_device_execute_permission(ctx.db, user)
+        user = await require_device_execute_permission(ctx.db, user)
         device = await get_device_scoped(ctx.db, user, device_id)
         session = await ctx.db.get(PlatformJob, session_job_id)
         if session is None or session.job_type != "device.peer_lighthouse.start" or session.resource_id != str(device.id) or not (user.is_platform_admin or session.requested_by_user_id == str(user.user_id)):
@@ -594,6 +601,11 @@ async def get_peer_revoke_status_route(device_id: UUID, session_job_id: UUID, jo
         job = await ctx.db.get(PlatformJob, job_id)
         if job is None or job.job_type != "device.peer_lighthouse.revoke" or job.resource_type != "device" or job.resource_id != str(device.id) or job.organization_id != device.organization_id or job.payload != {"device_id": str(device.id), "session_job_id": str(session.id)}:
             raise DeviceOperationError(404, "unknown_job", "Revocation job not found")
+        if session.requested_by_user_id != str(user.user_id):
+            access_checks.note_power(
+                "platformjobs.read.all", session.organization_id,
+                subject=f"platform_job:{session.id}",
+            )
         # Receipt access grants no authority to cancel an admin-owned job.
         return platform_job_to_public(job).model_copy(update={"can_cancel": False})
     except DeviceOperationError as exc:

@@ -10,6 +10,8 @@ from fastapi import HTTPException
 
 from src.models.orm.agent_action_approvals import AgentActionApproval
 from src.models.orm.agents import Agent
+from src.models.orm.agent_runs import AgentRun
+from shared.run_lineage import run_user_lineage
 from src.models.orm.users import User
 from src.models.orm.workflows import Workflow
 from src.routers.agent_action_approvals import approve_approval, deny_approval
@@ -51,6 +53,7 @@ async def test_approval_dispatches_exact_proposal_as_original_caller(provider_gr
     db = AsyncMock()
     db.get.side_effect = lambda model, *_args, **_kwargs: {
         AgentActionApproval: row, Workflow: workflow, Agent: agent, User: requester,
+        AgentRun: SimpleNamespace(run_user_id=requester.id),
     }[model]
 
     async def dispatch(**kwargs):
@@ -73,6 +76,7 @@ async def test_approval_dispatches_exact_proposal_as_original_caller(provider_gr
     assert execute.await_args.kwargs["user_id"] == str(row.requested_by_user_id)
     assert execute.await_args.kwargs["org_id"] == str(row.organization_id)
     assert execute.await_args.kwargs["execution_id"] == str(row.execution_id)
+    assert execute.await_args.kwargs["lineage"] == run_user_lineage(requester.id)
     assert audit.await_count == 2
     assert db.commit.await_count == 2
     if provider_granted:

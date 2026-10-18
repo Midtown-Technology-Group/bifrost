@@ -14,11 +14,13 @@ For sync execution (sync=True):
 - Caller waits on Redis BLPOP
 """
 
+from __future__ import annotations
+
 import logging
 import uuid
 import dataclasses
 from datetime import datetime, timezone
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from fastapi.encoders import jsonable_encoder
 from opentelemetry import trace
@@ -32,6 +34,9 @@ from src.core.redis_client import get_redis_client
 from src.jobs.rabbitmq import publish_message
 from src.sdk.context import EventContext, ExecutionContext
 from src.services.execution.queue_tracker import add_to_queue
+
+if TYPE_CHECKING:
+    from shared.run_lineage import RunLineage
 
 logger = logging.getLogger(__name__)
 tracer = trace.get_tracer(__name__)
@@ -52,10 +57,12 @@ def _dispatch_request_identity(
     file_path: str | None,
     org_id_override: str | None,
     dispatch_metadata: dict[str, Any] | None = None,
+    lineage: dict[str, str] | None,
 ) -> dict[str, Any]:
     event = dataclasses.asdict(context.event) if context.event is not None else None
     identity: dict[str, Any] = {
         "schema_version": PENDING_DISPATCH_SCHEMA,
+        "lineage": lineage,
         "execution_id": execution_id,
         "workflow_id": workflow_id,
         "parameters": parameters,
@@ -211,6 +218,7 @@ async def _persist_execution_pin(
     api_key_id: str | None,
     file_path: str | None,
     dispatch_metadata: dict[str, Any] | None = None,
+    lineage: RunLineage | None,
 ) -> tuple[dict[str, Any], bool]:
     """Persist immutable runtime evidence before anything enters the queue."""
     from src.core.database import get_db_context
@@ -258,6 +266,7 @@ async def _persist_execution_pin(
             file_path=file_path,
             org_id_override=org_id_override,
             dispatch_metadata=dispatch_metadata,
+            lineage=lineage.bound(execution_id) if lineage else None,
         )
         # A caller-supplied execution identity is also the canonical
         # idempotency boundary for workflow dispatch. Serialize contenders on
@@ -330,7 +339,10 @@ async def _persist_execution_pin(
         from src.services.execution.retry_policy import workflow_retry_policy_snapshot
 
         retry_policy = await workflow_retry_policy_snapshot(db, uuid.UUID(workflow_id))
+        from shared.run_lineage import lineage_columns
+
         pinned_execution = Execution(
+            **lineage_columns(lineage.bound(execution_id) if lineage else None),
             id=uuid.UUID(execution_id),
             workflow_name=pinned_runtime.name if pinned_runtime else "pending",
             workflow_id=uuid.UUID(workflow_id),
@@ -404,6 +416,37 @@ async def _publish_scheduled_once(
         ):
             return False
 
+        run_as = (execution.execution_context or {}).get("run_as")
+        if run_as is not None:
+            from shared import access_checks
+            from src.services.access_check_writer import flush_detached
+            from src.services.authorization.impersonation import recheck_run_as
+
+            token = (
+                access_checks.collect_person(uuid.UUID(run_as["authorized_by"]))
+                if run_as["enforced"]
+                else access_checks.collect_run(
+                    uuid.UUID(run_as["execution_id"]) if run_as["execution_id"] else None,
+                    uuid.UUID(run_as["run_user_id"]) if run_as["run_user_id"] else None,
+                    uuid.UUID(run_as["workflow_id"]) if run_as["workflow_id"] else None,
+                )
+            )
+            collector = access_checks.current() if token is not None else None
+            try:
+                reason = await recheck_run_as(db, run_as)
+            finally:
+                access_checks.stop_collecting(token)
+            if collector is not None:
+                await flush_detached(
+                    collector, operation="scheduler.deferred_execution_promoter", route=None,
+                )
+            if reason is not None:
+                execution.status = ExecutionStatus.FAILED
+                execution.error_message = f"Run As is no longer permitted: {reason}"
+                execution.completed_at = datetime.now(timezone.utc)
+                await db.commit()
+                return False
+
         event = None
         if publish_kwargs is None:
             publish_kwargs = validated_recovery_dispatch(execution)
@@ -475,6 +518,7 @@ async def _publish_pending(
     dispatch_metadata: dict[str, Any] | None = None,
     artifact_workspace_id: str | None = None,
     delivery_db: AsyncSession | None = None,
+    lineage: dict[str, str] | None = None,
 ) -> None:
     """
     Write a pending-execution blob to Redis, register with the queue tracker,
@@ -529,6 +573,7 @@ async def _publish_pending(
                 runtime_evidence=runtime_evidence,
                 runtime_mode=runtime_mode,
                 artifact_workspace_id=artifact_workspace_id,
+                lineage=lineage,
             )
 
             # Sync callers wait on a private result list and cannot consume
@@ -579,6 +624,8 @@ async def enqueue_workflow_execution_once(
     file_path: str | None = None,
     org_id_override: str | None = None,
     dispatch_metadata: dict[str, Any] | None = None,
+    *,
+    lineage: RunLineage | None,
 ) -> tuple[str, bool]:
     """
     Enqueue a workflow for async execution.
@@ -595,6 +642,7 @@ async def enqueue_workflow_execution_once(
         sync: If True, worker will push result to Redis for caller to BLPOP
         api_key_id: Optional workflow ID whose API key triggered this execution
         file_path: Optional file path (for fast direct loading, avoids filesystem scan)
+        lineage: Who the run is for (shared.run_lineage); None when unknown
 
     Returns:
         execution_id: UUID of the queued execution
@@ -614,6 +662,7 @@ async def enqueue_workflow_execution_once(
         api_key_id=api_key_id,
         file_path=file_path,
         dispatch_metadata=dispatch_metadata,
+        lineage=lineage,
     )
 
     # An event delivery keeps its existing canonical execution on redispatch.
@@ -647,6 +696,8 @@ async def enqueue_workflow_execution(
     file_path: str | None = None,
     org_id_override: str | None = None,
     dispatch_metadata: dict[str, Any] | None = None,
+    *,
+    lineage: RunLineage | None,
 ) -> str:
     """Compatibility wrapper returning only the canonical execution ID."""
     queued_id, _reused = await enqueue_workflow_execution_once(
@@ -660,6 +711,7 @@ async def enqueue_workflow_execution(
         file_path=file_path,
         org_id_override=org_id_override,
         dispatch_metadata=dispatch_metadata,
+        lineage=lineage,
     )
     return queued_id
 
@@ -672,6 +724,8 @@ async def enqueue_code_execution(
     execution_id: str | None = None,
     sync: bool = False,
     queue_name: str = QUEUE_NAME,
+    *,
+    lineage: RunLineage | None,
 ) -> str:
     """
     Enqueue inline code for async execution.
@@ -711,6 +765,8 @@ async def enqueue_code_execution(
         is_platform_admin=context.is_platform_admin,
         is_provider_org=getattr(context, "is_provider_org", False),
         is_external=getattr(context, "is_external", False),
+        artifact_workspace_id=context.artifact_workspace_id,
+        lineage=lineage.bound(execution_id) if lineage else None,
     )
 
     # Sync callers wait on their private result list and cannot consume queue
@@ -771,7 +827,10 @@ async def _publish_inline_postgres(
             if execution.dispatch_evidence_hash != digest:
                 raise ValueError("execution identity is already bound to a different request")
             return
+        from shared.run_lineage import lineage_columns
+
         execution = Execution(
+            **lineage_columns(pending.get("lineage")),
             id=uuid.UUID(execution_id), workflow_name=script_name,
             parameters=parameters, organization_id=uuid.UUID(context.org_id) if context.org_id else None,
             executed_by=uuid.UUID(context.user_id), executed_by_name=context.name,
@@ -793,6 +852,8 @@ async def enqueue_system_workflow_execution(
     org_id: str | None = None,
     event: EventContext | None = None,
     event_delivery_id: str | None = None,
+    *,
+    lineage: RunLineage,
 ) -> str:
     """
     Enqueue a system-triggered workflow execution.
@@ -807,6 +868,7 @@ async def enqueue_system_workflow_execution(
         source: Display name for what triggered this (e.g., "Event System", "Scheduled Execution")
         org_id: Optional organization scope (UUID string, not "ORG:" prefixed)
         event: Optional EventContext populated for event-triggered executions
+        lineage: The identity the run is for (shared.run_lineage.unattended_lineage)
 
     Returns:
         execution_id: UUID string of the queued execution
@@ -840,4 +902,5 @@ async def enqueue_system_workflow_execution(
             {"event_delivery_id": event_delivery_id}
             if event_delivery_id is not None else None
         ),
+        lineage=lineage,
     )

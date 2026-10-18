@@ -6,7 +6,11 @@ plus scope validation, permission denial, and org isolation.
 
 from __future__ import annotations
 
+from uuid import uuid4
+
 import pytest
+
+from tests.e2e.fixtures.device_bridge import set_bridge_grants
 
 
 @pytest.fixture(scope="module")
@@ -18,14 +22,11 @@ def control_key_role(e2e_client, platform_admin, org1_user, org2_user):
         json={
             "name": "E2E Control Key Managers",
             "description": "Granted by test_device_control_keys e2e",
-            "permissions": {
-                "can_manage_config": True,
-                "can_execute_devices": True,
-            },
         },
     )
     assert response.status_code in (200, 201), response.text
     role_id = response.json()["id"]
+    set_bridge_grants(e2e_client, platform_admin.headers, role_id, ["devices.readwrite", "devices.execute"])
     assign = e2e_client.post(
         f"/api/roles/{role_id}/users",
         headers=platform_admin.headers,
@@ -164,11 +165,11 @@ def test_manager_without_execution_cannot_issue_or_rotate_key(
         json={
             "name": "E2E Device Config Only",
             "description": "Control-key delegation boundary",
-            "permissions": {"can_manage_config": True},
         },
     )
     assert role.status_code in (200, 201), role.text
     role_id = role.json()["id"]
+    set_bridge_grants(e2e_client, platform_admin.headers, role_id, ["devices.readwrite"])
     assigned = e2e_client.post(
         f"/api/roles/{role_id}/users",
         headers=platform_admin.headers,
@@ -187,7 +188,7 @@ def test_manager_without_execution_cannot_issue_or_rotate_key(
         )
         assert denied_create.status_code == 403
         assert denied_create.json()["error"]["code"] == "permission_denied"
-        assert "can_execute_devices" in denied_create.json()["error"]["message"]
+        assert "devices.execute" in denied_create.json()["error"]["message"]
 
         issued = e2e_client.post(
             "/api/device-control-keys",
@@ -261,3 +262,94 @@ def test_org_isolation(
     )
     assert cross.status_code == 422
     assert cross.json()["error"]["code"] == "invalid_parameter"
+
+
+@pytest.mark.parametrize("permissions", [
+    [], ["devices.readwrite"], ["devices.execute"], ["devices.readwrite", "devices.execute"],
+])
+def test_bridge_device_matrix(
+    e2e_client, platform_admin, org1, non_admin_user, permissions,
+):
+    """The API preserves registry/job separation and conjunctive key issuance."""
+    role = e2e_client.post("/api/roles", headers=platform_admin.headers,
+                           json={"name": f"device-matrix-{uuid4()}"})
+    assert role.status_code == 201, role.text
+    role_id = role.json()["id"]
+    set_bridge_grants(e2e_client, platform_admin.headers, role_id, permissions)
+    assigned = e2e_client.post(f"/api/roles/{role_id}/users", headers=platform_admin.headers,
+                               json={"user_ids": [str(non_admin_user.user_id)]})
+    assert assigned.status_code == 204, assigned.text
+    try:
+        device_id = _create_device(e2e_client, platform_admin.headers, org1["id"], "matrix")
+        managed = "devices.readwrite" in permissions
+        executed = "devices.execute" in permissions
+        metadata = e2e_client.get(f"/api/devices/{device_id}", headers=non_admin_user.headers)
+        assert metadata.status_code == (200 if managed else 403), metadata.text
+        history = e2e_client.get(f"/api/devices/{device_id}/jobs", headers=non_admin_user.headers)
+        assert history.status_code == (200 if executed else 403), history.text
+        issued = e2e_client.post("/api/device-control-keys", headers=non_admin_user.headers,
+                                 json={"name": "matrix", "device_ids": [device_id]})
+        assert issued.status_code == (201 if managed and executed else 403), issued.text
+        admin_key = e2e_client.post("/api/device-control-keys", headers=platform_admin.headers,
+                                    json={"name": "matrix-existing", "organization_id": org1["id"],
+                                          "device_ids": [device_id]})
+        assert admin_key.status_code == 201, admin_key.text
+        key_id = admin_key.json()["control_key"]["id"]
+        rotated = e2e_client.post(f"/api/device-control-keys/{key_id}/rotate", headers=non_admin_user.headers)
+        assert rotated.status_code == (200 if managed and executed else 403), rotated.text
+        key_metadata = e2e_client.get(f"/api/device-control-keys/{key_id}", headers=non_admin_user.headers)
+        assert key_metadata.status_code == (200 if managed else 403), key_metadata.text
+        revoked = e2e_client.post(f"/api/device-control-keys/{key_id}/revoke", headers=non_admin_user.headers)
+        assert revoked.status_code == (200 if managed else 403), revoked.text
+    finally:
+        cleanup = e2e_client.delete(f"/api/roles/{role_id}/users/{non_admin_user.user_id}",
+                                    headers=platform_admin.headers)
+        assert cleanup.status_code == 204, cleanup.text
+
+
+def test_split_role_union_and_revocation_with_unchanged_session(
+    e2e_client, platform_admin, org1, non_admin_user,
+):
+    """Two home-org roles may combine, but removed membership takes effect now."""
+    roles = []
+    try:
+        for permission in ("devices.readwrite", "devices.execute"):
+            role = e2e_client.post("/api/roles", headers=platform_admin.headers,
+                                   json={"name": f"device-split-{uuid4()}"})
+            assert role.status_code == 201, role.text
+            role_id = role.json()["id"]
+            roles.append(role_id)
+            set_bridge_grants(e2e_client, platform_admin.headers, role_id, [permission])
+            assigned = e2e_client.post(f"/api/roles/{role_id}/users", headers=platform_admin.headers,
+                                       json={"user_ids": [str(non_admin_user.user_id)]})
+            assert assigned.status_code == 204, assigned.text
+        device_id = _create_device(e2e_client, platform_admin.headers, org1["id"], "split")
+        body = {"name": "split-key", "device_ids": [device_id]}
+        issued = e2e_client.post("/api/device-control-keys", headers=non_admin_user.headers, json=body)
+        assert issued.status_code == 201, issued.text
+        key_id = issued.json()["control_key"]["id"]
+        set_bridge_grants(e2e_client, platform_admin.headers, roles[1], [])
+        no_grant = e2e_client.post(f"/api/device-control-keys/{key_id}/rotate", headers=non_admin_user.headers)
+        assert no_grant.status_code == 403, no_grant.text
+        set_bridge_grants(e2e_client, platform_admin.headers, roles[1], ["devices.execute"])
+        restored = e2e_client.post(f"/api/device-control-keys/{key_id}/rotate", headers=non_admin_user.headers)
+        assert restored.status_code == 200, restored.text
+        removed = e2e_client.delete(f"/api/roles/{roles[1]}/users/{non_admin_user.user_id}",
+                                    headers=platform_admin.headers)
+        assert removed.status_code == 204, removed.text
+        # Reuse the exact authenticated session; a cached token role list grants nothing.
+        denied = e2e_client.post("/api/device-control-keys", headers=non_admin_user.headers, json=body)
+        assert denied.status_code == 403, denied.text
+        rotation = e2e_client.post(f"/api/device-control-keys/{key_id}/rotate", headers=non_admin_user.headers)
+        assert rotation.status_code == 403, rotation.text
+        history = e2e_client.get(f"/api/devices/{device_id}/jobs", headers=non_admin_user.headers)
+        assert history.status_code == 403, history.text
+        metadata = e2e_client.get(f"/api/device-control-keys/{key_id}", headers=non_admin_user.headers)
+        assert metadata.status_code == 200, metadata.text
+        revoke = e2e_client.post(f"/api/device-control-keys/{key_id}/revoke", headers=non_admin_user.headers)
+        assert revoke.status_code == 200, revoke.text
+    finally:
+        for role_id in roles:
+            cleanup = e2e_client.delete(f"/api/roles/{role_id}/users/{non_admin_user.user_id}",
+                                        headers=platform_admin.headers)
+            assert cleanup.status_code in (204, 404), cleanup.text

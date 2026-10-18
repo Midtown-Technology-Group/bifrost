@@ -425,6 +425,12 @@ def decrypt_with_key(encrypted: str, secret_key: str) -> str:
     return f.decrypt(encrypted_bytes).decode()
 
 
+# What human-facing reads return in place of a stored secret. Only the
+# engine-facing /api/sdk/* paths return decrypted values; every other surface
+# shows this, so field presence still signals "is set".
+SECRET_PLACEHOLDER = "[SECRET]"
+
+
 def encrypt_secret(plaintext: str) -> str:
     """
     Encrypt a secret value for storage in the database.
@@ -610,6 +616,8 @@ def mint_engine_token(
     caller_organization_id: str | None = None,
     caller_email: str | None = None,
     caller_name: str | None = None,
+    engine_workflow_id: str | None = None,
+    lineage: dict[str, str] | None = None,
 ) -> tuple[str, str]:
     """
     Mint a short-lived, execution-scoped engine token parent-side.
@@ -630,6 +638,15 @@ def mint_engine_token(
     claims (omitted when ``None``). They are **audit attribution only**: they
     never change ``sub``, ``is_superuser``, or any authorization decision,
     and are read only by the audit actor builder.
+
+    ``engine_workflow_id`` is likewise **attribution only**: it feeds the
+    per-workflow catalog-operation-usage counter
+    (``src.core.app_wiring._record_workflow_operation_usage``) and is never
+    read for authorization.
+
+    ``lineage`` (the execution's bound run lineage) is emitted as
+    ``engine_run_user_id``, ``engine_started_by_user_id`` and
+    ``engine_root_execution_id`` — likewise **attribution only**.
 
     Returns:
         (token, expires_at_iso): JWT string and ISO-8601 expiry timestamp.
@@ -659,6 +676,8 @@ def mint_engine_token(
                 "delegated_is_external": delegated_is_external,
             }
         )
+    if engine_workflow_id is not None:
+        token_data["engine_workflow_id"] = engine_workflow_id
 
     caller_claims = {
         "engine_caller_user_id": caller_user_id,
@@ -669,6 +688,10 @@ def mint_engine_token(
     token_data.update(
         {key: value for key, value in caller_claims.items() if value is not None}
     )
+    if lineage is not None:
+        token_data["engine_run_user_id"] = lineage["run_user_id"]
+        token_data["engine_started_by_user_id"] = lineage["started_by_user_id"]
+        token_data["engine_root_execution_id"] = lineage["root_execution_id"]
 
     # timeout_seconds == 0 means "no timeout" everywhere else in the engine
     # (process_pool and execution_cleanup). The active-attempt refresh path

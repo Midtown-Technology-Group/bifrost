@@ -21,7 +21,6 @@ def _role_body(role_id=None, name="facade-role"):
         "id": rid,
         "name": name,
         "description": "d",
-        "permissions": {},
         "created_by": "engine@bifrost.internal",
         "created_at": "2026-09-25T00:00:00+00:00",
         "updated_at": "2026-09-25T00:00:00+00:00",
@@ -70,7 +69,6 @@ class TestEngineRequestRolesFacade:
             assert kwargs["json"] == {
                 "name": body["name"],
                 "description": "d",
-                "is_active": True,
             }
 
             assert (await roles_facade.get(body["id"])).id == body["id"]
@@ -88,7 +86,8 @@ class TestEngineRequestRolesFacade:
             assert args == ("PATCH", f"/api/roles/{body['id']}")
             assert kwargs["json"] == {"description": "d2"}
 
-            assert await roles_facade.delete(body["id"]) is None
+            deleted = await roles_facade.delete(body["id"])
+            assert deleted is None
             args, _ = client.engine_request.await_args_list[4]
             assert args == ("DELETE", f"/api/roles/{body['id']}")
 

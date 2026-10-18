@@ -459,6 +459,11 @@ async def _run_execution(execution_id: str, context_data: dict[str, Any]) -> dic
             event=event_ctx,
             solution_id=context_data.get("solution_id"),  # install scope for SDK
             solution_deployment_id=context_data.get("solution_deployment_id"),
+            artifact_workspace_id=context_data.get("artifact_workspace_id"),
+            # The token this process just installed as its SDK credentials
+            # (see _set_process_engine_credentials above) - registered as a
+            # secret so it is redacted from this execution's output.
+            engine_token=context_data.get("engine_token"),
         )
 
         # Execute

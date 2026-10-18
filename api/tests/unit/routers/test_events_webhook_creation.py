@@ -19,6 +19,12 @@ def _session_that_assigns_ids() -> tuple[MagicMock, list[object]]:
     db.commit = AsyncMock()
     db.delete = AsyncMock()
     db.execute = AsyncMock()
+    db.rollback = AsyncMock()
+    # _validate_target_organization (routers/events.py) does `await
+    # db.get(Organization, organization_id)` — simulate the target org
+    # always existing so this transaction-ordering test isn't coupled to
+    # that unrelated validation.
+    db.get = AsyncMock(return_value=SimpleNamespace(id=uuid4()))
     added: list[object] = []
 
     def add(entity: object) -> None:
@@ -61,7 +67,7 @@ async def test_provider_subscription_starts_after_webhook_source_commit(monkeypa
     registry.get.return_value = adapter
     monkeypatch.setattr("src.routers.events.get_adapter_registry", lambda: registry)
     monkeypatch.setattr(
-        "src.routers.events._build_event_source_response",
+        "src.routers.events._build_event_source_secret_response",
         AsyncMock(return_value=response),
     )
     async def execute(_statement):
@@ -80,7 +86,7 @@ async def test_provider_subscription_starts_after_webhook_source_commit(monkeypa
     )
 
     assert actual is response
-    assert db.commit.await_count == 1
+    assert db.commit.await_count == 2
     db.delete.assert_not_awaited()
 
 
@@ -95,6 +101,7 @@ async def test_failed_provider_subscription_removes_provisional_source(monkeypat
     registry.get.return_value = adapter
     monkeypatch.setattr("src.routers.events.get_adapter_registry", lambda: registry)
 
+    db.get.side_effect = lambda *_: added[0] if added else SimpleNamespace(id=uuid4())
     with pytest.raises(HTTPException, match="Failed to create provider subscription"):
         await create_source(
             _request(),

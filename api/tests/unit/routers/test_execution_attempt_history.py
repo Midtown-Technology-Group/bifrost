@@ -8,7 +8,7 @@ from uuid import uuid4
 import pytest
 
 from src.core.principal import UserPrincipal
-from src.routers.executions import _load_attempt_history
+from shared.execution_attempt_reads import load_attempt_history
 
 
 def _user(*, is_superuser: bool) -> UserPrincipal:
@@ -60,11 +60,11 @@ def _attempt() -> SimpleNamespace:
 
 @pytest.mark.asyncio
 async def test_owner_attempt_projection_redacts_platform_identity() -> None:
-    history = await _load_attempt_history(
+    history = await load_attempt_history(
         _session_with_attempt(_attempt()),
         uuid4(),
         _user(is_superuser=False),
-        tracking_enabled=True,
+        tracking_enabled=True, organization_id=uuid4(),
     )
 
     attempt = history.attempts[0]
@@ -80,11 +80,11 @@ async def test_owner_attempt_projection_redacts_platform_identity() -> None:
 @pytest.mark.asyncio
 async def test_admin_attempt_projection_includes_platform_identity() -> None:
     row = _attempt()
-    history = await _load_attempt_history(
+    history = await load_attempt_history(
         _session_with_attempt(row),
         uuid4(),
         _user(is_superuser=True),
-        tracking_enabled=True,
+        tracking_enabled=True, organization_id=uuid4(),
     )
 
     attempt = history.attempts[0]
@@ -101,11 +101,11 @@ async def test_new_preclaim_execution_has_recorded_empty_history() -> None:
     session = AsyncMock()
     session.execute.return_value = result
 
-    history = await _load_attempt_history(
+    history = await load_attempt_history(
         session,
         uuid4(),
         _user(is_superuser=False),
-        tracking_enabled=True,
+        tracking_enabled=True, organization_id=uuid4(),
     )
 
     assert history.coverage == "recorded"
@@ -119,11 +119,11 @@ async def test_unreconciled_inline_execution_has_legacy_coverage() -> None:
     session = AsyncMock()
     session.execute.return_value = result
 
-    history = await _load_attempt_history(
+    history = await load_attempt_history(
         session,
         uuid4(),
         _user(is_superuser=False),
-        tracking_enabled=False,
+        tracking_enabled=False, organization_id=uuid4(),
     )
 
     assert history.coverage == "legacy_unavailable"

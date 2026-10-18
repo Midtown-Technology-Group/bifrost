@@ -1,25 +1,69 @@
 """MCP subscription setup must expose a durable callback before provider setup."""
 
+from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 from urllib.parse import urlsplit
 from uuid import UUID, uuid4
 
+import httpx
 import pytest
+from fastapi import FastAPI
 from sqlalchemy import delete, select
 
 from src.models.orm.events import EventSource, EventSubscription, WebhookSource
 from src.models.orm.workflows import Workflow
 from src.services.events.processor import resolve_webhook_source
-from src.services.mcp_server.tools.events import create_event_source
+from src.services.mcp_server.tools import events as events_tools
+from src.core.auth import get_current_active_user, get_execution_context
+from src.core.database import get_db
+from src.core.principal import UserPrincipal
+from src.routers.events import router
 from src.services.webhooks.protocol import SubscribeResult
+
+
+@pytest.fixture
+def local_event_rest(monkeypatch):
+    """Run the real REST/auth/DTO boundary with this test's transaction faults."""
+    principal = UserPrincipal(user_id=uuid4(), email="mcp-test@example.com", is_superuser=True)
+
+    def bind(db):
+        app = FastAPI()
+        app.include_router(router)
+        app.dependency_overrides[get_current_active_user] = lambda: principal
+        app.dependency_overrides[get_execution_context] = lambda: SimpleNamespace(org_id=None, user=principal, db=db)
+
+        async def transaction():
+            try:
+                yield db
+                await db.commit()
+            except Exception:
+                await db.rollback()
+                raise
+
+        app.dependency_overrides[get_db] = transaction
+
+        async def call_rest(_context, method, path, **kwargs):
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+                response = await client.request(method, path, json=kwargs.get("json_body"))
+                return response.status_code, response.json()
+
+        @asynccontextmanager
+        async def rest_client(_context):
+            yield object()
+
+        monkeypatch.setattr(events_tools, "call_rest", call_rest)
+        monkeypatch.setattr(events_tools, "rest_client", rest_client)
+        return principal
+
+    return bind
 
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
 @pytest.mark.parametrize("failure", [None, "provider", "finalize", "cleanup"])
 async def test_mcp_subscription_callback_is_durable_and_failure_cleans_up(
-    async_session_factory, e2e_client, monkeypatch, failure,
+    async_session_factory, e2e_client, monkeypatch, local_event_rest, failure,
 ):
     name = f"mcp-callback-{uuid4().hex}"
     workflow_id = uuid4()
@@ -35,12 +79,6 @@ async def test_mcp_subscription_callback_is_durable_and_failure_cleans_up(
             assert resolved is not None
             assert resolved[0].name == name
             assert resolved[1].adapter_name == "microsoft_graph"
-            assert await callback_db.scalar(
-                select(EventSubscription).where(
-                    EventSubscription.event_source_id == source_id,
-                    EventSubscription.workflow_id == workflow_id,
-                )
-            ) is not None
         # Exercise the actual unauthenticated callback receiver as Graph does.
         response = e2e_client.post(
             f"/api/hooks/{source_id}", params={"validationToken": "mcp-handshake"},
@@ -59,11 +97,12 @@ async def test_mcp_subscription_callback_is_durable_and_failure_cleans_up(
     # No real provider or credentials: retain the real Graph callback parser.
     adapter = SimpleNamespace(
         requires_integration=None, subscribe=subscribe, unsubscribe=unsubscribe,
+        get_public_metadata=lambda *_: {},
     )
     registry = MagicMock()
     registry.get.return_value = adapter
     monkeypatch.setattr(
-        "src.services.webhooks.registry.get_adapter_registry", lambda: registry,
+        "src.routers.events.get_adapter_registry", lambda: registry,
     )
 
     try:
@@ -86,12 +125,10 @@ async def test_mcp_subscription_callback_is_durable_and_failure_cleans_up(
                     await commit()
 
                 monkeypatch.setattr(db, "commit", fail_metadata_commit)
-            context = SimpleNamespace(
-                is_platform_admin=True, session=db, user_email="mcp-test@example.com",
-            )
-            result = await create_event_source(
+            context = local_event_rest(db)
+            result = await events_tools.bifrost_event_source_create(
                 context, name=name, source_type="webhook", adapter_name="microsoft_graph",
-                workflow_id=str(workflow_id),
+                scope="global",
             )
             await db.commit()
         assert len(callback_ids) == 1
@@ -140,38 +177,31 @@ async def test_mcp_subscription_callback_is_durable_and_failure_cleans_up(
 @pytest.mark.e2e
 @pytest.mark.asyncio
 @pytest.mark.parametrize("adapter_name", ["generic", "microsoft_graph"])
-async def test_missing_workflow_leaves_no_callback_or_provider_subscription(
-    async_session_factory, monkeypatch, adapter_name,
+async def test_missing_workflow_subscription_preserves_existing_source(
+    async_session_factory, monkeypatch, local_event_rest, adapter_name,
 ):
     from unittest.mock import AsyncMock
 
     name = f"mcp-missing-workflow-{uuid4().hex}"
+    source_id = uuid4()
     adapter = SimpleNamespace(requires_integration=None, subscribe=AsyncMock())
     registry = MagicMock()
     registry.get.return_value = adapter
-    monkeypatch.setattr(
-        "src.services.webhooks.registry.get_adapter_registry", lambda: registry,
-    )
+    monkeypatch.setattr("src.routers.events.get_adapter_registry", lambda: registry)
     try:
         async with async_session_factory() as db:
-            context = SimpleNamespace(
-                is_platform_admin=True, session=db, user_email="mcp-test@example.com",
-            )
-            missing_workflow = str(uuid4())
-            result = await create_event_source(
-                context, name=name, source_type="webhook", adapter_name=adapter_name,
-                workflow_id=missing_workflow,
-            )
+            db.add(EventSource(id=source_id, name=name, source_type="webhook", is_active=True, created_by="test"))
+            db.add(WebhookSource(event_source_id=source_id, adapter_name=adapter_name, config={}))
             await db.commit()
-        assert result.structured_content["error"] == f"Workflow not found: {missing_workflow}"
+            context = local_event_rest(db)
+            result = await events_tools.bifrost_event_subscription_create(
+                context, source_ref=str(source_id), workflow_id=str(uuid4()),
+            )
+        assert result.structured_content["status_code"] == 404
         adapter.subscribe.assert_not_awaited()
         async with async_session_factory() as readback:
-            assert await readback.scalar(
-                select(EventSource).where(EventSource.name == name)
-            ) is None
-            assert await readback.scalar(
-                select(WebhookSource).join(EventSource).where(EventSource.name == name)
-            ) is None
+            assert await readback.get(EventSource, source_id) is not None
+            assert await readback.scalar(select(EventSubscription).where(EventSubscription.event_source_id == source_id)) is None
     finally:
         async with async_session_factory() as cleanup:
             await cleanup.execute(delete(EventSource).where(EventSource.name == name))

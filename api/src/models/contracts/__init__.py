@@ -8,6 +8,9 @@ from typing import TYPE_CHECKING, Any
 from src.models._exports import CONTRACT_ALL, CONTRACT_EXPORTS
 
 if TYPE_CHECKING:
+    from src.models.contracts.bridge_grants import RoleBridgeGrantsResponse, RoleBridgeGrantsUpdate  # noqa: F401
+    from src.models.contracts.agents import AccessibleKnowledgeSource  # noqa: F401
+    from src.models.contracts.knowledge import KnowledgeNamespaceRoleCreate, KnowledgeNamespaceRolePublic  # noqa: F401
     from src.models.contracts.base import (  # noqa: F401
         DataProviderInputMode,
         IntegrationType,
@@ -41,21 +44,23 @@ if TYPE_CHECKING:
     from src.models.contracts.users import (  # noqa: F401
         AssignAppsToRoleRequest,
         AssignFormsToRoleRequest,
-        AssignKnowledgeToRoleRequest,
         AssignUsersToRoleRequest,
         AssignWorkflowsToRoleRequest,
         CreateRoleRequest,
         CreateUserRequest,
         GrantPermissionsRequest,
-        KnowledgeAssignmentInput,
         PermissionsData,
         RoleAppsResponse,
         RoleBase,
-        RoleConsumerCounts,
-        RoleCreate,
-        RoleFormsResponse,
         RoleKnowledgeEntry,
         RoleKnowledgeResponse,
+        KnowledgeAssignmentInput,
+        AssignKnowledgeToRoleRequest,
+        UnassignKnowledgeFromRoleRequest,
+        RoleConsumerCounts,
+        RolePlacementSummary,
+        RoleCreate,
+        RoleFormsResponse,
         RolePublic,
         RoleUpdate,
         RoleUserSummary,
@@ -64,7 +69,6 @@ if TYPE_CHECKING:
         UnassignAgentsFromRoleRequest,
         UnassignAppsFromRoleRequest,
         UnassignFormsFromRoleRequest,
-        UnassignKnowledgeFromRoleRequest,
         UnassignUsersFromRoleRequest,
         UnassignWorkflowsFromRoleRequest,
         UpdateRoleRequest,
@@ -305,8 +309,10 @@ if TYPE_CHECKING:
         ScriptExecutionRequest,
         ScriptExecutionResponse,
         SearchRequest,
+        SearchSource,
+        SearchMatch,
+        SearchFileHit,
         SearchResponse,
-        SearchResult,
         WorkflowDeactivationConflict,
         WorkflowIdConflict,
     )
@@ -397,6 +403,16 @@ if TYPE_CHECKING:
         SyncExecuteRequest,
     )
     from src.models.contracts.cli import (  # noqa: F401
+        CLIRegisteredWorkflow,
+        CLISessionRegisterRequest,
+        CLISessionResponse,
+        CLISessionListResponse,
+        CLISessionContinueRequest,
+        CLISessionContinueResponse,
+        CLISessionPendingResponse,
+        CLISessionLogRequest,
+        CLISessionResultRequest,
+        CLISessionExecutionSummary,
         CLIConfigDeleteRequest,
         CLIConfigGetRequest,
         CLIConfigListRequest,
@@ -406,16 +422,6 @@ if TYPE_CHECKING:
         CLIFileListRequest,
         CLIFileReadRequest,
         CLIFileWriteRequest,
-        CLIRegisteredWorkflow,
-        CLISessionContinueRequest,
-        CLISessionContinueResponse,
-        CLISessionExecutionSummary,
-        CLISessionListResponse,
-        CLISessionLogRequest,
-        CLISessionPendingResponse,
-        CLISessionRegisterRequest,
-        CLISessionResponse,
-        CLISessionResultRequest,
     )
     from src.models.contracts.sdk import (  # noqa: F401
         ConfigData,

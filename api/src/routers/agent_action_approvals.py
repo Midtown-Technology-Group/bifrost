@@ -6,12 +6,14 @@ from uuid import UUID, uuid4
 from fastapi import APIRouter, HTTPException
 from src.services.operation_catalog import operation_route
 from shared.models import AgentActionApprovalResponse
+from shared.run_lineage import run_user_lineage
 from sqlalchemy import select
 
 from src.core.auth import CurrentSuperuser
 from src.core.db_deps import DbSession
 from src.models.orm.agent_action_approvals import AgentActionApproval
 from src.models.orm.agents import Agent
+from src.models.orm.agent_runs import AgentRun
 from src.models.orm.users import User
 from src.models.orm.workflows import Workflow
 from src.services.audit import emit_audit
@@ -177,6 +179,7 @@ async def approve_approval(
         )
         await db.commit()
 
+    agent_run = await db.get(AgentRun, row.agent_run_id) if row.agent_run_id else None
     response = await execute_tool(
         workflow_id=str(row.workflow_id),
         workflow_name=workflow.name,
@@ -192,6 +195,7 @@ async def approve_approval(
         is_agent=True,
         execution_id=str(row.execution_id),
         sync=False,
+        lineage=run_user_lineage(agent_run.run_user_id if agent_run else None),
     )
     if response.execution_id != str(row.execution_id):
         raise RuntimeError("Workflow execution ID changed during approval dispatch")

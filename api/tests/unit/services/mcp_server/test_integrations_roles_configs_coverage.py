@@ -65,7 +65,7 @@ async def test_list_roles_shapes_list_response_and_http_errors():
     call_rest = AsyncMock(return_value=(200, [{"name": "Admin"}, {"name": "Ops"}]))
 
     with patch.object(roles, "call_rest", call_rest):
-        result = await roles.list_roles(ctx)
+        result = await roles.bifrost_role_list(ctx)
 
     call_rest.assert_awaited_once_with(ctx, "GET", "/api/roles")
     assert result.structured_content == {
@@ -75,30 +75,35 @@ async def test_list_roles_shapes_list_response_and_http_errors():
     assert "Found 2 role" in _content_text(result)
 
     with patch.object(roles, "call_rest", AsyncMock(return_value=(503, "down"))):
-        failed = await roles.list_roles(ctx)
+        failed = await roles.bifrost_role_list(ctx)
 
-    assert "list_roles failed: HTTP 503" in failed.structured_content["error"]
+    assert "bifrost_role_list failed: HTTP 503" in failed.structured_content["error"]
     assert failed.structured_content["body"] == "down"
 
 
 @pytest.mark.asyncio
 async def test_role_detail_update_and_delete_cover_validation_resolution_and_rest():
-    missing = await roles.get_role(_context(), "")
+    missing = await roles.bifrost_role_get(_context(), "")
     assert missing.structured_content["error"] == "role_ref is required"
 
     with (
         patch.object(roles, "rest_client", _fake_rest_client()),
-        patch("bifrost.refs.RefResolver", _resolver(error_by_kind={"role": RuntimeError("no access")})),
+        patch(
+            "bifrost.refs.RefResolver",
+            _resolver(error_by_kind={"role": RuntimeError("no access")}),
+        ),
     ):
-        unresolved = await roles.update_role(_context(), "restricted")
+        unresolved = await roles.bifrost_role_update(_context(), "restricted")
 
-    assert "could not resolve role 'restricted'" in unresolved.structured_content["error"]
+    assert (
+        "could not resolve role 'restricted'" in unresolved.structured_content["error"]
+    )
     assert unresolved.structured_content["detail"] == "no access"
 
     async def assemble(_context, fields, *, is_update):
         assert is_update is True
-        assert fields == {"name": "Operators", "description": None, "permissions": {"jobs": ["read"]}}
-        return {"name": "Operators", "permissions": {"jobs": ["read"]}}
+        assert fields == {"name": "Operators", "description": None}
+        return {"name": "Operators"}
 
     ctx = _context()
     call_rest = AsyncMock(return_value=(200, {"id": "role-uuid", "name": "Operators"}))
@@ -108,13 +113,13 @@ async def test_role_detail_update_and_delete_cover_validation_resolution_and_res
         patch.object(roles, "_assemble_role_body", assemble),
         patch.object(roles, "call_rest", call_rest),
     ):
-        updated = await roles.update_role(ctx, "operators", name="Operators", permissions={"jobs": ["read"]})
+        updated = await roles.bifrost_role_update(ctx, "operators", name="Operators")
 
     call_rest.assert_awaited_once_with(
         ctx,
         "PATCH",
         "/api/roles/role-uuid",
-        json_body={"name": "Operators", "permissions": {"jobs": ["read"]}},
+        json_body={"name": "Operators"},
     )
     assert updated.structured_content["name"] == "Operators"
 
@@ -124,7 +129,7 @@ async def test_role_detail_update_and_delete_cover_validation_resolution_and_res
         patch("bifrost.refs.RefResolver", _resolver({"role": "role-uuid"})),
         patch.object(roles, "call_rest", delete_call),
     ):
-        deleted = await roles.delete_role(ctx, "operators")
+        deleted = await roles.bifrost_role_delete(ctx, "operators")
 
     assert deleted.structured_content == {"deleted": "role-uuid"}
     delete_call.assert_awaited_once_with(ctx, "DELETE", "/api/roles/role-uuid")
@@ -132,14 +137,14 @@ async def test_role_detail_update_and_delete_cover_validation_resolution_and_res
 
 @pytest.mark.asyncio
 async def test_create_role_reports_assembly_and_http_errors_then_success():
-    missing = await roles.create_role(_context(), "")
+    missing = await roles.bifrost_role_create(_context(), "")
     assert missing.structured_content["error"] == "name is required"
 
     async def bad_assemble(*_args, **_kwargs):
         raise ValueError("bad permission")
 
     with patch.object(roles, "_assemble_role_body", bad_assemble):
-        invalid = await roles.create_role(_context(), "Ops", permissions={"bad": True})
+        invalid = await roles.bifrost_role_create(_context(), "Ops")
 
     assert "invalid input: bad permission" in invalid.structured_content["error"]
     assert invalid.structured_content["detail"] == "bad permission"
@@ -150,11 +155,13 @@ async def test_create_role_reports_assembly_and_http_errors_then_success():
 
     with (
         patch.object(roles, "_assemble_role_body", assemble),
-        patch.object(roles, "call_rest", AsyncMock(return_value=(409, {"detail": "duplicate"}))),
+        patch.object(
+            roles, "call_rest", AsyncMock(return_value=(409, {"detail": "duplicate"}))
+        ),
     ):
-        failed = await roles.create_role(_context(), "Ops")
+        failed = await roles.bifrost_role_create(_context(), "Ops")
 
-    assert "create_role failed: HTTP 409" in failed.structured_content["error"]
+    assert "bifrost_role_create failed: HTTP 409" in failed.structured_content["error"]
     assert failed.structured_content["body"] == {"detail": "duplicate"}
 
     call_rest = AsyncMock(return_value=(201, {"id": "role-1", "name": "Ops"}))
@@ -162,7 +169,9 @@ async def test_create_role_reports_assembly_and_http_errors_then_success():
         patch.object(roles, "_assemble_role_body", assemble),
         patch.object(roles, "call_rest", call_rest),
     ):
-        result = await roles.create_role(_context(), "Ops", description="Operations")
+        result = await roles.bifrost_role_create(
+            _context(), "Ops", description="Operations"
+        )
 
     assert result.structured_content["id"] == "role-1"
     assert "Created role: Ops" in _content_text(result)
@@ -239,11 +248,17 @@ async def test_config_get_handles_resolution_list_lookup_and_inaccessible_row():
     ctx = _context()
     with (
         patch.object(configs, "rest_client", _fake_rest_client()),
-        patch("bifrost.refs.RefResolver", _resolver(error_by_kind={"config": RuntimeError("hidden")})),
+        patch(
+            "bifrost.refs.RefResolver",
+            _resolver(error_by_kind={"config": RuntimeError("hidden")}),
+        ),
     ):
         unresolved = await configs.get_config(ctx, "secret.key")
 
-    assert "could not resolve config 'secret.key'" in unresolved.structured_content["error"]
+    assert (
+        "could not resolve config 'secret.key'"
+        in unresolved.structured_content["error"]
+    )
     assert unresolved.structured_content["detail"] == "hidden"
 
     with (
@@ -271,9 +286,9 @@ async def test_config_get_handles_resolution_list_lookup_and_inaccessible_row():
 
 @pytest.mark.asyncio
 async def test_integrations_wrappers_validate_resolve_and_forward_rest_calls():
-    assert (
-        await integrations.create_integration(_context(), "")
-    ).structured_content["error"] == "name is required"
+    assert (await integrations.create_integration(_context(), "")).structured_content[
+        "error"
+    ] == "name is required"
 
     ctx = _context()
 
@@ -282,12 +297,16 @@ async def test_integrations_wrappers_validate_resolve_and_forward_rest_calls():
         assert fields["name"] == "Halo"
         return {"name": "Halo", "config_schema": fields["config_schema"]}
 
-    create_call = AsyncMock(return_value=(201, {"id": "integration-uuid", "name": "Halo"}))
+    create_call = AsyncMock(
+        return_value=(201, {"id": "integration-uuid", "name": "Halo"})
+    )
     with (
         patch.object(integrations, "_assemble_integration_body", assemble),
         patch.object(integrations, "call_rest", create_call),
     ):
-        created = await integrations.create_integration(ctx, "Halo", config_schema=[{"key": "url"}])
+        created = await integrations.create_integration(
+            ctx, "Halo", config_schema=[{"key": "url"}]
+        )
 
     create_call.assert_awaited_once_with(
         ctx,
@@ -299,17 +318,24 @@ async def test_integrations_wrappers_validate_resolve_and_forward_rest_calls():
 
     with (
         patch.object(integrations, "rest_client", _fake_rest_client()),
-        patch("bifrost.refs.RefResolver", _resolver(error_by_kind={"integration": RuntimeError("ambiguous")})),
+        patch(
+            "bifrost.refs.RefResolver",
+            _resolver(error_by_kind={"integration": RuntimeError("ambiguous")}),
+        ),
     ):
         unresolved = await integrations.get_integration(ctx, "Halo")
 
-    assert "could not resolve integration 'Halo'" in unresolved.structured_content["error"]
+    assert (
+        "could not resolve integration 'Halo'" in unresolved.structured_content["error"]
+    )
     assert unresolved.structured_content["detail"] == "ambiguous"
 
     get_call = AsyncMock(return_value=(200, "raw"))
     with (
         patch.object(integrations, "rest_client", _fake_rest_client()),
-        patch("bifrost.refs.RefResolver", _resolver({"integration": "integration-uuid"})),
+        patch(
+            "bifrost.refs.RefResolver", _resolver({"integration": "integration-uuid"})
+        ),
         patch.object(integrations, "call_rest", get_call),
     ):
         fetched = await integrations.get_integration(ctx, "Halo")
@@ -336,10 +362,14 @@ async def test_integration_mapping_validation_uuid_and_http_error_paths():
 
     with (
         patch.object(integrations, "rest_client", _fake_rest_client()),
-        patch("bifrost.refs.RefResolver", _resolver({"integration": "integration-uuid"})),
+        patch(
+            "bifrost.refs.RefResolver", _resolver({"integration": "integration-uuid"})
+        ),
         patch.object(integrations, "_assemble_integration_body", bad_assemble),
     ):
-        invalid = await integrations.add_integration_mapping(ctx, "Halo", "Missing", "123")
+        invalid = await integrations.add_integration_mapping(
+            ctx, "Halo", "Missing", "123"
+        )
 
     assert "invalid input: org not found" in invalid.structured_content["error"]
     assert invalid.structured_content["detail"] == "org not found"
@@ -348,8 +378,14 @@ async def test_integration_mapping_validation_uuid_and_http_error_paths():
     update_call = AsyncMock(return_value=(404, {"detail": "missing"}))
     with (
         patch.object(integrations, "rest_client", _fake_rest_client()),
-        patch("bifrost.refs.RefResolver", _resolver({"integration": "integration-uuid"})),
-        patch.object(integrations, "_assemble_integration_body", AsyncMock(return_value={"entity_name": "Customer"})),
+        patch(
+            "bifrost.refs.RefResolver", _resolver({"integration": "integration-uuid"})
+        ),
+        patch.object(
+            integrations,
+            "_assemble_integration_body",
+            AsyncMock(return_value={"entity_name": "Customer"}),
+        ),
         patch.object(integrations, "call_rest", update_call),
     ):
         failed = await integrations.update_integration_mapping(
@@ -359,7 +395,10 @@ async def test_integration_mapping_validation_uuid_and_http_error_paths():
             entity_name="Customer",
         )
 
-    assert "update_integration_mapping failed: HTTP 404" in failed.structured_content["error"]
+    assert (
+        "update_integration_mapping failed: HTTP 404"
+        in failed.structured_content["error"]
+    )
     assert failed.structured_content["body"] == {"detail": "missing"}
 
 

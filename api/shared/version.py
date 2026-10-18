@@ -8,6 +8,7 @@ from functools import lru_cache
 LEGACY_MIN_CLI_VERSION = "1.1.1-dev.548"
 
 
+
 @lru_cache(maxsize=1)
 def get_version() -> str:
     if v := os.environ.get("BIFROST_VERSION"):

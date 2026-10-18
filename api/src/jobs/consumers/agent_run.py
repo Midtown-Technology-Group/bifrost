@@ -10,7 +10,7 @@ import socket
 import time
 from contextlib import suppress
 from datetime import datetime, timezone
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 from uuid import UUID
 
 from sqlalchemy import select, text
@@ -37,12 +37,18 @@ from src.services.work_delivery_store import (
     require_delivery_ownership,
 )
 
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from src.services.execution.autonomous_agent_executor import ActingUser
+
 logger = logging.getLogger(__name__)
 
 QUEUE_NAME = "agent-runs"
 REDIS_PREFIX = "bifrost:agent_run"
 DEFAULT_RUN_TIMEOUT = 1800  # 30 minutes
 CANCEL_CHECK_INTERVAL = 2  # seconds between cancel flag checks
+RUN_AS_INACTIVE_ERROR = "The user this run acts as is no longer active"
 
 
 def _terminal_status_for_agent_result(
@@ -109,6 +115,33 @@ def _caller_to_principal(caller: dict[str, Any]) -> UserPrincipal:
         is_external=bool(caller.get("is_external", False)),
         is_provider_org=bool(caller.get("is_provider_org", False)),
         roles=list(caller.get("roles") or []),
+    )
+
+
+async def _load_run_as(
+    db: AsyncSession,
+    run_as_user_id: UUID,
+    run_org_id: UUID | None,
+) -> ActingUser | None:
+    """The run's Run As user from the database; None when it can no longer act.
+
+    The identity comes from the ``agent_runs`` and ``users`` rows only, never
+    from the Redis run context. Its organization is the run's.
+    """
+    from src.services.authorization.explain import load_run_as_target
+    from src.services.execution.autonomous_agent_executor import ActingUser
+
+    target = await load_run_as_target(db, run_as_user_id)
+    if target is None or not target.is_active or target.is_system:
+        return None
+    return ActingUser(
+        user_id=str(target.user_id),
+        email=target.email,
+        name=target.name or target.email,
+        organization_id=run_org_id,
+        is_platform_admin=target.is_superuser,
+        is_external=target.is_external,
+        is_provider_org=target.is_provider_org,
     )
 
 
@@ -420,6 +453,24 @@ class AgentRunConsumer(BaseConsumer):
                     if context.get("caller")
                     else None
                 )
+                run_as: ActingUser | None = None
+                if agent_run.run_as_user_id is not None:
+                    run_as = await _load_run_as(db, agent_run.run_as_user_id, agent_run.org_id)
+                    if run_as is None:
+                        agent_run.status = "failed"
+                        agent_run.error = RUN_AS_INACTIVE_ERROR
+                        agent_run.completed_at = datetime.now(timezone.utc)
+                        await transition_execution_attempt(
+                            db, attempt_id=attempt_id, status="failed",
+                            failure_code="run_as_inactive", failure_message=RUN_AS_INACTIVE_ERROR,
+                        )
+                        await db.commit()
+                        if sync:
+                            await _publish_sync_result(run_id, {
+                                "output": None, "status": "failed", "error": RUN_AS_INACTIVE_ERROR,
+                            })
+                        return
+                agent_run.status = "running"
                 agent_run.budget_max_iterations = agent.max_iterations
                 agent_run.budget_max_tokens = agent.max_token_budget
                 agent_run.started_at = datetime.now(timezone.utc)
@@ -450,6 +501,8 @@ class AgentRunConsumer(BaseConsumer):
                     output_schema=context.get("output_schema"),
                     run_id=run_id,
                     _caller=context.get("caller"),
+                    run_user_id=agent_run.run_user_id,
+                    run_as=run_as,
                 ))
 
                 # Cancel watcher: polls Redis flag, force-cancels task if stuck
@@ -469,7 +522,7 @@ class AgentRunConsumer(BaseConsumer):
                     run_result = {
                         "output": None,
                         "iterations_used": 0,
-                        "tokens_used": 0,
+                        "tokens_used": executor.subtree_tokens,
                         "status": "timeout",
                         "llm_model": None,
                         "error": f"Agent run timed out after {run_timeout}s",
@@ -483,7 +536,7 @@ class AgentRunConsumer(BaseConsumer):
                     run_result = {
                         "output": None,
                         "iterations_used": 0,
-                        "tokens_used": 0,
+                        "tokens_used": executor.subtree_tokens,
                         "status": "cancelled",
                         "llm_model": None,
                     }
@@ -587,12 +640,13 @@ class AgentRunConsumer(BaseConsumer):
                 if run_obj:
                     agent_run = run_obj
 
-            # Clean up Redis Stream now that steps are committed to DB
+            # Clean up Redis Stream now that steps are committed to DB. Its TTL
+            # bounds the leak if this best-effort delete cannot reach Redis.
             try:
                 async with get_redis() as r:
                     await r.delete(agent_run_steps_stream_key(run_id))
             except Exception as e:
-                # Stream cleanup is best-effort — Redis stream has a TTL anyway
+                # Stream cleanup is best-effort; write-time TTL bounds a leak.
                 logger.debug(f"failed to delete agent_run steps stream for {run_id}: {e}")
 
             await publish_agent_run_update(agent_run, agent.name)
@@ -691,7 +745,7 @@ class AgentRunConsumer(BaseConsumer):
                     async with get_redis() as r:
                         await r.delete(agent_run_steps_stream_key(run_id))
                 except Exception as cleanup_err:
-                    # Stream cleanup is best-effort
+                    # Stream cleanup is best-effort; write-time TTL bounds a leak.
                     logger.debug(f"failed to delete agent_run steps stream for {run_id}: {cleanup_err}")
 
                 if trigger_type == "chat" or context.get("trigger_type") == "chat":
@@ -964,6 +1018,7 @@ class AgentRunConsumer(BaseConsumer):
                             model_profile_id=model_profile_id,
                             user_message_id=persisted_user_message_id,
                             agent_run_id=UUID(run_id),
+                            run_user_id=agent_run.run_user_id,
                         ):
                             await publish_chat_run_event(
                                 conversation_id=conversation.id,

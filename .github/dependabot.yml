@@ -106,7 +106,61 @@ updates:
       - dependencies
       - docker
 
-  # Docker base images — client/ (security updates only)
+  # App compiler — api/src/services/app_compiler/
+  - package-ecosystem: npm
+    directory: "/api/src/services/app_compiler"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: "America/Chicago"
+    open-pull-requests-limit: 10
+    allow:
+      - dependency-type: direct
+        update-types:
+          - version-update:semver-patch
+          - version-update:semver-minor
+    cooldown:
+      default-days: 7
+      semver-patch-days: 7
+      semver-minor-days: 14
+      semver-major-days: 90
+    groups:
+      npm-minor-and-patch:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+    labels:
+      - dependencies
+      - javascript
+
+  # Docs screenshot pipeline — scripts/docs/
+  - package-ecosystem: npm
+    directory: "/scripts/docs"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: "America/Chicago"
+    open-pull-requests-limit: 10
+    allow:
+      - dependency-type: direct
+        update-types:
+          - version-update:semver-patch
+          - version-update:semver-minor
+    cooldown:
+      default-days: 7
+      semver-patch-days: 7
+      semver-minor-days: 14
+      semver-major-days: 90
+    groups:
+      npm-minor-and-patch:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+    labels:
+      - dependencies
+      - javascript
+
+  # Docker base images — client/
   - package-ecosystem: docker
     directory: "/client"
     schedule:

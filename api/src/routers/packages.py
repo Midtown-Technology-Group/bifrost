@@ -17,6 +17,7 @@ from uuid import UUID, uuid4
 from fastapi import APIRouter, HTTPException, status
 
 from src.services.operation_catalog import operation_route
+from shared.subprocess_env import package_tool_env
 from src.models import (
     InstallPackageRequest,
     InstalledPackage,
@@ -148,6 +149,7 @@ async def check_package_updates() -> list[PackageUpdate]:
             "pip", "list", "--outdated", "--format=json",
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
+            env=package_tool_env(),
         )
 
         try:
@@ -192,6 +194,7 @@ async def get_installed_packages_local() -> list[InstalledPackage]:
             "pip", "list", "--format=json",
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
+            env=package_tool_env(),
         )
 
         try:
@@ -348,7 +351,7 @@ async def install_package(
             updated_content, is_update = append_package_to_requirements(
                 current_content, request.package_name, request.version
             )
-            await save_requirements(updated_content)
+            await save_requirements(updated_content, ctx.db)
 
             logger.info(f"Updated requirements.txt with {log_safe(package_spec)}")
         else:
@@ -436,7 +439,7 @@ async def uninstall_package(
         )
 
         if was_present:
-            await save_requirements(updated_content)
+            await save_requirements(updated_content, ctx.db)
             logger.info(f"Removed {log_safe(package_name)} from requirements.txt")
 
         # Tell workers to pip uninstall and recycle. The "action" field

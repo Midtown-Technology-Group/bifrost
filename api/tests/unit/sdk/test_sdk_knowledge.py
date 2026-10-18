@@ -587,7 +587,10 @@ class TestHandlerAdapters:
     async def test_search_handler_wraps_dicts_in_dtos(self):
         from src.routers.cli import cli_knowledge_search
 
-        user = _user()
+        # Bypass principal: this test is about DTO wrapping, not any
+        # additional filtering a regular user's own token would apply,
+        # which this bare session mock doesn't model.
+        user = _user(is_superuser=True)
         session = _session()
         created = datetime.now(timezone.utc)
         repo = AsyncMock()

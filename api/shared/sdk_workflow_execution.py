@@ -35,9 +35,12 @@ from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, cast
 from uuid import UUID, uuid4
 
-from sqlalchemy import select, update
+from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared import access_checks
+from shared.execution_visibility import is_own_execution
+from shared.run_lineage import RunLineage, lineage_columns, principal_lineage
 from src.core.org_filter import resolve_target_org
 from src.core.principal import UserPrincipal
 
@@ -88,34 +91,86 @@ async def insert_scheduled_execution(
     executed_by: UUID,
     executed_by_name: str,
     form_id: UUID | None,
-    api_key_id: UUID | None,
     is_platform_admin: bool,
+    api_key_id: UUID | None = None,
+    lineage: RunLineage | None = None,
+    run_as: dict[str, Any] | None = None,
+    is_provider_org: bool = False,
+    is_external: bool = False,
+    execution_id: UUID | None = None,
 ) -> UUID:
     """Insert a SCHEDULED execution row.
 
     Skips Redis/RabbitMQ — the deferred_execution_promoter job will publish
-    the row when scheduled_at matures. Shared with the form execute path.
+    the row when scheduled_at matures.
     """
-    from src.models.enums import ExecutionStatus
-    from src.models.orm.executions import Execution
+    from uuid import uuid4
 
-    exec_id = uuid4()
-    db.add(
-        Execution(
-            id=exec_id,
-            workflow_id=workflow_id,
-            workflow_name=workflow_name,
-            status=ExecutionStatus.SCHEDULED,
-            parameters=parameters,
-            scheduled_at=scheduled_at,
-            organization_id=organization_id,
-            executed_by=executed_by,
-            executed_by_name=executed_by_name,
-            form_id=form_id,
-            api_key_id=api_key_id,
-            execution_context={"is_platform_admin": is_platform_admin},
-        )
+    from src.models.orm.executions import Execution
+    from src.models.enums import ExecutionStatus
+
+    exec_id = execution_id or uuid4()
+    from src.services.solutions.deployment_runtime import pin_workflow_runtime
+    from src.services.workspace_release_runtime import pin_workspace_runtime
+    from src.services.workspace_release_projection import acquire_runtime_admission_lock
+
+    await acquire_runtime_admission_lock(db)
+    pinned_runtime = await pin_workflow_runtime(db, workflow_id)
+    if pinned_runtime is None:
+        pinned_runtime = await pin_workspace_runtime(db, workflow_id)
+    runtime_evidence = pinned_runtime.queue_evidence() if pinned_runtime else None
+    from src.services.solutions.deployment_manifest import canonical_json, sha256_digest
+
+    runtime_mode = (
+        pinned_runtime.runtime_mode
+        if pinned_runtime is not None and hasattr(pinned_runtime, "runtime_mode")
+        else ("deployment-v1" if pinned_runtime else "repo-v1")
     )
+    execution_context: dict[str, object] = {
+        "is_platform_admin": is_platform_admin,
+        "is_provider_org": is_provider_org,
+        "is_external": is_external,
+    }
+    if run_as is not None:
+        execution_context["run_as"] = run_as
+    if runtime_evidence is not None:
+        execution_context["runtime_evidence"] = runtime_evidence
+    from src.services.execution.retry_policy import workflow_retry_policy_snapshot
+
+    retry_policy = await workflow_retry_policy_snapshot(db, workflow_id)
+    execution = Execution(
+        id=exec_id,
+        workflow_id=workflow_id,
+        workflow_name=workflow_name,
+        status=ExecutionStatus.SCHEDULED,
+        parameters=parameters,
+        scheduled_at=scheduled_at,
+        organization_id=organization_id,
+        executed_by=executed_by,
+        executed_by_name=executed_by_name,
+        form_id=form_id,
+        api_key_id=api_key_id,
+        solution_deployment_id=(
+            getattr(pinned_runtime, "deployment_id", None)
+            if pinned_runtime
+            else None
+        ),
+        runtime_mode=runtime_mode,
+        runtime_evidence=runtime_evidence,
+        runtime_evidence_hash=(
+            sha256_digest(canonical_json(runtime_evidence))
+            if runtime_evidence
+            else None
+        ),
+        retry_policy=retry_policy,
+        execution_context=execution_context,
+        **lineage_columns(lineage.bound(exec_id) if lineage else None),
+    )
+    db.add(execution)
+    await db.flush()
+    from src.services.execution.attempts import ensure_dispatch_attempt
+
+    await ensure_dispatch_attempt(db, execution)
     await db.commit()
     return exec_id
 
@@ -140,6 +195,28 @@ def _server_caller_context(
     )
 
 
+async def _note_entry(session: AsyncSession, principal: UserPrincipal, workflow: Any) -> None:
+    """Report-only: an agent run nobody started opens the workflow as its own user.
+
+    Today the MCP bridge opens it as the system account; the model opens it
+    as the agent run's user (``principal.run_user_id``), like a person.
+    Children of a run (engine tokens) do not consult workflow access.
+    """
+    if access_checks.current() is None or principal.engine_execution_id is not None:
+        return
+    if principal.run_user_id is None or principal.run_user_id == principal.user_id:
+        return
+    from src.repositories import WorkflowRepository
+    from src.services.access_check_entry import run_user_may_open
+
+    try:
+        allowed = await run_user_may_open(session, WorkflowRepository, principal.run_user_id, workflow.id)
+    except Exception as exc:
+        access_checks.note_failure("entry", workflow.organization_id, exc)
+        return
+    access_checks.note("entry", workflow.organization_id, allowed=allowed, subject=f"workflow:{workflow.id}")
+
+
 async def execute_sdk_workflow(
     session: AsyncSession,
     principal: UserPrincipal,
@@ -149,15 +226,17 @@ async def execute_sdk_workflow(
     context_solution_id: str | None = None,
     context_app_id: str | None = None,
     context_caller_solution_id: str | None = None,
+    execution_request_id: UUID | None = None,
 ) -> WorkflowExecutionResponse:
     """Execute a workflow, data provider, or inline script.
 
     Preserves the historical ``POST /api/workflows/execute`` behavior
     exactly: org-scoped lookup, Solution own-install scope with inbound
     denial (404 without shared fallback), UUID vs portable-ref role checks,
-    admin-only inline code and ``org_id`` / ``run_as`` overrides, ``run_as``
-    identity resolution, execution-org priority (explicit override >
-    workflow org > caller org), ``delay_seconds`` normalization, scheduled
+    admin-only inline code and ``org_id`` override, ``run_as`` decided by
+    ``impersonation.acting_target`` (it changes the acting user only), execution-org
+    priority (explicit override > workflow org > caller org),
+    ``delay_seconds`` normalization, scheduled
     insert, inline-code / data-provider (cache-hit, transient/sync) /
     normal dispatch forms, terminal-transient marking, and request-side
     non-terminal WebSocket fan-out ordering.
@@ -177,6 +256,26 @@ async def execute_sdk_workflow(
         derive_execution_solution_scope,
         solution_allows_global,
     )
+
+    from src.services.execution.delegation_authorization import (
+        DelegationAuthorizationError,
+        effective_execution_user,
+        is_engine_principal,
+        validate_execution_identity_overrides,
+    )
+
+    transport_principal = principal
+    try:
+        principal = effective_execution_user(transport_principal, caller_org_id)
+        # Engine transport authority never authorizes a new identity or scope.
+        # Person Run As uses the upstream evaluator below.
+        if is_engine_principal(transport_principal):
+            validate_execution_identity_overrides(
+                transport_principal, caller_org_id,
+                requested_org_id=request.org_id, run_as=request.run_as,
+            )
+    except DelegationAuthorizationError as exc:
+        raise SdkWorkflowExecutionError(403, str(exc)) from exc
 
     # Resolve org scope for workflow lookup — superusers/provider-org members
     # may pass org_id to search that org; regular users always use their own.
@@ -287,36 +386,56 @@ async def execute_sdk_workflow(
             "Either workflow_id or code must be provided",
         )
 
-    # Validate admin-only overrides (org_id, run_as)
-    if (request.org_id or request.run_as) and not principal.is_superuser:
+    if workflow is not None:
+        await _note_entry(session, principal, workflow)
+
+    # The org_id override stays platform-admin only.
+    if (
+        request.org_id
+        and not principal.is_superuser
+        and not is_engine_principal(transport_principal)
+    ):
         raise SdkWorkflowExecutionError(
             403,
             "org_id and run_as overrides require platform admin",
         )
 
-    # Resolve run_as user if provided
+    # The acting user: the caller, or the run_as user when the caller may act as them.
     exec_user_id = str(principal.user_id)
     exec_user_name = principal.name or principal.email or "Unknown"
     exec_user_email = principal.email or ""
     exec_is_admin = principal.is_superuser
+    exec_is_provider_org = principal.is_provider_org
+    exec_is_external = principal.is_external
+    scheduled_run_as: dict[str, Any] | None = None
 
     if request.run_as:
-        from src.models.orm.users import User
+        from src.services.authorization import impersonation
 
-        run_as_result = await session.execute(
-            select(User).where(User.id == UUID(request.run_as))
-        )
-        run_as_user = run_as_result.scalar_one_or_none()
-        if not run_as_user:
-            raise SdkWorkflowExecutionError(
-                404,
-                f"run_as user '{request.run_as}' not found",
-            )
-        exec_user_id = str(run_as_user.id)
-        exec_user_name = run_as_user.name or run_as_user.email or "Unknown"
-        exec_user_email = run_as_user.email or ""
-        exec_is_admin = run_as_user.is_superuser
-        logger.info(f"Impersonating user: {exec_user_id} ({exec_user_email})")
+        try:
+            target = await impersonation.acting_target(session, principal, UUID(request.run_as))
+        except impersonation.RunAsError as exc:
+            raise SdkWorkflowExecutionError(exc.status_code, exc.detail) from None
+        if target is not None:
+            scheduled_run_as = impersonation.scheduled_run_as(principal, target)
+            if scheduled_run_as is not None:
+                logger.info(f"Impersonating user: {target.user_id} ({target.email})")
+            exec_user_id = str(target.user_id)
+            exec_user_name = target.name or target.email or "Unknown"
+            exec_user_email = target.email
+            exec_is_admin = target.is_superuser
+            from sqlalchemy import select
+            from src.models.orm.users import User
+            from shared.external_access import resolve_external_claim, resolve_provider_org_claim
+
+            acting_user = await session.scalar(select(User).where(User.id == target.user_id))
+            if acting_user is None:
+                raise SdkWorkflowExecutionError(404, "Run As user no longer exists")
+            exec_is_provider_org = await resolve_provider_org_claim(session, acting_user)
+            exec_is_external = await resolve_external_claim(session, acting_user)
+
+    # Who the run is for: the authenticated caller, never the run_as user.
+    lineage = await principal_lineage(session, transport_principal)
 
     # Determine execution org_id
     # Priority order:
@@ -334,6 +453,37 @@ async def execute_sdk_workflow(
         logger.info(f"Using workflow's organization: {execution_org_id}")
     else:
         execution_org_id = caller_org_id
+    access_checks.note("child_run", execution_org_id)
+    if request.code:
+        access_checks.note_power("repository.readwrite", execution_org_id, subject="inline_code")
+    # The execution organization is already the workflow's, or the caller's
+    # for a Global workflow or inline code.
+    access_checks.note_launch(
+        "workflows.execute",
+        execution_org_id,
+        caller_org_id,
+        subject="inline_code" if workflow is None else f"workflow:{workflow.id}",
+    )
+
+    if execution_request_id is not None:
+        if request.transient or workflow is None:
+            raise SdkWorkflowExecutionError(
+                400, "X-Bifrost-Execution-ID requires a persisted registered workflow execution"
+            )
+        from src.services.execution.submission_recovery import (
+            ExecutionSubmissionConflictError, recover_execution_submission,
+        )
+        try:
+            recovered = await recover_execution_submission(
+                session, execution_id=execution_request_id, workflow_id=workflow.id,
+                parameters=request.input_data, executed_by=UUID(exec_user_id),
+                organization_id=execution_org_id,
+                form_id=UUID(request.form_id) if request.form_id else None,
+            )
+        except ExecutionSubmissionConflictError as exc:
+            raise SdkWorkflowExecutionError(409, str(exc)) from exc
+        if recovered is not None:
+            return recovered
 
     # Scheduled execution: normalize delay_seconds -> scheduled_at and insert row.
     # The deferred_execution_promoter job will publish this row when it matures.
@@ -359,6 +509,11 @@ async def execute_sdk_workflow(
             form_id=UUID(request.form_id) if request.form_id else None,
             api_key_id=None,  # API-key-triggered scheduling not supported in v1
             is_platform_admin=exec_is_admin,
+            is_provider_org=exec_is_provider_org,
+            is_external=exec_is_external,
+            execution_id=execution_request_id,
+            lineage=lineage,
+            run_as=scheduled_run_as,
         )
         return WorkflowExecutionResponse(
             execution_id=str(exec_id),
@@ -402,18 +557,22 @@ async def execute_sdk_workflow(
         organization=org,
         is_platform_admin=exec_is_admin,
         is_function_key=False,
-        execution_id=str(uuid4()),
+        execution_id=str(execution_request_id or uuid4()),
+        is_provider_org=exec_is_provider_org,
+        is_external=exec_is_external,
     )
 
     try:
         if request.code:
             # Execute inline code
+            await session.commit()
             result = await run_code(
                 context=shared_ctx,
                 code=request.code,
                 script_name=request.script_name or "inline_script",
                 input_data=request.input_data,
                 transient=request.transient,
+                lineage=lineage,
             )
         elif workflow and workflow.type == "data_provider":
             # Only short-circuit on the sync/transient hot path. A non-transient
@@ -449,6 +608,8 @@ async def execute_sdk_workflow(
                 db=session,
             )
 
+            await session.commit()
+
             # Data providers always run sync (small payloads, no UI poll flow),
             # but honor the caller's transient flag: dropdown-options pass
             # transient=True for the fast path, the manual Execute page passes
@@ -460,6 +621,8 @@ async def execute_sdk_workflow(
                 transient=request.transient,
                 sync=True,
                 dispatch_metadata=dispatch_metadata,
+                org_id_override=request.org_id,
+                lineage=lineage,
             )
             from src.models import WorkflowExecutionResponse
 
@@ -477,6 +640,7 @@ async def execute_sdk_workflow(
                 str(workflow.id),
                 db=session,
             )
+            await session.commit()
             result = await run_workflow(
                 context=shared_ctx,
                 workflow_id=str(workflow.id),
@@ -485,6 +649,8 @@ async def execute_sdk_workflow(
                 transient=request.transient,
                 sync=request.sync or False,
                 dispatch_metadata=dispatch_metadata,
+                org_id_override=request.org_id,
+                lineage=lineage,
             )
         else:
             # This shouldn't happen due to earlier validation
@@ -559,8 +725,9 @@ async def cancel_scheduled_sdk_execution(
     exactly, including the 404/403/409 precedence:
 
     - 404 when the row is missing,
-    - 403 when a non-admin reaches across orgs or cancels another
-      submitter's row,
+    - 403 when a non-admin reaches across orgs or cancels a row that is
+      not their own (``execution_visibility.is_own_execution``: they act in
+      it, or started it as its root, as with Run As),
     - 409 with the current status when the row is no longer SCHEDULED
       (the promoter or a concurrent cancel won the race).
 
@@ -585,9 +752,19 @@ async def cancel_scheduled_sdk_execution(
         raise SdkWorkflowExecutionError(403, "Access denied")
 
     # Non-admin can only cancel their own scheduled rows.
-    if not principal.is_superuser and row.executed_by != principal.user_id:
-        raise SdkWorkflowExecutionError(
-            403, "Only the submitter or an admin may cancel"
+    if not is_own_execution(
+        principal.user_id,
+        execution_id=row.id,
+        executed_by=row.executed_by,
+        started_by_user_id=row.started_by_user_id,
+        root_execution_id=row.root_execution_id,
+    ):
+        if not principal.is_superuser:
+            raise SdkWorkflowExecutionError(
+                403, "Only the submitter or an admin may cancel"
+            )
+        access_checks.note_power(
+            "executions.readwrite.all", row.organization_id, subject=f"execution:{execution_id}"
         )
 
     # Status-guarded UPDATE (wins or loses atomically vs. the promoter).

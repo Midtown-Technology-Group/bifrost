@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import tempfile
 import logging
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
@@ -27,7 +27,6 @@ from src.jobs.platform.base import (
 )
 from src.models.orm.solution_deploy_jobs import SolutionDeployJob
 from src.models.orm.platform_jobs import PlatformJob
-from src.models.orm.solutions import Solution
 from src.services.solutions.deploy_job_storage import SolutionDeployJobStorage
 
 logger = logging.getLogger(__name__)
@@ -133,6 +132,7 @@ async def run_solution_deploy(
                 else None
             )
             candidate_id = str(payload.options.get("candidate_id") or "")
+            await reporter.progress("Preparing Solution deployment", 8)
             if payload.kind in {"deploy", "install_from_repo"}:
                 if payload.install_id is None:
                     raise PlatformJobFailure(
@@ -151,6 +151,7 @@ async def run_solution_deploy(
                         # exemption the one-writer refusal would deadlock creation.
                         # Manual deploys (kind="deploy") stay refused.
                         allow_connected_install=payload.kind == "install_from_repo",
+                        delete_install_on_failure=payload.kind == "install_from_repo",
                     )
             else:
                 raw_org_id = payload.options.get("organization_id")
@@ -176,21 +177,15 @@ async def run_solution_deploy(
             if projection is None:
                 raise PlatformJobFailure("deploy_job_missing", "Deploy job is missing.")
             if projection.status != "succeeded":
-                if payload.kind == "install_from_repo" and payload.install_id:
-                    projection.install_id = None
-                    await db.flush()
-                    orphan = await db.get(Solution, payload.install_id)
-                    if orphan is not None:
-                        await db.delete(orphan)
+                # A from-repo install's brand-new row is deleted by
+                # _run_deploy_job itself, atomically with this job's failed
+                # status write (see its docstring) — nothing to clean up here.
                 failure = PlatformJobFailure(
                     "solution_deploy_failed",
                     projection.error or "Solution deploy failed.",
                 )
             else:
                 result = projection.result or {}
-        # The failed install cleanup above must commit before the platform job
-        # reports failure. Raising inside get_db_context would roll the delete
-        # back and leave an orphan that blocks a retry with the same slug.
         if failure is not None:
             raise failure
         await context.report("Solution deploy complete", percent=100)
@@ -221,6 +216,7 @@ SOLUTION_DEPLOY_DEFINITION = PlatformJobDefinition(
         max_attempts=2,
         max_concurrency=1,
         min_memory_headroom_mb=512,
+        execution_class="build",
     ),
     operations_policy=platform_job_operations_policy(
         "solution.deploy",
@@ -228,4 +224,6 @@ SOLUTION_DEPLOY_DEFINITION = PlatformJobDefinition(
     ),
     encrypt_payload=True,
     readback_checkpoint_schema=SOLUTION_DEPLOY_INTENT_SCHEMA,
+    display_name="Solution deploys",
+    description="Compiles Solution apps in an isolated job pod.",
 )

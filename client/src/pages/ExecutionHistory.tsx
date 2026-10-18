@@ -270,7 +270,7 @@ export function ExecutionHistory() {
 		return org?.name || orgId;
 	};
 
-	// Build filters including date range and local executions toggle.
+	// Build filters including date range.
 	// The Failed tab means the whole failure group (Failed, Timeout, Stuck,
 	// CompletedWithErrors) — the same set the dashboard's "N failed" link
 	// counts — so it sends the comma-separated group to the server's

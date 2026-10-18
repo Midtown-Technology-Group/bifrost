@@ -65,7 +65,6 @@ _INLINE_ORG_RE = re.compile(
 # be rare and obvious in code review. Removing an entry signals migration
 # progress.
 ALLOW_LIST_INLINE_ORG: set[tuple[str, str, str]] = {
-    ('routers/agents.py', 'MCPConnection.organization_id == agent_data.organization_id,', 'agents MCPConnection lookup; phase 6 migrates via MCPConnectionRepository'),
     # ApplicationRepository entries removed in phase 6 — repository relocated
     # from routers/applications.py to repositories/applications.py.
     ('routers/claims.py', 'Table.organization_id == org_id,', 'claims inline lookups; phase 6 migrates via CustomClaimRepository'),
@@ -90,7 +89,6 @@ ALLOW_LIST_INLINE_ORG: set[tuple[str, str, str]] = {
     ('routers/integrations.py', 'ConfigModel.organization_id.is_(None),', 'integration config inline; phase 5 migrates'),
     ('routers/integrations.py', 'ConfigModel.organization_id == organization_id,', 'integration config inline; phase 5 migrates'),
     ('routers/integrations.py', 'ConfigModel.organization_id == org_id,', 'integration config inline; phase 5 migrates'),
-    ('routers/knowledge_sources.py', 'KnowledgeNamespaceRole.organization_id == org_id,', 'knowledge sources inline cascade; phase 6 migrates'),
     # The KnowledgeStore document-list inline cascades were removed (EXT-1
     # NEW-J) — list_all_documents / list_documents now route through
     # org_filter_clause. The single-document update/conflict lookups moved
@@ -112,13 +110,11 @@ ALLOW_LIST_INLINE_ORG: set[tuple[str, str, str]] = {
     ('routers/roi_reports.py', 'query = query.where(WorkflowROIDaily.organization_id.is_(None))', 'identity-entity scope filter (permanent)'),
     ('routers/roi_reports.py', 'query = query.where(WorkflowROIDaily.organization_id == org_uuid)', 'identity-entity scope filter (permanent)'),
     ('routers/roi_reports.py', '.join(Organization, ExecutionMetricsDaily.organization_id == Organization.id)', 'identity-entity scope filter (permanent)'),
-    ('routers/roles.py', 'KnowledgeNamespaceRoleORM.organization_id == entry.organization_id,', 'KnowledgeNamespaceRole identity-entity filter (permanent)'),
     ('routers/solutions.py', 'set_keys_q = select(Config.key).where(Config.organization_id == sol.organization_id)', 'entities endpoint: install-scoped config-key existence read for value_set status (NOT cascade)'),
     ('routers/solutions.py', 'set_keys_q = select(Config.key).where(Config.organization_id.is_(None))', 'entities endpoint: global-scope config-key existence read for value_set status (NOT cascade)'),
     ('routers/solutions.py', 'return model.organization_id.is_(None)  # type: ignore[attr-defined]', 'capture candidates: exact install-scope filter for loose entities (NOT cascade)'),
     ('routers/solutions.py', 'return model.organization_id == org_id  # type: ignore[attr-defined]', 'capture candidates: exact install-scope filter for loose entities (NOT cascade)'),
     ('routers/usage_reports.py', 'base_conditions.append(AIUsage.organization_id == filter_org_id)', 'identity-entity scope filter (permanent)'),
-    ('routers/usage_reports.py', 'exec_conditions.append(Execution.organization_id == filter_org_id)', 'identity-entity scope filter (permanent)'),
     ('routers/usage_reports.py', 'filters.append(Execution.organization_id == org_id)', 'Execution identity-entity scope filter (permanent)'),
     ('routers/usage_reports.py', 'workflow_query = workflow_query.where(AIUsage.organization_id == filter_org_id)', 'identity-entity scope filter (permanent)'),
     ('routers/usage_reports.py', 'conv_query = conv_query.where(AIUsage.organization_id == filter_org_id)', 'identity-entity scope filter (permanent)'),
@@ -134,8 +130,6 @@ ALLOW_LIST_INLINE_ORG: set[tuple[str, str, str]] = {
     ('routers/workflows.py', 'apps_base_query = apps_base_query.where(Application.organization_id == org_filter)', 'workflows inline cascade; phase 6 migrates'),
     ('routers/agents.py', 'Workflow.organization_id.is_(None),', 'accessible-tools org filter on the role-join result; not an OrgScopedRepository read path'),
     ('routers/agents.py', 'Workflow.organization_id == user.organization_id,', 'accessible-tools org filter on the role-join result; not an OrgScopedRepository read path'),
-    ('routers/agents.py', 'KnowledgeNamespaceRole.organization_id.is_(None),', 'accessible-knowledge org filter on the role-join result; not an OrgScopedRepository read path'),
-    ('routers/agents.py', 'KnowledgeNamespaceRole.organization_id == user.organization_id,', 'accessible-knowledge org filter on the role-join result; not an OrgScopedRepository read path'),
     ('routers/agents.py', 'in_scope = a.organization_id is None or a.organization_id == user.organization_id', 'delegations: per-delegate visibility re-check, not a repository list query'),
     ('routers/mcp_servers.py', 'else [conn for conn in server.connections if conn.organization_id == ctx.org_id]', 'get_mcp_server: filters an already-fetched relationship for the response, never assigned back to the ORM collection (see comment above) — not a query'),
     ('routers/metrics.py', 'ExecutionModel.organization_id == organization_id', 'recent_failures org scoping for non-bypass dashboard callers; Execution is an identity-entity (telemetry), not OrgScopedRepository'),
@@ -244,15 +238,28 @@ IDENTITY_MODELS: set[str] = {
     "Execution",
     "ExecutionMetricsDaily",
     "WorkflowROIDaily",
+    # Rollup of deleted runs by (day, org, workflow, status): aggregated
+    # telemetry like WorkflowROIDaily, read by date range, never name-resolved.
+    "WorkflowRunDaily",
     "KnowledgeStorageDaily",
     "User",
     "AIUsage",
-    "KnowledgeNamespaceRole",
+    # A role-assignment boundary row (which org a user_roles grant applies
+    # at). It belongs to an org but is never resolved by name with cascade
+    # — it's read by (user_id, role_id), like UserRole itself.
+    "UserRoleBoundary",
+    # A workflow permission grant's organization_id is the boundary a grant
+    # applies at, not a scope it resolves in. Read by workflow_id, never
+    # name-resolved through the cascade.
+    "WorkflowPermissionGrant",
     "Event",
     "AuditLog",
     # Approval proposals are addressed by immutable ID within their recorded
     # organization; they never participate in name-based scope resolution.
     "AgentActionApproval",
+    # The catalog of archived audit segments: belongs with AuditLog, read by
+    # date range and reach, never name-resolved through the cascade.
+    "AuditArchiveSegment",
     # A Solution install belongs to a scope (organization_id) but is never
     # resolved by name with cascade — it is identity, like Organization.
     "Solution",

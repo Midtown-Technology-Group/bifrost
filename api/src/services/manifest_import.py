@@ -760,10 +760,6 @@ class ManifestResolver:
         # changed non-secret value) does not keep serving stale until TTL.
         self.configs_touched: set[tuple[str | None, str]] = set()
         self._skip_role_sync = False
-        # Partial workspace-bundle imports only match unattached rows. A
-        # globally unique workflow path or app slug can be moved across scopes
-        # by an explicit Replace decision in the workspace review.
-        self._workspace_global_scope = False
         # Target scope for workspace-partial lookups (None = global). Set only
         # for the duration of plan_partial_import.
         self._workspace_organization_id: UUID | None = None
@@ -802,18 +798,25 @@ class ManifestResolver:
         )
         from src.models.orm.organizations import Organization
         from src.models.orm.tables import Table
-        from src.models.orm.users import Role
+        from src.models.orm.users import Role, User
         from src.models.orm.workflows import Workflow
 
+        # Lookups for entities a Solution can own (workflows, apps, tables,
+        # policy rules, claims) only see workspace rows (solution_id IS NULL).
+        # Solution-owned rows have exactly one writer, the Solution deploy; a
+        # workspace manifest entry that shares a Solution row's natural key must
+        # never re-key or overwrite it.
         cache: dict = {}
 
         # Organizations: {id} set + {name: id} dict
         org_result = await self.db.execute(select(Organization.id, Organization.name))
         cache["org_ids"] = set()
         cache["org_by_name"] = {}
+        cache["org_name_by_id"] = {}
         for row in org_result.all():
             cache["org_ids"].add(row[0])
             cache["org_by_name"][row[1]] = row[0]
+            cache["org_name_by_id"][row[0]] = row[1]
 
         # Roles: {id} set + {name: id} dict
         role_result = await self.db.execute(select(Role.id, Role.name))
@@ -824,21 +827,26 @@ class ManifestResolver:
             cache["role_by_name"][row[1]] = row[0]
 
         # Workflows: {(path, function_name): id} + {id} set
-        workflow_query = select(Workflow.id, Workflow.path, Workflow.function_name)
-        if self._workspace_global_scope:
-            workflow_query = workflow_query.where(
-                Workflow.solution_id.is_(None),
-            )
-        wf_result = await self.db.execute(workflow_query)
+        wf_result = await self.db.execute(
+            select(Workflow.id, Workflow.path, Workflow.function_name)
+            .where(Workflow.solution_id.is_(None))
+        )
         cache["wf_ids"] = set()
         cache["wf_by_natural"] = {}
         for row in wf_result.all():
             cache["wf_ids"].add(row[0])
             if row[1] and row[2]:
                 cache["wf_by_natural"][(row[1], row[2])] = row[0]
+        # Identities workflows run unattended as: {workflow id: identity}
+        identity_result = await self.db.execute(
+            select(Workflow.id, User).join(User, User.id == Workflow.run_identity_id)
+        )
+        cache["wf_run_identity"] = {row[0]: row[1] for row in identity_result.all()}
 
         # Integrations: {name: id} + {id} set
-        integ_result = await self.db.execute(select(Integration.id, Integration.name))
+        integ_result = await self.db.execute(
+            select(Integration.id, Integration.name).where(Integration.is_deleted.is_(False))
+        )
         cache["integ_ids"] = set()
         cache["integ_by_name"] = {}
         for row in integ_result.all():
@@ -859,12 +867,10 @@ class ManifestResolver:
             cache["integ_mappings"].setdefault(m.integration_id, {})[org_key] = m
 
         # Apps: {slug: id}
-        app_query = select(Application.id, Application.slug)
-        if self._workspace_global_scope:
-            app_query = app_query.where(
-                Application.solution_id.is_(None),
-            )
-        app_result = await self.db.execute(app_query)
+        app_result = await self.db.execute(
+            select(Application.id, Application.slug)
+            .where(Application.solution_id.is_(None))
+        )
         cache["app_by_slug"] = {}
         for row in app_result.all():
             cache["app_by_slug"][row[1]] = row[0]
@@ -872,6 +878,7 @@ class ManifestResolver:
         # Tables: {(name, org_id): id} + {id} set
         table_result = await self.db.execute(
             select(Table.id, Table.name, Table.organization_id)
+            .where(Table.solution_id.is_(None))
         )
         cache["table_ids"] = set()
         cache["table_by_natural"] = {}
@@ -912,6 +919,7 @@ class ManifestResolver:
         from src.models.orm.policy_rule import PolicyRule as PolicyRuleOrm
         pr_result = await self.db.execute(
             select(PolicyRuleOrm.id, PolicyRuleOrm.name, PolicyRuleOrm.domain, PolicyRuleOrm.organization_id)
+            .where(PolicyRuleOrm.solution_id.is_(None))
         )
         cache["policy_rule_ids"] = set()
         cache["policy_rule_by_natural"] = {}
@@ -922,6 +930,7 @@ class ManifestResolver:
         # Custom Claims: {(name, org_id): id} + {id} set
         claim_result = await self.db.execute(
             select(CustomClaim.id, CustomClaim.name, CustomClaim.organization_id)
+            .where(CustomClaim.solution_id.is_(None))
         )
         cache["claim_ids"] = set()
         cache["claim_by_natural"] = {}
@@ -1073,6 +1082,8 @@ class ManifestResolver:
             await _prog(f"Importing organization: {morg.name}")
             org_ops.extend(self._resolve_organization(morg, cache))
         await self._apply_ops(org_ops, all_ops, dry_run=dry_run, existing_ids=cache.get("org_ids", set()))
+        if not dry_run:
+            await self._ensure_default_identities(org_ops)
 
         # 0b. Resolve roles (no deps) — execute immediately
         role_ops: list[SyncOp] = []
@@ -1282,7 +1293,6 @@ class ManifestResolver:
             for entity in collection.values()
         }
         self._skip_role_sync = True
-        self._workspace_global_scope = True
         self._workspace_organization_id = organization_id
         try:
             ops = await self.plan_import(
@@ -1291,7 +1301,6 @@ class ManifestResolver:
             )
         finally:
             self._skip_role_sync = False
-            self._workspace_global_scope = False
             self._workspace_organization_id = None
 
         async def read_workspace(path: str) -> bytes | None:
@@ -1492,6 +1501,16 @@ class ManifestResolver:
 
         return modified
 
+    async def _ensure_default_identities(self, org_ops: "list[SyncOp]") -> None:
+        """Every imported organization has its default identity, like one created through the API."""
+        from shared.identities import ensure_default_identity
+        from src.models.orm.organizations import Organization
+
+        for op in org_ops:
+            organization = await self.db.get(Organization, op.id)
+            if organization is not None:
+                await ensure_default_identity(self.db, organization)
+
     def _resolve_organization(self, morg, cache: dict) -> "list[SyncOp]":
         """Resolve an organization from manifest into SyncOps.
 
@@ -1630,6 +1649,7 @@ class ManifestResolver:
 
         from bifrost.manifest_codec import Destination
 
+        from shared.identities import identity_label, run_identity_allowed
         from src.models.orm.workflow_roles import WorkflowRole
         from src.models.orm.workflows import Workflow
         from src.services.sync_ops import SyncOp, SyncRoles, Upsert  # noqa: F401
@@ -1647,6 +1667,18 @@ class ManifestResolver:
             "name": manifest_name,
             "organization_id": UUID(direct["organization_id"]) if direct.get("organization_id") else None,
         }
+
+        target_id = existing_by_natural if existing_by_natural is not None else wf_id
+        identity = cache["wf_run_identity"].get(target_id)
+        if identity is not None and not run_identity_allowed(
+            workflow_organization_id=wf_values["organization_id"], identity=identity
+        ):
+            raise ValueError(
+                f"Workflow {mwf.path}::{mwf.function_name} runs unattended as "
+                f"{identity_label(identity, cache['org_name_by_id'].get(identity.organization_id))} "
+                f"(run_identity_id), which can't run workflows of organization "
+                f"{wf_values['organization_id'] or 'Global'}; change its run_identity_id first"
+            )
 
         ops: list[SyncOp] = []
 
@@ -1824,6 +1856,7 @@ class ManifestResolver:
         from src.models.orm.tables import Table
         from src.models.orm.users import Role
         from src.models.orm.workflows import Workflow
+        from src.services.manifest_generator import export_criteria
 
         _ = removed_paths
 
@@ -2029,12 +2062,22 @@ class ManifestResolver:
                 )
             return len(stale_ids)
 
+        # Every sweep below is limited to the rows the manifest export would
+        # have written (export_criteria), so a row the export leaves out is
+        # never mistaken for one removed from the repo.
+
         # Delete subscriptions before workflows. Workflow deletion cascades to
         # subscriptions; preview and dry-run revalidation must see the same
         # explicit deletion set as the real apply phase.
+        exported_sources = select(EventSource.id).where(
+            *export_criteria(EventSource), EventSource.solution_id.is_(None)
+        )
         await _bulk_delete(
             EventSubscription,
-            [],
+            [
+                *export_criteria(EventSubscription),
+                EventSubscription.event_source_id.in_(exported_sources),
+            ],
             present_sub_uuids,
             "event_subscriptions",
             _explicit_ids("event_subscriptions"),
@@ -2043,7 +2086,7 @@ class ManifestResolver:
         # Delete workflows synced from git that are no longer present
         await _bulk_delete(
             Workflow,
-            [Workflow.is_active == True, Workflow.path.isnot(None)],  # noqa: E712
+            [*export_criteria(Workflow), Workflow.path.isnot(None)],
             present_wf_uuids,
             "workflows",
             _explicit_ids("workflows"),
@@ -2052,7 +2095,7 @@ class ManifestResolver:
         # Delete integrations not in manifest
         await _bulk_delete(
             Integration,
-            [Integration.is_deleted == False],  # noqa: E712
+            export_criteria(Integration),
             present_integ_uuids,
             "integrations",
             _explicit_ids("integrations"),
@@ -2140,29 +2183,29 @@ class ManifestResolver:
 
         await _bulk_delete(
             PolicyRuleOrm,
-            [PolicyRuleOrm.is_builtin == False],  # noqa: E712
+            export_criteria(PolicyRuleOrm),
             present_policy_rule_uuids,
             "policy_rules",
             _explicit_ids("policy_rules"),
         )
 
         # Delete event sources not in manifest
-        await _bulk_delete(EventSource, [], present_event_uuids, "events", _explicit_ids("events"))
+        await _bulk_delete(EventSource, export_criteria(EventSource), present_event_uuids, "events", _explicit_ids("events"))
 
         # Delete forms not in manifest
         await _bulk_delete(
             Form,
-            [Form.is_active == True],  # noqa: E712
+            export_criteria(Form),
             present_form_uuids,
             "forms",
             _explicit_ids("forms"),
         )
 
         # Delete agents not in manifest
-        await _bulk_delete(Agent, [], present_agent_uuids, "agents", _explicit_ids("agents"))
+        await _bulk_delete(Agent, export_criteria(Agent), present_agent_uuids, "agents", _explicit_ids("agents"))
 
         # Delete apps not in manifest
-        await _bulk_delete(Application, [], present_app_uuids, "applications", _explicit_ids("applications"))
+        await _bulk_delete(Application, export_criteria(Application), present_app_uuids, "applications", _explicit_ids("applications"))
 
         # External MCP cleanup. Delete leaves first, then connections, then
         # servers — although CASCADE FKs on the schema make later deletes
@@ -2238,7 +2281,7 @@ class ManifestResolver:
         if explicit_org_ids is not None or present_org_uuids:
             await _bulk_deactivate(
                 Organization,
-                [Organization.is_active == True],  # noqa: E712
+                [Organization.is_active == True, Organization.is_provider.is_(False)],  # noqa: E712
                 present_org_uuids,
                 "organizations",
                 explicit_org_ids,
@@ -2247,7 +2290,12 @@ class ManifestResolver:
         # Delete roles not in manifest (only when manifest has roles)
         explicit_role_ids = _explicit_ids("roles")
         if explicit_role_ids is not None or present_role_uuids:
-            await _bulk_delete(Role, [], present_role_uuids, "roles", explicit_role_ids)
+            from shared.builtin_roles import BUILTIN_ROLE_IDS
+
+            await _bulk_delete(
+                Role, [Role.id.notin_(BUILTIN_ROLE_IDS)],
+                present_role_uuids, "roles", explicit_role_ids,
+            )
 
         return entity_changes
 
@@ -2277,7 +2325,10 @@ class ManifestResolver:
             existing_by_name = cache["integ_by_name"].get(integ_name)
         else:
             by_name = await self.db.execute(
-                select(Integration.id).where(Integration.name == integ_name)
+                select(Integration.id).where(
+                    Integration.name == integ_name,
+                    Integration.is_deleted.is_(False),
+                )
             )
             existing_by_name = by_name.scalar_one_or_none()
 
@@ -3296,7 +3347,7 @@ class ManifestResolver:
                 agent_id=agent_id,
                 event_type=msub.event_type,
                 criteria=(
-                    msub.criteria.model_dump(mode="json")
+                    msub.criteria.model_dump(mode="json", exclude_unset=True)
                     if msub.criteria is not None
                     else None
                 ),
@@ -3312,7 +3363,7 @@ class ManifestResolver:
                     "agent_id": agent_id,
                     "event_type": msub.event_type,
                     "criteria": (
-                        msub.criteria.model_dump(mode="json")
+                        msub.criteria.model_dump(mode="json", exclude_unset=True)
                         if msub.criteria is not None
                         else None
                     ),
@@ -3344,6 +3395,15 @@ class ManifestResolver:
         server_id = UUID(vals["id"])
         oauth_provider_id = UUID(vals["oauth_provider_id"]) if vals["oauth_provider_id"] else None
         organization_id = UUID(vals["organization_id"]) if vals["organization_id"] else None
+
+        if oauth_provider_id is not None:
+            from src.models.orm.oauth import OAuthProvider
+
+            provider = await self.db.get(OAuthProvider, oauth_provider_id)
+            if provider is None or provider.integration_id is not None:
+                raise ValueError(
+                    f"MCP server {server_name!r} must reference an independent MCP OAuth provider"
+                )
 
         stmt = insert(MCPServer).values(
             id=server_id,

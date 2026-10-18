@@ -11,6 +11,7 @@ from src.jobs.execution_policy import (
 from src.jobs.platform.base import (
     PlatformJobContext,
     PlatformJobDefinition,
+    PlatformJobFailure,
     PlatformJobPolicy,
 )
 
@@ -23,7 +24,7 @@ async def run_workspace_reimport(
     context: PlatformJobContext,
     payload: WorkspaceReimportPayload,
 ) -> dict:
-    from src.services.github_sync import GitHubSyncService
+    from src.services.github_sync import GitHubSyncService, WorkspaceSourceMissing
 
     await context.report("Reimporting workspace entities", percent=5)
     async with get_db_context() as db:
@@ -32,16 +33,33 @@ async def run_workspace_reimport(
             repo_url="unused://reimport-only",
             settings=get_settings(),
         )
-        count = await service.reimport_from_repo()
+        try:
+            result = await service.reimport_from_repo()
+        except WorkspaceSourceMissing as exc:
+            raise PlatformJobFailure("workspace_source_missing", str(exc)) from exc
     await context.report("Workspace reimport complete", percent=100)
     await context.log(
         "info",
         "workspace_reimport_completed",
-        f"Reimported {count} entities from workspace storage",
+        f"Reimported {result.entities_imported} entities from workspace storage",
     )
+    message = f"Reimported {result.entities_imported} entities from repository"
+    if result.pending_deletes:
+        names = ", ".join(change.name for change in result.pending_deletes[:5])
+        more = len(result.pending_deletes) - 5
+        if more > 0:
+            names += f" and {more} more"
+        message += (
+            f". {len(result.pending_deletes)} entities are no longer in workspace "
+            f"storage and were kept: {names}. Reimport doesn't delete entities. "
+            "To remove them, run a git sync and confirm the deletions."
+        )
     return {
-        "message": f"Reimported {count} entities from repository",
-        "entities_imported": count,
+        "message": message,
+        "entities_imported": result.entities_imported,
+        "pending_deletes": [
+            change.model_dump(mode="json") for change in result.pending_deletes
+        ],
     }
 
 

@@ -14,6 +14,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 
+from botocore.exceptions import ClientError
+
 from src.config import Settings, get_settings
 
 logger = logging.getLogger(__name__)
@@ -27,6 +29,7 @@ class S3FileMetadata:
 
     etag: str
     last_modified: datetime
+    size: int
 
 
 class RepoStorage:
@@ -123,7 +126,7 @@ class RepoStorage:
                 etag = obj["ETag"].strip('"')
                 last_modified = obj["LastModified"]
                 result[rel_path] = S3FileMetadata(
-                    etag=etag, last_modified=last_modified
+                    etag=etag, last_modified=last_modified, size=obj["Size"]
                 )
 
             if not response.get("IsTruncated"):
@@ -234,6 +237,29 @@ class RepoStorage:
                 return True
         except Exception:
             return False
+
+    async def head(self, path: str) -> S3FileMetadata | None:
+        """Return one object's metadata, or None when it does not exist."""
+        async with self._get_client() as client:
+            try:
+                response = await client.head_object(Bucket=self._bucket, Key=self._repo_key(path))
+            except client.exceptions.NoSuchKey:
+                return None
+            except ClientError as exc:
+                if exc.response.get("Error", {}).get("Code") in ("404", "NoSuchKey", "NotFound"):
+                    return None
+                raise
+            if self._settings.object_storage_provider == "azure_blob":
+                return S3FileMetadata(
+                    etag=response.etag,
+                    last_modified=response.last_modified,
+                    size=response.content_length,
+                )
+            return S3FileMetadata(
+                etag=response["ETag"].strip('"'),
+                last_modified=response["LastModified"],
+                size=response["ContentLength"],
+            )
 
     async def content_hash(self, path: str) -> str | None:
         """Return a bounded-memory SHA-256 fingerprint, or None when absent."""

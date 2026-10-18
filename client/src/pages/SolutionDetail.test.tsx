@@ -13,7 +13,9 @@ import {
 	within,
 } from "@/test-utils";
 import { act } from "@testing-library/react";
+import { useContext } from "react";
 import { SolutionDetail } from "./SolutionDetail";
+import { UNSAFE_NavigationContext, useLocation } from "react-router";
 
 const APP_LOGO_DATA_URL =
 	"data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciLz4=";
@@ -272,10 +274,7 @@ beforeEach(() => {
 		created_at: "2026-06-25T12:00:00Z",
 		updated_at: "2026-06-25T12:00:00Z",
 	});
-	mockDownloadSolutionExportJob.mockResolvedValue({
-		blob: new Blob(["zipbytes"]),
-		filename: "backup.zip",
-	});
+	mockDownloadSolutionExportJob.mockResolvedValue(undefined);
 	mockGetSolutionDeletionSummary.mockResolvedValue({
 		solution_id: "sol-1",
 		files: 2,
@@ -287,6 +286,7 @@ beforeEach(() => {
 		claims: 1,
 		config_declarations: 2,
 		events: 0,
+		external_event_subscriptions: 0,
 	});
 	mockGetSolutionCaptureCandidates.mockResolvedValue({
 		workflows: [],
@@ -307,6 +307,82 @@ beforeEach(() => {
 		claims_captured: 0,
 		config_declarations_captured: 0,
 	});
+});
+
+it("opens a bookmarked Exports tab and keeps tab navigation in the URL", async () => {
+	function Location() {
+		return (
+			<output aria-label="Current tab URL">{useLocation().search}</output>
+		);
+	}
+	const { user } = renderWithProviders(
+		<>
+			<SolutionDetail />
+			<Location />
+		</>,
+		{ initialEntries: ["/solutions/sol-1?tab=exports&from=docs"] },
+	);
+	const exports = await screen.findByRole("tab", { name: "Exports" });
+	expect(exports).toHaveAttribute("aria-selected", "true");
+	expect(
+		await screen.findByText("No backup exports queued yet."),
+	).toBeInTheDocument();
+	await user.click(screen.getByRole("tab", { name: /^Overview/ }));
+	expect(
+		screen.getByRole("status", { name: "Current tab URL" }),
+	).toHaveTextContent("tab=overview");
+	expect(
+		screen.getByRole("status", { name: "Current tab URL" }),
+	).toHaveTextContent("from=docs");
+});
+
+it("adds one history entry per tab selection so Back returns to the bookmarked tab", async () => {
+	function HistoryControls() {
+		const { navigator } = useContext(UNSAFE_NavigationContext);
+		return <button onClick={() => navigator.go(-1)}>Browser Back</button>;
+	}
+	const { user } = renderWithProviders(
+		<>
+			<HistoryControls />
+			<SolutionDetail />
+		</>,
+		{
+			initialEntries: ["/solutions/sol-1?tab=exports"],
+		},
+	);
+	await screen.findByText("No backup exports queued yet.");
+	await user.click(screen.getByRole("tab", { name: "Overview" }));
+	await user.click(screen.getByRole("button", { name: "Browser Back" }));
+	expect(screen.getByRole("tab", { name: "Exports" })).toHaveAttribute(
+		"aria-selected",
+		"true",
+	);
+});
+
+it("keeps the bookmarked tab while focusing another tab and changes it on activation", async () => {
+	const { user } = renderWithProviders(<SolutionDetail />, {
+		initialEntries: ["/solutions/sol-1?tab=exports"],
+	});
+	await screen.findByText("No backup exports queued yet.");
+	act(() => screen.getByRole("tab", { name: "Overview" }).focus());
+	expect(screen.getByRole("tab", { name: "Exports" })).toHaveAttribute(
+		"aria-selected",
+		"true",
+	);
+	await user.keyboard("{Enter}");
+	expect(screen.getByRole("tab", { name: "Overview" })).toHaveAttribute(
+		"aria-selected",
+		"true",
+	);
+});
+
+it("keeps Overview as the default for an unknown tab bookmark", async () => {
+	renderWithProviders(<SolutionDetail />, {
+		initialEntries: ["/solutions/sol-1?tab=unknown"],
+	});
+	expect(
+		await screen.findByRole("tab", { name: /^Overview/ }),
+	).toHaveAttribute("aria-selected", "true");
 });
 
 describe("SolutionDetail", () => {
@@ -1201,6 +1277,9 @@ describe("SolutionDetail", () => {
 		expect(summaryList).toHaveTextContent(/2 files/);
 		expect(summaryList).toHaveTextContent(/1 table/);
 		expect(summaryList).toHaveTextContent(/3 workflows/);
+		expect(
+			screen.queryByTestId("deletion-summary-external-listeners"),
+		).toBeNull();
 
 		expect(screen.getByTestId("hard-delete-slug")).toHaveTextContent(
 			"my-solution",
@@ -1220,6 +1299,34 @@ describe("SolutionDetail", () => {
 		await user.clear(input);
 		await user.type(input, "my-solution");
 		expect(confirmBtn).not.toBeDisabled();
+	});
+
+	it("warns about external listeners the hard-delete will also remove", async () => {
+		mockGetSolutionDeletionSummary.mockResolvedValue({
+			solution_id: "sol-1",
+			files: 0,
+			tables: 0,
+			workflows: 1,
+			apps: 0,
+			forms: 0,
+			agents: 0,
+			claims: 0,
+			config_declarations: 0,
+			events: 2,
+			external_event_subscriptions: 3,
+		});
+		const { user } = await renderPage();
+		await screen.findByTestId("solution-detail");
+
+		await user.click(screen.getByTestId("solution-actions"));
+		await user.click(await screen.findByTestId("hard-delete-solution"));
+
+		const warning = await screen.findByTestId(
+			"deletion-summary-external-listeners",
+		);
+		expect(warning).toHaveTextContent(
+			/3 external listeners outside this Solution will also be removed/,
+		);
 	});
 
 	it("calls deleteSolution with confirm=slug and navigates away on hard-delete", async () => {
@@ -1435,10 +1542,7 @@ it("keeps failed export downloads available for retry", async () => {
 	});
 	mockDownloadSolutionExportJob
 		.mockRejectedValueOnce(new Error("Synthetic download failure"))
-		.mockResolvedValueOnce({
-			blob: new Blob(["synthetic"]),
-			filename: "retry.zip",
-		});
+		.mockResolvedValueOnce(undefined);
 	const { user } = await renderPage();
 	await screen.findByTestId("solution-detail");
 	await user.click(screen.getByTestId("tab-exports"));

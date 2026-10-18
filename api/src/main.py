@@ -23,6 +23,7 @@ from src.routers.health import close_health_check_clients
 from src.routers.agent_action_approvals import router as agent_action_approvals_router
 from src.routers import (
     auth_router,
+    authorization_router,
     mfa_router,
     oauth_router,
     passkeys_router,
@@ -30,6 +31,7 @@ from src.routers import (
     organizations_router,
     users_router,
     roles_router,
+    permissions_router,
     executions_router,
     workflows_router,
     forms_router,
@@ -69,9 +71,12 @@ from src.routers import (
     chat_router,
     llm_config_router,
     ai_models_router,
+    model_catalog_router,
     integrations_router,
     decorator_properties_router,
     maintenance_router,
+    run_retention_router,
+    identities_router,
     roi_settings_router,
     roi_reports_router,
     usage_reports_router,
@@ -108,6 +113,7 @@ from src.routers import (
     mcp_oauth_callback_router,
     sdk_modules_router,
     policy_rules_router,
+    product_updates_router,
 )
 
 # Configure logging
@@ -376,12 +382,17 @@ def create_app() -> FastAPI:
 
     # This route accepts multipart uploads.  The cap must run before
     # Starlette constructs UploadFile and spills a body to disk.
-    from src.services.solutions.zip_install import MAX_SOLUTION_ARCHIVE_BYTES
+    from src.services.solutions.zip_install import (
+        MAX_SOLUTION_ARCHIVE_BYTES,
+        MAX_SOLUTION_BACKUP_ARCHIVE_BYTES,
+    )
     app.add_middleware(
         RouteBodyLimitMiddleware,
         limits={
             ("POST", "/api/solutions/import-workspace/preview"): MAX_SOLUTION_ARCHIVE_BYTES,
             ("POST", "/api/platform/external-workers/identity"): 4 << 20,
+            ("POST", "/api/solutions/install/preview"): MAX_SOLUTION_BACKUP_ARCHIVE_BYTES,
+            ("POST", "/api/solutions/install"): MAX_SOLUTION_BACKUP_ARCHIVE_BYTES,
         },
         messages={
             ("POST", "/api/solutions/import-workspace/preview"): "Solution archive exceeds the compressed upload limit.",
@@ -426,6 +437,7 @@ def create_app() -> FastAPI:
     app.include_router(health_router)
     app.include_router(version_router)
     app.include_router(auth_router)
+    app.include_router(authorization_router)
     app.include_router(mfa_router)
     app.include_router(oauth_router)
     app.include_router(passkeys_router)
@@ -433,6 +445,7 @@ def create_app() -> FastAPI:
     app.include_router(users_router)
     app.include_router(agent_action_approvals_router)
     app.include_router(roles_router)
+    app.include_router(permissions_router)
     app.include_router(executions_router)
     app.include_router(workflows_router)
     app.include_router(forms_router)
@@ -474,9 +487,12 @@ def create_app() -> FastAPI:
     app.include_router(chat_router)
     app.include_router(llm_config_router)
     app.include_router(ai_models_router)
+    app.include_router(model_catalog_router)
     app.include_router(integrations_router)
     app.include_router(decorator_properties_router)
     app.include_router(maintenance_router)
+    app.include_router(run_retention_router)
+    app.include_router(identities_router)
     app.include_router(roi_settings_router)
     app.include_router(roi_reports_router)
     app.include_router(usage_reports_router)
@@ -512,6 +528,7 @@ def create_app() -> FastAPI:
     app.include_router(mcp_oauth_callback_router)
     app.include_router(sdk_modules_router)
     app.include_router(policy_rules_router)
+    app.include_router(product_updates_router)
 
     # Mount MCP OAuth routes at root level (required by RFC 8414/9728)
     # These must be registered BEFORE the FastMCP ASGI mount

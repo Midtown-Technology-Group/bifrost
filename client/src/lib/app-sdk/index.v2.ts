@@ -13,7 +13,12 @@ export { BifrostProvider, useBifrostContext } from "./provider";
 export type { BifrostContextValue, BifrostProviderProps } from "./provider";
 
 export { BifrostHeader } from "./bifrost-header";
-export type { BifrostHeaderProps } from "./bifrost-header";
+export type {
+  BifrostHeaderNav,
+  BifrostHeaderProps,
+  BifrostNavItem,
+  BifrostNavLinkProps,
+} from "./bifrost-header";
 
 // Primary workflow hooks — React-Query-shaped (auto-running query + imperative
 // mutation). These are what apps should reach for; `useWorkflow` below is the
@@ -58,6 +63,9 @@ export type {
 } from "./files";
 
 export { useFiles } from "./use-files";
+
+export { useUser, RequireRole } from "./use-user";
+export type { BifrostUser, RequireRoleProps } from "./use-user";
 export type { UseFilesOptions, UseFilesResult } from "./use-files";
 
 export {
@@ -74,3 +82,15 @@ export type {
 	WebMcpTool,
 	WebMcpToolAnnotations,
 } from "./webmcp";
+
+export { useBranding } from "./use-branding";
+export type { UseBrandingOptions, UseBrandingResult } from "./use-branding";
+export type { BrandingSettings } from "./branding-theme";
+export type { BrandPalette, BrandPaletteTheme } from "./brand-palette";
+
+export { useOrganizations } from "./use-organizations";
+export type {
+	Organization,
+	UseOrganizationsOptions,
+	UseOrganizationsResult,
+} from "./use-organizations";

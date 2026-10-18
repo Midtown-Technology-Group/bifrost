@@ -6,7 +6,7 @@ import {
 	SheetTitle,
 } from "@/components/ui/sheet";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
-import { useExecution } from "@/hooks/useExecutions";
+import { isNotFoundError, useExecution } from "@/hooks/useExecutions";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 /**
@@ -46,6 +46,12 @@ import {
 
 import { cn } from "@/lib/utils";
 import { formatCost, formatDuration, formatNumber } from "@/lib/utils";
+import {
+	RUN_USAGE_HELP,
+	formatCacheRate,
+	formatContextTokens,
+	runUsageParts,
+} from "@/lib/run-usage";
 import type { components } from "@/lib/v1";
 import {
 	createAgentRunNavigationState,
@@ -53,6 +59,7 @@ import {
 } from "@/lib/agent-run-navigation";
 import { useAgentRun } from "@/services/agentRuns";
 import { VariablesTreeView } from "@/components/ui/variables-tree-view";
+import { RunRemovedNotice } from "@/components/execution/RunRemovedNotice";
 
 import { DidNarrative } from "./DidNarrative";
 import { isEmptyJson } from "./JsonTree";
@@ -62,6 +69,7 @@ import {
 	buildRunActivity,
 	type RunActivityItem,
 } from "./run-activity";
+import { useModelDisplayName } from "@/services/modelNames";
 
 type AgentRunStepResponse = components["schemas"]["AgentRunStepResponse"];
 type AgentRunDetailResponse = components["schemas"]["AgentRunDetailResponse"];
@@ -490,6 +498,7 @@ function ActivityTreeRow({
 		data: rawChild,
 		isLoading,
 		isError,
+		error: childError,
 		isFetching,
 		refetch,
 	} = useAgentRun(open ? (item.childRunId ?? undefined) : undefined, {
@@ -499,9 +508,12 @@ function ActivityTreeRow({
 				: false,
 	});
 	const child = rawChild as unknown as AgentRunDetailResponse | undefined;
-	const { data: workflowExecution } = useExecution(
+	const { data: workflowExecution, error: executionError } = useExecution(
 		item.executionId ?? undefined,
 	);
+	// Run retention removed the delegated run or the workflow execution.
+	const removed =
+		isNotFoundError(childError) || isNotFoundError(executionError);
 	const agentName = child?.agent_name ?? item.agentName;
 	const title =
 		item.kind === "delegation"
@@ -675,7 +687,11 @@ function ActivityTreeRow({
 					</button>
 				</div>
 			</div>
-			{isError ? (
+			{removed ? (
+				<div className="pe-3 ps-14 pb-2">
+					<RunRemovedNotice variant="inline" />
+				</div>
+			) : isError ? (
 				<div
 					role="alert"
 					className="mx-3 mb-2 rounded-[var(--bf-radius-control)] bg-[var(--bf-warning-soft)] p-3 text-sm"
@@ -748,6 +764,7 @@ function ActivityDetailPanel({
 		data: rawChild,
 		isLoading,
 		isError,
+		error: childError,
 		isFetching,
 		refetch,
 	} = useAgentRun(
@@ -760,7 +777,12 @@ function ActivityDetailPanel({
 		},
 	);
 	const child = rawChild as unknown as AgentRunDetailResponse | undefined;
-	const { data: execution } = useExecution(item.executionId ?? undefined);
+	const { data: execution, error: executionError } = useExecution(
+		item.executionId ?? undefined,
+	);
+	// Run retention removed the delegated run or the workflow execution.
+	const removed =
+		isNotFoundError(childError) || isNotFoundError(executionError);
 	const title =
 		execution?.workflow_name ??
 		child?.agent_name ??
@@ -852,7 +874,11 @@ function ActivityDetailPanel({
 				</SheetHeader>
 			)}
 			<div className="min-h-0 flex-1 overflow-y-auto px-5 pb-5 pt-2">
-				{isError ? (
+				{removed ? (
+					<div className="mt-3">
+						<RunRemovedNotice variant="inline" />
+					</div>
+				) : isError ? (
 					<div
 						role="alert"
 						className="mt-3 rounded-[var(--bf-radius-control)] bg-[var(--bf-warning-soft)] p-3 text-sm"
@@ -940,7 +966,7 @@ function ActivityDetailPanel({
 						{hasUsage ? (
 							<SelectedUsage
 								usage={usage}
-								totals={child?.ai_totals ?? null}
+								summary={child?.usage_summary ?? null}
 							/>
 						) : (
 							<p className="text-sm text-muted-foreground">
@@ -1004,22 +1030,39 @@ function OverviewBlock({
 
 function SelectedUsage({
 	usage,
-	totals,
+	summary,
 }: {
 	usage: NonNullable<AgentRunDetailResponse["ai_usage"]>;
-	totals: AgentRunDetailResponse["ai_totals"] | null;
+	summary: AgentRunDetailResponse["usage_summary"] | null;
 }) {
+	const modelName = useModelDisplayName();
+	const summaryParts = runUsageParts(summary);
 	return (
 		<div className="grid gap-3">
+			{summaryParts.length > 0 ? (
+				<p className="text-xs text-muted-foreground" title={RUN_USAGE_HELP}>
+					{summaryParts.join(" · ")}
+				</p>
+			) : null}
 			{usage.map((entry, index) => (
 				<dl
 					key={`${entry.model}-${index}`}
-					className="grid gap-x-4 gap-y-2 rounded-[var(--bf-radius-feature)] border border-border/70 bg-muted/35 p-3 text-xs sm:grid-cols-4"
+					className="grid gap-x-4 gap-y-2 rounded-[var(--bf-radius-feature)] border border-border/70 bg-muted/35 p-3 text-xs sm:grid-cols-5"
 				>
-					<UsageMetric label="Model" value={entry.model} />
+					<UsageMetric label="Model" value={modelName(entry.model)} />
 					<UsageMetric
-						label="Input"
-						value={formatNumber(entry.input_tokens)}
+						label="Context"
+						value={formatContextTokens(entry.input_tokens)}
+					/>
+					<UsageMetric
+						label="Cached"
+						value={
+							entry.input_tokens > 0
+								? formatCacheRate(
+										(entry.cache_read_tokens ?? 0) / entry.input_tokens,
+									)
+								: "—"
+						}
 					/>
 					<UsageMetric
 						label="Output"
@@ -1028,26 +1071,6 @@ function SelectedUsage({
 					<UsageMetric label="Cost" value={formatCost(entry.cost)} />
 				</dl>
 			))}
-			{totals ? (
-				<dl className="grid gap-x-4 gap-y-2 border-t pt-3 text-xs sm:grid-cols-4">
-					<UsageMetric
-						label="Calls"
-						value={formatNumber(totals.call_count)}
-					/>
-					<UsageMetric
-						label="Input"
-						value={formatNumber(totals.total_input_tokens)}
-					/>
-					<UsageMetric
-						label="Output"
-						value={formatNumber(totals.total_output_tokens)}
-					/>
-					<UsageMetric
-						label="Cost"
-						value={formatCost(totals.total_cost)}
-					/>
-				</dl>
-			) : null}
 		</div>
 	);
 }
@@ -1152,6 +1175,21 @@ interface StepViewModel {
 	summary: string | null;
 	primaryDetail: DetailRender | null;
 	secondaryDetail: (DetailRender & { label: string }) | null;
+}
+
+/** Context size and cache reads for one model call, from its llm_response step. */
+function stepCallUsage(
+	step: AgentRunStepResponse,
+): { input: number; cacheRead: number } | null {
+	if (step.type !== "llm_response") return null;
+	const usage = (step.content as { usage?: Record<string, unknown> } | null)
+		?.usage;
+	if (!usage || typeof usage.input_tokens !== "number") return null;
+	return {
+		input: usage.input_tokens,
+		cacheRead:
+			typeof usage.cache_read_tokens === "number" ? usage.cache_read_tokens : 0,
+	};
 }
 
 function buildViewModel(step: AgentRunStepResponse): StepViewModel {
@@ -1344,6 +1382,7 @@ function TimelineRow({
 }) {
 	const [open, setOpen] = useState(false);
 	const vm = buildViewModel(step);
+	const callUsage = stepCallUsage(step);
 	const hasDetail = !!vm.primaryDetail || !!vm.secondaryDetail;
 	const Icon = vm.icon;
 	return (
@@ -1386,9 +1425,12 @@ function TimelineRow({
 					</div>
 				</div>
 				<span className="ml-auto flex shrink-0 items-center gap-2 text-sm text-muted-foreground">
-					{step.tokens_used ? (
-						<span title="Tokens used">
-							{formatNumber(step.tokens_used)} tok
+					{callUsage ? (
+						<span title="Context sent to the model on this call, and the share read from the prompt cache">
+							{formatContextTokens(callUsage.input)} context
+							{callUsage.input > 0
+								? ` · ${formatCacheRate(callUsage.cacheRead / callUsage.input)} cached`
+								: ""}
 						</span>
 					) : null}
 					{step.duration_ms != null ? (

@@ -9,6 +9,8 @@ from fastapi import HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
+from shared import access_checks
+from shared.run_lineage import principal_lineage
 from shared.scope_resolver import has_scope_bypass
 from src.core.cache.redis_client import get_redis
 from src.core.db_deps import DbSession
@@ -94,6 +96,7 @@ async def _load_authorized_agent(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You don't have access to this agent",
         )
+    access_checks.note_launch("agents.execute", agent.organization_id, user.organization_id, subject=f"agent:{agent.id}")
     return agent
 
 
@@ -259,6 +262,9 @@ async def create_chat_run(
             if conversation.agent_id is None:
                 conversation.agent_id = authorized_agent.id
                 conversation.agent = authorized_agent
+    if conversation.agent_id is None:
+        # Chat without an agent spends AI directly.
+        access_checks.note_launch("ai.execute", None, user.organization_id, subject="ai:chat")
 
     existing_message = await db.get(Message, user_message_id)
     if existing_message is not None:
@@ -339,6 +345,7 @@ async def create_chat_run(
             sync=False,
             run_id=str(client_run_id),
             before_queue_publish=publish_queued,
+            lineage=await principal_lineage(db, user),
         )
     except Exception:
         await publish_chat_run_event(
@@ -388,6 +395,7 @@ async def get_chat_state(
         messages=messages,
         events=[_coerce_chat_event(event) for event in events],
         latest_sequence=latest_sequence,
+        context_usage=(conversation.extra_data or {}).get("context_usage"),
     )
 
 
@@ -427,6 +435,7 @@ async def cancel_chat_run(
         async with get_redis() as redis:
             await redis.setex(f"bifrost:agent_run:{run_id}:cancel", 3600, "1")
         run.status = "cancelling"
+        run.cancel_requested_at = datetime.now(timezone.utc)
 
     await db.commit()
 

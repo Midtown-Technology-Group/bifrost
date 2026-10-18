@@ -96,6 +96,7 @@ async def test_delayed_job_rechecks_actor_scope_and_disabled_device_cleanup(
          patch("src.services.devices.get_device_scoped", new=AsyncMock(return_value=device)) as scoped, \
          patch("src.services.device_peer_launcher.PeerLauncherClient") as launcher:
         repository.return_value.get_by_id = AsyncMock(return_value=actor)
+        permission.side_effect = lambda _db, principal: principal
         launcher.return_value.__aenter__.return_value = client
         if permitted:
             result = await handler(context, request)

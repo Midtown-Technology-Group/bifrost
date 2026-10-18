@@ -31,8 +31,9 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared import access_checks
 from src.core.log_safety import log_safe
-from src.core.org_filter import resolve_org_filter
+from src.core.org_filter import filter_target, resolve_org_filter
 from src.core.principal import UserPrincipal
 from src.models import Form as FormORM
 from src.models import FormPublic
@@ -101,7 +102,7 @@ def embed_can_access_form(principal: UserPrincipal, form: FormORM) -> bool:
     """Whether an EMBED principal is bound to THIS form (EXT-1 NEW-I).
 
     An embed token is HMAC-pre-authorized for exactly ONE resource.
-    Binding rules (the token must be bound to the form being touched):
+    Binding rule (the token must be bound to the form being touched):
     - form-embed token (``form_id`` claim set): must match the form
       exactly — ``principal.form_id == str(form.id)``.
     - app-embed token (``app_id`` set, no ``form_id``): never form-bound.
@@ -214,6 +215,7 @@ async def list_sdk_forms(
 
     if principal.is_superuser:
         forms = await repo.list_all_in_scope(filter_type=filter_type, active_only=False)
+        access_checks.note_power("forms.read", filter_target(filter_type, filter_org), subject="forms")
     else:
         forms = await repo.list_forms(active_only=True)
 
@@ -260,6 +262,7 @@ async def get_sdk_form(
         raise SdkFormError(404, "Form not found")
 
     if principal.is_superuser:
+        access_checks.note_power("forms.read", form.organization_id, subject=f"form:{form.id}")
         return await _to_public(session, form)
 
     if principal.embed:

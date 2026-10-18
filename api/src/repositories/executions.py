@@ -17,6 +17,9 @@ from sqlalchemy import desc, func, select, text, update
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared.run_lineage import lineage_columns
+from shared import access_checks
+from shared.execution_visibility import is_own_execution, own_executions
 from src.core.principal import UserPrincipal
 from src.core.execution_variable_safety import sanitize_execution_variables
 from src.core.log_safety import log_safe
@@ -80,11 +83,12 @@ class ExecutionRepository(BaseRepository[Execution]):
         form_id: str | None = None,
         api_key_id: str | None = None,
         status: ExecutionStatus = ExecutionStatus.RUNNING,
-        is_local_execution: bool = False,
         execution_model: str | None = None,
         workflow_id: str | None = None,
         solution_deployment_id: str | None = None,
         check_existing: bool = True,
+        *,
+        lineage: dict[str, str] | None,
     ) -> Execution:
         """
         Create a new execution record.
@@ -102,8 +106,9 @@ class ExecutionRepository(BaseRepository[Execution]):
             form_id: Optional form ID if triggered by form
             api_key_id: Optional workflow ID whose API key triggered this execution
             status: Initial status (default RUNNING)
-            is_local_execution: Whether this is a local CLI execution
             execution_model: Which system ran the execution ('process' or 'thread')
+            lineage: Run lineage from the pending record (RunLineage.bound).
+                None leaves a pre-existing row's lineage as it is.
 
         Returns:
             Created Execution record
@@ -162,9 +167,11 @@ class ExecutionRepository(BaseRepository[Execution]):
             existing.organization_id = parsed_org_id
             existing.form_id = parsed_form_id
             existing.api_key_id = parsed_api_key_id
-            existing.is_local_execution = is_local_execution
             existing.execution_model = execution_model
             existing.started_at = datetime.now(timezone.utc)
+            if lineage is not None:
+                for column, value in lineage_columns(lineage).items():
+                    setattr(existing, column, value)
             await self.session.flush()
             await self.session.refresh(existing)
             logger.info(
@@ -185,9 +192,9 @@ class ExecutionRepository(BaseRepository[Execution]):
             organization_id=parsed_org_id,
             form_id=parsed_form_id,
             api_key_id=parsed_api_key_id,
-            is_local_execution=is_local_execution,
             execution_model=execution_model,
             started_at=datetime.now(timezone.utc),
+            **lineage_columns(lineage),
         )
 
         self.session.add(execution)
@@ -377,7 +384,9 @@ class ExecutionRepository(BaseRepository[Execution]):
 
         # Non-superusers can only see their own executions
         if not user.is_superuser:
-            query = query.where(Execution.executed_by == user.user_id)
+            query = query.where(own_executions(user.user_id))
+        else:
+            access_checks.note_power("executions.read.all", org_id if org_id else access_checks.ALL_ORGS, subject="executions")
 
         # Filters
         if workflow_name:
@@ -450,8 +459,18 @@ class ExecutionRepository(BaseRepository[Execution]):
             return None, "NotFound"
 
         # Check authorization - non-superusers can only see their own
-        if not user.is_superuser and execution.executed_by != user.user_id:
-            return None, "Forbidden"
+        if not is_own_execution(
+            user.user_id, execution_id=execution_id,
+            executed_by=execution.executed_by,
+            started_by_user_id=execution.started_by_user_id,
+            root_execution_id=execution.root_execution_id,
+        ):
+            if not user.is_superuser:
+                return None, "Forbidden"
+            access_checks.note_power("executions.read.all", execution.organization_id, subject=f"execution:{execution_id}")
+
+        if user.is_superuser:
+            access_checks.note_power("executions.read", execution.organization_id, subject=f"execution:{execution_id}")
 
         # 2. Fetch logs (DEBUG/TRACEBACK filtered for non-admins)
         logs_query = (
@@ -495,6 +514,7 @@ class ExecutionRepository(BaseRepository[Execution]):
                 output_tokens=entry.output_tokens,
                 cache_read_tokens=entry.cache_read_tokens,
                 cache_write_tokens=entry.cache_write_tokens,
+                reasoning_tokens=entry.reasoning_tokens,
                 provider_cost=(str(entry.provider_cost) if entry.provider_cost is not None else None),
                 cost=str(entry.cost) if entry.cost else None,
                 duration_ms=entry.duration_ms,
@@ -512,6 +532,7 @@ class ExecutionRepository(BaseRepository[Execution]):
                 func.coalesce(func.sum(AIUsage.output_tokens), 0).label("total_output"),
                 func.coalesce(func.sum(AIUsage.cache_read_tokens), 0).label("total_cache_read"),
                 func.coalesce(func.sum(AIUsage.cache_write_tokens), 0).label("total_cache_write"),
+                func.coalesce(func.sum(AIUsage.reasoning_tokens), 0).label("total_reasoning"),
                 func.coalesce(func.sum(AIUsage.provider_cost), Decimal("0")).label("total_provider_cost"),
                 func.coalesce(func.sum(AIUsage.cost), Decimal("0")).label("total_cost"),
                 func.coalesce(func.sum(AIUsage.duration_ms), 0).label("total_duration"),
@@ -526,6 +547,7 @@ class ExecutionRepository(BaseRepository[Execution]):
                 total_output_tokens=int(totals_row.total_output or 0),
                 total_cache_read_tokens=int(totals_row.total_cache_read or 0),
                 total_cache_write_tokens=int(totals_row.total_cache_write or 0),
+                total_reasoning_tokens=int(totals_row.total_reasoning or 0),
                 total_provider_cost=str(totals_row.total_provider_cost or Decimal("0")),
                 total_cost=str(totals_row.total_cost or Decimal("0")),
                 total_duration_ms=int(totals_row.total_duration or 0),
@@ -554,7 +576,6 @@ class ExecutionRepository(BaseRepository[Execution]):
             started_at=execution.started_at,
             completed_at=execution.completed_at,
             logs=[log.model_dump() for log in logs],
-            session_id=str(execution.session_id) if execution.session_id else None,
             # Admin-only fields (null for non-admins)
             variables=execution.variables if user.is_superuser else None,
             execution_context=execution.execution_context if user.is_superuser else None,
@@ -579,6 +600,9 @@ class ExecutionRepository(BaseRepository[Execution]):
                 Execution.result,
                 Execution.result_type,
                 Execution.executed_by,
+                Execution.started_by_user_id,
+                Execution.root_execution_id,
+                Execution.organization_id,
             ).where(Execution.id == execution_id)
         )
         row = result.one_or_none()
@@ -586,8 +610,13 @@ class ExecutionRepository(BaseRepository[Execution]):
         if not row:
             return None, "NotFound"
 
-        if not user.is_superuser and row.executed_by != user.user_id:
-            return None, "Forbidden"
+        if not is_own_execution(
+            user.user_id, execution_id=execution_id, executed_by=row.executed_by,
+            started_by_user_id=row.started_by_user_id, root_execution_id=row.root_execution_id,
+        ):
+            if not user.is_superuser:
+                return None, "Forbidden"
+            access_checks.note_power("executions.read.all", row.organization_id, subject=f"execution:{execution_id}")
 
         return {"result": row.result, "result_type": row.result_type}, None
 
@@ -599,15 +628,26 @@ class ExecutionRepository(BaseRepository[Execution]):
         """Get execution logs from the execution_logs table."""
         # First check if execution exists and user has access
         result = await self.session.execute(
-            select(Execution.executed_by).where(Execution.id == execution_id)
+            select(
+                Execution.executed_by, Execution.started_by_user_id,
+                Execution.root_execution_id, Execution.organization_id,
+            ).where(Execution.id == execution_id)
         )
         row = result.one_or_none()
 
         if not row:
             return None, "NotFound"
 
-        if not user.is_superuser and row.executed_by != user.user_id:
-            return None, "Forbidden"
+        if not is_own_execution(
+            user.user_id, execution_id=execution_id, executed_by=row.executed_by,
+            started_by_user_id=row.started_by_user_id, root_execution_id=row.root_execution_id,
+        ):
+            if not user.is_superuser:
+                return None, "Forbidden"
+            access_checks.note_power("executions.read.all", row.organization_id, subject=f"execution:{execution_id}")
+
+        if user.is_superuser:
+            access_checks.note_power("executions.read", row.organization_id, subject=f"execution:{execution_id}")
 
         # Query logs from execution_logs table (order by sequence for guaranteed ordering)
         logs_query = (
@@ -649,7 +689,7 @@ class ExecutionRepository(BaseRepository[Execution]):
 
         # Select id and variables to distinguish "not found" from "null variables"
         result = await self.session.execute(
-            select(Execution.id, Execution.variables)
+            select(Execution.id, Execution.variables, Execution.organization_id)
             .where(Execution.id == execution_id)
         )
         row = result.one_or_none()
@@ -657,8 +697,10 @@ class ExecutionRepository(BaseRepository[Execution]):
         if row is None:
             return None, "NotFound"
 
-        # row is a tuple of (id, variables)
-        return row[1] or {}, None
+        access_checks.note_power("executions.read", row.organization_id, subject=f"execution:{execution_id}")
+
+        # row includes the scope of these diagnostics
+        return row.variables or {}, None
 
     async def cancel_execution(
         self,
@@ -683,8 +725,15 @@ class ExecutionRepository(BaseRepository[Execution]):
         if not execution:
             return None, "NotFound"
 
-        if not user.is_superuser and execution.executed_by != user.user_id:
-            return None, "Forbidden"
+        if not is_own_execution(
+            user.user_id, execution_id=execution_id,
+            executed_by=execution.executed_by,
+            started_by_user_id=execution.started_by_user_id,
+            root_execution_id=execution.root_execution_id,
+        ):
+            if not user.is_superuser:
+                return None, "Forbidden"
+            access_checks.note_power("executions.readwrite.all", execution.organization_id, subject=f"execution:{execution_id}")
 
         # Can only cancel work that has not reached a terminal state.
         if execution.status not in [
@@ -754,6 +803,8 @@ class ExecutionRepository(BaseRepository[Execution]):
                   fields (variables) are gated based on is_superuser.
         """
         is_admin = user.is_superuser if user else False
+        if is_admin:
+            access_checks.note_power("executions.read", execution.organization_id, subject=f"execution:{execution.id}")
         return WorkflowExecution(
             execution_id=str(execution.id),
             workflow_name=execution.workflow_name,
@@ -776,7 +827,6 @@ class ExecutionRepository(BaseRepository[Execution]):
             completed_at=execution.completed_at,
             logs=None,  # Fetched separately via /logs endpoint
             variables=execution.variables if is_admin else None,
-            session_id=str(execution.session_id) if execution.session_id else None,
             # ROI economics
             time_saved=execution.time_saved or 0,
             value=float(execution.value or 0),
@@ -798,12 +848,13 @@ async def create_execution(
     form_id: str | None = None,
     api_key_id: str | None = None,
     status: ExecutionStatus = ExecutionStatus.RUNNING,
-    is_local_execution: bool = False,
     execution_model: str | None = None,
     workflow_id: str | None = None,
     solution_deployment_id: str | None = None,
     session: "AsyncSession | None" = None,
     check_existing: bool = True,
+    *,
+    lineage: dict[str, str] | None,
 ) -> None:
     """
     Create a new execution record in PostgreSQL.
@@ -831,11 +882,11 @@ async def create_execution(
             form_id=form_id,
             api_key_id=api_key_id,
             status=status,
-            is_local_execution=is_local_execution,
             execution_model=execution_model,
             workflow_id=workflow_id,
             solution_deployment_id=solution_deployment_id,
             check_existing=check_existing,
+            lineage=lineage,
         )
 
     if session is not None:

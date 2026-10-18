@@ -1,4 +1,10 @@
-import { useEffect, useRef, useState, type RefObject } from "react";
+import {
+	useEffect,
+	useRef,
+	useState,
+	type ReactNode,
+	type RefObject,
+} from "react";
 import {
 	AlertDialog,
 	AlertDialogCancel,
@@ -12,6 +18,88 @@ import { Button } from "@/components/ui/button";
 import { getErrorMessage } from "@/lib/api-error";
 import { useDialogReturnFocus } from "@/hooks/useDialogReturnFocus";
 
+type Mode = "disable" | "delete" | "delete-identity" | "reset-mfa" | "sign-out";
+
+const COPY: Record<
+	Mode,
+	{
+		title: string;
+		description: (name: string) => ReactNode;
+		errorTitle: string;
+		action: string;
+		pending: string;
+		destructive: boolean;
+	}
+> = {
+	disable: {
+		title: "Disable User",
+		description: (name) => (
+			<>
+				Disable “{name}”? They will lose access to the platform. You can
+				re-enable them later.
+			</>
+		),
+		errorTitle: "User could not be disabled",
+		action: "Disable",
+		pending: "Disabling…",
+		destructive: true,
+	},
+	delete: {
+		title: "Permanently Delete User",
+		description: (name) => (
+			<>
+				Permanently delete “{name}”? This cannot be undone. The user and
+				their associated data will be removed.
+			</>
+		),
+		errorTitle: "User could not be deleted",
+		action: "Permanently Delete",
+		pending: "Deleting…",
+		destructive: true,
+	},
+	"delete-identity": {
+		title: "Delete Identity",
+		description: (name) => (
+			<>
+				Permanently delete “{name}”? This cannot be undone. An identity
+				that workflows run as can't be deleted until they run as
+				another.
+			</>
+		),
+		errorTitle: "Identity could not be deleted",
+		action: "Delete Identity",
+		pending: "Deleting…",
+		destructive: true,
+	},
+	"reset-mfa": {
+		title: "Reset MFA",
+		description: (name) => (
+			<>
+				Removes {name}’s authenticator app, recovery codes, passkeys and
+				remembered devices, and signs them out everywhere. They’ll set
+				up MFA again at their next sign-in.
+			</>
+		),
+		errorTitle: "MFA could not be reset",
+		action: "Reset MFA",
+		pending: "Resetting…",
+		destructive: true,
+	},
+	"sign-out": {
+		title: "Sign Out of All Devices",
+		description: (name) => (
+			<>
+				Signs {name} out on every device. They can sign in again right
+				away.
+			</>
+		),
+		errorTitle: "User could not be signed out",
+		action: "Sign Out Everywhere",
+		pending: "Signing out…",
+		destructive: false,
+	},
+};
+
 export function UserAccountActionDialog({
 	mode,
 	name,
@@ -19,7 +107,7 @@ export function UserAccountActionDialog({
 	onConfirm,
 	returnFocusRef,
 }: {
-	mode: "disable" | "delete";
+	mode: Mode;
 	name: string;
 	onOpenChange: (open: boolean) => void;
 	onConfirm: () => Promise<void>;
@@ -30,7 +118,7 @@ export function UserAccountActionDialog({
 	const busy = useRef(false);
 	const errorRef = useRef<HTMLDivElement>(null);
 	const returnFocus = useDialogReturnFocus(returnFocusRef, true);
-	const deleting = mode === "delete";
+	const copy = COPY[mode];
 	useEffect(() => {
 		if (error) {
 			errorRef.current?.focus();
@@ -71,22 +159,9 @@ export function UserAccountActionDialog({
 				}}
 			>
 				<AlertDialogHeader>
-					<AlertDialogTitle>
-						{deleting ? "Permanently delete user" : "Disable user"}
-					</AlertDialogTitle>
+					<AlertDialogTitle>{copy.title}</AlertDialogTitle>
 					<AlertDialogDescription className="[overflow-wrap:anywhere]">
-						{deleting ? (
-							<>
-								Permanently delete “{name}”? This cannot be
-								undone. The user and their associated data will
-								be removed.
-							</>
-						) : (
-							<>
-								Disable “{name}”? They will lose access to the
-								platform. You can re-enable them later.
-							</>
-						)}
+						{copy.description(name)}
 					</AlertDialogDescription>
 				</AlertDialogHeader>
 				{error && (
@@ -97,9 +172,7 @@ export function UserAccountActionDialog({
 						className="rounded-[var(--bf-radius-surface)] border border-destructive/30 bg-destructive/5 p-3 text-sm outline-none [overflow-wrap:anywhere]"
 					>
 						<p className="font-medium text-destructive">
-							{deleting
-								? "User could not be deleted"
-								: "User could not be disabled"}
+							{copy.errorTitle}
 						</p>
 						<p className="mt-1 text-muted-foreground">{error}</p>
 					</div>
@@ -109,18 +182,12 @@ export function UserAccountActionDialog({
 						Cancel
 					</AlertDialogCancel>
 					<Button
-						variant="destructive"
+						variant={copy.destructive ? "destructive" : "default"}
 						disabled={pending}
 						className="min-h-11"
 						onClick={() => void confirm()}
 					>
-						{pending
-							? deleting
-								? "Deleting…"
-								: "Disabling…"
-							: deleting
-								? "Permanently delete"
-								: "Disable"}
+						{pending ? copy.pending : copy.action}
 					</Button>
 				</AlertDialogFooter>
 			</AlertDialogContent>

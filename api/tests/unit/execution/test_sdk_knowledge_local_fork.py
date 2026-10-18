@@ -50,7 +50,7 @@ class _FakeEmbedder:
 def _patch_embedder():
     """Stub the provider seam for every in-process socket request."""
     return patch(
-        "src.services.embeddings.get_embedding_client",
+        "shared.sdk_knowledge.embeddings_factory_module.get_embedding_client",
         new=AsyncMock(return_value=_FakeEmbedder()),
     )
 
