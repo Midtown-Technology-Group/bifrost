@@ -85,6 +85,12 @@ ordinary device-grant holder without a home. Empty objects are valid. The
 bridge checks exact permission/boundary sets and unchanged original identity,
 membership and namespace state. The segment must share one transaction.
 
+The earlier incoming system-account guard also refuses legacy memberships or
+a legacy Admin flag on the canonical system account under the same write
+fence. It never deletes those memberships or guesses an authority conversion.
+The supported system-account shape has neither and upgrades without an
+additional role or boundary.
+
 The physical `roles.permissions` column is retained, unmapped and frozen
 against normal runtime writes for one release. A private migration-owned
 rollback record retains original JSON, fingerprints and created rows. Public
