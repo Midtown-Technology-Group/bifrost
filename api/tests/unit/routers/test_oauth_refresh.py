@@ -2,7 +2,9 @@
 
 import pytest
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 from unittest.mock import MagicMock, AsyncMock, patch
+from uuid import uuid4
 
 
 class TestOAuthRefreshClientCredentials:
@@ -171,6 +173,7 @@ class TestOAuthRefreshClientCredentials:
         from src.routers.oauth_connections import oauth_callback
 
         provider = MagicMock()
+        provider.id = uuid4()
         provider.provider_name = "Microsoft CSP"
         provider.token_url = "https://login.microsoftonline.com/common/oauth2/v2.0/token"
         provider.client_id = "test-client-id"
@@ -192,8 +195,24 @@ class TestOAuthRefreshClientCredentials:
             redirect_uri="https://app.example.com/oauth/callback/test",
             organization_id=None,
         )
+        user = SimpleNamespace(user_id=uuid4())
 
         with (
+            patch(
+                "src.routers.oauth_connections.decode_state",
+                return_value={
+                    "flow": "connection",
+                    "provider_id": str(provider.id),
+                    "user_id": str(user.user_id),
+                    "organization_id": None,
+                    "redirect_uri": request.redirect_uri,
+                    "nonce": "nonce-1",
+                },
+            ),
+            patch(
+                "src.routers.oauth_connections.consume_nonce",
+                new=AsyncMock(return_value=True),
+            ),
             patch("src.repositories.oauth.OAuthProviderRepository.get_by_connection_name", new=AsyncMock(return_value=provider)),
             patch("src.repositories.oauth.OAuthProviderRepository.store_token", new=AsyncMock()),
             patch("src.routers.oauth_connections.get_url_resolution_defaults", new=AsyncMock(return_value={})),
@@ -214,7 +233,7 @@ class TestOAuthRefreshClientCredentials:
                 connection_name="Microsoft CSP",
                 request=request,
                 ctx=ctx,
-                user=MagicMock(),
+                user=user,
             )
 
         assert result.success is True
@@ -230,6 +249,7 @@ class TestOAuthRefreshClientCredentials:
         from src.routers.oauth_connections import oauth_callback
 
         provider = MagicMock()
+        provider.id = uuid4()
         provider.provider_name = "NinjaOne"
         provider.provider_metadata = {"omit_token_exchange_scope": True}
         provider.token_url = "https://app.ninjarmm.com/oauth/token"
@@ -248,8 +268,24 @@ class TestOAuthRefreshClientCredentials:
             redirect_uri="https://app.example.com/oauth/callback/NinjaOne",
             organization_id=None,
         )
+        user = SimpleNamespace(user_id=uuid4())
 
         with (
+            patch(
+                "src.routers.oauth_connections.decode_state",
+                return_value={
+                    "flow": "connection",
+                    "provider_id": str(provider.id),
+                    "user_id": str(user.user_id),
+                    "organization_id": None,
+                    "redirect_uri": request.redirect_uri,
+                    "nonce": "nonce-1",
+                },
+            ),
+            patch(
+                "src.routers.oauth_connections.consume_nonce",
+                new=AsyncMock(return_value=True),
+            ),
             patch("src.repositories.oauth.OAuthProviderRepository.get_by_connection_name", new=AsyncMock(return_value=provider)),
             patch("src.repositories.oauth.OAuthProviderRepository.store_token", new=AsyncMock()),
             patch("src.routers.oauth_connections.get_url_resolution_defaults", new=AsyncMock(return_value={})),
@@ -270,7 +306,7 @@ class TestOAuthRefreshClientCredentials:
                 connection_name="NinjaOne",
                 request=request,
                 ctx=ctx,
-                user=MagicMock(),
+                user=user,
             )
 
         assert result.success is True
