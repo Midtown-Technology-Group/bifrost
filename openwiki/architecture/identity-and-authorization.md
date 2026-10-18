@@ -5,7 +5,7 @@ description: How Bifrost validates typed credentials, builds principals, resolve
 tags: [authentication, authorization, multi-tenancy, security]
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-18T02:14:28.318Z
+    at: 2026-10-18T10:48:47.021Z
 sources:
   - id: openwiki-source-f15d5434da58dac0df4b43d3
     resource: repo://api/shared/file_policies.py
@@ -17,9 +17,21 @@ sources:
     resource: repo://api/src/core/org_filter.py
   - id: openwiki-source-2c27822728321bf9972156d7
     resource: repo://api/src/repositories/org_scoped.py
+  - id: openwiki-source-f8ff6c0fbadd604974c3e944
+    resource: repo://api/src/repositories/workflows.py
+  - id: openwiki-source-e21a1573760c1694515a2ac3
+    resource: repo://api/src/routers/auth.py
+  - id: openwiki-source-f5da7400d57c95edf47b3954
+    resource: repo://api/src/routers/tools.py
+  - id: openwiki-source-b3a7ed3e17a90f01350470f5
+    resource: repo://api/tests/e2e/platform/test_external_users.py
   - id: openwiki-source-5f577523bf6055da91bd4cc7
     resource: repo://api/tests/unit/test_org_scoping_enforcement.py
-generated: { by: "bifrost-atlas", at: "2026-10-18T02:14:28.318Z" }
+  - id: openwiki-source-fbaf21473f7ee6fbb0c92b51
+    resource: repo://client/src/contexts/AuthContext.test.tsx
+  - id: openwiki-source-6eed354fc700c07823d765c6
+    resource: repo://client/src/contexts/AuthContext.tsx
+generated: { by: "bifrost-atlas", at: "2026-10-18T10:48:47.021Z" }
 ---
 
 # Identity, Tenant Isolation, and Authorization
@@ -30,6 +42,8 @@ Bifrost authorization is a chain: credential validation creates a `UserPrincipal
 
 REST authentication accepts a bearer access token or browser `access_token` / typed embed-token cookie. Token decoding checks the expected access-token type and issuer/audience; REST rejects MCP-scoped and actor-scoped tokens. The token must identify a user and include the required email claim. A regular non-embed user must carry a valid organization ID, while a superuser may have no organization as the global system account. Invalid or wrong-purpose credentials fail closed instead of being reused across protocol boundaries.
 
+Browser logout first calls `POST /auth/logout` with the same-origin refresh cookie and CSRF header when available; the server revokes the refresh-token session. The client clears local authentication only after success, retries once after refreshing a 401 response, and retains local state if logout still fails (`client/src/contexts/AuthContext.tsx`, `api/src/routers/auth.py`).
+
 `UserPrincipal` carries organization and superuser identity alongside typed flags for embeds, external principals, engine attempts, delegated identity, and service identity. Those flags matter because an internal engine token transports execution authority while delegated identity supplies the caller context for authorization and audit. `get_execution_context` verifies renewable engine credentials against an active attempt and loads current role IDs/names from the role cache (database fallback on cache miss) before execution-time policy evaluation.
 
 ## Resolving tenant scope
@@ -37,6 +51,8 @@ REST authentication accepts a bearer access token or browser `access_token` / ty
 List and write helpers do not trust a request's `scope` value for an ordinary organization user. `resolve_org_filter` lets a superuser request all organizations, global-only rows, or one organization; ordinary users always see their own organization's rows plus global rows, regardless of a supplied scope. `resolve_target_org` similarly restricts non-bypass callers to their home organization. These rules prevent request parameters from widening tenant access.
 
 For entity lookups, `OrgScopedRepository` centralizes organization-to-global fallback and optional role checks. Name/key lookups choose the organization-specific entity on collision; list operations include visible organization and global rows. Table row policies are a separate gate: they evaluate action rules, default deny when no rule grants access, and compile read filters into SQL. File policies apply a parallel per-path decision. Use the repository and policy services that own the resource rather than writing router-local filters; the enforcement tests detect common bypass patterns.
+
+Workflow-tool catalog listing applies the workflow access gate after organization scope: non-superusers see only tools allowed by their access level and role, while superusers bypass per-row checks. A global tool is only in the candidate scope; global scope alone does not grant an external user access to a role-based tool (`api/src/repositories/workflows.py`, `api/src/repositories/org_scoped.py`, `api/src/routers/tools.py`).
 
 ## Elevated and public boundaries
 
