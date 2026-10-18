@@ -21,6 +21,7 @@ _COMMON_RULES = {
 
 _APP_RULES: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("GET", re.compile(r"^/api/applications/[^/]+$")),
+    ("GET", re.compile(r"^/api/applications/[^/]+/logo$")),
     ("GET", re.compile(r"^/api/applications/[^/]+/render$")),
     ("GET", re.compile(r"^/api/applications/[^/]+/files(?:/.*)?$")),
     ("GET", re.compile(r"^/api/applications/[^/]+/dependencies$")),
