@@ -11,31 +11,27 @@
  * DOCS_CAPTURE_IDS. Empty string if nothing to do (also exit 0).
  */
 import { execFileSync } from "node:child_process";
-import { pathToFileURL } from "node:url";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const MAX_MANIFEST_BYTES = 1024 * 1024;
+const BIFROST_REPO = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
 function parseArgs(argv) {
   const out = { full: false };
   for (let i = 2; i < argv.length; i++) {
     const a = argv[i];
-    if (a === "--docs-repo") out.docsRepo = argv[++i];
-    else if (a === "--bifrost-repo") out.bifrostRepo = argv[++i];
-    else if (a === "--full") out.full = true;
+    if (a === "--full") out.full = true;
     else if (a === "--ids") out.ids = argv[++i];
     else if (a === "-h" || a === "--help") {
       console.log(
-        "usage: decide-captures.mjs --docs-repo <path> --bifrost-repo <path> [--full|--ids id1,id2]",
+        "usage: git show HEAD:screenshots.yaml | decide-captures.mjs [--full|--ids id1,id2]",
       );
       process.exit(0);
     } else {
       console.error(`unknown arg: ${a}`);
       process.exit(2);
     }
-  }
-  if (!out.docsRepo || !out.bifrostRepo) {
-    console.error("--docs-repo and --bifrost-repo are required");
-    process.exit(2);
   }
   return out;
 }
@@ -71,69 +67,25 @@ export function pathChanged(repo, sinceSha, globs) {
   }
 }
 
-function gitOutput(repo, args, options = {}) {
-  return execFileSync("/usr/bin/git", args, {
-    cwd: repo,
-    encoding: "utf8",
-    maxBuffer: MAX_MANIFEST_BYTES + 1,
-    ...options,
-  });
-}
-
-export function readCaptureManifest(docsRepo) {
-  try {
-    gitOutput(docsRepo, ["rev-parse", "--show-toplevel"], { stdio: "ignore" });
-
-    const status = gitOutput(docsRepo, [
-      "status",
-      "--porcelain=v1",
-      "--untracked-files=all",
-      "--",
-      "screenshots.yaml",
-    ]);
-    if (status) {
-      throw new Error("capture manifest must be committed before capture");
-    }
-
-    const entry = gitOutput(docsRepo, [
-      "ls-tree",
-      "HEAD",
-      "--",
-      "screenshots.yaml",
-    ]).trim();
-    if (!/^100(?:644|755) blob [0-9a-f]{40}\tscreenshots\.yaml$/.test(entry)) {
-      throw new Error("capture manifest must be a committed regular file");
-    }
-
-    const size = Number.parseInt(
-      gitOutput(docsRepo, ["cat-file", "-s", "HEAD:screenshots.yaml"]).trim(),
-      10,
-    );
-    if (!Number.isSafeInteger(size) || size > MAX_MANIFEST_BYTES) {
+export async function readCaptureManifest(input) {
+  const chunks = [];
+  let size = 0;
+  for await (const chunk of input) {
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    size += buffer.length;
+    if (size > MAX_MANIFEST_BYTES) {
       throw new Error("capture manifest must be at most 1 MiB");
     }
-
-    return gitOutput(docsRepo, ["show", "HEAD:screenshots.yaml"]);
-  } catch (error) {
-    if (
-      error instanceof Error &&
-      error.message.startsWith("capture manifest")
-    ) {
-      throw error;
-    }
-    throw new Error(
-      "docs repository must be a Git checkout with a committed screenshots.yaml",
-      {
-        cause: error,
-      },
-    );
+    chunks.push(buffer);
   }
+  if (size === 0) throw new Error("capture manifest input is required");
+  return Buffer.concat(chunks, size).toString("utf8");
 }
 
 async function main() {
   const args = parseArgs(process.argv);
   const { load: loadYaml } = await import("js-yaml");
-  const manifest = loadYaml(readCaptureManifest(args.docsRepo));
+  const manifest = loadYaml(await readCaptureManifest(process.stdin));
 
   // External entries (Azure portal, VSCode, etc.) are never candidates.
   const captureable = manifest.entries.filter((e) => !e.external);
@@ -158,7 +110,7 @@ async function main() {
   for (const entry of captureable) {
     const sinceSha = entry.captured_at?.bifrost_sha ?? null;
     const globs = entry.source_globs ?? [];
-    if (pathChanged(args.bifrostRepo, sinceSha, globs)) {
+    if (pathChanged(BIFROST_REPO, sinceSha, globs)) {
       candidates.push(entry.id);
     }
   }

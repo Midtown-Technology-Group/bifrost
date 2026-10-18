@@ -60,13 +60,57 @@ if [[ -d "$DOCS_REPO/.tmp-captures" ]]; then
 fi
 
 echo "=== [1/3] decide-captures ==="
-DECIDE_ARGS=(--docs-repo "$DOCS_REPO" --bifrost-repo "$BIFROST_REPO")
+DECIDE_ARGS=()
 if [[ -n "$IDS" ]]; then
     DECIDE_ARGS+=(--ids "$IDS")
 elif [[ -n "$MODE_FLAG" ]]; then
     DECIDE_ARGS+=("$MODE_FLAG")
 fi
-CAPTURE_IDS="$(node "$SCRIPT_DIR/decide-captures.mjs" "${DECIDE_ARGS[@]}")"
+
+# The selector never receives checkout paths. Validate the operator-selected docs
+# checkout here, then stream the fixed committed blob to the selector on stdin.
+# A minimal environment plus explicit safe Git settings prevents checkout-local
+# configuration from installing an executable fsmonitor or hook for these reads.
+docs_git() {
+    env -i \
+        HOME=/nonexistent \
+        PATH=/usr/bin:/bin \
+        GIT_CONFIG_NOSYSTEM=1 \
+        GIT_CONFIG_GLOBAL=/dev/null \
+        GIT_OPTIONAL_LOCKS=0 \
+        GIT_TERMINAL_PROMPT=0 \
+        /usr/bin/git --no-pager \
+        -c core.fsmonitor=false \
+        -c core.hooksPath=/dev/null \
+        -C "$DOCS_REPO" "$@"
+}
+
+if ! docs_git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    echo "docs repository must be a Git checkout" >&2
+    exit 1
+fi
+
+MANIFEST_STATUS="$(docs_git status --porcelain=v1 --untracked-files=all -- screenshots.yaml)"
+if [[ -n "$MANIFEST_STATUS" ]]; then
+    echo "capture manifest must be committed before capture" >&2
+    exit 1
+fi
+
+MANIFEST_ENTRY="$(docs_git ls-tree HEAD -- screenshots.yaml)"
+if [[ ! "$MANIFEST_ENTRY" =~ ^100(644|755)\ blob\ [0-9a-f]{40}$'\t'screenshots\.yaml$ ]]; then
+    echo "capture manifest must be a committed regular file" >&2
+    exit 1
+fi
+
+MANIFEST_SIZE="$(docs_git cat-file -s HEAD:screenshots.yaml)"
+if [[ ! "$MANIFEST_SIZE" =~ ^[0-9]+$ ]] || \
+    (( ${#MANIFEST_SIZE} > 7 )) || \
+    (( 10#$MANIFEST_SIZE > 1024 * 1024 )); then
+    echo "capture manifest must be at most 1 MiB" >&2
+    exit 1
+fi
+
+CAPTURE_IDS="$(docs_git show HEAD:screenshots.yaml | node "$SCRIPT_DIR/decide-captures.mjs" "${DECIDE_ARGS[@]}")"
 
 if [[ -z "$CAPTURE_IDS" ]]; then
     echo "No entries to capture (everything is up to date)."

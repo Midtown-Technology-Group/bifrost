@@ -1,17 +1,17 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
-import {
-  existsSync,
-  mkdtempSync,
-  rmSync,
-  symlinkSync,
-  writeFileSync,
-} from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { Readable } from "node:stream";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 
 import { pathChanged, readCaptureManifest } from "./decide-captures.mjs";
+
+const scriptPath = fileURLToPath(
+  new URL("./decide-captures.mjs", import.meta.url),
+);
 
 function fixtureRepo() {
   const repo = mkdtempSync(join(tmpdir(), "decide-captures-"));
@@ -71,29 +71,36 @@ test("changed matching path is detected", () => {
   }
 });
 
-test("capture manifest is read from the committed Git blob", () => {
-  const { repo } = fixtureRepo();
-  try {
-    assert.equal(readCaptureManifest(repo), "entries: []\n");
-    writeFileSync(join(repo, "screenshots.yaml"), "entries: [uncommitted]\n");
-    assert.throws(() => readCaptureManifest(repo), /must be committed/);
-  } finally {
-    rmSync(repo, { recursive: true, force: true });
-  }
+test("capture manifest is read from bounded standard input", async () => {
+  assert.equal(
+    await readCaptureManifest(Readable.from(["entries: []\n"])),
+    "entries: []\n",
+  );
 });
 
-test("capture manifest cannot be a committed symlink", () => {
-  const { repo } = fixtureRepo();
-  try {
-    rmSync(join(repo, "screenshots.yaml"));
-    symlinkSync("tracked.txt", join(repo, "screenshots.yaml"));
-    execFileSync("git", ["add", "screenshots.yaml"], { cwd: repo });
-    execFileSync("git", ["commit", "-qm", "replace manifest with symlink"], {
-      cwd: repo,
-    });
-    assert.throws(() => readCaptureManifest(repo), /committed regular file/);
-  } finally {
-    rmSync(repo, { recursive: true, force: true });
+test("capture manifest input is required and limited to 1 MiB", async () => {
+  await assert.rejects(
+    readCaptureManifest(Readable.from([])),
+    /manifest input is required/,
+  );
+  await assert.rejects(
+    readCaptureManifest(Readable.from([Buffer.alloc(1024 * 1024 + 1)])),
+    /at most 1 MiB/,
+  );
+});
+
+test("selector rejects checkout paths from CLI input", () => {
+  for (const option of ["--docs-repo", "--bifrost-repo"]) {
+    const result = spawnSync(
+      process.execPath,
+      [scriptPath, option, "/tmp/other"],
+      {
+        encoding: "utf8",
+        input: "entries: []\n",
+      },
+    );
+    assert.equal(result.status, 2);
+    assert.match(result.stderr, new RegExp(`unknown arg: ${option}`));
   }
 });
 
