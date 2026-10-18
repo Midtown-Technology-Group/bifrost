@@ -41,13 +41,16 @@ def test_dependency_signature_path_and_handler_changes_fail(before: str, after: 
     assert proof.normalized(BEFORE) != proof.normalized(AFTER.replace(before, after))
 
 
-@pytest.mark.parametrize("reference", ["", "--output=/tmp/unreviewed", "-c", "HEAD\n--help", "HEAD other"])
+@pytest.mark.parametrize("reference", [
+    "", "--output=/tmp/unreviewed", "-c", "HEAD\n--help", "HEAD other",
+    "HEAD^{tree}", "HEAD~1", "HEAD;touch", "refs/heads/a:b",
+])
 def test_base_reference_rejects_options_before_starting_git(monkeypatch, reference: str) -> None:
     def unexpected_command(*args, **kwargs):
         raise AssertionError("Unsafe reference reached Git")
 
     monkeypatch.setattr(proof.subprocess, "check_output", unexpected_command)
-    with pytest.raises(ValueError, match="non-option"):
+    with pytest.raises(ValueError, match="named Git reference"):
         proof.resolve_base_ref(reference)
 
 

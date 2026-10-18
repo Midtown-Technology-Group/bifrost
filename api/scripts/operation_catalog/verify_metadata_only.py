@@ -73,8 +73,8 @@ def route_dependencies(source: str) -> list[dict[str, object]]:
 
 def resolve_base_ref(base_ref: str) -> str:
     """Resolve a single commit expression without allowing Git option injection."""
-    if not base_ref or base_ref.startswith("-") or any(char.isspace() for char in base_ref):
-        raise ValueError("The base must be one non-option Git commit reference")
+    if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_./-]{0,254}", base_ref) is None:
+        raise ValueError("The base must be a named Git reference or commit SHA")
     resolved = subprocess.check_output(
         ["git", "rev-parse", "--verify", "--end-of-options", f"{base_ref}^{{commit}}"],
         cwd=REPO_ROOT,

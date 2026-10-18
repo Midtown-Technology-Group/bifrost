@@ -24,7 +24,8 @@ async def test_teams_receipt_index_preserves_all_history_unknown_receipts(
             WHERE n.nspname = 'public' AND c.relname = 'ix_executions_teams_action_receipt'
         """))
     ).mappings().one()
-    assert index["indisvalid"] is True and index["indisready"] is True
+    assert index["indisvalid"] is True
+    assert index["indisready"] is True
     assert index["predicate"] == "(execution_context ? 'teams_action_completion'::text)"
 
     # Use ordinary test-DB rows and the default planner, never enable_seqscan=off.

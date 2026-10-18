@@ -10,7 +10,8 @@ import pytest
 def load_migration():
     path = Path(__file__).resolve().parents[2] / "alembic/versions/20261017_teams_receipt_index.py"
     spec = importlib.util.spec_from_file_location("teams_receipt_index_migration", path)
-    assert spec is not None and spec.loader is not None
+    assert spec is not None
+    assert spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
@@ -40,11 +41,12 @@ def test_concurrent_index_bounds_and_resets_even_after_failure(monkeypatch, dire
                 raise RuntimeError("simulated DDL failure")
 
     monkeypatch.setattr(module, "op", Recorder())
+    operation = getattr(module, direction)
     if fail_ddl:
         with pytest.raises(RuntimeError, match="simulated DDL failure"):
-            getattr(module, direction)()
+            operation()
     else:
-        getattr(module, direction)()
+        operation()
 
     assert calls[:3] == ["enter", "SET lock_timeout = '5s'", "SET statement_timeout = '30min'"]
     assert calls[-3:] == ["RESET statement_timeout", "RESET lock_timeout", "exit"]

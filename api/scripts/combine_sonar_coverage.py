@@ -12,6 +12,18 @@ RC_FILE = Path("/app/.coveragerc.sonar")
 AUDIT_FILE = Path("/bifrost-results/sonar-runtime-reports.json")
 
 
+def archive_reports(reports: list[Path]) -> None:
+    archive = AUDIT_FILE.parent / "sonar-runtime-data"
+    if archive.is_symlink():
+        raise ValueError("Unsafe runtime coverage archive path")
+    archive.mkdir(exist_ok=True)
+    for report in reports:
+        destination = archive / report.name
+        if destination.is_symlink():
+            raise ValueError("Unsafe runtime coverage archive file")
+        shutil.copyfile(report, destination)
+
+
 def main() -> int:
     if not DATA_FILE.is_file() or DATA_FILE.is_symlink():
         raise ValueError("Missing actual unit/tool coverage data")
@@ -38,15 +50,7 @@ def main() -> int:
         raise ValueError("Unsafe runtime coverage audit path")
     AUDIT_FILE.write_text(json.dumps({"version": 1, "reports": audit}, indent=2) + "\n")
     if empty or incompatible:
-        archive = AUDIT_FILE.parent / "sonar-runtime-data"
-        if archive.is_symlink():
-            raise ValueError("Unsafe runtime coverage archive path")
-        archive.mkdir(exist_ok=True)
-        for report in reports:
-            destination = archive / report.name
-            if destination.is_symlink():
-                raise ValueError("Unsafe runtime coverage archive file")
-            shutil.copyfile(report, destination)
+        archive_reports(reports)
     if empty:
         raise ValueError(f"Empty actual runtime coverage data: {empty!r}")
     if incompatible:
