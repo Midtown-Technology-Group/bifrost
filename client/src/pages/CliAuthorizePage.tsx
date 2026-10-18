@@ -51,10 +51,13 @@ async function responseDetail(response: Response, fallback: string) {
 function isSafeCliRedirect(value: string): boolean {
 	try {
 		const target = new URL(value);
+		// URL normalizes an explicitly supplied default port to an empty string.
+		const hasExplicitDefaultPort =
+			/^http:\/\/(?:127\.0\.0\.1|localhost):0*80(?:[/?#]|$)/i.test(value);
 		return (
 			target.protocol === "http:" &&
 			["127.0.0.1", "localhost"].includes(target.hostname) &&
-			Boolean(target.port)
+			(Boolean(target.port) || hasExplicitDefaultPort)
 		);
 	} catch {
 		return false;

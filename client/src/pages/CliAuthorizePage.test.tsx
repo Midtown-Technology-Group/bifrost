@@ -132,6 +132,76 @@ describe("CliAuthorizePage", () => {
 		);
 	});
 
+	it.each(["localhost", "127.0.0.1"])(
+		"accepts an explicit default port for the %s callback",
+		async (hostname) => {
+			const redirectTo = vi.fn();
+			const redirectUrl = `http://${hostname}:80/callback?code=code-1&state=state-1`;
+			const fetchMock = vi
+				.fn(
+					async (
+						_input: RequestInfo | URL,
+						_init?: RequestInit,
+					): Promise<Response> =>
+						pendingResponse as unknown as Response,
+				)
+				.mockResolvedValueOnce(pendingResponse as unknown as Response)
+				.mockResolvedValueOnce({
+					ok: true,
+					status: 200,
+					json: async () => ({ redirect_url: redirectUrl }),
+				} as unknown as Response);
+			vi.stubGlobal("fetch", fetchMock);
+
+			const { user } = renderWithProviders(
+				<CliAuthorizePage redirectTo={redirectTo} />,
+				{ initialEntries: ["/cli/authorize?transaction_id=txn-1"] },
+			);
+			await screen.findByText("http://127.0.0.1:49152/callback");
+			await user.click(
+				screen.getByRole("button", { name: /approve cli access/i }),
+			);
+
+			await waitFor(() =>
+				expect(redirectTo).toHaveBeenCalledWith(redirectUrl),
+			);
+		},
+	);
+
+	it("refuses a localhost callback without an explicit port", async () => {
+		const redirectTo = vi.fn();
+		const fetchMock = vi
+			.fn(
+				async (
+					_input: RequestInfo | URL,
+					_init?: RequestInit,
+				): Promise<Response> => pendingResponse as unknown as Response,
+			)
+			.mockResolvedValueOnce(pendingResponse as unknown as Response)
+			.mockResolvedValueOnce({
+				ok: true,
+				status: 200,
+				json: async () => ({
+					redirect_url: "http://localhost/callback?code=code-1",
+				}),
+			} as unknown as Response);
+		vi.stubGlobal("fetch", fetchMock);
+
+		const { user } = renderWithProviders(
+			<CliAuthorizePage redirectTo={redirectTo} />,
+			{ initialEntries: ["/cli/authorize?transaction_id=txn-1"] },
+		);
+		await screen.findByText("http://127.0.0.1:49152/callback");
+		await user.click(
+			screen.getByRole("button", { name: /approve cli access/i }),
+		);
+
+		expect(
+			await screen.findByText(/not a safe localhost url/i),
+		).toBeInTheDocument();
+		expect(redirectTo).not.toHaveBeenCalled();
+	});
+
 	it("returns an unauthenticated visitor through login with the full request", async () => {
 		authState.isAuthenticated = false;
 		const fetchMock = vi.fn();
