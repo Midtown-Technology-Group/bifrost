@@ -278,7 +278,7 @@ class WorkflowRepository(OrgScopedRepository[Workflow]):
         type: WorkflowType,
         active_only: bool = True,
     ) -> Sequence[Workflow]:
-        """Get workflows filtered by type with cascade scoping.
+        """Get accessible workflows filtered by type with cascade scoping.
 
         Uses the repository's org_id for cascade scoping (org + global).
 
@@ -287,7 +287,7 @@ class WorkflowRepository(OrgScopedRepository[Workflow]):
             active_only: If True, only return active workflows
 
         Returns:
-            Sequence of workflows matching the type
+            Sequence of accessible workflows matching the type
         """
         stmt = select(Workflow).where(Workflow.type == type)
         if active_only:
@@ -295,7 +295,16 @@ class WorkflowRepository(OrgScopedRepository[Workflow]):
         stmt = self._apply_cascade_scope(stmt)
         stmt = stmt.order_by(Workflow.name)
         result = await self.session.execute(stmt)
-        return list(result.scalars().all())
+        workflows = list(result.scalars().all())
+
+        if self.is_superuser:
+            return workflows
+
+        accessible: list[Workflow] = []
+        for workflow in workflows:
+            if await self._can_access_entity(workflow):
+                accessible.append(workflow)
+        return accessible
 
     async def get_data_providers(
         self,
@@ -323,7 +332,7 @@ class WorkflowRepository(OrgScopedRepository[Workflow]):
         filter_org_id: UUID | None,
         active_only: bool = True,
     ) -> Sequence[Workflow]:
-        """List workflow tools for an already-resolved organization filter."""
+        """List accessible workflow tools for a resolved organization filter."""
         stmt = (
             select(Workflow)
             .where(Workflow.type == "tool")
@@ -354,7 +363,16 @@ class WorkflowRepository(OrgScopedRepository[Workflow]):
 
         stmt = stmt.order_by(Workflow.name)
         result = await self.session.execute(stmt)
-        return list(result.scalars().all())
+        workflows = list(result.scalars().all())
+
+        if self.is_superuser:
+            return workflows
+
+        accessible: list[Workflow] = []
+        for workflow in workflows:
+            if await self._can_access_entity(workflow):
+                accessible.append(workflow)
+        return accessible
 
     async def get_workflows_only(
         self,
