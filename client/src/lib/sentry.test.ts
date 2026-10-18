@@ -135,6 +135,18 @@ describe("configureSentry", () => {
 			start_timestamp: 1,
 			trace_id: "trace",
 		};
+		const standaloneSpan = {
+			data: {
+				"http.method": "GET",
+				"http.url":
+					"https://portal.example/oauth/callback?code=standalone-secret",
+				"url.query": "code=standalone-secret",
+			},
+			description: "GET /oauth/callback?code=standalone-secret",
+			span_id: "standalone-span",
+			start_timestamp: 1,
+			trace_id: "trace",
+		};
 		const transaction = {
 			type: "transaction" as const,
 			transaction: "/oauth/callback?code=secret-code",
@@ -156,7 +168,7 @@ describe("configureSentry", () => {
 			transaction,
 			{},
 		) as typeof transaction;
-		const scrubbedSpan = options.beforeSendSpan?.(span);
+		const scrubbedSpan = options.beforeSendSpan?.(standaloneSpan);
 
 		expect(scrubbedTransaction.transaction).toBe("/oauth/callback");
 		expect(scrubbedTransaction.spans[0]).toMatchObject({
@@ -172,10 +184,17 @@ describe("configureSentry", () => {
 		expect(scrubbedTransaction.contexts.trace.data).toEqual({
 			"url.full": "https://portal.example/oauth/callback",
 		});
+		expect(scrubbedSpan).toMatchObject({
+			description: "GET /oauth/callback",
+			data: {
+				"http.method": "GET",
+				"http.url": "https://portal.example/oauth/callback",
+			},
+		});
 		expect(scrubbedSpan?.data).not.toHaveProperty("url.query");
 		expect(
 			JSON.stringify({ scrubbedTransaction, scrubbedSpan }),
-		).not.toMatch(/secret-code|secret-state/);
+		).not.toMatch(/secret-code|secret-state|standalone-secret/);
 	});
 
 	it("omits blank release values", () => {
