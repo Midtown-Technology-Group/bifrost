@@ -95,6 +95,8 @@ CI_IMAGE_BUILD_STEPS = (
     "Build Playwright CI test image without registry credentials",
 )
 CI_IMAGE_PUBLISH_STEP = "Publish fixed CI test image references"
+DOCKER_LOGIN_COMMAND = "docker login"
+DOCKER_LOGOUT_COMMAND = "docker logout"
 
 
 def _repo_root() -> Path:
@@ -200,15 +202,15 @@ def _check_image_consumer_job(
         failures.append(
             f"{location}: the pre-checkout cache pull must receive the read-only GitHub token."
         )
-    required_commands = ("docker login", "docker pull", "docker logout")
+    required_commands = (DOCKER_LOGIN_COMMAND, "docker pull", DOCKER_LOGOUT_COMMAND)
     pull_text = "\n".join(pull_step)
     if any(command not in pull_text for command in required_commands):
         failures.append(
             f"{location}: the pre-checkout cache pull must login, pull, and logout inline."
         )
     elif not (
-        pull_text.index("docker logout")
-        < pull_text.index("docker login")
+        pull_text.index(DOCKER_LOGOUT_COMMAND)
+        < pull_text.index(DOCKER_LOGIN_COMMAND)
         < pull_text.index("docker pull")
     ):
         failures.append(
@@ -229,6 +231,65 @@ def _check_image_consumer_job(
                 f"{location}: line {offset + 1} exposes the GitHub token outside "
                 "the pre-checkout cache pull."
             )
+    return failures
+
+
+def _check_untrusted_image_builds(
+    *, location: str, builds: list[tuple[int, list[str]]]
+) -> list[str]:
+    """Ensure PR-controlled image builds cannot publish or receive credentials."""
+    failures: list[str] = []
+    for name, (_, build_step) in zip(CI_IMAGE_BUILD_STEPS, builds, strict=True):
+        build_text = "\n".join(build_step)
+        if "load: true" not in build_text or "push: false" not in build_text:
+            failures.append(
+                f"{location}:{name}: untrusted image builds must load locally and must not push."
+            )
+        if "GHCR_TOKEN" in build_text or "GITHUB_TOKEN" in build_text:
+            failures.append(
+                f"{location}:{name}: package credentials must not reach untrusted image builds."
+            )
+    return failures
+
+
+def _check_fixed_reference_publish_step(
+    *, location: str, publish_step: list[str]
+) -> list[str]:
+    """Validate the sole package-authenticated fixed-reference publish step."""
+    failures: list[str] = []
+    publish_text = "\n".join(publish_step)
+    if not any(
+        line.strip()
+        == "GHCR_TOKEN: ${{ secrets.GHCR_TOKEN || secrets.GITHUB_TOKEN }}"
+        for line in publish_step
+    ):
+        failures.append(
+            f"{location}: only the final fixed-reference publish step may receive the package token."
+        )
+
+    required_commands = (DOCKER_LOGOUT_COMMAND, DOCKER_LOGIN_COMMAND, "docker push")
+    if any(command not in publish_text for command in required_commands):
+        failures.append(
+            f"{location}: the fixed-reference publish step must login, push, and logout inline."
+        )
+    elif not (
+        publish_text.index(DOCKER_LOGOUT_COMMAND)
+        < publish_text.index(DOCKER_LOGIN_COMMAND)
+        < publish_text.index("docker push")
+    ):
+        failures.append(
+            f"{location}: logout cleanup must be armed before registry login and pushes."
+        )
+
+    required_fixed_refs = (
+        '[[ "$GITHUB_SHA" =~ ^[0-9a-f]{40}$ ]]',
+        'for image in "$CI_API_TEST_IMAGE" "$CI_CLIENT_TEST_IMAGE" "$CI_PLAYWRIGHT_TEST_IMAGE"',
+        'remote_ref="$REGISTRY/$image:sha-$GITHUB_SHA"',
+    )
+    if any(required not in publish_text for required in required_fixed_refs):
+        failures.append(
+            f"{location}: the publish step must validate and use fixed exact-SHA image refs."
+        )
     return failures
 
 
@@ -265,49 +326,15 @@ def _check_image_publisher_job(
     if not any(line.strip() == "persist-credentials: false" for line in checkout_step):
         failures.append(f"{location}: checkout must set persist-credentials: false.")
 
-    for name, (_, build_step) in zip(CI_IMAGE_BUILD_STEPS, typed_builds, strict=True):
-        build_text = "\n".join(build_step)
-        if "load: true" not in build_text or "push: false" not in build_text:
-            failures.append(
-                f"{location}:{name}: untrusted image builds must load locally and must not push."
-            )
-        if "GHCR_TOKEN" in build_text or "GITHUB_TOKEN" in build_text:
-            failures.append(
-                f"{location}:{name}: package credentials must not reach untrusted image builds."
-            )
-
-    publish_text = "\n".join(publish_step)
-    if not any(
-        line.strip()
-        == "GHCR_TOKEN: ${{ secrets.GHCR_TOKEN || secrets.GITHUB_TOKEN }}"
-        for line in publish_step
-    ):
-        failures.append(
-            f"{location}: only the final fixed-reference publish step may receive the package token."
+    failures.extend(
+        _check_untrusted_image_builds(location=location, builds=typed_builds)
+    )
+    failures.extend(
+        _check_fixed_reference_publish_step(
+            location=location,
+            publish_step=publish_step,
         )
-    required_commands = ("docker logout", "docker login", "docker push")
-    if any(command not in publish_text for command in required_commands):
-        failures.append(
-            f"{location}: the fixed-reference publish step must login, push, and logout inline."
-        )
-    elif not (
-        publish_text.index("docker logout")
-        < publish_text.index("docker login")
-        < publish_text.index("docker push")
-    ):
-        failures.append(
-            f"{location}: logout cleanup must be armed before registry login and pushes."
-        )
-    for required in (
-        '[[ "$GITHUB_SHA" =~ ^[0-9a-f]{40}$ ]]',
-        'for image in "$CI_API_TEST_IMAGE" "$CI_CLIENT_TEST_IMAGE" "$CI_PLAYWRIGHT_TEST_IMAGE"',
-        'remote_ref="$REGISTRY/$image:sha-$GITHUB_SHA"',
-    ):
-        if required not in publish_text:
-            failures.append(
-                f"{location}: the publish step must validate and use fixed exact-SHA image refs."
-            )
-            break
+    )
 
     if any(line.startswith("      - ") for line in block[publish_index + 1 :]):
         failures.append(
