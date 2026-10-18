@@ -1290,15 +1290,16 @@ def get_modules_sync(paths: list[str]) -> dict[str, CachedModule | None]:
                 except (TypeError, json.JSONDecodeError):
                     cached = None
                 if isinstance(cached, dict):
+                    cached_module = cast(CachedModule, cached)
                     if immutable_module:
                         try:
-                            _verify_immutable_module_hash(path, cached)
+                            _verify_immutable_module_hash(path, cached_module)
                         except RuntimeError:
                             pass
                         else:
-                            module = cached
+                            module = cached_module
                     elif _cached_module_matches_generation(
-                        cached, expected_generation
+                        cached_module, expected_generation
                     ):
                         _require_workspace_generation(
                             expected_generation,
@@ -1307,7 +1308,7 @@ def get_modules_sync(paths: list[str]) -> dict[str, CachedModule | None]:
                                 "module batch fallback"
                             ),
                         )
-                        module = cached
+                        module = cached_module
 
             # A lower-priority cache hit cannot outrank a higher-priority
             # candidate that is merely cold in Redis. Exhaust the current
