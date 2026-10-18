@@ -13,6 +13,21 @@ function ContextReader() {
 	return <span data-context-value>{useContext(TestContext)}</span>;
 }
 
+function makeSelectorTextMutable(rules: CSSRuleList): void {
+	for (const rule of Array.from(rules)) {
+		if (rule.type === CSSRule.STYLE_RULE) {
+			const styleRule = rule as CSSStyleRule;
+			Object.defineProperty(styleRule, "selectorText", {
+				configurable: true,
+				writable: true,
+				value: styleRule.selectorText,
+			});
+		}
+		const nested = (rule as CSSRule & { cssRules?: CSSRuleList }).cssRules;
+		if (nested) makeSelectorTextMutable(nested);
+	}
+}
+
 afterEach(() => {
 	document.documentElement.classList.remove("dark");
 	document
@@ -33,6 +48,8 @@ describe("AppStyleBoundary", () => {
 		`;
 		document.head.appendChild(style);
 		if (!style.sheet) throw new Error("Test stylesheet did not parse");
+		// happy-dom exposes selectorText as read-only, unlike browser CSSOM.
+		makeSelectorTextMutable(style.sheet.cssRules);
 
 		adaptDocumentStylesheetForShadowRoot(style.sheet);
 

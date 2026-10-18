@@ -359,13 +359,18 @@ test.describe("deployed solution runtime contract", () => {
 		// shadow root: :root tokens, body baseline, and theme updates remain app-
 		// local and do not leak into the platform document.
 		const styleProbe = page.getByTestId("standalone-root-style");
-		if (
+		// Standalone-v2 routes deliberately have no platform header. Toggle the
+		// platform root directly so this fixture exercises the runtime's theme
+		// observer without depending on an unavailable control.
+		const setDarkMode = async (enabled: boolean) => {
 			await page
 				.locator("html")
-				.evaluate((root) => root.classList.contains("dark"))
-		) {
-			await page.getByRole("button", { name: "Toggle theme" }).click();
-		}
+				.evaluate(
+					(root, dark) => root.classList.toggle("dark", dark),
+					enabled,
+				);
+		};
+		await setDarkMode(false);
 		await expect(styleProbe).toHaveCSS("color", "rgb(12, 34, 56)");
 		await expect(styleProbe).toHaveCSS("border-radius", "13px");
 		await expect(styleProbe).toHaveCSS("padding-left", "17px");
@@ -378,7 +383,7 @@ test.describe("deployed solution runtime contract", () => {
 					),
 				),
 		).toBe("");
-		await page.getByRole("button", { name: "Toggle theme" }).click();
+		await setDarkMode(true);
 		await expect(styleProbe).toHaveCSS("color", "rgb(56, 34, 12)");
 		await expect(styleProbe).toHaveCSS("border-radius", "21px");
 		expect(
@@ -390,7 +395,7 @@ test.describe("deployed solution runtime contract", () => {
 					),
 				),
 		).toBe("");
-		await page.getByRole("button", { name: "Toggle theme" }).click();
+		await setDarkMode(false);
 		await expect(styleProbe).toHaveCSS("color", "rgb(12, 34, 56)");
 		await expect(styleProbe).toHaveCSS("border-radius", "13px");
 

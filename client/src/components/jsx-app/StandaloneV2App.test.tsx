@@ -66,6 +66,21 @@ function stylesheet(name: string): HTMLLinkElement {
 	return link;
 }
 
+function makeSelectorTextMutable(rules: CSSRuleList): void {
+	for (const rule of Array.from(rules)) {
+		if (rule.type === CSSRule.STYLE_RULE) {
+			const styleRule = rule as CSSStyleRule;
+			Object.defineProperty(styleRule, "selectorText", {
+				configurable: true,
+				writable: true,
+				value: styleRule.selectorText,
+			});
+		}
+		const nested = (rule as CSSRule & { cssRules?: CSSRuleList }).cssRules;
+		if (nested) makeSelectorTextMutable(nested);
+	}
+}
+
 function finishStylesheetLoad(
 	name: string,
 	css = ":root { --standalone-root-token: red; } body { margin: 0; }",
@@ -75,6 +90,8 @@ function finishStylesheetLoad(
 	style.textContent = css;
 	document.head.appendChild(style);
 	if (!style.sheet) throw new Error("Test stylesheet did not parse");
+	// happy-dom exposes selectorText as read-only, unlike browser CSSOM.
+	makeSelectorTextMutable(style.sheet.cssRules);
 	const link = stylesheet(name);
 	Object.defineProperty(link, "sheet", {
 		configurable: true,
