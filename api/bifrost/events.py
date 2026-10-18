@@ -44,7 +44,8 @@ class events:
                   context.event.data.
             scope: Organization scope override. Omit to use the execution
                    context org (default). Pass an org UUID to target a specific
-                   org (provider org context required, same rule as config.get).
+                   org (provider org context required, same rule as config.get),
+                   or ``"global"`` to emit globally.
             solution: Target solution install (UUID or slug/name) in the
                    resolved scope. Unset → the active execution's own
                    install, if any. Per-call only.

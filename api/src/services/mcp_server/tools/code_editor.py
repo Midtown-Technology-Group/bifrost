@@ -152,15 +152,16 @@ def _is_canonical_workspace_path(path: str) -> bool:
         return False
 
 
-async def _list_indexed_repo_paths(context: Any, path_prefix: str) -> list[str]:
-    """List only file-index paths; raw repo objects are never workspace content."""
-    async with get_tool_db(context) as db:
-        query = select(FileIndex.path)
-        if path_prefix:
-            query = query.where(FileIndex.path.startswith(path_prefix))
-        result = await db.execute(query)
-        paths = result.scalars().all()
+async def _list_workspace_repo_paths(_context: Any, path_prefix: str) -> list[str]:
+    """List canonical workspace files from the durable ``_repo/`` store.
 
+    ``FileIndex`` is a bounded search projection: valid persisted files such as
+    JSON, binary, and oversized text may intentionally be absent from it. The
+    storage listing is complete, but every returned key is independently
+    validated before it can cross the MCP boundary so repository metadata and
+    malformed keys remain hidden.
+    """
+    paths = await RepoStorage().list(path_prefix)
     return [path for path in paths if _is_canonical_workspace_path(path)]
 
 
@@ -464,7 +465,7 @@ async def list_content(
         return denied
 
     try:
-        repo_paths = await _list_indexed_repo_paths(context, normalized_prefix or "")
+        repo_paths = await _list_workspace_repo_paths(context, normalized_prefix or "")
         release_view = await _active_workspace_release_view(context, organization_id)
         release_paths = await release_view.list(normalized_prefix or "") if release_view else []
         safe_release_paths: list[str] = []
@@ -1002,9 +1003,10 @@ async def delete_content(
                 _coerce_uuid(getattr(context, "org_id", None)),
                 [path],
             )
-            # Only indexed workspace content is eligible for deletion. Raw
-            # repository objects such as .git/** never enter this allowlist.
-            if await db.get(FileIndex, path) is None:
+            # FileIndex is only a search projection, so valid persisted files
+            # such as JSON may not have a row. The canonical path guard above
+            # keeps repository metadata out of scope before this exact lookup.
+            if not await RepoStorage().exists(path):
                 return error_result(f"File not found: {path}")
 
             # Use FileStorageService.delete_file() for all deletions

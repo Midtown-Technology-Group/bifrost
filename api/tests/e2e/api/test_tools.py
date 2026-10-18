@@ -42,7 +42,10 @@ def _register_tool(e2e_client, headers, organization_id: str | None) -> dict:
     patch_resp = e2e_client.patch(
         f"/api/workflows/{workflow['id']}",
         headers=headers,
-        json={"organization_id": organization_id},
+        json={
+            "organization_id": organization_id,
+            "access_level": "authenticated",
+        },
     )
     assert patch_resp.status_code == 200, patch_resp.text
     return {**patch_resp.json(), "_path": path}

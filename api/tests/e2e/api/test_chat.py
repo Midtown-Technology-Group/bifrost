@@ -13,7 +13,7 @@ import pytest
 
 from src.models.enums import MessageRole
 from src.models.orm import Conversation, Message
-from src.services.chat_attachments import ChatAttachmentService
+from src.services.chat_attachments import MAX_FILE_SIZE_BYTES, ChatAttachmentService
 
 logger = logging.getLogger(__name__)
 
@@ -161,6 +161,23 @@ class TestConversationsCRUD:
 
 class TestChatAttachments:
     """Files can be uploaded, previewed, downloaded, and remain owner-scoped."""
+
+    def test_oversized_attachment_is_rejected_before_storage(
+        self, e2e_client, platform_admin, test_conversation
+    ):
+        response = e2e_client.post(
+            f"/api/chat/conversations/{test_conversation['id']}/attachments",
+            files=[
+                (
+                    "files",
+                    ("oversized.txt", b"x" * (MAX_FILE_SIZE_BYTES + 1), "text/plain"),
+                )
+            ],
+            headers={"Authorization": platform_admin.headers["Authorization"]},
+        )
+
+        assert response.status_code == 400
+        assert "too large" in response.json()["detail"]
 
     def test_attachment_upload_and_content_access(
         self,

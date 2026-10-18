@@ -182,9 +182,7 @@ async def test_create_folder_rejects_indexed_file_ancestor(monkeypatch):
     monkeypatch.setattr("src.services.repo_storage.RepoStorage", lambda: repo)
 
     with pytest.raises(ValueError, match="existing file: nested"):
-        await _service([_file("nested")], write_file=write_file).create_folder(
-            "nested/path"
-        )
+        await _service(["nested"], write_file=write_file).create_folder("nested/path")
 
     repo.exists_strict.assert_not_awaited()
     write_file.assert_not_awaited()

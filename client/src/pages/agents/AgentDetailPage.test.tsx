@@ -32,7 +32,10 @@ vi.mock("@/services/agentRuns", () => ({
 }));
 
 vi.mock("@/contexts/AuthContext", () => ({
-	useAuth: () => ({ isPlatformAdmin: false }),
+	useAuth: () => ({
+		isPlatformAdmin: false,
+		user: { id: "owner-user" },
+	}),
 }));
 
 vi.mock("@/components/agents/SummaryBackfillButton", () => ({
@@ -79,6 +82,7 @@ const existingAgent = {
 	system_prompt: "hi",
 	channels: ["chat"],
 	access_level: "role_based",
+	owner_user_id: null,
 	is_active: true,
 	tool_ids: [],
 	delegated_agent_ids: [],
@@ -129,6 +133,16 @@ async function renderAtRoute(path: string) {
 // -----------------------------------------------------------------------------
 
 describe("AgentDetailPage — edit mode", () => {
+	beforeEach(() => {
+		mockUseAgent.mockReturnValue({
+			data: {
+				...existingAgent,
+				access_level: "private",
+				owner_user_id: "owner-user",
+			},
+			isLoading: false,
+		});
+	});
 	it("renders the agent name in the header", async () => {
 		await renderAtRoute("/agents/agent-1");
 		expect(
@@ -167,6 +181,22 @@ describe("AgentDetailPage — edit mode", () => {
 		const settings = await screen.findByTestId("settings-tab");
 		expect(settings).toHaveAttribute("data-mode", "edit");
 	});
+});
+
+it("does not expose management controls for a runnable shared agent", async () => {
+	mockUseAgent.mockReturnValue({ data: existingAgent, isLoading: false });
+	await renderAtRoute("/agents/agent-1?tab=settings");
+	expect(screen.getByTestId("overview-tab")).toBeInTheDocument();
+	expect(
+		screen.queryByRole("tab", { name: /settings/i }),
+	).not.toBeInTheDocument();
+	expect(screen.queryByTestId("settings-tab")).not.toBeInTheDocument();
+	expect(
+		screen.queryByRole("button", { name: /pause/i }),
+	).not.toBeInTheDocument();
+	expect(
+		screen.queryByRole("button", { name: /delete agent/i }),
+	).not.toBeInTheDocument();
 });
 
 describe("AgentDetailPage — create mode", () => {
@@ -239,7 +269,11 @@ it("offers read retry without an empty edit form", async () => {
 });
 it("retains loaded agent settings during a refresh failure", async () => {
 	mockUseAgent.mockReturnValue({
-		data: existingAgent,
+		data: {
+			...existingAgent,
+			access_level: "private",
+			owner_user_id: "owner-user",
+		},
 		isError: true,
 		refetch: vi.fn(),
 	});
@@ -257,7 +291,9 @@ it("uses the creation form even when a disabled tab is in the URL", async () => 
 	);
 });
 
- it("does not show a status-update failure on a fresh New Agent page", async () => {
- await renderAtRoute("/agents/new");
- expect(screen.queryByText("Could not update the agent status. Try again.")).not.toBeInTheDocument();
- });
+it("does not show a status-update failure on a fresh New Agent page", async () => {
+	await renderAtRoute("/agents/new");
+	expect(
+		screen.queryByText("Could not update the agent status. Try again."),
+	).not.toBeInTheDocument();
+});

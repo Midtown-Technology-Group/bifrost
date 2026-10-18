@@ -168,6 +168,36 @@ describe("CreateOAuthConnectionDialog", () => {
 		expect(onOpenChange).toHaveBeenCalledWith(false);
 	});
 
+	it("seeds the PKCE opt-in from existing provider metadata", () => {
+		mockUseOAuthConnection.mockReturnValue({
+			data: {
+				oauth_flow_type: "authorization_code",
+				client_id: "client-2",
+				authorization_url: "https://auth.example.com",
+				token_url: "https://token.example.com",
+				scopes: "read",
+				audience: null,
+				provider_metadata: { use_pkce: true },
+			},
+			isLoading: false,
+			error: null,
+			refetch: vi.fn(),
+		});
+
+		renderWithProviders(
+			<CreateOAuthConnectionDialog
+				open
+				onOpenChange={vi.fn()}
+				integrationId="integration-1"
+				editConnectionName="connection-1"
+			/>,
+		);
+
+		expect(
+			screen.getByTestId("oauth-provider-editor").getAttribute("data-initial"),
+		).toContain('"use_pkce":true');
+	});
+
 	it("shows a loading state before editing an existing connection", () => {
 		mockUseOAuthConnection.mockReturnValue({
 			data: undefined,
