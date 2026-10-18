@@ -1,5 +1,6 @@
 """Combine actual Sonar unit and server-process hits; reject absent runtime data."""
 
+import json
 from pathlib import Path
 
 import coverage
@@ -7,6 +8,7 @@ import coverage
 RUNTIME_DIR = Path("/coverage")
 DATA_FILE = Path("/bifrost-results/.coverage.sonar")
 RC_FILE = Path("/app/.coveragerc.sonar")
+AUDIT_FILE = Path("/bifrost-results/sonar-runtime-reports.json")
 
 
 def main() -> int:
@@ -18,13 +20,26 @@ def main() -> int:
     collector = coverage.Coverage(config_file=str(RC_FILE), data_file=str(DATA_FILE))
     collector.load()
     unit_data = collector.get_data()
-    for report in reports:
+    audit = []
+    empty = []
+    incompatible = []
+    for report in sorted(reports):
         runtime_data = coverage.CoverageData(basename=str(report))
         runtime_data.read()
-        if not runtime_data.measured_files():
-            raise ValueError("Empty actual runtime coverage data")
+        measured = len(runtime_data.measured_files())
+        audit.append({"file": report.name, "bytes": report.stat().st_size,
+                      "measured_files": measured, "has_arcs": runtime_data.has_arcs()})
+        if not measured:
+            empty.append(report.name)
         if runtime_data.has_arcs() != unit_data.has_arcs():
-            raise ValueError("Incompatible unit and runtime branch coverage data")
+            incompatible.append(report.name)
+    if AUDIT_FILE.is_symlink():
+        raise ValueError("Unsafe runtime coverage audit path")
+    AUDIT_FILE.write_text(json.dumps({"version": 1, "reports": audit}, indent=2) + "\n")
+    if empty:
+        raise ValueError(f"Empty actual runtime coverage data: {empty!r}")
+    if incompatible:
+        raise ValueError(f"Incompatible unit and runtime branch coverage data: {incompatible!r}")
     collector.combine(data_paths=[str(RUNTIME_DIR)], strict=True, keep=True)
     collector.save()
     return 0

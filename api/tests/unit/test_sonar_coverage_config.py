@@ -435,6 +435,7 @@ def _runtime_combiner(tmp_path: Path):
     module.DATA_FILE = tmp_path / ".coverage.sonar"
     module.RC_FILE = tmp_path / "sonar.rc"
     module.RC_FILE.write_text("[run]\nbranch = True\n")
+    module.AUDIT_FILE = tmp_path / "runtime-reports.json"
     return module
 
 
@@ -476,6 +477,54 @@ def test_sonar_runtime_absence_fails_even_with_unit_data(tmp_path: Path) -> None
     with pytest.raises(ValueError, match="actual runtime"):
         module.main()
     assert module.DATA_FILE.read_bytes() == original
+
+
+def test_sonar_empty_runtime_is_identified_without_altering_unit_evidence(tmp_path: Path) -> None:
+    module = _runtime_combiner(tmp_path)
+    unit = coverage.CoverageData(basename=str(module.DATA_FILE))
+    unit.add_arcs({str(tmp_path / "unit.py"): [(1, 2)]})
+    unit.write()
+    original = module.DATA_FILE.read_bytes()
+    empty = module.RUNTIME_DIR / ".coverage.sonar.empty-producer.1.fixture"
+    runtime = coverage.CoverageData(basename=str(empty))
+    runtime.add_lines({})
+    runtime.write()
+    assert empty.is_file()
+    with pytest.raises(ValueError, match="Empty actual runtime coverage data.*empty-producer"):
+        module.main()
+    audit = json.loads(module.AUDIT_FILE.read_text())
+    assert audit["reports"] == [{"file": empty.name, "bytes": empty.stat().st_size,
+                                 "measured_files": 0, "has_arcs": False}]
+    assert module.DATA_FILE.read_bytes() == original
+    assert empty.is_file()
+
+
+def test_stopped_runtime_logs_survive_export(tmp_path: Path) -> None:
+    root = Path("/repo") if Path("/repo/scripts/lib/test_helpers.sh").is_file() else API_ROOT.parent
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    docker = fake_bin / "docker"
+    docker.write_text("""#!/bin/bash
+if [[ "$*" == *"ps --all --services" ]]; then
+    printf 'api\\n'
+elif [[ "$*" == *"logs --no-color --timestamps api" ]]; then
+    printf 'retained stopped API log\\n'
+else
+    exit 1
+fi
+""")
+    docker.chmod(0o755)
+    logs = tmp_path / "logs"
+    result = subprocess.run(
+        ["bash", "-euo", "pipefail", "-c",
+         f"source {shlex.quote(str(root / 'scripts/lib/test_helpers.sh'))}; "
+         "export_logs isolated-project unused-compose.yml"],
+        env={**os.environ, "PATH": str(fake_bin) + os.pathsep + os.environ["PATH"],
+             "LOG_DIR": str(logs)},
+        capture_output=True, text=True, check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert (logs / "api.log").read_text() == "retained stopped API log\n"
 
 
 def test_sonar_runtime_mount_and_workflow_use_the_tested_combiner() -> None:
