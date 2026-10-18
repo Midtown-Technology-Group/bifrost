@@ -618,6 +618,128 @@ async def regions(country: str | None = None):
 
 
 @pytest.mark.asyncio
+async def test_invalid_workflow_schema_does_not_block_later_declarations(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    path = "workflows/literal_contracts.py"
+    invalid = SimpleNamespace(id=uuid4(), retirement_evidence=None, type="workflow")
+    valid = SimpleNamespace(
+        id=uuid4(),
+        retirement_evidence=None,
+        is_active=True,
+        name="Valid workflow",
+        description=None,
+        category="General",
+        tags=[],
+        endpoint_enabled=False,
+        path=path,
+        timeout_seconds=900,
+        time_saved=0,
+        value=0,
+        execution_mode="sync",
+        type="workflow",
+    )
+    refetch = MagicMock()
+    refetch.scalar_one.return_value = valid
+    db = AsyncMock()
+    db.execute.side_effect = [MagicMock(), refetch]
+    redis_client = AsyncMock()
+    monkeypatch.setattr(
+        "src.core.redis_client.get_redis_client",
+        lambda: redis_client,
+    )
+    indexer = WorkflowIndexer(db)
+    indexer.set_prefetch_cache(
+        {
+            (path, "invalid_workflow"): invalid,
+            (path, "valid_workflow"): valid,
+        }
+    )
+
+    with caplog.at_level("WARNING"):
+        await indexer.index_python_file(
+            path,
+            b"""
+from bifrost import workflow
+from typing import Literal
+
+@workflow
+def invalid_workflow(mode: Literal[UNKNOWN_MODE]):
+    return mode
+
+@workflow
+def valid_workflow(mode: Literal[\"safe\"]):
+    return mode
+""",
+        )
+
+    update_stmt = db.execute.call_args_list[0][0][0]
+    params = update_stmt.compile().params
+    assert params["id_1"] == valid.id
+    assert params["parameters_schema"]["properties"]["mode"]["enum"] == ["safe"]
+    assert (
+        "Skipping declaration invalid_workflow in workflows/literal_contracts.py "
+        "with invalid parameter schema: Literal annotations require statically "
+        "resolvable members"
+    ) in caplog.messages
+
+
+@pytest.mark.asyncio
+async def test_invalid_data_provider_schema_does_not_block_later_declarations(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    path = "providers/literal_contracts.py"
+    invalid = SimpleNamespace(id=uuid4(), retirement_evidence=None)
+    valid = SimpleNamespace(
+        id=uuid4(),
+        retirement_evidence=None,
+        is_active=True,
+        name="Valid provider",
+        description=None,
+        category="General",
+        tags=[],
+    )
+    db = AsyncMock()
+    db.execute.return_value = MagicMock()
+    indexer = WorkflowIndexer(db)
+    indexer.set_prefetch_cache(
+        {
+            (path, "invalid_provider"): invalid,
+            (path, "valid_provider"): valid,
+        }
+    )
+
+    with caplog.at_level("WARNING"):
+        await indexer.index_python_file(
+            path,
+            b"""
+from bifrost import data_provider
+from typing import Literal
+
+@data_provider
+def invalid_provider(mode: Literal[UNKNOWN_MODE]):
+    return []
+
+@data_provider
+def valid_provider(mode: Literal[\"safe\"]):
+    return []
+""",
+        )
+
+    db.execute.assert_awaited_once()
+    update_stmt = db.execute.call_args.args[0]
+    params = update_stmt.compile().params
+    assert params["id_1"] == valid.id
+    assert params["parameters_schema"]["properties"]["mode"]["enum"] == ["safe"]
+    assert (
+        "Skipping declaration invalid_provider in providers/literal_contracts.py "
+        "with invalid parameter schema: Literal annotations require statically "
+        "resolvable members"
+    ) in caplog.messages
+
+
+@pytest.mark.asyncio
 async def test_refresh_workflow_endpoint_calls_dynamic_endpoint_refresher(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

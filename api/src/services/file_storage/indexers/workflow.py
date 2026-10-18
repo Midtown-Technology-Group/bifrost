@@ -10,7 +10,10 @@ import logging
 from datetime import datetime, timezone
 from typing import Any
 
-from bifrost.workflow_parameters import WorkflowParameterCompiler
+from bifrost.workflow_parameters import (
+    WorkflowParameterCompiler,
+    WorkflowParameterSchemaError,
+)
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -197,9 +200,19 @@ class WorkflowIndexer(WorkflowParameterCompiler):
                         workflow_type = "service"
                     else:
                         workflow_type = "tool" if is_tool else "workflow"
-                    parameters_schema = self._extract_parameters_from_ast(
-                        node, enum_definitions=enum_definitions
-                    )
+                    try:
+                        parameters_schema = self._extract_parameters_from_ast(
+                            node, enum_definitions=enum_definitions
+                        )
+                    except WorkflowParameterSchemaError as exc:
+                        logger.warning(
+                            "Skipping declaration %s in %s with invalid parameter "
+                            "schema: %s",
+                            log_safe(function_name),
+                            log_safe(path),
+                            log_safe(exc),
+                        )
+                        continue
 
                     # Service lifecycle sync: service rows ensure a definition
                     # (covering every write path — API, git sync, deploy — not
@@ -344,9 +357,19 @@ class WorkflowIndexer(WorkflowParameterCompiler):
                     if getattr(existing_dp, "retirement_evidence", None) is not None:
                         continue
 
-                    parameters_schema = self._extract_parameters_from_ast(
-                        node, enum_definitions=enum_definitions
-                    )
+                    try:
+                        parameters_schema = self._extract_parameters_from_ast(
+                            node, enum_definitions=enum_definitions
+                        )
+                    except WorkflowParameterSchemaError as exc:
+                        logger.warning(
+                            "Skipping declaration %s in %s with invalid parameter "
+                            "schema: %s",
+                            log_safe(function_name),
+                            log_safe(path),
+                            log_safe(exc),
+                        )
+                        continue
 
                     if not existing_dp.is_active:
                         logger.info(f"Reactivating data provider: {log_safe(provider_name)} ({log_safe(function_name)}) from {log_safe(path)}")
