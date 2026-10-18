@@ -251,8 +251,9 @@ async def test_cancelled_http_receive_cleans_up_child_tasks() -> None:
     assert len(child_tasks) == 2
 
     request_task.cancel()
-    with pytest.raises(asyncio.CancelledError):
-        await request_task
+    request_result = await asyncio.gather(request_task, return_exceptions=True)
+    assert len(request_result) == 1
+    assert isinstance(request_result[0], asyncio.CancelledError)
 
     assert receive_cancelled.is_set()
     assert all(task.done() for task in child_tasks)
