@@ -10,10 +10,10 @@
  * Outputs (stdout): comma-separated IDs to capture, suitable for
  * DOCS_CAPTURE_IDS. Empty string if nothing to do (also exit 0).
  */
-import { readFileSync, existsSync } from "node:fs";
-import { resolve } from "node:path";
 import { execFileSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
+
+const MAX_MANIFEST_BYTES = 1024 * 1024;
 
 function parseArgs(argv) {
   const out = { full: false };
@@ -61,15 +61,58 @@ export function pathChanged(repo, sinceSha, globs) {
   }
 }
 
+function gitOutput(repo, args, options = {}) {
+  return execFileSync("/usr/bin/git", args, {
+    cwd: repo,
+    encoding: "utf8",
+    maxBuffer: MAX_MANIFEST_BYTES + 1,
+    ...options,
+  });
+}
+
+export function readCaptureManifest(docsRepo) {
+  try {
+    gitOutput(docsRepo, ["rev-parse", "--show-toplevel"], { stdio: "ignore" });
+
+    const status = gitOutput(docsRepo, [
+      "status",
+      "--porcelain=v1",
+      "--untracked-files=all",
+      "--",
+      "screenshots.yaml",
+    ]);
+    if (status) {
+      throw new Error("capture manifest must be committed before capture");
+    }
+
+    const entry = gitOutput(docsRepo, ["ls-tree", "HEAD", "--", "screenshots.yaml"]).trim();
+    if (!/^100(?:644|755) blob [0-9a-f]{40}\tscreenshots\.yaml$/.test(entry)) {
+      throw new Error("capture manifest must be a committed regular file");
+    }
+
+    const size = Number.parseInt(
+      gitOutput(docsRepo, ["cat-file", "-s", "HEAD:screenshots.yaml"]).trim(),
+      10,
+    );
+    if (!Number.isSafeInteger(size) || size > MAX_MANIFEST_BYTES) {
+      throw new Error("capture manifest must be at most 1 MiB");
+    }
+
+    return gitOutput(docsRepo, ["show", "HEAD:screenshots.yaml"]);
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith("capture manifest")) {
+      throw error;
+    }
+    throw new Error("docs repository must be a Git checkout with a committed screenshots.yaml", {
+      cause: error,
+    });
+  }
+}
+
 async function main() {
   const args = parseArgs(process.argv);
-  const manifestPath = resolve(args.docsRepo, "screenshots.yaml");
-  if (!existsSync(manifestPath)) {
-    console.error(`manifest not found at ${manifestPath}`);
-    process.exit(1);
-  }
   const { load: loadYaml } = await import("js-yaml");
-  const manifest = loadYaml(readFileSync(manifestPath, "utf8"));
+  const manifest = loadYaml(readCaptureManifest(args.docsRepo));
 
   // External entries (Azure portal, VSCode, etc.) are never candidates.
   const captureable = manifest.entries.filter((e) => !e.external);
