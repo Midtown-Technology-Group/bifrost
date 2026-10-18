@@ -25,6 +25,11 @@ class TestModuleCacheAsync:
         mock_client.get = AsyncMock()
         mock_client.setex = AsyncMock()
         mock_client.delete = AsyncMock()
+        pipeline = MagicMock()
+        pipeline.__aenter__ = AsyncMock(return_value=pipeline)
+        pipeline.__aexit__ = AsyncMock(return_value=None)
+        pipeline.execute = AsyncMock(return_value=[])
+        mock_redis.pipeline = MagicMock(return_value=pipeline)
         mock_redis.get.return_value = "generation-1"
         return mock_client, mock_redis
 
@@ -1076,44 +1081,26 @@ class TestKeyPatterns:
 async def test_set_module_invalidates_resolution_cache_for_exact_and_ancestors():
     from src.core.module_cache import set_module
 
-    class FakeRedisConn:
-        async def get(self, _key):
-            return "generation-1"
+    from src.core.module_cache_contract import MODULE_RESOLUTION_GENERATION_PREFIX
 
-        async def set(self, *_args, **_kwargs):
-            return True
-
-        async def sadd(self, *_args):
-            return 1
-
-        async def scan_iter(self, pattern):
-            patterns.append(pattern)
-            for key in [f"cached:{pattern}"]:
-                yield key
-
-        async def delete(self, *keys):
-            deleted.extend(keys)
-            return len(keys)
-
-    class FakeRedis:
-        async def setex(self, *_args):
-            return True
-
-        async def _get_redis(self):
-            return FakeRedisConn()
-
-    patterns: list[str] = []
-    deleted: list[str] = []
-
-    with patch("src.core.module_cache.get_redis_client", return_value=FakeRedis()):
+    redis = AsyncMock()
+    pipeline = MagicMock()
+    pipeline.__aenter__ = AsyncMock(return_value=pipeline)
+    pipeline.__aexit__ = AsyncMock(return_value=None)
+    pipeline.execute = AsyncMock(return_value=[])
+    redis._get_redis.return_value = redis
+    redis.get.return_value = "generation-1"
+    redis.pipeline = MagicMock(return_value=pipeline)
+    with patch("src.core.module_cache.get_redis_client", return_value=redis):
         await set_module("modules/helpers/tool.py", "VALUE = 1", "hash")
-
-    assert patterns == [
-        "bifrost:module:resolution:*:modules",
-        "bifrost:module:resolution:*:modules.helpers",
-        "bifrost:module:resolution:*:modules.helpers.tool",
+    assert [c.args[0] for c in pipeline.set.call_args_list] == [
+        f"{MODULE_RESOLUTION_GENERATION_PREFIX}{name}"
+        for name in ["modules", "modules.helpers", "modules.helpers.tool"]
     ]
-    assert deleted == [f"cached:{pattern}" for pattern in patterns]
+    assert all(c.kwargs == {"ex": 86400} for c in pipeline.set.call_args_list)
+    redis.pipeline.assert_called_once_with(transaction=True)
+    pipeline.execute.assert_awaited_once()
+    redis.scan_iter.assert_not_called()
 
     def test_key_patterns_consistent(self):
         """Verify async and sync modules use same key patterns."""

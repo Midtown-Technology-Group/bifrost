@@ -492,6 +492,7 @@ describe("AgentRunsPanel", () => {
 		expect(open).toHaveBeenCalledWith(
 			"/agents/agent-1/runs/run-1",
 			"_blank",
+			"noopener,noreferrer",
 		);
 	});
 });
