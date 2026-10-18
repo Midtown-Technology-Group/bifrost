@@ -495,6 +495,10 @@ def _callback_request(**overrides):
 
 @pytest.mark.asyncio
 async def test_callback_rejects_missing_state_before_provider_exchange():
+    request = _callback_request(state=None)
+    ctx = _ctx()
+    user = _user()
+
     with patch(
         "src.services.oauth_provider.OAuthProviderClient.exchange_code_for_token",
         new=AsyncMock(),
@@ -502,9 +506,9 @@ async def test_callback_rejects_missing_state_before_provider_exchange():
         with pytest.raises(HTTPException) as exc_info:
             await oauth_connections.oauth_callback(
                 connection_name="goto",
-                request=_callback_request(state=None),
-                ctx=_ctx(),
-                user=_user(),
+                request=request,
+                ctx=ctx,
+                user=user,
             )
 
     assert exc_info.value.status_code == 400
@@ -515,6 +519,9 @@ async def test_callback_rejects_missing_state_before_provider_exchange():
 @pytest.mark.asyncio
 async def test_callback_rejects_invalid_signed_state_before_provider_exchange():
     consume = oauth_connections.consume_nonce
+    request = _callback_request()
+    ctx = _ctx()
+    user = _user()
 
     with (
         patch.object(
@@ -530,9 +537,9 @@ async def test_callback_rejects_invalid_signed_state_before_provider_exchange():
         with pytest.raises(HTTPException) as exc_info:
             await oauth_connections.oauth_callback(
                 connection_name="goto",
-                request=_callback_request(),
-                ctx=_ctx(),
-                user=_user(),
+                request=request,
+                ctx=ctx,
+                user=user,
             )
 
     assert exc_info.value.status_code == 400
@@ -544,8 +551,10 @@ async def test_callback_rejects_invalid_signed_state_before_provider_exchange():
 @pytest.mark.asyncio
 async def test_callback_rejects_invalid_mapping_state_before_lookup_or_exchange():
     consume = oauth_connections.consume_nonce
+    request = _callback_request()
     ctx = _ctx()
     ctx.db.get = AsyncMock()
+    user = _user()
 
     with (
         patch.object(
@@ -565,9 +574,9 @@ async def test_callback_rejects_invalid_mapping_state_before_lookup_or_exchange(
         with pytest.raises(HTTPException) as exc_info:
             await oauth_connections.oauth_callback(
                 connection_name="goto",
-                request=_callback_request(),
+                request=request,
                 ctx=ctx,
-                user=_user(),
+                user=user,
             )
 
     assert exc_info.value.status_code == 400
@@ -580,8 +589,10 @@ async def test_callback_rejects_invalid_mapping_state_before_lookup_or_exchange(
 @pytest.mark.asyncio
 async def test_callback_rejects_deleted_mapping_before_nonce_or_exchange():
     consume = oauth_connections.consume_nonce
+    request = _callback_request()
     ctx = _ctx()
     ctx.db.get = AsyncMock(return_value=None)
+    user = _user()
 
     with (
         patch.object(
@@ -601,9 +612,9 @@ async def test_callback_rejects_deleted_mapping_before_nonce_or_exchange():
         with pytest.raises(HTTPException) as exc_info:
             await oauth_connections.oauth_callback(
                 connection_name="goto",
-                request=_callback_request(),
+                request=request,
                 ctx=ctx,
-                user=_user(),
+                user=user,
             )
 
     assert exc_info.value.status_code == 400
@@ -615,6 +626,9 @@ async def test_callback_rejects_deleted_mapping_before_nonce_or_exchange():
 @pytest.mark.asyncio
 async def test_callback_rejects_incomplete_connection_state_before_nonce_or_exchange():
     consume = oauth_connections.consume_nonce
+    request = _callback_request()
+    ctx = _ctx()
+    user = _user()
 
     with (
         patch.object(
@@ -636,9 +650,9 @@ async def test_callback_rejects_incomplete_connection_state_before_nonce_or_exch
         with pytest.raises(HTTPException) as exc_info:
             await oauth_connections.oauth_callback(
                 connection_name="goto",
-                request=_callback_request(),
-                ctx=_ctx(),
-                user=_user(),
+                request=request,
+                ctx=ctx,
+                user=user,
             )
 
     assert exc_info.value.status_code == 400
@@ -651,6 +665,9 @@ async def test_callback_rejects_incomplete_connection_state_before_nonce_or_exch
 async def test_callback_rejects_invalid_requested_organization_before_nonce_or_exchange():
     organization_id = uuid4()
     consume = oauth_connections.consume_nonce
+    request = _callback_request(organization_id="not-a-uuid")
+    ctx = _ctx(org_id=organization_id)
+    user = _user()
 
     with (
         patch.object(
@@ -673,9 +690,9 @@ async def test_callback_rejects_invalid_requested_organization_before_nonce_or_e
         with pytest.raises(HTTPException) as exc_info:
             await oauth_connections.oauth_callback(
                 connection_name="goto",
-                request=_callback_request(organization_id="not-a-uuid"),
-                ctx=_ctx(org_id=organization_id),
-                user=_user(),
+                request=request,
+                ctx=ctx,
+                user=user,
             )
 
     assert exc_info.value.status_code == 400
@@ -688,6 +705,9 @@ async def test_callback_rejects_invalid_requested_organization_before_nonce_or_e
 async def test_callback_rejects_requested_organization_mismatch_before_nonce_or_exchange():
     organization_id = uuid4()
     consume = oauth_connections.consume_nonce
+    request = _callback_request(organization_id=str(uuid4()))
+    ctx = _ctx(org_id=organization_id)
+    user = _user()
 
     with (
         patch.object(
@@ -710,9 +730,9 @@ async def test_callback_rejects_requested_organization_mismatch_before_nonce_or_
         with pytest.raises(HTTPException) as exc_info:
             await oauth_connections.oauth_callback(
                 connection_name="goto",
-                request=_callback_request(organization_id=str(uuid4())),
-                ctx=_ctx(org_id=organization_id),
-                user=_user(),
+                request=request,
+                ctx=ctx,
+                user=user,
             )
 
     assert exc_info.value.status_code == 400
@@ -743,6 +763,9 @@ async def test_callback_rejects_mismatched_connection_state_before_nonce_or_exch
     }
     payload[claim] = value
     consume = oauth_connections.consume_nonce
+    request = _callback_request()
+    ctx = _ctx()
+    user = _user()
 
     with (
         patch.object(oauth_connections, "decode_state", return_value=payload),
@@ -754,9 +777,9 @@ async def test_callback_rejects_mismatched_connection_state_before_nonce_or_exch
         with pytest.raises(HTTPException) as exc_info:
             await oauth_connections.oauth_callback(
                 connection_name="goto",
-                request=_callback_request(),
-                ctx=_ctx(),
-                user=_user(),
+                request=request,
+                ctx=ctx,
+                user=user,
             )
 
     assert exc_info.value.status_code == 400
@@ -769,6 +792,9 @@ async def test_callback_rejects_mismatched_connection_state_before_nonce_or_exch
 async def test_callback_rejects_provider_mismatch_before_nonce_or_exchange():
     provider = _connection_provider(id=uuid4())
     consume = oauth_connections.consume_nonce
+    request = _callback_request()
+    ctx = _ctx()
+    user = _user()
 
     with (
         patch(
@@ -783,9 +809,9 @@ async def test_callback_rejects_provider_mismatch_before_nonce_or_exchange():
         with pytest.raises(HTTPException) as exc_info:
             await oauth_connections.oauth_callback(
                 connection_name="goto",
-                request=_callback_request(),
-                ctx=_ctx(),
-                user=_user(),
+                request=request,
+                ctx=ctx,
+                user=user,
             )
 
     assert exc_info.value.status_code == 400
@@ -797,6 +823,9 @@ async def test_callback_rejects_provider_mismatch_before_nonce_or_exchange():
 @pytest.mark.asyncio
 async def test_callback_rejects_connection_state_replay_before_exchange_or_storage():
     provider = _connection_provider()
+    request = _callback_request()
+    ctx = _ctx()
+    user = _user()
 
     with (
         patch(
@@ -818,9 +847,9 @@ async def test_callback_rejects_connection_state_replay_before_exchange_or_stora
         with pytest.raises(HTTPException) as exc_info:
             await oauth_connections.oauth_callback(
                 connection_name="goto",
-                request=_callback_request(),
-                ctx=_ctx(),
-                user=_user(),
+                request=request,
+                ctx=ctx,
+                user=user,
             )
 
     assert exc_info.value.status_code == 400
