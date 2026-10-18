@@ -1755,7 +1755,17 @@ def _run_direct(
             execution_id=f"standalone-{uuid.uuid4()}",
             workflow_name=selected_workflow,
         )
-        set_execution_context(execution_context)
+        try:
+            set_execution_context(execution_context)
+        except Exception:
+            from bifrost._context import clear_execution_context
+
+            clear_execution_context()
+            print(
+                "Error: unable to initialize a safe execution context.",
+                file=sys.stderr,
+            )
+            return 1
 
     if verbose:
         print(f"Running in standalone mode: {selected_workflow}")

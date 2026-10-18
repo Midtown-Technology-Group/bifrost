@@ -194,7 +194,9 @@ def test_run_direct_org_context_exception(monkeypatch, capsys):
     assert "network down" in capsys.readouterr().err
 
 
-def test_run_direct_context_setup_best_effort(monkeypatch, capsys):
+def test_run_direct_context_setup_falls_back_to_offline_context(monkeypatch, capsys):
+    from bifrost._context import set_execution_context as real_set_execution_context
+
     class Client:
         user = {"id": "user-1", "email": "dev@example.test"}
         organization = None
@@ -204,16 +206,70 @@ def test_run_direct_context_setup_best_effort(monkeypatch, capsys):
         def get_instance(require_auth=True):
             return Client()
 
+    workflow_calls = []
+
     async def workflow():
+        workflow_calls.append(True)
         return {"ok": True}
 
     monkeypatch.setattr(cli, "BifrostClient", ClientFactory)
+    contexts = []
+
+    def set_execution_context(ctx):
+        contexts.append(ctx)
+        if len(contexts) == 1:
+            raise RuntimeError("authenticated context unavailable")
+        real_set_execution_context(ctx)
+
     monkeypatch.setattr(
         "bifrost._context.set_execution_context",
-        lambda _ctx: (_ for _ in ()).throw(RuntimeError("context unavailable")),
+        set_execution_context,
     )
 
     assert cli._run_direct("workflow", {"workflow": workflow}, {}, verbose=True) == 0
     out = capsys.readouterr().out
     assert "Running in standalone mode" in out
     assert '"ok": true' in out
+    assert workflow_calls == [True]
+    assert len(contexts) == 2
+    assert contexts[0].user_id == "user-1"
+    assert contexts[1].user_id == "cli-user"
+
+
+def test_run_direct_context_setup_failure_stops_before_workflow(monkeypatch, capsys):
+    from bifrost._context import get_execution_context
+    from bifrost._context import set_execution_context as real_set_execution_context
+
+    class Client:
+        user = {"id": "user-1", "email": "dev@example.test"}
+        organization = None
+
+    class ClientFactory:
+        @staticmethod
+        def get_instance(require_auth=True):
+            return Client()
+
+    workflow_calls = []
+
+    async def workflow():
+        workflow_calls.append(True)
+        return {"ok": True}
+
+    def set_execution_context(ctx):
+        real_set_execution_context(ctx)
+        raise RuntimeError("context unavailable")
+
+    monkeypatch.setattr(cli, "BifrostClient", ClientFactory)
+    monkeypatch.setattr(
+        "bifrost._context.set_execution_context",
+        set_execution_context,
+    )
+
+    assert cli._run_direct("workflow", {"workflow": workflow}, {}) == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "unable to initialize a safe execution context" in captured.err
+    assert "context unavailable" not in captured.err
+    assert workflow_calls == []
+    with pytest.raises(RuntimeError, match="No execution context found"):
+        get_execution_context()
