@@ -821,8 +821,8 @@ def save_refreshed_credentials(
     access_token: str,
     refresh_token: str,
     expires_at: str,
-) -> bool:
-    """Write a rotated token generation back to the source that owns it."""
+) -> CredentialSource | None:
+    """Write rotated tokens and return their post-writeback resolution source."""
     with _credentials_mutation_lock:
         return _save_refreshed_credentials_locked(
             resolved,
@@ -841,7 +841,7 @@ def _save_refreshed_credentials_locked(
     access_token: str,
     refresh_token: str,
     expires_at: str,
-) -> bool:
+) -> CredentialSource | None:
     credentials = resolved.credentials
     normalized_url = credentials.api_url.rstrip("/")
 
@@ -852,10 +852,10 @@ def _save_refreshed_credentials_locked(
             or current.access_token != observed_access_token
             or current.refresh_token != observed_refresh_token
         ):
-            return False
+            return None
         os.environ["BIFROST_ACCESS_TOKEN"] = access_token
         os.environ["BIFROST_REFRESH_TOKEN"] = refresh_token
-        return True
+        return "process"
 
     if resolved.source == "cwd_dotenv":
         current = _get_cwd_dotenv_credentials(normalized_url)
@@ -864,14 +864,16 @@ def _save_refreshed_credentials_locked(
             or current.access_token != observed_access_token
             or current.refresh_token != observed_refresh_token
         ):
-            return False
+            return None
         save_ephemeral_credentials(
             normalized_url,
             access_token,
             refresh_token,
             source="cwd_dotenv",
         )
-        return True
+        # Ephemeral writeback installs the same proved tuple in the process
+        # environment, which wins the next resolution over the CWD .env copy.
+        return "process"
 
     backend = get_persistent_backend()
     current = backend.get(normalized_url)
@@ -880,7 +882,7 @@ def _save_refreshed_credentials_locked(
         or current.access_token != observed_access_token
         or current.refresh_token != observed_refresh_token
     ):
-        return False
+        return None
     backend.save(
         Credentials(
             api_url=normalized_url,
@@ -889,7 +891,7 @@ def _save_refreshed_credentials_locked(
             expires_at=expires_at,
         )
     )
-    return True
+    return "persistent"
 
 
 def clear_credentials(api_url: str | None = None) -> None:

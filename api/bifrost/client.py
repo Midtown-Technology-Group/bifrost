@@ -411,7 +411,7 @@ async def refresh_connection_access_token(
             seconds=data.get("expires_in", 1800)
         )
         new_refresh_token = str(data["refresh_token"])
-        saved = save_refreshed_credentials(
+        writeback_source = save_refreshed_credentials(
             resolved,
             stored_access_token,
             refresh_token,
@@ -419,7 +419,7 @@ async def refresh_connection_access_token(
             new_refresh_token,
             expires_at.isoformat(),
         )
-        if not saved:
+        if writeback_source is None:
             logger.warning(
                 "Bifrost token refresh succeeded for %s, but the %s credential "
                 "source changed before rotated tokens could be written back",
@@ -429,7 +429,7 @@ async def refresh_connection_access_token(
             return None
         coordinator.record_rotation(
             stale_access_token=observed_access_token,
-            credential_source=resolved.source,
+            credential_source=writeback_source,
             access_token=access_token,
             refresh_token=new_refresh_token,
         )

@@ -239,6 +239,66 @@ async def test_concurrent_refreshes_for_same_stale_token_are_coalesced(
 
 
 @pytest.mark.asyncio
+async def test_concurrent_cwd_refresh_preserves_process_lineage(
+    isolated_credentials, monkeypatch, tmp_path
+) -> None:
+    from bifrost import client as client_mod
+
+    api_url = "https://api.example.com"
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("BIFROST_API_URL", api_url)
+    (tmp_path / ".env").write_text(
+        "BIFROST_API_URL=https://api.example.com\n"
+        "BIFROST_ACCESS_TOKEN=stale-access-token\n"
+        "BIFROST_REFRESH_TOKEN=rotating-refresh-token\n"
+    )
+    refresh_calls = 0
+
+    class FakeAsyncClient:
+        def __init__(self, *, base_url, timeout, trust_env):
+            assert base_url == api_url
+            assert timeout == 30.0
+            assert trust_env is False
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def post(self, path, *, json):
+            nonlocal refresh_calls
+            assert path == "/auth/refresh"
+            assert json == {"refresh_token": "rotating-refresh-token"}
+            refresh_calls += 1
+            await asyncio.sleep(0.01)
+            return httpx.Response(
+                200,
+                json={
+                    "access_token": "fresh-access-token",
+                    "refresh_token": "fresh-refresh-token",
+                    "expires_in": 1800,
+                },
+                request=httpx.Request("POST", f"{api_url}/auth/refresh"),
+            )
+
+    monkeypatch.setattr(client_mod.httpx, "AsyncClient", FakeAsyncClient)
+
+    first, second = await asyncio.gather(
+        client_mod.refresh_connection_access_token(api_url, "stale-access-token"),
+        client_mod.refresh_connection_access_token(api_url, "stale-access-token"),
+    )
+
+    assert first == second == "fresh-access-token"
+    assert refresh_calls == 1
+    assert os.environ["BIFROST_ACCESS_TOKEN"] == "fresh-access-token"
+    assert os.environ["BIFROST_REFRESH_TOKEN"] == "fresh-refresh-token"
+    env_text = (tmp_path / ".env").read_text()
+    assert "BIFROST_ACCESS_TOKEN=fresh-access-token" in env_text
+    assert "BIFROST_REFRESH_TOKEN=fresh-refresh-token" in env_text
+
+
+@pytest.mark.asyncio
 async def test_cancelled_refresh_lock_waiter_does_not_leak_lock() -> None:
     from bifrost import client as client_mod
 
