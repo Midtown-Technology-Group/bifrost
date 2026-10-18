@@ -17,10 +17,11 @@ from src.models.contracts.artifacts import ModelCapabilities
 from src.models.enums import MessageRole
 from src.models.orm.ai_models import AIModelProfile
 from src.services.agent_executor import AgentExecutor
-from src.services.llm import LLMMessage, ToolDefinition
+from src.services.llm import LLMMessage, LLMResponse, ToolDefinition
 from src.services.llm.base import LLMConfig
 from src.services.llm.pydantic_client import PydanticAIClient
 from src.services.model_capabilities import manual_capabilities
+from tests.unit.services.agent_runtime_fakes import LegacyMockModel
 
 
 class CountingTestModel(TestModel):
@@ -138,6 +139,65 @@ async def test_chat_stream_contract_is_driven_by_pydantic_runtime(
     done = next(chunk for chunk in chunks if chunk.type == "done")
     assert done.content == "Hello from Pydantic"
     executor._record_ai_usage.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_chat_persists_only_provider_reported_usage_when_budget_is_estimated(
+    executor: AgentExecutor,
+    conversation,
+) -> None:
+    executor._save_message = AsyncMock(side_effect=_saved_message)
+    executor._record_ai_usage = AsyncMock()
+    executor._build_message_history = AsyncMock(
+        return_value=[LLMMessage(role="user", content="Hello")]
+    )
+    client = PydanticAIClient(
+        LLMConfig(provider="openai", model="test-model", api_key="test-key")
+    )
+    upstream = AsyncMock()
+    upstream.complete = AsyncMock(
+        return_value=LLMResponse(
+            content="Usage omitted",
+            input_tokens=0,
+            output_tokens=0,
+        )
+    )
+
+    with (
+        patch(
+            "src.services.agent_executor.get_llm_client",
+            new=AsyncMock(return_value=client),
+        ),
+        patch(
+            "src.services.agent_runtime.model_factory.create_agent_model",
+            return_value=LegacyMockModel(upstream),
+        ),
+    ):
+        chunks = [
+            chunk
+            async for chunk in executor.chat(
+                None,
+                conversation,
+                "Hello",
+                stream=False,
+                enable_routing=False,
+            )
+        ]
+
+    usage_call = executor._record_ai_usage.await_args.kwargs
+    assert usage_call["input_tokens"] == 0
+    assert usage_call["output_tokens"] == 0
+    assert usage_call["provider_cost"] is None
+    assistant_call = next(
+        call
+        for call in reversed(executor._save_message.await_args_list)
+        if call.kwargs["role"] == MessageRole.ASSISTANT
+    )
+    assert assistant_call.kwargs["token_count_input"] == 0
+    assert assistant_call.kwargs["token_count_output"] == 0
+    done = next(chunk for chunk in chunks if chunk.type == "done")
+    assert done.token_count_input == 0
+    assert done.token_count_output == 0
 
 
 @pytest.mark.asyncio

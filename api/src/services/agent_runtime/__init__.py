@@ -35,7 +35,11 @@ from src.services.agent_runtime.toolset import (
     ToolEventHandler,
     bound_tool_result_for_model,
 )
-from src.services.agent_runtime.usage import provider_reported_cost
+from src.services.agent_runtime.usage import (
+    ESTIMATED_USAGE_DETAIL,
+    provider_reported_cost,
+    provider_reported_usage,
+)
 
 __all__ = [
     "AgentRunBudget",
@@ -45,6 +49,7 @@ __all__ = [
     "EMPTY_OUTPUT_FALLBACK_MAX_TOKENS",
     "EMPTY_OUTPUT_MAX_FALLBACKS",
     "EmptyOutputCircuitBreaker",
+    "ESTIMATED_USAGE_DETAIL",
     "FailoverModel",
     "ModelCallEvent",
     "ModelCallObserver",
@@ -65,5 +70,6 @@ __all__ = [
     "is_failover_eligible",
     "provider_name_for_config",
     "provider_reported_cost",
+    "provider_reported_usage",
     "response_fingerprint",
 ]

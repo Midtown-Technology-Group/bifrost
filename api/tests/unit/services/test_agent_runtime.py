@@ -43,6 +43,7 @@ from src.services.agent_runtime import (
     create_agent_model,
     provider_name_for_config,
     provider_reported_cost,
+    provider_reported_usage,
 )
 from src.services.llm.base import LLMConfig, LLMInputFile, ToolDefinition
 from src.services.llm.base import LLMMessage, ToolCallRequest
@@ -305,6 +306,24 @@ def test_provider_reported_cost_is_preserved_exactly() -> None:
         provider_details={"cost": 0.00012345},
     )
 
+    assert provider_reported_cost(response) == Decimal("0.00012345")
+
+
+def test_budget_estimate_is_separate_from_provider_accounting() -> None:
+    response = ModelResponse(
+        parts=[TextPart("done")],
+        usage=RequestUsage(
+            input_tokens=1_000,
+            output_tokens=100,
+            details={"bifrost_usage_estimated": 1},
+        ),
+        provider_details={"cost": "0.00012345"},
+    )
+
+    accounting_usage = provider_reported_usage(response)
+
+    assert accounting_usage.total_tokens == 0
+    assert response.usage.total_tokens == 1_100
     assert provider_reported_cost(response) == Decimal("0.00012345")
 
 

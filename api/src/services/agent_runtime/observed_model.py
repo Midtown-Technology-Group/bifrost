@@ -25,6 +25,7 @@ from pydantic_ai.settings import ModelSettings
 from pydantic_ai.usage import RequestUsage
 
 from src.services.agent_runtime.retry_transport import ai_retry_context
+from src.services.agent_runtime.usage import ESTIMATED_USAGE_DETAIL
 
 
 @dataclass(frozen=True)
@@ -102,7 +103,7 @@ class ObservedModel(WrapperModel):
         )
         response.usage.details = {
             **response.usage.details,
-            "bifrost_usage_estimated": 1,
+            ESTIMATED_USAGE_DETAIL: 1,
         }
 
     @staticmethod
