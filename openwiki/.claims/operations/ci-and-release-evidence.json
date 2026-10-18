@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:3fe4afbff42817f63850c48a8a6c366497810151cfeed72f214dc252a826cd02",
+  "pageVersion": "sha256:e2687ece89f65a0e7e1a91eb70f52881a547a37cf6682c61761b4f4daff62aa4",
   "claims": [
     {
       "id": "claim_733d3c76bfdf448aaad35f19736f94bd",
@@ -112,11 +112,11 @@
     },
     {
       "id": "claim_b55f711b52ee498ea106f892cca1aec0",
-      "statement": "The OpenWiki notification workflow runs on main-branch pushes only in the Midtown Bifrost repository, uses read-only contents permission, serializes notifications without cancellation, and bounds the job to five minutes.",
+      "statement": "The OpenWiki notification workflow is triggered by main-branch pushes, but its notify job is eligible only for the exact Midtown Bifrost repository when OPENWIKI_MAINTENANCE_ENABLED is exactly true; it retains read-only contents permission, non-cancelling concurrency, and a five-minute job limit.",
       "evidence": [
         {
           "resource": "repo://.github/workflows/openwiki-refresh.yml#L1-L21",
-          "version": "repo-lines-v1:sha256:da3cf08b8c63240082046a06a87175c16b7c0c7cbdc581af306937480804d588:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMyNzdlZmNjMTMzYzU5ZTE1MjM3OWUzNTM2OWFlOGQ1NjQ4YjI3ZDE5NzMxM2MzNTQwZmYwYTU3YzhmZmY4N2YiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE1MWQ1MDE1YzlhNmIzZDk5NTc1ODJmYmRmYzViMTE1YTFmNzgzNzI3ZjhjMzE0ZTE1Njk1ODlmNDkxYmRlNDciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImIxNjk1M2JhZjkwOTZlZjdlZmUyMTgzYTZkYzFjOTVmMzhjNzFiZDVlYTQ5NWE1YTJiZjFjZjA4ODA2NDU1NTAifQ"
+          "version": "repo-lines-v1:sha256:09b1e0510791c7d790b1d6a07d0ca0d0e5d336e125b8e252e1242cbffe5649e8:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMyNzdlZmNjMTMzYzU5ZTE1MjM3OWUzNTM2OWFlOGQ1NjQ4YjI3ZDE5NzMxM2MzNTQwZmYwYTU3YzhmZmY4N2YiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE1MWQ1MDE1YzlhNmIzZDk5NTc1ODJmYmRmYzViMTE1YTFmNzgzNzI3ZjhjMzE0ZTE1Njk1ODlmNDkxYmRlNDciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImIxNjk1M2JhZjkwOTZlZjdlZmUyMTgzYTZkYzFjOTVmMzhjNzFiZDVlYTQ5NWE1YTJiZjFjZjA4ODA2NDU1NTAifQ"
         }
       ]
     },
@@ -142,11 +142,11 @@
     },
     {
       "id": "claim_23fa4a27035e4bffbb1db630afc78c72",
-      "statement": "The workflow reads OPENWIKI_DISPATCH_TOKEN from repository secrets and fails with a message that daily recovery remains available when the secret is absent; the workflow source does not prove the token is enrolled or that dispatches succeeded.",
+      "statement": "When the exact-repository and opt-in activation gate is met, the workflow requires OPENWIKI_DISPATCH_TOKEN; if absent, it fails before dispatch with `OPENWIKI_DISPATCH_TOKEN is not enrolled; no source event was sent.` Source does not prove the variable or token is configured or that dispatches succeeded.",
       "evidence": [
         {
-          "resource": "repo://.github/workflows/openwiki-refresh.yml#L20-L27",
-          "version": "repo-lines-v1:sha256:97debaa4c8f98c413e23515f03fe2cf227928822e53da4341dfc734acd061a5a:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNGUxYTU2NDM0Mzg4YzJmZGZkZTU4ODQ0ZjI0OTMwYTIwZmY1OWZlMGExOGM1Njg2MDU5NmQyNDMwYTMxYTkwMiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZDIzMTllZmE1NmQ5ZmM3ZjA3ZmM0ZGZkOWFlODc5OTZlMjhiZGFhNWFkNmNjYjllZjMxNDljMGU0OTVlODJiZiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNzVmMGYxMGZjMzkwZjE2ZGU4Y2I2NWM2YWFkZmE3YmIxNjQ4NzcwN2FiMDEyM2Q1YmE4ZDM0Mjg4MDljYjkxZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZjM1ZjAzNzBmODc3N2ZkMjczZDViZGQwMmE2N2U1MjJiOTBkNjQwNjNmOTJmMzY4ZTYyNjJmNDNkZTQ4OTM1MSJ9"
+          "resource": "repo://.github/workflows/openwiki-refresh.yml#L17-L27",
+          "version": "repo-lines-v1:sha256:f1db98e1d9f2d92ef7cf37ded05d05ca9816ed779c608218f95c7cb3e9cb61ea:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMzMzczMzRhZWMwZGNiMjRlNDBlM2MyMGRjMDlkNTlhZjY3NDNkMDI3ZGJmZjUwYzFhY2EwODk3NDcxMTc2NzAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk1ZWNlZTQ3MDZiZGYzNTdmOGYzZTY1Y2U1MzU0NzQxNjU3NjFjNTVkNjcxNTU3NzNiZmFmN2E1ZDg4ZThiM2UiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImMyNzMyOTVlMzE1YmFiYjg2YWFiYzAxNDA4MzFiYjJjMmQ0ZjUyOGZhMjYyZjViN2Q4MzhlZWYwZDY1OTc1MjUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImYzNWYwMzcwZjg3NzdmZDI3M2Q1YmRkMDJhNjdlNTIyYjkwZDY0MDYzZjkyZjM2OGU2MjYyZjQzZGU0ODkzNTEifQ"
         }
       ]
     },
@@ -163,6 +163,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-18T03:14:43.328Z"
+    "at": "2026-10-18T04:42:50.629Z"
   }
 }

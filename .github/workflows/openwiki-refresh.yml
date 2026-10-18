@@ -13,7 +13,7 @@ concurrency:
 
 jobs:
   notify:
-    if: github.repository == 'Midtown-Technology-Group/bifrost'
+    if: github.repository == 'Midtown-Technology-Group/bifrost' && vars.OPENWIKI_MAINTENANCE_ENABLED == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -24,7 +24,7 @@ jobs:
         with:
           script: |
             const token = process.env.OPENWIKI_DISPATCH_TOKEN;
-            if (!token) throw new Error('OPENWIKI_DISPATCH_TOKEN is not enrolled; daily recovery remains available.');
+            if (!token) throw new Error('OPENWIKI_DISPATCH_TOKEN is not enrolled; no source event was sent.');
             const before = context.payload.before;
             const commit = context.sha;
             let sourceChanged = true;

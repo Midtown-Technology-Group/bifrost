@@ -24,10 +24,10 @@ sources:
     resource: repo://scripts/release/release_manifest.py
   - id: openwiki-source-2b82f9c45eb5d5013568a030
     resource: repo://scripts/sonar/preflight.py
-generated: { by: "bifrost-atlas", at: "2026-10-18T03:14:43.328Z" }
+generated: { by: "bifrost-atlas", at: "2026-10-18T04:42:50.629Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-18T03:14:43.328Z
+    at: 2026-10-18T04:42:50.629Z
 ---
 
 # CI Selection, Quality Gates, and Release Evidence
@@ -68,10 +68,10 @@ For a candidate, inspect the exact source SHA, affected-plan artifact and reason
 
 ## Ecosystem knowledge refresh notification
 
-The committed `openwiki-refresh.yml` workflow runs on pushes to `main` in the MTG Bifrost repository, requests read-only repository contents permission, serializes notifications without cancelling an in-flight run, and has a five-minute job limit ([trigger and job boundary](../../.github/workflows/openwiki-refresh.yml#L1-L21)). It compares the push's `before` and commit SHAs when `before` is a valid nonzero SHA. If that base is absent/invalid, it conservatively treats source as changed. With a comparison, any changed path outside `openwiki/` marks source as changed; a result containing 300 or more files is also treated conservatively because GitHub caps the comparison list ([classification](../../.github/workflows/openwiki-refresh.yml#L28-L38)).
+The committed `openwiki-refresh.yml` workflow runs on pushes to `main`; its `notify` job is eligible only when `github.repository` is exactly `Midtown-Technology-Group/bifrost` and the repository variable `OPENWIKI_MAINTENANCE_ENABLED` is exactly `true`. Until that opt-in is set, the automatic notification job stays disabled. The workflow requests read-only repository contents permission, serializes notifications without cancelling an in-flight run, and has a five-minute job limit ([trigger, activation gate, and job boundary](../../.github/workflows/openwiki-refresh.yml#L1-L21)). It compares the push's `before` and commit SHAs when `before` is a valid nonzero SHA. If that base is absent/invalid, it conservatively treats source as changed. With a comparison, any changed path outside `openwiki/` marks source as changed; a result containing 300 or more files is also treated conservatively because GitHub caps the comparison list ([classification](../../.github/workflows/openwiki-refresh.yml#L28-L38)).
 
-Every accepted push dispatches `bifrost-docs-refresh` to the private Bifrost operations repository with member `bifrost` and the commit SHA. A push classified as source-changing also dispatches `openwiki-source-updated`; a wiki-only change therefore requests a documentation refresh without claiming a source update ([event selection and dispatch payload](../../.github/workflows/openwiki-refresh.yml#L39-L49)). The workflow requires the repository secret `OPENWIKI_DISPATCH_TOKEN`; when it is not enrolled, the job fails with a message that daily recovery remains available. This source does not establish that the secret is currently enrolled or that a notification was accepted ([secret wiring and missing-token behavior](../../.github/workflows/openwiki-refresh.yml#L20-L27)).
+When the activation gate is satisfied and the job runs, it requires the repository secret `OPENWIKI_DISPATCH_TOKEN`; if the secret is absent, the job fails with `OPENWIKI_DISPATCH_TOKEN is not enrolled; no source event was sent.` ([activation gate and missing-token behavior](../../.github/workflows/openwiki-refresh.yml#L17-L27)). Every accepted push dispatches `bifrost-docs-refresh` to the private Bifrost operations repository with member `bifrost` and the commit SHA. A push classified as source-changing also dispatches `openwiki-source-updated`; a wiki-only change therefore requests a documentation refresh without claiming a source update ([event selection and dispatch payload](../../.github/workflows/openwiki-refresh.yml#L39-L49)). This source does not prove that the repository variable or token is currently configured, that the job ran, or that a notification was accepted.
 
 For unfamiliar cross-repository work, `AGENTS.md` points contributors to the private architecture atlas and focused local OpenWiki retrieval, and links a portable reader/maintenance guide that covers linked workspaces and CLI access across harnesses ([shared ecosystem guidance](../../AGENTS.md#L67-L69)). These are navigation pointers; claims about the private atlas, CLI implementation, or another repository require checking those sources directly.
 
-**Status boundary:** this page documents committed workflow source and repository guidance. The workflow's deployment/activation, token enrollment, successful dispatches, and receiver adoption remain pending verification; source presence is not evidence of a live or adopted integration.
+**Status boundary:** this page documents committed workflow source and repository guidance. Automatic notifications remain disabled unless the exact repository identity and opt-in variable condition are met. Variable enrollment, token enrollment, successful dispatches, and receiver adoption remain pending verification; source presence is not evidence that the optional integration is active or adopted.
