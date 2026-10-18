@@ -377,6 +377,9 @@ class WorkspaceBundlePlanner:
                 incoming = _remap_references(
                     entity.model_dump(mode="json", exclude={"id"}), source_targets,
                 )
+                if match and kind == "workflow" and incoming.get("cache_ttl_seconds") is None:
+                    # Compare the effective import: omission preserves this value.
+                    incoming["cache_ttl_seconds"] = match[1].get("cache_ttl_seconds")
                 if match and kind in {"form", "agent"}:
                     # Omitted portable access grants leave the destination's
                     # environment-owned settings alone during import.
