@@ -54,6 +54,74 @@ def test_restore_parity_detects_lost_nulls_not_distinct_semantics():
         helper.assert_restore_parity(expected, altered, {}, {})
 
 
+VERDICT_SOURCE_DDL = "CHECK (((verdict IS NULL) OR ((verdict)::text = ANY ((ARRAY['up'::character varying, 'down'::character varying])::text[]))))"
+VERDICT_RESTORED_DDL = "CHECK (((verdict IS NULL) OR ((verdict)::text = ANY (ARRAY[('up'::character varying)::text, ('down'::character varying)::text]))))"
+DEVICE_INDEX_SOURCE_DDL = "CREATE UNIQUE INDEX uq_device_jobs_one_active ON public.device_jobs USING btree (device_id) WHERE ((status)::text = ANY ((ARRAY['pending'::character varying, 'claimed'::character varying, 'running'::character varying])::text[]))"
+DEVICE_INDEX_RESTORED_DDL = "CREATE UNIQUE INDEX uq_device_jobs_one_active ON public.device_jobs USING btree (device_id) WHERE ((status)::text = ANY (ARRAY[('pending'::character varying)::text, ('claimed'::character varying)::text, ('running'::character varying)::text]))"
+
+
+@pytest.mark.parametrize("category,source,restored,source_hash,restored_hash", [
+    ("constraints", VERDICT_SOURCE_DDL, VERDICT_RESTORED_DDL,
+     "36f3887d790e2d0261d735b473565455fffbfa9aa4f7badd78b5381a4ec9577a",
+     "11cfd05fd050c51bb6466d62e5f8fe0604da230b73bd5c30cacd3a2096008df1"),
+    ("indexes", DEVICE_INDEX_SOURCE_DDL, DEVICE_INDEX_RESTORED_DDL,
+     "65ef2b22e7c8a14365c6ae70a4a1f42b6e8e0ca1ee145cf3dbe0415a59d2d2f0",
+     "a348ae23601865751b29079264d5879d92984af7307c3ca17e25ff693d2f26c7"),
+])
+def test_pg16_reparse_rule_matches_both_real_rehearsal_definition_hashes(
+    category, source, restored, source_hash, restored_hash,
+):
+    helper = _load_helper()
+    # These exact hashes came from run39143545707, not from a test DB guess.
+    assert hashlib.sha256(json.dumps(source, separators=(",", ":")).encode()).hexdigest() == source_hash
+    assert hashlib.sha256(json.dumps(restored, separators=(",", ":")).encode()).hexdigest() == restored_hash
+    assert helper._canonical_varchar_literal_array_cast(source) == restored
+    expected, actual = {category: [{"definition": source}]}, {category: [{"definition": restored}]}
+    before = json.dumps([expected, actual], sort_keys=True)
+    helper.assert_restore_parity(expected, actual, {}, {})
+    assert json.dumps([expected, actual], sort_keys=True) == before
+
+
+@pytest.mark.parametrize("definition", [
+    "CHECK (x = ANY ((ARRAY['x'::text])::text[])))",
+    "CHECK (x = ANY ((ARRAY['x'::character varying(10)])::text[])))",
+    "CHECK (x = ANY ((ARRAY[lower('x')::character varying])::text[])))",
+    "CHECK (x = ANY ((ARRAY[NULL::character varying])::text[])))",
+    "CHECK (x = ANY ((ARRAY['x'::character varying COLLATE \"C\"])::text[])))",
+    "CHECK (x = ANY ((ARRAY['x'::character varying])::character varying[])))",
+    "CHECK (x = ANY ((ARRAY[]::character varying[])::text[])))",
+    "CHECK (x = '(ARRAY[''x''::character varying])::text[]')",
+    'CHECK (x = $tag$(ARRAY[\'x\'::character varying])::text[]$tag$)',
+    "/* (ARRAY['x'::character varying])::text[] */ CHECK (true)",
+])
+def test_reparse_rule_does_not_normalize_other_types_expressions_collations_or_quoted_sql(definition):
+    assert _load_helper()._canonical_varchar_literal_array_cast(definition) == definition
+
+
+@pytest.mark.parametrize("changed", [
+    VERDICT_RESTORED_DDL.replace("'up'", "'foreign'"),
+    VERDICT_RESTORED_DDL.replace("'up'", "'temporary'").replace("'down'", "'up'").replace("'temporary'", "'down'"),
+    VERDICT_RESTORED_DDL + " ",
+    VERDICT_RESTORED_DDL.replace("verdict IS NULL", "verdict IS NOT NULL"),
+    VERDICT_RESTORED_DDL.replace("::text,", "::text COLLATE \"C\","),
+])
+def test_reparse_rule_preserves_literal_order_predicate_cast_and_surrounding_byte_differences(changed):
+    with pytest.raises(AssertionError, match="Restored schema differs"):
+        _load_helper().assert_restore_parity({"constraints": [{"definition": VERDICT_SOURCE_DDL}]},
+                                            {"constraints": [{"definition": changed}]}, {}, {})
+
+
+@pytest.mark.parametrize("field,old,new", [
+    ("convalidated", True, False), ("contype", "c", "f"),
+    ("indisunique", True, False), ("indnullsnotdistinct", True, False), ("indisvalid", True, False),
+])
+def test_reparse_rule_never_discards_constraint_or_index_metadata(field, old, new):
+    with pytest.raises(AssertionError, match="Restored schema differs"):
+        _load_helper().assert_restore_parity(
+            {"constraints": [{"definition": VERDICT_SOURCE_DDL, field: old}]},
+            {"constraints": [{"definition": VERDICT_RESTORED_DDL, field: new}]}, {}, {})
+
+
 def test_public_receipt_omits_raw_rows_and_original_json():
     receipt = _load_helper()._receipt({
         "source_legacy": {"roles": [{"permissions": {"can_execute_devices": True}}]},
@@ -466,6 +534,30 @@ def test_public_junit_proof_round_trip_is_complete_but_not_a_release_verdict(tmp
     assert "private" not in json.dumps(receipt) and "credentials" not in json.dumps(receipt)
     assert all(not proof.get("external_full_graph_release_fence_proven", False)
                for proof in receipt["proofs"].values())
+
+
+@pytest.mark.parametrize("method,code", [("observer_cancel", "57014"),
+                                         ("server_statement_deadline", "57014"),
+                                         ("server_lock_deadline", "55P03")])
+def test_public_fence_proof_accepts_only_exact_abort_method_and_sqlstate_pairs(tmp_path, method, code):
+    name = "mtg_rbac_maintenance_fence_commit"
+    item = _public_proof_records()[name]
+    item["contenders"][0].update({"abort_method": method, "cancel_sqlstate": code})
+    receipt = _proof_extractor().extract_proof(_proof_xml(tmp_path, [(name, json.dumps(item))]))
+    assert receipt["status"] == "incomplete"
+    assert receipt["proofs"][name]["contenders"][0]["cancel_sqlstate"] == code
+
+
+@pytest.mark.parametrize("method,code", [("observer_cancel", "55P03"),
+                                         ("server_statement_deadline", "55P03"),
+                                         ("server_lock_deadline", "57014"),
+                                         ("server_lock_deadline", "TimeoutError")])
+def test_public_fence_proof_rejects_mismatched_abort_pairs_and_opaque_timeouts(tmp_path, method, code):
+    name = "mtg_rbac_maintenance_fence_commit"
+    item = _public_proof_records()[name]
+    item["contenders"][0].update({"abort_method": method, "cancel_sqlstate": code})
+    receipt = _proof_extractor().extract_proof(_proof_xml(tmp_path, [(name, json.dumps(item))]))
+    assert receipt["status"] == "invalid" and receipt["proofs"] == {}
 
 
 def test_public_junit_proof_ignores_unknown_properties_and_never_copies_them(tmp_path):

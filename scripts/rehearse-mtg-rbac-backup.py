@@ -240,9 +240,10 @@ def _schema_diagnostic_metadata(database_url: str) -> dict:
     bridge, _ = _helpers()
     queries = {
         "constraints": """
-          SELECT r.relname AS relation, c.conname, c.contype, c.convalidated,
+          SELECT r.relname AS relation, c.conname, c.contype::text AS contype, c.convalidated,
                  c.condeferrable, c.condeferred, c.connoinherit,
-                 c.confupdtype, c.confdeltype, c.confmatchtype,
+                 c.confupdtype::text AS confupdtype, c.confdeltype::text AS confdeltype,
+                 c.confmatchtype::text AS confmatchtype,
                  referenced.relname AS referenced_relation, backing.relname AS backing_index,
                  ARRAY(SELECT a.attname FROM unnest(c.conkey) WITH ORDINALITY k(num, position)
                        JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = k.num
@@ -400,13 +401,91 @@ def catalog_difference_diagnostics(expected: dict, actual: dict, expected_metada
 
 def assert_restore_parity(expected_catalog: dict, actual_catalog: dict,
                           expected_data: dict, actual_data: dict) -> None:
-    if expected_catalog != actual_catalog:
-        differing = sorted(key for key in expected_catalog if expected_catalog.get(key) != actual_catalog.get(key))
+    expected_comparable = _comparable_catalog(expected_catalog)
+    actual_comparable = _comparable_catalog(actual_catalog)
+    if expected_comparable != actual_comparable:
+        differing = sorted(key for key in set(expected_comparable) | set(actual_comparable)
+                           if expected_comparable.get(key) != actual_comparable.get(key))
         raise AssertionError(f"Restored schema differs in catalog classes: {', '.join(differing)}")
     if expected_data != actual_data:
         differing = sorted(key for key in set(expected_data) | set(actual_data)
                            if expected_data.get(key) != actual_data.get(key))
         raise AssertionError(f"Restored rows differ in {len(differing)} public tables")
+
+
+_VARCHAR_LITERAL_TEXT_ARRAY = re.compile(
+    r"\(ARRAY\[(?P<items>'(?:[^']|'')*'::character varying"
+    r"(?:, '(?:[^']|'')*'::character varying)*)\]\)::text\[\]"
+)
+_VARCHAR_LITERAL_ITEM = re.compile(r"'(?:[^']|'')*'::character varying")
+SCHEMA_COMPARISON_CONTRACT = "exact_except_varchar_literal_array_text_cast_reparse_v1"
+
+
+def _canonical_varchar_literal_array_cast(definition: str) -> str:
+    """One PG16 dump/reparse representation change, never generic SQL cleanup.
+
+    Exact source/restored SHA pairs from the real rehearsal pin this rule:
+    a flat constant varchar array cast to text[] reparses as the same literals
+    cast individually to text. No literal, order, typmod, collation, expression,
+    other cast or surrounding byte is discarded. Quoted SQL is opaque.
+    """
+    result, position = [], 0
+    while position < len(definition):
+        if definition.startswith(("--", "/*"), position):
+            # PostgreSQL's catalog deparser does not emit comments. Preserve
+            # an unexplained representation rather than parse arbitrary SQL.
+            return definition
+        quote = definition[position]
+        if quote in ("'", '"'):
+            start = position
+            escaped = (quote == "'" and position > 0 and definition[position - 1] in "Ee"
+                       and (position == 1 or not (definition[position - 2].isalnum()
+                                                  or definition[position - 2] in "_$")))
+            position += 1
+            while position < len(definition):
+                if escaped and definition[position] == "\\":
+                    position += 2
+                elif definition[position] == quote:
+                    position += 1
+                    if position < len(definition) and definition[position] == quote:
+                        position += 1
+                    else:
+                        break
+                else:
+                    position += 1
+            result.append(definition[start:position])
+            continue
+        if quote == "$":
+            tag = re.match(r"\$(?:[A-Za-z_][A-Za-z_0-9]*)?\$", definition[position:])
+            if tag:
+                end = definition.find(tag.group(), position + len(tag.group()))
+                if end == -1:
+                    return definition
+                end += len(tag.group())
+                result.append(definition[position:end])
+                position = end
+                continue
+        match = _VARCHAR_LITERAL_TEXT_ARRAY.match(definition, position)
+        if match:
+            items = [item.group() for item in _VARCHAR_LITERAL_ITEM.finditer(match["items"])]
+            result.append("ARRAY[" + ", ".join(f"({item})::text" for item in items) + "]")
+            position = match.end()
+        else:
+            result.append(definition[position])
+            position += 1
+    return "".join(result)
+
+
+def _comparable_catalog(catalog: dict) -> dict:
+    result = dict(catalog)
+    for category in ("constraints", "indexes"):
+        if category in catalog:
+            result[category] = [
+                {**row, "definition": _canonical_varchar_literal_array_cast(row["definition"])}
+                if isinstance(row.get("definition"), str) else dict(row)
+                for row in catalog[category]
+            ]
+    return result
 
 
 def _migration_sources() -> dict:
@@ -490,9 +569,17 @@ def restored(args, path: Path, state: dict) -> None:
     restored_url = legacy._direct_database_url(state["restored_database"])
     assert legacy._current_revision(restored_url) == FORK_HEAD
     actual_catalog, actual_data = _catalog(restored_url), _table_data(restored_url)
+    expected_comparable = _comparable_catalog(state["source_catalog"])
+    actual_comparable = _comparable_catalog(actual_catalog)
     state.update({"dump_sha256": digest, "dump_bytes": len(contents), "archive_magic": "PGDMP",
                   "restored_head_before_upgrade": legacy._current_revision(restored_url),
-                  "schema_restore_sha256": _digest(actual_catalog), "data_restore_sha256": _digest(actual_data)})
+                  "schema_restore_sha256": _digest(actual_catalog), "data_restore_sha256": _digest(actual_data),
+                  "schema_comparison_contract": SCHEMA_COMPARISON_CONTRACT,
+                  "source_schema_comparable_sha256": _digest(expected_comparable),
+                  "restored_schema_comparable_sha256": _digest(actual_comparable),
+                  "raw_schema_catalogs_equal": state["source_catalog"] == actual_catalog,
+                  "only_proven_varchar_array_reparse_differences": state["source_catalog"] != actual_catalog
+                  and expected_comparable == actual_comparable})
     state["timings_seconds"].update({"pg_dump": args.dump_elapsed_ns / 1_000_000_000,
                                      "pg_restore": args.restore_elapsed_ns / 1_000_000_000})
     state["postgres_tool_commands"] = [

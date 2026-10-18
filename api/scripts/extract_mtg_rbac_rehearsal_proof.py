@@ -115,13 +115,14 @@ def _fence(value: Any, outcome: str) -> dict:
             "transaction_rolled_back", "contender_session_closed", "abort_method",
         })
         method = contender["abort_method"]
-        _require(type(method) is str and method in {"observer_cancel", "server_statement_deadline"})
+        _require(type(method) is str and method in {"observer_cancel", "server_statement_deadline", "server_lock_deadline"})
+        expected_code = "55P03" if method == "server_lock_deadline" else "57014"
         projected_contenders.append({
             "table": _literal(contender["table"], table),
             "waiting_mode": _literal(contender["waiting_mode"], "RowExclusiveLock"),
             "blocked_by_migrator": _literal(contender["blocked_by_migrator"], True),
             "write_attempts": _literal(contender["write_attempts"], 1),
-            "cancel_sqlstate": _literal(contender["cancel_sqlstate"], "57014"),
+            "cancel_sqlstate": _literal(contender["cancel_sqlstate"], expected_code),
             "transaction_rolled_back": _literal(contender["transaction_rolled_back"], True),
             "contender_session_closed": _literal(contender["contender_session_closed"], True),
             "abort_method": method,

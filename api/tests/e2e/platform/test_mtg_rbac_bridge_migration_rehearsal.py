@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import importlib.util
 import json
+import sys
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -455,10 +456,12 @@ def _fence_identity(connection, stage):
     return {**identity, "stage": stage, "locks": [dict(row) for row in locks]}
 
 
-def _prove_blocked_authority_write(connection, database_url, table, statement, parameters):
+def _prove_blocked_authority_write(connection, database_url, table, statement, parameters, receipts):
     """One real write attempt; observe its wait, cancel, and verify rollback."""
     ready = threading.Event()
     worker = {}
+    receipt = {"table": table, "write_attempts": 1, "observer_samples": 0}
+    receipts.append(receipt)
     migrator = connection.execute(sa.text("SELECT pg_backend_pid()")).scalar_one()
 
     async def attempt():
@@ -467,6 +470,9 @@ def _prove_blocked_authority_write(connection, database_url, table, statement, p
         try:
             async with engine.begin() as contender:
                 await contender.execute(sa.text("SET LOCAL statement_timeout = '3s'"))
+                # Fail on the server before the existing 3s client command
+                # deadline, including a lock wait during SQL Parse/prepare.
+                await contender.execute(sa.text("SET LOCAL lock_timeout = '2s'"))
                 worker["backend"] = (await contender.execute(sa.text("SELECT pg_backend_pid()"))).scalar_one()
                 ready.set()
                 await contender.execute(sa.text(statement), parameters)
@@ -492,14 +498,17 @@ def _prove_blocked_authority_write(connection, database_url, table, statement, p
             # The contender also has a short server-side statement deadline.
             deadline = time.monotonic() + 1
             while time.monotonic() < deadline:
-                observed = connection.execute(sa.text("""
+                target_locks = connection.execute(sa.text("""
                     SELECT l.mode, l.granted,
                            CAST(:migrator AS integer) = ANY(pg_blocking_pids(l.pid)) AS blocked_by_migrator
                     FROM pg_locks l
-                    WHERE l.pid = :pid AND NOT l.granted AND l.locktype = 'relation'
+                    WHERE l.pid = :pid AND l.locktype = 'relation'
                       AND l.relation = CAST(:relation AS regclass)
                 """), {"pid": worker["backend"], "migrator": migrator,
-                          "relation": f"public.{table}"}).mappings().first()
+                          "relation": f"public.{table}"}).mappings().all()
+                receipt["observer_samples"] += 1
+                receipt["target_relation_locks"] = [dict(row) for row in target_locks]
+                observed = next((row for row in target_locks if not row["granted"]), None)
                 if observed is not None:
                     break
                 if future.done():
@@ -509,25 +518,45 @@ def _prove_blocked_authority_write(connection, database_url, table, statement, p
             assert dict(observed) == {"mode": "RowExclusiveLock", "granted": False,
                                       "blocked_by_migrator": True}
         finally:
+            observer_error = sys.exc_info()[1]
+            cancellation_error = None
+            if observer_error is not None:
+                receipt["observer_failure_type"] = type(observer_error).__name__
             if "backend" in worker and not future.done():
-                cancelled = connection.execute(sa.text("""
-                    SELECT pg_cancel_backend(pid) FROM pg_stat_activity
-                    WHERE pid = :pid AND datname = current_database() AND usename = current_user
-                """), {"pid": worker["backend"]}).scalars().all()
-                # The short server deadline may have already closed the
-                # session between observation and this bounded cancellation.
-                assert all(cancelled), "Could not cancel the owned synthetic contender"
-                cancel_requested = bool(cancelled)
-            result = future.result(timeout=6)
-        assert result == {"write_succeeded": False, "sqlstate": "57014", "transaction_rolled_back": True}
+                try:
+                    connection.execute(sa.text("SELECT pg_stat_clear_snapshot()"))
+                    cancelled = connection.execute(sa.text("""
+                        SELECT pg_cancel_backend(pid) FROM pg_stat_activity
+                        WHERE pid = :pid AND datname = current_database() AND usename = current_user
+                    """), {"pid": worker["backend"]}).scalars().all()
+                    # The short server deadline may have already closed the
+                    # session between observation and bounded cancellation.
+                    assert all(cancelled), "Could not cancel the owned synthetic contender"
+                    cancel_requested = bool(cancelled)
+                    receipt["cancel_target_rows"] = len(cancelled)
+                except Exception as exc:
+                    cancellation_error = exc
+                    receipt["cancellation_failure_type"] = type(exc).__name__
+            try:
+                result = future.result(timeout=6)
+                receipt["worker_result"] = result
+            except Exception as worker_error:
+                receipt["worker_failure_type"] = type(worker_error).__name__
+                if observer_error is not None:
+                    raise observer_error from None
+                raise
+            if observer_error is None and cancellation_error is not None:
+                raise cancellation_error
+        assert result["write_succeeded"] is False and result["transaction_rolled_back"] is True
+        assert result["sqlstate"] in {"57014", "55P03"}
         connection.execute(sa.text("SELECT pg_stat_clear_snapshot()"))
         assert connection.execute(sa.text("""
             SELECT count(*) FROM pg_stat_activity WHERE pid = :pid AND datname = current_database()
         """), {"pid": worker["backend"]}).scalar_one() == 0
-    return {"table": table, "waiting_mode": observed["mode"], "blocked_by_migrator": True,
-            "write_attempts": 1, "cancel_sqlstate": result["sqlstate"], "transaction_rolled_back": True,
-            "contender_session_closed": True,
-            "abort_method": "observer_cancel" if cancel_requested else "server_statement_deadline"}
+    receipt.update({"waiting_mode": observed["mode"], "blocked_by_migrator": True,
+                    "cancel_sqlstate": result["sqlstate"], "transaction_rolled_back": True,
+                    "contender_session_closed": True, "abort_method": "server_lock_deadline" if result["sqlstate"] == "55P03"
+                    else "observer_cancel" if cancel_requested else "server_statement_deadline"})
 
 
 @pytest.mark.parametrize("outcome", ["commit", "rollback"])
@@ -560,7 +589,7 @@ def test_real_alembic_fence_blocks_writes_and_spans_transaction(legacy_db, outco
                 ("users", "UPDATE public.users SET organization_id = CAST(:foreign AS uuid) WHERE id = CAST(:user AS uuid)",
                  {"foreign": ids["org_b"], "user": ids["user_a"]}),
             ):
-                contenders.append(_prove_blocked_authority_write(connection, legacy_db, table, write, arguments))
+                _prove_blocked_authority_write(connection, legacy_db, table, write, arguments, contenders)
         else:
             archived_txid = connection.execute(sa.text(
                 "SELECT transaction_id FROM mtg_rbac_bridge.rollback_record WHERE singleton"
@@ -580,6 +609,12 @@ def test_real_alembic_fence_blocks_writes_and_spans_transaction(legacy_db, outco
             _upgrade(legacy_db, BRIDGE)
     finally:
         sa.event.remove(Engine, "after_cursor_execute", trace)
+        # Pytest captures this bounded, static-field diagnostic and includes
+        # it on failures. It is deliberately outside the closed proof schema.
+        print("MTG RBAC fence observations: " + json.dumps({
+            "stages_observed": [{"stage": stage["stage"], "locks": stage["locks"]} for stage in stages],
+            "contender_observations": contenders,
+        }, sort_keys=True))
     assert [stage["stage"] for stage in stages] == ["preflight", "r2b", "bridge", "cutover"]
     assert len({(stage["backend"], stage["transaction"]) for stage in stages}) == 1
     assert [row["table"] for row in contenders] == ["roles", "user_roles", "users"]
@@ -601,7 +636,10 @@ def test_real_alembic_fence_blocks_writes_and_spans_transaction(legacy_db, outco
     record_testsuite_property(f"mtg_rbac_maintenance_fence_{outcome}", json.dumps({
         "outcome": outcome, "same_backend_and_transaction": True, "transaction_locks_released": True,
         "stages": [{"stage": stage["stage"], "locks": stage["locks"]} for stage in stages],
-        "contenders": contenders, "original_authority_preserved": True,
+        "contenders": [{key: item[key] for key in (
+            "table", "waiting_mode", "blocked_by_migrator", "write_attempts", "cancel_sqlstate",
+            "transaction_rolled_back", "contender_session_closed", "abort_method",
+        )} for item in contenders], "original_authority_preserved": True,
         "external_full_graph_release_fence_proven": False,
     }, sort_keys=True))
 
