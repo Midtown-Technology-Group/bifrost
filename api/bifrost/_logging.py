@@ -37,6 +37,18 @@ _local = threading.local()
 # Thread-local counters for sync callers, dict for async callers.
 _async_sequence_counters: dict[str, int] = {}
 
+# Cleanup after a partially successful XADD/EXPIRE transaction must not erase a
+# stream whose expiry was already present or repaired by a concurrent writer.
+# Redis executes scripts atomically, so no writer can set a TTL between this
+# check and the conditional delete.
+_DELETE_UNBOUNDED_STREAM_SCRIPT = """
+local ttl = redis.call("TTL", KEYS[1])
+if ttl == -1 then
+    return redis.call("DEL", KEYS[1])
+end
+return 0
+"""
+
 
 def clear_sequence_counter(execution_id: str) -> None:
     """Remove sequence counter for a completed execution.
@@ -131,12 +143,12 @@ def append_log_to_stream(
         if isinstance(entry_id, Exception):
             raise entry_id
         if isinstance(expiry_applied, Exception):
-            r.delete(stream_key)
+            r.eval(_DELETE_UNBOUNDED_STREAM_SCRIPT, 1, stream_key)
             raise RuntimeError(
                 "Failed to apply execution log stream expiry"
             ) from expiry_applied
         if not expiry_applied:
-            r.delete(stream_key)
+            r.eval(_DELETE_UNBOUNDED_STREAM_SCRIPT, 1, stream_key)
             raise RuntimeError("Failed to apply execution log stream expiry")
         return entry_id
     except Exception as e:
@@ -352,12 +364,12 @@ async def append_log_to_stream_async(
             if isinstance(entry_id, Exception):
                 raise entry_id
             if isinstance(expiry_applied, Exception):
-                await r.delete(stream_key)
+                await r.eval(_DELETE_UNBOUNDED_STREAM_SCRIPT, 1, stream_key)
                 raise RuntimeError(
                     "Failed to apply execution log stream expiry"
                 ) from expiry_applied
             if not expiry_applied:
-                await r.delete(stream_key)
+                await r.eval(_DELETE_UNBOUNDED_STREAM_SCRIPT, 1, stream_key)
                 raise RuntimeError("Failed to apply execution log stream expiry")
             return entry_id
     except Exception as e:
