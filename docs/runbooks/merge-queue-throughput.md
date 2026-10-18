@@ -10,6 +10,9 @@ The operator command accepts only this repository's CI/CodeQL `merge_group`
 runs for `main`. It requires an authoritative `checks_timed_out` removal for
 the exact candidate SHA, complete queue/history reads and absence from every
 current live queue entry. It refuses other removal reasons and completed runs.
+An unbuilt `QUEUED` entry legitimately has no combined SHA. Its PR identity must
+still be known, and the target PR must not appear anywhere in the live queue,
+including requeued/unbuilt entries. Missing heads in other states fail closed.
 
 1. Read the run and queue state. Record the incident/PR owner and purpose.
    Choose one exact run ID, not a branch name or the newest run for a PR.

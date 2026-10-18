@@ -1,4 +1,9 @@
 import assert from "node:assert/strict";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, statSync, readdirSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { authorizeRetirement, candidate, retireRun } from "./retire-merge-group.mjs";
 
@@ -27,7 +32,7 @@ for (const [name, change] of [
   ["other base", x => { x.run.head_branch = x.run.head_branch.replace("main", "other"); }],
   ["malformed SHA", x => { x.run.head_sha += "\n"; }],
   ["terminal run", x => { x.run.status = "completed"; }],
-  ["live candidate", x => { x.queue.nodes.push({ headCommit: { oid: x.run.head_sha } }); }],
+  ["live candidate", x => { x.queue.nodes.push({ headCommit: { oid: x.run.head_sha }, pullRequest: { number: 456 } }); }],
   ["truncated queue", x => { x.queue.pageInfo.hasNextPage = true; }],
   ["unknown queue head", x => { x.queue.nodes.push({ headCommit: null }); }],
   ["missing queue", x => { x.queue = null; }],
@@ -74,6 +79,17 @@ test("default planning performs no cancellation or log download", async () => {
   assert.equal(x.calls[1][1], "graphql");
 });
 
+test("unbuilt QUEUED entries have no candidate SHA and do not consume a retired other PR", () => {
+  const { run, queue, history } = fixture();
+  queue.nodes.push({ state: "QUEUED", headCommit: null, pullRequest: { number: 456 } });
+  assert.equal(authorizeRetirement(run, queue, history).pr, 123);
+  queue.nodes[0].pullRequest.number = 123;
+  assert.throws(() => authorizeRetirement(run, queue, history), /live queue/);
+  queue.nodes[0].pullRequest.number = 456;
+  queue.nodes[0].state = "AWAITING_CHECKS";
+  assert.throws(() => authorizeRetirement(run, queue, history), /Incomplete/);
+});
+
 test("apply preserves completed logs and rechecks run and live queue before cancelling once", async () => {
   const x = transport();
   const result = await retireRun({ runId: 42, apply: true, ...x });
@@ -94,7 +110,7 @@ for (const mode of ["logs unavailable", "new attempt", "candidate requeued", "in
       if (mode === "logs unavailable" && path.endsWith("/logs")) throw new Error("not retained");
       if (mode === "new attempt" && x.reads === 2 && path.endsWith("/42")) result.run_attempt++;
       if (mode === "candidate requeued" && path === "graphql" && x.proofs === 2) {
-        result.data.repository.mergeQueue.entries.nodes.push({ headCommit: { oid: x.state.run.head_sha } });
+        result.data.repository.mergeQueue.entries.nodes.push({ headCommit: { oid: x.state.run.head_sha }, pullRequest: { number: 123 } });
       }
       if (mode === "incomplete jobs" && path.includes("/jobs?")) result.total_count = 2;
       if (mode === "GraphQL denied" && path === "graphql") result.errors = [{ message: "denied" }];
@@ -115,4 +131,55 @@ test("uncertain cancellation is recorded and never resent", async () => {
   await assert.rejects(retireRun({ runId: 42, apply: true, ...x }), /outcome unknown/);
   assert.equal(x.saved.get("cancel-result.json").outcome, "unknown");
   assert.equal(x.calls.filter(c => c[1].endsWith("/cancel")).length, 1);
+});
+
+test("accepted cancellation stays recorded when terminal readback is unavailable", async () => {
+  const x = transport(); const original = x.api;
+  x.api = async (method, path) => {
+    const result = await original(method, path);
+    if (x.reads === 3) throw new Error("readback unavailable");
+    return result;
+  };
+  await assert.rejects(retireRun({ runId: 42, apply: true, ...x }));
+  assert.equal(x.saved.get("cancel-result.json").outcome, "cancellation_requested");
+  assert.equal(x.calls.filter(c => c[1].endsWith("/cancel")).length, 1);
+});
+
+test("CLI uses argument-based gh transport, private receipts and a non-overwriting dry run", () => {
+  const directory = mkdtempSync(join(tmpdir(), "retire-queue-cli-"));
+  try {
+    const { run, queue, history } = fixture();
+    const bin = join(directory, "bin"); mkdirSync(bin);
+    const gh = join(bin, "gh");
+    writeFileSync(gh, `#!${process.execPath}\n
+      import fs from "node:fs";
+      const args = process.argv.slice(2);
+      fs.appendFileSync(${JSON.stringify(join(directory, "calls"))}, JSON.stringify(args) + "\\n");
+      if (args.at(-1) === "-") {
+        const body = JSON.parse(fs.readFileSync(0, "utf8"));
+        if (!body.query.startsWith("query ")) process.exit(2);
+        console.log(${JSON.stringify(JSON.stringify({ data: { repository: { mergeQueue: { entries: queue }, pullRequest: history } } }))});
+      } else console.log(${JSON.stringify(JSON.stringify(run))});
+    `, { mode: 0o700 });
+    const script = fileURLToPath(new URL("./retire-merge-group.mjs", import.meta.url));
+    const evidence = join(directory, "evidence");
+    const options = { encoding: "utf8", env: { ...process.env, PATH: `${bin}:${process.env.PATH}` } };
+    const first = spawnSync(process.execPath, [script, "42", evidence], options);
+    assert.equal(first.status, 0, first.stderr);
+    assert.equal(JSON.parse(first.stdout).outcome, "planned");
+    assert.equal(statSync(evidence).mode & 0o777, 0o700);
+    for (const name of readdirSync(evidence)) assert.equal(statSync(join(evidence, name)).mode & 0o777, 0o600);
+    const calls = readFileSync(join(directory, "calls"), "utf8").trim().split("\n").map(JSON.parse);
+    assert.deepEqual(calls.map(args => args[2]), ["GET", "POST"]);
+    assert.equal(calls[1][3], "graphql");
+    const originalPlan = readFileSync(join(evidence, "plan.json"), "utf8");
+    const repeated = spawnSync(process.execPath, [script, "42", evidence], options);
+    assert.equal(repeated.status, 1);
+    assert.equal(readFileSync(join(evidence, "plan.json"), "utf8"), originalPlan);
+    const invalid = spawnSync(process.execPath, [script, "42", join(directory, "invalid"), "--unexpected"], options);
+    assert.equal(invalid.status, 1);
+    assert.equal(invalid.stdout, "");
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
 });

@@ -25,10 +25,13 @@ export function authorizeRetirement(run, queue, history) {
   const number = candidate(run);
   if (!ACTIVE.has(run.status)) throw new Error("Run is no longer active");
   if (!queue || queue.pageInfo?.hasNextPage !== false || !Array.isArray(queue.nodes)
-      || queue.nodes.some(entry => !SHA.test(entry.headCommit?.oid ?? ""))) {
+      || queue.nodes.some(entry => !Number.isSafeInteger(entry.pullRequest?.number)
+        || entry.pullRequest.number <= 0
+        || (!SHA.test(entry.headCommit?.oid ?? "")
+          && !(entry.headCommit === null && entry.state === "QUEUED")))) {
     throw new Error("Incomplete live queue evidence");
   }
-  if (queue.nodes.some(entry => entry.headCommit.oid === run.head_sha)) {
+  if (queue.nodes.some(entry => entry.headCommit?.oid === run.head_sha || entry.pullRequest.number === number)) {
     throw new Error("Candidate is still in the live queue");
   }
   if (history?.number !== number || history.timelineItems?.pageInfo?.hasPreviousPage !== false
@@ -59,7 +62,8 @@ export async function retireRun({ runId, apply = false, save, api }) {
   const number = candidate(run);
   let proofNumber = 0;
   const query = `query { repository(owner:"Midtown-Technology-Group",name:"bifrost") {
-    mergeQueue(branch:"main") { entries(first:100) { pageInfo {hasNextPage} nodes {headCommit {oid}} } }
+    mergeQueue(branch:"main") { entries(first:100) { pageInfo {hasNextPage}
+      nodes {state headCommit {oid} pullRequest {number}} } }
     pullRequest(number:${number}) { number timelineItems(last:100,itemTypes:[REMOVED_FROM_MERGE_QUEUE_EVENT]) {
       pageInfo {hasPreviousPage} nodes {... on RemovedFromMergeQueueEvent {createdAt reason beforeCommit {oid}}}
     } }
