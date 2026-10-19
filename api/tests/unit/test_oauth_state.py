@@ -1,7 +1,7 @@
-"""Unit tests for ``src.services.oauth_state`` — the per-mapping OAuth state wrapper.
+"""Unit tests for ``src.services.oauth_state`` — integration OAuth state.
 
 The underlying JWT primitives are tested separately in
-``test_oauth_state_core.py``; this file only covers the per-mapping payload
+``test_oauth_state_core.py``; this file only covers the integration payload
 shape and audience-isolation behaviour.
 """
 
@@ -25,6 +25,16 @@ def test_round_trip_carries_provider_and_mapping():
     payload = decode_state(token)
     assert payload["provider_id"] == str(provider_id)
     assert payload["mapping_id"] == str(mapping_id)
+    assert payload["nonce"] == nonce
+
+
+def test_provider_only_round_trip_preserves_exact_provider_binding():
+    provider_id = uuid4()
+    token, nonce = encode_state(provider_id=provider_id)
+
+    payload = decode_state(token)
+    assert payload["provider_id"] == str(provider_id)
+    assert payload["mapping_id"] is None
     assert payload["nonce"] == nonce
 
 

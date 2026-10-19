@@ -6,7 +6,6 @@ This is separate from oauth_sso.py which handles user authentication.
 """
 
 import logging
-import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import UUID
@@ -29,7 +28,7 @@ from src.models import (
 from src.core.auth import Context, CurrentSuperuser
 from src.core.log_safety import log_safe
 from src.models import OAuthProvider, OAuthToken
-from src.models.orm.integrations import IntegrationMapping
+from src.models.orm.integrations import Integration, IntegrationMapping
 from src.models.orm.platform_jobs import PlatformJob
 from src.models.contracts.platform_jobs import PlatformJobAccepted
 from src.jobs.platform.system_maintenance import (
@@ -55,7 +54,13 @@ from src.services.oauth_pkce import (
     validate_pkce_binding,
 )
 from src.repositories.oauth import OAuthProviderRepository
-from src.services.oauth_state import consume_nonce, decode_state, OAuthStateError
+from src.services.oauth_state import (
+    OAuthStateError,
+    consume_nonce,
+    decode_state,
+    encode_state,
+    remember_nonce,
+)
 
 # Import cache invalidation
 try:
@@ -159,9 +164,6 @@ async def create_connection(
     user: CurrentSuperuser,
 ) -> OAuthConnectionDetail:
     """Create a new OAuth connection."""
-    from uuid import UUID
-    from src.models.orm.integrations import Integration
-
     org_id = ctx.org_id
     repo = OAuthProviderRepository(ctx.db, org_id=org_id, is_superuser=True)
 
@@ -180,8 +182,9 @@ async def create_connection(
     # Use the integration name as the provider/connection name
     provider_name = integration.name
 
-    # Check for existing connection (global check — top-level connections are org=NULL)
-    existing = await repo.get_by_connection_name(provider_name)
+    # Writes are exact-scope: an org may override a visible global provider,
+    # but it must never mutate or block on that global fallback.
+    existing = await repo.get_by_connection_name_in_scope(provider_name)
     if existing:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -195,7 +198,7 @@ async def create_connection(
         encrypted_secret = encrypt_secret(request.client_secret).encode()
 
     provider = OAuthProvider(
-        # organization_id omitted → NULL → global connection
+        organization_id=org_id,
         provider_name=provider_name,
         display_name=integration.name,
         description=request.description,
@@ -339,8 +342,11 @@ async def authorize_connection(
         defaults=defaults,
     )
 
-    # Generate state for CSRF protection
-    state = secrets.token_urlsafe(32)
+    # Bind the callback to the exact provider that initiated this flow. This
+    # prevents an org-scoped connection from being replaced by a same-name
+    # global fallback when the browser returns without an organization_id.
+    state, nonce = encode_state(provider_id=provider.id)
+    await remember_nonce(nonce)
 
     params = {
         "client_id": provider.client_id,
@@ -669,51 +675,89 @@ async def oauth_callback(
         compute_token_exchange_scopes,
     )
 
-    # Use org_id from request body for org-specific token storage (None for global)
-    org_id = UUID(request.organization_id) if request.organization_id else None
+    try:
+        requested_org_id = (
+            UUID(request.organization_id) if request.organization_id else None
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid organization_id",
+        ) from e
 
-    # Per-mapping flows carry mapping_id in a signed state token. If present,
-    # the resulting OAuthToken must be scoped to the MAPPING'S org — otherwise
-    # store_token would upsert into the integration-level (organization_id IS NULL)
-    # slot and stomp the global fallback, leaving every "per-mapping" connection
-    # pointing at the same shared token row.
+    # Every integration-level and per-mapping authorize flow carries the exact
+    # provider in signed state. Reject invalid state instead of downgrading to a
+    # name lookup, which could reselect a same-name global fallback.
     mapping_id_from_state: UUID | None = None
-    nonce_from_state: str | None = None
-    if request.state:
-        try:
-            payload = decode_state(request.state)
-            nonce_from_state = payload.get("nonce")
-            mid = payload.get("mapping_id")
-            if mid:
-                mapping_id_from_state = UUID(mid)
-                # Look up the mapping now so we can use its org for token storage.
-                from src.models.orm import IntegrationMapping as _IM
-                mapping_row = await ctx.db.get(_IM, mapping_id_from_state)
-                if mapping_row and mapping_row.organization_id:
-                    org_id = mapping_row.organization_id
-        except (OAuthStateError, ValueError) as e:
-            # Legacy integration-level flows use secrets.token_urlsafe() as state —
-            # decoding is expected to fail. Fall through to global-token storage.
-            logger.warning(f"OAuth state decode failed (treating as legacy flow): {e}")
+    if not request.state:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="OAuth state is required",
+        )
+    try:
+        payload = decode_state(request.state)
+    except OAuthStateError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired OAuth state",
+        ) from e
 
-    # Single-use enforcement up front: a replayed per-mapping state is
-    # rejected before any token exchange or storage can happen. (PKCE
-    # verifiers get the same treatment below via atomic GETDEL.)
-    if mapping_id_from_state is not None and nonce_from_state:
-        if not await consume_nonce(nonce_from_state):
+    try:
+        provider_id_from_state = UUID(payload["provider_id"])
+        mapping_id_raw = payload.get("mapping_id")
+        mapping_id_from_state = UUID(mapping_id_raw) if mapping_id_raw else None
+    except (KeyError, TypeError, ValueError) as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid OAuth state binding",
+        ) from e
+
+    provider = await ctx.db.get(OAuthProvider, provider_id_from_state)
+    if provider is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="OAuth state references an unknown provider",
+        )
+
+    connection_matches_provider = connection_name == provider.provider_name
+    if provider.integration_id is not None and not connection_matches_provider:
+        try:
+            connection_matches_provider = (
+                UUID(connection_name) == provider.integration_id
+            )
+        except ValueError:
+            connection_matches_provider = False
+    if not connection_matches_provider:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="OAuth state does not match this connection",
+        )
+
+    if mapping_id_from_state is not None:
+        mapping = await ctx.db.get(IntegrationMapping, mapping_id_from_state)
+        if mapping is None or mapping.integration_id != provider.integration_id:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="OAuth state already used (replay rejected)",
+                detail="OAuth state does not match this integration mapping",
             )
+        org_id = mapping.organization_id
+    else:
+        org_id = provider.organization_id
+
+    if requested_org_id is not None and requested_org_id != org_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="OAuth state does not match the requested organization",
+        )
+
+    nonce = payload.get("nonce")
+    if not isinstance(nonce, str) or not await consume_nonce(nonce):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="OAuth state already used (replay rejected)",
+        )
 
     repo = OAuthProviderRepository(ctx.db, org_id=org_id, is_superuser=True)
-    provider = await repo.get_by_connection_name(connection_name)
-
-    if not provider:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"OAuth connection '{connection_name}' not found",
-        )
 
     if not provider.token_url:
         raise HTTPException(
@@ -798,6 +842,7 @@ async def oauth_callback(
             connection_name=connection_name,
             status="failed",
             status_message=error_msg,
+            provider=provider,
         )
         return OAuthCallbackResponse(
             success=False,
@@ -820,6 +865,7 @@ async def oauth_callback(
             connection_name=connection_name,
             status="failed",
             status_message="No access token in response",
+            provider=provider,
         )
         return OAuthCallbackResponse(
             success=False,
@@ -841,6 +887,7 @@ async def oauth_callback(
         refresh_token=refresh_token,
         expires_at=expires_at,
         scopes=scopes,
+        provider=provider,
     )
 
     logger.info(f"OAuth callback completed for {log_safe(connection_name)}")
@@ -877,7 +924,7 @@ async def oauth_callback(
     # nonce was already consumed (single-use) at the top of this handler, so
     # reaching here proves first use — no replay can store a token.
     if mapping_id_from_state is not None:
-        stored = await repo.get_token(connection_name)
+        stored = await repo.get_token(connection_name, provider=provider)
         if stored:
             captured_value = await _apply_callback_to_mapping(
                 db=ctx.db,
@@ -890,7 +937,7 @@ async def oauth_callback(
 
     # Invalidate cache (token was stored)
     if CACHE_INVALIDATION_AVAILABLE and invalidate_oauth_token:
-        await invalidate_oauth_token(None, connection_name)  # org_id is None in callback
+        await invalidate_oauth_token(str(org_id) if org_id else None, connection_name)
 
     # Surface the picker when the admin needs to make (or correct) a choice:
     #   (a) entity_id_source is unset — first-time setup, any connect path

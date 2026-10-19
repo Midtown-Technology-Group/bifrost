@@ -21,12 +21,10 @@ from unittest.mock import AsyncMock, MagicMock
 from uuid import UUID, uuid4
 
 import pytest
-
 from src.repositories.oauth import (
     OAuthProviderRepository,
     OAuthTokenRepository,
 )
-
 
 ORG_A = UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
 ORG_B = UUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")
@@ -230,20 +228,66 @@ class TestOAuthProviderRepositoryCascade:
         """Connection names can be integration UUIDs or provider names."""
         provider = MagicMock()
         integration_id = uuid4()
-        session.execute.return_value = _scalar_result(provider)
         repo = OAuthProviderRepository(session, org_id=ORG_A, is_superuser=True)
 
-        assert await repo.get_by_connection_name(str(integration_id)) is provider
-        session.execute.assert_called_once()
-
-        session.execute.reset_mock()
         with pytest.MonkeyPatch.context() as mp:
             get = AsyncMock(return_value=provider)
             mp.setattr(repo, "get", get)
+            assert await repo.get_by_connection_name(str(integration_id)) is provider
+            get.assert_awaited_once_with(integration_id=integration_id)
+
+            get.reset_mock()
             assert await repo.get_by_connection_name("github") is provider
 
         session.execute.assert_not_called()
         get.assert_awaited_once_with(provider_name="github")
+
+    async def test_exact_scope_lookup_never_cascades_to_global(
+        self, session
+    ) -> None:
+        """Mutation lookup pins both UUID and name forms to the caller org."""
+        provider = MagicMock(organization_id=ORG_A)
+        session.execute.return_value = _scalar_result(provider)
+        repo = OAuthProviderRepository(session, org_id=ORG_A, is_superuser=True)
+
+        assert await repo.get_by_connection_name_in_scope("github") is provider
+
+        compiled = session.execute.await_args.args[0].compile()
+        query = str(compiled)
+        assert ORG_A in compiled.params.values()
+        assert "oauth_providers.organization_id =" in query
+        assert "organization_id IS NULL" not in query
+
+    async def test_exact_global_lookup_requires_null_organization(
+        self, session
+    ) -> None:
+        """A system/global writer resolves only the global provider row."""
+        provider = MagicMock(organization_id=None)
+        session.execute.return_value = _scalar_result(provider)
+        repo = OAuthProviderRepository(session, org_id=None, is_superuser=True)
+
+        assert await repo.get_by_connection_name_in_scope("github") is provider
+
+        query = str(session.execute.await_args.args[0])
+        assert "oauth_providers.organization_id IS NULL" in query
+
+    async def test_mutations_do_not_fall_back_to_visible_global_provider(
+        self, session, monkeypatch
+    ) -> None:
+        """An org writer gets not-found instead of mutating the global tier."""
+        repo = OAuthProviderRepository(session, org_id=ORG_A, is_superuser=True)
+        exact_lookup = AsyncMock(return_value=None)
+        cascade_lookup = AsyncMock(return_value=MagicMock(organization_id=None))
+        monkeypatch.setattr(repo, "get_by_connection_name_in_scope", exact_lookup)
+        monkeypatch.setattr(repo, "get_by_connection_name", cascade_lookup)
+
+        assert await repo.update_connection("github", client_id="attacker") is None
+        assert await repo.delete_connection("github") is False
+
+        assert exact_lookup.await_count == 2
+        cascade_lookup.assert_not_awaited()
+        session.delete.assert_not_awaited()
+        session.flush.assert_not_awaited()
 
     async def test_create_connection_encrypts_secret_and_scopes(
         self, session, monkeypatch
@@ -300,7 +344,7 @@ class TestOAuthProviderRepositoryCascade:
         )
         repo = OAuthProviderRepository(session, org_id=ORG_A, is_superuser=True)
         monkeypatch.setattr(
-            repo, "get_by_connection_name", AsyncMock(return_value=provider)
+            repo, "get_by_connection_name_in_scope", AsyncMock(return_value=provider)
         )
 
         result = await repo.update_connection(
@@ -334,7 +378,7 @@ class TestOAuthProviderRepositoryCascade:
         session.execute.return_value = _all_scalars_result(tokens)
         repo = OAuthProviderRepository(session, org_id=ORG_A, is_superuser=True)
         monkeypatch.setattr(
-            repo, "get_by_connection_name", AsyncMock(return_value=provider)
+            repo, "get_by_connection_name_in_scope", AsyncMock(return_value=provider)
         )
 
         assert await repo.delete_connection("github") is True
@@ -406,3 +450,53 @@ class TestOAuthProviderRepositoryCascade:
         )
         assert await missing_repo.update_status("missing", "failed") is False
         assert await missing_repo.get_token("missing") is None
+
+    async def test_exact_provider_binding_never_reselects_global_fallback(
+        self, session, monkeypatch
+    ) -> None:
+        """Signed callbacks persist against the exact provider they authorized."""
+        from src.models.orm.oauth import OAuthProvider, OAuthToken
+
+        provider = OAuthProvider(
+            id=uuid4(),
+            organization_id=ORG_A,
+            provider_name="github",
+            display_name="GitHub",
+            oauth_flow_type="authorization_code",
+            client_id="org-client",
+            encrypted_client_secret=b"",
+            scopes=["repo"],
+            status="waiting_callback",
+            created_by="admin@example.com",
+        )
+        repo = OAuthProviderRepository(session, org_id=ORG_A, is_superuser=True)
+        cascade_lookup = AsyncMock(return_value=MagicMock(organization_id=None))
+        monkeypatch.setattr(repo, "get_by_connection_name", cascade_lookup)
+        monkeypatch.setattr(
+            "src.core.security.encrypt_secret",
+            lambda value: f"encrypted:{value}",
+        )
+        session.execute.return_value = _scalar_result(None)
+
+        token = await repo.store_token(
+            "github",
+            access_token="access",
+            refresh_token="refresh",
+            expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
+            scopes=["repo"],
+            provider=provider,
+        )
+
+        cascade_lookup.assert_not_awaited()
+        assert isinstance(token, OAuthToken)
+        assert token.provider_id == provider.id
+        assert token.organization_id == ORG_A
+        assert token.encrypted_access_token == b"encrypted:access"
+        assert provider.status == "completed"
+        session.add.assert_called_once_with(token)
+
+        assert await repo.update_status(
+            "github", "failed", "denied", provider=provider
+        ) is True
+        cascade_lookup.assert_not_awaited()
+        assert provider.status == "failed"

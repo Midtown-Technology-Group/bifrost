@@ -73,17 +73,13 @@ class OAuthProviderRepository(OrgScopedRepository[OAuthProvider]):
         whether the caller has the integration UUID or the provider name.
 
         Cascade applies via the base class for the ``provider_name`` path.
-        ID lookups are globally unique; no cascade needed.
+        Integration IDs are shared by global providers and org overrides, so
+        they use the same org-to-global cascade as provider names.
         """
         # Try integration_id (UUID) first.
         try:
             integration_id = UUID(connection_name)
-            result = await self.session.execute(
-                select(OAuthProvider).where(
-                    OAuthProvider.integration_id == integration_id
-                )
-            )
-            provider = result.scalar_one_or_none()
+            provider = await self.get(integration_id=integration_id)
             if provider is not None:
                 return provider
         except ValueError:
@@ -93,6 +89,38 @@ class OAuthProviderRepository(OrgScopedRepository[OAuthProvider]):
 
         # Fall back to provider_name with cascade.
         return await self.get(provider_name=connection_name)
+
+    async def get_by_connection_name_in_scope(
+        self, connection_name: str
+    ) -> OAuthProvider | None:
+        """Resolve a provider only in this repository's exact write scope."""
+        scope_filter = (
+            OAuthProvider.organization_id.is_(None)
+            if self.org_id is None
+            else OAuthProvider.organization_id == self.org_id
+        )
+
+        try:
+            integration_id = UUID(connection_name)
+            result = await self.session.execute(
+                select(OAuthProvider).where(
+                    OAuthProvider.integration_id == integration_id,
+                    scope_filter,
+                )
+            )
+            provider = result.scalar_one_or_none()
+            if provider is not None:
+                return provider
+        except ValueError:
+            pass
+
+        result = await self.session.execute(
+            select(OAuthProvider).where(
+                OAuthProvider.provider_name == connection_name,
+                scope_filter,
+            )
+        )
+        return result.scalar_one_or_none()
 
     async def create_connection(
         self,
@@ -152,7 +180,7 @@ class OAuthProviderRepository(OrgScopedRepository[OAuthProvider]):
         """Update an OAuth provider in-place."""
         from src.core.security import encrypt_secret
 
-        provider = await self.get_by_connection_name(connection_name)
+        provider = await self.get_by_connection_name_in_scope(connection_name)
         if provider is None:
             return None
 
@@ -182,7 +210,7 @@ class OAuthProviderRepository(OrgScopedRepository[OAuthProvider]):
 
     async def delete_connection(self, connection_name: str) -> bool:
         """Delete an OAuth provider and its tokens."""
-        provider = await self.get_by_connection_name(connection_name)
+        provider = await self.get_by_connection_name_in_scope(connection_name)
         if provider is None:
             return False
 
@@ -202,9 +230,11 @@ class OAuthProviderRepository(OrgScopedRepository[OAuthProvider]):
         connection_name: str,
         status: str,
         status_message: str | None = None,
+        *,
+        provider: OAuthProvider | None = None,
     ) -> bool:
-        """Update provider status."""
-        provider = await self.get_by_connection_name(connection_name)
+        """Update provider status, optionally binding to an exact provider."""
+        provider = provider or await self.get_by_connection_name(connection_name)
         if provider is None:
             return False
 
@@ -215,7 +245,10 @@ class OAuthProviderRepository(OrgScopedRepository[OAuthProvider]):
         return True
 
     async def get_token(
-        self, connection_name: str
+        self,
+        connection_name: str,
+        *,
+        provider: OAuthProvider | None = None,
     ) -> OAuthToken | None:
         """Get the token for a connection scoped to this repository's org_id.
 
@@ -223,7 +256,7 @@ class OAuthProviderRepository(OrgScopedRepository[OAuthProvider]):
         token scope explicitly. Use ``OAuthTokenRepository.get_org_level_for_provider``
         for the cascade-with-fallback variant.
         """
-        provider = await self.get_by_connection_name(connection_name)
+        provider = provider or await self.get_by_connection_name(connection_name)
         if provider is None:
             return None
 
@@ -247,11 +280,13 @@ class OAuthProviderRepository(OrgScopedRepository[OAuthProvider]):
         refresh_token: str | None,
         expires_at: datetime,
         scopes: list[str] | None = None,
+        *,
+        provider: OAuthProvider | None = None,
     ) -> OAuthToken | None:
-        """Persist a token for a connection. Updates existing or creates new."""
+        """Persist a token, optionally binding it to an exact signed provider."""
         from src.core.security import encrypt_secret
 
-        provider = await self.get_by_connection_name(connection_name)
+        provider = provider or await self.get_by_connection_name(connection_name)
         if provider is None:
             return None
 
@@ -259,7 +294,7 @@ class OAuthProviderRepository(OrgScopedRepository[OAuthProvider]):
         encrypted_refresh = (
             encrypt_secret(refresh_token).encode() if refresh_token else None
         )
-        existing_token = await self.get_token(connection_name)
+        existing_token = await self.get_token(connection_name, provider=provider)
 
         now = datetime.now(timezone.utc)
         if existing_token:
