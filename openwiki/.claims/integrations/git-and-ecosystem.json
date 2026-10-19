@@ -1,0 +1,94 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:90c59d63bd230e595f76d753d768379bd8d2047692e2a239114ed7a776b69e1d",
+  "claims": [
+    {
+      "id": "claim_2a8ee7bb9fd940e385c1bfd7ed4fe4a5",
+      "statement": "The GitHub router accepts only GitHub HTTPS repository URLs (or owner/repository shorthand normalized to that host) and queues workspace Git operations as durable PlatformJobs under a shared workspace mutation lock with caller attribution.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/routers/github.py#L104-L150",
+          "version": "repo-lines-v1:sha256:ef628d1e48f55127aea89b2c687c37efa733f8cfb4bc1b8192a0346982c64ec6:eyJzZWxlY3RlZExpbmVDb3VudCI6NDcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhjYWQ4NjM0M2EwNWM2YmFhNGU0YmQ1ZDdjOGU2ZGNlNmQ5YTU1MzE0Yjk3N2FhNjNmNDkxYWE2MzkwZTUzNmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwYzFmMTg4ZjE0MmVkN2E4MjQ2ODBiMjA3MTcyYzU1MTliYzYxNGE0OGZkYTdjZjE2N2VkYjhkZGY3OTk1NmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRiMzBjNzZkZTNhMjQ3MTBmNzQ3ZjVmNTY1NmRhMjk2NjgxY2E3NDMwOGViZjc0YzE4NmFmOGUzOGViYWMyOWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzN2VkNTI0YzMxMzA4ODg1ZTEzODI1MmI5M2Y1ZTVlNTU5ZTU0OGU5MDgzZDdkMWMwYmQ5Mjk4NTdmMjdiNTIifQ"
+        },
+        {
+          "resource": "repo://api/src/routers/github.py#L78-L102",
+          "version": "repo-lines-v1:sha256:2f0a4ec2774e3e30c8bf46235d3b02453f88898139b86b7d50b078a9967594ad:eyJzZWxlY3RlZExpbmVDb3VudCI6MjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhkYjg4ZjU5YzgwMTlhYTBmZWU3MGU5MWIwMTIzYjljNmFmZTcwZTcxNWM2ZmJkNmMwNjlkNWMxZjYxMzVjZDciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImVhOWIyYWI3NzM2ZjI5Y2FiNTdkYjZiMWUzMWVlNmJhMmUxYmNhMmQ0NzlmYjEwODE0NTdlZDE1MWUyNDgxZTciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk4NDMyYmQ0OTI5MjNiMjcyNTBiZWM5ZTkxZTFlOThmMjBiZDZmYTJkN2E2ZWRiZjBhZDFlMTBiNWE0MTFjZGUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_3ac58e740c9a4edf934803ef3a929754",
+      "statement": "The workspace Git job constructs an authenticated GitHub remote internally from stored configuration, verifies the job organization matches the payload, and maps stale preview plans and invalid decisions to explicit failures.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/jobs/platform/git_operation.py#L131-L179",
+          "version": "repo-lines-v1:sha256:5cfe18edd602e5fc0ab590b31fa66a7e2c433c7a9eb4e69892949739ff39b41c:eyJzZWxlY3RlZExpbmVDb3VudCI6NDksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkxMTA3YzljMjc0MjVjODE3MTE2ZGNjMDZlYjVmNGRjMTUyNDhlNGEwMDQ1NjZmMDA5ZTNjNjZlMjM5ZTdmNTIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJiMGYzOTU1MTBiYTZjYWU4ZTJmMjk1MGVlNDg1YTZmM2JmZjQ2Yzc5NzBiYzQ5NDMxNmUzZDg5NjRkNmRkNDciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjgzMDk3NWUyMDA0YjZkNTBkZTNmMDAwMjMzOThkNDMyODI4MTViODE3MjQ0ZTVmOTAzZmZmMzc1MDZiOTAzMDEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImFkMzJjNzcyZWI5ZDI3ZTJlYjM4MzY5ZWE0MGMyZjY4MzM5MjkzYjQ1M2M1OGRmNTUwYWI1ZjgzYTRkNTMyZWMifQ"
+        },
+        {
+          "resource": "repo://api/src/jobs/platform/git_operation.py#L33-L52",
+          "version": "repo-lines-v1:sha256:ff3c29f134ba4c14cee8df61b2af16c2534854985f42401c9df9d3f09197955d:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhlMjNjZTVmYjMwNjVjMGUxN2RmM2E3MjY3NDgzNmFkMjE3Nzc5YzM2NDNjYTEyMzMwMTdiZWFkMDU5YmI0YjAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE5OGIwNjNkOWI0N2U2NTM3OTYyNTU3MmNjZTE5NzY2OWQ1NzY3ZTEyYzE4YmUwNzU2NTJiOGNkOTgxY2U4ZDUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhiODE3MGE5MTI4OTNjYzA3NzZkZGUzOTdkOWVjNDBkYzQzMzU5YzU2OGI1OWYxNDc2N2JjNjYxOTZjZWFhODMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_60f8eb67b46f46a49a01464ee5185456",
+      "statement": "The Git integration operates on the persistent object-storage `_repo/` working tree and uses GitRepoManager to materialize and persist it under a lock; the workspace source coherence contract names `_repo/` as durable source of truth and file_index as derived.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/services/git_repo_manager.py#L81-L115",
+          "version": "repo-lines-v1:sha256:8f7ff0c929d175adb9df9a52279fd5df7eb255fdb360ccb55223e36b1689efe6:eyJzZWxlY3RlZExpbmVDb3VudCI6MzUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxZjNhZTRlMGFkOGUyNmQwN2Q4NDlhNWEwYzY1NDkyZTIwMWMxM2EzZTY2ZTRmNzA4YzBlNzQyZjY1MzdmZTgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJiN2IxODM4OTM2NWEwODEyNTcxMWJmMjJiZWViNTc4YWEyOGMxZGU3N2QzZGM1YThhMGI5ZWExOWFlY2NiMGEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE2MTY1Y2NkZjlmNTVlOGQ0NjQ0YThkNDBjM2U4N2U5NmY1NWQ0M2ZlNzg5YjZhNjdlNDU1NmEwOTY0ZjZmMmMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk1OTgzMTM2MzM4ZDBjNzkxYjliNGU5YTQ4NDczYTQ2NGIzYTlhYjBiZTU2MjA1NWJiYzk4MTc0ZWY2Y2JmOWQifQ"
+        },
+        {
+          "resource": "repo://api/src/services/github_sync.py#L1-L12",
+          "version": "repo-lines-v1:sha256:96f220986046e28b4fb93aa2b5a4ff2de391883f3ec9e25fe093b7089226d7e4:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEzMDNlY2RkNGE0ZDEwZjE5YzczZmQ0MmZkMTI0MzdmZDMzNTRhODI2ODE2MDVkYTUyNTVhOTdhMzkwNjhkYmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEzMDNlY2RkNGE0ZDEwZjE5YzczZmQ0MmZkMTI0MzdmZDMzNTRhODI2ODE2MDVkYTUyNTVhOTdhMzkwNjhkYmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE1MTVmZmU4ODA0Nzg0ZjAyY2ZiNjhkMGUyM2ZhMTAxMDgxNjA2MDNiY2RjYmUxYjE2ZmExOGQ4MzgyMTFhMDQifQ"
+        },
+        {
+          "resource": "repo://docs/architecture/workspace-source-coherence.md#L3-L27",
+          "version": "repo-lines-v1:sha256:c3599533758cd4d853efcb550819295ddda0fcecf2722c8375bb7476528083e7:eyJzZWxlY3RlZExpbmVDb3VudCI6MjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYyZjYyZGE3Y2JlNjQ2MGYwZDI2YmVjYmFmODJhZDVjODY2YzQzNTI3YjcwNDcyYmFiMzU0M2FlOGJmMGUwOTUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMzNGUwYzkzNTRiY2RiOWM0YTc2MWNmY2VlNjViZDcxMWU3YTgwY2E0OTNmMDAzOWQ3MjI3YTQ0ODA2OTJiMTAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjoyLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjJkYzJkMTQ2OTcyN2U0ZDA1NjBhNWNjZTY0YWYyOTJmZGM4NjM5OTI3YTM4ZjkxNjk3MTk1NmM2M2I5OTdmMjIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjcxNDdlOGY4OGM5NzdmNzIzMTQ3YWRmY2Y2ZjNjZDBhYTZjNjkzMGQ2Y2Y2MjRhYjI2YTI4ZDgxZmU3MzkzYTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_4fa9cc36f3314aaaab3a6c3218f961da",
+      "statement": "Solution Git sync is limited to connected installs with a repository URL, delegates to the Solution sync service, and marks a competing writer or incomplete/failing update as retryable instead of reporting success.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/jobs/platform/solution_git_sync.py#L103-L121",
+          "version": "repo-lines-v1:sha256:ddd46ad16c7849491f7c6bdb3c6d8670249acd3099595859aa91cf3c15b9c662:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY5ZTM3OTM5N2JkZWIwM2VkZjRiOTJmODkwOGI2NTI0YjBkNTMxYWZkZjBkYTI5MjU1YWY3ZDcyNjlhNTJmODIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjcwMmM0MTRiNTRjZjg2ZGZiNGY5MGRmZTdkN2JkYmZhNjY2YjdkZGRkMzJmMTI4NmYyMzBhNWI1MzI0MTgxOGEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQ4MjA0ZjVhNmUzMTVhODAxNzk3MzVkYjFmZWY2NGY5NjVjZGViYjcwM2Y4ZTVlNzQ0NGQ4M2JkY2I3MWMwMmMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImZhZmJhMDUyN2MzOTUzYzRiNmUwZTViNTczOWJhODM2MTJmODA1M2JjZGM5NDY2NzMwMTkzY2QxZDU5MGI0MDgifQ"
+        },
+        {
+          "resource": "repo://api/src/jobs/platform/solution_git_sync.py#L32-L88",
+          "version": "repo-lines-v1:sha256:23e59648282f1b93381036e9ea38540bfd77e132363f260d670c638218e9666e:eyJzZWxlY3RlZExpbmVDb3VudCI6NTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg0NGQzYWRiZWI2MjY2NzAzYjkzMDRiY2Y1NTdjZDMwZTcyZDNkMWFlNmI0ZGIwNmM0ZWQ2YjMyOGM2ZWNkYzkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU1MDMyZTk2NGQwOTMyMzUxZTVkMTg1MjY5MjgxYjE3MWEzYTA5YjA4YjI4NmU2NjFlYTQ3MDMyM2M4MmViNGQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjcyOWIxNjlkNWNiNDQ3MGRiOTg0NDA1NTAzY2JlYmU3NGIyYTliZGMzYmI1MTc2ODhlY2Q0Y2Y4ZTI0ZTlmNDMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA2Y2YwMDFmMjAyYzFmMjNkOGUyZmRhNTAwZmJiMzA1M2Q4Y2JhNjYyMmJiMjE0OGZhYWUwZTU0YTUxNDE5MmEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_922b477aea1a4744b591122ffffbdf8b",
+      "statement": "Local platform guidance assigns automation authoring to bifrost-workspace and MTG Azure deployment ownership to bifrost-infra, while preserving an upstream-only DigitalOcean deploy-dev guard for gobifrost/bifrost.",
+      "evidence": [
+        {
+          "resource": "repo://AGENTS.md#L1-L28",
+          "version": "repo-lines-v1:sha256:99bc18ab5fb201b1615ebeee7c51de385ea1439e876051c788abe6246ddbbaa3:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg1NzNhZTMwYmMwMTNhZjg1YWQ3YmRlMWZkMTM0YjJhYjEwY2YzNGQzNmYxMjBhZDVjMjA4ZWE5MDMyMjY2NWIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlmYzFkNjRlNTA4Y2ZiZGJhYzE2Y2FiNzc5YmRhMWQ0MzMyOGMzOTZkMDY1NDQ4ZGE0N2U2MTE0MDc3ZmMyMjgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM1MWZlNDg0YTEwOWNjMTBiMjZlZjJmZjI5OTYzYjNlOWQ3YzczZTYyM2M4NTUyYjc0Y2FhYjIxODI4MDZjMTMifQ"
+        },
+        {
+          "resource": "repo://docs/dev/agent-platform-rules.md#L17-L39",
+          "version": "repo-lines-v1:sha256:e971ed6eb2313a0603b47090046ba5457a2ef8a0bcceeaca732b264a6201050c:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM2ZTJlZmU5YjVjZDVmMjRjOTA1YzI2ZDRiNDFmYmUxZmNkZjc4MDcyYmNlMzRlNTM2YmFlZmRlZDY2ODU0ZTUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE2OTQxZWI0NGMwOTI5YjgzMThiYzZjMjdlYTY2NWMwOGY3YTE5Zjc5NmYyNzZlZWFhODg5OWU1ODYxY2YxNjUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImI1N2IxOGY2MDVkYTEyMGI1MDNlNWNiYTQzYTRkYTcwMTU3NzJjYzg5ZWE0ZTlkMzY1M2UzYjViNTg1MDIyNzUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFiNTMxM2NjZGU1ODZhY2Q5YzUyMDRmOGZiYWNiYTcxMDkzMzI3NDJiMjg3ZjM5Yzg3YzE1MzIxNzg4MTY4MWQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_bb110a5ed63a41ce9d110d76eebe65ec",
+      "statement": "The README describes Git-based source management as a Bifrost product capability and identifies the API, workers, database, cache, object-storage, and work-delivery roles in this repository's architecture.",
+      "evidence": [
+        {
+          "resource": "repo://README.md#L13-L20",
+          "version": "repo-lines-v1:sha256:d63a7a96b620bb9e634dd121dda571fadb4d6e4c58b1e5cd32585fb94a0ccf80:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMjRlYzcxMDJhMDgxZjg5ODNlNWZhNjMxOTQyZTcxMjYwZGY1MjU2MWY0MjYyMzM2MmVkNjVmOTEyNWIzMjU4MCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMGMwMDM1OWYxMzNiNTJhMDE0Mzk5YTRhNTNkNTcwN2VhZmRkZDI0MmNkMmU1NDRkYjA2MDgwZmQ2MjIxMjM4YiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYjdmODUyNmY1NjA4N2E5NmFiZDdmZjY5MjBiZTYzODkyYTY2NzU0NWI5NzQ2OWYwZmE2ZDk4Y2ExNjI4NmZmYiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMTIwNDk0MTA5MzJhN2I5NzhhNDBkZmU2MWIzMWI0ZjQ2MWE4MWExNjFhZTI0NzdmZWEwMjUyYTkzYzkzNzE2ZCJ9"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.7.2",
+    "at": "2026-10-18T02:14:28.318Z"
+  }
+}

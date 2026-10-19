@@ -1,0 +1,190 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:06690067b7776497803ccde59283817df3ac3f0eb0a9a606936b587c23b5d93d",
+  "claims": [
+    {
+      "id": "claim_e70abc111b9749219ab95eb349ea47cb",
+      "statement": "Event sources can use webhook, topic, or schedule types and event subscriptions track target, criteria/input mapping, and delivery outcomes.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/routers/events.py#L171-L212",
+          "version": "repo-lines-v1:sha256:c9af6bcfa0daed8b3b026c605511e56cb78c995121b1b6df650b0c8ac68fb19c:eyJzZWxlY3RlZExpbmVDb3VudCI6NDIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQwMDA4ZTVmOWM4NDAzOGM2YTQ2ZjIwMDU1OTVkZWZkZTZkNzQ1NDQwZDMzM2NmMDgzYzA5MjljMmMwNTA4YTUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwYzFmMTg4ZjE0MmVkN2E4MjQ2ODBiMjA3MTcyYzU1MTliYzYxNGE0OGZkYTdjZjE2N2VkYjhkZGY3OTk1NmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhjYzRhN2QxY2M3OTZhYmEzZTQ2NzIzMzI3ZjUxN2U5ZjgxMTk4MmQyNTBmMDcwMjk4NmU0YjU3NjRhZDk1ODkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzN2VkNTI0YzMxMzA4ODg1ZTEzODI1MmI5M2Y1ZTVlNTU5ZTU0OGU5MDgzZDdkMWMwYmQ5Mjk4NTdmMjdiNTIifQ"
+        },
+        {
+          "resource": "repo://api/src/routers/events.py#L4-L6",
+          "version": "repo-lines-v1:sha256:0f3d155a7e4527b2631c29d0894ad97296f141b37ac21136600e54d20e19c087:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNzU5YjQyNjM3MDVjNGM2OTMzZGVmOTQ0MDM0ODkwODY2MDAwMDQ2NWU3MGQ2ODIxYWExOGU1YjlmYmM1MzM5YiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYTMwM2VjZGQ0YTRkMTBmMTljNzNmZDQyZmQxMjQzN2ZkMzM1NGE4MjY4MTYwNWRhNTI1NWE5N2EzOTA2OGRiYiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOGY3ZmYzYTRmOTFiYWZkN2YzZDZmZGIzYTBjZTliYzFmZmZkNDY1ZDUyZWQ4MTJjNmYyMzQ3ZjQyYmFlMTc4YiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMTRjZDc4MGVmOThmNDMwZTE4NjUyZWRlMThmYjQ5YmMwZWJmNWM4ZjhlY2IzMjdiZWQ3OTI2MzU0ZDA3NjZhMSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_08147417a1e84fbd9086e73292322ddb",
+      "statement": "Topic names must be 1–100 characters, match lowercase alphanumeric/underscore/dot characters, and include a dot.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/services/events/validation.py#L1-L14",
+          "version": "repo-lines-v1:sha256:e867425b6708a0c91b88debe4ace9da6c48b30323f7ed7f812762b43778557c9:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE4MzAzMzMzMTJjNGM5YzIyMzNiYjAyNzYyYmQ0OTgyMDNiMWMzYmYwNTI3NjE0NzM1NjkzYjRiNzlmNmQxNjciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJkYjA3MjZjMWUwMGFlMWYyNTc5ZGUzMTg4NDg2MDdmZTA2MDI1NWM3MzBkODM5YzJhMDc4YTE2NWU1MGVlM2IiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_639036d1b9eb452a8436a3437601b2f8",
+      "statement": "Webhook ingress resolves a source and creates both its pre-auth source/IP limiter and shared source quota only when rate limiting is enabled and rate_limit_per_minute is non-null; adapter acceptance precedes charging the shared source quota.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/routers/hooks.py#L143-L181",
+          "version": "repo-lines-v1:sha256:bd4e405eee80f98cb19bf87dc712923f6433cf040711c78f7a651cb1f02a04d8:eyJzZWxlY3RlZExpbmVDb3VudCI6MzksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3M2YzMDk5OTdkY2U3MzU0MTA0NTJiMTVlOTJkMmFmOTc3ZDBmMjRmMWIyNzc3MGE4MWNlOTdlMmMxOTFlYjYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY5NDJhYzRjNjY4ZWI3Mzk5MjBlYTBhYTQwYmMxMjJjZDQ1YWVkNzUwZmY3MjM5ZGQ4Nzg4NmUzMjhjNmYxODIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE4ZjU5MjA0YzFjM2RmMzlkNGY5ZDVlN2E5N2Q5N2E4NTU1MDExYzM0YTg2MzIxMjQ3YTE3MWQyMzhkOTFmNDIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijg2NzQ3YjJhYTk4ODNlMDRiYzljZTRiMWU2MjFmMTAyZjg3ZmRhYTQzYzBkNmUzY2JlNjAzOTI3OTA4OWY4OTgifQ"
+        },
+        {
+          "resource": "repo://api/src/routers/hooks.py#L193-L214",
+          "version": "repo-lines-v1:sha256:e9628e286b7c551e5e8090b6a753e5d9fae029131c121ecbbb9b6b4d2a87368a:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZmYjI2OGIyNDQ4MDQzZGQyNmQyMGI4ODZiZWRlZmJjNmU3ZTlkODM2YmE5ZmIyMDljNDViMGQ3N2ZmYmJkZmQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjEzYjIyMzQzZTljNzU1OTIzM2RjNDZkY2VhNTg5OTY1OGY2Yzg2YTczMTRmYTQ2MjA5OGYyOTI4YWY2YWQzZjUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjAyNjVmNDc5NzAyYzBiOTUzYWZlMzJmMGU4YjIyYTE0YjBmYWU1OGRiZjE5MWQ3ZDBlOGNkMjJhNzU4MmY0MzgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM4YWU0NDAwODRlZjAwMGVlYmQ3ZTAwMWE1OWJmODNjN2Q0N2I3MmMyMWIxNjQ4MDY2MGY5ZGNiMTYzZmQ4YzgifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_421fb90e7c164752af40829cb3a97bc1",
+      "statement": "The webhook endpoint is unauthenticated and relies on unguessable source IDs plus provider-specific adapter validation; internal processing errors are not exposed verbatim.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/routers/hooks.py#L111-L123",
+          "version": "repo-lines-v1:sha256:706d3bf0d9c34dcaf96f31eb3ce60b0196bf0b0a8502e45218fe9e81775dce63:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMjQ4ZGI3Yzc0MDgzODJiNTg3Nzk0OTVmZmU4MjY3OWZiOTJmNGI2MDBmZDA2NzVhMDRhZmZmM2I4ZTQxNTciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE2YTcxNTI1NzJlZTg0ZjEwOTA2Yzc0YjlmMmE5MjQzNGRkYWIwZTNjNDI4MTNiMDRlNTk3ZWZjZWM5NTFiMjYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZkNDViMDJlNzA3NDM1NzYyM2JiYjRlYWQ0YTFiZmI4OTEyOTU2YmVhNTU2OWFjNzM3ODkwYjAzNWI4ODI4NGYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjkwMmE1M2Y1NzY4ODA1NjQ0Y2YwOTU4Mzc2OTYxYmY2NjQ0YTk0ZTMxYzcxYjA0MTk0NDc3ZmRkMjAyODM4YTIifQ"
+        },
+        {
+          "resource": "repo://api/src/routers/hooks.py#L215-L220",
+          "version": "repo-lines-v1:sha256:05a3ce8cc2aef041b505501fbcdfd430e233a5d46c5a6fe89b87b1c7c8ff0060:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYWNkNzBiODRiNjMyMTA5ODg1Y2Y3OGE3NTg1NDA3NGEwZjI2MDY0MTZlYTU4NjRkOGYzYTQ5OTY4MWUzMzIzMSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOTkxODE5ZWY1Y2I2MjJiOThlYmNmOTVjZjRiY2Q0ZDI2YzIwMDQ0MDRjMzVjMDFmZDZhMTMzOTc3Y2I4MzcyNSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZjEyNWJhNTNmZjUxNzEzNzRiMDA2NDBkODI2Zjk0ODBkYzJkODA5ZDI2ZDQwODI2NmZkZjE2MjAwNTEwYTU5NyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTQ4ZDkwMWYxMTY2ZjRmYjRlNTQ5NTFmMDYzMWFjNDcxYTdhYTc0ZDA1YTU5YWQ3OWMwNDVlNmY5Y2RhYjU3YyJ9"
+        },
+        {
+          "resource": "repo://api/src/routers/hooks.py#L4-L10",
+          "version": "repo-lines-v1:sha256:bde288b65dafbe09fe29d933bd4558ecabeb706496b8e4ce5909cc35b4a6e615:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOTMwNGM0ZjQ0NzU0MjUzNWMyZmQ2ZDZiZjVlZTU1NTBhYTc5YjMxMGUwZDE2NmYyOWM1NWMwMDIxNTNmNzg0NSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYTMwM2VjZGQ0YTRkMTBmMTljNzNmZDQyZmQxMjQzN2ZkMzM1NGE4MjY4MTYwNWRhNTI1NWE5N2EzOTA2OGRiYiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNmIzZjgxMTk1NjJlNDhhYjY1NTQ2Yjg5NDQxMTQxMzA1MjBlZDc1NWNmNGEzN2RlNmNiODlmYWI1M2I5N2FiNiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMTBhZWJhYmRlZGNmZTgyMWIzOWVkODIwYmI5YTMxZGMzNWI2YjlmNjdiNDkxZWRlY2IzN2IyNDA1MjM0NWViMiJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_033053820a9b4a4f826879a1b00c700b",
+      "statement": "Event workflow deliveries use shared workflow execution infrastructure, prevent approval-required or service workflows from one-shot execution, and preserve full event data under reserved context.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/services/events/processor.py#L844-L875",
+          "version": "repo-lines-v1:sha256:4e696180e42169b86bbe3314253e54477dc5e8e9d4e78ad4dbea9338c34fce4b:eyJzZWxlY3RlZExpbmVDb3VudCI6MzIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVkZDgwNWI2ZTE3MjRjOTUxZDU2MDBjNDZjZjFkYTY0ODQzN2YwMzU4MDcwMzE4NWU5YzlhODYzN2IwMThmM2IiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU1MDMyZTk2NGQwOTMyMzUxZTVkMTg1MjY5MjgxYjE3MWEzYTA5YjA4YjI4NmU2NjFlYTQ3MDMyM2M4MmViNGQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNhY2M0YTc3ZmQ0NTQyMDYxZmRiMWJiY2EyZTViMjVmMTg3NTk4NjU4Zjc4ZmU2YmMxYjc3YjQ4MThkZjdiMGQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImU3NmQzYzk1MDg2ZGJjMTFkODQwNDI1ZTQ3YjNlMmQwZjQ5NWQ1YjhkNmRkNzFmNDViOTQ1YzcxYjBiM2U2NjEifQ"
+        },
+        {
+          "resource": "repo://api/src/services/events/processor.py#L877-L948",
+          "version": "repo-lines-v1:sha256:f81b881304639adeeb3a0464ef0a848d2d1708a3b4a41866789ca8dc5c1225eb:eyJzZWxlY3RlZExpbmVDb3VudCI6NzIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwYmM5ZTRmZjhiZWEzMDU1NzEyZjg3ZjczODlhYjg5MzMwNzEyZjI3ZjJhZTA0Y2RiZWE4MDA5Yjg5NDVhNGEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU5MDlhNTNhNjE4ZDAyOGUxZDMwMDBjMGE3YWJjZWVjYmU1ZmIzN2Y0ZTUxMWVmZTQ2NjQzZmFkNmU2Njg3MmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjYwNjBjZmNmYWE4YTUwOTk5ZDExMDliYmMyN2M4MWRjZWQwMmU2OWRhNTlkZDdjNjhjNGZiMzU2MTAzNjJhNzgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQ3OTBiODJhYjdkMDk3YTQ2NWZmY2UxOGUwMjMzYTQ4NmM0MzQyY2ZjMzk5OWU4ODVjYjkyYmE3NGExNDYzZjAifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_d9b148f42c214e5a874304b93bb6ff7a",
+      "statement": "Schedule processing polls active enabled schedule sources, validates cron, checks for recent matches in a minute window, and queues events/deliveries.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/jobs/schedulers/cron_scheduler.py#L57-L95",
+          "version": "repo-lines-v1:sha256:b28467bb18fd8cb4f167c67a33ddb083103340f96c4d7a2e12157c29825022a2:eyJzZWxlY3RlZExpbmVDb3VudCI6MzksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjliMTMyZTNiOGJjMjBjYzJkMjg5ODU5ODBkYzRlZTBiNDQyMzFiNTBjMDZhNTQ2ZGViNzNiMDY4NDg1MzdlOTMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU2NDY1YzYwYjdkYmY0Yjk3M2JlNjFhNjc4ZDg2NDNjMDlkZTFlMjhlNjY0YzBkMTQzZjFiZWNiNzAyMzYzODMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjMzMjdmOTc1ZDRmMjhjYTIyMzE1NGE3YjkwZmRmYzU1YWE0ZjhmZmYwYTU3YjU2MDMyM2EyNzY4ZmZlMDhmYWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY1MGNjOTZmOGYyM2I2YWNiMDcxZjM5ZDM4Y2ZjNDgwMDZjMmZiM2M1YzBmYjM1YWUzNDY4ZTIyNmFlYTA5NjYifQ"
+        },
+        {
+          "resource": "repo://api/src/jobs/schedulers/cron_scheduler.py#L98-L150",
+          "version": "repo-lines-v1:sha256:7c58ca768f88249e39032e1d766902fe19090b083595a8f68368b9f07ea9da3b:eyJzZWxlY3RlZExpbmVDb3VudCI6NTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNlMGY5YWNiZmUwMGU5OWIzMTZiOGUyYzAwMjNkYzAzY2Y4ZGQxNGQxMTYzYTg0NGRlNzRiMTQwNzczZmU1ODQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxOTU0NDM2YTBkZGUwY2JkMDM4Y2Q5NzgyYjhjMzA2MjZiOTY0MTcyMjFhYjM0M2I1NTBiZjIyMDhkNGZjNTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImI2YWU5ZjQ1NDczMDVhMTdkZTEzNDM5Y2NjZTI0MjRkNjM4MmE3MDdhOGQ3ZGQ2YzVjZTEzYWQzZTliY2U4YzAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjliYTVmN2E2YjdmYzMwYjEzNjc4NzRkYmQxNmYyMzY2NTc1NDNkMTI3ZTQ1ZWI0ODEyNjJjY2MxZjdjZjllZjkifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_798e958d82464bd2896f4369a847a67f",
+      "statement": "Scheduler startup creates platform-job worker slots and a leadership task; the scheduler service coordinates replicas through PostgreSQL lease leadership.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/scheduler/main.py#L109-L154",
+          "version": "repo-lines-v1:sha256:a554b23efdc9e2389a3dcd4e13a4432aba69e4e98e81fe2cb026bb2bb53ef651:eyJzZWxlY3RlZExpbmVDb3VudCI6NDYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI5ODI3ZGE0MWRkMWM5YmY4OTkzYmYwMGNmOGVmODkzZjcyYjUyNDUzOGFhNDViYjgwNmYxMjU5NWM2YTcxOGIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBlYzQwOThjZDZmMmQ4ZTdhNmQyMDUzZTg2MmZmYjhiNTU4NDYyNmNmYjJiNmY3ZjMzZDllOTBhYjNlZGM3NTAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjI2Zjk5NjA1OTI4Njk0ZjI2ZDA4ZjI1YWVkMWQ1ZGVlOGE4OWIxZjJiMGYzN2JhOWRiNDg1NDdlZmQzZWZmYzciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNkYTYyNWJkNTg3ZmIyZjVkZWNiZDM3ZmYzMTVmMjYxYmIyMDVhYTI1YjFmYzg2ZGQzMjAwMjZmNzU4ZjlhNDQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_9e7d875b887f49b9a25554078b64c165",
+      "statement": "Schedule validation is restricted to platform superusers and warns when the computed cron interval is shorter than five minutes.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/routers/schedules.py#L24-L61",
+          "version": "repo-lines-v1:sha256:181204d10c122fc5159cf9290bba334c9695947fc862bdfc77b0c74d4d85c19a:eyJzZWxlY3RlZExpbmVDb3VudCI6MzgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ0MWMxZjAzNzZlN2I4OTExZDdjMGU2ZTZiMTFkZDRhZjk3NjQ4Yjg0OWZmNmRjOGE4ZTJjZTk4ZWEyNmZiNGQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM3NDE2ZTkwOGMyZDc4MTRjMDIwMmQ0OWI1NjkyYjRjYzYzM2QwOWFlNDJhZGI0ODBiOTg1YTNkYjg2N2Y0MmUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU1YzFjNDYyZTJhMzlkNzQ3NTlmNWUxYjEyNmY3NjgzYTJiNzMwMTE4ZTE4ZjUxMjJiMDhjZWRlZWI2NTBlMjMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImRjNjAwMmVmNDc2NWUyNzE4NzhlMjg4OGM1ODRjYWE2N2U0YjllZDAyMWMwODU4OWFhNWY3MWQ0NTI4ZDI1ZWUifQ"
+        },
+        {
+          "resource": "repo://api/src/routers/schedules.py#L64-L75",
+          "version": "repo-lines-v1:sha256:5568180de06ab87d07541741529672985f5402a14b40690479890b2fce4c7cda:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ1MzI2OTVmZjkxMTMzNTM5M2YyZWMyMjNmYWE0OWMwZTFjNTJjNDU2YzQ3MmU0ZWE0MzkzYmRkMTNmZDgxOTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQzOTEyNjkzZTA5ODkwMjNhZTVlN2Q1MDdkYTYzNTgxYzc0NTczNDMzZDVkYTEzNjI2ZWYyYmQzYWFkOGZhZWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjI0NzMyYzU0ODYxOTQ0NjFiMGU3N2M2MDljODQ2M2UyNzg0Y2M0ZTA3ZWNjYWVkM2RmOWFkZmMzMmNjMmM0YjciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE5ZGQ4ZmFlY2Y2OTg1NTczOTVjMTMzOGFmNWZiYjVmYjBmY2U1NGIxNTgwZjhmNzk3NmIyZWZmZGYzZTg4MWIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_f257f470fc314c07bb67f971a7aa93fa",
+      "statement": "Provider webhook creation commits a provisional local event source before adapter subscription so callback validation can resolve the source, and removes that provisional source if provider setup fails.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/routers/events.py#L514-L541",
+          "version": "repo-lines-v1:sha256:edbd8d2a0b0f6002507e37471ee03a50c17d01f6533af0a08e3a9a9bbe7b23e4:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVlZjE5ZTkyNjc5NDgzNWEyZTA3MmQ2YzMzNzVlOTg4Njc2OTVhZjNjMWUyNzMyMGJkNTIwYmVhY2JkNzA4MTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlhYTYyOTZiZmNkMDJmMGU5ODJiOWUwODQ3MzUzM2VkZDczODczMzEwNTVlYWIwYjkyZGQxNmE0ZmI3YzA3YjUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM2NWM3MDFjZjUxNmI2NmEwYzY5Y2Q4ODlhMTJhMzhiYzlhNTZmYmJmZjI0ZDc3NmQ5NmQ1ZmY4OTJjYjFhNGUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA2NGJmZWQ3NzkwZWY3ZTNlMjhmOWU1NmJhZjkyNzYyNjVmMzNhNjNiN2ZiODRjOGVlMGI4MGI2ZmI4NzRkYjEifQ"
+        },
+        {
+          "resource": "repo://api/tests/unit/routers/test_events_webhook_creation.py#L44-L103",
+          "version": "repo-lines-v1:sha256:9b5494ca3563b0ff6cfff40ed016cb852130cd1ad98f696307ce0c8744575256:eyJzZWxlY3RlZExpbmVDb3VudCI6NjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIzMmUzZDcwZDQ0Y2JiODBiNzAxNTE2OGIxYmY4YThmMzkwZTRjNzk1MWFiZTczMzE5ZTRkYmMyM2Y1YTI5NmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE3ZTY1Mjg4MjRkMjYyYTkyZTBjZTEzZmQ5Mjc5MDlmMGI5MzA0ODExMTY5MTY1ZWQ2ZDAzMmQwODFjMzM1NTciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImRiMWNkYzIwNTM2ZjBkODM1MGFlYjg3NDZhMzNkYWFkNTBkY2YyNGFhNDMwZDliZDg1ZDZkMDc1MTFlYzIyZDMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_8a8edc6826444a91ab8bd4056c5a5603",
+      "statement": "Provider resubscription unsubscribes the old registration, persists cleared external identity/state/expiry, and then subscribes again; a failed replacement retains the local source with a visible error, while deletion refuses local removal until provider unsubscribe succeeds.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/routers/events.py#L833-L860",
+          "version": "repo-lines-v1:sha256:1c3c39c44322ef62af4a94c9d882792a4672ee2d4b8d75c2a2dee9816d2b79b2:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNkNDE1NTRjMTIwMmI5NzEwZWM4OTRkMTc4YzBkODczODU2NTI3MGMzNzEyZDQ4NDQwNWY3YTZiMWJmOWM5MmYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM5M2QxM2UxZTRlY2M2Y2QwZTExNWFkYzc2ZWFlNGU1NzMwZDQzZTcwYjhjMGQxODJhNjcxMTgyNGY1YTAzMjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY2NTdmZTA1ODk3NjQxYzc4YTA0NmU5Y2I1NjlkZTM1M2NiNDcyNjJhODNmMTYzYjhjODkyZmQ3ZWI4YmZkYTkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFkYWNkNGIwYmQ2MGYwYmEwNjQ5MTQyMWE0OTk3NWIzYWNlN2VmYTFiNTczZTQzNDZkZmJjZjUzYTRiZmQzYjYifQ"
+        },
+        {
+          "resource": "repo://api/src/services/webhooks/lifecycle.py#L55-L105",
+          "version": "repo-lines-v1:sha256:5e89c348ee98c16ebd160d18694f1e4aad9bd0f198f1a2d108abc744453075a4:eyJzZWxlY3RlZExpbmVDb3VudCI6NTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZmM2FhNjM4NmJlMmY2YTljZTA5ZDFjM2Y0MTIwOWQ3OTllMDQ3NTdlZGVhZWI5ZTU4YjNlYWMwYmMzODNmMWQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM0MDQ3ZWU1OGFhZDA5NzgyN2ZiNjBmMjJkM2VkN2I3NzY0ZDRmOWY5MmRkZjI0YzljODZjMDI4MDdlZmQ5ZWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhjYzRhN2QxY2M3OTZhYmEzZTQ2NzIzMzI3ZjUxN2U5ZjgxMTk4MmQyNTBmMDcwMjk4NmU0YjU3NjRhZDk1ODkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        },
+        {
+          "resource": "repo://api/tests/unit/services/test_webhook_lifecycle.py#L34-L106",
+          "version": "repo-lines-v1:sha256:a16ef828eb94737c2e4e3e186ded84bf5ad1a2a185a75917ea8df9185421a6ae:eyJzZWxlY3RlZExpbmVDb3VudCI6NzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQzNjdmMzVkMTEyMzA4OGU0MzA5MjY1ZTc5NzE3ZDM5ZTcyNWE3NjhlNzJmNWNmYjI0ZWI2NzUxZjU3NTM4NGYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIyY2I0NjRjMTUzNjRlYjRkOTUwMGUwMTU1N2I5NzUyNWE4YTUzODk0YTJlYWRkN2M1MGVjNmM2YjgwMzQzYWEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjVhYjdiMjcyYWI0ZTI1MTc1YjVmZDI0YzEzY2ZlNTYzNDI1MTRjMDI3OTQ2ZjAzYjUzMDVkZjIwMzM3ODc5ZjkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA3MjhjMzc1MDAxNmVlOTkwZGE1NzM2NmI1ZjMyOWY5NWE0YWJkMjJiMzA3MGVhMzcwY2RiMjg0YjA3NTdhZGQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_60b4638dc4a3455d9a91fc96a749b815",
+      "statement": "A six-hour scheduler trigger enqueues webhook renewal; the renewal sweep selects registrations expiring within 48 hours, skips adapters without renewal support, falls back from an unsupported renewal call to a new subscription, and persists refreshed state or a visible error.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/jobs/schedulers/webhook_renewal.py#L227-L273",
+          "version": "repo-lines-v1:sha256:6e86afcbfb8ca80e80ca8315ca60fe222be2873ca6b88c5dfc7c5c8056892914:eyJzZWxlY3RlZExpbmVDb3VudCI6NDcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZjZGVlOWFhM2Q0ZWZjMmRjYTU2MTc3ZTdiZTU5ZmJjZTQ0ZmRiN2YxMDI3ZDU5MjhjNGJlYjIzZDc1YjhhYTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJlNjllZjlkYmY3MGJkYTBmZDM2NzMyNTE2ZjFjZGY4NjdiM2QxMTk5MDBmN2JiM2I1MTE2N2IzZjI2YWVjNDYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQ0MGJmOTcwZjYzMGM4ZGFhMjMzNzg2ZmVjYmJhNjhmNmNkODRhMTlkMmQwOWVhMTIxMDNiYTkzNGY3NmY0MTYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQwZDVhZWUyZWE3MzNiZDFmY2UzZWYwZWUyYjg5OWIwNGYxYjdiODQ3NDIzN2Q4MjVjNThmZmQxYzcyMDU1ZWUifQ"
+        },
+        {
+          "resource": "repo://api/src/jobs/schedulers/webhook_renewal.py#L79-L155",
+          "version": "repo-lines-v1:sha256:2ec2b8b703d8990bd9fbdc6c8a708d64c48317857c2c69c80e8157f97c04f0d0:eyJzZWxlY3RlZExpbmVDb3VudCI6NzcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk0MzNkMGVhOWVjZjJmMzljOWE1MDQwNzM5NWVlNDExNzJmZTY4MmM5Yzg4NWEzNTA4Zjc1YmRlZTE1MWVmZmYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIyZDc2MDk3MzEwMjA0OTFkY2QxMTc5NmZjM2ZiYzQ0YWRmMTAzMDdlYWNjOWYwY2QyZmY3NzE4OGMzOGE2NjEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjdlMmFhYzAyMjBiZmRlMjk5ZDc0YjIzMTQwZmNmOTdhODUxNTliMjZjNmE1Y2RjZjllM2ViYjUwNjlhZTUyNGUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImJlMzI4YjI0OTRkNmM3MjFjMTkyYWU4OWVkNmI2YTdmNTExZGMxYTNlODJmZGY3NTQyN2U1NDg5MGFmMmQzNWYifQ"
+        },
+        {
+          "resource": "repo://api/src/scheduler/main.py#L443-L460",
+          "version": "repo-lines-v1:sha256:6c5c868985fbfc32e0a29d3f1aed65f08c09293517c36b6b3293703923071c86:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjEzMjA1MDBlZjA3Y2JmNDAzNDZkOTVjNjJjZmY0ZjI1OTU1Njg1NDJmZWRmYTM1NDZkMWExYzA1ZjM4ZTNhZGMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNkM2RmZDVhYjkwNzg4MjcyZTBmZWY0MTJmYmRkYWEwOGI2N2Y3NjczMThkY2ZkZjY5MmM3ZjNmMjMxYzNiMWEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjYwNTUyZjQ2OGQ0NTc0NTZhNmM1NmYwMGNiNGIwOTkxZjUwZTAxY2QzMTYxMTk3NjM3N2M1N2Q3MThlOWRjMWQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjczOGYxYWZhNjJiMmU0MTQ3ZmI2YzE3OTRkZjc3YjI1Yzk3YmM2ZmMzYTE3OTRlMzE5NjlmNjRhYzI5MmUxMjAifQ"
+        },
+        {
+          "resource": "repo://api/tests/unit/jobs/schedulers/test_webhook_renewal.py#L89-L153",
+          "version": "repo-lines-v1:sha256:8828b70bf14a515e989afb82f4d7c00ea1b45dfdb46665ff54d6a46c443560db:eyJzZWxlY3RlZExpbmVDb3VudCI6NjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4NjU5N2E3ZmVkMWY2YWUyMGRmNDFjYTFkMzQ1Yzc4OGZkZWIyOTdjZTM0MmQyZGUwY2ViODU0MzdkY2Q2M2EiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJlZDZiMDlkNDI4YTgwMzZkYTM0YmE5ZDE5Mzc0M2IyMGUzYmE0M2U5OWRlMjU5Njg1YjQ5NzdhZDFiODEyMDEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjVhYjdiMjcyYWI0ZTI1MTc1YjVmZDI0YzEzY2ZlNTYzNDI1MTRjMDI3OTQ2ZjAzYjUzMDVkZjIwMzM3ODc5ZjkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY3OGQ4ZjY5MmM2MTJkODNlZDE4NzJmZjg0NmUxNmNkN2Y1ZDUyMGY4NDAxOGRiYjBmZWEwMDE3OWYzNmJlNGIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_4c6b411e4cd945558957ffe6efa40dbf",
+      "statement": "Portable manifest validation requires an event subscription to set exactly the target ID matching its target_type: workflow_id alone for workflow targets or agent_id alone for agent targets. Unsupported target types, missing or conflicting IDs, and unknown referenced targets fail validation.",
+      "evidence": [
+        {
+          "resource": "repo://api/bifrost/manifest.py#L1264-L1281",
+          "version": "repo-lines-v1:sha256:95739c0911a29260aafcc0a97033479e74a2fbfaa410d0047254d56374a79b53:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVkNTg1N2E4MjhlNGI0ZDU1MDc1ZTRkZDc0MDQ5YzM4YzM2M2UzYjE4ZGI1OWQxNTMyNDMxZjY4OGIyOGU4NWQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI5N2M3MTI0N2FmM2NkMWVkZjU1NWE3ZDEwNzU5MzE1N2Y2ZGMyYTIyYWYwZGU4MmU3Nzc0YWJmMTBmOGFkZTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIzZGYyYWNmMDZlOGMzZjAzYzcxMzVjNmU4YWM1YTljYTU0MzJhYmUwNmE3NGFjYTBmZGQ5YTUzYTAwOGY5ODciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjIwMDJmNTQ0OTc2NDI5ZGNlYzhkZGI5N2VmY2M5MzJmNmFhYmY4NGUwMTY1YjZiMzY4ZDY5NjdiOTYyNzA1ZTAifQ"
+        },
+        {
+          "resource": "repo://api/bifrost/manifest.py#L1853-L1878",
+          "version": "repo-lines-v1:sha256:f59dee2dbe67c70c1325de42d33240af5673bd97cb22b45130b9232c9b3bf253:eyJzZWxlY3RlZExpbmVDb3VudCI6MjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVjYWYwNzA5ZjRiNjczOWFiZmZlMWRiOWVlNzk4ZThjMGY5MjIzMGFlNjFjNmI2MTMzMzlmYzBkYWFlMjI2MWQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQwMDEwNWUwYTY4NTIxYzNkMzMyNjE1MzkwZTg1OWUzOWNmMjQxMjc0YTdkNzgxZDE5NmEzYWRhMDdiMTBmZDciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjUyNTBjMWNjMTNhOWM2ZDlkZjI3NWM1OThjOTcwZWZjYjJiMzQwYTJjMzRiZjNjZTA1ZjFjM2U3OWE4OGQ0OWQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNhNTg4MWM3ODYyNjc5OGUwODcwMzAxNmZkNjgyYWRmYjFjNGM0YTY4MGY4ZjhjZWFlNWZhZDg5ZDM1YjU2MjkifQ"
+        },
+        {
+          "resource": "repo://api/tests/unit/test_manifest.py#L1730-L1771",
+          "version": "repo-lines-v1:sha256:07e3302efdb462ec7177ffa80db4891645b68225302f04b043293a8b1b38e0bd:eyJzZWxlY3RlZExpbmVDb3VudCI6NDIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM0YTcyODc2ZjM2NzU5Y2MwODM1MDcyYmE5ZDJmZGIyN2Q1NGM5ZGM4NDRiOGNkMTUwZDljYTQyMGMzYWMyYTUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdlNzEzYjZiMTc5M2EyYzU3MGYwNzc2YjdkNmE3NTEzNjY1OTE5Y2Y2YzRmYzlmODQ1YjM3YTY2OWMxMWEzZjAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjUzM2E0NjliNDQ5MjkzYTQ5OGM5MzA5ZjM3OTgzNmIxZDYyZjkyZjRlNTJhOTJkYTNhMzY0Nzk0N2YxNjM5YjciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFmNGNhNGI3NzkxZTQzNjc5ZjcwM2QxMDE1ZDJmYTNkYTAxNTNlZjM5MmE2YTI0NGRlYWQwMjU0MGFjYjM1OTQifQ"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.7.2",
+    "at": "2026-10-19T14:54:21.479Z"
+  }
+}

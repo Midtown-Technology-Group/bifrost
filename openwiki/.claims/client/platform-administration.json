@@ -1,0 +1,252 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:10154b6af9dc14e37557054ed0bd329fd5bf2f9084b2a24c7bfa63a6fd23d1e6",
+  "claims": [
+    {
+      "id": "claim_40d1cca14c0a4a58aceba2bd45c5d46f",
+      "statement": "The browser route tree places the users, roles, integrations, MCP-server, event-source, and platform-settings administration pages behind a platform-admin route guard, while user settings require only an authenticated session and expose profile/security/connections/preferences/developer areas.",
+      "evidence": [
+        {
+          "resource": "repo://client/src/App.tsx#L325-L329",
+          "version": "repo-lines-v1:sha256:a0844926a3dbbee7c6e8ee01d5a287ad9ca99d188b7127dd6c581c8cd4c82f80:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYjdjMWZmMDk1NmRiMjA2NTIxMDMwNTQ4YzY5MjhhOGZkM2NhM2MyMWMzNTkxZTgwYzFlMDg4MjlhZWExZDdiMCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiODIwNmU5N2YwZDM4MzY4ODFkYzVhYTAyZTRlZWQzOWQ2MjRkMzE1ZDYwMjgxMmQ3MjUzNzg1M2YxZTRlMzRhOSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZjAxYzAzN2VmOWE3YTcyMDZlOGJiZjlkZDdjMWQ2ZjMwODM1NzM0NDdkYmQ3NzlhYTg0NjY1ZDNlOTE2MDY5NiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYzY4NDY0NWFkMzM4MDYyMjNjNDkwNzdjN2UwMTZjZDJiYjdhZTE3OTAwMDdhMDA3ZDU4ZGU4YmY2YzI3YTRkYSJ9"
+        },
+        {
+          "resource": "repo://client/src/App.tsx#L485-L515",
+          "version": "repo-lines-v1:sha256:9cd285326033ad92ab29923a66d94fca2aac28e1fdc6a692c817e2cc8bc919e9:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlmODQzOGI0ODIxZDVkYzgzOGYzYWZiY2IwODc4NGI1MDcxNDZjZDRkOWYyZjM2OGVhOGNkZDJkYmMzODZhNTgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNkYTJmZGMwMTNkY2Y4ZDk3NTBhOTZjMzBlODMwMGJjNGMwY2Y3OTE5YjlkN2U1MmRkYzBkY2Q2NDk3OTMxYjkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZiZTQzMmE3MjNhY2YzNWViNzI3NGUyODRhZDg2MDhiZGMzM2Y5YzM1YjY1NmFhNzQ3ZGNkZGZjYmMyNzU4NjgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUwMWU2MzBhOTA0ZjkzODliOTRjODI2NGVlMWQyNmFiMjFmY2Q4ZTkzMzAzYmUzNjViMTQ1OTQzYTU2MDU4NzQifQ"
+        },
+        {
+          "resource": "repo://client/src/App.tsx#L670-L755",
+          "version": "repo-lines-v1:sha256:e906d6aa2d99286d8d84e2e8060ed0fc1bd0b9cbd94311fcf9d0fe3482471503:eyJzZWxlY3RlZExpbmVDb3VudCI6ODYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjcxMDQ1ZjI2ZDM5YjdkOTQ3OGExYTRmMmNlMDE0MzdkNjk2Y2IxNzc4MWNjNGNkNWVkMjIyNGVkZGY2NzcxNjgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRkYzc2MDIwYmFlNzA1NzdlNjRiMzMwZGNhODNmZGYyNGYzZDc1OTNhMDE1NGQ4YWJlYzZkYzYzZjU4OTdmZDkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM5M2E3MjFlOTYzNDA0Yzc2ZWNiZWRkODBiZWI4NGUwMTIwMmI2OGE4MDVkMWM2YjBkN2ZmNmIxOTY3NzdkYjMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImZkODAyNDYyZjI4YWI5ZDViNTU2OGE2YTRlYjBjNTZlODBlNWVjNjhkZGU2Y2IxNzk5OTYwNmM1OGQ2MmRlNzgifQ"
+        },
+        {
+          "resource": "repo://client/src/App.tsx#L796-L812",
+          "version": "repo-lines-v1:sha256:c56e3316d42ac1f02286d2dae330ca106bae71fc6bee2279a4056dc9c488c76a:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMzMzExOTJkOTg2NWI3YWJjYzA1OTNhY2FjNGRiM2VkMmFkMzlmM2ZiYjk2NDZmYzJjNzVjMDRhNTg2ZTBmNGYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNkYTJmZGMwMTNkY2Y4ZDk3NTBhOTZjMzBlODMwMGJjNGMwY2Y3OTE5YjlkN2U1MmRkYzBkY2Q2NDk3OTMxYjkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM5M2E3MjFlOTYzNDA0Yzc2ZWNiZWRkODBiZWI4NGUwMTIwMmI2OGE4MDVkMWM2YjBkN2ZmNmIxOTY3NzdkYjMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRiMjNiYzQxZTNjYWIwYWNmYWVmMWRkOGMyOWVmYjc2NDI3ZTlmOTMwN2RlOGZkYzRiMjdjYTQ3YTk2NTc4MDYifQ"
+        },
+        {
+          "resource": "repo://client/src/pages/UserSettings.tsx#L15-L35",
+          "version": "repo-lines-v1:sha256:9027bafbe4076af8f2f52be94cc0164dbd9ec6dc189885babb903486b60a0a40:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU0ZWM3ZTE4YTI0MmQ2ZDUwMDhiYjczOGE0ZjQ4MTQ2YmQ2MjM0NGMzZDdlMzQzMjUzYjgyM2VkYmFmNGRjZGEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI2MWQ4ZjdhZjM2ZTU2NjMwY2E4OWVkNzdiNzg0ZjFiNjY5ZTJmMjU4NGIzMWVhMzY0Y2M1ZGViM2NmMzYwMGMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk3Yzg4ZTMxMGU1ODlhMTliZjQ1ZTgwZThkZjQ2YWI1MmU5MTJkMzA1NDM3ZGQyODZkMjg4MjVjMzNjYWFiYjYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA2YjUyODY3Zjg5N2M1MjU4MWJjYjNlOGYxNzk2YWM3NDdiZTVjNzgwZjZjMTlkODRjOTYzZGYwM2Y5MmI0ZDIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_c5fcce4140654203add24efd82c246fe",
+      "statement": "ProtectedRoute presents loading and no-access states based on client auth state and route-role requirements; these client route checks shape UI navigation and do not replace backend authorization.",
+      "evidence": [
+        {
+          "resource": "repo://client/src/components/ProtectedRoute.test.tsx#L26-L75",
+          "version": "repo-lines-v1:sha256:4fb63840bc402f1932e1e882facaf7b33c9252ace775d82ce1a1e47a9b941b37:eyJzZWxlY3RlZExpbmVDb3VudCI6NTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJjY2JhNTIyMTBmYTllMTEwN2FlOWI2YjZlYWFlNTA2ZTdmYWU0ZjY2MmVmMGQxNDU3NTk0NjAxODgxOTFkZjQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU0ZTI1MTNmYzZiMTVhNTg5Zjk3MmE3ODlhZDBmNDBkMGNmMzM2ZGJkNjVkZGJmYWI2Mjg0YTgzMGY5MGQ5MGYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNmZjk4M2UxMmZjOTg2ZWE3YmY4NzBmZGI4ZGFiOTlmMGExNDk3MTA5ZGJjMmZkNWFmNThiYTAxNGQ2Nzk5MDMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNkYmI5YzZlM2Q0MjM0Y2ZmNmE0NjU4YjkwNDU3Y2Q4ODIwNmExNTdmY2UxN2I4YTI3MDYyNDk2MTAwNGZmMjUifQ"
+        },
+        {
+          "resource": "repo://client/src/components/ProtectedRoute.tsx#L17-L54",
+          "version": "repo-lines-v1:sha256:cc413d90880868045a6e1dce3275f848610a02b5856442f628a9e78dd5dd5ca5:eyJzZWxlY3RlZExpbmVDb3VudCI6MzgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI3M2ZkMDIwOGRjOTcyMzJmY2M5YWU0ZGZmMWM4MWQ0MzExNjhkYjUyYjY3NGI0NzBkMDcwN2YwM2E4YWZiNTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjExMjEyNDg1ODI4MWMyYmFiZDNiMGJmOTkzMWFiNTIxNGEyNzFhMDM1ZmM5Y2RkZmJiODhkYmVlMDAzNmRmODgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhjZDdmMDQxZGFjOTVhYWVjM2FiOWEyYzAzZTQxNmQ4MTUyZTU0NzkyMmVjZTY2YzcyZDJlMjljZWM1OGNiNTMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_ae6b776e4b134c74b88c8d0d765197cc",
+      "statement": "The Users page combines paginated, scoped user queries with invitation, account, and bulk-management flows, while the role UI associates role resources with users, forms, agents, apps, workflows, and knowledge.",
+      "evidence": [
+        {
+          "resource": "repo://client/src/hooks/useRoles.ts#L150-L182",
+          "version": "repo-lines-v1:sha256:daf0de4061872d1275818f450bd5f698003e01a902b66791b0ec770fd7fbb4f0:eyJzZWxlY3RlZExpbmVDb3VudCI6MzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAyMDdmODA4MzZhZjcyMmI3NDBjZWJiM2ZkNjUyMTY3MmZmNWZlZDFmNzc5YTEyNjEyMjMwYjllOTU0YzI5NjQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZDlhYjM5MTllNjE4YjdjMTNjNjVmZTIzMjFkZjA1ZmIwOTA5NmU3OWJjMTQyMTZlNzM0YTkyYjZjZjBlMDIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjgyMWQ3NmE1YzU2YzNmYmY3MzM1ZTgxYjgxYjY1MWUzMWUzYWU3ODE3NTgxYjNkMTIwZTJiZDFmZTgwOWU1MWIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA1NzZhMmE4MDgzOGQzZTE5NmI4MGZjYzYzNWExNzE4ZDg3NTlmMTcxN2JhZTU2NTZlMWM3YTQ0YzdiODkxYzYifQ"
+        },
+        {
+          "resource": "repo://client/src/hooks/useUsers.ts#L14-L36",
+          "version": "repo-lines-v1:sha256:823cde878a378724e1d639c94bd36e4ca857b5cb81c29931986c56af4004b8ed:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdlYzQ1NTMyMTk1MjNiYmZmOTIzYjNmNGVlYThmZDMxZWI4ZDJhMGFlMjg5Y2FkNWU2YzYzNDhhMmRkYWY2MTIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNlOGJhZmYyYzg5MGU1NDlkODAwYWE5YjgwZWRmYTM0YWYzNDliNjA4NDcxZTIwMjQxODJiODgyYzlhMjlkNjAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU5NjFmZjAyNWNlOGNmZGMyOTMwYjQ2NjgzYWI3NmExZmVkZDlmMGI1YjhhMmZmNzIzMGM0Y2I2MWE0MWE1ZWIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAzY2MwZGUwNTcwYjEwOTNhMTE1MjllYzUyOWMyYTM2Mzc0NzZkMzcwNzUyY2M5ZDM1YmFjZGUzZDJlNDRhN2UifQ"
+        },
+        {
+          "resource": "repo://client/src/pages/Roles.tsx#L56-L77",
+          "version": "repo-lines-v1:sha256:877749466507cf4a68ac3bc8cb9ffa7b5e6455064281c6436bb4d96e23fe506c:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFjMWYzNTVjYjdlZjc3ZjU1YjU4NzQwYmM5NzE3MDEwYjBjNWYxYjQ3NTA5NzYzY2M2N2E5NTlkYjhjYjg2YWUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNjM2EyMDc3NGQ1YzJiYjRjNzkwYzE4ODkwYTljNDk0Y2NiNTEwZmM4ZThjMDllYzc0NTE5YmMxNjRmYzc4NGIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjAyYzJlMzUyNTc1OTdmZGJlMzFmMGExMzFkNDU2ZmZkZDU4MTVjMGE2MjIzYmEyY2Q0MTU4MGNjOTlhMDYzY2QiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImMzYzgwN2JkZmViNmViMGFmZjUwNmU4MDJlNDg4NTkwZTJkYmRmNjllYWVjMTZmNzYwNDExNDA1ZDU0NzRlMDUifQ"
+        },
+        {
+          "resource": "repo://client/src/pages/Users.tsx#L34-L95",
+          "version": "repo-lines-v1:sha256:cdc1393eeb01918c144e7e73a8ea2b8fdf81fe26a31b046b20a4b998764d5ae4:eyJzZWxlY3RlZExpbmVDb3VudCI6NjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUxZGY2OGNkY2QwZTY0N2RlZTM1Y2QxZmY2OTE0YTBjNTNiZjk0OTY1NDk5NDBiMzkyMGUxYmNkNDUwMmEzOGIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM1MDMyZjRmOWE3OTFiNzg0ZDk3ZTgxODEyZWI1Y2NiNmUyODc0MzU2MjAyMGI2MzM0ZDRmMWNkNGUwZjU2MmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjViMDQ3MjllNzI1MDhhM2ZjN2RkYTBkNWEyMjBjYjYyN2IyNzdjMjE2MGFiNDMwMzgxNTU2NDFkNzAxMzJhN2EiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQ4YzNkMjYxNjJkZDhmZjY3OTY4N2Q0YTZmNzI1NmE5MzA2NmYwMTQ1NTE0ODQyN2RmYjdlZmJkODg3YTU1NjUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_5bd4d356ea3d4174ac912de8889c343c",
+      "statement": "The integrations page manages API-backed integration records through create/edit/delete and import/export UI, and connection status is a client presentation of fetched OAuth state rather than evidence that an external server is reachable.",
+      "evidence": [
+        {
+          "resource": "repo://client/src/pages/Integrations.test.tsx#L138-L167",
+          "version": "repo-lines-v1:sha256:a08e3c0002e59e4b5aaa01e168a5d7879ba7fa8ae3dfcdaecfb0bacbea4e64e6:eyJzZWxlY3RlZExpbmVDb3VudCI6MzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU4NDZkODZiODU0YzFmZGMwMTU5M2JiYjIxYWU3N2JmODlhMGE4YmU5NDNhZTY1ZWI0ZjRhNTljYjI5NmYwNDEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNkNTA5ZWJmYWQyYWZiMTU4OTk5NGI2ZWI1MGVhNDA4NTA3M2VmNTQ2MjFiZTRlN2VhYWMzNGYwMGNhY2NlYmUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijc2YjUwZWZkYTc0MDEzZDk3OTdjZjczMmQ4MmVlOGYzYWM5ZTFhYmQxZGVhYjY4MjJmYjI4NjkwNWNmNWFmZDgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE4OTVmMjYxZTA5MDdhY2E2ZmYwYmQ3M2Y0MTJjMmJkNzRkYWJlOWE2NDY0YTI2YzViYmI5N2NlMDQzOTFlMzQifQ"
+        },
+        {
+          "resource": "repo://client/src/pages/Integrations.tsx#L88-L140",
+          "version": "repo-lines-v1:sha256:4f3225d272f60256f034afb923352455ddcab689cb2706a4c6bb48afc8ae1f64:eyJzZWxlY3RlZExpbmVDb3VudCI6NTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRlNGE3NGM5MzZkNzI0Y2JjZDgzOWE3Y2Y5Yzk2ZTE0MGVmOTdlNmY1ODJlMDg1Mzg2MmZmZjIzNzQ1ZDQ3MGIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI1NzEyMTZhOWI0ZDRiNmRjOThlNGY0MjIwOTM2MDA3ZTBkZTU3ZWNkY2U1NmVjY2M4NTI0NDMxNDdhOTYzY2IiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjI1YmIxYWY1MjFiZWNkNTVkNzA1NmE4YTlhMGRkMWViY2RhMWZjNzlmZjIzZjc0NTc3NmY0OTk1ODMzNTI5MjMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU2OGJhOGI0NzQ0M2YwOGIxMmI2OWMwNzcyYjkwZDg5NmM5YzI0YjI2NWM5OTcwMDcwODJlOGIxY2FkNDhhOTMifQ"
+        },
+        {
+          "resource": "repo://client/src/pages/Integrations/IntegrationConnectionStatus.tsx#L100-L143",
+          "version": "repo-lines-v1:sha256:534d3e264b8918f77983bc768a5f95fdffe9413fdbbb295f962067c3da21163d:eyJzZWxlY3RlZExpbmVDb3VudCI6NDQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkxMTM2NTUzYTc4ZGI4NDNhMDUwMjM4OTMwNmI3OWQ4MzcwYzUzYWJiM2Q0YWRhYmFiNzM3ZTYxN2ZjNjc2MTciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdlYTFmZjdjNzg4ZDQyMzRlNmNlMmRhOTIwYmIyNzRiNWE0MWM3OTM3N2VjMDlhMTA5M2JiNTEyZGVmZWRkZjEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA3MmU0ZmQ3ZDFmYmMwMWRiZWFlZGQ0ZjExODlmYTk5OWY4MTBmYWI0NTQzZTIwYzE1OWY0ZDczOTI2MDAyMzAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY2ZmU2ZTcxMTNjN2FjNDgyZDQ3NjUxY2UwMGIxN2FmNjI4Mjg5NzJiNzE4ZjI2ZWYzOGIzZjM4OGEwMjI4ZjYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_416e5abf3166401489ecbfe18a019ddf",
+      "statement": "Event-source administration is registered on platform-admin-only routes and the page composes organization filtering, search, and status filtering over event-source API data; delivery and provider lifecycle belong to backend runtime contracts.",
+      "evidence": [
+        {
+          "resource": "repo://client/src/App.tsx#L714-L738",
+          "version": "repo-lines-v1:sha256:4e2b472c9d9c36700c821e8454fbcf329c6bee1f84d429623f528db913c5aa8e:eyJzZWxlY3RlZExpbmVDb3VudCI6MjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjliNDBjZWQ5MTExZDA3Zjk5NDZhNjYwZDM2YTU0ODg0NzVhY2Q0YmVjOTY5ZDM3YWRlMGU5ODM0MDUyYzI2MmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNkYTJmZGMwMTNkY2Y4ZDk3NTBhOTZjMzBlODMwMGJjNGMwY2Y3OTE5YjlkN2U1MmRkYzBkY2Q2NDk3OTMxYjkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM5M2E3MjFlOTYzNDA0Yzc2ZWNiZWRkODBiZWI4NGUwMTIwMmI2OGE4MDVkMWM2YjBkN2ZmNmIxOTY3NzdkYjMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFjMDlhN2U0MjVhYTU0NzAzZjNlZGNkNjJhYWU3MDRmZTI3N2I5NDg0MjU1ZjRmZTgzMzY4ZjU2MDIwZGZhYmIifQ"
+        },
+        {
+          "resource": "repo://client/src/pages/Events.test.tsx#L168-L206",
+          "version": "repo-lines-v1:sha256:577c0d8f7b81fc5b167f521dd4680878de62477e650c95d3e300b7cb7f26ebe8:eyJzZWxlY3RlZExpbmVDb3VudCI6MzksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY0MTk0ZDcyOTg0MTNhMTlkNDQyMzRkNGI2NDlhOGI1MmUwNTlmYmIwNjUzNGVlZmJlNDc1MjY4ODJmZGVlNWIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU5YWExNjMxODFhZWY1MjZkZmIxZDc1YjdjY2RlOTFiMmE0M2IxYWUwMDMzZTg4NWY4ZjE5YzAxNWM5NjZiYWUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM4ZTBiYjRjNzdmOTUzY2RhYWVhZjY0OWVkMDlmMjZmYmFmYjhjOWYyZGY1OGRiOWQwYjFlZTE4YTAzZTFlZTEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ4ZmUzMTVlNGJkNWY4YzdhNGJhM2FkZTgwMjdlNDFjNTRkYTUxNWUxNDc3ZGVkMWYxMWRmODM3ZGI1NTU0YTgifQ"
+        },
+        {
+          "resource": "repo://client/src/pages/Events.tsx#L63-L113",
+          "version": "repo-lines-v1:sha256:eb152cb3414473c75cab0a23008295d570f924fe94a1a8a5943932a04d6e87e4:eyJzZWxlY3RlZExpbmVDb3VudCI6NTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI0ODQ3ODE0YjU4Mjk4N2IxMzFmYWQ1NjYyMTI1MjdiZTViODNkMWM5ODA1ODUyMWNiMWMyNjM1MTVkMzhmZTAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRjYzBlMjYwNzlhMDc3Yzc2ODFjZjc0NWMxMjEyYjAxZDI5MDQyOTdkMzY4ZGNlNmU4ZjUyNGUwNmE4MGU4MWEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk0ODU0ZGE3MjNjNWJiMzdjMTM0NjIzNjBmMzZjZjIxYjhiYmUxYmIyNDliMTI5NzZlYzEwYzdjYjdjZmI4YzQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU5NDU0NDI2ZjY3YzU2MjkyOGI5YjZhOWFkOWIxOGM5ZjE5M2M3MWI4MTQ0MzQwMDI3ZTk3ZjNjN2YyZjQ0YTMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_81db7cd9662941a6917bfcbfb6b4b0ab",
+      "statement": "The administration UI has separate reusable component families for typed config editing, integration defaults and OAuth state, and MCP endpoint discovery; their forms present operator state and call API hooks without proving external connection health.",
+      "evidence": [
+        {
+          "resource": "repo://client/src/components/config/ConfigDialog.tsx#L75-L112",
+          "version": "repo-lines-v1:sha256:a19d8ad5f18b8961fcbf6a0998f5f38df23a72efad985b2979e9ac2e29c22d2d:eyJzZWxlY3RlZExpbmVDb3VudCI6MzgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwOTQ0NzY4ODYxYmNkMDc2Njk1OGVkMzQzZTg2NWE4ZjE4NDczZDc2NWU0OTdhZjlmZjBiMTYyYzZhMTJjNDgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIxMjllNWEwZjg5Mzk2NTdmZDBkY2UyOTFhYmQwNDk5YTE4N2JhZmVmNGYwMjdhOTg2M2M1ZTZmZTg1NzExMGMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg3MWJiY2RkYzc4MDUwOTNjZjQ1N2FkMDZjNzEwMjRiYWJhNTRiNWY4MmE0MDA4ODU0NWVjNzgxYjllYWMxNDMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZlMzM4ZjZmZGMyZGZhOGQzZDRhZjBmNWJjNjcyMDBkZTJlYTZhYWY0NjZhOTljYzUzNDhkNzg5ZjFhMDU1MDAifQ"
+        },
+        {
+          "resource": "repo://client/src/components/integrations/IntegrationOverview.tsx#L128-L170",
+          "version": "repo-lines-v1:sha256:ba8bace3ef81e989c945e5e83df44317b81af6396f88258a241879bea12357ad:eyJzZWxlY3RlZExpbmVDb3VudCI6NDMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY0NGJmMDc0ZDQzYTE3MjMxY2YzOWQ0MmY3YjQ4YzVmMDNjZGMxZjdhYWFmZmVhMTg0ZGM1ZDk5NDZmZWVmNzEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY2NzA4MjYwNTBlNzQ4YmY2MmE3Yjc3MmI2YjJhNGFjOGRhNzBhZDdkODY2NWRlOWIxNGRlY2Y2ZWEzNjU5ZGIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZiYjNmYjRhM2QyYmEzZDdkZTUxN2U1MTQwYzQzYWJiZjVkMTkxOWMwNTBmMTNjNjVhNjBhYjcxYjgwZDkwNmQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI5ZjE5NTc2NjhmNzViYWE2YTVjODVlN2E5YzdiNjlkNDcyMWFjN2M0YWIwYWFhNjQyMmU0NDU2N2M1MjQwYjMifQ"
+        },
+        {
+          "resource": "repo://client/src/components/mcp/MCPServerForm.tsx#L139-L180",
+          "version": "repo-lines-v1:sha256:4b95ad12f819426b6965246511b33206e80e1176bc46471d24531f6488539f20:eyJzZWxlY3RlZExpbmVDb3VudCI6NDIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjczOTU0ODc1MDJiNGZhZjZkOGQxZjU5MjJhYTNiNDM4MjFiYjJiYWI2YTUzNjBmMjZlMjE5N2JkMjRkZDg4NDgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQxOGIyMThhYjVkOTBkNmRjNjRmYTY3MTY5Y2M5NzhkZGQ2MTI0MzI4Mzg0ZDE1ZjYxOTVmMThlOGJlZjZiOWMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU0OTgzYzIwY2VjZjM3ZmU2MTdhOTNiNmVlNmNjYzNjMjJiYjIzZWQwOGYwZmQwZWY4YmRmNDJkZjRkNDdkZmUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA3YmI5ODI3YzJjOWMyODE5MGIzMDY1ZDQ2OGZmOTIxZGRlOWQ2MDY3MGMwMjhjYWIwMmFkMmI5ZjMwODI3YjkifQ"
+        },
+        {
+          "resource": "repo://client/src/components/oauth/OAuthConnectionCard.tsx#L58-L96",
+          "version": "repo-lines-v1:sha256:37f2a66da31838f1df900cc5f7fc731bf93767dd28be4dfff61d1b76950f7b39:eyJzZWxlY3RlZExpbmVDb3VudCI6MzksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgzNzMwZjUxODlmYmE2ZGQ1Njk0YTQxNzU4N2Q5MzliYjM1Mjc4MzQzYTEyM2IyMGViOTY2ZmVlMjFlYjkyNDMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjljM2U3NTEwZjU4ZmZjYzhmMWU3NjU0YWY5MWUzYmQ5OTJmOTg0MjdiZjIzZDM5MWVmN2YyOWZlNzdlNTY2NzIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIzZTQ4ZTRiYWVmYjRkMzM2ZGFjMTFhYjhiYzA4YjBhYjI5ZGVjYjhjNDUxYTg5YWUwNjRkOGNiMjAxYmE0NjgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI4YWRlZDNlNTM3M2VkZGNlOGM5ODA2ZDA3NzJiOWE3YTUzNTc1NGVlYzVhODZiMTg0NWRlMDgzNjE3NjIyYTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_2d2efc0310f84ba2b97318178ae8c78c",
+      "statement": "Policy-rule and role components present CRUD and usage/consumer relationships, while user-detail and user-settings components organize role/form inspection and profile/security/connections/preferences/developer self-service routes; backend evaluation and authorization are separate boundaries.",
+      "evidence": [
+        {
+          "resource": "repo://client/src/components/policy-rules/PolicyRulesManager.tsx#L91-L128",
+          "version": "repo-lines-v1:sha256:6fe94582185a286c05d64919355b6d43ef85683b4dda67e3204d47c5e6f7ed7a:eyJzZWxlY3RlZExpbmVDb3VudCI6MzgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg1YjhmMTcxY2I1N2EzNzdjNjE0OTNmYmI0MGQ0OWI0M2E3OGE5NDIwMjY2YWM3MTRmMTBiZmJlMzEzZTgwZDYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQxNjk3YzFiNjliY2I3MDVlZTI2OGViZWRkMjBlZjg5MjUwZWM0MjRjNDc2NDQ1ZjNiNDEwZGYyM2I2ODNlM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjI1YmIxYWY1MjFiZWNkNTVkNzA1NmE4YTlhMGRkMWViY2RhMWZjNzlmZjIzZjc0NTc3NmY0OTk1ODMzNTI5MjMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVhYjFmN2Y5ZDU0ZDhmZmU3YmQ2MzdlM2VkZjA0YzIyNGZkM2UzYzFmZDExNTJkMmJlZTA0MDc2NDZhZGMzMGIifQ"
+        },
+        {
+          "resource": "repo://client/src/components/users/UserDetailsDialog.tsx#L30-L64",
+          "version": "repo-lines-v1:sha256:aa38f1f974617f3ab6321f1eae6c965d0a88fadd3821eb7b0e6a2555fb88f01b:eyJzZWxlY3RlZExpbmVDb3VudCI6MzUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY0ZGZhYmZiMGZkZDdmMGZkMTg5ZWIxZjkzNTlkZjM3MjVmNDRiYWRhZjY2YWViZGVhZTljN2IyNzFjY2RiMGUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4Yjk4OGIzNmZhMmVhZjg4MmZmNTBiMzgwOWRhNmE1NmY2OWNhNGU0N2VjYmM0NGIzMThlMWYzZmE0ZDZlMmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRjM2M5YzNlNzRiZGQ5M2JmNjc0ZDc5YmQyMzQwNDc4ODBiMDU2YWFkZTc0YWIzNjc2ZWU4N2FiZThmOWQ0Y2IiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk1ZTE0MzVmMDE4YTgwYTU1YTYxNmMxNjliNmM0ODRiMjkxZjUxMjgwNmYzZThjM2JjZjU5MDVhZjIzNzBhNTkifQ"
+        },
+        {
+          "resource": "repo://client/src/pages/Roles.tsx#L56-L77",
+          "version": "repo-lines-v1:sha256:877749466507cf4a68ac3bc8cb9ffa7b5e6455064281c6436bb4d96e23fe506c:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFjMWYzNTVjYjdlZjc3ZjU1YjU4NzQwYmM5NzE3MDEwYjBjNWYxYjQ3NTA5NzYzY2M2N2E5NTlkYjhjYjg2YWUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNjM2EyMDc3NGQ1YzJiYjRjNzkwYzE4ODkwYTljNDk0Y2NiNTEwZmM4ZThjMDllYzc0NTE5YmMxNjRmYzc4NGIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjAyYzJlMzUyNTc1OTdmZGJlMzFmMGExMzFkNDU2ZmZkZDU4MTVjMGE2MjIzYmEyY2Q0MTU4MGNjOTlhMDYzY2QiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImMzYzgwN2JkZmViNmViMGFmZjUwNmU4MDJlNDg4NTkwZTJkYmRmNjllYWVjMTZmNzYwNDExNDA1ZDU0NzRlMDUifQ"
+        },
+        {
+          "resource": "repo://client/src/pages/UserSettings.tsx#L15-L35",
+          "version": "repo-lines-v1:sha256:9027bafbe4076af8f2f52be94cc0164dbd9ec6dc189885babb903486b60a0a40:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU0ZWM3ZTE4YTI0MmQ2ZDUwMDhiYjczOGE0ZjQ4MTQ2YmQ2MjM0NGMzZDdlMzQzMjUzYjgyM2VkYmFmNGRjZGEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI2MWQ4ZjdhZjM2ZTU2NjMwY2E4OWVkNzdiNzg0ZjFiNjY5ZTJmMjU4NGIzMWVhMzY0Y2M1ZGViM2NmMzYwMGMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk3Yzg4ZTMxMGU1ODlhMTliZjQ1ZTgwZThkZjQ2YWI1MmU5MTJkMzA1NDM3ZGQyODZkMjg4MjVjMzNjYWFiYjYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA2YjUyODY3Zjg5N2M1MjU4MWJjYjNlOGYxNzk2YWM3NDdiZTVjNzgwZjZjMTlkODRjOTYzZGYwM2Y5MmI0ZDIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_4a0b6ec23d76485f9323bc475c00088d",
+      "statement": "The Solutions setup wizard presents configuration, connection, and workflow-endpoint-key steps derived from the supplied solution items, with the parent responsible for the actual writes.",
+      "evidence": [
+        {
+          "resource": "repo://client/src/components/solutions/SolutionSetupWizard.tsx#L1-L15",
+          "version": "repo-lines-v1:sha256:efd231f2ad471b4ea2f028d0d5788652addcc016151ea45bf85e4c5c467fc421:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVhZjIyY2YwNzMyNTkyYzI0NzE0MWNiZTYxZWZhMTEwMTI2MTJmNWEzMTIyYjlhZjliYmFmNTJmNTcyNGQxOTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk3MmE0MjkzODJiMmUxNDcxOGUwZTM3YjA1NzBhOGExNzAyOTkxZmNkODQ5OGNkODQwNjBhOGJmNGYwNTAxN2IiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImJjMDcxZjRjNjM1ZDY5MTQ1MmQ1NGM0YzlkYjM0ZmVkZGZmOGE5NmU0MzkzNzE3MDYwM2M0MjJlNjM1NzVkNmYifQ"
+        },
+        {
+          "resource": "repo://client/src/components/solutions/SolutionSetupWizard.tsx#L46-L75",
+          "version": "repo-lines-v1:sha256:17759dbec914143cc42220c171adf21127b0ca3e66650b4d3641cbc699fa6ba7:eyJzZWxlY3RlZExpbmVDb3VudCI6MzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBjYWEzNDFhOGI1YzkxOTg3ZTcxM2IyMzEzNTNkMDcxZTczMjM1MDM3YWQ5OWNiN2YyNWU2OWY4ZGY4OWQwZmMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFmOTk5ZGI3M2Q4YmVjNjYyNjI2MjA3YjZlNzkyODIxM2RiM2Y5NTQ0NWQ3MTU4NTkwYzJjYjM2YjYyMzgwZWUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImViNDQxYWQ3ZDczZjM3OGEzN2FjMzVkYTUzYjk0NjMyYTk5NGQyNjIyYTdhN2Q3ZGEyODI5YzZjYjgyYjYyZTYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFjYjVmODUwYmU4YTU3Y2I0ZWFhNjJhZjNhYWJiZjJlOTBmN2I5NjYzMDcxM2Y2ZTQxMDEzYjkwYzMxOGNkMWIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_1c6fadbb2a8447698918ee1980cc3936",
+      "statement": "Platform settings include dedicated model-configuration screens under the route-level settings shell; the maintained model settings page composes provider-connection and model-profile services and reusable provider/profile controls.",
+      "evidence": [
+        {
+          "resource": "repo://client/src/pages/settings/AIModelSettings.tsx#L26-L54",
+          "version": "repo-lines-v1:sha256:6a56a56dec2e12e49fe4ce58868e8357dd7795956d2731cee5492e21b8bcba97:eyJzZWxlY3RlZExpbmVDb3VudCI6MjksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM2ZDNjM2Q1NmQ0NmEyYjk0NGUzNjY5ZjVmNWVmZTUzYTM3NzEzMDcyNDRlYzI3ZTU1MGQyNWRiMTYxNGExM2EiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdhYTk4OGM3ZGU5NzkyYmU2ZjA2YWZkOWM4MmIzOWI1MGU0ZTZiMDQxOWZkYWMzNTU0YTU4NjJlM2VmN2FiMDciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYyYzM5MTE4Y2QyNTc4YTEyYjBhNTcwYmVjY2JmMDZhM2YxZTE1ODU0MTk4M2M2OTEzNDExNWVhMmM1YTZhMTQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZhZTMyYWQ2ZGE1ZDM4ODFlOTc3YmU5ZWQ2ZTVhZmFiYTk4OWU2NTliOGI0NzEzYjI1YWI2Y2E1ODYwYWI0MjgifQ"
+        },
+        {
+          "resource": "repo://client/src/pages/settings/AIModelSettings.tsx#L56-L80",
+          "version": "repo-lines-v1:sha256:bd6b1a99b6bb241ff2c2e6137f43c661af69168dd671299f56a8d5f389d52090:eyJzZWxlY3RlZExpbmVDb3VudCI6MjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY5YzZkNmNjOTQ3OTFiNDE0N2JkMWMzMjI2YzM4ZThmNzU1YjI1OThlZjJkZmIwZGViYjYwMDQ1YjA0MjM5OTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZDY1ZjAzODY3NWQ5NmEzNWZhNjYwY2JjMGIxYWIzYmU0NjVmODk4ZjZjYjlmYmI3YmI5MGNhODliNWMzMTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImMzODdmOWE3ZmMzMGZjNWY3NTUzZmQ4YzZmMzRiNGQ4NTM1YWUyZjkxMDJlODZiOWE1Y2ZlZWI5MjJmYTIyZGEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ4MjM4M2FjMDJlNDQ3YmU3ZjAxNGMwZDA3ODhlMGI2OWU3OWQ4OWQwYzE0NjFiNWRhNWZkNzNmMDZjZDkwZDcifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_9fcdae0acd6d4645b1d61d9d5b12ef0b",
+      "statement": "MCP server connection summaries display organization, service-token presence, cached-tool count and connection availability flags, while the tool catalog emits per-tool enabled-state callbacks and personal MCP connections have a distinct user-settings surface.",
+      "evidence": [
+        {
+          "resource": "repo://client/src/components/user/UserMCPConnections.tsx#L1-L16",
+          "version": "repo-lines-v1:sha256:ebedab7f1389243b3bee02305511f92b94ed61c4ba15839b940fc13a998e0305:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVhZjIyY2YwNzMyNTkyYzI0NzE0MWNiZTYxZWZhMTEwMTI2MTJmNWEzMTIyYjlhZjliYmFmNTJmNTcyNGQxOTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk3MmE0MjkzODJiMmUxNDcxOGUwZTM3YjA1NzBhOGExNzAyOTkxZmNkODQ5OGNkODQwNjBhOGJmNGYwNTAxN2IiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImMyN2Y5Njg5YTUyMWQ0ODU5ZmRmMTAwYzY1OTNjMjdkZDYzODY2N2NiYjBkZGU0ZWNjNDE2NWQ0NjAzNGRiZjgifQ"
+        },
+        {
+          "resource": "repo://client/src/components/user/UserMCPConnections.tsx#L18-L39",
+          "version": "repo-lines-v1:sha256:d041631765009fcc9a5840cc88e69abd21308c9cc10582cc0a530069632f1e89:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjllODQ5Yzg0YjI4ZWQ2N2I1MjYxNzQ3N2FjMDg5ZTIzODUxMmMzOGMxMGY2NDFmNTk3ZjE0ZThhZWZlZWZkMzMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk0ZjNiM2ViZDc3NjYwYjdhMTZmMGY0MjQ2ZGIyNWJiN2Y3ZmMzYjJjZDU4YjY2ODRmZjViYmQ5ZTM1NGQzOTYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU0ZjAzZjJlYjQ4ZDBlMjA2MDVjY2Q0YTdlNzNlOWU4ZGQyMDhkZDZkNjY0NzBlN2MzNmM5NDYzOTMyODQ1MzEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM0ZWUwNmU5MTEwMjIwMmQ1OTVlMDUwYzg1NjI5MGVmZDg2MjA1MzY4YTU2YjJkMTIyYTVlZjAyZmIzMzEzNzgifQ"
+        },
+        {
+          "resource": "repo://client/src/pages/mcp/components/ConnectionToolCatalog.tsx#L56-L76",
+          "version": "repo-lines-v1:sha256:e0e166c1c88b68a1d696bb3ec640f4a9f6e5ec7b46f003b47fb43949a1a19ba1:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE0YjQ4MTlkN2JhZTMzMjAxYTY2ZDA0NTk5MjdmYWI2YTUwNDc4NGMxZjUyZTdmMDJjMTFiMmU4ZDdmNTVlNDMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFhMGM4YmQ0ODAzMTUxNDE0ZDI3YTBkNjA2MDE3NzgzMDRmZWVmZjYwM2VmMWUzMWNhMmE0YTQyMDJhODIwYTciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjI1YmIxYWY1MjFiZWNkNTVkNzA1NmE4YTlhMGRkMWViY2RhMWZjNzlmZjIzZjc0NTc3NmY0OTk1ODMzNTI5MjMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEifQ"
+        },
+        {
+          "resource": "repo://client/src/pages/mcp/components/ServerConnectionList.tsx#L14-L22",
+          "version": "repo-lines-v1:sha256:ffee4031af5f3a262a2ca2dae15952d126fa1000183a60489da8225481de5c34:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZjdmNjRiMDA1NGVmMTc4NTdhZDA1MzhkZGZkZmQ4N2IzZjYyZTViMDg2NWE2MDBjZTAyNjZlMDg3NzdjMDJmYiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZmIxN2FjNGNkNTRiMzA2YzFkNzc2MWZmNGI4Mzg1MTdkZjA1ZTZiYmJlZDMzZGMzZGE3MjZhOTRlYmQ5YTljNSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOWEwNWY3ZWUzNTYwZDhmYzJjYTNjM2RmYjUyNGE1NTYwOGU2ZDMyMmM3ZjE2NTlkOGE2MzBmYzRiZTQ0MDM0NiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNGE4YjgzMjM1ZTI3MTlhZTBjMzE1NTJkOTMxMDg0OWVmODRjMjY2MmE0ZjdlYThlZTc4ZTRlMTdiZTcyY2ZjYSJ9"
+        },
+        {
+          "resource": "repo://client/src/pages/mcp/components/ServerConnectionList.tsx#L28-L93",
+          "version": "repo-lines-v1:sha256:0d03320810b6f71f4d227185bc6d6ef27a93250e6f93c3e0e98a7085e9ce1671:eyJzZWxlY3RlZExpbmVDb3VudCI6NjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQwMTNjNjAzYTA5ZTkxZjI1MmE3NjQzZjc5OWE2ODUwYmZkNTlhNjgxMDc1NzMzMWM5OWNmNDQ1ZjU1ZjdmMWEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE0NDU3MGQxZWZjNDkxMGUwYTcxZjhmMzJhNjk0MGJhZWUxMzQ3YTIyNjdiMmNlMTFkZDNlZTE2ZjcxOWZiOWYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZiYzdiMWM4YWVkOTA2ZWYzYmVlYjJiNDBiNDRjYzY5NWQ0MDllMGI3NjJkM2I0OGM1ZDM2YWY0NzNiNzZjMGUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjEzZDI3YjYzYmJiZmQ1NzU4ZWE5YjI4NTcwYzhlNTUwZThlY2ZiZWU4M2Q1YzZhNWUyOTExODIxZGQxZmU4Y2UifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_50c99aff761f46adbd31fd0febc9dbe1",
+      "statement": "Role consumer UI renders current and candidate records with retryable read errors, while role mutation ownership remains with its parent page and server API.",
+      "evidence": [
+        {
+          "resource": "repo://client/src/components/roles/ConsumerTab.tsx#L57-L87",
+          "version": "repo-lines-v1:sha256:b4bbbf1e8e2ed9a1fe89f447a2aaddaec927439a575135ab72f27c0231c9cabb:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUwMTU4ZTg1Zjc2MWYwNWY4MTE0ZjI4MDNhMjFjYTIyZDFjM2IxMTkzNDljMWZhMzBkNjU2MWU0ZGJlMzFkNjkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFhMGM4YmQ0ODAzMTUxNDE0ZDI3YTBkNjA2MDE3NzgzMDRmZWVmZjYwM2VmMWUzMWNhMmE0YTQyMDJhODIwYTciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZjNmVmZmJkZjU3OTQzMjEwYmM5ZTMwNTM3ZjcxOGJhZWM0YzkzYzNlNGQ4YWJmOTkzOTNlZGRiOTcyOTYyMDciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFjNmE2ZTY1ZjAwZDM5NzRlZDE0N2M4ZTE1MzEyZTRjMTM4ZmVjMDBmMjY1N2QzNTYxOWU2MGJiZjkzN2RjNTEifQ"
+        },
+        {
+          "resource": "repo://client/src/components/roles/ConsumerTab.tsx#L90-L105",
+          "version": "repo-lines-v1:sha256:b9e608279cbb082337eac8d25cafeefc0f8ded835f66293ff7f2c68ea8c91c47:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIyMzBjZjJhZTkyMjViOWZiMjA0ZDdjMmRjMTdmOWU2NDRiZmRiNzBjOWJjZDgxYzY1YmEyYTRjNDEyYmVhM2EiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIxNjI0NzczYWUwMGZkZmNmMzllYzNmYTAyZDg2M2Y4NzM1MDQzYTJlMTI3MDM1NDkwMThkOGFjMWIwNzhhZTkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjI1YmIxYWY1MjFiZWNkNTVkNzA1NmE4YTlhMGRkMWViY2RhMWZjNzlmZjIzZjc0NTc3NmY0OTk1ODMzNTI5MjMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImFkMTE2ZmY5ODZhYWM2NjNiMmQzOTY1YTNhMDA3NjFjZjU4M2JiNDdjYzRlZWQ5NWVjYzQ5ODliMGExMTgwZmMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_2afa197bd3484ca9a58a489f0c85fde1",
+      "statement": "The Solution inventory component formats entity counts across workflows, apps, forms, agents, tables, custom claims and files as presentation derived from the Solution model.",
+      "evidence": [
+        {
+          "resource": "repo://client/src/pages/solutions/SolutionCounts.tsx#L10-L20",
+          "version": "repo-lines-v1:sha256:6b85290698e012af4c0d0e713304988bb601e0b15f83f183077464b73c4f84dd:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY4OTczMTI1ODc1NmQwNjI0YzE3Y2RjYjkzMGZkZDAwYzFjNzM5YTkzMmUzNTVkZWRjMWE2NTBkZDZiMDkzY2YiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFlNDEwNGUwNjViODBhMjVhY2E2OGVlNWM2OWE5ZDQ0OGM3OTQyNTdkOTBjZjkyM2JlNTgxNzM5MmUyOTk5MjYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA1YjU3ZTE4YzBmNTQ4ZDA1Yjk2OWM4NWRmYWJjNmU3YjllMDAyZTE1Yjk4NmJmNDI2NmM3YWVlYjRlYzVmNTYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjBmYWI1MGJjMDU1MWI3NWFiYmJkOThiZTE3YmQwZjFmMmZmZTY5OWEwNmUzZDQ5NmE1ODYxNDBkOTQwNDJkZmYifQ"
+        },
+        {
+          "resource": "repo://client/src/pages/solutions/SolutionCounts.tsx#L79-L85",
+          "version": "repo-lines-v1:sha256:6f159fd2942a4c9e14706f5e1ed269b1b3f69b0339998eba32717fb6f96f03ba:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiM2QzZWY0ODIxMDQ2Nzg1MzdhNjA1ZGQxY2RhNmZlNzhiMGExMmNiODBkMjVmMDllZDg5ZTJiOTViZDcxNTg3MiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZjRhODJjNTcxM2JiOGE5NTc0MmIwYjU2ZmFhZjZmZmNjNThiOTM0ZmVhZjQ5NjI2NmQzY2Q0YzI4NmE3ZTUzMyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNjM4OTQ0NDk2MWFhYTMxYTIwZGRhMjdjYWNhZTZhNjUyZDVlZTY0NTkxNTg2ZjYyMjM0YzU5ZWNhYjc3ZjNiNiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNzY1YzRhYjA3M2MyZGQ3MmZhMzcwZDI3M2UzYjMyNDAzMjc0MTY5Mjc3NDc2MjQzOTdkY2NhN2I5MDY1ZGVmZCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_1051cb1b1cef4b1994f9ce4b2ad1d351",
+      "statement": "User account settings load profile data and save name changes through the profile service, while passkey dialogs receive registration and deletion callbacks from their parent rather than owning the credential operation.",
+      "evidence": [
+        {
+          "resource": "repo://client/src/pages/user-settings/BasicInfo.tsx#L21-L27",
+          "version": "repo-lines-v1:sha256:da5ca45fea90d434da81753214e69d8b889766f2c6d0f59d139f43c1bea9d3d1:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMmVlNzQ0YjM3ZjNiYTMzOTVkODkzY2E3MTFiMWE2M2Y5ZGJlYjQ2MTNhZjM0Y2MwMWFmNWMwZGQ0YmYwMzAyYyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZGMzNjZkMDA2ODZkYTA5NThmOWM3NzFjYzIzMGFjOTVhNmE4MGQ2YmRlYmY0NDgyMTdlZDkyMTNlYWE0MzE2NCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiM2ZiZTAxM2RiZmE2NDI0ZWQ2OGU5OWEyYTJhYzkzYjllNmEyYzNkMWZhZjcxODJhOGZhZGQ2NmYwOWZjNDYxOCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNDVlMzFjOTNjYjNhYmU5ZjUzNWFkZGMyOTIyMDRkMjBhYTMzOWU1NGFjMjYzMTJiMjgwNjFhM2RmNTA1ZWY5YyJ9"
+        },
+        {
+          "resource": "repo://client/src/pages/user-settings/BasicInfo.tsx#L57-L79",
+          "version": "repo-lines-v1:sha256:39402c65f072bbf1f1c6909cdcde35278ae670b805fd58c621ce9daf53b054b6:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFjN2Q5OTVlMzc1ZTNkZWZhYTEyYTZiZWVkOGI5Yjc1NmQ5ZTEwYjBiZjc2MDg3MGVhMTc2ZmZiMWJlMmYyNjciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVjOGE1YzkzM2Q0ZWNlZmEyZGVmODU3MDRmYjAyYTMwYjIzOTA2NjgwYjcyMmJiZWM3MzkyNjIxZWJjYTViZjAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRiZDFjYmY4YjQ0OTEyYjIxNGY2ZmE5MmE3ZmYyMTI3MmE4NjYzMTIxMTkxOWEzNDQxMjFiMjVlZDlhN2E0YjkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjczYTAxMTBjODIxNmE2ZTE1ZTA4ZDQ5NGNmZTkwN2RjOTk0NzZjMGExM2MwYmYxYTY5ZTFhYjdjY2NkOTdjMDkifQ"
+        },
+        {
+          "resource": "repo://client/src/pages/user-settings/SecurityPasskeyDialogs.tsx#L27-L44",
+          "version": "repo-lines-v1:sha256:b2684f26c5a85ede1ba8ac72e2714d4f6e95be1c629115de90d958b0fbc2f76d:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRhMmYxMjg3ODFlMWQ2ODBlYWU4MzNiODkzZjA0YTliYWI0OWU1ZGU4NjJmOGI4MDhlOTYyODA1ZDY3MGI5NWMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE0NzQyNjY4MjlhMDMwNjBiMTQ0M2Y2NzZiNTg0NGZjNDc0YjU1MDJkOWNkZDhjZGEzNTRkZTk1MjIwMjhiNDQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZlNGJhYTQxYmIzYTI5OWUwNGRlMzM4YjQ3MDE3ZWRiMTE1MGJlOTIyNTJmNWZjNzUzZTI5YTU4ZDQ1NGY3ZTMifQ"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.7.2",
+    "at": "2026-10-18T03:01:08.144Z"
+  }
+}
