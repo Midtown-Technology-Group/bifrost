@@ -13,6 +13,7 @@ import pytest
 from src.services.oauth_state import (
     OAuthStateError,
     decode_state,
+    encode_connection_state,
     encode_state,
 )
 
@@ -26,6 +27,45 @@ def test_round_trip_carries_provider_and_mapping():
     assert payload["provider_id"] == str(provider_id)
     assert payload["mapping_id"] == str(mapping_id)
     assert payload["nonce"] == nonce
+
+
+def test_connection_round_trip_carries_all_callback_bindings():
+    provider_id = uuid4()
+    user_id = uuid4()
+    organization_id = uuid4()
+    token, nonce = encode_connection_state(
+        provider_id=provider_id,
+        user_id=user_id,
+        organization_id=organization_id,
+        redirect_uri="https://app.example.test/oauth/callback/halo",
+    )
+
+    payload = decode_state(token)
+    assert payload["flow"] == "connection"
+    assert payload["provider_id"] == str(provider_id)
+    assert payload["user_id"] == str(user_id)
+    assert payload["organization_id"] == str(organization_id)
+    assert payload["redirect_uri"] == "https://app.example.test/oauth/callback/halo"
+    assert payload["nonce"] == nonce
+
+
+@pytest.mark.parametrize(
+    ("claims", "detail"),
+    [
+        ({"flow": "connection"}, "provider_id"),
+        ({"provider_id": "provider-1", "flow": "unexpected"}, "unsupported"),
+    ],
+)
+def test_decode_rejects_invalid_integration_state_shape(claims, detail):
+    from src.services.oauth_state_core import encode_state_jwt
+
+    token, _ = encode_state_jwt(
+        audience="bifrost-integration-oauth-state",
+        claims=claims,
+    )
+
+    with pytest.raises(OAuthStateError, match=detail):
+        decode_state(token)
 
 
 def test_nonce_is_unique_per_call():

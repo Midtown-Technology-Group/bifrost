@@ -1941,7 +1941,11 @@ class SolutionDeployer:
             ma = ManifestAgent.model_validate({**magent, "id": str(agent_id)})
             content = _agent_content_from_manifest(ma)
             try:
-                await indexer.index_agent(f"agents/{agent_id}.agent.yaml", content)
+                await indexer.index_agent(
+                    f"agents/{agent_id}.agent.yaml",
+                    content,
+                    organization_id=solution.organization_id,
+                )
             except ValueError as exc:
                 raise SolutionDeployConflict(
                     f"agent {agent_id}: {exc}"
@@ -1968,12 +1972,11 @@ class SolutionDeployer:
                 agent_values["max_iterations"] = magent["max_iterations"]
             if magent.get("max_token_budget") is not None:
                 agent_values["max_token_budget"] = magent["max_token_budget"]
-            # max_run_timeout is captured (capture.py:610) but, like the two
-            # limits above, the AgentIndexer does NOT persist it — without
-            # stamping it here a redeploy silently drops the manifest's value
-            # back to the column default. Apply when present.
-            if magent.get("max_run_timeout") is not None:
-                agent_values["max_run_timeout"] = magent["max_run_timeout"]
+            # Persist only the validated model value. Reading this field from the
+            # raw transport dict would let a malformed package bypass the
+            # ManifestAgent safety bound.
+            if ma.max_run_timeout is not None:
+                agent_values["max_run_timeout"] = ma.max_run_timeout
             await self.db.execute(
                 update(Agent).where(Agent.id == agent_id).values(**agent_values)
             )
