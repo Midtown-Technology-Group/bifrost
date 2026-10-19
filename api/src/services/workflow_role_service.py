@@ -20,6 +20,7 @@ from src.models.orm.agents import Agent, AgentRole
 from src.models.orm.app_roles import AppRole
 from src.models.orm.forms import Form, FormField, FormRole
 from src.models.orm.workflow_roles import WorkflowRole
+from src.services.agent_tool_scope import agent_scope_allows_tool
 
 logger = logging.getLogger(__name__)
 
@@ -85,7 +86,11 @@ def extract_agent_workflow_ids(agent: Agent) -> list[UUID]:
     Returns:
         List of workflow UUIDs (tool IDs)
     """
-    return [tool.id for tool in agent.tools]
+    return [
+        tool.id
+        for tool in agent.tools
+        if agent_scope_allows_tool(agent, tool)
+    ]
 
 
 def extract_app_workflow_ids() -> list[UUID]:

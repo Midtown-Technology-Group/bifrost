@@ -1727,6 +1727,49 @@ class TestEventSubscriptionManifestFields:
 class TestManifestValidationAgents:
     """Test manifest validation catches agent subscription issues."""
 
+    @pytest.mark.parametrize(
+        ("target_type", "workflow_id", "agent_id", "expected"),
+        [
+            ("workflow", None, None, "workflow_id"),
+            ("agent", None, None, "agent_id"),
+            ("unsupported", None, None, "unsupported target_type"),
+            ("workflow", str(uuid4()), str(uuid4()), "workflow_id"),
+            ("agent", str(uuid4()), str(uuid4()), "agent_id"),
+        ],
+    )
+    def test_validate_subscription_requires_exact_target(
+        self, target_type, workflow_id, agent_id, expected
+    ):
+        from bifrost.manifest import (
+            Manifest,
+            ManifestEventSource,
+            ManifestEventSubscription,
+            validate_manifest,
+        )
+
+        source_id = str(uuid4())
+        subscription = ManifestEventSubscription(
+            id=str(uuid4()),
+            target_type=target_type,
+            workflow_id=workflow_id,
+            agent_id=agent_id,
+        )
+        manifest = Manifest(
+            events={
+                source_id: ManifestEventSource(
+                    id=source_id,
+                    name="Source",
+                    source_type="webhook",
+                    subscriptions=[subscription],
+                )
+            }
+        )
+
+        errors = validate_manifest(manifest)
+
+        assert any(expected in error for error in errors), errors
+        assert subscription.has_well_formed_target() is False
+
     def test_validate_unknown_agent_in_subscription(self):
         """Subscription referencing non-existent agent_id should fail validation."""
         from bifrost.manifest import (

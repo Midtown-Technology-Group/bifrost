@@ -131,7 +131,7 @@ describe("authFetch transient 5xx retry", () => {
 	});
 
 	it.each(["GET", "PUT", "DELETE"])(
-		"does not retry side-effectful workflow endpoint %s requests",
+		"does not retry relative side-effectful workflow endpoint %s requests",
 		async (method) => {
 			fetchMock.mockResolvedValueOnce(mockResponse(503));
 
@@ -146,6 +146,16 @@ describe("authFetch transient 5xx retry", () => {
 			expect(fetchMock).toHaveBeenCalledTimes(1);
 		},
 	);
+
+	it("does not retry an absolute HTTPS workflow execution URL", async () => {
+		fetchMock.mockResolvedValueOnce(mockResponse(503));
+		const promise = authFetch(
+			"https://bifrost.example.invalid/api/endpoints/00000000-0000-0000-0000-000000000001",
+		);
+		await flushRetries();
+		expect((await promise).status).toBe(503);
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+	});
 
 	it("returns the last 503 after a PUT exhausts all retries", async () => {
 		fetchMock

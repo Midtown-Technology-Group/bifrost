@@ -208,7 +208,11 @@ def _diff_and_collect(
             else:
                 assert inc is not None and cur is not None
                 # Compare serialized form
-                if _diff_dump(inc) == _diff_dump(cur):
+                incoming_data, current_data = _diff_dump(inc), _diff_dump(cur)
+                if attr == "workflows" and inc.cache_ttl_seconds is None:
+                    # Omitted TTL leaves the destination cache setting alone.
+                    incoming_data["cache_ttl_seconds"] = current_data["cache_ttl_seconds"]
+                if incoming_data == current_data:
                     continue  # No change
                 action = "update"
                 entity = inc
@@ -1433,11 +1437,16 @@ class ManifestResolver:
                 continue
             data = dict(original_data)
             data["id"] = magent.id
+            org_id_uuid = UUID(magent.organization_id) if magent.organization_id else None
             await self._resolve_ref_field(data, "tool_ids")
             if "tools" in data and "tool_ids" not in data:
                 await self._resolve_ref_field(data, "tools")
             updated_content = (yaml.dump(data, default_flow_style=False, sort_keys=True).rstrip() + "\n").encode("utf-8")
-            await agent_indexer.index_agent(f"agents/{magent.id}.agent.yaml", updated_content)
+            await agent_indexer.index_agent(
+                f"agents/{magent.id}.agent.yaml",
+                updated_content,
+                organization_id=org_id_uuid,
+            )
 
             # Only echo back to ``modified`` when the source was a companion
             # file that needed ref-resolution rewrites (back-compat path).
@@ -1445,7 +1454,6 @@ class ManifestResolver:
                 modified[magent.path] = updated_content.decode("utf-8")
 
             # Post-indexer: update org_id and access_level
-            org_id_uuid = UUID(magent.organization_id) if magent.organization_id else None
             agent_id_uuid = UUID(magent.id)
             post_values: dict = {}
             if org_id_uuid:
@@ -1898,7 +1906,8 @@ class ManifestResolver:
         present_sub_uuids: list[UUID] = []
         for mes in manifest.events.values():
             for msub in mes.subscriptions:
-                present_sub_uuids.append(UUID(msub.id))
+                if msub.has_well_formed_target():
+                    present_sub_uuids.append(UUID(msub.id))
         present_org_uuids = [UUID(m.id) for m in manifest.organizations]
         present_role_uuids = [UUID(m.id) for m in manifest.roles]
 
@@ -3234,6 +3243,12 @@ class ManifestResolver:
         # workflow_id may be a UUID string, a path::function_name portable ref, or a name
         for msub in mes.subscriptions:
             target_type = getattr(msub, "target_type", "workflow") or "workflow"
+
+            if not msub.has_well_formed_target():
+                logger.warning(
+                    f"Event subscription {msub.id}: invalid {target_type!r} target, skipping"
+                )
+                continue
 
             wf_id: UUID | None = None
             agent_id: UUID | None = None
