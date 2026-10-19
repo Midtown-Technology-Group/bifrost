@@ -3560,6 +3560,8 @@ class ManifestResolver:
             "max_iterations": data.get("max_iterations"),
             "max_token_budget": data.get("max_token_budget"),
         }
+        if magent.max_run_timeout is not None:
+            agent_values["max_run_timeout"] = magent.max_run_timeout
         if magent.access_level is not None:
             agent_values["access_level"] = magent.access_level
         ops.append(Upsert(
