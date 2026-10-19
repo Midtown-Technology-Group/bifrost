@@ -140,22 +140,24 @@ async def test_operation_receipt_migration_recovers_after_partial_commit() -> No
             ]
 
             index = (
-                await connection.execute(
-                    text(
-                        """
-                        SELECT
-                            index_relation.oid,
-                            index_state.indisvalid,
-                            index_state.indisready,
-                            index_state.indisunique,
-                            pg_get_indexdef(index_relation.oid)
-                        FROM pg_class AS index_relation
-                        JOIN pg_index AS index_state
-                          ON index_state.indexrelid = index_relation.oid
-                        WHERE index_relation.oid = to_regclass(:index_name)
-                        """
-                    ),
-                    {"index_name": INDEX_NAME},
+                (
+                    await connection.execute(
+                        text(
+                            """
+                            SELECT
+                                index_relation.oid,
+                                index_state.indisvalid,
+                                index_state.indisready,
+                                index_state.indisunique,
+                                pg_get_indexdef(index_relation.oid)
+                            FROM pg_class AS index_relation
+                            JOIN pg_index AS index_state
+                              ON index_state.indexrelid = index_relation.oid
+                            WHERE index_relation.oid = to_regclass(:index_name)
+                            """
+                        ),
+                        {"index_name": INDEX_NAME},
+                    )
                 )
                 .mappings()
                 .one()
