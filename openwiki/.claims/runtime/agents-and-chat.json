@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:c38bca900c134b66f7191b9e1fb8fceacc0ea5d9b6b6a04d0cc07580e00b9901",
+  "pageVersion": "sha256:7254a22f887d1424c597af3d37f2ad83ede141c9a0228bddc6fd118d0ac37481",
   "claims": [
     {
       "id": "claim_117974ee94114c028672367a35720f1a",
@@ -14,7 +14,7 @@
     },
     {
       "id": "claim_ea1331fdc09245bcae6a2b04f23c7344",
-      "statement": "Agent reference validation requires workflow tool references to exist, be active, have type tool, and match the target organization unless the caller is passed cross-organization reference authority; delegated agents must exist, be active, meet the same organization rule, and cannot be the agent itself.",
+      "statement": "Agent reference validation requires workflow tool references to exist, be active, have type tool, and be global or in the target organization unless the caller is passed explicit cross-organization reference authority; delegated agents must exist, be active, meet the same global-or-target-organization rule, and cannot be the agent itself.",
       "evidence": [
         {
           "resource": "repo://api/src/routers/agents.py#L495-L502",
@@ -173,6 +173,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-19T15:04:26.495Z"
+    "at": "2026-10-19T15:19:26.403Z"
   }
 }

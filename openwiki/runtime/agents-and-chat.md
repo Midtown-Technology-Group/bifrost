@@ -39,7 +39,7 @@ sources:
 generated: { by: "bifrost-atlas", at: "2026-10-19T15:04:26.495Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-19T15:04:26.495Z
+    at: 2026-10-19T15:19:26.403Z
 ---
 
 # Agents, Chat, and Model Runtime
