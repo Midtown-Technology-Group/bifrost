@@ -35,6 +35,15 @@ jobs:
           trap 'kill "$host_monitor" "$memory_monitor" "$cpu_monitor"; wait "$host_monitor" "$memory_monitor" "$cpu_monitor" || true' EXIT
           mapfile -t prefix_files < scripts/search-responsiveness-historical-prefix.txt
           ./test.sh "${prefix_files[@]}" -s -v --durations=0 | tee /tmp/search-replay.log
+      - name: Capture API instrumentation even when the test passes
+        if: always()
+        run: |
+          set -euo pipefail
+          mapfile -t api_ids < <(docker ps -aq --filter label=com.docker.compose.service=api)
+          test "${#api_ids[@]}" -eq 1
+          docker logs --timestamps "${api_ids[0]}" > /tmp/search-replay-api.log 2>&1
+          test -s /tmp/search-replay-api.log
+          grep -q SEARCH_DIAGNOSTIC_ENABLED /tmp/search-replay-api.log
       - name: Upload diagnostic evidence without changing the test threshold
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a

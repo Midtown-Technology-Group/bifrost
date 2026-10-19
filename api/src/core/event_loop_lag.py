@@ -32,6 +32,7 @@ async def record_event_loop_lag(stop: asyncio.Event, *, interval: float = 0.1) -
 
     # Temporary diagnostic only: native watchdog captures the blocked Python stack.
     gc.callbacks.append(record_gc)
+    print("SEARCH_DIAGNOSTIC_ENABLED", flush=True)
     while not stop.is_set():
         faulthandler.dump_traceback_later(0.35)
         expected = loop.time() + interval
