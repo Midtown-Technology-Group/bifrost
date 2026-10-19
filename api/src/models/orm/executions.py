@@ -171,6 +171,11 @@ class Execution(Base):
         Index("ix_executions_session_id", "session_id"),
         Index("ix_executions_workflow_id", "workflow_id"),
         Index("ix_executions_solution_deployment_id", "solution_deployment_id"),
+        Index(
+            "ix_executions_teams_action_receipt",
+            "id",
+            postgresql_where=text("execution_context ? 'teams_action_completion'"),
+        ),
     )
 
 

@@ -16,6 +16,7 @@ from src.models.contracts.agents import (
     AGENT_LLM_MAX_TOKENS_MAX,
     AGENT_LLM_MAX_TOKENS_MIN,
 )
+from src.services.agent_tool_scope import agent_scope_allows_tool
 from src.services.mcp_server.tool_result import error_result, success_result
 from src.services.mcp_server.tools._http_bridge import call_rest
 from src.services.mcp_server.tools.db import get_tool_db
@@ -300,7 +301,19 @@ async def get_agent(
                 "created_by": agent.created_by,
                 "created_at": agent.created_at.isoformat() if agent.created_at else None,
                 "updated_at": agent.updated_at.isoformat() if agent.updated_at else None,
-                "tool_ids": [str(t.id) for t in agent.tools] if agent.tools else [],
+                "tool_ids": [
+                    str(tool.id)
+                    for tool in (agent.tools or [])
+                    if agent_scope_allows_tool(
+                        agent,
+                        tool,
+                        allow_cross_org=getattr(
+                            context,
+                            "is_platform_admin",
+                            False,
+                        ),
+                    )
+                ],
                 "delegated_agent_ids": [str(a.id) for a in agent.delegated_agents] if agent.delegated_agents else [],
                 "role_ids": [str(r.id) for r in agent.roles] if agent.roles else [],
                 "knowledge_sources": agent.knowledge_sources or [],
