@@ -11,7 +11,7 @@ function fixture() {
   const run = { id: 42, run_attempt: 1, event: "merge_group", status: "in_progress",
     repository: { full_name: "Midtown-Technology-Group/bifrost" }, path: ".github/workflows/ci.yml",
     head_sha: "a".repeat(40), head_branch: `gh-readonly-queue/main/pr-123-${"b".repeat(40)}`,
-    created_at: "2026-10-18T20:00:00Z" };
+    created_at: "2026-10-18T20:00:00Z", run_started_at: "2026-10-18T20:05:00Z" };
   const queue = { pageInfo: { hasNextPage: false }, nodes: [] };
   const history = { number: 123, timelineItems: { pageInfo: { hasPreviousPage: false }, nodes: [
     { createdAt: "2026-10-18T21:00:00Z", reason: "checks_timed_out", beforeCommit: { oid: run.head_sha } },
@@ -43,6 +43,9 @@ for (const [name, change] of [
   ["manual removal", x => { x.history.timelineItems.nodes[0].reason = "manual"; }],
   ["old removal", x => { x.history.timelineItems.nodes[0].createdAt = "2026-10-17T21:00:00Z"; }],
   ["unknown removal time", x => { x.history.timelineItems.nodes[0].createdAt = "invalid"; }],
+  ["timeout before selected attempt", x => { x.run.run_attempt = 2; x.run.run_started_at = "2026-10-18T22:00:00Z"; }],
+  ["missing attempt start", x => { delete x.run.run_started_at; }],
+  ["invalid attempt start", x => { x.run.run_started_at = "invalid"; }],
 ]) {
   test(`refuses ${name}`, () => {
     const x = fixture(); change(x);
@@ -70,6 +73,15 @@ function transport() {
   return { state, saved, calls, api, save: (name, data) => saved.set(name, structuredClone(data)),
     get reads() { return reads; }, get proofs() { return proofs; } };
 }
+
+test("timeout evidence binds to the selected attempt and records its start", () => {
+  const { run, queue, history } = fixture();
+  run.run_attempt = 2;
+  run.run_started_at = "2026-10-18T20:30:00Z";
+  const proof = authorizeRetirement(run, queue, history);
+  assert.equal(proof.attempt, 2);
+  assert.equal(proof.attempt_started_at, run.run_started_at);
+});
 
 test("default planning performs no cancellation or log download", async () => {
   const x = transport();
@@ -102,13 +114,16 @@ test("apply preserves completed logs and rechecks run and live queue before canc
   assert.ok(x.calls.findIndex(c => c[1].endsWith("/logs")) < x.calls.findIndex(c => c[1].endsWith("/cancel")));
 });
 
-for (const mode of ["logs unavailable", "new attempt", "candidate requeued", "incomplete jobs", "GraphQL denied"]) {
+for (const mode of ["logs unavailable", "new attempt", "changed attempt start", "candidate requeued", "incomplete jobs", "GraphQL denied"]) {
   test(`no cancellation when ${mode}`, async () => {
     const x = transport(); const original = x.api;
     x.api = async (method, path) => {
       const result = await original(method, path);
       if (mode === "logs unavailable" && path.endsWith("/logs")) throw new Error("not retained");
       if (mode === "new attempt" && x.reads === 2 && path.endsWith("/42")) result.run_attempt++;
+      if (mode === "changed attempt start" && x.reads === 2 && path.endsWith("/42")) {
+        result.run_started_at = "2026-10-18T20:30:00Z";
+      }
       if (mode === "candidate requeued" && path === "graphql" && x.proofs === 2) {
         result.data.repository.mergeQueue.entries.nodes.push({ headCommit: { oid: x.state.run.head_sha }, pullRequest: { number: 123 } });
       }

@@ -38,13 +38,15 @@ export function authorizeRetirement(run, queue, history) {
       || !Array.isArray(history.timelineItems.nodes)) throw new Error("Incomplete removal evidence");
   const events = history.timelineItems.nodes.filter(event => event.beforeCommit?.oid === run.head_sha);
   const removal = events.at(-1);
+  const attemptStart = Date.parse(run.run_started_at);
   if (!removal || removal.reason !== "checks_timed_out"
-      || !Number.isFinite(Date.parse(run.created_at)) || !Number.isFinite(Date.parse(removal.createdAt))
-      || Date.parse(removal.createdAt) < Date.parse(run.created_at)) {
+      || !Number.isFinite(attemptStart) || !Number.isFinite(Date.parse(removal.createdAt))
+      || Date.parse(removal.createdAt) < attemptStart) {
     throw new Error("Exact candidate has no authoritative timeout removal");
   }
   return { repository: REPOSITORY, run_id: run.id, attempt: run.run_attempt,
-    candidate_sha: run.head_sha, pr: number, removed_at: removal.createdAt, reason: removal.reason };
+    candidate_sha: run.head_sha, pr: number, attempt_started_at: run.run_started_at,
+    removed_at: removal.createdAt, reason: removal.reason };
 }
 
 function request(method, path, body) {
@@ -98,6 +100,7 @@ export async function retireRun({ runId, apply = false, save, api }) {
   const fresh = await api("GET", path);
   save("run-rechecked.json", fresh);
   if (fresh.id !== run.id || fresh.head_sha !== run.head_sha || fresh.run_attempt !== run.run_attempt
+      || fresh.run_started_at !== run.run_started_at
       || fresh.head_branch !== run.head_branch || fresh.path !== run.path) throw new Error("Run identity changed");
   await liveProof(fresh);
   save("cancel-intent.json", { ...proof, recorded_at: new Date().toISOString() });
