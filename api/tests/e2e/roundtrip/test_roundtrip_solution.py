@@ -316,9 +316,8 @@ async def test_solution_full_roundtrip_workflow(db_session: AsyncSession):
 
 
 # ---------------------------------------------------------------------------
-# Agent — surfaces the EXTRA_FIELD_POLICY completeness layer (max_run_timeout is
-# a captured Agent column ManifestAgent does not name) AND proves the deploy
-# writer fix (deploy now stamps max_run_timeout so it round-trips).
+# Agent — proves the bounded max_run_timeout model field and deploy writer
+# preserve the configured timeout through a solution round trip.
 # ---------------------------------------------------------------------------
 
 
@@ -354,8 +353,7 @@ async def seed_solution_agent(db: AsyncSession, sol: Solution) -> tuple[str, int
 
 
 async def test_solution_shareable_roundtrip_agent(db_session: AsyncSession):
-    """ManifestAgent obeys SOLUTION_SHAREABLE; the completeness layer accounts
-    for max_run_timeout (extra); and the deploy fix round-trips its value."""
+    """ManifestAgent obeys SOLUTION_SHAREABLE and round-trips max_run_timeout."""
     db = db_session
     src_sol = await _make_solution(db)
     src_agent_id, src_timeout = await seed_solution_agent(db, src_sol)
@@ -374,8 +372,6 @@ async def test_solution_shareable_roundtrip_agent(db_session: AsyncSession):
         SOLUTION_SHAREABLE_POLICY, expected_id=expected_solution_id(installed.id),
     )
 
-    # Completeness: max_run_timeout is an EXTRA (not a ManifestAgent field).
-    # Without the EXTRA_FIELD_POLICY entry this is an UNACCOUNTED-key failure.
     _assert_complete(m.ManifestAgent, b, a)
 
     # The deploy writer fix: max_run_timeout must survive the round trip (before

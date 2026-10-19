@@ -1639,12 +1639,14 @@ class TestAgentManifestFields:
             path="agents/test.agent.yaml",
             max_iterations=25,
             max_token_budget=50000,
+            max_run_timeout=600,
         )
         manifest = Manifest(agents={agent_id: agent})
         yaml_out = serialize_manifest(manifest)
         parsed = parse_manifest(yaml_out)
         assert parsed.agents[agent_id].max_iterations == 25
         assert parsed.agents[agent_id].max_token_budget == 50000
+        assert parsed.agents[agent_id].max_run_timeout == 600
 
         # Stability: second round-trip identical
         yaml_out2 = serialize_manifest(parsed)
@@ -2153,6 +2155,7 @@ class TestInlineAgentContent:
             llm_max_tokens=8000,
             max_iterations=15,
             max_token_budget=120000,
+            max_run_timeout=900,
         )
         manifest = Manifest(agents={agent_id: agent})
         yaml_out = serialize_manifest(manifest)
@@ -2170,6 +2173,7 @@ class TestInlineAgentContent:
         assert rt.llm_max_tokens == 8000
         assert rt.max_iterations == 15
         assert rt.max_token_budget == 120000
+        assert rt.max_run_timeout == 900
 
         yaml_out2 = serialize_manifest(parsed)
         assert yaml_out == yaml_out2

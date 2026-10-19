@@ -9,12 +9,13 @@ from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
 import yaml
+from bifrost.agent_limits import validate_agent_run_timeout
 from sqlalchemy import delete, func, or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models import Workflow
-from src.models.orm import Agent, AgentTool, AgentDelegation, AIModelProfile
+from src.models.orm import Agent, AgentDelegation, AgentTool, AIModelProfile
 
 logger = logging.getLogger(__name__)
 
@@ -77,6 +78,13 @@ class AgentIndexer:
         system_prompt = agent_data.get("system_prompt")
         if not system_prompt:
             raise ValueError(f"system_prompt is required (file: {path})")
+
+        try:
+            max_run_timeout = validate_agent_run_timeout(
+                agent_data.get("max_run_timeout")
+            )
+        except ValueError as exc:
+            raise ValueError(f"{exc} (file: {path})") from exc
 
         # Use ID from JSON if present (for API-created agents), otherwise generate new
         agent_id_str = agent_data.get("id")
@@ -172,6 +180,11 @@ class AgentIndexer:
                 if agent_data.get("max_token_budget") is not None
                 else {}
             ),
+            **(
+                {"max_run_timeout": max_run_timeout}
+                if max_run_timeout is not None
+                else {}
+            ),
             system_tools=system_tools,
             # Scope is supplied by the trusted import/deploy boundary for new
             # rows. The conflict-update branch deliberately omits it so repo
@@ -202,6 +215,11 @@ class AgentIndexer:
                 **(
                     {"max_token_budget": agent_data["max_token_budget"]}
                     if agent_data.get("max_token_budget") is not None
+                    else {}
+                ),
+                **(
+                    {"max_run_timeout": max_run_timeout}
+                    if max_run_timeout is not None
                     else {}
                 ),
                 "system_tools": system_tools,
