@@ -1253,6 +1253,14 @@ class ManifestEventSubscription(EntityCodec, BaseModel):
     input_mapping: dict | None = Field(default=None, description="Map event fields to workflow params", **classify(FieldClass.CONTENT))
     is_active: bool = Field(default=True, description="Enable/disable this subscription", **classify(FieldClass.ENVIRONMENT))
 
+    def has_well_formed_target(self) -> bool:
+        """Return whether exactly the target required by target_type is set."""
+        if self.target_type == "workflow":
+            return bool(self.workflow_id) and not self.agent_id
+        if self.target_type == "agent":
+            return bool(self.agent_id) and not self.workflow_id
+        return False
+
     @classmethod
     def from_row(cls, sub) -> "ManifestEventSubscription":
         """Build from an EventSubscription ORM row."""
@@ -1824,14 +1832,27 @@ def validate_manifest(manifest: Manifest) -> list[str]:
                 f"{evt.webhook_integration_id}"
             )
         for sub in evt.subscriptions:
-            if sub.target_type == "agent":
-                if sub.agent_id and sub.agent_id not in agent_ids:
+            if sub.target_type not in {"workflow", "agent"}:
+                errors.append(
+                    f"Event source '{evt_label}' subscription '{sub.id}' has unsupported "
+                    f"target_type: {sub.target_type}"
+                )
+            elif not sub.has_well_formed_target():
+                required_id = (
+                    "agent_id" if sub.target_type == "agent" else "workflow_id"
+                )
+                errors.append(
+                    f"Event source '{evt_label}' subscription '{sub.id}' must set only "
+                    f"{required_id} for target_type='{sub.target_type}'"
+                )
+            elif sub.target_type == "agent":
+                if sub.agent_id not in agent_ids:
                     errors.append(
                         f"Event source '{evt_label}' subscription '{sub.id}' references unknown agent: "
                         f"{sub.agent_id}"
                     )
             else:
-                if sub.workflow_id and sub.workflow_id not in wf_ids:
+                if sub.workflow_id not in wf_ids:
                     errors.append(
                         f"Event source '{evt_label}' subscription '{sub.id}' references unknown workflow: "
                         f"{sub.workflow_id}"

@@ -12,6 +12,10 @@ from uuid import UUID
 from fastmcp.tools import ToolResult
 
 from src.core.system_agents import PRIVILEGED_AGENT_MANAGEMENT_TOOLS
+from src.models.contracts.agents import (
+    AGENT_LLM_MAX_TOKENS_MAX,
+    AGENT_LLM_MAX_TOKENS_MIN,
+)
 from src.services.mcp_server.tool_result import error_result, success_result
 from src.services.mcp_server.tools._http_bridge import call_rest
 from src.services.mcp_server.tools.db import get_tool_db
@@ -19,6 +23,18 @@ from src.services.mcp_server.tools.db import get_tool_db
 # MCPContext is imported where needed to avoid circular imports
 
 logger = logging.getLogger(__name__)
+
+
+def _validate_llm_max_tokens(value: int | None) -> ToolResult | None:
+    """Apply the same token override bounds as the REST agent contracts."""
+    if value is None:
+        return None
+    if AGENT_LLM_MAX_TOKENS_MIN <= value <= AGENT_LLM_MAX_TOKENS_MAX:
+        return None
+    return error_result(
+        "llm_max_tokens must be between "
+        f"{AGENT_LLM_MAX_TOKENS_MIN} and {AGENT_LLM_MAX_TOKENS_MAX}."
+    )
 
 
 def _ensure_can_manage_agent_privileges(
@@ -346,6 +362,9 @@ async def create_agent(
         return error_result("name must be 255 characters or less")
     if len(system_prompt) > 50000:
         return error_result("system_prompt must be 50000 characters or less")
+    token_error = _validate_llm_max_tokens(llm_max_tokens)
+    if token_error is not None:
+        return token_error
 
     # Validate scope parameter
     if scope not in ("global", "organization"):
@@ -468,6 +487,9 @@ async def update_agent(
 
     if not context.is_platform_admin and llm_max_tokens is not None:
         return error_result("Only platform admins can set agent token budgets.")
+    token_error = _validate_llm_max_tokens(llm_max_tokens)
+    if token_error is not None:
+        return token_error
 
     # Validate agent_id is a valid UUID
     try:
@@ -578,7 +600,7 @@ async def update_agent(
                 updates_made.append("llm_profile_id")
 
             if llm_max_tokens is not None:
-                agent.llm_max_tokens = llm_max_tokens if llm_max_tokens > 0 else None
+                agent.llm_max_tokens = llm_max_tokens
                 updates_made.append("llm_max_tokens")
 
             agent.updated_at = datetime.now(timezone.utc)

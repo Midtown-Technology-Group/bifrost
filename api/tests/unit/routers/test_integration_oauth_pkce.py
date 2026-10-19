@@ -46,6 +46,7 @@ from src.services.oauth_pkce import (
 PROVIDER_ID = UUID("33333333-3333-3333-3333-333333333333")
 MAPPING_ID = UUID("22222222-2222-2222-2222-222222222222")
 INTEGRATION_ID = UUID("11111111-1111-1111-1111-111111111111")
+USER_ID = UUID("44444444-4444-4444-4444-444444444444")
 REDIRECT_URI = "https://app.example.test/oauth/callback"
 
 
@@ -211,9 +212,35 @@ def _ctx(*, org_id=None):
         db=db,
         user=SimpleNamespace(
             email="admin@example.com",
-            user_id=uuid4(),
+            user_id=USER_ID,
             name="Admin User",
         ),
+    )
+
+
+def _user():
+    return SimpleNamespace(user_id=USER_ID, email="admin@example.com")
+
+
+@pytest.fixture(autouse=True)
+def _valid_connection_state(monkeypatch):
+    """Keep callback-focused tests on a valid, single-use connection state."""
+    monkeypatch.setattr(
+        oauth_connections,
+        "decode_state",
+        lambda _state: {
+            "flow": "connection",
+            "provider_id": str(PROVIDER_ID),
+            "user_id": str(USER_ID),
+            "organization_id": None,
+            "redirect_uri": REDIRECT_URI,
+            "nonce": "nonce-1",
+        },
+    )
+    monkeypatch.setattr(
+        oauth_connections,
+        "consume_nonce",
+        AsyncMock(return_value=True),
     )
 
 
@@ -254,7 +281,12 @@ async def test_connection_authorize_pkce_adds_challenge_and_stores_verifier():
 
     with (
         patch.object(oauth_connections, "OAuthProviderRepository", return_value=repo),
-        patch.object(oauth_connections.secrets, "token_urlsafe", return_value="state-token"),
+        patch.object(
+            oauth_connections,
+            "encode_connection_state",
+            return_value=("state-token", "nonce-1"),
+        ),
+        patch.object(oauth_connections, "remember_nonce", new=AsyncMock()),
         patch.object(
             oauth_connections,
             "get_url_resolution_defaults",
@@ -270,7 +302,7 @@ async def test_connection_authorize_pkce_adds_challenge_and_stores_verifier():
         ) as store,
     ):
         result = await oauth_connections.authorize_connection(
-            "goto", _ctx(), MagicMock(), redirect_uri=REDIRECT_URI
+            "goto", _ctx(), _user(), redirect_uri=REDIRECT_URI
         )
 
     assert result.state == "state-token"
@@ -295,7 +327,12 @@ async def test_connection_authorize_without_pkce_sends_no_challenge():
 
     with (
         patch.object(oauth_connections, "OAuthProviderRepository", return_value=repo),
-        patch.object(oauth_connections.secrets, "token_urlsafe", return_value="state-token"),
+        patch.object(
+            oauth_connections,
+            "encode_connection_state",
+            return_value=("state-token", "nonce-1"),
+        ),
+        patch.object(oauth_connections, "remember_nonce", new=AsyncMock()),
         patch.object(
             oauth_connections,
             "get_url_resolution_defaults",
@@ -306,7 +343,7 @@ async def test_connection_authorize_without_pkce_sends_no_challenge():
         ) as store,
     ):
         result = await oauth_connections.authorize_connection(
-            "goto", _ctx(), MagicMock(), redirect_uri=REDIRECT_URI
+            "goto", _ctx(), _user(), redirect_uri=REDIRECT_URI
         )
 
     assert "code_challenge" not in result.authorization_url
@@ -321,13 +358,18 @@ async def test_integration_authorize_url_pkce_adds_challenge():
 
     with (
         patch.object(integrations, "IntegrationsRepository", return_value=repo),
-        patch.object(integrations.secrets, "token_urlsafe", return_value="state-token"),
+        patch.object(
+            integrations,
+            "encode_connection_state",
+            return_value=("state-token", "nonce-1"),
+        ),
+        patch.object(integrations, "remember_nonce", new=AsyncMock()),
         patch.object(
             integrations, "store_pkce_verifier", new=AsyncMock()
         ) as store,
     ):
         result = await integrations.get_oauth_authorization_url(
-            INTEGRATION_ID, _ctx(), MagicMock(), redirect_uri=REDIRECT_URI
+            INTEGRATION_ID, _ctx(), _user(), redirect_uri=REDIRECT_URI
         )
 
     assert result.state == "state-token"
@@ -452,6 +494,371 @@ def _callback_request(**overrides):
 
 
 @pytest.mark.asyncio
+async def test_callback_rejects_missing_state_before_provider_exchange():
+    request = _callback_request(state=None)
+    ctx = _ctx()
+    user = _user()
+
+    with patch(
+        "src.services.oauth_provider.OAuthProviderClient.exchange_code_for_token",
+        new=AsyncMock(),
+    ) as exchange:
+        with pytest.raises(HTTPException) as exc_info:
+            await oauth_connections.oauth_callback(
+                connection_name="goto",
+                request=request,
+                ctx=ctx,
+                user=user,
+            )
+
+    assert exc_info.value.status_code == 400
+    assert "Missing OAuth state" in exc_info.value.detail
+    exchange.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_callback_rejects_invalid_signed_state_before_provider_exchange():
+    consume = oauth_connections.consume_nonce
+    request = _callback_request()
+    ctx = _ctx()
+    user = _user()
+
+    with (
+        patch.object(
+            oauth_connections,
+            "decode_state",
+            side_effect=oauth_connections.OAuthStateError("invalid state"),
+        ),
+        patch(
+            "src.services.oauth_provider.OAuthProviderClient.exchange_code_for_token",
+            new=AsyncMock(),
+        ) as exchange,
+    ):
+        with pytest.raises(HTTPException) as exc_info:
+            await oauth_connections.oauth_callback(
+                connection_name="goto",
+                request=request,
+                ctx=ctx,
+                user=user,
+            )
+
+    assert exc_info.value.status_code == 400
+    assert "Invalid or expired OAuth state" in exc_info.value.detail
+    consume.assert_not_awaited()
+    exchange.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_callback_rejects_invalid_mapping_state_before_lookup_or_exchange():
+    consume = oauth_connections.consume_nonce
+    request = _callback_request()
+    ctx = _ctx()
+    ctx.db.get = AsyncMock()
+    user = _user()
+
+    with (
+        patch.object(
+            oauth_connections,
+            "decode_state",
+            return_value={
+                "provider_id": str(PROVIDER_ID),
+                "mapping_id": "not-a-uuid",
+                "nonce": "nonce-1",
+            },
+        ),
+        patch(
+            "src.services.oauth_provider.OAuthProviderClient.exchange_code_for_token",
+            new=AsyncMock(),
+        ) as exchange,
+    ):
+        with pytest.raises(HTTPException) as exc_info:
+            await oauth_connections.oauth_callback(
+                connection_name="goto",
+                request=request,
+                ctx=ctx,
+                user=user,
+            )
+
+    assert exc_info.value.status_code == 400
+    assert "Invalid OAuth mapping state" in exc_info.value.detail
+    ctx.db.get.assert_not_awaited()
+    consume.assert_not_awaited()
+    exchange.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_callback_rejects_deleted_mapping_before_nonce_or_exchange():
+    consume = oauth_connections.consume_nonce
+    request = _callback_request()
+    ctx = _ctx()
+    ctx.db.get = AsyncMock(return_value=None)
+    user = _user()
+
+    with (
+        patch.object(
+            oauth_connections,
+            "decode_state",
+            return_value={
+                "provider_id": str(PROVIDER_ID),
+                "mapping_id": str(MAPPING_ID),
+                "nonce": "nonce-1",
+            },
+        ),
+        patch(
+            "src.services.oauth_provider.OAuthProviderClient.exchange_code_for_token",
+            new=AsyncMock(),
+        ) as exchange,
+    ):
+        with pytest.raises(HTTPException) as exc_info:
+            await oauth_connections.oauth_callback(
+                connection_name="goto",
+                request=request,
+                ctx=ctx,
+                user=user,
+            )
+
+    assert exc_info.value.status_code == 400
+    assert "OAuth mapping no longer exists" in exc_info.value.detail
+    consume.assert_not_awaited()
+    exchange.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_callback_rejects_incomplete_connection_state_before_nonce_or_exchange():
+    consume = oauth_connections.consume_nonce
+    request = _callback_request()
+    ctx = _ctx()
+    user = _user()
+
+    with (
+        patch.object(
+            oauth_connections,
+            "decode_state",
+            return_value={
+                "flow": "connection",
+                "provider_id": str(PROVIDER_ID),
+                "organization_id": None,
+                "redirect_uri": REDIRECT_URI,
+                "nonce": "nonce-1",
+            },
+        ),
+        patch(
+            "src.services.oauth_provider.OAuthProviderClient.exchange_code_for_token",
+            new=AsyncMock(),
+        ) as exchange,
+    ):
+        with pytest.raises(HTTPException) as exc_info:
+            await oauth_connections.oauth_callback(
+                connection_name="goto",
+                request=request,
+                ctx=ctx,
+                user=user,
+            )
+
+    assert exc_info.value.status_code == 400
+    assert "Invalid OAuth connection state" in exc_info.value.detail
+    consume.assert_not_awaited()
+    exchange.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_callback_rejects_invalid_requested_organization_before_nonce_or_exchange():
+    organization_id = uuid4()
+    consume = oauth_connections.consume_nonce
+    request = _callback_request(organization_id="not-a-uuid")
+    ctx = _ctx(org_id=organization_id)
+    user = _user()
+
+    with (
+        patch.object(
+            oauth_connections,
+            "decode_state",
+            return_value={
+                "flow": "connection",
+                "provider_id": str(PROVIDER_ID),
+                "user_id": str(USER_ID),
+                "organization_id": str(organization_id),
+                "redirect_uri": REDIRECT_URI,
+                "nonce": "nonce-1",
+            },
+        ),
+        patch(
+            "src.services.oauth_provider.OAuthProviderClient.exchange_code_for_token",
+            new=AsyncMock(),
+        ) as exchange,
+    ):
+        with pytest.raises(HTTPException) as exc_info:
+            await oauth_connections.oauth_callback(
+                connection_name="goto",
+                request=request,
+                ctx=ctx,
+                user=user,
+            )
+
+    assert exc_info.value.status_code == 400
+    assert "Invalid organization in OAuth callback" in exc_info.value.detail
+    consume.assert_not_awaited()
+    exchange.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_callback_rejects_requested_organization_mismatch_before_nonce_or_exchange():
+    organization_id = uuid4()
+    consume = oauth_connections.consume_nonce
+    request = _callback_request(organization_id=str(uuid4()))
+    ctx = _ctx(org_id=organization_id)
+    user = _user()
+
+    with (
+        patch.object(
+            oauth_connections,
+            "decode_state",
+            return_value={
+                "flow": "connection",
+                "provider_id": str(PROVIDER_ID),
+                "user_id": str(USER_ID),
+                "organization_id": str(organization_id),
+                "redirect_uri": REDIRECT_URI,
+                "nonce": "nonce-1",
+            },
+        ),
+        patch(
+            "src.services.oauth_provider.OAuthProviderClient.exchange_code_for_token",
+            new=AsyncMock(),
+        ) as exchange,
+    ):
+        with pytest.raises(HTTPException) as exc_info:
+            await oauth_connections.oauth_callback(
+                connection_name="goto",
+                request=request,
+                ctx=ctx,
+                user=user,
+            )
+
+    assert exc_info.value.status_code == 400
+    assert "OAuth callback organization does not match state" in exc_info.value.detail
+    consume.assert_not_awaited()
+    exchange.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("claim", "value", "detail"),
+    [
+        ("user_id", str(uuid4()), "different user"),
+        ("organization_id", str(uuid4()), "different organization"),
+        ("redirect_uri", "https://evil.example.test/callback", "redirect URI"),
+    ],
+)
+async def test_callback_rejects_mismatched_connection_state_before_nonce_or_exchange(
+    claim, value, detail
+):
+    payload = {
+        "flow": "connection",
+        "provider_id": str(PROVIDER_ID),
+        "user_id": str(USER_ID),
+        "organization_id": None,
+        "redirect_uri": REDIRECT_URI,
+        "nonce": "nonce-1",
+    }
+    payload[claim] = value
+    consume = oauth_connections.consume_nonce
+    request = _callback_request()
+    ctx = _ctx()
+    user = _user()
+
+    with (
+        patch.object(oauth_connections, "decode_state", return_value=payload),
+        patch(
+            "src.services.oauth_provider.OAuthProviderClient.exchange_code_for_token",
+            new=AsyncMock(),
+        ) as exchange,
+    ):
+        with pytest.raises(HTTPException) as exc_info:
+            await oauth_connections.oauth_callback(
+                connection_name="goto",
+                request=request,
+                ctx=ctx,
+                user=user,
+            )
+
+    assert exc_info.value.status_code == 400
+    assert detail in exc_info.value.detail
+    consume.assert_not_awaited()
+    exchange.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_callback_rejects_provider_mismatch_before_nonce_or_exchange():
+    provider = _connection_provider(id=uuid4())
+    consume = oauth_connections.consume_nonce
+    request = _callback_request()
+    ctx = _ctx()
+    user = _user()
+
+    with (
+        patch(
+            "src.repositories.oauth.OAuthProviderRepository.get_by_connection_name",
+            new=AsyncMock(return_value=provider),
+        ),
+        patch(
+            "src.services.oauth_provider.OAuthProviderClient.exchange_code_for_token",
+            new=AsyncMock(),
+        ) as exchange,
+    ):
+        with pytest.raises(HTTPException) as exc_info:
+            await oauth_connections.oauth_callback(
+                connection_name="goto",
+                request=request,
+                ctx=ctx,
+                user=user,
+            )
+
+    assert exc_info.value.status_code == 400
+    assert "different provider" in exc_info.value.detail
+    consume.assert_not_awaited()
+    exchange.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_callback_rejects_connection_state_replay_before_exchange_or_storage():
+    provider = _connection_provider()
+    request = _callback_request()
+    ctx = _ctx()
+    user = _user()
+
+    with (
+        patch(
+            "src.repositories.oauth.OAuthProviderRepository.get_by_connection_name",
+            new=AsyncMock(return_value=provider),
+        ),
+        patch(
+            "src.repositories.oauth.OAuthProviderRepository.store_token",
+            new=AsyncMock(),
+        ) as store,
+        patch.object(
+            oauth_connections, "consume_nonce", new=AsyncMock(return_value=False)
+        ),
+        patch(
+            "src.services.oauth_provider.OAuthProviderClient.exchange_code_for_token",
+            new=AsyncMock(),
+        ) as exchange,
+    ):
+        with pytest.raises(HTTPException) as exc_info:
+            await oauth_connections.oauth_callback(
+                connection_name="goto",
+                request=request,
+                ctx=ctx,
+                user=user,
+            )
+
+    assert exc_info.value.status_code == 400
+    assert "replay rejected" in exc_info.value.detail
+    exchange.assert_not_awaited()
+    store.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_callback_pkce_sends_stored_verifier():
     provider = _connection_provider(provider_metadata={"use_pkce": True})
     stored = {
@@ -493,7 +900,7 @@ async def test_callback_pkce_sends_stored_verifier():
             connection_name="goto",
             request=_callback_request(),
             ctx=_ctx(),
-            user=MagicMock(),
+            user=_user(),
         )
 
     assert result.success is True
@@ -525,7 +932,7 @@ async def test_callback_pkce_replay_is_rejected():
     ):
         request = _callback_request()
         ctx = _ctx()
-        user = MagicMock()
+        user = _user()
         with pytest.raises(HTTPException) as exc_info:
             await oauth_connections.oauth_callback(
                 connection_name="goto",
@@ -566,7 +973,7 @@ async def test_callback_pkce_binding_mismatch_is_rejected():
     ):
         request = _callback_request()
         ctx = _ctx()
-        user = MagicMock()
+        user = _user()
         with pytest.raises(HTTPException) as exc_info:
             await oauth_connections.oauth_callback(
                 connection_name="goto",
@@ -623,7 +1030,7 @@ async def test_callback_without_pkce_ignores_stray_verifier():
             connection_name="goto",
             request=_callback_request(),
             ctx=_ctx(),
-            user=MagicMock(),
+            user=_user(),
         )
 
     assert result.success is True
@@ -706,7 +1113,7 @@ async def test_callback_per_mapping_pkce_links_token_to_mapping():
             connection_name="goto",
             request=_callback_request(state="signed-state"),
             ctx=ctx,
-            user=MagicMock(),
+            user=_user(),
         )
 
     assert result.success is True
@@ -758,7 +1165,7 @@ async def test_callback_mapping_nonce_replay_rejected_before_storage():
         patch("src.routers.oauth_connections.CACHE_INVALIDATION_AVAILABLE", False),
     ):
         request = _callback_request(state="signed-state")
-        user = MagicMock()
+        user = _user()
         with pytest.raises(HTTPException) as exc_info:
             await oauth_connections.oauth_callback(
                 connection_name="goto",
