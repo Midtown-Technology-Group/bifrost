@@ -208,7 +208,11 @@ def _diff_and_collect(
             else:
                 assert inc is not None and cur is not None
                 # Compare serialized form
-                if _diff_dump(inc) == _diff_dump(cur):
+                incoming_data, current_data = _diff_dump(inc), _diff_dump(cur)
+                if attr == "workflows" and inc.cache_ttl_seconds is None:
+                    # Omitted TTL leaves the destination cache setting alone.
+                    incoming_data["cache_ttl_seconds"] = current_data["cache_ttl_seconds"]
+                if incoming_data == current_data:
                     continue  # No change
                 action = "update"
                 entity = inc
