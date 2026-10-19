@@ -25,6 +25,47 @@ def _load_workflow(path: Path) -> dict[str, Any]:
     return loaded
 
 
+def test_coverage_shadow_is_manual_default_off_and_has_no_admission_authority() -> None:
+    workflow = _load_workflow(CI_WORKFLOW)
+    jobs = workflow["jobs"]
+    assert workflow["on"]["workflow_dispatch"]["inputs"]["coverage_shadow"]["default"] == "false"
+    for name in ("coverage-shadow-supplement", "coverage-shadow-compare"):
+        job = jobs[name]
+        assert "github.event_name == 'workflow_dispatch'" in job["if"]
+        assert "inputs.coverage_shadow" in job["if"]
+        assert "github.ref != 'refs/heads/main'" in job["if"]
+        assert set(job["permissions"].values()) == {"read"}
+        for step in job["steps"]:
+            assert "secrets." not in str(step)
+            assert "sonar-scanner" not in step.get("run", "")
+    # Pilot results cannot grant admission or become a deployment prerequisite.
+    for name, job in jobs.items():
+        if name.startswith("coverage-shadow-"):
+            continue
+        needs = job.get("needs", [])
+        if isinstance(needs, str):
+            needs = [needs]
+        assert not any(item.startswith("coverage-shadow-") for item in needs)
+
+
+def test_shadow_snapshots_precede_cleanup_and_preserve_diagnostics_on_failure() -> None:
+    jobs = _load_workflow(CI_WORKFLOW)["jobs"]
+    reusable = _load_workflow(REPO_ROOT / ".github/workflows/sonar-coverage.yml")
+    producers = [jobs[name] for name in ("test-unit", "test-e2e", "coverage-shadow-supplement")]
+    producers += [job for job in reusable["jobs"].values() if job.get("name") == "Sonar Coverage Evidence"]
+    assert len(producers) == 4
+    for job in producers:
+        steps = job["steps"]
+        export = next(index for index, step in enumerate(steps) if "shadow.sh export " in step.get("run", ""))
+        cleanup = next(index for index, step in enumerate(steps) if "./test.sh stack down" in step.get("run", ""))
+        assert export < cleanup
+        assert "always()" in steps[export]["if"]
+        retention = next(step for step in steps if "coverage-shadow-" in step.get("with", {}).get("name", ""))
+        assert "always()" in retention["if"]
+        assert retention["with"]["include-hidden-files"] == "true"
+        assert retention["with"]["if-no-files-found"] == "error"
+
+
 def test_ci_supports_native_merge_groups_during_queue_cutover() -> None:
     workflow = _load_workflow(CI_WORKFLOW)
     triggers = workflow["on"]
