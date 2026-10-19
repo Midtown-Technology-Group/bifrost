@@ -55,6 +55,11 @@ gh workflow run ci.yml --repo Midtown-Technology-Group/bifrost \
 The control supplies timing only; none of its coverage enters the union. A
 manual run forces the existing comprehensive test plan. PR, merge-group and
 main events cannot activate the experiment. Do not enable it on main.
+Before accepting timing estimates, archive and compare the API image manifest
+digests printed by the completed control and pilot pull steps for the unit and
+four E2E jobs. Control images are not automatically bound by a shadow receipt;
+missing or different digests invalidate timing acceptance. Within the pilot,
+serial/shard image-ID equality is checked automatically.
 Inspect the first pair before authorizing additional observations. A source
 repair invalidates the pair: obtain a new successful control on the repaired
 revision. Preserve failed attempts; do not retry unexplained failures to green.

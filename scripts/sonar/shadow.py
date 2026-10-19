@@ -404,6 +404,7 @@ def timing_model(expected: dict, current: dict, control: dict, control_jobs: dic
             "counterfactual_runner_seconds_saved": serial_seconds - overhead - extra_jobs,
             "counterfactual_wall_seconds_saved": wall_saved,
             "limitations": ["Shadow run executes both paths; these savings are counterfactual, not realized.",
+                            "Timing-control image digests need independent comparison of completed pull logs before timing acceptance.",
                             "Runner setup/cache/contention vary; repeat before making a sustained-capacity claim.",
                             "Comparison cleanup/upload after this snapshot can reduce the estimated saving."]}
 

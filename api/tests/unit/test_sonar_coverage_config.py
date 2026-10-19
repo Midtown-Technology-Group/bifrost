@@ -56,6 +56,7 @@ def test_shadow_combines_real_shard_databases_without_baseline_hits(tmp_path, mo
         # Baseline-only arc must never contaminate the candidate union.
         arcs = {(900, 901)} if lane == "baseline" else {(-1, 1), (index, index + 1)}
         data.add_arcs({str(source): arcs})
+        data.touch_files([str(root / "api/unimported.py")])
         data.write()
         if lane != "baseline":
             expected_arcs |= arcs
@@ -66,7 +67,7 @@ def test_shadow_combines_real_shard_databases_without_baseline_hits(tmp_path, mo
     result = module.combine(root, bundles, output)
     combined = coverage.CoverageData(basename=str(result))
     combined.read()
-    assert set(combined.measured_files()) == {"api/example.py"}
+    assert set(combined.measured_files()) == {"api/example.py", "api/unimported.py"}
     assert set(combined.arcs("api/example.py")) == expected_arcs
     assert all((bundle["directory"] / "python.coverage").is_file() for bundle in bundles.values())
     classes = ElementTree.parse(output / "shadow.xml").findall(".//class")
