@@ -1436,11 +1436,16 @@ class ManifestResolver:
                 continue
             data = dict(original_data)
             data["id"] = magent.id
+            org_id_uuid = UUID(magent.organization_id) if magent.organization_id else None
             await self._resolve_ref_field(data, "tool_ids")
             if "tools" in data and "tool_ids" not in data:
                 await self._resolve_ref_field(data, "tools")
             updated_content = (yaml.dump(data, default_flow_style=False, sort_keys=True).rstrip() + "\n").encode("utf-8")
-            await agent_indexer.index_agent(f"agents/{magent.id}.agent.yaml", updated_content)
+            await agent_indexer.index_agent(
+                f"agents/{magent.id}.agent.yaml",
+                updated_content,
+                organization_id=org_id_uuid,
+            )
 
             # Only echo back to ``modified`` when the source was a companion
             # file that needed ref-resolution rewrites (back-compat path).
@@ -1448,7 +1453,6 @@ class ManifestResolver:
                 modified[magent.path] = updated_content.decode("utf-8")
 
             # Post-indexer: update org_id and access_level
-            org_id_uuid = UUID(magent.organization_id) if magent.organization_id else None
             agent_id_uuid = UUID(magent.id)
             post_values: dict = {}
             if org_id_uuid:
