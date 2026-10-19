@@ -185,12 +185,9 @@ async def test_handoff_activation_and_rollback_keep_both_execution_pins(
         shared_tables=bindings,
         solution_id=solution_id,
         deployment_id=deployment_id,
-        bundle_hash=sha256_digest(canonical_json({
-            "release_id": release.release_id,
-            "workflow_ids": [str(workflow_id)],
-            "shared_tables": {name: binding.model_dump(mode="json") for name, binding in bindings.items()},
-            "source_hashes": {path: source_hash},
-        })),
+        # A public handoff candidate may use its reviewed source archive digest.
+        # Preflight binds that exact manifest before activation and later readback.
+        bundle_hash=sha256_digest(source_archive({path: source})),
         resolution_map_hash=sha256_digest(canonical_json(resolution)),
         source=DeploymentSource(artifact_key=source_key, runtime_prefix=runtime_prefix),
         workflows={entity.portable_ref: entity},
