@@ -621,7 +621,6 @@ def _agent_has_inline_content(magent) -> bool:
             "mcp_connection_ids",
             "llm_profile",
             "llm_max_tokens",
-            "max_run_timeout",
         )
     )
 
@@ -3560,8 +3559,9 @@ class ManifestResolver:
             "organization_id": org_id,
             "max_iterations": data.get("max_iterations"),
             "max_token_budget": data.get("max_token_budget"),
-            "max_run_timeout": magent.max_run_timeout,
         }
+        if magent.max_run_timeout is not None:
+            agent_values["max_run_timeout"] = magent.max_run_timeout
         if magent.access_level is not None:
             agent_values["access_level"] = magent.access_level
         ops.append(Upsert(
