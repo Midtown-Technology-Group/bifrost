@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:338d6f5d4f91666cd32ad229da0fa6300b892a8342957ed22eaa2b1e5b71e5dd",
+  "pageVersion": "sha256:06690067b7776497803ccde59283817df3ac3f0eb0a9a606936b587c23b5d93d",
   "claims": [
     {
       "id": "claim_e70abc111b9749219ab95eb349ea47cb",
@@ -163,10 +163,28 @@
           "version": "repo-lines-v1:sha256:8828b70bf14a515e989afb82f4d7c00ea1b45dfdb46665ff54d6a46c443560db:eyJzZWxlY3RlZExpbmVDb3VudCI6NjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4NjU5N2E3ZmVkMWY2YWUyMGRmNDFjYTFkMzQ1Yzc4OGZkZWIyOTdjZTM0MmQyZGUwY2ViODU0MzdkY2Q2M2EiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJlZDZiMDlkNDI4YTgwMzZkYTM0YmE5ZDE5Mzc0M2IyMGUzYmE0M2U5OWRlMjU5Njg1YjQ5NzdhZDFiODEyMDEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjVhYjdiMjcyYWI0ZTI1MTc1YjVmZDI0YzEzY2ZlNTYzNDI1MTRjMDI3OTQ2ZjAzYjUzMDVkZjIwMzM3ODc5ZjkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY3OGQ4ZjY5MmM2MTJkODNlZDE4NzJmZjg0NmUxNmNkN2Y1ZDUyMGY4NDAxOGRiYjBmZWEwMDE3OWYzNmJlNGIifQ"
         }
       ]
+    },
+    {
+      "id": "claim_4c6b411e4cd945558957ffe6efa40dbf",
+      "statement": "Portable manifest validation requires an event subscription to set exactly the target ID matching its target_type: workflow_id alone for workflow targets or agent_id alone for agent targets. Unsupported target types, missing or conflicting IDs, and unknown referenced targets fail validation.",
+      "evidence": [
+        {
+          "resource": "repo://api/bifrost/manifest.py#L1264-L1281",
+          "version": "repo-lines-v1:sha256:95739c0911a29260aafcc0a97033479e74a2fbfaa410d0047254d56374a79b53:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVkNTg1N2E4MjhlNGI0ZDU1MDc1ZTRkZDc0MDQ5YzM4YzM2M2UzYjE4ZGI1OWQxNTMyNDMxZjY4OGIyOGU4NWQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI5N2M3MTI0N2FmM2NkMWVkZjU1NWE3ZDEwNzU5MzE1N2Y2ZGMyYTIyYWYwZGU4MmU3Nzc0YWJmMTBmOGFkZTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIzZGYyYWNmMDZlOGMzZjAzYzcxMzVjNmU4YWM1YTljYTU0MzJhYmUwNmE3NGFjYTBmZGQ5YTUzYTAwOGY5ODciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjIwMDJmNTQ0OTc2NDI5ZGNlYzhkZGI5N2VmY2M5MzJmNmFhYmY4NGUwMTY1YjZiMzY4ZDY5NjdiOTYyNzA1ZTAifQ"
+        },
+        {
+          "resource": "repo://api/bifrost/manifest.py#L1853-L1878",
+          "version": "repo-lines-v1:sha256:f59dee2dbe67c70c1325de42d33240af5673bd97cb22b45130b9232c9b3bf253:eyJzZWxlY3RlZExpbmVDb3VudCI6MjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVjYWYwNzA5ZjRiNjczOWFiZmZlMWRiOWVlNzk4ZThjMGY5MjIzMGFlNjFjNmI2MTMzMzlmYzBkYWFlMjI2MWQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQwMDEwNWUwYTY4NTIxYzNkMzMyNjE1MzkwZTg1OWUzOWNmMjQxMjc0YTdkNzgxZDE5NmEzYWRhMDdiMTBmZDciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjUyNTBjMWNjMTNhOWM2ZDlkZjI3NWM1OThjOTcwZWZjYjJiMzQwYTJjMzRiZjNjZTA1ZjFjM2U3OWE4OGQ0OWQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNhNTg4MWM3ODYyNjc5OGUwODcwMzAxNmZkNjgyYWRmYjFjNGM0YTY4MGY4ZjhjZWFlNWZhZDg5ZDM1YjU2MjkifQ"
+        },
+        {
+          "resource": "repo://api/tests/unit/test_manifest.py#L1730-L1771",
+          "version": "repo-lines-v1:sha256:07e3302efdb462ec7177ffa80db4891645b68225302f04b043293a8b1b38e0bd:eyJzZWxlY3RlZExpbmVDb3VudCI6NDIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM0YTcyODc2ZjM2NzU5Y2MwODM1MDcyYmE5ZDJmZGIyN2Q1NGM5ZGM4NDRiOGNkMTUwZDljYTQyMGMzYWMyYTUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdlNzEzYjZiMTc5M2EyYzU3MGYwNzc2YjdkNmE3NTEzNjY1OTE5Y2Y2YzRmYzlmODQ1YjM3YTY2OWMxMWEzZjAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjUzM2E0NjliNDQ5MjkzYTQ5OGM5MzA5ZjM3OTgzNmIxZDYyZjkyZjRlNTJhOTJkYTNhMzY0Nzk0N2YxNjM5YjciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFmNGNhNGI3NzkxZTQzNjc5ZjcwM2QxMDE1ZDJmYTNkYTAxNTNlZjM5MmE2YTI0NGRlYWQwMjU0MGFjYjM1OTQifQ"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-18T06:28:44.263Z"
+    "at": "2026-10-19T14:54:21.479Z"
   }
 }

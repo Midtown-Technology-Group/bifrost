@@ -3,14 +3,17 @@ type: runtime-guide
 title: Agents, Chat, and Model Runtime
 description: Traces agent configuration, chat runs, model and tool execution, durable run state, budgets, cancellation, and model failover.
 tags: [agents, chat, models, tools, runtime]
-verified:
-  - by: openwiki/0.7.2
-    at: 2026-10-18T02:14:28.318Z
 sources:
+  - id: openwiki-source-9ff417bcbcf3d68df26514ca
+    resource: repo://api/bifrost/agent_limits.py
+  - id: openwiki-source-7628400cf56ed0184f784658
+    resource: repo://api/src/jobs/consumers/agent_run.py
   - id: openwiki-source-de22288cc45dfcd6befc678e
     resource: repo://api/src/models/orm/agent_runs.py
   - id: openwiki-source-03e71efd19c9835d81e256fa
     resource: repo://api/src/models/orm/agents.py
+  - id: openwiki-source-2c27822728321bf9972156d7
+    resource: repo://api/src/repositories/org_scoped.py
   - id: openwiki-source-a10ff59368f18a55701c648a
     resource: repo://api/src/routers/agents.py
   - id: openwiki-source-a1010ad7baca0f87584d70a5
@@ -21,9 +24,22 @@ sources:
     resource: repo://api/src/services/agent_runtime/model_failover.py
   - id: openwiki-source-701a377617caed477729cca4
     resource: repo://api/src/services/agent_runtime/toolset.py
+  - id: openwiki-source-39407b5064b3d7f6670742dd
+    resource: repo://api/src/services/agent_tool_scope.py
   - id: openwiki-source-8a6746df0febfc81670117a9
     resource: repo://api/src/services/chat_runs.py
-generated: { by: "bifrost-atlas", at: "2026-10-18T02:14:28.318Z" }
+  - id: openwiki-source-8add03f394625d180399e286
+    resource: repo://api/src/services/file_storage/indexers/agent.py
+  - id: openwiki-source-c03efcc833e9a07a34b76a61
+    resource: repo://api/src/services/mcp_server/tool_access.py
+  - id: openwiki-source-fbcfa6d78793da48f9d5e73d
+    resource: repo://api/src/services/workflow_role_service.py
+  - id: openwiki-source-dd67d5350de09b81cf8e7bfd
+    resource: repo://api/tests/unit/test_agent_run_timeout_limits.py
+generated: { by: "bifrost-atlas", at: "2026-10-19T15:04:26.495Z" }
+verified:
+  - by: openwiki/0.7.2
+    at: 2026-10-19T15:04:26.495Z
 ---
 
 # Agents, Chat, and Model Runtime
@@ -33,6 +49,10 @@ Bifrost separates reusable agent configuration from each chat conversation and a
 ## Configuration and access
 
 Agents are database-backed entities. Their organization and owner, active flag, role-based/private access level, Solution ownership, tool IDs, delegation references, system tools, knowledge sources, and optional model profile determine what the runtime can use. Agent creation/update validates referenced workflow tools and delegate agents for existence, active state, type, organization and self-delegation constraints; solution-managed entities are guarded against direct mutation (`api/src/models/orm/agents.py`, `api/src/routers/agents.py`).
+
+The default agent-scope eligibility check requires an active workflow of type `tool` in the global or agent organization scope. Manifest indexing applies that test using the trusted persisted agent organization and does not let repository content move an existing agent across organizations. Agent API serialization uses the same eligibility check; those response paths pass cross-organization access only when `user.has_platform_admin_grant()` is true. Workflow-role synchronization applies the default global-or-same-organization check. MCP candidate filtering checks active workflow-tool type first; its WorkflowRepository lookup then applies the caller’s organization and role authorization rather than the agent-organization filter (`api/src/services/agent_tool_scope.py`, `api/src/services/file_storage/indexers/agent.py`, `api/src/routers/agents.py`, `api/src/services/workflow_role_service.py`, `api/src/services/mcp_server/tool_access.py`, `api/src/repositories/org_scoped.py`).
+
+`max_run_timeout` is an optional integer from 1 to 1,800 seconds. Both autonomous and chat workers use a 30-minute default and a hard 1,800-second cap; invalid or legacy values fall back to the default and oversized legacy values are clamped (`api/bifrost/agent_limits.py`, `api/src/jobs/consumers/agent_run.py`, `api/tests/unit/test_agent_run_timeout_limits.py`).
 
 Chat conversation creation checks that a referenced agent is active and that the caller can access it. Reusable model profiles returned by Chat are administrator-governed and expose normalized capabilities rather than secrets (`api/src/routers/chat.py`).
 

@@ -4,6 +4,14 @@ title: Frontend Application and Workflow Authoring
 description: How the browser authoring surfaces create and publish applications, edit workflow configuration, review form publication, and capture loose entities into Solutions.
 tags: [frontend, authoring, applications, workflows, forms, solutions]
 sources:
+  - id: openwiki-source-8c6425b9916e544d5d1a379a
+    resource: repo://api/src/jobs/platform/application_publish.py
+  - id: openwiki-source-3dedfabd7ed53f1bf6f303b2
+    resource: repo://api/src/routers/applications.py
+  - id: openwiki-source-978bccee4e712471ae82b0e3
+    resource: repo://api/tests/e2e/api/test_entity_logos.py
+  - id: openwiki-source-43334c825cd522a88dc2ed7f
+    resource: repo://api/tests/unit/jobs/test_application_publish_recovery.py
   - id: openwiki-source-8091ea15a9cfd8321a8e828f
     resource: repo://client/src/components/app-builder/AppInfoDialog.tsx
   - id: openwiki-source-f327efb7bec394d7781c3e65
@@ -38,10 +46,10 @@ sources:
     resource: repo://client/src/pages/AppCodeEditorPage.tsx
   - id: openwiki-source-9c3a216843b3bee9b66a7c34
     resource: repo://client/src/services/solutions.ts
-generated: { by: "bifrost-atlas", at: "2026-10-18T03:01:08.144Z" }
+generated: { by: "bifrost-atlas", at: "2026-10-19T14:54:21.479Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-18T03:01:08.144Z
+    at: 2026-10-19T14:54:21.479Z
 ---
 
 # Frontend Application and Workflow Authoring
@@ -51,6 +59,8 @@ The authoring UI is a set of domain surfaces backed by typed API calls and serve
 ## Applications
 
 `AppCodeEditorPage` distinguishes a new application from an existing one. Creation collects name, slug, description, and organization and creates a standalone v2 app before navigating into its editor. Existing applications can have draft changes and publish a version with an optional message. The editor presents publish progress and preserves inline errors so the user can retry. Solution-managed applications are shown as read-only in the platform UI because deployment owns their writes; the API rejects direct edits and publication as well. This split is important when debugging an apparently disabled editor: check the app's ownership and publication state before changing the editor component.
+
+The application-logo endpoint uses the same access-aware application lookup as the application API, so organization access and app-bound embed credentials apply to logo reads; a cross-tenant caller or a token bound to another app receives not found (`api/src/routers/applications.py`, `api/tests/e2e/api/test_entity_logos.py`). For inline V1 publication, a fresh job rereads the actor and application authority before building or writing, then checks again at the publication boundary. Recovery can reconcile an intent that has already been applied using readback without rebuilding, republishing, or checking the original caller's current authority. If the intent has not applied, revoked permission remains a definitive failure (`api/src/jobs/platform/application_publish.py`, `api/tests/unit/jobs/test_application_publish_recovery.py`).
 
 ## Workflows
 

@@ -4,6 +4,8 @@ title: Events, Webhooks, and Scheduling
 description: Explains event sources and subscriptions, public webhook validation, topic emission, delivery tracking, and cron-triggered execution.
 tags: [events, webhooks, schedules, triggers, runtime]
 sources:
+  - id: openwiki-source-a986bc02ee8181224d4258b2
+    resource: repo://api/bifrost/manifest.py
   - id: openwiki-source-69fc36b69346912f422a945e
     resource: repo://api/src/jobs/schedulers/cron_scheduler.py
   - id: openwiki-source-2d83c16595d181eab8b76cee
@@ -28,10 +30,12 @@ sources:
     resource: repo://api/tests/unit/routers/test_events_webhook_creation.py
   - id: openwiki-source-348a04725dd62e51f9e9b7ec
     resource: repo://api/tests/unit/services/test_webhook_lifecycle.py
-generated: { by: "bifrost-atlas", at: "2026-10-18T06:28:44.263Z" }
+  - id: openwiki-source-90c11d1521e4854b55e5a609
+    resource: repo://api/tests/unit/test_manifest.py
+generated: { by: "bifrost-atlas", at: "2026-10-19T14:54:21.479Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-18T06:28:44.263Z
+    at: 2026-10-19T14:54:21.479Z
 ---
 
 # Events, Webhooks, and Scheduling
@@ -41,6 +45,8 @@ The event system normalizes webhook, topic, and schedule triggers into persisted
 ## Sources, topics, and subscriptions
 
 Event sources carry a type and scope, with type-specific webhook or schedule configuration. Subscriptions identify a target, optional event criteria and input mapping, and active state. Topic names are constrained to lowercase letters, digits, underscores and dots, must include a dot, and are limited to 100 characters. The curated registry supplies platform topic descriptions/examples, while custom topic sources can be created through supported interfaces (`api/src/services/events/validation.py`, `api/src/services/events/registry.py`, `docs/events/topics.md`).
+
+Portable manifest validation requires a subscription to name exactly one target matching its `target_type`: workflow subscriptions need `workflow_id` without `agent_id`, and agent subscriptions need `agent_id` without `workflow_id`. Unsupported target types, missing or conflicting IDs, and references to unknown targets produce validation errors. This is a manifest import/validation boundary, separate from event delivery runtime behavior (`api/bifrost/manifest.py`, `api/tests/unit/test_manifest.py`).
 
 When a topic event is emitted, active subscriptions on the matching source are evaluated and delivery records capture success, failure, skipped/not-matched, and evaluation-error counts. Input mappings build workflow parameters; the full event is also carried in the reserved `_event` context. Organization scope is derived from the workflow or event/source context so event execution retains its intended boundary (`api/src/services/events/processor.py`).
 

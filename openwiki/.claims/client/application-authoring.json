@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:0e11e473e2f498f21b97cedd6e4f871731ccd9fa5e63f4d21d650bc0590451b7",
+  "pageVersion": "sha256:61a152789e957f4330c3d746c724b004cdb5fb5d1e69a99ab74261cb3bc48645",
   "claims": [
     {
       "id": "claim_5f49a1c42c5b4b3ea0c82d687eef73a1",
@@ -175,10 +175,46 @@
           "version": "repo-lines-v1:sha256:e18eeb1490fd7252429c91aa9e037beb0c588591c9d26f55f54e3e2562c4e7f4:eyJzZWxlY3RlZExpbmVDb3VudCI6MzksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY0MDQ4MTMwYjBmMjBmNWFlNDMyM2I1N2Q2ZTNlYTg4NDA1ZmVkMGQzZGI3OWFhZWYxMTExYTY0ZmU1M2Y0MTUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJlZWQxMzkwYjcyY2RjMDQzNWIxNjU5ZGFjODU4Y2NhZTA3MWVhZTIzZDc2ZTAxY2YwOGZmNTcyMjBmYTVmNWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZiMzBiMWMwYTdiZWVkZjQxMTc0ODE0MWNiYTQ0YTM2NTkwYjczMjdlYmVjYWNiMzQ4ODljM2Y0ZTQ2YzA0ZTAifQ"
         }
       ]
+    },
+    {
+      "id": "claim_c7e67b4ff08044728eb8b27d12fca8d4",
+      "statement": "Application-logo reads use the access-aware application lookup, enforcing organization access and app-bound embed identity; cross-tenant callers and tokens bound to another app receive not found.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/routers/applications.py#L1706-L1715",
+          "version": "repo-lines-v1:sha256:d25240636df8faebe88467ab63cbfc1f2d58f08195ea89657e0b72ecdec5c95a:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg2ZTRjMWFlN2Y4NDA2YmIwZGMzNGU5ZDUxZDNkYjFmNTIyZDdjMGY0NmFjNDY5Yjk2MGU5NmRjYmEwNzcxYzIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU5MDlhNTNhNjE4ZDAyOGUxZDMwMDBjMGE3YWJjZWVjYmU1ZmIzN2Y0ZTUxMWVmZTQ2NjQzZmFkNmU2Njg3MmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZiMDk2ODIzMDVjMDIyM2QxMTQ5NDk2MzQ3MTNkNGY3Y2YwNzFmNzA5ZmNiZjFlNzlhNDE1YzQ0NjE3YjRjMmQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgxYmRhNDc1MmVmMWU4MWNiYTExZDgzNWVkYzk2OTAxOWRjNTYyNTUxNTFkYzcyYTc2YTQ2NjNmODU0MjJhYTEifQ"
+        },
+        {
+          "resource": "repo://api/tests/e2e/api/test_entity_logos.py#L163-L191",
+          "version": "repo-lines-v1:sha256:95d5a4062272233f7286795d077d00dd825d52c9e05743004d8af7b23e791be6:eyJzZWxlY3RlZExpbmVDb3VudCI6MjksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI2Yzc2ZGJjM2Y5ZTgzZjFkODBkOGNiOTA4ZTE0ODkzYzkzNzYyMzkyYzI0NjgyMWU1MzZmZTc4ZTY2NDI5OGYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUxYWEyYWRmMmUwZDMzMWM4N2I3MDQ0MDdjMjk2NjcyOGJmNzNhNWVmZGEwYzA5ZGNiOWM1NzZlM2MwMWJmNjQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjEwNDJlMjk2OGY0NjkxNjkwNDM2MGFkYjc5NjhiNzA4ZDkyOTQ4MDA3ZTA1NjY5M2JhMDhhYTQ3ODNlMzRkZjQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgwNWQwOTU5MmEzMDYyNjY1MmM0NzliYWVkNmJmZjc5OTQ2YjdiZDY2YjE3YTNlMzY3OTE1ZjE4OTMyZTRhOTEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_7f0fc4e7fa434d9c8d49868af4a6bfaf",
+      "statement": "Fresh inline V1 application-publish attempts recheck current actor and application authority before effects and at publication; recovery can reconcile an already-applied intent by readback without rebuilding, republishing, or checking the original caller authority, while revoked authority for an unapplied intent remains a definitive failure.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/jobs/platform/application_publish.py#L225-L249",
+          "version": "repo-lines-v1:sha256:aa0bca83968de109d8b75b957a3472b9cc4e9b8049784093cc38c13fbe97fc1f:eyJzZWxlY3RlZExpbmVDb3VudCI6MjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU2ZmQyNmE2NmI2OGJmZTE3OWNkYzRiYzM0OTU0ZWFkNmMwMzhlY2U2YTFiOTI5OTYzMjliYzM1ZmNhNDEyNDkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQwMDEwNWUwYTY4NTIxYzNkMzMyNjE1MzkwZTg1OWUzOWNmMjQxMjc0YTdkNzgxZDE5NmEzYWRhMDdiMTBmZDciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU3M2ExN2IwYTcyYzM0ZTBmYTBhMzZiNDhjNTVhMzExMmUxNDZmMDJkNTJhMjdjNDk5MmQyNGFkM2EzZWFjNTkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImNlMjM4MTBkNDNlNmIyYThmNGE2MzM0NDFkYzFiMTY5NmI5ODJlZmI1MWM1Yzg4MjRhM2Y0NjljN2JhOTk0YWIifQ"
+        },
+        {
+          "resource": "repo://api/src/jobs/platform/application_publish.py#L81-L129",
+          "version": "repo-lines-v1:sha256:5b0f419b051d60c90600d909526f1ede7f88a5db1c4bef127235a42418b42899:eyJzZWxlY3RlZExpbmVDb3VudCI6NDksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYxNjM1ODI0ZGZkM2FmNWQ2ZTI4NTBjNTg4YTA3NzdkZmMzYmNlOWMyZDI0NTU0OGNlOGQ2NDAyY2QxZDU5MmEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjEwZjg2MWRmMTQ3MDllOGJiNTRiMThjZGEyMjI2OTM3YzU1MGFlMmUxNzA4OTU0ODhiMjhlMTI0OTYyMzlmZTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhjYzRhN2QxY2M3OTZhYmEzZTQ2NzIzMzI3ZjUxN2U5ZjgxMTk4MmQyNTBmMDcwMjk4NmU0YjU3NjRhZDk1ODkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI3ODMyNjRlMmJkNzM2ZWY2NWRiMmI3ZTMyNDM3YzhjYjNkNjVjZjBmYzYyMzM5MDhmNjNiNjEwMzAzZmUyZmMifQ"
+        },
+        {
+          "resource": "repo://api/tests/unit/jobs/test_application_publish_recovery.py#L140-L165",
+          "version": "repo-lines-v1:sha256:37c2e72ccf7b428ab0466aba473f8f9e539610628ac9805fb8fb318dd803e7a1:eyJzZWxlY3RlZExpbmVDb3VudCI6MjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAwYzhjOWMzMWQ3YzdlM2ViNzgxYjUwN2RiOWI0OTBkMTJlZDg3NTg0YzNlM2ZlMzMzNzMwNmVjYzliODc0NGMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjVhYjdiMjcyYWI0ZTI1MTc1YjVmZDI0YzEzY2ZlNTYzNDI1MTRjMDI3OTQ2ZjAzYjUzMDVkZjIwMzM3ODc5ZjkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjIwMTY1OGIwZjUxM2JjZDRmOTVjN2FmZjc1ZjI4YjBkNjhjYjQ3MTFlNmI5Yzc0NmViNDJmZGEyYzIwN2I0NTMifQ"
+        },
+        {
+          "resource": "repo://api/tests/unit/jobs/test_application_publish_recovery.py#L58-L80",
+          "version": "repo-lines-v1:sha256:580360590db655f3e65150a6610e3caec2d14d8b989b705c938d586cae98e144:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAwYzhjOWMzMWQ3YzdlM2ViNzgxYjUwN2RiOWI0OTBkMTJlZDg3NTg0YzNlM2ZlMzMzNzMwNmVjYzliODc0NGMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAwNDE1N2I0MGYyMjY2Mjc0YjVjNDM0MzI0NDMyOTZmZGM1N2QxZTRhM2RiMGRhN2RiMjBlYmQyNGJhM2IzODIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjVhYjdiMjcyYWI0ZTI1MTc1YjVmZDI0YzEzY2ZlNTYzNDI1MTRjMDI3OTQ2ZjAzYjUzMDVkZjIwMzM3ODc5ZjkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVhYjdiMjcyYWI0ZTI1MTc1YjVmZDI0YzEzY2ZlNTYzNDI1MTRjMDI3OTQ2ZjAzYjUzMDVkZjIwMzM3ODc5ZjkifQ"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-18T03:01:08.144Z"
+    "at": "2026-10-19T14:54:21.479Z"
   }
 }

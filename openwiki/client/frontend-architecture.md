@@ -48,6 +48,10 @@ sources:
     resource: repo://client/src/lib/api-client.ts
   - id: openwiki-source-9eb01333fabdb30b30dcc3b4
     resource: repo://client/src/lib/app-code-platform/useWorkflowMutation.ts
+  - id: openwiki-source-cf0907c2df9cf9452d072ce1
+    resource: repo://client/src/lib/monaco-setup.test.ts
+  - id: openwiki-source-694fc04092d63b42e232ce72
+    resource: repo://client/src/lib/monaco-setup.ts
   - id: openwiki-source-829a95bd4605e82a4193c39d
     resource: repo://client/src/lib/monaco/conflictDecorator.ts
   - id: openwiki-source-2076ae67f9a06e98fc3bab58
@@ -72,10 +76,10 @@ sources:
     resource: repo://client/src/pages/roles/RoleActionsMenu.tsx
   - id: openwiki-source-1031ee0234e15576a14e1fd6
     resource: repo://client/vite.config.ts
-generated: { by: "bifrost-atlas", at: "2026-10-18T03:04:59.966Z" }
+generated: { by: "bifrost-atlas", at: "2026-10-19T14:54:21.479Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-18T03:04:59.966Z
+    at: 2026-10-19T14:54:21.479Z
 ---
 
 # Frontend Architecture and API Client
@@ -84,7 +88,7 @@ The browser client is a React SPA built with Vite. `main.tsx` configures platfor
 
 ## Startup and route tree
 
-The entrypoint installs React strict mode, theme and TanStack Query providers, organization-scope query invalidation, Monaco setup, the JSX module shim, and Sentry before rendering. The router wraps the page tree in authentication, organization scope, keyboard, layout, and error handling providers. Most pages load lazily so the initial bundle does not have to include every platform surface; protected routes distinguish platform-admin access from organization-user access.
+The entrypoint installs React strict mode, theme and TanStack Query providers, organization-scope query invalidation, Monaco setup, the JSX module shim, and Sentry before rendering. Monaco is bundled from the locked `monaco-editor` dependency with language workers provided by the application bundle; `MonacoEnvironment.getWorker` selects JSON, CSS, HTML, TypeScript/JavaScript, or the general editor worker rather than loading editor code from a CDN (`client/src/lib/monaco-setup.ts`). The router wraps the page tree in authentication, organization scope, keyboard, layout, and error handling providers. Most pages load lazily so the initial bundle does not have to include every platform surface; protected routes distinguish platform-admin access from organization-user access.
 
 ## Typed network layer
 

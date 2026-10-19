@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:7d9131635e4f809593eab76c82dc26be3a50ee9d00a375a096c0af4dfc5f9fec",
+  "pageVersion": "sha256:c38bca900c134b66f7191b9e1fb8fceacc0ea5d9b6b6a04d0cc07580e00b9901",
   "claims": [
     {
       "id": "claim_117974ee94114c028672367a35720f1a",
@@ -14,11 +14,19 @@
     },
     {
       "id": "claim_ea1331fdc09245bcae6a2b04f23c7344",
-      "statement": "Agent reference validation checks referenced workflow tools and delegated agents for existence, active state, organization compatibility, and self-delegation.",
+      "statement": "Agent reference validation requires workflow tool references to exist, be active, have type tool, and match the target organization unless the caller is passed cross-organization reference authority; delegated agents must exist, be active, meet the same organization rule, and cannot be the agent itself.",
       "evidence": [
         {
-          "resource": "repo://api/src/routers/agents.py#L66-L145",
-          "version": "repo-lines-v1:sha256:2d0be0d3572a109e4f3b6a6346edbb35b29d3ed6dd2df1f22913eab92e2b9620:eyJzZWxlY3RlZExpbmVDb3VudCI6ODAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI5MGRmYzI4YjZhZmJhMzdiNDQyYTNjMTI4M2IyN2MzY2MwNzZhNTNmMzBlZjVjNmQ3NDZkNWQ2ZDg1NmI4ZjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhmYjhjMDFhZWFmMzYwZDcxMTkxMjQ4NDE0ODQ1NTQ3MDE5MDEyOTliODM0M2ExY2I2ZWQ5MzA5OWY1ZmY0MDgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImVhODg1ZTE5ZTc1NTI5MGQ0MzYyNjVjNjg5ZjQ5YjUxM2IwMzAxZGRjOTUxYzY5MGU1MGYwMDQ2ODdlZDk2MTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImIzZGYyYWNmMDZlOGMzZjAzYzcxMzVjNmU4YWM1YTljYTU0MzJhYmUwNmE3NGFjYTBmZGQ5YTUzYTAwOGY5ODcifQ"
+          "resource": "repo://api/src/routers/agents.py#L495-L502",
+          "version": "repo-lines-v1:sha256:3cc1f2bbdea3466731cdad89fec2e745b928342b15c40f9264b224e3ec01283c:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZmQxZjA1MjVjYTkwNGUwM2ZkYmYwM2U3YzA2MDNmOWY4OTg0NjA3ZjJlYjJhZWYyZmFhODZiYzk1ZmRmM2RkMSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOTAwMThjMDYzZWM4MDViNmFiMTVmYzQ4ZWU0NzRlYzlmODVjYjJmZmUzZjg5MmRkMTQ1NTVjNjJmMDJjYmI4NyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiY2E4MGU5NTE1ZmQyZGRjOGZiZWFlZTBiMmQyMDg2MGI5NzkyNTk3MzQ4YmE2MzdlMzNjZjNhYzVlY2Y1YjliNiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYjMxOGNiMzYwNWRmYmI0NGExYTQyMDczMTRmYjdmZWIyMjhhMmJlODlkYjJjZTBmZmRmMTQ1MjE5ODNjZDgwZiJ9"
+        },
+        {
+          "resource": "repo://api/src/routers/agents.py#L67-L147",
+          "version": "repo-lines-v1:sha256:d4a97a010a63b0145da9bbdef71c952bb14d53cb34ac08dc1c7f816772528f27:eyJzZWxlY3RlZExpbmVDb3VudCI6ODEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI5MGRmYzI4YjZhZmJhMzdiNDQyYTNjMTI4M2IyN2MzY2MwNzZhNTNmMzBlZjVjNmQ3NDZkNWQ2ZDg1NmI4ZjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU5MDlhNTNhNjE4ZDAyOGUxZDMwMDBjMGE3YWJjZWVjYmU1ZmIzN2Y0ZTUxMWVmZTQ2NjQzZmFkNmU2Njg3MmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImVhODg1ZTE5ZTc1NTI5MGQ0MzYyNjVjNjg5ZjQ5YjUxM2IwMzAxZGRjOTUxYzY5MGU1MGYwMDQ2ODdlZDk2MTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM5ZDBjOTA5NDAwMzVmZjNiNDBiNDJhMmY4NWE1Njg0NTdjZWE4NDE0ZTQ5ZTRkM2M3NDRjNWJhZGU2M2IzZGMifQ"
+        },
+        {
+          "resource": "repo://api/src/routers/agents.py#L898-L906",
+          "version": "repo-lines-v1:sha256:bcc6fc47b6f2e9b4f126ffdc11ad7425e8681b1c8edce4304e13188698fd2fb2:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYTE3NTIxYmIwZWM4YTE3YzYzMzU4ZjVjZmJiN2M2YzFiYzIzZWJkNGNmM2E3MTk5ZjRkYzU1MzIyYTVjYWNmZSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMzBjMWYxODhmMTQyZWQ3YTgyNDY4MGIyMDcxNzJjNTUxOWJjNjE0YTQ4ZmRhN2NmMTY3ZWRiOGRkZjc5OTU2YyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZmE5MGIyMjc2MDIyYjgwNjRiMTBlNDBiYmEwZjY5MjM2OThlYTRkMmViZDdiM2U3ZDc0ZDVmM2UxNDI0OWQ1NCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZDllOTI4ZGZiOWQwMWZjYzE0NDE3ZjcxNjc1YjQzZDY3MTNkN2I5ZmU3MGViOGNmMDMzYzYzNTg3NmQ5ZmUzZiJ9"
         }
       ]
     },
@@ -101,10 +109,70 @@
           "version": "repo-lines-v1:sha256:1295472f6699ae226c1c00a7c568ca3285e89377c43041026125627e8cf4dd14:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiODU1ZmYwNzIzMTM1ZjY1MTk0ZTExYzI3NDJjNGYwOWU1NzBjYTA0NTczZDE2YjdlOTY1ZDJjNGU4OGJjZjcxNiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYjg2MzQyMTkwZjJmNmEzM2NkOWFlMmE3NGZjMWFjZDA3OGEwMGI4MTAyMzdhMzczZDM1MDE5YTY3YzBjMTJkZiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjAsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMWFhZjc2MzdjYjZlN2U1ZGI4NWQ2MzQyNzQ2MDE0ZGYwNDFjY2Q1NThhOTIwYjI5ZWI2YWM3MTlkN2JhZjVjMiJ9"
         }
       ]
+    },
+    {
+      "id": "claim_01edb840b71c48be843903b833dd80f9",
+      "statement": "The default agent-scope eligibility check and manifest indexer require active tool workflows in the global or agent organization scope; indexing uses trusted persisted agent organization. Agent API serialization permits cross-organization visibility only for callers with an explicit platform-admin grant, while workflow-role synchronization uses the default organization gate. MCP candidate filtering checks active/type eligibility with cross-org allowed, then WorkflowRepository applies caller organization and role authorization.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/repositories/org_scoped.py#L214-L231",
+          "version": "repo-lines-v1:sha256:b7732a693968b5c006c93e0b85c461235559617c2220c5fa8485c4fd362ffe03:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc4MTdlOGJkMjhhYjEwMDNlOGMyNTJjY2Q4NzE1MWIyYjViN2I5ZDhjZjY1MzEyZmRjYWE4YTIzOGFlNzc3MjQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQyMDc4MzkyZmZlOTM1MTNhNGNlYzA2MjQ2ODZhOTcyM2Y4MzgxYjM4YTNjNjBmYWQ0NmYzYjEwYTc2NjVlN2UiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjI1NmRiMmRmNDdlMGQ4Yjc3MDRiNWNjMmZjNmE2MTliMzViMDZkZTg1MGI1ZGE0MWQ3Nzk3NWJmMzBmMDQ5YTciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE3ZDFiYTlmODA1NDczOWQ0Njc1ODlkZWMyZmNlOWJjYjIyMjI4NDJjOWI1NzVkNzMyMTBkOWQyNGIxZjU2ZTYifQ"
+        },
+        {
+          "resource": "repo://api/src/routers/agents.py#L1284-L1297",
+          "version": "repo-lines-v1:sha256:7cc988b63eb5c95d3c965dd721078ceeba5c5cf5a1aec2cdf0f9afcf2b3ec1c2:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA0NzRiYTFiYjE5NWNlNTc2YTFhZGRkNGRkYzIyMDI1NjllMDhmYmM0YzUzOTRjMmQzNzI1ODIxMmU2ZDIwNzMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFkZDI0NDU4MmI2ZmIwM2QyM2I4NDE1YWJlY2QzNDZiMGM5ZjQ2NmI2Zjc1MmIwNjgxODljZTdlOWEyZGMzNTAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImMyZDIwZmYzMWQyZTgzZTgzYzM3ODc1NDU2NGNiZDE0ZjVmODY4ODhlNzlhMTk5YzU0ZjY5ODdjOGFiNDU1OTkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzN2VkNTI0YzMxMzA4ODg1ZTEzODI1MmI5M2Y1ZTVlNTU5ZTU0OGU5MDgzZDdkMWMwYmQ5Mjk4NTdmMjdiNTIifQ"
+        },
+        {
+          "resource": "repo://api/src/routers/agents.py#L257-L301",
+          "version": "repo-lines-v1:sha256:5baca18e9b6b8a9116589e02d66909bda3d632f333e9726d08ae145cfa177832:eyJzZWxlY3RlZExpbmVDb3VudCI6NDUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg2ZTcxZDhiMTQ4ZmM1OTFlMTdjZjEzZDNiYWVhZTAzODdiMjVhYzBjMTYxNDU4NjY3MGI4NmJhZjEzNmEyYzkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk0MzNkMGVhOWVjZjJmMzljOWE1MDQwNzM5NWVlNDExNzJmZTY4MmM5Yzg4NWEzNTA4Zjc1YmRlZTE1MWVmZmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQ3MDE0OWUwNjlhZDY3ZWNjZjQ3MzY0NmZmMWM3NTAwNTBkMzI5ZDExMDAxOGRjNTc2Njg3OGVhZmExZDYwN2QiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjBjN2JlOGY1Mjc2NDI0M2E4OGJjYjAyNWU2MDVjODUyNjNiY2ZkZmU0YjY2NzYxZmI2ZTkzYmQxZTI1YTgzZGIifQ"
+        },
+        {
+          "resource": "repo://api/src/routers/agents.py#L817-L824",
+          "version": "repo-lines-v1:sha256:cbd1aee9da13cb64aaa7bf327d40b461f05433dfc9c29836b0bd0a9cc4a80fc7:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMjI0Y2YwMzI4Yzk4MmQ5OTY4MDUzMjE3YTdkMDA2N2IwYjgyY2RlNDQ1NTA0YzI4NmJjMmU2MjcyMzhlOGY0ZiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMzBjMWYxODhmMTQyZWQ3YTgyNDY4MGIyMDcxNzJjNTUxOWJjNjE0YTQ4ZmRhN2NmMTY3ZWRiOGRkZjc5OTU2YyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYzJkMjBmZjMxZDJlODNlODNjMzc4NzU0NTY0Y2JkMTRmNWY4Njg4OGU3OWExOTljNTRmNjk4N2M4YWI0NTU5OSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNTgyMmMzZTM2Y2ViNThkNjVjYzdlYWMzMWRiNzMyODZiYmQ0MWJhN2IxMDdlZGU4NjQxY2FjOTUzNjM0YzRlOSJ9"
+        },
+        {
+          "resource": "repo://api/src/services/agent_tool_scope.py#L6-L21",
+          "version": "repo-lines-v1:sha256:ca89c76ac5f3979ad7f6dc0f1a84c91c470be02e040c7b0de2d910953594eb2c:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBlOTE0MDIyNTQyNDM5NTQ0NDNhY2VhZGE3MWU3MDBiODAxNjI4NDI2Y2VhMmQwMGUxY2NiZGM1ZTlhOTM1NmEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwYzFmMTg4ZjE0MmVkN2E4MjQ2ODBiMjA3MTcyYzU1MTliYzYxNGE0OGZkYTdjZjE2N2VkYjhkZGY3OTk1NmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjlkMzdhMzNkMDczYWI4ZGEyOWRjNzRjZTZhODkxMzE4MThhNTJhNWMxNjVkMTZmMzFkOTkxOTk3ZjBlNjZjZjciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        },
+        {
+          "resource": "repo://api/src/services/file_storage/indexers/agent.py#L234-L278",
+          "version": "repo-lines-v1:sha256:19487cc14005364b8d2f60734b10ca15de3e5ab3f2d7f90a9f9b2c501bd52fa2:eyJzZWxlY3RlZExpbmVDb3VudCI6NDUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ2MmJmOWM1OTRlM2ZlMjgxNDcyYTVhNzI1NTQ2ZGM3YTU2MDg3OTdmNDM4N2Y2YWJiZWE1ZTNkZDQ3NmNiY2IiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU0OTc5OWZmMGU0Y2MyYTlkOGI4NGU3ZjFmYzNmNTc5NTE2YTA2MWE3OTYyMmQ2YTAyOTU5MGE3YmFlNzFhNWYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY2ZGM0ZmEzMjYwN2RiMzNjZjlmNDEzMjVkNTU0OWZmN2ZjYzRlMzI3MmNlZjE5OTcyMjNjMDBiMzg5M2E0NWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU1Y2U5NWFmYmVkNTI5N2Q3YTM3NTdkY2MwMWQyOTFjNDczZDc0MmUyMjEyOWZjODc3YmUwZTVmMTcwN2Q0NmEifQ"
+        },
+        {
+          "resource": "repo://api/src/services/mcp_server/tool_access.py#L322-L353",
+          "version": "repo-lines-v1:sha256:4b27f7dfb8c3ce6a0fa29f53f0016990ad9d8acd3f50944c6be4dd6346a3654c:eyJzZWxlY3RlZExpbmVDb3VudCI6MzIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxNjA2MDI5NTI4ODcyMWUwODM1MTMyMTU1NTE4MGRlYjI0NTlmYzkxYzBlZTIzMDhhMzQzODlkYThkNDY3MTgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijc3ZjE2MzQxZDJiYzE5Y2E3MmRjYTU2ZjgwYzBmY2EzM2M4YWU5YzdjYmRkN2RkZjI1MzU5ZjhmYTY1YjBkZTkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZiY2E3YjJhZDg0N2FkYzY4NzY1ZmU4OGNlMGQxMGE3MDY3YzViODgyNTM3NTU0ODEwNDk5MTQ3ZDRlNmY3ZGIifQ"
+        },
+        {
+          "resource": "repo://api/src/services/workflow_role_service.py#L79-L93",
+          "version": "repo-lines-v1:sha256:9a07021fc55dd1e908332d393c7a7f447c2d7cf5bf2505bd38c36ce9f6934bfb:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEzYjY1MTZiOTg5MTRkYjdjM2FlOTcxMDZhNGMzMDkwOThkMWJlMDU1NTc1OGM5NzkyMWNjYjNhZTlkOTYyZmMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFkZDI0NDU4MmI2ZmIwM2QyM2I4NDE1YWJlY2QzNDZiMGM5ZjQ2NmI2Zjc1MmIwNjgxODljZTdlOWEyZGMzNTAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU5YzQzZDI3Y2M3NDQyYzczODgwN2NiZWZhZTY5NTViY2I5OGQxZGJiMjM5OTMyNjQyODlmN2ZhNWRhN2M4MzgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjliYTE0ZThjNzg5YjI5M2Y3NDU2OGY0YzdiMjVmMjc0YWNmN2RmNjZjOGM2MGRlMjA1YjIyMTgxOTc2MWE3NWQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_d372a265de7b47d8bf1b2d11493c8329",
+      "statement": "Configured agent run timeouts must be integer seconds from 1 through 1,800; autonomous and chat workers use a 30-minute default and enforce a hard 1,800-second cap, defaulting invalid legacy values and clamping oversized legacy values.",
+      "evidence": [
+        {
+          "resource": "repo://api/bifrost/agent_limits.py#L5-L39",
+          "version": "repo-lines-v1:sha256:3aaeafcd48cf65edbda4a11e846f6eb7e0399c1fbe054afd0a6a6d3e695f78f9:eyJzZWxlY3RlZExpbmVDb3VudCI6MzUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk0MTM4OGI5ZWI2MWRkNzFkZTQ0OGFkNDUzZGIzYTBlYmVmZDk3OTJmZGI5NGI2YWZhZjYwMTVhNTEyNjdiMTMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZmNGM0YzNjMzIwOGUzMTk4YTZhOWEzNDdjMDVkMWJkOGNmODkzMzA3OWMyOTI5MjgyOWMxZWQwZDA2MjJkODAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU1YjZlODcwNmI0MzA0N2YyYTZkYjY3ZjEzMjYzODU5NTYwNGU2N2YzNjk2Njg3NmNlMDE1OGYwMDUzZTZiZDEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        },
+        {
+          "resource": "repo://api/src/jobs/consumers/agent_run.py#L434-L483",
+          "version": "repo-lines-v1:sha256:e7068efeb704455bc7343f6c4f089da6cc1108be54da957ea08ac4a0833467d3:eyJzZWxlY3RlZExpbmVDb3VudCI6NTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjcyM2Y4MWI0YTE0YmZkNTI0ZGVkODFkNzhhZGJmYmNlYjNmNTAzNDE4YjYyN2Q3YmU5ZmRkZjMyNGMxN2JlYjYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhkYjMzOWMxN2Q0Y2M1NGU3MGM0ZmNmZWNiNjExYmI5ZTdkMzYzZjI1YjE4ZTA5MjNhMWQzMDZjYzk1OTI0ZTUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUxMzVkNzBiOTJhOTllZmY4ZjE2ZGUxZWFjOGZlN2ViMTJkODYwYTY1Nzk1NTlhOGI1YjljMGU2YzAzOTRmNDYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk5OTU3NDc2Mjc2ZTI5NGEzZmZjMzU2YTJiMjc2MjViY2E2MjdjMTFjYmJhYzVlMTc3NTJiYWQ0MTg5YjNjMTgifQ"
+        },
+        {
+          "resource": "repo://api/src/jobs/consumers/agent_run.py#L932-L962",
+          "version": "repo-lines-v1:sha256:1253e0a6a29150b7e30107aefb348d468a6ac213a9cbae9a4b9b3a65717ed483:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE4NzFkNzFlY2NlMTBjYzE0MWVhMzVkZTdlZmEzYmE5N2IxN2YxNDg2MTY2ZGNhOGIzOWEwZmE0ZTI1NWMzYTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg3NTcyYTBkZjc4Yjc5M2QwZDJkZjQyYTFlNzlmYTE5NWI0OWE2NjBhYzY4NzgxMjc2ZGE1YjI5NTc2ODMyNDMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY4OWY2YzNlNmYwN2UzZWQyOTNiNjRmMzA5YTg5NjQ5ZWE3ZjBmYjc3MDk1ZDEwYWI4NDcyMjA0ZDEyOTJjMjgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImRjYjE5YzFhYmEyMGRiNDAzZjk0MWNkYzQ0ZmYyMGJjZGI1NDFiZTIzMWJkOWE1MjU2ODc5MzQxNmQ0NzVlNTkifQ"
+        },
+        {
+          "resource": "repo://api/tests/unit/test_agent_run_timeout_limits.py#L14-L35",
+          "version": "repo-lines-v1:sha256:276306ec5484fb3f200c8a020d15ab1f79c6926e0b775a205c5356d74639e1ce:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNhMmI1M2MxYmUwOThhMmY0Mjc0ZDYwMGNhNDkzM2Y4Y2ZmYjg4OWNiNjZmOWU1ZWRhZWZiZmQyYzUxYmFlMDUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwYzFmMTg4ZjE0MmVkN2E4MjQ2ODBiMjA3MTcyYzU1MTliYzYxNGE0OGZkYTdjZjE2N2VkYjhkZGY3OTk1NmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE1OTgzYWU1NzdlZmEyYTM3ZDY4ZjU3NTZiNDIyMzQyZmQxMTg0MmQ1MjVmM2Y3OTYxYTczNjBhMDg1YjA2OWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-18T02:14:28.318Z"
+    "at": "2026-10-19T15:04:26.495Z"
   }
 }

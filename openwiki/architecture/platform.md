@@ -23,7 +23,7 @@ sources:
 generated: { by: "bifrost-atlas", at: "2026-10-18T02:51:00.673Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-18T02:51:00.673Z
+    at: 2026-10-19T14:54:21.479Z
 ---
 
 # Platform Architecture and Runtime Boundaries

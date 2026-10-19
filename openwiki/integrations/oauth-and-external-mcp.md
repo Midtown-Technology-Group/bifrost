@@ -16,10 +16,14 @@ sources:
     resource: repo://api/src/services/mcp_server/auth.py
   - id: openwiki-source-c03efcc833e9a07a34b76a61
     resource: repo://api/src/services/mcp_server/tool_access.py
-generated: { by: "bifrost-atlas", at: "2026-10-18T06:28:44.263Z" }
+  - id: openwiki-source-2e836715c83792aa7330005c
+    resource: repo://api/src/services/oauth_state.py
+  - id: openwiki-source-918a0e69343c3afc3a837e7c
+    resource: repo://api/tests/unit/routers/test_integration_oauth_pkce.py
+generated: { by: "bifrost-atlas", at: "2026-10-19T14:54:21.479Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-18T06:28:44.263Z
+    at: 2026-10-19T14:54:21.479Z
 ---
 
 # OAuth, Integrations, and External MCP
@@ -28,7 +32,7 @@ There are separate OAuth surfaces in Bifrost. `/auth/oauth` handles user sign-in
 
 ## Workflow and integration OAuth
 
-OAuth provider configuration is admin-managed and contains provider endpoints, flow type, client configuration, requested scopes, and optional tenant/entity URL templates. The authorization-code path builds a redirect URL with state and adds a stored verifier/challenge only when the provider opts into PKCE. For PKCE-enabled providers, the callback atomically consumes the verifier once, validates its provider and redirect binding, and rejects missing, expired, or replayed PKCE state before token exchange. Per-mapping flows separately use signed state and consume a nonce before token exchange; that replay check is independent of PKCE and keeps a replay from overwriting another token slot. Non-PKCE integration-level callbacks retain legacy handling: undecodable state is treated as a legacy flow and can proceed without the PKCE provider/redirect binding check. Client-credentials providers skip user authorization and obtain tokens through the refresh path.
+OAuth provider configuration is admin-managed and contains provider endpoints, flow type, client configuration, requested scopes, and optional tenant/entity URL templates. Every authorization-code flow now uses signed state. Integration-level state binds the provider, initiating user, organization (including global scope), and redirect URI; the callback validates those bindings against the current caller, request, and provider. Per-mapping state binds the provider and mapping, and the callback derives token organization from that mapping. In both flows the nonce is consumed before token exchange or storage. PKCE adds a stored verifier/challenge and its own provider/redirect binding checks. Missing, invalid, expired, mismatched, or replayed signed state is rejected; older opaque non-PKCE state must be restarted because it cannot identify the initiating user and scope. Client-credentials providers skip user authorization and obtain tokens through the refresh path (`api/src/services/oauth_state.py`, `api/src/routers/oauth_connections.py`, `api/tests/unit/routers/test_integration_oauth_pkce.py`).
 
 Tokens are stored through the OAuth repository and are used by integration dispatch; a refresh scheduler maintains expiring tokens. Per-user and per-mapping credentials must retain their scope so one tenant's authorization cannot become a global integration credential. The workflow OAuth route is distinct from SSO and from MCP's protocol-specific access tokens.
 

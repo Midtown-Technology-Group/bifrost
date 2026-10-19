@@ -14,16 +14,24 @@ sources:
     resource: repo://api/src/jobs/execution_policy.py
   - id: openwiki-source-4454fce9a9f47d443b4dcf67
     resource: repo://api/src/models/orm/execution_attempts.py
+  - id: openwiki-source-3585f03be3f77e6567065278
+    resource: repo://api/src/repositories/executions.py
+  - id: openwiki-source-0b6fa27308215e50c3100f43
+    resource: repo://api/src/routers/cli.py
   - id: openwiki-source-33752a5fd05810cf391ad12c
     resource: repo://api/src/routers/executions.py
+  - id: openwiki-source-2bc90dce0b8f48a42f27d759
+    resource: repo://api/tests/unit/routers/test_cli_sessions_coverage.py
+  - id: openwiki-source-da6b6304a6885199733fab9d
+    resource: repo://api/tests/unit/routers/test_executions_router_coverage.py
   - id: openwiki-source-6fe582b161bf99b44765f04f
     resource: repo://api/tests/unit/shared/test_execution_logs.py
   - id: openwiki-source-b86f97d98fbf2bd787797f6a
     resource: repo://docs/architecture/workflow-execution-attempts.md
-generated: { by: "bifrost-atlas", at: "2026-10-18T09:57:17.518Z" }
+generated: { by: "bifrost-atlas", at: "2026-10-19T14:54:21.479Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-18T09:57:17.518Z
+    at: 2026-10-19T14:54:21.479Z
 ---
 
 # Execution and Workflow Runtime
@@ -37,6 +45,8 @@ Workflow metadata is discovered and synchronized into the database; API routes q
 ## Dispatch and worker flow
 
 The workflow consumer receives a compact broker message keyed by execution ID and retrieves full pending context from Redis. The API stores pending execution context in Redis and publishes through RabbitMQ; the consumer creates or finds durable PostgreSQL execution state before routing work to the process pool. Pool workers are separate processes and reused for efficiency. Synchronous callers receive a result through Redis; asynchronous callers observe the durable execution record and updates (`api/src/jobs/consumers/workflow_execution.py`).
+
+CLI session execution runs local source rather than resolving a same-named database workflow. The CLI route records `is_local_execution=True` with `workflow_id=None`, and execution response projection suppresses a workflow ID for local executions even if an older row contains one. This keeps local code identity separate from tenant-scoped database workflow identity (`api/src/routers/cli.py`, `api/src/repositories/executions.py`, `api/tests/unit/routers/test_cli_sessions_coverage.py`, `api/tests/unit/routers/test_executions_router_coverage.py`).
 
 This division makes PostgreSQL the durable execution authority, RabbitMQ the dispatch transport, and Redis an acceleration/ephemeral-context layer. Loss of Redis context is handled as a result/context failure rather than silently accepting an unfenced result. The process pool owns per-child isolation, timeout/crash reporting, and bounded worker admission (`api/src/jobs/consumers/workflow_execution.py`, `docs/architecture/workflow-execution-attempts.md`).
 

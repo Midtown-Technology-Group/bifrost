@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:2b7b06d93b571930f18a92d95c23bf1119bc27eff761dfa22d0f1058ab064440",
+  "pageVersion": "sha256:4dfb7210b432b0af5554d9308e84ea9f85965d1c4158a2f4f8f87efffae98f50",
   "claims": [
     {
       "id": "claim_544caeb121be40a0a24f69ebb8315e5f",
@@ -73,7 +73,7 @@
       "statement": "The execution detail route loads a caller-authorized record, uses a pending execution fallback when the durable row is missing, and returns explicit forbidden/not-found responses.",
       "evidence": [
         {
-          "resource": "repo://api/src/routers/executions.py#L1050-L1083",
+          "resource": "repo://api/src/routers/executions.py#L1057-L1090",
           "version": "repo-lines-v1:sha256:dc6829faf20cc373ff231906c0d550dcec147090a00f964ff32499bb1597f0f9:eyJzZWxlY3RlZExpbmVDb3VudCI6MzQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUxY2Q5OWE1YTFmOWM0N2YzMjg4OTcwYTI2NWVmM2QzNDg3ZDYzMWJiNjY2ODNkN2QxYTRmNzViNmI0NTM4OTYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU5NWU4MWZmODViN2ZkN2EyYWRjNDFmMTQ4YTYwMTVlZjI3MGZlYmQ2MjBiMGQzODBkMGVlZDI3YTI4YjQ4MGUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhjYzRhN2QxY2M3OTZhYmEzZTQ2NzIzMzI3ZjUxN2U5ZjgxMTk4MmQyNTBmMDcwMjk4NmU0YjU3NjRhZDk1ODkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRiZDE4NmIwMzg4YzA0YmQ0YmUzNjlmODU2NmJhYmI4MmYxZjY5ZGU3MTllYzc2MGU4Mjk1NDhlMmM2Y2U2YWEifQ"
         }
       ]
@@ -101,7 +101,7 @@
           "version": "repo-lines-v1:sha256:1ae7d35810546ba3d2b3ef48a7aca45dccd4ad6e1ed59a4148a64a8c93b0f802:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjViZmZlZDZhZTFmNmE1ODM3MTk4NjQwYzMyNzEwZGY0MTQxYWY2NzVhMmViMzM5MmM5ZDBjODUwNDRiOTdiM2MiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA5M2Q5NGNhMWNmNDVjNDlkYzIwYjE3M2I1NDcyMTVmNzBiZmVkM2RjNGEwYjRiNjkwNWJmZDhhMjU2NDA2ZDUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjJlYjhjZWQ4ZDEyNDg5ZTc1NjM4YzljMjBjOWIxYTNlY2Q5ZDg5NDExN2IyZWZiMzA2NWFmZjc0NGMwOWM1OWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImEzZTFlNmYyNTUwNmFjNzA2MDUyYjcyNzMyYzNkN2JhODVlZTVmMmZkZjNiOWE5NzEwZmMxMGE2OGNjZjA2MjUifQ"
         },
         {
-          "resource": "repo://api/src/routers/executions.py#L426-L440",
+          "resource": "repo://api/src/routers/executions.py#L433-L447",
           "version": "repo-lines-v1:sha256:2f04f92004a33bcd55b05ff438ffe9333d30c1427639208005fb0e1c32835b4d:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg1OGJhOTZjYzIyNGRhNDBjYTZhZDE2M2RhZjhmNDE5MDBhNzdiNGRkNmJhMGM0YmFmMGU3YjUzNmY4MzcyOWIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNjYTU1OTlhMmMyMTM0MmU0M2JmN2FhMWI5Yzk1MjRkOTJjZDdlMzZhMzQ1N2NmYzEyZjYzOWI5ZDhlYTZiMmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY1ZWExZjBkNWRiZTMyZjQzNWI5MDJlNzAzY2FmYjE0Nzk0YmRkMjJkNGVmNTUyMDRhOWRhNTlhMTM4NzRiZjgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjBjZDA3MTczMDA5ZWM1OWRlYTAxYjJkODAxMjgzYmFmNzczMTY0NTM4ODI1NmRjNWM2MzNhNDNkYWJjMGU5YjYifQ"
         },
         {
@@ -109,10 +109,36 @@
           "version": "repo-lines-v1:sha256:6819864116dec51b4a2a1ac009adf6cc48e626b124d6fae00d01b71118b7bce6:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA4OTI3NjllMmU1MTEzNWJmYzg0NDczMTNiNzVmYmUyNjY3ZTZiMmI1Nzc4OWMzNmVjYzc1YTFiZWNjYWM4OTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNhZDYxODU5YmVjM2JlZWZmODI4MTJkZDBmNzk1OWQ4Zjg1NzVmMzUwYWIyZjM1YmZlZWY2NGYwMmE3ZThiODUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjExZmE5ODY0NTg3ZDIxYThlMTQ4YjRhZjNlZTBiMDEzM2I4YzYwNzZmZjEyY2JkOTZmNWZhZjg2ZGNlODhmODQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
         }
       ]
+    },
+    {
+      "id": "claim_d2312cde5841438788ce8cdfe48419fb",
+      "statement": "CLI session execution runs local source without assigning database workflow identity: the route marks it local and stores workflow_id as None, while execution response projection suppresses workflow IDs for local executions even if a stale row contains one.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/repositories/executions.py#L63-L68",
+          "version": "repo-lines-v1:sha256:14f6cecaf6a1165f4eb41677f2c79742c39df6046b9566223832eec4dceca39a:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNTgyZjE3MTU1MzE5YjZhYWNjYjU1YzAyNzY4YzkwODAyYmE1YjZlZDFiMjZhOTNlMzEwYWNlNmQzMGVlMTQyYSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOWY0MDdlMzUyMmE5MTdjOGQyNjcxNGVkNzQ1MGFkYjJhMWFiNzg3NDljMDQwNjJlOTExZmU0YmRjMjQ3MjQ0ZSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiODk1ZDQ5NTFhMDAyYjRiNjc1ZWUyYzg3M2VkZDIwMTgzNDM4OWM5NDZmZDM4YjBlMDk1NDFjMjlhYTJhNmIzMSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOTNhYmI1YTQ1NzYyM2FlN2UzZDJkOGRhNWRjNTZjMmUzYjM3Y2IxNzQ3MTJjN2JmOTMzZDhjMDE4MDdjMDkzMyJ9"
+        },
+        {
+          "resource": "repo://api/src/routers/cli.py#L1861-L1875",
+          "version": "repo-lines-v1:sha256:5fab06ee2a2995ed52d267d57d50807344491388bff976b6bfc58bfdb0911ea6:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRiYjhkMmNkNjUxMTQ3ZjY3ZTUzNGRkYmEyNTUzODIwYTZkNzkxYTdiYjAwYzM5NzY1ODY4MWY2NzRlNjA1YjQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwYzFmMTg4ZjE0MmVkN2E4MjQ2ODBiMjA3MTcyYzU1MTliYzYxNGE0OGZkYTdjZjE2N2VkYjhkZGY3OTk1NmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjI3M2UwNjkwOTE4NTVkY2UxMzUxMzEzZmQ0MmM1ZWFhNzcxNmQwMTY3OWI0MjMwMGMwYmZlOWQ5MWVjM2M4MTQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRhMjUwMzYzMDdmZmYzMjFiMzA3NGJjMjlhMTM3YzVhOTY5YzM1MDMwN2ZiYzVmMzFhOTQyN2U3YTA3NzYyYTgifQ"
+        },
+        {
+          "resource": "repo://api/src/routers/executions.py#L522-L522",
+          "version": "repo-lines-v1:sha256:7dff71268035179c9a1c558af0a597292eda1d0668e3fddb0416fd0811dd33a7:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiN2RmZjcxMjY4MDM1MTc5YzlhMWM1NThhZjBhNTk3MjkyZWRhMWQwNjY4ZTNmZGRiMDQxNmZkMDgxMWRkMzNhNyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiN2RmZjcxMjY4MDM1MTc5YzlhMWM1NThhZjBhNTk3MjkyZWRhMWQwNjY4ZTNmZGRiMDQxNmZkMDgxMWRkMzNhNyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMGZkYjkzNWRkM2M5OTdjYmFlZTljMDE2NGI0YWM1OTk0ZWY5NzFiYzNlMzQzMTMzMzkwZThmMDc5Y2ZmMWQ3NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOGMxZjU0ZjkzNzNjODlkNzBkYjIyZjA4Y2Y2ZjA5YjY4ZTRiMjhlNjY5ZWIxYmZkMmIyYWEwNWZhZTFhZGIzZCJ9"
+        },
+        {
+          "resource": "repo://api/tests/unit/routers/test_cli_sessions_coverage.py#L268-L279",
+          "version": "repo-lines-v1:sha256:b37138c173fce38bfe3423b8cbf42b9ad47d5f54995a0d756ae901fd2d550ef7:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNlNmFmYzYzNDg2NDU2M2FhNjRhMDk4YWQwOTYyNDg1YTdhNThkOGRjNGI4OTkxNTUyNDYwYzI0YmE2MmQ5YTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNlYmUwN2Y1NGFlMTkxNTBlOTIwZDc0ZWI4MmRmZWVhYzI2MzhiOGQ0MWY1NDYzZGRlYmU3NmY4YTNiMDNiNzAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjIzYmQ3YTcxZmFmYzgzMmVkMmVlZjU2ZTRmYWMxNDcwNWNiMmRiNDlhMmU4MjcwMjNjMzRiY2MyNTk0ZDlkNjEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjYwYmZlZWFmMDViMzE1MDg3ZTVkMzRmMTZhZTViMzA2ZWEwYzMwNzQ0MjllMTU5ODc4NDdjNmQxNTU2YjFlZWMifQ"
+        },
+        {
+          "resource": "repo://api/tests/unit/routers/test_executions_router_coverage.py#L100-L107",
+          "version": "repo-lines-v1:sha256:de3e3b2756b8ee2effe9cabec4c71bd6fbb1fb2bb05b393e863b24203ee043f5:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYmVkYjUyYmM2ODNhNjJjYmU3YzE3YTEzZDdlNmIxYjNjZDVjZmU0YWYxMzE4MjZmNWIyMTczZGM3Y2QxYWQxZiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiM2M3OWJhMTBkZGMyNTY4N2Q4ZDZjN2YwNmNhNmE3MWU1NjZlMjAyNzBjNWE0YWU0MjM0ZWJjMzNiMWNhN2JhMCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNmYyNjhmNTYzYTQ5NjZiNTI5MDU4MzgzOTk2YmU0YTAxNzM4YWRkMWMxMmVkMWJhMDI3YWNlOGE0N2Y4N2UzMCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNWFiN2IyNzJhYjRlMjUxNzViNWZkMjRjMTNjZmU1NjM0MjUxNGMwMjc5NDZmMDNiNTMwNWRmMjAzMzc4NzlmOSJ9"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-18T09:57:17.518Z"
+    "at": "2026-10-19T14:54:21.479Z"
   }
 }
