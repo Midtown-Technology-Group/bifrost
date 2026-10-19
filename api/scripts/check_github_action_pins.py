@@ -125,7 +125,15 @@ def _action_reference(
 
 
 def _action_references(path: Path) -> tuple[list[ActionReference], Violation | None]:
-    source = path.read_text(encoding="utf-8")
+    try:
+        source = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return [], Violation(
+            path,
+            1,
+            "<unreadable file>",
+            "workflow could not be read as UTF-8",
+        )
     source_lines = source.splitlines()
     references: list[ActionReference] = []
 

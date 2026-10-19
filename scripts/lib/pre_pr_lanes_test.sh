@@ -126,7 +126,7 @@ EOF
         if action_pin_scanner_python >/dev/null; then
             exit 1
         fi
-        [[ ! -e "$TEST_LOCK_DIR"/action-pin-scanner-*/.ready ]]
+        ! compgen -G "$TEST_LOCK_DIR/action-pin-scanner-*/.ready" >/dev/null
     )
 done
 echo 'PASS: Action pin scanner bootstrap failures never create a ready marker'

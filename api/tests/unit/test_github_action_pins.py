@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from scripts import check_github_action_pins
 
 
@@ -122,6 +124,61 @@ def test_flags_invalid_yaml_instead_of_skipping_scan(tmp_path: Path) -> None:
     assert len(violations) == 1
     assert violations[0].action == "<invalid YAML>"
     assert violations[0].reason == "workflow could not be parsed as YAML"
+
+
+def test_flags_unreadable_workflow_and_continues_scan(tmp_path: Path) -> None:
+    unreadable = tmp_path / "a-unreadable.yml"
+    unreadable.write_bytes(b"\xff\xfe")
+    later_workflow = tmp_path / "b-workflow.yml"
+    later_workflow.write_text(
+        _workflow("- uses: owner/action@main"),
+        encoding="utf-8",
+    )
+
+    violations = check_github_action_pins.find_unpinned_actions([tmp_path])
+
+    actual = [
+        (violation.path, violation.action, violation.reason) for violation in violations
+    ]
+    assert actual == [
+        (
+            unreadable,
+            "<unreadable file>",
+            "workflow could not be read as UTF-8",
+        ),
+        (
+            later_workflow,
+            "owner/action@main",
+            "external action must use a full 40-character commit SHA",
+        ),
+    ]
+
+
+def test_flags_workflow_read_error(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    workflow = tmp_path / "workflow.yml"
+    workflow.write_text(_workflow("- uses: owner/action@main"), encoding="utf-8")
+    original_read_text = Path.read_text
+
+    def read_text(
+        path: Path,
+        *,
+        encoding: str | None = None,
+        errors: str | None = None,
+    ) -> str:
+        if path == workflow:
+            raise OSError("simulated read failure")
+        return original_read_text(path, encoding=encoding, errors=errors)
+
+    monkeypatch.setattr(Path, "read_text", read_text)
+
+    violations = check_github_action_pins.find_unpinned_actions([workflow])
+
+    assert len(violations) == 1
+    assert violations[0].action == "<unreadable file>"
+    assert violations[0].reason == "workflow could not be read as UTF-8"
 
 
 def test_flags_duplicate_mapping_keys_as_invalid_yaml(tmp_path: Path) -> None:
