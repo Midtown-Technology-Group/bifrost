@@ -383,3 +383,93 @@ def test_serialize_workflow_carries_tool_description():
 
     out = serialize_workflow(wf)
     assert out.tool_description == "CURATED-TOOLDESC"
+
+
+@pytest.mark.asyncio
+async def test_identity_candidates_include_retired_rows_without_changing_manifest(
+    mock_db,
+):
+    from bifrost.manifest import (
+        Manifest,
+        ManifestConfig,
+        ManifestIntegration,
+        ManifestWorkflow,
+    )
+    from src.services.manifest_import import normalize_git_manifest_identities
+    from src.services.manifest_generator import (
+        include_retired_git_identity_candidates,
+    )
+
+    workflow = _mock_workflow(name="retired_workflow")
+    workflow.is_active = False
+
+    integration = MagicMock()
+    integration.id = uuid4()
+    integration.name = "RetiredIntegration"
+    integration.description = None
+    integration.entity_id = None
+    integration.entity_id_name = None
+    integration.default_entity_id = None
+    integration.list_entities_data_provider_id = None
+    integration.is_deleted = True
+
+    workflow_result = MagicMock()
+    workflow_result.scalars.return_value.all.return_value = [workflow]
+    integration_result = MagicMock()
+    integration_result.scalars.return_value.unique.return_value.all.return_value = [
+        integration
+    ]
+    mock_db.execute = AsyncMock(
+        side_effect=[workflow_result, integration_result]
+    )
+
+    active_manifest = Manifest()
+    identity_manifest = await include_retired_git_identity_candidates(
+        mock_db, active_manifest
+    )
+
+    assert active_manifest.workflows == {}
+    assert active_manifest.integrations == {}
+    assert identity_manifest.workflows[str(workflow.id)].path == workflow.path
+    assert (
+        identity_manifest.integrations[str(integration.id)].name
+        == "RetiredIntegration"
+    )
+
+    portable_workflow_id = str(uuid4())
+    portable_integration_id = str(uuid4())
+    incoming = Manifest(
+        workflows={
+            portable_workflow_id: ManifestWorkflow(
+                id=portable_workflow_id,
+                name=workflow.name,
+                path=workflow.path,
+                function_name=workflow.function_name,
+            )
+        },
+        integrations={
+            integration.name: ManifestIntegration(
+                id=portable_integration_id,
+                list_entities_data_provider_id=portable_workflow_id,
+            )
+        },
+        configs={
+            "portable-config": ManifestConfig(
+                id=str(uuid4()),
+                integration_id=portable_integration_id,
+                key="api_url",
+            )
+        },
+    )
+
+    normalized = normalize_git_manifest_identities(incoming, identity_manifest)
+
+    assert normalized.workflows[str(workflow.id)].id == str(workflow.id)
+    assert (
+        normalized.integrations[integration.name].list_entities_data_provider_id
+        == str(workflow.id)
+    )
+    assert (
+        normalized.configs["portable-config"].integration_id
+        == str(integration.id)
+    )

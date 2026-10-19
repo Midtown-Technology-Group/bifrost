@@ -682,3 +682,47 @@ async def generate_manifest(
     )
 
     return manifest
+
+
+async def include_retired_git_identity_candidates(
+    db: AsyncSession,
+    manifest: Manifest,
+) -> Manifest:
+    """Return a reconciliation snapshot that also contains retired identities.
+
+    Normal manifest generation intentionally omits inactive workflows and
+    deleted integrations.  Git import must nevertheless recognize those rows
+    before its resolvers restore them, or a portable UUID can be retained in a
+    dependent reference while the resolver updates the existing local row.
+
+    The supplemental rows are identity candidates only.  Callers must continue
+    diffing against the ordinary active manifest so repository absence cannot
+    turn a retired database row into a fresh deletion.
+    """
+    identity_manifest = manifest.model_copy(deep=True)
+
+    workflow_query = select(Workflow).where(
+        Workflow.is_active.is_not(True),
+        Workflow.solution_id.is_(None),
+    )
+    workflow_result = await db.execute(workflow_query.order_by(Workflow.name))
+    for workflow in workflow_result.scalars().all():
+        workflow_id = str(workflow.id)
+        identity_manifest.workflows.setdefault(
+            workflow_id,
+            serialize_workflow(workflow),
+        )
+
+    integration_result = await db.execute(
+        select(Integration)
+        .where(Integration.is_deleted.is_not(False))
+        .order_by(Integration.name)
+    )
+    for integration in integration_result.scalars().unique().all():
+        integration_id = str(integration.id)
+        identity_manifest.integrations.setdefault(
+            integration_id,
+            serialize_integration(integration),
+        )
+
+    return identity_manifest

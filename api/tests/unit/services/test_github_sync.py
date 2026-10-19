@@ -830,8 +830,17 @@ class TestGitHubSyncAppPreviews:
         fake_module = type("Module", (), {"AppStorageService": FakeAppStorage})
         monkeypatch.setitem(sys.modules, "src.services.app_storage", fake_module)
         monkeypatch.setattr("src.services.github_sync.read_manifest_from_dir", lambda _: manifest)
+        monkeypatch.setattr(
+            "src.services.manifest_generator.generate_manifest",
+            AsyncMock(return_value=Manifest()),
+        )
+        monkeypatch.setattr(
+            "src.services.manifest_generator.include_retired_git_identity_candidates",
+            AsyncMock(return_value=Manifest()),
+        )
 
         service = object.__new__(GitHubSyncService)
+        service.db = object()
         service.repo_manager = type("RepoManager", (), {"_settings": object()})()
 
         await service._sync_app_previews(tmp_path)
