@@ -8,13 +8,13 @@ from uuid import uuid4
 import pytest
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
-from sqlalchemy import create_engine, text
+from sqlalchemy import text
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.pool import NullPool
 
-from tests.conftest import TEST_DATABASE_URL, TEST_DATABASE_URL_SYNC
+from tests.conftest import TEST_DATABASE_URL
 
 MIGRATION = (
     Path(__file__).resolve().parents[3]
@@ -46,14 +46,14 @@ def _run_upgrade(connection, module: ModuleType) -> None:
 @pytest.mark.e2e
 @pytest.mark.asyncio
 async def test_operation_receipt_migration_recovers_after_partial_commit() -> None:
-    setup_database_url = make_url(TEST_DATABASE_URL_SYNC)
-    if setup_database_url.host == "pgbouncer":
-        setup_database_url = setup_database_url.set(host="postgres")
     migration_database_url = make_url(TEST_DATABASE_URL)
     if migration_database_url.host == "pgbouncer":
         migration_database_url = migration_database_url.set(host="postgres")
 
-    setup_engine = create_engine(setup_database_url, poolclass=NullPool)
+    setup_engine = create_async_engine(
+        migration_database_url,
+        poolclass=NullPool,
+    )
     migration_engine = create_async_engine(
         migration_database_url,
         poolclass=NullPool,
@@ -65,12 +65,13 @@ async def test_operation_receipt_migration_recovers_after_partial_commit() -> No
     try:
         # Reproduce both durable artifacts an interrupted migration may leave:
         # the committed column and an invalid concurrent-index catalog entry.
-        with setup_engine.connect().execution_options(
-            isolation_level="AUTOCOMMIT"
-        ) as setup:
-            setup.execute(text(f'CREATE SCHEMA "{schema}"'))
-            setup.execute(text(search_path))
-            setup.execute(
+        async with setup_engine.connect() as setup_connection:
+            setup = await setup_connection.execution_options(
+                isolation_level="AUTOCOMMIT"
+            )
+            await setup.execute(text(f'CREATE SCHEMA "{schema}"'))
+            await setup.execute(text(search_path))
+            await setup.execute(
                 text(
                     """
                     CREATE TABLE operation_receipts (
@@ -81,7 +82,7 @@ async def test_operation_receipt_migration_recovers_after_partial_commit() -> No
                     """
                 )
             )
-            setup.execute(
+            await setup.execute(
                 text(
                     """
                     INSERT INTO operation_receipts (namespace, key_hash)
@@ -89,29 +90,31 @@ async def test_operation_receipt_migration_recovers_after_partial_commit() -> No
                     """
                 )
             )
-            setup.execute(
+            await setup.execute(
                 text(
                     "ALTER TABLE operation_receipts "
                     "ADD COLUMN admission_key VARCHAR(64)"
                 )
             )
             with pytest.raises(IntegrityError):
-                setup.execute(
+                await setup.execute(
                     text(
                         f"CREATE UNIQUE INDEX CONCURRENTLY {INDEX_NAME} "
                         "ON operation_receipts (namespace)"
                     )
                 )
 
-            invalid = setup.execute(
-                text(
-                    """
-                    SELECT index_state.indisvalid
-                    FROM pg_index AS index_state
-                    WHERE index_state.indexrelid = to_regclass(:index_name)
-                    """
-                ),
-                {"index_name": INDEX_NAME},
+            invalid = (
+                await setup.execute(
+                    text(
+                        """
+                        SELECT index_state.indisvalid
+                        FROM pg_index AS index_state
+                        WHERE index_state.indexrelid = to_regclass(:index_name)
+                        """
+                    ),
+                    {"index_name": INDEX_NAME},
+                )
             ).scalar_one()
             assert invalid is False
 
@@ -177,8 +180,9 @@ async def test_operation_receipt_migration_recovers_after_partial_commit() -> No
             assert preserved_oid == index_oid
     finally:
         await migration_engine.dispose()
-        with setup_engine.connect().execution_options(
-            isolation_level="AUTOCOMMIT"
-        ) as cleanup:
-            cleanup.execute(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
-        setup_engine.dispose()
+        async with setup_engine.connect() as cleanup_connection:
+            cleanup = await cleanup_connection.execution_options(
+                isolation_level="AUTOCOMMIT"
+            )
+            await cleanup.execute(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
+        await setup_engine.dispose()

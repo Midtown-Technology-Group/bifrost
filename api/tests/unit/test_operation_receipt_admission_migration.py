@@ -137,6 +137,7 @@ def test_upgrade_repairs_a_missing_or_partial_concurrent_index(
     module.upgrade()
 
     assert recorder.statements == [
+        "SET LOCAL lock_timeout = '5s'",
         (
             "ALTER TABLE operation_receipts "
             "ADD COLUMN IF NOT EXISTS admission_key VARCHAR(64)"
@@ -229,5 +230,6 @@ def test_downgrade_is_restart_safe() -> None:
         "RESET statement_timeout",
         "RESET lock_timeout",
         "AUTOCOMMIT EXIT",
+        "SET LOCAL lock_timeout = '5s'",
         "ALTER TABLE operation_receipts DROP COLUMN IF EXISTS admission_key",
     ]

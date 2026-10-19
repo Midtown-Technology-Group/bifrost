@@ -125,6 +125,7 @@ def upgrade() -> None:
     # IF NOT EXISTS is intentional: entering the autocommit block below commits
     # this DDL before the revision can be stamped. A retry after an interrupted
     # concurrent index build must resume instead of failing on the column.
+    op.execute("SET LOCAL lock_timeout = '5s'")
     op.execute(
         "ALTER TABLE operation_receipts "
         "ADD COLUMN IF NOT EXISTS admission_key VARCHAR(64)"
@@ -164,4 +165,5 @@ def downgrade() -> None:
         finally:
             op.execute("RESET statement_timeout")
             op.execute("RESET lock_timeout")
+    op.execute("SET LOCAL lock_timeout = '5s'")
     op.execute("ALTER TABLE operation_receipts DROP COLUMN IF EXISTS admission_key")
