@@ -14,6 +14,11 @@ An unbuilt `QUEUED` entry legitimately has no combined SHA. Its PR identity must
 still be known, and the target PR must not appear anywhere in the live queue,
 including requeued/unbuilt entries. Missing heads in other states fail closed.
 
+Run on the supported Linux operator host with the system-managed GitHub CLI at
+`/usr/bin/gh`. The command uses that absolute executable path and never searches
+`PATH` or falls back to another executable. A missing system CLI stops the run;
+do not substitute a user-writable wrapper to obtain recovery evidence.
+
 1. Read the run and queue state. Record the incident/PR owner and purpose.
    Choose one exact run ID, not a branch name or the newest run for a PR.
 2. Plan without mutation, using a new private evidence directory:

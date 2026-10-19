@@ -145,12 +145,12 @@ test("accepted cancellation stays recorded when terminal readback is unavailable
   assert.equal(x.calls.filter(c => c[1].endsWith("/cancel")).length, 1);
 });
 
-test("CLI uses argument-based gh transport, private receipts and a non-overwriting dry run", () => {
+test("CLI uses fixed system gh despite hostile PATH, private receipts and a non-overwriting dry run", () => {
   const directory = mkdtempSync(join(tmpdir(), "retire-queue-cli-"));
   try {
     const { run, queue, history } = fixture();
     const bin = join(directory, "bin"); mkdirSync(bin);
-    const gh = join(bin, "gh");
+    const gh = join(directory, "trusted-gh.mjs");
     writeFileSync(gh, `#!${process.execPath}\n
       import fs from "node:fs";
       const args = process.argv.slice(2);
@@ -161,10 +161,24 @@ test("CLI uses argument-based gh transport, private receipts and a non-overwriti
         console.log(${JSON.stringify(JSON.stringify({ data: { repository: { mergeQueue: { entries: queue }, pullRequest: history } } }))});
       } else console.log(${JSON.stringify(JSON.stringify(run))});
     `, { mode: 0o700 });
+    // Intercept only the fixed system executable in the child process. Production
+    // exposes no executable override; PATH contains a trap that must never run.
+    writeFileSync(join(bin, "gh"), "#!/bin/sh\nexit 99\n", { mode: 0o700 });
+    const preload = join(directory, "transport.mjs");
+    writeFileSync(preload, `
+      import childProcess from "node:child_process";
+      import { syncBuiltinESMExports } from "node:module";
+      const execute = childProcess.execFileSync;
+      childProcess.execFileSync = (file, args, options) => {
+        if (file !== "/usr/bin/gh") throw new Error("Unexpected executable: " + file);
+        return execute(${JSON.stringify(gh)}, args, options);
+      };
+      syncBuiltinESMExports();
+    `);
     const script = fileURLToPath(new URL("./retire-merge-group.mjs", import.meta.url));
     const evidence = join(directory, "evidence");
     const options = { encoding: "utf8", env: { ...process.env, PATH: `${bin}:${process.env.PATH}` } };
-    const first = spawnSync(process.execPath, [script, "42", evidence], options);
+    const first = spawnSync(process.execPath, ["--import", preload, script, "42", evidence], options);
     assert.equal(first.status, 0, first.stderr);
     assert.equal(JSON.parse(first.stdout).outcome, "planned");
     assert.equal(statSync(evidence).mode & 0o777, 0o700);
@@ -173,10 +187,10 @@ test("CLI uses argument-based gh transport, private receipts and a non-overwriti
     assert.deepEqual(calls.map(args => args[2]), ["GET", "POST"]);
     assert.equal(calls[1][3], "graphql");
     const originalPlan = readFileSync(join(evidence, "plan.json"), "utf8");
-    const repeated = spawnSync(process.execPath, [script, "42", evidence], options);
+    const repeated = spawnSync(process.execPath, ["--import", preload, script, "42", evidence], options);
     assert.equal(repeated.status, 1);
     assert.equal(readFileSync(join(evidence, "plan.json"), "utf8"), originalPlan);
-    const invalid = spawnSync(process.execPath, [script, "42", join(directory, "invalid"), "--unexpected"], options);
+    const invalid = spawnSync(process.execPath, ["--import", preload, script, "42", join(directory, "invalid"), "--unexpected"], options);
     assert.equal(invalid.status, 1);
     assert.equal(invalid.stdout, "");
   } finally {

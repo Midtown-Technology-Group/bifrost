@@ -50,7 +50,7 @@ export function authorizeRetirement(run, queue, history) {
 function request(method, path, body) {
   const args = ["api", "--method", method, path];
   if (body) args.push("--input", "-");
-  return execFileSync("gh", args, { input: body ? JSON.stringify(body) : undefined,
+  return execFileSync("/usr/bin/gh", args, { input: body ? JSON.stringify(body) : undefined,
     maxBuffer: 100 * 1024 * 1024, stdio: ["pipe", "pipe", "pipe"] });
 }
 
