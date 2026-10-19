@@ -991,6 +991,7 @@ roles: []
             name="agent_tool_workflow",
             path="workflows/agent_tool.py",
             function_name="agent_tool_workflow",
+            type="tool",
             is_active=True,
         ))
         await db_session.flush()
@@ -1000,7 +1001,11 @@ roles: []
         # Write workflow file + manifest with inline agent content
         wf_dir = work_dir / "workflows"
         wf_dir.mkdir(exist_ok=True)
-        (wf_dir / "agent_tool.py").write_text(SAMPLE_WORKFLOW_PY)
+        (wf_dir / "agent_tool.py").write_text(
+            "from bifrost import tool\n\n"
+            "@tool\nasync def agent_tool_workflow() -> dict:\n"
+            "    return {}\n"
+        )
 
         manifest_dir = work_dir / ".bifrost"
         manifest_dir.mkdir(exist_ok=True)
@@ -1019,6 +1024,7 @@ roles: []
 workflows:
   agent_tool_workflow:
     id: "{wf_id}"
+    type: tool
     path: workflows/agent_tool.py
     function_name: agent_tool_workflow
 forms: {{}}

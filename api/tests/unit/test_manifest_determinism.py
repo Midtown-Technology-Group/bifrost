@@ -76,6 +76,7 @@ def _mock_agent(agent_id=AGENT_ID, name="det_agent"):
     agent.llm_max_tokens = None
     agent.max_iterations = None
     agent.max_token_budget = None
+    agent.max_run_timeout = None
     return agent
 
 

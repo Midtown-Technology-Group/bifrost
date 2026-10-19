@@ -84,6 +84,16 @@ def test_app_embed_retains_legacy_app_and_execution_surfaces():
     )
 
 
+def test_app_embed_logo_capability_is_read_only_and_exact():
+    claims = _app_claims()
+    path = "/api/applications/app-slug/logo"
+
+    assert embed_request_allowed("GET", path, claims)
+    assert not embed_request_allowed("POST", path, claims)
+    assert not embed_request_allowed("DELETE", path, claims)
+    assert not embed_request_allowed("GET", f"{path}/metadata", claims)
+
+
 def test_app_embed_cannot_use_any_form_runtime_surface():
     claims = _app_claims()
     denied = (

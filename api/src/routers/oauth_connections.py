@@ -6,7 +6,6 @@ This is separate from oauth_sso.py which handles user authentication.
 """
 
 import logging
-import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import UUID
@@ -55,7 +54,13 @@ from src.services.oauth_pkce import (
     validate_pkce_binding,
 )
 from src.repositories.oauth import OAuthProviderRepository
-from src.services.oauth_state import consume_nonce, decode_state, OAuthStateError
+from src.services.oauth_state import (
+    OAuthStateError,
+    consume_nonce,
+    decode_state,
+    encode_connection_state,
+    remember_nonce,
+)
 
 # Import cache invalidation
 try:
@@ -339,8 +344,15 @@ async def authorize_connection(
         defaults=defaults,
     )
 
-    # Generate state for CSRF protection
-    state = secrets.token_urlsafe(32)
+    # Authenticate the callback's initiator, provider, scope, and redirect URI.
+    # The nonce is consumed before any token exchange or storage.
+    state, nonce = encode_connection_state(
+        provider_id=provider.id,
+        user_id=user.user_id,
+        organization_id=org_id,
+        redirect_uri=redirect_uri,
+    )
+    await remember_nonce(nonce)
 
     params = {
         "client_id": provider.client_id,
@@ -669,42 +681,88 @@ async def oauth_callback(
         compute_token_exchange_scopes,
     )
 
-    # Use org_id from request body for org-specific token storage (None for global)
-    org_id = UUID(request.organization_id) if request.organization_id else None
+    # Every callback must carry signed state. Opaque values issued by versions
+    # before this contract cannot be safely associated with an initiator and are
+    # intentionally rejected; the administrator must restart authorization.
+    if not request.state:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Missing OAuth state; restart authorization",
+        )
 
-    # Per-mapping flows carry mapping_id in a signed state token. If present,
-    # the resulting OAuthToken must be scoped to the MAPPING'S org — otherwise
-    # store_token would upsert into the integration-level (organization_id IS NULL)
-    # slot and stomp the global fallback, leaving every "per-mapping" connection
-    # pointing at the same shared token row.
     mapping_id_from_state: UUID | None = None
-    nonce_from_state: str | None = None
-    if request.state:
-        try:
-            payload = decode_state(request.state)
-            nonce_from_state = payload.get("nonce")
-            mid = payload.get("mapping_id")
-            if mid:
-                mapping_id_from_state = UUID(mid)
-                # Look up the mapping now so we can use its org for token storage.
-                from src.models.orm import IntegrationMapping as _IM
-                mapping_row = await ctx.db.get(_IM, mapping_id_from_state)
-                if mapping_row and mapping_row.organization_id:
-                    org_id = mapping_row.organization_id
-        except (OAuthStateError, ValueError) as e:
-            # Legacy integration-level flows use secrets.token_urlsafe() as state —
-            # decoding is expected to fail. Fall through to global-token storage.
-            logger.warning(f"OAuth state decode failed (treating as legacy flow): {e}")
+    try:
+        payload = decode_state(request.state)
+        provider_id_from_state = UUID(str(payload["provider_id"]))
+        nonce_from_state = str(payload["nonce"])
+    except (OAuthStateError, KeyError, TypeError, ValueError) as e:
+        logger.warning("OAuth callback rejected invalid state: %s", e)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired OAuth state; restart authorization",
+        ) from e
 
-    # Single-use enforcement up front: a replayed per-mapping state is
-    # rejected before any token exchange or storage can happen. (PKCE
-    # verifiers get the same treatment below via atomic GETDEL.)
-    if mapping_id_from_state is not None and nonce_from_state:
-        if not await consume_nonce(nonce_from_state):
+    # Per-mapping flows carry mapping_id in signed state. Their token is scoped
+    # to the mapping's organization rather than the request body.
+    if "mapping_id" in payload:
+        try:
+            mid = payload.get("mapping_id")
+            mapping_id_from_state = UUID(str(mid))
+        except (TypeError, ValueError) as e:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="OAuth state already used (replay rejected)",
+                detail="Invalid OAuth mapping state; restart authorization",
+            ) from e
+
+        from src.models.orm import IntegrationMapping as _IM
+
+        mapping_row = await ctx.db.get(_IM, mapping_id_from_state)
+        if not mapping_row:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="OAuth mapping no longer exists; restart authorization",
             )
+        org_id = mapping_row.organization_id
+    else:
+        try:
+            state_user_id = UUID(str(payload["user_id"]))
+            raw_state_org_id = payload["organization_id"]
+            state_org_id = UUID(str(raw_state_org_id)) if raw_state_org_id else None
+        except (KeyError, TypeError, ValueError) as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid OAuth connection state; restart authorization",
+            ) from e
+
+        if state_user_id != user.user_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="OAuth state was issued for a different user",
+            )
+        if state_org_id != ctx.org_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="OAuth state was issued for a different organization",
+            )
+        if request.organization_id:
+            try:
+                requested_org_id = UUID(request.organization_id)
+            except ValueError as e:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Invalid organization in OAuth callback",
+                ) from e
+            if requested_org_id != state_org_id:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="OAuth callback organization does not match state",
+                )
+        if request.redirect_uri != payload.get("redirect_uri"):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="OAuth callback redirect URI does not match state",
+            )
+        org_id = state_org_id
 
     repo = OAuthProviderRepository(ctx.db, org_id=org_id, is_superuser=True)
     provider = await repo.get_by_connection_name(connection_name)
@@ -713,6 +771,20 @@ async def oauth_callback(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"OAuth connection '{connection_name}' not found",
+        )
+
+    if provider.id != provider_id_from_state:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="OAuth state was issued for a different provider",
+        )
+
+    # Consume the nonce only after all signed bindings have been validated, but
+    # still before provider exchange, token storage, or integration mutation.
+    if not await consume_nonce(nonce_from_state):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="OAuth state already used (replay rejected)",
         )
 
     if not provider.token_url:

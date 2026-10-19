@@ -1,0 +1,112 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:3d32b48c4130d8a10607415f5c7b2438ca06eb226613610e7bbe0cae806b784c",
+  "claims": [
+    {
+      "id": "claim_92ecd0621f8e4aa89a73daa009c6a5b8",
+      "statement": "The basic health and liveness endpoints report API responsiveness, while readiness and detailed health probe database, Redis, the selected work-delivery backend, and configured storage; unhealthy components cause HTTP 503.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/routers/health.py#L329-L373",
+          "version": "repo-lines-v1:sha256:f9d7167761f7618121ea9548979edc09524caddc06f24740ebbd59bfd0f36d14:eyJzZWxlY3RlZExpbmVDb3VudCI6NDUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVlYWY5YTQ5MjBiZTRlMzg1NDE3NWQxZTQ0YjI1Njk2Yjc2YTBkN2Q5ZGZkYTc1YTAzYjQ1MWUwM2ZiOGY1ZDMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwYzFmMTg4ZjE0MmVkN2E4MjQ2ODBiMjA3MTcyYzU1MTliYzYxNGE0OGZkYTdjZjE2N2VkYjhkZGY3OTk1NmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjMyNDY2OGU5OGY4Y2IyOTMyNjM3NWRlNDFmOTM5MmZmNjU0NzcxYjVhOWNmNmU4MzUxOWIwMzBlNTg3YjhlMDEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhiOWUzYmY2YThhZTNiYmNhOWJjNGU0ZDM4ZDJlY2I3NTcyMDE2ZjlkN2RhYjQ1MzVmMzNmYjQ3YTUzNjExN2YifQ"
+        },
+        {
+          "resource": "repo://api/src/routers/health.py#L376-L430",
+          "version": "repo-lines-v1:sha256:d0c52e7d634df0040d0cfc80581eb76b24e26da52cde5ddbf8427ee9a1b3c70c:eyJzZWxlY3RlZExpbmVDb3VudCI6NTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ5MTIzODQ2NWEwYmQ4YTZkYzYyYzIzN2YxNjhiNjQxYjM3ODAwODJhYzBkYWVmYTRkODNjZWM3NTk0YTlmNzAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUzYmU5ZGViMTM0MzNjMjgzZDI3ODg3NDllOTRlY2M0NDQ0YWI2MzA0Y2UyOWM3MDFmNDBjNDhhNzA5YzYwYzgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhjYzRhN2QxY2M3OTZhYmEzZTQ2NzIzMzI3ZjUxN2U5ZjgxMTk4MmQyNTBmMDcwMjk4NmU0YjU3NjRhZDk1ODkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_88330fd8aebe43cbbc5b72e52bb1efd6",
+      "statement": "The health router switches the delivery dependency check between Postgres and RabbitMQ based on configured backend and retains a stable not-configured RabbitMQ component key for Postgres mode.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/routers/health.py#L329-L349",
+          "version": "repo-lines-v1:sha256:4f4b5ca7a37f534a8a70f2efd9242f44caf8344667ba8a5d2cae1f7e197dff27:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVlYWY5YTQ5MjBiZTRlMzg1NDE3NWQxZTQ0YjI1Njk2Yjc2YTBkN2Q5ZGZkYTc1YTAzYjQ1MWUwM2ZiOGY1ZDMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJhNWQ0Y2NmYWQ2ZGM1NTA0MTVlZmUyOGU3NzljZjZkMzIzYjFkYWIzZjE3NDExYmViMzIxZmQ2ZDhjZWZhNzIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjMyNDY2OGU5OGY4Y2IyOTMyNjM3NWRlNDFmOTM5MmZmNjU0NzcxYjVhOWNmNmU4MzUxOWIwMzBlNTg3YjhlMDEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVkZDE4N2NkMWFiNTk4ZjQ2MzAzYzFjNGE5ZGU1NzZjZTAxZGFkNTJkN2ZiMTBjMjg2ODQzYjg1Yjc1Mzc2YjMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_47a5083a68fc401ea882b0e6098dd5c9",
+      "statement": "Scheduler diagnostics is a superuser route that derives current leader status from the scheduler lease and reports replicas, active jobs, scheduled tasks, queue age, slots, and memory-related capacity signals.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/routers/scheduler_diagnostics.py#L172-L213",
+          "version": "repo-lines-v1:sha256:42463a177780c6cb6ae33527092aa4cd3bf19ffdcdffda044075c5206b425518:eyJzZWxlY3RlZExpbmVDb3VudCI6NDIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFjM2U2YmYwM2E5NzFjYTMyNzZmMThiNzMyYWYxZGVkYTk2MTU5N2NmMTk2ZTZkM2JkYTYwM2ZlN2RiNzMxODUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwYzFmMTg4ZjE0MmVkN2E4MjQ2ODBiMjA3MTcyYzU1MTliYzYxNGE0OGZkYTdjZjE2N2VkYjhkZGY3OTk1NmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjI5NjAzNmViYTY2MmI0MGUwNTBjNDI0YTJlZjIwNDRiNmQ1NTY0YzVlMmM0YzE3OTk1YmVlZTExYzFhZTA3MDgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRiZDE4NmIwMzg4YzA0YmQ0YmUzNjlmODU2NmJhYmI4MmYxZjY5ZGU3MTllYzc2MGU4Mjk1NDhlMmM2Y2U2YWEifQ"
+        },
+        {
+          "resource": "repo://api/src/routers/scheduler_diagnostics.py#L69-L83",
+          "version": "repo-lines-v1:sha256:393c57498ed4f9dc2e6f7e46204f8e3d592285862c490cd61e310db3fc0d8142:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZjMjY5MzQxOTViYWMzZDc2MjM4NjdmZmU1NGE4OGYzMmMyZjY2MGZiZmE5YWM4NDU1ZmRjNzFjMmUyODg2MWEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhjYzRhN2QxY2M3OTZhYmEzZTQ2NzIzMzI3ZjUxN2U5ZjgxMTk4MmQyNTBmMDcwMjk4NmU0YjU3NjRhZDk1ODkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVhY2JiNTZkNDc2MTFjM2IxMzM4Yzk1YzUxZWQxNzA2ODhkMjE0MDkyNjIwNDRjYjRmZWFjN2I5MjJjODM4OTIifQ"
+        },
+        {
+          "resource": "repo://api/src/routers/scheduler_diagnostics.py#L84-L120",
+          "version": "repo-lines-v1:sha256:00ddbc42c78e16dc06cd799e390c2efc582d07d3d8013e9df5d2f895b52b2f7c:eyJzZWxlY3RlZExpbmVDb3VudCI6MzcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhjNTVmNTI2NjJjMGM4YjE3OWM2Yzg1ZjgxNmM3ZjdlOTc2OGNiMjk2ZjYzODU1Y2VkMzQ4MzliMGE0ZjE4OTciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhNDAzNWYxYTIwYTNiY2U1ZTZlNzgzMmRmZDY2M2QzMTQ4N2EyYjliZWY5ZTgyOWI3OGI5YmExMzc3YzI2MTUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQwNWY3MDlmZWFhM2I1MTY1ZDExNDg4YjY3NmM3ZjRmZjNlY2E5YWFjNTYzNGFjM2IzY2IwYTcwZDI3MTkwMzkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjliMTdkMTgxN2U0MGQ5ZGEyNmI2MTFlYjBmNGExNzY5ODM1ODU2ZTY0NGZiMTE0N2EzMWM5Mjc4MTU0ZDA0YWYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_55767a7985ce4714877f2cb8b1bd776e",
+      "statement": "Daily execution metrics use organization and global aggregates, and metric-update failure is logged without failing the execution; ROI totals count only successful execution status.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/core/metrics.py#L151-L159",
+          "version": "repo-lines-v1:sha256:f814d04d48ccc0e109734942d5995e6d83adafce673e0023333e159cde3fa61f:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMzYzNWM3ODU2OGJkYzEwMmExODRiMzUxZDg4OGVmZDdhMDU5NzgyNzc2ZjVkZjg1YzYzYTNhNWNmZmVmNGVhMyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDY2NzkyNTYzZTZjZDIzYmNjN2EyZDAyYTYzOTViZDE1NDNkNTdmNGU4Y2E4ODBhNWJiMTQ3NWE1M2RkY2Q3NCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZDg2Y2M0OGQwYTYzYWYyOGVkYTJmNjNmYjFkODI5YmI3YmNlNTZkMTRlZWViMzZmZTU5NzY3OTEzN2JkOGViNSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZDljMzJkYmRmNDUyYWQwNTUyNjViYzk4MzFhMWJlY2RhMGJhNDc1MTYyZWE0MGMzMGI0NmMyZjUzZDcyMmZjYyJ9"
+        },
+        {
+          "resource": "repo://api/src/core/metrics.py#L42-L68",
+          "version": "repo-lines-v1:sha256:9f3eb07b8824b066363959bdd0470c44ba00d2a4ab4fd6c10f0508da18745f19:eyJzZWxlY3RlZExpbmVDb3VudCI6MjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY0MWEwNmY2NzM3MjY2NjA0MDdiZGQzOTM1MjAzYWFkMzU3M2MzZTcwYTg1YzUyODkyNGNkMTVjNjIxNzJlMzAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE2YTcxNTI1NzJlZTg0ZjEwOTA2Yzc0YjlmMmE5MjQzNGRkYWIwZTNjNDI4MTNiMDRlNTk3ZWZjZWM5NTFiMjYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjczM2U4NDg3Yzg1ZGZkY2Y5ZmE3YjkzYzc0NmM5NDYyNWFlNDdlMTIwYzc5N2U3OTFlNzM3ZjllZDdmZmM3M2QiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQwYTBmNmVjNmZlYjQxMjhlN2EyNjk5NGI5OWIxYmU4NWNjNjkxMTM5NGYwOGY4OWY4Mjg2OGViN2I5NjVhNTAifQ"
+        },
+        {
+          "resource": "repo://api/src/core/metrics.py#L72-L132",
+          "version": "repo-lines-v1:sha256:7aa8f7940d3bbe77342d12d49b3805001c5ca4d7c32a661bdcd9a55eb493e68a:eyJzZWxlY3RlZExpbmVDb3VudCI6NjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFkYTVjNjZlMTdiMTQ1Mzk3ODM0YjhjODU0ZGM0MTkzZTIxMjUxODBhODk5NmExNGMzMTg4MzMyNmIyZWZiY2YiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNlYTcyNDg4YmU4MjRhZGVjZjU3NGIwZjdhZTZlNWM5OTZmNjZkN2ViNDE5OWNjN2E3NjE5ODk4ZjA2MTY1NzIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQwYTBmNmVjNmZlYjQxMjhlN2EyNjk5NGI5OWIxYmU4NWNjNjkxMTM5NGYwOGY4OWY4Mjg2OGViN2I5NjVhNTAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQ0ZGZmZWI4MmI0ZGY2ODY3ODEzNTU2ZmU2NjRkZTQ0ZGMxYzhkM2U1MTZhYmFkMmIzZjU4YzU0MGY1Y2JiMDUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_cf6f955b3d274a07b5446f2226d388fa",
+      "statement": "OpenTelemetry export is conditional on OTEL_EXPORTER_OTLP_ENDPOINT and exporter setup/flush errors are treated as warnings; configured metrics can include event-loop lag and container CPU/memory.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/core/telemetry.py#L152-L171",
+          "version": "repo-lines-v1:sha256:78c3c42df2043513ea9b629faba7e45721622ee0b3e1a445f724ff7c5f2c566b:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU2MzRlMWJlNTUxOGVjOGFkM2E1NjYzZDNkNWJiNTU2MzY1MDJkZDIyOGI0Zjg0Y2VjNzhlZDViNmU5ODA4YjkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVhZGMwZjZlZGFjNWNkNjYzNjBjM2E4ZmU3ZDFiZThjMjcwNzNiMDQ3MWJlOTExODhmNzdjYmNhNzExYjdhMDkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjEyOWM4ODVhMmZmY2UzMjRiOTQ1MzUwODhkNjI3YWVmOTkzODczNThmYzA4ZmMwMTU4OWJjOTQyMDMxZjMxNmMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        },
+        {
+          "resource": "repo://api/src/core/telemetry.py#L50-L72",
+          "version": "repo-lines-v1:sha256:0c4eda9d2a3c029690574049a557fdc8f72c5526948451db006cba5e18b7f4d9:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlkODdlMzNiNmIwMTAyOWMyZmI3NjFlNjYyYzc2NGMwZDlhYWMzYjdiMmRhMzFkMGExODliMzU2MjhhZGQ2ZWYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwYzFmMTg4ZjE0MmVkN2E4MjQ2ODBiMjA3MTcyYzU1MTliYzYxNGE0OGZkYTdjZjE2N2VkYjhkZGY3OTk1NmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM2MzFkODJiZmMzODY2YmI0ZTNhY2U2NmVmYzJhNGEwZmMyMWI3ZDU0YTJhY2UyNzE1YTIxNmNhOGQ2NDczOTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE3ZjE0Y2M0ZDBiODc4YzRjNGM0ZWQ0NGM0M2E3Y2NkY2Y2MjM0NmM5Nzg5MjAyZWFlMjU4NmM0NGJiZjdiM2QifQ"
+        },
+        {
+          "resource": "repo://api/src/core/telemetry.py#L84-L149",
+          "version": "repo-lines-v1:sha256:347d2e214a426752aa6acd01fc8d0c161e1e767c0f4415be56aafa06f62743b0:eyJzZWxlY3RlZExpbmVDb3VudCI6NjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc4MmVkNjE4MjY2YjViZDUyYTc4NjE4MDYwODhhYmUzZTI3ZjM0NzFmNTk5ZTM4NzQ5MDBlNmNiYjNlYmE3YjIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk1NjUwZmQ4NDVmY2NhMmM2YTkyNzg4MjdhYTQ4MTdiODczMDYxYjM5YzI1ZWMxODRjMzQ3ZWFhMDY1ZmYxYTYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZmYWZkMjk4OTQ3MmQwNzY3NzkzNTgxYWJmNTJiOWNhZGMzNTRlZjBhYjY3OTE5ODQzMTg5MTU0NTQxMzZjZmIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA0M2E4NWQyNWI4NWE0NGVmYTEwMWU5YTU3NTVkZWZjYjhlMzQyYzU1OTAzMjgzYWY2YTdmOWQ4MzcxN2I5NTAifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_01cc70e777a24b16a1b4d95d14e17a54",
+      "statement": "The OTel runbook describes the execution trace join key and explicitly makes collector/backend/retention/dashboard proof a maturity gate rather than requiring telemetry at production startup.",
+      "evidence": [
+        {
+          "resource": "repo://docs/runbooks/otel-platform-observability.md#L16-L28",
+          "version": "repo-lines-v1:sha256:5079dd205bf1b512aadffece202196ddb19f93ee87808d7edcaffa32cebcb2c8:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQzZjFlYjlhMDk2ZTZhNTA5NGRhMjk2ZmY2MmFlYzljNWNkMTU0ODFiMmExZGQ5ZmU4NGFlNzlkNmMwNzc5YWMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMwODkxYzM4NmQ0ZmMyNmJlZGIyOWM1NTE3MzAwYjY4Yjk4MDY0NGY1MDEwM2MxZWQ4NTRmOTA5MGYxNGM2MGMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM5ZTgyNGJiNDM5NWRiNWJlODBlZjhjNjk5ZTQwYWIwZTQxZTA3NjFlZWVmN2UyYjc5MmU0NTlhM2Y4NWE1ZWQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAyZGJlNmU2MzkyMzg5NzU1NThkYzM4MjA0NTE0ZDI2Y2YzYzc5YjIzMmFjNDU4ZmM4OWEzNWU3NjllNTk4NjMifQ"
+        },
+        {
+          "resource": "repo://docs/runbooks/otel-platform-observability.md#L96-L101",
+          "version": "repo-lines-v1:sha256:410da6b02121d0e4e1c589dd5b800691f3bbb0962c3f34b90096d46724b0d250:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMGNhNzNiY2FlMTQ3NGM4MDRlN2MwZmZlNWI0N2E1MGI2OWI0MjVhNjQ4YTYwMDI2MmM3Y2ZjNWQ1YzhkNDNmYyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiODM3MmM5YjgxZDAzZWI2NTkwODJjM2QwOGJmMzhjMWU1NTY0NTRiYjQ0NzQ3ZjZiMjRlZWE2M2QwMTZhZjc3YSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNjIxM2RhYzc3NTBmYTljOTdkMzdjZDg5MTBmOTQ1MDdmZjE3Y2Q3ZWJlYjg5YjM5ZmM4NWI0YTc5YmRiYWQ5OSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjAsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_0dafe8ec5f3948368cf2342ec848f258",
+      "statement": "log_safe escapes newlines, removes control and ANSI sequences, and truncates user-controlled log values.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/core/log_safety.py#L1-L24",
+          "version": "repo-lines-v1:sha256:d833a3b1a43e903f5a22f367819431567f7b82a9fc43f61d8f6866b1e71a3ae3:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE0MWIzYzNlZTFkMDlkMmJiNzZhZGFhOGZhMDdlNTM3OTAwNTdhNGQ4YjZhZmJkNDkwYzFlNzY1NGRiODNmNWMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJmNjc4YmI1MTA5Y2JjOGMzZmZkMmI5NTBiMGNiNTcxOTFmZDdlYmYwMGE2NjljYTkxZGM1ODQ1MTk3ZTE2MGUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.7.2",
+    "at": "2026-10-18T02:14:28.318Z"
+  }
+}
