@@ -93,7 +93,7 @@ jobs:
         run: docker ps -a --format '{{.ID}} {{.Names}} {{.Status}}' > "$RUNNER_TEMP/pre-pr-containers.txt"
       - name: Retain candidate gate evidence
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: pre-pr-candidate-${{ github.sha }}
           path: |
@@ -163,7 +163,7 @@ jobs:
           fi
 
       - name: Upload affected test plan
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: affected-test-plan
           path: ${{ runner.temp }}/affected-test-plan.json
@@ -182,7 +182,7 @@ jobs:
         run: python3 scripts/ci/occupancy_report.py --window-hours "$OCCUPANCY_WINDOW_HOURS" --out "$RUNNER_TEMP/ci-occupancy.json"
 
       - name: Upload CI occupancy report
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ci-occupancy-report
           path: ${{ runner.temp }}/ci-occupancy.json
@@ -270,7 +270,7 @@ jobs:
         uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
@@ -284,7 +284,7 @@ jobs:
 
       - name: Build immutable candidate
         id: build
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: ${{ matrix.context }}
           file: ${{ matrix.dockerfile }}
@@ -408,7 +408,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
@@ -418,7 +418,7 @@ jobs:
           password: ${{ secrets.GHCR_TOKEN || secrets.GITHUB_TOKEN }}
 
       - name: Build and push API CI test image
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           file: ./api/Dockerfile.dev
@@ -431,7 +431,7 @@ jobs:
           cache-to: type=gha,scope=test-api-dev,mode=max
 
       - name: Build and push client CI test image
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: ./client
           file: ./client/Dockerfile.dev
@@ -444,7 +444,7 @@ jobs:
           cache-to: type=gha,scope=test-client-dev,mode=max
 
       - name: Build and push Playwright CI test image
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: ./client
           file: ./client/Dockerfile.playwright
@@ -737,7 +737,7 @@ jobs:
 
       - name: Preserve API coverage evidence
         if: needs.affected-test-plan.outputs.api_unit_mode == 'comprehensive'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: api-coverage
           path: ./coverage.xml
@@ -800,7 +800,7 @@ jobs:
 
       - name: Upload MCP conformance results
         if: always() && needs.affected-test-plan.outputs.mcp_conformance_mode != 'skip'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: mcp-conformance-results
           path: /tmp/bifrost-*/mcp-conformance/
@@ -915,7 +915,7 @@ jobs:
 
       - name: Preserve E2E failure diagnostics
         if: failure() && matrix.total != 0
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: api-e2e-diagnostics-${{ matrix.shard }}
           path: |
@@ -926,7 +926,7 @@ jobs:
 
       - name: Preserve public API schema readback
         if: always() && matrix.total != 0
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: api-openapi-contract-${{ matrix.shard }}
           path: |
@@ -937,7 +937,7 @@ jobs:
 
       - name: Preserve E2E coverage evidence
         if: needs.affected-test-plan.outputs.api_e2e_mode == 'comprehensive'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: api-e2e-coverage-${{ matrix.shard }}
           path: ./coverage-e2e-${{ matrix.shard }}.xml
@@ -1029,7 +1029,7 @@ jobs:
 
       - name: Preserve Playwright shard results
         if: always() && needs.affected-test-plan.outputs.client_e2e_mode != 'skip'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: playwright-results-${{ matrix.shard }}
           path: client/playwright-results
@@ -1038,7 +1038,7 @@ jobs:
 
       - name: Preserve browser service logs on failure
         if: failure() && needs.affected-test-plan.outputs.client_e2e_mode != 'skip'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: browser-service-logs-${{ matrix.shard }}
           path: /tmp/bifrost-bifrost-test-*/*.log
@@ -1172,7 +1172,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
@@ -1208,7 +1208,7 @@ jobs:
       - name: Build and push API dev image
         if: github.repository != 'MTG-Thomas/bifrost' && github.repository != 'Midtown-Technology-Group/bifrost'
         id: build-api
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           file: ./api/Dockerfile
@@ -1283,7 +1283,7 @@ jobs:
       - name: Build and push worker dev image
         if: github.repository != 'MTG-Thomas/bifrost' && github.repository != 'Midtown-Technology-Group/bifrost'
         id: build-worker
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           file: ./api/Dockerfile
@@ -1358,7 +1358,7 @@ jobs:
       - name: Build and push client dev image
         if: github.repository != 'MTG-Thomas/bifrost' && github.repository != 'Midtown-Technology-Group/bifrost'
         id: build-client
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: ./client
           file: ./client/Dockerfile
@@ -1651,7 +1651,7 @@ jobs:
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
@@ -1680,7 +1680,7 @@ jobs:
 
       - name: Build and push API image
         id: build-api
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           file: ./api/Dockerfile
@@ -1743,7 +1743,7 @@ jobs:
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
@@ -1772,7 +1772,7 @@ jobs:
 
       - name: Build and push client image
         id: build-client
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: ./client
           file: ./client/Dockerfile
@@ -1836,7 +1836,7 @@ jobs:
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
@@ -1865,7 +1865,7 @@ jobs:
 
       - name: Build and push worker image
         id: build-worker
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           file: ./api/Dockerfile
@@ -2032,7 +2032,7 @@ jobs:
 
       - name: Upload accepted stable release manifest
         if: github.repository == 'Midtown-Technology-Group/bifrost' && steps.get_version.outputs.prerelease == 'false'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-manifest-${{ steps.get_version.outputs.version }}-attempt-${{ github.run_attempt }}
           path: |
