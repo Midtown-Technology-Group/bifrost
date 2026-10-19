@@ -11,13 +11,14 @@ from typing import TYPE_CHECKING, Any, Literal
 from uuid import UUID, uuid5
 
 import pydantic_core
+from bifrost.agent_limits import bounded_agent_run_timeout
+from shared.scope_resolver import has_scope_bypass
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
-from shared.scope_resolver import has_scope_bypass
 from src.core.org_filter import OrgFilterType
-from src.models.orm.agents import Agent
 from src.models.orm.agent_runs import AgentRun
+from src.models.orm.agents import Agent
 from src.models.orm.executions import Execution
 from src.models.orm.external_mcp import MCPConnection, MCPServer
 from src.repositories.agents import AgentRepository
@@ -37,7 +38,6 @@ from src.services.mcp_client.errors import (
     NeedsReauthError,
     ToolDispatchError,
 )
-from src.services.tool_schema import validate_arguments_against_schema
 from src.services.mcp_server.config_service import MCPConfig, MCPConfigService
 from src.services.operation_receipts import (
     OperationReceiptCapacityError,
@@ -49,12 +49,13 @@ from src.services.operation_receipts import (
     claim_operation_receipt,
     complete_operation_receipt_error,
     complete_operation_receipt_success,
-    record_operation_receipt_handle,
     read_operation_receipt_by_scope,
     reconcile_operation_receipt_error,
     reconcile_operation_receipt_success,
+    record_operation_receipt_handle,
     wait_for_operation_receipt,
 )
+from src.services.tool_schema import validate_arguments_against_schema
 
 if TYPE_CHECKING:
     from src.services.mcp_server.server import MCPContext
@@ -1824,7 +1825,7 @@ class MCPAgentGatewayService:
 
         result = await wait_for_agent_run_result(
             run_id,
-            timeout=delegated.max_run_timeout or 1800,
+            timeout=bounded_agent_run_timeout(delegated.max_run_timeout),
         )
         if result is None:
             raise GatewayError(

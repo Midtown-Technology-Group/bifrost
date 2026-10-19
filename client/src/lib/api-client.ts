@@ -58,7 +58,7 @@ function isIdempotent(method: string): boolean {
 
 function isReplaySafeRequest(method: string, url: string): boolean {
 	if (!isIdempotent(method)) return false;
-	const pathname = new URL(url, "http://bifrost.local").pathname;
+	const pathname = new URL(url, "https://bifrost.invalid").pathname;
 	return !NON_REPLAYABLE_PATH_PREFIXES.some((prefix) =>
 		pathname.startsWith(prefix),
 	);

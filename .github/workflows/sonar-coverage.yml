@@ -169,6 +169,8 @@ jobs:
           ./test.sh e2e --cov --cov-append --cov-branch --cov-config=/app/.coveragerc.sonar --cov-report=
           source scripts/lib/test_helpers.sh
           export COMPOSE_PROJECT_NAME="$(compute_project_name .)"
+          docker compose -f "$COMPOSE_FILE" ps -a --format '{{.Service}} {{.ID}}' \
+            | tee "$SONAR_LOG_DIR/sonar-runtime-producers.txt"
           docker compose -f "$COMPOSE_FILE" stop api api-replica worker scheduler scheduler-fixtures
           docker compose -f "$COMPOSE_FILE" --profile test run --rm --no-deps --workdir /repo test-runner \
             python /app/scripts/combine_sonar_coverage.py
@@ -230,7 +232,7 @@ jobs:
           fi
           # Keep the filtering audit on every run; larger raw databases are
           # needed only when export or report validation fails.
-          files=(sonar-runtime-coverage.json)
+          files=(sonar-runtime-coverage.json sonar-runtime-reports.json sonar-runtime-producers.txt)
           if [ "$REPORT_STATUS" != success ]; then
             files+=(.coverage.sonar .coverage.sonar-tracked coverage-sonar.xml)
           fi
@@ -239,6 +241,9 @@ jobs:
               cp "$SONAR_LOG_DIR/$file" .sonar-evidence/diagnostics/
             fi
           done
+          if [ "$REPORT_STATUS" != success ] && [ -d "$SONAR_LOG_DIR/sonar-runtime-data" ]; then
+            cp -R "$SONAR_LOG_DIR/sonar-runtime-data" .sonar-evidence/diagnostics/
+          fi
           # These are isolated test-stack logs exported by stack down, not live
           # application credentials or a valid replacement for missing reports.
           find "$SONAR_LOG_DIR" -maxdepth 1 -name '*.log' -type f -exec cp {} .sonar-evidence/diagnostics/ \;

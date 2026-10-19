@@ -371,7 +371,12 @@ async def test_resolve_form_and_agent_content_prefers_inline_then_legacy(caplog)
         return f"name: legacy\npath: {path}\n".encode()
 
     legacy_form = ManifestForm(id="legacy-form", name="Legacy", path="forms/legacy.form.yaml")
-    legacy_agent = ManifestAgent(id="legacy-agent", name="Legacy", path="agents/legacy.agent.yaml")
+    legacy_agent = ManifestAgent(
+        id="legacy-agent",
+        name="Legacy",
+        path="agents/legacy.agent.yaml",
+        max_run_timeout=600,
+    )
 
     assert await manifest_import._resolve_form_content(legacy_form, read_legacy) == (
         b"name: legacy\npath: forms/legacy.form.yaml\n"
@@ -596,6 +601,14 @@ def test_inline_content_detection_and_manifest_access_level_defaults():
         ManifestAgent(id="token-agent", name="Agent", llm_max_tokens=0)
     ) is False
     assert manifest_import._agent_has_inline_content(
+        ManifestAgent(
+            id="legacy-timeout-agent",
+            name="Agent",
+            path="agents/legacy.agent.yaml",
+            max_run_timeout=600,
+        )
+    ) is False
+    assert manifest_import._agent_has_inline_content(
         ManifestAgent(id="empty-agent", name="Agent")
     ) is False
 
@@ -801,9 +814,16 @@ def test_resolve_form_and_agent_emit_metadata_and_authoritative_role_clears():
     assert len(agent_ops) == 2
     assert agent_ops[0].values["system_prompt"] == "Route tickets"
     assert agent_ops[0].values["max_iterations"] == 4
+    assert "max_run_timeout" not in agent_ops[0].values
     assert agent_ops[1].entity_fk == "agent_id"
     assert agent_ops[1].role_ids == set()
     assert agent_ops[1].extra_fields == {"assigned_by": "git-sync"}
+
+    timeout_agent_ops = resolver._resolve_agent(
+        agent.model_copy(update={"max_run_timeout": 600}),
+        b"name: Dispatcher\nsystem_prompt: Route tickets\n",
+    )
+    assert timeout_agent_ops[0].values["max_run_timeout"] == 600
 
 
 def test_resolve_form_and_agent_ignore_empty_content_and_global_metadata():
@@ -1546,6 +1566,35 @@ async def test_resolve_deletions_requires_manifest_or_work_dir():
 
     with pytest.raises(ValueError, match="Either manifest or work_dir must be provided"):
         await resolver._resolve_deletions()
+
+
+@pytest.mark.asyncio
+async def test_targetless_subscription_does_not_suppress_stale_deletion():
+    db = _SequenceDb(_RowsResult([(UUID(SUBSCRIPTION_ID),)]))
+    resolver = manifest_import.ManifestResolver(db)
+    manifest = Manifest(
+        events={
+            EVENT_ID: ManifestEventSource(
+                id=EVENT_ID,
+                name="Targetless source",
+                source_type="webhook",
+                subscriptions=[
+                    ManifestEventSubscription(
+                        id=SUBSCRIPTION_ID,
+                        target_type="workflow",
+                        workflow_id=None,
+                    )
+                ],
+            )
+        }
+    )
+
+    changes = await resolver._resolve_deletions(manifest=manifest, dry_run=True)
+
+    assert [(change.entity_type, change.entity_id) for change in changes] == [
+        ("event_subscriptions", SUBSCRIPTION_ID)
+    ]
+    assert "NOT IN" not in str(db.statements[0])
 
 
 @pytest.mark.asyncio

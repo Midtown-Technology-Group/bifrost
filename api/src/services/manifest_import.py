@@ -1436,11 +1436,16 @@ class ManifestResolver:
                 continue
             data = dict(original_data)
             data["id"] = magent.id
+            org_id_uuid = UUID(magent.organization_id) if magent.organization_id else None
             await self._resolve_ref_field(data, "tool_ids")
             if "tools" in data and "tool_ids" not in data:
                 await self._resolve_ref_field(data, "tools")
             updated_content = (yaml.dump(data, default_flow_style=False, sort_keys=True).rstrip() + "\n").encode("utf-8")
-            await agent_indexer.index_agent(f"agents/{magent.id}.agent.yaml", updated_content)
+            await agent_indexer.index_agent(
+                f"agents/{magent.id}.agent.yaml",
+                updated_content,
+                organization_id=org_id_uuid,
+            )
 
             # Only echo back to ``modified`` when the source was a companion
             # file that needed ref-resolution rewrites (back-compat path).
@@ -1448,7 +1453,6 @@ class ManifestResolver:
                 modified[magent.path] = updated_content.decode("utf-8")
 
             # Post-indexer: update org_id and access_level
-            org_id_uuid = UUID(magent.organization_id) if magent.organization_id else None
             agent_id_uuid = UUID(magent.id)
             post_values: dict = {}
             if org_id_uuid:
@@ -1901,7 +1905,8 @@ class ManifestResolver:
         present_sub_uuids: list[UUID] = []
         for mes in manifest.events.values():
             for msub in mes.subscriptions:
-                present_sub_uuids.append(UUID(msub.id))
+                if msub.has_well_formed_target():
+                    present_sub_uuids.append(UUID(msub.id))
         present_org_uuids = [UUID(m.id) for m in manifest.organizations]
         present_role_uuids = [UUID(m.id) for m in manifest.roles]
 
@@ -3238,6 +3243,12 @@ class ManifestResolver:
         for msub in mes.subscriptions:
             target_type = getattr(msub, "target_type", "workflow") or "workflow"
 
+            if not msub.has_well_formed_target():
+                logger.warning(
+                    f"Event subscription {msub.id}: invalid {target_type!r} target, skipping"
+                )
+                continue
+
             wf_id: UUID | None = None
             agent_id: UUID | None = None
 
@@ -3549,6 +3560,8 @@ class ManifestResolver:
             "max_iterations": data.get("max_iterations"),
             "max_token_budget": data.get("max_token_budget"),
         }
+        if magent.max_run_timeout is not None:
+            agent_values["max_run_timeout"] = magent.max_run_timeout
         if magent.access_level is not None:
             agent_values["access_level"] = magent.access_level
         ops.append(Upsert(

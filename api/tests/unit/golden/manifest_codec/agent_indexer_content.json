@@ -10,6 +10,7 @@
   "llm_max_tokens": 1024,
   "llm_profile": "<volatile>",
   "max_iterations": 5,
+  "max_run_timeout": 120,
   "max_token_budget": 10000,
   "mcp_connection_ids": [
     "<volatile>"

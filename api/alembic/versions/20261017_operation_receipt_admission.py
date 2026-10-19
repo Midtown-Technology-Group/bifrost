@@ -1,7 +1,7 @@
 """bound operation receipt admission per hashed caller scope
 
 Revision ID: 20261017_receipt_admission
-Revises: 20261012_work_delivery_started
+Revises: 20261017_teams_receipt_index
 """
 
 from collections.abc import Sequence
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "20261017_receipt_admission"
-down_revision: str = "20261012_work_delivery_started"
+down_revision: str = "20261017_teams_receipt_index"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

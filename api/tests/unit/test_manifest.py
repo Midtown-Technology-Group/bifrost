@@ -1639,12 +1639,14 @@ class TestAgentManifestFields:
             path="agents/test.agent.yaml",
             max_iterations=25,
             max_token_budget=50000,
+            max_run_timeout=600,
         )
         manifest = Manifest(agents={agent_id: agent})
         yaml_out = serialize_manifest(manifest)
         parsed = parse_manifest(yaml_out)
         assert parsed.agents[agent_id].max_iterations == 25
         assert parsed.agents[agent_id].max_token_budget == 50000
+        assert parsed.agents[agent_id].max_run_timeout == 600
 
         # Stability: second round-trip identical
         yaml_out2 = serialize_manifest(parsed)
@@ -1724,6 +1726,49 @@ class TestEventSubscriptionManifestFields:
 
 class TestManifestValidationAgents:
     """Test manifest validation catches agent subscription issues."""
+
+    @pytest.mark.parametrize(
+        ("target_type", "workflow_id", "agent_id", "expected"),
+        [
+            ("workflow", None, None, "workflow_id"),
+            ("agent", None, None, "agent_id"),
+            ("unsupported", None, None, "unsupported target_type"),
+            ("workflow", str(uuid4()), str(uuid4()), "workflow_id"),
+            ("agent", str(uuid4()), str(uuid4()), "agent_id"),
+        ],
+    )
+    def test_validate_subscription_requires_exact_target(
+        self, target_type, workflow_id, agent_id, expected
+    ):
+        from bifrost.manifest import (
+            Manifest,
+            ManifestEventSource,
+            ManifestEventSubscription,
+            validate_manifest,
+        )
+
+        source_id = str(uuid4())
+        subscription = ManifestEventSubscription(
+            id=str(uuid4()),
+            target_type=target_type,
+            workflow_id=workflow_id,
+            agent_id=agent_id,
+        )
+        manifest = Manifest(
+            events={
+                source_id: ManifestEventSource(
+                    id=source_id,
+                    name="Source",
+                    source_type="webhook",
+                    subscriptions=[subscription],
+                )
+            }
+        )
+
+        errors = validate_manifest(manifest)
+
+        assert any(expected in error for error in errors), errors
+        assert subscription.has_well_formed_target() is False
 
     def test_validate_unknown_agent_in_subscription(self):
         """Subscription referencing non-existent agent_id should fail validation."""
@@ -2110,6 +2155,7 @@ class TestInlineAgentContent:
             llm_max_tokens=8000,
             max_iterations=15,
             max_token_budget=120000,
+            max_run_timeout=900,
         )
         manifest = Manifest(agents={agent_id: agent})
         yaml_out = serialize_manifest(manifest)
@@ -2127,6 +2173,7 @@ class TestInlineAgentContent:
         assert rt.llm_max_tokens == 8000
         assert rt.max_iterations == 15
         assert rt.max_token_budget == 120000
+        assert rt.max_run_timeout == 900
 
         yaml_out2 = serialize_manifest(parsed)
         assert yaml_out == yaml_out2

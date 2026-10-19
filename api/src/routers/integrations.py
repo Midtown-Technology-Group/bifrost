@@ -7,7 +7,6 @@ Integrations combine OAuth providers, data providers, and configuration schemas.
 
 import asyncio
 import logging
-import secrets
 from datetime import datetime, timezone
 from uuid import UUID
 
@@ -60,7 +59,11 @@ from src.services.oauth_pkce import (
     provider_uses_pkce,
     store_pkce_verifier,
 )
-from src.services.oauth_state import encode_state, remember_nonce
+from src.services.oauth_state import (
+    encode_connection_state,
+    encode_state,
+    remember_nonce,
+)
 from shared.logo_processing import (
     LogoProcessingError,
     is_logo_thumbnail_version,
@@ -1971,8 +1974,13 @@ async def get_oauth_authorization_url(
             detail="This integration uses client_credentials flow and does not require user authorization",
         )
 
-    # Generate state for CSRF protection
-    state = secrets.token_urlsafe(32)
+    state, nonce = encode_connection_state(
+        provider_id=oauth_provider.id,
+        user_id=user.user_id,
+        organization_id=ctx.org_id,
+        redirect_uri=redirect_uri,
+    )
+    await remember_nonce(nonce)
 
     params = {
         "client_id": oauth_provider.client_id,

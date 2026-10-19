@@ -32,6 +32,7 @@ def _solution(e2e_client, headers, slug: str) -> str:
 
 def _deploy_managed_entities(e2e_client, headers, sid: str) -> SimpleNamespace:
     wf_id = str(uuid.uuid4())
+    tool_id = str(uuid.uuid4())
     app_id = str(uuid.uuid4())
     event_id = str(uuid.uuid4())
     form_id = str(uuid.uuid4())
@@ -41,11 +42,17 @@ def _deploy_managed_entities(e2e_client, headers, sid: str) -> SimpleNamespace:
     role = e2e_client.post("/api/roles", headers=headers, json={"name": role_name})
     assert role.status_code in (200, 201), role.text
     dep = e2e_client.post(f"/api/solutions/{sid}/deploy", headers=headers, json={
-        "python_files": {"workflows/w.py": "from bifrost import workflow\n@workflow\nasync def w():\n    return {}\n"},
+        "python_files": {
+            "workflows/w.py": "from bifrost import workflow\n@workflow\nasync def w():\n    return {}\n",
+            "workflows/t.py": "from bifrost import tool\n@tool\nasync def t():\n    return {}\n",
+        },
         "workflows": [{
             "id": wf_id, "name": f"w_{slug}", "function_name": "w",
             "path": "workflows/w.py", "type": "workflow",
             "access_level": "role_based", "role_names": [role_name],
+        }, {
+            "id": tool_id, "name": f"t_{slug}", "function_name": "t",
+            "path": "workflows/t.py", "type": "tool",
         }],
         "apps": [{
             "id": app_id, "slug": f"app-{slug}", "name": "App",
@@ -66,7 +73,7 @@ def _deploy_managed_entities(e2e_client, headers, sid: str) -> SimpleNamespace:
         }],
         "agents": [{
             "id": agent_id, "name": f"a_{slug}",
-            "system_prompt": "x", "tool_ids": [wf_id],
+            "system_prompt": "x", "tool_ids": [tool_id],
         }],
     })
     dep = wait_for_deploy(e2e_client, dep, headers)
@@ -78,6 +85,7 @@ def _deploy_managed_entities(e2e_client, headers, sid: str) -> SimpleNamespace:
 
     return SimpleNamespace(
         workflow_id=real_id(wf_id),
+        tool_id=real_id(tool_id),
         app_id=real_id(app_id),
         event_id=real_id(event_id),
         form_id=real_id(form_id),
@@ -213,10 +221,25 @@ def test_remap_skips_managed_form_and_agent_tool(
     assert fresp.status_code == 200, fresp.text
     assert fresp.json()["workflow_id"] == real_wf, fresp.json()
 
-    # The managed agent still has its tool bound to the managed workflow.
+    # Exercise a same-type tool remap independently of the form's workflow.
+    tool_fn = f"remap_tool_{uuid.uuid4().hex[:8]}"
+    tool_target = write_and_register(
+        e2e_client, headers,
+        path=f"workflows/{tool_fn}.py",
+        content=f"from bifrost import tool\n\n@tool\nasync def {tool_fn}() -> dict:\n    return {{}}\n",
+        function_name=tool_fn,
+    )
+    tool_resp = e2e_client.post(
+        f"/api/workflows/{managed_entities.tool_id}/remap", headers=headers,
+        json={"target_workflow_id": tool_target["id"]},
+    )
+    assert tool_resp.status_code == 200, tool_resp.text
+    assert tool_resp.json()["updated"]["agents"] == 0, tool_resp.json()
+
+    # The managed agent still has its eligible tool bound to the managed tool.
     aresp = e2e_client.get(f"/api/agents/{real_agent}", headers=headers)
     assert aresp.status_code == 200, aresp.text
-    assert real_wf in aresp.json().get("tool_ids", []), aresp.json()
+    assert managed_entities.tool_id in aresp.json().get("tool_ids", []), aresp.json()
 
 
 def test_delete_role_bound_to_managed_entity_is_refused(

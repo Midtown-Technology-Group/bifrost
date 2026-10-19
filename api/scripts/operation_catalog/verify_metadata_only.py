@@ -13,12 +13,15 @@ import ast
 import hashlib
 import json
 from pathlib import Path
-import subprocess
+import re
+
+from git import Repo as GitRepo
 
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 CATALOG_MODULE = "src.services.operation_catalog"
 HTTP_METHODS = {"get", "post", "put", "patch", "delete", "head", "options", "api_route"}
+SOURCE_PATHS = ("api/src/routers", "api/shared", "api/src/main.py")
 
 
 class WithoutCatalogMetadata(ast.NodeTransformer):
@@ -70,8 +73,34 @@ def route_dependencies(source: str) -> list[dict[str, object]]:
     return rows
 
 
-def git(*args: str) -> str:
-    return subprocess.check_output(["git", *args], cwd=REPO_ROOT).decode("utf-8")
+def resolve_base_ref(base_ref: str) -> str:
+    """Resolve a single commit expression without allowing Git option injection."""
+    if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_./-]{0,254}", base_ref) is None:
+        raise ValueError("The base must be a named Git reference or commit SHA")
+    resolved = GitRepo(REPO_ROOT).commit(base_ref).hexsha
+    if re.fullmatch(r"[0-9a-f]{40}", resolved) is None:
+        raise ValueError("Git did not return one complete commit SHA")
+    return resolved
+
+
+def base_source_files(base_commit: str) -> list[str]:
+    tree = GitRepo(REPO_ROOT).commit(base_commit).tree
+    files: list[str] = []
+    for source_path in SOURCE_PATHS:
+        try:
+            entry = tree / source_path
+        except KeyError:
+            continue
+        if entry.type == "blob":
+            files.append(entry.path)
+        else:
+            files.extend(item.path for item in entry.traverse() if item.type == "blob")
+    return files
+
+
+def base_source(base_commit: str, relative: str) -> str:
+    blob = GitRepo(REPO_ROOT).commit(base_commit).tree / relative
+    return blob.data_stream.read().decode("utf-8")
 
 
 def main() -> int:
@@ -79,15 +108,15 @@ def main() -> int:
     parser.add_argument("--base-ref", required=True)
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
-    base_sha = git("rev-parse", args.base_ref).strip()
-    files = git("ls-tree", "-r", "--name-only", base_sha, "api/src/routers", "api/shared", "api/src/main.py").splitlines()
+    base_sha = resolve_base_ref(args.base_ref)
+    files = base_source_files(base_sha)
     proof_files: list[dict[str, object]] = []
     proof: dict[str, object] = {"base_sha": base_sha, "files": proof_files}
     failures = []
     for relative in files:
         if not relative.endswith(".py"):
             continue
-        before = git("show", f"{base_sha}:{relative}").replace("\r\n", "\n")
+        before = base_source(base_sha, relative).replace("\r\n", "\n")
         path = REPO_ROOT / relative
         after = path.read_text(encoding="utf-8") if path.is_file() else ""
         if before == after:
