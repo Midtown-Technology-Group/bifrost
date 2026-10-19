@@ -114,6 +114,32 @@ test("apply preserves completed logs and rechecks run and live queue before canc
   assert.ok(x.calls.findIndex(c => c[1].endsWith("/logs")) < x.calls.findIndex(c => c[1].endsWith("/cancel")));
 });
 
+for (const failFirst of [false, true]) {
+  test(`completed logs remain sequential and stop on failure (${failFirst})`, async () => {
+    const x = transport(); const original = x.api;
+    x.api = async (method, path) => {
+      const result = await original(method, path);
+      if (path.includes("/jobs?")) {
+        return { total_count: 2, jobs: [7, 8].map(id => ({ id, status: "completed", conclusion: "success" })) };
+      }
+      if (path.endsWith("/7/logs")) {
+        await new Promise(resolve => setImmediate(resolve));
+        if (failFirst) throw new Error("first log unavailable");
+      }
+      if (path.endsWith("/8/logs")) assert.ok(x.saved.has("job-7.log"), "first log must be saved before the next download");
+      return result;
+    };
+    if (failFirst) {
+      await assert.rejects(retireRun({ runId: 42, apply: true, ...x }), /first log unavailable/);
+      assert.ok(x.saved.has("jobs-before.json"));
+      assert.equal(x.calls.some(c => c[1].endsWith("/8/logs") || c[1].endsWith("/cancel")), false);
+    } else {
+      assert.equal((await retireRun({ runId: 42, apply: true, ...x })).cancelled, true);
+      assert.ok(x.saved.has("job-8.log"));
+    }
+  });
+}
+
 for (const mode of ["logs unavailable", "new attempt", "changed attempt start", "candidate requeued", "incomplete jobs", "GraphQL denied"]) {
   test(`no cancellation when ${mode}`, async () => {
     const x = transport(); const original = x.api;

@@ -8,8 +8,9 @@ const ACTIVE = new Set(["queued", "in_progress", "waiting", "requested", "pendin
 const WORKFLOWS = new Set([".github/workflows/ci.yml", ".github/workflows/codeql.yml"]);
 const SHA = /^[a-f0-9]{40}$/;
 
+/** Return the PR number only for a supported native merge-group run. */
 export function candidate(run) {
-  const match = /^gh-readonly-queue\/main\/pr-([1-9][0-9]*)-([a-f0-9]{40})$/.exec(run.head_branch ?? "");
+  const match = /^gh-readonly-queue\/main\/pr-([1-9]\d*)-([a-f0-9]{40})$/.exec(run.head_branch ?? "");
   if (run.repository?.full_name !== REPOSITORY || run.event !== "merge_group"
       || !WORKFLOWS.has(run.path) || !SHA.test(run.head_sha ?? "") || !match
       || !Number.isSafeInteger(run.id) || run.id <= 0
@@ -21,6 +22,7 @@ export function candidate(run) {
   return number;
 }
 
+/** Require complete live evidence that this selected attempt expired. */
 export function authorizeRetirement(run, queue, history) {
   const number = candidate(run);
   if (!ACTIVE.has(run.status)) throw new Error("Run is no longer active");
@@ -39,7 +41,7 @@ export function authorizeRetirement(run, queue, history) {
   const events = history.timelineItems.nodes.filter(event => event.beforeCommit?.oid === run.head_sha);
   const removal = events.at(-1);
   const attemptStart = Date.parse(run.run_started_at);
-  if (!removal || removal.reason !== "checks_timed_out"
+  if (removal?.reason !== "checks_timed_out"
       || !Number.isFinite(attemptStart) || !Number.isFinite(Date.parse(removal.createdAt))
       || Date.parse(removal.createdAt) < attemptStart) {
     throw new Error("Exact candidate has no authoritative timeout removal");
@@ -49,6 +51,7 @@ export function authorizeRetirement(run, queue, history) {
     removed_at: removal.createdAt, reason: removal.reason };
 }
 
+/** Invoke only the system GitHub CLI, with arguments and no shell. */
 function request(method, path, body) {
   const args = ["api", "--method", method, path];
   if (body) args.push("--input", "-");
@@ -56,6 +59,29 @@ function request(method, path, body) {
     maxBuffer: 100 * 1024 * 1024, stdio: ["pipe", "pipe", "pipe"] });
 }
 
+/** Archive complete job inventory and completed logs before any cancellation. */
+async function preserveJobEvidence(run, path, save, api) {
+  const jobs = [];
+  for (let page = 1; page <= 10; page++) {
+    const batch = await api("GET", `${path}/attempts/${run.run_attempt}/jobs?per_page=100&page=${page}`);
+    if (!Array.isArray(batch.jobs) || !Number.isSafeInteger(batch.total_count)) throw new Error("Invalid job inventory");
+    jobs.push(...batch.jobs);
+    if (jobs.length === batch.total_count) break;
+    if (batch.jobs.length < 100 || page === 10) throw new Error("Incomplete job inventory");
+  }
+  save("jobs-before.json", jobs);
+  // Chain downloads sequentially: cap memory and stop at the first failed log.
+  // Unfinished logs remain on GitHub for collection after terminal readback.
+  await jobs.reduce(async (previous, job) => {
+    await previous;
+    if (job.status !== "completed" || job.conclusion === "skipped") return;
+    if (!Number.isSafeInteger(job.id) || job.id <= 0) throw new Error("Invalid job identity");
+    const log = await api("GET", `repos/${REPOSITORY}/actions/jobs/${job.id}/logs`, undefined, true);
+    save(`job-${job.id}.log`, log);
+  }, Promise.resolve());
+}
+
+/** Plan by default; apply preserves evidence, rechecks identity and cancels once. */
 export async function retireRun({ runId, apply = false, save, api }) {
   if (!Number.isSafeInteger(runId) || runId <= 0) throw new Error("Invalid run ID");
   const path = `repos/${REPOSITORY}/actions/runs/${runId}`;
@@ -81,22 +107,7 @@ export async function retireRun({ runId, apply = false, save, api }) {
   save("plan.json", proof);
   if (!apply) return { ...proof, outcome: "planned", cancelled: false };
 
-  // Capture completed-job logs and every job's original status before mutation.
-  // Unfinished job logs remain on GitHub and are collected after terminal readback.
-  const jobs = [];
-  for (let page = 1; page <= 10; page++) {
-    const batch = await api("GET", `${path}/attempts/${run.run_attempt}/jobs?per_page=100&page=${page}`);
-    if (!Array.isArray(batch.jobs) || !Number.isSafeInteger(batch.total_count)) throw new Error("Invalid job inventory");
-    jobs.push(...batch.jobs);
-    if (jobs.length === batch.total_count) break;
-    if (batch.jobs.length < 100 || page === 10) throw new Error("Incomplete job inventory");
-  }
-  save("jobs-before.json", jobs);
-  for (const job of jobs) {
-    if (job.status !== "completed" || job.conclusion === "skipped") continue;
-    if (!Number.isSafeInteger(job.id) || job.id <= 0) throw new Error("Invalid job identity");
-    save(`job-${job.id}.log`, await api("GET", `repos/${REPOSITORY}/actions/jobs/${job.id}/logs`, undefined, true));
-  }
+  await preserveJobEvidence(run, path, save, api);
   const fresh = await api("GET", path);
   save("run-rechecked.json", fresh);
   if (fresh.id !== run.id || fresh.head_sha !== run.head_sha || fresh.run_attempt !== run.run_attempt
@@ -123,11 +134,12 @@ export async function retireRun({ runId, apply = false, save, api }) {
   return result;
 }
 
+/** Parse one operator request and write receipts into a fresh private directory. */
 async function main() {
   const args = process.argv.slice(2);
   const apply = args.includes("--apply");
   const remaining = args.filter(arg => arg !== "--apply");
-  if (remaining.length !== 2 || !/^[1-9][0-9]*$/.test(remaining[0])
+  if (remaining.length !== 2 || !/^[1-9]\d*$/.test(remaining[0])
       || args.filter(arg => arg === "--apply").length > 1) {
     throw new Error("Usage: node .github/scripts/retire-merge-group.mjs RUN_ID NEW_PRIVATE_EVIDENCE_DIR [--apply]");
   }
@@ -139,7 +151,9 @@ async function main() {
     const result = await retireRun({ runId: Number(remaining[0]), apply, save,
       api: async (method, path, body, binary = false) => {
         const raw = request(method, path, body);
-        return binary ? raw : raw.length ? JSON.parse(raw) : null;
+        if (binary) return raw;
+        if (!raw.length) return null;
+        return JSON.parse(raw);
       } });
     console.log(JSON.stringify(result));
   } catch (error) {
@@ -149,8 +163,10 @@ async function main() {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
-  main().catch(() => {
+  try {
+    await main();
+  } catch {
     console.error("Retirement stopped; inspect the private evidence directory. No automatic retry.");
     process.exitCode = 1;
-  });
+  }
 }
