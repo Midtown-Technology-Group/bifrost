@@ -22,6 +22,7 @@ NOW = datetime(2026, 1, 2, 3, 4, 5, tzinfo=UTC)
 def _ctx(db):
     return SimpleNamespace(
         db=db,
+        org_id=None,
         user=UserPrincipal(
             user_id=USER_ID,
             email="admin@example.test",
@@ -211,7 +212,16 @@ async def test_integration_authorization_url_can_omit_scope_parameter(monkeypatc
         provider_metadata={"omit_authorization_scope": True},
     )
     _patch_repo(monkeypatch, oauth_provider=provider)
-    monkeypatch.setattr(integrations.secrets, "token_urlsafe", lambda length: "state-token")
+    monkeypatch.setattr(
+        integrations,
+        "encode_connection_state",
+        lambda **_kwargs: ("state-token", "nonce-1"),
+    )
+    monkeypatch.setattr(
+        integrations,
+        "remember_nonce",
+        lambda nonce: _async_value(None),
+    )
 
     response = await integrations.get_oauth_authorization_url(
         INTEGRATION_ID,
