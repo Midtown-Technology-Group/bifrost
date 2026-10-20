@@ -65,7 +65,7 @@ jobs:
     if: ${{ !cancelled() && (needs.lint.result == 'success' || (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.lint.result == 'skipped')) && (needs.publish-ci-test-images.result == 'success' || needs.publish-ci-test-images.result == 'skipped') }}
     uses: ./.github/workflows/sonar-coverage.yml
     with:
-      coverage_shadow: ${{ github.event_name == 'workflow_dispatch' && inputs.coverage_shadow }}
+      coverage_shadow: ${{ github.event_name == 'workflow_dispatch' && inputs.coverage_shadow && startsWith(github.ref, 'refs/heads/') && github.ref != 'refs/heads/main' }}
       head_sha: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
       base_sha: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event_name == 'merge_group' && github.event.merge_group.base_sha || github.event.before || '' }}
     secrets:
@@ -912,7 +912,7 @@ jobs:
         if: matrix.total != 0
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          persist-credentials: ${{ !(github.event_name == 'workflow_dispatch' && inputs.coverage_shadow) }}
+          persist-credentials: false
 
       - name: Detect test image input changes
         if: matrix.total != 0

@@ -22,8 +22,10 @@ shadow_prepare() {
 }
 
 shadow_python() {
-  docker compose -f "$COMPOSE_FILE" --profile test run --rm --no-deps --workdir /repo \
-    test-runner python /repo/scripts/sonar/shadow.py "$@"
+  # Compose forwards stdin without a TTY. The host-owned context stays 0600;
+  # snapshot retains these bytes in the container-owned diagnostic bundle.
+  docker compose -f "$COMPOSE_FILE" --profile test run --interactive -T --rm --no-deps --workdir /repo \
+    test-runner python /repo/scripts/sonar/shadow.py "$@" < .sonar-evidence/shadow-context.json
 }
 
 shadow_export() {

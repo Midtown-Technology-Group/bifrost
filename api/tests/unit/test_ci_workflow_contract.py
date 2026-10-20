@@ -29,6 +29,13 @@ def test_coverage_shadow_is_manual_default_off_and_has_no_admission_authority() 
     workflow = _load_workflow(CI_WORKFLOW)
     jobs = workflow["jobs"]
     assert workflow["on"]["workflow_dispatch"]["inputs"]["coverage_shadow"]["default"] == "false"
+    sonar_switch = jobs["sonar-coverage"]["with"]["coverage_shadow"]
+    assert "github.event_name == 'workflow_dispatch'" in sonar_switch
+    assert "inputs.coverage_shadow" in sonar_switch
+    assert "startsWith(github.ref, 'refs/heads/')" in sonar_switch
+    assert "github.ref != 'refs/heads/main'" in sonar_switch
+    checkout = next(step for step in jobs["test-e2e"]["steps"] if step.get("name") == "Checkout repository")
+    assert checkout["with"]["persist-credentials"] == "false"
     for name in ("coverage-shadow-supplement", "coverage-shadow-compare"):
         job = jobs[name]
         assert "github.event_name == 'workflow_dispatch'" in job["if"]

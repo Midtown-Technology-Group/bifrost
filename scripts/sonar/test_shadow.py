@@ -1,5 +1,6 @@
 """Fault probes for manual coverage receipts, combination and equivalence."""
 
+import io
 import json
 import os
 import shutil
@@ -10,6 +11,7 @@ import tempfile
 import unittest
 from contextlib import closing
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from scripts.sonar import shadow
@@ -154,6 +156,8 @@ class IdentityTests(ShadowFixture):
         path = self.root / "receipt.json"
         shadow.write_json(path, {"proof": True})
         self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+        context_path = self.root / ".sonar-evidence/shadow-context.json"
+        self.assertEqual(context_path.stat().st_mode & 0o777, 0o600)
         with self.assertRaises(FileExistsError):
             shadow.write_json(path, {})
         link = self.root / "link"
@@ -278,7 +282,7 @@ class BundleTests(ShadowFixture):
         empty.touch()
         (results / "sonar-runtime-producers.txt").write_text("api hostname\n")
         with self.assertRaises(ValueError):
-            shadow.snapshot(self.root, results, runtime, "unit")
+            shadow.snapshot(results, runtime, "unit", json.dumps(self.identity).encode())
         retained = results / "coverage-shadow-unit"
         self.assertEqual((retained / "runtime" / raw.name).read_bytes(), raw.read_bytes())
         self.assertTrue((retained / "test-runner.coverage").is_file())
@@ -298,11 +302,33 @@ class BundleTests(ShadowFixture):
                           ("python.xml", "coverage-sonar.xml"),
                           ("junit-unit.xml", "junit-unit.xml"), ("producers.txt", "sonar-runtime-producers.txt")]:
             shutil.copyfile(source / old, results / name)
-        shadow.snapshot(self.root, results, source / "runtime", "unit")
+        context_raw = json.dumps(self.identity).encode()
+        shadow.snapshot(results, source / "runtime", "unit", context_raw)
+        self.assertEqual((results / "coverage-shadow-unit/context.json").read_bytes(), context_raw)
+        self.assertEqual((results / "coverage-shadow-unit/context.json").stat().st_mode & 0o777, 0o600)
         shadow.seal(self.root, results, "unit")
         loaded = shadow.load_bundle(results / "coverage-shadow-unit", self.identity)
         self.assertEqual(loaded["manifest"]["status"], "exported")
         self.assertTrue((results / ".coverage.sonar").exists())
+
+    def test_corrupt_context_retains_raw_data_but_cannot_be_sealed(self):
+        parent = self.root / "input"
+        parent.mkdir()
+        source = self.bundle(parent, "unit")
+        results = self.root / "results"
+        results.mkdir()
+        for old, name in [("python.coverage", ".coverage.sonar"),
+                          ("python.coverage", ".coverage.sonar-tracked"),
+                          ("python.xml", "coverage-sonar.xml"),
+                          ("junit-unit.xml", "junit-unit.xml"), ("producers.txt", "sonar-runtime-producers.txt")]:
+            shutil.copyfile(source / old, results / name)
+        shadow.snapshot(results, source / "runtime", "unit", b"corrupt stdin")
+        with self.assertRaises(ValueError):
+            shadow.seal(self.root, results, "unit")
+        directory = results / "coverage-shadow-unit"
+        self.assertTrue(list((directory / "runtime").iterdir()))
+        self.assertEqual((directory / "context.json").read_bytes(), b"corrupt stdin")
+        self.assertFalse((directory / "manifest.json").exists())
 
     def test_missing_extra_unknown_status_and_traversing_members_fail(self):
         parent = self.root / "input"
@@ -415,6 +441,24 @@ class BundleTests(ShadowFixture):
             self.assertEqual(report, {"status": "failed", "error": "missing shard"})
         finally:
             os.chdir(previous)
+            os.umask(previous_mask)
+
+    def test_cli_snapshot_consumes_bounded_private_stdin(self):
+        previous_mask = os.umask(0o077)
+        try:
+            raw = json.dumps(self.identity).encode()
+            with (patch.object(sys, "argv", ["shadow.py", "snapshot", "--lane", "unit"]),
+                  patch.object(sys, "stdin", SimpleNamespace(buffer=io.BytesIO(raw))),
+                  patch.object(shadow, "snapshot") as capture):
+                shadow.main()
+                capture.assert_called_once_with(Path("/bifrost-results"), Path("/coverage"), "unit", raw)
+            with (patch.object(sys, "argv", ["shadow.py", "snapshot", "--lane", "unit"]),
+                  patch.object(sys, "stdin", SimpleNamespace(buffer=io.BytesIO(b"oversized"))),
+                  patch.object(shadow, "MAX_BYTES", 2), patch.object(shadow, "snapshot") as capture,
+                  self.assertRaisesRegex(ValueError, "Oversized context")):
+                shadow.main()
+            capture.assert_not_called()
+        finally:
             os.umask(previous_mask)
 
     def test_combine_keeps_original_databases_and_excludes_serial_baseline(self):

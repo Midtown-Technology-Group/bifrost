@@ -13,6 +13,7 @@ import os
 import re
 import sqlite3
 import subprocess
+import sys
 import time
 from collections import Counter
 from contextlib import closing
@@ -70,7 +71,7 @@ def read_json(path: Path) -> dict:
 
 def write_json(path: Path, value: dict) -> None:
     with path.open("x", encoding="utf-8") as stream:
-        os.chmod(path, 0o644 if path.name == "shadow-context.json" else 0o600)
+        os.chmod(path, 0o600)
         json.dump(value, stream, indent=2, sort_keys=True)
         stream.write("\n")
 
@@ -116,15 +117,19 @@ def phase_names(lane: str) -> tuple[str, ...]:
     return ("e2e",) if lane.startswith("e2e-") else ("unit",)
 
 
-def snapshot(root: Path, artifacts: Path, runtime: Path, lane: str) -> None:
+def snapshot(artifacts: Path, runtime: Path, lane: str, context_raw: bytes) -> None:
     """Copy raw data before combining or deleting any task-owned volume."""
     target = artifacts / f"coverage-shadow-{lane}"
     target.mkdir(mode=0o700)
+    # The host owns the private context. Explicit stdin transport lets the
+    # container retain the same bytes without widening filesystem access.
+    with (target / "context.json").open("xb") as stream:
+        os.fchmod(stream.fileno(), 0o600)
+        stream.write(context_raw)
     raw = target / "runtime"
     raw.mkdir(mode=0o700)
     sources = [(path, raw / path.name) for path in sorted(runtime.glob(".coverage.sonar.*"))]
     sources += [(artifacts / ".coverage.sonar", target / "test-runner.coverage"),
-                (root / ".sonar-evidence/shadow-context.json", target / "context.json"),
                 (artifacts / "sonar-runtime-producers.txt", target / "producers.txt")]
     sources += [(artifacts / f"junit-{phase}.xml", target / f"junit-{phase}.xml") for phase in phase_names(lane)]
     failures = []
@@ -191,7 +196,7 @@ def seal(root: Path, artifacts: Path, lane: str) -> None:
         raise ValueError("Test-runner and runtime versions differ")
     for phase in phase_names(lane):
         junit(directory / f"junit-{phase}.xml")
-    identity = read_json(root / ".sonar-evidence/shadow-context.json")
+    identity = read_json(directory / "context.json")
     files = {p.relative_to(directory).as_posix(): digest(read_file(p))
              for p in directory.rglob("*") if p.is_file()}
     write_json(directory / "manifest.json", {"identity": identity, "lane": lane,
@@ -456,7 +461,10 @@ def main() -> None:
     if args.action == "context":
         write_json(root / ".sonar-evidence/shadow-context.json", context(root, args.image))
     elif args.action == "snapshot":
-        snapshot(root, Path("/bifrost-results"), Path("/coverage"), args.lane)
+        raw = sys.stdin.buffer.read(MAX_BYTES + 1)
+        if len(raw) > MAX_BYTES:
+            raise ValueError("Oversized context input")
+        snapshot(Path("/bifrost-results"), Path("/coverage"), args.lane, raw)
     elif args.action == "seal":
         seal(root, Path("/bifrost-results"), args.lane)
     else:
