@@ -21,6 +21,7 @@ REPOSITORY = "Midtown-Technology-Group/bifrost"
 BRANCH = "automation/release"
 MAIN_REF = "origin/main"
 RELEASES_API = "releases?per_page=100"
+SAME_TREE_EVIDENCE = "same_tree_ci"
 CANDIDATE = "release/candidate.json"
 NOTES = "release/notes.md"
 MANIFESTS = (
@@ -319,11 +320,93 @@ def retained_candidate(source: str, merged: str) -> dict:
     return candidate
 
 
+def checked_same_tree_pr_ci(source: str, run_id: int, number: int) -> dict:
+    """Certify completed PR evidence for the exact merged preparation tree."""
+    pr = api(f"pulls/{number}")
+    run = api(f"actions/runs/{run_id}")
+    if not isinstance(pr, dict) or not isinstance(run, dict):
+        raise ReleaseError("missing same-tree PR/CI identity")
+    head = pr.get("head", {})
+    if any((
+        not pr.get("merged"), pr.get("merge_commit_sha") != source,
+        pr.get("base", {}).get("ref") != "main",
+        head.get("repo", {}).get("full_name") != REPOSITORY,
+        not SHA.fullmatch(head.get("sha", "")),
+        run.get("head_sha") != head.get("sha"),
+        run.get("head_branch") != head.get("ref"),
+        run.get("event") != "pull_request", run.get("status") != "completed",
+        run.get("conclusion") != "success", run.get("path") != ".github/workflows/ci.yml",
+        run.get("head_repository", {}).get("full_name") != REPOSITORY,
+    )):
+        raise ReleaseError("same-tree evidence needs the exact merged fork PR and successful trusted CI")
+    git("merge-base", "--is-ancestor", source, MAIN_REF)
+    git("merge-base", "--is-ancestor", pr["base"]["sha"], head["sha"])
+    tree = git("rev-parse", f"{source}^{{tree}}")
+    if not SHA.fullmatch(tree) or tree != git("rev-parse", f"{head['sha']}^{{tree}}"):
+        raise ReleaseError("PR CI tree differs from the current preparation source")
+    attempt = run.get("run_attempt")
+    if type(attempt) is not int or attempt < 1:
+        raise ReleaseError("missing exact CI attempt")
+    require_preparation_jobs(run_id, attempt)
+    sonar = checked_pr_sonar(head["sha"], number, run)
+    return {"pr": number, "head": head["sha"], "tree": tree,
+            "run": run_id, "attempt": attempt, "sonar_check": sonar}
+
+
+def require_preparation_jobs(run_id: int, attempt: int) -> None:
+    """Reject skipped/partial CI rather than reusing a nominal green run."""
+    required = {
+        "Plan Affected Tests", "Lint & Type Check", "Unit Tests", "Client Unit Tests",
+        "E2E Tests", "MCP Conformance", "Candidate Images",
+        "sonar-coverage / Sonar Coverage Evidence", "sonar-coverage / Sonar CI Analysis",
+    }
+    jobs = array_pages(f"actions/runs/{run_id}/attempts/{attempt}/jobs?per_page=100", "jobs")
+    for name in required:
+        matches = [job for job in jobs if job.get("name") == name]
+        if len(matches) != 1 or matches[0].get("conclusion") != "success":
+            raise ReleaseError(f"same-tree CI needs one successful {name} job")
+
+
+def checked_pr_sonar(head: str, number: int, run: dict) -> int:
+    """Require fresh successful Sonar App evidence on the tested PR head."""
+    checks = array_pages(
+        f"commits/{head}/check-runs?check_name=SonarCloud%20Code%20Analysis&per_page=100",
+        "check_runs",
+    )
+    trusted = [check for check in checks if check.get("app", {}).get("id") == 12526
+               and check.get("name") == "SonarCloud Code Analysis"]
+    if not trusted:
+        raise ReleaseError("missing trusted Sonar check")
+    check = max(trusted, key=lambda row: row["id"])
+    expected_url = (
+        "https://sonarcloud.io/dashboard?id=Midtown-Technology-Group_bifrost"
+        + f"&pullRequest={number}"
+    )
+    started = check.get("started_at")
+    completed = check.get("completed_at")
+    created = run.get("created_at")
+    updated = run.get("updated_at")
+    if any((
+        check.get("head_sha") != head, check.get("status") != "completed",
+        check.get("conclusion") != "success", check.get("details_url") != expected_url,
+        not started, not completed, not created, not updated,
+    )):
+        raise ReleaseError("Sonar identity/gate is not complete for the same-tree PR")
+    if not (created <= started <= completed <= updated):
+        raise ReleaseError("Sonar evidence is outside the successful CI run window")
+    return check["id"]
+
+
 def supersede_unpublished(
-    source: str, prs: list[dict], number: int, run_id: int
+    source: str, prs: list[dict], number: int, run_id: int, *,
+    same_tree_pr: int | None = None,
 ) -> dict:
     """Replace only a failed, untagged candidate through a fresh release PR."""
-    checked_main_ci(source, run_id)
+    same_tree = None
+    if same_tree_pr is None:
+        checked_main_ci(source, run_id)
+    else:
+        same_tree = checked_same_tree_pr_ci(source, run_id, same_tree_pr)
     ordered = git("rev-list", "--first-parent", source).splitlines()
     releases = [
         pr for pr in prs
@@ -357,8 +440,28 @@ def supersede_unpublished(
     failed = max(trusted, key=lambda run: run["id"])
     if failed.get("status") != "completed" or failed.get("conclusion") != "failure":
         raise ReleaseError("original candidate must have terminal failed main CI")
-    return {"pr": number, "source": merged, "version": version,
-            "failed_ci": failed["id"], "replacement_ci": run_id}
+    proof = {"pr": number, "source": merged, "version": version,
+             "failed_ci": failed["id"], "replacement_ci": run_id}
+    if same_tree is not None:
+        proof[SAME_TREE_EVIDENCE] = same_tree
+    return proof
+
+
+def same_tree_notes(proof: dict | None) -> list[str]:
+    """Retain the explicit reusable evidence without claiming main CI passed."""
+    if proof is None or SAME_TREE_EVIDENCE not in proof:
+        return []
+    return ["## Same-tree preparation evidence", "",
+            json.dumps(proof[SAME_TREE_EVIDENCE], sort_keys=True), "",
+            "PR CI was reused only for preparation. Publication still requires exact main-push CI.", ""]
+
+
+def preparation_ci_note(proof: dict) -> str:
+    """Label the receipt by its actual CI source."""
+    label = "Replacement source main CI"
+    if SAME_TREE_EVIDENCE in proof:
+        label = "Replacement same-tree PR CI"
+    return f"{label}: {proof['replacement_ci']}."
 
 
 def prepare_manifests(version: str) -> None:
@@ -377,18 +480,22 @@ def prepare_manifests(version: str) -> None:
 
 def prepare(
     source: str, prs: list[dict], *, supersede_pr: int | None = None,
-    source_ci_run: int | None = None,
+    source_ci_run: int | None = None, same_tree_pr: int | None = None,
 ) -> dict | None:
     if git("rev-parse", "HEAD") != source or git("status", "--porcelain"):
         raise ReleaseError("prepare requires a clean checkout of its exact source")
     if (supersede_pr is None) != (source_ci_run is None):
         raise ReleaseError("supersession requires both release PR and exact main CI run")
+    if same_tree_pr is not None and supersede_pr is None:
+        raise ReleaseError("same-tree reuse is limited to explicit supersession preparation")
     pending = pending_release(source, prs)
     superseded = None
     if supersede_pr is not None:
         if not pending or source_ci_run is None:
             raise ReleaseError("supersession requires an unpublished pending candidate")
-        superseded = supersede_unpublished(source, prs, supersede_pr, source_ci_run)
+        superseded = supersede_unpublished(
+            source, prs, supersede_pr, source_ci_run, same_tree_pr=same_tree_pr
+        )
     elif pending:
         return None
     candidate = calculate(source, prs)
@@ -448,10 +555,11 @@ def prepare(
             f"Replaces #{superseded['pr']} at `{superseded['source']}` "
             + f"({superseded['version']}); no tag or GitHub Release existed at preparation.",
             f"Original failed main CI: {superseded['failed_ci']}. "
-            + f"Replacement source main CI: {superseded['replacement_ci']}.",
+            + preparation_ci_note(superseded),
             "The original failure remains recorded. This candidate requires fresh exact-head "
             + "review, queue checks, main CI and signed stable packaging.", "",
         ]
+    notes += same_tree_notes(superseded)
     Path(NOTES).write_text("\n".join(notes))
     return candidate
 
@@ -658,6 +766,7 @@ def main() -> int:
     parser.add_argument("--run-id", type=int)
     parser.add_argument("--supersede-unpublished-pr", type=int)
     parser.add_argument("--source-ci-run", type=int)
+    parser.add_argument("--same-tree-pr", type=int)
     parser.add_argument("--base")
     parser.add_argument(
         "--default", choices=("patch", "minor", "major"), default="patch"
@@ -666,6 +775,7 @@ def main() -> int:
     try:
         if args.action != "prepare" and (
             args.supersede_unpublished_pr is not None or args.source_ci_run is not None
+            or args.same_tree_pr is not None
         ):
             raise ReleaseError("supersession is limited to release PR preparation")
         source_ref = checked_source_ref(args.source)
@@ -681,7 +791,7 @@ def main() -> int:
         elif args.action == "prepare":
             candidate = prepare(
                 source, prs, supersede_pr=args.supersede_unpublished_pr,
-                source_ci_run=args.source_ci_run,
+                source_ci_run=args.source_ci_run, same_tree_pr=args.same_tree_pr,
             )
             if candidate:
                 write_preparation_output(candidate["version"], source)

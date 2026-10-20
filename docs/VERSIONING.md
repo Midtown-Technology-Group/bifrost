@@ -104,6 +104,16 @@ which upstream tag or commit range the MTG release incorporated.
   normal administrator queue admission, fresh main CI and stable packaging.
   Supersession never moves a tag, changes a published release or waives the
   original failure; it prepares a different reviewed source candidate.
+- **Explicit same-tree preparation:** an operator may additionally provide
+  `same_tree_pr` with `supersede_unpublished_pr` and `source_ci_run`. This reuses
+  a completed successful trusted fork PR CI run only when that PR is merged as
+  the exact current preparation source and its head has the identical Git tree.
+  The named CI attempt must retain successful test/build and Sonar evidence jobs,
+  plus a fresh successful Sonar App check bound to that PR/head/project. Missing,
+  skipped, stale, partial or different-tree evidence refuses preparation. Notes
+  retain the PR/head/tree/run/attempt/Sonar check receipt. This is preparation
+  only: tag publication still requires successful exact main-push CI. Existing
+  in-progress main CI is neither cancelled nor changed by this option.
 - **Tag creation or dispatch failed:** inspect the tag's peeled SHA and exact CI
   runs first. Rerun `release-tag.yml` on main with `main_ci_run` set to the
   successful main-push CI run of the merged release PR. It verifies that evidence
