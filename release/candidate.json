@@ -3,8 +3,8 @@
   "repository": "Midtown-Technology-Group/bifrost",
   "version": "v3.1.0",
   "base_tag": "v3.0.0",
-  "source_commit": "4ab290a8c8b1c1fdd8fbe734cab0a1c7e1b4f874",
-  "source_tree": "abe9c0bda7529997bebc1a895f72db8a52a77c49",
+  "source_commit": "de34e07d638706506e23cce6f855beebb91532e8",
+  "source_tree": "ec9fe4ca6412a654590b032b7f87368b1beb2b19",
   "contract_floor": null,
   "pull_requests": [
     {
@@ -634,6 +634,335 @@
       "title": "Cover Codex Gateway /v1/responses runtime with fake-upstream tests",
       "labels": [],
       "merge_commit": "4ab290a8c8b1c1fdd8fbe734cab0a1c7e1b4f874",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1078,
+      "title": "chore(release): v3.1.0",
+      "labels": [],
+      "merge_commit": "4dce02e6f13b0cb4f0660f5621a36a74a1bf43d8",
+      "author": "github-actions[bot]"
+    },
+    {
+      "number": 1296,
+      "title": "Report safe invariant reasons for refused Live handoffs",
+      "labels": [],
+      "merge_commit": "019323f5e394b63f2aee0e56ab09a418629bd6f6",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 996,
+      "title": "fix(ci): retry candidate attestation persist after transient API rate limits",
+      "labels": [],
+      "merge_commit": "f09d9f7fff77fa7b89a15abb9badec277889c0aa",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 961,
+      "title": "Fix post-deploy accountability diagnostics and cover reconciliation (MIDT-166)",
+      "labels": [],
+      "merge_commit": "c79e58b8cd76f4efaf86166e6537df0e3daff3a4",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1032,
+      "title": "Resolve integration context in MCP create_event_source",
+      "labels": [],
+      "merge_commit": "ae140ce667de363cb1fcb5ba22c7f755f0b270d2",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1033,
+      "title": "MIDT-180: Add PKCE support to third-party integration OAuth flows",
+      "labels": [],
+      "merge_commit": "a34ca5b2a43aef74395afb412d730accdb5c1cd7",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1137,
+      "title": "Run native Atheris targets through the maintained fuzz compiler",
+      "labels": [],
+      "merge_commit": "9925626f255937033a938a4dc9df9e0829622dc6",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1227,
+      "title": "security: bound public form attribution names",
+      "labels": [],
+      "merge_commit": "81c95a2b293fa6537688d04e27ee5437f778c668",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1297,
+      "title": "perf: eliminate resolver scans and reuse Solution publication transport",
+      "labels": [],
+      "merge_commit": "0566748e02abab5d1a5f202108a44990d450580f",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1299,
+      "title": "Fix source-app npm peer resolver toolchain",
+      "labels": [],
+      "merge_commit": "58733ebd42b1a27c934901057cde3baa2611be1b",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1298,
+      "title": "Reconcile terminal job notifications after isolated runner exit",
+      "labels": [],
+      "merge_commit": "628ffb6889ae95600b9e1406b8af014425e80257",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1160,
+      "title": "Expose bounded managed-worker identity ownership operations",
+      "labels": [],
+      "merge_commit": "fddfaa8ea66fd5560a2b3644cc74af779ae51b28",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1073,
+      "title": "Authorize finite device peer lighthouse leases through shared jobs",
+      "labels": [],
+      "merge_commit": "e88434a7d4f0151f2e2dbaf8e5da4ef8ef5a79b8",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1309,
+      "title": "Isolate accounting convergence tests from automatic maintenance",
+      "labels": [],
+      "merge_commit": "050b26effd221fd9e608d91a84ce3f919b98a625",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1219,
+      "title": "fix(security): isolate client tests from optional secrets",
+      "labels": [],
+      "merge_commit": "a6a191216c8aaefdca1948d2a7e2d692433723fe",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1300,
+      "title": "Mark service component props readonly",
+      "labels": [],
+      "merge_commit": "21518619cab2b8273cc78115d76f65abe705fa85",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1303,
+      "title": "Isolate expected form-upload test failures",
+      "labels": [],
+      "merge_commit": "f9bc7a07b1449b6ed95cebcec8075f042c30dd5a",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1305,
+      "title": "Mark platform job panel props readonly",
+      "labels": [],
+      "merge_commit": "665d669776f79b96c4accf6f7e743374b868b1a3",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1306,
+      "title": "Mark scheduler replica component props readonly",
+      "labels": [],
+      "merge_commit": "fdebdffbe737d6825fdd29f2743f4eb5ca4491dd",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1302,
+      "title": "Isolate expected Azure blob lifecycle failures",
+      "labels": [],
+      "merge_commit": "e42999395231ebc536711e5015422edfb75613a7",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1239,
+      "title": "fix(events): accept canonical global scope",
+      "labels": [],
+      "merge_commit": "7a03528c7ed6baa7a6635f94337447fdad73ffce",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1240,
+      "title": "fix(workspace): preview repairs for invalid Python",
+      "labels": [],
+      "merge_commit": "5085cc467ffb1ed35de9c9ca48890ab0d929e1d0",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1171,
+      "title": "security: refresh WebSocket policy roles",
+      "labels": [],
+      "merge_commit": "82502d08a0802613ae065a5987cc5e9f05e2f3f8",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1173,
+      "title": "security: scope execution log identifiers",
+      "labels": [],
+      "merge_commit": "a7be88ba22ddcd91aa3533c1c190d58008d5f26f",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1151,
+      "title": "Keep password-login tokens out of project env files",
+      "labels": [],
+      "merge_commit": "e25096b9db0b45006bfda7c9752f886f95ac1808",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1176,
+      "title": "security: enforce workflow tool catalog access",
+      "labels": [],
+      "merge_commit": "1a20f90e26f7a9c77f08ac6e1575488a149ae04e",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1161,
+      "title": "Revoke browser refresh sessions on logout",
+      "labels": [],
+      "merge_commit": "067a308a3cb1490e509d6491625c43d6c4562560",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1345,
+      "title": "fix(manifest): preserve explicit workflow cache TTL",
+      "labels": [],
+      "merge_commit": "3cae906e1074fde7270b2cd4c60da33cf2dadd8a",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1259,
+      "title": "Keep local runs detached from workflow IDs",
+      "labels": [],
+      "merge_commit": "e894a7e24d496bf9fd4e815a68d7a8e88f832d05",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1120,
+      "title": "perf: compile byte-identical delivery baselines once",
+      "labels": [],
+      "merge_commit": "fb8278ea82446573f9e3422f5557f2a6d3758aa2",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1256,
+      "title": "Bound MCP agent token overrides",
+      "labels": [],
+      "merge_commit": "7fa2f62cc9926f6f720d739c0dee415b3828df0b",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1314,
+      "title": "security: enforce application access on logo reads",
+      "labels": [],
+      "merge_commit": "557613f26ed97644635a7f537f2bb4808a26b509",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1315,
+      "title": "security: bind integration OAuth callback state",
+      "labels": [],
+      "merge_commit": "d60cf2decdff57582e032c5aa446741ad537333a",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1274,
+      "title": "security: restore SDK fetch scan visibility",
+      "labels": [],
+      "merge_commit": "54062b5da13926b2071bf5edcd1ac716a6e025b5",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1264,
+      "title": "Reject targetless manifest event subscriptions",
+      "labels": [],
+      "merge_commit": "283c2e68ea68d16e57dd15875ec22ed7ae5b2894",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1324,
+      "title": "security: recheck queued app publish authority",
+      "labels": [],
+      "merge_commit": "c3176cf176df8b8bc90aa928dbeacf0161da1aee",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1350,
+      "title": "fix: qualify handoff release and retain runtime coverage failures",
+      "labels": [],
+      "merge_commit": "0521ef47eacb13c7f211c8033a0393574433b5d1",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1182,
+      "title": "fix: scope agent workflow tool grants",
+      "labels": [],
+      "merge_commit": "59bbfc48177fba866629182324b87c89ccaea25e",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1353,
+      "title": "Security: close Sonar new-code analysis boundaries",
+      "labels": [],
+      "merge_commit": "284966103eb2251d81a55c440ebe2c835ee88a6c",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1333,
+      "title": "security: enforce agent run timeout cap",
+      "labels": [],
+      "merge_commit": "fb0a3ff518e311047d9a6e1748a2f9c5bc172117",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1355,
+      "title": "fix(ci): retire timed-out native queue attempts safely",
+      "labels": [],
+      "merge_commit": "f0aa3d9f398a3ad3e164965bb002b54134a3c27c",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1140,
+      "title": "Serve the locked Monaco editor and workers from the application",
+      "labels": [],
+      "merge_commit": "ed59ba9c3b552387d511fa4aebbff5be50e82e9e",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1349,
+      "title": "feat: add source-grounded platform architecture atlas and maintenance hooks",
+      "labels": [],
+      "merge_commit": "0483d7461d83e37f73571a48086cf0c7455c4ce4",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1337,
+      "title": "security: parse GitHub Action pins as YAML",
+      "labels": [],
+      "merge_commit": "dc55cf02f14caac26844f91227d674f2cb91cf48",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1360,
+      "title": "fix: validate retained handoff bundles through their preflight receipt",
+      "labels": [],
+      "merge_commit": "010e376010a52420e1865d00bf67806a30eb7b33",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1362,
+      "title": "Make solution package ZIP metadata portable across hosts",
+      "labels": [],
+      "merge_commit": "614efe23aeeb8e6386fab650e8497eb889d2a585",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1363,
+      "title": "Recover release preparation after a failed unpublished candidate",
+      "labels": [],
+      "merge_commit": "de34e07d638706506e23cce6f855beebb91532e8",
       "author": "MTG-Thomas"
     }
   ]
