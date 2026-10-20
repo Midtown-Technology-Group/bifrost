@@ -15,6 +15,11 @@ different credentials. Duplicate credentials stored in distinct integration rows
 are not coordinated. This is cooperative admission for participating clients,
 not a sandbox for arbitrary vendor effects or a guarantee about external clients.
 
+Attempt-fenced engine tokens use `engine_execution_id` for admission ownership.
+Legacy direct-engine tokens instead carry a signed `engine_legacy_execution_id`:
+this prevents concurrent legacy executions from sharing the system-user principal
+without misrepresenting them as durable attempts that hold an attempt lease.
+
 Acquisition is atomic and uses Redis time. Tokens belong to the authenticated
 principal and expire after 60 seconds. Each authenticated execution or bypass
 principal may hold only one live token for an integration, while distinct

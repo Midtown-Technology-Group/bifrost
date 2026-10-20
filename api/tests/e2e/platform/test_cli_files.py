@@ -6,14 +6,14 @@ authenticate via engine credentials and round-trip a file.
 
 Tests run inside the ``test-runner`` container, which is built from the
 same ``api/Dockerfile.dev`` as the worker, so the ``/usr/local/bin/bifrost``
-shim is on PATH here just like in the worker. We seed engine credentials
-by calling :func:`src.core.security.authenticate_engine` directly (the
+shim is on PATH here just like in the worker. We seed process-scoped engine
+credentials by calling :func:`src.core.security.authenticate_engine` directly (the
 worker invokes the same function at the start of every execution — see
 ``api/src/services/execution/worker.py``), then exercise the shipped
 ``bifrost`` binary via :mod:`subprocess`. This proves:
 
 1. The shim is on PATH in the image.
-2. ``bifrost`` picks up ``~/.bifrost/credentials.json`` automatically.
+2. ``bifrost`` inherits the worker's process credentials automatically.
 3. The CLI hits the real ``http://api:8000`` and round-trips workspace files.
 
 The test_cli_*.py siblings (agents, tables, configs, ...) exercise the
@@ -48,35 +48,30 @@ def _grant_workspace_e2e_policy(e2e_client, platform_admin):
 
 
 @pytest.fixture
-def engine_creds():
-    """Populate ``~/.bifrost/credentials.json`` with an engine token.
+def engine_creds(monkeypatch):
+    """Install a process-scoped engine token.
 
     Mirrors what ``_run_execution`` does at the top of every workflow
     invocation in the worker (`api/src/services/execution/worker.py:134`).
     Without this, the CLI has nothing to authenticate with.
 
-    Cleans up on teardown so other e2e tests that rely on "no credentials
-    present" semantics (e.g. ``test_sdk_from_workflow``) aren't poisoned by
-    a leftover credentials file from this module.
+    The monkeypatch fixture restores the original environment so other e2e
+    tests that rely on "no credentials present" semantics aren't poisoned.
     """
-    from bifrost.credentials import get_credentials_path
     from src.core.security import authenticate_engine
 
-    authenticate_engine()
-    try:
-        yield
-    finally:
-        path = get_credentials_path()
-        if path.exists():
-            path.unlink()
+    monkeypatch.setenv("BIFROST_API_URL", "http://api:8000")
+    monkeypatch.delenv("BIFROST_ACCESS_TOKEN", raising=False)
+    monkeypatch.delenv("BIFROST_REFRESH_TOKEN", raising=False)
+    authenticate_engine(str(uuid.uuid4()))
+    yield
 
 
 def _run_bifrost(args: list[str]) -> subprocess.CompletedProcess[str]:
     """Invoke the shipped ``bifrost`` binary via :mod:`subprocess`.
 
-    Sets ``BIFROST_API_URL`` so the CLI's credential resolver points at
-    the in-network test API. ``authenticate_engine`` writes the same URL
-    into the credentials file, so the SDK matches the right record.
+    The explicit URL keeps this subprocess pointed at the in-network test API;
+    the process-scoped tokens installed by ``authenticate_engine`` are inherited.
     """
     env = {**os.environ, "BIFROST_API_URL": "http://api:8000"}  # NOSONAR - in-network Docker test API
     try:

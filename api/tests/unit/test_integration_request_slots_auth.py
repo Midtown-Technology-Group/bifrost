@@ -115,3 +115,34 @@ async def test_distinct_executions_have_distinct_principals(monkeypatch):
     results = [await cli._request_slot_integration(request, user, AsyncMock()) for user in users]
     assert results[0][3] != results[1][3]
     assert results[0][2] != results[1][2]
+
+
+@pytest.mark.asyncio
+async def test_legacy_engine_uses_signed_execution_principal(monkeypatch):
+    from src.repositories import integrations
+    repo = AsyncMock()
+    repo.get_request_slot_policy.return_value = (uuid4(), 2)
+    monkeypatch.setattr(integrations, "IntegrationsRepository", lambda db: repo)
+    monkeypatch.setattr(cli, "_is_external_user_db", AsyncMock(return_value=False))
+    shared_user_id = uuid4()
+    request = SDKIntegrationRequestSlotRequest(name="Example", token=uuid4())
+    users = [
+        UserPrincipal(
+            user_id=shared_user_id,
+            email="engine@example.test",
+            organization_id=None,
+            is_superuser=True,
+            is_engine_token=True,
+            engine_legacy_execution_id=uuid4(),
+        )
+        for _ in range(2)
+    ]
+
+    results = [
+        await cli._request_slot_integration(request, user, AsyncMock())
+        for user in users
+    ]
+
+    assert results[0][3] != results[1][3]
+    assert results[0][3] != str(shared_user_id)
+    assert results[1][3] != str(shared_user_id)

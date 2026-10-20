@@ -133,7 +133,10 @@ async def test_optional_user_rejects_actor_scoped_rest_token(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("claim", ["engine_execution_id", "engine_attempt_token"])
+@pytest.mark.parametrize(
+    "claim",
+    ["engine_execution_id", "engine_attempt_token", "engine_legacy_execution_id"],
+)
 async def test_optional_user_rejects_malformed_engine_uuid_claim(monkeypatch, claim):
     monkeypatch.setattr(
         auth,
@@ -145,6 +148,53 @@ async def test_optional_user_rejects_malformed_engine_uuid_claim(monkeypatch, cl
         await auth.get_current_user_optional(
             _request(),
             _credentials("engine-token"),
+            object(),
+        )
+        is None
+    )
+
+
+@pytest.mark.asyncio
+async def test_optional_user_accepts_signed_legacy_engine_execution(monkeypatch):
+    execution_id = uuid4()
+    monkeypatch.setattr(
+        auth,
+        "decode_token",
+        lambda token, *, expected_type: _payload(
+            org_id=None,
+            is_superuser=True,
+            engine=True,
+            engine_legacy_execution_id=str(execution_id),
+        ),
+    )
+
+    user = await auth.get_current_user_optional(
+        _request(),
+        _credentials("legacy-engine-token"),
+        object(),
+    )
+
+    assert user is not None
+    assert user.is_engine_token is True
+    assert user.engine_legacy_execution_id == execution_id
+
+
+@pytest.mark.asyncio
+async def test_optional_user_rejects_legacy_execution_claim_on_non_engine_token(
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        auth,
+        "decode_token",
+        lambda token, *, expected_type: _payload(
+            engine_legacy_execution_id=str(uuid4()),
+        ),
+    )
+
+    assert (
+        await auth.get_current_user_optional(
+            _request(),
+            _credentials("user-token"),
             object(),
         )
         is None

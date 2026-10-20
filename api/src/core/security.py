@@ -682,7 +682,7 @@ def mint_engine_token(
     return token, expires_at.isoformat()
 
 
-def authenticate_engine() -> None:
+def authenticate_engine(execution_id: str) -> None:
     """
     Create/refresh engine credentials for SDK calls in worker processes.
 
@@ -692,12 +692,18 @@ def authenticate_engine() -> None:
     consumer should always carry context_data["engine_token"] from
     mint_engine_token() instead.
 
-    The SDK's get_client() will find these credentials automatically, making
-    the worker behave identically to CLI mode but with superuser privileges.
+    The legacy execution ID is deliberately not emitted as
+    ``engine_execution_id``: that claim denotes a durable execution attempt
+    and requires an ``engine_attempt_token``. The separate signed claim keeps
+    request-slot admission execution-scoped without bypassing that fence.
+
+    Credentials stay in the worker process environment. Persisting them would
+    let concurrent legacy workers overwrite one another's execution identity.
+    Child CLI processes inherit the environment automatically.
     """
     import os
 
-    from bifrost.credentials import save_credentials
+    from bifrost.credentials import save_ephemeral_credentials
 
     # Create a long-lived superuser token (30 days)
     # is_superuser=True with no org_id = system account with global access
@@ -707,6 +713,7 @@ def authenticate_engine() -> None:
         "name": "Bifrost Engine",
         "is_superuser": True,
         "engine": True,
+        "engine_legacy_execution_id": execution_id,
     }
 
     token = create_access_token(
@@ -717,13 +724,9 @@ def authenticate_engine() -> None:
     # Get API URL for internal communication
     api_url = os.getenv("BIFROST_API_URL", "http://api:8000")
 
-    # Calculate expiration timestamp
-    expires_at = datetime.now(timezone.utc) + timedelta(days=30)
-
-    # Save to credentials file - SDK will find this automatically
-    save_credentials(
+    os.environ["BIFROST_API_URL"] = api_url
+    save_ephemeral_credentials(
         api_url=api_url,
         access_token=token,
         refresh_token=token,  # Not used but required by schema
-        expires_at=expires_at.isoformat(),
     )

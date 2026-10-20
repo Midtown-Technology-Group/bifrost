@@ -204,7 +204,6 @@ async def _run_execution(execution_id: str, context_data: dict[str, Any]) -> dic
     from src.sdk.context import Caller, Organization
     from src.services.execution.engine import ExecutionRequest, execute
     from src.models.enums import ExecutionStatus
-    from bifrost.credentials import is_token_expired
 
     service_cfg = context_data.get("service")
     if service_cfg:
@@ -215,11 +214,10 @@ async def _run_execution(execution_id: str, context_data: dict[str, Any]) -> dic
     # the child process entirely.
     # Fall back to authenticate_engine() only for callers (e.g. direct engine
     # tests) that bypass the consumer and do not supply a pre-minted token.
-    if not _set_process_engine_credentials(context_data) and is_token_expired(
-        buffer_seconds=3600
-    ):
+    if not _set_process_engine_credentials(context_data):
         from src.core.security import authenticate_engine
-        authenticate_engine()
+
+        authenticate_engine(execution_id)
 
     start_time = datetime.now(timezone.utc)
 

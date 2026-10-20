@@ -761,7 +761,11 @@ async def _request_slot_integration(
     from src.repositories.integrations import IntegrationsRepository
     from shared.scope_resolver import has_scope_bypass
 
-    is_execution = bool(current_user.engine_execution_id and not current_user.embed)
+    execution_id = (
+        current_user.engine_execution_id
+        or current_user.engine_legacy_execution_id
+    )
+    is_execution = bool(execution_id and not current_user.embed)
     is_bypass = has_scope_bypass(
         is_platform_admin=current_user.is_platform_admin,
         is_provider_org=current_user.is_provider_org,
@@ -780,7 +784,7 @@ async def _request_slot_integration(
         if request.solution and await _connection_is_declared(db, str(request.solution), request.name):
             raise HTTPException(status_code=424, detail="Declared integration is not configured")
         raise HTTPException(status_code=404, detail="Integration not found")
-    principal = str(current_user.engine_execution_id or current_user.user_id)
+    principal = str(execution_id or current_user.user_id)
     owner = f"{principal}:{request.token}"
     return policy[0], policy[1], owner, principal
 
