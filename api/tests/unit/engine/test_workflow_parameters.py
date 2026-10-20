@@ -416,6 +416,66 @@ class TestWorkflowVariableCapture:
         assert captured["captured_marker"] == "available on success"
         assert "return" in caller_events
 
+    @pytest.mark.asyncio
+    async def test_chained_trace_advances_and_stops_each_local_hook(
+        self,
+        mock_context,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Exercise trace composition directly because trace callbacks are not traced."""
+        caller_events: list[str] = []
+
+        def caller_local_trace(_frame, event, _arg):
+            caller_events.append(event)
+            if event == "disable":
+                return None
+            return caller_local_trace
+
+        def caller_trace(_frame, event, _arg):
+            caller_events.append(event)
+            if event == "disable":
+                return None
+            return caller_local_trace
+
+        trace_updates = []
+        monkeypatch.setattr(sys, "gettrace", lambda: caller_trace)
+        monkeypatch.setattr(sys, "settrace", trace_updates.append)
+
+        @workflow(name="direct_trace_chain", description="Exercise trace composition")
+        async def traced_success():
+            return "completed"
+
+        result, captured, _ = await _execute_workflow_with_trace(
+            traced_success, mock_context, {}
+        )
+
+        chained_trace = trace_updates[0]
+        unrelated_frame = sys._getframe()
+        assert chained_trace(unrelated_frame, "disable", None) is None
+
+        caller_only_trace = chained_trace(unrelated_frame, "call", None)
+        assert caller_only_trace is not None
+        assert caller_only_trace(unrelated_frame, "disable", None) is None
+
+        def traced_success():
+            direct_marker = "captured by direct trace invocation"
+            return sys._getframe(), direct_marker
+
+        workflow_frame, _ = traced_success()
+
+        capture_only_trace = chained_trace(workflow_frame, "disable", None)
+        assert capture_only_trace is not None
+        assert capture_only_trace(workflow_frame, "return", None) is not None
+
+        combined_trace = chained_trace(workflow_frame, "call", None)
+        assert combined_trace is not None
+        assert combined_trace(workflow_frame, "return", None) is not None
+
+        assert result == "completed"
+        assert captured["direct_marker"] == "captured by direct trace invocation"
+        assert trace_updates[-1] is caller_trace
+        assert "return" in caller_events
+
 
 class TestContextParameterDetection:
     """Test detection of context parameter in function signatures"""
