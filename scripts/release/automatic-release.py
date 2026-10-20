@@ -304,10 +304,65 @@ def markdown(value: str) -> str:
     )
 
 
-def prepare(source: str, prs: list[dict]) -> dict | None:
+def supersede_unpublished(
+    source: str, prs: list[dict], number: int, run_id: int
+) -> dict:
+    """Replace only a failed, untagged candidate through a fresh release PR."""
+    checked_main_ci(source, run_id)
+    ordered = git("rev-list", "--first-parent", source).splitlines()
+    releases = [
+        pr for pr in prs
+        if pr.get("merged_at") and pr.get("head", {}).get("ref") == BRANCH
+        and pr.get("base", {}).get("ref") == "main"
+        and pr.get("merge_commit_sha") in ordered
+    ]
+    if not releases:
+        raise ReleaseError("no merged release candidate to supersede")
+    previous = min(releases, key=lambda pr: ordered.index(pr["merge_commit_sha"]))
+    if previous["number"] != number:
+        raise ReleaseError("supersession must name the latest merged release PR")
+    merged = previous["merge_commit_sha"]
+    candidate = blob(source, CANDIDATE)
+    if candidate != blob(merged, CANDIDATE):
+        raise ReleaseError("retained candidate differs from the named release PR")
+    version = candidate["version"]
+    refs = array_pages(f"git/matching-refs/tags/{version}")
+    if any(ref.get("ref") == f"refs/tags/{version}" for ref in refs):
+        raise ReleaseError("a tagged candidate cannot be superseded; never move tags")
+    if any(item.get("tag_name") == version for item in array_pages("releases?per_page=100")):
+        raise ReleaseError("a candidate with a GitHub Release cannot be superseded")
+    runs = array_pages(
+        f"actions/workflows/ci.yml/runs?head_sha={merged}&event=push&per_page=100",
+        "workflow_runs",
+    )
+    trusted = [run for run in runs if run.get("head_sha") == merged
+               and run.get("head_branch") == "main" and run.get("event") == "push"
+               and run.get("path") == ".github/workflows/ci.yml"
+               and run.get("head_repository", {}).get("full_name") == REPOSITORY]
+    if not trusted:
+        raise ReleaseError("original candidate has no exact main CI evidence")
+    failed = max(trusted, key=lambda run: run["id"])
+    if failed.get("status") != "completed" or failed.get("conclusion") != "failure":
+        raise ReleaseError("original candidate must have terminal failed main CI")
+    return {"pr": number, "source": merged, "version": version,
+            "failed_ci": failed["id"], "replacement_ci": run_id}
+
+
+def prepare(
+    source: str, prs: list[dict], *, supersede_pr: int | None = None,
+    source_ci_run: int | None = None,
+) -> dict | None:
     if git("rev-parse", "HEAD") != source or git("status", "--porcelain"):
         raise ReleaseError("prepare requires a clean checkout of its exact source")
-    if pending_release(source, prs):
+    if (supersede_pr is None) != (source_ci_run is None):
+        raise ReleaseError("supersession requires both release PR and exact main CI run")
+    pending = pending_release(source, prs)
+    superseded = None
+    if supersede_pr is not None:
+        if not pending or source_ci_run is None:
+            raise ReleaseError("supersession requires an unpublished pending candidate")
+        superseded = supersede_unpublished(source, prs, supersede_pr, source_ci_run)
+    elif pending:
         return None
     candidate = calculate(source, prs)
     if candidate is None:
@@ -369,11 +424,22 @@ def prepare(source: str, prs: list[dict]) -> dict | None:
         "Publishing packages does not deploy the MTG production runtime.",
         "",
     ]
+    if superseded:
+        notes += [
+            "## Superseded unpublished candidate", "",
+            f"Replaces #{superseded['pr']} at `{superseded['source']}` "
+            f"({superseded['version']}); no tag or GitHub Release existed at preparation.",
+            f"Original failed main CI: {superseded['failed_ci']}. "
+            f"Replacement source main CI: {superseded['replacement_ci']}.",
+            "The original failure remains recorded. This candidate requires fresh exact-head "
+            "review, queue checks, main CI and signed stable packaging.", "",
+        ]
     Path(NOTES).write_text("\n".join(notes))
     return candidate
 
 
-def checked_release(source: str, run_id: int, prs: list[dict]) -> dict:
+def checked_main_ci(source: str, run_id: int) -> None:
+    """Require the exact completed trusted main-push CI, including all its gates."""
     run = api(f"actions/runs/{run_id}")
     if not isinstance(run, dict) or any(
         (
@@ -390,6 +456,10 @@ def checked_release(source: str, run_id: int, prs: list[dict]) -> dict:
             "publication needs successful CI on the exact trusted main push"
         )
     git("merge-base", "--is-ancestor", source, "origin/main")
+
+
+def checked_release(source: str, run_id: int, prs: list[dict]) -> dict:
+    checked_main_ci(source, run_id)
     matches = [
         pr
         for pr in prs
@@ -530,12 +600,18 @@ def main() -> int:
     parser.add_argument("action", choices=("version", "prepare", "validate", "publish"))
     parser.add_argument("--source", default="HEAD")
     parser.add_argument("--run-id", type=int)
+    parser.add_argument("--supersede-unpublished-pr", type=int)
+    parser.add_argument("--source-ci-run", type=int)
     parser.add_argument("--base")
     parser.add_argument(
         "--default", choices=("patch", "minor", "major"), default="patch"
     )
     args = parser.parse_args()
     try:
+        if args.action != "prepare" and (
+            args.supersede_unpublished_pr is not None or args.source_ci_run is not None
+        ):
+            raise ReleaseError("supersession is limited to release PR preparation")
         source_ref = checked_source_ref(args.source)
         source = git("rev-parse", "--verify", "--end-of-options", f"{source_ref}^{{commit}}")
         prs = merged_prs()
@@ -547,7 +623,10 @@ def main() -> int:
                 return 3
             print(candidate["version"])
         elif args.action == "prepare":
-            candidate = prepare(source, prs)
+            candidate = prepare(
+                source, prs, supersede_pr=args.supersede_unpublished_pr,
+                source_ci_run=args.source_ci_run,
+            )
             if candidate:
                 output = os.environ.get("GITHUB_OUTPUT")
                 if output:

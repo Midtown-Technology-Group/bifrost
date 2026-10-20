@@ -92,6 +92,18 @@ which upstream tag or commit range the MTG release incorporated.
 - **Stale preparation or unpublished candidate:** rerun `release-draft.yml` on
   main, then review the refreshed PR. A merged but unpublished release pauses
   further release preparation so its original candidate cannot be overwritten.
+- **Failed, untagged merged candidate superseded by repaired source:** once the
+  replacement main source passes its exact main-push CI, manually dispatch
+  `release-draft.yml` with `supersede_unpublished_pr` naming the latest merged
+  release PR and `source_ci_run` naming that successful replacement CI run.
+  Preparation refuses a stale/wrong PR, any existing exact tag or GitHub Release
+  (including a draft), and an original candidate without terminal failed main CI.
+  It recalculates the complete release interval and records both CI receipts in
+  the new release notes. Automatic pushes retain the ordinary pending-candidate
+  guard. The new signed release PR still needs human approval of its exact head,
+  normal administrator queue admission, fresh main CI and stable packaging.
+  Supersession never moves a tag, changes a published release or waives the
+  original failure; it prepares a different reviewed source candidate.
 - **Tag creation or dispatch failed:** inspect the tag's peeled SHA and exact CI
   runs first. Rerun `release-tag.yml` on main with `main_ci_run` set to the
   successful main-push CI run of the merged release PR. It verifies that evidence
