@@ -428,11 +428,11 @@ def prepare(
         notes += [
             "## Superseded unpublished candidate", "",
             f"Replaces #{superseded['pr']} at `{superseded['source']}` "
-            f"({superseded['version']}); no tag or GitHub Release existed at preparation.",
+            + f"({superseded['version']}); no tag or GitHub Release existed at preparation.",
             f"Original failed main CI: {superseded['failed_ci']}. "
-            f"Replacement source main CI: {superseded['replacement_ci']}.",
+            + f"Replacement source main CI: {superseded['replacement_ci']}.",
             "The original failure remains recorded. This candidate requires fresh exact-head "
-            "review, queue checks, main CI and signed stable packaging.", "",
+            + "review, queue checks, main CI and signed stable packaging.", "",
         ]
     Path(NOTES).write_text("\n".join(notes))
     return candidate
@@ -510,6 +510,34 @@ def checked_release(source: str, run_id: int, prs: list[dict]) -> dict:
     return validate_candidate(source, prs)
 
 
+def reject_superseded_source(source: str) -> None:
+    """The latest merged release PR on main durably owns publication.
+
+    Read fresh main and PR inventory, not the historical CI run's checkout.
+    Ordinary main merges do not supersede a candidate. A later merged release
+    PR does, even while its own CI or packaging is still pending.
+    """
+    git("fetch", "origin", "main")
+    ordered = git("rev-list", "--first-parent", "origin/main").splitlines()
+    releases = [
+        pr for pr in merged_prs()
+        if pr.get("merged_at") and pr.get("head", {}).get("ref") == BRANCH
+        and pr.get("head", {}).get("repo", {}).get("full_name") == REPOSITORY
+        and pr.get("base", {}).get("ref") == "main"
+        and pr.get("merge_commit_sha") in ordered
+    ]
+    if not releases:
+        raise ReleaseError("cannot establish the current merged release candidate")
+    current = min(releases, key=lambda pr: ordered.index(pr["merge_commit_sha"]))
+    if current["merge_commit_sha"] != source:
+        raise ReleaseError(
+            f"release source is superseded by merged release PR #{current['number']}"
+        )
+    # Refuse inconsistent retained metadata rather than treating it as absent.
+    if blob("origin/main", CANDIDATE) != blob(source, CANDIDATE):
+        raise ReleaseError("current main candidate differs from its merged release PR")
+
+
 def publish(source: str, run_id: int, prs: list[dict]) -> None:
     if not any(
         pr.get("merged_at")
@@ -521,6 +549,7 @@ def publish(source: str, run_id: int, prs: list[dict]) -> None:
         return
     candidate = checked_release(source, run_id, prs)
     version = candidate["version"]
+    reject_superseded_source(source)
     # Fetch full ref inventory before creating: a failed read cannot mean absent.
     refs = array_pages("git/matching-refs/tags/v")
     matches = [ref for ref in refs if ref.get("ref") == f"refs/tags/{version}"]
@@ -583,6 +612,7 @@ def publish(source: str, run_id: int, prs: list[dict]) -> None:
             + ", ".join(str(run["id"]) for run in tag_runs)
         )
         return
+    reject_superseded_source(source)
     api("actions/workflows/ci.yml/dispatches", fields={"ref": version})
     print(
         f"{version}: exact tag created/read back and packaging dispatched; verify its CI and immutable release"

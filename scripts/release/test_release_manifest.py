@@ -467,6 +467,47 @@ class UnpublishedCandidateRecoveryTests(unittest.TestCase):
     def recover(self):
         return self.release.supersede_unpublished(self.source, self.prs, 1078, 100)
 
+    def publication_prs(self):
+        old = dict(self.prs[0], head={"ref": self.release.BRANCH,
+                                   "repo": {"full_name": self.release.REPOSITORY}})
+        new = dict(old, number=1200, merge_commit_sha=self.source)
+        return [old, new]
+
+    def test_old_successful_ci_rerun_cannot_create_tag_or_dispatch_packaging(self):
+        with patch.object(self.release, "checked_release", return_value=self.candidate), \
+             patch.object(self.release, "merged_prs", return_value=self.publication_prs()), \
+             patch.object(self.release, "api") as api:
+            with self.assertRaisesRegex(self.release.ReleaseError, "superseded"):
+                self.release.publish(self.previous, 101, self.prs)
+            api.assert_not_called()
+
+    def test_current_candidate_rerun_survives_ordinary_main_merges(self):
+        # The source mock's first-parent history includes an ordinary newer main
+        # merge, but the latest release PR is still the original candidate.
+        with patch.object(self.release, "merged_prs", return_value=self.publication_prs()[:1]):
+            self.release.reject_superseded_source(self.previous)
+
+    def test_fresh_main_read_failure_cannot_create_tag_or_dispatch(self):
+        with patch.object(self.release, "checked_release", return_value=self.candidate), \
+             patch.object(self.release, "git", side_effect=self.release.ReleaseError("fetch failed")), \
+             patch.object(self.release, "api") as api:
+            with self.assertRaisesRegex(self.release.ReleaseError, "fetch failed"):
+                self.release.publish(self.previous, 101, self.prs)
+            api.assert_not_called()
+
+    def test_replacement_candidate_can_publish_after_supersession(self):
+        with patch.object(self.release, "merged_prs", return_value=self.publication_prs()):
+            self.release.reject_superseded_source(self.source)
+
+    def test_missing_release_inventory_and_changed_main_candidate_fail_closed(self):
+        with patch.object(self.release, "merged_prs", return_value=[]), \
+             self.assertRaisesRegex(self.release.ReleaseError, "cannot establish"):
+            self.release.reject_superseded_source(self.previous)
+        with patch.object(self.release, "merged_prs", return_value=self.publication_prs()), \
+             patch.object(self.release, "blob", side_effect=[{"version": "v3.2.0"}, self.candidate]), \
+             self.assertRaisesRegex(self.release.ReleaseError, "differs"):
+            self.release.reject_superseded_source(self.source)
+
     def test_retains_old_failure_and_new_exact_ci_receipts(self):
         proof = self.recover()
         self.assertEqual(proof, {"pr": 1078, "source": self.previous,
