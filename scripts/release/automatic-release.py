@@ -20,6 +20,7 @@ from urllib.parse import quote
 REPOSITORY = "Midtown-Technology-Group/bifrost"
 BRANCH = "automation/release"
 MAIN_REF = "origin/main"
+CI_WORKFLOW_PATH = ".github/workflows/ci.yml"
 RELEASES_API = "releases?per_page=100"
 SAME_TREE_EVIDENCE = "same_tree_ci"
 CANDIDATE = "release/candidate.json"
@@ -335,7 +336,7 @@ def checked_same_tree_pr_ci(source: str, run_id: int, number: int) -> dict:
         run.get("head_sha") != head.get("sha"),
         run.get("head_branch") != head.get("ref"),
         run.get("event") != "pull_request", run.get("status") != "completed",
-        run.get("conclusion") != "success", run.get("path") != ".github/workflows/ci.yml",
+        run.get("conclusion") != "success", run.get("path") != CI_WORKFLOW_PATH,
         run.get("head_repository", {}).get("full_name") != REPOSITORY,
     )):
         raise ReleaseError("same-tree evidence needs the exact merged fork PR and successful trusted CI")
@@ -433,7 +434,7 @@ def supersede_unpublished(
     )
     trusted = [run for run in runs if run.get("head_sha") == merged
                and run.get("head_branch") == "main" and run.get("event") == "push"
-               and run.get("path") == ".github/workflows/ci.yml"
+               and run.get("path") == CI_WORKFLOW_PATH
                and run.get("head_repository", {}).get("full_name") == REPOSITORY]
     if not trusted:
         raise ReleaseError("original candidate has no exact main CI evidence")
@@ -574,7 +575,7 @@ def checked_main_ci(source: str, run_id: int) -> None:
             run.get("event") != "push",
             run.get("conclusion") != "success",
             run.get("status") != "completed",
-            run.get("path") != ".github/workflows/ci.yml",
+            run.get("path") != CI_WORKFLOW_PATH,
             run.get("head_repository", {}).get("full_name") != REPOSITORY,
         )
     ):
