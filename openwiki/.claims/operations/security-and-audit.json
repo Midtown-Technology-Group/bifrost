@@ -1,0 +1,100 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:2ba274941dfe700569553cea72786cf2d1411b82abf7e022ec8ce7f4f117a428",
+  "claims": [
+    {
+      "id": "claim_b2010b4389154a5a97e3686161394064",
+      "statement": "The route body middleware limits explicitly selected HTTP method/path requests and rejects oversized declared or streamed bodies with HTTP 413.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/core/request_body_limit.py#L21-L45",
+          "version": "repo-lines-v1:sha256:04af963f014650394dfb89ac3face7cab91f4a75b13663365b85b56e727a2979:eyJzZWxlY3RlZExpbmVDb3VudCI6MjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjEwMTBlNTk1YTQ5OGFiNDUwY2QwZmU0OTkzZTc3NzgyNzFhMDA1MDg0MDk3YzVkNGY0MzkxNTFkNWFlMzFhOWMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVlN2JjZDM2ZWY1M2I0NDUyM2U2NWU5OGQxOTQ0OTkzZTBmZjE3NDZmNTUzNmMxYTUxMTc0NmYzZTAxZTc1NmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg1NDEyNzMwOWZkZTJiZWUxOWQzODY1MWRkOWU5ZmJiZmQzM2E5MGM2Yjc1ODk4NjY4MzM3N2U1YmNjNzUyOWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI1ZDQxZTc1YzJmZTBkY2QzYzc0ODI5YjAxMDk3Yjg5NTQ2ZjYwYmY3ZmNjNDcyNTFkMDFlOTA5NDhhZjkyNzAifQ"
+        },
+        {
+          "resource": "repo://api/src/core/request_body_limit.py#L47-L85",
+          "version": "repo-lines-v1:sha256:97cc50e096bb4748c2d432b9ebad4f703ef6a7fb00ddf59af6e31f04d46611e8:eyJzZWxlY3RlZExpbmVDb3VudCI6MzksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFlZTk1MDkxNTJhYWRjNmEwNWNlMGI0OWE1OWQ0NmI5ODFiNDJiODZmN2QxMjgyZTNkYTUwMjE3NTU3YTRmMTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI4ZmU1MjM0YTA5N2EzMDQ1NzM4ZjU3NWM3NDkyNWJiYmRmNGY2NWUxOTE0ZDlmODI3M2MxMTVlNmU4NGMxZjkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjJhMjQ1ZDI1ZGY2YWNmZmE0MGI3OTBmNzk0NDdkZjFjMDM5NjYzNDg0ZWUxZmRkZTBlYTFhNWM5ZTNkODU2ZDgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_136b6b12246e4e91804accb3f43ef011",
+      "statement": "The API registers body caps before parsing for solution archive preview, external-worker identity, and Codex auth-cache import endpoints.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/main.py#L377-L405",
+          "version": "repo-lines-v1:sha256:9b4780862a3cdf739184c933264bf584c8f5724a429251a0f09d91ec2026973b:eyJzZWxlY3RlZExpbmVDb3VudCI6MjksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVjOTVkZTU0MzA1MGJiMTUwODEwMjMyMzZlMDAyMWRmZmIxNjlmY2ZiNGQzN2IzZWZhOGM4Yjg4OGU0YjM5ZWYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwYzFmMTg4ZjE0MmVkN2E4MjQ2ODBiMjA3MTcyYzU1MTliYzYxNGE0OGZkYTdjZjE2N2VkYjhkZGY3OTk1NmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNjNjEzZDkxZmIyNWNiMGU5ZWZlZjg5Mjg0NjVjODM5OWRmMDI5MmMzNzBjNjczOWJhYmJkZTUzNDIxZTgwODAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNiM2I3NWUwZjViMjMwMGRhZjM4YmRiZmJhYmY1NTgyOTg1YWQ1YzIxYmU2YWRlNGQ5YzFjYjA0MTI4NWFjMmQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_71c7ac72fd6142b49ae4f6fe3778ae50",
+      "statement": "SecretString masks display and logging forms, but JSON persistence requires explicit redaction because JSON encoding can bypass str masking.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/core/secret_string.py#L1-L13",
+          "version": "repo-lines-v1:sha256:a9499104969fba1b9c92813dc348443b1d223f533294f2238bd560a4a39a33c7:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEzMDNlY2RkNGE0ZDEwZjE5YzczZmQ0MmZkMTI0MzdmZDMzNTRhODI2ODE2MDVkYTUyNTVhOTdhMzkwNjhkYmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEzMDNlY2RkNGE0ZDEwZjE5YzczZmQ0MmZkMTI0MzdmZDMzNTRhODI2ODE2MDVkYTUyNTVhOTdhMzkwNjhkYmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU1YjZlODcwNmI0MzA0N2YyYTZkYjY3ZjEzMjYzODU5NTYwNGU2N2YzNjk2Njg3NmNlMDE1OGYwMDUzZTZiZDEifQ"
+        },
+        {
+          "resource": "repo://api/src/core/secret_string.py#L26-L42",
+          "version": "repo-lines-v1:sha256:96af8b997a1d964a9aaa89e5418fc552ca3915a54a08726bc87f9e2bacfdc142:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc2ZjgyNjY2ZjgyMjAxZTViMWMzNzllOWQ4ZDZkMjRhNjE2N2E3NWZjMjQ5NGZkNmQyODQ2ZDRjYjgwOGNkYmMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZhN2NjMTM4OWIyNTRmZDMyYTQ1OTQ2MDMzM2RiOTgyZGQwNWFlMDk2NDFiM2Y2YzI5MmEwMWFhZTQ2NzIxNmEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijc1YWU4OTdhM2JjOTBkY2NjMjQ0YTMzYjRmYzYxNTlmNzM3NWQ4MDc2OGMzMzc5YzY5NWFhZDhlYjRhYzQ1NmYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_7c01ee7e90ec488eb1671735ad59638a",
+      "statement": "Execution variable sanitization replaces SecretString values, sensitive-key values, and active-path cycles; execution outputs and public context are scrubbed before persistence.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/core/execution_variable_safety.py#L60-L100",
+          "version": "repo-lines-v1:sha256:8033c2ffec76365b1bc8944d21b7ff1e8070454817a7ad6c7a16c36ecba40442:eyJzZWxlY3RlZExpbmVDb3VudCI6NDEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMxMWZmZjBkODQ4YTY2ZWVjYjNjMmU2ZGZlZDc5NTA2ZjRmMjQ5MGQ4YjJkZmQ2OGI5YmMxMTI4ZDcwNWZlZmEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUxMDM0ODFjNTdkMGYwZGMwZjc2Y2QyY2M4YjM2MDRjNGU4Mjk2ZGE0MTIyYWRkMTllODE3NDVkYzdlMzMxYTYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk1OTEwYjMzMjZiMDc5ZjhkNTA2ZjAxNDg3ZDM4MThjYmQ1ZTE3ODYxMTQ1NmUyOTMxNWVkYTFkZTc2YWQ1YTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY1MTIzYzQ0NWM5M2ZlNDA4ZTk3M2EzNzQ3NWYzMmE5NzIyNzA4OWMyYzIxOTUzM2I2YTU4NGQ2OTFlMDZhZDkifQ"
+        },
+        {
+          "resource": "repo://api/src/services/execution/engine.py#L276-L306",
+          "version": "repo-lines-v1:sha256:32fd4d0ec36197972199df524758c8ba8470ab211ff04400e6d33c6565da5fc2:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFhMDg5YTZkZTdkNDY5NTFlNjIzYWNjZWJjMjUyNjljNDlhYTU5MDdmNmE1N2RhZDgwYWMwY2Q4ZDUzODAxOTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwYzFmMTg4ZjE0MmVkN2E4MjQ2ODBiMjA3MTcyYzU1MTliYzYxNGE0OGZkYTdjZjE2N2VkYjhkZGY3OTk1NmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjYwNGY5NzI4OTk4ZGExMDJkNDZhNzZhMzE5NTI5MDgzNGE0ODYyODM3MzA4MDQ1NGJmNzgyZWM0NTNlZjJjYzYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY4OTM4MjliZjI0ZDM4MzhhZGYzNDRmZDA5NDBmYTE4ZTM5NDk2YmYxNjYxZDczNjkxYzAyY2NkM2ZhY2VlYjgifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_6b9abf5f4e5b48208a8713365f32cad6",
+      "statement": "Audit-log listing is a read-only superuser endpoint with filters and a maximum page size of 500; it returns newest-first rows with a continuation token.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/repositories/audit_logs.py#L145-L157",
+          "version": "repo-lines-v1:sha256:a88a32cdcb9fd30c44bfe56eb80c8708c4eccbb94b974b4be2988af3a18c2ac7:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlkMDY1ZWE1MTVjOTNlYWM3NDIzN2UwMmZmYzZlNGI5ZjM4ZWM5OGYyNjZlZjIzYjUwZWY3ZDFkOWM2YmViOTciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZiNDkyNTViNWM0YTlmNjFlYjk5ZGZhYzU4MWMxYWUxMjk0Y2FiOTE5MDA4ZGI0NjBkZGFlZGI5ZTQ1MTg3NzgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYzZWZkN2RiNTNmMWYxZWYzODZiMjc1NTVlNzg2MTk5MDIwYWEwMWY1MzU3YzkwZTkwMWQ5YjgxNjY1YjI3NzIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        },
+        {
+          "resource": "repo://api/src/repositories/audit_logs.py#L74-L97",
+          "version": "repo-lines-v1:sha256:387710875f833d6a0c8def21ef0696dcfd9791a697a81ece802c6e34a9b94bd0:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE3NTU5MmVkOTZiZGNjMTgwMmE1NjhhYmU3YTYyZjJlOTRjYjk3NjM0NGU1ZmZlMjlhNzAwMGYxZjc1MjM4NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIzMjc0MDJmNGE5ZTNmMzBlMGUzMmQwZTNiYThiY2QzYTBhZDVmZTk2ZDUwOWViYWE3ZTVmYjM4MDk0N2MzOTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjUyMDdlYzM3Yzk0ZWM2OTE4Mzk4YWFkZThmM2FmZmU3MjVjYTc4MTE0MDNkNmM4Y2E2YmIwMTgyMjllMzQ2ZWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjkyNzJlOGFlN2FjM2E2MWI4YjQwODQzMmFiYWQwNTk1OTNhN2E3Nzc0MjNkNTc1ZjBlMzEyYjQ3MzI1NmMxMDQifQ"
+        },
+        {
+          "resource": "repo://api/src/routers/audit.py#L26-L65",
+          "version": "repo-lines-v1:sha256:4ce7cf2b818cc6b0ddcafc638499f11dd4a628579943840a4f3570e1b4f986cb:eyJzZWxlY3RlZExpbmVDb3VudCI6NDAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUxY2Q5OWE1YTFmOWM0N2YzMjg4OTcwYTI2NWVmM2QzNDg3ZDYzMWJiNjY2ODNkN2QxYTRmNzViNmI0NTM4OTYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBmN2FjNTZkNmMxMzNlMWVlYjY0ZTdhMWM3NmRkYTZlYjVkYzk1ZmMxN2MxODNjZmMxYTMwNTA1NDAwMjIzNmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijc1MjZkZDEyNTExNzVkZTU5YzEyOGEwNWZmNDYxOGQyNjE0Mjc5OGZkYjkyNzgwMDY0ZjM1YzQ3NGFmZGQ0NjciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImYzYjc1YTNkM2MxMjRjY2U5MTA4ODViNmJiYmJmNTdiOGU3YzY5ZDY1MTg5Y2NlMDEwZDNmYmIzMDg3MTk2NTEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_d33d020b74244777ac7829f3d35cab03",
+      "statement": "The repository security policy directs vulnerability reporting to private GitHub reporting or another private maintainer channel, rather than public issues.",
+      "evidence": [
+        {
+          "resource": "repo://SECURITY.md#L14-L39",
+          "version": "repo-lines-v1:sha256:54f5f4a36063470fb3409345c8bdf893cb7d33bfabf8b3e31ff30607ac80ea63:eyJzZWxlY3RlZExpbmVDb3VudCI6MjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI3MWY1NTExYWYwNWU1YzZkMThhMWE4ZWEwNTljNWViYWIyOGE2ZjY2MWI0NTE5Y2FkYmUzYTQ0MjI5MzViNTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRkNWE3OWJjNTM0MDRkY2I2NWM5NzE1ZTZmYmY2ZmZlNmI5YThhMjczYjg5ZmY5Y2NkMzNiMTg3ZTlhZDFiZDIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUyOGM4YWFhN2RiYjliNTM2NDg1MDhhMjAwNzc5YWQ0MGRkMjZhNmNkMTJiYzQ2ZGMxNGI1ZjQ3YWFiYjdkNDYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijg1OGZlNTlhNjA1NzU0YzM1MzJiOWJlYzA3YTdjOTc4MjI5YzY3MTQ0YjIzNmY3ZDZhM2U4NTJkMTZkMzRkZmQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_3ac3682f068e49f3809e4b4f160fbebb",
+      "statement": "The repository policy lists Dependabot, CodeQL, secret scanning/push protection, and OpenSSF Scorecard among supply-chain practices.",
+      "evidence": [
+        {
+          "resource": "repo://SECURITY.md#L41-L51",
+          "version": "repo-lines-v1:sha256:547754605a8dafde94583ef81c174f5a5122e2abbeddf905fbd81a8324ba9951:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjcwZTUyZDdjOTg3NDMyMzBjZWIyZWIxMjIxZmM3NTMwZjlkZjdjZjNkM2MwZTY5YzE4ZTE5NjMzNzk5MGVmZGIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZhMjZlMGU0NjcwZWYxMDNlYzhiNGIxZWFkYzQ2ZjQxZjE4M2YwNDA1ZWEyZDllOTFjMjc1NDIwOTkyOWE1YmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRiNTA5NzBiMGIzM2RjZDY3NDAxNDVhODM3YjEwNDA2NTk3ZThmZjAwMzE3NTExZTM2NTFiMDY1ZmZlODkwYjkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImZlMzA3YjliOGMxNGE2MmRmYTUwNmUzZTIwOTEwNzUxZWE2YzZkNzc1ZjRhNTgyMmE0M2QzNjhmM2ZiYTE0NjYifQ"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.7.2",
+    "at": "2026-10-18T02:14:28.318Z"
+  }
+}

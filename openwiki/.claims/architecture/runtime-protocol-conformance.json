@@ -1,0 +1,76 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:76e24cd3da2fa0dd342f9a1bb6a7ba742f56a339a047febb6d26e9912c4ed83e",
+  "claims": [
+    {
+      "id": "claim_a7aa9f5ffd864877916b5d1a0a2aea20",
+      "statement": "The language-neutral runtime package is a proposed static document foundation, not a negotiated wire profile; the README explicitly leaves the existing control_profile/v1 codec and Hello unchanged.",
+      "evidence": [
+        {
+          "resource": "repo://contracts/runtime/v1/language-neutral/README.md#L1-L6",
+          "version": "repo-lines-v1:sha256:961c17d7578d349267e563683ac17ac41efd4b11db7fa888d51d98084928d337:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiN2U0YzMxMGU0NmM0MjFkY2U2MjU4OWU2OTA3YThiNmQ2YWExNTY4Zjg0N2YzMTQ4OTgyYjUzZDVlNTU5YTYzNyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiY2MxZmJjZjVlZGY2YmY1NTdiM2YyYWI3YzBiOGMzNDNmNDM5NGExNDZkZDVjMzYwNDJmYTYxYzk1NGE2MjU2MCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjAsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMzVjMjcxZTc5Nzc5ZGRlNDYwYjAzN2NkZTgxY2NlZTEzZjllZDhkNTY3NTNhMjg5NWVjYTM1NzE4YzM1NmI3OSJ9"
+        },
+        {
+          "resource": "repo://docs/architecture/runtime/review.md#L1-L6",
+          "version": "repo-lines-v1:sha256:c2b0d5fc6f4a02e64d5058dd681631795a1239e85e6ba5c1ceac7b009629acdb:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMzgwYzY3OGVhZjE5ZGI5MmE3YTAzNGZmZDE1OTU4NmE5Zjk3MTUyZjQ3MDY2NzMwOTZjNTYyODk2MjBjN2IwOSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYTg5ZjYwNWM5MzIyZDM2MDJiNjk2MWNlZmE0ZGZkYTM0YjQ1YWJkMjUwYWQzMDg2YzQyN2E4NDJkYjBlYzQ3OCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjAsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiODdlYzJkMDFmNDE5MWQwYzgzNjNjNWU1ZWQ0YWE1N2VlYjYwNGZiNTM0YzcyOWQzZjRmMDBhYzBhMzMzNTcwMiJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_d14bcb862ab24c0597a86d8d768431cd",
+      "statement": "The offline checker validates schemas, binding-schema parity, structural vectors, fixture provenance inventory, fixture hashes, and fixture schema conformance, then explicitly reports that it exercised no runtime, authorization, lifecycle, or behavioral conformance.",
+      "evidence": [
+        {
+          "resource": "repo://contracts/runtime/v1/language-neutral/check.py#L51-L82",
+          "version": "repo-lines-v1:sha256:e52a89ea96cdea28eecdbd8761d8ffec845044ecea95189abacdc8e84aa48ec0:eyJzZWxlY3RlZExpbmVDb3VudCI6MzIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMyZTMxMjU3ZGMwYWUxZDU5MzAzN2MyODBjOWFkNTA4MTliOGE2YzhjZjcyOGJlMDcxNmQwMGEzZWVjYzA0YmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ5NzE5MTgxNjljMTc0OGU1MDIxMjBiYmJiZmUwNWZmMTA3MmNkZTYyYzQxY2JjMmJlZTU5NzA1Y2VkOTQxYTkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjFlMWE0NGNhZWY1Njg2YmIwNzQxMjVmMDQ4ODBhNDFhZDUxOGNjYTM5ZmRjOTU0YzhiZWJjNzI0Mjc5ZjdkODciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNkNDEzNDBjYzIzOWExNTljZTliNjAyMmU5ZjYzMjI4MzJlMmVhZDc2Y2FlOWU0NzU0ZDIxMGViOGZiNmQ1ZTgifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_0703606544d44ca8803f71907a841615",
+      "statement": "The companion checker tests reject missing, duplicate, foreign-path, extra-local, missing-local, and extra-provenance fixture inventory entries; these are structural inventory tests rather than runtime behavior tests.",
+      "evidence": [
+        {
+          "resource": "repo://contracts/runtime/v1/language-neutral/README.md#L35-L48",
+          "version": "repo-lines-v1:sha256:37e1224b7f07846cdc36a97108b5ac6f99f16e7e439c8a480934fc468d087b8a:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRjYmM5MjY5MjdhNDhjZDI0ZDE1NGQ4NGI1YzIxZWQ1ODAyNTAwNmYwNWIxOTEyOWNlOTBkZWFhNTQyZTEyNjYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA2ODQ2YWEwNmUwNjc4OGRiMGY5ZDg2NDM2N2Q0ZGUxZmI1MjNmNTU1NDQ2NmYxODU0ZmU5MDE0NjNlNDk2NWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM3MDgwMjRlZmM3ODRjOGE5ZjllNzZlYTU1MmRmNDFlNzhmMTA0MWE3MDZlYmU0NmRhZmY1NWNhMDI3YTcwODEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        },
+        {
+          "resource": "repo://contracts/runtime/v1/language-neutral/test_check.py#L10-L51",
+          "version": "repo-lines-v1:sha256:85844f6837f22cb2393969c345543aec34cc58b9f5ad8bd5a85cc27ec9b8dca2:eyJzZWxlY3RlZExpbmVDb3VudCI6NDIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY3NThiMzM5NDZhMmY4NTQ3MWI0NzNhZTQ4MzYzMzY1ZTczY2Y1ZTNjYmYxZjY1ZGRlYzM1ZThiMTJjMDliNGMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY2NTk4Y2ZhNDdlYTBmYjU4YTVjMDFmZmU3YzE1ZTdiNWI4YmNjYWU5NmU4NDRmMWFhMDYwOWRkMDI3ODBmODAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImExOGUzZjNlMjNmNDk0OGY1OTY0MDkwMjcxNTZkMzJiYjRmODQyNjhkNGM2OTU2ZTliNDRiMThmOTI3NzIxYjAifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_26b7cff1df0e4526a5ef4e020b63b750",
+      "statement": "The runtime contract's execution permission, owner-controlled lifecycle, cancellation and result rules are proposal requirements, while the contract document explicitly leaves negotiation, limits, receipt storage, backpressure, and transaction ordering as review gates.",
+      "evidence": [
+        {
+          "resource": "repo://docs/architecture/runtime/contract.md#L1-L27",
+          "version": "repo-lines-v1:sha256:fa621f2626a0daed68cffb99ae64f9340a4c6d83e5f2308e895a4c2fbbce74f1:eyJzZWxlY3RlZExpbmVDb3VudCI6MjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ0MjQ3MTBiNmQ5NWYxYzk3ZmZkYWFhYWQ4MTY0ZjAwMDViZGRmYWMyOWI4MzUzNmRhNzkyZGEwOWNmMGE4MjciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMyYTU4MjQ5ZTFhN2ViZWYzZTQxMmZmODliOTU3Yjc1NWExYWYzY2E3YmRlODZiNjFmZmQ0NjNiYzVkNDNhZjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU4ZTllNjViOWVmMjUxZjJiOWQ1MmEyN2EyNjk4NGU5NjllZmM3NzM3OTY1MjY5ODg5Nzk2ODI1NThmNDljNTYifQ"
+        },
+        {
+          "resource": "repo://docs/architecture/runtime/contract.md#L49-L78",
+          "version": "repo-lines-v1:sha256:d065de307d20f917ef090eeabee267776c171dc4c2de1340fdecf5ea216b9d63:eyJzZWxlY3RlZExpbmVDb3VudCI6MzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA3OGU3YjBmN2MyNzNjM2ZlMTFiMDZiYzI4YzlhNjNmMDljNzRiMTFiODNhMDk2Nzk5Zjc1MGU4MGIzYmRjNjEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE0YjFmZDk4ZDYyMzI2ZTYxYThiNGNhNmY0MjJkNjc4NGIyNTFlYjMxZWNhZWRlMWZmOTBkM2RiM2VjOTk1MzEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjkwMzc5NTUyMTU4ZjRhMTE2M2EwY2NhYzFmOTNhZDBkMWI5ZGJiN2RkYTdiNjcyM2EzMzZiNmM4OGIxYmZhNzkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY1NTBjZGVmZTIxOGFmNWI4ODkyZjk0MTk1MGVmYzUwMWU2MTA1NGQyZTViNGY5ODNmZWFkMjI2NDk3NDAxMjcifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_152cf52195314f7a98e68f1a5195df4c",
+      "statement": "The implementation-slice roadmap separates implemented offline documents from unimplemented codec, adapter, cross-language behavioral, durable race-proof, and later runtime-port acceptance, and states that static vectors do not authorize runtime execution.",
+      "evidence": [
+        {
+          "resource": "repo://docs/architecture/runtime/implementation-slices.md#L1-L27",
+          "version": "repo-lines-v1:sha256:eb8e5a5b65ca4981dc8f185045ae31207baf5f10c510bfe25cb97a1cfb6e3c69:eyJzZWxlY3RlZExpbmVDb3VudCI6MjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE3MjMyYzZmYjg5NTE2MjQ4ZGYwODliNmJkYzg5OGY0NGUwMmEyODcwZTVhMTRhZGI0NGYxNjhhNDRhYzEyNjEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijg2NWU2NzY5MzQ2MTc4Nzk0ZjU3NzgxYWZlZDdlZTg2OWRjZTQ0NzlkN2NlOWFkNjJjMjUzYWNjZmJkZWUwMjkifQ"
+        },
+        {
+          "resource": "repo://docs/architecture/runtime/implementation-slices.md#L28-L99",
+          "version": "repo-lines-v1:sha256:2cff485370560fda3707409cf5a1d13a2e70837042cb6c4aa859028b299746b4:eyJzZWxlY3RlZExpbmVDb3VudCI6NzIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNkZWU1NDU4Yzc0YmIyODkwZDZkN2YwOGZhOTg2ZGQzYjM5MmRmNjMxN2Q1MWNiMDI0YzE2YWI3ZTRjMmQ4OGUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc5ZjcyY2JlNzQxZTk2NTI1ZjgwYzgzNzEyNjIwNDY1NzY1ZGE5OGI4MDVhMTczN2QzNmFlMTVjMmFhYmFmMTUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQ4NTE2Yjc2NTYxMDhjYTI3MGQwYjFjZGRjN2M5YWM0Zjk4N2Q0OTBjNTZiYmI1ZWEyOTcyZmU0ZGQ3NjNjYzciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImMyODBhMmI2NGZjNjk4OWQ4YzczMWQxZTZhMTQ1NTY0MjE1OGNlYmM1YTI5MGRlOWQ0NTMyZDkyMmY1NThlYzMifQ"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.7.2",
+    "at": "2026-10-18T02:51:00.673Z"
+  }
+}

@@ -8,6 +8,7 @@ import pytest
 from PIL import Image
 from sqlalchemy import update
 
+from src.core.security import create_embed_access_token
 from src.models.orm.forms import Form
 from src.models.orm.solutions import Solution
 
@@ -17,11 +18,14 @@ Image.new("RGBA", (1, 1), (255, 0, 0, 255)).save(_png_buffer, "PNG")
 CLEAN_PNG = _png_buffer.getvalue()
 
 
-def _create_app(e2e_client, headers, slug, name=None):
+def _create_app(e2e_client, headers, slug, name=None, organization_id=None):
+    payload = {"name": name or slug, "slug": slug, "app_model": "inline_v1"}
+    if organization_id is not None:
+        payload["organization_id"] = organization_id
     resp = e2e_client.post(
         "/api/applications",
         headers=headers,
-        json={"name": name or slug, "slug": slug, "app_model": "inline_v1"},
+        json=payload,
     )
     assert resp.status_code == 201, f"create app failed: {resp.text}"
     return resp.json()
@@ -130,6 +134,61 @@ class TestApplicationLogo:
                 files={"file": ("logo.png", CLEAN_PNG, "image/png")},
             )
             assert response.status_code == 403
+        finally:
+            _delete_app(e2e_client, platform_admin.headers, app["id"])
+
+    def test_fetch_enforces_tenant_access_and_embed_binding(
+        self,
+        e2e_client,
+        platform_admin,
+        org1,
+        org2_user,
+    ):
+        slug = f"logo-app-scope-{uuid.uuid4().hex[:8]}"
+        app = _create_app(
+            e2e_client,
+            platform_admin.headers,
+            slug,
+            organization_id=org1["id"],
+        )
+        try:
+            app_id = app["id"]
+            upload = e2e_client.post(
+                f"/api/applications/{app_id}/logo",
+                headers=_upload_headers(platform_admin.headers),
+                files={"file": ("logo.png", CLEAN_PNG, "image/png")},
+            )
+            assert upload.status_code == 200, upload.text
+
+            cross_tenant = e2e_client.get(
+                f"/api/applications/{app_id}/logo",
+                headers=org2_user.headers,
+            )
+            assert cross_tenant.status_code == 404
+
+            bound_token = create_embed_access_token(
+                embed_kind="app",
+                grant="hmac",
+                resource_id=app_id,
+                org_id=org1["id"],
+            )
+            bound = e2e_client.get(
+                f"/api/applications/{app_id}/logo",
+                headers={"Authorization": f"Bearer {bound_token}"},
+            )
+            assert bound.status_code == 200
+
+            other_token = create_embed_access_token(
+                embed_kind="app",
+                grant="hmac",
+                resource_id=str(uuid.uuid4()),
+                org_id=org1["id"],
+            )
+            unbound = e2e_client.get(
+                f"/api/applications/{app_id}/logo",
+                headers={"Authorization": f"Bearer {other_token}"},
+            )
+            assert unbound.status_code == 404
         finally:
             _delete_app(e2e_client, platform_admin.headers, app["id"])
 

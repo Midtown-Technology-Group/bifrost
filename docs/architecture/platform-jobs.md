@@ -235,17 +235,21 @@ remain uncertain: observing the old ETag alone does not prove that a delayed con
 An uncertain outcome retains this intent in `requires_action`. A lost worker or
 the same requester's next `POST /api/applications/{id}/publish` reconciles the
 original intent by reading the manifest and every output, checking App scope,
-identity and controls, then recording publication metadata. It never rebuilds or
-replays storage writes. Changed or unavailable bytes stay unresolved and block a
-fresh publish; another requester cannot resume the original job. The shared
-enqueue service exposes this behavior only through an explicit checkpoint schema
-on the handler's registered definition. A saved intent disables cancellation,
-including queued recovery and runner-loss retries. Cancellation and checkpoint
-persistence serialize on the job row; an old status response cannot erase a
-newly saved intent. Earlier cancelled rows with matching intent also block fresh
-publication and can resume only the original requester's readback, retaining
-their payload, evidence and attempt history. No new job/status
-system or App publication authority is introduced.
+intent identity and controls, then recording publication metadata. It never
+rebuilds or replays storage writes. Because that fenced readback cannot create a
+publication effect, it may reconcile an already-applied intent after the original
+requester becomes inactive, is deleted or loses publication access; every fresh
+build and publication boundary still requires current authority. Changed or
+unavailable bytes stay unresolved and block a fresh publish; another requester
+cannot resume the original job. The shared enqueue service exposes this behavior
+only through an explicit checkpoint schema on the handler's registered
+definition. A saved intent disables cancellation, including queued recovery and
+runner-loss retries. Cancellation and checkpoint persistence serialize on the
+job row; an old status response cannot erase a newly saved intent. Earlier
+cancelled rows with matching intent also block fresh publication and can resume
+only the original requester's readback, retaining their payload, evidence and
+attempt history. No new job/status system or App publication authority is
+introduced.
 
 Build/publication evidence alone does not attest protected Git provenance or
 enroll an App in automatic delivery. Standalone and Solution-owned App deployment

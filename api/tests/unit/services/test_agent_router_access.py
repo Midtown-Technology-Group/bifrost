@@ -176,10 +176,12 @@ def _agent_double(
     description: str | None = None,
     tools: list[object] | None = None,
     knowledge_sources: list[str] | None = None,
+    organization_id: UUID | None = None,
 ):
     return SimpleNamespace(
         name=name,
         description=description,
+        organization_id=organization_id,
         tools=tools or [],
         knowledge_sources=knowledge_sources or [],
     )
@@ -196,15 +198,32 @@ async def test_router_returns_no_agents_without_user_context():
 
 @pytest.mark.asyncio
 async def test_router_describes_agent_tools_and_knowledge_for_llm_prompt():
+    agent_org_id = uuid4()
     agent = _agent_double(
         "Helpdesk",
         description=None,
         tools=[
-            SimpleNamespace(name="reset_password", type="tool", is_active=True),
-            SimpleNamespace(name="draft_reply", type="workflow", is_active=True),
-            SimpleNamespace(name="disabled_tool", type="tool", is_active=False),
+            SimpleNamespace(
+                name="reset_password",
+                type="tool",
+                is_active=True,
+                organization_id=agent_org_id,
+            ),
+            SimpleNamespace(
+                name="draft_reply",
+                type="workflow",
+                is_active=True,
+                organization_id=agent_org_id,
+            ),
+            SimpleNamespace(
+                name="disabled_tool",
+                type="tool",
+                is_active=False,
+                organization_id=agent_org_id,
+            ),
         ],
         knowledge_sources=["halopsa-tickets", "runbooks"],
+        organization_id=agent_org_id,
     )
     router = AgentRouter(lambda: None)  # type: ignore[arg-type]
 

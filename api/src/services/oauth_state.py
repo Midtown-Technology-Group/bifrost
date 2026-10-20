@@ -1,8 +1,11 @@
-"""Tamper-proof ``state`` parameter for per-mapping integration OAuth.
+"""Tamper-proof ``state`` parameters for integration OAuth.
 
 Thin wrapper over :mod:`src.services.oauth_state_core` that pins the audience
-to integration OAuth and validates the payload shape (``provider_id``,
-``mapping_id``).
+to integration OAuth and validates the payload shape. Per-mapping flows carry
+``provider_id`` and ``mapping_id``. Integration-level flows additionally bind
+the callback to the initiating user, connection, organization, and redirect
+URI so a provider code cannot be replayed through another administrator's
+session.
 
 The per-mapping authorize endpoint encodes; the callback decodes and
 verifies the nonce hasn't been seen before. Replay protection is critical
@@ -48,6 +51,32 @@ def encode_state(
     return encode_state_jwt(audience=_STATE_AUDIENCE, claims=claims)
 
 
+def encode_connection_state(
+    *,
+    provider_id: UUID,
+    user_id: UUID,
+    organization_id: UUID | None,
+    redirect_uri: str,
+) -> tuple[str, str]:
+    """Encode state for an integration-level authorization.
+
+    Unlike the historical opaque state value, every security-relevant callback
+    input is authenticated. ``organization_id`` is intentionally present even
+    when it is ``None`` so the callback can distinguish a global authorization
+    from a malformed token that omitted its scope.
+    """
+    claims: dict[str, Any] = {
+        "flow": "connection",
+        "provider_id": str(provider_id),
+        "user_id": str(user_id),
+        "organization_id": (
+            str(organization_id) if organization_id is not None else None
+        ),
+        "redirect_uri": redirect_uri,
+    }
+    return encode_state_jwt(audience=_STATE_AUDIENCE, claims=claims)
+
+
 def decode_state(token: str) -> dict[str, Any]:
     """Verify the per-mapping ``state`` JWT and return its payload.
 
@@ -57,7 +86,20 @@ def decode_state(token: str) -> dict[str, Any]:
     """
     payload = decode_state_jwt(token, audience=_STATE_AUDIENCE)
 
-    for required in ("provider_id", "mapping_id"):
+    if "provider_id" not in payload:
+        raise OAuthStateError("state missing required field: provider_id")
+
+    if "mapping_id" in payload:
+        return payload
+
+    if payload.get("flow") != "connection":
+        raise OAuthStateError("state has unsupported integration OAuth flow")
+
+    for required in (
+        "user_id",
+        "organization_id",
+        "redirect_uri",
+    ):
         if required not in payload:
             raise OAuthStateError(f"state missing required field: {required}")
 
@@ -78,6 +120,7 @@ __all__ = [
     "OAuthStateError",
     "consume_nonce",
     "decode_state",
+    "encode_connection_state",
     "encode_state",
     "remember_nonce",
 ]
