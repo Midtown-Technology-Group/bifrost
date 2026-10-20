@@ -24,7 +24,7 @@ jobs:
         with:
           node-version: "26"
       - name: Test authorization policy
-        run: node --test .github/scripts/authorize-merge-queue.test.mjs
+        run: node --test .github/scripts/authorize-merge-queue.test.mjs .github/scripts/retire-merge-group.test.mjs
       - name: Verify queue admission
         env:
           GH_TOKEN: ${{ github.token }}

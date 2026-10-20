@@ -648,7 +648,6 @@ class SolutionCaptureService:
                 AgentDelegation, "parent_agent_id", "child_agent_id", agent.id
             )
             # Install bundle omits mcp_connection_ids — only git_sync carries them.
-            # max_run_timeout is a transport extra (not a model field).
             out.append(
                 ManifestAgent.from_row(
                     agent,
@@ -658,7 +657,6 @@ class SolutionCaptureService:
                 ).view(
                     Destination.INSTALL,
                     extras={
-                        "max_run_timeout": agent.max_run_timeout,
                         "role_names": await self._role_names(roles),
                     },
                 )

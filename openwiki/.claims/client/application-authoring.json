@@ -1,0 +1,220 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:61a152789e957f4330c3d746c724b004cdb5fb5d1e69a99ab74261cb3bc48645",
+  "claims": [
+    {
+      "id": "claim_5f49a1c42c5b4b3ea0c82d687eef73a1",
+      "statement": "The application authoring page creates standalone v2 apps with name, slug, description, and organization data, navigates to the editor on success, and publishes an existing app with an optional release message while surfacing failures for retry.",
+      "evidence": [
+        {
+          "resource": "repo://client/src/pages/AppCodeEditorPage.tsx#L113-L163",
+          "version": "repo-lines-v1:sha256:6a93a0fc0feb5bb39e644f8a35b3bca53698f64fc0bf4bc70ed13dd2f8d6b500:eyJzZWxlY3RlZExpbmVDb3VudCI6NTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA4OWNhMWE2ODZmYmRkNjdlNjhiNjJmMzQzMDk2NzAyYWI2ZjFlMGU5OGJkZjc0ZTFiY2Q5NTVlNmRmMjk2MDAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNjM2EyMDc3NGQ1YzJiYjRjNzkwYzE4ODkwYTljNDk0Y2NiNTEwZmM4ZThjMDllYzc0NTE5YmMxNjRmYzc4NGIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE4YzdmYjYzOTYyNWQ4ZTU2MThjNmNiYmZkN2M1ZDU2MGM2MGMwY2VkMTUxNWRkMzAyYTgwZTY5Mjc0NjE1MTQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA0MjJhOTc3ODUzM2VmZjUyMWI1MzM3ZmM0ODNiNjhhYjVhOGI2MjY0MWUxMDA2NjQwZDg3ZTY2MzQ1ZGQyZjEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_df8bd8f35ab74320a96e5410746632fa",
+      "statement": "Solution-managed applications are treated as read-only by the browser editor because deployment owns writes, and the UI relies on API rejection as enforcement.",
+      "evidence": [
+        {
+          "resource": "repo://client/src/pages/AppCodeEditorPage.tsx#L91-L98",
+          "version": "repo-lines-v1:sha256:8cfba6eb20e1f94977d987a13e4d5dddb09a597366180b07cf2ccc7d715bc857:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMjgzYzUxYjdmMWQwMjY2NGEzMmZmMTBlNzQzZDUxMzAzNzAwZDJhYTVhNTdiYjViZjA2YzJlYjg5OWUwMWQzYSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiN2NkM2RlOWQ2ODcwMjQ3NjJjMDcyYTg1OWQ5MWRhYzE4NjQ1ZjZlODIwMjE4MmUzYmU4NjcwMGE1Y2JiM2FlZiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMGIzNTYwNTJmM2Y3ZGYwM2JjY2Y2ZWEyZTUxZWQyNzYzZDQ1MGQyMWYzZjRkMTRhNTQ5Y2IyNTczYzU4ZmIzNyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMDFlZWRkYzkzNTQ0YjFlOWQ4MzM5Y2ExMDJjYzAxM2IwMjVmZWMzZGQ1ZjM3Y2ZiYmFiMjY2NDQ4NGE3MzA2ZSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_455db97067c1457eb2a5b7679b7d41de",
+      "statement": "Workflow settings UI edits access roles, timeout/retry policy, endpoint exposure and execution mode, and disables save for Solution-managed workflows while noting that the API rejects the mutation too.",
+      "evidence": [
+        {
+          "resource": "repo://client/src/components/workflows/WorkflowEditDialog.tsx#L100-L150",
+          "version": "repo-lines-v1:sha256:901037bf087e9e54d63b5f981a382377f0e62adf6bc9071a6f9fc2f2ec5f5d79:eyJzZWxlY3RlZExpbmVDb3VudCI6NTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM2OTljN2M5MjA2NDAyMTFlY2EyOWEwNjU2MzFhMzc3OWMyNDMzOTkyZjgyZjVlM2M5MmU5NmVmNTUwN2RlYjciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM2OGVmZGZjNmRiYWZjMTU1Mjk4YWZiNTkxZjIyNzdhMDEyYzE0MTI4ZjA1YWEwYjM4MGQ3NGYxNjcxYzYxNGUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE2NzBlZmIxZWNkMjk5ZTkwODkyM2RhNDk5ZWMyNGY1NTIzMTZkYjY4MjA3NWU3NzEyMTEzMjZkYzcwZTU2NGYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVkMjc4NWMxYjg3YTQyZDRiOWYwZDgyNTNjMTFiODlhY2RmMjYwOTQ5MWM5NmMyZTAxNmU3OWFhYTFlYmZlMzEifQ"
+        },
+        {
+          "resource": "repo://client/src/components/workflows/WorkflowEditDialog.tsx#L107-L119",
+          "version": "repo-lines-v1:sha256:7aef45104c59aa7b24005c640ee2c4bb74a714c230307fd84f6b9b74bec0a4e9:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI5MWYyN2VhYjEyMGIyYmU3ZjI3M2U0ZDJkNTBkMTJlZmQ0MTkxZjNkY2NlNTljZTBmNDEzNWFmM2I2ZTA5MDQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY2MzJhNTA3YzQ1YzlhNTRjMDYzMDgzMzU4NDRlODgyNTk4NjUwY2I4NDRkMmNkZWJjMzFmYWRlYjdjNjE2NzUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImVlYzY3MGFhODMwZGY1YjgyMzRmOTNiYWQ4ZDgxMzJmMjc5OWJkODJhOGU4OWE4ZTU4MDA1NzczZjNhOTkzZDgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImNjZTRiZjczNmIyMWQ4NGExY2VmMTU4MDdlNDQ0YWY1NGQxMzZhMjVkYWNhMjZhMDY4NDVmOTQzZjkxMzZjNTEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_f2f19167b98e4401a93ab729e2995716",
+      "statement": "Form publication sends the fingerprint from a publication review with origin and spam-protection settings; on failure the UI retains a publication error state and on success refreshes publication state.",
+      "evidence": [
+        {
+          "resource": "repo://client/src/components/forms/FormShareDialog.tsx#L359-L389",
+          "version": "repo-lines-v1:sha256:029e430cf39d7e087c6b10ffedfd3aca99558edcdb6b3559f445881d22f8deed:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBiZjIzNDhmMmVjNTg1MTk2NWEwYjc0NDEyZjkzZDdkZmJkOWJjMDViZjk4ZjgyMjFkYmUxOWMzMWM0MjQ2ZDEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY0ZWZjNDk0MThkMjZkY2YxMjliMjJhNmFhMjExMDhjZWVjMzc2NzdhMzJkMDhlOWQ1ZmVlMzVkZGE2NmJiOWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE4YzdmYjYzOTYyNWQ4ZTU2MThjNmNiYmZkN2M1ZDU2MGM2MGMwY2VkMTUxNWRkMzAyYTgwZTY5Mjc0NjE1MTQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRmYWNhZTMwNDFkZWYxZTUzYmE4OTlkZTJiNmMxZmYyOTE5YTI2OWFjZTUzMjYxMGRjMmJjOTI3MzE4YTQ4MzIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_2a3820c1a36d4fe7af9bd4926c939f07",
+      "statement": "Solution capture fetches candidates, computes a preview from selected entity IDs and the import toggle, then submits the capture request and reports success or failure in the dialog.",
+      "evidence": [
+        {
+          "resource": "repo://client/src/components/solutions/SolutionCaptureDialog.tsx#L156-L201",
+          "version": "repo-lines-v1:sha256:b164401a4a4800026c33e781e67cd3bce4bcd810fd212f91f4ae32e1adc18f5b:eyJzZWxlY3RlZExpbmVDb3VudCI6NDYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM0YzFjYjE2MzY4YWI1ODM3YjgyYmRiODAwOTZhNGUyNmYwMTM0NThhNDYyZGQ4NTE5MGEzN2NhNjMxMjJmYTYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBhNzM0OTJkODk0NmIxZDBmOWQ5YzA0YjcwNGE5MjBmMjRmODllZjdjN2Y3MzExYTg1OTlkMTBjN2Y2MzU4ZDAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE5MGExZTZlMWMzOTc3NTEyMDllYTU0ZTk1YmY2ZDNmZTZmMzViZTc5NzEyNGE5NWU3MDJiNjljZGNiMmY4YzMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImZmY2JmYThiNjQzMmVlMjYwNTU3ZTkwN2EyYWVhODhjZjIxNTgyMjEwNGU1MDQxYTIxMGFhYzViNDlmNzg2OTUifQ"
+        },
+        {
+          "resource": "repo://client/src/components/solutions/SolutionCaptureDialog.tsx#L203-L246",
+          "version": "repo-lines-v1:sha256:924f88f6dc03403ac2cb2cf6f60b75f653a87615e5de9fc686398850e069d1d6:eyJzZWxlY3RlZExpbmVDb3VudCI6NDQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU2MzhkMzA5YTM4YzRhYmFlMjQwODRhZWUxYmYyYzgxNzFhMDdkOTIzMDE2NjAxZDI3YWY5MjU0YTNlMjlmOWQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhjYmFjMjdiZTM4ZTkwMzE3M2YzNzZmMjk0YjUxYjkzMjhiMjk5NjNiZDIwOWIyOWZlNGUxNzU3NmU2YjQ0MTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk5MDg0YTk3Yjc2ZjI0ZDM5N2ZhMTIwZWYxNDY4YTgzOTJhNWVmY2NhYzZmYzliNzFhMmFhZTZhYmQ2YTcyNGEifQ"
+        },
+        {
+          "resource": "repo://client/src/services/solutions.ts#L330-L384",
+          "version": "repo-lines-v1:sha256:07fba926cecb274c5bba1092a4cb242d5cb8ea7991e648e2bd41fa95752f785f:eyJzZWxlY3RlZExpbmVDb3VudCI6NTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgyOTZhMWViODM2ODgwNzczZmNkN2UxYWRkNzc4NjhjNzRmNzlhMWQ4MTIwMTA2YzM1ZGQzZjc1Mzg3MGE0MzUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdjYzhkNDQ3ZDY3NGRlNGU5NDJiZDIyZjJlYzQ0OWFlOWQ2ZjQ4ZjBjNzM2YTNlY2RlYjA4ODA2YTIxZDcwM2YiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNlMWU0NTZiODM2OWRhOGRmZjQ4MWVkYWM5ZmNkN2JkMDE4NTU0OGJkMmUyMTVkMTFjNmZiYWI0MTQ3ZjBhNTMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM3OTI5ZTkxZTBmOTljM2U4MjVkZTY5YjQzNWZiNjQ4NGQxYjBhMWRmMmY0NjU2MWFiZjFhMjlmMDQxODhiODgifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_3608324e9d014b909f20ad4cf26522c3",
+      "statement": "The browser API service layer derives Solution request and response types from generated OpenAPI component schemas.",
+      "evidence": [
+        {
+          "resource": "repo://client/src/services/solutions.ts#L1-L56",
+          "version": "repo-lines-v1:sha256:1b28f37422ebfabb59169a1a1d0869acaa6c03ef5e399a1c449001e049a38e82:eyJzZWxlY3RlZExpbmVDb3VudCI6NTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFkZDhjMzRhYjc5ZTQwMjU1NjNjYTFiNjIwYTQ2OTI4NGMxMmNiNGQyOGRiYjU2Yzg0NzBlY2IwOGYyZmU5ZDYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE0ZDA3NzhjM2M3ODI5YjI0MmE0YjQyNWY0ZTdhODI2MTZhYzU5MThhNDY4NWU3ZWI2YjE5YWIxZTc3ODM3MjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNkMmY5ODQ1NDJjMmM2ZGY3Nzg5ZTE3YjYyM2E5M2U4MTI4YTk1OWM5YmY1NjRiOGFmY2IyODQzMGM4NTg0YjEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_b18ebb5d53d040fdb504967ca34fc693",
+      "statement": "The source editor family wraps Monaco for app code/theme/diagnostics and uses a separate dependency panel for package lookup and dependency changes; this UI state remains distinct from compiler and server build behavior.",
+      "evidence": [
+        {
+          "resource": "repo://client/src/components/app-code-editor/AppCodeEditor.tsx#L123-L145",
+          "version": "repo-lines-v1:sha256:ab8424363c0dfdcce7b810b0549ffa5356d5a8dc51502945ef8b23b2725086aa:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBiZTlhNTY3OGYwNWZhOTUzMzkxODJiNTAyYTQ2MDdkZWQ1Nzg0Mjk1OTE4ZTZkNzAyOWQyOTVlMDc3ZDAzZjAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAyYWNmMDQzYzA4MGFkNzdhMDFhODMxYzI3NGU0YWQ5ZGY3YmUyNGU5NzI2ODVjYTAxYTZiN2JiNjlhMWZlYWIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQ3NjAxNTkzNzMxMmY0M2NlOGRhNDA3MzQ4ZDYxZTg5OTRhMDI4Mjc1MjVkNDkwOGEzNzNlYWNiOThhMTI0ZDgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY0ODQ4MjdjNmM2YmMwNjE4MjYxYWNkNDQ2YTAwNDY4ZTFlYzI1OGViOWFhZmY2ZjEwOTU4NTI5ZjgzMzhlODUifQ"
+        },
+        {
+          "resource": "repo://client/src/components/app-code-editor/AppCodeEditor.tsx#L51-L84",
+          "version": "repo-lines-v1:sha256:c30748fc7c6f1916dbefc4a1b8f8598baad84da324c6096d0c3346dcde601784:eyJzZWxlY3RlZExpbmVDb3VudCI6MzQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQxYTkyOTVjNTY3NTM3ZThlNWM1MGVhZGU3NjY0ZWZkOWI3ZjJiZDA0ZjAwMmY4ZGFkZmE1ZjAxYjUzYjYyNjYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE2MzUyMmFiYWUyZGZkOWQ0OWNhYTNiYjFiNmU2ODRmMjI0NmEzMWQ4YzU0MTIyNDM5YzViN2M1M2IyMTIyYzIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY0MTQ5MTBjYzYyOWZkYWE0M2VkMjNhOWRhMmI3ZjhkYTBmMTlhZTgxNDU4ZGQ3ODU5ZGY4ZjcxOTBjNDIwNDMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA4MjFmYzgyMTBjOGFhOWY0MjM4NjBhNTkxZmY1M2VkNTNmODRjNzUwYTY1OTFhYzE0YTFhMjg0NWI4OGNjM2IifQ"
+        },
+        {
+          "resource": "repo://client/src/components/app-code-editor/DependencyPanel.tsx#L27-L55",
+          "version": "repo-lines-v1:sha256:9309c82a49bfbe90f4c6cc293cb5db42338e43f1dd88992c99c3003a6db97945:eyJzZWxlY3RlZExpbmVDb3VudCI6MjksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdiZjgzZWFjZjRhZTliZTUxOTY2ZGQ3MTk1MTExZjExNTJiMTlkM2U0OGQ2YzVlY2FjMmYyZTljNDg2ODc1ZDkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg5Y2I2ZjVmOWE3NDY0NGZmNzBlN2JlMTk4NjQ2NWNkYjQzM2I2NzAxYTQxZjgwZmU2N2UzZDRlYzFkNzFiM2IiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjdkZDE4ZjI0MWVlYWI1ZGFhZDk4ZDEzMzEzOGFmNTc4NmJlNjA5YWEwZDExZmViZDQ4OTFkNjNiNTVhNzAwZTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgxZWQ3ODQ5Y2NmNTJjODUxZTBlN2QxNjU1M2JkNjUzNDcyOTgwMTE5M2Q4YzE3YTE2NmQ2ZDZlNjYwOGUzMzQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_ce8a66bdba864684b5ed1a4f1edb2a59",
+      "statement": "The browser groups app list presentation, dependency graph status, and standalone V2 asset mounting in separate reusable component families, with the V2 host tracking asset identity and browser loading/recovery state.",
+      "evidence": [
+        {
+          "resource": "repo://client/src/components/applications/ApplicationListSurface.tsx#L231-L269",
+          "version": "repo-lines-v1:sha256:6b42a4d1210b32d0f976a1012dc376ae97b38683075452b1e333591d9eb4897e:eyJzZWxlY3RlZExpbmVDb3VudCI6MzksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdkZWU0MWNmM2QwNmZiYjM2OTBkZDEwOWQ0ZDZkMmU0YTcwMGFiYWRlZTQ5YTI0NGU4ODI0NDk1NWVkZjlkZmUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFhMGM4YmQ0ODAzMTUxNDE0ZDI3YTBkNjA2MDE3NzgzMDRmZWVmZjYwM2VmMWUzMWNhMmE0YTQyMDJhODIwYTciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjI1YmIxYWY1MjFiZWNkNTVkNzA1NmE4YTlhMGRkMWViY2RhMWZjNzlmZjIzZjc0NTc3NmY0OTk1ODMzNTI5MjMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjBhY2E1MjYzYzEwMzI5OTgxYTBkYjlkZjI0ZTJhNWQ3ZGY5YTM1N2QzNjE1Yzk2ZTVjMTI1ZGVlZmZiZDQ5MWMifQ"
+        },
+        {
+          "resource": "repo://client/src/components/dependencies/DependencyGraphSurface.tsx#L19-L55",
+          "version": "repo-lines-v1:sha256:aae0883310c8308c7798edab697dff4cf7f3dd05f77f3e430924a914bfbd807c:eyJzZWxlY3RlZExpbmVDb3VudCI6MzcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE5NjI0NzRkZTQyMzVkNGQwZWZiZjcxOTU4NjExMjUxOWIyYTY5NDExY2QxOTdhMTZmYmM0NjBjNTFjMzhhMDAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJkNDlkODJkNTBmOWM5OTdmN2JmYWJmYjMzMzVmMjU3NDgyNWVlMDZmODU5YmQwMjQ0M2ExYTI4YWM1YjI3MDgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQ0MTRmNDQyY2FkZDAxYjViOWY2ZjkyZjZkYjI0MmU2OWMzZDY4Yzk4MzM1MDBiZTg4YjBkYmUzMTlmMzc5NTkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhhMjQ5NDgxYzYxYmM0OTBmYzk5ZjRkNzhiMjNiZWJjYzcyODFkMzdiMDYwOGJiM2ZkMjJhMzRlMTgxNzg2OTcifQ"
+        },
+        {
+          "resource": "repo://client/src/components/jsx-app/StandaloneV2App.tsx#L242-L285",
+          "version": "repo-lines-v1:sha256:ec382351c5fe1c0537b961e7b5a8330e985dc0d5527c80f6ed312613e2222aa4:eyJzZWxlY3RlZExpbmVDb3VudCI6NDQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM3NjBmZWY5ZTM2ZjJlMzdkYTA0ZmMxNjBlMGVlMWU4YzRlNGE4NDUwNzhhZTc5NGVlYTUzZDUwNGNlYTZiMTAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIwNTRmNjY0NjJhODY5Nzg2YWJhNDUwODg0ZjU2YjU4NDhlOGYzOTY2YjZmZmZhYjdlNmQ5YzRjYTRmMmJmZmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjkzY2VhNGMwNzc3NzFiZjJlYzM2OWVkODBhYTkzYWM4NDcwYjM4NzA3ZmYzNmU4MDYwYTUyMTEwOWIzZWE2ZTMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImRlM2U3OGY5ZmNmM2Y0ODExMDQ4ODNmMTYxZjgzOTlmYzk2OGQyMTY1MDMwMWFlMGYxZjU5NzdiZTdjMDRjODYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_9ed838ca0da443799af2fa0808e09636",
+      "statement": "The app builder uses one create/edit dialog to validate app metadata and compose organization/access controls with the application create, update and delete hooks; a separate update indicator displays remote-user attribution while honoring reduced-motion preferences.",
+      "evidence": [
+        {
+          "resource": "repo://client/src/components/app-builder/AppInfoDialog.tsx#L64-L74",
+          "version": "repo-lines-v1:sha256:2e9f33318f4b7beb846ca4280c672494e65072d9d11a07fc496c7cc335e658da:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkxOTdhNzc4MzkzYTU0MzJiNDFlMjBiOTcwNmE2ZGE1Y2RmMjFlNWE5ZjQ1NjIyOTY1ZTNmMjU1ZmNjNmI2MmMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk1NWZlYmJmNzM5ZWY1YmFiNWQ5N2FiNWNjMDA1MmQ3MzlhY2YxZjNiOTg1ZjhjYjBhMWJlOGFmNmU4NWI2MGMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZkN2MxYjkyNWFmY2U5ZmQzN2QzMjk2NWJkNzI1ZTkzYmUxMTg1Y2ZiOWE3NGIyZTA3ZWZlZmM1OTU5NWVkN2IiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZjOTc1Mjc2ZmE3ZTI0NWI1ODNmZDM5YmZlMDU5NDcxMDZjZTU2ZTVmYWZlOTRiY2ViZWU0NzZmM2Q4YjllOWUifQ"
+        },
+        {
+          "resource": "repo://client/src/components/app-builder/AppInfoDialog.tsx#L91-L108",
+          "version": "repo-lines-v1:sha256:695efb820c681479894cd025f98ba9ef066bf9dffac9fe69d73b4248a07d63d0:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJjMDdjZTA5OTViYzlkYmQwN2Q0N2U5NzQ2YzE4MDkxNjI0NzIwOTYyMmJlZTk5ZTJkMjYwMmZiOTQ3YmI3YjQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY2ZjViNDBiMTU4NDU3ZDE3ODY0ZjIxNzkwNzg2ZGQ1YTJlY2RiNjRiNjZhNjUxZjc4OGQ0ZTI1Y2QzMzAzZDIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjEyN2ZmNGQ5MWZmOTYyZjQ0NjRlZTIxOTc0M2U1ZjEyNzA5OTQzNmMwZGM2ODk5M2MxMTdhOGEwYmUxMTdjNWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQyODRhOWExNjU4NDEwMzNmZTU4OWI2N2Q3ZTkxYzIxY2RlYTgyZDNkOWIwYTM1MmUyZWY4MTI4NDcxZmI0OTYifQ"
+        },
+        {
+          "resource": "repo://client/src/components/app-builder/AppUpdateIndicator.tsx#L28-L58",
+          "version": "repo-lines-v1:sha256:89fba8be69407a74c3f70905ab57024adc035f7a07777ec57f2f5cf6633a83c5:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMxMmYyY2ZmNDkwMTJmZGYzY2M1M2ViYTU1OTk1ZjVkZTQzYTlkMDFkYmRhZDlmYzg2ZjQwZGU0NWM2ZDE0YjYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U5ZTQxYTk4YWE5OTY5ZWFmOGU3NTc1OWVmYTFmYjcyZDhkMGYzZjM1MjBiOGQ0ZDY0ZTdiYmZhM2U0NGUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZlNDYyYzQzNDgzYWJjOGE5MWVjNmQyN2JlMDlhNDhkZDM0ZGE5YjM3YTBkOWM0ZDY1OWI2YjY5OTkyYmY3NjIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE3ZDg5ZDk1M2YwNGRjZDhjNTNhYTY3ZjMyM2NlN2Q0M2ZhYjg2ODAwMTA1ZTU3Yjg1ODMwM2U4OGQ5MTMyMTQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_b661a018d0124cd7a96e243afd67995d",
+      "statement": "Reusable catalog cards provide accessible activation and layout while callers supply resource content and actions; entity-management controls build list selection and organization/access/role assignment requests, excluding managed entities from assignment selection.",
+      "evidence": [
+        {
+          "resource": "repo://client/src/components/catalog/ResourceCatalogCard.tsx#L3-L31",
+          "version": "repo-lines-v1:sha256:814667f0d1908a782c398eea739fa20632ec99607de96cc94ec1e6e3139afd49:eyJzZWxlY3RlZExpbmVDb3VudCI6MjksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkxNDBlMDQ1MzM1MmFiNDY2ZTg1ZGJlNGM2MzE0NzBkYzY3NmY3YWI3ZWM4MTVjMzY5NjFjOTI2OTcxMTBkMzkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZiMTdhYzRjZDU0YjMwNmMxZDc3NjFmZjRiODM4NTE3ZGYwNWU2YmJiZWQzM2RjM2RhNzI2YTk0ZWJkOWE5YzUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjoyLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQyMTVkZDliNTFmNTBiMGRjY2RmY2YyODMxN2UzNjMxYWQ0ODhmNTE0NTRjZWYzZWYyNjg0NjgyMzI5MzVjNDUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImEyYTE3MTFhNDczNTc1ZTc4MzE2MTM3NzA2MjllOTk3YWExZGQ4NjFlOTZmZjZhNmZmZDljY2EyYTNmYTQ0ODEifQ"
+        },
+        {
+          "resource": "repo://client/src/components/catalog/ResourceCatalogCard.tsx#L46-L80",
+          "version": "repo-lines-v1:sha256:4dd6e34db1120cddc2c8d82a31f6dabac4ba07cdb763a98e51c12fb6b28939d6:eyJzZWxlY3RlZExpbmVDb3VudCI6MzUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNiMjIyZDNkODQ4Y2VlNDBkMzJlNTBhNDE2MTQ0YWQ2NDFhNWE5N2NlNmI2OWI4NjE1NmYyMjBlYmI4ODgyNmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU4NDJhZWNhYjc0ODhkYjkwYzg0NDgyNWNkODI2MTMyMTRiNGY5NmVlNDdjMzQ3NjBiNDFmNjk5NjU4OTc2YjYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU2ZWEwYzg0NzkzZTk0Y2JmOTQ3OTU2N2Q2NjEzOGFkNmZlYmMyYmQ1Y2I5MjUxYWRkZDAxZGJlYjE4NWQyNTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI4YmM5ZjU0MTZhZWEwY2Y3M2FlZWViODZjZTQwYzhlOTZlNDllNjdkMWJlOGNhZjBkZjM5MDQ5MWM0YThjNzUifQ"
+        },
+        {
+          "resource": "repo://client/src/components/entity-management/EntityAssignmentPanel.tsx#L31-L49",
+          "version": "repo-lines-v1:sha256:393625f6ebd5305def77c10ca41967035bd9c14ae974e1a4738643e26ed89fc2:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUxNTdiZDA1MzVhZDU5NzJmZjhhOTRkZWQ1MmRhMjk0YzA1NWJiMTc0OTk0Yjc0MWE0NmIyNWRkMWZlODJkNmMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI1OTlmYzZiMjg0YmNiMWI3NTE3MDUxZDkyZWI1OWM1N2ZlNzQ2NTkyNDMyZWFkZTM5ODcyMzFmYzg1OTVjNDQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM1MWYzZDRlZDI0NjA5NDc3ODAyYzEyOWU1M2MzMmUyMTQ2ZWJmYTFiMDAxMWIwNDIxOGNjYTcxZThmYTllOTkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImJlYzFhNDJkZjlhOWM0YTQ0ODBmYWQ5NjFmM2YxNzljNmZmZTNiN2NkYzMyOTc2YzA0ZDU3NzNiODgxYWRkMWEifQ"
+        },
+        {
+          "resource": "repo://client/src/components/entity-management/EntityAssignmentPanel.tsx#L82-L89",
+          "version": "repo-lines-v1:sha256:3ae57c89c48c7283fecc42856d64de1c3b5dba7f1db202dafd9d2f8e747cdc96:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNGVkYjMwMmFlOGRlNzMxY2MxNjIxNzMyOTFiYTcyYjA3YWM5YTgyZmEzY2FlYTc5ODRkMTc1NDlhNTc2MjYzZiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYWEwYzhiZDQ4MDMxNTE0MTRkMjdhMGQ2MDYwMTc3ODMwNGZlZWZmNjAzZWYxZTMxY2EyYTRhNDIwMmE4MjBhNyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMmQxZDE1Y2I0NWZkYjdlOGE3ODU5MjVlZDE2ZTNhZTUyNDhiN2E0N2QzMGZmMWM1MmRiMzBjYWJhZjE3OTk5NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTM2Zjc4YzJmZTNlNTVmZjlkODU2YjRkNDZjYzE0NmU0MzJhNmUwZDM3ZmFmNzBlZDNiNGIyYzIwMDJhZjIzNSJ9"
+        },
+        {
+          "resource": "repo://client/src/components/entity-management/EntityListToolbar.tsx#L17-L37",
+          "version": "repo-lines-v1:sha256:e4161f502006de7b5b1c675b5aadaf2feae6b458d323d6bc28e1677473fcab7f:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIwOGI2NzAxOGE3NWQxMzhiNDU0YTQ2OTNiNzIwMTNmZThjNTFlY2FmYjk5NDAwOGMzN2ZiZjI4NTFiYTljZjEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY2NzMxMmRlNGQ5NmNmMTQ4NGRiZWIzMWNhNzFhOGIzZjMxMzkyZmQxNzZhOGZlNjYyODYwYjAxZWUzZjIzOTEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY5ZTFkNWYyYmY3YjEyMjA4YTdlNTdmZjI5MzVjYjNlYmYxODFiNWU5ZmVmOWNjNDQ2NDRkN2I0YTUwMGNkZmQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_8b5ab1a80cee45b5b43ccec67a618b48",
+      "statement": "Solution setup and workspace-import review are presentation components: their parents own fetch and mutation, the checklist delegates configuration writes and obscures already-set secret/password values, and grouped review keeps a definition with its associated source files for a joint keep/replace decision.",
+      "evidence": [
+        {
+          "resource": "repo://client/src/components/solutions/SolutionSetupChecklist.tsx#L1-L8",
+          "version": "repo-lines-v1:sha256:3913144e36bc423655dd5dd8df952529783508ad48fa16f0ccacbb38dd059da3:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZWFmMjJjZjA3MzI1OTJjMjQ3MTQxY2JlNjFlZmExMTAxMjYxMmY1YTMxMjJiOWFmOWJiYWY1MmY1NzI0ZDE5NCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOTcyYTQyOTM4MmIyZTE0NzE4ZTBlMzdiMDU3MGE4YTE3MDI5OTFmY2Q4NDk4Y2Q4NDA2MGE4YmY0ZjA1MDE3YiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjAsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYzNiNjc0Zjk0Y2IxZmMxOTlmNDgyOWYwZjdiYmMzNDExYWNiYThiODgyMWU4ZThiMzQwMzg2YzczZGUxODRlYSJ9"
+        },
+        {
+          "resource": "repo://client/src/components/solutions/SolutionSetupChecklist.tsx#L37-L55",
+          "version": "repo-lines-v1:sha256:805f570db8c8ef1c63106ae99e384423d9726bbd3045b7544da10e3637c8a22e:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU0YjIwNGZkOWM3OWViMzk2MWQ0MWU0MWViNTg0MTE1YjBlZGQ4YzFiNjIxNDkwNGI0ZTg0OWUzN2VkNThmYmUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjcwZTE5NTBhYjY5MDEzZjg1OTQzZDhmYWU4MDVhMzA4NTljNzJiNDNhOTk0NWQ2NTAyODdmYzU1MWNmNjM1N2IiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhhNTY3NzhhOTUyOTFmN2NmZTAzZjJhMDM3NGU1MTM1YzlkYTA1M2EyYWI5ZmUwNTMyZDc0N2Q2ZDA0ODFhYmMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjkyZGVmMTg4ZTNiMTkzOTU0NmMwYzBhMzVlMjQ3OTcwMDI2YTBmOTMyY2IxZTU1ZTI3Njk5MjgyMTg1NTQ4NjEifQ"
+        },
+        {
+          "resource": "repo://client/src/components/solutions/WorkspaceImportReview.tsx#L20-L32",
+          "version": "repo-lines-v1:sha256:aca426c4dc3ea03e5f79e2cc2152426c747ab067a541460107e8ee7d90c084db:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI0OTk1ZDYzNWE3MzQ1YTIzOGQzOTM5ZjY0ODg3MmFjMGIxMDI1YTk2ZWEzMGYxZmI2YzE5YTEzZjhmMzM5YTYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE3NGVlOGE4ZDFhYTg0NTM5MWJjNjc5ZWI3MGNlN2Y0NmEzY2Q2ZmIyZDE2ZmNjYTY3ZmExNzhmNGY4YzFlMGUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjdmZmY1YjhkZGY3YjY2NDY5ZDVmNmQ0YjM1Y2Q0MGNiZGU5NmU5NGQ1NTY0YTM5YWMxNGUwMzYxNmJiMDNkNWMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI3MjY3ZmE1ZDAwYTJhNTdmMmJiYmI1YmEyNWE3ZGMwYWE4M2NhN2M4YTEzMjFhMmVmNThiMDRkNWNiY2MwNzgifQ"
+        },
+        {
+          "resource": "repo://client/src/components/solutions/WorkspaceImportReview.tsx#L58-L96",
+          "version": "repo-lines-v1:sha256:e18eeb1490fd7252429c91aa9e037beb0c588591c9d26f55f54e3e2562c4e7f4:eyJzZWxlY3RlZExpbmVDb3VudCI6MzksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY0MDQ4MTMwYjBmMjBmNWFlNDMyM2I1N2Q2ZTNlYTg4NDA1ZmVkMGQzZGI3OWFhZWYxMTExYTY0ZmU1M2Y0MTUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJlZWQxMzkwYjcyY2RjMDQzNWIxNjU5ZGFjODU4Y2NhZTA3MWVhZTIzZDc2ZTAxY2YwOGZmNTcyMjBmYTVmNWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZiMzBiMWMwYTdiZWVkZjQxMTc0ODE0MWNiYTQ0YTM2NTkwYjczMjdlYmVjYWNiMzQ4ODljM2Y0ZTQ2YzA0ZTAifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_c7e67b4ff08044728eb8b27d12fca8d4",
+      "statement": "Application-logo reads use the access-aware application lookup, enforcing organization access and app-bound embed identity; cross-tenant callers and tokens bound to another app receive not found.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/routers/applications.py#L1706-L1715",
+          "version": "repo-lines-v1:sha256:d25240636df8faebe88467ab63cbfc1f2d58f08195ea89657e0b72ecdec5c95a:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg2ZTRjMWFlN2Y4NDA2YmIwZGMzNGU5ZDUxZDNkYjFmNTIyZDdjMGY0NmFjNDY5Yjk2MGU5NmRjYmEwNzcxYzIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU5MDlhNTNhNjE4ZDAyOGUxZDMwMDBjMGE3YWJjZWVjYmU1ZmIzN2Y0ZTUxMWVmZTQ2NjQzZmFkNmU2Njg3MmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZiMDk2ODIzMDVjMDIyM2QxMTQ5NDk2MzQ3MTNkNGY3Y2YwNzFmNzA5ZmNiZjFlNzlhNDE1YzQ0NjE3YjRjMmQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgxYmRhNDc1MmVmMWU4MWNiYTExZDgzNWVkYzk2OTAxOWRjNTYyNTUxNTFkYzcyYTc2YTQ2NjNmODU0MjJhYTEifQ"
+        },
+        {
+          "resource": "repo://api/tests/e2e/api/test_entity_logos.py#L163-L191",
+          "version": "repo-lines-v1:sha256:95d5a4062272233f7286795d077d00dd825d52c9e05743004d8af7b23e791be6:eyJzZWxlY3RlZExpbmVDb3VudCI6MjksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI2Yzc2ZGJjM2Y5ZTgzZjFkODBkOGNiOTA4ZTE0ODkzYzkzNzYyMzkyYzI0NjgyMWU1MzZmZTc4ZTY2NDI5OGYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUxYWEyYWRmMmUwZDMzMWM4N2I3MDQ0MDdjMjk2NjcyOGJmNzNhNWVmZGEwYzA5ZGNiOWM1NzZlM2MwMWJmNjQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjEwNDJlMjk2OGY0NjkxNjkwNDM2MGFkYjc5NjhiNzA4ZDkyOTQ4MDA3ZTA1NjY5M2JhMDhhYTQ3ODNlMzRkZjQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgwNWQwOTU5MmEzMDYyNjY1MmM0NzliYWVkNmJmZjc5OTQ2YjdiZDY2YjE3YTNlMzY3OTE1ZjE4OTMyZTRhOTEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_7f0fc4e7fa434d9c8d49868af4a6bfaf",
+      "statement": "Fresh inline V1 application-publish attempts recheck current actor and application authority before effects and at publication; recovery can reconcile an already-applied intent by readback without rebuilding, republishing, or checking the original caller authority, while revoked authority for an unapplied intent remains a definitive failure.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/jobs/platform/application_publish.py#L225-L249",
+          "version": "repo-lines-v1:sha256:aa0bca83968de109d8b75b957a3472b9cc4e9b8049784093cc38c13fbe97fc1f:eyJzZWxlY3RlZExpbmVDb3VudCI6MjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU2ZmQyNmE2NmI2OGJmZTE3OWNkYzRiYzM0OTU0ZWFkNmMwMzhlY2U2YTFiOTI5OTYzMjliYzM1ZmNhNDEyNDkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQwMDEwNWUwYTY4NTIxYzNkMzMyNjE1MzkwZTg1OWUzOWNmMjQxMjc0YTdkNzgxZDE5NmEzYWRhMDdiMTBmZDciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU3M2ExN2IwYTcyYzM0ZTBmYTBhMzZiNDhjNTVhMzExMmUxNDZmMDJkNTJhMjdjNDk5MmQyNGFkM2EzZWFjNTkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImNlMjM4MTBkNDNlNmIyYThmNGE2MzM0NDFkYzFiMTY5NmI5ODJlZmI1MWM1Yzg4MjRhM2Y0NjljN2JhOTk0YWIifQ"
+        },
+        {
+          "resource": "repo://api/src/jobs/platform/application_publish.py#L81-L129",
+          "version": "repo-lines-v1:sha256:5b0f419b051d60c90600d909526f1ede7f88a5db1c4bef127235a42418b42899:eyJzZWxlY3RlZExpbmVDb3VudCI6NDksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYxNjM1ODI0ZGZkM2FmNWQ2ZTI4NTBjNTg4YTA3NzdkZmMzYmNlOWMyZDI0NTU0OGNlOGQ2NDAyY2QxZDU5MmEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjEwZjg2MWRmMTQ3MDllOGJiNTRiMThjZGEyMjI2OTM3YzU1MGFlMmUxNzA4OTU0ODhiMjhlMTI0OTYyMzlmZTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhjYzRhN2QxY2M3OTZhYmEzZTQ2NzIzMzI3ZjUxN2U5ZjgxMTk4MmQyNTBmMDcwMjk4NmU0YjU3NjRhZDk1ODkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI3ODMyNjRlMmJkNzM2ZWY2NWRiMmI3ZTMyNDM3YzhjYjNkNjVjZjBmYzYyMzM5MDhmNjNiNjEwMzAzZmUyZmMifQ"
+        },
+        {
+          "resource": "repo://api/tests/unit/jobs/test_application_publish_recovery.py#L140-L165",
+          "version": "repo-lines-v1:sha256:37c2e72ccf7b428ab0466aba473f8f9e539610628ac9805fb8fb318dd803e7a1:eyJzZWxlY3RlZExpbmVDb3VudCI6MjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAwYzhjOWMzMWQ3YzdlM2ViNzgxYjUwN2RiOWI0OTBkMTJlZDg3NTg0YzNlM2ZlMzMzNzMwNmVjYzliODc0NGMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjVhYjdiMjcyYWI0ZTI1MTc1YjVmZDI0YzEzY2ZlNTYzNDI1MTRjMDI3OTQ2ZjAzYjUzMDVkZjIwMzM3ODc5ZjkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjIwMTY1OGIwZjUxM2JjZDRmOTVjN2FmZjc1ZjI4YjBkNjhjYjQ3MTFlNmI5Yzc0NmViNDJmZGEyYzIwN2I0NTMifQ"
+        },
+        {
+          "resource": "repo://api/tests/unit/jobs/test_application_publish_recovery.py#L58-L80",
+          "version": "repo-lines-v1:sha256:580360590db655f3e65150a6610e3caec2d14d8b989b705c938d586cae98e144:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAwYzhjOWMzMWQ3YzdlM2ViNzgxYjUwN2RiOWI0OTBkMTJlZDg3NTg0YzNlM2ZlMzMzNzMwNmVjYzliODc0NGMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAwNDE1N2I0MGYyMjY2Mjc0YjVjNDM0MzI0NDMyOTZmZGM1N2QxZTRhM2RiMGRhN2RiMjBlYmQyNGJhM2IzODIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjVhYjdiMjcyYWI0ZTI1MTc1YjVmZDI0YzEzY2ZlNTYzNDI1MTRjMDI3OTQ2ZjAzYjUzMDVkZjIwMzM3ODc5ZjkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVhYjdiMjcyYWI0ZTI1MTc1YjVmZDI0YzEzY2ZlNTYzNDI1MTRjMDI3OTQ2ZjAzYjUzMDVkZjIwMzM3ODc5ZjkifQ"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.7.2",
+    "at": "2026-10-19T14:54:21.479Z"
+  }
+}

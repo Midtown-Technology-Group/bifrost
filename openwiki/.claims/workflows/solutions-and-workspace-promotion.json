@@ -1,0 +1,210 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:ad4675974c8752cfd860215a7af3153759babeb53f00a86fb52d61dbd68adea8",
+  "claims": [
+    {
+      "id": "claim_528b2599600e456bb9d909e2459d7aea",
+      "statement": "Solution deploy is a full-replace reconciliation limited to entities owned by the target solution_id; Python source is stored under _solutions/{id}, and entity organization scope follows the install.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/services/solutions/deploy.py#L1-L17",
+          "version": "repo-lines-v1:sha256:61b02c7fa169b92efa5a96a69f458370678f8fe4e5d95ba909f893b6788fb684:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEzMDNlY2RkNGE0ZDEwZjE5YzczZmQ0MmZkMTI0MzdmZDMzNTRhODI2ODE2MDVkYTUyNTVhOTdhMzkwNjhkYmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZiMmVlZTc0ZjNkNzdmZDM0YmUzYjQ5Yjk0NGY4NWU4NWFiYzllNWE5M2I0NTU1YjJjOTRiZDUzZWExNzk5YWUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA5ODkyNjQ5MTdkNjk2NGZmYTc4YmRmN2NkMzkyZWRjMWY2MGU1Y2Q1MzgzMTBiYzZhMzQzZTEwNDM5MDllMjcifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_6e3c682a0083438c9b56f7a1f93c6a3d",
+      "statement": "Solution entity IDs are remapped deterministically per install with UUIDv5, preserving IDs on redeploy while separating different installs.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/services/solutions/deploy.py#L139-L151",
+          "version": "repo-lines-v1:sha256:d3cfb7466d204b025a86a623bb97efbe68b5f99ee9eca04dbc2c0e572a930217:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRlZTI4NmYwYThmOTIxMzVjM2UyMmYwNzhhZDVhOTEzNTA0ZDRkMzllZDQxNWRhMjNjZGM3YjZiNTQ0ZTYwOGEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk0OWE0NGUyMjE4Njg4OTcwZTNhNmM2NDQwZTcwZjdkODEwNzg1ZGVhNzUzMGE4NjIwZjg2MzZiZDAzZDgwMmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjVlOGU3OTU4MTAwMWM2N2FlNjg0NzM3MGY5YzkzYjM3YTVkODFhMDg2N2Y4YmQyOGZiZjNhNTBiMzFlNTRmZGQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJjMjYwYjQ5ZTE5OTY0N2QyNTJlMDMyN2VhNGRmNDgwYWE0NGZiZDkwN2Q5Nzc3MjdiMDE4NDVmZWIyM2E4MDkifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_feba087742c84e93a3b7862be036924c",
+      "statement": "Solution export serializes a reusable descriptor, Python files, and .bifrost manifests; scope is chosen at install time and passwordless shareable exports omit the encrypted secrets blob.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/services/solutions/export.py#L1-L14",
+          "version": "repo-lines-v1:sha256:d2d01a6fa78a630bf39f415838db1d3d0ce573c01ecf9a469dfa0c8a6af6918e:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEzMDNlY2RkNGE0ZDEwZjE5YzczZmQ0MmZkMTI0MzdmZDMzNTRhODI2ODE2MDVkYTUyNTVhOTdhMzkwNjhkYmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEzMDNlY2RkNGE0ZDEwZjE5YzczZmQ0MmZkMTI0MzdmZDMzNTRhODI2ODE2MDVkYTUyNTVhOTdhMzkwNjhkYmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU1YjZlODcwNmI0MzA0N2YyYTZkYjY3ZjEzMjYzODU5NTYwNGU2N2YzNjk2Njg3NmNlMDE1OGYwMDUzZTZiZDEifQ"
+        },
+        {
+          "resource": "repo://api/src/services/solutions/export.py#L88-L124",
+          "version": "repo-lines-v1:sha256:ff94aab15c3e63642c90caeb63070e2d8cbeac83b80a7c3806da314e51998ae5:eyJzZWxlY3RlZExpbmVDb3VudCI6MzcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3OGY1NDlhOGI1ZGZmNjdmOGMxYTlkZWI4NDA3ZTJhM2Q1NDM4YTI1ODJlNDg4ODdmYmE5M2U4YWY1ZGE2OTUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYzYzdhNzRhZmUwNTBiMTIzMmFlYjM0OTVmMGNmZmJmZTYxMjgzMDkwYjliNGQ5OTAyOTQyMGY4Yzk1NDhmZGYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM0NjQ3N2Y1MTNiM2YzN2Q0MmNkNWQ5MGIzM2M4NTU0ODcyNTkzOWZjNmU3YzUzMWQ0NjM4ZjU3NWQ4NmU0M2EiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImFlOTZlMDhmOGI5Mjg4ZTg4MTE0MjBhZjQ2NDhkNTY3NjA5NmYwYzljNTc3NTIzZWU4ZjJlYmE1YjBiMWJiMjQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_37ac5730353b4448a9c1f9bacbff746d",
+      "statement": "Workspace archive preview stages requester-bound package data and computes a collision plan; submission requires explicit decisions for every conflict and declared config keys before enqueuing a PlatformJob.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/routers/solutions.py#L250-L300",
+          "version": "repo-lines-v1:sha256:3602232c2023f7bd99f62bcb7f22dbc2698323ec7ba2c5e743e6be210eb06816:eyJzZWxlY3RlZExpbmVDb3VudCI6NTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ1MzI2OTVmZjkxMTMzNTM5M2YyZWMyMjNmYWE0OWMwZTFjNTJjNDU2YzQ3MmU0ZWE0MzkzYmRkMTNmZDgxOTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjViZjA4ZmRiMDJhYWQyZTNjOGFkNWQ0NzUxYzk4ZjMxYmM5ZjJkNTExOWQzNjQ0Y2ZkNmI0ZWI0YmVjZGExNWYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY2MjkwOWNiZjkxNWFhNDVjYjFkZmQ3YmVkMDA3NTM0ZDRjODRjNGQ1YjljZDE0ZTQ5NTliZjAwZDRlY2E3MjkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjBhNjZmOGY2YzllNDZiMTEyMTRmMWJlNjNiYzMyNThlZDI4OGFhZjdlYjFkNTAyZWNlNmE3NGI5OWI4MjA1NjYifQ"
+        },
+        {
+          "resource": "repo://api/src/routers/solutions.py#L305-L373",
+          "version": "repo-lines-v1:sha256:5cdb3fdf3fc2685c91a9b94e8a03640d785929e8b6a06fc72a5e671b0aa1bdfd:eyJzZWxlY3RlZExpbmVDb3VudCI6NjksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ1MzI2OTVmZjkxMTMzNTM5M2YyZWMyMjNmYWE0OWMwZTFjNTJjNDU2YzQ3MmU0ZWE0MzkzYmRkMTNmZDgxOTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwYzFmMTg4ZjE0MmVkN2E4MjQ2ODBiMjA3MTcyYzU1MTliYzYxNGE0OGZkYTdjZjE2N2VkYjhkZGY3OTk1NmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE2MTNlOGIzOTViMjJhNDBhZjEyYjI1MzFhNDJlODExODJmMzIxYTQ1NmYzMTVjOTNiMTU2ZGU4OWQ1ZGEyOTkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImNlZDY3YWU4MzM2MWEwMDMxZmVkNzRkZmQ5ZDJhMzdlMjY3OWJmYTAyMjJiZGM1ZmM4MWQ3ZmYyNWEzOGUwN2IifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_dd985af7915548428bb3a903986b4a85",
+      "statement": "Repository preview is a one-time source snapshot bound to a resolved Git commit; it checks the Solution descriptor and rejects symlinks before staging the preview.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/routers/solutions.py#L438-L515",
+          "version": "repo-lines-v1:sha256:b716d89e72697fa9ecc4b67538ea4da9300aa438a264b49031c18a682ea2e693:eyJzZWxlY3RlZExpbmVDb3VudCI6NzgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ1MzI2OTVmZjkxMTMzNTM5M2YyZWMyMjNmYWE0OWMwZTFjNTJjNDU2YzQ3MmU0ZWE0MzkzYmRkMTNmZDgxOTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRlNTUwYzY2N2I5NTJjNjkxNTZiZWNkMDBiZWQwNzhjZjAwN2I2YmZlY2Y2MTM4ZDExNDA1ZTU2MmU3ZmFjMjIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhjOTVmNjhlNmZiOGFhOGRlNTgzNmIxZmY2OGI0YzI0YTZmMWQ3Nzc2ZGY1ODVkYzMyNzc0Yzg3ZGVlYjQ4NmQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhjOWEwN2JkYTMzZGQ3OTRiNzczNDIwYmJkYTZiNTYzMWRlOGFjZTBkNTJjODQwNzVhYTcyY2U1MDBhMGZjZjYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_6d022fa669ca4228aff3d056735029f5",
+      "statement": "Git-connected Solutions use their configured ref or the repository default, have one auto-pull writer, and deploy within the _solutions namespace rather than Workspace _repo/.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/services/solutions/git_sync.py#L1-L15",
+          "version": "repo-lines-v1:sha256:9e22e47beb84342f8823494b00a255b536c3b5a06310a73a3b0f66dac9d7d196:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEzMDNlY2RkNGE0ZDEwZjE5YzczZmQ0MmZkMTI0MzdmZDMzNTRhODI2ODE2MDVkYTUyNTVhOTdhMzkwNjhkYmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY3MDYxZDczMTQ3NjE5YTY4MDQxMzQ1OTdmODU4MzQ4NzY2MTBmNGI5OTFkZWYzNTBlYTA3OWJiZmU3M2Y3ZDciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFhYWY3NjM3Y2I2ZTdlNWRiODVkNjM0Mjc0NjAxNGRmMDQxY2NkNTU4YTkyMGIyOWViNmFjNzE5ZDdiYWY1YzIifQ"
+        },
+        {
+          "resource": "repo://api/src/services/solutions/git_sync.py#L205-L228",
+          "version": "repo-lines-v1:sha256:9a721ee6bc6ef2eac5b99238440b69ebea1c938e9776c5a9d2a76c7576086d2f:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY0ZWE4MDAwMDg2OTkzNDJmOThmMDA3ZDlkZDE2ZTA2ZGYwYzA2ODQ0ZTRhNWMzMGM3NTAzOTI2ODMyMzhhNWMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRmN2FiNzQxYjY0MGIxYzYxMDIxY2VjNGQyMjA2ZTdkMTgyOTllMzA3NTllZGIwZDc4MTU3MmJjODYzZGRhM2EiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjFlZDljZDM2ZGJjYWJhYzA2ZWZiZjEzNGI2Mzc3MGIwMmZlMDY5YTcyNWJiMjhkYTdhMGM4Y2Q3NWI1MjdmZDMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRkYTUwMDY0Yzg5ZTIxOTQxN2RiYjc0M2ExM2NmZTFlYzZmNzcwMDdlNzUyYTE1ZjRlNDdkZTdkMDcyMTZhYzUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_9b4e9be646894ef6bf9c04065111f7bd",
+      "statement": "Connected Solution synchronization uses a per-install write lock shared with manual deploy and a pending-rerun marker to handle overlapping update triggers.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/services/solutions/git_sync.py#L222-L259",
+          "version": "repo-lines-v1:sha256:0486b1ab37d6e4f72053ca2b2e8d76ca1959f2054bdf1244957b11c9deb835b6:eyJzZWxlY3RlZExpbmVDb3VudCI6MzgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVmYWQxMWY3NDFkMTNhOWE4ZWYxNGQzYzJhZGJiZjFjMGFmMzI3ODM4NzExY2Q1MmI1ZjM4YzZjZGMwM2VmOGYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUxMDM0ODFjNTdkMGYwZGMwZjc2Y2QyY2M4YjM2MDRjNGU4Mjk2ZGE0MTIyYWRkMTllODE3NDVkYzdlMzMxYTYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY3NTk1NzNiMWQ0ZGNhNjI1YWI2MTM0N2FlNmFhZjdhNDk4M2MyOTEyMjRjMGE3N2E2ZDcxYjk3YzE4YmRhNmQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImVlODEzY2M5OWQzMzc2MGMzZTZjMzc0NjczMTg3MDJkMGNmNDcyN2E1Y2EyYmEyMzI5MzMxOWY3YjY3YjY5YzMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_a5cf60dd911f4f1f889222bbe56cc446",
+      "statement": "Workspace changeset validation checks verify-mutation hashes and parses staged Python to extract decorated workflow, tool, and data-provider registration candidates; activation requires current valid validation and serializes writers with a PostgreSQL transaction advisory lock.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/services/workspace_repo_changesets.py#L356-L425",
+          "version": "repo-lines-v1:sha256:2c7f5676d207fc2e540d1b111674990ad38d11616a861956486683740794683b:eyJzZWxlY3RlZExpbmVDb3VudCI6NzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImExZjcyYWNhNmEyMzZlODY0YjI3ZjFmODBkNzdhMTQ4Y2VkNzhhMGQ0N2ViNGNhYjJkYTVkMTliYmIyOTA5MzQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk0MWYxMTc4M2Y0NmY0ZmFlNzdkMTdhYTkxNTk5YWQ5YzZkYmNkZTZkMDIzODQxMjcxYjc5YjE4MWNlMWIyYzMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijc2MzVmOWQ5NGVmYmU3MGYzODA3ZDM2MTU3NmY1ZjUxNGZkNzFhMDE1ZTcwMGQ3MTcyODE5ZTJiZjYzNjBjMmIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImFlNTBkYzJjOTEwMDRjYjEyYzVjZmQ5ODAwYzQxZmYzMjdmZmNjZWE5NDYxMzJkMmEzNWNmOGZlNWExMmQwOGUifQ"
+        },
+        {
+          "resource": "repo://api/src/services/workspace_repo_changesets.py#L513-L545",
+          "version": "repo-lines-v1:sha256:f747777c120e60b075fe74002b6bbf28abbc7654e1a766763dd78bda3acb5ae9:eyJzZWxlY3RlZExpbmVDb3VudCI6MzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRjYWJhYWFlZjBhZmM1NTI1Y2M1YjUxNDZlMTA4MmI0MTlhOTc0YjIyMjZlZTA3MzQ2ZGM2MDY1ZDEwYjdhYWMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU1MDMyZTk2NGQwOTMyMzUxZTVkMTg1MjY5MjgxYjE3MWEzYTA5YjA4YjI4NmU2NjFlYTQ3MDMyM2M4MmViNGQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg2OTNlOWQwODFjYjc1NmE3ZjcyMjcwMGEwNTAwMTBkOGNiNzJmMTM5ZDliNDg2MWZiODA2YmIxOTc3MzdmNDkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImJmMjgxODc0MzBjZGE2NWMzMDUyN2QyOTdjOTExZmZhYWE5MWVjZGIyYTdiMjliZTZlYzE1NjZiNDZlZTNlNTcifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_d7e6e2f874a44842bd622bbd00f40a7b",
+      "statement": "Workspace changeset routes include scoped begin, staging, diff, validate, activate, Git-closure retry, abort, and Git-convergence preview/apply operations.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/routers/workspace_repo_changesets.py#L111-L183",
+          "version": "repo-lines-v1:sha256:c14788747b42064a31076b0c0f7b4cbc3116118e3ee68c0653cef371ecdb73d5:eyJzZWxlY3RlZExpbmVDb3VudCI6NzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ1MzI2OTVmZjkxMTMzNTM5M2YyZWMyMjNmYWE0OWMwZTFjNTJjNDU2YzQ3MmU0ZWE0MzkzYmRkMTNmZDgxOTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM0NWE3ZGEzY2ZmOTI2ZmY4ZjBmZjZkYTk2MGU2YzAzYjAxMjNkZGM1OGNkNDExZmIwY2Q2YjExOTkxNzE0ZTIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA1MjAzOGNlOTA0MTc2MWZlYTYzMGI3ZGJiMDJjN2VmZWFjN2YzNzY4ZGUwOWVmN2JkNzU3ZTAxZGFlNjI2ZWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImNiYmZjZmM4NjhlYmZiMmU2MWRkNDk3NGM5MDAzOWFmNmM1ZmY0NDExMGVhZDBmY2Y4NjM2ZmVlYjQ3NGI3MzkifQ"
+        },
+        {
+          "resource": "repo://api/src/routers/workspace_repo_changesets.py#L186-L272",
+          "version": "repo-lines-v1:sha256:11749df0d3524a60f07b941f0804de9c0961c17e0561c3b3937be35118100eeb:eyJzZWxlY3RlZExpbmVDb3VudCI6ODcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVkNTVmNWQwMTRmY2Y3YTI0ZjU5MTQ0NzRkOGM1OGZhODY1ZTAzZGNlYmM0OWE1YzEwODE3YTk0YjM1M2YxNTgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZjY2RlZjVkZWI2NmRkOGE2YTkxODFkNWNmNDZhZDNlOTJlMzVhOGQ1ZTFiNzU4YjRiNGNhMDA4ZGU1MWMyNjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA1MjAzOGNlOTA0MTc2MWZlYTYzMGI3ZGJiMDJjN2VmZWFjN2YzNzY4ZGUwOWVmN2JkNzU3ZTAxZGFlNjI2ZWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM0NWE3ZGEzY2ZmOTI2ZmY4ZjBmZjZkYTk2MGU2YzAzYjAxMjNkZGM1OGNkNDExZmIwY2Q2YjExOTkxNzE0ZTIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_599c42fa2c9f4d0aae2501df8dc2341e",
+      "statement": "Rapid promotion preview and activation are feature-flag guarded, require organization context, and prepare is queued through the durable PlatformJob interface.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/routers/workspace_promotions.py#L136-L160",
+          "version": "repo-lines-v1:sha256:a0285022d87bfdaa8956df14ca5e24dd9225bd73bd24fa37d37f6f87095f7444:eyJzZWxlY3RlZExpbmVDb3VudCI6MjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM4YzdlYWU3MDAwOGJiOWQyMjM2MGU5NzA0NjA5MGI4YzU4NjZmMjYwYjQxYWFjYTIxMTM4ZDNjZWUyYTc2YzYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNlNjU3ZmFhOTA3MWRhMGZjNWZjOTE1N2EyMWI1NDYyZmEwNTNmY2FhYjM4NjRjMTAwZThlMmRkN2FlZWQ1NmQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhkNTQzZDgxZmJkNDFmZDk1YmM3MmMwNTE3ODI1N2UxOGVhYjEzNjY5YWI2NzkyYzRmMTFiMTE2ZjBhYTM1OTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImRjNjAwMmVmNDc2NWUyNzE4NzhlMjg4OGM1ODRjYWE2N2U0YjllZDAyMWMwODU4OWFhNWY3MWQ0NTI4ZDI1ZWUifQ"
+        },
+        {
+          "resource": "repo://api/src/routers/workspace_promotions.py#L339-L405",
+          "version": "repo-lines-v1:sha256:1a7e8a43cee947a7d04e85b18b95cd5f56daa7c4c1ba0084bdfca906beefb226:eyJzZWxlY3RlZExpbmVDb3VudCI6NjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ1MzI2OTVmZjkxMTMzNTM5M2YyZWMyMjNmYWE0OWMwZTFjNTJjNDU2YzQ3MmU0ZWE0MzkzYmRkMTNmZDgxOTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwYzFmMTg4ZjE0MmVkN2E4MjQ2ODBiMjA3MTcyYzU1MTliYzYxNGE0OGZkYTdjZjE2N2VkYjhkZGY3OTk1NmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhjYzRhN2QxY2M3OTZhYmEzZTQ2NzIzMzI3ZjUxN2U5ZjgxMTk4MmQyNTBmMDcwMjk4NmU0YjU3NjRhZDk1ODkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImRjNjAwMmVmNDc2NWUyNzE4NzhlMjg4OGM1ODRjYWE2N2U0YjllZDAyMWMwODU4OWFhNWY3MWQ0NTI4ZDI1ZWUifQ"
+        },
+        {
+          "resource": "repo://api/src/routers/workspace_promotions.py#L408-L449",
+          "version": "repo-lines-v1:sha256:1d4047233163d38b2f14db78ba8006715202dde580a1a4db1abc4be889b4260a:eyJzZWxlY3RlZExpbmVDb3VudCI6NDIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ1MzI2OTVmZjkxMTMzNTM5M2YyZWMyMjNmYWE0OWMwZTFjNTJjNDU2YzQ3MmU0ZWE0MzkzYmRkMTNmZDgxOTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhjYzRhN2QxY2M3OTZhYmEzZTQ2NzIzMzI3ZjUxN2U5ZjgxMTk4MmQyNTBmMDcwMjk4NmU0YjU3NjRhZDk1ODkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY0MzUxN2I0NGRjOTMwY2JiZmZjMjNjOTM0ODNjZDA5MTBjYTRmMThiNzE1MmIxZmFjZWUzMDZkZDdkNmI0NjYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_24514da8dac44d8b9be23534d8cc32c7",
+      "statement": "The promotion architecture takes exact protected Git source as reviewed input, distinguishes R0 canary activation from explicit risk acknowledgement for higher risk classes, and treats Solutions as a separate target kind and namespace.",
+      "evidence": [
+        {
+          "resource": "repo://docs/architecture/rapid-workspace-promotion.md#L12-L42",
+          "version": "repo-lines-v1:sha256:f3f77fe127bcbbbf3039f55d4b2b48ddfecfcbeea7bd0a691f9f3f7b6b9f3c5d:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRhNjA5YjJjYmQwMmQ5MGMwMDcyZWJlMTZmOWViOTc5NTJhYTlmMWIzM2NjODljNGZiMWUyZDkxMjk0ODIwNWYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM1YmRjZjVlYTgzOTJkNDFiZWZhYzk1YzlkZGRjMWU0MDRlNzlkYWRjZjkyY2I1MDNhNTI1MWZjMmY2MGU1MTkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM2N2I4ZDI4MTg0YWQ5ZGI4MWUyZWExOGQ2NDU0NWIxNTNkYzc4NzFmNTgzNDYyOTQ5MDU4YmViNDQ2YzRjM2EiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImFhYTNkYTM5YjA4OTI5YTc1ZDk2ZDI3NmI3MDNkODg1OTYwYTJhODJmYjE2NGJkOTFjODk4YTZlZGIyMmJkNjQifQ"
+        },
+        {
+          "resource": "repo://docs/architecture/rapid-workspace-promotion.md#L179-L216",
+          "version": "repo-lines-v1:sha256:095ef4d98e3ba1eb0c941a8784c931a30644859fa62480e191893f30394950c1:eyJzZWxlY3RlZExpbmVDb3VudCI6MzgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAyNjQwMzE1NzIxYWQ5OGVkMzk5MWFjNDFlYzE3NzNkNjU4NDZhMGIxNGNhZWM1MDQ3YjAyZjQ1NDVjZDVkMDciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjcxM2U3OGE1MGI5ZWRhZDhkZTY5M2Y1Mzk1ODBmODZlMTcyOTlkMWQwODg0NjAzZTkzOWE2ODZiM2Q5ZWNkYmUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRmMTBmZDBlMzg2MjM4YzQ1NGYyNjY5NjMyODQ3ZmYyMWMzNTFmYjc1ZmIxZGM4ZTg0YTk0MmE3MDU3ZDIxNGIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImFlMjllNGI3OTJjY2RiMzU4ODg0MDQ2MmVlYjQ5MTM4ODJlNTNkYzg5YTZiODFhODRhNDQyYmYxNjcxOTk2YWIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_64b7304ed7934b74bff4978a1a99c47a",
+      "statement": "Workspace source coherence treats _repo/ as durable source of truth and Redis/file index as derived state; an activated changeset with failed runtime propagation must not be retried as a source mutation.",
+      "evidence": [
+        {
+          "resource": "repo://docs/architecture/workspace-source-coherence.md#L3-L35",
+          "version": "repo-lines-v1:sha256:c0eb773f590d1711b786f799676857e927f95be0f5cfbf65854fea31009a1686:eyJzZWxlY3RlZExpbmVDb3VudCI6MzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYyZjYyZGE3Y2JlNjQ2MGYwZDI2YmVjYmFmODJhZDVjODY2YzQzNTI3YjcwNDcyYmFiMzU0M2FlOGJmMGUwOTUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAwZDJhODExODU3ZDE3NDAxODE3ZDkwZGMzZjMwMDkwMGE3Mjc3YTVkOWRiMzQzMWY2ODAzYzU5NWFkMmYwMmQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjoyLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjJkYzJkMTQ2OTcyN2U0ZDA1NjBhNWNjZTY0YWYyOTJmZGM4NjM5OTI3YTM4ZjkxNjk3MTk1NmM2M2I5OTdmMjIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImMwMjNmYTk5ZTkxOTJhNjQ5NDFhNDIzZTE4NjU2ZWE2M2E1NGU2N2YwNjdhZTUyZjgwMjg5Nzk5YzY5NzA5YzcifQ"
+        },
+        {
+          "resource": "repo://docs/architecture/workspace-source-coherence.md#L60-L70",
+          "version": "repo-lines-v1:sha256:f670eacbdb2f83e5f1773cb088e6a87b208c2bd8308c3b022eaab22362722b5c:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU3NDdmNDFmMmY5ODMyYzliMDEwOGI3ZTRhMjBkYWZjNmNmMDEzMDVhMzEwZGM2MjlmYWJiZjZhOTBjNjdlNmUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE3NzY3Y2EyMzRhOGExNWY1ZWUzYTZmZDY5MDRkNDQ1MGQ4MDVmZGZkMzlmMWRjYjY2MGIzYTExYWI3ODM4OGYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM3M2QxZDc4Njk3OGExYjZmNDgxNGRmZDg2ZmIyY2ZiMGUyOWZhNjJmODVmMDFlYjEyZDdmZGQ2NjU2OGVhOWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE3MzExNDJhNmMxMDkyYWQ5MGEyNDRkY2VhZWRkYWNhZTBkMzJiOTBkZDY4ZDc2ZmVhNzJjZjc1ODZmNzUzYmUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_1615397e0bf6423099f291fc0fdaa96b",
+      "statement": "Workflow manifests expose cache_ttl_seconds as an optional content field validated as a strict integer from 0 through 86400; concrete values, including zero, are carried from rows and included in Git Sync and INSTALL upsert projections, while null is omitted.",
+      "evidence": [
+        {
+          "resource": "repo://api/bifrost/manifest.py#L139-L144",
+          "version": "repo-lines-v1:sha256:cd2549147c06e2f30341c10377986b22ea1e4948579d848019f82f5b4de1416c:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMGQ0NDdhYTU2YjVmOTRhMjY0ZTBiODJjZjYyZGQyODRmNDIxZTlmN2VlNDg2MmNiYTc1YjgxNDBkY2I0MWI1ZSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMzBjMWYxODhmMTQyZWQ3YTgyNDY4MGIyMDcxNzJjNTUxOWJjNjE0YTQ4ZmRhN2NmMTY3ZWRiOGRkZjc5OTU2YyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMzY0NzA5MGUzYjZkYzIxNjU4OTI3NzI3ZGMzZTQzYmUwM2QwYzg4ODJkMmE4ODI3MjJjZmFlMzJiNGJlZDg5NiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNGU2ZWNjZTc3MTUzNTkxYWUzY2I2M2NkYmNhYjgyODU0N2QzOTBjZTdmOTgxNzYxZGUzOWVkMjRjZDhkZjgwMiJ9"
+        },
+        {
+          "resource": "repo://api/bifrost/manifest.py#L160-L183",
+          "version": "repo-lines-v1:sha256:9bd453cdf564a1fa7c4e74507f5408c6e2edbec42608e1bd4b0cf77c5502afdf:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgyMGI0NTNmNWUwYzkyZDVmNmMyNTFhNWVhMTk2MGQ3MmYzYmQwNzk1NmFlODU3ZGEyMGUzMWE4OGM1NTk2OWYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU5MDlhNTNhNjE4ZDAyOGUxZDMwMDBjMGE3YWJjZWVjYmU1ZmIzN2Y0ZTUxMWVmZTQ2NjQzZmFkNmU2Njg3MmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjNjZWVjNTlhYzI1YzRkNDdmMzA1Zjc0ODk3ZWNkNTIwMDVmOTE3ZDk4M2RjZjMyY2YyZTFlZjEyZDVhNjdjNDgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI1NTEyNDUzMDA3NjI0YjZlNzFjMTI1ZGEwOWNjMTExMzlhZmQ4MTliYjhkMDdlYzYyZGJiYmJiMzYyYzE1YmIifQ"
+        },
+        {
+          "resource": "repo://api/bifrost/manifest.py#L185-L242",
+          "version": "repo-lines-v1:sha256:80d6affeedf73fb9d56cd40be6454b4f648856665a4f607071235cf8b5634a3d:eyJzZWxlY3RlZExpbmVDb3VudCI6NTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM0MjM5MDI5MzkyNDBkYzM3OGU5N2YzYmY3MmJmOTI1ZWM5YjU1MWExYmIwYjYwYWFiOTAwYTY5MjBiZjFjNWQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdhNmE2MmUxYTllMWViOTJjYzE5ZDY0Mzg5OTRhYzYzYWZiYTEwYmExNzYzOGM4ODViZGM3ZjUxMjBlNGEwMjUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg3ZDRjM2NiYzE3YzVkMGQ0YTJmZjFjNGJiNTg0NWFjNDlkNmMyMzFmNWU4MDQzZWVlNzIzZTBhMTFhYjhiNTQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJhYzYwNDI2YTNlNTdiMTY2MmY2YjYyZDMwZmI2ZTMxYjlkNWZkNDk2ODEyM2Y5NTFjOGY3ZTUzYzhhNGFkZmIifQ"
+        },
+        {
+          "resource": "repo://api/tests/unit/test_workflow_cache_manifest.py#L37-L101",
+          "version": "repo-lines-v1:sha256:d21c28befffbe5f9d082a0f97961269cd6c16751e190c1f9733d7d97cd4ee13e:eyJzZWxlY3RlZExpbmVDb3VudCI6NjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUxNWNhY2YyMDQyY2NkNjM2YTg5YWIyMmRiZmY5ZWM3YTMwMzdiMTk1OTNmMmViZGJkNDI1Y2E3NjEzYWU0OGUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI0NjZjN2JhNGJmMmU3ODZkMzEwNjFiNGZkNDAyZjljNmI2MDgzZDZhMTY4MDY5MGIyZDE4NDRiY2E2ZWQ3ZmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRmYmQwMDkzMTRiYzI3MDg0MTY3MzRhMDJhZTVmZjM5YTFlNDhhMDUwYmU5MWY0M2IyZmFhOTIwMDJjNjJiZmMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgwYTg2MjU4NzUxMzIxN2U0MTM3M2RiNzA3ZWY0YzI0N2NhOGJjNjkxYmVlN2Q3MTkwOGI2OGUxNmNjNTlmMzAifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_b3cd6cf7252c44588ba1808325d59022",
+      "statement": "For an existing workflow, Git Sync diff and Solution workspace preview treat an omitted or null incoming cache_ttl_seconds as the destination's current value; explicit TTLs, including zero, remain comparison intent and can change the diff or preview classification.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/services/manifest_import.py#L209-L218",
+          "version": "repo-lines-v1:sha256:cfe97372134df868aaf6559618d8d5f3666e83fdefbc88e3644691e9ce1124c3:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjliMzFlYmI2YTRhMzA0NDZlMzk4ODhiYmUzODMzMjVjMDU4ZGI0ZDgxOGYyNDhiZmJhY2JjMTA5MTY0MTcyMjQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI4NGU4ODcxYzljNzgxNGVhMzg2YzVjMTZlOWRhNzI0NDFkYTBlOWY2NGY0ODU3YWU2NzA0MDQ3MzU3Njg4MTkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY5MDFiNzhhMDVkMWZiYTg5ODNhNWMyMWViMzk4NzY1MDg5ZGJiNGQxMDQyOTUzNThjMDNmYmU0ODQ5YjQwZTgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijc1M2I3YThlYjdmNGY2OWIyYzIwOTg5ODBjZWYzOGFhYmY3YTY0YTU4YWFmOWI5MDMyNGFiYzg2YzZkZDc3ZGYifQ"
+        },
+        {
+          "resource": "repo://api/src/services/solutions/workspace_bundle_plan.py#L371-L395",
+          "version": "repo-lines-v1:sha256:0d49ed9a2a719f7cbdf1573d897db26c0e425af8a53999387d4d594f751fc470:eyJzZWxlY3RlZExpbmVDb3VudCI6MjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNkNjBlNzEzYWYzMDI0ODI2ZDMwOTMxMGJjYTBjZDExNjQwNTBmM2RjOGM1NTdhMGJmOGY2YTM5N2Y1ZGUyZjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUxMDM0ODFjNTdkMGYwZGMwZjc2Y2QyY2M4YjM2MDRjNGU4Mjk2ZGE0MTIyYWRkMTllODE3NDVkYzdlMzMxYTYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijc5NDE1MDUwNzgyODRjYmQ4Mjc2NzU5M2M1ZWU1YmI5OTExNDBlNGJmMDk3Y2IyMDAyNmRhNjBmMDY4YTIwYWMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk4ZGI2YTIzZGRkYzBmY2QwMDBmMGZlYmE4ZmNjMDA2OGQ0YjA5MzJiNWNiMTg2ODhkNTBlNDIyMDBlNzFmNDkifQ"
+        },
+        {
+          "resource": "repo://api/tests/unit/test_workflow_cache_manifest.py#L104-L159",
+          "version": "repo-lines-v1:sha256:18fd4ecd140f8cd13b4823369113d9b5faffebc071e111f85d2fc193bcaa12bc:eyJzZWxlY3RlZExpbmVDb3VudCI6NTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBhMGZhYjY3MjUyY2NkYjhiNWVhNTgwNTYzYjE3YTM0M2FjMWIxYTk1ZDI3YzRiM2NlMmJlZDA3MzM3OGQ4NGMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwYzFmMTg4ZjE0MmVkN2E4MjQ2ODBiMjA3MTcyYzU1MTliYzYxNGE0OGZkYTdjZjE2N2VkYjhkZGY3OTk1NmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg2ZDk1NjBlNzhjZjM5ZWE1MmE5ODQ0NTc1ZjZkMzg1ZmMyYWM1MTFjNWIwNmFhMjAyOTJlZDg5M2E3NmZlM2UiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        },
+        {
+          "resource": "repo://api/tests/unit/test_workflow_cache_manifest.py#L15-L24",
+          "version": "repo-lines-v1:sha256:a52122af23f82de3bf17d1edab1b99bafa85dce4570e366f4a5dca2621e8c68d:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE4YjliYzU3ZGZhZjRmNGFiOGY3ODdhMTMxN2JhNmFhMzRhZDAwNDE5YzRlNTZjNTc3OTNmYTc4MWEwMmM2MmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY5NDE2ZTA5Zjc4YmEzMTZjMDMyNTY4MjEzYjg1NWVlNzU2ZTQxNTY1ZDkxOGYwOTUxOWM4MWZkNjIwZjQwNjAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImEyY2QxMDZmZTg1ZmNjNmMyNzNjMmY3NTM5ODI4ZTU3MjkzYmZmYWMzNGYxMDI4Mjc5ODQ2ZjRlNWY2MDU3MmIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjkwZDIzYjc3OGIwYzQ1N2IwMjMxYzIwMDFiNzY3ZDZkYjRiMzc1NTA3N2EzNzk4ZTQxYzBlZTFlOTM2YTZlNjIifQ"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.7.2",
+    "at": "2026-10-18T11:44:53.228Z"
+  }
+}

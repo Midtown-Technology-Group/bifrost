@@ -61,7 +61,14 @@ def _agent_detail(**overrides):
         created_by="creator@example.com",
         created_at=now,
         updated_at=now,
-        tools=[SimpleNamespace(id=uuid4())],
+        tools=[
+            SimpleNamespace(
+                id=uuid4(),
+                is_active=True,
+                type="tool",
+                organization_id=None,
+            )
+        ],
         delegated_agents=[SimpleNamespace(id=uuid4())],
         roles=[SimpleNamespace(id=uuid4())],
         knowledge_sources=["kb"],
@@ -355,6 +362,15 @@ class TestAgentMutationValidation:
         )
         assert "Invalid channels" in result.structured_content["error"]
 
+        for invalid_tokens in (0, -1, 200001):
+            result = await agents.create_agent(
+                _context(admin=True),
+                name="Dispatcher",
+                system_prompt="prompt",
+                llm_max_tokens=invalid_tokens,
+            )
+            assert "between 1 and 200000" in result.structured_content["error"]
+
     @pytest.mark.asyncio
     async def test_create_agent_rejects_privilege_and_org_scope_escalation(self):
         """Reject agent creation requests that escalate access or organization scope."""
@@ -423,6 +439,14 @@ class TestAgentMutationValidation:
             delegated_agent_ids=[str(uuid4())],
         )
         assert "delegation" in result.structured_content["error"]
+
+        for invalid_tokens in (0, -1, 200001):
+            result = await agents.update_agent(
+                _context(admin=True),
+                agent_id=str(uuid4()),
+                llm_max_tokens=invalid_tokens,
+            )
+            assert "between 1 and 200000" in result.structured_content["error"]
 
         result = await agents.update_agent(
             _context_without_org(admin=False),
