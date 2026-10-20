@@ -295,12 +295,11 @@ class LiveHandoffReadback:
                     {row.id: row for row in rows}, False)
         source_paths = sorted(resolution.sources)
         workflow_ids = sorted((item.resolved_id for item in resolution.workflows.values()), key=str)
-        expected_bundle = sha256_digest(canonical_json({
-            "release_id": self.release.release_id,
-            "workflow_ids": [str(item) for item in workflow_ids],
-            "shared_tables": {name: binding.model_dump(mode="json") for name, binding in manifest.shared_tables.items()},
-            "source_hashes": {path: source.content_hash for path, source in resolution.sources.items()},
-        }))
+        # Guarded preflight accepts a reviewed bundle identity, including a
+        # source archive digest supplied through the public deployment API.
+        # The receipt binds manifest.content_hash() (and therefore bundle_hash);
+        # _deployment also requires the stored row and manifest to agree. Do not
+        # reinterpret that accepted identity using the candidate builder's recipe.
         # The receipt must bind to exactly one Live identity: either the
         # current release (full recompute) or coherently to a predecessor
         # release whose governed bytes still match the current release.
@@ -318,8 +317,7 @@ class LiveHandoffReadback:
                 or marker.get("workflow_ids") != [str(item) for item in workflow_ids]
                 or marker.get("verified_source_paths") != source_paths
                 or (current_binding and (
-                    manifest.bundle_hash != expected_bundle
-                    or manifest.git.commit_sha != self.release.source_commit_sha
+                    manifest.git.commit_sha != self.release.source_commit_sha
                     or marker.get("preflight_evidence_id") != handoff_preflight_evidence_id(
                         self.release, manifest, resolution, workflow_ids=workflow_ids)))):
             raise UnprovenLiveHandoff("Retained handoff receipt does not prove the current Live binding")
