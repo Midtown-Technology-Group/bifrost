@@ -1,0 +1,186 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:bf663405dafec53c3afb40083292b8be97ca901e7beedfa90ba0489f09fad998",
+  "claims": [
+    {
+      "id": "claim_0fa8e245073f41edaae0e040f83d6240",
+      "statement": "The production-oriented Kustomize base includes API, client, worker, scheduler, and RabbitMQ but expects operator-provided PostgreSQL, object storage, and public ingress; generic manifests do not configure Azure Workload Identity.",
+      "evidence": [
+        {
+          "resource": "repo://k8s/README.md#L143-L160",
+          "version": "repo-lines-v1:sha256:8e098cdfd01f358027cdb22e4c2836a8aa5081d2f904ac6acbd40cad47f916fe:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA2YzA2M2MyZTBmNTY5ZDg0NmE1ZjFhNTFjMTg5YWUyYWJkNDJhYmQwMDcwMjNkMWZkOTljZTNmYzMzNjY2ZjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJhZjFiNTU2MzhlNWIxZjU4NmY1N2FlZjZkZWIwN2FhYWMyZjZjZjg5Njc2YTYxNTc3NDJmMDMzODQ0MDJiNzgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQ2ZWQzZWFiOGE2MDdkNjE5YjkwNDI4NDFhOGMzNmU5MGYzOTVjY2VjZWFiYTc2MWYwZTQzOWI0Y2FhOTRmZTgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImRhZGExMDhkN2NmY2U5ZjVlZDIxYWE3MjlhYWRhMjllOWZhNGI0ZTA4ZTYxMjc2OTdlYzA3NmY5NjA2YTQwNzEifQ"
+        },
+        {
+          "resource": "repo://k8s/README.md#L5-L10",
+          "version": "repo-lines-v1:sha256:de7195c481496815bd46b3b17821b726a637b97ed6a3dbeaeb645fcacefcf0f9:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOWQ4ZmVmZGY0MjlkMDg5NzkzNGYzMDZlMmJhYjM5ZDFiNmJlMjdjYWEzNmY4MzRhYjNhYWQ2YzNlY2U5OTc2MyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMzYzZDcxMmM4ZDhmZmQxOGY5ODUzNTg2MjNjYzlhOTE1N2RkNjFiMzU0YzE2MmFhYWUwZjRhOWVmMmRkYTZhMyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZDQ0OTEyYWY1M2YyM2FhNWE4ZjY0OWJmMjIxYWU2NWE5YWI5NzBhYmQxOTA4MTQyN2ZkZjFmZTg1ZDU4ODMzNyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMmZjYjdhYmEyNDU5OTY5NDVjMjM4Mzg4Y2QwN2Q5N2MxODQ1NzUyM2IzODhjZTI2NDRkZGQ5OTY5M2FjM2YwMSJ9"
+        },
+        {
+          "resource": "repo://k8s/README.md#L89-L107",
+          "version": "repo-lines-v1:sha256:9fa45c5c6a9897333286506dbc57c022f67e41e129be5aa97235ff2e70532c76:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNjZjM4YjljOGQ5NGZkZjg3MGZjOTJjZTI0NzQzZWNkNjZkYTVhNDliOTdmOGFhMjE2MjhmYmE0OTMwZDdmNWMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg1ZjcyOTc4NzlkNDEyZGI1ZjU0MDg0MjNiYmIyMmJmMWI1MDU5MTY5OTA2NzY5MDdkOGQ1OGVlZmQzM2MxYWEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZjMTIwMzlmOTY4MGYzMjI4ODU3OWE1NGE4OWVmZDA0MTZkM2IxOWY2NGQzMmYwMmQ3ZWU0MGYxOGU3OTM5YWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjIyY2RlY2NiZmNiMDIzY2RmOTFlNjVkNDg0NTY1YTEwMWMxMGQ4ZTZmYzk5MTljODhjYTAxNWM2YWQ4ZTQ3Y2EifQ"
+        },
+        {
+          "resource": "repo://k8s/kustomization.yml",
+          "version": "repo-file-v1:sha256:f3181e0ad7ecd3b36665e152e166e6ab6389fd5f2ba82bbad1ff45337364d6f1"
+        }
+      ]
+    },
+    {
+      "id": "claim_7e6602aab68042afb77ef2f9c2a2b605",
+      "statement": "The optional Kubernetes build overlay adds a namespaced controller Role limited to Job operations and Pod read/list, a runner account with token automount disabled, and a scheduler patch that enables only the controller account; the overlay build image remains an exact-digest placeholder until replaced.",
+      "evidence": [
+        {
+          "resource": "repo://deploy/kubernetes/builds/build-config.yaml#L1-L20",
+          "version": "repo-lines-v1:sha256:242597cde42e1d4a4bbb59a021295cc94b2300171c4ac3d6c7760a735f03536d:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc3NmFlMTQyNDI4ZTc1NGI2N2Q3ZDZlM2RmZGJlMWI0NDhmMGJhYzM1NWQ4ZmEyNGVjOTQ3MWUyMWQ5MGI0MzIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUxZDEwMmRlYTNlMTE1NjVmNWZiODhmYTVhYzZlY2VlMDg0M2U4OWYyNzk2MWQ3NDRjN2RiZGUyNmUxYzY0NTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAzMmU3NTI0ODIzNTdkNTg3MTI2MTY5OGQ0NDFiYjJiZWE0MTczODljZmQ1MTU4ZDkxODQxYzQ1YzhlZjdhYTUifQ"
+        },
+        {
+          "resource": "repo://deploy/kubernetes/builds/kustomization.yaml",
+          "version": "repo-file-v1:sha256:5a6c5c28a4d5c2feb7783fa414c92a5e222b1ab6f15f4be295ec33d9af1f0d19"
+        },
+        {
+          "resource": "repo://deploy/kubernetes/builds/rbac.yaml#L1-L34",
+          "version": "repo-lines-v1:sha256:834707578780e9de503e1698cf89fa41d1db2d99255119371a48cf0fff38017b:eyJzZWxlY3RlZExpbmVDb3VudCI6MzQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUzYTZkYzQ3NWIzYmM1MzUyMmNlZTEyMDFmMmNkNGFjNWFkMzM2NTVhYWQxNTg3MWI3Mzc3OWUwYWUxODZiMmEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVmZGZlNDE5YWI0OWY5YWIzNDFmOGI2MGU4ZjdlYWY2ODE5NDA3OGNmOWFkOTdjYzUyZmNhOWViYzAyYzUxMDMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        },
+        {
+          "resource": "repo://deploy/kubernetes/builds/scheduler-controller-patch.yaml",
+          "version": "repo-file-v1:sha256:404bfbf554d5458fd2eb9d6561ad2cd3ed00ab1d88f147b077f66ca8d3f07d10"
+        },
+        {
+          "resource": "repo://deploy/kubernetes/builds/serviceaccounts.yaml#L1-L21",
+          "version": "repo-lines-v1:sha256:330adb5b3c2a1d8eb3c9c69c1decb40eeff9bfb6e9ec817075e7dc151d23e087:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc3NmFlMTQyNDI4ZTc1NGI2N2Q3ZDZlM2RmZGJlMWI0NDhmMGJhYzM1NWQ4ZmEyNGVjOTQ3MWUyMWQ5MGI0MzIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEyNWZjYmRlOTA5ZmUzNmEzMDcxOWUwZWExYjJjNzc1NjY1ZTNmYmY5ZThjMTc1MTA0OWIxNWUxMTliMGQ3MDQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_5ed95e2a05e74f53bda4a3f21cdf2fe8",
+      "statement": "The local Kind harness scopes the cluster, kubeconfig, state directory, rendered manifests, and kubectl commands to the current worktree path and explicit local context; its local up lifecycle applies dependencies, init, Bifrost workloads, and KEDA.",
+      "evidence": [
+        {
+          "resource": "repo://scripts/kubernetes/local-kind.sh#L214-L245",
+          "version": "repo-lines-v1:sha256:1b4f329735750b3a3f910ef6cbb32080736731f7e77510a416f1025b1a8b1df0:eyJzZWxlY3RlZExpbmVDb3VudCI6MzIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA3ZjYzZTE5N2U1NzVmOGY2NmQ1OTM4MTI5OGNjM2ZkYmExZDc5MTRjY2VmYTA3Mjk3MmQxMjZlMjk3YjhiZGYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk5YmU2MzUzNmE4NjNkODcxYzZhZGQzZWI4ZWQzYmYzYzM4YjQyNDEyODhlYjdjOTllOWExMGEyZGZkODRkZTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjExOGRkMzZlN2E1YjNlNzQ4ZTNiOTkzNWQzZDEzYTczMDU4ZTQxMDZiMmZjNzgxOTQzYTc5MGE4ZTE2YTk4YmYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjBlNjA4NDBhZGU3ZmM2ZjgxMGQzZmY2NDBmOTUzYjNmNDc3MzBiZDZlNjljNGY5NDBiNmI2M2I0NGQ1ZGEwMTkifQ"
+        },
+        {
+          "resource": "repo://scripts/kubernetes/local-kind.sh#L35-L37",
+          "version": "repo-lines-v1:sha256:e22f6c69554d11624f0dcb94492f5613a241e764b79f8ac107467a83a06f24b4:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZjViMjk2NjQ3Y2UzNWYyZWE4Y2Y5MzEwZTFmMGZhMDhiNzkzMzRlMjFmMWE0ODI2YzZjOTUzNmMzMjc2NTRjNSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMTBkYmFiMzM3OTU5MmU0YTE4OTEzMzllNGRmZDQ0MGExMmM3ZWRiZDdiYWFmZTVkYjFiYTZmYzhiNjAzMDY3NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOGM5OTRhZDBmYzExZGM4MjU2Y2VjNDcwYmEyZGI2NTg2ZmY5ZWNlZTc5YmQzODllYmMwODI5YmQxOTRkYWU0NiJ9"
+        },
+        {
+          "resource": "repo://scripts/kubernetes/local-kind.sh#L5-L17",
+          "version": "repo-lines-v1:sha256:e47537e10b9a7c323aa91d43e531458f147aec9cd773a577a4ccf207121be2d0:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY5ZDllNzJjNGJiOTJhZTk1OGU3OTMwZjEzZDAwMTQ0MmU4MDViYzNkODNlNmQ5YzQ4NzM4NjRhNDJlY2YxOTYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRiMmU0YzhlZDkyMTkxMmY3YzNmMzY5YzE0MjBkZmVmYzg1NWZlNzgzNTUyNzc4YTk5MWU5YjgyMjU3ODA4Y2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIyODkxOGIwNzVlYjcyMTgyMjMwOTVlOTRkYmRiNDRiYTg3NTA5YmRlZDg3MTc3ZjcxNjk5YTRlYjEyMDhkN2YiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdlMGJiNmVjZTNlODRhZTM1YTU0MjdmMGE4MjBmMTM1OGYwOGU3MzY1ZTlkZWQ3YjVkOGYyMjA1NTI5MDJhNDkifQ"
+        },
+        {
+          "resource": "repo://scripts/kubernetes/local-kind.sh#L94-L110",
+          "version": "repo-lines-v1:sha256:e1902eb75c958637b2b2ce7f88aeb40bdfd01bbfb2883025958330b1931ae87f:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIyMjc2YjkxYWMyOTlmZDUwYjdjYmVmMzA3ZjkzMzdkZjhkMTVlODk1ZjY5Njc0MWYzZmU5Mjg1MTljYWFiZTMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI0YzMyOTcwM2QyY2I2NzI4MjUwMjlhYWMxYmMwZjZhYjQ4N2Y5MmIxZGYzZTcwMGIxNTY2ODM4YzQ0MDNmMzQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjYzMGE5YzNhZTExODNkZWJhM2I3MGQwYmM5ZmVjYzk3NDZiODQwZWI0ZjRhZWIyMWU5OGYzYWZkNDNjNGIzODYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImU2YjVhYTYyYzE2YWY2YjM4YzI1NzIzNTJlY2MzZTlmNDc3N2RiZjliMzY2MThiMzhlNTY3OTZhYWU2MDBhODgifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_5f82d8995d574856927ce0f355b12f18",
+      "statement": "Local Kind credentials are randomly generated and sent to Kubernetes only for a validated explicit Kind context; a complete existing Secret is preserved, while an incomplete one causes startup to stop without overwriting credentials.",
+      "evidence": [
+        {
+          "resource": "repo://k8s/local/README.md#L25-L37",
+          "version": "repo-lines-v1:sha256:c99e5ebc0f04670d20939ae4de8dc0ed240bfe0f20ee7383294abc84a46831d0:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhjMTY1YTVlMWQ5MzdjMjlmYzRjM2IyOTZmZmY5NTNhNTFiMDRiZDRjZmNiNTdiZDY3ZjA0Y2Y3NjcyYzY5ODUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg0NmU1ZDZlNTJhNDVjMWYxNWEwYTU2YjllNDYzMGJhY2EyNTQ5OGNiZjBlY2UyYmM5YmZjZDk2NWYxOTllNjUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg2YjYwNTczMzllYjRiYmJhOTJhYmY0MTU0ZmJmYjM4N2VjYzdkYjA4N2JhODM0NDFlMjQ3ODAzZmUyNDRhZmQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhmYjk3NWQ1MDZhMTZkOTA2OTk4MjEwN2ExYzc2MzMyZDczZWE2ZTIyZWY4ZDNlZGMyYzg3ZTYwZTgwMzA0NDkifQ"
+        },
+        {
+          "resource": "repo://scripts/kubernetes/local_secrets.py#L14-L56",
+          "version": "repo-lines-v1:sha256:33595ad2764430230d79dee8c9a55343a4854bd85dce4988333dbe447a99b7ab:eyJzZWxlY3RlZExpbmVDb3VudCI6NDMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk4MTVkNjFlYzMyMzY5NmMyOGI5YTg5ZmM0YWJiZTRjYjhlMzRlNTBhMzBkNmRhYmMxNGFjNTgyNGFjYzcxYjAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZhMDNjZjU2MjY3ZTI2OWRkMTE0NThjNTgwZDRhZTk3YzExODgyMjRkNjM5YWZjYjBkNTkyOGE4MGFhNTQ2M2EiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImVjMjg3Yjg2MGViMzRjNDE2NWMzOTJhMzJiMGE4OTNmNjc4OWE2OWUxNmFhY2QyZjJkMjhkNTE0MTc5NGQ1YjciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_49a32b2fd3d74be9a14dacd43f65162e",
+      "statement": "Kubernetes App build Jobs are opt-in in the local harness, and the local worker ScaledObject uses RabbitMQ queue triggers with scale-in paused until worker drain behavior has been proven; KEDA controls worker replicas while that object exists.",
+      "evidence": [
+        {
+          "resource": "repo://k8s/local/README.md#L50-L68",
+          "version": "repo-lines-v1:sha256:2693b4001572435936929cc72dff80ff49f17e4471cdbaa5f5b46cd5b7596e8b:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ2ZWUwMjYzYTA5MTc3ZTIwZGZlMDkzNjM5MTljMDY4NzdjNTU2NWRmOWY0NTU5ZmVlYmE2NTA4OGViZmZlNmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU3Yjk4NWQ5MzVjOGY0MTRkZWMwNmVkODI1OWNlNWUyM2FhY2I0YTZhNDM3MDhiN2E0NDQwNmNkYmJhOWI1YmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU5ZGY4MDNhNGExOTNmOGEyMGVjNTY0MGI5OWJjZjc4MDNmNGM3Yjc3NDUwZjFlY2JkNDJiODM4ZjgxYzQ3NDYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQwZGEwODYwNjU5Zjg1Nzg4YTg0NjI4MDEyZmY0YzY2NWEwMmE3NTc0MWU0MzZlNTEzYjcyMDIzNDIwMzBiNTMifQ"
+        },
+        {
+          "resource": "repo://k8s/local/keda.yaml#L12-L71",
+          "version": "repo-lines-v1:sha256:10626a49be4a3a6da22a06ecdfecdebca157a77ef265cc662624a832a96957c1:eyJzZWxlY3RlZExpbmVDb3VudCI6NjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMxM2E5YjA0ZDAyZDFiNTJiODRhNTllNGFjYmI2NTZjNjVjOTk2MTRiMTE5NGE5NjY3NTFlNTk5Y2FiNTVlMWQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ4MjQ4Y2Y2MDRjNzI4MjBkMmZlYTA5OWU4ZjYxYmMyNzJlZWFiMWY5NDE0ZThjODBmZDM1YzFmMTk2NDMwYjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjkwYTJhOWRmYzBiYTEwOGM5MGI1YWFkNTg5M2M3ZjgwYWFkOTViZGI5YmEwMTNlNzkwYmE4MzkwOTVjOGUyNjkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        },
+        {
+          "resource": "repo://scripts/kubernetes/local-kind.sh#L126-L145",
+          "version": "repo-lines-v1:sha256:8460e2b8436c6b3a3045410c5ae6c3f5659d70003423a9df4cfe428356b1ab09:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUzOGQwZTQzY2RhOTFhNzI4NmNiOWU5MTg2M2JmNDRmN2QwMjUxYjFhM2QwMjY1MmYyMWEwZmUwZDkyYmJmMDMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZiNGVkYjgxYTUyZDZiMTVkZjc2ZWE5ZTFjMDc0NWM5ZTZkMGJiNmI5NWYzZmE2ZjZmMTg2YjFiMzEzZTkzYmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU4MGM3NDFmYThiODk4ZTUzNGFhNDU2MjZlN2VjZTg3NjZkYTNjNGZhZDM2ODM3NjkzODZiMjUzOTFkZjQwN2QiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY4NTI1OGQyYTVkNzZkZGRjMDliZWVlOTA5ZTgwMzQyMTU0MjhjZDM2ZTdjZTYxY2MxMzc4NjQzOTQ4OGRkZTEifQ"
+        },
+        {
+          "resource": "repo://scripts/kubernetes/local-kind.sh#L158-L164",
+          "version": "repo-lines-v1:sha256:9a1a665989bbab5df9ac1314c1bb70c635934e34899d7551e59eea5210906375:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZjcwODFiMjlhY2I5ZWU3ZTUzOTE3Zjc1MGU5ODY5MjIyNTE3YzM4MWNkZTdjODkxMWU5Yjg2Njc1M2ExYjcwMiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNGJhY2FhMTExZTIxNjdhYjQyOTczODUxZDM4ZjE1YjM0ZjQzZmRlOWZkZjVjOWU0MGI3MzI2YmEwZDI1YmViNiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNTYzY2U5YWIxZTUzYWFkMjk5Y2JiYjhkZDlhODJkYTllMjE4MWRmOTA3NTlkZWZmNmI4OTFmMTYzMTQwY2YxMyJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_c424ef45cce84dc397954ddeb8a815b3",
+      "statement": "Local Kind experiments record workload results, replica timelines, and memory snapshots and restore the prior ScaledObject configuration in a finalization path; those artifacts describe the specific local run and do not establish production behavior.",
+      "evidence": [
+        {
+          "resource": "repo://scripts/kubernetes/spike.py#L1-L6",
+          "version": "repo-lines-v1:sha256:a4c1c1d4481c485ba3c20f5c68ad88933de3a7882f6210841923324ef49de958:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZDY4MmNiZGI0YzhiMDc1MThiZjQ4NmM1ODk5MGZjMzkxNzgzYWEyMGE5MTZiZmIyN2FkMjExZWIxZDVjMzY0MiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYTMwM2VjZGQ0YTRkMTBmMTljNzNmZDQyZmQxMjQzN2ZkMzM1NGE4MjY4MTYwNWRhNTI1NWE5N2EzOTA2OGRiYiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjAsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTg2Nzg4ZGM5NTMxYTdmOTE4ZWQ5ZjFkNjc4Njk0YWFhM2ZlZjM3ZTE2MTYwN2JhNDE5ZTNlOGQxYTA2YmM3OCJ9"
+        },
+        {
+          "resource": "repo://scripts/kubernetes/spike.py#L157-L167",
+          "version": "repo-lines-v1:sha256:dc299db1a078e073ef7978dfe02166d2f1a89d3622e0becc8f2c12ad80482b62:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU3MGRhMDMyZmJmZGJkMWI0MjRlODE0YzIxMmFlNTg0ODRlNzZmNTdkYzU2ZGJmZDEzYmY4MDM3MzZkMzI0YjIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFkODA0YmJmZmQ1Zjg3YmIwNGI1Yzk2YjIxM2E3YzY0OWY3YmI5MDlkNGU1MGE4NzYyNjg5OTcxZWU2NzExMDAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjJjMDg0ODg3OGY2Y2Y1ZWU5NTQ0OTM5OTM4NTIzY2M5NGI2MTNkYjI4YWJmOGFmYmY3NWU2OWMwNzM3MDM1YjMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE2MGZjMzNlOTQyOWEzYTNmYTEzOWU5NDQxZTQ1ZDljMTQ4ZDhjZjMxYWM0MGVjMzBjNTNjZGVjZmQ5NDYxOWQifQ"
+        },
+        {
+          "resource": "repo://scripts/kubernetes/spike.py#L79-L156",
+          "version": "repo-lines-v1:sha256:26cc0b2c1d273834ec11074f4d33fa0b7763c5aaea3dbf8506a275f67d89280a:eyJzZWxlY3RlZExpbmVDb3VudCI6NzgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMzMjg2MjhkM2M4ZTE5N2IxYjgyNjMxZjU3OTI0YmRhOGJiMjI4ZTFjNjNkN2ZjYmJhZjA3ZTlkYTk2MWY1N2YiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdkY2NmNzI3ZTZkYzhhOWU3YmE4NWYxZTQzNmRlZDFkYzQ2NDc5Yzc2OWM2YTYwNDVkMmZjNjEzNDRmZDUwMjEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjYyZGRkMDA5MDM3MTI2YjdjY2I2ZmRjM2FhNDYzNGM3ZThmOWFhNjg0MWExMjRkODRlZmQ5N2M4NmNiZDAzNGQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImFhMzU3MGMyMzdmMzkyNmI0NDBkNjBiNDFhZWNjYjA4YTUwYzEyNWEzNTE2YjI0ZjhmYWZkNjU4YmM3ZjAwOGQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_9ff118b7adab40c3a9051c222f26d80e",
+      "statement": "The repository Kubernetes base assigns separate workload and in-cluster service roles to the API, browser client, RabbitMQ, scheduler, and worker: API/client run two replicas, API initialization precedes Uvicorn, RabbitMQ serves AMQP/management, scheduler handles trigger and platform-job roles, and workers run in a separate process.",
+      "evidence": [
+        {
+          "resource": "repo://k8s/api/deployment.yaml#L1-L44",
+          "version": "repo-lines-v1:sha256:2b5f1e2c6e792a794a92bda99e0fa86a6f86ea7187d0ef15a58a1045934eb8a0:eyJzZWxlY3RlZExpbmVDb3VudCI6NDQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc3ZGQ4MGQzMjFmNTQwN2NmNTYxNWYzOGY4ZjU4MjJhMDVmOWY3MDI3M2JlYjQ4NGUxYmUyMDg0NWZlMTAzMTYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRiMzM5MTA2ZTMwYjEzYWRiNTE1ODE0MDM1MmVjYWJmODVhOTFkNWExZjQ0MDIxODJkNGE5YjM5ZjI3YzE5OTYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM5NWM5YzcwNDc5ZjQzN2U0ZGZhNTczZjhkNGU5N2NiNzliYWQ1NTFhOGVhZjQ3YTZmZjYzZDYzZGU4ODMxYTIifQ"
+        },
+        {
+          "resource": "repo://k8s/api/service.yaml#L1-L18",
+          "version": "repo-lines-v1:sha256:47ad9bb0789d001f2c9b5c9af1614634e6e021e3d5c53f59aa151c97b99d8926:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc3NmFlMTQyNDI4ZTc1NGI2N2Q3ZDZlM2RmZGJlMWI0NDhmMGJhYzM1NWQ4ZmEyNGVjOTQ3MWUyMWQ5MGI0MzIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc2NTE5ZmI3ZWU0ODNiMDBlMDU5ZDliNDgxMWQ0ZTIyZGZkOGFmZmVlYWU2ODBjZmJiMjBiZTYwZmI5YTkyNDQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        },
+        {
+          "resource": "repo://k8s/client/deployment.yaml#L1-L49",
+          "version": "repo-lines-v1:sha256:39c1587506e6c8b0967be3aad23d42317be7b4cdec19657be97e934aca03f511:eyJzZWxlY3RlZExpbmVDb3VudCI6NDksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc3ZGQ4MGQzMjFmNTQwN2NmNTYxNWYzOGY4ZjU4MjJhMDVmOWY3MDI3M2JlYjQ4NGUxYmUyMDg0NWZlMTAzMTYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQwYjdhZjA3MzVhYjQzMDNiNTU1OWU2ODA1Yjk4YmU5ZTI3ZDQ1ZjY4NDIwZDI4OGM1MWJlMjQ5NmFmY2E4ZjkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImIwODM3NjVhYzhkZWQ0ZmRkZDk0MGM5ZDVjZTY0ZWQzMzg4ZWVmMGVmNjFhZWUxN2VlYWI4NTRiMzI2NmM3NmUifQ"
+        },
+        {
+          "resource": "repo://k8s/client/service.yaml#L1-L18",
+          "version": "repo-lines-v1:sha256:f1a1b1bbe070c91ec4c8b09c1944399486121d72a55addd8cedb5ae24ea16a36:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc3NmFlMTQyNDI4ZTc1NGI2N2Q3ZDZlM2RmZGJlMWI0NDhmMGJhYzM1NWQ4ZmEyNGVjOTQ3MWUyMWQ5MGI0MzIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBmYWFmNTk0YzQyOTY5ZDBiMjljZTg1Njk2NjVkNmY4MTk5MGY5MzU4YjgzMGY0MTYzYzYyYzI3NThjYWUxMmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        },
+        {
+          "resource": "repo://k8s/rabbitmq/deployment.yaml#L1-L71",
+          "version": "repo-lines-v1:sha256:c2872cab509cf46e35d48b4adf6ec080cbd219b2bacf6cbd32f917400dd84d84:eyJzZWxlY3RlZExpbmVDb3VudCI6NzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc3ZGQ4MGQzMjFmNTQwN2NmNTYxNWYzOGY4ZjU4MjJhMDVmOWY3MDI3M2JlYjQ4NGUxYmUyMDg0NWZlMTAzMTYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM1NDZkNDk1MjNhNjUwMmZlM2QyMGJkZGU0YmZjODA1MmQ3MjIzYmQ0OGM3NWNjODVjNjdlMjYwZWZlYzRmNjUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        },
+        {
+          "resource": "repo://k8s/rabbitmq/service.yaml#L1-L21",
+          "version": "repo-lines-v1:sha256:e057af5d957ecbfebb055ed68231086e7b29679002200817fc28a03297403ab0:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc3NmFlMTQyNDI4ZTc1NGI2N2Q3ZDZlM2RmZGJlMWI0NDhmMGJhYzM1NWQ4ZmEyNGVjOTQ3MWUyMWQ5MGI0MzIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjczN2Y4YmI1MDgzMTkyZTgzYzc2ZjBkZmQ4Y2UyNTA5NDEwMzVlOThjMDA5NTBmMGI5MmZjNDU5OTBkNWFjYTgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQzYWEzZDNhOGYzYTQzZDhlYTM0YzhmYmI2MmVkMjY4OTMwYWVhODU5OTVlNjM5NGE5MGM2M2FkOWI4OWQzZTgifQ"
+        },
+        {
+          "resource": "repo://k8s/scheduler/deployment.yaml#L1-L62",
+          "version": "repo-lines-v1:sha256:60d46ea5acf438e35040b2ef8f7420308a1d82ed4e243bd873fa4922a683bb16:eyJzZWxlY3RlZExpbmVDb3VudCI6NjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc3ZGQ4MGQzMjFmNTQwN2NmNTYxNWYzOGY4ZjU4MjJhMDVmOWY3MDI3M2JlYjQ4NGUxYmUyMDg0NWZlMTAzMTYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAyMmM4ZTBmNjQ3YjlhY2M0MWQ0NjM2MDNkOTNhYTAxODI3ODI1ZTlhODk3N2NmZDY5MjgwMzQyNDk1MGI5Y2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        },
+        {
+          "resource": "repo://k8s/worker/deployment.yaml#L1-L99",
+          "version": "repo-lines-v1:sha256:b01f2d3638ce3bfee6deb694d589739a719f34b741033876a11a8530ca06dfe9:eyJzZWxlY3RlZExpbmVDb3VudCI6OTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc3ZGQ4MGQzMjFmNTQwN2NmNTYxNWYzOGY4ZjU4MjJhMDVmOWY3MDI3M2JlYjQ4NGUxYmUyMDg0NWZlMTAzMTYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAyMmM4ZTBmNjQ3YjlhY2M0MWQ0NjM2MDNkOTNhYTAxODI3ODI1ZTlhODk3N2NmZDY5MjgwMzQyNDk1MGI5Y2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_c3ffbf16ccdc4cb696d6dfee1423ba16",
+      "statement": "The checked-in worker Deployment disables Kubernetes service-account token mounting and grants a 360-second termination grace period for drain and cleanup; these are manifest properties and do not establish deployed cluster state.",
+      "evidence": [
+        {
+          "resource": "repo://k8s/worker/deployment.yaml#L18-L23",
+          "version": "repo-lines-v1:sha256:df98df5535ed60218a69d268e849ef8292dd8722f338efb90cc540af466f528e:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZTFkZmQwNWU1ZmFjZjgyYWY3Y2QzNWQyMGI0NzE5ZmI2Yzc3MDRmNmIxZTAyMjc3OWU0YzAyZDg1OGNmMDdhMiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZDAzODQ2YTQ0NmY2MjFmMWM1NWQ1MTcxNTlhNjAwMzllYzdmZDgxYTNkMWYzZWU3MTdjOWQ3M2EyN2M5NTM1NSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiM2FiMmQ4ZjU2NDY1NjZjNTJmOTY5MThlZGU0ZGVmZWZmMzA2ODM3NTkwMGRiYmQzMWQ0NzJkMzEyYzAyYjc5ZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYWYzZmFkMDk1YTA0NGZiYzM3N2I4MGM5NDQ2NWFmNWU0ODJlN2MxYWE5Y2JhZWY5MzU0YTExNzkzYzY5MzZiNiJ9"
+        },
+        {
+          "resource": "repo://k8s/worker/deployment.yaml#L84-L99",
+          "version": "repo-lines-v1:sha256:5292d6ffef3687cdff4073539eb6a4b8c7bb830747961cfecee0b33211006cf5:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBlYjRjYWZmNzk2MzIzNTQ2NTg0MzlmNDFhNzdmYTk0YjZlMzlmNzE3YWEzM2MxM2IwYzQyZjA1Mjk1MDcxMGUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAyMmM4ZTBmNjQ3YjlhY2M0MWQ0NjM2MDNkOTNhYTAxODI3ODI1ZTlhODk3N2NmZDY5MjgwMzQyNDk1MGI5Y2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJlNDk4NmFmYzUyN2M0YWY4Y2ZhNzZmMzc0ZjMxNjBiZjhhYzU2YWI2MDRhM2Y3MDI4M2ZiZThhYjdiNTVlNTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.7.2",
+    "at": "2026-10-18T02:51:00.673Z"
+  }
+}

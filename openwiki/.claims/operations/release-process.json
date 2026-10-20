@@ -1,0 +1,146 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:91362a61c8bcdc75fe818f8d206af78e3cfd0cc4d809c7003b4edf7ddf982884",
+  "claims": [
+    {
+      "id": "claim_2225fa37e8104af5acb6e638dc221096",
+      "statement": "The MTG fork has its own semver policy and contract changes impose a major version floor; version calculation uses a complete PR interval tied to the exact first-parent main range.",
+      "evidence": [
+        {
+          "resource": "repo://docs/VERSIONING.md#L1-L15",
+          "version": "repo-lines-v1:sha256:98f4f8412edf1a5fe449e782e9a418f5247b423a45965501eda3f0fe914c7755:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRkYjk4Y2M0YjkyMmRiZTM3YjNjZWUzMjI2Mjk3NzIwNTE0N2MwMDJjYjMwNmVlZTVkOTVkZWQ0ZWNlYmFjNTYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI1YzdmMWUxNjQ1NzgxNDFmODg0MzQ2MjhmYTE1NmE4OTFjZTBhOWJmOWJiNjkyNWEwMzcxZDJlYjQ2MGQzODEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImIwYmVmYjI1YmY4YmQ4ZjcxNGQ0YzJmM2NjOWE4NTE2MWI0YTNiNjU0Zjg1MGE0NzI3MmQ2NmRmYjlkMzRlNjUifQ"
+        },
+        {
+          "resource": "repo://docs/VERSIONING.md#L17-L38",
+          "version": "repo-lines-v1:sha256:269801191602fe6786761262c1800db6b29db35e0b849465d79e85abe3b671f8:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIxMGEwOGYyNDUxN2UwMTU0ZWQ4YmFmNTE5OGUxMjA2NjhhZjA1ZDgyNWM5M2NmM2I5MmQxMjcwYzVlMjc4MzEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIwYTcwM2Y5ZTdjOWU4Y2Y1Nzc1ZGFjMjYyOGI3MjJhYTIwOThjNGUxMGRjYzg0M2YyMWQ0MWNiMzllNzA3Y2YiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU0NjRiOGFjYzlhMmVkNTkxYjRlZDY0ZDRmZjE3Y2U0MTRmMDZhOGI0MTcwNzJlMjEzNDQxM2ZlYTZhYTYyMGQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM5NGE2YjgxODhiZGEyNmM2MzI1ZmNmMzhhNzRkNTgyNzMxZTE4MDZmNzZmODYyZGU2MDAwNTM5YTljOTdhY2QifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_3c216e667c37431c84bb68065d187157",
+      "statement": "The release PR workflow prepares a candidate and requires exact-head human approval plus administrator merge queue; it does not authorize the workflow to merge the PR.",
+      "evidence": [
+        {
+          "resource": "repo://.github/workflows/release-draft.yml#L49-L84",
+          "version": "repo-lines-v1:sha256:8f1a1f46112024d3d6633fbbccd5aee7448671eda06d5035529902520a1ce75a:eyJzZWxlY3RlZExpbmVDb3VudCI6MzYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI0NmYwNGJjN2JmOGVlYTAwMzE4MTdjM2UyMWY5YzA4YWM2OGY4N2Q2NmU3YzJhNDNiNmYwOGJhZGM3Y2M1ZTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkwZTg0ZGRlYWFkYTFiZDBhMTA5NjZmZGY2YmRmYzhmM2QwYTk2OGZkNGZlNzc3MDA1ZTY3MTBhNGIxNmZlNjUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjUyNWQ1NTM4MmJjOWUxY2FlN2FjODNmYmNhYjYxNGUwNDM1NzZiMzgyOGVkZmE1ZTY1MDdiMzU0Mzc0MjliNjciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjIyN2NiM2E5YTY3NTFiN2ZkZjhkZTUwZDJkYjBmMTU2YTAyODYyODYxYmJhMTVjMTA1ZGU5ZDFmYzg0MzFhMGEifQ"
+        },
+        {
+          "resource": "repo://docs/VERSIONING.md#L40-L46",
+          "version": "repo-lines-v1:sha256:0573069d14e4b66017b5975a871c2c1dbb3f4bf8eabe4218bbbfc845a3d1b6f8:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMDU2OTk5YzJlMDRjM2YzMTg1ZmEyMDJkYTgzOWRhZGY5NWQ3ODE4NzRiZmQ1ZDZjZDg1ZjgxNmY2MWJlNjI4YiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOTdmODYxZTgwZWRiMWIyZmNmMWE0OGUzMGFjNjU1YzVkOTRlZmQxOWZkYzFlZTBlOTQzZDhkYmRhZDZkMTE5NiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNmUxYzY2MzE5MTdhNWMzYTk2MmNmZGYzNjA3NmIwMDU2N2VhOWFhMmQxZDIzYWI4ZGVmMDI4OTk5NmVjOGMzNiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYmI1MzEyNDg4ZmIxYzVmMzIwMmJjYTQyYjY4YjkyM2Q4OTllMDFkYjA1ODRmMzUwYjJlNWQ3NTgzMjlmMjE1OCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_9fbb28abd487485d957fcef49fce3829",
+      "statement": "Release tag publication validates the merged release candidate and explicitly dispatches tag CI; token-created tag pushes do not start downstream workflows.",
+      "evidence": [
+        {
+          "resource": "repo://.github/workflows/release-tag.yml#L23-L50",
+          "version": "repo-lines-v1:sha256:357ff1be7cb0a24c6bed70cf218c62c8a1ddabefafc36d507942de32de238a11:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU5ZDgwMTU0ZWQ0MmZjNWM3NzliMTMzMTU3OGI1OGI4OWM4MDFlYWNlNzRmMjRjZDQ4ZWI0YTIzNTc5NDBhOTUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI2ZmE0N2EwYWUwMDdlNWZmNzE2ZWY1ZjE5MzkwNjBlOTJlMDA2YmQzOTljMmY0NzA2MWU5NjY1M2U3YTQzMDciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjlkYmJmODY1NTc5MzAxZmExOGNkYWM5MTAzYzIyZTYwZTNiOGVlNjIxMTdjYzIxNWNkMjc3OTA0NDZiNTcyYjIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        },
+        {
+          "resource": "repo://docs/VERSIONING.md#L48-L57",
+          "version": "repo-lines-v1:sha256:452f0cecd44002b700534dc9b43ba757352a6048eef00b5acd43f74261715afb:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE0NjUyODc0ODgxOTJkMmZjNjdjYzBkY2FmOTYxNmVjNTM4MTc5NmViN2ZmMjI3YTQwODI4OGM4NDI5YzgwOTIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ4M2I0MWI3N2ZlOTMzNDNmZDIwZTRhNGNhZWNlYjA3NjYzYmMyYmY0ZGE3NzgwMzRmZTZiMGE1OTc5MGVmMTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjVhNDVhZTdjMTJiZWMxZGUyOTJmODgwMjQ0ZGMwODEzMDQ4MmRjZTdkYjhlZGU4MzhiMjA1Y2FlZDI4MDBkNDMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA3NzdmYmYzZGI1MWRiODE1ZTc3MDc2MmY4YjJjZTkzZGU2NTU5YjBjNzIzMDE3Njk0NjYwMWZhM2JkYjg4NmMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_5204ac6d570f4cf0910d07138deb0a6c",
+      "statement": "Stable acceptance reads expected contracts and migrations from the exact tag, then runs read-only content probes against exact linux/amd64 image digests: the server probe checks baked version, server/CLI contract equality, migrations, and bundled CLI version/contract; the client probe checks only baked version and static entrypoint. These checks do not certify live readiness, client contract compatibility, or production deployment.",
+      "evidence": [
+        {
+          "resource": "repo://docs/VERSIONING.md#L121-L136",
+          "version": "repo-lines-v1:sha256:d97a7fc10260eaaef37f4c4340dbd30e62e5447089279fb3355090e101c77850:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFiNmRhZDNjZjkyMDEzMjcyMzVjMTAxZWI1ZTA2YmZhOTY3NzEzY2ViYTBiNGQ5Y2M5MDU0OTBiOGNkZTM4MTMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIyYjE5NzVkNWEwMjdmMTAzMjk5M2Q0YjBmYTBhMjE0MDY1NjJlMmQ0MDVmMGY5MDE2NDA5OWM5NzhjMzJlZTAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjlkNzQ4ZjljNjExOGFmODgyOTAyY2U3NmYzZTRmYjBkZmY1MTIyZDJhZTc0OWU0MjZhZTI4ZTk4ZjFmMTNjMmEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRiMzk0NjhkMzM2MGJhNzY4MmNhMzQ2MTMxNTAyOGQ5ZjM2MTFlMGI0NjUzMTgzNjUyMTBmNDkzYWYzODg1ZTgifQ"
+        },
+        {
+          "resource": "repo://scripts/release/accept_release_images.py#L20-L46",
+          "version": "repo-lines-v1:sha256:7397942d9ddc017dfba8ffbe346bb001d6f5807981d3e51bb72bd7a36010b7cb:eyJzZWxlY3RlZExpbmVDb3VudCI6MjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdmMTA4YmY5NzlmNzI3NjIwZGNkZmIwNjM0ZWQyMjRhY2MxMDc0N2I4MjhiNzJjOTJhMTAzNjE2YzlhNDk1NWMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZmNmFlNTI4OGM5YjU5M2RjMzgwZDdjMzAwZDFkYTQ3NDM1MTBjZDljYzBkY2IwN2M5NzBkMGI5ZThjZmVhM2EiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJhM2U0MThmNmY4MjU0MjBjMTAyMmZlOWNiMmI0Y2VkZDM4OTE4ODY2MjU5YzgzOWEyMzE5Mjk0NzBiYThiZTciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImRjN2QzMjM2N2IwYjZjNjE5ODU0YzZkOTYyMzgyMGNmMjZiN2UzNGQ1N2I5N2UzNGQzM2M2ZTc2OGJiYWI4YmIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_4d62250cc27f440d8f83e95426ae0c78",
+      "statement": "The release manifest, checksum, and Sigstore verification bundle are publication requirements and consumers verify provenance and image digests before promotion.",
+      "evidence": [
+        {
+          "resource": "repo://docs/VERSIONING.md#L138-L149",
+          "version": "repo-lines-v1:sha256:4ee3638e0742436fdeaa1816cda23821c223aa8577bc14ee8dece4bbbc07bf3a:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlkYTc5OTYyMGRlMDIyZDUwYmE5MmU3YTk2NzJjNjI4ZGM1OTYyODZhYzc0OTVhMGQwNTlkYzRmYTA1NjVlYzMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZkNGExNGUwM2I4N2VlYjA4NDc5OWY3YWFiZDBmZGRjNjllZDEyYWJmY2MzZjMzN2RhMGRlNDFmNjE5YjU1NjEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjBkNTNjMzYwNTM3NWU2MzBlMjIxYzFhMTMxOTliN2IyMTRiZDlhMDI0MjQyYjgxZjI5NWNmY2E2NDdiYjBlMzQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImNiMWRhMjE4Mzk0NmNjYjUwNmJjYTg1OGIzMjQ2MjdlNWY3NDg4MGEyYmEyMzlhOTU1ZjI1MmQyNjM3MjVlOGQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_183bfbf257ed463a9c41635f907d5fdd",
+      "statement": "Production deployment is owned by the protected bifrost-infra lane, and published versions are immutable rather than rebuilt or replaced.",
+      "evidence": [
+        {
+          "resource": "repo://docs/VERSIONING.md#L48-L57",
+          "version": "repo-lines-v1:sha256:452f0cecd44002b700534dc9b43ba757352a6048eef00b5acd43f74261715afb:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE0NjUyODc0ODgxOTJkMmZjNjdjYzBkY2FmOTYxNmVjNTM4MTc5NmViN2ZmMjI3YTQwODI4OGM4NDI5YzgwOTIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ4M2I0MWI3N2ZlOTMzNDNmZDIwZTRhNGNhZWNlYjA3NjYzYmMyYmY0ZGE3NzgwMzRmZTZiMGE1OTc5MGVmMTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjVhNDVhZTdjMTJiZWMxZGUyOTJmODgwMjQ0ZGMwODEzMDQ4MmRjZTdkYjhlZGU4MzhiMjA1Y2FlZDI4MDBkNDMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA3NzdmYmYzZGI1MWRiODE1ZTc3MDc2MmY4YjJjZTkzZGU2NTU5YjBjNzIzMDE3Njk0NjYwMWZhM2JkYjg4NmMifQ"
+        },
+        {
+          "resource": "repo://docs/VERSIONING.md#L85-L101",
+          "version": "repo-lines-v1:sha256:545714e99528e42c4008e890db6d6ff71f150625f6f614c881608c9a53017e6a:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc1YWFkZGZiMzhjMGI1Y2RkYmZmOWM1YTEzMWUxMzAzY2RjZWY0NzljYjRmMjQ5MzY2MTNlNGU2YmY1ZWI5ZTciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3ZmFkMzFhNDQwMDYzY2ZjNmUyZGQ3ZGUyZmZjZWM0ZDA3NmM0NDE5MWNlZGMwNjViOWRiNDgwNGQ0NWViYjYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQ3NTU5ZTg4ZDM4MDA2YzEwMmRmNzIyMTEyMDNiNjg0ODIzZmFmNGM3MzA0MzhiMTZiNWE3NTNlMGRmYWRmYWQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQ2MWQwM2I1Y2U5YmNjMjY1MjMyODhkYjRmODBjZGZlYzZiNTQ2OGZkYmQ5NTY5ODQyM2IyYzg3YmIzNWQwNzAifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_b23771535abd494f9b00fd009d232bff",
+      "statement": "Release version calculation chooses a stable tag only from first-parent history, requires every commit in the release interval to map to merged main PR metadata, and applies the highest PR bump with a major floor for server/CLI contract changes.",
+      "evidence": [
+        {
+          "resource": "repo://scripts/next-version.py#L92-L130",
+          "version": "repo-lines-v1:sha256:ab83af85d902e50fd5a7874830746469d48ad0e0cd9d26a2d47090fd84761e48:eyJzZWxlY3RlZExpbmVDb3VudCI6MzksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE4N2JjOTU0Y2JhZTRmZDU4ZDBiMDViNDViMmQ5ZjM4NTE1NjAxNWJlODQ4N2ZkYTRjNjMxYTk0Yjc1YzkwYzMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ2Zjk4YmUyOWZmYTI2NjhhMDU1NzQ0NzY2NmY1NDQyZmU1NzJiOTgxYTljZDE4YjAwMzllMDI0ZWNhMzhlZTYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQ3MDE0OWUwNjlhZDY3ZWNjZjQ3MzY0NmZmMWM3NTAwNTBkMzI5ZDExMDAxOGRjNTc2Njg3OGVhZmExZDYwN2QiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY3NGU2ZGYwYzU0MmEzNDViZTU3OGY1NjQ5MmQxNjMyMjRjMjE3MjM1NmY4NzFkZGM4N2YxNWMwMzU4YWZmNTQifQ"
+        },
+        {
+          "resource": "repo://scripts/release/automatic-release.py#L117-L171",
+          "version": "repo-lines-v1:sha256:66cda51666755b8c83a9473f1e7cbe9007dc4f89c86b7e7f8d83dbaaaee29e90:eyJzZWxlY3RlZExpbmVDb3VudCI6NTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc4Nzg4YjU2MjM5OWUyOTg2MTZiY2NlM2JiYjJhYjhiYjFkYTdjNGZlYTk5YWViNDYxNTUwYThjMGU3MGY1MTMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM0ZGRkZWY2NmE5NDJiNjVkNmY0MDBiYTJiZTE2ODlhNzY5ZWUyODQ5ZTI5ODkyNjIzNzNlZDI1OWQwNDRhYzAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImI0MjEzNTE0YzU1MDk2NjdmMzllMjM2NTk4NGU5Zjc3N2U3NDk1OGMzNGY2NmE5ZTdjZWZhMTMzOTQ3NDQzM2QiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImZjZWFlNzhlOTM5YzBmMTI4MmUwMzIzN2VjYzYwNTViNTQ4YzNkYjE0OTQ0Nzc5NGU1NjliOGRkZDAwNDM0OWYifQ"
+        },
+        {
+          "resource": "repo://scripts/release/automatic-release.py#L174-L199",
+          "version": "repo-lines-v1:sha256:b787afa50aad15704828630575c1a3a2e4ca14d056e10fb5e07ce91e30d49ffa:eyJzZWxlY3RlZExpbmVDb3VudCI6MjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE2OWZlZGExYmE0YjdiOTc3MDU4YTY2MGExMTI5MGU1NWI4ZWM0NTIzZjNmYjdiMTE2MDNjMWRkZDk2ZWUxZjkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNkMTBmMWRmY2YxZTQ1OTI1Yjg3ZDliMTI0YzY0ZmE5ZjZhOTU2ZWE4YWNlMDUwZGZmZWEyNjc3MDNmMGMxODAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY2ODI4NTc2MTRmZTZlNjcyY2Y5Mjc5NDJlYTg3YTg4ZjRlMTAwMTZiMTc3OGYwNmE2MjlkZTM5NDg0ODVmMmMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRmYmQwMDkzMTRiYzI3MDg0MTY3MzRhMDJhZTVmZjM5YTFlNDhhMDUwYmU5MWY0M2IyZmFhOTIwMDJjNjJiZmMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_5b202d7dec0f4327ae8a0cf81c0a8182",
+      "statement": "Release preparation requires a clean exact-source checkout and waits for any prior candidate to publish; candidate validation recomputes its PR inventory and limits intervening changes to release metadata and manifests whose versions and required notes are checked.",
+      "evidence": [
+        {
+          "resource": "repo://scripts/release/automatic-release.py#L207-L245",
+          "version": "repo-lines-v1:sha256:366924e57e5aa81374d743d0962b26a13fea9b7f86af5cdb1928d4e5fb030625:eyJzZWxlY3RlZExpbmVDb3VudCI6MzksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ4ZTQyYjMyZTc5OTM5ZjI1YWJmYjU3Y2MzNjUzZDY4YTE1YzIzMDFjYWYyMmVmODNiYWI0MzQ4NDQwMjQ0MjYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE0MTk2MGVmZmQxZGZjYjRmM2E4NmNhNzg1ZTFmODEwNTM1OGRhZmUyODU4NTE4YjQ0NmY0NjYwYWY1MzMzYTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImFhZjEzMGJkYTk5NTI1ODVjMDczY2I3MTkyZGVhMzQ4NGE2MzU3MTUyNDMxNzM1NjlhZTczZTIwNDY2MzQ0MTYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM5MzY5YmFlMjkzYzNiMGY2YWYzODE4YzJkMzhkMTYwNzc5NTJmN2I2YWQ0MDRhZDQ1ZDFlMzU5NzQ1YmI1YzkifQ"
+        },
+        {
+          "resource": "repo://scripts/release/automatic-release.py#L249-L326",
+          "version": "repo-lines-v1:sha256:8491be208b641f74fc3cd06b9a74dd33fdbc8c5e16d22ba828510c8c67c3c57a:eyJzZWxlY3RlZExpbmVDb3VudCI6NzgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRiOGYxODI0ZWVjODFkY2RhM2YxOWYyMDBiZjZlM2E4MjNjZGExZjY3OTEzOTRlYWEzMDc1ZTU1ZTAzNWEzZDUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgzOTVlN2RiZDg2MjI2NTJjODAyODg5YzRkOGVjOGMxMWNhYzJjMjZjNWM1MTI0YzIwNDk0MjQ2ZDFjNDljZjEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM5MzY5YmFlMjkzYzNiMGY2YWYzODE4YzJkMzhkMTYwNzc5NTJmN2I2YWQ0MDRhZDQ1ZDFlMzU5NzQ1YmI1YzkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY5OWE5YzdhYmQxNTU1ZDBlYjNiOWI5MGQ2NGViMjMwZjIxOGI4ZTg5MWM2NmViNGZjMDNiOTI1ZTczMGJlNWUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_1df21bb817f74cb9ac9ca375e2fc05a1",
+      "statement": "Before tag publication, the release tool verifies a completed successful CI run on the exact trusted main source, the merged release PR identity and allowed changed paths, verified signatures on PR commits and merge commit, and human maintainer approval of that exact PR head.",
+      "evidence": [
+        {
+          "resource": "repo://scripts/release/automatic-release.py#L376-L418",
+          "version": "repo-lines-v1:sha256:7bc06c9c7cb1526585a611eba4a87bd713f2460b7b4e933d8edde8a6c2cf0904:eyJzZWxlY3RlZExpbmVDb3VudCI6NDMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIwNTkzOTFmN2ZjMmEzM2RjNGFlZmVkNDFlOGVmZGY3Yjg4Y2RmOTcyYjFhYWJiMjk1NmIzZTcwMDMyZGU5NzAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY2YzdjNDA2YWU4Zjc3OTIyYTYxMzMyNTA5ZTk5M2NhOTFjNTE3N2NiYWZlY2Q1MDRiMjQ1NzczNGY2ZTZlNWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM5MzY5YmFlMjkzYzNiMGY2YWYzODE4YzJkMzhkMTYwNzc5NTJmN2I2YWQ0MDRhZDQ1ZDFlMzU5NzQ1YmI1YzkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM4NDg2ZWQ2OWIxMjkxMWJmYTk2MzE4MjIzYjVjMjE1MzRlOTZmMmJkOGY5YTI5MjZjZTlmNjljMDI1MzRhMGMifQ"
+        },
+        {
+          "resource": "repo://scripts/release/automatic-release.py#L419-L440",
+          "version": "repo-lines-v1:sha256:1d345a888f6e22953a3fa9f1da369cf9b481b330a6e354005014c25c5b0c1160:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJjMjI2YTcyZWU3ZjExNmU1Y2U4NDExN2VlODY5Yzk1OTU3OTg0YWEwYzFjNWE1MTk4NGQwOGM2MjdjNzMyOWQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjliZDQyOWVhNGQxYzNkOWU5ZGFiZmQzNTYwZTlmNjE2NWFhZTBkODUwYzBkM2ZiNDY3ZGM1ODA2NTJhYjU4YWUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM1MzA1ZmZjMjVkMGQyMTU5YTY1Zjg3MGUzYTczYWNlNjIyNTMwM2UzYjQxY2ZlOTI2NzA2MzhlZTQwZGIzNWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzMmM2ZDk5ZDIyZjBkN2QxMWI1MTYwODk3YjQ2YmI1NzFkZTM0NWFkY2UwN2VjNjUwZWQ4M2VkNDZlMmE4MDQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_8bcc7667fbb04a4fac6c8d5b77b63846",
+      "statement": "Tag publication refuses conflicting tag identity, reads back the tag to match the approved source, avoids duplicate tag CI publishers, and refuses to rebuild or replace an already-published release that is not immutable with required signed source assets.",
+      "evidence": [
+        {
+          "resource": "repo://scripts/release/automatic-release.py#L443-L518",
+          "version": "repo-lines-v1:sha256:edf6c1c34b4f37e1f3fdfb005d0c37211b280a30127343b3a30510e08d4f8fc7:eyJzZWxlY3RlZExpbmVDb3VudCI6NzYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg4NTQzMmQ1NDBkOTRlNzE1YjhmYTYyNTk0MzdiNmIyOGVkNDdhYjQzNTgxMTM4YTJkZjA4MTVjNWVjMmY2NzQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU5NGUzM2QzZGFkMGE3NjM4YzBkZTRlMDMwNGQwMTI1NGUzOWQ5OWNjYTViNjlhNzFhNjRiMDlmZTc3MThkODgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU4ODMzYzVjMzZjYmRkMmI2NGQ1NzU0ODE2ZDMzMzZhMTcwZGRhNTNjNTI4NDI0NDkyOTI2ZGQ2NTZkNWJiN2MiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhjYzRhN2QxY2M3OTZhYmEzZTQ2NzIzMzI3ZjUxN2U5ZjgxMTk4MmQyNTBmMDcwMjk4NmU0YjU3NjRhZDk1ODkifQ"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.7.2",
+    "at": "2026-10-18T06:28:44.263Z"
+  }
+}
