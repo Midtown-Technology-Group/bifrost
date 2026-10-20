@@ -525,6 +525,13 @@ class UnpublishedCandidateRecoveryTests(unittest.TestCase):
             with self.subTest(inputs=inputs), self.assertRaises(self.release.ReleaseError):
                 self.release.prepare(self.source, self.prs, **inputs)
 
+    def test_malformed_retained_candidate_refuses_before_publication_lookup(self):
+        for candidate in (None, [], "v3.1.0", {}, {"version": 31}, {"version": "dev.819"}):
+            with self.subTest(candidate=candidate), \
+                 patch.object(self.release, "blob", return_value=candidate), \
+                 self.assertRaisesRegex(self.release.ReleaseError, "invalid retained"):
+                self.recover()
+
     def test_existing_exact_tag_refuses_supersession(self):
         self.refs = [{"ref": "refs/tags/v3.1.0"}]
         with self.assertRaisesRegex(self.release.ReleaseError, "tagged"):

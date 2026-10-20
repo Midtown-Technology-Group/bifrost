@@ -19,6 +19,8 @@ from urllib.parse import quote
 
 REPOSITORY = "Midtown-Technology-Group/bifrost"
 BRANCH = "automation/release"
+MAIN_REF = "origin/main"
+RELEASES_API = "releases?per_page=100"
 CANDIDATE = "release/candidate.json"
 NOTES = "release/notes.md"
 MANIFESTS = (
@@ -282,7 +284,7 @@ def pending_release(source: str, prs: list[dict]) -> bool:
         raise ReleaseError(
             f"existing {tag} points outside its merged release candidate"
         )
-    releases = array_pages("releases?per_page=100")
+    releases = array_pages(RELEASES_API)
     if not any(
         item.get("tag_name") == tag and not item.get("draft") and item.get("immutable")
         for item in releases
@@ -304,6 +306,19 @@ def markdown(value: str) -> str:
     )
 
 
+def retained_candidate(source: str, merged: str) -> dict:
+    """Require the same well-formed candidate on main and its named release PR."""
+    candidate = blob(source, CANDIDATE)
+    if not isinstance(candidate, dict):
+        raise ReleaseError("invalid retained release candidate")
+    version = candidate.get("version")
+    if not isinstance(version, str) or not STABLE.fullmatch(version):
+        raise ReleaseError("invalid retained release candidate version")
+    if candidate != blob(merged, CANDIDATE):
+        raise ReleaseError("retained candidate differs from the named release PR")
+    return candidate
+
+
 def supersede_unpublished(
     source: str, prs: list[dict], number: int, run_id: int
 ) -> dict:
@@ -322,14 +337,12 @@ def supersede_unpublished(
     if previous["number"] != number:
         raise ReleaseError("supersession must name the latest merged release PR")
     merged = previous["merge_commit_sha"]
-    candidate = blob(source, CANDIDATE)
-    if candidate != blob(merged, CANDIDATE):
-        raise ReleaseError("retained candidate differs from the named release PR")
+    candidate = retained_candidate(source, merged)
     version = candidate["version"]
     refs = array_pages(f"git/matching-refs/tags/{version}")
     if any(ref.get("ref") == f"refs/tags/{version}" for ref in refs):
         raise ReleaseError("a tagged candidate cannot be superseded; never move tags")
-    if any(item.get("tag_name") == version for item in array_pages("releases?per_page=100")):
+    if any(item.get("tag_name") == version for item in array_pages(RELEASES_API)):
         raise ReleaseError("a candidate with a GitHub Release cannot be superseded")
     runs = array_pages(
         f"actions/workflows/ci.yml/runs?head_sha={merged}&event=push&per_page=100",
@@ -346,6 +359,20 @@ def supersede_unpublished(
         raise ReleaseError("original candidate must have terminal failed main CI")
     return {"pr": number, "source": merged, "version": version,
             "failed_ci": failed["id"], "replacement_ci": run_id}
+
+
+def prepare_manifests(version: str) -> None:
+    """Change only plugin versions inside the checked-out manifests."""
+    for path in MANIFESTS:
+        checkout = Path.cwd().resolve()
+        target = (checkout / path).resolve()
+        if not target.is_relative_to(checkout) or (checkout / path).is_symlink():
+            raise ReleaseError("Release manifest escapes the checkout")
+        manifest = json.loads(target.read_text())
+        manifest["version"] = version[1:]
+        with target.open("w", encoding="utf-8") as stream:
+            json.dump(manifest, stream, indent=2)
+            stream.write("\n")
 
 
 def prepare(
@@ -369,16 +396,7 @@ def prepare(
         return None
     Path("release").mkdir(exist_ok=True)
     Path(CANDIDATE).write_text(json.dumps(candidate, indent=2) + "\n")
-    for path in MANIFESTS:
-        checkout = Path.cwd().resolve()
-        target = (checkout / path).resolve()
-        if not target.is_relative_to(checkout) or (checkout / path).is_symlink():
-            raise ReleaseError("Release manifest escapes the checkout")
-        manifest = json.loads(target.read_text())
-        manifest["version"] = candidate["version"][1:]
-        with target.open("w", encoding="utf-8") as stream:
-            json.dump(manifest, stream, indent=2)
-            stream.write("\n")
+    prepare_manifests(candidate["version"])
     entries = candidate["pull_requests"]
     changes = [f"- {markdown(pr['title'])} (#{pr['number']})" for pr in entries]
     security = [
@@ -455,7 +473,7 @@ def checked_main_ci(source: str, run_id: int) -> None:
         raise ReleaseError(
             "publication needs successful CI on the exact trusted main push"
         )
-    git("merge-base", "--is-ancestor", source, "origin/main")
+    git("merge-base", "--is-ancestor", source, MAIN_REF)
 
 
 def checked_release(source: str, run_id: int, prs: list[dict]) -> dict:
@@ -518,7 +536,7 @@ def reject_superseded_source(source: str) -> None:
     PR does, even while its own CI or packaging is still pending.
     """
     git("fetch", "origin", "main")
-    ordered = git("rev-list", "--first-parent", "origin/main").splitlines()
+    ordered = git("rev-list", "--first-parent", MAIN_REF).splitlines()
     releases = [
         pr for pr in merged_prs()
         if pr.get("merged_at") and pr.get("head", {}).get("ref") == BRANCH
@@ -534,7 +552,7 @@ def reject_superseded_source(source: str) -> None:
             f"release source is superseded by merged release PR #{current['number']}"
         )
     # Refuse inconsistent retained metadata rather than treating it as absent.
-    if blob("origin/main", CANDIDATE) != blob(source, CANDIDATE):
+    if blob(MAIN_REF, CANDIDATE) != blob(source, CANDIDATE):
         raise ReleaseError("current main candidate differs from its merged release PR")
 
 
@@ -569,7 +587,7 @@ def publish(source: str, run_id: int, prs: list[dict]) -> None:
         obj = api(f"git/tags/{obj['sha']}")["object"]
     if obj["type"] != "commit" or obj["sha"] != source:
         raise ReleaseError("tag readback does not match the approved source")
-    releases = array_pages("releases?per_page=100")
+    releases = array_pages(RELEASES_API)
     published = [
         release
         for release in releases
@@ -625,6 +643,14 @@ def checked_source_ref(source: str) -> str:
     return source
 
 
+def write_preparation_output(version: str, source: str) -> None:
+    """Retain the exact prepared version and source for the calling workflow."""
+    output = os.environ.get("GITHUB_OUTPUT")
+    if output:
+        with Path(output).open("a") as stream:
+            stream.write(f"version={version}\nsource={source}\n")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("action", choices=("version", "prepare", "validate", "publish"))
@@ -658,12 +684,7 @@ def main() -> int:
                 source_ci_run=args.source_ci_run,
             )
             if candidate:
-                output = os.environ.get("GITHUB_OUTPUT")
-                if output:
-                    with Path(output).open("a") as stream:
-                        stream.write(
-                            f"version={candidate['version']}\nsource={source}\n"
-                        )
+                write_preparation_output(candidate["version"], source)
                 print(candidate["version"])
         elif args.action == "validate":
             print(validate_candidate(source, prs)["version"])
