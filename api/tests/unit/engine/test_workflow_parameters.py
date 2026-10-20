@@ -377,6 +377,45 @@ class TestWorkflowVariableCapture:
 
         assert trace_updates[-1] is preexisting_trace
 
+    @pytest.mark.asyncio
+    async def test_success_captures_locals_with_preexisting_local_trace(
+        self,
+        mock_context,
+    ) -> None:
+        """Variable capture and a caller's per-frame tracer must both stay active."""
+        caller_events: list[str] = []
+
+        def caller_local_trace(frame, event, _arg):
+            if frame.f_code.co_name == "traced_success":
+                caller_events.append(event)
+            return caller_local_trace
+
+        def caller_trace(frame, event, _arg):
+            if frame.f_code.co_name != "traced_success":
+                return None
+            caller_events.append(event)
+            return caller_local_trace
+
+        previous_trace = sys.gettrace()
+        sys.settrace(caller_trace)
+        try:
+            @workflow(name="trace_and_capture", description="Trace and capture locals")
+            async def traced_success():
+                captured_marker = "available on success"
+                return captured_marker
+
+            result, captured, _ = await _execute_workflow_with_trace(
+                traced_success, mock_context, {}
+            )
+
+            assert sys.gettrace() is caller_trace
+        finally:
+            sys.settrace(previous_trace)
+
+        assert result == "available on success"
+        assert captured["captured_marker"] == "available on success"
+        assert "return" in caller_events
+
 
 class TestContextParameterDetection:
     """Test detection of context parameter in function signatures"""
