@@ -282,6 +282,7 @@ def report_blocked_candidate(
     try:
         print(text, file=sys.stderr)
     except (OSError, ValueError):
+        # An unwritable log must not change the preparation outcome.
         pass
     summary = os.environ.get("GITHUB_STEP_SUMMARY")
     if not summary:
@@ -290,6 +291,7 @@ def report_blocked_candidate(
         with Path(summary).open("a", encoding="utf-8") as stream:
             stream.write(text + "\n")
     except (OSError, ValueError):
+        # An unwritable step summary must not change the preparation outcome.
         pass
 
 
