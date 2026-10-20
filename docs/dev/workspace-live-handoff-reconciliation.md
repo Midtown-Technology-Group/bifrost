@@ -15,8 +15,11 @@ preview must omit that installation's bindings without reclaiming its workflows.
   dependencies. Reviewed replacements need not keep obsolete origin contracts live.
 - Activated reviewed Source/workflow revision lineage back to the original
   guarded handoff. Missing parents, cycles and unrelated installs fail closed.
-- The original Live row/release identity, source hashes, bundle hash and recomputed
-  preflight evidence digest. The receipt alone is insufficient.
+- The original Live row/release identity, source hashes and recomputed preflight
+  evidence digest, which binds the complete compiled manifest including its
+  bundle hash. The stored deployment and manifest must agree on that hash;
+  readback does not impose the server candidate builder's bundle digest recipe
+  on candidates accepted by guarded preflight. The receipt alone is insufficient.
 
 Two provenance variants keep that proof honest for transitions that no receipt
 can describe (#1122):
