@@ -4,6 +4,15 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      supersede_unpublished_pr:
+        description: Optional latest merged release PR whose untagged candidate failed main CI
+        required: false
+        type: string
+      source_ci_run:
+        description: Required with supersession; successful exact current-main push CI run
+        required: false
+        type: string
   # Catch merges that arrived while the preceding release was packaging.
   workflow_run:
     workflows: [CI]
@@ -39,9 +48,18 @@ jobs:
         id: candidate
         env:
           GH_TOKEN: ${{ github.token }}
+          SUPERSEDE_PR: ${{ inputs.supersede_unpublished_pr }}
+          SOURCE_CI_RUN: ${{ inputs.source_ci_run }}
         run: |
           set -euo pipefail
-          python3 scripts/release/automatic-release.py prepare
+          args=()
+          if [[ -n "$SUPERSEDE_PR$SOURCE_CI_RUN" ]]; then
+            test "$GITHUB_EVENT_NAME" = workflow_dispatch
+            [[ "$SUPERSEDE_PR" =~ ^[1-9][0-9]*$ ]]
+            [[ "$SOURCE_CI_RUN" =~ ^[1-9][0-9]*$ ]]
+            args=(--supersede-unpublished-pr "$SUPERSEDE_PR" --source-ci-run "$SOURCE_CI_RUN")
+          fi
+          python3 scripts/release/automatic-release.py prepare "${args[@]}"
           # Never write an older preparation over a newer main merge.
           git fetch origin main
           test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
