@@ -33,10 +33,14 @@ def _filter_module():
 
 
 def test_shadow_combines_real_shard_databases_without_baseline_hits(tmp_path, monkeypatch):
-    repository = API_ROOT.parent
+    # test-runner mounts repository tools at /repo/scripts, independently of
+    # API source at /app. Local checkouts retain the ordinary api/ layout.
+    repository = Path("/repo") if API_ROOT == Path("/app") else API_ROOT.parent
     spec = importlib.util.spec_from_file_location(
         "shadow_combine_under_test", repository / "scripts/sonar/shadow.py"
     )
+    assert spec is not None
+    assert spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     root = tmp_path / "repo"
