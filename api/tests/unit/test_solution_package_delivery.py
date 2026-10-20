@@ -123,6 +123,29 @@ def test_complete_mixed_package_keeps_resources_and_empty_binary_source():
         assert {name: package.read(name) for name in package.namelist()} == files
 
 
+@pytest.mark.parametrize("host_creator", [0, 3], ids=["windows", "unix"])
+def test_package_archive_creator_is_portable_and_preserves_git_modes(monkeypatch, host_creator):
+    original_info = zipfile.ZipInfo
+
+    class HostZipInfo(original_info):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self.create_system = host_creator
+
+    files = {"scripts/check.sh": b"#!/bin/sh\nexit 0\n", "empty.py": b""}
+    modes = {"scripts/check.sh": "100755", "empty.py": "100644"}
+    with monkeypatch.context() as patch:
+        patch.setattr(zipfile, "ZipInfo", HostZipInfo)
+        archive = build_solution_package_archive(files, modes)
+
+    with zipfile.ZipFile(io.BytesIO(archive)) as package:
+        assert package.namelist() == sorted(files)
+        for info in package.infolist():
+            assert info.create_system == 3
+            assert info.external_attr >> 16 == int(modes[info.filename], 8)
+            assert package.read(info) == files[info.filename]
+
+
 def test_workflow_package_keeps_complete_resource_source_without_an_app():
     files = {path: raw for path, raw in source().items()
              if path != ".bifrost/apps.yaml" and not path.startswith("apps/")}
