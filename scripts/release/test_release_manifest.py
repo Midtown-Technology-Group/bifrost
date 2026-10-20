@@ -534,6 +534,41 @@ class UnpublishedCandidateRecoveryTests(unittest.TestCase):
         with self.assertRaisesRegex(self.release.ReleaseError, "no exact main CI"):
             self.recover()
 
+    def test_replacement_preparation_retains_full_interval_and_failure_history(self):
+        replacement = {"version": "v3.1.0", "pull_requests": [],
+                       "base_tag": "v3.0.0", "contract_floor": None,
+                       "source_commit": self.source}
+        previous_cwd = Path.cwd()
+        with tempfile.TemporaryDirectory() as directory:
+            try:
+                os.chdir(directory)
+                for name in self.release.MANIFESTS:
+                    target = Path(name)
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    target.write_text(json.dumps({"version": "3.0.0", "name": "preserved"}))
+                with patch.object(self.release, "pending_release", return_value=True), \
+                     patch.object(self.release, "calculate", return_value=replacement), \
+                     patch.object(self.release.release_manifest, "upgrade_notes", return_value=[]):
+                    actual = self.release.prepare(
+                        self.source, self.prs, supersede_pr=1078, source_ci_run=100
+                    )
+                self.assertEqual(actual, replacement)
+                self.assertEqual(json.loads(Path(self.release.CANDIDATE).read_text()), replacement)
+                for name in self.release.MANIFESTS:
+                    self.assertEqual(json.loads(Path(name).read_text()),
+                                     {"version": "3.1.0", "name": "preserved"})
+                notes = Path(self.release.NOTES).read_text()
+                self.assertIn("Replaces #1078", notes)
+                self.assertIn("Original failed main CI: 90", notes)
+                self.assertIn("Replacement source main CI: 100", notes)
+            finally:
+                os.chdir(previous_cwd)
+
+    def test_explicit_recovery_refuses_when_no_candidate_is_pending(self):
+        with patch.object(self.release, "pending_release", return_value=False), \
+             self.assertRaisesRegex(self.release.ReleaseError, "unpublished pending"):
+            self.release.prepare(self.source, self.prs, supersede_pr=1078, source_ci_run=100)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
