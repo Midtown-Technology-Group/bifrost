@@ -291,6 +291,11 @@ def test_pending_release_does_not_recursively_prepare(history, monkeypatch):
 @pytest.fixture
 def published_candidate(history, monkeypatch):
     source, candidate, pr = history["candidate"]()
+    # Exercise the real fresh-main fetch without any network or live repository.
+    origin = Path.cwd().parent / (Path.cwd().name + "-origin.git")
+    release.git("init", "--bare", "-q", str(origin))
+    release.git("remote", "add", "origin", str(origin))
+    release.git("push", "-q", "origin", "HEAD:refs/heads/main")
     operations = []
     run = {
         "head_sha": source,
@@ -308,6 +313,7 @@ def published_candidate(history, monkeypatch):
     }
     signed = {"commit": {"verification": {"verified": True}}}
     transport = {
+        "pulls?state=closed&base=main&per_page=100": [history["prs"]],
         "actions/runs/42": run,
         f"pulls/{pr['number']}/files?per_page=100": [
             [{"filename": name} for name in release.RELEASE_PATHS]
@@ -391,6 +397,36 @@ def test_review_and_source_guards_precede_any_write(
         )
     with pytest.raises(release.ReleaseError):
         release.publish(source, 42, history["prs"])
+    assert operations == []
+
+
+def test_fresh_main_with_ordinary_merge_preserves_candidate(
+    history, published_candidate
+):
+    source, _, operations, _ = published_candidate
+    history["commit"]("fix: ordinary main advancement")
+    release.git("push", "-q", "origin", "HEAD:refs/heads/main")
+    release.publish(source, 42, history["prs"])
+    assert [path for path, _ in operations] == [
+        "git/refs",
+        "actions/workflows/ci.yml/dispatches",
+    ]
+
+
+def test_fresh_main_replacement_rejects_old_ci_before_mutation(
+    history, published_candidate
+):
+    source, _, operations, _ = published_candidate
+    replacement = history["commit"](
+        "chore(release): replacement", branch=release.BRANCH, write_feature=False
+    )
+    release.git("push", "-q", "origin", "HEAD:refs/heads/main")
+    # Deliberately retain a stale local remote-tracking ref: the guard must
+    # fetch and use the replacement on the fixture's authoritative origin.
+    release.git("update-ref", "refs/remotes/origin/main", source)
+    with pytest.raises(release.ReleaseError, match="superseded"):
+        release.publish(source, 42, history["prs"])
+    assert release.git("rev-parse", "origin/main") == replacement
     assert operations == []
 
 
