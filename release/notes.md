@@ -91,6 +91,53 @@
 - Reject completed-with-errors workflow mutations (#1269)
 - chore(security): remove expired Authlib exception after Snyk retirement (#1294)
 - Cover Codex Gateway /v1/responses runtime with fake-upstream tests (#1295)
+- chore(release): v3.1.0 (#1078)
+- Report safe invariant reasons for refused Live handoffs (#1296)
+- fix(ci): retry candidate attestation persist after transient API rate limits (#996)
+- Fix post-deploy accountability diagnostics and cover reconciliation (MIDT-166) (#961)
+- Resolve integration context in MCP create_event_source (#1032)
+- MIDT-180: Add PKCE support to third-party integration OAuth flows (#1033)
+- Run native Atheris targets through the maintained fuzz compiler (#1137)
+- security: bound public form attribution names (#1227)
+- perf: eliminate resolver scans and reuse Solution publication transport (#1297)
+- Fix source-app npm peer resolver toolchain (#1299)
+- Reconcile terminal job notifications after isolated runner exit (#1298)
+- Expose bounded managed-worker identity ownership operations (#1160)
+- Authorize finite device peer lighthouse leases through shared jobs (#1073)
+- Isolate accounting convergence tests from automatic maintenance (#1309)
+- fix(security): isolate client tests from optional secrets (#1219)
+- Mark service component props readonly (#1300)
+- Isolate expected form-upload test failures (#1303)
+- Mark platform job panel props readonly (#1305)
+- Mark scheduler replica component props readonly (#1306)
+- Isolate expected Azure blob lifecycle failures (#1302)
+- fix(events): accept canonical global scope (#1239)
+- fix(workspace): preview repairs for invalid Python (#1240)
+- security: refresh WebSocket policy roles (#1171)
+- security: scope execution log identifiers (#1173)
+- Keep password-login tokens out of project env files (#1151)
+- security: enforce workflow tool catalog access (#1176)
+- Revoke browser refresh sessions on logout (#1161)
+- fix(manifest): preserve explicit workflow cache TTL (#1345)
+- Keep local runs detached from workflow IDs (#1259)
+- perf: compile byte-identical delivery baselines once (#1120)
+- Bound MCP agent token overrides (#1256)
+- security: enforce application access on logo reads (#1314)
+- security: bind integration OAuth callback state (#1315)
+- security: restore SDK fetch scan visibility (#1274)
+- Reject targetless manifest event subscriptions (#1264)
+- security: recheck queued app publish authority (#1324)
+- fix: qualify handoff release and retain runtime coverage failures (#1350)
+- fix: scope agent workflow tool grants (#1182)
+- Security: close Sonar new-code analysis boundaries (#1353)
+- security: enforce agent run timeout cap (#1333)
+- fix(ci): retire timed-out native queue attempts safely (#1355)
+- Serve the locked Monaco editor and workers from the application (#1140)
+- feat: add source-grounded platform architecture atlas and maintenance hooks (#1349)
+- security: parse GitHub Action pins as YAML (#1337)
+- fix: validate retained handoff bundles through their preflight receipt (#1360)
+- Make solution package ZIP metadata portable across hosts (#1362)
+- Recover release preparation after a failed unpublished candidate (#1363)
 
 ## Fixed vulnerabilities
 
@@ -112,6 +159,18 @@ Security-related PR titles below are an inventory, not a verified CVE assessment
 - security: bind verified files into Git closure (#1226)
 - security: evict timed-out RabbitMQ health connection (#1251)
 - chore(security): remove expired Authlib exception after Snyk retirement (#1294)
+- security: bound public form attribution names (#1227)
+- fix(security): isolate client tests from optional secrets (#1219)
+- security: refresh WebSocket policy roles (#1171)
+- security: scope execution log identifiers (#1173)
+- security: enforce workflow tool catalog access (#1176)
+- security: enforce application access on logo reads (#1314)
+- security: bind integration OAuth callback state (#1315)
+- security: restore SDK fetch scan visibility (#1274)
+- security: recheck queued app publish authority (#1324)
+- Security: close Sonar new-code analysis boundaries (#1353)
+- security: enforce agent run timeout cap (#1333)
+- security: parse GitHub Action pins as YAML (#1337)
 
 ## Upgrade notes
 
@@ -120,16 +179,22 @@ Before upgrading, back up the database and review the exact release's migration 
 Automatic rollback is not certified. Preserve terminal workflow retirement evidence and admission safeguards during application rollback. Database downgrade past 20261003_workflow_retirement refuses once retirement evidence exists; use a reviewed recovery plan, not an automatic schema downgrade.
 Before enabling terminal Live retirement, review actual production caller/byte evidence. The native read-only census does not prove absence of Python, operational file, App Source/dist, or external callers. Coordinate owners and retain the exact reviewed evidence digest before authorizing retirement.
 Read back retirement inventory to verify retained row/evidence IDs. An uncertain outcome requires readback before any exact retry; do not replay with fresh targets. Keep the forward schema during application-image rollback.
-Follow the [terminal-retirement runbook](https://github.com/Midtown-Technology-Group/bifrost/blob/4ab290a8c8b1c1fdd8fbe734cab0a1c7e1b4f874/docs/architecture/rapid-workspace-promotion.md#obsolete-registrations-in-the-same-cutover).
+Follow the [terminal-retirement runbook](https://github.com/Midtown-Technology-Group/bifrost/blob/de34e07d638706506e23cce6f855beebb91532e8/docs/architecture/rapid-workspace-promotion.md#obsolete-registrations-in-the-same-cutover).
 Contract comparison requires: no additional bump floor.
 This release uses the MTG fork's independent SemVer; upstream versions are not its baseline.
 
 ## Contributors
 
-@MTG-Thomas
+@MTG-Thomas, @github-actions[bot]
 
 ## Source
 
-Reviewed interval: `v3.0.0..4ab290a8c8b1c1fdd8fbe734cab0a1c7e1b4f874`.
+Reviewed interval: `v3.0.0..de34e07d638706506e23cce6f855beebb91532e8`.
 
 Publishing packages does not deploy the MTG production runtime.
+
+## Superseded unpublished candidate
+
+Replaces #1078 at `4dce02e6f13b0cb4f0660f5621a36a74a1bf43d8` (v3.1.0); no tag or GitHub Release existed at preparation.
+Original failed main CI: 38600241130. Replacement source main CI: 39506952510.
+The original failure remains recorded. This candidate requires fresh exact-head review, queue checks, main CI and signed stable packaging.
