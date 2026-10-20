@@ -9,6 +9,7 @@ import json
 import os
 import re
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -35,6 +36,11 @@ class BlockedCandidateDiagnosticTests(unittest.TestCase):
         previous = Path.cwd()
         self.addCleanup(os.chdir, previous)
         os.chdir(self.directory.name)
+        environment = patch.dict(os.environ)
+        environment.start()
+        self.addCleanup(environment.stop)
+        # Never inherit or append to a runner's real step summary.
+        os.environ.pop("GITHUB_STEP_SUMMARY", None)
         git("init", "-q")
         git("config", "user.name", "Release fixture")
         git("config", "user.email", "release@example.invalid")
@@ -118,6 +124,27 @@ class BlockedCandidateDiagnosticTests(unittest.TestCase):
         with patch.dict(os.environ, {"GITHUB_STEP_SUMMARY": str(blocked)}):
             text = self.held()
         self.assertIn("v1.1.0", text)
+
+    def test_absent_step_summary_still_reports_to_the_log(self):
+        self.assertNotIn("GITHUB_STEP_SUMMARY", os.environ)
+        text = self.held()
+        self.assertIn("v1.1.0", text)
+        self.assertEqual(list(Path(".").glob("summary*")), [])
+
+    def test_failing_stderr_write_keeps_the_outcome_and_the_summary(self):
+        summary = Path("summary.md")
+
+        class BrokenStream:
+            def write(self, _text):
+                raise OSError("stderr is unavailable")
+
+            def flush(self):
+                raise OSError("stderr is unavailable")
+
+        with patch.dict(os.environ, {"GITHUB_STEP_SUMMARY": str(summary)}):
+            with patch.object(sys, "stderr", BrokenStream()):
+                self.assertTrue(release.pending_release(self.merged, self.prs))
+        self.assertIn("v1.1.0", summary.read_text())
 
     def test_published_candidate_is_not_reported(self):
         git("tag", "v1.1.0", self.merged)
