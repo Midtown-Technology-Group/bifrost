@@ -48,6 +48,10 @@ DOC_FILES = frozenset(
         "LICENSE",
     }
 )
+OPENWIKI_CLAIMS_PREFIX = "openwiki/.claims/"
+OPENWIKI_METADATA_FILES = frozenset(
+    {"openwiki/.last-update.json", "openwiki/.page-manifest.json"}
+)
 
 # These surfaces can alter generated contracts, storage, dependency resolution,
 # release behavior, or the planner itself.  A partial graph is not credible.
@@ -245,7 +249,20 @@ def _normalize(path: str) -> str:
 
 
 def _is_docs(path: str) -> bool:
-    return path in DOC_FILES or path.startswith(DOC_ROOTS)
+    return (
+        path in DOC_FILES
+        or path.startswith(DOC_ROOTS)
+        or _is_openwiki_documentation(path)
+    )
+
+
+def _is_openwiki_documentation(path: str) -> bool:
+    """Recognize authored wiki prose and the native generated OpenWiki index."""
+    if not path.startswith("openwiki/"):
+        return False
+    if path.lower().endswith(".md") or path in OPENWIKI_METADATA_FILES:
+        return True
+    return path.startswith(OPENWIKI_CLAIMS_PREFIX) and path.lower().endswith(".json")
 
 
 def _is_python_source(path: str) -> bool:

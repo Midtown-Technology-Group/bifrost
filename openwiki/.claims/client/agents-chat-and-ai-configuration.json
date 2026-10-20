@@ -1,0 +1,144 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:3afd8c3d69b078d433cf03d0a7151335e6ae420a97c57076cad80c3a8f1ed883",
+  "claims": [
+    {
+      "id": "claim_95d150d3a4d6459494f188e9a7e27a9e",
+      "statement": "The agent fleet composes scoped agent queries with optional inactive records and statistics, and its UI-side query scope choices are request controls rather than server authorization proof.",
+      "evidence": [
+        {
+          "resource": "repo://client/src/hooks/useAgents.ts#L33-L88",
+          "version": "repo-lines-v1:sha256:4fcc4787894e7fcc9faf1dbaf97ef76a753be7581e2d8677acb155f35371203f:eyJzZWxlY3RlZExpbmVDb3VudCI6NTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdlZGRhZGY4OWQyODFlYTk5ODA5MzBmZTNkOTJiOGI3MmVjM2MxNjI3N2VmODA4MTI5Y2NiNjdkNzVlNGVmN2EiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBhNzM0OTJkODk0NmIxZDBmOWQ5YzA0YjcwNGE5MjBmMjRmODllZjdjN2Y3MzExYTg1OTlkMTBjN2Y2MzU4ZDAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJlNTU1NjQ0NTBhOTgwMmI5YTNmMGIzNmQ0ZDZkN2ZhY2IyZjllODZlYzVhNTU3ODU4Nzk1ZmJhYzI4MTIzNzUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQ0NDQxMjcxZTljMjRjMDBmYTQ1OGRiYjI0YmQ2ZThmMWRmOTc4NjJmMjE0OTAwMDE2MmMxY2UzMzQxZWQ4OGIifQ"
+        },
+        {
+          "resource": "repo://client/src/pages/agents/FleetPage.tsx#L95-L140",
+          "version": "repo-lines-v1:sha256:1e2ad01af0479f433af73dac98aca2c439a8cb40d67bf62ef3f0139f2f6885f5:eyJzZWxlY3RlZExpbmVDb3VudCI6NDYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYwMzEzZGY1MWRkMTliMzQ3NDVmNjhkZDhkMGRhYTA1ZWFjYjk0N2QxYTU3YjRjN2QzNjY1NjEyODE3NDBhZWYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFhMGM4YmQ0ODAzMTUxNDE0ZDI3YTBkNjA2MDE3NzgzMDRmZWVmZjYwM2VmMWUzMWNhMmE0YTQyMDJhODIwYTciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk3NzIwZmE4OWMzNzU4ZDJhNzQ0MjJiNGVhMzE0MjU3MTcyZmFjOTNiNTM0NWI4M2FjYTg4NzIxMjBiYTJiMTMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZjYTE1NWNlNjIzNDJiYWEyNTBiMjAyYWU5NmRiOTdiM2VlMjI0NDdhYmIxNTI3NThmNzQ4OGQzMzBlOWUxMDgifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_c3a56e4f635442afb71666b563d73c30",
+      "statement": "Agent detail uses one create/edit route component; creation is settings-only, while edit tabs are URL-addressable, and starting chat requires the selected agent to expose chat and be active before a conversation is created.",
+      "evidence": [
+        {
+          "resource": "repo://client/src/pages/agents/AgentDetailPage.test.tsx#L3-L8",
+          "version": "repo-lines-v1:sha256:a71496ac8b0b8eb0c99bc83b1b9d152b8e6d2766b24c7ba868958153f4950393:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYzUxOGJjODFhNTc2MjRhYzczZTA0NzZlZTAwMDQ0YjY5YzdhZmYxNWRmNjE4YjNmMzRkNzljODAwOWY5M2ZjMyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOTcyYTQyOTM4MmIyZTE0NzE4ZTBlMzdiMDU3MGE4YTE3MDI5OTFmY2Q4NDk4Y2Q4NDA2MGE4YmY0ZjA1MDE3YiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjIsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMzMyNWUxMDRlZjNiYzg1YmE4YWIzYmE2NGM1NmUzYmUzZDA1MjhkYWY2ODVhODViZTFkNDliN2Q1NmVhN2U3ZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZGY3YjZlMjBiMDg2MWY0ODcxMDQ0MjQxMTg5ODI5NGZlM2RmYWIzN2QxMDUxOThiMTU1ODYwNTlmZGJiNzY3NyJ9"
+        },
+        {
+          "resource": "repo://client/src/pages/agents/AgentDetailPage.tsx#L156-L170",
+          "version": "repo-lines-v1:sha256:9b98ff5988001dafdf2e8c2c6ad62e86f77800bc41a027cba7828165c954737c:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlhNDFiNjAwZjU1ODAzMThjNWU1NTU0MDk5YTgxN2M0YTZhMDVjZTMyOTJiNGY4ZmQ1NzM4NjNlY2Y2M2RjNzkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVhYTEwMjg4NzM4NmVjZTE1N2Q2NjVmYjM0ODkwMGZhMWJlNTc2YjUyMGViZjQ0NWQ0ZDEwMDk4OTk2YmFlMzQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImFhMzY4MzJmOWYyNjNkYTVhNWM2NDJlYjI4ZmIxMTJiOWI4YWVmNDJjNjBmNDk0MTExMDU5MTI1MGNiNmFlNWQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImRhMDI3ZTRhNmMxN2ZmMjNlNjIxNTJiOGNjMzRjZjBkYTE3OTJlNTZlZDZkOGZmMjYzZDM5ZWU5MzI2NmIzY2UifQ"
+        },
+        {
+          "resource": "repo://client/src/pages/agents/AgentDetailPage.tsx#L66-L123",
+          "version": "repo-lines-v1:sha256:12210a2e8c92564e5fc3ab395d795d0f0071f7b36f01d6547785c28c3bc6328b:eyJzZWxlY3RlZExpbmVDb3VudCI6NTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFiMjZiNWNmZmVjN2VlMTE4ZDVkM2JlY2ZhMmE0OWViYmUzOTNjYTgzZGE0MzlmYTEyMTRkMzkwNDY1OTk4NDAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE2NDdhOGM2YWM5YTBhNTVmYTVkOWMyNTliMWU4NDJkZDhkZmY4OTUyYmI0NzE4MTY1MWUyMzFlMzk2OTYzOTUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjBkMTNmOWM0YjExNzMwZTFkYzc4OWI3ZWYwMmExZGMyYjRkZDc1ZTExMThmMDM3NjBjOWIwZDlhYTBlMWEzOWQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijc2MzUyYmE3YWU1MWM2MGQwMDg0YmNjNzUyNTRhYzdmNmVhNGNmYjM3YTdlOWY0ZGFkMzEzMjIzNmE2MDUyMzQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_5229b4b4410a4eed88e1e99035c5cc41",
+      "statement": "The chat UI sends durable start and cancel commands over HTTP and uses WebSocket only for replayable events; it hydrates the server-owned conversation projection on entry and reconnect to recover state.",
+      "evidence": [
+        {
+          "resource": "repo://client/src/hooks/useChatStream.test.tsx#L137-L158",
+          "version": "repo-lines-v1:sha256:9196c41a31b4d0100ccd850e6a0b39c157a80132d5d99e8dafb4ae2fec929410:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNjMmVlZWZhNjUxYmY3ZWNhMjg0Y2ViNmZmOTc5NWZlMzI3NmMzMDg0OTJmMzkxMWVmMzdkOTJjMzkyYzg0ZjEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBhNzM0OTJkODk0NmIxZDBmOWQ5YzA0YjcwNGE5MjBmMjRmODllZjdjN2Y3MzExYTg1OTlkMTBjN2Y2MzU4ZDAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjExMjQzZmNlN2Y4NWNlNzAzZjZkN2Q1Zjg0ZTU1OTA0YmYwNzhhZjcyNzMxMzBhNDBmYTI5MWJkODUwMDEzMTEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI1YjUzNTNmZGVmNjBhN2Q2Mzc0YmEzMjM0NWVhYTUxY2M4MDQ3MWFkNTI1NDdjNDljMzgzNzlhZjMyNTczNDQifQ"
+        },
+        {
+          "resource": "repo://client/src/hooks/useChatStream.test.tsx#L317-L333",
+          "version": "repo-lines-v1:sha256:e3f442ec55840b6e20f1abfc4b7a52d26a0f8f4012bbd2ab68544d5ae0603ac2:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJmOWYwNmY4ZTIwZDZkMzhhMWRjNjU3ZDg1YTFhZjg2MmJjYmE3ZmUyNzgxZWZlMDBkYWQ4MTU5MDIzMzEyYzAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBhNzM0OTJkODk0NmIxZDBmOWQ5YzA0YjcwNGE5MjBmMjRmODllZjdjN2Y3MzExYTg1OTlkMTBjN2Y2MzU4ZDAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM4ZTBiYjRjNzdmOTUzY2RhYWVhZjY0OWVkMDlmMjZmYmFmYjhjOWYyZGY1OGRiOWQwYjFlZTE4YTAzZTFlZTEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImIwNmQ4MGFiZGZkNjE2MDc2NTg2OTViYmRiNmQ2MmZiMGZkYzhmMzk4MTNmZDRhNGE2NTFjODlhNDE2MmYxNWMifQ"
+        },
+        {
+          "resource": "repo://client/src/hooks/useChatStream.ts#L1-L6",
+          "version": "repo-lines-v1:sha256:8b335dd54e211316a93c4dc5e8a0e1bd845a96190c7614052be0fcc1e2ed230d:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZWFmMjJjZjA3MzI1OTJjMjQ3MTQxY2JlNjFlZmExMTAxMjYxMmY1YTMxMjJiOWFmOWJiYWY1MmY1NzI0ZDE5NCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOTcyYTQyOTM4MmIyZTE0NzE4ZTBlMzdiMDU3MGE4YTE3MDI5OTFmY2Q4NDk4Y2Q4NDA2MGE4YmY0ZjA1MDE3YiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjAsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYzI3Zjk2ODlhNTIxZDQ4NTlmZGYxMDBjNjU5M2MyN2RkNjM4NjY3Y2JiMGRkZTRlY2M0MTY1ZDQ2MDM0ZGJmOCJ9"
+        },
+        {
+          "resource": "repo://client/src/hooks/useChatStream.ts#L348-L431",
+          "version": "repo-lines-v1:sha256:005891e9aabe6ccc0f2b43a808422ad3c5df490ef2c5e23ca96268877c6b64d9:eyJzZWxlY3RlZExpbmVDb3VudCI6ODQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMzNjEyMDYzMzNiNGYyMzBmNmJmYjI3Nzg1NDA0YWNiMjgwNzQ0MzI4NjdkNTFhMmZkNWY4MjNiNzI0ZGY3NzQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRiY2E1ZTU4MWFhOWViMmIwM2ZhMTM4MDlmMWUyODdlMjRkYWQ1OGQ0N2YzZWIyNGNhODQ5YTI0YzU4Yzk0OGYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRlOWRiNGZiYTg2NmJiOTM0ZGUzZjc5ZDE4NmMxZjIwZTU3ODIzOGZjNmJkNzJlNjAwYjVhMjVhZDI3NTVmMzIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZhMzA3OTVkYzNhNmVkMzQyYTUyNWRjM2E0NWVkMDdjZTVmZDA3MzY0MDFhMGVjNTFiOGU2ZDczOGNmYjliNTIifQ"
+        },
+        {
+          "resource": "repo://client/src/hooks/useChatStream.ts#L433-L529",
+          "version": "repo-lines-v1:sha256:aa6c4f4e1bf98f4036dfa8f2b1b5cf37a205ea9e1466c2ddb5c6e63e593b508c:eyJzZWxlY3RlZExpbmVDb3VudCI6OTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjcwZTBkZjdjZWVmY2Y2MzgwOTY5YzI5NTFhMTU2MDg5ZjVkMDM3NmNiZjI2ZTAwNjliYTY1MTU4ZGFiY2Y2ZmUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVkZThkNzU5NzM3ODBhZjJhOGFiMzMyY2YwMmRhNjVjMTU2NTEwODA4NDgwNDI1MjJiZTllNjg3YTYwODQ3NzMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijc3ZTRhN2U2NjA1NWU5ZTcwZDhmYzRhYzEyOGJjMmNmYjdiMDdlMDc2MmQzMzA5Mzg3MzUyNzU2ODEzYjlhOTAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM1ODMxM2I5MDg4NGExODAwMzhkZWM3NjQyYjE3MjJjZWE3NTEzNTM2ZmRmNzZhOGQzZThiYjdiZWQ4NTg5ZmMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_2516dced907c46e1aa35e5277d643f98",
+      "statement": "Agent run detail merges API-fetched runs with streamed steps and refreshes run/list/statistics queries from run-update broadcasts; the shared list channel and per-run detail subscription have different access boundaries.",
+      "evidence": [
+        {
+          "resource": "repo://client/src/hooks/useAgentRunUpdates.ts#L1-L8",
+          "version": "repo-lines-v1:sha256:6c6185acc7f8fb59dfd29b7a72bfd0731a9f52892e61a0e40376bfa659cae300:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZWFmMjJjZjA3MzI1OTJjMjQ3MTQxY2JlNjFlZmExMTAxMjYxMmY1YTMxMjJiOWFmOWJiYWY1MmY1NzI0ZDE5NCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOTcyYTQyOTM4MmIyZTE0NzE4ZTBlMzdiMDU3MGE4YTE3MDI5OTFmY2Q4NDk4Y2Q4NDA2MGE4YmY0ZjA1MDE3YiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjAsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNDdmNzllMzRiMmIwYTFiNGFkNzRmNDVlOWI1YTFiYzgwYjhmMjViZjdjOGZiMDdiMzIzOTI1NzAzMjdiOGVhMiJ9"
+        },
+        {
+          "resource": "repo://client/src/hooks/useAgentRunUpdates.ts#L27-L61",
+          "version": "repo-lines-v1:sha256:36bf895c80593c5cef255167b3670f39aacc22d0bf10650e1bd97995932f12c1:eyJzZWxlY3RlZExpbmVDb3VudCI6MzUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg4ZTQ1NGFkYmQ3ODcxZWI2ZDViZTM3OWNmYjljZTIxOTZkYTFkMDIwMTJmNmE1NGE3MDI1ODk1YWZkYmYzNmYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA1ZDAzNzk3ZjJkMWYzOTMzYjQ3M2RlZWE3ZDc0OTI5NjljOTRjYTFlNDg0MTZiMzQ1ZWJiM2Q1MmRmN2RkN2UiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYxYWQ4YjhjMDk0NmE0YTU2MjZmNzJkY2I5MTFmNzY1ODQzZjNkMzMwYmVjOTc0NzEwY2ViNGRiOTRhODhmMzciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEifQ"
+        },
+        {
+          "resource": "repo://client/src/pages/agents/AgentRunDetailPage.tsx#L164-L209",
+          "version": "repo-lines-v1:sha256:2eab073d67429c1f955a9c0aa40b4fae1164c1763e9d931bbfc0f9ed78af2844:eyJzZWxlY3RlZExpbmVDb3VudCI6NDYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM3ZWM5MTg0NTY2ZGM3YjEzN2ViNDA3MGFmZmM3NDM2NmI3Yjg5YmYxMGEyYTI4ZWNmZGM2MzA0YWU3OWU0N2EiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNmZmUzYzhiYTQyZWRkYzg1NjdiMmQ2MjJlMDFhNTJiMjUyM2QwMWY2ZjRmNmFmMTMwYTA5NmY0YmZkNjBhZDgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQwNGNkNDkwNjdlMzZhMjE5Y2Y3NjM5NDE2NDM0YjlmNjIzNWEyOTNlNWYyZTFhYmE4ZWE5MTY2MWRiMTQyNDUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImRhMGYwZjg2NDE3OGU0OTI4MTMxOTY5MTRhNGMxNDdmZGFhNTcyMGY5NDQ2OGJjOTJlMTMzYzA1ZTRlZWU3ZDQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_23c79dc96b984d628421eb5c9fb0dacf",
+      "statement": "The reusable model-profile selector can filter to chat-enabled profiles while retaining an already selected saved profile, and chat-only profile creation is marked enabled for chat after a provider connection is selected.",
+      "evidence": [
+        {
+          "resource": "repo://client/src/components/ai/ModelProfileSelector.test.tsx#L253-L308",
+          "version": "repo-lines-v1:sha256:67098ee5e763641c2163a5f07532242157f57c56f19e0f53dd7d76b9ee0b3482:eyJzZWxlY3RlZExpbmVDb3VudCI6NTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE3MzBmMTcxYzEwNmEzYjIyMGFiN2ZhZmE3ZmVhODc0ZGRmYjkwMGVlNTMwMWQzOWY5YjJmNjQ1MzZlMDhhNGQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBhNzM0OTJkODk0NmIxZDBmOWQ5YzA0YjcwNGE5MjBmMjRmODllZjdjN2Y3MzExYTg1OTlkMTBjN2Y2MzU4ZDAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjMxY2Y2Y2VlYjAxZGIwZmQ4Mjc4M2QwMGQxN2Y1Mzk5YWM2N2ZjYzgwZjZlNzgzZTkyOWU3YTllMzcwN2E0NzAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI4NjVjMGVmMDJmY2JjYTMxNjkyMzM0ZjJkY2EwNjBkM2Y0OWZiNzNhZTMyZTU1ZjM1NTk0ZjA3YmM4ODVjODkifQ"
+        },
+        {
+          "resource": "repo://client/src/components/ai/ModelProfileSelector.test.tsx#L310-L366",
+          "version": "repo-lines-v1:sha256:6e013ef0a2fb8a895e87ca25026fcb113fd12e8a4b39f6674865689ccb724159:eyJzZWxlY3RlZExpbmVDb3VudCI6NTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM5M2MzYmI2MTI5NmMwNTFkODU4NmE0YmRjZTk0YjJmNWVhNzJjOWMxZjhjZTIwMDg3NWU0MDliNGYyOGYwMGQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQzN2YxNGU4YzA2NmE2MzRhZDI2NjhmZTE5NDU0M2RmZTE2M2RkMmEzY2FjZGVjMjRjZTFmMGEyNmM5NWJkNWMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjJlZGMzOGYzMTRiNjk3ZTJmOTEyNGZiMmVmZjkzYWYyMmY5NWUyMzNlYTU2NDIxMWNlN2EyN2U3MWYwNWFmYjciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE1MzVlNWU4MDg1ZGU4NTkyMWJkNDJhZjEyZGEwYmFmZGUwOGI5Yzg1NmFlYjRjMzQ5ODYxMGJkMzBhN2Y2OTMifQ"
+        },
+        {
+          "resource": "repo://client/src/components/ai/ModelProfileSelector.tsx#L305-L390",
+          "version": "repo-lines-v1:sha256:b0b3c4f4b2b3ff58679467b2763b2329e0fda7774f8a70fb05c188eb6f10086c:eyJzZWxlY3RlZExpbmVDb3VudCI6ODYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc0M2Y5Y2MzNGZlY2VhNDcyZWE5MDE1OGY4ZDNlZmJjYWNiNzgxZWJlNzI4ZDc4MDA0OWNjYjZkMDEyYTkxNmQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIyNjBlMDhiYjNjNzk3NmY4ZTFjYjFiODA1ZjRkZWM4ZDVjNTk1ZDM5ZjIzYTQwZTVjMjQ3Y2ZmOWEyZWUwZTYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRhYzU5ZTU4ODA3MmQxODI0MjU2ZGZiYjU1MWU4YTcyNzRkNDU1ZGYzYTM3ODliNzI3Nzk5NzIzMjliNWZhMTkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRmZmY4OTc3ZWRlOTJkYzhjMjJmZWZmM2Q1M2Q0MjAyYTYwYmQ5MGEzYmIyZDI3MGI5MjYzZmRkNTk0MTVmMDYifQ"
+        },
+        {
+          "resource": "repo://client/src/components/ai/ModelProfileSelector.tsx#L80-L129",
+          "version": "repo-lines-v1:sha256:58e0b5e43c187066b5861de70cede35d538b1d4f0adf0ed8c02a6c91ec568f15:eyJzZWxlY3RlZExpbmVDb3VudCI6NTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE3OGYzM2I4YTc2YWFmZjVlYTU4NDExMjAyNzc3NGRjNTBhZjMxNjA3MzZkZjkyZmFlMzJiNzA0OTRjNmFiNjEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM1OWUxNzYwMTkyNGYxY2Y4YjIwNTczYWUzNGU3MzBhNWJiZWYzZDY1NmQ3YzE2NzZkZmI5NDViNTk3MmE5NzMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImI0MDcxODMzZGIyZDJlMTFkYWUyZWE2N2Y4YzI1NzBmOWVhZDJhOWJiMmYzNWFlMzA2YTc3NGVlNDc1ZTNlOWQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUyZjhiNmU0MTQwNWYxNzliZTdhNDQ5YjAzZTJjNGQxY2M3YTk2NjI1MDZlNmY5ZGU3NTA3YjhjNWVmMjlkNjkifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_f08f9865bcad4655bf4a7e1d439c6b17",
+      "statement": "The agent run-history component owns fleet history filters and pagination, while the shared RunReviewPanel renders a consistent run summary and verdict interaction across page, flipbook, and drawer contexts.",
+      "evidence": [
+        {
+          "resource": "repo://client/src/components/agents/AgentRunsPanel.tsx#L110-L157",
+          "version": "repo-lines-v1:sha256:8a1b83385d6f2a1261beb5b5e9e6455740335200ba6dfec5e77ac4e2bfee7340:eyJzZWxlY3RlZExpbmVDb3VudCI6NDgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE0ZTRmZTJkNDBmOTg1ZWVhOTI5ZDM1OGMxZDU4ZjEwMDdjMzllZWQxNjllYTIxM2ZhOTA1YzA5MmJjNGMzNzciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ2ZTU2MDM0ZjZkYzM2YWJmMmU2N2VlYmU2M2MzNjQ4MjUyOGMwYmNkYzZmZGJkMTk5MzNkYzcwYzE5MmU0ZmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYyOTY0MDc5YzNjNWM4MTUyMGVmMzNhMmI5ZDJlMTVhMWI4NGQ3MjgwZGI4NTkwZGNkNjU3NDdlM2UwMTJhNDAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFjNThmNWFkMGYyMzdmYTlhMDliYTliZmE4Mjc5ZjMyNmNkMzkyZjE2NDk4YWYzNTU3OThmNGJhMTU0MDM0YzEifQ"
+        },
+        {
+          "resource": "repo://client/src/components/agents/RunReviewPanel.tsx#L1-L12",
+          "version": "repo-lines-v1:sha256:1942558e1ddcc7a875c6277b64854ca923d32b2d22d0af22b5112c95604ca7c0:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA1MmFiNmZlN2E2N2RmZjRjOGU4Yzg0ZTJlNzA3NGMzYWRkOGMyYTkxZGJmY2VhNTFlYTIwMGIxNzg1ZDJhZWMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk3MmE0MjkzODJiMmUxNDcxOGUwZTM3YjA1NzBhOGExNzAyOTkxZmNkODQ5OGNkODQwNjBhOGJmNGYwNTAxN2IiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjUyZjYyZGQ3YmMyMjFmY2ViNzdhNTRiYzA4MGVmNTJjMzJlYWQ4MDQ0OTVkZWI0ZjZiZjM2ODY5ZjUzODEzM2IifQ"
+        },
+        {
+          "resource": "repo://client/src/components/agents/RunReviewPanel.tsx#L51-L68",
+          "version": "repo-lines-v1:sha256:fbd6fc5ef29044199f9f9ecb16c207a9d6612141fba7c8956eb0e32c3d06687c:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjcyZDA1YjNlODc3YTA1MDcxYWM0NWQxN2E2MTQ2MzMxYTZmYWE3NmE3ZDg0Y2YyNjZkYjU3MDJiMWFlNGZmN2QiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUxZjkyNGVmNTg4YjBjNjNjOWMwOTFiOWY0YzIzNGQ3ZTczZTQ0ZjhmYzJmODIxYzMxNmFmMmRlMDQ0NzNmZTQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVkODYzZWQ0OTI2ZmE5OWZlNjEyOTIwZTcwZGFkY2QxN2Q2ZjlkYTQ3NjhlMTg5MjJiNzNiNmMwMzAwMzYyYTQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_f646615213804e5c8e137f795f10abae",
+      "statement": "The chat input component owns draft message, mentions, and attachment UI state, while the knowledge list renders selectable document rows and the document drawer provides a keyed create/edit session frame.",
+      "evidence": [
+        {
+          "resource": "repo://client/src/components/chat/ChatInput.tsx#L61-L107",
+          "version": "repo-lines-v1:sha256:f356c41e8d07f395f9b274c36968f0fafb6b3ccca1205eef5bbed829d16976e9:eyJzZWxlY3RlZExpbmVDb3VudCI6NDcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE5YzNmOTZhN2MyNTljZTY0OWVjOWQzNWNhYTFjMzFhY2NhNWFmZGY2NDI1MjUyMDhjZDEzNmY0YjM5NWJmYjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY2ZTI4ZWJlNDQ1NDJkNjJiMzY4MDcxMjA0YzQ0YmY4MDc4MTZlNjc0NDcyMzdmYjRiNTU3YWRlNTQ0ZDljZDMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM1MGIyMTFmOWZjNmEwZGRlZGFkNDhjZDNmMmU5NDJiNDBjMDgyZDI5ZWIzODQ4NmE1ZGEyMDZiODk0ZjVjMjAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImYyZGUxNmI1NjQzMDhmNGNhZTMxY2E2MDQyZmZlMjcyMTU1NTBiZDM3M2M4YTY1NWI2MjBkZWYxZGNlMzY0NDMifQ"
+        },
+        {
+          "resource": "repo://client/src/components/knowledge/KnowledgeDocumentDrawer.tsx#L100-L112",
+          "version": "repo-lines-v1:sha256:217003ced40f45c215c58e8f6bc3c521c2ef4f0777e6cd680eddec415e0692f7:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdmY2NmN2Y4NWJmZWQwNWY5ODQwZTRjMDdjYjNiYmRiNGQ2M2E4MzdmZGViN2UyZWRkNTEyNzIxYjY0NzI1NmUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjI1YmIxYWY1MjFiZWNkNTVkNzA1NmE4YTlhMGRkMWViY2RhMWZjNzlmZjIzZjc0NTc3NmY0OTk1ODMzNTI5MjMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjlhNDEzNjBlY2M5NzNjMjY2ODBiYzBkYjBmM2MzYThmNTA2OGVkYzgzYTBlZTVhM2RhYzk3NjdlZTg0MDJjMmEifQ"
+        },
+        {
+          "resource": "repo://client/src/pages/knowledge/KnowledgeDocumentList.tsx#L56-L105",
+          "version": "repo-lines-v1:sha256:c9d38e72c612d5c79d15edf1c4576c3ce267bf55077a452fbea547288ec614f1:eyJzZWxlY3RlZExpbmVDb3VudCI6NTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc0ZDliZjY0MmY1N2ViNGI0ZmM2MDEzNWE4NDMwMmQ3ODdhYWI4Njc3MjU4MDU2NmU4MDQ3NTQwYjJjZTkzYWMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQxZTE0NjBlYzgxMjY3NWNlZGMzZjY2MTQ3ZTM1NTRkZTZhN2JkMjMxMzgzMzNkOWIwYTkxNzlhNTE2NDIyOWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjI1YmIxYWY1MjFiZWNkNTVkNzA1NmE4YTlhMGRkMWViY2RhMWZjNzlmZjIzZjc0NTc3NmY0OTk1ODMzNTI5MjMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjcxYjYwNWY0ZGE1NzhkNmExZDA0NjVlZWIyYjE3Y2RkY2U0ZThhM2M5YjZhNTU3MzQ1ZjlkNzlkZGM3MTc3NzMifQ"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.7.2",
+    "at": "2026-10-18T02:51:00.673Z"
+  }
+}

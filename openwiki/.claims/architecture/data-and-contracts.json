@@ -1,0 +1,168 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:f7966c7ffa1f7a3beb1f1e78eb17787b5acbe3e60ef707149916f7a4dfa85ced",
+  "claims": [
+    {
+      "id": "claim_e1155f2e3b5846d380c65884628a73d4",
+      "statement": "Bifrost separates Pydantic request/response contracts from SQLAlchemy persistence models; package-level model exports are statically registered and lazily imported so lightweight imports do not initialize the full model graph.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/models/__init__.py#L1-L13",
+          "version": "repo-lines-v1:sha256:34c3a69553a96498be08f5326c08600b337985710cd5217b9ed46f0e637575a8:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEzMDNlY2RkNGE0ZDEwZjE5YzczZmQ0MmZkMTI0MzdmZDMzNTRhODI2ODE2MDVkYTUyNTVhOTdhMzkwNjhkYmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ5YTg4MWZiNWIxZDM1NWM1MmJiYWQ4YjM3MzM4ZjQxMzRkZGJkOWI1MDU2YjYxODZlOWNjMTA4NjhmZTEyZTYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijg0ZjU3MjhjZWExN2EwMzM2ZjQ5Zjc4NDU0NmM0Mjg4N2RhMDg3OTVjY2U1NzE3ZjdkZjc2OTMwNjM4ZWNjMDUifQ"
+        },
+        {
+          "resource": "repo://api/src/models/contracts/base.py#L1-L10",
+          "version": "repo-lines-v1:sha256:cdc71ff0e26bdf3a714ca3f9d7fea0b8ce5c03c3781acad420fc9c1aef79c485:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEzMDNlY2RkNGE0ZDEwZjE5YzczZmQ0MmZkMTI0MzdmZDMzNTRhODI2ODE2MDVkYTUyNTVhOTdhMzkwNjhkYmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQzZjExNDRhNTE1MWYzMjFhMTBiZDg3NDJhZjdiMWI4NzU1OWYyZjY4MDY1ZDU5ZmJkNDllM2RhNjk3ZGEyOTgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijc2ZTZlZDVhOGM0ZGEzNjE0YmYyYTNlNzVjOTk5MTI0Y2FkOTg0OWRlN2FhY2M4MjdmNzdjNDc4OTU3YmQ1OWIifQ"
+        },
+        {
+          "resource": "repo://api/src/models/orm/base.py#L1-L11",
+          "version": "repo-lines-v1:sha256:0f597b219b40d0730a332211987c9a5f9e826fa2e9afae62c22eb1ad045023f4:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEzMDNlY2RkNGE0ZDEwZjE5YzczZmQ0MmZkMTI0MzdmZDMzNTRhODI2ODE2MDVkYTUyNTVhOTdhMzkwNjhkYmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZkYzE2MjFjOGEzY2Y0OGVlZmQ4ZDkzNmQxMDZjNjliZDIyOGNmYjJmODhjMjRjOTc4MzNiY2M2MjhjMmZlMmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoyLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQwZmIzODliMGFkNGFhYjJhODQ0N2Y1N2RhZmYxOWViMzU4ZWEyMGJkNzk3ZmJhM2ZmZTg3MzEwYmM1NjVmYjQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_696fea56afc54821a7285d5433c6d14f",
+      "statement": "The asynchronous PostgreSQL session factory installs a write guard that prevents solution-managed entities from being mutated or deleted outside the solution deployment path.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/core/database.py#L108-L133",
+          "version": "repo-lines-v1:sha256:5f03b4f95cce6e684b97b3d44c7510ba53078a3c0b39dd2543ca7aa3f0efcff6:eyJzZWxlY3RlZExpbmVDb3VudCI6MjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVlN2FiOTAwYzk1N2JiY2UwMTcxMjA0NzEyODEzMWFhMGQxNDk2YWNkZDU4OTI3ZjU0OWJkNDkyYmMzMTA5OTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImYwZTEzY2QzM2I4OTQ2YjBmODZjNjdmNGQzMWZmYjlhYjU4N2Y1OTliMmZkM2IzYjY5ODRjMjA0ZDI0Nzk3MGUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjMzMTEzMmVjM2ZkMzkyNGIzMzNjMTk0YzQ1YzA2NmQxZTIxZjI5MjE1MTMzMWEyNjAxMzc5ZjM4YmZkY2VjODMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE3Nzg3NTljNWM4M2M1MTI2NzJlNjNlNWY1NzU3MDhhNTE3Nzc1NWI2YzM0MDMxYThhOGQ2YWMxMGJlNWFkMDcifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_4e532d6a5d53481ca03f78f7fc606cf3",
+      "statement": "OrgScopedRepository centralizes organization/global cascade and role-aware access; single name/key lookups prefer organization-specific rows while list operations expose visible organization and global rows, and router code is prohibited from reimplementing the cascade.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/repositories/org_scoped.py#L168-L190",
+          "version": "repo-lines-v1:sha256:f9607a90f46229105d1c70734c580655e41d1b5d4be79cd6257919093e8414bb:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImYxNzY3OTY2MTgzNGEyYTk3Mjk2M2I4M2Y0YjM4NDIzNmY3MzQ3NzMxZGFhMDkyM2Y0ZmU0YWNiZGNkMjY3NzciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJlNDJiOWViM2U1ZGVmMmVkOTFhMmFlNmM4OTc2N2M1MjNhYjM5ZWIzMWQyNTA2NTYyOWMwYjA0MWQzN2RkZDQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU4ZDhjYmQxMTczMTExNWFjOTUwNjZmYWJjNTI1YjQwZTcwZGQ2NjdhNWQ5YmY0NzVkNDc4Nzg1NTg5YTJlZDMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjUyZmIwNzVjMzY4MzJkMTM3NGFiNjc0YmI2ODliY2Q1MWIxZGMzMjZiYmY3YzFjNjI4Mjg0NTYzYjI5MWMyMzcifQ"
+        },
+        {
+          "resource": "repo://api/src/repositories/org_scoped.py#L54-L112",
+          "version": "repo-lines-v1:sha256:f72ac26c3bc0d10dabb1f1e58c2f336cac0f32f6058c6970f281bf408ac76513:eyJzZWxlY3RlZExpbmVDb3VudCI6NTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA0OWY4MWYxNGY0ZThjMWZlZmVlOGM0MmFlZjg2MWFlYmIxZTc4NzcwYWU5MDZkMGFlOTU3MThhNzhiZjVlMzkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE2YTcxNTI1NzJlZTg0ZjEwOTA2Yzc0YjlmMmE5MjQzNGRkYWIwZTNjNDI4MTNiMDRlNTk3ZWZjZWM5NTFiMjYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE2Y2U2MmQyMjE3N2Q1OTZkYzM3ZmJhNGMwZDA4ZTdmNzlkZWU5MjFmNWVjMWVmYzM5YzRkNWY4ZGFmZTIxNjciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImEwY2RkYjBlNDUxNzc0NTcyNjZlYjIyMDdkZGRlNTFkYzg2MTk4MzAwMDkxODVlZTZhYTc3YzUzOWFjMjY0NTAifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_6cfdb82f28b04385bcff29ba7eaa1203",
+      "statement": "Alembic's online migration path serializes upgrades with a PostgreSQL session advisory lock and can reject upgrades when actual migration heads differ from the expected head set.",
+      "evidence": [
+        {
+          "resource": "repo://api/alembic/env.py#L107-L145",
+          "version": "repo-lines-v1:sha256:f239335b28d432ab362fd403c4315ee281bfc8cb1d4b543bd77bc3dd0f29b20e:eyJzZWxlY3RlZExpbmVDb3VudCI6MzksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ0MDEwYmFlNDNlMmU2NGE5OGZjZWE5NGYzYjY3MDEzNTc1ZjQzZjg2YjdjNDM0ODc3YjdmYmVhODk0NjZkNTciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjEyNGJhOTQ5NDI4MTM4MDkxNTJlYThmODVlZDFiNWExNzNiMGIwZTg4MDQ3Mjk2MWZiZTNlZDk4ZjBjYzI3NjQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijc5ZDAxNDM2MjU1YmYwMWE1YzA0YjY2ZWFlN2ZjNzI3MzdkOTMxN2IxMGRlODY3YzY3NDQ3NzJiNTExZTQzMzYifQ"
+        },
+        {
+          "resource": "repo://api/alembic/env.py#L182-L212",
+          "version": "repo-lines-v1:sha256:121b8b9fb5a9895c4389eb4a10b01b5f416d25dba9bc9ebe4a0d7745d0cb63cc:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxODgyMzQ3YjZmZmRhOGIxMzE1Nzg0MzNhOGFlOGY1ZWI3YjU3NjY4YWRjMzNhYzgxYWFhNWVlNWU0NzQzOTUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEyOTgyMDE5MTFiOGJhNzBlNmJlNWYyYzBmMTg2Nzk5MDg3YzVlZDVkZTgyYzU5MWQ5NTgyODYzYTYyMjUyNTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRiYTg1OWU3OTcxM2FkYTBhMzdlYzU0Nzc1YTJjMGQwYjcyNDFhYTNlYTJhMTRhOGM2NzZlOGYwZjZhMGU1MDUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjMzMzA5OGQxM2NmMWQ0MzVmYjUyZGQ2ZWRiZTliODM1NGQ5OWQ5YmU2ZTY3ODQ5MTRkNjdhYWM0NTAxODUxNDQifQ"
+        },
+        {
+          "resource": "repo://api/alembic/env.py#L60-L78",
+          "version": "repo-lines-v1:sha256:4d218c39f12d832aab6cc97b457b2522854e2832a6ba0f4c89b02090c896207c:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgzNTQzNDQzMWM4NmZhZDE4MTQ2ZjI5ZGVjM2ZmNzVmMGRhODE0MDY3YjA3YTY3YmM4NjdmNGVjNjU5ZDgzMWQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU5MDlhNTNhNjE4ZDAyOGUxZDMwMDBjMGE3YWJjZWVjYmU1ZmIzN2Y0ZTUxMWVmZTQ2NjQzZmFkNmU2Njg3MmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjdlYzBkOTQ1NmNjMjE4MjMxNWFiYzY0MzY5NDhkZDA2MDZhYTllZjI0MTU1MWJjOWYwNmI5OTNhZGRhNTEwZjUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZlNDMzNzgyODNmN2FmZDNmMzM3OTQ4OTM0Y2ZlYzhkNDJjOTc4NTBkNDkyNTk3OGU0MGZjZmUwNDE2MDRlMzkifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_1cf79a4934e543158e054642957362e8",
+      "statement": "The type-generation helper probes API_URL but the client generator independently reads OPENAPI_URL; their defaults differ, so the checked API and generated schema are not guaranteed to match unless both are explicitly configured to the same endpoint.",
+      "evidence": [
+        {
+          "resource": "repo://client/package.json#L20-L23",
+          "version": "repo-lines-v1:sha256:f9881479b74cc7118d0fa3b193ce889ca5d8423390e10202293555736d67e55c:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMGQ3MjVkZDRkZGIyYjQ5Yzc4ZmJkNDRlMmJkM2I2YTJkM2ZmNTcwZmQ1ZDcxMGVlMjBhM2U4MDc0M2ZkMDgzYiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMWY3OTIxMWFkYmU1MmNhZTVkZDEzNWEzOGFjNGVjY2ZiODNiNmQ3YWZkNGFhNWE5NWY5OGFiYWI5MjNkNGFiNCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYWI3NjU1Yjk2OGZjOTJkYWY1MTBkNTk2MzEwNWQ1ZjMxYmEyZTU0ZjgwZTUxYmE4ZGVhOTNkZGE3ZmVhNjM5MCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiY2ExYzYzZjNiMzVhNzM5MDcyZGVjNmRmYzdhYWEyNzg5Zjk2ZDUyMWYxZDlmODAzYTViYzY3NWYwOTcxOGM5NiJ9"
+        },
+        {
+          "resource": "repo://scripts/generate-types.sh#L11-L38",
+          "version": "repo-lines-v1:sha256:6ec4f98be1e4122d1b3495226d715d279139312efdc8c2c2cd48d2d3e6cea5ab:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFhOTBhZmQ4ZjE2M2ZlMGJhODY1MTFlYjRhODA4OWMxNzIzNjk4ZGNhZGE4YTExMjc0N2UwZDdmNmQyNWUzYmYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjllOTg4NTE5MWIxM2NlZTk0Zjg5Y2FhYjE0NDBhZmNlNTVkMDYzOGVkZWIxMWY4YjBlN2I2NzE4MDUxMThiYmEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjBhZGU5OTYyNTM4NDczZWI1YjdlMmQ0ZGQzOTczYTRiZmYwYjQ2YjEzNTE3MGQyZTYxNDBhNzBlMjgxODQzMjMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_87e768715b3b441cb68c96aead8ab83d",
+      "statement": "Organization-scoping behavior is protected by focused tests for inline router predicates, scoped models without repositories, and SDK endpoints that accept scope without calling the resolver.",
+      "evidence": [
+        {
+          "resource": "repo://api/tests/unit/test_org_scoping_enforcement.py#L1-L18",
+          "version": "repo-lines-v1:sha256:3a1d9320e789921d6bab86dbd12f01d616f6162960a7eeee684d78cba7b60248:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ2OGFlMTdmOTQ0N2I5ODFlMjY0OTE4NzlhMmMzMTY0N2ZjMmJjNGNiZjg1ZWMzM2IzYWQ3Y2M1OWE3YjUwYWYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQyNGVlZjgyOTFiNmU2YmQ4M2ZjNzQwNjFmYjNjOTIwZWNiNTc0ZTdkZjU3ZTZiMGE1ZjFiNDA5NDQ2MDFlMDMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImNlNjIzMTY0ODNkYzE2NjA0MGVlZDA0NmE5ZGU2ZTQ4ODFmMTRmNmZjYTdjOTY4N2MxMGUwYWJmNzdlYzAwZmYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_010279dfc19b443ca4e0132d08aaaa2b",
+      "statement": "Execution list summaries intentionally exclude potentially large execution payloads, and callers must fetch a single execution for input, result, logs, variables, or execution context.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/models/contracts/executions.py#L77-L90",
+          "version": "repo-lines-v1:sha256:665ae3484be31d55fb0f091e02d5b644f417c625cb51a8c270b763ce5a4c9afb:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRlODZiNWQ2MzQ4MmNlZDJkNGI3MzZlYTk0ODI2NDc5NTMyMTljNGQ5MjEyMzZiMTdkYTNjM2U3OTY5Y2ExZDUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY0YjgwNjU2MzdkZTNiOTFmMzE4YTdhNDVmZmYyMWEwZDUxYzg1ZmY3ZGMwYjA4MjJkYTc5MGIwNzk0YTBhZTkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZlNDcxMDlhZTNhYzJhZDg3MGUzZTdmNjQyYmYzZTU5OTI5MGE1Y2U0YWFiNTYwZTk1YWE3MTVhMTAxMjAyYjQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY4Yzk1YjEzMTQyMGU5OTc1OTYwNjFiZjM0ODQ2ZGNhM2Y0YWFhMTg4MGQ2ZmQyMjdmNWFiZmQ0MjA4Yzc2MjAifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_1c4a476741b347dd883dcbcb33a7e27e",
+      "statement": "The CLI contract-version test checks that the server and CLI version mirrors agree, then fingerprints the command DTOs, all request/response DTOs in the CLI SDK contract module, selected table batch DTOs, and the /api/version handshake route; any changed fingerprint forces an explicit breaking-versus-compatible decision.",
+      "evidence": [
+        {
+          "resource": "repo://api/tests/unit/test_contract_version.py#L107-L188",
+          "version": "repo-lines-v1:sha256:16e2157bda9b928a2426ca9bfdac1f5c09299542c26fa8dfb9e8d5f9c9161771:eyJzZWxlY3RlZExpbmVDb3VudCI6ODIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU2MjVmMDY4NjUwMDQyMjNhMDZmYjhiZTk5YTcxNjg1ZTVjM2JhNjNiMmJlY2ZmN2QzMzgzMGYxMzFjZjRjN2MiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIyM2ZiYTUxMzA0ODNmMWFjYzRmZDUwYzVmMzdiNThmM2VlYWFlMTI5ZGRjNTczMDlkMWQ5MTEwNDFlZmEzZGUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImI4YjVjNjE3OGNiODAzZGRhMmMyZjk2YjIwNjgxODAxMjliMjgyNTExYWY0Y2E1MTg0NjA3MjI2N2QxOTVmYzQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImNhZDIxMzdiZTkxOTljNzA2NDgzMzQ4YjFjZWVlOTZkZTMzYWZlYmM2NzRmZjNlZGIxNThhOWVjMDY3MDBhNWYifQ"
+        },
+        {
+          "resource": "repo://api/tests/unit/test_contract_version.py#L317-L340",
+          "version": "repo-lines-v1:sha256:d5ee495d58b65e1b97af6f39022ffa92952c7257e387c27670e7977bc5ee228f:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkzYTZlOWY3OWFiZmJkMTY3NTRhNTMzMjYwNWVkN2NkODE2ODFhMjBhNWVmODM2OWE1YTU3YmVlZjc5YzA5NjciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZkZmRmYmNjZWVhMmYwZTA4OTMyNTIxNjRmYmUzNTJjOTRkNzM5NzAyOTZkMzZhNDQzYjQ0ZTRkOGI0YWZmZjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjBmM2E3MDRmODI2ZmU2NTc2ZDViNzljZmRjODlhMzI1NzI2MDMwNTRmYzE1MTU4NWJmYWJhNWI0Y2U1ZDE4MmUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjMwYzFmMTg4ZjE0MmVkN2E4MjQ2ODBiMjA3MTcyYzU1MTliYzYxNGE0OGZkYTdjZjE2N2VkYjhkZGY3OTk1NmMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_c9075c4a914443ddb0c9e3924d2a1bd0",
+      "statement": "Online Alembic upgrades use a nonblocking PostgreSQL session advisory lock and an optional expected-current-head guard that aborts before revision execution when the database head set differs; unit tests cover busy-lock refusal, release after failures, and stale-head rejection.",
+      "evidence": [
+        {
+          "resource": "repo://api/alembic/env.py#L182-L212",
+          "version": "repo-lines-v1:sha256:121b8b9fb5a9895c4389eb4a10b01b5f416d25dba9bc9ebe4a0d7745d0cb63cc:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxODgyMzQ3YjZmZmRhOGIxMzE1Nzg0MzNhOGFlOGY1ZWI3YjU3NjY4YWRjMzNhYzgxYWFhNWVlNWU0NzQzOTUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEyOTgyMDE5MTFiOGJhNzBlNmJlNWYyYzBmMTg2Nzk5MDg3YzVlZDVkZTgyYzU5MWQ5NTgyODYzYTYyMjUyNTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRiYTg1OWU3OTcxM2FkYTBhMzdlYzU0Nzc1YTJjMGQwYjcyNDFhYTNlYTJhMTRhOGM2NzZlOGYwZjZhMGU1MDUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjMzMzA5OGQxM2NmMWQ0MzVmYjUyZGQ2ZWRiZTliODM1NGQ5OWQ5YmU2ZTY3ODQ5MTRkNjdhYWM0NTAxODUxNDQifQ"
+        },
+        {
+          "resource": "repo://api/alembic/env.py#L60-L116",
+          "version": "repo-lines-v1:sha256:aab49cde66d76195fffaabb22f4a3083069c9931c12bb4c6fb56746cf9237eee:eyJzZWxlY3RlZExpbmVDb3VudCI6NTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgzNTQzNDQzMWM4NmZhZDE4MTQ2ZjI5ZGVjM2ZmNzVmMGRhODE0MDY3YjA3YTY3YmM4NjdmNGVjNjU5ZDgzMWQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU5MDlhNTNhNjE4ZDAyOGUxZDMwMDBjMGE3YWJjZWVjYmU1ZmIzN2Y0ZTUxMWVmZTQ2NjQzZmFkNmU2Njg3MmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjdlYzBkOTQ1NmNjMjE4MjMxNWFiYzY0MzY5NDhkZDA2MDZhYTllZjI0MTU1MWJjOWYwNmI5OTNhZGRhNTEwZjUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijc5N2I4YTg4ZTYzYTY2NGQwM2U1NzU2YWJjOGJhMTkwYTcyZWRjNDU1OTMwN2YzYWZiNDJhNzFhZjNjYzMxNzEifQ"
+        },
+        {
+          "resource": "repo://api/tests/unit/test_alembic_migration_lock.py#L135-L177",
+          "version": "repo-lines-v1:sha256:9f166ed22455abda5f85034b3d59b5fda90b10e7086ea9ec25bcf7f5abe2da75:eyJzZWxlY3RlZExpbmVDb3VudCI6NDMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRiNjUzMDBlZDcyOWRhYjZkNDBjZjI0ZDdjZWIxNjlkY2RmN2I3NWM2ZWE0MjllZWY3ZTY3ODUzZTNkYWUxNzUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlmOGVjYWZjYjM5ZGQxOTQ2MjBjMzgwNzAwNWQzYWNiZTYyMWYzOTQxMmYxZWQwNTljNDNkOWU3YjE5ZDI3YTUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhjYzRhN2QxY2M3OTZhYmEzZTQ2NzIzMzI3ZjUxN2U5ZjgxMTk4MmQyNTBmMDcwMjk4NmU0YjU3NjRhZDk1ODkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZhODk4ODc0ZGI5YWJhYzVjODM2NmIxYzA4YjRlN2ViZjgwNzNhMWU1MDhmMDUxYjk4MDY4ZmUzNTRjNzE1ZjYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_0744a1ae2f8d4a7bb4affb9800460277",
+      "statement": "Alembic revisions form a directed graph through `down_revision`; a merge revision can join two concurrent heads without schema operations, as demonstrated by the September 2026 platform/profile merge.",
+      "evidence": [
+        {
+          "resource": "repo://api/alembic/versions/20260918_merge_plat_prof_heads.py#L1-L28",
+          "version": "repo-lines-v1:sha256:7b11a8e69ffc301fef0b7e999f392728e9507ec778454db2e8460b7c187b1ce4:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFkOTI0NGMwZWMzMDdkMmIxMTk5NDUwZDVkZGNiZDE1ZGE0NmRmMmI5NGZhZDgwM2RmYWRlYjEwZWJiZGVhNjEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU0NDVlMTdhZGVkMzA5NzQ1ZmZkYTMyOWZjZDY1ODYyZDUyOTZjNGVkN2IwZmVjZWIzMzA0NzVmNmUyNzRjNjEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_65c7a9803109474d9a98c154c764a644",
+      "statement": "Shared custom-claim helpers extract claim references and dependency graphs, while table-policy pre-resolution recursively evaluates applicable organization/solution claims under the source table's read filter and fails closed to empty results when reads are not granted or claim filters cannot compile.",
+      "evidence": [
+        {
+          "resource": "repo://api/shared/claims/preresolve.py#L120-L174",
+          "version": "repo-lines-v1:sha256:b6190b9d72f43fabcabf82e197e9ff599a5292a6311da1777b47b68ff4bfaa9f:eyJzZWxlY3RlZExpbmVDb3VudCI6NTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVhZTQxZWQwNTFjZWU3YTM0N2IzNGU2NDRlNWU3ODZhMGFiODQwZmEzOWFiMzU0ZDNmYzZmMGMwNjkzMzZhMzgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ3M2Y5ZjY5NDQ5YzY1ODc5MGM2Y2UzNGRlNDg5MjIzNDcxNzk2ODA0NDZlMTJiMzc3MmJjMmM1YmE4NDAzYzciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE3NTFmNGExOWNmN2YzZDNkMDVmZjRmOTk1ZDNlZGQxODNhNDRhYmViYzQxOWE5YWMxYjIwMTIwZDllNmJlZWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk1NmM5MGVlMDVjNjM3NTNiMDUyM2YzYjZhYTI4NGRhYjUwN2RmZjkxZjM0YzI3YTg2OGI1YjFkMmI3NmI3ZTAifQ"
+        },
+        {
+          "resource": "repo://api/shared/claims/preresolve.py#L29-L79",
+          "version": "repo-lines-v1:sha256:31e5728c80ef5140d70e8a3941b4126b06a41453773bf5e1bc30e4ffc9891518:eyJzZWxlY3RlZExpbmVDb3VudCI6NTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ5MDBlYjBhNjg1MGU3Yjg4NWFjYmMzNDc5MjRmN2U0YzFhZjNlNGJjZGM1MTUxODMxZTc4ZGUyNjFkMDQ2N2MiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEyMDcwODFkNWIxNjA2M2FlNTJmNjdkY2NkYzdkMjAxZmRkYWYwMmJiMjI0MTBlYmZlMTEwZmFkZTg5Njk1NTIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQzZWYwZDgwNDA0Mzc2ZjYxZTQ4NTVjZTAwMWRiNjBmNjAxMjE4ZDFmYTVmZDhlMTJkYjk1NmFkODRkYzRkOGYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFmMzA5NDlmZGVhMTlmM2Y0MmVmNGVlY2EyOTQzYmM4Mjk4ZDUyYzIyNmE3ZGQ3OGE3YjQ2NWRhMTMyZmIyOTYifQ"
+        },
+        {
+          "resource": "repo://api/shared/claims/registry.py#L15-L49",
+          "version": "repo-lines-v1:sha256:de6e057751f8b803506637ed202bc5255f82dc1dfafbd6da7b607b9ff5fe639e:eyJzZWxlY3RlZExpbmVDb3VudCI6MzUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE5MDBmZjlkN2FlYzc5N2JlNzA4MGFjYTVmMWUwNDM3YWI4ZjU4Njc0NDBiYjFmZGY5YTRlODc4ZGQ3ZTZkODgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM1N2MzOTMyNmViNTE0ZDQzNjJjZGVhYWRjZTE0YzQ5ZmYwYjMwYWFmZWFkMWFmN2JiNTQ1ZmNhM2FlZmI0YTUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA4Yjc3ODBhMjBhNDVlMGNiMjQ4MmJkMzY0Mzk2YTE2MTVmNDc2ZmE1MTcyZGNhN2I3NmFkMmJkZGMyMDdhYmYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijg2ZDIyZDU1ODcwZGYzNzNhYjIzZGQ2OWFkZTY2MTg5NjA1ZGI1MTg1OTdlNTA5YzZkMjczM2FmYzI0ZGIwZTUifQ"
+        },
+        {
+          "resource": "repo://api/shared/claims/registry.py#L79-L105",
+          "version": "repo-lines-v1:sha256:1c6da7b88825126049ecf24007f7d79c53b659fcc5f005cbca9757452c8ea13e:eyJzZWxlY3RlZExpbmVDb3VudCI6MjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgzN2NhYzE3NGRlZjAwZWU3ZDQ3Y2ZiZWYyOTZlYjQ1OTU2ODVkODFmNzdlZTA0OGEwOTM1YTM2NWQxN2Q4NGIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTYwMGE3M2QyZTAyZjM1MmI5MGZlZjFkOGQ2MzgxMWJhNGE4ZWUwYzFiZWFhN2FlNDY1OGYzNmFhMmUxOTgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQ3MDE0OWUwNjlhZDY3ZWNjZjQ3MzY0NmZmMWM3NTAwNTBkMzI5ZDExMDAxOGRjNTc2Njg3OGVhZmExZDYwN2QiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.7.2",
+    "at": "2026-10-18T06:28:44.263Z"
+  }
+}
