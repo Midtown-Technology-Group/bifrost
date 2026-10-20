@@ -1265,10 +1265,7 @@ jobs:
             -e GITHUB_REPOSITORY -e GITHUB_SHA -e GITHUB_REF -e GITHUB_EVENT_NAME \
             -e GITHUB_RUN_ID -e GITHUB_RUN_ATTEMPT -e GITHUB_WORKFLOW_SHA -e PYTHONPATH=/repo \
             test-runner python /repo/scripts/sonar/shadow.py compare \
-              --image "$image" --inputs /repo/.sonar-evidence/shadow-inputs \
-              --jobs /repo/.sonar-evidence/shadow-jobs.json \
-              --control-run /repo/.sonar-evidence/control-run.json \
-              --control-jobs /repo/.sonar-evidence/control-jobs.json
+              --image "$image"
       - name: Clean up only comparison resources
         if: always()
         run: docker compose -f docker-compose.test.yml -f docker-compose.sonar.yml --profile test down -v --remove-orphans

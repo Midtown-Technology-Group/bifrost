@@ -37,7 +37,7 @@ shadow_export() {
   docker compose -f "$COMPOSE_FILE" stop api api-replica worker scheduler scheduler-fixtures
   # Snapshot every report before validation and before any volume cleanup.
   shadow_python snapshot --lane "$lane"
-  if [ "$lane" != baseline ]; then
+  if [[ "$lane" != baseline ]]; then
     docker compose -f "$COMPOSE_FILE" --profile test run --rm --no-deps --workdir /repo \
       test-runner python /app/scripts/combine_sonar_coverage.py
     docker compose -f "$COMPOSE_FILE" --profile test run --rm --no-deps --workdir /repo \
@@ -58,7 +58,7 @@ shadow_tools() {
     filename="${file##*/}"
     if [[ "$filename" == test_*.py || "$filename" == *_test.py ]]; then targets+=("$file"); fi
   done < <(git ls-files -z -- scripts)
-  test "${#targets[@]}" -gt 0
+  [[ "${#targets[@]}" -gt 0 ]]
   docker compose -f "$COMPOSE_FILE" --profile test run --rm --no-deps \
     --user "$(id -u):$(id -g)" --workdir /repo --env PYTHONPATH=/repo test-runner \
     pytest "${targets[@]}" -o 'python_files=test_*.py *_test.py' -o cache_dir=/tmp/shadow-pytest-cache \
@@ -76,7 +76,7 @@ case "${1:-}" in
     case "${2:-}" in baseline|unit|supplement|e2e-[1-4]) ;;
       *) exit 2 ;; esac
     target="$SONAR_LOG_DIR/coverage-shadow-$2"
-    if [ -d "$target" ] && [ ! -L "$target" ]; then
+    if [[ -d "$target" && ! -L "$target" ]]; then
       sudo chown -R --no-dereference "$(id -u):$(id -g)" "$target"
     fi ;;
   *) echo 'Usage: shadow.sh prepare|baseline-context|tools|export LANE' >&2; exit 2 ;;

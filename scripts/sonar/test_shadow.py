@@ -125,7 +125,7 @@ class ShadowFixture(unittest.TestCase):
                                         "started_at": "2026-10-19T01:00:00Z", "completed_at": "2026-10-19T01:45:00Z"}]
         return {"total_count": len(result), "jobs": result}
 
-    def control(self):
+    def control_receipt(self):
         return {"head_sha": self.head, "event": "workflow_dispatch", "conclusion": "success", "id": 30,
                 "run_attempt": 1, "repository": {"full_name": shadow.REPOSITORY}, "path": ".github/workflows/ci.yml"}
 
@@ -281,8 +281,9 @@ class BundleTests(ShadowFixture):
         empty = runtime / ".coverage.sonar.empty.2.random"
         empty.touch()
         (results / "sonar-runtime-producers.txt").write_text("api hostname\n")
+        context_raw = json.dumps(self.identity).encode()
         with self.assertRaises(ValueError):
-            shadow.snapshot(results, runtime, "unit", json.dumps(self.identity).encode())
+            shadow.snapshot(results, runtime, "unit", context_raw)
         retained = results / "coverage-shadow-unit"
         self.assertEqual((retained / "runtime" / raw.name).read_bytes(), raw.read_bytes())
         self.assertTrue((retained / "test-runner.coverage").is_file())
@@ -356,7 +357,7 @@ class BundleTests(ShadowFixture):
         for lane in shadow.LANES:
             self.bundle(parent, lane)
         jobs, control, control_jobs = (self.root / name for name in ("jobs.json", "control.json", "control-jobs.json"))
-        for path, value in [(jobs, self.jobs()), (control, self.control()), (control_jobs, self.jobs(True))]:
+        for path, value in [(jobs, self.jobs()), (control, self.control_receipt()), (control_jobs, self.jobs(True))]:
             shadow.write_json(path, value)
 
         def combine(_root, _bundles, output):
@@ -397,14 +398,17 @@ class BundleTests(ShadowFixture):
 
     def test_timing_requires_normal_successful_same_revision_control(self):
         with patch.object(shadow.time, "time", return_value=shadow.timestamp("2026-10-19T01:05:10Z")):
-            result = shadow.timing_model(self.identity, self.jobs(), self.control(), self.jobs(True), 10)
+            result = shadow.timing_model(self.identity, self.jobs(), self.control_receipt(), self.jobs(True), 10)
         self.assertEqual(result["serial_python_seconds"], 2700)
         self.assertEqual(result["test_step_overhead_seconds"], 30)
         self.assertEqual(result["counterfactual_runner_seconds_saved"], 2360)
         for field, value in [("head_sha", "a" * 40), ("conclusion", "failure"), ("event", "pull_request"),
                              ("id", 42), ("path", ".github/workflows/other.yml")]:
+            provider = self.jobs()
+            control = self.control_receipt() | {field: value}
+            control_jobs = self.jobs(True)
             with self.subTest(field=field), self.assertRaises(ValueError):
-                shadow.timing_model(self.identity, self.jobs(), self.control() | {field: value}, self.jobs(True), 10)
+                shadow.timing_model(self.identity, provider, control, control_jobs, 10)
 
     def test_ambiguous_json_and_invalid_timing_fail(self):
         path = self.root / "ambiguous.json"
@@ -441,6 +445,30 @@ class BundleTests(ShadowFixture):
             self.assertEqual(report, {"status": "failed", "error": "missing shard"})
         finally:
             os.chdir(previous)
+            os.umask(previous_mask)
+
+    def test_cli_rejects_caller_selected_evidence_paths(self):
+        for option in ("--inputs", "--jobs", "--control-run", "--control-jobs"):
+            argv = ["shadow.py", "compare", option, "../../private.json"]
+            with (self.subTest(option=option), patch.object(sys, "argv", argv),
+                  patch.object(sys, "stderr", io.StringIO()),
+                  patch.object(shadow, "compare") as comparison,
+                  self.assertRaises(SystemExit)):
+                shadow.main()
+            comparison.assert_not_called()
+
+    def test_cli_comparison_uses_only_fixed_checkout_evidence(self):
+        previous_mask = os.umask(0o077)
+        root = Path.cwd()
+        evidence = root / ".sonar-evidence"
+        try:
+            with (patch.object(sys, "argv", ["shadow.py", "compare", "--image", self.image]),
+                  patch.object(shadow, "compare") as comparison):
+                shadow.main()
+            comparison.assert_called_once_with(
+                root, evidence / "shadow-inputs", evidence / "shadow-jobs.json", self.image,
+                evidence / "shadow-comparison", evidence / "control-run.json", evidence / "control-jobs.json")
+        finally:
             os.umask(previous_mask)
 
     def test_cli_snapshot_consumes_bounded_private_stdin(self):

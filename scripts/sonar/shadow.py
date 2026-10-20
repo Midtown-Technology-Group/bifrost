@@ -32,6 +32,10 @@ CONFIGS = (
     "api/scripts/filter_sonar_coverage.py", "api/scripts/combine_sonar_coverage.py",
     "requirements.lock",
 )
+CONTEXT_FILE = "context.json"
+MANIFEST_FILE = "manifest.json"
+COVERAGE_FILE = "python.coverage"
+COMPARISON_JOB = "Coverage Shadow Comparison"
 MAX_BYTES = 128 * 1024 * 1024
 JOB_NAMES = {"baseline": "sonar-coverage / Sonar Coverage Evidence", "unit": "Unit Tests",
              "supplement": "Coverage Shadow Supplement",
@@ -109,12 +113,12 @@ def context(root: Path, image: str) -> dict:
             "image": image, "configs": {p: digest(read_file(root / p)) for p in CONFIGS}}
 
 
-def phase_names(lane: str) -> tuple[str, ...]:
+def phase_names(lane: str) -> list[str]:
     if lane == "baseline":
-        return ("unit", "e2e", "tools")
+        return ["unit", "e2e", "tools"]
     if lane == "supplement":
-        return ("unit", "tools")
-    return ("e2e",) if lane.startswith("e2e-") else ("unit",)
+        return ["unit", "tools"]
+    return ["e2e"] if lane.startswith("e2e-") else ["unit"]
 
 
 def snapshot(artifacts: Path, runtime: Path, lane: str, context_raw: bytes) -> None:
@@ -123,7 +127,7 @@ def snapshot(artifacts: Path, runtime: Path, lane: str, context_raw: bytes) -> N
     target.mkdir(mode=0o700)
     # The host owns the private context. Explicit stdin transport lets the
     # container retain the same bytes without widening filesystem access.
-    with (target / "context.json").open("xb") as stream:
+    with (target / CONTEXT_FILE).open("xb") as stream:
         os.fchmod(stream.fileno(), 0o600)
         stream.write(context_raw)
     raw = target / "runtime"
@@ -188,18 +192,18 @@ def validate_runtime(directory: Path, lane: str) -> dict:
 
 def seal(root: Path, artifacts: Path, lane: str) -> None:
     directory = artifacts / f"coverage-shadow-{lane}"
-    (directory / "python.coverage").write_bytes(read_file(artifacts / ".coverage.sonar-tracked"))
+    (directory / COVERAGE_FILE).write_bytes(read_file(artifacts / ".coverage.sonar-tracked"))
     (directory / "python.xml").write_bytes(read_file(artifacts / "coverage-sonar.xml"))
-    version, _ = database(directory / "python.coverage")
+    version, _ = database(directory / COVERAGE_FILE)
     runtime = validate_runtime(directory, lane)
     if version != runtime["version"]:
         raise ValueError("Test-runner and runtime versions differ")
     for phase in phase_names(lane):
         junit(directory / f"junit-{phase}.xml")
-    identity = read_json(directory / "context.json")
+    identity = read_json(directory / CONTEXT_FILE)
     files = {p.relative_to(directory).as_posix(): digest(read_file(p))
              for p in directory.rglob("*") if p.is_file()}
-    write_json(directory / "manifest.json", {"identity": identity, "lane": lane,
+    write_json(directory / MANIFEST_FILE, {"identity": identity, "lane": lane,
                "status": "exported", "runtime": runtime, "files": files,
                "started_at": (root / ".sonar-evidence/shadow-context.json").stat().st_mtime, "sealed_at": time.time()})
 
@@ -226,17 +230,17 @@ def junit(path: Path) -> Counter:
 
 
 def load_bundle(directory: Path, expected: dict) -> dict:
-    manifest = read_json(directory / "manifest.json")
+    manifest = read_json(directory / MANIFEST_FILE)
     if manifest.get("identity") != expected or manifest.get("status") != "exported":
         raise ValueError("Stale, mixed or incomplete producer identity")
-    if read_json(directory / "context.json") != expected:
+    if read_json(directory / CONTEXT_FILE) != expected:
         raise ValueError("Payload context differs from its manifest")
     lane = manifest["lane"]
     if lane not in LANES:
         raise ValueError("Unexpected shard")
     listed = set(manifest["files"])
     actual = {p.relative_to(directory).as_posix() for p in directory.rglob("*") if p.is_file()}
-    if actual != listed | {"manifest.json"}:
+    if actual != listed | {MANIFEST_FILE}:
         raise ValueError("Missing or unexpected artifact files")
     for name, checksum in manifest["files"].items():
         if Path(name).is_absolute() or ".." in Path(name).parts:
@@ -280,7 +284,7 @@ def combine(root: Path, bundles: dict, output: Path) -> Path:
 
     data = output / ".coverage.combined"
     collector = coverage.Coverage(config_file=str(root / "api/.coveragerc.sonar-report"), data_file=str(data))
-    paths = [str(bundles[lane]["directory"] / "python.coverage") for lane in LANES if lane != "baseline"]
+    paths = [str(bundles[lane]["directory"] / COVERAGE_FILE) for lane in LANES if lane != "baseline"]
     collector.combine(data_paths=paths, strict=True, keep=True)
     collector.save()
     collector.xml_report(outfile=str(output / "shadow.xml"))
@@ -367,7 +371,7 @@ def validate_control(expected: dict, control: dict, control_jobs: dict) -> None:
         raise ValueError("Unexpected timing-control repository or workflow")
     if control_jobs["total_count"] != len(control_jobs["jobs"]):
         raise ValueError("Incomplete timing-control jobs")
-    for name in ("Coverage Shadow Supplement", "Coverage Shadow Comparison"):
+    for name in ("Coverage Shadow Supplement", COMPARISON_JOB):
         jobs = [job for job in control_jobs["jobs"] if job["name"] == name]
         if len(jobs) != 1 or jobs[0]["conclusion"] != "skipped":
             raise ValueError("Timing control was instrumented or has unknown pilot scope")
@@ -389,13 +393,13 @@ def timing_model(expected: dict, current: dict, control: dict, control_jobs: dic
     serial_seconds = seconds(serial["started_at"], serial["completed_at"])
     supplement = named_job(current, JOB_NAMES["supplement"])
     supplement_seconds = seconds(supplement["started_at"], supplement["completed_at"])
-    comparison = [job for job in current["jobs"] if job["name"] == "Coverage Shadow Comparison"]
+    comparison = [job for job in current["jobs"] if job["name"] == COMPARISON_JOB]
     if len(comparison) != 1:
         raise ValueError("Missing comparison-job timing")
     comparison_seconds = max(combine_seconds, time.time() - timestamp(comparison[0]["started_at"]))
     extra_jobs = supplement_seconds + comparison_seconds
     shadow_end = max([now["completed_at"] for now, _ in pairs] + [supplement["completed_at"]])
-    excluded = {*JOB_NAMES.values(), "Coverage Shadow Comparison"}
+    excluded = {*JOB_NAMES.values(), COMPARISON_JOB}
     unaffected = [timestamp(job["completed_at"]) for job in current["jobs"]
                   if job["name"] not in excluded and not job["name"].startswith("sonar-coverage /") and job["completed_at"]]
     unaffected_end = max([timestamp(serial["started_at"]), *unaffected])
@@ -433,7 +437,7 @@ def compare(root: Path, inputs: Path, jobs: Path, image: str, output: Path,
     tests = test_equivalence(bundles)
     combined = combine(root, bundles, output)
     baseline = bundles["baseline"]["directory"]
-    arcs = coverage_equivalence(baseline / "python.coverage", combined)
+    arcs = coverage_equivalence(baseline / COVERAGE_FILE, combined)
     from scripts.sonar import preflight
 
     tracked = {item["path"]: item for item in preflight.inventory(root, expected["head"], expected["head"])}
@@ -451,10 +455,6 @@ def main() -> None:
     parser.add_argument("action", choices=("context", "snapshot", "seal", "compare"))
     parser.add_argument("--lane", choices=LANES)
     parser.add_argument("--image")
-    parser.add_argument("--inputs", type=Path)
-    parser.add_argument("--jobs", type=Path)
-    parser.add_argument("--control-run", type=Path)
-    parser.add_argument("--control-jobs", type=Path)
     args = parser.parse_args()
     root = Path.cwd()
     os.umask(0o077)
@@ -470,7 +470,10 @@ def main() -> None:
     else:
         output = root / ".sonar-evidence/shadow-comparison"
         try:
-            compare(root, args.inputs, args.jobs, args.image, output, args.control_run, args.control_jobs)
+            # Evidence locations are fixed by the workflow, never CLI-controlled.
+            evidence = root / ".sonar-evidence"
+            compare(root, evidence / "shadow-inputs", evidence / "shadow-jobs.json", args.image,
+                    output, evidence / "control-run.json", evidence / "control-jobs.json")
         except Exception as error:
             output.mkdir(parents=True, exist_ok=True)
             write_json(output / "failure.json", {"status": "failed", "error": str(error)})
