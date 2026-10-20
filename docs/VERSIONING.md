@@ -20,8 +20,8 @@ The next release version is computed automatically from the pull requests
 merged since the last stable tag:
 
 1. A `semver:major` / `semver:minor` / `semver:patch` label on the PR wins.
-2. Otherwise the PR title's conventional-commit type decides â€” `feat` is a
-   minor, `fix`/`perf`/`refactor`/`chore`/â€¦ are patches, and `!` or `BREAKING`
+2. Otherwise the PR title's conventional-commit type decides — `feat` is a
+   minor, `fix`/`perf`/`refactor`/`chore`/… are patches, and `!` or `BREAKING`
    is a major.
 3. A PR with neither falls back to a patch.
 4. The highest bump across all merged PRs wins.
@@ -59,7 +59,7 @@ These source changes become operational only after their reviewed PR is merged.
 ## First release baseline
 
 - **First MTG semver tag:** `v1.0.0`
-- **Upstream relationship:** documented here and in GitHub Release notes â€” **not**
+- **Upstream relationship:** documented here and in GitHub Release notes — **not**
   encoded in the version number.
 - **Upstream lineage at `v1.0.0`:** includes platform work through upstream
   `v0.9.1` plus MTG fork-specific changes (badges, security policy, CI/registry
@@ -127,14 +127,14 @@ retained candidate metadata fails closed.
 
 ## Related files
 
-- `scripts/compute-dev-version.sh` â€” candidate/main dev build identity
-- `scripts/next-version.py` â€” label/title bump and contract floor
-- `scripts/release/automatic-release.py` â€” interval, preparation and publication guards
-- `scripts/release/next-release-version.sh` â€” read-only version calculation
-- `.github/workflows/release-draft.yml` â€” prepares the reviewed release PR
-- `.github/workflows/release-tag.yml` â€” validates exact main CI and dispatches tag CI
-- `.github/workflows/ci.yml` â€” signed packaging and immutable release publication
-- `.claude/skills/bifrost-release/SKILL.md` â€” fork operator entry point
+- `scripts/compute-dev-version.sh` — candidate/main dev build identity
+- `scripts/next-version.py` — label/title bump and contract floor
+- `scripts/release/automatic-release.py` — interval, preparation and publication guards
+- `scripts/release/next-release-version.sh` — read-only version calculation
+- `.github/workflows/release-draft.yml` — prepares the reviewed release PR
+- `.github/workflows/release-tag.yml` — validates exact main CI and dispatches tag CI
+- `.github/workflows/ci.yml` — signed packaging and immutable release publication
+- `.claude/skills/bifrost-release/SKILL.md` — fork operator entry point
 
 
 ## Stable package manifest and acceptance
