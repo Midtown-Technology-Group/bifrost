@@ -442,11 +442,12 @@ class TestWorkflowVariableCapture:
         monkeypatch.setattr(sys, "settrace", trace_updates.append)
 
         @workflow(name="direct_trace_chain", description="Exercise trace composition")
-        async def traced_success():
+        async def direct_trace_workflow():
             return "completed"
 
+        direct_trace_workflow.__name__ = "captured_frame"
         result, captured, _ = await _execute_workflow_with_trace(
-            traced_success, mock_context, {}
+            direct_trace_workflow, mock_context, {}
         )
 
         chained_trace = trace_updates[0]
@@ -457,11 +458,11 @@ class TestWorkflowVariableCapture:
         assert caller_only_trace is not None
         assert caller_only_trace(unrelated_frame, "disable", None) is None
 
-        def traced_success():
+        def captured_frame():
             direct_marker = "captured by direct trace invocation"
             return sys._getframe(), direct_marker
 
-        workflow_frame, _ = traced_success()
+        workflow_frame, _ = captured_frame()
 
         capture_only_trace = chained_trace(workflow_frame, "disable", None)
         assert capture_only_trace is not None
