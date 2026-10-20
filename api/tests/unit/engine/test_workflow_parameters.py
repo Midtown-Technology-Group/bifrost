@@ -435,6 +435,9 @@ class TestWorkflowVariableCapture:
             caller_events.append(event)
             if event == "disable":
                 return None
+            if event == "call":
+                # Simulate a C tracer that reinstalls itself globally on calls.
+                sys.settrace(caller_trace)
             return caller_local_trace
 
         trace_updates = []
@@ -451,11 +454,13 @@ class TestWorkflowVariableCapture:
         )
 
         chained_trace = trace_updates[0]
+        assert trace_updates[-1] is caller_trace
         unrelated_frame = sys._getframe()
         assert chained_trace(unrelated_frame, "disable", None) is None
 
         caller_only_trace = chained_trace(unrelated_frame, "call", None)
         assert caller_only_trace is not None
+        assert trace_updates[-1] is chained_trace
         assert caller_only_trace(unrelated_frame, "disable", None) is None
 
         def captured_frame():
@@ -474,7 +479,7 @@ class TestWorkflowVariableCapture:
 
         assert result == "completed"
         assert captured["direct_marker"] == "captured by direct trace invocation"
-        assert trace_updates[-1] is caller_trace
+        assert trace_updates[-1] is chained_trace
         assert "return" in caller_events
 
 

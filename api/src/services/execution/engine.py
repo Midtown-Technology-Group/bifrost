@@ -1496,6 +1496,13 @@ async def _execute_workflow_with_trace(
         existing_local_trace = (
             existing_trace(frame, event, arg) if existing_trace is not None else None
         )
+        if (
+            event == 'call'
+            and existing_trace is not None
+            and sys.gettrace() is existing_trace
+        ):
+            # C tracers can reinstall their global hook while handling a call.
+            sys.settrace(chained_trace_func)
 
         if our_local_trace is None and existing_local_trace is None:
             return None
