@@ -1,0 +1,190 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:f97af1952f30a832e4f45c360d3317ff83d0b21596062fa11cf13abbcae77af7",
+  "claims": [
+    {
+      "id": "claim_016b2c88878846e393d08534aa370cb3",
+      "statement": "The App Builder source describes draft and published version snapshots with active/draft pointers, and rollback selects a prior active version without changing the draft.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/services/app_builder/README.md#L43-L89",
+          "version": "repo-lines-v1:sha256:d6526017454292356e4612b1adabe95c100f86f3631b062fb9da130d1dcb60d4:eyJzZWxlY3RlZExpbmVDb3VudCI6NDcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUyOGRmMzFiNzliN2ZmYTQ4Zjc2OGJiOTAwNjQ3ZmVlOGEzYzVjNGVjZTZjOTUwNmZlNDI2YzAzOWE1MGY1YTAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk4MjllNWYwMjdlYmFkMjliZDNkMmMwZDZiY2Y1YmQ2ZGM2MTE2ZTZkZTNmZGUyNjhiMjI4MDE3NmIyNTA0YzEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhkN2MxOWVmNTQwM2RmNTllNWEzOWI0YTk5YTdmNDNlN2ZmOWJiY2UwZWM5M2U2NGI2OGY3YTA3NzA3YTIwMWMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY2YjNlN2Y0MjQ3OWY1ODNiYTg1MjY5OWYwNmM5NTNiODdmZGRjNzkwYTk2ZjE2YjE3YjljMmUxODkxOWMwNGMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_26124ffcac914e15af14e105da6e80cf",
+      "statement": "App file APIs read source from repository storage and compiled artifacts from app storage; writes are platform-admin guarded, enforce Solution/release ownership, and compile TS/TSX on write.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/routers/app_code_files.py#L351-L380",
+          "version": "repo-lines-v1:sha256:e3d80618a691a55dc4b05e92dfce9e7614a3e92a5678b678470ef3dbe8eb3f20:eyJzZWxlY3RlZExpbmVDb3VudCI6MzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImExYjkzZWE2ZjViYWQ3YzExN2M4YmEyNWEyNWZhNzk4YTFkZTMwYTUyZTFmZTNmZWI4NDY1ZmU2NTFlNTkzZTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYzODQxZmVhM2FhM2ViNTdkNTYyZDhjOWQ3YzdmNTNlNmU0NWFjZDlhZTRkY2U4MzZiMmJlYzI3ZDUxMmIzNTUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZiNWY3ZjM2OWE2MDA1YWJkZWRhMGQxOTk4NGJmNDIyMzhhZGE3Zjg1ODQ2YjJlY2U5ODk2MTA1ZDcyMjExYjMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdjOTJiMGFhMzIwOWRkOThhNDZjZDc1NzM4M2RmZThhYWQ5M2FmNzIyMWFiMjY4NTE4NmM3MDhlNzYyM2FlZTMifQ"
+        },
+        {
+          "resource": "repo://api/src/routers/app_code_files.py#L476-L527",
+          "version": "repo-lines-v1:sha256:f5d48b16bfe3e0f7295100b2070e606044904964af7dc90a531a3e0cb454c917:eyJzZWxlY3RlZExpbmVDb3VudCI6NTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjViMzFlNThiNDY3YWUwYTE2YWNhODYyOWEyZTkyMmIyNTg4ODcyZTQ2MTMwNDg0OGQwNzc1ODg0YTQ1YTdmN2IiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE2YmNiYmI4OWVhNzcxMWUzNWE5YjAxYjZkMzE3ZDI0YzA5MTE0NDgzNGMzZmU3OTA0YWQ0MThiMDQ3NmYyMGMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjBkYTZlZmE5YjAwNzU4OTMwNzcyYzBlZTY3ZDZmODgyODc5ZTMyNmNhOTcxYzIzZmQzMjM1ZjhhMDRmMzk3YzEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA1NTQ3YzYxNDU5OWJiZjAyMmY4YjkxZjc3N2QzYmY3YzQ0YzQ5OWZhN2FkNDg5ZjI0ZWNhNGYzZGE2ZTJlYTYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_4e8eea64824447b48f8ccf934ae4f63e",
+      "statement": "The legacy App render route reads preview/live compiled artifacts, can use Redis cache, generates Tailwind CSS on cache miss, and serves compiled code rather than source.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/routers/app_code_files.py#L571-L620",
+          "version": "repo-lines-v1:sha256:63306dd93b154eb7fa9c7af6757d212713c240412bb08b18a9550f91515e23de:eyJzZWxlY3RlZExpbmVDb3VudCI6NTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg5OWZmYmFiMWNkOTVjZWJlMWRhZjYxN2FjNTQzNzY0YTA1ZDcxOTI4NGNmMmQ5ODVjYTQ5ZmZiMGVjNTNiNTUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhhYjNlM2U1ZTAxN2MwZjM1OWU3ODgxOGJkYzczMjVkNDljYzczZmY5ZmRkMTZmNzI2Mzg1ODFmMDM1ZWZjYWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNhZmFmMmRhMWYwNWEzYmQ1OGNiZjJlMjhiNDZjZDk3YTExNmQ3MDdjYjg5MzVhMDQ1MDlmNDZkM2QzMThkNmMifQ"
+        },
+        {
+          "resource": "repo://api/src/routers/app_code_files.py#L621-L654",
+          "version": "repo-lines-v1:sha256:507463ce86ad4c0a9d41615638fb187e091ffa5f7e21ab0b66f6c65ab1f14705:eyJzZWxlY3RlZExpbmVDb3VudCI6MzQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE0MWQwZmEyODk2MjQ0NTg1NjQ4ZTZhNTYxMWQ2NmE2MjkwZWYxM2JiMDU5YTkzMTY0NTYxNWZlNGM5OWM5YTgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwYzFmMTg4ZjE0MmVkN2E4MjQ2ODBiMjA3MTcyYzU1MTliYzYxNGE0OGZkYTdjZjE2N2VkYjhkZGY3OTk1NmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjVhYTE1ZWZiNjViOGM2YjY5NTZjZWQ4MDUyM2Q0YTNiYzBjMDYyZTI4MmU5OTM2MjllZTRkNTVkMzQzYWQyMTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzN2VkNTI0YzMxMzA4ODg1ZTEzODI1MmI5M2Y1ZTVlNTU5ZTU0OGU5MDgzZDdkMWMwYmQ5Mjk4NTdmMjdiNTIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_f7c7a880893d4ad0bfa04a2a7b44064b",
+      "statement": "Standalone V2 App deployment rejects Solution-managed/non-V2 apps, stages the uploaded source archive, and enqueues a deduplicated resource-locked PlatformJob.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/routers/applications.py#L917-L960",
+          "version": "repo-lines-v1:sha256:2e46c51e9e155a666aad8acc612cabd21122dc7668ede0bca096b3260f32a51c:eyJzZWxlY3RlZExpbmVDb3VudCI6NDQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdlM2ZiMmJjNjBjMWIzYjVhZTA0NWJmMDA3NmZjZDc4NGQzZTczY2QzMGJhNjAzNjVkNmM5MDI1MmMyNjdjYTUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM4ZTgwMDRlYWMyZDg0ZjkwMjc4OWQzODA0YjI5MDMzMzU5OTIzNzM2ZDdmZWFkNGE5NjAwOGQzOTI2MWIxYWIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImExNDA4NGRkZmJjN2Y2YTI4NWJkYjNjYTk2YzZjODFlZmE0NDRlMThkM2MwZTZkMWNlNGUyMzRiMzMwOTE5ZWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA4MDFhY2QwOGU2NWEyNjFjZDk0OGM0ODUzNGRmZGNhNzBlNTFhMTEzMmEwYTE2MzFiMTBkZjA0MDUzYTI3MjYifQ"
+        },
+        {
+          "resource": "repo://api/src/routers/applications.py#L961-L1005",
+          "version": "repo-lines-v1:sha256:49926eaeb02f42a1f76702b66f6f3cc1fb965adb69eb81dcb7e6681c2a71dada:eyJzZWxlY3RlZExpbmVDb3VudCI6NDUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEyNTU0YmEwY2MwYmY0ZmNmNzRkZWU0ZGIxODVmZmE4ZTgyNWNiNzE0N2QxNjdjY2Q5Y2M5Y2I1MWI2ZWUxYzQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM5ZmQ1YmFlYTQyNjI1NjJhNzFkMWU1YTg3NDkwMDM4Njk3ZWE2NDE4ODI0MGVmYzhkYjM3NWZlN2ZhOWNjMTciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQ3ODEyNGQwNTY5NjUyNjBlYzQzNTVjZDkwZGM0MTYxNzIxMGQwMzViZjZmY2FkNzg2ZWQ1NThkYjc2NWU2OTAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA1YWZkZGRiYjhlYjJhZGNjNzc2MzZjOGMwMmM3YzFlODE2MzRjMGM5YzIyZjA1NTYxYjc3NGZmN2FhMmMwNmYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_17fdb36ec499456cb3e91de32e508c24",
+      "statement": "The esbuild app bundler confines source/output to an isolated build directory and emits hashed assets, with preview linked sourcemaps and live minification.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/services/app_bundler/bundle.js#L120-L143",
+          "version": "repo-lines-v1:sha256:b39387112fa946885603305c7b4c2dc1e91b6fadd3cf84035c16c44ba445168a:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJhYjIyZDJiNmQ0YWRjYWEzMWEzMTY2ZTk1ODIxZTM0NWE5ZTMxOTgzZmIzZDNmZDNlOTU1YzA3YjZhYThiMjQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIyZDExY2FmNDNlOTdlZjM2OWU2YmVlZDFhMjY4YmQwNTgzOGYyOWI5ZGQyNTRiZjY5YmE2NDg4NDE0NzIzNGEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU3ZWJlMTRmOWJiMTU0NDY5Zjc4OTNhMTM0MWMwMzhiNDljODcxNWJkMjNjMmU4MGZlNDRjZTVhZDJkYjg4MzYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdkNjllYTA5MTJiZTY1ZWEyZTg0MWU2ZTAyNjlhMGI4NDFiYTA5MmQ1ZGM1ODVhZjhiZGJjZmQzMGMzM2MwODIifQ"
+        },
+        {
+          "resource": "repo://api/src/services/app_bundler/bundle.js#L93-L113",
+          "version": "repo-lines-v1:sha256:31206fc30dd5666ba22ab925b8cc247bdfce7e117a980c713c2f1fa81deaa3fe:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjEyNzYxODhhNDA0OTg3N2RjYTgyNDA1MmQ5NTU2ODlkNjNlZTcyZWFjNWJkYmQzOGFlY2UyNDAzZDgwZTUxNTYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjljNWUzYmZhMjNkNDdkODExOTVjMTIxMGIyZDFhNDBmNGEyMmU0MDY2NTc5YTczZmYwYzNmMmZhYTZjMjExZjYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM2ZTUxZTBkMDA4ZjE2YzdhMmI3MDAyZThiYzQ2NTQ4N2FlMmY1YTMzYjA4ZjczZjUzNWQwMGJmMjhiODdmZTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFkNmYwZjhjMTMyOGNlODk3MTIyMDUxYWVmYWM0N2ZjODNlMTc0NjVkODM4MTkwMmE0ZGU4OThiZGQ4YWZiNGMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_c477331000474835801e5bc76f61e91c",
+      "statement": "The V2 SDK source lives in the client tree, is copied into the API image and bundled as ESM with React peer dependencies kept external; its fingerprint is derived from bundle bytes.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/services/sdk_package/__init__.py#L1-L14",
+          "version": "repo-lines-v1:sha256:81e7d1e8ad678e967fea7ff50e4b6f91e4a20d4db3a9cfbec2a7f0e45245265f:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJkYTdmNzRkMDc5YmE3NjhkMDg3YzY2ZmU5M2JiMmZhMDY3OWRiZmE2YjEwNmMyZGUxODljMzY3MjY4ZGE1MzIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEzMDNlY2RkNGE0ZDEwZjE5YzczZmQ0MmZkMTI0MzdmZDMzNTRhODI2ODE2MDVkYTUyNTVhOTdhMzkwNjhkYmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImFiODYzMjIwMTYxMjRmYWE2NDQ2YjQ3ZDBjNDljNDIyMTk4OGEyZTdkZmY3ZjI2NTg0Y2MyMTQ0OTU0MDkwOWQifQ"
+        },
+        {
+          "resource": "repo://api/src/services/sdk_package/__init__.py#L147-L158",
+          "version": "repo-lines-v1:sha256:05e015e3b5e9bf5cace3bbc28946b57cd6c35076bfec15dfb40f3ed37baa6a12:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE3MjdjZmRiNTNkMWNiM2E0YjA0ODQ1ZGEyNGYxOTlmYWNiYjRiMjg3OTM0ODk2NTU3YjBlNTM4MTNmZGNlMzMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFkOTBhNDc0ZWQ4YjExYTI3MzUwYTA5ZWE3MDdkNmQ5MWNiMzA5NzcxZjdkYTJlZTI0ODVkNTcxYWM3YTMxNGIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYxNDEyMDU5ODY1YjAzNmM0YmUzZTlkNzAwMWVlNmYzYjMxMGJkNTc0Mjg4MzVhNTNlOTBmMDk4N2NiMDgzNmQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImRiZDE0ZWVmMWJkMDE4Y2JkNTY1NjA0Nzk5Y2I0Nzk4OGEwN2M0MmI5ZWEyMjgwMTg4MjQxY2I1N2JiMDJlZmEifQ"
+        },
+        {
+          "resource": "repo://api/src/services/sdk_package/__init__.py#L27-L56",
+          "version": "repo-lines-v1:sha256:553ddbf6da4fcf37a688189221456827d969ace07f9322931e65bddfc22a5a55:eyJzZWxlY3RlZExpbmVDb3VudCI6MzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhhOTY1ODkxMGRkMjljMDM3MmZiOWE1ODlmMWQxZTY5MzJkNTg3ZjljNzUyOWMyNWVmYTgwN2M3Yzg1ZDQ5MmEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU4ZmQwY2Q0YjU5MzEwNDM3Yjg1YmJiMTViMmEwZjljNzM2YzUzOGY3MjBkZTNhNTEzZTY3MTMzYzJkODhmZGEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM4OGQ2YmYwMDkwMzk5YzQxMjk1NTgzNWI3YTc1ODVjYjkyMzA4ZTE0YzZiMDQxNTFjNmRhMzdkYzQ1ZTVlZjYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_f8efe7d91ea44c1fbe50db5528f25dba",
+      "statement": "SDK updates are explicit PlatformJobs using retained source, and successful source-backed V2 builds record package version, fingerprint, contract version and build time.",
+      "evidence": [
+        {
+          "resource": "repo://docs/runbooks/application-sdk-update.md#L3-L19",
+          "version": "repo-lines-v1:sha256:ad4ac12dae3b33b63a53da55c2753c6d2af65a5b39c7418d0bf44b59af81308e:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRjYzZmZGRmYWJlNTczMDM5NTQwNzlmMjRjYzE2YzZhNmYxM2E4N2M0NGY3OTdmNWQ3MWFjYTgwNTJlMTgyOWIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY5MWI5OGRjZDA0OThiNDI5ZTVjNDA3ZDFjMjIxZTRlMDhjMjYwMmMyNDdiOGM2MmZjY2U2OGU2ZmZhMjE0M2EiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjoyLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjIyODJmNzA2NjQyNWRhNTA2ODk5NmMxNTU2MDBhY2Y5Yjg2M2QxNDM1MzE1ZTk5ZmYxMDI0NDE3YWNiZDQ5YTYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdhZDNlZmI5MzY0MDBiYzU2NzE0MDQ5ZDdhNDhlZjQzMjJjYmUzNDhlZDA1MjI5NDgzZDMyZmQwM2E2YWY3MjYifQ"
+        },
+        {
+          "resource": "repo://docs/runbooks/application-sdk-update.md#L33-L59",
+          "version": "repo-lines-v1:sha256:c75518b947980b1292c06498369e822a83caf3429ed17a3f1bda312e99cf048b:eyJzZWxlY3RlZExpbmVDb3VudCI6MjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE5NjMxNjU4OTFlNDZkODIyNTI4Nzk1Mjc0MDMzNzk3ZmYwNmMwZjUxZTFkZmIxZDdlZWFlZmU3MWRkM2UyYjAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFmNGM0N2FkZTA1NWU4NjRiM2IxMDcyNDBiZDkyMjIxZjQ2ODNkN2QwNjJjZGYzNzI0N2I1ZjZmYWNkYTFhYTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImI5NzVhNzZjNjRjZmY2ZjQ3ODEyZmE3ZTBlYmFlNjc0YjIyZTlmMjUzZGNmNjBlNTYzMDAyOTEzZGJkYzQ5Y2YiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFkYWFhODQ4ZWQ5MzE1YzllNzRhYTAxOTc1N2I0MWE3MmMxNTM4YTA1YjNmMmNkNGRhNTUxYTFjMTM5MDY4ZGMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_fa861a9108c84dfa88e3c0059f600dec",
+      "statement": "Legacy App publish is queued as a durable operation, while standalone V2 Apps are deployed instead of published.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/routers/applications.py#L1186-L1212",
+          "version": "repo-lines-v1:sha256:be3fa86a8dafcb7113884f32569ce7641c577969244debca982654b561e772ef:eyJzZWxlY3RlZExpbmVDb3VudCI6MjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMyNDcxOGU0OGQxYzA3MTQ1M2FkYjBkYTcwYTRkOWExZTBjMTVjNzk1OTUzZjBjMjFhZDk2NTE4NTNkYTg3ODkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU5MDlhNTNhNjE4ZDAyOGUxZDMwMDBjMGE3YWJjZWVjYmU1ZmIzN2Y0ZTUxMWVmZTQ2NjQzZmFkNmU2Njg3MmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjFiZGY1ZDBlODhiYzRhMmZmZGQ1YzVjNmE4Njc4YjRkMmQ0MWVlODAwNmNiYWI4NWMwZjNmYjg0ZTU3YjNlZWQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImMxMmE5ZDE2YzYzZDc2ZTUzYTBmZWYyNmVlZDMxZDRmYjY4MzIyYjQ4Mzc1M2M1MzVkOGNmNmE1Mjg0MWNjNTIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_868c47be464e4d1b921befd8b146e8c0",
+      "statement": "The installable standalone-App SDK is built from client-owned app-sdk sources as one ESM tarball; React-family runtime packages and lucide-react remain peer dependencies, and the package records a bundle-content fingerprint plus a separately versioned wire contract.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/services/sdk_package/__init__.py#L1-L13",
+          "version": "repo-lines-v1:sha256:4f29c3bcdbe04fe448fbf190808c879aa58c508b0e066b7a5a0c7448be70c56e:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJkYTdmNzRkMDc5YmE3NjhkMDg3YzY2ZmU5M2JiMmZhMDY3OWRiZmE2YjEwNmMyZGUxODljMzY3MjY4ZGE1MzIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg2NjMwZWY3YjJjMmEyMmM3ODE1MjYxNjcxZDkwOTJjYmM5MDYwOTM1YTQ5OTUzZjU5YjQ3YjhiYTlmMzM3ZjgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImJlY2U3ZjEzYjdiNmEzNTE2ZmNkNGI1NDMyZDg1OGU1ZjVhMjUyMDRlNjY3OGQ5MzEwZjA1MzNlOTU0NzlmNDUifQ"
+        },
+        {
+          "resource": "repo://api/src/services/sdk_package/__init__.py#L147-L185",
+          "version": "repo-lines-v1:sha256:2fdd8cde1d0f59ae1ea380b5752fa49003a1e8f8516245c70e0025c8f9d09a9f:eyJzZWxlY3RlZExpbmVDb3VudCI6MzksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE3MjdjZmRiNTNkMWNiM2E0YjA0ODQ1ZGEyNGYxOTlmYWNiYjRiMjg3OTM0ODk2NTU3YjBlNTM4MTNmZGNlMzMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQyYjZkNjE0ZjAxN2ExY2NkYTczOWNkODNhMTJjZDBjYTVlYmFlMDFlNTdkY2M3MWNlNTUzZWJjY2FiZjQyOGYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYxNDEyMDU5ODY1YjAzNmM0YmUzZTlkNzAwMWVlNmYzYjMxMGJkNTc0Mjg4MzVhNTNlOTBmMDk4N2NiMDgzNmQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM3NWZlNTExNzY5NTYzNmFlMWUxZjJjMTBhOGNkZWI2NTlhM2EyYjkyNmQwZDAxZjNiYWYxZjU0NjNlMzgxNTYifQ"
+        },
+        {
+          "resource": "repo://api/src/services/sdk_package/__init__.py#L188-L210",
+          "version": "repo-lines-v1:sha256:bd264d2d75bd0e2ffbf82448d279ff7887cb4830461cfc7b04bee602924b51c9:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjExMDdhMTM3Y2QwYjBhZTc0OTBhNDc5OTg3MDkyOGYzZTZlOWE1NjAyNDU0NzEzOWM1MDM3ZWVkNjIyZDk1YWIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFlNjczYWJkNDU3YTk3ZWVhMTdhNjAwNjJlYjBmYWVhNmJkZjA5NDg2OGNjNmI4ZjhjMGViZGEyZjYxZWQ0MmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE4Y2IyYjIzOTM1YjhjNTQ4ZTc5Nzc0Y2U4NTg0YWE5MjE4ZDc0MTc2MWM2MjdhNDI3ODkxYzZjNGRkZmNhMjMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY3OGM5NDc3Njk4ZWQ5YWMxZTEwNThlMTEyZDRiNTBkYzdjMWUxY2Y4ZDcyYjk3ODVjZWRkMDMwMjM3ODdiNmEifQ"
+        },
+        {
+          "resource": "repo://api/src/services/sdk_package/build_sdk.js#L27-L46",
+          "version": "repo-lines-v1:sha256:111803e96539e1e8ee19cb0e1c2eb827bfc954b6306ffb5a811069558b2487a5:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJiYzNjYTk2ZmM3ODQ5YmVkNGJmZWViY2IyYTczMGZjNzU5YTQwNzEwZjBiZWQzZGNkMmI0YzQ3YmQzOGYzZWYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIyMzUyNTg5YzM0ZDNjNjA2ODU5MzFiNmVjYzRkNTA5OTFhN2M1NmM4ZmJhMjg5NDExNDY1NzY5MDI3MmNhYzMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZhZWI2OTVkYTA1MTk3ZjMxZWE5MmJiNjEwMzI0YTMyY2M2OWQ5NDZiZDlmODY3YjE2NzMxNTdhNGY3MzI4MTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjYyYTkwNTFmYWY1Mzg5NjE1YjM3ZWFkYTBhMTkwMWE3NTJiYzMzNjdkZTUyMDEzZjQ5OTY4ZDU0YmI1NDI0OTkifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_5c152527918644e992fc936300241680",
+      "statement": "The SDK's wire-surface snapshot test hashes a manually maintained inventory and requires conscious action when it changes; the inventory is explicitly not executed against the server, so it is a client-side change tripwire rather than runtime API parity proof.",
+      "evidence": [
+        {
+          "resource": "repo://client/src/lib/app-sdk/sdk-contract.json#L1-L7",
+          "version": "repo-lines-v1:sha256:b7aaca4bfcc6f7c9998ff8a0ce6a5b7b08b0f3f79056da99cda10754099d328f:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYTZmYjA4ZmRhMWFjYjk1N2I2MTE2YmQzNzgxMWExZmU0MWEwMTYxMWMwNjMxZWRiZjc4NmQ2ODg5YTI3YTU1YyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjAsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjAsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSJ9"
+        },
+        {
+          "resource": "repo://client/src/lib/app-sdk/sdk-contract.test.ts#L1-L59",
+          "version": "repo-lines-v1:sha256:930ddc4cfb948bb84983c573f844c3aa5176b3a09097a6b267765cef9aec0df0:eyJzZWxlY3RlZExpbmVDb3VudCI6NTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVhZjIyY2YwNzMyNTkyYzI0NzE0MWNiZTYxZWZhMTEwMTI2MTJmNWEzMTIyYjlhZjliYmFmNTJmNTcyNGQxOTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY2ZjViNDBiMTU4NDU3ZDE3ODY0ZjIxNzkwNzg2ZGQ1YTJlY2RiNjRiNjZhNjUxZjc4OGQ0ZTI1Y2QzMzAzZDIifQ"
+        },
+        {
+          "resource": "repo://client/src/lib/app-sdk/wire-surface.ts#L1-L17",
+          "version": "repo-lines-v1:sha256:6e025e2b4aa0eee485d41cf6efd409cdc32ee3ca4ac5df9cbb241d78bf8a3d34:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVhZjIyY2YwNzMyNTkyYzI0NzE0MWNiZTYxZWZhMTEwMTI2MTJmNWEzMTIyYjlhZjliYmFmNTJmNTcyNGQxOTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFiOTQ5MTdlNzZjNTNhNjEzYmZhMDk3YmYxNTFhZWNhMzcxMGI5MjZiMmI4ZmE5ZGI0NTJhMWRlMTBmNzc2MDciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFhYWMzZjhiMGQ0YTE0OTg4ODVkYzYzOWIwMDE4ZDgyMDNkMWYxYzQwMmU4YTZiZTFjYTcxNmM0NmQwNTExYzQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_02504b62df0a48a9965715e74d787fa8",
+      "statement": "The SDK useWorkflow hook starts asynchronous runs over its provider-authenticated transport, streams status/log events and fetches terminal results over HTTP; socket loss falls back to polling, while transient or already-terminal runs settle directly from the initial response.",
+      "evidence": [
+        {
+          "resource": "repo://client/src/lib/app-sdk/execution-stream.ts#L1-L66",
+          "version": "repo-lines-v1:sha256:38ed908e30757db0a6eff3c6454f543124a23ddb4c056b02baa3450fcbda5f1b:eyJzZWxlY3RlZExpbmVDb3VudCI6NjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVhZjIyY2YwNzMyNTkyYzI0NzE0MWNiZTYxZWZhMTEwMTI2MTJmNWEzMTIyYjlhZjliYmFmNTJmNTcyNGQxOTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImYxOTk5Mjg4MzZlOGYwOGI1ZDZkZmEyNjcyYWJmY2IzZDA4ZTJmMTUyNGY5YjFjODViNzkxZDBhMzBhMWUyYWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImYzODNjNjdkNjkxNTIwMjFkYmRjNzkyNTZmNzY5YjJlYjRhYWU4Y2I0YmM1ZTg0YWM1M2E5NWVjNDg4NjczMGEifQ"
+        },
+        {
+          "resource": "repo://client/src/lib/app-sdk/use-workflow.ts#L1-L30",
+          "version": "repo-lines-v1:sha256:90ff750c78b7ad1a07cb84321fa915f3013b97993e8a3b005c3fa72d1028b937:eyJzZWxlY3RlZExpbmVDb3VudCI6MzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVhZjIyY2YwNzMyNTkyYzI0NzE0MWNiZTYxZWZhMTEwMTI2MTJmNWEzMTIyYjlhZjliYmFmNTJmNTcyNGQxOTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU4NzFkY2VjYjM3MzUyNTRiN2RhYWU3MjViZmEzYzcxZGMzMzA5OWRkZGE2MTdlM2E0ZTNjMTFlNzUxZjMwNGMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA3NjQ1MmZlNWY4MTAxODI4YjBjODk1MmUxNWFhNzBmYzZiYmE4MDEyMjVmYWQxNzAzYTk2YTVmN2FlN2FlMzQifQ"
+        },
+        {
+          "resource": "repo://client/src/lib/app-sdk/use-workflow.ts#L248-L314",
+          "version": "repo-lines-v1:sha256:b515f993393409cc21da9e2a0e45a8ebcb281bbf56600f378b802a974e77772b:eyJzZWxlY3RlZExpbmVDb3VudCI6NjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY5YTdlNjUwNDc0YWVmNGU5Zjg1MDI0MGY5MzgzMzkwNzNiMWRjOTQxNTg2OTI0NmM5YWM5NmQ3ODdkZDY0ZDEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFmMGNkYjk3MmE3YmZiN2VkMjQ2ZjlmZjY3MjM4NWU1NWY0OTY4ZmMxMTA0M2RjNWI2ODRkNTFkZmEzMWRiY2IiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQ2Mjc0MDg5ODgxNjU2NWVlZTRhZmY2ZWRlN2FmZmIxMzNlZjI3YTVjYjc5ODY1YmRjYmE4Y2Q0ZDcxOGY3NGMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImU3MTk0ODYxYTZhOGUzYzg0NjcyNThmZTIzMjY2ZmY4YWNhM2Q0MmI3ZWJiYTA3Yzc0YmJhZDgxMTgwYWVkNmUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_e8542abd17814a429f7c34c5f14a1c5d",
+      "statement": "Application SDK status is derived from stored provenance and current fingerprint/contract metadata: incomplete or unavailable metadata yields unknown, a contract mismatch is update_required, an equal fingerprint is current, and another fingerprint is update_available; metadata build failure degrades status instead of failing app metadata retrieval.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/services/application_sdk_status.py#L50-L90",
+          "version": "repo-lines-v1:sha256:6c1399ecfaec059ed1e917e68d90e597063fe30a477ce9888d34a4c8d0f66ba0:eyJzZWxlY3RlZExpbmVDb3VudCI6NDEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImYzMjVkYzI0NzNmMDFlMDRiMGQ0YjUzN2Q5NGQ0YTliMGFiNDU4NGU5ZGQyMmUyNmRlMjViN2UwMjM0ZjU5ZjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE0Y2Q4ZTNiZDQ3ODQzOTQzNjNhOTEzYTA1ODlmY2YxZGE2ZDg3YTM0YmRmMjNiZTU5YzI3MzE1NGI2MDNhNTgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRiYTY0OGMxNjI3ZDg5ZjM5YTQwNTVkZDA5NTZjZjBlZTQyYjZiZGJjYjRlYjdmZWI2MTdhMmQyMzk2NzE0YzEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZkODAxYWU3NDljYTdkNjVjYjdjMzJhODI2MTE3OTVjOGVjOGRkYzRhOWJhNDk0ZjI0MjI1ZmM1M2NmMmVkNWUifQ"
+        },
+        {
+          "resource": "repo://api/src/services/application_sdk_status.py#L93-L101",
+          "version": "repo-lines-v1:sha256:598e87e5ce35f9ea674a960fe86977500613aba6b0080ad149d17bba29d3ba3d:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiODMzYzY2ODI5NWIyNDk3MzJkZDVmNzg2MjE0OTJlOGVjMjM3NTU2NzdiN2UzOTE3MjM4NjhlYmI3Y2M5ZTE5ZCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMzBjMWYxODhmMTQyZWQ3YTgyNDY4MGIyMDcxNzJjNTUxOWJjNjE0YTQ4ZmRhN2NmMTY3ZWRiOGRkZjc5OTU2YyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZmQ2ZTkyNjUxMzE5NTI4MDlmNmI1MTY1NTgxNmMwZmIxODllMmNiN2E4MjBlMzM1NDA4NmY5NTJkY2I0YjhiNSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNDgyN2U2ODc2ODBkNDc5ZmIxN2FlMTQ4MTA0MGQ2M2QzYTZkZDFiOTk5OTgxZGU3MjUwYmY1YWVmODIyYzg1MCJ9"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.7.2",
+    "at": "2026-10-18T02:51:00.673Z"
+  }
+}

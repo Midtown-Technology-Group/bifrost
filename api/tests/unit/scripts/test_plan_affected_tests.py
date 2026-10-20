@@ -208,6 +208,83 @@ def test_uncertain_changes_fail_closed(
     assert reason in plan.reason
 
 
+def test_generated_openwiki_artifacts_are_documentation_only() -> None:
+    plan = affected.plan_changes(
+        [
+            affected.GitChange("M", "openwiki/architecture/index.md"),
+            affected.GitChange("M", "openwiki/.claims/architecture/platform.json"),
+            affected.GitChange("M", "openwiki/.page-manifest.json"),
+            affected.GitChange("M", "openwiki/.last-update.json"),
+            affected.GitChange("M", "openwiki/INSTRUCTIONS.md"),
+        ]
+    )
+
+    assert plan.scope == "docs-only"
+    assert set(plan.to_dict()["lanes"].values()) == {"skip"}
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        ".openwikiignore",
+        "openwiki/.run.json",
+        "openwiki/scripts/refresh.py",
+        "openwiki/config/maintenance.json",
+        "openwiki/notes.txt",
+        "openwiki/other.json",
+        "openwiki/.claims/architecture/platform.yaml",
+        "openwiki/.claims/architecture/platform.json.bak",
+    ],
+)
+def test_openwiki_policy_and_unmodeled_files_remain_comprehensive(path: str) -> None:
+    plan = affected.plan_changes([affected.GitChange("M", path)])
+
+    assert plan.scope == "comprehensive"
+
+
+def test_deleted_openwiki_claim_remains_comprehensive() -> None:
+    plan = affected.plan_changes(
+        [affected.GitChange("D", "openwiki/.claims/architecture/platform.json")]
+    )
+
+    assert plan.scope == "comprehensive"
+    assert "deletions" in plan.reason
+
+
+def test_generated_openwiki_file_does_not_broaden_a_runtime_change(
+    graph_repo: Path,
+) -> None:
+    _write(graph_repo, "api/src/services/helper.py", "VALUE = 1\n")
+    _write(
+        graph_repo,
+        "api/tests/unit/services/test_helper.py",
+        "from src.services.helper import VALUE\n\n"
+        "def test_value():\n    assert VALUE == 1\n",
+    )
+
+    plan = affected.plan_changes(
+        [
+            affected.GitChange("M", "api/src/services/helper.py"),
+            affected.GitChange("M", "openwiki/architecture/index.md"),
+        ]
+    )
+
+    assert plan.scope == "affected"
+    assert plan.python.unit_tests == ("tests/unit/services/test_helper.py",)
+
+
+def test_generated_openwiki_file_does_not_narrow_a_ci_change() -> None:
+    plan = affected.plan_changes(
+        [
+            affected.GitChange("M", ".github/workflows/ci.yml"),
+            affected.GitChange("M", "openwiki/architecture/index.md"),
+        ]
+    )
+
+    assert plan.scope == "comprehensive"
+    assert "high-risk" in plan.reason
+
+
 def test_normalization_preserves_dotfile_paths() -> None:
     assert affected._normalize(".github/workflows/ci.yml") == (
         ".github/workflows/ci.yml"

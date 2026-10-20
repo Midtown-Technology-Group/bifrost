@@ -1,0 +1,116 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:174a4fa5f65c7421a1d5a3e95abd1e61e4e288580c1698cf1819b603d8963a7b",
+  "claims": [
+    {
+      "id": "claim_18877c79884442f693e78fde4cacd5f7",
+      "statement": "Device enrollment is separated from authenticated device management: creation returns a one-time enrollment token, enrollment requires only that token and returns the device key once, and the device protocol authenticates active devices with a hashed key.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/routers/device_protocol.py#L74-L108",
+          "version": "repo-lines-v1:sha256:6964d03f393d6ca3d7a6db09ae76154c82756d353e48afae2a5528119da5c61a:eyJzZWxlY3RlZExpbmVDb3VudCI6MzUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM0ZjFlNjM0ZmZhZmQ4MTc1YmQ1YzI2MWQ4MzMxOTg1M2JhMTYxNDJmMjU0Zjg2ZDVmYTVmMjkwODFlY2JhOTIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjllZjM2ZjM1YmRhOWU2Mzk1YTU0NjdhMmFlMmY2NzJjOWFmYmE0MzIwNzA4Y2YzYzk0YjJlN2Y3NWQ5NWNmZDgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjI4MDE4ODFkZGE2MGIyYWFiNDJlMzhiM2EwNzY3NTg0Mzg4ZmExN2Q5ODRlOTgzNTI3M2Q5ZmMyZjVmMDJmYjciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjkyMzYwMDE1ZTViZmEyNWVhOGNjYThiYmIxYTNlYmFlODEwNzJjN2Q3MzUwMWNjM2JkY2ZmMzA0NDgxYzdiYjAifQ"
+        },
+        {
+          "resource": "repo://api/src/routers/devices.py#L82-L128",
+          "version": "repo-lines-v1:sha256:aed8007ff92f0253bdfbf102184f3097b3e62806780b6ecd993097b49f25471c:eyJzZWxlY3RlZExpbmVDb3VudCI6NDcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ1MzI2OTVmZjkxMTMzNTM5M2YyZWMyMjNmYWE0OWMwZTFjNTJjNDU2YzQ3MmU0ZWE0MzkzYmRkMTNmZDgxOTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwYzFmMTg4ZjE0MmVkN2E4MjQ2ODBiMjA3MTcyYzU1MTliYzYxNGE0OGZkYTdjZjE2N2VkYjhkZGY3OTk1NmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhjYzRhN2QxY2M3OTZhYmEzZTQ2NzIzMzI3ZjUxN2U5ZjgxMTk4MmQyNTBmMDcwMjk4NmU0YjU3NjRhZDk1ODkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRiZDE4NmIwMzg4YzA0YmQ0YmUzNjlmODU2NmJhYmI4MmYxZjY5ZGU3MTllYzc2MGU4Mjk1NDhlMmM2Y2U2YWEifQ"
+        },
+        {
+          "resource": "repo://api/src/services/devices.py#L160-L189",
+          "version": "repo-lines-v1:sha256:0aeb65c04393e318de6efda4787e84861ce3040ce868b7708c72724ae64999a8:eyJzZWxlY3RlZExpbmVDb3VudCI6MzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVhYzhiM2U0ZjdmOTU1ZDIzNWI5YzRlYjYzZWU4NjRkODZhNTNiODhhNmNhM2Y0NTE3NGIxODAxMjM0ODhmMDgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIzNDdjMTc2NmUyNmVkMTYxNmJhZDQxZTlkNzFmNjU3MDhlNGE2ZmFmYzQxMDVkZWVlODc5Mjk0ZTJjYWEzMzUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQ1OTljY2M2NzlmOGEyNGFjNGQ3MTFjMmM4N2IyZGZkNGI3ZTY2NjJhNmJkMjEyMDM5ZmJlYzU1ODQ1MWNkMjMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImYwZjRhOGM3YmM0NzgwNzA0Y2I4ZmQ4OTMzNGRjOTA1ZGI3OGEzNGViMzgyNDBlNmU1N2UxNzgzYTk0YzQyNzgifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_8e06252b96824fadbd87e52a54b06010",
+      "statement": "Device job creation accepts either a user with device execution permission or a scoped control key, requires an active device in scope, records request attribution, persists the job before broadcasting, and treats the WebSocket broadcast as lossy best-effort notification.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/routers/devices.py#L267-L325",
+          "version": "repo-lines-v1:sha256:fb2b7fc0d23d3f0dcef0c308c663febec6e3cf0f1c8ba4c766dfe9d533bc00f0:eyJzZWxlY3RlZExpbmVDb3VudCI6NTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVkZDU3YzIwYjc5MDI1YWMwNDU4YjE3ODY5ZWZiNWZhMmY3MDZiZTgwNGE4YTU3M2M4ODQ3YWU2NGY2YzFkNTAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFkNzI1NDUwZjE2MjE4NTQ2NWMyMzgzODkxYWJkMjg0YmMwYTNlZDg1ZDg5OTcxNGQyMzVjOGU2OTU4MWE5YzAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA4MjY3NmM4ODhjMWE0ZDlmYTc3MmZjZGMzMDJmNzczYmM3MjkwZWViZmY5ZGEzNmEzOWY0NGMzMjExOTgzODUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImRjNjAwMmVmNDc2NWUyNzE4NzhlMjg4OGM1ODRjYWE2N2U0YjllZDAyMWMwODU4OWFhNWY3MWQ0NTI4ZDI1ZWUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_4b3adc2718e64e38b15373d25a635b31",
+      "statement": "Device agents heartbeat, claim jobs with a fenced claim token, and transition jobs to running only after a real spawn; the heartbeat reports whether the currently owned job has a cancellation request.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/routers/device_protocol.py#L118-L190",
+          "version": "repo-lines-v1:sha256:6015486befc60f88f6211e7512b23429e6cce82be59020131731d713fcfc2a56:eyJzZWxlY3RlZExpbmVDb3VudCI6NzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ1MzI2OTVmZjkxMTMzNTM5M2YyZWMyMjNmYWE0OWMwZTFjNTJjNDU2YzQ3MmU0ZWE0MzkzYmRkMTNmZDgxOTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwYzFmMTg4ZjE0MmVkN2E4MjQ2ODBiMjA3MTcyYzU1MTliYzYxNGE0OGZkYTdjZjE2N2VkYjhkZGY3OTk1NmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjAxZTlmY2ZlYmY2MzAxMzE1MTgxOGM5OGE4NTgwODBmZDg0M2YzZjgwNTM1MGVkZTkyNGQ0MzQ4OTA5Y2MxZTAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImRjNjAwMmVmNDc2NWUyNzE4NzhlMjg4OGM1ODRjYWE2N2U0YjllZDAyMWMwODU4OWFhNWY3MWQ0NTI4ZDI1ZWUifQ"
+        },
+        {
+          "resource": "repo://api/src/routers/device_protocol.py#L193-L224",
+          "version": "repo-lines-v1:sha256:b76e9eaebf3220fcdc48ac30e5879445fe82244df6dc0690a09071931bac0cec:eyJzZWxlY3RlZExpbmVDb3VudCI6MzIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ1MzI2OTVmZjkxMTMzNTM5M2YyZWMyMjNmYWE0OWMwZTFjNTJjNDU2YzQ3MmU0ZWE0MzkzYmRkMTNmZDgxOTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE2ZjQwMDQ5ZmVhNzllNTU1NjE3OWM3MTQ0NzZiN2RkMTQzOWUxYTA3MGRkOWE2M2JlODQ0MzA3YWE1MTNjNWYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhjYzRhN2QxY2M3OTZhYmEzZTQ2NzIzMzI3ZjUxN2U5ZjgxMTk4MmQyNTBmMDcwMjk4NmU0YjU3NjRhZDk1ODkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImRjNjAwMmVmNDc2NWUyNzE4NzhlMjg4OGM1ODRjYWE2N2U0YjllZDAyMWMwODU4OWFhNWY3MWQ0NTI4ZDI1ZWUifQ"
+        },
+        {
+          "resource": "repo://api/src/services/device_jobs.py#L198-L240",
+          "version": "repo-lines-v1:sha256:9935a3e931fbc7189a7aead05d35bdbbe162f4750e630a870d0157b86940bfdc:eyJzZWxlY3RlZExpbmVDb3VudCI6NDMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM5NGIxZjhkNTNkZTFlY2VkYTlhMWE2ZWFiZWUwM2QyYjczZWQ1ZTk3NjQ4NTk1ZDgyZTllMjVjM2Y5ZDBiMTMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFkNzI1NDUwZjE2MjE4NTQ2NWMyMzgzODkxYWJkMjg0YmMwYTNlZDg1ZDg5OTcxNGQyMzVjOGU2OTU4MWE5YzAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJlNTM1ZDQxODY0ZDkzNTlhMmRlZjUyNTkyOGZiNmYxZGZiYzM2NjQxMzRjZThhNTM0NzEwZGFmY2U1ZTAwNTciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImNkYTlhYmRmNWYzMzk4ZGQyZmVmMTNjYzFlNDEzOWRkMjQ0ZjRkMGE1ZTQ1YjZkN2M1N2FjY2Y5NDBjN2JiZDgifQ"
+        },
+        {
+          "resource": "repo://api/src/services/device_jobs.py#L276-L322",
+          "version": "repo-lines-v1:sha256:27bcf6b7e3e22f6c19d1ce1ae76b187ca8e933fff09d1e4492dcca226b69927b:eyJzZWxlY3RlZExpbmVDb3VudCI6NDcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIyMzkzYTMyOGVkZjAxODQ0YzBhMTI1OGEyY2ViYjljZWU1M2ZjMTExYjYzYmEyOWY0MjQ0NzM4ZjY4MzJjN2EiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFkNzI1NDUwZjE2MjE4NTQ2NWMyMzgzODkxYWJkMjg0YmMwYTNlZDg1ZDg5OTcxNGQyMzVjOGU2OTU4MWE5YzAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIzZGYyYWNmMDZlOGMzZjAzYzcxMzVjNmU4YWM1YTljYTU0MzJhYmUwNmE3NGFjYTBmZGQ5YTUzYTAwOGY5ODciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImVhNzIxYjRhNWJiYjJlMTA2ODVlYjkwODZmODEyN2FlMjVmMjY3NzU1MTljOGU1MzhiY2NlY2YwYWJjNWQ2OTMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_fcec591d019342779eaa472d85a730a2",
+      "statement": "The device-job watchdog makes running work loss terminal and never requeues it after possible side effects, while stale pre-run claims have a distinct reclaim path; `lost` transitions are server-owned.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/services/device_jobs.py#L1-L16",
+          "version": "repo-lines-v1:sha256:e4d73c9ff8aa664bb40968dc5be3d4c5685737fb5c54b17d39638ad4b7f7e527:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY0YTc2Y2QwZTkxMDg5ZmVmYTJjNDkwZTdiMmZjMGFmNjk2MTYyMzQxYmFlMTNjYTFlNzM5ZDVhNjRmOGM2ZDQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZkZjM0MzMzOTFjNzAxZGM2N2M2NGJjMjA4M2VjMmM1MzBlYjg0MmRiODVmNDQ0ZmQzY2Q4MTNiZjA2NjFkMWIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFhYWY3NjM3Y2I2ZTdlNWRiODVkNjM0Mjc0NjAxNGRmMDQxY2NkNTU4YTkyMGIyOWViNmFjNzE5ZDdiYWY1YzIifQ"
+        },
+        {
+          "resource": "repo://api/src/services/device_jobs.py#L394-L488",
+          "version": "repo-lines-v1:sha256:c5360e0dc791b20f625e50480bb09f7f646c35a8832a14f9fdc695af56599a47:eyJzZWxlY3RlZExpbmVDb3VudCI6OTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU4MDZhNmZmOTQzMTBmZGY5NzI3NTU3NzU1ODhiNmNkMTZhZTk3NDhlNTQzM2U4OGRhYTU3MDVkZWE5YzRlMGMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE2NGJjYzJiNDQxZjI3MGRhYTViNzgyOTljYzBkNjFmZWNiMTA0Y2QzNTg0ODE5ZDc2NDYwYWQzN2ZhMGZlNjAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJlNTM1ZDQxODY0ZDkzNTlhMmRlZjUyNTkyOGZiNmYxZGZiYzM2NjQxMzRjZThhNTM0NzEwZGFmY2U1ZTAwNTciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVjNzYwMjk3NmRlNGY2ZjAzNzhlZmQ5YjUxOWFiOWJlZjViZjRiMzk4N2JkOWE5ZmU5YWEwZGMwZWRmMDFmMTkifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_e441b3c70f4d411380571e8954d14911",
+      "statement": "The repository records device jobs as a domain execution/transport record, separate from PlatformJob because the remote estate device owns execution authority; PlatformJob remains the path for platform-executed work.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/models/orm/device_jobs.py#L71-L92",
+          "version": "repo-lines-v1:sha256:0d9cafd2d45ff836a47c02bd49a0338341bff4e08978787c74e1df5b3c78ef40:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZlM2Q3ZDQ3NjA0Yjk4MDA1ZjkzYTQzZDQwMmE0NTdhOGZhZWVkMTU3OGRmNDNlNGE5ZTE3NDEzNzA5NjliY2EiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdiNmUwMTc3NDhmZWY4MjZjY2M2ZjVlYTI0ZjYyMDhkYTFlNDMzOGY4NDY2OTVlZGUxYTEwMTRiZDRjNTNjZjgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQ4MGQ2MGFjMGI4NTUxNGY5NjMzZGM5MzY2ZmU5NmU2ZDMwYTc4ZTc5MTA3OTkyZTUwMGM0Y2IzZTk2NzFhYWMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImRkYWY5OTk4NDY5MTI4NzA1Njg1MDMyNTU3MTU2N2NmYWM2NDU3YmEwMWRlNDBlODU0YTgyY2IzODZiZmQ0NmQifQ"
+        },
+        {
+          "resource": "repo://docs/architecture/device-control-plane.md#L36-L54",
+          "version": "repo-lines-v1:sha256:232c1c9a9ca3be172f762b4cc8c32e4220849c72367274f08c54b0ce1d41987b:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJiZjVkZDIzN2Y3NDliYmE2ODg5OWI5NzczYWEzMDEwYzRmNGU4YWNlNWQ3ZWQ0ZDg4Y2RiYjVjMzExM2FlZDEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJmOGNkM2YzZDEyNWUxMDc0ZmE0ZTljMTcxNjA2ZWY4MTYyOGU4NDM1MTY2NzU5M2RkYzJmZTI3ZTk1MWEwY2IiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU3YjZmODg1MGI1Y2Q4N2RhNTc2YzkzM2ZiNjNkYjQ4MDcxMDFiODc5ZTVjZGMxNTZiYWMzMzI0NDQ3ZGE0NmEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjBjZWYwODIyY2JkMTNlZDMwZWIxMDdlOGQzZmNjZjAyZjRhMzkyYzRiYWRkYTk4YzY1OTE5YjQ2NGYyODAxMWQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_a619424ac25b4c4f986431f83bcb69cc",
+      "statement": "The Kubernetes runner admits a platform job only when lease/backend/job identity state matches and the registered job definition is in the build execution class before binding the pod and running the claim.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/jobs/platform/kubernetes_runner.py#L30-L84",
+          "version": "repo-lines-v1:sha256:4f6a2525d6b87b137420003f5f9d9767d85bac5ad090dead3c5a4aab0073405a:eyJzZWxlY3RlZExpbmVDb3VudCI6NTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJiYjkzZTY4NzAwY2RlOTAyMTVjZjg4NWNiYTJiYWQwMDIxNTVjZTQ0MTZiNDUyYmRkOGE2NTEyMWMyMjA1NWEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFkODVkNTQ4MDQxNDY1NTRkMTcyOGFkYWMzNmNhNjYxODE5YzllZjhhZDFhMjg0N2RmZjg4ZGRjMTZkNjZjOWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk0NzlhODE3YmIzYTM1ZTc0ZDBmODc5ZjIxMjE2MmIxNGRkNjg1ZmZiYzk2ODNjMzBkOWM0MTg0M2JhY2NlZGQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhhYTEzYzE4ZjUxMjFlZDI3YzhkOWIwZTRkODU5OGEwMjAzYTMyNmVlMWI3NDliY2VhMGVhNzY2Y2Q5NDc4Y2UifQ"
+        },
+        {
+          "resource": "repo://api/src/jobs/platform/kubernetes_runner.py#L87-L107",
+          "version": "repo-lines-v1:sha256:57f1907031a1281b8ab8876dc6084df94e2c70b3d95bd204450a3a6e4ccff963:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEwZDIzODNhODk2MTEyMGM2MjQ3OTYzMjQ0Nzc1MmRmYjg5YzJlZDg1ZDYxMDcwNzlhNjNlNTc5MzFjN2Q4ZWUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIzZTJmNWQxNGQ1YmQ2NmZmNjVhYzgxNDQ5MGIyNjJiYWVjN2Q2NGU1NjUwODI3Yjg1YzRlNWNjNWFlNDM4OTIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU0ZmM5YTZhNDA2ODc4MGUxZjQyZjRiZTg5NDc2MjE0N2ZlYjBlNGZlOTlmZjZhNmYyN2MyYmRkMjAxODZjZjYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRjNmMwODhhMzhjOGZlOWRkMzIzMGRiMDdlM2Y3YTFkNjUzZDMyYzU0NTdjNDg4YjJhZTljOTI2Njc2MmVkZWQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_4d0032e4689845fbad6e3ee66e490e12",
+      "statement": "External worker enrollment and identity routes are feature-gated, verify a bearer identity through the Azure integration, and expose controller status only through a platform-superuser dependency.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/routers/platform/external_workers.py#L26-L56",
+          "version": "repo-lines-v1:sha256:097717e830dd9e7db87b5e1f3531d0ec92ec02ffadccdc563543c3c2e14e38bb:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU3YmU0ZjYwOWViODk4Y2U2ZTZhODI3MzE2NzNiMTBhMmFmNWM1YjE2MzRmMTI5MDdhZGQ5OTk0NWQyZDI5NmEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNiYTIxMjFmOTQzNjhhOTNjM2Q5MTM2N2MwNjQ3YTNkZTc5YzlmMDdjN2JmN2VhMjBiMGEyZGE0NzY0MWFmMDEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU0YTNmYzFlOWRlOGQyN2M4ODVjZmM1YTg3Zjk4NjVjYzJmYmJkZTFkODc2NDUxYmQ4MGI1N2RiMjg0YWI2OWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjUwMWRkNjAyODgwZWM4NTI0ODk4NDFhOTllNDFlZmM1MDdiZmQ3MDliNzQ2YmRmOGVjNWIzZDE5MmJmYjg3N2UifQ"
+        },
+        {
+          "resource": "repo://api/src/routers/platform/external_workers.py#L59-L109",
+          "version": "repo-lines-v1:sha256:a9a5bee5c6ab64a0c1c4f8221a3b5e3487ffbe5ed807ca0dd50b77e93f56e801:eyJzZWxlY3RlZExpbmVDb3VudCI6NTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIzODNlOGU3ODk2ZTI2NzU3NjZkNGIzYTU2NTdkNDViOTdlNjhmOTllNzFhN2JmM2VkYjdlNWY2YjE1OGMzMzEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZiZGY4M2M1ZDc1NDI4YmM0MGI1YzAyNTM1MTkyN2ZiYmMwZmFmNDhmMjhmNzdjNDAwMzRiZTBiMTI4YWU0MmEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY1YWI2OTQwMWYwNmUzOTcxNDA3NDIyNDhlNzQ1ZGVkZTM4M2U5NzdkZDAzYmI3NzM0ZGM1YjUwODQ0YWMzYjciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoyLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjkyOTczNDg0OTdjMmY4NGE0OTA4YmRlOGEzMzU3M2QyZDVlM2NlMjg2MGVjOTE5N2E2MGUzN2JiOTM1NWE3YTMifQ"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.7.2",
+    "at": "2026-10-18T02:14:28.318Z"
+  }
+}

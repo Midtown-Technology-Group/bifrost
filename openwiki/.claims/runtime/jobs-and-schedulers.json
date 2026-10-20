@@ -1,0 +1,170 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:519fa2fe1ea6eec73cdeb3709c95f73f428778cc400ee56300bdd72aad0484f1",
+  "claims": [
+    {
+      "id": "claim_1bd20136aa594959bdb81c336df2a37d",
+      "statement": "PlatformJob is the canonical PostgreSQL-backed system-work model for durable non-workflow operations, and new work should extend it instead of creating parallel job infrastructure.",
+      "evidence": [
+        {
+          "resource": "repo://docs/architecture/platform-jobs.md#L1-L15",
+          "version": "repo-lines-v1:sha256:4f6bf41e0b6da51507002e50485fd1c7766f0ca687594e7ac3255828ae733958:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZlYjg4ZTcxZmUzNTFjYzBlMTFlYzUyNzUxNTJmOTk3YTllYWRjYjNmYzEyZDQ3NjA3MmU4MzljODY1NjJiNDQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIyOWNhNmI5N2UwZGZiYmM0N2UyMTQ5ZmI1NWYwYThjZmZmMjBhY2IyZTg5OTk1YmY3MDVmNzYzN2U0OTFlMmEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA1YmE4NGY0NjBmODcyNjIwYWMzYTExY2RlNTU5NmFhMDllNTkwNjcyNDJlMmMzODM3NmZlMzI4ZmI5NmQyZmEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_b1fbf79304cf47ecb2130f3f74b9e66c",
+      "statement": "Platform job claim loops recover expired leases, claim with SKIP LOCKED, fence attempts with tokens, execute handlers in child processes, heartbeat, enforce limits, and record completion/retry.",
+      "evidence": [
+        {
+          "resource": "repo://docs/architecture/platform-jobs.md#L38-L61",
+          "version": "repo-lines-v1:sha256:823be8827aba28da3250c9e52c9bd7a42038baf92cf77098df0613ce49f1ba88:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQwNzQzZmQxYTdhNTc1YWNjYzJiNjlhNjM4NDhjYjkwYjhhMjRmYWE4Yjc0NWJkYzI3MmQwYTc3MWQyZGZiZWUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM3MDk0ODk2OTViZWZlYzA1MTZmNGViYjgxZjIyNDI5MDcyZWNkOTM3MWMxMDAwMWRjZjgwZTJjM2FmMzUwMjQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjMzYTU4MWViNjRkMjQ2NTEyZGMxMTUwYmNiOWQ2YjQ0OWQxZDhkMDg3ZjM2MDk2MDMyMDJiODE5NjFjOGY1OWMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjMwYzNkOWE2ZDVjNzg2ZDkwOWIzZDZmNjVhNWJmNGE1YTg1OTJiNzJiODRmZDRkMWJhYmU5MTc5YTAxZjhhNzUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_1c45ae846154495cb9f9628ed178dc43",
+      "statement": "Platform job runner rejects missing handler definitions and unsupported payload versions, then routes handler outcomes to success, cancellation, defer, retryable failure, requires-action, or terminal failure paths.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/jobs/platform/runner.py#L29-L63",
+          "version": "repo-lines-v1:sha256:18c9e7c9fc7590fe50b443e7deada059de20014cc2a8630fc2d9204baab87a81:eyJzZWxlY3RlZExpbmVDb3VudCI6MzUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFkZWY4YTZkOTI0MmVmMjZjYWJkYWMwYTI1ZGQ3OTBiOWYxODI5YjQ4ZDU3Zjg3MTY0Nzk4YzkwNWZkYmQ4YjkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlmMTFlYTExZWYwMWUyZTk2OWU1ZjRjNjI3MmYzZGI2NmRlNWY4ZTU0ZDFjYWFhNGFmZWYyZDIwYmJhMmVmMjYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjYyMDA5N2U0YWE1MDA2OGJhMTU3ZjlhMjczOWZhZDg2OTk1ZTFlMGNkY2NkYWRjNTg5N2MyMDM0Yzc0ZDNlZmEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdkNjUyODU0ZDAwZTljYmI3NGFmZDI2M2FlZWVjYTRiYjgwMDJlOGE1ZDliNTA1NzgzZGI3YjBjODVlOGE0NzMifQ"
+        },
+        {
+          "resource": "repo://api/src/jobs/platform/runner.py#L95-L145",
+          "version": "repo-lines-v1:sha256:facd4b82f1d190fe8761a461aa58c2165db1c860c65d9cadd5e763f20fccac62:eyJzZWxlY3RlZExpbmVDb3VudCI6NTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFkYTVjNjZlMTdiMTQ1Mzk3ODM0YjhjODU0ZGM0MTkzZTIxMjUxODBhODk5NmExNGMzMTg4MzMyNmIyZWZiY2YiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI4M2MyYTU3OTRiMDZlZDI2YmI3NzFiYmFiN2U3YzdkMWIzMjM0YTJkN2ExMmY0NDg3NmRhY2M4MjhjZDVlOWMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQxY2QyNDA4ZjMwOTI0NWIyZjU2Mjk4ODcxNGNmNjYzZWQ1M2MwZjNjYzU4ZTIwYzUwMmNkNWM4MzJiYzNmMDQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhiZGNjMWNlMWI4OWU5M2FkYWY4NDI5NzI3NjcxMmU2ZTcxYzc3NmNmZmExZjdkYjM5YjRkNzY1ZDU0NWYxZjgifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_766ee96c7a9a4e7d8645c84b322ab76c",
+      "statement": "RabbitMQ consumer infrastructure distinguishes retryable, permanent, duplicate, malformed, domain-handled, and shutdown delivery outcomes and declares durable poison dead-letter queues.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/jobs/rabbitmq.py#L124-L160",
+          "version": "repo-lines-v1:sha256:48d78501c5f9521a52a393f3871e2dc8ffccd3e540d79f0f01af1cd114cea45b:eyJzZWxlY3RlZExpbmVDb3VudCI6MzcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdmN2M4NjA4NWVhNDNkMWUwMDQ5NmE0ZGFmNDc1OTQzYTUwOGQ1YjQ3NDI0NzY4NjA5NTg5NTY5YmJkNzZhZDQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYxZjc5ZTcwMzVlYzhlYjU5OTFjYTZiNzE2YTIyMjlkODY4YmQyZWU4OThiY2IwZTZiYTRjNzg2YTk5NzNjNTkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUxNmMzZTU2MTNkODk3N2IyMGQwNmRmNDAyN2YyNGJlOGQ3ZTE2MzI5OTRiNWZkNWQ4MzNlZjIwMzAzN2NiYWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVmZGY0YzdjNmJjZTgzMTM1MjExZTAyMjBlYThkMmE5MjhjYzM1ZmRiYjY5NjNiZTY2ZjA1MmYxY2Q0MzUwNzgifQ"
+        },
+        {
+          "resource": "repo://api/src/jobs/rabbitmq.py#L43-L73",
+          "version": "repo-lines-v1:sha256:34284f56b055671b813847a5cf188ec85d29b20792603286cf3054284f0daf13:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdkMmFkNDExNDA4Mjc3MTExZjU1MGIzOTNiOGJjYTkwMzcxNzBhNjI2ZjRlNDNjNjJiNTBlYmJiYjg4OTc1Y2EiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjYyMmNlY2RmZWY4YTVkNzQ4YWNkZGE5YjI3NDkzM2FkNzY2YWRjMWQ2NjA5YjRkZWQwZmRhYzEyMGU4ZGZmMGMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImFhM2VlNDk0MzMzNGM4NDQ4Njg4YWU2NmI5OGRmYWY2MzBlZGNlYTZmYzkwMGIzMWRhOTRhMDY5ZTdjN2EyNzEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_0e661d83aadd4b33a98c460715dcf64f",
+      "statement": "PostgreSQL delivery leases are adapted to the shared consumer contract, with ownership checks before settlement and polling/lease recovery on startup.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/jobs/postgres_delivery.py#L1-L5",
+          "version": "repo-lines-v1:sha256:117f0ff71aa45b349f1df64c0754f32b68ed502aa3d6df2fcfc9932c27c4230a:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZTlmZDdiNGFkY2YzMmRiOTYwZDMwNjZlNDQ4YmY5OTQxYzAxMDdkM2VlNTJmMWE4ZTA3YWExNTI4NmZjY2Y0YiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYTMwM2VjZGQ0YTRkMTBmMTljNzNmZDQyZmQxMjQzN2ZkMzM1NGE4MjY4MTYwNWRhNTI1NWE5N2EzOTA2OGRiYiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjAsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNTViNmU4NzA2YjQzMDQ3ZjJhNmRiNjdmMTMyNjM4NTk1NjA0ZTY3ZjM2OTY2ODc2Y2UwMTU4ZjAwNTNlNmJkMSJ9"
+        },
+        {
+          "resource": "repo://api/src/jobs/postgres_delivery.py#L127-L159",
+          "version": "repo-lines-v1:sha256:7f7210a7714fdad7d0bd0e9ee67a6532a8239295b93abe30c02f1392f4538c40:eyJzZWxlY3RlZExpbmVDb3VudCI6MzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFjNmRmYmI3NmM1ZmNjNGJjZDM3MjU4OTUzNThjZThiY2VhYjVjYjVlYjEyNjMwNzZlYzljYWExNjdlZWMwMzQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZjOWU3NDBmZWJiOTAwODliYTliNzM0NmJlMGYwZmZkMWVkYTE5YjMzNzNjNWUxNzUxZDRhOWU2YzkxZWQzMjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk2MmI2NWI5MzNjYTMyMTg5M2IxNDgxYjFhMDQyZDYzYTk2MmI0YWI0ZTc3YmY4YTNkYjk0NzA0MmQ4Y2EyNmEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA4MmUxN2Q4YTBiNDM3NjAxMGM4ZjZlYTU4MWY1ZTFkNTgzZDkxYTNhNTc4N2Q4MzQ5ZWIxMWExMzZjZGJkYmQifQ"
+        },
+        {
+          "resource": "repo://api/src/jobs/postgres_delivery.py#L62-L111",
+          "version": "repo-lines-v1:sha256:51d16aead3157caf1b419365e992137b2cf17a4c4bdc13184e5aa729187434ef:eyJzZWxlY3RlZExpbmVDb3VudCI6NTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ1OTU4YTViMWMyOWQxNTk5OTEyOWJiMjEzOWExNTk5YjJhMThhZGJlMTJlMWJjZGVmYzg4MDI1NWUwYWYyNzkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU0ZjhmYTRmZDliYTQwNzliZDE2ODhlYmUwMjQ5MjVmNjFjMGU1YTllNjg5M2E4MzA3Y2Q5Njc5MDFkNzIyZDMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRkZThhMDRlMjI0NDNiNTc5ZTc5MjdkMzY4ZDExN2Q5MjBkYzU3YzIyYWExZjA1ZjViMDg4ZWRkMjNjZmYxOWMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzNzBiODI5NTY5ZDQ5MWY2MmVhZjNkZjZkMzE5MDQ1YTU0ODA5ZTMzMWVmYjU0ZmUzMDMzZWM4MmM2NjYxYjMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_b93a5101c61f46f8818b71d5a5c8d115",
+      "statement": "Scheduler replicas contend for the scheduler-triggers lease using database-time expiry and lease-generation tokens; renew/release operations are fenced by current token ownership.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/scheduler/leadership.py#L16-L35",
+          "version": "repo-lines-v1:sha256:9a6666261f74abbce8163aef1604ccb17c35c16142281bb20f1d347e3ed18448:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNkYjA3ZTBhNWY1ZjEyZDA0NTg3Mjg2NDFmMmNhMjQ5YzQzYjNlNDQ2YWI3YzdkMGMzMDA3OWYxNDE4NTM3NTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE1OTI2MGQzNjUxZGE3ZTlmYTIyMWFiNWE0Njc2NTIwYjY3MmJiOTZlNDQ0Yjk2MjVmOTdkYTQwMWY5N2JmZjQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQ5YzE2NGM0MzM0OTdjZmY5ZDhjZDkyZDY4MzgzZjFhY2RmZTVjOGRlMjg1ODgzMWY4YTk1MGYxNTQ0ODgwMDUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImFhZmFlMWYzMTg4Nzk1OTk4OTk1MTJiYmY5YzhkNTEzN2MwMDFiOTkyMmU5YWJkM2YzZjU4ZmZmM2RhMGY2MDAifQ"
+        },
+        {
+          "resource": "repo://api/src/scheduler/leadership.py#L37-L69",
+          "version": "repo-lines-v1:sha256:5b9a9418a2290dcee083782c773f556aa277acdb7d486e9c0f016fb1512d8572:eyJzZWxlY3RlZExpbmVDb3VudCI6MzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ1YTYzMGMwYjBmNDU2MTBhMDE0OTAyM2ZlNzVmOWQ1YmEwMmE4ZjczYTU0YTE1ZmFhN2EzZDIyZmI3YTcxYzQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQxMDQyNGJkZTNhZDkxZmY4ZGFlYTgxYTRhYTUwNGIyZmU5ZDM3OTIzZjU5Mzc5MTUyZDU0M2Q3YjRkZWFmNzEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUwNGM2OGViZDQ3YjliM2FiM2VmM2EyOTM5MGEzZWJkMzZkNzAzYWVhZGU0YjA5MmU4YzEyNjIzMGFiNDQ0MzkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM3MWEzZmY2ZTg0ZjZiZTgwYTQ2MTAyOGZlYTk4NWI0ZTg0N2EzZTA2MWQxMDg3NzJiM2UxMmUxMDdhYWI0ZDUifQ"
+        },
+        {
+          "resource": "repo://api/src/scheduler/leadership.py#L71-L123",
+          "version": "repo-lines-v1:sha256:cb80f694115ff23f8ab31d6e32cb2bf6840cae811f112be09716066443e345bf:eyJzZWxlY3RlZExpbmVDb3VudCI6NTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkxYTM4MTUxZTMwNTMxYWRjYzMwMzQ4NzlhOGNjNjllZjBkZTJlMTljM2NkM2U5NjNhZmRkMjQ0ODY1MDc5YzIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU1MDMyZTk2NGQwOTMyMzUxZTVkMTg1MjY5MjgxYjE3MWEzYTA5YjA4YjI4NmU2NjFlYTQ3MDMyM2M4MmViNGQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjFlOGI4MmE5ZWQwZmVhOWIxN2I4OGY5Yzk0MmY3NGYwMWNjMDU0OTJiMTZmNGY0MmZiZjU5YmRhNGQxZDgwYzgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNiMjM2N2JkMGRmMGE2MmRmYzNkMTIxOTkxYjI5OGZlNGU5YzNkMzI2NzUyZTY5ODU1OTQzYjZjZjRiMjQ4M2QifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_dad4bfc8f1e540cd894f4f318c386534",
+      "statement": "The platform job API limits ordinary users to their own jobs while allowing platform administrators broader visibility; cancellation requests are exposed separately.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/routers/platform_jobs.py#L125-L140",
+          "version": "repo-lines-v1:sha256:cb06788c08e5f0687146fea41b441ba8bf02fddd532206440b3ab6c3b82f123d:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ1MzI2OTVmZjkxMTMzNTM5M2YyZWMyMjNmYWE0OWMwZTFjNTJjNDU2YzQ3MmU0ZWE0MzkzYmRkMTNmZDgxOTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwYzFmMTg4ZjE0MmVkN2E4MjQ2ODBiMjA3MTcyYzU1MTliYzYxNGE0OGZkYTdjZjE2N2VkYjhkZGY3OTk1NmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImFjMzEzZjYwNzQ3N2IwZWQzNjQ3ZmU3MjVhMzUzMGI4NjM4ZmM1ZjBhMzQ1ZWM4M2UzOTVhNmU4NDY0ZDQ0MjIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        },
+        {
+          "resource": "repo://api/src/routers/platform_jobs.py#L44-L69",
+          "version": "repo-lines-v1:sha256:d227bccbe1369a144c4307c635af651dea45b19ea896734fe213528a9143b889:eyJzZWxlY3RlZExpbmVDb3VudCI6MjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUxY2Q5OWE1YTFmOWM0N2YzMjg4OTcwYTI2NWVmM2QzNDg3ZDYzMWJiNjY2ODNkN2QxYTRmNzViNmI0NTM4OTYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg5NjlkZDU2ZmZkM2MwNDczYWQwZWVlMzVkNGFmYThmMGJhYjg1MzBiOGQ2YzE0ODZiMzY1NmVkNmU5MzEyYTYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImFjMzEzZjYwNzQ3N2IwZWQzNjQ3ZmU3MjVhMzUzMGI4NjM4ZmM1ZjBhMzQ1ZWM4M2UzOTVhNmU4NDY0ZDQ0MjIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZiN2U0Nzk3OGYwZTJmYTY2YWU2YjFhMGJmY2Y1MDRkNDVmOGI3MTE5M2E2OTAxZmUxYTE4MTZlZDkwN2UyMGQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_0390b677b56444088bdc025a1e598faa",
+      "statement": "The architecture guide states PostgreSQL is authoritative for PlatformJob status even when the optional Kubernetes backend supplies build execution capacity.",
+      "evidence": [
+        {
+          "resource": "repo://docs/architecture/platform-jobs.md#L126-L138",
+          "version": "repo-lines-v1:sha256:e7fbb48842411b01e7fd538df58a7b1368123fc8706d678da25f083e6cdf2dac:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkzODYwMmNjZDVhNzRhNWNiY2QxY2U2ZDA1OTU2OTZjYjA1OWRlOWJmZTNlNzhlYjlkMGY2ODBiZWI3NjAzYzEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM1NTI0ZGM3MmFhYzY4MmIzOTFhOTIzMTVkMGI4YmZhNjY5NmM4ZDViOWIzMmM5ZTNmOWNjMzRhZmE5YzMwMTIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIxZWFjZGQ0NjA3ZTBhOTM1MjVmY2FmNTc4NGJhMWNjNDEwMzM3MDdhZGM2ZDgxOWUyMTY1YTA4YmJmNjE4NjQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE2YWVmMWVkMDQ3MjhmNjE5MDVlN2UyZmIzMDRmMDYwMDhhMDY5NGI2ZTg0YjViMGMzMTc1M2RkMDQwMTJiMTgifQ"
+        },
+        {
+          "resource": "repo://docs/architecture/platform-jobs.md#L96-L112",
+          "version": "repo-lines-v1:sha256:17e617b4f3f6214b114e89241873cc60fdf732f0e617fcdb53c4d0f1f09dded7:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE0OWRkYWI0ZDkzOWU3MjllNTRiMmQxMGIwNDMyZWYxMjlhZTJhMjg1NTU4NDYwNzAwMWUyMjg3MGNlZDYxOTciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY4ZjZhOTQ5NDY3ZWMzZjMyYmQwNzVkZmY0MjQ4Yjg2MWEwNDIwZTFjYzMyNjdhMDFhZjk4ZjI2YzNhY2E2ZTAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjkzOWViNzBjMzE5YmJkNjhmZDg2YWM5NDFhYjhiNWIxNTNiZmFlMzUzZGZhYTQzYjM4ZjFjNTBlZjkzNzdiMWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRmMjUzOTM4NzE2N2UxZjM4YzM5YzBhOTM5YjZkNjMzNzc4MDg4YWIyMmViZDMyMjE5YWExYmZmNzlmODRjMmUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_161a9746052b4ce49fa3633a6b0f9400",
+      "statement": "The worker loads its consumer set from an explicit allowlisted configuration, defaults to six consumer families, blocks workflow-only consumption unless a canary queue or explicitly enabled production queue is selected, and applies special control-poller handling to package installation under PostgreSQL delivery.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/worker/app.py#L127-L141",
+          "version": "repo-lines-v1:sha256:fc98bd229965fcead745403fd163cfad853d07de56592c2387627397d3c753df:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk0N2EzNzA3YzVlZDYzNThiNzJlZGJmZGMwNTZiZDRmMWNkNzgyZjY2MGE1NTgwNzI3MDU3MjQ2NGFhNDY4MWEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM5Yjg3NTY2ODEwZmU3YTA1ODA4YmRkNDc1Y2RhNDNkNzcyZWMxYzU3YjE2MWEyNmRhYmY1Zjk5YmI5ZWVlNWEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRmYmQwMDkzMTRiYzI3MDg0MTY3MzRhMDJhZTVmZjM5YTFlNDhhMDUwYmU5MWY0M2IyZmFhOTIwMDJjNjJiZmMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdkOWY5OWViNDVlYjI4NjhjY2RkYWQzNDAzYjlmZTU0NDk5ZmY1Y2M4MWE3NmFmZGJiNGFmMDQxOTA1YWE3NTAifQ"
+        },
+        {
+          "resource": "repo://api/src/worker/app.py#L257-L272",
+          "version": "repo-lines-v1:sha256:4844a08d7c0ec583f1e6a314128beae551126924f0ca8150d0cc81577055e915:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM1MjBhYzNlMmMxNzQxMTdiYTc5NjBkMmMwNzNlZGM2OTczYWU5NmY4ODU2MWMzMmFjZmIwODc0NjY5ZDBmNDUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjViYzcwMDFmMmRkMjhmMjE0YWQ2Yzc5ZDliM2FkZTllYjQyNmI2MGU4NTIzZWZiNzJhZjUwNDExZjgzYWIzOGYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjVhMmJhYjQwOTc0YjZhMWM1ZDU3ZmEyMjZjZTI5NDM0YWE2OTMzZTk1MmFiMzZiNGNhOWYxZWU5MjU2ZDFhNjgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImZiYmI3Mzk5YmM5MzZlZWFmNTMyOWM3YjdiNjk1Y2RmOTQ0NWFmNmE2Y2VjN2NiMWU2YjRiMzI0MGRkOWI3YTkifQ"
+        },
+        {
+          "resource": "repo://api/src/worker/app.py#L57-L124",
+          "version": "repo-lines-v1:sha256:4a8ae481a3404e59e0e7374f4d0eabb23371d34fcde1c219921164d66de8bce9:eyJzZWxlY3RlZExpbmVDb3VudCI6NjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVlM2QyZDM5M2YzNmI0MmNiYTMwNTJlM2ExNGU1YThhYmEyZjQyZDBhYzI0NjUxOWI1NDFmYmRjZWE4OTZiNzAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU1YzFjNDYyZTJhMzlkNzQ3NTlmNWUxYjEyNmY3NjgzYTJiNzMwMTE4ZTE4ZjUxMjJiMDhjZWRlZWI2NTBlMjMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM2ZWUxNGU4YjBlMTIzYWI0YTQ3OGFiZGQwNDkwMWUwMTFhMDQzZmRmMmFmOTk1NTU0YzNjYWVmMTM2ZjgwZDYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_92a28dcc87284a5da7d58140f1346049",
+      "statement": "The worker installs a minimal SIGTERM handler before importing its application, validates runtime prerequisites before consuming work, and on shutdown drains consumers under a configurable deadline before bounded stop retries and shared-resource cleanup; focused unit tests cover selection and drain behavior.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/worker/app.py#L170-L219",
+          "version": "repo-lines-v1:sha256:5a8d5392e35bf36f6ae9321a0db0afd6a4f9622fcb28f028d4782d86b1de95fe:eyJzZWxlY3RlZExpbmVDb3VudCI6NTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBkNTFmY2JlNTYyYzI0YzM2MDA2ZWQzYTc2Y2I0MzlkNzVkOTQwOTNkMDliMGNlYWI5YzJkZTQzOWJmODZhZTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJkMTk2MTkxMmEwMzhiMDNjNjY3YTMxMzgwZjM3MzcwNmZlODdlOThmOWZiMzQzMzAzODk2ZWY1YWY0NTFhOTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIxM2ExOWIxYWYyZjBlMzA5ZWE0NDA2NWQ1YTNjMGZiN2MxMzhiMjk1MjI4MGI4ZDM5MjI5NzQyMDYyYmZkNDMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImYxNzYzMGUwODkyOTZjNTA3NjIyMjYxMTE1NGU0MTU4NGVhMjMzYzcwMWRhN2ZkNmJmNDhhMzFmZTY2ZGFhYWMifQ"
+        },
+        {
+          "resource": "repo://api/src/worker/app.py#L367-L413",
+          "version": "repo-lines-v1:sha256:129786ee62aa325f6a35b6ec279bafe7385164412a2c23458368678d4bb90688:eyJzZWxlY3RlZExpbmVDb3VudCI6NDcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM1MWI2N2I2OWQxZDk1MDVlZWI5OTBiNjRjNmM3NWY2ZGViNTg5MzIwODc3OGY3MDExYjNlZGNlZDRkNjhlMDEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJiMTIxZWI3NzUyODliNmRjZWY4MDBlMWNlY2VhOTlmNWE4ZmM0NWMwYzE3N2UzYTA2YjY5OTQwNTFiMzU3OGUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE1MzNjNjJmODY4MDYzOThlM2FjZWM0YWU3ZjljOTM0MDdkM2MxZmE3MDdhZjcwMDZiZWY0NzZkOGE4OTI2ZDciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ0NGQ3ODlmNTk5M2RjYjM5ZjlhMGI1MTMzOGU1ZTVjZDNmOWYzODE1YTZiYWQ5MzA2YmQ0ZTcxZmIxN2U5Y2EifQ"
+        },
+        {
+          "resource": "repo://api/src/worker/app.py#L417-L474",
+          "version": "repo-lines-v1:sha256:e27d4551bd9aae917f57ff526f379d87d969147baefa5110745e6088b2731cda:eyJzZWxlY3RlZExpbmVDb3VudCI6NTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZiYWQ3NWYwY2IyOTRhODJlOGI2OWExNmI0ZDVlMjQ3MmM5ZTFlNzBhOTNjNmM3NDQ5OGU0ZTk3MDYzZjZlZDYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjljY2NmNTg4MzE0ODM0NGFjYzUxZWZiOTIxNDM4Yzc3OThlZTc5ODg0N2VkYTlhMmEzMjc3ODIzODM4YmY1ODQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQ0NGQ3ODlmNTk5M2RjYjM5ZjlhMGI1MTMzOGU1ZTVjZDNmOWYzODE1YTZiYWQ5MzA2YmQ0ZTcxZmIxN2U5Y2EiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFjNjQ1YTg3OTU5ZDUxZjFkYjJkNTNmMTUyNGMzODMyNmNlYWIyYTEyN2YwYTQ0NjAyM2Q0MjE0ZTQ2YmFjZjIifQ"
+        },
+        {
+          "resource": "repo://api/src/worker/main.py#L1-L24",
+          "version": "repo-lines-v1:sha256:c5fed558dc42ced66a0ef759657547f46e3eee4b221b20df95d906673db52575:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNiNDUwZDMwODlmY2NmZDNiNTZjMjhiODVhZDM4MTg4OGEwNjY4MTVhNjkwZTI4MTViMTczYWU0MTI0NzE1NGMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJhYTgzNmE3NmMxOTZjNjg2ZmRhMjZjNzIyZGQ0ZDFkMTRjYzA1ZmMyOGRlZjVkZGM5YWE0NWRhMDg1MTcyMDIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        },
+        {
+          "resource": "repo://api/tests/unit/worker/test_app.py#L193-L245",
+          "version": "repo-lines-v1:sha256:e90584e231e0d24ba873c53891bb983d1201d3fbf0ae92e2ebabf83703f33bbb:eyJzZWxlY3RlZExpbmVDb3VudCI6NTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgzNzExMjQwNDE4MTQyMWJmMGU3N2JmNWU1ZjZkOTlhMmU0NjMyYjI1YzEyNWZmYjMyYjg1M2Y1NDMyNjMwM2EiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgzNzExMjQwNDE4MTQyMWJmMGU3N2JmNWU1ZjZkOTlhMmU0NjMyYjI1YzEyNWZmYjMyYjg1M2Y1NDMyNjMwM2EiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjUxMzcxMjI2NDdkNzhiZTY4ZjI3ZDg0MzJmNGFkYTc2MTAxMWZkZjUxNjA2ZjlhYmE4MGEyNzNkZDFiNjc3NzMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgwOGU0N2M2ZjBkMmIzZDNhNTRjYjc3YWU0NDkwNTk1YzE3NmM3MmU1N2I0ZGFiMzhhZTM1MjYzYzFkNmE5Y2IifQ"
+        },
+        {
+          "resource": "repo://api/tests/unit/worker/test_app.py#L407-L528",
+          "version": "repo-lines-v1:sha256:aef4657c0593037ad5c5bd1c20d4b6c40be419e22adda991766e4634198fa8ac:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIyLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI1YTMzNDk1OGM3NGIyYzkzN2I0NDFjODIwMjQxOWI5Mzg5Mjk4NjIxY2I4OGIzYjIwOWU1OWE1MTNkZTU3MzZlIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIzNTY2MmFhNjBhM2M5OTkwYzg0MThhMTQ0YmM3NDk3OTEzZjk1OTM3MGY4ZGU4Nzg3YTUzM2Y2MWUyMTQyZjQ4IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI1YWI3YjI3MmFiNGUyNTE3NWI1ZmQyNGMxM2NmZTU2MzQyNTE0YzAyNzk0NmYwM2I1MzA1ZGYyMDMzNzg3OWY5IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIyZWJhODRhMzE1MmUzNDIyYmQ3OGI1ZGQ0MTRhYWJhYzE0YWUwNmJkNzJlNmFkMDhkMDlmODZiYWY3YzYxZTRkIn0"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.7.2",
+    "at": "2026-10-18T02:51:00.673Z"
+  }
+}

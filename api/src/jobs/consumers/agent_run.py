@@ -13,6 +13,10 @@ from datetime import datetime, timezone
 from typing import Any, Literal
 from uuid import UUID
 
+from bifrost.agent_limits import (
+    DEFAULT_AGENT_RUN_TIMEOUT_SECONDS,
+    bounded_agent_run_timeout,
+)
 from sqlalchemy import select, text
 from sqlalchemy.orm import selectinload
 
@@ -26,8 +30,8 @@ from src.jobs.execution_policy import broker_execution_policies
 from src.jobs.rabbitmq import BaseConsumer, DuplicateMessage, MalformedMessage
 from src.models.contracts.agents import ChatStreamChunk
 from src.models.enums import MessageRole
-from src.models.orm.agents import Agent, Conversation
 from src.models.orm.agent_runs import AgentRun
+from src.models.orm.agents import Agent, Conversation
 from src.services.execution_attempts import (
     start_execution_attempt,
     transition_execution_attempt,
@@ -41,7 +45,7 @@ logger = logging.getLogger(__name__)
 
 QUEUE_NAME = "agent-runs"
 REDIS_PREFIX = "bifrost:agent_run"
-DEFAULT_RUN_TIMEOUT = 1800  # 30 minutes
+DEFAULT_RUN_TIMEOUT = DEFAULT_AGENT_RUN_TIMEOUT_SECONDS
 CANCEL_CHECK_INTERVAL = 2  # seconds between cancel flag checks
 
 
@@ -428,7 +432,10 @@ class AgentRunConsumer(BaseConsumer):
             await publish_agent_run_update(agent_run, agent.name if agent else "Unknown")
 
             # Run the agent with timeout (Layer 1: hard safety net)
-            run_timeout = agent.max_run_timeout or DEFAULT_RUN_TIMEOUT
+            run_timeout = bounded_agent_run_timeout(
+                agent.max_run_timeout,
+                default=DEFAULT_RUN_TIMEOUT,
+            )
 
             async with get_redis() as redis_for_executor:
                 # Agent/MCP provider clients are heavyweight and unused until an
@@ -922,10 +929,9 @@ class AgentRunConsumer(BaseConsumer):
                 )
                 chat_agent = result.scalar_one_or_none()
 
-        run_timeout = (
-            chat_agent.max_run_timeout
-            if chat_agent is not None and chat_agent.max_run_timeout
-            else DEFAULT_RUN_TIMEOUT
+        run_timeout = bounded_agent_run_timeout(
+            chat_agent.max_run_timeout if chat_agent is not None else None,
+            default=DEFAULT_RUN_TIMEOUT,
         )
         from src.services.agent_executor import AgentExecutor
 

@@ -1,0 +1,112 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:c73e7cf062cec789c1355bc6abe867f9442037ba8f0bbbc01bc3cd2e0ee98f3a",
+  "claims": [
+    {
+      "id": "claim_8bb17a2ec913488c9886b7ec7ef4e62e",
+      "statement": "The canonical operation catalog binds operation identity and transport metadata, and operation_route attaches its REST, CLI, MCP, scope, and asynchronous metadata to OpenAPI.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/services/operation_catalog.py#L1-L19",
+          "version": "repo-lines-v1:sha256:bb12e4866e688b40696eed278767c043c14364be0d1a094b80882ec0de3afaa8:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAyNzViOTg1MTY3NWJhNDI5MDM0MTM5MmMzN2RhODZjYjdkMTk1MGI3MjI3YjMyMDU5NWZhMTI4MmExYjhiNzEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI2YTZiNTM0NDAzN2QxMjQ3MmE1YmY1ZjhkNzJlYTYwNDVjZGVhNThhMGQyODM4MWE5OGUwZDY1MmQ3YWNkMzcifQ"
+        },
+        {
+          "resource": "repo://api/src/services/operation_catalog.py#L3535-L3550",
+          "version": "repo-lines-v1:sha256:d74a10da10e3909acc6331f6d44cf0b0616d2f979b585aad326f6d28f9c83de2:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYwMTEyZWEzNTE0ZTdhNDk2OGI5NTE0M2YxYTJhNDdjYzA5Njk2MDZhYzQyOTMxZDA3MzI4YWQ0N2IzYjcwMzEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZlOWJmYjcyYzcyMGM3MzM2MmQxYTcyZjgwOTkwYmZlMzczZjVkZjJkOTQ4NTYzYmMzODhlMGY4MjE5MWVkNGQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ3NWUxZTJlMDFjMjllZDA2YjAyZWZmOWQ2NWFhM2NmODM1ZTYwMmU4MTVkY2QxMGIyOTU2ODg5MDM0OTBjN2YifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_30d8bee30ecc46dcad8f53928e82713f",
+      "statement": "Catalog validation fails on duplicate operation identifiers and REST, CLI, or MCP bindings, and runs at module import.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/services/operation_catalog.py#L3565-L3591",
+          "version": "repo-lines-v1:sha256:2f6355da1851c879cd373cfb36adce2b2059674c61a3287e80afb8535eeb7606:eyJzZWxlY3RlZExpbmVDb3VudCI6MjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU0MmZhYjFiYjlkNTNiZDA0N2M4YWQzYzJmNjRmNjJlYzdhZTcwMmFjODk3NDUyNmY4YmQ4YjJhNDRmYjA2NzciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA3OTM0ODU1ODBhOWI1N2FhNGU2ODY5MjU4ZGExY2E1NWU2MWE2ZjdkNmJmYjU4YTA1NWMyNzEzMzkwYzRiYzIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhhZmEyNWEzZjVhY2Q2OWViNjIzZTU2MGUzZTY5NDUzOTJkMDliNTBhOWY2ZjY5ODNlMGRlZGYzNmM3NjU4NGUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQ1NTIyYzI1Yjk5NTA2ZTFkNzhhODRkZDRkNDM3ZTM0MmYzMjg5ZWY1NDhiOWY4YjlkMzU1ZjlhNGI1MjZjZWUifQ"
+        },
+        {
+          "resource": "repo://api/src/services/operation_catalog.py#L3627-L3631",
+          "version": "repo-lines-v1:sha256:cbb1d3f07578ea512dcae49455912cbef1b4cda16135531a1288bc63c5160704:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNmU2OTRiNmUwNDAyMTExNjE0ZDViNTIxOWQwOWZjMGJkODBkMDQ3YjRkNWMyNzQxMTA2ODA4MjMxZWQ1YTY5OSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYTg0MDMyZjYxNTMzYzkzOGQyMmIyMWUyY2E5ZWU5ZTZmMTZkODgzMDFiYWNiYTM3ZmU1YmVmMDZjNTM2Y2Y3MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMDVjZjAwYTM5MDE3NTM3ODU3MTg0MDg3MjQ2ZDFiYjJhN2U0NWI0ZTBhZTYyZjIwZDJmN2Q1ODcxYmVjMmY5OCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiM2IyMzY3YmQwZGYwYTYyZGZjM2QxMjE5OTFiMjk4ZmU0ZTljM2QzMjY3NTJlNjk4NTU5NDNiNmNmNGIyNDgzZCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_c93599a783be4722ac283d86708b5390",
+      "statement": "Repository skill documentation designates .claude/skills as canonical and describes .agents and public plugin directories as generated mirrors.",
+      "evidence": [
+        {
+          "resource": "repo://docs/dev/agent-skills.md#L1-L24",
+          "version": "repo-lines-v1:sha256:cd053e5710f6556432dd1ff957a8f18b4c23a9690bfe97dca3c86a8338d36f78:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI2OTFlNjk3NWE2NzBmZWUzMGU1NTM2MzI5ZTM3NjhhMTU4MTJlZTM4MDdmMzE3NWE5YmM2N2Y5ZmIyMGNjMTgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU2YmNiNDljNTI4NGU0ZmU1NjQ4NzdkNzY3ODY3YTJkMGJmNThhY2M0YjliMjJlMTVkM2U4OGJlMjVlZWUxYTUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjIwOGY1OGMxOTg3YmNhNmRlY2NjNmFlYzEzNTkxYTVkOGVkMTQ2Yzk0NTEyNGZlYzhhMGUyODRiM2Q5NjM5MDAifQ"
+        },
+        {
+          "resource": "repo://scripts/sync-codex-skills.sh#L1-L11",
+          "version": "repo-lines-v1:sha256:8fc4deb4271bbd2e8b87b6319e5530b214749835b9d41e1313baa4b752a6e40b:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFkOTVmYzA0YTgwYzk1MmY0OWNlNDE4ODYyN2M1M2IwZmJlOGM0NDA0MWI5NTJkNTkyYWNkMWRlOTk4NjE0NjYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVlZjc0MjMwYjA4MzBjMDQyYWM0ZDNmNjQ5NjczNDcxODRkYzUxZWFkNTY5ZDA4NzRhNGIzYzA2N2M1MjAxMzYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImExOTg0ZjI4NTg4NzhjMzQwMjJjYzU0NDQ0NjVjNGY1NjczYTE0ZGVhNGE1N2E1NmRiZTdmOTA2M2E2ODQwYzgifQ"
+        },
+        {
+          "resource": "repo://scripts/sync-codex-skills.sh#L30-L53",
+          "version": "repo-lines-v1:sha256:6a4818fea0f0a27eefbbd410911fac9bc30d77a4aa678b4cf9bcfd5efdf2c79f:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUwZDQyNWM1ODU0MzEwY2IzYTIyZGUzODc2MGEyYzYwYmE3MDhjZmJiYWVmOGEzZmViNjc3ODQ4MjRmZDIxNzAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYzMzZiNTMzNjdiZDJjYTI4MzdhNDA5OGU5MzhhMDg1YTc1NDNlYjg2YmZiYTI0MDRjZmM5YWEzOWFmZDYzYWYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM4ODllNGI4NjQ4NGNmZmJhZjI2NWQyY2NlNjNmNzZhNjRiOTBiODMxZWQyM2QzODI2OGQ3ZDZjZDg5MmRkNDMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJkOTI2MjlhM2UxZjRlN2RhNDY0NWI0NWE1ZWJjMWI3YTdhMTg2NzQzODI4NWExYWUyM2ZlMmM1MTk4ODIzZjcifQ"
+        },
+        {
+          "resource": "repo://scripts/sync-codex-skills.sh#L67-L88",
+          "version": "repo-lines-v1:sha256:2323a71ac440f5e46de8fc4b5814faf8daae86eaaa77864b00b743fd6791b769:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3OTE0MDQ4MWQ1NjljZTgxNjdiYzBmZThkYzE0MzNkZGVlNWNjZGFiMmY0ZDQ0OTI3OTA1MTA5MGRlOTAxZWUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQxMTdmYTAwNmJhOTIwODUwMGIyOTMwY2U2OWNiZGU0MzZjNjQ3YWZhOTE3Y2I3Mzk2YTliYzkxMTFhNDZkZDIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjBhOGY1NDA3NWU4ZTVhYTM3YmE5ZjVlOWExYTRmNGYyYWFiNmNmNjVhMTE0MWIyN2VjY2U0ODc0NWFmMjRiNGUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoyLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjcxODc0OGE3Mzk0NTIwZmE4OTU3MTQ1MWUwNmIxZGViNWMzMDc0Zjc4ZjVmMTY1NDUxN2VjODJlMDczYTk4YjAifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_1cca4f9dc43243c09798078af0e42c88",
+      "statement": "The Bifrost plugin manifest declares its packaged skills directory and public plugin metadata.",
+      "evidence": [
+        {
+          "resource": "repo://plugins/bifrost/.codex-plugin/plugin.json#L1-L18",
+          "version": "repo-lines-v1:sha256:93e866b6a2661920dcec7985232ed7551d7e907806ff55bfd8115920cd071c17:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE2ZmIwOGZkYTFhY2I5NTdiNjExNmJkMzc4MTFhMWZlNDFhMDE2MTFjMDYzMWVkYmY3ODZkNjg4OWEyN2E1NWMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZlNDE2ZTk2YmYwMjcwMDVlZmE2ZTQ0OGNkZDdlYWQ3YmZkMjkzZmE2ZDc3YTczYjQyNzBkZWJlYmRkZWUzYzgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAzMGU4NjFlYzUxZTAwZjUzNzVjOGM3NDQ5MTIyNGM4NmI0NzMxNWY2ODQ4ZTgyYjk0MTc4ZGY0ODljNTJmNzIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_65b66772ae9f4031a352b0e5a12e7408",
+      "statement": "The docs pipeline selects screenshot entries based on changed source globs or explicit full/ID selection, then captures and post-processes successful entries.",
+      "evidence": [
+        {
+          "resource": "repo://scripts/docs/decide-captures.mjs#L41-L57",
+          "version": "repo-lines-v1:sha256:dc80dd890fdbcfacfb03f54a6030438c7238f1ee6c1671ec483d0108df5ac7d3:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZjZjE1YjUxNDU4ZmU5NDcxNTE2NDFjOGE2ODdlMzJkZDc1MjMzZjE5MDdjYjlmNDQwZGY4ZjE4Y2IxNDIxNWYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQyNzliNjgwNTIwZWQ1MjZkY2M0YzhhYTM3MzUyNzU5MGUyODE5NWU0MGZiZTYxMDdlMWU1YjQ5NWE0NTc3MzUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM0ZmZhM2FmNWFlZjgwOGI0YTAwOWZiNGUyY2I0M2JjZmZmOTVhMmRiZGQyYWQzODE4YjNhYThkMmI3YjllYjIifQ"
+        },
+        {
+          "resource": "repo://scripts/docs/decide-captures.mjs#L69-L94",
+          "version": "repo-lines-v1:sha256:46a643e26e499a396f7c5552916000641c317f1b15dad751af4f25ee6e01a2c9:eyJzZWxlY3RlZExpbmVDb3VudCI6MjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFkY2EzYjk3MzQ0MDZhZmZkNTgzNWUzMmRhZDYzYjg4ZmU0MThkODFlM2M1ZWZhNWY1ZTc0MDZmOGZkYzllZTciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjMyZDRmYTNkYTliNzQwMjY5MTg5ZGQ4M2JjNTIwMDE1MWY2OTUwYmEyZDAyYTk1NmZjYmFlMWVhZTFmYjIyNjYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoyLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk4ZTA2MzA0MGZlMTg4NmVjMDA3ZGEzMzdhNmE3MDYwODk1ODVkYjZjMGYzNGMzODk5ODYyYzVlYzA2N2Y4ZGUifQ"
+        },
+        {
+          "resource": "repo://scripts/docs/run-pipeline.sh#L1-L12",
+          "version": "repo-lines-v1:sha256:d0e445d6fe64fb4589672e0558ba772c4d0a8836239ffce858a2327ef8af47fc:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI4NzVmOTI4NTQ2YWVlNzg1NWNiMWRiOWFmYzhhYjNmMWE4YTM0ZDQzZGU1YmJkNjJmNzA3NmQ3YmE5ZjM5MTciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQzMjVkZTQwZTE1ZGFkNjU2ZTY1YTQ0MTIzNjNhY2QwYWIxMDgwYmViM2UwOTg1NGUwZmI5Njk4OGFkODkxZTkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFmZjZkOTdiZGQ4MTkyMzAyOTU4MDljOWFhMDYzMzNlMWE5NTgyZDNiZjAyZjhjMWJmZGNmZWFhZTJhNmI3ZDUifQ"
+        },
+        {
+          "resource": "repo://scripts/docs/run-pipeline.sh#L62-L100",
+          "version": "repo-lines-v1:sha256:0c2664c820bdb7d0bb683e017a9a5733d805d6637bed6dc424b7e2958076d6e2:eyJzZWxlY3RlZExpbmVDb3VudCI6MzksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY4MmU2ODEyZGViZGYwZmM2M2QwZmQyYTIwNTg2NGYwMzViZGRlOWJlNWU0YjdmNzRlZWFhZWViNzY5OGM4MjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRhNTk1NmE1MGIxN2ZkNzA5NzgwMDI4NjFlNDMxODJlZDViODFlZTUxNDlkZDQ4ODYwNmMyNmQ0OWIxZDg3NmUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZiN2M0OTU5MmQyNzg4NDJjYWRlNTA5ZmRhNTVjYWVmZWFkMjRlOTM4NDNkNjM4Y2RhMTYwMTI5MWQ3Njk4MWMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM3NjlkMjM3Y2Q0MjBiOWQzOGI5ODFhMGE0ZjY3NzAxOTBhNGE4M2RjYTFmZTU2YzRmNWJhMWUyY2JjMGVmNzYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_af3bd6545fe0414199d49beec4157dcc",
+      "statement": "The post-processor applies image annotations, uses pixel difference to decide whether to replace images, and advances capture SHA watermarks after successful capture even for visually unchanged output.",
+      "evidence": [
+        {
+          "resource": "repo://scripts/docs/post-process.mjs#L183-L215",
+          "version": "repo-lines-v1:sha256:830e0d8fbd0c38ddbec7b6e01d01135c5412b94dfa926c8a8c5c840607d77d33:eyJzZWxlY3RlZExpbmVDb3VudCI6MzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjExZGY4N2E0NzMxNmM3MDhjNTUwMjA5OGU5YWY2YzQ0NTM0ZWI4MGJlYWRjZjYwNjMwMjhlZmNhODU5MzdhYmUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVlNzRjMDFkZWZhYzU4MTA4MzdjODE1NGQxYTVhYjkxYWIwZjA5N2U3Mjk0ZWIxZTU1MGE4ZjRlODYwOGM2OGEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM3ZjdjNmYxYTFjMGNjOWUyZmI0ODYzYmNhMDEyZTMwZmYyNjMwOWY5NTZhM2Q1YzIwMzExMDljOWIxNDJkZTAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY2MmQyMGI3Zjk5OGIzN2QwYmIzYmMwNjFkMzIxODMwNzcwODBiYWVjOTNkY2RjNjRkMzEyN2NkZTNjM2M4ZjYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_8c37c1002c1e468090025ab9547bb423",
+      "statement": "A focused post-process test checks that an unchanged successful image capture still advances the source watermark.",
+      "evidence": [
+        {
+          "resource": "repo://scripts/docs/post-process.test.mjs#L31-L70",
+          "version": "repo-lines-v1:sha256:36585be19df9be1d88cff9a87b4092f0ddc98b7c4ae80df37abf4e0dca72aca4:eyJzZWxlY3RlZExpbmVDb3VudCI6NDAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZjMjgzNTQ3ODViNWRjYzAwZTkxOTY5ZDRmYzhhMDhhNDE5NDE4MTc1NDNiNDFiZjlkMjA3MWRlNGUyMzkwNDUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNjNWJhMmEwYTc3OTRjYjE1OGUwM2ZiYWQxMDQ1ZWI3ZTQ2MWE5NWIzMDBlODdmZGFlZWU3ZjJlOWFlMjI4OWUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjgwZWIyZDEwNmE0MzVlOGVkNDhkZThiZGI5MDFhYjUwODcxNGVjODgzMmQ5NWU1M2QxMWVjYzA5ODIwY2VmMzEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY2ZjViNDBiMTU4NDU3ZDE3ODY0ZjIxNzkwNzg2ZGQ1YTJlY2RiNjRiNjZhNjUxZjc4OGQ0ZTI1Y2QzMzAzZDIifQ"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.7.2",
+    "at": "2026-10-18T02:14:28.318Z"
+  }
+}
