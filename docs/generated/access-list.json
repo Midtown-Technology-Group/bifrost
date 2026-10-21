@@ -3039,6 +3039,34 @@
     "reason": "Current named permission at the actual resource scope, with original-user reach."
   },
   {
+    "access_class": "table_policy",
+    "boundary": null,
+    "current_gate": "authenticated",
+    "inline_checks": [],
+    "inline_effect": null,
+    "intended_change": null,
+    "mcp_tool": null,
+    "method": "POST",
+    "operation_id": "workspace.files.move",
+    "path": "/api/files/move",
+    "permission": null,
+    "reason": "Repository file content governed by file policies."
+  },
+  {
+    "access_class": "table_policy",
+    "boundary": null,
+    "current_gate": "authenticated",
+    "inline_checks": [],
+    "inline_effect": null,
+    "intended_change": null,
+    "mcp_tool": null,
+    "method": "POST",
+    "operation_id": "workspace.files.move_many",
+    "path": "/api/files/move-many",
+    "permission": null,
+    "reason": "Repository file content governed by file policies."
+  },
+  {
     "access_class": "permission",
     "boundary": "organization",
     "current_gate": "evaluator",

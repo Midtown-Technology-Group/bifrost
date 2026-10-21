@@ -392,7 +392,10 @@ EXPECTED_CONTRACT_FINGERPRINT = (
     # provenance (2026-10-19). ADDITIVE: existing CLI audit readers ignore
     # unknown fields, so the compatible 1.4.2 floor remains unchanged.
     # The existing users.impersonate catalog description also names browser sessions.
-    "b84a16f93c3c07d7ee7c5badf65092d4901b11995c70ac60a41c6bc9dfe3fc0b"
+    #
+    # File move request/response DTOs for `bifrost files move` (2026-10-20).
+    # ADDITIVE: new CLI command and routes; existing DTOs are unchanged.
+    "ff39a5a6350ecc40fa2f74a63a896213a938522a459c1a65a63664ce85abfbde"
 )
 
 

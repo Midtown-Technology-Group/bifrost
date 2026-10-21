@@ -171,3 +171,43 @@ async def test_direct_policy_success_does_not_create_an_access_check(db_session,
         assert collector.notes == []
     finally:
         access_checks.stop_collecting(token)
+
+
+async def test_bulk_decisions_load_the_run_user_once_per_request(
+    db_session, world, monkeypatch
+) -> None:
+    from src.services import access_check_policies
+
+    loads: list[object] = []
+    real_load = access_check_policies.load_run_user
+
+    async def counting_load(db, user_id):
+        loads.append(user_id)
+        return await real_load(db, user_id)
+
+    monkeypatch.setattr(access_check_policies, "load_run_user", counting_load)
+    principal = UserPrincipal(
+        user_id=world["original"].id,
+        email=world["original"].email,
+        organization_id=world["org"].id,
+        name="Original",
+    )
+    token = access_checks.collect_run(uuid4(), principal.user_id, None)
+    try:
+        for allowed in (False, True, False):
+            await record_table_policy(
+                db_session,
+                world["table"],
+                _policies(HR_RULE),
+                principal,
+                action="create",
+                allowed=allowed,
+            )
+        collector = access_checks.current()
+        assert collector is not None
+        notes = list(collector.notes)
+    finally:
+        access_checks.stop_collecting(token)
+
+    assert loads == [principal.user_id]
+    assert [n.facts["today"] for n in notes] == [False, True, False]
