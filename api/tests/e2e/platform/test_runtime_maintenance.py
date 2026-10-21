@@ -263,7 +263,10 @@ async def test_ordinary_deploy_can_seal_twice_without_consuming_reservations(iso
     claims = await claim_deliveries(
         db_session, queue_name="maintenance-interrupted", owner="test-recovery"
     )
-    assert [claim.id for claim in claims] == [delivery_id]
+    assert claims == []
+    await db_session.refresh(delivery)
+    assert delivery.id == delivery_id and delivery.status == "interrupted"
+    assert delivery.lease_token is None and delivery.claim_count == 0
 
     # Time crossing the due boundary must make the same reservation block again.
     executions[0].scheduled_at = now - timedelta(seconds=1)
