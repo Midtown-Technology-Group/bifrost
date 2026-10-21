@@ -1,8 +1,14 @@
-# Single-pass coverage collection for Sonar
+# Single-pass qualification and release handoff
 
-Status: prepared design; no workflow or runtime changes. Environment: CI only.
+Status: prepared design; no workflow or runtime changes. Environment: CI,
+release publication and the read-only infrastructure promotion consumer.
 Source baseline: main de34e07d638706506e23cce6f855beebb91532e8, 2026-10-20.
 Owner: this release/unblock workstream. Separate from PR #1365's preparation-only evidence reuse.
+
+The [October 19–20 incident report](2026-10-20-release-process-incident.md)
+records the complete wall-clock history, root causes, owned corrective slices
+R1–R6 and end-to-end acceptance cases A1–A14. This design must satisfy that
+contract; optimizing the coverage collector alone does not close the incident.
 
 ## Decision
 
@@ -11,6 +17,12 @@ Run each required test selection once for a qualified candidate. Instrument thos
 Reuse a completed compatible producer set across PR, merge-group and main when its tested tree and relevant inputs match. A new analysis context may require a new Sonar scan without another test execution. Required checks still report the actual consumer context and the producer receipts they accepted.
 
 This is an extension of the existing CI workflow, coverage tools and evidence manifest. No new service, credential, scheduler, runner pool or status-check bypass is needed.
+
+Most merged product changes should produce releases. Documentation/test-only
+changes normally should not; shipped content, dependencies and packaging need
+explicit product-impact classification. This is the agreed direction for a
+reviewed policy implementation, not an already-active bypass of current
+release approval, merge, quality or production controls.
 
 ## What the current source actually does
 
@@ -103,19 +115,63 @@ Across events, prefer the same reviewed PR producer set for a matching merge-gro
 
 Retain the original producer manifest and add a consumer receipt describing the equivalence proof. Do not rewrite the producer's head, base, attempt or checks. Recompute the consumer's source inventory, baseline and scanner manifest honestly. Source indexing and new-code baseline still belong to the consumer's actual analysis context.
 
-Main currently skips normal test jobs and runs a separate full Sonar collector. Replace that collector with verified PR evidence reuse when qualified. If no compatible completed producer set exists, schedule the normal producers once for the genuinely new candidate. Never turn unavailable evidence into success. Tags with different version/build inputs require their own applicable qualification.
+Main currently skips normal test jobs and runs a separate full Sonar collector. Replace that collector with verified PR evidence reuse when qualified. If no compatible completed producer set exists, schedule the normal producers once for the genuinely new candidate. Never turn unavailable evidence into success. Tags with different version/build inputs require their own applicable qualification; identify those inputs explicitly and do not reflexively repeat every source suite.
 
 Merge groups retain the existing supported evidence-only disposition; do not claim a Sonar analysis for an unsupported branch context. Main/PR Sonar analysis may still run separately because their baseline contexts differ; it should scan existing reports rather than rerun tests.
 
 ## Wiring and change surface
 
-Implement in one focused PR with reviewable commits:
+Implement the collector slice in one focused PR with reviewable commits:
 
 1. Extend `scripts/sonar/preflight.py` with the producer-set contract, bounded raw-data validation and equivalence receipt; add refusal/union fixtures.
 2. Instrument existing jobs in `.github/workflows/ci.yml`, `docker-compose.sonar.yml` and the runtime export/combine helpers. Preserve test inventories, runtime audits and cleanup. Publish artifacts through pinned existing actions.
 3. Replace test execution in `.github/workflows/sonar-coverage.yml` with producer download/verification/combination. Declare dependencies on the existing producers. Preserve pre/post-scan validation, project/PR/head/base binding, task identity retention and quality-gate enforcement. Update the runbook.
 
 Add test names or planner outputs only where needed to express the producer contract. Preserve all required checks, administrator merge controls, signed packaging and production authorization. No branch-protection/ruleset change is part of this collector work. PR #1365 remains independent; it changes preparation evidence admission, not coverage production.
+
+## Required release and consumer extension
+
+The incident exposed a second boundary: tag publication did not depend on tag
+Sonar, but `bifrost-infra/scripts/promote-platform-images.py` required the entire
+tag workflow to finish successfully. Assets were published while the normal
+consumer still waited for another comprehensive coverage collection. This is
+part of cutting a usable release, not a reason to declare the release finished
+and move the delay outside its accounting.
+
+Add reviewed slices for release qualification and consumer admission; coordinate
+the platform and infrastructure contracts without changing the current run:
+
+1. Trace commit/pre-PR, PR, queue, main, tag, artifact publication and canonical
+   promotion together. Record each stage's required evidence and actual consumer.
+   Eliminate duplicated compatible test execution across that complete graph.
+2. Define a bounded qualification receipt using the existing evidence and release
+   manifest machinery. Bind source/tested tree, relevant version/build inputs,
+   producer workflow/jobs/attempts, required quality results and final digests.
+   Do not invent a second unrelated status authority or accept self-asserted success.
+3. Keep required Sonar/quality evidence mandatory. Decide explicitly whether
+   qualified compatible analysis is reused or a consumer-context scan is needed.
+   A new scan consumes retained coverage and does not re-execute source tests.
+4. Make the publisher and promoter agree on the qualification predicate. The
+   promoter verifies the required receipts, final signed manifest, exact
+   tag/source/run/attempt and registry subjects. Unrelated workflow status must
+   not silently add another gate; missing or failed required evidence still refuses.
+5. Build final-version images once and keep exact-content/version/contract/schema
+   checks, signatures, attestations and immutable publication. Different baked
+   versions cannot be hidden by promoting a dev tag as if its contents changed.
+6. Retain the current explicit human approval and deployment/security controls.
+   Any control change needs its own reviewed, authorized policy cutover; no
+   implementation may silently infer it from the desire for frequent releases.
+
+The release operator must show the full critical path before dispatch and
+timestamp its progress. Report "assets published" separately from "qualification
+accepted by the promotion consumer." Never promise a usable release based only
+on a successful scan, merged PR or GitHub publication flag.
+
+The implementation owner is this workstream across both repositories; this
+document does not assert a new handoff or external owner acceptance. Collector
+completion and preparation-only #1365 are intermediate deliverables. Closure
+requires the incident report's full R1–R6/A1–A14 contract and a measured release
+reaching canonical promotion without a repeated compatible suite or surprise wait.
 
 ## Qualification before cutover
 
