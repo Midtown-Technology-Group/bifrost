@@ -10,7 +10,11 @@ on:
         required: false
         type: string
       source_ci_run:
-        description: Required with supersession; successful exact current-main push CI run
+        description: Required with supersession; successful main CI or explicit same-tree PR CI run
+        required: false
+        type: string
+      same_tree_pr:
+        description: Optional merged PR whose exact-tree CI and Sonar qualify preparation only
         required: false
         type: string
   # Catch merges that arrived while the preceding release was packaging.
@@ -50,6 +54,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           SUPERSEDE_PR: ${{ inputs.supersede_unpublished_pr }}
           SOURCE_CI_RUN: ${{ inputs.source_ci_run }}
+          SAME_TREE_PR: ${{ inputs.same_tree_pr }}
         run: |
           set -euo pipefail
           args=()
@@ -58,6 +63,13 @@ jobs:
             [[ "$SUPERSEDE_PR" =~ ^[1-9][0-9]*$ ]]
             [[ "$SOURCE_CI_RUN" =~ ^[1-9][0-9]*$ ]]
             args=(--supersede-unpublished-pr "$SUPERSEDE_PR" --source-ci-run "$SOURCE_CI_RUN")
+          fi
+          if [[ -n "$SAME_TREE_PR" ]]; then
+            test "$GITHUB_EVENT_NAME" = workflow_dispatch
+            [[ "$SUPERSEDE_PR" =~ ^[1-9][0-9]*$ ]]
+            [[ "$SOURCE_CI_RUN" =~ ^[1-9][0-9]*$ ]]
+            [[ "$SAME_TREE_PR" =~ ^[1-9][0-9]*$ ]]
+            args+=(--same-tree-pr "$SAME_TREE_PR")
           fi
           python3 scripts/release/automatic-release.py prepare "${args[@]}"
           # Never write an older preparation over a newer main merge.

@@ -508,6 +508,113 @@ class UnpublishedCandidateRecoveryTests(unittest.TestCase):
              self.assertRaisesRegex(self.release.ReleaseError, "differs"):
             self.release.reject_superseded_source(self.source)
 
+    def same_tree_fixture(self):
+        pr = {"merged": True, "merge_commit_sha": self.source,
+              "base": {"ref": "main", "sha": "c" * 40},
+              "head": {"sha": self.previous, "ref": "reviewed-fix",
+                       "repo": {"full_name": self.release.REPOSITORY}}}
+        run = dict(self.good, head_sha=self.previous, head_branch="reviewed-fix",
+                   event="pull_request", run_attempt=1,
+                   created_at="2026-10-20T10:00:00Z", updated_at="2026-10-20T11:00:00Z")
+        names = ("Plan Affected Tests", "Lint & Type Check", "Unit Tests", "Client Unit Tests",
+                 "E2E Tests", "MCP Conformance", "Candidate Images",
+                 "sonar-coverage / Sonar Coverage Evidence", "sonar-coverage / Sonar CI Analysis")
+        jobs = [{"name": name, "conclusion": "success"} for name in names]
+        sonar = {"id": 77, "name": "SonarCloud Code Analysis", "app": {"id": 12526},
+                 "head_sha": self.previous, "status": "completed", "conclusion": "success",
+                 "details_url": "https://sonarcloud.io/dashboard?id=Midtown-Technology-Group_bifrost&pullRequest=1363",
+                 "started_at": "2026-10-20T10:30:00Z", "completed_at": "2026-10-20T10:31:00Z"}
+        return pr, run, jobs, sonar
+
+    def certify_same_tree(self, pr, run, jobs, sonar):
+        def read(path):
+            return pr if path == "pulls/1363" else run
+
+        def pages(path, key):
+            return jobs if key == "jobs" else [sonar]
+
+        with patch.object(self.release, "api", side_effect=read), \
+             patch.object(self.release, "array_pages", side_effect=pages), \
+             patch.object(self.release, "git", return_value="d" * 40):
+            return self.release.checked_same_tree_pr_ci(self.source, 100, 1363)
+
+    def test_same_tree_evidence_retains_exact_pr_run_attempt_and_sonar(self):
+        proof = self.certify_same_tree(*self.same_tree_fixture())
+        self.assertEqual(proof, {"pr": 1363, "head": self.previous, "tree": "d" * 40,
+                                 "run": 100, "attempt": 1, "sonar_check": 77})
+
+    def test_same_tree_rejects_wrong_pr_merge_repo_or_base(self):
+        invalid = {"merged": False, "merge_commit_sha": self.previous,
+                   "base": {"ref": "other"},
+                   "head": {"sha": self.previous, "repo": {"full_name": "gobifrost/bifrost"}}}
+        for key, value in invalid.items():
+            pr, run, jobs, sonar = self.same_tree_fixture()
+            pr[key] = value
+            with self.subTest(field=key), self.assertRaises(self.release.ReleaseError):
+                self.certify_same_tree(pr, run, jobs, sonar)
+
+    def test_same_tree_rejects_incomplete_untrusted_or_other_ci(self):
+        invalid = {"head_sha": self.source, "event": "workflow_dispatch",
+                   "head_branch": "other", "status": "in_progress", "conclusion": "failure",
+                   "path": ".github/workflows/other.yml", "run_attempt": None,
+                   "head_repository": {"full_name": "gobifrost/bifrost"}}
+        for key, value in invalid.items():
+            pr, run, jobs, sonar = self.same_tree_fixture()
+            run[key] = value
+            with self.subTest(field=key), self.assertRaises(self.release.ReleaseError):
+                self.certify_same_tree(pr, run, jobs, sonar)
+
+    def test_same_tree_refuses_missing_skipped_failed_or_duplicate_jobs(self):
+        for mode in ("missing", "skipped", "failure", "duplicate"):
+            pr, run, jobs, sonar = self.same_tree_fixture()
+            if mode == "missing":
+                jobs.pop()
+            elif mode == "duplicate":
+                jobs.append(dict(jobs[0]))
+            else:
+                jobs[0]["conclusion"] = mode
+            with self.subTest(mode=mode), self.assertRaises(self.release.ReleaseError):
+                self.certify_same_tree(pr, run, jobs, sonar)
+
+    def test_same_tree_rejects_stale_untrusted_pending_or_wrong_project_sonar(self):
+        invalid = {"head_sha": self.source, "app": {"id": 1}, "status": "in_progress",
+                   "conclusion": "failure", "details_url": "https://sonarcloud.io/dashboard?id=other",
+                   "started_at": "2026-10-19T10:00:00Z", "completed_at": None}
+        for key, value in invalid.items():
+            pr, run, jobs, sonar = self.same_tree_fixture()
+            sonar[key] = value
+            with self.subTest(field=key), self.assertRaises(self.release.ReleaseError):
+                self.certify_same_tree(pr, run, jobs, sonar)
+
+    def test_changed_tree_cannot_reuse_pr_evidence(self):
+        pr, run, _, _ = self.same_tree_fixture()
+        with patch.object(self.release, "api", side_effect=[pr, run]), \
+             patch.object(self.release, "git", side_effect=["", "", "d" * 40, "e" * 40]), \
+             self.assertRaisesRegex(self.release.ReleaseError, "tree differs"):
+            self.release.checked_same_tree_pr_ci(self.source, 100, 1363)
+
+    def test_same_tree_mode_requires_explicit_supersession(self):
+        with self.assertRaisesRegex(self.release.ReleaseError, "explicit supersession"):
+            self.release.prepare(self.source, self.prs, same_tree_pr=1363)
+
+    def test_publication_still_requires_exact_main_push_even_with_green_pr_ci(self):
+        with patch.object(self.release, "api", return_value=dict(self.good, event="pull_request")), \
+             self.assertRaisesRegex(self.release.ReleaseError, "exact trusted main push"):
+            self.release.checked_release(self.source, 100, self.prs)
+
+    def test_explicit_recovery_retains_same_tree_receipt_without_using_main_ci(self):
+        receipt = {"pr": 1363, "head": self.previous, "tree": "d" * 40,
+                   "run": 100, "attempt": 1, "sonar_check": 77}
+        with patch.object(self.release, "checked_same_tree_pr_ci", return_value=receipt), \
+             patch.object(self.release, "checked_main_ci") as main_ci:
+            proof = self.release.supersede_unpublished(
+                self.source, self.prs, 1078, 100, same_tree_pr=1363
+            )
+        main_ci.assert_not_called()
+        self.assertEqual(proof["same_tree_ci"], receipt)
+        self.assertIn('"sonar_check": 77', "\n".join(self.release.same_tree_notes(proof)))
+        self.assertEqual(self.release.preparation_ci_note(proof), "Replacement same-tree PR CI: 100.")
+
     def test_retains_old_failure_and_new_exact_ci_receipts(self):
         proof = self.recover()
         self.assertEqual(proof, {"pr": 1078, "source": self.previous,
