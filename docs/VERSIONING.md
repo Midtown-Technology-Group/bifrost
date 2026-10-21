@@ -1,5 +1,11 @@
 # MTG Bifrost Versioning
 
+The [October 19–20 release-process incident](plans/2026-10-20-release-process-incident.md)
+records repeated validation and the publication-to-promotion dependency gap.
+Its [corrective design](plans/2026-10-20-single-pass-sonar-coverage.md) is prepared,
+not implemented. Existing controls below remain authoritative until a reviewed
+cutover; documentation alone does not close the incident.
+
 `Midtown-Technology-Group/bifrost` uses an **independent semver line** owned by Midtown Technology
 Group. Version numbers describe **MTG fork behavior**, not upstream release numbers.
 
