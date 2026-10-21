@@ -132,8 +132,10 @@ Add test names or planner outputs only where needed to express the producer cont
 ## Required release and consumer extension
 
 The incident exposed a second boundary: tag publication did not depend on tag
-Sonar, but `bifrost-infra/scripts/promote-platform-images.py` required the entire
-tag workflow to finish successfully. Assets were published while the normal
+Sonar coverage collection, but `bifrost-infra/scripts/promote-platform-images.py`
+required the entire tag workflow to finish successfully. The scan condition in
+`sonar-coverage.yml` excluded tag refs: this was evidence collection, not another
+submitted tag analysis or quality gate. Assets were published while the normal
 consumer still waited for another comprehensive coverage collection. This is
 part of cutting a usable release, not a reason to declare the release finished
 and move the delay outside its accounting.

@@ -58,7 +58,9 @@ The relevant implementation at the incident source was:
 5. Tag CI: lint, units, backend/browser E2E and MCP qualification.
 6. Tag manifest validation → three final-version image builds → exact-image
    content acceptance → attestations → immutable release publication.
-7. Separately, tag Sonar collection/analysis ran alongside steps 5–6.
+7. Separately, Sonar coverage collection/evidence ran on the tag alongside
+   steps 5–6. The scan condition excluded tag refs, so this was not a new
+   Sonar analysis or quality gate on the tag.
 8. The infra promoter admitted the tag only if the entire tag CI run reported
    completed/success, making step 7 a release-handoff dependency after publication.
 
@@ -70,6 +72,9 @@ Source anchors:
 - [Release-tag workflow](https://github.com/Midtown-Technology-Group/bifrost/blob/9c6c27d826c34294edd8396e0a658336b7df8dfe/.github/workflows/release-tag.yml)
   and [release operator](https://github.com/Midtown-Technology-Group/bifrost/blob/9c6c27d826c34294edd8396e0a658336b7df8dfe/scripts/release/automatic-release.py)
   verify main CI and dispatch tag CI.
+- [Sonar scan condition at the release source](https://github.com/Midtown-Technology-Group/bifrost/blob/9c6c27d826c34294edd8396e0a658336b7df8dfe/.github/workflows/sonar-coverage.yml#L294-L305)
+  admits trusted main-targeting PRs and main push/manual runs, not tag refs.
+  Coverage evidence can still be collected on a tag without submitting analysis.
 - [Infra promoter](https://github.com/MTG-Thomas/bifrost-infra/blob/35df5c0e890196ba805c02ab9f6ba61c865cfd7e/scripts/promote-platform-images.py):
   `successful_run_for_sha` requires completed/success for tag runs;
   `verified_release_manifest` separately validates exact tag/source/run/attempt,
@@ -334,7 +339,7 @@ Lane: CI. CI #5294 completed successfully on release merge 9c6c27d, including So
 
 ### Oct 20, 20:20:36–20:21:07 EDT — The approved release was tagged—and another full CI cycle began
 
-Lane: Release. The release-tag job passed in 31 seconds. It created/read back v3.1.0 at the same approved commit and dispatched tag CI at 20:21:05. A fresh round of tests and Sonar followed the successful exact-source main round.
+Lane: Release. The release-tag job passed in 31 seconds. It created/read back v3.1.0 at the same approved commit and dispatched tag CI at 20:21:05. A fresh round of tests and Sonar coverage collection followed the successful exact-source main round; tag analysis itself was excluded by the scan condition.
 
 [Source receipt](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/39520728772)
 
@@ -352,7 +357,7 @@ Lane: CI. The tag coverage job entered “Collect comprehensive Python coverage.
 
 ### Oct 20, 20:40:54–20:41:05 EDT — The tag’s test prerequisites cleared and manifest validation passed
 
-Lane: Release. Verify Release Manifest passed in 11 seconds, allowing the three stable image builds to start. Tag Sonar was still running separately.
+Lane: Release. Verify Release Manifest passed in 11 seconds, allowing the three stable image builds to start. Tag Sonar coverage collection was still running separately; no tag analysis/quality gate was scheduled.
 
 [Source receipt](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/39520781340)
 
@@ -418,8 +423,10 @@ The standard path must hand verified final artifacts to deployment preparation.
 
 ### 3. Publication and consumer admission used different completion predicates
 
-The publisher could finish without tag Sonar; the promoter could not consume
-that publication without the whole workflow concluding. This dependency was
+The publisher could finish without tag Sonar coverage collection; the promoter
+could not consume that publication without the whole workflow concluding.
+The tag scan was excluded, so the extra dependency was coverage collection,
+not a second submitted tag analysis or quality gate. This dependency was
 discovered only after the operator asked to deploy the published release.
 
 It must be resolved explicitly: either all required release qualification is
