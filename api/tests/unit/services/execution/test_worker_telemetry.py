@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from types import ModuleType, SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, patch
+from uuid import uuid4
 
 import pytest
 
@@ -93,7 +94,7 @@ async def test_run_execution_emits_worker_span(monkeypatch):
     execute = AsyncMock(return_value=result)
     workspace_refresh = SimpleNamespace(generation="generation-1", cleared=1, kept=0)
     with (
-        patch("bifrost.credentials.is_token_expired", return_value=False),
+        patch("src.core.security.authenticate_engine"),
         patch("src.core.module_cache_sync.set_solution_context"),
         patch("src.core.module_cache_sync.clear_solution_context"),
         patch(
@@ -140,7 +141,7 @@ async def test_run_execution_emits_worker_span(monkeypatch):
 async def test_run_execution_clears_contexts_when_workspace_refresh_fails():
     refresh_error = RuntimeError("workspace refresh failed")
     with (
-        patch("bifrost.credentials.is_token_expired", return_value=False),
+        patch("src.core.security.authenticate_engine"),
         patch("src.core.module_cache_sync.set_solution_context"),
         patch("src.core.module_cache_sync.set_workspace_release_context"),
         patch("src.core.module_cache_sync.set_workspace_generation_context"),
@@ -171,6 +172,29 @@ async def test_run_execution_clears_contexts_when_workspace_refresh_fails():
     clear_solution.assert_called_once_with()
     clear_release.assert_called_once_with()
     clear_generation.assert_called_once_with()
+
+
+@pytest.mark.asyncio
+async def test_run_execution_scopes_legacy_credentials_to_execution():
+    execution_id = str(uuid4())
+    refresh_error = RuntimeError("workspace refresh failed")
+    with (
+        patch("src.core.security.authenticate_engine") as authenticate_engine,
+        patch("src.core.module_cache_sync.set_solution_context"),
+        patch("src.core.module_cache_sync.set_workspace_release_context"),
+        patch("src.core.module_cache_sync.set_workspace_generation_context"),
+        patch("src.core.module_cache_sync.clear_solution_context"),
+        patch("src.core.module_cache_sync.clear_workspace_release_context"),
+        patch("src.core.module_cache_sync.clear_workspace_generation_context"),
+        patch(
+            "src.services.execution.workspace_modules.clear_workspace_modules",
+            side_effect=refresh_error,
+        ),
+    ):
+        with pytest.raises(RuntimeError, match="workspace refresh failed"):
+            await worker._run_execution(execution_id, {})
+
+    authenticate_engine.assert_called_once_with(execution_id)
 
 
 def test_run_in_worker_flushes_opentelemetry(monkeypatch):

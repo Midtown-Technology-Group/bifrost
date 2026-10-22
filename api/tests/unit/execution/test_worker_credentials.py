@@ -1,6 +1,7 @@
 """Credential-boundary tests for isolated execution children."""
 
 import os
+from uuid import uuid4
 
 import pytest
 
@@ -64,3 +65,26 @@ def test_engine_token_carries_signed_execution_module_scope() -> None:
     assert claims["engine_execution_id"] == "execution-1"
     assert claims["engine_solution_id"] == solution_id
     assert claims["engine_global_repo_access"] is True
+
+
+def test_legacy_engine_token_carries_separate_execution_identity(monkeypatch) -> None:
+    from src.core.security import authenticate_engine, decode_token
+
+    monkeypatch.setenv("BIFROST_API_URL", "http://api:8000")
+    monkeypatch.delenv("BIFROST_ACCESS_TOKEN", raising=False)
+    monkeypatch.delenv("BIFROST_REFRESH_TOKEN", raising=False)
+    execution_id = str(uuid4())
+
+    authenticate_engine(execution_id)
+
+    resolved = resolve_credentials("http://api:8000")
+    assert resolved is not None
+    assert resolved.source == "process"
+    claims = decode_token(
+        resolved.credentials.access_token,
+        expected_type="access",
+    )
+    assert claims is not None
+    assert claims["engine_legacy_execution_id"] == execution_id
+    assert "engine_execution_id" not in claims
+    assert "engine_attempt_token" not in claims

@@ -748,16 +748,33 @@ async def cli_delete_config(
 
 async def _request_slot_integration(
     request: SDKIntegrationRequestSlotRequest,
-    current_user: CurrentUser,
+    current_user: CurrentEngineOrBypassUser,
     db: AsyncSession,
 ):
-    """Read shared integration policy after the route has resolved caller scope.
+    """Read shared integration policy for an execution or bypass principal.
 
-    External users cannot contend for global integration resources. Internal
-    SDK callers use the same organization validation as integrations.get.
-    Only the integration identity and admission setting are read.
+    Ordinary user sessions cannot reserve global integration capacity. Engine
+    executions and platform/provider bypass callers use the same organization
+    validation as integrations.get. Only the integration identity and
+    admission setting are read.
     """
     from src.repositories.integrations import IntegrationsRepository
+    from shared.scope_resolver import has_scope_bypass
+
+    execution_id = (
+        current_user.engine_execution_id
+        or current_user.engine_legacy_execution_id
+    )
+    is_execution = bool(execution_id and not current_user.embed)
+    is_bypass = has_scope_bypass(
+        is_platform_admin=current_user.is_platform_admin,
+        is_provider_org=current_user.is_provider_org,
+    )
+    if not (is_execution or is_bypass):
+        raise HTTPException(
+            status_code=403,
+            detail="Integration request slots require execution credentials or platform access",
+        )
 
     if await _is_external_user_db(current_user, db):
         raise HTTPException(status_code=403, detail="Integration request slots require an internal caller")
@@ -767,20 +784,21 @@ async def _request_slot_integration(
         if request.solution and await _connection_is_declared(db, str(request.solution), request.name):
             raise HTTPException(status_code=424, detail="Declared integration is not configured")
         raise HTTPException(status_code=404, detail="Integration not found")
-    owner = f"{current_user.user_id}:{request.token}"
-    return policy[0], policy[1], owner
+    principal = str(execution_id or current_user.user_id)
+    owner = f"{principal}:{request.token}"
+    return policy[0], policy[1], owner, principal
 
 
 @router.post("/integrations/request-slot/acquire", response_model=SDKIntegrationRequestSlotResponse, **operation_route("cli.sdk_integration_request_slot_acquire"))
 async def sdk_integration_request_slot_acquire(
     request: SDKIntegrationRequestSlotRequest,
-    current_user: CurrentUser,
+    current_user: CurrentEngineOrBypassUser,
     db: AsyncSession = Depends(get_db),
 ) -> SDKIntegrationRequestSlotResponse:
     from src.services import integration_request_slots as slots
 
     await _resolve_sdk_org_id(current_user, request.scope, db)
-    integration_id, setting, owner = await _request_slot_integration(request, current_user, db)
+    integration_id, setting, owner, principal = await _request_slot_integration(request, current_user, db)
     try:
         limit = slots.validate_limit(setting)
     except ValueError as exc:
@@ -790,7 +808,7 @@ async def sdk_integration_request_slot_acquire(
             enabled=False, acquired=True, lease_remaining_seconds=0,
             max_request_seconds=slots.MAX_REQUEST_SECONDS,
         )
-    acquired, remaining = await slots.acquire(integration_id, owner, limit)
+    acquired, remaining = await slots.acquire(integration_id, owner, principal, limit)
     return SDKIntegrationRequestSlotResponse(
         enabled=True, acquired=acquired, lease_remaining_seconds=remaining,
         max_request_seconds=slots.MAX_REQUEST_SECONDS,
@@ -800,13 +818,13 @@ async def sdk_integration_request_slot_acquire(
 @router.post("/integrations/request-slot/release", response_model=bool, **operation_route("cli.sdk_integration_request_slot_release"))
 async def sdk_integration_request_slot_release(
     request: SDKIntegrationRequestSlotRequest,
-    current_user: CurrentUser,
+    current_user: CurrentEngineOrBypassUser,
     db: AsyncSession = Depends(get_db),
 ) -> bool:
     from src.services import integration_request_slots as slots
 
     await _resolve_sdk_org_id(current_user, request.scope, db)
-    integration_id, _, owner = await _request_slot_integration(request, current_user, db)
+    integration_id, _, owner, _ = await _request_slot_integration(request, current_user, db)
     await slots.release(integration_id, owner)
     return True
 
