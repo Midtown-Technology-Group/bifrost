@@ -15,6 +15,14 @@ versions and retained notes. Review the bump, verified security fixes and upgrad
 steps, obtain human maintainer approval of the exact head, then use the normal
 administrator-authorized merge queue. After exact main CI passes, `Release tag`
 validates provenance, tags that commit and explicitly dispatches tag packaging.
+For an already-merged release whose complete Git tree matches completed PR CI,
+the documented recovery dispatch can instead supply `main_ci_run=<successful PR
+CI run>` and `same_tree_release_pr=<merged release PR>` to `release-tag.yml` on
+main. The publisher rechecks every required comprehensive job, exact attempt and
+trusted PR/head Sonar evidence; pending, failed, skipped or different-tree proof
+refuses. Exact-head human approval, signatures, current publication ownership,
+immutable packaging and separate production gates still apply. Read back current
+publication first; preserve an active ordinary main-CI path.
 
 A changed server/CLI contract imposes a major floor. No automated issue closure,
 manual plugin-bump ceremony or upstream documentation/blog cadence is required

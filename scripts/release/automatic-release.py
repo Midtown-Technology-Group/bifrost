@@ -608,6 +608,8 @@ def checked_release(
         if type(same_tree_release_pr) is not int or same_tree_release_pr != pr["number"]:
             raise ReleaseError("publication evidence must name this exact merged release PR")
         proof = checked_same_tree_pr_ci(source, run_id, same_tree_release_pr)
+        if proof["head"] != pr["head"]["sha"]:
+            raise ReleaseError("approval and publication CI refer to different PR heads")
         print("Verified same-tree publication evidence: " + json.dumps(proof, sort_keys=True))
     files = array_pages(f"pulls/{pr['number']}/files?per_page=100")
     if not files or {row["filename"] for row in files} - RELEASE_PATHS:
@@ -682,6 +684,8 @@ def publish(
         and pr.get("head", {}).get("ref") == BRANCH
         for pr in prs
     ):
+        if same_tree_release_pr is not None:
+            raise ReleaseError("same-tree publication source is not its merged release PR")
         print("Exact CI source is an ordinary main merge; no release to publish.")
         return
     if same_tree_release_pr is None:

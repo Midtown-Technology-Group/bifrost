@@ -119,6 +119,17 @@ class InputBoundaries(unittest.TestCase):
                     version.contract_bump(value)
             command.assert_not_called()
 
+    def test_same_tree_publication_cli_rejects_wrong_action_and_nonpositive_pr(self):
+        for action, number in (("prepare", "1368"), ("publish", "0"), ("publish", "-1")):
+            with self.subTest(action=action, number=number), \
+                    patch.object(sys, "argv", ["automatic-release.py", action,
+                                              "--same-tree-release-pr", number]), \
+                    patch.object(release, "git") as git, \
+                    patch.object(release, "api") as api:
+                self.assertEqual(release.main(), 2)
+                git.assert_not_called()
+                api.assert_not_called()
+
     def test_release_api_rejects_path_escape_before_get_or_post(self):
         with patch.object(release.subprocess, "run") as command:
             for value in ("../other/pulls", "pulls/1\n--hostname=other", "pulls/1#fragment"):

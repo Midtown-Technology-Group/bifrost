@@ -119,7 +119,7 @@ which upstream tag or commit range the MTG release incorporated.
   It recalculates the complete release interval and records both CI receipts in
   the new release notes. Automatic pushes retain the ordinary pending-candidate
   guard. The new signed release PR still needs human approval of its exact head,
-  normal administrator queue admission, fresh main CI and stable packaging.
+  normal administrator queue admission, verified publication CI and stable packaging.
   Supersession never moves a tag, changes a published release or waives the
   original failure; it prepares a different reviewed source candidate.
 - **Explicit same-tree preparation:** an operator may additionally provide
@@ -130,8 +130,10 @@ which upstream tag or commit range the MTG release incorporated.
   plus a fresh successful Sonar App check bound to that PR/head/project. Missing,
   skipped, stale, partial or different-tree evidence refuses preparation. Notes
   retain the PR/head/tree/run/attempt/Sonar check receipt. This is preparation
-  only: tag publication still requires successful exact main-push CI. Existing
-  in-progress main CI is neither cancelled nor changed by this option.
+  only: this option does not enable publication reuse. Publication separately
+  requires successful exact main-push CI or the explicit verified same-tree
+  release-PR dispatch described above. Existing in-progress main CI is neither
+  cancelled nor changed by preparation reuse.
 - **Tag creation or dispatch failed:** inspect the tag's peeled SHA and exact CI
   runs first. Rerun `release-tag.yml` on main with `main_ci_run` set to the
   successful main-push CI run of the merged release PR. It verifies that evidence
@@ -160,7 +162,7 @@ retained candidate metadata fails closed.
 - `scripts/release/automatic-release.py` — interval, preparation and publication guards
 - `scripts/release/next-release-version.sh` — read-only version calculation
 - `.github/workflows/release-draft.yml` — prepares the reviewed release PR
-- `.github/workflows/release-tag.yml` — validates exact main CI and dispatches tag CI
+- `.github/workflows/release-tag.yml` — validates exact main CI or explicit same-tree release PR CI and dispatches tag CI
 - `.github/workflows/ci.yml` — signed packaging and immutable release publication
 - `.claude/skills/bifrost-release/SKILL.md` — fork operator entry point
 

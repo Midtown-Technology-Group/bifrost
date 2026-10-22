@@ -389,9 +389,9 @@ def test_same_tree_pr_ci_publishes_exact_merged_source(history, same_tree_public
     ]
 
 
-@pytest.mark.parametrize("problem", ["pending", "failed", "skipped_job", "wrong_pr", "tree_drift"])
+@pytest.mark.parametrize("problem", ["pending", "failed", "skipped_job", "wrong_pr", "tree_drift", "head_drift"])
 def test_same_tree_publication_refuses_unproven_ci_before_write(
-    history, same_tree_publication, problem,
+    history, same_tree_publication, problem, monkeypatch,
 ):
     source, transport, operations, _, pr = same_tree_publication
     number = pr["number"]
@@ -403,12 +403,23 @@ def test_same_tree_publication_refuses_unproven_ci_before_write(
         transport["actions/runs/42/attempts/2/jobs?per_page=100"][0]["jobs"][0]["conclusion"] = "skipped"
     elif problem == "wrong_pr":
         number += 1
-    else:
+    elif problem == "tree_drift":
         other = history["commit"]("fix: changed tree")
         pr["head"]["sha"] = other
         transport["actions/runs/42"]["head_sha"] = other
-    with pytest.raises(release.ReleaseError):
+        transport[f"pulls/{pr['number']}/reviews?per_page=100"][0][0]["commit_id"] = other
+    else:
+        # The fresh proof and the separately retained approval PR must agree.
+        monkeypatch.setattr(release, "checked_same_tree_pr_ci", lambda *args: {"head": "0" * 40})
+    with pytest.raises(release.ReleaseError, match="different PR heads" if problem == "head_drift" else None):
         release.publish(source, 42, history["prs"], same_tree_release_pr=number)
+    assert operations == []
+
+
+def test_same_tree_explicit_publication_missing_release_pr_is_not_success(history, same_tree_publication):
+    source, _, operations, _, pr = same_tree_publication
+    with pytest.raises(release.ReleaseError, match="not its merged release PR"):
+        release.publish(source, 42, [], same_tree_release_pr=pr["number"])
     assert operations == []
 
 
