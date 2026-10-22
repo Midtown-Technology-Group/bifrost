@@ -722,11 +722,7 @@ async def test_read_file_reports_forbidden_when_no_tier_is_authorized(monkeypatc
         )
 
     assert exc_info.value.status_code == 403
-    assert exc_info.value.detail["message"] == "File policy denied"
-    assert exc_info.value.detail["action"] == "read"
-    assert exc_info.value.detail["location"] == "reports"
-    assert exc_info.value.detail["path"] == "reports/secret.txt"
-    assert exc_info.value.detail["scope"] is None
+    assert exc_info.value.detail == "File policy denied"
 
 
 @pytest.mark.asyncio
@@ -1316,11 +1312,8 @@ async def test_list_files_simple_forbids_when_directory_and_files_denied(monkeyp
         )
 
     assert exc_info.value.status_code == 403
-    assert exc_info.value.detail["message"] == "File policy denied"
-    assert exc_info.value.detail["action"] == "list"
-    assert exc_info.value.detail["location"] == "reports"
-    assert exc_info.value.detail["path"] == "reports"
-    assert exc_info.value.detail["scope"] == str(ORG_A)
+    assert exc_info.value.detail == "File policy denied"
+    assert str(ORG_A) not in str(exc_info.value.detail)
 
 
 @pytest.mark.asyncio
@@ -2770,14 +2763,13 @@ async def test_require_file_policy_raises_for_denied_policy(monkeypatch):
             location="reports",
             scope=str(ORG_A),
             path="blocked.txt",
+            solution_id=SOLUTION_ID,
         )
 
     assert exc_info.value.status_code == 403
-    assert exc_info.value.detail["message"] == "File policy denied"
-    assert exc_info.value.detail["action"] == "read"
-    assert exc_info.value.detail["location"] == "reports"
-    assert exc_info.value.detail["path"] == "blocked.txt"
-    assert exc_info.value.detail["scope"] == str(ORG_A)
+    assert exc_info.value.detail == "File policy denied"
+    assert str(ORG_A) not in str(exc_info.value.detail)
+    assert str(SOLUTION_ID) not in str(exc_info.value.detail)
 
 
 @pytest.mark.asyncio

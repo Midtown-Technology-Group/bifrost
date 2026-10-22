@@ -38,6 +38,7 @@ from uuid import UUID, uuid4
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.core.log_safety import log_safe
 from src.core.org_filter import resolve_target_org
 from src.core.principal import UserPrincipal
 
@@ -223,9 +224,18 @@ async def execute_sdk_workflow(
             caller_solution_id=request.caller_solution_id,
         )
     except SolutionInboundDenied:
+        logger.debug(
+            "SDK workflow scope denied: ref=%s context_solution_id=%s "
+            "request_solution_id=%s request_form_id=%s request_app_id=%s",
+            log_safe(request.workflow_id),
+            log_safe(context_solution_id),
+            log_safe(request.solution_id),
+            log_safe(request.form_id),
+            log_safe(request.app_id),
+        )
         raise SdkWorkflowExecutionError(
             404,
-            {"message": f"Workflow '{request.workflow_id}' not found"},
+            "Workflow not found",
         ) from None
     allow_shared_workflow = (
         solution_scope is None
@@ -241,23 +251,20 @@ async def execute_sdk_workflow(
             allow_shared_fallback=allow_shared_workflow,
         )
         if not workflow:
-            # A resolution miss must identify its scope inputs: a dropped or
-            # wrong install scope reads as derived_solution_scope=null here
-            # instead of a mystery 404 (no user/token data — every field is
-            # caller-supplied or derived from it).
+            logger.debug(
+                "SDK workflow resolution miss: ref=%s context_solution_id=%s "
+                "request_solution_id=%s request_form_id=%s request_app_id=%s "
+                "derived_solution_scope=%s",
+                log_safe(request.workflow_id),
+                log_safe(context_solution_id),
+                log_safe(request.solution_id),
+                log_safe(request.form_id),
+                log_safe(request.app_id),
+                log_safe(solution_scope),
+            )
             raise SdkWorkflowExecutionError(
                 404,
-                {
-                    "message": f"Workflow '{request.workflow_id}' not found",
-                    "workflow_ref": request.workflow_id,
-                    "context_solution_id": context_solution_id,
-                    "request_solution_id": request.solution_id,
-                    "request_form_id": request.form_id,
-                    "request_app_id": request.app_id,
-                    "derived_solution_scope": (
-                        str(solution_scope) if solution_scope else None
-                    ),
-                },
+                "Workflow not found",
             )
 
     # Authorization check

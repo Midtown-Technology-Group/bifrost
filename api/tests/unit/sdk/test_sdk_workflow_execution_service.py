@@ -265,7 +265,7 @@ class TestExecuteAuthDecisions:
             )
         assert exc_info.value.status_code == 404
 
-    async def test_unknown_workflow_is_404_with_scope_detail(self, db_session):
+    async def test_unknown_workflow_is_404_without_scope_detail(self, db_session):
         org = await _seed_org(db_session)
         principal = _admin(org.id)
         missing = str(uuid4())
@@ -275,8 +275,68 @@ class TestExecuteAuthDecisions:
                 db_session, principal, req, caller_org_id=org.id
             )
         assert exc_info.value.status_code == 404
-        assert exc_info.value.detail["workflow_ref"] == missing
-        assert exc_info.value.detail["derived_solution_scope"] is None
+        assert exc_info.value.detail == "Workflow not found"
+        assert missing not in str(exc_info.value.detail)
+
+    @pytest.mark.parametrize("scope_field", ["app_id", "form_id"])
+    async def test_guessed_app_or_form_id_does_not_disclose_install_scope(
+        self,
+        db_session,
+        scope_field,
+    ):
+        from src.models.orm.applications import Application
+        from src.models.orm.forms import Form
+        from src.models.orm.solutions import Solution
+
+        org = await _seed_org(db_session)
+        solution = Solution(
+            id=uuid4(),
+            slug=f"sdk-scope-{uuid4().hex[:8]}",
+            name="SDK scope redaction",
+            organization_id=org.id,
+        )
+        db_session.add(solution)
+        await db_session.flush()
+        if scope_field == "app_id":
+            resource = Application(
+                id=uuid4(),
+                name="Guessed app",
+                slug=f"guessed-app-{uuid4().hex[:8]}",
+                repo_path="apps/guessed",
+                organization_id=org.id,
+                solution_id=solution.id,
+                created_by="test",
+            )
+        else:
+            resource = Form(
+                id=uuid4(),
+                name="Guessed form",
+                organization_id=org.id,
+                solution_id=solution.id,
+                created_by="test",
+            )
+        db_session.add(resource)
+        await db_session.flush()
+
+        missing = str(uuid4())
+        request = _request(
+            workflow_id=missing,
+            input_data={},
+            **{scope_field: str(resource.id)},
+        )
+        principal = _user(org.id)
+        with pytest.raises(SdkWorkflowExecutionError) as exc_info:
+            await execute_sdk_workflow(
+                db_session,
+                principal,
+                request,
+                caller_org_id=org.id,
+            )
+
+        assert exc_info.value.status_code == 404
+        assert exc_info.value.detail == "Workflow not found"
+        assert str(resource.id) not in str(exc_info.value.detail)
+        assert str(solution.id) not in str(exc_info.value.detail)
 
     async def test_solution_inbound_denied_is_404(self, db_session):
         org = await _seed_org(db_session)
@@ -315,9 +375,7 @@ class TestExecuteAuthDecisions:
             )
 
         assert exc_info.value.status_code == 404
-        assert exc_info.value.detail == {
-            "message": f"Workflow '{path}::main' not found"
-        }
+        assert exc_info.value.detail == "Workflow not found"
 
     async def test_cross_org_uuid_ref_is_404(self, db_session):
         org_a = await _seed_org(db_session)
