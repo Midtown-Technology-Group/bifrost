@@ -81,6 +81,13 @@ def _graph_auth() -> WebhookIntegrationAuth:
     )
 
 
+_GRAPH_NOTIFICATION = {
+    "clientState": "fixture-state",
+    "changeType": "created",
+    "resource": "Users/user-1/Messages/01LONGMESSAGEID",
+}
+
+
 @pytest.mark.asyncio
 async def test_graph_lists_users_with_resolved_tenant_token(monkeypatch):
     response = SimpleNamespace(
@@ -221,18 +228,173 @@ async def test_graph_event_type_uses_configured_collection_not_object_id():
         query_params={},
         body=(
             b'{"value":[{"changeType":"created","resource":'
-            b'"Users/user-1/Messages/01LONGMESSAGEID"}]}'
+            b'"Users/user-1/Messages/01LONGMESSAGEID","clientState":"fixture-state"}]}'
         ),
     )
 
     result = await MicrosoftGraphAdapter().handle_request(
         request,
         config={"resource": "/users/user-1/messages"},
-        state={},
+        state={"client_state": "fixture-state"},
     )
 
     assert isinstance(result, Deliver)
     assert result.event_type == "graph.messages.created"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "payload",
+    [
+        4,
+        True,
+        "x",
+        None,
+        [],
+        [{}],
+        [None],
+        {"value": 4},
+        {"value": True},
+        {"value": "x"},
+        {"value": {"clientState": "fixture-state"}},
+        {"value": None},
+        {"value": []},
+        {"value": {}},
+        {"value": [None]},
+        {"value": [4]},
+        {"value": [True]},
+        {"value": ["x"]},
+        {"value": [[]]},
+        {"value": [_GRAPH_NOTIFICATION, None]},
+    ],
+    ids=[
+        "outer-number",
+        "outer-boolean",
+        "outer-string",
+        "outer-null",
+        "outer-empty-list",
+        "outer-object-list",
+        "outer-null-list",
+        "value-number",
+        "value-boolean",
+        "value-string",
+        "value-object",
+        "value-null",
+        "value-empty-list",
+        "value-empty-object",
+        "item-null",
+        "item-number",
+        "item-boolean",
+        "item-string",
+        "item-list",
+        "mixed-validity-batch",
+    ],
+)
+async def test_graph_rejects_malformed_notification_shapes(payload):
+    request = WebhookRequest(
+        method="POST",
+        path="/api/hooks/source-1",
+        headers={},
+        query_params={},
+        body=json.dumps(payload).encode(),
+    )
+
+    result = await MicrosoftGraphAdapter().handle_request(
+        request,
+        config={},
+        state={"client_state": "fixture-state"},
+    )
+
+    assert isinstance(result, Rejected)
+    assert result.status_code == 400
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "state",
+    [
+        {},
+        {"client_state": None},
+        {"client_state": ""},
+        {"client_state": 4},
+        {"client_state": True},
+        {"client_state": []},
+        {"client_state": {}},
+    ],
+    ids=[
+        "missing",
+        "null",
+        "empty-string",
+        "number",
+        "boolean",
+        "list",
+        "object",
+    ],
+)
+async def test_graph_rejects_missing_client_state_after_resubscribe_failure(state):
+    request = WebhookRequest(
+        method="POST",
+        path="/api/hooks/source-1",
+        headers={},
+        query_params={},
+        body=b'{"value":[{"changeType":"created","clientState":"attacker-state"}]}',
+    )
+    result = await MicrosoftGraphAdapter().handle_request(request, config={}, state=state)
+    assert isinstance(result, Rejected)
+    assert result.status_code == 503
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "notifications",
+    [
+        [{}],
+        [{"clientState": ""}],
+        [{"clientState": None}],
+        [{"clientState": "wrong"}],
+        [_GRAPH_NOTIFICATION, {"clientState": "wrong"}],
+    ],
+    ids=["missing", "empty", "null", "mismatch", "mixed-state-batch"],
+)
+async def test_graph_rejects_invalid_client_state_for_entire_batch(notifications):
+    request = WebhookRequest(
+        method="POST",
+        path="/api/hooks/source-1",
+        headers={},
+        query_params={},
+        body=json.dumps({"value": notifications}).encode(),
+    )
+
+    result = await MicrosoftGraphAdapter().handle_request(
+        request,
+        config={},
+        state={"client_state": "fixture-state"},
+    )
+
+    assert isinstance(result, Rejected)
+    assert result.status_code == 401
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("method", ["GET", "POST"])
+async def test_graph_validation_handshake_precedes_body_and_state_checks(method):
+    request = WebhookRequest(
+        method=method,
+        path="/api/hooks/source-1",
+        headers={},
+        query_params={"validationToken": "fixture token"},
+        body=b"4",
+    )
+
+    result = await MicrosoftGraphAdapter().handle_request(
+        request,
+        config={},
+        state={},
+    )
+
+    assert result.status_code == 200
+    assert result.body == "fixture token"
+    assert result.content_type == "text/plain"
 
 
 @pytest.mark.asyncio
