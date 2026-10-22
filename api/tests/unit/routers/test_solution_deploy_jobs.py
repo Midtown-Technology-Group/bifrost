@@ -518,8 +518,12 @@ async def test_install_from_repo_supplies_exact_archive_candidate(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_queued_manual_deploy_rechecks_git_connection_inside_write_lock(
-    tmp_path, monkeypatch
+@pytest.mark.parametrize(
+    ("defer_failure_until_cleanup", "expected_status"),
+    [(False, "failed"), (True, "running")],
+)
+async def test_queued_deploy_rechecks_git_connection_inside_write_lock(
+    tmp_path, monkeypatch, defer_failure_until_cleanup, expected_status
 ):
     """Connecting after enqueue must stop the stale manual deploy before writes."""
     job = SolutionDeployJob(id=uuid4(), install_id=None, status="queued")
@@ -563,8 +567,16 @@ async def test_queued_manual_deploy_rechecks_git_connection_inside_write_lock(
     zip_path = tmp_path / "deploy.zip"
     zip_path.write_bytes(b"not used")
 
-    await _run_deploy_job(job.id, solution.id, zip_path, force=False)
+    await _run_deploy_job(
+        job.id,
+        solution.id,
+        zip_path,
+        force=False,
+        defer_failure_until_cleanup=defer_failure_until_cleanup,
+    )
 
     deploy.assert_not_awaited()
-    assert job.status == "failed"
+    assert job.status == expected_status
     assert "git-connected" in (job.error or "").lower()
+    if defer_failure_until_cleanup:
+        assert job.result == {"phase": "rolling back failed install"}

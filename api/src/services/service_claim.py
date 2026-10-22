@@ -142,11 +142,34 @@ class ServiceClaimLoop:
             return
         self._last_beat = now
 
+        from sqlalchemy import select
+
         from src.models.orm.services import ServiceDefinition
         from src.services import service_lifecycle as lifecycle
 
         for attempt_key in list(self._owned):
             owned = self._owned[attempt_key]
+            # Every transaction that can transition both service rows takes
+            # the definition lock before the attempt lock.  In particular,
+            # startup-grace enforcement may complete the attempt later in
+            # this transaction; renewing the lease first would invert the
+            # stop path's definition -> attempt order and deadlock with it.
+            definition = (
+                await db.execute(
+                    select(ServiceDefinition)
+                    .where(ServiceDefinition.id == owned.service_id)
+                    .with_for_update()
+                    .execution_options(populate_existing=True)
+                )
+            ).scalar_one_or_none()
+            if definition is None:
+                logger.warning(
+                    "service definition %s vanished; dropping attempt %s",
+                    owned.service_id,
+                    attempt_key[:8],
+                )
+                await self._drop_ownership(owned)
+                continue
             try:
                 attempt = await lifecycle.heartbeat_attempt(
                     db,
@@ -161,7 +184,6 @@ class ServiceClaimLoop:
                 await self._drop_ownership(owned)
                 continue
 
-            definition = await db.get(ServiceDefinition, owned.service_id)
             if await self._enforce_startup_grace(db, owned, attempt, definition):
                 continue
             await self._drain_ready(db, owned)
