@@ -394,7 +394,7 @@ class files:
                 compatibility with form upload flows. Use "workspace" to sign
                 URLs for files written via `files.write_bytes(..., location="workspace")`.
             scope: Org scope; provider-org override allowed.
-            expires_in: URL lifetime in seconds, from 1 second through 7 days.
+            expires_in: URL lifetime in seconds, from 1 through 600 seconds.
 
         Returns:
             dict with keys: url, path, expires_in

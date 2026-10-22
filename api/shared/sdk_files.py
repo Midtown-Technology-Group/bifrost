@@ -601,6 +601,14 @@ async def sdk_signed_url(
     """
     from shared.file_paths import resolve_s3_key
     from src.services.file_storage import FileStorageService
+    from src.services.file_storage.service import PRESIGNED_URL_MAX_TTL_SECONDS
+
+    if not 1 <= expires_in <= PRESIGNED_URL_MAX_TTL_SECONDS:
+        raise FileServiceError(
+            422,
+            "Presigned URL expiration must be between 1 and "
+            f"{PRESIGNED_URL_MAX_TTL_SECONDS} seconds",
+        )
 
     try:
         if method == "GET":
