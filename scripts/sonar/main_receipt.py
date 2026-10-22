@@ -30,27 +30,42 @@ SCAN_JOB = "sonar-coverage / Sonar CI Analysis"
 MAX_ARCHIVE = 200 * 1024 * 1024
 
 
+class ReuseRefused(ValueError):
+    """A refusal with a fixed, module-authored reason safe for diagnostics."""
+
+
+def summary(message: str) -> None:
+    target = os.environ.get("GITHUB_STEP_SUMMARY")
+    if not target:
+        return
+    try:
+        with open(target, "a", encoding="utf-8") as stream:
+            stream.write(message + "\n")
+    except OSError:
+        print("Step summary unavailable; retained evidence remains authoritative.")
+
+
 def command(args: list[str], *, binary: bool = False):
     environment = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
     result = subprocess.run(args, capture_output=True, env=environment, check=False, timeout=120)
     if result.returncode:
         # Never copy credential-bearing child stderr to receipts or logs.
-        raise ValueError("Required read-only evidence command failed")
+        raise ReuseRefused("Required read-only evidence command failed")
     return result.stdout if binary else result.stdout.decode().strip()
 
 
 def api(path: str, *, archive: bool = False):
     if not re.fullmatch(r"[A-Za-z0-9_./?=&%-]+", path) or ".." in path:
-        raise ValueError("Invalid repository-scoped API path")
+        raise ReuseRefused("Invalid repository-scoped API path")
     try:
         data = command(["gh", "api", f"repos/{REPOSITORY}/{path}"], binary=True)
     except subprocess.TimeoutExpired as exc:
-        raise ValueError("Remote evidence retrieval timed out") from exc
+        raise ReuseRefused("Remote evidence retrieval timed out") from exc
     if archive:
         return data
     result = json.loads(data)
     if not isinstance(result, dict):
-        raise ValueError("Malformed remote evidence object")
+        raise ReuseRefused("Malformed remote evidence object")
     return result
 
 
@@ -60,19 +75,19 @@ def pages(path: str, key: str) -> list[dict]:
         result = api(f"{path}{'&' if '?' in path else '?'}per_page=100&page={page}")
         batch = result[key]
         if not isinstance(batch, list) or any(not isinstance(row, dict) for row in batch):
-            raise ValueError("Malformed paginated evidence")
+            raise ReuseRefused("Malformed paginated evidence")
         rows.extend(batch)
         if len(batch) < 100:
             return rows
-    raise ValueError("Evidence pagination exceeded bound")
+    raise ReuseRefused("Evidence pagination exceeded bound")
 
 
 def exact_head() -> str:
     head = os.environ.get("EXPECTED_HEAD", "")
     if not re.fullmatch(r"[0-9a-f]{40}", head):
-        raise ValueError("Exact source SHA required")
+        raise ReuseRefused("Exact source SHA required")
     if command(["git", "rev-parse", "HEAD"]) != head:
-        raise ValueError("Checkout differs from requested source")
+        raise ReuseRefused("Checkout differs from requested source")
     return head
 
 
@@ -85,10 +100,10 @@ def record(root: Path, output: Path) -> None:
                                  "bifrost-test-client-dev:latest"]))
     containers = command(["docker", "compose", "-f", os.environ["COMPOSE_FILE"], "ps", "-aq"]).splitlines()
     if not containers or any(not re.fullmatch(r"[0-9a-f]{64}", item) for item in containers):
-        raise ValueError("Original test stack identity unavailable")
+        raise ReuseRefused("Original test stack identity unavailable")
     runtime_images = sorted(set(command(["docker", "inspect", "--format", "{{.Image}}", *containers]).splitlines()))
     if any(not re.fullmatch(r"sha256:[0-9a-f]{64}", item) for item in runtime_images):
-        raise ValueError("Original runtime image identity unavailable")
+        raise ReuseRefused("Original runtime image identity unavailable")
     receipt = {
         "schema": 1, "repository": os.environ["GITHUB_REPOSITORY"],
         "event": os.environ["GITHUB_EVENT_NAME"], "ref": os.environ["GITHUB_REF"],
@@ -115,7 +130,7 @@ def record(root: Path, output: Path) -> None:
 def successful_job(jobs: list[dict], name: str) -> dict:
     matches = [job for job in jobs if job.get("name") == name]
     if len(matches) != 1 or matches[0].get("status") != "completed" or matches[0].get("conclusion") != "success":
-        raise ValueError(f"One complete successful {name} required")
+        raise ReuseRefused(f"One complete successful {name} required")
     return matches[0]
 
 
@@ -126,24 +141,24 @@ def archive_files(artifact: dict, required: set[str], job: dict, run_id: int) ->
             or type(artifact.get("size_in_bytes")) is not int
             or not 0 < artifact["size_in_bytes"] <= MAX_ARCHIVE
             or not job["started_at"] <= artifact["created_at"] <= job["completed_at"]):
-        raise ValueError("Artifact does not belong to the exact successful producer job")
+        raise ReuseRefused("Artifact does not belong to the exact successful producer job")
     data = api(f"actions/artifacts/{artifact['id']}/zip", archive=True)
     if len(data) > MAX_ARCHIVE or artifact.get("digest") != "sha256:" + hashlib.sha256(data).hexdigest():
-        raise ValueError("Artifact archive digest/size mismatch")
+        raise ReuseRefused("Artifact archive digest/size mismatch")
     with zipfile.ZipFile(io.BytesIO(data)) as bundle:
         names = bundle.namelist()
         if len(names) != len(set(names)) or not required <= set(names):
-            raise ValueError("Artifact has duplicate or missing required files")
+            raise ReuseRefused("Artifact has duplicate or missing required files")
         result = {}
         for name in required:
             item = bundle.getinfo(name)
             if item.file_size > preflight.MAX_REPORT_BYTES or (item.external_attr >> 16) & 0o170000 == 0o120000:
-                raise ValueError("Oversized or symlink evidence")
+                raise ReuseRefused("Oversized or symlink evidence")
             # Only fixed basenames are read; nothing is extracted from the zip.
             try:
                 result[name] = bundle.read(item)
             except RuntimeError as exc:
-                raise ValueError("Unreadable remote evidence entry") from exc
+                raise ReuseRefused("Unreadable remote evidence entry") from exc
         return result
 
 
@@ -153,16 +168,16 @@ def validate_producer(receipt: dict, run: dict, head: str, root: Path) -> None:
                 "workflow": WORKFLOW, "workflow_sha": head,
                 "run_id": run["id"], "run_attempt": run["run_attempt"]}
     if any(receipt.get(key) != value for key, value in expected.items()):
-        raise ValueError("Producer source/workflow/run/attempt mismatch")
+        raise ReuseRefused("Producer source/workflow/run/attempt mismatch")
     toolchain = receipt.get("toolchain", {})
     if any(not isinstance(toolchain.get(key), str) or not toolchain[key] for key in ("python", "node", "npm", "docker", "compose")):
-        raise ValueError("Original toolchain evidence missing")
+        raise ReuseRefused("Original toolchain evidence missing")
     images = toolchain.get("images", [])
     if len(images) != 2 or any(not re.fullmatch(r"sha256:[0-9a-f]{64}", image.get("id", "")) for image in images):
-        raise ValueError("Original test-image identities missing")
+        raise ReuseRefused("Original test-image identities missing")
     runtime_images = toolchain.get("runtime_images", [])
     if not runtime_images or any(not re.fullmatch(r"sha256:[0-9a-f]{64}", item) for item in runtime_images):
-        raise ValueError("Original runtime-image identities missing")
+        raise ReuseRefused("Original runtime-image identities missing")
     # The entire source tree, including lockfiles, image recipes, workflow and
     # preflight, is exact. Toolchain observations describe the original producer;
     # no claim is made that the tag runner executes those tools again.
@@ -174,31 +189,31 @@ def choose_run(head: str) -> dict:
                   and run.get("event") == "push" and run.get("path") == WORKFLOW
                   and run.get("head_repository", {}).get("full_name") == REPOSITORY]
     if not candidates:
-        raise ValueError("No exact-main producer")
+        raise ReuseRefused("No exact-main producer")
     # A later failed/running attempt supersedes earlier green evidence.
     run = max(candidates, key=lambda row: row["id"])
     if (run.get("status") != "completed" or run.get("conclusion") != "success"
             or type(run.get("run_attempt")) is not int or run["run_attempt"] < 1):
-        raise ValueError("Latest exact-main producer is not complete/successful")
+        raise ReuseRefused("Latest exact-main producer is not complete/successful")
     return run
 
 
 def reuse(root: Path, output: Path) -> dict:
     head = exact_head()
     if os.environ.get("GITHUB_REPOSITORY") != REPOSITORY or not os.environ.get("GITHUB_REF", "").startswith("refs/tags/v"):
-        raise ValueError("Reuse is limited to this repository's version tags")
+        raise ReuseRefused("Reuse is limited to this repository's version tags")
     run = choose_run(head)
     jobs = pages(f"actions/runs/{run['id']}/attempts/{run['run_attempt']}/jobs", "jobs")
     evidence_job, scan_job = successful_job(jobs, EVIDENCE_JOB), successful_job(jobs, SCAN_JOB)
     for name in ("Analyze exact source and wait for its quality gate", "Verify evidence after analysis"):
         steps = [step for step in scan_job.get("steps", []) if step.get("name") == name]
         if len(steps) != 1 or steps[0].get("conclusion") != "success":
-            raise ValueError("Original analysis and post-analysis verification must have run")
+            raise ReuseRefused("Original analysis and post-analysis verification must have run")
     artifacts = pages(f"actions/runs/{run['id']}/artifacts", "artifacts")
     def artifact(prefix):
         matches = [item for item in artifacts if item.get("name") == f"{prefix}-{head}-{run['run_attempt']}"]
         if len(matches) != 1:
-            raise ValueError("One exact-attempt artifact required")
+            raise ReuseRefused("One exact-attempt artifact required")
         return matches[0]
     evidence_artifact, task_artifact = artifact("sonar-evidence"), artifact("sonar-task")
     files = archive_files(evidence_artifact, {"manifest.json", "producer.json", "python.xml", "client.lcov", "node.lcov"}, evidence_job, run["id"])
@@ -208,27 +223,27 @@ def reuse(root: Path, output: Path) -> dict:
     if (properties.get("projectKey") != PROJECT or properties.get("serverUrl") != "https://sonarcloud.io"
             or not re.fullmatch(r"[A-Za-z0-9_-]+", task_id)
             or properties.get("ceTaskUrl") != "https://sonarcloud.io/api/ce/task?id=" + task_id):
-        raise ValueError("Original scanner project/server/task provenance missing")
+        raise ReuseRefused("Original scanner project/server/task provenance missing")
     producer = json.loads(files["producer.json"])
     validate_producer(producer, run, head, root)
     manifest = json.loads(files["manifest.json"])
     if producer.get("base") != manifest.get("base") or producer.get("config_sha256") != manifest.get("config_sha256"):
-        raise ValueError("Original base/configuration mismatch")
+        raise ReuseRefused("Original base/configuration mismatch")
     if hashlib.sha256(files["manifest.json"]).hexdigest() != producer.get("manifest_sha256"):
-        raise ValueError("Original manifest digest mismatch")
+        raise ReuseRefused("Original manifest digest mismatch")
     # Keep the original manifest paths and bytes. Only fixed basenames are
     # written; on verification failure remove them before fresh collection.
     output.mkdir(parents=True, exist_ok=True)
     if output.is_symlink() or any((output / name).exists() or (output / name).is_symlink()
                                   for name in (*files, "original-report-task.txt", "reuse.json")):
-        raise ValueError("Reuse requires an empty evidence destination")
+        raise ReuseRefused("Reuse requires an empty evidence destination")
     try:
         for name, data in files.items():
             (output / name).write_bytes(data)
         preflight.verify(root, head, producer["base"], output, producer["manifest_sha256"])
         current = api(f"actions/runs/{run['id']}")
         if any(current.get(key) != run.get(key) for key in ("id", "head_sha", "run_attempt", "status", "conclusion")):
-            raise ValueError("Producer changed during evidence retrieval")
+            raise ReuseRefused("Producer changed during evidence retrieval")
         (output / "original-report-task.txt").write_bytes(task)
         receipt = {"schema": 1, "kind": "exact-main-evidence-reuse", "producer": producer,
                    "evidence_artifact_id": evidence_artifact["id"], "task_artifact_id": task_artifact["id"],
@@ -255,12 +270,20 @@ def main() -> int:
     try:
         producer = reuse(root, output)
     except (ValueError, OSError, KeyError, TypeError, zipfile.BadZipFile) as exc:
-        print(f"Exact-main reuse unavailable ({type(exc).__name__}); collecting fresh evidence.")
+        reason = str(exc) if type(exc) is ReuseRefused else "Evidence retrieval or validation failed"
+        message = f"Exact-main reuse unavailable: {reason}; collecting fresh evidence."
+        print(message)
+        summary(message)
         return 0
+    except Exception:
+        # Unexpected errors remain terminal, without echoing arbitrary exception text.
+        message = "Exact-main reuse failed unexpectedly; stopped without enabling reuse or fresh collection."
+        print(message)
+        summary(message)
+        return 1
     with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as stream:
         stream.write(f"reused=true\nbase={producer['base']}\nmanifest_sha256={producer['manifest_sha256']}\n")
-    with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as stream:
-        stream.write(f"Reused original main coverage and analysis provenance from run {producer['run_id']}, attempt {producer['run_attempt']}. No tag analysis was submitted.\n")
+    summary(f"Reused original main coverage and analysis provenance from run {producer['run_id']}, attempt {producer['run_attempt']}. No tag analysis was submitted.")
     return 0
 
 
