@@ -97,6 +97,19 @@ class Execution(Base):
     dispatch_evidence_hash: Mapped[str | None] = mapped_column(
         String(71), nullable=True
     )
+    # One-way identity of the app-embed session that admitted this execution.
+    # Redis capabilities may expire or fail to write; this durable binding is
+    # the authority used to validate retries before minting another capability.
+    embed_session_binding: Mapped[str | None] = mapped_column(
+        String(71), nullable=True
+    )
+    # True only after the owning embed session's Redis read capability was
+    # minted successfully.  Background recovery must not publish an embed
+    # execution while this remains false: the durable row can outlive a failed
+    # or interrupted cache write.
+    embed_capability_issued: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
     retry_policy: Mapped[dict] = mapped_column(
         JSONB,
         nullable=False,

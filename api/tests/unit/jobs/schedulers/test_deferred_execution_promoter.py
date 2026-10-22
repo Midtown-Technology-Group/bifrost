@@ -143,6 +143,37 @@ async def test_promotes_due_rows(db_session):
 
 
 @pytest.mark.asyncio
+async def test_skips_embed_rows_until_capability_was_issued(db_session):
+    from src.jobs.schedulers.deferred_execution_promoter import promote_due_executions
+    from src.services.execution.submission_recovery import embed_session_binding
+
+    await _cancel_existing_scheduled(db_session)
+    now = datetime.now(timezone.utc)
+    blocked = _new_scheduled(now + timedelta(hours=1))
+    blocked.embed_session_binding = embed_session_binding("session-a")
+    blocked.embed_capability_issued = False
+    ready = _new_scheduled(now + timedelta(hours=1))
+    ready.embed_session_binding = embed_session_binding("session-b")
+    ready.embed_capability_issued = True
+    db_session.add_all([blocked, ready])
+    await db_session.commit()
+
+    with (
+        patch(PATH_DB_CTX, return_value=_DbCtx(db_session)),
+        patch(PATH_DATETIME) as promoter_datetime,
+        patch(PATH_CAPACITY, new=AsyncMock(return_value=5)),
+        patch(PATH_PUBLISH, new=AsyncMock(return_value=True)) as pub,
+    ):
+        promoter_datetime.now.return_value = now + timedelta(hours=2)
+        promoted, failed = await promote_due_executions()
+
+    assert promoted == 1
+    assert failed == 0
+    pub.assert_awaited_once()
+    assert pub.await_args.kwargs["execution_id"] == str(ready.id)
+
+
+@pytest.mark.asyncio
 async def test_leaves_future_rows(db_session):
     from src.jobs.schedulers.deferred_execution_promoter import promote_due_executions
 

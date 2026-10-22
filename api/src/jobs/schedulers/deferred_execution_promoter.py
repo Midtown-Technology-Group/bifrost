@@ -9,6 +9,8 @@ Design notes:
   advisory lock prevents a concurrent publisher from dispatching it twice.
 - Concurrent ticks may select the same candidate; the canonical publisher
   locks and rechecks its state before publication.
+- Embed-owned rows remain ineligible until the owning session's Redis read
+  capability was issued and that fact committed durably.
 - Keyset pages of 500 skip rejected rows without starving later work.
   Successful publications remain bounded by reported free worker slots.
 - For legacy date-scheduled rows without dispatch evidence, ``user_email`` is
@@ -84,10 +86,21 @@ async def _candidate_ids() -> AsyncIterator[UUID]:
             select(Execution.created_at, Execution.id)
             .where(Execution.status == ExecutionStatus.SCHEDULED)
             .where(Execution.created_at <= now)
-            .where(or_(
-                Execution.scheduled_at <= now,
-                and_(Execution.scheduled_at.is_(None), Execution.dispatch_evidence.is_not(None)),
-            ))
+            .where(
+                or_(
+                    Execution.embed_session_binding.is_(None),
+                    Execution.embed_capability_issued.is_(True),
+                )
+            )
+            .where(
+                or_(
+                    Execution.scheduled_at <= now,
+                    and_(
+                        Execution.scheduled_at.is_(None),
+                        Execution.dispatch_evidence.is_not(None),
+                    ),
+                )
+            )
             .order_by(Execution.created_at.asc(), Execution.id.asc())
             .limit(BATCH_LIMIT)
         )

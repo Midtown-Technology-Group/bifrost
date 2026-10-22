@@ -38,6 +38,7 @@ async def test_run_workflow_reuses_validated_timeout_for_sync_wait() -> None:
         timeout_seconds=123,
         dispatch_metadata=None,
         org_id_override=None,
+        embed_session_jti=None,
     )
 
 
