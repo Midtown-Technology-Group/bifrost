@@ -115,3 +115,34 @@ def test_nonfinite_saturation_is_unknown_and_json_serializable(ratio):
 
     assert norm.saturation_ratio is None
     assert json.loads(json.dumps(asdict(norm), allow_nan=False))["saturation_ratio"] is None
+
+
+@pytest.mark.parametrize("value", [-1, -1.0, "-1", " -1.0 "])
+def test_negative_counts_and_capacities_are_unknown_or_defaulted(value):
+    fields = (
+        "active_process_count", "pool_size", "configured_capacity", "max_workers",
+        "idle_count", "busy_count", "available_slots", "requirements_installed",
+        "requirements_total",
+    )
+    payload = {field: value for field in fields}
+    payload["admission"] = {"rejections": {"invalid": value, "valid": 0}}
+    norm = normalize_heartbeat(payload)
+
+    assert norm.active_process_count == norm.pool_size == 0
+    assert norm.idle_count == norm.busy_count == 0
+    assert norm.configured_capacity is None
+    assert norm.max_workers is None
+    assert norm.available_slots is None
+    assert norm.requirements_installed is None
+    assert norm.requirements_total is None
+    assert norm.admission_rejections == {"valid": 0}
+
+
+def test_negative_modern_fields_use_valid_legacy_fallbacks():
+    norm = normalize_heartbeat({
+        "active_process_count": -1, "pool_size": 2,
+        "configured_capacity": "-3", "max_workers": 0,
+    })
+
+    assert norm.active_process_count == norm.pool_size == 2
+    assert norm.configured_capacity == norm.max_workers == 0

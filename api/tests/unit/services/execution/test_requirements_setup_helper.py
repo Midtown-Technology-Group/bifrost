@@ -75,3 +75,32 @@ def test_pip_vcs_requirement_missing_install_reports_incomplete(monkeypatch):
 
     assert result.requirements_total == 1
     assert result.requirements_installed == 0
+
+
+@pytest.mark.parametrize("requirement", [
+    "not-a-valid!!!#egg=requests", "./local-path#egg=requests",
+    "unknown://example.com/pkg#egg=requests", "https:///pkg.zip#egg=requests",
+    "git+https://#egg=requests", "git+ftp://example.com/pkg#egg=requests",
+])
+def test_invalid_egg_requirement_is_not_counted_as_installed(monkeypatch, requirement):
+    monkeypatch.setattr(
+        "src.core.requirements_cache.get_requirements_sync", lambda: requirement,
+    )
+    monkeypatch.setattr(
+        requirements_setup_helper, "_get_installed_packages", lambda: [{"name": "requests"}],
+    )
+    result = RequirementsInstallResult()
+
+    requirements_setup_helper._update_requirements_status(result)
+
+    assert result.requirements_total == 1
+    assert result.requirements_installed == 0
+
+
+@pytest.mark.parametrize("url", [
+    "git+ssh://git@example.com/pkg.git", "hg+https://example.com/pkg",
+    "svn+ssh://example.com/pkg", "bzr+lp:sample", "file:///tmp/pkg.tar.gz",
+    "https://example.com/pkg.zip", "ftp://example.com/pkg.tar.gz",
+])
+def test_supported_requirement_urls_keep_egg_names(url):
+    assert requirements_setup_helper._egg_fragment_name(f"{url}#egg=Sample_Name") == "sample-name"

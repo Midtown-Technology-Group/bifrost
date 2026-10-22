@@ -28,16 +28,18 @@ def _integer_from_text(text: str) -> int | None:
 
 
 def _to_int(value: Any) -> int | None:
-    """Best-effort int coercion; returns None when the value is unusable."""
+    """Coerce nonnegative integer counts; unusable values remain unknown."""
     if value is None or isinstance(value, bool):
         return None
     if isinstance(value, int):
-        return value
-    if isinstance(value, float):
-        return int(value) if value.is_integer() else None
-    if isinstance(value, str):
-        return _integer_from_text(value.strip())
-    return None
+        result = value
+    elif isinstance(value, float) and value.is_integer():
+        result = int(value)
+    elif isinstance(value, str):
+        result = _integer_from_text(value.strip())
+    else:
+        return None
+    return result if result is not None and result >= 0 else None
 
 
 def _to_float(value: Any) -> float | None:

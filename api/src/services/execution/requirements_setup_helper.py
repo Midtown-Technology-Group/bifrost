@@ -6,6 +6,7 @@ import json
 import logging
 import subprocess
 import sys
+from urllib.parse import urlsplit
 
 from packaging.requirements import InvalidRequirement, Requirement
 from packaging.utils import canonicalize_name
@@ -50,6 +51,32 @@ def _requirement_name(line: str) -> str | None:
         return None
 
 
+# pip's documented archive URL and VCS schemes. Unknown/local requirement
+# forms remain unverifiable instead of borrowing an arbitrary egg name.
+_REQUIREMENT_URL_SCHEMES = {
+    "http", "https", "ftp", "file", "git", "svn",
+    "git+file", "git+https", "git+ssh", "git+http", "git+git",
+    "hg+file", "hg+http", "hg+https", "hg+ssh", "hg+static-http",
+    "svn+svn", "svn+http", "svn+https", "svn+ssh",
+    "bzr+http", "bzr+https", "bzr+ssh", "bzr+sftp", "bzr+ftp", "bzr+lp",
+}
+
+
+def _requirement_url_fragment(line: str) -> str | None:
+    """Return fragments only for structurally usable pip requirement URLs."""
+    try:
+        url = urlsplit(_strip_inline_comment(line).strip())
+    except ValueError:
+        return None
+    if url.scheme not in _REQUIREMENT_URL_SCHEMES or not url.path:
+        return None
+    if url.scheme == "bzr+lp":
+        return url.fragment
+    if url.scheme in {"file", "git+file", "hg+file"}:
+        return url.fragment if url.path.startswith("/") else None
+    return url.fragment if url.netloc else None
+
+
 def _egg_fragment_name(line: str) -> str | None:
     """Canonical name from a pip ``#egg=<name>`` fragment, if present.
 
@@ -59,7 +86,9 @@ def _egg_fragment_name(line: str) -> str | None:
     ``packaging.Requirement`` rejects. Matching on the egg fragment keeps
     those lines counted against the installed distributions.
     """
-    _, _, fragment = _strip_inline_comment(line).partition("#")
+    fragment = _requirement_url_fragment(line)
+    if fragment is None:
+        return None
     for param in fragment.split("&"):
         key, sep, value = param.partition("=")
         if sep and key.strip() == "egg":
