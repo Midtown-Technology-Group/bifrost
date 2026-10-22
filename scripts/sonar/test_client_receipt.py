@@ -174,3 +174,10 @@ class ClientReceiptTests(Fixture):
             with self.assertRaises(OSError): receipt.reuse(self.root)
         self.assertFalse((self.output / "raw/client.lcov").exists())
         self.assertFalse((self.output / "client-producer.json").exists())
+
+    def test_artifact_id_stays_ascii_positive_canonical_decimal(self):
+        for value in ("0", "-1", "01", "17\n", "1\u0667", "\uff11\uff17", "17/zip"):
+            with self.subTest(value=value), patch.dict(os.environ, CLIENT_ARTIFACT_ID=value):
+                with self.assertRaises(receipt.transport.ReuseRefused):
+                    receipt.reuse(self.root)
+        self.assertFalse((self.output / "raw/client.lcov").exists())

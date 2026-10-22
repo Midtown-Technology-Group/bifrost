@@ -19,6 +19,9 @@ SPEC = importlib.util.spec_from_file_location("main_receipt", Path(__file__).wit
 transport = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(transport)
 
+CLIENT_REPORT = "client.lcov"
+PRODUCER_RECEIPT = "producer.json"
+
 
 def context() -> dict:
     if os.environ.get("GITHUB_REPOSITORY") != transport.REPOSITORY:
@@ -60,25 +63,28 @@ def record(root: Path) -> None:
                                                "report_sha256": hashlib.sha256(data).hexdigest()}
     destination = root / ".client-coverage"
     destination.mkdir(exist_ok=False)
-    (destination / "client.lcov").write_bytes(data)
-    (destination / "producer.json").write_bytes(transport.preflight.json_bytes(receipt))
+    (destination / CLIENT_REPORT).write_bytes(data)
+    (destination / PRODUCER_RECEIPT).write_bytes(transport.preflight.json_bytes(receipt))
+
+
+def validate_run(current: dict, expected: dict, head: str) -> None:
+    """Bind both live readbacks to the same trusted source and attempt."""
+    if (current.get("id") != expected["run_id"] or current.get("run_attempt") != expected["run_attempt"]
+            or current.get("head_sha") != head
+            or current.get("event") != expected["event"] or current.get("path") != transport.WORKFLOW
+            or current.get("head_repository", {}).get("full_name") != transport.REPOSITORY):
+        raise transport.ReuseRefused("Client producer run/trust/attempt mismatch")
 
 
 def reuse(root: Path) -> None:
     expected = context()
     head = transport.exact_head()
     artifact_id = os.environ.get("CLIENT_ARTIFACT_ID", "")
-    if not re.fullmatch(r"[1-9][0-9]*", artifact_id):
+    if not re.fullmatch(r"[1-9]\d*", artifact_id, flags=re.ASCII):
         raise transport.ReuseRefused("Exact client artifact ID required")
     run_id, attempt = expected["run_id"], expected["run_attempt"]
     run = transport.api(f"actions/runs/{run_id}")
-    def validate_run(current):
-        if (current.get("id") != run_id or current.get("run_attempt") != attempt
-                or current.get("head_sha") != head
-                or current.get("event") != expected["event"] or current.get("path") != transport.WORKFLOW
-                or current.get("head_repository", {}).get("full_name") != transport.REPOSITORY):
-            raise transport.ReuseRefused("Client producer run/trust/attempt mismatch")
-    validate_run(run)
+    validate_run(run, expected, head)
     jobs = transport.pages(f"actions/runs/{run_id}/attempts/{attempt}/jobs", "jobs")
     job = transport.successful_job(jobs, "Client Unit Tests")
     for name in ("Vitest", "Bind complete client coverage", "Retain complete client coverage"):
@@ -89,8 +95,8 @@ def reuse(root: Path) -> None:
     if (artifact.get("id") != int(artifact_id)
             or artifact.get("name") != f"client-coverage-{run_id}-{attempt}"):
         raise transport.ReuseRefused("Client artifact identity mismatch")
-    files = transport.archive_files(artifact, {"client.lcov", "producer.json"}, job, run_id)
-    receipt = json.loads(files["producer.json"])
+    files = transport.archive_files(artifact, {CLIENT_REPORT, PRODUCER_RECEIPT}, job, run_id)
+    receipt = json.loads(files[PRODUCER_RECEIPT])
     identity = source_identity()
     if (any(receipt.get(key) != value for key, value in expected.items())
             or receipt.get("mode") != "comprehensive"
@@ -99,11 +105,11 @@ def reuse(root: Path) -> None:
             or receipt.get("checkout") != expected["source"]
             or not re.fullmatch(r"[0-9a-f]{40}", receipt.get("checkout", ""))
             or identity["checkout"] != head
-            or not files["client.lcov"]
-            or receipt.get("report_sha256") != hashlib.sha256(files["client.lcov"]).hexdigest()):
+            or not files[CLIENT_REPORT]
+            or receipt.get("report_sha256") != hashlib.sha256(files[CLIENT_REPORT]).hexdigest()):
         raise transport.ReuseRefused("Client coverage source/tree/config/toolchain/report mismatch")
-    validate_run(transport.api(f"actions/runs/{run_id}"))
-    destination = root / ".sonar-evidence/raw/client.lcov"
+    validate_run(transport.api(f"actions/runs/{run_id}"), expected, head)
+    destination = root / ".sonar-evidence/raw" / CLIENT_REPORT
     if destination.exists() or destination.is_symlink():
         raise transport.ReuseRefused("Client reuse requires an empty report destination")
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -112,8 +118,8 @@ def reuse(root: Path) -> None:
     if receipt_path.exists() or receipt_path.is_symlink():
         raise transport.ReuseRefused("Client reuse requires an empty receipt destination")
     try:
-        receipt_path.write_bytes(files["producer.json"])
-        destination.write_bytes(files["client.lcov"])
+        receipt_path.write_bytes(files[PRODUCER_RECEIPT])
+        destination.write_bytes(files[CLIENT_REPORT])
     except Exception:
         receipt_path.unlink(missing_ok=True)
         destination.unlink(missing_ok=True)
