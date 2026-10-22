@@ -3,6 +3,10 @@ name: Sonar Coverage
 on:
   workflow_call:
     inputs:
+      client_artifact_id:
+        required: false
+        type: string
+        default: ""
       head_sha:
         required: true
         type: string
@@ -96,8 +100,16 @@ jobs:
         run: |
           npm ci --prefix client --ignore-scripts
           npm ci --prefix scripts/docs --ignore-scripts
+      - name: Consume this run's complete client coverage
+        id: client-reuse
+        if: steps.reuse.outputs.reused != 'true' && inputs.client_artifact_id != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CLIENT_ARTIFACT_ID: ${{ inputs.client_artifact_id }}
+          EXPECTED_HEAD: ${{ inputs.head_sha }}
+        run: python3 scripts/sonar/client_receipt.py reuse
       - name: Collect comprehensive client coverage
-        if: steps.reuse.outputs.reused != 'true'
+        if: steps.reuse.outputs.reused != 'true' && steps.client-reuse.outputs.reused != 'true'
         env:
           HEAD_SHA: ${{ steps.context.outputs.head }}
           BASE_SHA: ${{ steps.context.outputs.base }}
@@ -106,6 +118,12 @@ jobs:
           (cd client && npm run test:coverage)
           cp client/coverage/lcov.info .sonar-evidence/raw/client.lcov
           python3 scripts/sonar/preflight.py stamp --head "$HEAD_SHA" --base "$BASE_SHA" --report .sonar-evidence/raw/client.lcov
+      - name: Bind consumed client report to analysis context
+        if: steps.client-reuse.outputs.reused == 'true'
+        env:
+          HEAD_SHA: ${{ steps.context.outputs.head }}
+          BASE_SHA: ${{ steps.context.outputs.base }}
+        run: python3 scripts/sonar/preflight.py stamp --head "$HEAD_SHA" --base "$BASE_SHA" --report .sonar-evidence/raw/client.lcov
       - name: Collect repository Node test coverage
         if: steps.reuse.outputs.reused != 'true'
         env:
