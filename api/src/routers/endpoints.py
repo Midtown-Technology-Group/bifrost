@@ -107,19 +107,12 @@ async def execute_endpoint(
 
     redis_client = get_redis_client()
 
-    # Try to get workflow metadata from cache (FAST path - skips module loading)
+    # Endpoint metadata is a performance cache, never an authorization cache.
+    # A fresh database lookup below remains authoritative for enablement,
+    # Solution lifecycle, and allowed methods on every request.
     cached = await redis_client.get_endpoint_workflow_cache(workflow_id)
-    workflow_metadata: CachedWorkflowMetadata | None = None
-
     if cached:
         logger.debug(f"Cache hit for endpoint workflow: {log_safe(workflow_id)}")
-        workflow_metadata = CachedWorkflowMetadata(
-            workflow_id=cached["workflow_id"],
-            file_path=cached["file_path"],
-            execution_mode=cached["execution_mode"],
-            timeout_seconds=cached["timeout_seconds"],
-            allowed_methods=cached["allowed_methods"],
-        )
 
     async with get_db_context() as db:
         # Validate API key
@@ -134,37 +127,42 @@ async def execute_endpoint(
 
         logger.debug(f"API key validated for workflow: {log_safe(workflow_id)} (key_id: {key_id})")
 
-        # If no cache hit, load from DB and module
-        if workflow_metadata is None:
-            logger.debug(f"Cache miss for endpoint workflow: {log_safe(workflow_id)}")
+        # Always re-check the persisted workflow and its owning Solution. A warm
+        # cache must not outlive endpoint disablement, method changes, workflow
+        # deactivation, or Solution uninstall.
+        # System-level access: org_id=None, is_superuser=True bypasses cascade scoping.
+        workflow_repo = WorkflowRepository(db, org_id=None, is_superuser=True)
+        workflow = await workflow_repo.get_endpoint_workflow_by_id(wf_uuid)
 
-            # Get workflow from database
-            # System-level access: org_id=None, is_superuser=True bypasses cascade scoping
-            workflow_repo = WorkflowRepository(db, org_id=None, is_superuser=True)
-            workflow = await workflow_repo.get_endpoint_workflow_by_id(wf_uuid)
-
-            if not workflow:
-                logger.warning(f"Endpoint workflow not found: {log_safe(workflow_id)}")
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail=f"Endpoint workflow '{workflow_id}' not found or not enabled",
-                )
-
-            # Build cached metadata from DB workflow record
-            # All metadata (execution_mode, timeout, allowed_methods) is stored in the workflows table
-            workflow_metadata = CachedWorkflowMetadata(
-                workflow_id=str(workflow.id),
-                file_path=workflow.path,
-                execution_mode=workflow.execution_mode or "sync",
-                # NOT `or 1800` — 0 means "no timeout", and `or` would clobber
-                # it *and* persist the wrong value into the Redis cache below.
-                timeout_seconds=(
-                    workflow.timeout_seconds if workflow.timeout_seconds is not None else 1800
-                ),
-                allowed_methods=workflow.allowed_methods or ["POST"],
+        if not workflow:
+            if cached:
+                await redis_client.invalidate_endpoint_workflow_cache(workflow_id)
+            logger.warning(f"Endpoint workflow not found: {log_safe(workflow_id)}")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Endpoint workflow '{workflow_id}' not found or not enabled",
             )
 
-            # Cache for future requests
+        workflow_metadata = CachedWorkflowMetadata(
+            workflow_id=str(workflow.id),
+            file_path=workflow.path,
+            execution_mode=workflow.execution_mode or "sync",
+            # NOT `or 1800` — 0 means "no timeout", and `or` would clobber
+            # it *and* persist the wrong value into the Redis cache below.
+            timeout_seconds=(
+                workflow.timeout_seconds if workflow.timeout_seconds is not None else 1800
+            ),
+            allowed_methods=workflow.allowed_methods or ["POST"],
+        )
+
+        authoritative_cache = {
+            "workflow_id": workflow_metadata.workflow_id,
+            "file_path": workflow_metadata.file_path,
+            "execution_mode": workflow_metadata.execution_mode,
+            "timeout_seconds": workflow_metadata.timeout_seconds,
+            "allowed_methods": workflow_metadata.allowed_methods,
+        }
+        if cached != authoritative_cache:
             await redis_client.set_endpoint_workflow_cache(
                 workflow_id=workflow_id,
                 file_path=workflow_metadata.file_path,
