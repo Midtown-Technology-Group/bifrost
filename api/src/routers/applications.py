@@ -166,12 +166,21 @@ def _application_logo_url(application: Application) -> str | None:
     return None
 
 
+def _can_view_repo_path(user: object) -> bool:
+    """Limit internal workspace paths to control-plane operators."""
+    return has_scope_bypass(
+        is_platform_admin=bool(getattr(user, "is_platform_admin", False)),
+        is_provider_org=bool(getattr(user, "is_provider_org", False)),
+    )
+
+
 async def application_to_public(
     application: Application,
     repo: "ApplicationRepository",
     *,
     current_sdk: CurrentApplicationSdkMetadata,
     include_inline_logo: bool = True,
+    include_repo_path: bool = False,
     source_available: bool | None = None,
 ) -> ApplicationPublic:
     """Convert Application ORM to ApplicationPublic with role_ids."""
@@ -195,7 +204,7 @@ async def application_to_public(
         access_level=application.access_level,
         app_model=application.app_model,
         role_ids=role_ids,
-        repo_path=application.repo_path,
+        repo_path=application.repo_path if include_repo_path else None,
         logo=(
             _logo_data_url(
                 application.logo_thumbnail_data or application.logo_data,
@@ -531,6 +540,7 @@ async def create_application(
             application,
             repo,
             current_sdk=current_sdk,
+            include_repo_path=_can_view_repo_path(user),
         )
         # The default request-scoped database dependency commits during
         # teardown, after the response may already have been sent.  A caller
@@ -598,6 +608,7 @@ async def list_applications(
             repo,
             current_sdk=current_sdk,
             include_inline_logo=False,
+            include_repo_path=_can_view_repo_path(user),
             source_available=source_availability[app.id],
         )
         for app in applications
@@ -696,7 +707,12 @@ async def get_application(
     )
     application = await get_application_or_404(ctx, slug)
     current_sdk = await load_current_sdk_metadata()
-    return await application_to_public(application, repo, current_sdk=current_sdk)
+    return await application_to_public(
+        application,
+        repo,
+        current_sdk=current_sdk,
+        include_repo_path=_can_view_repo_path(user),
+    )
 
 
 @router.patch(
@@ -765,7 +781,12 @@ async def update_application(
     )
 
     current_sdk = await load_current_sdk_metadata()
-    return await application_to_public(application, repo, current_sdk=current_sdk)
+    return await application_to_public(
+        application,
+        repo,
+        current_sdk=current_sdk,
+        include_repo_path=_can_view_repo_path(user),
+    )
 
 
 @router.delete(
@@ -1318,7 +1339,12 @@ async def replace_application_endpoint(
         )
 
     current_sdk = await load_current_sdk_metadata()
-    return await application_to_public(application, repo, current_sdk=current_sdk)
+    return await application_to_public(
+        application,
+        repo,
+        current_sdk=current_sdk,
+        include_repo_path=True,
+    )
 
 
 @router.post(
@@ -1363,8 +1389,12 @@ async def swap_application_slugs(
 
     current_sdk = await load_current_sdk_metadata()
     apps = [
-        await application_to_public(app_a, repo, current_sdk=current_sdk),
-        await application_to_public(app_b, repo, current_sdk=current_sdk),
+        await application_to_public(
+            app_a, repo, current_sdk=current_sdk, include_repo_path=True
+        ),
+        await application_to_public(
+            app_b, repo, current_sdk=current_sdk, include_repo_path=True
+        ),
     ]
     return ApplicationListResponse(applications=apps, total=len(apps))
 
@@ -1596,6 +1626,9 @@ async def export_application(
     application = await get_application_by_id_or_404(ctx, app_id)
     export_data = await repo.export_application(application, version_id)
 
+    if not _can_view_repo_path(user):
+        export_data.pop("repo_path", None)
+
     return ApplicationPublic.model_validate(export_data)
 
 
@@ -1639,7 +1672,12 @@ async def rollback_application(
         await ctx.db.refresh(application)
         logger.info(f"Rolled back application {log_safe(app_id)} to version {log_safe(data.version_id)}")
         current_sdk = await load_current_sdk_metadata()
-        return await application_to_public(application, repo, current_sdk=current_sdk)
+        return await application_to_public(
+            application,
+            repo,
+            current_sdk=current_sdk,
+            include_repo_path=_can_view_repo_path(user),
+        )
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
