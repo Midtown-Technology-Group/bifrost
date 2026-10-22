@@ -1548,9 +1548,13 @@ async def register_workflow(
 
     # Org targeting follows the unified --org standard (mirrors config's
     # set_config): if organization_id was explicitly provided (even as null),
-    # honor it — null means global. If it was OMITTED, default to the caller's
-    # own org (HOME) so a bare `register` never silently writes a global row.
-    if "organization_id" in (request.model_fields_set or set()):
+    # honor it — null means global. A new registration with the field omitted
+    # defaults to the caller's home org; reactivation preserves its stored
+    # scope unless the field was explicitly supplied.
+    organization_id_provided = "organization_id" in (
+        request.model_fields_set or set()
+    )
+    if organization_id_provided:
         org_uuid = UUID(request.organization_id) if request.organization_id else None
     else:
         org_uuid = user.organization_id
@@ -1592,7 +1596,12 @@ async def register_workflow(
         existing_wf.is_active = True
         existing_wf.is_orphaned = False
         existing_wf.type = wf_type
-        existing_wf.organization_id = org_uuid
+        # Reactivation is not a scope-edit operation unless the caller made
+        # that intent explicit. In particular, a platform admin can have no
+        # home organization; applying the new-registration default here would
+        # silently promote an existing org-scoped workflow to global scope.
+        if organization_id_provided:
+            existing_wf.organization_id = org_uuid
         if request.access_level is not None:
             existing_wf.access_level = request.access_level
         if "retry_policy" in request.model_fields_set:
