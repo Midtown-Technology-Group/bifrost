@@ -76,6 +76,26 @@ original collector; original main artifacts and failure evidence are retained.
 No runtime/schema rollback is involved. No latency saving is claimed until a
 post-merge main producer and its tag consumer exercise the transport.
 
+### Publication-free transport rehearsal
+
+The bounded implementation adds manual dispatch to the existing
+`sonar-coverage.yml` with `rehearsal_source_sha`: an exact successful main
+producer source, not a branch or tag. It uses the existing evidence job's
+read permissions. Producer source and exact dispatch tooling are separate
+checkouts; receipts retain the actual manual event/ref/workflow/run/attempt
+and original source/configuration/report/analysis identities. It executes
+the same selection, download and preflight transport without collection,
+scanning, tags, releases, package publication or deployment. No new secret,
+permission, required check or approval change is part of this mode.
+
+`reuse.json` explicitly identifies a rehearsal. If evidence is unavailable,
+`rehearsal.json` records `fresh_collection_required`, exits unsuccessfully and
+starts no replacement collector; ordinary tag fallback remains unchanged.
+The retained `sonar-rehearsal-*` artifact is not a tag analysis or source gate.
+Positive dispatch proof remains pending until an existing compatible main
+producer completes. Even a successful rehearsal does not replace the first
+real tag-consumer proof. Rollback is a reviewed revert of this optional mode.
+
 The [October 19–20 incident report](2026-10-20-release-process-incident.md)
 records the complete wall-clock history, root causes, owned corrective slices
 R1–R6 and end-to-end acceptance cases A1–A14. This design must satisfy that

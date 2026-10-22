@@ -183,9 +183,21 @@ def choose_run(head: str) -> dict:
     return run
 
 
-def reuse(root: Path, output: Path) -> dict:
+def reuse(root: Path, output: Path, *, rehearsal: bool = False) -> dict:
     head = exact_head()
-    if os.environ.get("GITHUB_REPOSITORY") != REPOSITORY or not os.environ.get("GITHUB_REF", "").startswith("refs/tags/v"):
+    ref = os.environ.get("GITHUB_REF", "")
+    if os.environ.get("GITHUB_REPOSITORY") != REPOSITORY:
+        raise ValueError("Reuse is limited to this repository")
+    if rehearsal:
+        workflow = f"{REPOSITORY}/.github/workflows/sonar-coverage.yml@{ref}"
+        tooling = Path(__file__).resolve().parents[2]
+        if (os.environ.get("GITHUB_EVENT_NAME") != "workflow_dispatch"
+                or not ref.startswith("refs/heads/")
+                or os.environ.get("GITHUB_WORKFLOW_REF") != workflow
+                or os.environ.get("GITHUB_WORKFLOW_SHA") != os.environ.get("GITHUB_SHA")
+                or command(["git", "-C", str(tooling), "rev-parse", "HEAD"]) != os.environ.get("GITHUB_WORKFLOW_SHA")):
+            raise ValueError("Rehearsal requires the actual manual workflow and its exact tooling checkout")
+    elif not ref.startswith("refs/tags/v"):
         raise ValueError("Reuse is limited to this repository's version tags")
     run = choose_run(head)
     jobs = pages(f"actions/runs/{run['id']}/attempts/{run['run_attempt']}/jobs", "jobs")
@@ -230,11 +242,15 @@ def reuse(root: Path, output: Path) -> dict:
         if any(current.get(key) != run.get(key) for key in ("id", "head_sha", "run_attempt", "status", "conclusion")):
             raise ValueError("Producer changed during evidence retrieval")
         (output / "original-report-task.txt").write_bytes(task)
-        receipt = {"schema": 1, "kind": "exact-main-evidence-reuse", "producer": producer,
+        receipt = {"schema": 1, "kind": "exact-main-evidence-reuse-rehearsal" if rehearsal else "exact-main-evidence-reuse", "producer": producer,
                    "evidence_artifact_id": evidence_artifact["id"], "task_artifact_id": task_artifact["id"],
                    "evidence_job_id": evidence_job["id"], "analysis_job_id": scan_job["id"],
                    "original_ce_task_id": task_id, "consumer_run": os.environ["GITHUB_RUN_ID"],
                    "consumer_attempt": os.environ["GITHUB_RUN_ATTEMPT"], "consumer_ref": os.environ["GITHUB_REF"],
+                   "consumer_event": os.environ.get("GITHUB_EVENT_NAME"),
+                   "consumer_sha": os.environ.get("GITHUB_SHA"),
+                   "consumer_workflow_ref": os.environ.get("GITHUB_WORKFLOW_REF"),
+                   "consumer_workflow_sha": os.environ.get("GITHUB_WORKFLOW_SHA"),
                    "tag_analysis": "not_submitted; original successful main analysis retained"}
         (output / "reuse.json").write_bytes(preflight.json_bytes(receipt))
         return producer
@@ -246,21 +262,42 @@ def reuse(root: Path, output: Path) -> dict:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=("record", "reuse"))
+    parser.add_argument("action", choices=("record", "reuse", "rehearse"))
     args = parser.parse_args()
     root, output = Path.cwd(), Path.cwd() / ".sonar-evidence"
     if args.action == "record":
         record(root, output)
         return 0
     try:
-        producer = reuse(root, output)
+        producer = reuse(root, output, rehearsal=args.action == "rehearse")
     except (ValueError, OSError, KeyError, TypeError, zipfile.BadZipFile) as exc:
+        if args.action == "rehearse":
+            output.mkdir(parents=True, exist_ok=True)
+            (output / "rehearsal.json").write_bytes(preflight.json_bytes({
+                "schema": 1, "kind": "exact-main-evidence-reuse-rehearsal",
+                "source": os.environ.get("EXPECTED_HEAD"),
+                "consumer_event": os.environ.get("GITHUB_EVENT_NAME"),
+                "consumer_ref": os.environ.get("GITHUB_REF"),
+                "consumer_sha": os.environ.get("GITHUB_SHA"),
+                "consumer_workflow_ref": os.environ.get("GITHUB_WORKFLOW_REF"),
+                "consumer_workflow_sha": os.environ.get("GITHUB_WORKFLOW_SHA"),
+                "consumer_run": os.environ.get("GITHUB_RUN_ID"),
+                "consumer_attempt": os.environ.get("GITHUB_RUN_ATTEMPT"),
+                "decision": "fresh_collection_required", "collection_executed": False,
+                "failure_type": type(exc).__name__, "tag_consumer_proven": False,
+            }))
+            print("Rehearsal could not verify reuse; normal tag handling would collect. No collection or publication was started.")
+            return 2
         print(f"Exact-main reuse unavailable ({type(exc).__name__}); collecting fresh evidence.")
         return 0
     with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as stream:
         stream.write(f"reused=true\nbase={producer['base']}\nmanifest_sha256={producer['manifest_sha256']}\n")
-    with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as stream:
-        stream.write(f"Reused original main coverage and analysis provenance from run {producer['run_id']}, attempt {producer['run_attempt']}. No tag analysis was submitted.\n")
+    try:
+        with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as stream:
+            prefix = "Read-only rehearsal, not a tag-consumer proof. " if args.action == "rehearse" else ""
+            stream.write(f"{prefix}Reused original main coverage and analysis provenance from run {producer['run_id']}, attempt {producer['run_attempt']}. No tag analysis was submitted.\n")
+    except OSError:
+        print("Step summary unavailable; retained evidence remains authoritative.")
     return 0
 
 

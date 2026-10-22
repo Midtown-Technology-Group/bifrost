@@ -1,6 +1,12 @@
 name: Sonar Coverage
 
 on:
+  workflow_dispatch:
+    inputs:
+      rehearsal_source_sha:
+        description: Exact successful main source to rehearse read-only; never collect, scan or publish
+        required: true
+        type: string
   workflow_call:
     inputs:
       head_sha:
@@ -18,6 +24,7 @@ permissions:
   contents: read
 
 env:
+  SONAR_REHEARSAL: ${{ github.event_name == 'workflow_dispatch' && inputs.rehearsal_source_sha != '' }}
   REGISTRY: ghcr.io
   CI_API_TEST_IMAGE: midtown-technology-group/bifrost-ci-api-dev
   CI_CLIENT_TEST_IMAGE: midtown-technology-group/bifrost-ci-client-dev
@@ -38,20 +45,30 @@ jobs:
       manifest_sha256: ${{ steps.evidence-output.outputs.manifest_sha256 }}
       artifact_name: ${{ steps.context.outputs.artifact_name }}
     steps:
+      - name: Require an exact source
+        env:
+          EXPECTED_HEAD: ${{ inputs.head_sha || inputs.rehearsal_source_sha }}
+        run: '[[ "$EXPECTED_HEAD" =~ ^[0-9a-f]{40}$ ]]'
       - name: Checkout exact analysis source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ inputs.head_sha }}
+          ref: ${{ inputs.head_sha || inputs.rehearsal_source_sha }}
           fetch-depth: 0
+          persist-credentials: false
+      - name: Checkout exact rehearsal tooling
+        if: env.SONAR_REHEARSAL == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: .sonar-rehearsal-tools
           persist-credentials: false
       - name: Bind analysis context
         id: context
         env:
-          EXPECTED_HEAD: ${{ inputs.head_sha }}
+          EXPECTED_HEAD: ${{ inputs.head_sha || inputs.rehearsal_source_sha }}
           REQUESTED_BASE: ${{ inputs.base_sha }}
         run: |
           set -euo pipefail
-          [[ "$EXPECTED_HEAD" =~ ^[0-9a-f]{40}$ ]]
           test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
           if [ -n "$REQUESTED_BASE" ] && ! [[ "$REQUESTED_BASE" =~ ^0+$ ]]; then
             [[ "$REQUESTED_BASE" =~ ^[0-9a-f]{40}$ ]]
@@ -64,18 +81,28 @@ jobs:
           git cat-file -e "$base^{commit}"
           mode="$(python3 -c 'import json; c=json.load(open(".github/sonar-ci.json")); assert c["schema_version"] == 1; assert c["project_key"] == "Midtown-Technology-Group_bifrost"; assert c["mode"] in ("report-only", "ci"); print(c["mode"])')"
           printf 'head=%s\nbase=%s\nmode=%s\n' "$EXPECTED_HEAD" "$base" "$mode" >> "$GITHUB_OUTPUT"
-          printf 'artifact_name=sonar-evidence-%s-%s\n' "$EXPECTED_HEAD" "$GITHUB_RUN_ATTEMPT" >> "$GITHUB_OUTPUT"
+          if [ "$SONAR_REHEARSAL" = true ]; then
+            printf 'artifact_name=sonar-rehearsal-%s-%s-%s\n' "$EXPECTED_HEAD" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" >> "$GITHUB_OUTPUT"
+          else
+            printf 'artifact_name=sonar-evidence-%s-%s\n' "$EXPECTED_HEAD" "$GITHUB_RUN_ATTEMPT" >> "$GITHUB_OUTPUT"
+          fi
           mkdir -p .sonar-evidence/raw
           git ls-files -z > .sonar-evidence/raw/tracked-files.nul
       - name: Try original exact-main evidence on version tags
         id: reuse
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: startsWith(github.ref, 'refs/tags/v') || env.SONAR_REHEARSAL == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
-          EXPECTED_HEAD: ${{ inputs.head_sha }}
-        run: python3 scripts/sonar/main_receipt.py reuse
+          EXPECTED_HEAD: ${{ inputs.head_sha || inputs.rehearsal_source_sha }}
+        run: |
+          set -euo pipefail
+          if [ "$SONAR_REHEARSAL" = true ]; then
+            python3 .sonar-rehearsal-tools/scripts/sonar/main_receipt.py rehearse
+          else
+            python3 scripts/sonar/main_receipt.py reuse
+          fi
       - name: Set up Node
-        if: steps.reuse.outputs.reused != 'true'
+        if: steps.reuse.outputs.reused != 'true' && env.SONAR_REHEARSAL != 'true'
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "26"
@@ -84,20 +111,20 @@ jobs:
             client/package-lock.json
             scripts/docs/package-lock.json
       - name: Set up Python for source-aware validation
-        if: steps.reuse.outputs.reused != 'true'
+        if: steps.reuse.outputs.reused != 'true' && env.SONAR_REHEARSAL != 'true'
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.14"
       - name: Run preflight fault probes
-        if: steps.reuse.outputs.reused != 'true'
+        if: steps.reuse.outputs.reused != 'true' && env.SONAR_REHEARSAL != 'true'
         run: python3 -m unittest discover -s scripts/sonar -p 'test_*.py'
       - name: Install client and repository test dependencies
-        if: steps.reuse.outputs.reused != 'true'
+        if: steps.reuse.outputs.reused != 'true' && env.SONAR_REHEARSAL != 'true'
         run: |
           npm ci --prefix client --ignore-scripts
           npm ci --prefix scripts/docs --ignore-scripts
       - name: Collect comprehensive client coverage
-        if: steps.reuse.outputs.reused != 'true'
+        if: steps.reuse.outputs.reused != 'true' && env.SONAR_REHEARSAL != 'true'
         env:
           HEAD_SHA: ${{ steps.context.outputs.head }}
           BASE_SHA: ${{ steps.context.outputs.base }}
@@ -107,7 +134,7 @@ jobs:
           cp client/coverage/lcov.info .sonar-evidence/raw/client.lcov
           python3 scripts/sonar/preflight.py stamp --head "$HEAD_SHA" --base "$BASE_SHA" --report .sonar-evidence/raw/client.lcov
       - name: Collect repository Node test coverage
-        if: steps.reuse.outputs.reused != 'true'
+        if: steps.reuse.outputs.reused != 'true' && env.SONAR_REHEARSAL != 'true'
         env:
           HEAD_SHA: ${{ steps.context.outputs.head }}
           BASE_SHA: ${{ steps.context.outputs.base }}
@@ -121,7 +148,7 @@ jobs:
             "${tests[@]}"
           python3 scripts/sonar/preflight.py stamp --head "$HEAD_SHA" --base "$BASE_SHA" --report .sonar-evidence/raw/node.lcov
       - name: Prepare exact-source test images
-        if: steps.reuse.outputs.reused != 'true'
+        if: steps.reuse.outputs.reused != 'true' && env.SONAR_REHEARSAL != 'true'
         env:
           GHCR_USERNAME: ${{ github.actor }}
           GHCR_TOKEN: ${{ github.token }}
@@ -129,7 +156,7 @@ jobs:
           CLIENT_IMAGE_CHANGED: "true"
         run: bash api/scripts/ci/prepare-test-images.sh api client
       - name: Prepare isolated Sonar test stack
-        if: steps.reuse.outputs.reused != 'true'
+        if: steps.reuse.outputs.reused != 'true' && env.SONAR_REHEARSAL != 'true'
         run: |
           set -euo pipefail
           source scripts/lib/test_helpers.sh
@@ -146,7 +173,7 @@ jobs:
           echo "COMPOSE_FILE=$RUNNER_TEMP/sonar-compose.yml" >> "$GITHUB_ENV"
           echo "SONAR_LOG_DIR=$LOG_DIR" >> "$GITHUB_ENV"
       - name: Collect repository Python tool coverage
-        if: steps.reuse.outputs.reused != 'true'
+        if: steps.reuse.outputs.reused != 'true' && env.SONAR_REHEARSAL != 'true'
         run: |
           set -euo pipefail
           # Pure repository tools have their own scripts namespace. Run from
@@ -170,7 +197,7 @@ jobs:
             --cov --cov-branch --cov-config=/repo/api/.coveragerc.sonar --cov-report= \
             --junitxml=/tmp/bifrost/sonar-repository-junit.xml
       - name: Collect comprehensive Python coverage
-        if: steps.reuse.outputs.reused != 'true'
+        if: steps.reuse.outputs.reused != 'true' && env.SONAR_REHEARSAL != 'true'
         env:
           BIFROST_SKIP_BUILD: "1"
           HEAD_SHA: ${{ steps.context.outputs.head }}
@@ -201,7 +228,7 @@ jobs:
           cp "$SONAR_LOG_DIR/coverage-sonar.xml" .sonar-evidence/raw/python.xml
           python3 scripts/sonar/preflight.py stamp --head "$HEAD_SHA" --base "$BASE_SHA" --report .sonar-evidence/raw/python.xml
       - name: Validate reports and source inventory
-        if: steps.reuse.outputs.reused != 'true'
+        if: steps.reuse.outputs.reused != 'true' && env.SONAR_REHEARSAL != 'true'
         id: validate
         env:
           HEAD_SHA: ${{ steps.context.outputs.head }}
@@ -224,6 +251,7 @@ jobs:
           export COMPOSE_PROJECT_NAME="$(compute_project_name .)"
           python3 scripts/sonar/main_receipt.py record
       - name: Select verified evidence outputs
+        if: env.SONAR_REHEARSAL != 'true'
         id: evidence-output
         env:
           REUSED: ${{ steps.reuse.outputs.reused }}
@@ -304,7 +332,7 @@ jobs:
           if-no-files-found: error
           retention-days: 14
       - name: Report staged migration
-        if: steps.context.outputs.mode == 'report-only'
+        if: steps.context.outputs.mode == 'report-only' && env.SONAR_REHEARSAL != 'true'
         run: |
           echo 'Coverage evidence is staged. No CI analysis was submitted to SonarQube Cloud. Automatic analysis and current approval controls remain unchanged.' >> "$GITHUB_STEP_SUMMARY"
 
@@ -313,7 +341,7 @@ jobs:
     name: Sonar Free scope disposition
     needs: evidence
     runs-on: ubuntu-latest
-    if: needs.evidence.outputs.mode == 'ci'
+    if: needs.evidence.outputs.mode == 'ci' && inputs.rehearsal_source_sha == ''
     steps:
       - name: Record provider scope and activation state
         env:
@@ -344,6 +372,7 @@ jobs:
     # Activation is an operator-controlled cutover after this workflow merges.
     # Free supports main and PRs targeting main; merge groups retain evidence only.
     if: >-
+      inputs.rehearsal_source_sha == '' &&
       needs.evidence.outputs.mode == 'ci' && vars.SONAR_CI_ENABLED == 'true' &&
       ((github.event_name == 'pull_request' && github.base_ref == 'main' &&
         github.event.pull_request.head.repo.full_name == github.repository &&

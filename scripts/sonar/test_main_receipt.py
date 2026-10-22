@@ -69,6 +69,8 @@ class MainReceiptTests(Fixture):
         self.addCleanup(self.api_patch.stop)
 
     def command(self, args, **kwargs):
+        if args[:2] == ["git", "-C"]:
+            return "e" * 40
         if args[0] == "git":
             return self.run_git(*args[1:])
         if args[:3] == ["docker", "image", "inspect"]:
@@ -243,6 +245,71 @@ class MainReceiptTests(Fixture):
             receipt.reuse(self.root, self.output)
         self.assertFalse((self.output / "manifest.json").exists())
         self.assertFalse((self.output / "python.xml").exists())
+
+    def manual_context(self):
+        ref = "refs/heads/reviewed-rehearsal"
+        return {"GITHUB_EVENT_NAME": "workflow_dispatch", "GITHUB_REF": ref,
+                "GITHUB_SHA": "e" * 40, "GITHUB_WORKFLOW_SHA": "e" * 40,
+                "GITHUB_WORKFLOW_REF": f"{receipt.REPOSITORY}/.github/workflows/sonar-coverage.yml@{ref}"}
+
+    def test_rehearsal_uses_real_dispatch_identity_and_original_transport(self):
+        target, summary = self.root / "github-output", self.root / "summary"
+        with patch.dict(os.environ, {**self.manual_context(), "GITHUB_OUTPUT": str(target),
+                                     "GITHUB_STEP_SUMMARY": str(summary)}), \
+                patch("sys.argv", ["main_receipt.py", "rehearse"]), \
+                patch.object(receipt.Path, "cwd", return_value=self.root):
+            self.assertEqual(receipt.main(), 0)
+        result = json.loads((self.output / "reuse.json").read_bytes())
+        self.assertEqual(result["kind"], "exact-main-evidence-reuse-rehearsal")
+        self.assertEqual(result["consumer_event"], "workflow_dispatch")
+        self.assertEqual(result["consumer_ref"], "refs/heads/reviewed-rehearsal")
+        self.assertEqual(result["consumer_sha"], "e" * 40)
+        self.assertEqual(result["producer"]["head"], self.head)
+        self.assertIn("reused=true", target.read_text())
+        self.assertIn("not a tag-consumer proof", summary.read_text())
+        for name, data in self.files.items():
+            self.assertEqual((self.output / name).read_bytes(), data)
+
+    def test_rehearsal_refuses_wrong_event_workflow_and_tooling_without_tag_spoof(self):
+        with patch.dict(os.environ, self.manual_context()):
+            for change in ({"GITHUB_EVENT_NAME": "push"}, {"GITHUB_REF": "refs/tags/v3.2.0"},
+                           {"GITHUB_WORKFLOW_REF": "untrusted/ci.yml@refs/heads/main"},
+                           {"GITHUB_SHA": "f" * 40}, {"GITHUB_WORKFLOW_SHA": "f" * 40}):
+                with self.subTest(change=change), patch.dict(os.environ, change), self.assertRaises(ValueError):
+                    receipt.reuse(self.root, self.output, rehearsal=True)
+            with self.assertRaises(ValueError):
+                receipt.reuse(self.root, self.output)
+
+    def test_rehearsal_cli_records_fallback_without_collection_or_success_output(self):
+        self.artifacts[0]["digest"] = "sha256:" + "0" * 64
+        target = self.root / "github-output"
+        with patch.dict(os.environ, {**self.manual_context(), "GITHUB_OUTPUT": str(target)}), \
+                patch("sys.argv", ["main_receipt.py", "rehearse"]), \
+                patch.object(receipt.Path, "cwd", return_value=self.root):
+            self.assertEqual(receipt.main(), 2)
+        decision = json.loads((self.output / "rehearsal.json").read_bytes())
+        self.assertEqual(decision["decision"], "fresh_collection_required")
+        self.assertFalse(decision["collection_executed"])
+        self.assertFalse(decision["tag_consumer_proven"])
+        self.assertFalse(target.exists())
+
+    def test_rehearsal_retains_attempt_race_and_config_rejection(self):
+        with patch.dict(os.environ, self.manual_context()):
+            original = self.files["producer.json"]
+            producer = json.loads(original)
+            producer["config_sha256"] = {}
+            self.files["producer.json"] = json.dumps(producer).encode()
+            self.refresh_archives()
+            with self.assertRaises(ValueError):
+                receipt.reuse(self.root, self.output, rehearsal=True)
+            self.files["producer.json"] = original
+            self.refresh_archives()
+            real = self.api
+            def racing(path, **kwargs):
+                return {**self.run, "run_attempt": 3} if path == "actions/runs/123" else real(path, **kwargs)
+            with patch.object(receipt, "api", side_effect=racing), self.assertRaises(ValueError):
+                receipt.reuse(self.root, self.output, rehearsal=True)
+        self.assertFalse((self.output / "manifest.json").exists())
 
 
 if __name__ == "__main__":
