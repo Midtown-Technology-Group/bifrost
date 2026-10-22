@@ -7,8 +7,8 @@ from enum import Enum
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
-
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from shared.workspace_paths import validate_workspace_relative_path
 
 # ==================== GIT & GITHUB MODELS ====================
 
@@ -357,10 +357,26 @@ class ResolveRequest(GitOpRequest):
         ..., description="Map of file path to resolution strategy"
     )
 
+    @field_validator("resolutions")
+    @classmethod
+    def validate_resolution_paths(
+        cls,
+        resolutions: dict[str, Literal["ours", "theirs"]],
+    ) -> dict[str, Literal["ours", "theirs"]]:
+        return {
+            validate_workspace_relative_path(path): resolution
+            for path, resolution in resolutions.items()
+        }
+
 
 class DiffRequest(GitOpRequest):
     """Request to get a file diff."""
     path: str = Field(..., min_length=1, description="File path to diff")
+
+    @field_validator("path")
+    @classmethod
+    def validate_path(cls, path: str) -> str:
+        return validate_workspace_relative_path(path)
 
 
 class ChangedFile(BaseModel):
@@ -556,6 +572,11 @@ class DiffResult(BaseModel):
 class DiscardRequest(GitOpRequest):
     """Request to discard working tree changes for specific files."""
     paths: list[str] = Field(..., min_length=1, description="File paths to discard changes for")
+
+    @field_validator("paths")
+    @classmethod
+    def validate_paths(cls, paths: list[str]) -> list[str]:
+        return [validate_workspace_relative_path(path) for path in paths]
 
 
 class DiscardResult(BaseModel):

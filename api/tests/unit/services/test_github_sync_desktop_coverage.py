@@ -3,6 +3,7 @@
 import asyncio
 import sys
 import types
+from contextlib import nullcontext
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -276,6 +277,10 @@ async def test_desktop_discard_continues_after_one_path_fails(
     deleted.write_text("delete me")
 
     class Git:
+        def custom_environment(self, **environment):
+            assert environment == {"GIT_LITERAL_PATHSPECS": "1"}
+            return nullcontext()
+
         def checkout(self, *args):
             if args[-1] == "workflows/kept.py":
                 raise OSError("checkout failed")
