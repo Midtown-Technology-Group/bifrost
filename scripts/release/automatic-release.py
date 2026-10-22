@@ -585,8 +585,9 @@ def checked_main_ci(source: str, run_id: int) -> None:
     git("merge-base", "--is-ancestor", source, MAIN_REF)
 
 
-def checked_release(source: str, run_id: int, prs: list[dict]) -> dict:
-    checked_main_ci(source, run_id)
+def checked_release(
+    source: str, run_id: int, prs: list[dict], *, same_tree_release_pr: int | None = None,
+) -> dict:
     matches = [
         pr
         for pr in prs
@@ -601,6 +602,13 @@ def checked_release(source: str, run_id: int, prs: list[dict]) -> dict:
     ):
         raise ReleaseError("checked source is not the merged fork release PR")
     pr = matches[0]
+    if same_tree_release_pr is None:
+        checked_main_ci(source, run_id)
+    else:
+        if type(same_tree_release_pr) is not int or same_tree_release_pr != pr["number"]:
+            raise ReleaseError("publication evidence must name this exact merged release PR")
+        proof = checked_same_tree_pr_ci(source, run_id, same_tree_release_pr)
+        print("Verified same-tree publication evidence: " + json.dumps(proof, sort_keys=True))
     files = array_pages(f"pulls/{pr['number']}/files?per_page=100")
     if not files or {row["filename"] for row in files} - RELEASE_PATHS:
         raise ReleaseError("release PR changed non-release paths")
@@ -665,7 +673,9 @@ def reject_superseded_source(source: str) -> None:
         raise ReleaseError("current main candidate differs from its merged release PR")
 
 
-def publish(source: str, run_id: int, prs: list[dict]) -> None:
+def publish(
+    source: str, run_id: int, prs: list[dict], *, same_tree_release_pr: int | None = None,
+) -> None:
     if not any(
         pr.get("merged_at")
         and pr.get("merge_commit_sha") == source
@@ -674,7 +684,12 @@ def publish(source: str, run_id: int, prs: list[dict]) -> None:
     ):
         print("Exact CI source is an ordinary main merge; no release to publish.")
         return
-    candidate = checked_release(source, run_id, prs)
+    if same_tree_release_pr is None:
+        candidate = checked_release(source, run_id, prs)
+    else:
+        candidate = checked_release(
+            source, run_id, prs, same_tree_release_pr=same_tree_release_pr,
+        )
     version = candidate["version"]
     reject_superseded_source(source)
     # Fetch full ref inventory before creating: a failed read cannot mean absent.
@@ -768,12 +783,17 @@ def main() -> int:
     parser.add_argument("--supersede-unpublished-pr", type=int)
     parser.add_argument("--source-ci-run", type=int)
     parser.add_argument("--same-tree-pr", type=int)
+    parser.add_argument("--same-tree-release-pr", type=int)
     parser.add_argument("--base")
     parser.add_argument(
         "--default", choices=("patch", "minor", "major"), default="patch"
     )
     args = parser.parse_args()
     try:
+        if args.same_tree_release_pr is not None and (
+            args.action != "publish" or args.same_tree_release_pr < 1
+        ):
+            raise ReleaseError("same-tree release evidence is limited to publication of a positive PR")
         if args.action != "prepare" and (
             args.supersede_unpublished_pr is not None or args.source_ci_run is not None
             or args.same_tree_pr is not None
@@ -801,8 +821,8 @@ def main() -> int:
             print(validate_candidate(source, prs)["version"])
         else:
             if not args.run_id:
-                raise ReleaseError("publish requires an exact main CI run id")
-            publish(source, args.run_id, prs)
+                raise ReleaseError("publish requires an exact trusted CI run id")
+            publish(source, args.run_id, prs, same_tree_release_pr=args.same_tree_release_pr)
     except (ReleaseError, ValueError, KeyError, TypeError, SyntaxError) as exc:
         print(f"automatic-release: {exc}", file=sys.stderr)
         return 2

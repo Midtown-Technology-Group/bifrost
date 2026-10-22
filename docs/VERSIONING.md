@@ -59,6 +59,18 @@ uploads attested source assets and publishes the immutable GitHub Release.
 This path publishes packages; selecting and deploying production image digests
 requires the separate protected `bifrost-infra` lane.
 
+For a merged release PR with a full Git tree identical to its tested PR head,
+the protected **Release tag** workflow also accepts a manual recovery dispatch:
+`main_ci_run` names that successful PR CI run and `same_tree_release_pr` names
+the merged release PR. The publisher verifies the exact merged source, full-tree
+equality, trusted fork PR workflow/run/attempt, every comprehensive job and the
+successful trusted Sonar check for that PR. Missing, pending, skipped, failed or
+stale evidence refuses publication. This reuses completed validation; it does
+not synthesize a successful main check or reuse coverage for a different tree.
+Signed-source, exact-head human approval, current-candidate ownership, immutable
+tag, packaging/content checks and production approval remain unchanged. Ordinary
+automatic publication still waits for successful exact main-push CI.
+
 See the [implementation and proof plan](plans/2026-10-02-fork-release-automation.md).
 These source changes become operational only after their reviewed PR is merged.
 

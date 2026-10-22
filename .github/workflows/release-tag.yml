@@ -7,8 +7,13 @@ on:
   workflow_dispatch:
     inputs:
       main_ci_run:
-        description: Successful exact main-push CI run for recovery (never a tag input)
+        description: Successful exact main-push CI run, or PR CI run with same_tree_release_pr
         required: true
+        type: string
+      same_tree_release_pr:
+        description: Optional merged release PR whose full tree matches its successful PR CI (never skips CI)
+        required: false
+        default: ""
         type: string
 
 concurrency:
@@ -19,6 +24,7 @@ permissions:
   contents: write
   pull-requests: read
   actions: write
+  checks: read
 
 jobs:
   publish:
@@ -42,9 +48,18 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           CI_RUN: ${{ github.event.workflow_run.id || inputs.main_ci_run }}
+          SAME_TREE_RELEASE_PR: ${{ inputs.same_tree_release_pr }}
         run: |
           set -euo pipefail
           [[ "$CI_RUN" =~ ^[0-9]+$ ]]
-          source_sha="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$CI_RUN" --jq .head_sha)"
+          args=()
+          if [ -n "$SAME_TREE_RELEASE_PR" ]; then
+            test "$GITHUB_EVENT_NAME" = workflow_dispatch
+            [[ "$SAME_TREE_RELEASE_PR" =~ ^[1-9][0-9]*$ ]]
+            source_sha="$(gh api "repos/$GITHUB_REPOSITORY/pulls/$SAME_TREE_RELEASE_PR" --jq .merge_commit_sha)"
+            args+=(--same-tree-release-pr "$SAME_TREE_RELEASE_PR")
+          else
+            source_sha="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$CI_RUN" --jq .head_sha)"
+          fi
           [[ "$source_sha" =~ ^[0-9a-f]{40}$ ]]
-          python3 scripts/release/automatic-release.py publish --source "$source_sha" --run-id "$CI_RUN"
+          python3 scripts/release/automatic-release.py publish --source "$source_sha" --run-id "$CI_RUN" "${args[@]}"

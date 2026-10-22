@@ -353,6 +353,86 @@ def test_approved_merge_tags_exact_source_and_explicitly_dispatches(
     ]
 
 
+@pytest.fixture
+def same_tree_publication(history, published_candidate):
+    source, transport, operations, candidate = published_candidate
+    pr = history["prs"][-1]
+    pr["merged"] = True
+    pr["base"]["sha"] = history["base"]
+    transport[f"pulls/{pr['number']}"] = pr
+    run = transport["actions/runs/42"]
+    run.update(head_branch=release.BRANCH, event="pull_request", run_attempt=2,
+               created_at="2026-10-22T01:00:00Z", updated_at="2026-10-22T02:00:00Z")
+    names = ("Plan Affected Tests", "Lint & Type Check", "Unit Tests", "Client Unit Tests",
+             "E2E Tests", "MCP Conformance", "Candidate Images",
+             "sonar-coverage / Sonar Coverage Evidence", "sonar-coverage / Sonar CI Analysis")
+    transport["actions/runs/42/attempts/2/jobs?per_page=100"] = [
+        {"jobs": [{"name": name, "conclusion": "success"} for name in names]}
+    ]
+    sonar_path = f"commits/{source}/check-runs?check_name=SonarCloud%20Code%20Analysis&per_page=100"
+    transport[sonar_path] = [{"check_runs": [{
+        "id": 77, "name": "SonarCloud Code Analysis", "app": {"id": 12526},
+        "head_sha": source, "status": "completed", "conclusion": "success",
+        "details_url": "https://sonarcloud.io/dashboard?id=Midtown-Technology-Group_bifrost"
+                       + f"&pullRequest={pr['number']}",
+        "started_at": "2026-10-22T01:30:00Z", "completed_at": "2026-10-22T01:31:00Z",
+    }]}]
+    return source, transport, operations, candidate, pr
+
+
+def test_same_tree_pr_ci_publishes_exact_merged_source(history, same_tree_publication):
+    source, _, operations, candidate, pr = same_tree_publication
+    release.publish(source, 42, history["prs"], same_tree_release_pr=pr["number"])
+    assert operations == [
+        ("git/refs", {"ref": "refs/tags/" + candidate["version"], "sha": source}),
+        ("actions/workflows/ci.yml/dispatches", {"ref": candidate["version"]}),
+    ]
+
+
+@pytest.mark.parametrize("problem", ["pending", "failed", "skipped_job", "wrong_pr", "tree_drift"])
+def test_same_tree_publication_refuses_unproven_ci_before_write(
+    history, same_tree_publication, problem,
+):
+    source, transport, operations, _, pr = same_tree_publication
+    number = pr["number"]
+    if problem == "pending":
+        transport["actions/runs/42"].update(status="in_progress", conclusion=None)
+    elif problem == "failed":
+        transport["actions/runs/42"]["conclusion"] = "failure"
+    elif problem == "skipped_job":
+        transport["actions/runs/42/attempts/2/jobs?per_page=100"][0]["jobs"][0]["conclusion"] = "skipped"
+    elif problem == "wrong_pr":
+        number += 1
+    else:
+        other = history["commit"]("fix: changed tree")
+        pr["head"]["sha"] = other
+        transport["actions/runs/42"]["head_sha"] = other
+    with pytest.raises(release.ReleaseError):
+        release.publish(source, 42, history["prs"], same_tree_release_pr=number)
+    assert operations == []
+
+
+@pytest.mark.parametrize("problem", ["stale_review", "unsigned", "new_release_owner", "sonar_failure"])
+def test_same_tree_publication_preserves_review_signing_ownership_and_sonar(
+    history, same_tree_publication, problem,
+):
+    source, transport, operations, _, pr = same_tree_publication
+    if problem == "stale_review":
+        transport[f"pulls/{pr['number']}/reviews?per_page=100"][0][0]["commit_id"] = "0" * 40
+    elif problem == "unsigned":
+        transport[f"commits/{source}"]["commit"]["verification"]["verified"] = False
+    elif problem == "new_release_owner":
+        later = history["commit"]("chore(release): later", branch=release.BRANCH)
+        release.git("push", "-q", "origin", "HEAD:refs/heads/main")
+        assert later != source
+    else:
+        path = f"commits/{source}/check-runs?check_name=SonarCloud%20Code%20Analysis&per_page=100"
+        transport[path][0]["check_runs"][0]["conclusion"] = "failure"
+    with pytest.raises(release.ReleaseError):
+        release.publish(source, 42, history["prs"], same_tree_release_pr=pr["number"])
+    assert operations == []
+
+
 @pytest.mark.parametrize(
     "field,value",
     [
