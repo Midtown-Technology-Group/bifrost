@@ -54,6 +54,19 @@ def test_pep440ish_coerces_git_describe_versions():
     assert sdkpkg._pep440ish("unknown") == "0.0.0"
 
 
+def test_sdk_ticket_helper_is_packaged_in_both_image_variants():
+    import src.services.sdk_package as sdkpkg
+
+    assert "websocket-auth.ts" in sdkpkg._SDK_SOURCE_FILES
+    api_root = Path(__file__).resolve().parents[2]
+    # CI mounts repository Dockerfiles at /app/api; host checkout uses api/.
+    dockerfile_root = api_root / "api" if (api_root / "api/Dockerfile").is_file() else api_root
+    for name in ("Dockerfile", "Dockerfile.dev"):
+        assert "client/src/lib/app-sdk/websocket-auth.ts" in (
+            dockerfile_root / name
+        ).read_text()
+
+
 def test_materialize_sdk_src_prefers_baked_source(tmp_path, monkeypatch):
     import src.services.sdk_package as sdkpkg
 
@@ -212,6 +225,9 @@ def test_build_sdk_tarball_shape_and_exports():
         bundle_file = tar.extractfile("package/dist/index.mjs")
         assert bundle_file is not None
         bundle = bundle_file.read().decode()
+        assert "/ws/ticket" in bundle
+        assert "WebSocket ticket response was invalid" in bundle
+        assert "@/lib/websocket-auth" not in bundle
         for sym in (
             "BifrostProvider", "useWorkflow", "useWorkflowQuery",
             "useWorkflowMutation", "useTable", "tables", "BifrostHeader",

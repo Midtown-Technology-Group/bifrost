@@ -13,6 +13,7 @@ from uuid import UUID
 
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from shared.role_cache import get_user_roles
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -27,7 +28,6 @@ from src.core.security import (
 )
 from src.models.orm.applications import Application
 from src.models.orm.executions import WorkflowExecutionAttempt
-from shared.role_cache import get_user_roles
 
 logger = logging.getLogger(__name__)
 
@@ -641,11 +641,13 @@ async def get_current_user_ws(websocket) -> UserPrincipal | None:
     Get current user from WebSocket connection.
 
     Checks for token in this order:
-    1. Cookie: access_token (for browser clients - most common)
-    2. Authorization header (for service clients)
+    1. Authorization header (for service clients)
+    2. Single-use ticket (for browser clients that cannot set headers)
+    3. Cookie: access_token (for same-origin browser clients)
 
-    Note: Query parameter tokens are NOT supported for security reasons
-    (URLs may be logged by proxies/servers).
+    Long-lived access tokens are never accepted in query parameters because
+    URLs may be logged by proxies, servers, and diagnostics. Browser clients
+    exchange their bearer token over HTTPS for a 30-second, single-use ticket.
 
     Args:
         websocket: FastAPI WebSocket connection
@@ -655,19 +657,30 @@ async def get_current_user_ws(websocket) -> UserPrincipal | None:
     """
     token = None
 
-    # Try cookie first (browser clients)
-    if "access_token" in websocket.cookies:
+    query_params = getattr(websocket, "query_params", {})
+    if "token" in query_params:
+        # Fail closed even if another credential is available: accepting the
+        # connection could hide a client that is still leaking a bearer token.
+        logger.warning("Rejecting WebSocket access token in query string")
+        return None
+
+    # Try Authorization header first (some WebSocket clients support this).
+    auth_header = websocket.headers.get("authorization", "")
+    if auth_header.lower().startswith("bearer "):
+        token = auth_header[7:]
+
+    # Browser WebSockets cannot set Authorization headers. Accept only an
+    # opaque, single-use ticket in the URL; never a replayable access token.
+    if not token:
+        ticket = query_params.get("ticket")
+        if ticket:
+            from src.core.websocket_tickets import consume_websocket_ticket
+
+            token = await consume_websocket_ticket(ticket)
+
+    # Same-origin browser clients authenticate with the HttpOnly cookie.
+    if not token and "access_token" in websocket.cookies:
         token = websocket.cookies["access_token"]
-
-    # Try Authorization header (some WebSocket clients support this)
-    if not token:
-        auth_header = websocket.headers.get("authorization", "")
-        if auth_header.lower().startswith("bearer "):
-            token = auth_header[7:]
-
-    # Try query parameter (for embed tokens — browser WebSocket API can't set headers)
-    if not token:
-        token = websocket.query_params.get("token")
 
     if not token:
         return None
