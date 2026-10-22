@@ -10,14 +10,32 @@ from src.services.execution import engine
 
 
 class _FakeSpan:
-    def __init__(self, name: str, attributes: dict):
+    def __init__(
+        self,
+        name: str,
+        attributes: dict,
+        *,
+        record_exception: bool,
+        set_status_on_exception: bool,
+    ):
         self.name = name
         self.attributes = dict(attributes)
+        self.record_exception = record_exception
+        self.set_status_on_exception = set_status_on_exception
+        self.events: list[dict[str, str]] = []
+        self.otel_status = "UNSET"
 
     def __enter__(self):
         return self
 
     def __exit__(self, exc_type, exc, tb):
+        if exc is not None and self.record_exception:
+            self.events.append({
+                "exception.type": type(exc).__name__,
+                "exception.message": str(exc),
+            })
+        if exc is not None and self.set_status_on_exception:
+            self.otel_status = "ERROR"
         return False
 
     def set_attribute(self, key: str, value):
@@ -28,8 +46,20 @@ class _FakeTracer:
     def __init__(self):
         self.spans: list[_FakeSpan] = []
 
-    def start_as_current_span(self, name: str, attributes: dict):
-        span = _FakeSpan(name, attributes)
+    def start_as_current_span(
+        self,
+        name: str,
+        attributes: dict,
+        *,
+        record_exception: bool = True,
+        set_status_on_exception: bool = True,
+    ):
+        span = _FakeSpan(
+            name,
+            attributes,
+            record_exception=record_exception,
+            set_status_on_exception=set_status_on_exception,
+        )
         self.spans.append(span)
         return span
 
@@ -239,8 +269,10 @@ async def test_workflow_execution_emits_failed_span(monkeypatch):
     monkeypatch.setattr(engine, "workflow_execution_counter", fake_counter)
     monkeypatch.setattr(engine, "workflow_execution_duration", fake_duration)
 
+    sensitive_message = "token=workflow-secret-that-must-not-reach-traces"
+
     async def workflow(context):
-        raise RuntimeError("boom")
+        raise RuntimeError(sensitive_message)
 
     with pytest.raises(Exception):
         await engine._execute_workflow_with_trace(
@@ -254,6 +286,11 @@ async def test_workflow_execution_emits_failed_span(monkeypatch):
     assert span.attributes["bifrost.execution.id"] == "exec-1"
     assert span.attributes["bifrost.execution.status"] == ExecutionStatus.FAILED.value
     assert span.attributes["bifrost.execution.error_type"] == "RuntimeError"
+    assert span.record_exception is False
+    assert span.set_status_on_exception is False
+    assert span.events == []
+    assert span.otel_status == "UNSET"
+    assert sensitive_message not in str(span.attributes)
     assert fake_counter.calls == [
         (
             1,

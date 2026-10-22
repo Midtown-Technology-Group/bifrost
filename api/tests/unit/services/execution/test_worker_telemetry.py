@@ -20,9 +20,18 @@ from src.services.execution import worker  # noqa: E402
 
 
 class _FakeSpan:
-    def __init__(self, name: str, attributes: dict):
+    def __init__(
+        self,
+        name: str,
+        attributes: dict,
+        *,
+        record_exception: bool,
+        set_status_on_exception: bool,
+    ):
         self.name = name
         self.attributes = dict(attributes)
+        self.record_exception = record_exception
+        self.set_status_on_exception = set_status_on_exception
 
     def __enter__(self):
         return self
@@ -38,8 +47,20 @@ class _FakeTracer:
     def __init__(self):
         self.spans: list[_FakeSpan] = []
 
-    def start_as_current_span(self, name: str, attributes: dict):
-        span = _FakeSpan(name, attributes)
+    def start_as_current_span(
+        self,
+        name: str,
+        attributes: dict,
+        *,
+        record_exception: bool = True,
+        set_status_on_exception: bool = True,
+    ):
+        span = _FakeSpan(
+            name,
+            attributes,
+            record_exception=record_exception,
+            set_status_on_exception=set_status_on_exception,
+        )
         self.spans.append(span)
         return span
 
@@ -128,6 +149,8 @@ async def test_run_execution_emits_worker_span(monkeypatch):
     assert span.attributes["bifrost.worker.has_file_path"] is False
     assert span.attributes["bifrost.worker.status"] == ExecutionStatus.SUCCESS.value
     assert span.attributes["bifrost.worker.duration_ms"] == 42
+    assert span.record_exception is False
+    assert span.set_status_on_exception is False
     assert span.attributes["bifrost.queue.wait_ms"] >= 0
     assert span.attributes["bifrost.worker.peak_memory_bytes"] >= 0
     assert span.attributes["bifrost.worker.cpu_total_seconds"] >= 0
