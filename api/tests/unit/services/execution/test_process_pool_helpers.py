@@ -210,7 +210,7 @@ async def test_report_timeout_cancellation_crash_and_orphan_shape_results():
 
 
 @pytest.mark.asyncio
-async def test_handle_result_frees_slot_and_forwards_callback():
+async def test_handle_result_retains_slot_until_exit_and_forwards_callback():
     observed = []
 
     async def on_result(payload):
@@ -227,8 +227,15 @@ async def test_handle_result_frees_slot_and_forwards_callback():
     assert handle.result_reported is True
     assert handle.current_execution is None
     assert handle.executions_completed == 1
-    assert pool.processes == {}
+    assert pool.processes == {handle.id: handle}
+    assert handle.state == ProcessState.CLEANING
     assert observed == [{"execution_id": "exec-1", "success": True, "sync": False}]
+    assert notified == []
+
+    handle.process.is_alive = lambda: False
+    await pool._check_process_health()
+
+    assert pool.processes == {}
     assert notified == [True]
 
 
