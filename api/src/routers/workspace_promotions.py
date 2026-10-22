@@ -6,7 +6,7 @@ import logging
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from fastapi.security import HTTPAuthorizationCredentials
 
 from src.services.operation_catalog import operation_route
@@ -14,6 +14,7 @@ from src.config import get_settings
 from src.core.auth import Context, CurrentSuperuser, bearer_scheme
 from src.core.constants import SYSTEM_USER_UUID
 from src.core.db_deps import DbSession
+from src.core.rate_limit import RateLimiter
 from src.jobs.platform.workspace_promotion_preview import (
     WORKSPACE_PROMOTION_PREVIEW_DEFINITION,
     WorkspacePromotionPreviewPayload,
@@ -99,11 +100,20 @@ def _preview_job_dedupe_key(
 
 
 logger = logging.getLogger(__name__)
+_github_source_release_limiter = RateLimiter(max_requests=20, window_seconds=60)
 
 
 async def _github_source_release_producer(
+    request: Request,
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)],
 ) -> WorkspaceSourceReleaseProducer:
+    # This limiter runs before authentication, so forwarded headers are untrusted.
+    transport_client = request.client
+    await _github_source_release_limiter.check(
+        "github_source_release",
+        transport_client.host if transport_client else "unknown",
+        force=True,
+    )
     if credentials is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
+import json
 import re
+import time
 from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
@@ -16,6 +19,14 @@ GITHUB_ACTIONS_ISSUER = "https://token.actions.githubusercontent.com"
 GITHUB_ACTIONS_JWKS_URL = f"{GITHUB_ACTIONS_ISSUER}/.well-known/jwks"
 WORKSPACE_SOURCE_RELEASE_AUDIENCE = "bifrost-workspace-source-release"
 GITHUB_ACTIONS_BOT_ACTOR_ID = 41898282
+GITHUB_ACTIONS_OIDC_MAX_TOKEN_LENGTH = 16_384
+GITHUB_ACTIONS_OIDC_MAX_KID_LENGTH = 256
+GITHUB_ACTIONS_JWKS_MAX_BYTES = 262_144
+GITHUB_ACTIONS_JWKS_MAX_KEYS = 32
+GITHUB_ACTIONS_JWKS_FETCH_TIMEOUT_SECONDS = 3.0
+GITHUB_ACTIONS_JWKS_TTL_SECONDS = 21_600
+GITHUB_ACTIONS_JWKS_UNKNOWN_KID_REFRESH_SECONDS = 60
+GITHUB_ACTIONS_JWKS_FAILURE_BACKOFF_SECONDS = 5
 WORKSPACE_SOURCE_RELEASE_EVENTS = frozenset(
     {"push", "workflow_run", "workflow_dispatch"}
 )
@@ -39,6 +50,103 @@ _WORKSPACE_SOURCE_RELEASE_SETTING_NAMES = (
 
 class GitHubActionsOIDCError(ValueError):
     """The producer token is absent, invalid, or outside the pinned trust policy."""
+
+
+async def _fetch_github_actions_jwks() -> dict[str, Any]:
+    """Fetch and size-check GitHub's signing-key document."""
+    try:
+        async with asyncio.timeout(GITHUB_ACTIONS_JWKS_FETCH_TIMEOUT_SECONDS):
+            async with httpx.AsyncClient(
+                timeout=httpx.Timeout(GITHUB_ACTIONS_JWKS_FETCH_TIMEOUT_SECONDS),
+                follow_redirects=False,
+            ) as client:
+                async with client.stream("GET", GITHUB_ACTIONS_JWKS_URL) as response:
+                    response.raise_for_status()
+                    payload = bytearray()
+                    async for chunk in response.aiter_bytes():
+                        if len(payload) + len(chunk) > GITHUB_ACTIONS_JWKS_MAX_BYTES:
+                            raise GitHubActionsOIDCError(
+                                "GitHub Actions OIDC key set is too large"
+                            )
+                        payload.extend(chunk)
+                    jwks = json.loads(payload)
+    except GitHubActionsOIDCError:
+        raise
+    except (TimeoutError, httpx.HTTPError, ValueError) as exc:
+        raise GitHubActionsOIDCError(
+            "GitHub Actions OIDC signing keys are unavailable"
+        ) from exc
+
+    keys = jwks.get("keys") if isinstance(jwks, dict) else None
+    if not isinstance(keys, list) or len(keys) > GITHUB_ACTIONS_JWKS_MAX_KEYS:
+        raise GitHubActionsOIDCError("GitHub Actions OIDC key set is invalid")
+    return jwks
+
+
+class _GitHubActionsJWKSCache:
+    """Coalesce key refreshes and bound attacker-triggered unknown-kid work."""
+
+    def __init__(self) -> None:
+        self._jwks: dict[str, Any] | None = None
+        self._refreshed_at = 0.0
+        self._last_attempt_at = 0.0
+        self._failure_until = 0.0
+        self._generation = 0
+        self._lock = asyncio.Lock()
+
+    async def get(
+        self,
+        *,
+        force_refresh: bool = False,
+        observed_generation: int | None = None,
+    ) -> tuple[dict[str, Any], int]:
+        now = time.monotonic()
+        if (
+            self._jwks is not None
+            and not force_refresh
+            and now - self._refreshed_at < GITHUB_ACTIONS_JWKS_TTL_SECONDS
+        ):
+            return self._jwks, self._generation
+
+        async with self._lock:
+            now = time.monotonic()
+            if self._jwks is not None:
+                if force_refresh:
+                    refreshed_by_waiter = (
+                        observed_generation is not None
+                        and self._generation != observed_generation
+                    )
+                    refresh_throttled = (
+                        now - self._last_attempt_at
+                        < GITHUB_ACTIONS_JWKS_UNKNOWN_KID_REFRESH_SECONDS
+                    )
+                    if refreshed_by_waiter or refresh_throttled:
+                        return self._jwks, self._generation
+                elif now - self._refreshed_at < GITHUB_ACTIONS_JWKS_TTL_SECONDS:
+                    return self._jwks, self._generation
+
+            if now < self._failure_until:
+                raise GitHubActionsOIDCError(
+                    "GitHub Actions OIDC signing keys are unavailable"
+                )
+
+            self._last_attempt_at = now
+            try:
+                jwks = await _fetch_github_actions_jwks()
+            except GitHubActionsOIDCError:
+                self._failure_until = (
+                    time.monotonic() + GITHUB_ACTIONS_JWKS_FAILURE_BACKOFF_SECONDS
+                )
+                raise
+
+            self._jwks = jwks
+            self._refreshed_at = time.monotonic()
+            self._failure_until = 0.0
+            self._generation += 1
+            return jwks, self._generation
+
+
+_github_actions_jwks_cache = _GitHubActionsJWKSCache()
 
 
 @dataclass(frozen=True)
@@ -109,6 +217,8 @@ async def authenticate_workspace_source_release_producer(
     jwks: dict[str, Any] | None = None,
 ) -> WorkspaceSourceReleaseProducer:
     """Verify one protected-main producer token against immutable GitHub claims."""
+    if len(token) > GITHUB_ACTIONS_OIDC_MAX_TOKEN_LENGTH:
+        raise GitHubActionsOIDCError("GitHub Actions OIDC token is too large")
     repository = _required_setting(
         settings.workspace_source_release_oidc_repository,
         "BIFROST_WORKSPACE_SOURCE_RELEASE_OIDC_REPOSITORY",
@@ -136,7 +246,13 @@ async def authenticate_workspace_source_release_producer(
         header = jwt.get_unverified_header(token)
     except jwt.InvalidTokenError as exc:
         raise GitHubActionsOIDCError("GitHub Actions OIDC token is malformed") from exc
-    if header.get("alg") != "RS256" or not isinstance(header.get("kid"), str):
+    kid = header.get("kid")
+    if (
+        header.get("alg") != "RS256"
+        or not isinstance(kid, str)
+        or not kid
+        or len(kid) > GITHUB_ACTIONS_OIDC_MAX_KID_LENGTH
+    ):
         raise GitHubActionsOIDCError(
             "GitHub Actions OIDC token must use RS256 with a key identifier"
         )
@@ -164,16 +280,9 @@ async def authenticate_workspace_source_release_producer(
             "GitHub Actions OIDC token has an invalid source-release audience"
         )
 
+    cached_generation: int | None = None
     if jwks is None:
-        try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                response = await client.get(GITHUB_ACTIONS_JWKS_URL)
-                response.raise_for_status()
-                jwks = response.json()
-        except (httpx.HTTPError, ValueError) as exc:
-            raise GitHubActionsOIDCError(
-                "GitHub Actions OIDC signing keys are unavailable"
-            ) from exc
+        jwks, cached_generation = await _github_actions_jwks_cache.get()
 
     keys = jwks.get("keys") if isinstance(jwks, dict) else None
     if not isinstance(keys, list):
@@ -182,10 +291,26 @@ async def authenticate_workspace_source_release_producer(
         (
             key
             for key in keys
-            if isinstance(key, dict) and key.get("kid") == header["kid"]
+            if isinstance(key, dict) and key.get("kid") == kid
         ),
         None,
     )
+    if matching_key is None and cached_generation is not None:
+        jwks, _ = await _github_actions_jwks_cache.get(
+            force_refresh=True,
+            observed_generation=cached_generation,
+        )
+        keys = jwks.get("keys") if isinstance(jwks, dict) else None
+        if not isinstance(keys, list):
+            raise GitHubActionsOIDCError("GitHub Actions OIDC key set is invalid")
+        matching_key = next(
+            (
+                key
+                for key in keys
+                if isinstance(key, dict) and key.get("kid") == kid
+            ),
+            None,
+        )
     if matching_key is None:
         raise GitHubActionsOIDCError(
             "GitHub Actions OIDC signing key is not recognized"
