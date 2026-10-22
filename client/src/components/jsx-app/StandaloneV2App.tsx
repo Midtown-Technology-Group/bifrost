@@ -14,6 +14,12 @@ import { BundleLoadFailure } from "./BundleFeedback";
 import { useOrgScope } from "@/hooks/useOrgScope";
 import { authFetch } from "@/lib/api-client";
 import { clearAuthTokens, getActiveToken } from "@/lib/auth-token";
+import {
+	adaptDocumentStylesheetForShadowRoot,
+	AppContainmentBoundary,
+	ensureIsolatedAppShadow,
+	ensurePlatformStyles,
+} from "./AppStyleBoundary";
 
 export interface BifrostAppBootstrap {
 	/** Router basename so app URLs live below /apps/{slug}. */
@@ -279,12 +285,31 @@ export function StandaloneV2App({
 	const unauthenticatedError = "Not authenticated — cannot mount the application.";
 
 	useEffect(() => {
-		const mountEl = containerRef.current;
+		const hostEl = containerRef.current;
 		// Read the bootstrap seed only when a mount is actually starting. The
 		// boolean dependency below tears down on logout, but ordinary token
 		// rotation keeps the app's React tree mounted.
 		const bootstrapToken = getActiveToken();
-		if (!mountEl || !bootstrapToken) return;
+		if (!hostEl || !bootstrapToken) return;
+
+		const shadowRoot = ensureIsolatedAppShadow(hostEl);
+		shadowRoot.replaceChildren();
+		ensurePlatformStyles(shadowRoot);
+		const mountEl = document.createElement("div");
+		mountEl.dataset.bifrostAppMount = "true";
+		mountEl.style.width = "100%";
+		mountEl.style.height = "100%";
+		const updateTheme = () => {
+			const isDark = document.documentElement.classList.contains("dark");
+			hostEl.classList.toggle("dark", isDark);
+			mountEl.classList.toggle("dark", isDark);
+		};
+		updateTheme();
+		const themeObserver = new MutationObserver(updateTheme);
+		themeObserver.observe(document.documentElement, {
+			attributes: true,
+			attributeFilter: ["class"],
+		});
 
 		setIsBootstrapping(true);
 		setLoadError(null);
@@ -303,23 +328,39 @@ export function StandaloneV2App({
 		let cssEl: HTMLLinkElement | null = null;
 		let stylesheetReady = Promise.resolve();
 		if (assets.css) {
-			cssEl = document.createElement("link");
-			cssEl.rel = "stylesheet";
-			cssEl.href = new URL(
+			const stylesheetLink = document.createElement("link");
+			cssEl = stylesheetLink;
+			stylesheetLink.rel = "stylesheet";
+			stylesheetLink.href = new URL(
 				`${assets.baseUrl}/${assets.css}`,
 				window.location.origin,
 			).href;
 			stylesheetReady = new Promise<void>((resolve, reject) => {
-				cssEl!.onload = () => resolve();
-				cssEl!.onerror = () =>
+				stylesheetLink.onload = () => {
+					try {
+						if (!stylesheetLink.sheet) {
+							throw new Error("Stylesheet CSSOM is unavailable");
+						}
+						adaptDocumentStylesheetForShadowRoot(stylesheetLink.sheet);
+						resolve();
+					} catch {
+						reject(
+							new ApplicationAssetLoadError(
+								`Failed to prepare the application stylesheet: ${stylesheetLink.href}`,
+							),
+						);
+					}
+				};
+				stylesheetLink.onerror = () =>
 					reject(
 						new ApplicationAssetLoadError(
-							`Failed to load the application stylesheet: ${cssEl!.href}`,
+							`Failed to load the application stylesheet: ${stylesheetLink.href}`,
 						),
 					);
 			});
-			document.head.appendChild(cssEl);
+			shadowRoot.appendChild(stylesheetLink);
 		}
+		shadowRoot.appendChild(mountEl);
 
 		let cancelled = false;
 		let appTeardown: (() => void) | null = null;
@@ -447,6 +488,7 @@ export function StandaloneV2App({
 
 		return () => {
 			cancelled = true;
+			themeObserver.disconnect();
 			cssEl?.remove();
 			activeLegacyEntries.delete(entryUrl);
 			try {
@@ -465,7 +507,7 @@ export function StandaloneV2App({
 					}
 				};
 			}
-			mountEl.replaceChildren();
+			mountEl.remove();
 		};
 	}, [appId, appSlug, isPreview, assets, sourceKey, scope, isAuthenticated]);
 
@@ -491,7 +533,7 @@ export function StandaloneV2App({
 	if (isRecovering) return <ApplicationUpdateScreen />;
 
 	return (
-		<div className="relative h-full w-full">
+		<AppContainmentBoundary>
 			<div
 				ref={containerRef}
 				className="h-full w-full"
@@ -502,6 +544,6 @@ export function StandaloneV2App({
 					<AppLoadingSkeleton />
 				</div>
 			) : null}
-		</div>
+		</AppContainmentBoundary>
 	);
 }

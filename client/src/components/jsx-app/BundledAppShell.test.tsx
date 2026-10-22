@@ -380,7 +380,14 @@ describe("BundledAppShell app import contract", () => {
 		mockManifestOk({ dependencies: { "fixture-dependency": "1.0.0" } });
 		try {
 			await renderShell();
-			expect(await screen.findByText("Dependency app")).toBeInTheDocument();
+			await waitFor(() => {
+				const host = document.querySelector<HTMLElement>(
+					"[data-bifrost-app-style-boundary]",
+				);
+				expect(host?.shadowRoot?.textContent).toContain(
+					"Dependency app",
+				);
+			});
 			const map = document.querySelector('script[type="importmap-shim"]');
 			expect(map).not.toBeNull();
 			const imports = JSON.parse(map!.textContent!).imports;
