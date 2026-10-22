@@ -97,11 +97,12 @@ permission, approval or production changes.
 
 | Status | Scope and evidence | Remaining limit |
 | --- | --- | --- |
-| Implemented | Existing Python/TypeScript dependency planning and surface-specific fallback in [the planner](../../api/scripts/plan_affected_tests.py), shared by CI and `test.sh pre-pr`; obsolete PR runs are cancelled while main/tag runs are retained by [CI concurrency](../../.github/workflows/ci.yml). | Repository tools and workflow callers are not modelled; `.github/` changes still select comprehensive app validation. This is not the desired final selector. |
+| Implemented | Existing Python/TypeScript dependency planning and surface-specific fallback in [the planner](../../api/scripts/plan_affected_tests.py), shared by CI and `test.sh pre-pr`; obsolete PR runs are cancelled by [CI concurrency](../../.github/workflows/ci.yml). [#1376](https://github.com/Midtown-Technology-Group/bifrost/pull/1376) added bounded Sonar-tool/fixture ownership and workflow-caller checks, merged as `2d490429de1e3c793501acf07d8c9201dcf92b91`. | Unknown tools, workflow or dependency changes remain comprehensive. Main running-work cancellation is disabled, but pending commits can still be replaced; this does not yet satisfy the every-main target below. |
 | Implemented | Preparation recovery/evidence slices #1363/#1365 and the incident/design record #1367 landed. [Production acceptance](https://github.com/MTG-Thomas/bifrost-infra/issues/177#issuecomment-6336156202) establishes the 3.2.0 deployment finish line. | These do not complete R1–R6/A1–A14. Merges and tags alone establish neither deployment nor a simplified release process. |
-| In progress: qualification | [#1371](https://github.com/Midtown-Technology-Group/bifrost/pull/1371), reviewed candidate `99f7073bf6f78bea08fb943f91180cd14d4a85ed`, is merged as `65297178502e0540805ab92d937d326bd97d4e11`; it adds exact-main reports/analysis provenance reuse on tags. VM101 passed 17 focused tests, 153 Sonar contract tests and exact-candidate pre-PR validation; [review response](https://github.com/Midtown-Technology-Group/bifrost/pull/1371#discussion_r4348469452). | PR CI was still running at merge; current checks must be read live. Pending analysis is not a pass; first live producer/consumer reuse remains unproved. Thomas's separately recorded exact-PR override is not general policy. Do not cancel its current CI for this plan update. |
-| Proposed | Repository-tool ownership, workflow-caller closure, explicit skip accounting, single-pass report production and a publication-free reuse rehearsal, below. | Source review and transition evidence precede activation; existing controls remain. |
-| Deferred | Cache changes, further sharding/overlap, queue-cause hypotheses and upstream capability migration. | Measure a concrete bottleneck first. No claim that these are deployed or that an unknown queue caused the incident. |
+| Implemented; live tag qualification incomplete | [#1371](https://github.com/Midtown-Technology-Group/bifrost/pull/1371) merged as `65297178502e0540805ab92d937d326bd97d4e11`. Main producer [39785798549](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/39785798549), attempt 1, and branch-only publication-free rehearsal [39796751277](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/39796751277) established positive artifact transport with original provenance. [#1377](https://github.com/Midtown-Technology-Group/bifrost/pull/1377) added permanent refusal diagnostics, merged as `17cee8cceee9a9530f5b24f5e5b07e2d795e782f`. | The rehearsal was not a real tag consumer and [#1375](https://github.com/Midtown-Technology-Group/bifrost/pull/1375)'s optional rehearsal surface must not merge. No new release or production run is authorized to prove it. |
+| In progress; reviewable implementation | [#1379](https://github.com/Midtown-Technology-Group/bifrost/pull/1379), `503a19522e5450f51b7abe39e4f8ddef3d490f0a`, produces comprehensive client LCOV in the existing client-unit job and transports same-run/attempt evidence to the collector, retaining fallback. Nine focused probes, 167 Sonar contracts, 51 workflow contracts and exact VM101 pre-PR passed. | Live reuse/completeness and net savings remain pending. Python/runtime and repository-Node collection remain; this is not removal of the dominant Python tail. |
+| Proposed; policy resolved, implementation staged | Every accepted main commit produces its own immutable qualified release/artifact record, below. | Main pending retention and joined artifact/qualification/recovery records are not implemented by the client coverage slice. Existing stable-publication and human/security controls remain. |
+| Deferred or unproven | Cache changes, broad sharding/overlap and upstream capability migration. [#1378](https://github.com/Midtown-Technology-Group/bifrost/pull/1378) demonstrated two concurrent API shards but required checks took 28m17s versus an earlier 20m57s; it remains unmerged. | No system-throughput win or globally reserved freed slots proved. No further expansion of that experiment. |
 
 ### Lessons adopted from T3 Code
 
@@ -111,10 +112,10 @@ These are design inputs, not authority to copy T3's repository settings.
 
 | Source lesson | BiFrost application and status |
 | --- | --- |
-| [Selection](https://github.com/pingdotgg/t3code/blob/f054d1b8018721bd997d99cbb918a7b17bf098a4/.github/scripts/ci-changes.cjs) follows package dependents and explicit test-only/hidden dependencies; unknown paths broaden. [CI](https://github.com/pingdotgg/t3code/blob/f054d1b8018721bd997d99cbb918a7b17bf098a4/.github/workflows/ci.yml) retains a full Linux main backstop. | Proposed: extend our existing graph to `scripts/sonar`, owning tests and reusable workflow callers. Do not infer that all `.github` changes are cheap: T3's unknown workflow paths also broaden. Distinguish a deliberate main backstop from accidental repetition across every release stage. |
-| T3's same [CI source](https://github.com/pingdotgg/t3code/blob/f054d1b8018721bd997d99cbb918a7b17bf098a4/.github/workflows/ci.yml#L473-L517) has a stable `Check` result that accepts skips only when the selector requested them. PR supersession preserves main. | Proposed skip accounting: selected jobs must succeed; missing evidence, cancellation and unexplained skips refuse. Reuse existing summaries and qualification results before considering any additional gate. PR cancellation already exists here; preserve publication/deployment operations. Measure queue, setup and execution separately before changing sharding or overlap. |
+| [Selection](https://github.com/pingdotgg/t3code/blob/f054d1b8018721bd997d99cbb918a7b17bf098a4/.github/scripts/ci-changes.cjs) follows package dependents and explicit test-only/hidden dependencies; unknown paths broaden. [CI](https://github.com/pingdotgg/t3code/blob/f054d1b8018721bd997d99cbb918a7b17bf098a4/.github/workflows/ci.yml) retains a full Linux main backstop. | Implemented in bounded form by #1376: existing graph ownership for declared Sonar tools, owning tests/fixtures and reusable workflow callers. Unknown tools/callers remain conservative. Do not infer that all `.github` changes are cheap: T3's unknown workflow paths also broaden. Distinguish a deliberate main backstop from accidental repetition across every release stage. |
+| T3's same [CI source](https://github.com/pingdotgg/t3code/blob/f054d1b8018721bd997d99cbb918a7b17bf098a4/.github/workflows/ci.yml#L473-L517) has a stable `Check` result that accepts skips only when the selector requested them. PR supersession preserves main. | Existing aggregate contract to preserve: selected jobs must succeed; missing evidence, cancellation and unexplained skips refuse. Reuse existing summaries and qualification results before considering any additional gate. PR cancellation already exists here; preserve publication/deployment operations. Measure queue, setup and execution separately before changing sharding or overlap. |
 | [Dependency setup](https://github.com/pingdotgg/t3code/blob/f054d1b8018721bd997d99cbb918a7b17bf098a4/.github/actions/setup-ci-deps/action.yml) binds cache keys to runtime/package-manager/platform/lock inputs and documents a slower cross-filesystem sticky-disk experiment. | Deferred: measure end-to-end restore/install cost and real toolchain identity before adding cache machinery. A cache hit is not correctness evidence. Do not transplant T3's runner, cache or dependency versions. |
-| [Release operations](https://github.com/pingdotgg/t3code/blob/f054d1b8018721bd997d99cbb918a7b17bf098a4/docs/operations/release.md) separates manual preview from updater feeds. Manual stable normally builds the published nightly's SHA; stable still rebuilds, and tag-triggered releases differ. | Proposed: a bounded non-customer rehearsal of our actual evidence transition. Do not describe T3 as promoting identical binaries or use a customer stable release merely to test CI transport. |
+| [Release operations](https://github.com/pingdotgg/t3code/blob/f054d1b8018721bd997d99cbb918a7b17bf098a4/docs/operations/release.md) separates manual preview from updater feeds. Manual stable normally builds the published nightly's SHA; stable still rebuilds, and tag-triggered releases differ. | Bounded branch-only rehearsal completed (receipt above); first real tag-consumer proof remains pending. Do not describe T3 as promoting identical binaries or use a customer stable release merely to test CI transport. |
 | [Release workflow](https://github.com/pingdotgg/t3code/blob/f054d1b8018721bd997d99cbb918a7b17bf098a4/.github/workflows/release.yml) orders publication after its checks/backing artifacts and retains running publishers. | Preserve BiFrost's immutable image subjects, signatures, migration compatibility, tenant isolation, retained-work and independent runtime receipts. Desktop packaging/smoke evidence cannot substitute for those. Customer activation remains separate from code admission and artifact qualification. |
 | [Contribution guidance](https://github.com/pingdotgg/t3code/blob/f054d1b8018721bd997d99cbb918a7b17bf098a4/CONTRIBUTING.md#L51-L119) asks for one underlying problem, relevant cross-layer changes, reproduction/environment, exact verification and untested limits. It distinguishes intended triage from deployed automation. | Adopt this work-packet discipline now; do not add a template bureaucracy. Do not copy unrelated approval/ruleset settings or treat described automation as active enforcement. Thomas owns control decisions. |
 
@@ -134,51 +135,20 @@ Owner for these bounded slices: this existing implementation workstream;
 Eddie #13 coordinates review, and Thomas retains control/activation decisions.
 Use [delivery-lanes.md](../dev/delivery-lanes.md), not another process hierarchy.
 
-1. **Finish #1371 qualification.** Preserve its running CI and exact-head review/
-   override receipt. Record test results, actual analysis state and eventual merge
-   independently. Do not call the larger collector redesign complete. Rollback:
-   reviewed revert to existing collection, preserving historical receipts.
-2. **Prove reuse without customer publication (proposal).** First check whether
-   the existing manual CI/release entry points can exercise the same transport
-   safely. The current helper is tag-only; a normal branch dispatch cannot prove
-   the tag transition. If inadequate, propose one read-only rehearsal within the
-   existing manual CI workflow, with its real dispatch identity, exact successful
-   main producer/run/attempt and original artifacts. No simulated tag identity,
-   publisher, registry write, new release/tag or production action. Require
-   verified reuse plus wrong-source/attempt/missing-evidence fallback receipts,
-   no submitted tag analysis and no publication side effects. Separately qualify
-   the first real tag consumer when an authorized release occurs. This is a
-   validation proposal, not permission to dispatch or change token/control scope.
-3. **Make relevant-test selection complete.** Extend existing planner/fixtures
-   for repository tools and their workflow callers; prove selected owning tests
-   execute and unrelated app lanes are omitted only with complete dependency
-   coverage. Cover mixed diffs, hidden/dynamic dependencies and shared harness,
-   configuration/permission/condition changes. Unknown edges broaden; keep local
-   and CI outputs/matrices consistent. Add skip accounting to existing results:
-   selected failure/cancellation/missing evidence cannot become green. Rollback
-   planner and consumers together to conservative selection. Any required-check
-   policy change remains a concrete separate decision for Thomas.
-4. **Complete single-pass production and release handoff below.** Instrument the
-   existing selected producers, verify full required report coverage and reuse
-   compatible receipts. Final-version packaging and publication must wait for
-   their backing artifacts; the infra consumer must agree on qualification.
-   Preserve schema/retained-work and environment gates. The incident acceptance
-   cases, including an ordinary subsequent deployment, define closure; existing
-   production acceptance is retained, not rerun for this documentation change.
-   Rollback each reviewed producer/consumer cutover together.
-5. **Optimize only measured residual cost.** Use existing occupancy receipts to
-   separate setup/queue/execution. Consider duration-weighted shards, safe stage
-   overlap or caches only after the previous steps expose a remaining bottleneck.
-   Preserve isolation and account for transfer/teardown. Queue explanations remain
-   hypotheses until evidenced. Rollback the specific optimization if the measured
-   end-to-end result regresses.
+The initial sequence's bounded selector, branch rehearsal and permanent diagnostic
+slices are now recorded above; do not recreate them. The current ordered work is
+[the every-main sequence below](#small-implementation-sequence-and-acceptance).
+Retain first-real-tag-consumer qualification as a future authorized release's
+acceptance, not a new customer release merely to test transport. Broader Python
+coverage production is still proposed; cache/overlap work remains deferred.
 
 Non-goals: copying T3's approval rules or queue settings, relaxing a failed check,
 turning partial coverage into a comprehensive denominator, a new release train,
 production work, credential changes or duplicating this plan in another tracker.
-Not checked: live T3 operational performance, a newly implemented selector,
-publication-free rehearsal or #1371's first real reuse. Source observations and
-proposals above must not be reported as completed outcomes.
+Not checked: live T3 operational performance, first real tag-consumer reuse,
+#1379 live report transport or every-main qualification/recovery. The implemented
+selector and branch rehearsal receipts above are bounded evidence, not completion
+of the broader design.
 
 ## Decision
 
@@ -188,11 +158,101 @@ Reuse a completed compatible producer set across PR, merge-group and main when i
 
 This is an extension of the existing CI workflow, coverage tools and evidence manifest. No new service, credential, scheduler, runner pool or status-check bypass is needed.
 
-Most merged product changes should produce releases. Documentation/test-only
-changes normally should not; shipped content, dependencies and packaging need
-explicit product-impact classification. This is the agreed direction for a
-reviewed policy implementation, not an already-active bypass of current
-release approval, merge, quality or production controls.
+Thomas resolved the target on October 22: **every accepted main commit**, including
+documentation/test-only commits, must produce an immutable, retrievable qualified
+release/artifact record. Release completion stays off the merge critical path.
+Deployment may select the newest qualified and authorized record without deploying
+intermediate commits. This supersedes the earlier "most product changes" proposal;
+it does not activate a release or bypass approval, quality or production controls.
+
+## Every-main qualification and recovery target
+
+Status: resolved policy; staged implementation, not active. Owner: this existing
+SDLC workstream; [Eddie #13](https://github.com/MTG-Thomas/Eddie/issues/13) links
+source, validation and remaining decisions. No new orchestrator or status service.
+
+Use the existing main CI, immutable candidate-image promotion/attestation and
+release-manifest primitives. Current
+[`build-dev` at main `17cee8cc`](https://github.com/Midtown-Technology-Group/bifrost/blob/17cee8cceee9a9530f5b24f5e5b07e2d795e782f/.github/workflows/ci.yml)
+already promotes the reviewed API/worker/client candidate digests and attests their
+protected-main source. Moving tags (`dev`, `sha-<short>`) are lookup conveniences,
+not the immutable record. Do not rebuild the same compatible artifact merely to
+create another receipt, or relabel a development artifact as a stable customer
+release. Exact-head human stable-publication approval remains required; changing
+that control would need a separately stated Thomas decision.
+
+The record must bind the exact commit and tree, configuration/test-plan/toolchain
+identity, immutable image/manifest digests and attestations, producer jobs/run and
+actual attempts, compatible schema heads and migration bounds, and the applicable
+retained-work/recovery proof. Keep code admission, artifact qualification and
+environment activation distinct. Record what recovery has actually been tested;
+missing environment-specific proof is unknown, not an invented rollback guarantee.
+A tag, application downgrade, or additive-migration claim alone does not establish
+database rollback safety. No automatic down-migration, replay or history deletion.
+
+Each attempt's receipt is immutable and retrievable with its referenced payloads;
+record retention/lifecycle together so an expired Actions artifact cannot be sold
+as a durable rollback point. A retry appends a linked attempt, preserving the
+original failure. Failed, cancelled, missing or incomplete qualification remains
+visibly unqualified and retryable for that exact commit. A newer main commit or
+successful deployment must not mark an older failed obligation released. Latest
+qualified deployment selection is independent of oldest outstanding qualification.
+
+### Pending main work is not protected today
+
+Verified read-only: [39813365760](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/39813365760)
+for `2d490429de1e3c793501acf07d8c9201dcf92b91` was cancelled with zero jobs;
+[39816370417](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/39816370417)
+for `17cee8cceee9a9530f5b24f5e5b07e2d795e782f` succeeded. Both use the shared
+`ci-push-refs/heads/main` concurrency group. `cancel-in-progress: false` protects
+running work, not all pending commits. Pending replacement fits these observations;
+the run metadata does not attest its cancellation actor or exact cause.
+
+[Current GitHub concurrency documentation](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency)
+defines default `queue: single` as one pending run, replaced by a newer arrival.
+`queue: max` permits up to 100 pending runs; overflow is cancelled, and it cannot
+combine with `cancel-in-progress: true`. It is bounded admission, not an unlimited
+durable work queue or proof of throughput. Do not blindly add it to the shared
+mixed-event configuration and break PR supersession. The staged admission patch
+must preserve every accepted main obligation, keep overflow/cancellation visible
+and retryable, and preserve PR/merge-group/tag semantics. No live workflow,
+merge-queue/ruleset or protection setting changes are part of this document.
+
+### Small implementation sequence and acceptance
+
+1. **Finish within-run client reuse (#1379).** Prove actual same-run transport,
+   byte/report completeness, exact head-versus-tested-tree identity and one-owner
+   fallback in its normal PR CI. No main retention policy change is needed for
+   this slice. Roll back producer and consumer wiring together by reviewed revert.
+2. **Preserve accepted main obligations.** Prepare the smallest existing-workflow
+   admission patch with event/rapid-arrival fixtures and visible exact-commit
+   failure/retry evidence, including docs/test-only accepted commits and any
+   native skip directive that prevents normal CI from running. Separately prove
+   PR supersession unchanged; do not claim
+   arbitrary pending capacity or improved merge throughput. Source review and
+   activation remain separate; no settings mutation or dispatch under this grant.
+3. **Join the existing per-commit artifact and qualification receipts.** Extend
+   current promotion/manifest outputs, not a new publisher/service. Prove complete
+   API/client/worker tuple and config/schema/recovery bindings (including proven
+   build-input reuse when shipped content is unchanged), altered/missing
+   evidence refusal, immutable linked retry records and retrieval of two rapid
+   successive accepted commits after main has advanced. Preserve existing human
+   stable-publication controls. State any additional storage/retention/permission
+   change exactly for approval before activation; none is granted here.
+4. **Remove the dominant compatible Python reruns.** Instrument existing unit,
+   repository-tool and API/worker/scheduler producers with branch-mode raw data,
+   including slow units and graceful runtime flush, then combine using existing
+   audited helpers. Existing badge XML is not equivalent. Prove shard/inventory
+   union and runtime completeness before replacing collector executions. Within-run
+   union is distinct from cross-event tree/config/version/attempt reuse.
+
+Release production remains asynchronous to merge admission; sharing the 20-job
+organization capacity can still delay merges indirectly. Measure that interference,
+transfer cost, collection and scan separately; no faster-release or rollback-safety
+claim follows from this plan. Reverts restore the reviewed prior producer/consumer
+or admission wiring without deleting artifacts/failure history. This staged work
+authorizes no merge, release/tag/production dispatch, deployment, credential,
+permission, protection or live queue change.
 
 ## What the current source actually does
 
