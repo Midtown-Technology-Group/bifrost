@@ -39,7 +39,9 @@ Before the first stable MTG release (`v1.0.0`), the script bootstraps to
 |-----|---------------------|---------|
 | `:0.8.1-dev.47` | No (immutable) | Versioned reference, sortable by Flux |
 | `:dev` | Yes | Floating pointer for Keel + dev consumers |
-| `:sha-1a2b3c4` | No (immutable) | Direct commit traceability |
+| `:sha-0123456789abcdef0123456789abcdef01234567` | No (immutable) | Full commit traceability without prefix-collision risk |
+
+The `sha-` tag always contains the complete 40-character Git commit SHA.
 
 Release builds on `v*` tags push semver tags (`:0.8.1`, `:0.8`, `:0`)
 and `:latest` only for stable release tags. The `build-api`, `build-client`
