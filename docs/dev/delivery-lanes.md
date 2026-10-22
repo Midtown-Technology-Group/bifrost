@@ -48,6 +48,20 @@ mechanism creates an invisible edge, extend
 `api/scripts/plan_affected_tests.py` and its regression tests before relying on
 focused CI.
 
+Repository Sonar tools have explicit ownership outside the API import graph:
+`main_receipt.py` selects its transport tests; `preflight.py` selects its own,
+operator-input and transport tests. Changes to the shared preflight test fixture
+also select its transport-test consumer. The plan records the existing Sonar
+workflow and its CI caller; missing tests/callers or unknown tools broaden.
+CI runs selected targets inside the existing Lint check through
+`./test.sh tools <explicit test files>`; scoped pre-PR uses the same executor
+without booting an application stack. Empty targets, invalid modes and failed
+tests refuse instead of becoming a skipped success. Mixed app/tool diffs retain
+both test selections. Workflow/harness/planner edits remain comprehensive:
+this is not a blanket cheap `.github` lane. Existing main, merge-group baseline,
+coverage/analysis and artifact-qualification policies remain unchanged; the
+separate full collector still runs under its current rules.
+
 Review expectation: one human/maintainer review by default. Add a specialist or
 AI review only when the diff is broad, subtle, or crosses an unfamiliar boundary.
 

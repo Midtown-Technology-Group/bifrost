@@ -199,3 +199,51 @@ echo 'PASS: failed MCP preparation blocks conformance evidence'
     mcp_conformance --filter "tools list" "*.json"
 )
 echo 'PASS: MCP wrapper preserves caller argument boundaries and preparation order'
+
+# Repository ownership uses the same explicit-target executor locally and in CI.
+(
+    stages=()
+    pre_pr_plan_lane() {
+        case "$1" in repository_tools) echo affected ;; *) echo skip ;; esac
+    }
+    pre_pr_plan_targets() { echo scripts/sonar/test_main_receipt.py; }
+    run_pre_pr_stage() { stages+=("$*"); }
+    run_scoped_pre_pr
+    [[ "${stages[*]}" == 'repository-tools repository_tool_tests scripts/sonar/test_main_receipt.py' ]]
+    run_pre_pr_stage() { return 41; }
+    if run_scoped_pre_pr; then
+        echo 'FAIL: failed repository tests accepted' >&2
+        exit 1
+    else
+        [[ "$?" == 41 ]]
+    fi
+    pre_pr_plan_targets() { :; }
+    if run_scoped_pre_pr; then
+        echo 'FAIL: empty repository targets accepted' >&2
+        exit 1
+    fi
+    pre_pr_plan_lane() { echo invalid; }
+    if run_scoped_pre_pr; then
+        echo 'FAIL: invalid repository mode accepted' >&2
+        exit 1
+    fi
+)
+(
+    calls=0
+    python3() { calls=$((calls + 1)); }
+    repository_tool_tests scripts/sonar/test_main_receipt.py
+    [[ "$calls" == 1 ]]
+    if repository_tool_tests || repository_tool_tests ../outside.py || repository_tool_tests ''; then
+        echo 'FAIL: invalid repository target accepted' >&2
+        exit 1
+    fi
+    [[ "$calls" == 1 ]]
+    python3() { return 42; }
+    if repository_tool_tests scripts/sonar/test_main_receipt.py; then
+        echo 'FAIL: repository executor hid a test failure' >&2
+        exit 1
+    else
+        [[ "$?" == 42 ]]
+    fi
+)
+echo 'PASS: repository tests have explicit targets, no stack stage and preserved failures'

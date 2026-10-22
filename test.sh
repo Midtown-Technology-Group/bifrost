@@ -22,6 +22,7 @@
 # Quality checks:
 #   ./test.sh quality api               Run API pyright + ruff inside Docker.
 #   ./test.sh quality repo              Run local repository CI hygiene checks.
+#   ./test.sh tools scripts/sonar/test_main_receipt.py   Selected repository tests, without a stack.
 #
 # Client tests:
 #   ./test.sh client unit               Vitest in the isolated client-check container.
@@ -713,6 +714,18 @@ candidate_action_pin_checks() {
     esac
 }
 
+repository_tool_tests() {
+    [ "$#" -gt 0 ] || { echo "ERROR: repository tests require explicit targets" >&2; return 1; }
+    local target
+    for target in "$@"; do
+        if ! [[ "$target" =~ ^scripts/sonar/test_[a-zA-Z0-9_]+\.py$ ]] || [ ! -f "$target" ] || [ -L "$target" ]; then
+            echo "ERROR: invalid repository test target" >&2
+            return 1
+        fi
+    done
+    PYTHONPATH="$SCRIPT_DIR/scripts/sonar${PYTHONPATH:+:$PYTHONPATH}" python3 -m unittest "$@"
+}
+
 repository_ci_checks() {
     python3 scripts/lib/test_secret_env_isolation.py
     bash scripts/lib/test_stack_lock_test.sh
@@ -802,7 +815,7 @@ pre_pr_plan_lane() {
 import json
 import sys
 plan = json.loads(open(sys.argv[1], encoding="utf-8").read())
-print(plan["lanes"].get(sys.argv[2], "skip"))
+print(plan.get("repository", {}).get("mode", "skip") if sys.argv[2] == "repository_tools" else plan["lanes"].get(sys.argv[2], "skip"))
 PY
 }
 
@@ -820,8 +833,9 @@ pre_pr_plan_targets() {
 import json
 import sys
 plan = json.loads(open(sys.argv[1], encoding="utf-8").read())
-values = plan.get("python" if sys.argv[3] == "api" else "client", {}).get(sys.argv[2], [])
-prefix = "api/" if sys.argv[3] == "api" else "client/"
+section = {"api": "python", "client": "client", "repository": "repository"}[sys.argv[3]]
+values = plan.get(section, {}).get(sys.argv[2], [])
+prefix = {"api": "api/", "client": "client/", "repository": ""}[sys.argv[3]]
 for value in values:
     print(value.removeprefix(prefix))
 PY
@@ -968,6 +982,15 @@ cmd_ci() {
 }
 
 run_scoped_pre_pr() {
+    case "$(pre_pr_plan_lane repository_tools)" in
+        affected)
+            mapfile -t repository_targets < <(pre_pr_plan_targets unit_tests repository)
+            [ "${#repository_targets[@]}" -gt 0 ] || { echo "ERROR: affected repository lane has no targets" >&2; return 1; }
+            run_pre_pr_stage repository-tools repository_tool_tests "${repository_targets[@]}" || return $?
+            ;;
+        skip) ;;
+        *) echo "ERROR: invalid repository test mode" >&2; return 1 ;;
+    esac
     # A broad lane must not force unrelated lanes broad, or accidentally
     # invoke a full local suite with an empty list of selected targets.
     for lane in api_unit api_e2e client_unit client_e2e mcp_conformance; do
@@ -1148,7 +1171,7 @@ cmd_pr_preflight() {
 # resets. Pytest's inner runner lock alone cannot prevent a browser run resetting
 # its database, or two browser runs replacing each other's API containers.
 case "${1:-}:${2:-}" in
-    help:*|-h:*|--help:*|stack:status|client:unit) ;;
+    help:*|-h:*|--help:*|stack:status|client:unit|tools:*) ;;
     *)
         exec {test_command_lock_fd}>"$TEST_LOCK_DIR/test-stack.lock"
         if ! flock -n "$test_command_lock_fd"; then
@@ -1174,6 +1197,7 @@ case "$1" in
     all) shift; cmd_all "$@" ;;
     reliability) shift; cmd_reliability "$@" ;;
     quality) shift; cmd_quality "$@" ;;
+    tools) shift; repository_tool_tests "$@" ;;
     client) shift; cmd_client "$@" ;;
     mcp) shift; cmd_mcp "$@" ;;
     pr-preflight) shift; cmd_pr_preflight "$@" ;;
