@@ -53,10 +53,11 @@ jobs:
   # Exact-head coverage and analysis. Version tags may reuse the original
   # successful main producer; all artifact qualification remains unchanged.
   sonar-coverage:
-    needs: [lint, publish-ci-test-images]
+    needs: [lint, publish-ci-test-images, test-client-unit]
     if: ${{ !cancelled() && (needs.lint.result == 'success' || (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.lint.result == 'skipped')) && (needs.publish-ci-test-images.result == 'success' || needs.publish-ci-test-images.result == 'skipped') }}
     uses: ./.github/workflows/sonar-coverage.yml
     with:
+      client_artifact_id: ${{ needs.test-client-unit.outputs.coverage_artifact_id }}
       head_sha: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
       base_sha: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event_name == 'merge_group' && github.event.merge_group.base_sha || github.event.before || '' }}
     secrets:
@@ -642,6 +643,8 @@ jobs:
     if: ${{ !cancelled() && (github.event_name != 'push' || github.ref != 'refs/heads/main') }}
     runs-on: ubuntu-latest
     name: Client Unit Tests
+    outputs:
+      coverage_artifact_id: ${{ steps.client-coverage-upload.outputs.artifact-id }}
     steps:
       - name: Require a valid affected test plan
         if: needs.affected-test-plan.result != 'success'
@@ -675,7 +678,7 @@ jobs:
         run: |
           node --test e2e/support/playwright-projects.test.mjs
           if [ "$TEST_MODE" = "comprehensive" ]; then
-            npm test
+            npm run test:coverage
           else
             mapfile -t targets <<< "$TEST_TARGETS"
             if (( ${#targets[@]} == 0 )); then
@@ -684,6 +687,25 @@ jobs:
             fi
             npm test -- "${targets[@]}"
           fi
+
+      - name: Bind complete client coverage
+        continue-on-error: true
+        if: needs.affected-test-plan.outputs.client_unit_mode == 'comprehensive'
+        run: python3 scripts/sonar/client_receipt.py record
+
+      - name: Retain complete client coverage
+        continue-on-error: true
+        if: needs.affected-test-plan.outputs.client_unit_mode == 'comprehensive'
+        id: client-coverage-upload
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: client-coverage-${{ github.run_id }}-${{ github.run_attempt }}
+          include-hidden-files: true
+          retention-days: 14
+          path: |
+            .client-coverage/client.lcov
+            .client-coverage/producer.json
+          if-no-files-found: error
 
       - name: Report skipped client unit lane
         if: needs.affected-test-plan.outputs.client_unit_mode == 'skip'
