@@ -75,18 +75,18 @@ export function ExpressionEditor({
 		});
 
 		// Configure JavaScript language features
-		monaco.languages.typescript.javascriptDefaults.setDiagnosticsOptions({
+		monaco.typescript.javascriptDefaults.setDiagnosticsOptions({
 			noSemanticValidation: false,
 			noSyntaxValidation: false,
 		});
 
-		monaco.languages.typescript.javascriptDefaults.setCompilerOptions({
-			target: monaco.languages.typescript.ScriptTarget.ES2020,
+		monaco.typescript.javascriptDefaults.setCompilerOptions({
+			target: monaco.typescript.ScriptTarget.ES2020,
 			allowNonTsExtensions: true,
 		});
 
 		// Add type definitions for form context
-		monaco.languages.typescript.javascriptDefaults.addExtraLib(
+		monaco.typescript.javascriptDefaults.addExtraLib(
 			`
       declare const context: {
         workflow: Record<string, any>;

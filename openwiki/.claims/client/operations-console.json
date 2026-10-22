@@ -1,0 +1,184 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:b9b72ac4b5ea481dd4043caf1bdb60316fe4d27955b366a79ddf0cb21f71aa97",
+  "claims": [
+    {
+      "id": "claim_2c415256298c4d3997e9d2f2a983e198",
+      "statement": "The platform job client reads individual and filtered job lists, supports cancellation, and defines terminal statuses including succeeded, failed, cancelled, and requires_action.",
+      "evidence": [
+        {
+          "resource": "repo://client/src/services/platformJobs.ts#L10-L15",
+          "version": "repo-lines-v1:sha256:01562b9610c0fb43900b6986d5d6baa4bfa063769b57c7e637bc53d04066f533:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOWM2MzFhZWEzMmIyYmVkNTk1NDE4MDg1NWMyZTdlMmNkN2M5OWZlZjJiZDg4M2QzNDQyYjk5N2I5ODIxMDc2YSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNTVlMjZjZDkyMzY2ZjYwZDhlZDkyZDAyMzlmMDdmZWY3NGNhYzE0YWE2OWFkZGY5YzJjYzBkMTFlYjAwYTQ2MyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMzQxOTdiMDRmNzJkMDdhMWUzOWQ4YzU5NDliMGI2ZWJlNDE4YmZmYjI3N2ExZDkzOWM5NmIzODkyOGNkNmUwZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZjFlMDE3NjI5NTVmMTBlMmYyMjJmOGJjODk4ZWIzMzRhODFjNDQzMTVhM2QyNjZjMWY3MjUyOGQyN2E1Y2QyMiJ9"
+        },
+        {
+          "resource": "repo://client/src/services/platformJobs.ts#L22-L29",
+          "version": "repo-lines-v1:sha256:04d337ee3cc1ec36aa2be117343b3e4144aa728a3beb72ad0dc0f6415c8f359a:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMzY1MThjYTEzNjc5NjY0ZjBjNmMyNDdlZDZkNTYyYmU2Y2E5OTVmNmMzZmQ0MDRiOWRlY2Q4ODNmOWFkZWJkOCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiN2NjOGQ0NDdkNjc0ZGU0ZTk0MmJkMjJmMmVjNDQ5YWU5ZDZmNDhmMGM3MzZhM2VjZGViMDg4MDZhMjFkNzAzZiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNzU2OTI1ZjdlZWY0NzhmMTUyNGRhZTNhNWI1OTgyMmZlYTVmZDE5YzM3NzQ1MTExYjRlNDgxMWY4ODcwMjE2MyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMzc5MjllOTFlMGY5OWMzZTgyNWRlNjliNDM1ZmI2NDg0ZDFiMGExZGYyZjQ2NTYxYWJmMWEyOWYwNDE4OGI4OCJ9"
+        },
+        {
+          "resource": "repo://client/src/services/platformJobs.ts#L56-L96",
+          "version": "repo-lines-v1:sha256:78382b08e24506fb2f36bb283fffa11acecb9510a6669c0d349e434b4e38831e:eyJzZWxlY3RlZExpbmVDb3VudCI6NDEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY0YjEyNDc1ZTA3OWJmMjc4ZjI5YTlkZGJkNWRjN2VhNWMxZDBkNTc5ODI5MmNmMjI1YTRjM2FmYTc5YjRiNGEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdjYzhkNDQ3ZDY3NGRlNGU5NDJiZDIyZjJlYzQ0OWFlOWQ2ZjQ4ZjBjNzM2YTNlY2RlYjA4ODA2YTIxZDcwM2YiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZjYjcyYTRlNjU2MmYwNTQ4NzEyZTczNDk0MTQ2NjA4NTI1NjU0NTExMjA3YTdlYmYxNGZlMzgzYjZhYTQ3ZTgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_e16a224db69943e6b5adba494a97f8e3",
+      "statement": "Platform job progress is primarily notification-driven and the client uses a single status snapshot to recover from a missed notification rather than creating a polling loop.",
+      "evidence": [
+        {
+          "resource": "repo://client/src/services/platformJobs.ts#L32-L53",
+          "version": "repo-lines-v1:sha256:d5c0fa87a329aa4a245c5f28d3b167f61f8754a9a3eb257ed3c461ce43aca791:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVhZjIyY2YwNzMyNTkyYzI0NzE0MWNiZTYxZWZhMTEwMTI2MTJmNWEzMTIyYjlhZjliYmFmNTJmNTcyNGQxOTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjEwZmQ0NmY5ZTUxNTEwNGFlOTdiNzRmOTNlYTRhNWIyZjM0YjlkODYzNGYwNzk3ZDMxNThiZjdjMzkwMDdjYTUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImMyZTE3YTNiNTk1NzMyMmQ0ZTNiZGJiZjQ4NTIxNzVlZDBhODhhMDk3MGEzZTU1ODJiYzY1MGY2ZDQ5YzU1MGQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijc2OTQ2MjZkYTEwZDJmMmJlNmE4MTA0OTljZjIxZTA2ZDZlZjlhN2YxNGJkMTc1YTlhZWZiZWQxYmJlZjg4NjQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_39fa84d716484196bfa87ce3882618f3",
+      "statement": "Agent-run services implement list/detail queries, live WebSocket connections and invalidation, verdict actions, reruns, dry-runs, and summary backfill operations.",
+      "evidence": [
+        {
+          "resource": "repo://client/src/services/agentRuns.ts#L121-L157",
+          "version": "repo-lines-v1:sha256:70402abdbb5f03d7c665c859457148a729fb0edd22bf1d9a9513a09a641a46c0:eyJzZWxlY3RlZExpbmVDb3VudCI6MzcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhjMDMyNzA3ODRhMjM1YzYzZTc2YWVmMTgwYmUwYTY1MmY4Mjk4YTEwODBlY2I1ZTUzYmI5M2Q4MGIyNzIwYmUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVmMTRlY2Q5ZWM5NjgwMDc1NDdmYzY4OTMwZWFmN2Q0NWI4OTllZDc0ZGI1YTY1NDljMWVjNTBlNjg2NGUxMTIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImI0MWYxZDkxYjIwZDg0OTczOTE3MmIxYTZkYjFjYTZmMmZiMzYxZDc2ODY2YmExNDAzNTcyOThjYjE5Yzc1MmQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImYyZWYyYzFiNDY4MDg0NTE1MGE4YWNkNjA3M2Y3MTRkYjNiMDY0MzM4ZWFjM2NmNGNhYTdkZWMzNTc3Njc5OTMifQ"
+        },
+        {
+          "resource": "repo://client/src/services/agentRuns.ts#L210-L240",
+          "version": "repo-lines-v1:sha256:a70c2e4a7e234879756814cdefb01545be1ec669f690ad1ee44c3c9e147038f4:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIyODEwODkxODJjYWZjYTc1NjY0Yzk1ODQ1OTI1ZDc2M2M5OWMwZTdmODIwNDRjNGM0MThiYTRiNDU5MjZjNmEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc2YWE5Mjc1YzhjNTk0ODNhZTQ0NTM4NGUzOGU1ZTJlN2M5YThjMTUxMjdlOWJiNTRhMjZiOGIzOTM4NDgyOWIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQzNGM5ZGVmYWRkYTMyNzUzMTRmMjM5ZWRiNDJhMWMwNmJiYjhmYWRhM2U1MjA2MTc1NzIwYjQ0ZWY0NTY2ZDgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI2NDlmOWMyMDgwOTRiMDQ1N2IxZTNiY2E5Y2MwNzhmMTM5MGU1NWUyYzlkMDQwMDlhMjNhYjBkMGMwOTkwZmYifQ"
+        },
+        {
+          "resource": "repo://client/src/services/agentRuns.ts#L446-L508",
+          "version": "repo-lines-v1:sha256:7fb6ae8903cc4a56bca1e320113a00fac742a96e78247c6740db4a7af979eb2c:eyJzZWxlY3RlZExpbmVDb3VudCI6NjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJiYTYyMDUwMTFjNjRiY2ViMTc0OTRiNmQxYmRkNmM2Yjg1OTljNDdmOWE0OWQ2M2M4NmU3YzFhZTNiYjU4YjIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAyZjJlNDFmMWY2MDc1N2QxYmZiN2ExMWQ2YzgxODA3OGM5N2UzZmE3ZmI2ZDJkOWQ0YTRiNDVhYmNiMjAxZWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjUyN2I2YWU0ODg4MGYwMzhkYWEyODYxZGVjMGE4NGI2NWVhNjVlMmQ1NzdjZjNjN2YyODFkMWY0YmM1OWRiNTkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijc5NjJmMDg1YTkxZTVjNmI1OGQzOGNmM2U5YzgzNzE1ZDYzNjczMDcyZmJmZTdkYjI0NWQyZjU4MWVjZjcyMDMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_77ecf32e6c0f4438bdec5ab856797d9c",
+      "statement": "Scheduler diagnostics use typed API calls for an overall snapshot and per-task run history, including a caller-provided history limit defaulting to ten.",
+      "evidence": [
+        {
+          "resource": "repo://client/src/services/schedulerDiagnostics.ts#L10-L39",
+          "version": "repo-lines-v1:sha256:4567c50eeba96429cefd4ce230833cdf30ae2b489e5bc7f688fd64b68b8e964d:eyJzZWxlY3RlZExpbmVDb3VudCI6MzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY5OTk3YzljOTNhYTg3NWUwNTY3NGUwNTIyNDM1MzMwMWZjN2I2NWUzODc0ZjVhOTYxMTQ4NDA5NzUwMmVmOWYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdjYzhkNDQ3ZDY3NGRlNGU5NDJiZDIyZjJlYzQ0OWFlOWQ2ZjQ4ZjBjNzM2YTNlY2RlYjA4ODA2YTIxZDcwM2YiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU0NTA1ODA3OTcwYjIyY2RhZDk5ZDcyYzdiY2FjNTc4YmI1MmVlYjU2MGRiZTU2NzdkZjk3NmFlNGU5MWFkMWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_f09d87da097f4de29a6c0051f3c54404",
+      "statement": "The diagnostics page requires platform administrator access in the UI and groups worker, scheduler, and app-service panels into separate tabs.",
+      "evidence": [
+        {
+          "resource": "repo://client/src/pages/diagnostics/DiagnosticsPage.tsx#L12-L35",
+          "version": "repo-lines-v1:sha256:85d4ecc501ed606cd5d54bd0cb4cf14d0c690885e7595cf86d0785cc788fef7f:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMyY2MzZDQwNTc5ZDQxOWU5MGRiM2Q2M2QyYjdiY2E4NGE4OGEwNDQzNjg4YTlhZGU2NDQ5NDBkMDIyOGVkNjQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNiZWI2ZTYxMjNkZDc1MDYyYTFiYjYzMzJkNDcyN2IzMjY5ZTc4NDRlMGUwNmQ1MmY3YzY2YTY4MmFkMGNlMzEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImJlNzVkMmUyZDUwMTczOGQ3NDRkZDMzYTU2MTllYmM2OWZiMjdiMjY0ZDhkNjU0YmQ1MzZhNjYzNDIyMTFlYTMifQ"
+        },
+        {
+          "resource": "repo://client/src/pages/diagnostics/DiagnosticsPage.tsx#L37-L70",
+          "version": "repo-lines-v1:sha256:b6d6c750242e98f41f124e5719a6d9e4f22aedde5c237d0ec7eee94d421f6733:eyJzZWxlY3RlZExpbmVDb3VudCI6MzQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjcwODBhYzNjZDUwOWY1MTA2N2QwYjJmMzlhMTYzYjc5ZGFhNzA2YzUyZDNhYjYxMzkyODM3YWMyODljMmYxNDYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYyYWQ2YTgxN2EzMmVjMzA2ZTUyMmVmYTIzOTkxZTQ0NzZhNTQ2OGZhOGRmM2YyMWUyNWMyNGU0MWNkNzBhMzgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjExZmRjYWU4NGM0YTkxYzljZGVlYWVjMTg4NDUyYjAyZjA5NGRjYmRkYTlhYzRiYmVjM2ViZGNiODZlYzUzOGYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk1ZTE0MzVmMDE4YTgwYTU1YTYxNmMxNjliNmM0ODRiMjkxZjUxMjgwNmYzZThjM2JjZjU5MDVhZjIzNzBhNTkifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_4ccce8ed43584e4d9c0dfb6d0aaaa948",
+      "statement": "The audit UI constructs a paginated filter query from action, outcome, search, date range, and continuation token and resets continuation state when a filter changes.",
+      "evidence": [
+        {
+          "resource": "repo://client/src/pages/audit/AuditLogPage.tsx#L53-L89",
+          "version": "repo-lines-v1:sha256:b714810dc18fc6802ffdefc3dca9af70321b2896b379d967fc3e2d8cabcb9a51:eyJzZWxlY3RlZExpbmVDb3VudCI6MzcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM5NDUwYzc3MmU5OTE2NmZkMTg4ZTk3YThmNjY1ZjY5OGViN2ZiY2U0ZWNmZmRjZGYyMDllNTBmMzQwZWY4MDAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMzNGExMDQyZDY5ZmQ1MTMyZGQyZTVhODlkNTUzY2QxMTE3OGU3ZTAxMjM4ZjM3MTFmOWM1ZTVlZjRjZmNiODIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImI1NTE1OTAzMDRiZWQyZDAxZTMxYjZlY2IxOGFmMDZlMzg0ZTVjNzA3YzIwY2U3ZmYzOWY0MDMzZDY4MmZmMTEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjczNDcxZDZmMzk2NzkyYjFlZmU4NWM4OTFjNzZlODUyZTM3MmFmMTI0NGI4NmM2ODE3YWI0OTZmOTljNGUzMWYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_f3fac139dcce4dcb9d7320130c28a91d",
+      "statement": "The Home page composes a typed resource catalogue with URL-backed search, type, organization, view, and collection state; collection organization does not grant access to resources.",
+      "evidence": [
+        {
+          "resource": "repo://client/src/pages/Home.tsx#L33-L80",
+          "version": "repo-lines-v1:sha256:8bffb2d6fe861db1ae656d79b748c8407b2f3aa416a371685809b85732b818bf:eyJzZWxlY3RlZExpbmVDb3VudCI6NDgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRhMTJjZjdiNTVjZmIyOWM3ZmM2ZTU3OGU0MWVkNzUwMDdlZDFhNGYzMDVjNzY4MmE1NjM4ZWFmYzEyZWM3MzYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEwMzBlNDI5NDgwMDJjZDc4NDJkYzllMDNmYjZkMTMxNzE5YjNjOTU5NzMwMzkwM2NlYTc1YWI2M2NlM2RiNDUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhmOTg1YzAwYjQ0MzBlOTU0NmJjMTU1YzEwZTRmNjBjZGYxNTIzYjcxNzc5NDEzZmEwNzRiNTFhNmJiZmRjMTQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImYzNzdmOGQyOTc2ZDFkNjk5YzRiYjJkOTc5ZTc2NzUzMTMzNGM0NjMyNzBjZGZlZDdhNzM1ZjJmYjBhMDc1ZjUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_fbf753a6e34d41bba6c13e582cf3feaa",
+      "statement": "The operations UI separates execution history detail/log presentation, event-source management controls, and platform-admin diagnostic tabs; dashboard and report charts format API-provided aggregates and trends for browser display.",
+      "evidence": [
+        {
+          "resource": "repo://client/src/components/dashboard/ExecutionsOverTimeCard.tsx#L30-L90",
+          "version": "repo-lines-v1:sha256:1ba19d19d9dd32506cbb7fa36ae94e2a87da0c9dcfeb6515866979e82990f840:eyJzZWxlY3RlZExpbmVDb3VudCI6NjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAwNGRhOTFjZDljZjhmMDcxYjUwOWQ1ZDg1ODU4ZWNhYzg1NDZiNmUxZDM2NmY2NzJmNDUxNWRmNzQ5YWNiNTAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ1MmIwMDU2Zjc1OGVkOGRmNjlmY2E4ZGEyOTFjYWVhNTc0YTdkNjgwYmU3NzhmZGE4ODY2MDFjYjYxYjA4YzkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImI3Y2ZiMWM4NTgzYzU2ZWUzMGJiNDBhNTUzNmY1YmU5NTU0NDhhNmFlOWY4ZTc0MzA2NzljNDA3YjcxMTgzMzkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImU0ZGU4MTY3NDEwOTUyZTYxNzRlOWM0MGZjOTBiYjk4NDE5MjQwNTAwZWU4ZWQwOGFmMmI5NjAzYTc4ZjE1ODUifQ"
+        },
+        {
+          "resource": "repo://client/src/components/reports/UsageCharts.tsx#L30-L60",
+          "version": "repo-lines-v1:sha256:203d7654e53ec8db2d59f34d2c33ccec7edf55f005be2e33ead03bdb2ea0546c:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ3NDRlZGNkMmJkZTNkNDAyNTc3MTUzMjk5ZjcwMTk3ODYwZDZiM2IyNWJmOTNkN2JkMWNlODcxNzMwZTJkYzgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI2OWYzOTc1ZDkxNGMzNTc0ZDY1Y2RmOWFjY2Y0ZjVkMzU2MTMzZWQ1OWNmODNjZGIyNTg5YTEyMDQ2N2I0ZDMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk3N2Q2YTA2YzM0OTkyYjAxOTk1YmU3M2Q1ZDI2NmQ1MGRlMzQ2OGM3OTFkMzExZmYzZTQyMTgxNzE5MTM2NDIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE1Y2E5MTlkZGRmOWM0YmE4NmI5MWQwMmMzNjVlMmZkYjI4ZWVlZmZkM2E1NjEwYWNjMWZiNDJiY2U3ZGE1YWUifQ"
+        },
+        {
+          "resource": "repo://client/src/pages/Events.tsx#L63-L105",
+          "version": "repo-lines-v1:sha256:c76592bc764230de5a296978dd8d55f6fcf4610668c4d34fab4d366444a1e262:eyJzZWxlY3RlZExpbmVDb3VudCI6NDMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI0ODQ3ODE0YjU4Mjk4N2IxMzFmYWQ1NjYyMTI1MjdiZTViODNkMWM5ODA1ODUyMWNiMWMyNjM1MTVkMzhmZTAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM1MDNiNWVmN2NkNTI0ZThkNjZmNDRiZmJlOGY2NDMxMWYxMjlmZDRjODFiMjJlYWVlMTkzMmJkNzliMzY1ZmUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk0ODU0ZGE3MjNjNWJiMzdjMTM0NjIzNjBmMzZjZjIxYjhiYmUxYmIyNDliMTI5NzZlYzEwYzdjYjdjZmI4YzQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImMyOGQyYTgzMWNiZmM0NmE0OGVlNmUxOTJmMTgwZDA5ZmY0YzAwODZiZDNjNzM2ODVjNGI0N2Y3YWVlNDdkODAifQ"
+        },
+        {
+          "resource": "repo://client/src/pages/ExecutionHistory.tsx#L1-L37",
+          "version": "repo-lines-v1:sha256:763e540c80a90db761800ee9573f947a5e4b6cd088556ecb15224bc9a4aa19a9:eyJzZWxlY3RlZExpbmVDb3VudCI6MzcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ3OGQxMjk5ODUwMzNlY2NlOGZiZDk5Y2M2YzBhYmY3ZDU0NTU1OWMxNjljYzhjNDZiZDUwZDI2YTcxYzY2YjEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgxMTdjYWVlNjYwMGQ1MmUxYzNiYzVhMmI5ZTk3OTM0YWQ5M2Q0OWQ2NDkzNTc0ZDdiNWQyZDdkYTcwM2YyYjgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImFlMTU5ZTM1Y2I0YzM3YzRlZWM2NzI1NzExNmE0OWUxNmJmODBiNTEzZjdmNzI5NjMzYzhkMjU2Yjg0YTkzOTUifQ"
+        },
+        {
+          "resource": "repo://client/src/pages/diagnostics/DiagnosticsPage.tsx#L12-L69",
+          "version": "repo-lines-v1:sha256:71451741e8d179abed0fe1b5562f7507090b7e1191be478b77157ad098f79e62:eyJzZWxlY3RlZExpbmVDb3VudCI6NTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMyY2MzZDQwNTc5ZDQxOWU5MGRiM2Q2M2QyYjdiY2E4NGE4OGEwNDQzNjg4YTlhZGU2NDQ5NDBkMDIyOGVkNjQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY1NDU4NTYzMTEwYTdiMTEwOTg4MGYyNmU3Y2FmYWVjODlkYjgwNDYzY2M3MjA0MDM0YzQ0MDg3ODJhNzljZTgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNiZWI2ZTYxMjNkZDc1MDYyYTFiYjYzMzJkNDcyN2IzMjY5ZTc4NDRlMGUwNmQ1MmY3YzY2YTY4MmFkMGNlMzEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU4NzI3ZWE5NzYzNmQ3MTY5MDE1MDM5ZmNmNGJjY2JhZjE4MjhmMzU4ODFhYTgyMWYxZDVjZWQ3ZDMzNzhjYWIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_aaf3bb33625b460a83265f813b985b57",
+      "statement": "The Home route uses the typed API client for catalog reads and collection/preference mutations, keeps browsing filters and pagination in URL parameters, and launches selected resources through their existing resource grants.",
+      "evidence": [
+        {
+          "resource": "repo://client/src/pages/Home.tsx#L155-L170",
+          "version": "repo-lines-v1:sha256:85992778df0c2797a164e22546ea212c4ac8c5a8b1554d6510dfecc11dfb57d4:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdkYzgyNTI4ZjlhMzA4MmE2ZjViMGI0OTNjNGFkODM1ZWU4N2VlYTJhYjUyMWU2YWNhYWY2OTgyMmRkYjhiNDEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA5Njg1Mjg0NzZkMzE3ZGFlODc5YmJmZWRjMjkxZjdhNDMzMTNlY2ViZjY2ODEzOGIzMmNjNGM5YmQzOTg5MzciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjExZmRjYWU4NGM0YTkxYzljZGVlYWVjMTg4NDUyYjAyZjA5NGRjYmRkYTlhYzRiYmVjM2ViZGNiODZlYzUzOGYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQ0NWM1YjNhYzRmYjlkZDVjYWQwNTFlZTlhYThlODIyZjE1OTRhZTFhNDc5YzRlNGFlZTBiN2NhYmEzZmM2NzAifQ"
+        },
+        {
+          "resource": "repo://client/src/pages/Home.tsx#L35-L63",
+          "version": "repo-lines-v1:sha256:9685ac9c7e2276c102eff8a9bd3fc90ef025e5adf052cb72ba219500edb15243:eyJzZWxlY3RlZExpbmVDb3VudCI6MjksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ1ODQ3ZTcyZThhNjYyMmU0ZDg1YTgwN2JjZmRiN2YzYTQ5MjFjNDliYjkxMTIzODQyNzg1ZTFiYTJmNjExYTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI1NDc4YTk3NzM2Nzc4Yzg0NWFiNGIwNDFmODBmMDZjYWI2MGZkZjliMmFhYTdlNDUxMjg1Yzg2YzViZGM1YTkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE1YjFkN2I0YmUxYzI4ZmUyMWExMjA5Y2NmNzBlZTkxOGZhNjI2OGVlMDEzZjRhYWYwYmVhMjRkODI1ZDRiMGUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijg0MzI3YjczNWZjZTI1YmQzN2YyNTY3NzlhNDc2ZmYxOWNlYTJjODZmZTY4NWFhY2JlZWNiMzQwOGFjNTBjNTMifQ"
+        },
+        {
+          "resource": "repo://client/src/pages/Home.tsx#L64-L80",
+          "version": "repo-lines-v1:sha256:9bfff87ca5aaa598f59c32a009572b14e82fbbcd4f17cd367681018b6b36f006:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY2ODhkZmUyMzA5N2Q5ZjI0MDA5YjZiNTZiNjc1NTRmNDllMzViZTRkOTUwODdiN2U2NWZhOTAwN2ZkYmU3YWIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEwMzBlNDI5NDgwMDJjZDc4NDJkYzllMDNmYjZkMTMxNzE5YjNjOTU5NzMwMzkwM2NlYTc1YWI2M2NlM2RiNDUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjcyMmNlYjAwYjdmZmJiMjE2MWE5ZmRmMDIxZWE5NDU5NzA2NzZkNTVkNzgyYjhmZjRiMWY5NjQwYjliYTMxZDMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImYzNzdmOGQyOTc2ZDFkNjk5YzRiYjJkOTc5ZTc2NzUzMTMzNGM0NjMyNzBjZGZlZDdhNzM1ZjJmYjBhMDc1ZjUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_0bdba59273ff496ca55d40194a312837",
+      "statement": "The ExecutionHistory route composes workflow history, logs, execution details and agent-run panels, while status and scope filters are represented in the URL and reads/stream updates are delegated to their hooks.",
+      "evidence": [
+        {
+          "resource": "repo://client/src/pages/ExecutionHistory.tsx#L120-L178",
+          "version": "repo-lines-v1:sha256:ac4328a8a3b49b72d2757d4ef1a9f664a10536184d6d64c3f832650115a08dd1:eyJzZWxlY3RlZExpbmVDb3VudCI6NTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE0NzE1YmM0Yjc1ZGFmNTg4Yzg4N2E0YmE5YjdiNGRiZWU3MjhiYzE4Yjg3NjY2ZjY4ZGRkMDc2ZDFhZTA3OWMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBkZjdmY2NjNDE0ZjcwYmI2M2JhMGVmMTEzOTE3OWEwMzIyM2IxZmExMmNlYzc2YTc3YTlmMDE4NmRlZTA0NDgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjNmOTdlOGIzMDA4MjExYWMyOTE2YzcyNmVlZmE4MzRiODM2NGYyNmJiNjQ2MjAxZDA2NjhlYzE1ZGY1Njg5MDUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjMyZTU4ZmE4ODZiOGI2MTIwZTQyYzZlMDBjOTdmZTEwMzAwZDY3MzYzMTY4YTViNjVkYzJiYTkyNTRlYjYzZTIifQ"
+        },
+        {
+          "resource": "repo://client/src/pages/ExecutionHistory.tsx#L26-L73",
+          "version": "repo-lines-v1:sha256:8c9fbf3af1d35480523514e97266d96030a67d8a68dbf1fde0491938b6ed3ffc:eyJzZWxlY3RlZExpbmVDb3VudCI6NDgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQwYzI5OTk0MGM5ZjJlNGU1NmMwZjIwODIzNDIzMzgyNzQ3MWZlMzM5ZDEwZGEwN2IwMDAyZWQ4MDJjOThjMDQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRiZGExNGMyODJhZmNlMTI4NjhmYjY5ZTA5OWY2MzM0NDI2MDIxMjI0ODE2ZjZmZTg5Yzk0NjFkNDBhYmRlYzAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk5NWUwMWM1NmEyMjY4YWJjZDQ0ODU0MDY5YjA0MmJlOTQyZWFmZGUzM2EyNzUzNGVkZTgwOGY5OTUyMTA1NjQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY1YmVkM2NiMzU0MzBhYTRmNDIwMTA0M2MwNDkxOWU5MWM1YTQ1M2Q2ZDc5ZjU0MTFlOWY2Y2QzZDFkMzkzMWMifQ"
+        },
+        {
+          "resource": "repo://client/src/pages/ExecutionHistory.tsx#L79-L89",
+          "version": "repo-lines-v1:sha256:ad19f5c8fb3726f69e5945e30ca98931c3019cac1cd9c0c5b943e3bfb50a7767:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM0ODNlZjEyYTQ2ZmRmMjg0NzJhZmI1ZDY3OGU1YmNmMTU2Y2NjNjg3Njc0MDFjNjI2MmI3NTNkZDA5ZTZiMzkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVkN2Y1NmJhNmY1NzkyOTYzYmVlMTAzNTVlYjllYzM2YjMwYzBmYzc2Zjk1YWU4YjNkNDI1MTQyOGRlMzQ2NWMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjI2Y2Q2ZTc0NDdkMDUzY2Q1YzBiMjUzYWMxODJiNzUwYjQ2ZTQzMWNmNzQ3MWY3MjhlOTgyZTgzZTAxYTFmNjQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY1YWJlNzk5ODkxMmRhNWFiNzNmMmEyYThhMmJmYTJkODgzMzUyNWVmODJkN2FkMzZlNzE0ZDYwMzU2MjhkNmEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_0e6d1a21c0c345b291c02081664a3cb5",
+      "statement": "The Events route owns event-source scope and status/search filters plus activation, edit and delete interactions, delegating event reads and mutations to hooks/services.",
+      "evidence": [
+        {
+          "resource": "repo://client/src/pages/Events.tsx#L116-L134",
+          "version": "repo-lines-v1:sha256:d82924c8f47571f0ac229df379e63f0f7d97f0c29cf6c42b95627c414305e110:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA4ZmU5MjM3ZDkyZWM3MzJjMTE5Y2I2YjgwZWIyNWJhNjNhOWMwNDBlYTkzMjgyYmQzZTE1MGY1YjVhOTk3ZjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNjM2EyMDc3NGQ1YzJiYjRjNzkwYzE4ODkwYTljNDk0Y2NiNTEwZmM4ZThjMDllYzc0NTE5YmMxNjRmYzc4NGIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQ2YWFlOTZkNGFkYWI1OGMxMmFlZjZhNGY0YzNlYTdiNjk0Mjg1OTE0YmVhN2VhYjRmMDMxNDM3NTA5ZGQ2MGIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE2YWZmODEwZjQ0ZDRiMjEyMWZhZTljOTljYjU1ZjYyM2JlODJlYzA0M2M5YTEzZjg1ZTljY2RiNmRiNzdlNDMifQ"
+        },
+        {
+          "resource": "repo://client/src/pages/Events.tsx#L147-L176",
+          "version": "repo-lines-v1:sha256:39cb741aff5bfef5c6c74ce8c998c2790a51136370bb544f990ff943c6cb18aa:eyJzZWxlY3RlZExpbmVDb3VudCI6MzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE1YTliMzNjZGM1ZTU0YzZhMTNjYjZjY2MxNzU3ZDdmYTVhZGMwNTZjZTQ5ZGIyYWU1ZDU2ZTc1ZGU0ZmRhNmEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNjM2EyMDc3NGQ1YzJiYjRjNzkwYzE4ODkwYTljNDk0Y2NiNTEwZmM4ZThjMDllYzc0NTE5YmMxNjRmYzc4NGIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIwOWZiZTMwYzJiYmFjZWFjYjk3NzdlOTJmNWRjMzY0ZGI0NWY4YWE3MjNmNGUzYjVjZDRlMWNiOGY5N2RhMjIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZjZmRjMzI4MmQzODhkNTJmODJlM2M0MTEwMmI0ZDI2NTM2MjViOTkzMjQ1OTU2OThmODY4YWU1ZTk1ZmJiZjMifQ"
+        },
+        {
+          "resource": "repo://client/src/pages/Events.tsx#L63-L86",
+          "version": "repo-lines-v1:sha256:d97e48490b7495eeb0b92c3c3eafb8395b18f495f2385fcb16beb29095e2108c:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI0ODQ3ODE0YjU4Mjk4N2IxMzFmYWQ1NjYyMTI1MjdiZTViODNkMWM5ODA1ODUyMWNiMWMyNjM1MTVkMzhmZTAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUyYjYzYmJhNzhkYzNiNjQ2MTVkM2VlMzRiMjFkNDA4YjBjYTJmYWQ4ZDg1MThhZjIzNjUxMDQ5MjE5NDI2YzciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk0ODU0ZGE3MjNjNWJiMzdjMTM0NjIzNjBmMzZjZjIxYjhiYmUxYmIyNDliMTI5NzZlYzEwYzdjYjdjZmI4YzQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImU5OTRkZGUxMDA3MGViNzE4Y2FiZWRlYWI4YzdmYjliMmYwOGQxNjViMGJmYzhhODVjOTdiOWJiYzI2ZWNlMTIifQ"
+        },
+        {
+          "resource": "repo://client/src/pages/Events.tsx#L98-L113",
+          "version": "repo-lines-v1:sha256:42cfebea338e5ec4e165a46d80c5709db2c22f98d15736500544a231f1560b96:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFjMWUwNWNmMGE2YjgwZDBiZmFiZTAyZmNhMTlhNTI4ZTVhMDhmNjE0YjhmN2MwOGM3NGMzZjE1M2RlMDhlNDUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRjYzBlMjYwNzlhMDc3Yzc2ODFjZjc0NWMxMjEyYjAxZDI5MDQyOTdkMzY4ZGNlNmU4ZjUyNGUwNmE4MGU4MWEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjEyMDMyOGJmMjVlZWFiMDFmNTA5ZmMzN2VjNzkzMTFiNzI3NDRiNTE4ZjM5ZjJiOGQxNzdhMjBkYWVlMmRlODkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU5NDU0NDI2ZjY3YzU2MjkyOGI5YjZhOWFkOWIxOGM5ZjE5M2M3MWI4MTQ0MzQwMDI3ZTk3ZjNjN2YyZjQ0YTMifQ"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.7.2",
+    "at": "2026-10-18T03:01:08.144Z"
+  }
+}

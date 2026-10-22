@@ -159,6 +159,34 @@ async def test_reviewed_revision_descendant_preserves_the_handoff(handoff, schem
     await handoff.guard.require(handoff.inherited)
 
 
+def _replace_bundle_identity(handoff):
+    # The public deployment/preflight contract accepts a reviewed bundle digest;
+    # it does not require the server candidate builder's digest recipe.
+    manifest = handoff.manifest.model_copy(update={'bundle_hash': sha256_digest(b'reviewed source bundle')})
+    handoff.manifest = manifest
+    handoff.deployment.compiled_manifest = manifest
+    handoff.deployment.compiled_manifest_hash = manifest.content_hash()
+    handoff.deployment.bundle_hash = manifest.bundle_hash
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('schema', [None, readback.SOURCE_MARKER, readback.WORKFLOW_REVISION_MARKER])
+async def test_preflight_bound_bundle_identity_survives_handoff_readback(handoff, schema):
+    _replace_bundle_identity(handoff)
+    handoff.deployment.validation_result['preflight_evidence_id'] = handoff_preflight_evidence_id(
+        handoff.release, handoff.manifest, handoff.resolution, workflow_ids=[handoff.workflow.id])
+    if schema is not None:
+        _reviewed_successor(handoff, schema)
+    await handoff.guard.require(handoff.inherited)
+
+
+@pytest.mark.asyncio
+async def test_changed_bundle_and_manifest_without_new_preflight_evidence_fail_closed(handoff):
+    _replace_bundle_identity(handoff)
+    with pytest.raises(ValueError, match='receipt does not prove'):
+        await handoff.guard.require(handoff.inherited)
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize('change', [
     'missing_owner', 'inactive', 'scope', 'path', 'function', 'name', 'timeout',

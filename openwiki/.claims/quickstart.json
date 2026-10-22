@@ -1,0 +1,64 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:b1b1375bd5516ae0b6b56d1d9658821c2ef010bbdb2df44cf742de50db3438cd",
+  "claims": [
+    {
+      "id": "claim_54d9c544179e406289b66f72d29f66d9",
+      "statement": "Bifrost is an automation platform for MSP operators and app/form users, with platform responsibilities including workflows, agents, integrations, configuration, and execution outcomes.",
+      "evidence": [
+        {
+          "resource": "repo://PRODUCT.md#L9-L19",
+          "version": "repo-lines-v1:sha256:51ee602ef7900608e74859001f71c1cb9240eefce9a00f8086ec807109b3a779:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBhMTZkMDkzMGUyYmMyNTUzMmU4YTlmNGYyNzE0YjcwMGViZDdhYjg3Yzg0YzRlMDYwOTQ1NjMzYjRjMDY1M2EiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE1ZDE4OTQ1YzczNWI2MzlkYmVkZGRmYjMyMTc3NTcxZTQxOTNlZGRjNzQxNzJhMjc5NDUxN2VkZWVhYjNjYWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjIzYzc1ZTVkNTZkZjBmNDM4Y2YyMzI3OGRhYmI2MjJhYzY4YjQ2NDg3MDVjN2VjZjExMzEyMTIxNDFkODJiOTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI4ZjYzNjc1ZTAxMDJlMDQyYzM0M2Q2NzgwNTlkZWRjNzMyNTg3M2IwMzEyNjkxZjE0NWY1MTIzNzFhMWVkNDYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_5968580c14174f6db25b29f0d8081c41",
+      "statement": "The repository places the web client in client/ and the FastAPI service, workers, and shared Python code in api/; PostgreSQL, Redis, and S3-compatible storage serve distinct persistence/runtime roles, and README documents differing production and local Compose work-delivery defaults.",
+      "evidence": [
+        {
+          "resource": "repo://README.md#L13-L20",
+          "version": "repo-lines-v1:sha256:d63a7a96b620bb9e634dd121dda571fadb4d6e4c58b1e5cd32585fb94a0ccf80:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMjRlYzcxMDJhMDgxZjg5ODNlNWZhNjMxOTQyZTcxMjYwZGY1MjU2MWY0MjYyMzM2MmVkNjVmOTEyNWIzMjU4MCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMGMwMDM1OWYxMzNiNTJhMDE0Mzk5YTRhNTNkNTcwN2VhZmRkZDI0MmNkMmU1NDRkYjA2MDgwZmQ2MjIxMjM4YiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYjdmODUyNmY1NjA4N2E5NmFiZDdmZjY5MjBiZTYzODkyYTY2NzU0NWI5NzQ2OWYwZmE2ZDk4Y2ExNjI4NmZmYiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMTIwNDk0MTA5MzJhN2I5NzhhNDBkZmU2MWIzMWI0ZjQ2MWE4MWExNjFhZTI0NzdmZWEwMjUyYTkzYzkzNzE2ZCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_2b42578954df412292035a097ebf97fc",
+      "statement": "The FastAPI main entry point imports and assembles domain routers including Workspace changesets/promotions and Solutions, illustrating that handlers are an API entry boundary across multiple subsystems.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/main.py#L23-L100",
+          "version": "repo-lines-v1:sha256:7926bc12f6c9795ac2625adf3b4b66b9abec87d8d23d7ad969e11cbba9d3d652:eyJzZWxlY3RlZExpbmVDb3VudCI6NzgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI0ODc5NGQ3YWUwN2M4N2EzOGY3NDJkYTYyMmQxNGQ4NTExMmNmOTZjY2NlM2ZhNDRjMjIwMmMyZGFjYjQzYjQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNjNWE3YmZiZjQxZDVmYzYwZmIyN2NkZjlmMzZjZTBhMTVjOTA5Nzk5NGQ0MTNkZGI3NThjMTc2NzlkMDAwMGIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjUwODFiNGM5Zjg4ZDcxM2Q1M2NlMTliMmM3OWY0Mjk2ODViYTNhMzZkYWZjMmJmM2M1OTc4MWM0ZDE2MzVmZDAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM4MWJkNGE5YmQzMmQxZGVkYTM3NTJhOGMwYjE1MTNlZjVkZWU2NWM2NDU3YzAyMWFhNjA1OTQ4MzY3OGZiYzEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_acbad73aecc64e929156889627f79025",
+      "statement": "The repository delivery-lane guide distinguishes docs/internal changes, product/API changes, and platform/live-operation risks; it calls for targeted tests and generated types for API contract changes, and runtime evidence when a task depends on deployed behavior.",
+      "evidence": [
+        {
+          "resource": "repo://docs/dev/delivery-lanes.md#L54-L70",
+          "version": "repo-lines-v1:sha256:0b0f436d4045408dbf3bb57ff04ef720e3427a3b3004fdcc69d7abe7c5f70c18:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkxNzk0ZjE4YzQ3MGMwNGJlMDI3MDg5N2RkMTdmYWUxMDg1ZDI4NjcwYjE0ODdlMzM1ZjkyNmZhM2NkYWQ1OGYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdiZWNkZmJiMzIzODk2MmQyZGRhYTgwY2RhN2JkMTI4ZGY5YjgzMzNlYjQwZDUwOTcyMDZiZTdhODRjZjcyMWUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM2MmQ5MjQ3ZmI2N2M4MDQ4MGYxYTEyZTJjNTQ3MDRlYzU4NDIyM2U0ZDM2ZTNlYWQwNjM0YjI4YTE4NzkwNTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhkYTY1MzFhOTkzNjEwNWRiYzRiNGY3ZjhiNjIyMDIzMzMxOTJkMmJlNTRmMjlmNmQwZjk2Y2UxMTlhZjgwNTcifQ"
+        },
+        {
+          "resource": "repo://docs/dev/delivery-lanes.md#L7-L40",
+          "version": "repo-lines-v1:sha256:550647421379758e59ae63104acf452d4e135789b9e07037f9e9d653a157a62e:eyJzZWxlY3RlZExpbmVDb3VudCI6MzQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFmNWFkODI4MGJjNjcwMTZkNDcyMDM1YTNiM2ZlOTdjMDgyMjY1YWExYjUyNmQ5NTQyMmM2ZGY1YzRjNGY2ODUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFhMzJlZDRmNzU3ZmVjZmRmOTgyNTA4MGMwOGYyYzU4MjJlMzJmOTQ4NTBiYzBmMTU3YmNiOTdjMjBhMjRjZDMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijc2YzgyNmZjZGJmMjMwMDgwN2VkNzEzZDRlZjM5NjlhOTBiOWJjOTM4ZTM1OGE0MmZkNGM4NWE4MzA2NmZmODciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM2MzdkYzBlZDA5ZjMyZjcxNTFmZTAwMmRmOWRlODg1MDBlMTZiZjY1NjZhOTYwNTJlYjkwNDMxYWY0NzRjNTIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_b0d9787883b2400faa4ec705850263b5",
+      "statement": "The README points developers to worktree-aware debug commands and repository developer/testing guides; its displayed status command provides environment-specific URL information, not a universal fixed endpoint.",
+      "evidence": [
+        {
+          "resource": "repo://README.md#L35-L53",
+          "version": "repo-lines-v1:sha256:9ca8b3be4c2d460d224deb66410e5045561cf72486334f14af364e2e04373ff1:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIzYTE2NTU1YjZkZWFkZDI2MGNhNzJjOTJiZDc0NmY2YjBjOGY2OGJiMTY5ZGFkYzQ1MWI3NjUxNGIyM2JkNjYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhmN2M2OGU0YzcxZWRmMjEwNGI2OWI5NGZkODUwNWMyMmE2NTViNzExYThmMTk5ZTgyZDNjY2NhZGU0Mjk5ODUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjMwNDExNjRhNDEzNGI0NWIxMzM4M2JiOWFmZWI2YzMzMzQzZGVlM2ZiNjMwMjQ3MGEwMTFlYTk2NzE4MzNlZTgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYzAwMzYxYzljODc3ZDZkMTdmMDlkY2Q5YjM2OTQyMTMyZWI5YmMyODZjNzMyMTY5NWVjOTNlZTdiN2I0Y2QifQ"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.7.2",
+    "at": "2026-10-18T02:51:00.673Z"
+  }
+}

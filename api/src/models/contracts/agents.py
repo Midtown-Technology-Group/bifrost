@@ -52,6 +52,9 @@ class ToolResult(BaseModel):
 
 # ==================== AGENT MODELS ====================
 
+AGENT_LLM_MAX_TOKENS_MIN = 1
+AGENT_LLM_MAX_TOKENS_MAX = 200000
+
 
 class AgentCreate(BaseModel):
     """Request model for creating an agent."""
@@ -77,7 +80,12 @@ class AgentCreate(BaseModel):
         ),
     )
     llm_profile_id: UUID | None = Field(default=None, description="Model profile UUID (null=use default profile assignment)")
-    llm_max_tokens: int | None = Field(default=None, ge=1, le=200000, description="Override max tokens")
+    llm_max_tokens: int | None = Field(
+        default=None,
+        ge=AGENT_LLM_MAX_TOKENS_MIN,
+        le=AGENT_LLM_MAX_TOKENS_MAX,
+        description="Override max tokens",
+    )
     max_iterations: int | None = Field(default=None, ge=1, le=200, description="Max LLM iterations for autonomous runs")
     max_token_budget: int | None = Field(default=None, ge=1000, le=1000000, description="Max token budget for autonomous runs")
 
@@ -108,7 +116,12 @@ class AgentUpdate(BaseModel):
     )
     clear_roles: bool = Field(default=False, description="If true, clear all role assignments (sets to role_based with no roles)")
     llm_profile_id: UUID | None = Field(default=None, description="Model profile UUID (null=use default profile assignment)")
-    llm_max_tokens: int | None = Field(default=None, ge=1, le=200000, description="Override max tokens")
+    llm_max_tokens: int | None = Field(
+        default=None,
+        ge=AGENT_LLM_MAX_TOKENS_MIN,
+        le=AGENT_LLM_MAX_TOKENS_MAX,
+        description="Override max tokens",
+    )
     max_iterations: int | None = Field(default=None, ge=1, le=200, description="Max LLM iterations for autonomous runs")
     max_token_budget: int | None = Field(default=None, ge=1000, le=1000000, description="Max token budget for autonomous runs")
 

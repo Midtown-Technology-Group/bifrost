@@ -22,10 +22,11 @@ from uuid import UUID
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from bifrost.field_classes import FieldClass, classify
-from bifrost.manifest_codec import Destination, EntityCodec, ImportFields
+from bifrost.agent_limits import bounded_agent_run_timeout, validate_agent_run_timeout
 from bifrost.contracts.events import EventCriteria
 from bifrost.contracts.workflows import ExecutionRetryPolicy
+from bifrost.field_classes import FieldClass, classify
+from bifrost.manifest_codec import Destination, EntityCodec, ImportFields
 
 logger = logging.getLogger(__name__)
 
@@ -136,6 +137,12 @@ class ManifestWorkflow(EntityCodec, BaseModel):
     endpoint_enabled: bool = Field(default=False, description="Expose as HTTP API endpoint", **classify(FieldClass.CONTENT))
     allowed_methods: list[str] = Field(default_factory=lambda: ["POST"], description="Allowed HTTP methods for endpoint workflows", **classify(FieldClass.CONTENT))
     timeout_seconds: int = Field(default=1800, description="Max execution time in seconds. 0 = no timeout. Default 1800 (30 min), max 86400 (24h).", **classify(FieldClass.CONTENT))
+    # None means no import intent: preserve existing values or the ORM default.
+    cache_ttl_seconds: int | None = Field(
+        default=None, strict=True, ge=0, le=86400,
+        description="Cache TTL in seconds; 0 disables caching, omission preserves the existing value",
+        **classify(FieldClass.CONTENT),
+    )
     retry_policy: ExecutionRetryPolicy = Field(
         default_factory=ExecutionRetryPolicy,
         description="Policy for retrying eligible infrastructure failures",
@@ -169,6 +176,7 @@ class ManifestWorkflow(EntityCodec, BaseModel):
             allowed_methods=getattr(wf, "allowed_methods", None) or ["POST"],
             # NOT `or 1800` — 0 means "no timeout" and `or` would clobber it.
             timeout_seconds=wf.timeout_seconds if wf.timeout_seconds is not None else 1800,
+            cache_ttl_seconds=getattr(wf, "cache_ttl_seconds", None),
             retry_policy=_execution_retry_policy(getattr(wf, "retry_policy", None)),
             public_endpoint=wf.public_endpoint or False,
             category=wf.category or "General",
@@ -208,6 +216,8 @@ class ManifestWorkflow(EntityCodec, BaseModel):
                 direct["description"] = self.description
             if self.tool_description is not None:
                 direct["tool_description"] = self.tool_description
+            if self.cache_ttl_seconds is not None:
+                direct["cache_ttl_seconds"] = self.cache_ttl_seconds
             return ImportFields(direct=direct)
         # INSTALL
         direct = {
@@ -226,6 +236,8 @@ class ManifestWorkflow(EntityCodec, BaseModel):
             "category": self.category,
             "tags": self.tags or [],
         }
+        if self.cache_ttl_seconds is not None:
+            direct["cache_ttl_seconds"] = self.cache_ttl_seconds
         if self.access_level is not None:
             direct["access_level"] = self.access_level
         return ImportFields(direct=direct)
@@ -359,8 +371,8 @@ class ManifestAgent(EntityCodec, BaseModel):
       tool_ids/delegated_agent_ids/knowledge_sources/system_tools/mcp_connection_ids/
       llm_profile/llm_max_tokens (non-empty lists only, drop-none scalars) — fed to AgentIndexer.
     The importers resolve id/name/system_prompt on the metadata row and re-stamp
-    access_level/max_iterations/max_token_budget (+ the max_run_timeout transport
-    extra) directly AFTER the indexer; that direct-set + re-stamp is
+    access_level/max_iterations/max_token_budget/max_run_timeout directly AFTER
+    the indexer; that direct-set + re-stamp is
     orchestration-owned (manifest_import/deploy), NOT sourced from this method.
     """
     id: str = Field(description="Agent UUID", **classify(FieldClass.IDENTITY, import_owner="direct"))
@@ -411,6 +423,16 @@ class ManifestAgent(EntityCodec, BaseModel):
     # reflects their primary classification (indexer); the re-stamp is orchestration.
     max_iterations: int | None = Field(default=None, description="Max LLM iterations for autonomous runs", **classify(FieldClass.CONTENT, import_owner="indexer"))
     max_token_budget: int | None = Field(default=None, description="Max token budget for autonomous runs", **classify(FieldClass.CONTENT, import_owner="indexer"))
+    max_run_timeout: int | None = Field(
+        default=None,
+        description="Maximum autonomous run duration in seconds (1-1800)",
+        **classify(FieldClass.CONTENT, import_owner="indexer"),
+    )
+
+    @field_validator("max_run_timeout", mode="before")
+    @classmethod
+    def _validate_max_run_timeout(cls, value: object) -> object:
+        return validate_agent_run_timeout(value)
 
     @classmethod
     def from_row(
@@ -428,6 +450,12 @@ class ManifestAgent(EntityCodec, BaseModel):
         in (rather than read from relationships) so the caller controls
         eager-loading and ordering — matching the pattern used for workflow/form roles.
         """
+        stored_run_timeout = getattr(agent, "max_run_timeout", None)
+        if stored_run_timeout is not None:
+            # Incoming manifests remain strict, but existing rows predate the
+            # bound and must stay exportable.  Serialize the same effective
+            # timeout that execution applies to those legacy values.
+            stored_run_timeout = int(bounded_agent_run_timeout(stored_run_timeout))
         return cls(
             id=str(agent.id),
             name=agent.name,
@@ -449,6 +477,7 @@ class ManifestAgent(EntityCodec, BaseModel):
             llm_max_tokens=agent.llm_max_tokens,
             max_iterations=agent.max_iterations,
             max_token_budget=agent.max_token_budget,
+            max_run_timeout=stored_run_timeout,
         )
 
     def to_orm_values(self, dest: "Destination") -> "ImportFields":
@@ -460,10 +489,9 @@ class ManifestAgent(EntityCodec, BaseModel):
           EXACTLY matches _agent_content_from_manifest.
         direct: id, name, system_prompt — the scalar fields resolved directly by
           _resolve_agent before the indexer runs.
-        restamp: access_level, max_iterations, max_token_budget — applied AFTER the
-          indexer by both _index_agents_from_manifest and _upsert_agents.
-          max_run_timeout is a transport extra (not a model field) — callers read it
-          from the bundle dict key directly (deploy.py _upsert_agents).
+        restamp: access_level, max_iterations, max_token_budget, max_run_timeout —
+          applied AFTER the indexer by both _index_agents_from_manifest and
+          _upsert_agents.
         """
         indexer: dict = {"id": self.id, "name": self.name or ""}
         if self.description is not None:
@@ -490,12 +518,14 @@ class ManifestAgent(EntityCodec, BaseModel):
             indexer["max_iterations"] = self.max_iterations
         if self.max_token_budget is not None:
             indexer["max_token_budget"] = self.max_token_budget
+        if self.max_run_timeout is not None:
+            indexer["max_run_timeout"] = self.max_run_timeout
 
         # Agent import is INDEXER-ONLY: the importers (manifest_import
         # _resolve_agent/_index_agents_from_manifest, deploy _upsert_agents) feed
         # indexer_content to the AgentIndexer, then resolve id/name/system_prompt on
-        # the metadata row and re-stamp access_level/max_iterations/max_token_budget
-        # (and the max_run_timeout transport extra) directly AFTER the indexer. That
+        # the metadata row and re-stamp access_level/max_iterations/max_token_budget/
+        # max_run_timeout directly AFTER the indexer. That
         # direct-set + re-stamp is orchestration-owned — it is NOT sourced from this
         # method — so direct/restamp stay empty rather than expose an
         # authoritative-looking surface nothing consumes.
@@ -1242,6 +1272,14 @@ class ManifestEventSubscription(EntityCodec, BaseModel):
     input_mapping: dict | None = Field(default=None, description="Map event fields to workflow params", **classify(FieldClass.CONTENT))
     is_active: bool = Field(default=True, description="Enable/disable this subscription", **classify(FieldClass.ENVIRONMENT))
 
+    def has_well_formed_target(self) -> bool:
+        """Return whether exactly the target required by target_type is set."""
+        if self.target_type == "workflow":
+            return bool(self.workflow_id) and not self.agent_id
+        if self.target_type == "agent":
+            return bool(self.agent_id) and not self.workflow_id
+        return False
+
     @classmethod
     def from_row(cls, sub) -> "ManifestEventSubscription":
         """Build from an EventSubscription ORM row."""
@@ -1813,14 +1851,27 @@ def validate_manifest(manifest: Manifest) -> list[str]:
                 f"{evt.webhook_integration_id}"
             )
         for sub in evt.subscriptions:
-            if sub.target_type == "agent":
-                if sub.agent_id and sub.agent_id not in agent_ids:
+            if sub.target_type not in {"workflow", "agent"}:
+                errors.append(
+                    f"Event source '{evt_label}' subscription '{sub.id}' has unsupported "
+                    f"target_type: {sub.target_type}"
+                )
+            elif not sub.has_well_formed_target():
+                required_id = (
+                    "agent_id" if sub.target_type == "agent" else "workflow_id"
+                )
+                errors.append(
+                    f"Event source '{evt_label}' subscription '{sub.id}' must set only "
+                    f"{required_id} for target_type='{sub.target_type}'"
+                )
+            elif sub.target_type == "agent":
+                if sub.agent_id not in agent_ids:
                     errors.append(
                         f"Event source '{evt_label}' subscription '{sub.id}' references unknown agent: "
                         f"{sub.agent_id}"
                     )
             else:
-                if sub.workflow_id and sub.workflow_id not in wf_ids:
+                if sub.workflow_id not in wf_ids:
                     errors.append(
                         f"Event source '{evt_label}' subscription '{sub.id}' references unknown workflow: "
                         f"{sub.workflow_id}"

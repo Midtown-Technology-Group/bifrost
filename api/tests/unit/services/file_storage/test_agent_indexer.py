@@ -18,6 +18,15 @@ class _ScalarResult:
     def scalar_one_or_none(self):
         return self._value
 
+    def scalar_one(self):
+        return self._value
+
+    def scalars(self):
+        return self
+
+    def all(self):
+        return [] if self._value is None else [self._value]
+
 
 def _db(*execute_results):
     db = SimpleNamespace(
@@ -56,7 +65,7 @@ async def test_index_agent_injects_id_normalizes_lists_and_syncs_existing_refs(
     child_id = UUID("00000000-0000-0000-0000-000000000003")
     monkeypatch.setattr(agent_indexer_module, "uuid4", MagicMock(return_value=agent_id))
     db = _db(
-        None,  # agent upsert
+        _ScalarResult(None),  # agent upsert returns global scope
         None,  # delete old tools
         _ScalarResult(workflow_id),
         None,  # delete old delegations
@@ -101,6 +110,11 @@ max_token_budget: 1234
     compiled = upsert.compile()
     assert compiled.params["system_tools"] == ["search_knowledge"]
     assert "system_tools" in str(upsert).split("DO UPDATE SET", maxsplit=1)[1]
+    tool_scope_query = db.execute.await_args_list[2].args[0]
+    query_text = str(tool_scope_query)
+    assert "workflows.is_active IS true" in query_text
+    assert "workflows.type" in query_text
+    assert "workflows.organization_id IS NULL" in query_text
 
 
 @pytest.mark.asyncio
@@ -111,7 +125,7 @@ async def test_index_agent_replaces_invalid_id_and_defaults_bad_channels(
     monkeypatch.setattr(
         agent_indexer_module, "uuid4", MagicMock(return_value=generated_id)
     )
-    db = _db(None, None, None)
+    db = _db(_ScalarResult(None), None, None)
     indexer = AgentIndexer(db)
 
     modified = await indexer.index_agent(

@@ -9,12 +9,13 @@ from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
 import yaml
-from sqlalchemy import delete, func, select
+from bifrost.agent_limits import validate_agent_run_timeout
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models import Workflow
-from src.models.orm import Agent, AgentTool, AgentDelegation, AIModelProfile
+from src.models.orm import Agent, AgentDelegation, AgentTool, AIModelProfile
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +40,8 @@ class AgentIndexer:
         self,
         path: str,
         content: bytes,
+        *,
+        organization_id: UUID | None = None,
     ) -> bool:
         """
         Parse and index agent from .agent.yaml file.
@@ -54,6 +57,8 @@ class AgentIndexer:
         Args:
             path: File path
             content: File content bytes
+            organization_id: Trusted organization scope for validating workflow
+                tool references. ``None`` permits global tools only.
 
         Returns:
             True if content was modified (ID alignment), False otherwise
@@ -73,6 +78,13 @@ class AgentIndexer:
         system_prompt = agent_data.get("system_prompt")
         if not system_prompt:
             raise ValueError(f"system_prompt is required (file: {path})")
+
+        try:
+            max_run_timeout = validate_agent_run_timeout(
+                agent_data.get("max_run_timeout")
+            )
+        except ValueError as exc:
+            raise ValueError(f"{exc} (file: {path})") from exc
 
         # Use ID from JSON if present (for API-created agents), otherwise generate new
         agent_id_str = agent_data.get("id")
@@ -168,7 +180,16 @@ class AgentIndexer:
                 if agent_data.get("max_token_budget") is not None
                 else {}
             ),
+            **(
+                {"max_run_timeout": max_run_timeout}
+                if max_run_timeout is not None
+                else {}
+            ),
             system_tools=system_tools,
+            # Scope is supplied by the trusted import/deploy boundary for new
+            # rows. The conflict-update branch deliberately omits it so repo
+            # content cannot move an existing agent between organizations.
+            organization_id=organization_id,
             created_by="file_sync",
         ).on_conflict_do_update(
             index_elements=[Agent.id],
@@ -196,13 +217,19 @@ class AgentIndexer:
                     if agent_data.get("max_token_budget") is not None
                     else {}
                 ),
+                **(
+                    {"max_run_timeout": max_run_timeout}
+                    if max_run_timeout is not None
+                    else {}
+                ),
                 "system_tools": system_tools,
                 "updated_at": now,
                 # NOTE: organization_id and access_level are NOT updated
                 # These are preserved from the database (env-specific)
             },
-        )
-        await self.db.execute(stmt)
+        ).returning(Agent.organization_id)
+        upsert_result = await self.db.execute(stmt)
+        persisted_organization_id = upsert_result.scalar_one()
 
         # Sync tool associations (tool_ids are workflow UUIDs)
         # Accept 'tools' as friendlier alias for 'tool_ids'
@@ -212,26 +239,55 @@ class AgentIndexer:
             await self.db.execute(
                 delete(AgentTool).where(AgentTool.agent_id == agent_id)
             )
-            # Create new tool associations (with existence check to prevent FK violations)
-            # Track added workflow_ids to avoid duplicates (same workflow ref appears multiple times)
-            added_tool_ids: set[UUID] = set()
+            # Repository content is not an authorization boundary. Resolve the
+            # complete requested set through the agent's trusted org scope and
+            # accept only active workflow tools. This prevents a manifest from
+            # creating durable cross-tenant or non-tool grants by UUID.
+            requested_tool_ids: list[UUID] = []
             for tool_id_str in tool_ids:
                 try:
-                    workflow_id = UUID(tool_id_str)
-                    # Skip if already added (dedup)
-                    if workflow_id in added_tool_ids:
+                    workflow_id = UUID(str(tool_id_str))
+                    if workflow_id in requested_tool_ids:
                         continue
-                    # Check if workflow exists before creating FK relationship
-                    workflow_exists = await self.db.execute(
-                        select(Workflow.id).where(Workflow.id == workflow_id)
-                    )
-                    if workflow_exists.scalar_one_or_none():
-                        self.db.add(AgentTool(agent_id=agent_id, workflow_id=workflow_id))
-                        added_tool_ids.add(workflow_id)
-                    else:
-                        logger.warning(f"Agent {name} references non-existent workflow {workflow_id}")
-                except ValueError:
+                    requested_tool_ids.append(workflow_id)
+                except (TypeError, ValueError):
                     logger.warning(f"Invalid tool_id in agent {name}: {tool_id_str}")
+
+            if requested_tool_ids:
+                scope_clause = Workflow.organization_id.is_(None)
+                if persisted_organization_id is not None:
+                    scope_clause = or_(
+                        Workflow.organization_id == persisted_organization_id,
+                        Workflow.organization_id.is_(None),
+                    )
+                allowed_tool_ids = set(
+                    (
+                        await self.db.execute(
+                            select(Workflow.id).where(
+                                Workflow.id.in_(requested_tool_ids),
+                                Workflow.is_active.is_(True),
+                                Workflow.type == "tool",
+                                scope_clause,
+                            )
+                        )
+                    )
+                    .scalars()
+                    .all()
+                )
+                for workflow_id in requested_tool_ids:
+                    if workflow_id in allowed_tool_ids:
+                        self.db.add(
+                            AgentTool(
+                                agent_id=agent_id,
+                                workflow_id=workflow_id,
+                            )
+                        )
+                    else:
+                        logger.warning(
+                            "Agent %s references an unavailable workflow tool %s",
+                            name,
+                            workflow_id,
+                        )
 
         # Sync delegated agent associations
         delegated_agent_ids = agent_data.get("delegated_agent_ids", [])

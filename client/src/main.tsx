@@ -21,7 +21,7 @@ window.addEventListener("vite:preloadError", handleVitePreloadError);
 // Expose platform React via import map so esm.sh packages use the same instance
 initReactShim();
 
-// Configure Monaco editor before React renders (sets up CDN paths for workers)
+// Configure the installed Monaco editor and local workers before React renders
 configureMonaco();
 
 configureSentry();

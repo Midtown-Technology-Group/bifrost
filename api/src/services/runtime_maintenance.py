@@ -17,7 +17,7 @@ from datetime import UTC, datetime
 from typing import Literal
 from uuid import UUID, uuid4
 
-from sqlalchemy import func, select, text
+from sqlalchemy import and_, func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.database import get_db_context
@@ -250,13 +250,46 @@ async def runtime_drain_counts(db: AsyncSession) -> RuntimeDrainCounts:
             or 0
         )
 
+    # Dispatch attempts are reserved before a scheduled execution is due. They
+    # have not been admitted to transport or a worker and must survive a restart.
+    # Exclude only the exact untouched shape; due or ambiguous work still drains.
+    attempt = WorkflowExecutionAttempt
+    retained_execution = select(Execution.id).where(
+        Execution.id == attempt.execution_id,
+        or_(
+            and_(
+                Execution.status == ExecutionStatus.SCHEDULED,
+                Execution.scheduled_at > func.clock_timestamp(),
+            ),
+            and_(
+                Execution.status == ExecutionStatus.CANCELLED,
+                Execution.completed_at.is_not(None),
+            ),
+        ),
+    ).correlate(attempt).exists()
+    untouched_reservation = and_(
+        attempt.status == "dispatching",
+        attempt.phase == "dispatch",
+        attempt.claim_token.is_(None),
+        attempt.published_at.is_(None),
+        attempt.claimed_at.is_(None),
+        attempt.started_at.is_(None),
+        attempt.worker_id.is_(None),
+        attempt.worker_incarnation_id.is_(None),
+        attempt.process_id.is_(None),
+        attempt.heartbeat_at.is_(None),
+        attempt.failure_code.is_(None),
+        attempt.failure_phase.is_(None),
+        retained_execution,
+    ).is_(True)
+
     return RuntimeDrainCounts(
         work_deliveries=await count(
             WorkDelivery,
             WorkDelivery.status.in_(("queued", "claimed", "interrupted")),
         ),
         workflow_attempts=await count(
-            WorkflowExecutionAttempt, WorkflowExecutionAttempt.completed_at.is_(None)
+            attempt, attempt.completed_at.is_(None), ~untouched_reservation
         ),
         workflow_executions=await count(
             Execution,
