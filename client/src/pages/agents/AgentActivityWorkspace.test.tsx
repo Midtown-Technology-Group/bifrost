@@ -82,7 +82,9 @@ const run = {
 
 describe("AgentActivityWorkspace", () => {
 	it("renders the normal timeline inline before Advanced is enabled", () => {
-		renderWithProviders(<AgentActivityWorkspace run={run} />);
+		renderWithProviders(
+			<AgentActivityWorkspace run={run} canViewRaw={false} />,
+		);
 
 		expect(
 			screen.getByRole("region", { name: "Timeline" }),
@@ -96,11 +98,14 @@ describe("AgentActivityWorkspace", () => {
 		expect(
 			screen.queryByRole("region", { name: "Run payloads" }),
 		).not.toBeInTheDocument();
+		expect(
+			screen.queryByRole("button", { name: /advanced/i }),
+		).not.toBeInTheDocument();
 	});
 
 	it("keeps Advanced as local content with payloads and raw trace", async () => {
 		const { user } = renderWithProviders(
-			<AgentActivityWorkspace run={run} />,
+			<AgentActivityWorkspace run={run} canViewRaw />,
 		);
 
 		await user.click(screen.getByRole("button", { name: /advanced/i }));

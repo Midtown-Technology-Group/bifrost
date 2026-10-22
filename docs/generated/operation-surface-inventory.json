@@ -16056,7 +16056,7 @@
     "cli": 158,
     "manifest": 16,
     "mcp": 90,
-    "rest": 782,
+    "rest": 783,
     "sdk": 19
   },
   "schema_version": 1,
@@ -17409,6 +17409,13 @@
         "method": "POST",
         "operation_id": "",
         "path": "/api/agent-runs/{run_id}/rerun",
+        "reason": "REST operation has not entered the canonical operation catalog yet.",
+        "status": "missing_surface"
+      },
+      {
+        "method": "GET",
+        "operation_id": "",
+        "path": "/api/agent-runs/{run_id}/result",
         "reason": "REST operation has not entered the canonical operation catalog yet.",
         "status": "missing_surface"
       },

@@ -111,6 +111,13 @@ class AgentRunEnqueueResponse(BaseModel):
     status: Literal["queued"] = "queued"
 
 
+class AgentRunResultResponse(BaseModel):
+    """Caller-scoped terminal output without the raw run trace."""
+
+    run_id: UUID
+    output: dict | None = None
+
+
 class AgentRunRerunResponse(BaseModel):
     run_id: UUID
 

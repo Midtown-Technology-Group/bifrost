@@ -13,6 +13,7 @@ import {
  */
 
 import { useAgentRunStepStore } from "@/stores/agentRunStepStore";
+import { usePlatformAdminGrant } from "@/hooks/usePlatformAdminGrant";
 import { AgentActivityWorkspace } from "./AgentActivityWorkspace";
 import { AgentRunOverviewFooter } from "./AgentRunOverviewFooter";
 import { copyToClipboard } from "@/lib/clipboard";
@@ -83,6 +84,7 @@ export function AgentRunDetailPage() {
 	}>();
 	const queryClient = useQueryClient();
 	const { isPlatformAdmin } = useAuth();
+	const canViewRaw = usePlatformAdminGrant();
 	const location = useLocation();
 	const navigate = useNavigate();
 	const activeTab =
@@ -324,8 +326,12 @@ export function AgentRunDetailPage() {
 	useAgentRunUpdates({ agentId: owningAgentId, runId });
 
 	const verdict = ((run?.verdict as Verdict | undefined) ?? null) as Verdict;
-	const [noteDrafts, setNoteDrafts] = useState<ReadonlyMap<string, string>>(() => new Map());
-	const note = runId ? (noteDrafts.get(runId) ?? run?.verdict_note ?? "") : "";
+	const [noteDrafts, setNoteDrafts] = useState<ReadonlyMap<string, string>>(
+		() => new Map(),
+	);
+	const note = runId
+		? (noteDrafts.get(runId) ?? run?.verdict_note ?? "")
+		: "";
 	const setNote = (value: string) => {
 		if (runId)
 			setNoteDrafts((previous) => new Map(previous).set(runId, value));
@@ -895,6 +901,7 @@ export function AgentRunDetailPage() {
 						<CardContent className="flex min-h-0 min-w-0 flex-1 flex-col p-0">
 							<AgentActivityWorkspace
 								run={run}
+								canViewRaw={canViewRaw}
 								focused={activeTab === "activity"}
 								expanded={activityInspecting}
 								onFocusedChange={(focused) =>
