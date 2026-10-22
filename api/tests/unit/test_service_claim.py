@@ -29,6 +29,7 @@ class FakeRedis:
     def __init__(self):
         self.values = {}
         self.ttls = {}
+        self.streams = {}
 
     async def get(self, key):
         return self.values.get(key)
@@ -46,6 +47,14 @@ class FakeRedis:
         for key in keys:
             self.values.pop(key, None)
         return len(keys)
+
+    async def xrange(self, key, min="-", max="+", count=None):
+        entries = self.streams.get(key, [])
+        if min.startswith("("):
+            entries = [entry for entry in entries if entry[0] > min[1:]]
+        elif min != "-":
+            entries = [entry for entry in entries if entry[0] >= min]
+        return entries[:count] if count is not None else entries
 
 
 @asynccontextmanager
@@ -266,6 +275,148 @@ async def test_beat_renews_lease_and_rotates_token(db_session, redis_holder):
         await db_session.get(ServiceAttempt, attempt_id)
     ).lease_expires_at
     assert after > before
+
+
+async def test_beat_log_flush_and_completion_share_definition_first_lock_order(
+    async_session_factory, redis_holder, monkeypatch
+):
+    """A beat can flush logs while child completion waits without deadlock."""
+    from datetime import datetime, timezone
+
+    from sqlalchemy import select, text
+
+    from src.core.cache.keys import (
+        service_logs_cursor_key,
+        service_logs_stream_key,
+    )
+    from src.models.orm.services import ServiceAttempt, ServiceLog
+
+    async with async_session_factory() as setup:
+        definition, _, _ = await _ensure_service(setup)
+        attempt = await service_lifecycle.claim_eligible_service(
+            setup, worker_id="worker-1"
+        )
+        service_id = definition.id
+        attempt_id = attempt.id
+        lease_token = attempt.lease_token
+        await setup.commit()
+
+    pool = StubPool()
+    loop = _loop(pool)
+    loop._owned[str(attempt_id)] = OwnedAttempt(
+        attempt_id=attempt_id,
+        service_id=service_id,
+        lease_token=lease_token,
+    )
+    log_message = "beat/completion lock-order regression"
+    redis = redis_holder["redis"]
+    redis.streams[service_logs_stream_key(str(attempt_id))] = [
+        (
+            "1-0",
+            {
+                "level": "INFO",
+                "message": log_message,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            },
+        )
+    ]
+
+    reached_log_flush = asyncio.Event()
+    release_log_flush = asyncio.Event()
+    completion_entered = asyncio.Event()
+    completion_pid = None
+    original_flush_logs = loop._flush_logs
+    original_complete_attempt = service_lifecycle.complete_attempt
+
+    async def paused_flush_logs(db, owned):
+        reached_log_flush.set()
+        await release_log_flush.wait()
+        await original_flush_logs(db, owned)
+
+    async def observed_complete_attempt(db, **kwargs):
+        nonlocal completion_pid
+        completion_pid = await db.scalar(text("SELECT pg_backend_pid()"))
+        completion_entered.set()
+        return await original_complete_attempt(db, **kwargs)
+
+    monkeypatch.setattr(loop, "_flush_logs", paused_flush_logs)
+    monkeypatch.setattr(
+        service_lifecycle, "complete_attempt", observed_complete_attempt
+    )
+
+    async def run_beat():
+        async with async_session_factory() as beat_db:
+            await loop._beat_owned(beat_db)
+            await beat_db.commit()
+            await loop._store_cursors()
+
+    beat = asyncio.create_task(run_beat())
+    completion = None
+    try:
+        await asyncio.wait_for(reached_log_flush.wait(), timeout=5)
+        completion = asyncio.create_task(
+            loop.handle_service_result(
+                {
+                    "success": True,
+                    "status": "Success",
+                    "service": {
+                        "service_id": str(service_id),
+                        "attempt_id": str(attempt_id),
+                        "lease_token": lease_token,
+                    },
+                }
+            )
+        )
+        await asyncio.wait_for(completion_entered.wait(), timeout=5)
+
+        async with async_session_factory() as observer:
+            for _ in range(100):
+                wait_type = await observer.scalar(
+                    text(
+                        "SELECT wait_event_type FROM pg_stat_activity "
+                        "WHERE pid = :pid"
+                    ),
+                    {"pid": completion_pid},
+                )
+                if wait_type == "Lock":
+                    break
+                assert not completion.done()
+                await asyncio.sleep(0.02)
+            else:
+                pytest.fail("completion did not reach the expected row-lock wait")
+
+        release_log_flush.set()
+        await asyncio.wait_for(beat, timeout=5)
+        await asyncio.wait_for(completion, timeout=5)
+    finally:
+        release_log_flush.set()
+        for task in (beat, completion):
+            if task is not None and not task.done():
+                task.cancel()
+        await asyncio.gather(
+            *(task for task in (beat, completion) if task is not None),
+            return_exceptions=True,
+        )
+
+    async with async_session_factory() as check:
+        stored_attempt = await check.get(ServiceAttempt, attempt_id)
+        stored_definition = await service_lifecycle.get_definition(
+            check, service_id
+        )
+        messages = list(
+            await check.scalars(
+                select(ServiceLog.message).where(
+                    ServiceLog.attempt_id == attempt_id
+                )
+            )
+        )
+
+    assert stored_attempt is not None
+    assert stored_attempt.state == "stopped"
+    assert stored_definition.restart_eligible_at is not None
+    assert log_message in messages
+    assert service_logs_cursor_key(str(attempt_id)) not in redis.values
+    assert str(attempt_id) not in loop._owned
 
 
 async def test_solution_service_rotation_keeps_current_workspace_scope(redis_holder):

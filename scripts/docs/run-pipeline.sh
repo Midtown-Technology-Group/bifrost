@@ -6,7 +6,7 @@
 #
 # Args:
 #   --docs-repo <path>    required (absolute)
-#   --bifrost-repo <path> required (absolute)
+#   --bifrost-repo <path> required (absolute; must contain this script)
 #   --full                bypass diff-mode shortlist and capture every entry
 #   --ids <id1,id2>       capture only the named entries (overrides --full)
 #   --threshold <0..1>    pixel-diff threshold for commit (default 0.001)
@@ -38,7 +38,18 @@ if [[ -z "$DOCS_REPO" || -z "$BIFROST_REPO" ]]; then
     exit 2
 fi
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_PATH="$(/usr/bin/realpath -- "${BASH_SOURCE[0]}")"
+SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd -P)"
+SCRIPT_BIFROST_REPO="$(cd "$SCRIPT_DIR/../.." && pwd -P)"
+if ! SELECTED_BIFROST_REPO="$(cd "$BIFROST_REPO" 2>/dev/null && pwd -P)"; then
+    echo "--bifrost-repo must be an existing checkout directory" >&2
+    exit 1
+fi
+if [[ "$SELECTED_BIFROST_REPO" != "$SCRIPT_BIFROST_REPO" ]]; then
+    echo "--bifrost-repo must match the checkout containing run-pipeline.sh" >&2
+    exit 1
+fi
+BIFROST_REPO="$SCRIPT_BIFROST_REPO"
 
 # decide-captures/post-process need their own node deps (js-yaml, sharp, …).
 # Auto-install on first run so step [1/3] doesn't die with ERR_MODULE_NOT_FOUND.
@@ -60,13 +71,57 @@ if [[ -d "$DOCS_REPO/.tmp-captures" ]]; then
 fi
 
 echo "=== [1/3] decide-captures ==="
-DECIDE_ARGS=(--docs-repo "$DOCS_REPO" --bifrost-repo "$BIFROST_REPO")
+DECIDE_ARGS=()
 if [[ -n "$IDS" ]]; then
     DECIDE_ARGS+=(--ids "$IDS")
 elif [[ -n "$MODE_FLAG" ]]; then
     DECIDE_ARGS+=("$MODE_FLAG")
 fi
-CAPTURE_IDS="$(node "$SCRIPT_DIR/decide-captures.mjs" "${DECIDE_ARGS[@]}")"
+
+# The selector never receives checkout paths. Validate the operator-selected docs
+# checkout here, then stream the fixed committed blob to the selector on stdin.
+# A minimal environment plus explicit safe Git settings prevents checkout-local
+# configuration from installing an executable fsmonitor or hook for these reads.
+docs_git() {
+    env -i \
+        HOME=/nonexistent \
+        PATH=/usr/bin:/bin \
+        GIT_CONFIG_NOSYSTEM=1 \
+        GIT_CONFIG_GLOBAL=/dev/null \
+        GIT_OPTIONAL_LOCKS=0 \
+        GIT_TERMINAL_PROMPT=0 \
+        /usr/bin/git --no-pager \
+        -c core.fsmonitor=false \
+        -c core.hooksPath=/dev/null \
+        -C "$DOCS_REPO" "$@"
+}
+
+if ! docs_git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    echo "docs repository must be a Git checkout" >&2
+    exit 1
+fi
+
+MANIFEST_STATUS="$(docs_git status --porcelain=v1 --untracked-files=all -- screenshots.yaml)"
+if [[ -n "$MANIFEST_STATUS" ]]; then
+    echo "capture manifest must be committed before capture" >&2
+    exit 1
+fi
+
+MANIFEST_ENTRY="$(docs_git ls-tree HEAD -- screenshots.yaml)"
+if [[ ! "$MANIFEST_ENTRY" =~ ^100(644|755)\ blob\ [0-9a-f]{40}$'\t'screenshots\.yaml$ ]]; then
+    echo "capture manifest must be a committed regular file" >&2
+    exit 1
+fi
+
+MANIFEST_SIZE="$(docs_git cat-file -s HEAD:screenshots.yaml)"
+if [[ ! "$MANIFEST_SIZE" =~ ^[0-9]+$ ]] || \
+    (( ${#MANIFEST_SIZE} > 7 )) || \
+    (( 10#$MANIFEST_SIZE > 1024 * 1024 )); then
+    echo "capture manifest must be at most 1 MiB" >&2
+    exit 1
+fi
+
+CAPTURE_IDS="$(docs_git show HEAD:screenshots.yaml | node "$SCRIPT_DIR/decide-captures.mjs" ${DECIDE_ARGS[@]+"${DECIDE_ARGS[@]}"})"
 
 if [[ -z "$CAPTURE_IDS" ]]; then
     echo "No entries to capture (everything is up to date)."
