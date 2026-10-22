@@ -4,8 +4,8 @@ The cache gates `bifrost watch` pushes so that a file's observer event
 triggered by our own pull-side `write_bytes` does not round-trip the
 content back to the server. Covered here:
 
-- `_hash_for_cache` collapses CRLF/LF so a hash of pre-push normalized
-  bytes matches the server's md5 ETag (S3 stores what we sent).
+- `_hash_for_cache` hashes exact local/server bytes so the cache never hides
+  a byte-level change.
 - `_WatchState` get/set/forget/seed helpers round-trip correctly and are
   safe against concurrent mutation from the watchdog thread.
 """
@@ -28,10 +28,10 @@ def test_hash_for_cache_matches_server_etag_for_lf_bytes():
     assert _hash_for_cache(raw) == hashlib.md5(raw).hexdigest()
 
 
-def test_hash_for_cache_normalizes_crlf_to_lf():
+def test_hash_for_cache_distinguishes_crlf_from_lf():
     crlf = b"hello\r\nworld\r\n"
     lf = b"hello\nworld\n"
-    assert _hash_for_cache(crlf) == _hash_for_cache(lf)
+    assert _hash_for_cache(crlf) != _hash_for_cache(lf)
 
 
 def test_hash_for_cache_passes_binary_through_unchanged():

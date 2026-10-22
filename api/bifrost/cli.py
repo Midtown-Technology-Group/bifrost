@@ -139,28 +139,14 @@ def _resolve_is_tty() -> bool:
 # ---------------------------------------------------------------------------
 
 
-def _normalize_line_endings(data: bytes) -> bytes:
-    """Normalize CRLF to LF for text files. Binary files pass through unchanged."""
-    if b"\x00" in data[:8192]:
-        return data
-    if b"\r" not in data:
-        return data
-    return data.replace(b"\r\n", b"\n")
-
-
 def _etag_md5(data: bytes) -> str:
     """Return the non-security MD5 digest used by S3 ETags."""
     return hashlib.new("md" + "5", data, usedforsecurity=False).hexdigest()
 
 
 def _hash_for_cache(raw_bytes: bytes) -> str:
-    """ETag MD5 of post-normalization bytes — must match what the server stores.
-
-    Watch normalizes CRLF to LF before pushing, so S3 stores normalized bytes
-    and S3's ETag is md5 of those. Any hash we compare against a server ETag
-    must be computed on the same normalized bytes.
-    """
-    return _etag_md5(_normalize_line_endings(raw_bytes))
+    """ETag MD5 of the exact bytes uploaded to and read from the server."""
+    return _etag_md5(raw_bytes)
 
 
 def _is_bifrost_path(path: str) -> bool:
@@ -3024,8 +3010,7 @@ async def _process_watch_batch(
         abs_p = pathlib.Path(abs_path_str)
         if abs_p.exists():
             try:
-                raw_bytes = abs_p.read_bytes()
-                raw = _normalize_line_endings(raw_bytes)
+                raw = abs_p.read_bytes()
                 # POSIX separators so the repo_path (and thus the known-hash
                 # cache key) matches the server. With str(WindowsPath) the "\"
                 # key never matches the server's "/" key, so the no-op-push
@@ -3686,7 +3671,7 @@ def _collect_push_files(
     repo_prefix: str,
     single_file: str | None = None,
 ) -> tuple[dict[str, str], int]:
-    """Walk a directory and collect text files for push.
+    """Walk a directory and collect files for byte-exact push.
 
     When ``single_file`` is set, collect exactly that one file (keyed by its
     repo path relative to ``path``, with ``repo_prefix`` prepended) instead of
@@ -3705,7 +3690,7 @@ def _collect_push_files(
         if _should_skip_path(rel_str, spec, repo_path):
             return {}, 1
         try:
-            raw = _normalize_line_endings(p.read_bytes())
+            raw = p.read_bytes()
             files[repo_path] = base64.b64encode(raw).decode("ascii")
         except OSError:
             skipped += 1
@@ -3723,7 +3708,7 @@ def _collect_push_files(
         if _should_skip_path(rel_str, spec, repo_path):
             continue
         try:
-            raw = _normalize_line_endings(file_path.read_bytes())
+            raw = file_path.read_bytes()
             content = base64.b64encode(raw).decode("ascii")
             files[repo_path] = content
         except OSError:
