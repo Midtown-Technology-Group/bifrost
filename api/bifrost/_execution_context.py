@@ -149,6 +149,9 @@ class ExecutionContext:
     # HMAC-verified embed values. Empty for authenticated and public forms.
     embed: dict[str, Any] = field(default_factory=dict)
 
+    # Server-only admission identity; never included in worker publish payloads.
+    _embed_session_jti: str | None = field(default=None, repr=False)
+
     # ==================== EVENT ====================
     # Populated when a workflow is triggered by an Event row (topic, webhook, schedule).
     # Access via context.event.type, context.event.data, etc.

@@ -433,16 +433,10 @@ async def test_can_access_execution_checks_owner_for_existing_rows():
 @pytest.mark.asyncio
 async def test_can_access_execution_checks_embed_session_redis_key():
     user = _user(embed=True, embed_kind="app", jti="embed-session")
-    redis = SimpleNamespace(exists=AsyncMock(return_value=1))
-
-    @asynccontextmanager
-    async def redis_ctx():
-        yield redis
-
-    with patch("src.core.cache.redis_client.get_redis", return_value=redis_ctx()):
-        assert await ws_mod.can_access_execution(user, "not-a-uuid")
-
-    redis.exists.assert_awaited_once()
+    execution_id = str(uuid4())
+    with patch("src.core.embed_middleware.has_embed_execution_access", AsyncMock(return_value=True)) as access:
+        assert await ws_mod.can_access_execution(user, execution_id)
+    access.assert_awaited_once_with("embed-session", execution_id)
 
 
 @pytest.mark.asyncio

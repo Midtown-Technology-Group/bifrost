@@ -768,11 +768,14 @@ async def _insert_scheduled_execution(
     is_provider_org: bool = False,
     is_external: bool = False,
     execution_id: UUID | None = None,
+    commit: bool = True,
+    embed_session_jti: str | None = None,
 ) -> UUID:
     """Insert a SCHEDULED execution row.
 
     Skips Redis/RabbitMQ — the deferred_execution_promoter job will publish
-    the row when scheduled_at matures.
+    the row when scheduled_at matures. Callers may defer commit until their
+    admission prerequisites succeed.
     """
     from uuid import uuid4
 
@@ -832,12 +835,17 @@ async def _insert_scheduled_execution(
         retry_policy=retry_policy,
         execution_context=execution_context,
     )
+    if embed_session_jti:
+        from src.services.execution.async_executor import pin_scheduled_embed_dispatch
+
+        pin_scheduled_embed_dispatch(execution, embed_session_jti)
     db.add(execution)
     await db.flush()
     from src.services.execution.attempts import ensure_dispatch_attempt
 
     await ensure_dispatch_attempt(db, execution)
-    await db.commit()
+    if commit:
+        await db.commit()
     return exec_id
 
 
@@ -884,6 +892,13 @@ async def execute_workflow(
         effective_execution_user,
         validate_execution_identity_overrides,
     )
+
+    # Reject an unbound embed session before any immediate or scheduled dispatch.
+    if user.embed and not user.jti:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Invalid embed session",
+        )
 
     try:
         effective_user = effective_execution_user(ctx.user, ctx.org_id)
@@ -1092,6 +1107,17 @@ async def execute_workflow(
                 detail=str(exc),
             ) from exc
         if recovered is not None:
+            # Embed sessions share a service subject. A matching durable retry
+            # still requires the initiating session's execution capability.
+            if user.embed:
+                from src.core.embed_middleware import has_embed_execution_access
+
+                owned = await has_embed_execution_access(user.jti, str(execution_request_id))
+                if not owned:
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail="Access denied to this execution",
+                    )
             return recovered
 
     # Scheduled execution: normalize delay_seconds -> scheduled_at and insert row.
@@ -1117,7 +1143,14 @@ async def execute_workflow(
             is_provider_org=exec_is_provider_org,
             is_external=exec_is_external,
             execution_id=execution_request_id,
+            commit=not user.embed,
+            embed_session_jti=user.jti if user.embed else None,
         )
+        if user.embed:
+            from src.core.embed_middleware import register_embed_execution
+
+            await register_embed_execution(user.jti, str(exec_id))
+            await db.commit()
         return WorkflowExecutionResponse(
             execution_id=str(exec_id),
             workflow_id=str(workflow.id),
@@ -1153,6 +1186,7 @@ async def execute_workflow(
         execution_id=str(execution_request_id or uuid4()),
         is_provider_org=exec_is_provider_org,
         is_external=exec_is_external,
+        _embed_session_jti=user.jti if user.embed and not request.transient else None,
     )
 
     try:
@@ -1248,6 +1282,11 @@ async def execute_workflow(
                 detail="Either workflow_id or code must be provided",
             )
 
+        if request.code and user.embed and not request.transient and result.execution_id:
+            from src.core.embed_middleware import register_embed_execution
+
+            await register_embed_execution(user.jti, result.execution_id)
+
         # If the result already has a terminal status (sync mode), mark as transient
         # so the frontend uses the inline result instead of waiting on WebSocket
         if result.status and result.status not in (ExecutionStatus.PENDING, ExecutionStatus.RUNNING):
@@ -1285,6 +1324,8 @@ async def execute_workflow(
 
         return result
 
+    except HTTPException:
+        raise
     except WorkflowNotFoundError as e:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

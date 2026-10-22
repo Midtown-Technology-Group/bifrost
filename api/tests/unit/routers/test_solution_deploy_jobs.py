@@ -568,3 +568,37 @@ async def test_queued_manual_deploy_rechecks_git_connection_inside_write_lock(
     deploy.assert_not_awaited()
     assert job.status == "failed"
     assert "git-connected" in (job.error or "").lower()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("projection_status", ["failed", "succeeded"])
+@pytest.mark.parametrize("owner_status", ["queued", "running", "waiting", "cancel_requested", "failed", "succeeded", None])
+async def test_deploy_poll_does_not_publish_terminal_state_before_owner_finishes(projection_status, owner_status):
+    """A projected outcome precedes install cleanup and central finalization."""
+    from datetime import datetime, timezone
+    from src.routers.solutions import get_deploy_job
+
+    job_id = uuid4()
+    now = datetime.now(timezone.utc)
+    projection = SolutionDeployJob(
+        id=job_id, install_id=uuid4(), status=projection_status,
+        error="manifest invalid" if projection_status == "failed" else None,
+        result={"solution_id": str(uuid4())} if projection_status == "succeeded" else None,
+        created_at=now, updated_at=now,
+    )
+    owner = PlatformJob(id=job_id, status=owner_status) if owner_status else None
+
+    async def get(model, identity):
+        assert identity == job_id
+        return projection if model is SolutionDeployJob else owner
+
+    result = await get_deploy_job(job_id, SimpleNamespace(db=SimpleNamespace(get=get)), SimpleNamespace())
+    if owner_status in {"queued", "running", "waiting", "cancel_requested"}:
+        assert result.status == ("queued" if owner_status == "queued" else "running")
+        assert result.error is None
+        assert result.result is None
+    else:
+        assert result.status == projection_status
+        assert result.error == projection.error
+        assert result.result == projection.result
+    assert projection.status == projection_status  # Readback does not mutate storage.

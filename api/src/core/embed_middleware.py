@@ -102,6 +102,56 @@ def embed_request_allowed(method: str, path: str, payload: dict[str, Any]) -> bo
     return method == expected_method
 
 
+async def register_embed_execution(jti: str, execution_id: str) -> None:
+    """Link an embed session (jti) to an execution it created.
+
+    Writes the same Redis key this middleware checks on
+    ``GET /api/executions/{id}...`` and the WebSocket execution subscription,
+    so an embed session can read back the executions it started. Shared by
+    every embed-authorized execution entry point (form submission, app
+    workflow-execute) to avoid each one re-deriving the key.
+    """
+    from src.core.cache.keys import TTL_EMBED_EXECUTION, embed_execution_key
+    from src.core.cache.redis_client import get_redis
+
+    async with get_redis() as redis:
+        await redis.setex(
+            embed_execution_key(jti, execution_id),
+            TTL_EMBED_EXECUTION,
+            "1",
+        )
+
+
+async def has_embed_execution_access(jti: str, execution_id: str) -> bool:
+    """Require a live grant and the session frozen by durable admission.
+
+    Checking durable evidence prevents an uncommitted or stale Redis grant
+    from authorizing another session's execution after admission fails.
+    Legacy unbound rows retain their existing exact-session grant behavior.
+    """
+    from uuid import UUID
+
+    from src.core.cache.keys import embed_execution_key
+    from src.core.cache.redis_client import get_redis
+    from src.core.database import get_db_context
+    from src.models.orm.executions import Execution
+
+    try:
+        execution_uuid = UUID(execution_id)
+    except ValueError:
+        return False
+    async with get_redis() as redis:
+        if not await redis.exists(embed_execution_key(jti, execution_id)):
+            return False
+    async with get_db_context() as db:
+        execution = await db.get(Execution, execution_uuid)
+        if execution is None:
+            return False
+        evidence = execution.dispatch_evidence or {}
+        bound_session = (evidence.get("request") or {}).get("embed_session_jti")
+        return bound_session is None or bound_session == jti
+
+
 class EmbedScopeMiddleware(BaseHTTPMiddleware):
     """Apply the typed embed capability policy before router authorization."""
 
@@ -143,12 +193,7 @@ class EmbedScopeMiddleware(BaseHTTPMiddleware):
                     content={"detail": "Embed token missing session identifier"},
                 )
 
-            from src.core.cache.keys import embed_execution_key
-            from src.core.cache.redis_client import get_redis
-
-            async with get_redis() as redis:
-                exists = await redis.exists(embed_execution_key(jti, execution_id))
-            if not exists:
+            if not await has_embed_execution_access(jti, execution_id):
                 return JSONResponse(
                     status_code=403,
                     content={"detail": "Access denied to this execution"},

@@ -78,6 +78,8 @@ def _dispatch_request_identity(
     }
     if dispatch_metadata is not None:
         identity["dispatch_metadata"] = dispatch_metadata
+    if getattr(context, "_embed_session_jti", None):
+        identity["embed_session_jti"] = context._embed_session_jti
     if org_id_override is not None:
         identity["org_id_overridden"] = True
     artifact_workspace_id = getattr(context, "artifact_workspace_id", None)
@@ -102,6 +104,7 @@ def _pending_dispatch_envelope(
         not in {
             "schema_version",
             "caller_solution_deployment_id",
+            "embed_session_jti",
         }
     }
     publish.update(
@@ -119,6 +122,40 @@ def _pending_dispatch_envelope(
         "publish": publish,
         "publish_hash": sha256_digest(canonical_json(publish)),
     }
+
+
+def pin_scheduled_embed_dispatch(execution: Any, jti: str) -> None:
+    """Freeze a delayed admission in the promoter's canonical envelope."""
+    from src.services.solutions.deployment_manifest import canonical_json, sha256_digest
+
+    from src.sdk.context import Organization
+
+    context = ExecutionContext(
+        user_id=str(execution.executed_by),
+        name=execution.executed_by_name,
+        email="",
+        scope=str(execution.organization_id) if execution.organization_id else "GLOBAL",
+        organization=Organization(id=str(execution.organization_id), name="") if execution.organization_id else None,
+        is_platform_admin=bool(execution.execution_context.get("is_platform_admin", False)),
+        is_function_key=False,
+        execution_id=str(execution.id),
+        is_provider_org=bool(execution.execution_context.get("is_provider_org", False)),
+        is_external=bool(execution.execution_context.get("is_external", False)),
+        _embed_session_jti=jti,
+    )
+    request = _dispatch_request_identity(
+        context, str(execution.id), str(execution.workflow_id), execution.parameters,
+        form_id=str(execution.form_id) if execution.form_id else None,
+        sync=False, api_key_id=None, file_path=None, org_id_override=None,
+    )
+    envelope = _pending_dispatch_envelope(
+        request,
+        solution_deployment_id=str(execution.solution_deployment_id) if execution.solution_deployment_id else None,
+        runtime_evidence=execution.runtime_evidence,
+        runtime_mode=execution.runtime_mode,
+    )
+    execution.dispatch_evidence = envelope
+    execution.dispatch_evidence_hash = sha256_digest(canonical_json(envelope))
 
 
 def _validated_pending_dispatch(
@@ -271,11 +308,22 @@ async def _persist_execution_pin(
         )
         existing = await db.get(Execution, uuid.UUID(execution_id))
         if existing is not None:
+            if getattr(context, "_embed_session_jti", None):
+                from fastapi import HTTPException
+
+                bound_session = ((existing.dispatch_evidence or {}).get("request") or {}).get("embed_session_jti")
+                if bound_session != context._embed_session_jti:
+                    raise HTTPException(status_code=403, detail="Access denied to this execution")
             # Scheduled rows are deliberately created before their queue
             # message. Every other existing state proves this execution was
             # already dispatched (or completed), so publishing again would
             # duplicate side effects after an HTTP retry.
-            return _validated_pending_dispatch(existing, request_identity), False
+            publish = _validated_pending_dispatch(existing, request_identity)
+            if getattr(context, "_embed_session_jti", None):
+                from src.core.embed_middleware import register_embed_execution
+
+                await register_embed_execution(context._embed_session_jti, execution_id)
+            return publish, False
 
         caller_deployment_id = (
             uuid.UUID(context.solution_deployment_id)
@@ -367,6 +415,10 @@ async def _persist_execution_pin(
 
             event_delivery.execution_id = uuid.UUID(execution_id)
             event_delivery.status = EventDeliveryStatus.QUEUED
+        if getattr(context, "_embed_session_jti", None):
+            from src.core.embed_middleware import register_embed_execution
+
+            await register_embed_execution(context._embed_session_jti, execution_id)
         await db.commit()
         return dict(dispatch["publish"]), True
 
