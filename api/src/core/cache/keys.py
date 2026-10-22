@@ -415,6 +415,7 @@ TTL_ORGS = 3600  # 1 hour
 TTL_PENDING = 3600  # 1 hour (safety for orphaned changes)
 TTL_PENDING_EXECUTION = 3600  # 1 hour (safety for orphaned pending executions)
 TTL_ACTIVE_EXECUTION = 3600  # 1 hour (recreated while the child is active)
+TTL_EXECUTION_LOGS = 604800  # 7 days (durable DB copy is authoritative after flush)
 
 # Embed TTLs
 TTL_EMBED_EXECUTION = 86400  # 24 hours (embed session → execution link)

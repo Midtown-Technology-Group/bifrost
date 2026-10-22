@@ -24,6 +24,7 @@ from typing import TYPE_CHECKING, Any, AsyncIterable, cast
 from .keys import (
     CONFIG_GLOBAL_VERSION_KEY,
     TTL_CONFIG,
+    TTL_EXECUTION_LOGS,
     TTL_ORGS,
     active_execution_key,
     config_hash_key,
@@ -371,8 +372,16 @@ async def cleanup_execution_cache(execution_id: str, *, preserve_logs: bool = Fa
     try:
         r = await get_shared_redis()
         keys = [pending_changes_key(execution_id)]
-        if not preserve_logs:
-            keys.append(execution_logs_stream_key(execution_id))
+        log_stream_key = execution_logs_stream_key(execution_id)
+        if preserve_logs:
+            # A committed stream may be retained briefly for recovery or a
+            # concurrent append, but it must never become permanent metadata.
+            try:
+                await r.expire(log_stream_key, TTL_EXECUTION_LOGS)
+            except Exception as e:
+                logger.warning(f"Failed to bound execution log retention: {e}")
+        else:
+            keys.append(log_stream_key)
         keys.append(active_execution_key(execution_id))
         await r.delete(*keys)
         logger.debug(f"Cleaned up execution cache: execution_id={execution_id}")
