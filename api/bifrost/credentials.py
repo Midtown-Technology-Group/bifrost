@@ -18,6 +18,7 @@ import json
 import os
 import platform
 import sys
+import threading
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -30,6 +31,7 @@ AUTH_ENV_KEYS = frozenset({
     "BIFROST_ACCESS_TOKEN",
     "BIFROST_REFRESH_TOKEN",
 })
+_credentials_mutation_lock = threading.RLock()
 
 # --------------------------------------------------------------------------- #
 # Public dataclass
@@ -610,16 +612,17 @@ def save_ephemeral_credentials(
     **_unused: object,
 ) -> None:
     """Persist rotated tokens for env-var or CWD .env ephemeral sessions."""
-    os.environ["BIFROST_ACCESS_TOKEN"] = access_token
-    os.environ["BIFROST_REFRESH_TOKEN"] = refresh_token
+    with _credentials_mutation_lock:
+        os.environ["BIFROST_ACCESS_TOKEN"] = access_token
+        os.environ["BIFROST_REFRESH_TOKEN"] = refresh_token
 
-    if source == "cwd_dotenv":
-        _upsert_cwd_dotenv_token_vars(
-            {
-                "BIFROST_ACCESS_TOKEN": access_token,
-                "BIFROST_REFRESH_TOKEN": refresh_token,
-            }
-        )
+        if source == "cwd_dotenv":
+            _upsert_cwd_dotenv_token_vars(
+                {
+                    "BIFROST_ACCESS_TOKEN": access_token,
+                    "BIFROST_REFRESH_TOKEN": refresh_token,
+                }
+            )
 
 
 def resolve_current_connection(
@@ -807,7 +810,8 @@ def save_credentials(
         refresh_token=refresh_token,
         expires_at=expires_at,
     )
-    get_persistent_backend().save(creds)
+    with _credentials_mutation_lock:
+        get_persistent_backend().save(creds)
 
 
 def save_refreshed_credentials(
@@ -817,8 +821,27 @@ def save_refreshed_credentials(
     access_token: str,
     refresh_token: str,
     expires_at: str,
-) -> bool:
-    """Write a rotated token generation back to the source that owns it."""
+) -> CredentialSource | None:
+    """Write rotated tokens and return their post-writeback resolution source."""
+    with _credentials_mutation_lock:
+        return _save_refreshed_credentials_locked(
+            resolved,
+            observed_access_token,
+            observed_refresh_token,
+            access_token,
+            refresh_token,
+            expires_at,
+        )
+
+
+def _save_refreshed_credentials_locked(
+    resolved: ResolvedCredentials,
+    observed_access_token: str,
+    observed_refresh_token: str,
+    access_token: str,
+    refresh_token: str,
+    expires_at: str,
+) -> CredentialSource | None:
     credentials = resolved.credentials
     normalized_url = credentials.api_url.rstrip("/")
 
@@ -829,10 +852,10 @@ def save_refreshed_credentials(
             or current.access_token != observed_access_token
             or current.refresh_token != observed_refresh_token
         ):
-            return False
+            return None
         os.environ["BIFROST_ACCESS_TOKEN"] = access_token
         os.environ["BIFROST_REFRESH_TOKEN"] = refresh_token
-        return True
+        return "process"
 
     if resolved.source == "cwd_dotenv":
         current = _get_cwd_dotenv_credentials(normalized_url)
@@ -841,22 +864,42 @@ def save_refreshed_credentials(
             or current.access_token != observed_access_token
             or current.refresh_token != observed_refresh_token
         ):
-            return False
+            return None
         save_ephemeral_credentials(
             normalized_url,
             access_token,
             refresh_token,
             source="cwd_dotenv",
         )
-        return True
+        # Record the source that actually owns the complete rotated tuple. The
+        # process environment wins only when it also supplies the matching URL;
+        # otherwise resolution correctly remains bound to the CWD .env copy.
+        written = resolve_credentials(normalized_url)
+        if (
+            written is None
+            or written.credentials.access_token != access_token
+            or written.credentials.refresh_token != refresh_token
+        ):
+            return None
+        return written.source
 
-    save_credentials(
-        api_url=normalized_url,
-        access_token=access_token,
-        refresh_token=refresh_token,
-        expires_at=expires_at,
+    backend = get_persistent_backend()
+    current = backend.get(normalized_url)
+    if (
+        current is None
+        or current.access_token != observed_access_token
+        or current.refresh_token != observed_refresh_token
+    ):
+        return None
+    backend.save(
+        Credentials(
+            api_url=normalized_url,
+            access_token=access_token,
+            refresh_token=refresh_token,
+            expires_at=expires_at,
+        )
     )
-    return True
+    return "persistent"
 
 
 def clear_credentials(api_url: str | None = None) -> None:
@@ -871,8 +914,9 @@ def clear_credentials(api_url: str | None = None) -> None:
     target = _resolve_url(api_url, include_cwd_dotenv=True)
     if target is None:
         return
-    get_persistent_backend().clear(target)
-    clear_default_connection(target)
+    with _credentials_mutation_lock:
+        get_persistent_backend().clear(target)
+        clear_default_connection(target)
 
 
 def list_credentials() -> list[str]:
