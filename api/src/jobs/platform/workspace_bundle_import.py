@@ -304,7 +304,10 @@ async def run_workspace_bundle_import(
                         file_index=FileIndexService(db),
                         expected_destination_hashes=expected_destination_hashes,
                     )
-                    await RepoSyncWriter(db).regenerate_manifest()
+                    await RepoSyncWriter(
+                        db,
+                        organization_id=context.organization_id,
+                    ).regenerate_manifest()
                     await db.commit()
                     await mark_repo_dirty()
                 except WorkspaceBundleDecisionError as exc:

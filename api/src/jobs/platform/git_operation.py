@@ -170,6 +170,7 @@ async def run_git_operation(
             repo_url=service_url,
             branch=service_branch,
             settings=get_settings(),
+            organization_id=organization_id,
         )
         try:
             result = await dispatch_git_operation(service, payload, context)

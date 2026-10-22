@@ -683,6 +683,7 @@ async def preview_git_connect(
         db,
         repo_url=_authenticated_clone_url(config, repository_url),
         branch=body.branch,
+        organization_id=ctx.org_id,
     )
     try:
         return await service.preview_connect(
