@@ -44,23 +44,36 @@ run_test() {
 
 run_test "tag at HEAD, no commits ahead" \
   'GIT_AUTHOR_DATE=@1000000000 GIT_COMMITTER_DATE=@1000000000 git commit --allow-empty -m init -q && git tag -a v0.8.0 -m v0.8.0' \
-  '0.8.1-dev.1000000000' 0
+  '0.8.1-dev.0' 0
 
-run_test "version follows HEAD committer timestamp" \
+run_test "first commit after release advances sequence" \
   'GIT_AUTHOR_DATE=@1000000000 GIT_COMMITTER_DATE=@1000000000 git commit --allow-empty -m init -q && git tag -a v0.8.0 -m v0.8.0 && GIT_AUTHOR_DATE=@1000000042 GIT_COMMITTER_DATE=@1000000042 git commit --allow-empty -m c1 -q' \
-  '0.8.1-dev.1000000042' 0
+  '0.8.1-dev.1' 0
 
-run_test "history length does not determine sequence" \
+run_test "same-second commits receive distinct sequence" \
+  'GIT_AUTHOR_DATE=@1000000000 GIT_COMMITTER_DATE=@1000000000 git commit --allow-empty -m init -q && git tag -a v0.8.0 -m v0.8.0 && GIT_AUTHOR_DATE=@1000000042 GIT_COMMITTER_DATE=@1000000042 git commit --allow-empty -m c1 -q && GIT_AUTHOR_DATE=@1000000042 GIT_COMMITTER_DATE=@1000000042 git commit --allow-empty -m c2 -q' \
+  '0.8.1-dev.2' 0
+
+run_test "same timestamp cannot collapse first-parent history" \
   'GIT_AUTHOR_DATE=@1000000000 GIT_COMMITTER_DATE=@1000000000 git commit --allow-empty -m init -q && git tag -a v0.8.0 -m v0.8.0 && for i in $(seq 47); do GIT_AUTHOR_DATE=@1000000047 GIT_COMMITTER_DATE=@1000000047 git commit --allow-empty -m "c$i" -q; done' \
-  '0.8.1-dev.1000000047' 0
+  '0.8.1-dev.47' 0
 
 run_test "release sets next dev cycle floor" \
   'GIT_AUTHOR_DATE=@1000000000 GIT_COMMITTER_DATE=@1000000000 git commit --allow-empty -m init -q && git tag -a v0.8.0 -m v0.8.0 && GIT_AUTHOR_DATE=@1000000001 GIT_COMMITTER_DATE=@1000000001 git commit --allow-empty -m c1 -q && git tag -a v0.9.0 -m v0.9.0 && GIT_AUTHOR_DATE=@1000000002 GIT_COMMITTER_DATE=@1000000002 git commit --allow-empty -m c2 -q' \
-  '0.9.1-dev.1000000002' 0
+  '0.9.1-dev.1' 0
+
+run_test "v3 migration starts above the previously published sequence" \
+  'GIT_AUTHOR_DATE=@1000000000 GIT_COMMITTER_DATE=@1000000000 git commit --allow-empty -m init -q && git tag -a v3.0.0 -m v3.0.0 && GIT_AUTHOR_DATE=@1000000001 GIT_COMMITTER_DATE=@1000000001 git commit --allow-empty -m c1 -q' \
+  '3.0.1-dev.1001' 0
+
+run_test "v3 migration preserves candidate and first-parent monotonicity" \
+  'GIT_AUTHOR_DATE=@1000000000 GIT_COMMITTER_DATE=@1000000000 git commit --allow-empty -m init -q && git tag -a v3.0.0 -m v3.0.0 && GIT_AUTHOR_DATE=@1000000001 GIT_COMMITTER_DATE=@1000000001 git commit --allow-empty -m c1 -q && git branch candidate-base && git checkout -q -b side && GIT_AUTHOR_DATE=@1000000002 GIT_COMMITTER_DATE=@1000000002 git commit --allow-empty -m side -q && git checkout -q - && GIT_AUTHOR_DATE=@1000000003 GIT_COMMITTER_DATE=@1000000003 git merge --no-ff side -m merge -q' \
+  '3.0.1-dev.1002' 0 \
+  '--next-after candidate-base'
 
 run_test "fork release tag is ignored for next dev version" \
   'GIT_AUTHOR_DATE=@1000000000 GIT_COMMITTER_DATE=@1000000000 git commit --allow-empty -m init -q && git tag -a v0.9.0 -m v0.9.0 && GIT_AUTHOR_DATE=@1000000001 GIT_COMMITTER_DATE=@1000000001 git commit --allow-empty -m fork-release -q && git tag -a v0.9.1-mtg.1 -m v0.9.1-mtg.1 && GIT_AUTHOR_DATE=@1000000002 GIT_COMMITTER_DATE=@1000000002 git commit --allow-empty -m next -q' \
-  '0.9.1-dev.1000000002' 0
+  '0.9.1-dev.2' 0
 
 run_test "only fork release tags bootstrap to first MTG release line" \
   'git commit --allow-empty -m init -q && git tag -a v0.9.1-mtg.1 -m v0.9.1-mtg.1' \
@@ -68,7 +81,7 @@ run_test "only fork release tags bootstrap to first MTG release line" \
 
 run_test "minor with double-digit patch" \
   'GIT_AUTHOR_DATE=@1000000000 GIT_COMMITTER_DATE=@1000000000 git commit --allow-empty -m init -q && git tag -a v1.2.10 -m v1.2.10 && GIT_AUTHOR_DATE=@1000000001 GIT_COMMITTER_DATE=@1000000001 git commit --allow-empty -m c1 -q' \
-  '1.2.11-dev.1000000001' 0
+  '1.2.11-dev.1' 0
 
 run_test "no tags bootstraps to 1.0.0-dev.N" \
   'git commit --allow-empty -m init -q' \
@@ -84,11 +97,11 @@ run_test "non-v prefixed tag is ignored, bootstraps" \
 
 run_test "lightweight release tag is accepted" \
   'GIT_AUTHOR_DATE=@1000000000 GIT_COMMITTER_DATE=@1000000000 git commit --allow-empty -m init -q && git tag v1.0.0' \
-  '1.0.1-dev.1000000000' 0
+  '1.0.1-dev.0' 0
 
 run_test "latest lightweight tag beats older annotated tag" \
   'GIT_AUTHOR_DATE=@1000000000 GIT_COMMITTER_DATE=@1000000000 git commit --allow-empty -m init -q && git tag -a v1.0.0 -m v1.0.0 && GIT_AUTHOR_DATE=@1000000001 GIT_COMMITTER_DATE=@1000000001 git commit --allow-empty -m c1 -q && git tag v1.1.0 && GIT_AUTHOR_DATE=@1000000002 GIT_COMMITTER_DATE=@1000000002 git commit --allow-empty -m c2 -q' \
-  '1.1.1-dev.1000000002' 0
+  '1.1.1-dev.1' 0
 
 run_test "candidate version predicts one squash commit after base" \
   'git commit --allow-empty -m init -q && git tag v1.0.0 && git branch candidate-base && git commit --allow-empty -m c1 -q && git commit --allow-empty -m c2 -q' \

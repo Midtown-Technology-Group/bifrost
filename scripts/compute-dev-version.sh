@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # Compute a monotonic semver dev version for the current commit.
 #
-# Format: <next-patch>-dev.<HEAD-committer-epoch>
-# Example: latest tag v1.0.0, HEAD committed at epoch 1788062400
-#          -> 1.0.1-dev.1788062400
+# Format: <next-patch>-dev.<monotonic-first-parent-sequence>
+# Example: latest tag v1.0.0, HEAD is the third first-parent commit after it
+#          -> 1.0.1-dev.3 (the release commit itself occupies position 0)
 #
-# The committer timestamp is part of the commit object, so an exact merge
-# candidate and the same commit on main compute the same version. Unlike a
-# commits-since-tag count, it also cannot move backwards merely because a PR
-# was rebased or squash-merged with fewer commits in its resulting history.
+# First-parent position is unique and strictly increasing on the publication
+# branch even when GitHub creates distinct commits in the same second. The
+# --next-after mode predicts one squash/merge commit after an exact parent, so
+# a reviewed candidate and its eventual main publication compute identically.
 #
 # MTG fork: uses tags on MTG-Thomas/bifrost only. Before the first stable
 # release, bootstraps to 1.0.0-dev.<commit-count>.
@@ -36,6 +36,14 @@ MTG_BOOTSTRAP_MAJOR=1
 MTG_BOOTSTRAP_MINOR=0
 MTG_BOOTSTRAP_PATCH=0
 
+# v3.0.1 dev images were already published with all-parent counts in this same
+# namespace. Reserve a higher range before switching to first-parent counting
+# so the rollout cannot move backward or reuse an existing immutable tag. The
+# offset naturally disappears when the next stable release tag starts a new
+# dev cycle.
+MTG_V3_DEV_SEQUENCE_TAG=v3.0.0
+MTG_V3_DEV_SEQUENCE_OFFSET=1000
+
 last_tag=$(git describe \
   --tags \
   --abbrev=0 \
@@ -62,16 +70,16 @@ minor="${BASH_REMATCH[2]}"
 patch="${BASH_REMATCH[3]}"
 next_patch=$((patch + 1))
 
-if [[ "$additional_commits" -eq 1 ]]; then
-  # Candidate publication predicts the single merge commit after its parent.
-  # Keep this mode stable across the PR build and main-push promotion paths.
-  sequence=$(git rev-list "${last_tag}..${target_ref}" --count)
-  sequence=$((sequence + additional_commits))
-else
-  sequence=$(git show -s --format=%ct "$target_ref" 2>/dev/null || true)
+# The release commit is position 0; each first-parent commit advances once.
+# Candidate publication adds the one not-yet-created merge commit to the
+# reviewed parent's position.
+sequence=$(git rev-list --first-parent "${last_tag}..${target_ref}" --count)
+sequence=$((sequence + additional_commits))
+if [[ "$last_tag" == "$MTG_V3_DEV_SEQUENCE_TAG" ]]; then
+  sequence=$((sequence + MTG_V3_DEV_SEQUENCE_OFFSET))
 fi
-if ! [[ "$sequence" =~ ^[1-9][0-9]*$ ]]; then
-  echo "compute-dev-version: could not compute a positive version sequence" >&2
+if ! [[ "$sequence" =~ ^(0|[1-9][0-9]*)$ ]]; then
+  echo "compute-dev-version: could not compute a non-negative version sequence" >&2
   exit 1
 fi
 
