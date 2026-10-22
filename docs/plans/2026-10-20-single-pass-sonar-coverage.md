@@ -1,9 +1,66 @@
 # Single-pass qualification and release handoff
 
-Status: prepared design; no workflow or runtime changes. Environment: CI,
+Status: broader design prepared; bounded unmerged implementation candidate below. Environment: CI,
 release publication and the read-only infrastructure promotion consumer.
 Source baseline: main de34e07d638706506e23cce6f855beebb91532e8, 2026-10-20.
 Owner: this release/unblock workstream. Separate from PR #1365's preparation-only evidence reuse.
+
+## October 22 first slice: exact-main evidence on version tags
+
+Implementation candidate only; no merge, deployment or control cutover is
+authorized by this document. Owner: the existing Codex release thread, with
+Eddie coordinating review in [Eddie #13](https://github.com/MTG-Thomas/Eddie/issues/13).
+Delivery lane 3 applies to CI provenance; this does not reopen the broader
+governance/design exercise below.
+
+Outcome: when a version tag names the exact successful main-push commit, reuse
+that main run's comprehensive Sonar reports and retain its original scanner
+task provenance. The tag does not submit or claim a new Sonar analysis. This
+removes a duplicate collector from final workflow completion, without changing
+the final-version image builds, tag tests, artifact content qualification,
+attestations, release approval or promotion consumer's success requirement.
+
+The consumer accepts one completed/successful same-repository main-push CI run,
+one exact producer attempt, successful coverage and actual scan/verification
+steps, and two unique unexpired artifacts uploaded inside their respective job
+intervals. It verifies GitHub archive digests before reading fixed files. The
+original manifest, source inventory, configuration hashes, head/base and report
+bytes pass the existing preflight again without restamping. Original Python,
+Node, Docker/Compose and test-image identities are retained alongside the exact
+source tree/workflow identity. A final run readback rejects an attempt changed
+during retrieval. Producer and consumer run/attempt/ref remain separate.
+
+Missing, incompatible, altered or unavailable evidence does not emit a reuse
+success output: the existing comprehensive collector runs. Old artifacts that
+lack the new producer/toolchain receipt are deliberately ineligible. A local
+execution error may fail closed; it cannot silently satisfy coverage. PR/main
+collection and their actual Sonar submission conditions remain unchanged.
+Main's additional producer-metadata export is optional: failure to retain it
+does not turn successful existing quality checks red, but makes reuse
+ineligible. The tag then performs the original collection. No existing test,
+report validation, analysis or teardown failure is made optional.
+
+Thomas explicitly approved adding only `actions: read` to the collector job
+for this transport. No `checks: write`, credential, repository permission,
+branch protection, human review or production access change is part of it.
+
+Acceptance evidence: remote execution of the existing Sonar preflight fixture
+with genuine report verification, a valid original-base reuse, wrong
+source/configuration/run/attempt refusal, failed/skipped/missing scan refusal,
+expired or corrupt artifact refusal, unchanged report bytes and task identity,
+rerun-race refusal and fallback without a forged success output. Existing CI
+must qualify the clean candidate; no new required workflow is introduced.
+Historical timing will be bound to live job receipts before PR publication.
+
+Non-goals: single-pass producer/shard redesign, PR-to-main tree projection,
+Sonar plan or effective-settings changes, skipping tag tests or image content
+checks, release-policy exceptions, production acceptance reruns, or upstream
+capability migration. This slice does not close all of the incident contract.
+
+Rollback: revert this source change through normal review. Tags resume the
+original collector; original main artifacts and failure evidence are retained.
+No runtime/schema rollback is involved. No latency saving is claimed until a
+post-merge main producer and its tag consumer exercise the transport.
 
 The [October 19–20 incident report](2026-10-20-release-process-incident.md)
 records the complete wall-clock history, root causes, owned corrective slices
