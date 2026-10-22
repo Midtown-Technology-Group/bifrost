@@ -644,6 +644,25 @@ class TestMoveFilePreconditions:
         service._s3_client.get_client.assert_not_called()
 
     @pytest.mark.asyncio
+    async def test_move_file_rejects_excluded_python_destination_before_storage(self):
+        from src.services.file_storage.file_ops import FileOperationsService
+
+        db = MagicMock()
+        db.execute = AsyncMock()
+        service = _service(db=db, _s3_client=MagicMock())
+        service.move_file = FileOperationsService.move_file.__get__(service)
+        service._move_file_impl = FileOperationsService._move_file_impl.__get__(service)
+
+        with pytest.raises(
+            ValueError,
+            match="Path is excluded from workspace: node_modules/new.py",
+        ):
+            await service.move_file("workflows/old.py", "node_modules/new.py")
+
+        db.execute.assert_not_awaited()
+        service._s3_client.get_client.assert_not_called()
+
+    @pytest.mark.asyncio
     async def test_move_python_file_updates_workspace_workflow_cache_s3_and_index(self):
         from src.services.file_storage.file_ops import FileOperationsService
 
@@ -685,6 +704,64 @@ class TestMoveFilePreconditions:
             Bucket="workspace-bucket",
             CopySource={"Bucket": "workspace-bucket", "Key": "_repo/workflows/old.py"},
             Key="_repo/workflows/new.py",
+        )
+        s3.delete_object.assert_awaited_once_with(
+            Bucket="workspace-bucket",
+            Key="_repo/workflows/old.py",
+        )
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("new_path", ["workflows/new.txt", "workflows/new.py.bak"])
+    async def test_move_python_file_to_non_python_path_only_invalidates_cache(
+        self, new_path
+    ):
+        from src.services.file_storage.file_ops import FileOperationsService
+
+        old_record = SimpleNamespace(
+            content="print('old')",
+            content_hash="hash",
+            updated_by="alice",
+        )
+        old_result = MagicMock()
+        old_result.scalar_one_or_none.return_value = old_record
+        missing_new_result = MagicMock()
+        missing_new_result.scalar_one_or_none.return_value = None
+        db = MagicMock()
+        db.execute = AsyncMock(
+            side_effect=[old_result, missing_new_result, None, None, None]
+        )
+        s3 = MagicMock()
+        s3.copy_object = AsyncMock()
+        s3.delete_object = AsyncMock()
+        service = _service(
+            db=db,
+            settings=SimpleNamespace(s3_bucket="workspace-bucket"),
+            _s3_client=_S3ClientFactory(s3),
+        )
+        service.move_file = FileOperationsService.move_file.__get__(service)
+        service._move_file_impl = FileOperationsService._move_file_impl.__get__(service)
+
+        with patch(
+            "src.services.file_storage.file_ops.invalidate_module",
+            new_callable=AsyncMock,
+        ) as invalidate:
+            with patch(
+                "src.services.file_storage.file_ops.set_module",
+                new_callable=AsyncMock,
+            ) as set_mod:
+                await service.move_file("workflows/old.py", new_path)
+
+        invalidate.assert_awaited_once_with("workflows/old.py")
+        set_mod.assert_not_awaited()
+        assert db.execute.await_count == 5
+        inserted_values = db.execute.call_args_list[3].args[0].compile().params.values()
+        deleted_values = db.execute.call_args_list[4].args[0].compile().params.values()
+        assert new_path in inserted_values
+        assert "workflows/old.py" in deleted_values
+        s3.copy_object.assert_awaited_once_with(
+            Bucket="workspace-bucket",
+            CopySource={"Bucket": "workspace-bucket", "Key": "_repo/workflows/old.py"},
+            Key=f"_repo/{new_path}",
         )
         s3.delete_object.assert_awaited_once_with(
             Bucket="workspace-bucket",
