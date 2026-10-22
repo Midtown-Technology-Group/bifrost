@@ -14,6 +14,11 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.services.oauth_provider_identity import (
+    assert_oauth_provider_reusable,
+    merged_portable_oauth_values,
+)
+
 
 async def upsert_integration_shells(
     db: AsyncSession, connection_schemas: list[dict[str, Any]] | tuple[dict[str, Any], ...],
@@ -33,6 +38,39 @@ async def upsert_integration_shells(
         ).scalar_one_or_none()
         if exists is not None:
             continue  # never clobber a configured integration
+        oauth = template.get("oauth")
+        provider = None
+        oauth_values: dict[str, Any] = {}
+        if oauth:
+            provider_name = oauth.get("provider_name") or name
+            oauth_values = {
+                "display_name": oauth.get("display_name"),
+                "oauth_flow_type": oauth.get("oauth_flow_type") or "authorization_code",
+                "authorization_url": oauth.get("authorization_url"),
+                "token_url": oauth.get("token_url"),
+                "audience": oauth.get("audience"),
+                "token_url_defaults": oauth.get("token_url_defaults") or {},
+                "entity_id_source": oauth.get("entity_id_source"),
+                "scopes": oauth.get("scopes") or [],
+                "redirect_uri": oauth.get("redirect_uri"),
+            }
+            provider = (
+                await db.execute(
+                    select(OAuthProvider)
+                    .where(
+                        OAuthProvider.organization_id.is_(None),
+                        OAuthProvider.provider_name == provider_name,
+                    )
+                    .with_for_update()
+                )
+            ).scalar_one_or_none()
+            if provider is not None:
+                assert_oauth_provider_reusable(
+                    provider,
+                    oauth_values,
+                    provider_name=provider_name,
+                    integration_name=name,
+                )
         integ = Integration(
             name=name,
             entity_id_name=template.get("entity_id_name"),
@@ -52,27 +90,23 @@ async def upsert_integration_shells(
                     position=s.get("position", 0),
                 )
             )
-        oauth = template.get("oauth")
         if oauth:
-            # Global shells (organization_id NULL) never collide on provider_name: the unique index (organization_id, provider_name) treats NULLs as distinct in Postgres.
-            db.add(
-                OAuthProvider(
-                    integration_id=integ.id,
-                    provider_name=oauth.get("provider_name") or name,
-                    display_name=oauth.get("display_name"),
-                    oauth_flow_type=oauth.get("oauth_flow_type")
-                    or "authorization_code",
-                    client_id="",  # empty shell — admin fills credentials
-                    encrypted_client_secret=b"",
-                    authorization_url=oauth.get("authorization_url"),
-                    token_url=oauth.get("token_url"),
-                    audience=oauth.get("audience"),
-                    token_url_defaults=oauth.get("token_url_defaults") or {},
-                    entity_id_source=oauth.get("entity_id_source"),
-                    scopes=oauth.get("scopes") or [],
-                    redirect_uri=oauth.get("redirect_uri"),
-                    status="not_connected",
+            if provider is None:
+                db.add(
+                    OAuthProvider(
+                        integration_id=integ.id,
+                        provider_name=oauth.get("provider_name") or name,
+                        client_id="",  # empty shell — admin fills credentials
+                        encrypted_client_secret=b"",
+                        status="not_connected",
+                        **oauth_values,
+                    )
                 )
-            )
+            else:
+                provider.integration_id = integ.id
+                for field, value in merged_portable_oauth_values(
+                    provider, oauth_values
+                ).items():
+                    setattr(provider, field, value)
         created += 1
     return created

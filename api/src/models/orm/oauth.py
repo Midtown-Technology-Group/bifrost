@@ -81,6 +81,7 @@ class OAuthProvider(Base):
             "organization_id",
             "provider_name",
             unique=True,
+            postgresql_nulls_not_distinct=True,
         ),
     )
 

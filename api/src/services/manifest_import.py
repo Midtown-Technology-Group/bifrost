@@ -16,6 +16,7 @@ from uuid import UUID
 
 import yaml
 from sqlalchemy import select
+from sqlalchemy import update as sa_update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 if TYPE_CHECKING:
@@ -2416,39 +2417,91 @@ class ManifestResolver:
         # Sync OAuth provider (structure only — client_secret never imported)
         if minteg.oauth_provider:
             op_data = minteg.oauth_provider
-            op_stmt = insert(OAuthProvider).values(
-                provider_name=op_data.provider_name,
-                display_name=op_data.display_name,
-                oauth_flow_type=op_data.oauth_flow_type,
-                client_id=op_data.client_id,
-                encrypted_client_secret=b"",  # placeholder — needs manual setup
-                authorization_url=op_data.authorization_url,
-                token_url=op_data.token_url,
-                token_url_defaults=op_data.token_url_defaults or {},
-                scopes=op_data.scopes or [],
-                provider_metadata=op_data.provider_metadata or {},
-                redirect_uri=op_data.redirect_uri,
-                integration_id=integ_id,
-            ).on_conflict_do_update(
-                constraint="uq_oauth_providers_integration_id",
-                set_={
-                    "display_name": op_data.display_name,
-                    "oauth_flow_type": op_data.oauth_flow_type,
-                    **(
-                        {"client_id": op_data.client_id}
-                        if op_data.client_id and op_data.client_id != "__NEEDS_SETUP__"
-                        else {}
-                    ),
-                    "authorization_url": op_data.authorization_url,
-                    "token_url": op_data.token_url,
-                    "token_url_defaults": op_data.token_url_defaults or {},
-                    "scopes": op_data.scopes or [],
-                    "provider_metadata": op_data.provider_metadata or {},
-                    "redirect_uri": op_data.redirect_uri,
-                    "updated_at": datetime.now(timezone.utc),
-                },
-            )
-            await self.db.execute(op_stmt)
+            provider_updates = {
+                "display_name": op_data.display_name,
+                "oauth_flow_type": op_data.oauth_flow_type,
+                **(
+                    {"client_id": op_data.client_id}
+                    if op_data.client_id and op_data.client_id != "__NEEDS_SETUP__"
+                    else {}
+                ),
+                "authorization_url": op_data.authorization_url,
+                "token_url": op_data.token_url,
+                "token_url_defaults": op_data.token_url_defaults or {},
+                "scopes": op_data.scopes or [],
+                "provider_metadata": op_data.provider_metadata or {},
+                "redirect_uri": op_data.redirect_uri,
+                "updated_at": datetime.now(timezone.utc),
+            }
+
+            # A manifest deletion preserves the user-managed provider and its
+            # credentials by setting integration_id to NULL. Reattach that row
+            # by its global natural key before considering an insert so a
+            # delete/recreate cycle cannot orphan secrets or tokens.
+            provider_id = (
+                await self.db.execute(
+                    sa_update(OAuthProvider)
+                    .where(OAuthProvider.integration_id == integ_id)
+                    .values(**provider_updates)
+                    .returning(OAuthProvider.id)
+                )
+            ).scalar_one_or_none()
+            if provider_id is None:
+                orphan = (
+                    await self.db.execute(
+                        select(OAuthProvider)
+                        .where(
+                            OAuthProvider.organization_id.is_(None),
+                            OAuthProvider.provider_name == op_data.provider_name,
+                        )
+                        .with_for_update()
+                    )
+                ).scalar_one_or_none()
+                if orphan is not None:
+                    from src.services.oauth_provider_identity import (
+                        assert_oauth_provider_reusable,
+                        merged_portable_oauth_values,
+                    )
+
+                    assert_oauth_provider_reusable(
+                        orphan,
+                        provider_updates,
+                        provider_name=op_data.provider_name,
+                        integration_name=integ_name,
+                    )
+                    reattach_updates = merged_portable_oauth_values(
+                        orphan, provider_updates
+                    )
+                    await self.db.execute(
+                        sa_update(OAuthProvider)
+                        .where(OAuthProvider.id == orphan.id)
+                        .values(
+                            integration_id=integ_id,
+                            updated_at=datetime.now(timezone.utc),
+                            **reattach_updates,
+                        )
+                    )
+                    provider_id = orphan.id
+
+            if provider_id is None:
+                op_stmt = insert(OAuthProvider).values(
+                    provider_name=op_data.provider_name,
+                    display_name=op_data.display_name,
+                    oauth_flow_type=op_data.oauth_flow_type,
+                    client_id=op_data.client_id,
+                    encrypted_client_secret=b"",  # placeholder — needs manual setup
+                    authorization_url=op_data.authorization_url,
+                    token_url=op_data.token_url,
+                    token_url_defaults=op_data.token_url_defaults or {},
+                    scopes=op_data.scopes or [],
+                    provider_metadata=op_data.provider_metadata or {},
+                    redirect_uri=op_data.redirect_uri,
+                    integration_id=integ_id,
+                ).on_conflict_do_update(
+                    constraint="uq_oauth_providers_integration_id",
+                    set_=provider_updates,
+                )
+                await self.db.execute(op_stmt)
 
         # Sync mappings: upsert by (integration_id, organization_id) to preserve oauth_token_id
         if cache is not None:
