@@ -2882,6 +2882,14 @@ class TestSocketOrganizationsUsers:
                 )
                 assert malformed.status_code == 422, malformed.text
 
+                disabled = await client.patch(
+                    f"/api/users/{user_id}",
+                    json={"is_active": False},
+                    headers=headers,
+                )
+                assert disabled.status_code == 200, disabled.text
+                assert disabled.json()["is_active"] is False
+
                 deleted = await client.delete(
                     f"/api/users/{user_id}", headers=headers
                 )

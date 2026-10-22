@@ -53,6 +53,29 @@ export interface AuthedApi {
 	csrfHeader(): Promise<Record<string, string>>;
 }
 
+/** Disable a test-owned user before exercising the permanent-delete contract. */
+export async function disableAndDeleteUser(
+	api: AuthedApi,
+	userId: string,
+): Promise<void> {
+	const disabled = await api.patch(`/api/users/${userId}`, {
+		data: { is_active: false },
+	});
+	if (disabled.status() === 404) return;
+	if (!disabled.ok()) {
+		throw new Error(
+			`Disable test user ${userId} failed: ${disabled.status()} ${await disabled.text()}`,
+		);
+	}
+
+	const deleted = await api.delete(`/api/users/${userId}`);
+	if (![204, 404].includes(deleted.status())) {
+		throw new Error(
+			`Delete test user ${userId} failed: ${deleted.status()} ${await deleted.text()}`,
+		);
+	}
+}
+
 /**
  * Grant the admin a workspace file policy covering an app's source directory.
  *

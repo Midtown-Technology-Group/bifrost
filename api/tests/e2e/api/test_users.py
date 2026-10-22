@@ -5,9 +5,16 @@ Tests user creation, listing, profile operations,
 disable/enable, permanent delete, and system user protection.
 """
 
+from uuid import UUID, uuid4
+
 import pytest
+from fastapi import HTTPException
+from sqlalchemy import select, text
+from sqlalchemy.exc import DBAPIError
 
 from src.core.constants import SYSTEM_USER_ID
+from src.models import User as UserORM, UserUpdate
+from src.routers.users import delete_user, update_user
 
 
 @pytest.mark.e2e
@@ -102,6 +109,11 @@ class TestUserListing:
             assert [user["name"] for user in second.json()] == [f"{marker} Bravo"]
         finally:
             for user_id in created_ids:
+                e2e_client.patch(
+                    f"/api/users/{user_id}",
+                    headers=platform_admin.headers,
+                    json={"is_active": False},
+                )
                 e2e_client.delete(
                     f"/api/users/{user_id}", headers=platform_admin.headers
                 )
@@ -288,8 +300,10 @@ class TestDisableEnableUser:
 class TestPermanentDelete:
     """Test permanent user deletion."""
 
-    def test_can_permanently_delete_active_user(self, e2e_client, platform_admin, org1):
-        """Can permanently delete a user without disabling first."""
+    def test_active_user_must_be_disabled_before_permanent_delete(
+        self, e2e_client, platform_admin, org1
+    ):
+        """Permanent deletion rejects active users and accepts them once disabled."""
         # Create a test user (active by default)
         create_resp = e2e_client.post(
             "/api/users",
@@ -304,7 +318,23 @@ class TestPermanentDelete:
         assert create_resp.status_code == 201
         user_id = create_resp.json()["id"]
 
-        # Delete directly (no disable step needed)
+        # Active accounts retain a separate, reviewable disable step.
+        del_resp = e2e_client.delete(
+            f"/api/users/{user_id}",
+            headers=platform_admin.headers,
+        )
+        assert del_resp.status_code == 409
+        assert del_resp.json()["detail"] == (
+            "Disable the user before permanently deleting them"
+        )
+
+        disable_resp = e2e_client.patch(
+            f"/api/users/{user_id}",
+            headers=platform_admin.headers,
+            json={"is_active": False},
+        )
+        assert disable_resp.status_code == 200
+
         del_resp = e2e_client.delete(
             f"/api/users/{user_id}",
             headers=platform_admin.headers,
@@ -353,7 +383,14 @@ class TestPermanentDelete:
         )
         assert assign_resp.status_code == 204
 
-        # Delete the user — should succeed despite role assignments
+        disable_resp = e2e_client.patch(
+            f"/api/users/{user_id}",
+            headers=platform_admin.headers,
+            json={"is_active": False},
+        )
+        assert disable_resp.status_code == 200
+
+        # Delete the inactive user — should succeed despite role assignments
         del_resp = e2e_client.delete(
             f"/api/users/{user_id}",
             headers=platform_admin.headers,
@@ -373,3 +410,101 @@ class TestPermanentDelete:
             f"/api/roles/{role_id}",
             headers=platform_admin.headers,
         )
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+async def test_permanent_delete_serializes_with_reenable(
+    e2e_client,
+    platform_admin,
+    org1,
+    async_session_factory,
+):
+    """Delete and re-enable must hold the same row lock until commit."""
+    async def create_inactive_user(label: str) -> tuple[str, str]:
+        email = f"delete-race-{label}-{uuid4().hex}@gobifrost.dev"
+        create = e2e_client.post(
+            "/api/users",
+            headers=platform_admin.headers,
+            json={
+                "email": email,
+                "name": f"Delete race {label}",
+                "organization_id": org1["id"],
+                "is_superuser": False,
+            },
+        )
+        assert create.status_code == 201, create.text
+        user_id = create.json()["id"]
+        disable = e2e_client.patch(
+            f"/api/users/{user_id}",
+            headers=platform_admin.headers,
+            json={"is_active": False},
+        )
+        assert disable.status_code == 200, disable.text
+        return user_id, email
+
+    delete_first_id, _ = await create_inactive_user("delete-first")
+    reenable_first_id, reenable_first_email = await create_inactive_user(
+        "reenable-first"
+    )
+    try:
+        # When deletion holds the row lock, re-enable cannot pass its own
+        # SELECT FOR UPDATE or commit a state change before deletion commits.
+        async with (
+            async_session_factory() as deleting,
+            async_session_factory() as enabling,
+        ):
+            await delete_user(delete_first_id, platform_admin, deleting)
+            await enabling.execute(text("SET LOCAL lock_timeout = '250ms'"))
+            reenable_request = UserUpdate(is_active=True)
+            with pytest.raises(DBAPIError, match="lock timeout"):
+                await update_user(
+                    delete_first_id,
+                    reenable_request,
+                    platform_admin,
+                    enabling,
+                )
+            await enabling.rollback()
+            await deleting.commit()
+
+        async with async_session_factory() as observer:
+            assert await observer.scalar(
+                select(UserORM.id).where(UserORM.id == UUID(delete_first_id))
+            ) is None
+
+        # In the opposite ordering, re-enable owns the row lock. Delete must
+        # wait; after re-enable commits, a fresh delete sees active state and
+        # rejects the operation instead of consuming a stale inactive value.
+        async with (
+            async_session_factory() as enabling,
+            async_session_factory() as deleting,
+        ):
+            updated = await update_user(
+                reenable_first_email,
+                UserUpdate(is_active=True),
+                platform_admin,
+                enabling,
+            )
+            assert updated.is_active is True
+            await deleting.execute(text("SET LOCAL lock_timeout = '250ms'"))
+            with pytest.raises(DBAPIError, match="lock timeout"):
+                await delete_user(reenable_first_email, platform_admin, deleting)
+            await deleting.rollback()
+            await enabling.commit()
+
+        async with async_session_factory() as deleting:
+            with pytest.raises(HTTPException) as exc_info:
+                await delete_user(reenable_first_email, platform_admin, deleting)
+            assert exc_info.value.status_code == 409
+            await deleting.rollback()
+    finally:
+        for user_id in (delete_first_id, reenable_first_id):
+            e2e_client.patch(
+                f"/api/users/{user_id}",
+                headers=platform_admin.headers,
+                json={"is_active": False},
+            )
+            e2e_client.delete(
+                f"/api/users/{user_id}",
+                headers=platform_admin.headers,
+            )

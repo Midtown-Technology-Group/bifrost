@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { BrowserContext, Page } from "@playwright/test";
-import { test, expect } from "./fixtures/api-fixture";
+import { disableAndDeleteUser, test, expect } from "./fixtures/api-fixture";
 import { generateTOTP } from "./setup/totp";
 
 const baseURL = process.env.TEST_BASE_URL || "http://localhost:3000";
@@ -37,10 +37,7 @@ test.describe("Isolated account onboarding", () => {
 		await context?.close();
 		context = undefined;
 		if (userId) {
-			const response = await api.delete(`/api/users/${userId}`);
-			expect([204, 404], "delete owned onboarding account").toContain(
-				response.status(),
-			);
+			await disableAndDeleteUser(api, userId);
 			userId = "";
 		}
 	});

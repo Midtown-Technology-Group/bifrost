@@ -14,7 +14,12 @@ import type {
 	BrowserContext,
 	Page,
 } from "@playwright/test";
-import { test, expect, type AuthedApi } from "./fixtures/api-fixture";
+import {
+	disableAndDeleteUser,
+	test,
+	expect,
+	type AuthedApi,
+} from "./fixtures/api-fixture";
 import { generateTOTP } from "./setup/totp";
 
 const UNIQUE = `${Date.now()}-${process.pid}-${randomUUID().slice(0, 8)}`;
@@ -136,11 +141,7 @@ async function listUserPasskeys(context: BrowserContext): Promise<PasskeyList> {
 }
 
 async function cleanupUser(api: AuthedApi, userId: string) {
-	const response = await api.delete(`/api/users/${userId}`);
-	expect(
-		[204, 404],
-		`DELETE /api/users/{user_id} failed with ${response.status()}`,
-	).toContain(response.status());
+	await disableAndDeleteUser(api, userId);
 }
 
 test.describe("Account security", () => {
