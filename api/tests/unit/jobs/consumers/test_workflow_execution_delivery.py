@@ -1079,6 +1079,19 @@ async def test_process_success_updates_storage_metrics_pubsub_and_sync_result() 
     consumer._redis_client.delete_pending_execution = AsyncMock()
     consumer._redis_client.push_result = AsyncMock()
 
+    async def flush_changes_with_acknowledgement(
+        _execution_id: str,
+        *,
+        session: object,
+        pending_acknowledgements: list[tuple[str, dict[str, str]]],
+    ) -> int:
+        assert _execution_id == execution_id
+        assert session is not None
+        pending_acknowledgements.append(
+            ("bifrost:pending:exec", {"config:key": "captured-value"})
+        )
+        return 2
+
     with (
         patch("src.core.database.get_session_factory", return_value=_session_factory(session)),
         patch.object(
@@ -1088,9 +1101,13 @@ async def test_process_success_updates_storage_metrics_pubsub_and_sync_result() 
             return_value=ExecutionStatus.SUCCESS,
         ) as update_execution,
         patch("src.services.events.processor.update_delivery_from_execution", new_callable=AsyncMock) as update_delivery,
-        patch("bifrost._sync.flush_pending_changes", new_callable=AsyncMock, return_value=2) as flush_changes,
         patch(
-            "bifrost._sync.acknowledge_pending_changes",
+            "bifrost._sync.flush_pending_changes",
+            new_callable=AsyncMock,
+            side_effect=flush_changes_with_acknowledgement,
+        ) as flush_changes,
+        patch(
+            "bifrost._sync.acknowledge_persisted_changes",
             new_callable=AsyncMock,
         ) as acknowledge_changes,
         patch("bifrost._logging.flush_logs_to_postgres", new_callable=AsyncMock, return_value=3) as flush_logs,
@@ -1122,8 +1139,16 @@ async def test_process_success_updates_storage_metrics_pubsub_and_sync_result() 
     assert update_execution.await_args.kwargs["time_saved"] == 4
     assert update_execution.await_args.kwargs["value"] == 12.5
     update_delivery.assert_not_awaited()
-    flush_changes.assert_awaited_once_with(execution_id, session=session)
-    acknowledge_changes.assert_awaited_once_with(execution_id)
+    flush_changes.assert_awaited_once()
+    assert flush_changes.await_args.args == (execution_id,)
+    assert flush_changes.await_args.kwargs["session"] is session
+    change_acknowledgements = flush_changes.await_args.kwargs[
+        "pending_acknowledgements"
+    ]
+    assert change_acknowledgements == [
+        ("bifrost:pending:exec", {"config:key": "captured-value"})
+    ]
+    acknowledge_changes.assert_awaited_once_with(change_acknowledgements)
     flush_logs.assert_not_awaited()
     update_daily_metrics.assert_awaited_once()
     assert update_daily_metrics.await_args.kwargs["peak_memory_bytes"] == 10
@@ -1142,7 +1167,11 @@ async def test_process_success_updates_storage_metrics_pubsub_and_sync_result() 
         {"duration_ms": 123},
     )
     publish_history_update.assert_awaited_once()
-    cleanup_cache.assert_awaited_once_with(execution_id, preserve_logs=True)
+    cleanup_cache.assert_awaited_once_with(
+        execution_id,
+        preserve_logs=True,
+        preserve_pending_changes=True,
+    )
     consumer._redis_client.delete_pending_execution.assert_awaited_once_with(execution_id)
     consumer._redis_client.push_result.assert_awaited_once_with(
         execution_id=execution_id,
@@ -1191,6 +1220,10 @@ async def test_process_failure_maps_cancelled_status_and_emits_failure_event() -
         ) as update_execution,
         patch("src.services.events.processor.update_delivery_from_execution", new_callable=AsyncMock) as update_delivery,
         patch("bifrost._sync.flush_pending_changes", new_callable=AsyncMock, return_value=0),
+        patch(
+            "bifrost._sync.acknowledge_persisted_changes",
+            new_callable=AsyncMock,
+        ) as acknowledge_changes,
         patch("bifrost._logging.flush_logs_to_postgres", new_callable=AsyncMock, return_value=0),
         patch("src.core.metrics.update_daily_metrics", new_callable=AsyncMock) as update_daily_metrics,
         patch(
@@ -1252,7 +1285,12 @@ async def test_process_failure_maps_cancelled_status_and_emits_failure_event() -
         {"error": "cancelled", "errorType": "CancelledError"},
     )
     publish_history_update.assert_awaited_once()
-    cleanup_cache.assert_awaited_once_with(execution_id, preserve_logs=True)
+    acknowledge_changes.assert_awaited_once_with([])
+    cleanup_cache.assert_awaited_once_with(
+        execution_id,
+        preserve_logs=True,
+        preserve_pending_changes=True,
+    )
     consumer._redis_client.delete_pending_execution.assert_awaited_once_with(execution_id)
     consumer._redis_client.push_result.assert_awaited_once_with(
         execution_id=execution_id,

@@ -386,6 +386,22 @@ class TestExecutionCleanup:
             )
 
     @pytest.mark.asyncio
+    async def test_cleanup_execution_cache_preserves_acknowledgement_buffers(
+        self, mock_redis
+    ):
+        """Terminal cleanup retains fields not removed by snapshot acknowledgement."""
+        with patch("src.core.cache.invalidation.get_shared_redis", return_value=mock_redis):
+            await cleanup_execution_cache(
+                "exec-123",
+                preserve_logs=True,
+                preserve_pending_changes=True,
+            )
+
+            mock_redis.delete.assert_awaited_once_with(
+                "bifrost:exec:exec-123:active"
+            )
+
+    @pytest.mark.asyncio
     async def test_cleanup_execution_cache_handles_error(self, mock_redis):
         """cleanup_execution_cache handles errors gracefully."""
         mock_redis.delete.side_effect = Exception("Redis error")
