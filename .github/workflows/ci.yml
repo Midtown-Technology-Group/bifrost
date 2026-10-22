@@ -50,8 +50,8 @@ jobs:
     secrets:
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
-  # Separate exact-head coverage collection. Report-only until the reviewed
-  # Sonar migration is activated; existing checks and approvals stay intact.
+  # Exact-head coverage and analysis. Version tags may reuse the original
+  # successful main producer; all artifact qualification remains unchanged.
   sonar-coverage:
     needs: [lint, publish-ci-test-images]
     if: ${{ !cancelled() && (needs.lint.result == 'success' || (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.lint.result == 'skipped')) && (needs.publish-ci-test-images.result == 'success' || needs.publish-ci-test-images.result == 'skipped') }}
