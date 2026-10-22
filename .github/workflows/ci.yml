@@ -116,6 +116,8 @@ jobs:
       actions: read # occupancy report reads this repository's run/job intervals
     outputs:
       scope: ${{ steps.plan.outputs.scope }}
+      repository_tools_mode: ${{ steps.plan.outputs.repository_tools_mode }}
+      repository_tool_targets: ${{ steps.plan.outputs.repository_tool_targets }}
       api_quality_mode: ${{ steps.plan.outputs.api_quality_mode }}
       api_quality_targets: ${{ steps.plan.outputs.api_quality_targets }}
       api_unit_mode: ${{ steps.plan.outputs.api_unit_mode }}
@@ -494,6 +496,17 @@ jobs:
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
+
+      - name: Run selected repository-tool tests
+        if: needs.affected-test-plan.outputs.repository_tools_mode != 'skip'
+        env:
+          TEST_MODE: ${{ needs.affected-test-plan.outputs.repository_tools_mode }}
+          TEST_TARGETS: ${{ needs.affected-test-plan.outputs.repository_tool_targets }}
+        run: |
+          set -euo pipefail
+          test "$TEST_MODE" = affected
+          mapfile -t targets <<< "$TEST_TARGETS"
+          ./test.sh tools "${targets[@]}"
 
       - name: Install action pin scanner dependency
         run: >-
