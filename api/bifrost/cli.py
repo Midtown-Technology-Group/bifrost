@@ -1564,6 +1564,60 @@ def _extract_workflow_parameters(func: Any) -> list[dict[str, Any]]:
     return params
 
 
+def _redact_direct_output(value: Any, execution_context: Any | None) -> Any:
+    """Normalize CLI output and redact registered secrets from decoded strings."""
+    normalized = json.loads(json.dumps(value, default=str))
+    if execution_context is None:
+        return normalized
+    try:
+        secrets = execution_context._collect_secret_values()
+    except (AttributeError, TypeError):
+        return normalized
+    redaction_variants: set[str] = set()
+    for secret in secrets:
+        if not isinstance(secret, str) or len(secret) < 4:
+            continue
+        redaction_variants.add(secret)
+        for encoded in (
+            json.dumps(secret),
+            json.dumps(secret, ensure_ascii=False),
+            repr(secret),
+        ):
+            redaction_variants.add(encoded)
+            if (
+                len(encoded) >= 2
+                and encoded[0] == encoded[-1]
+                and encoded[0] in {'"', "'"}
+            ):
+                redaction_variants.add(encoded[1:-1])
+    redactions = sorted(redaction_variants, key=len, reverse=True)
+
+    def redact_text(text: str) -> str:
+        for secret in redactions:
+            text = text.replace(secret, "[REDACTED]")
+        return text
+
+    def redact(item: Any) -> Any:
+        if isinstance(item, str):
+            return redact_text(item)
+        if isinstance(item, list):
+            return [redact(child) for child in item]
+        if isinstance(item, dict):
+            redacted_items: dict[str, Any] = {}
+            for key, child in item.items():
+                redacted_key = redact_text(key)
+                unique_key = redacted_key
+                suffix = 2
+                while unique_key in redacted_items:
+                    unique_key = f"{redacted_key} ({suffix})"
+                    suffix += 1
+                redacted_items[unique_key] = redact(child)
+            return redacted_items
+        return item
+
+    return redact(normalized)
+
+
 def _run_direct(
     selected_workflow: str,
     workflows: dict[str, Any],
@@ -1589,6 +1643,9 @@ def _run_direct(
         Exit code (0 for success, 1 for error)
     """
     import uuid
+
+    execution_context: Any | None = None
+    workflow_fn = workflows[selected_workflow]
 
     # Try to authenticate for SDK features (knowledge, ai, etc.)
     # but don't require it — standalone mode can run without API access
@@ -1664,6 +1721,7 @@ def _run_direct(
                 solution_id=solution_id,
             )
             set_execution_context(ctx)
+            execution_context = ctx
         except Exception:
             pass  # Context setup is best-effort
 
@@ -1673,10 +1731,35 @@ def _run_direct(
             return 1
         # Standalone mode works without auth — fall through to local workflow execution.
 
+    if execution_context is None:
+        from bifrost._context import set_execution_context
+        from bifrost._execution_context import ExecutionContext
+
+        execution_context = ExecutionContext(
+            user_id="cli-user",
+            email="",
+            name="CLI User",
+            scope="GLOBAL",
+            organization=None,
+            is_platform_admin=False,
+            is_function_key=False,
+            execution_id=f"standalone-{uuid.uuid4()}",
+            workflow_name=selected_workflow,
+        )
+        try:
+            set_execution_context(execution_context)
+        except Exception:
+            from bifrost._context import clear_execution_context
+
+            clear_execution_context()
+            print(
+                "Error: unable to initialize a safe execution context.",
+                file=sys.stderr,
+            )
+            return 1
+
     if verbose:
         print(f"Running in standalone mode: {selected_workflow}")
-
-    workflow_fn = workflows[selected_workflow]
 
     started_at = time.monotonic()
     try:
@@ -1687,10 +1770,16 @@ def _run_direct(
         source = pathlib.Path(workflow_file) if workflow_file is not None else None
         with local_resource_context(source, resource_recipe):
             result = asyncio.run(workflow_fn(**params))
+        redacted_result = _redact_direct_output(result, execution_context)
+        serialized_result = json.dumps(
+            redacted_result,
+            indent=2 if verbose else None,
+            default=str,
+        )
         if verbose:
-            print(f"Result: {json.dumps(result, indent=2, default=str)}")
+            print(f"Result: {serialized_result}")
         else:
-            print(json.dumps(result, default=str))
+            print(serialized_result)
         if promotion_evidence is not None and workflow_file is not None:
             from bifrost.promotion import (
                 build_promotion_bundle,
@@ -1746,8 +1835,14 @@ def _run_direct(
             temporary.replace(promotion_evidence)
         return 0
     except Exception as e:
-        print(f"Error executing workflow: {e}", file=sys.stderr)
+        message = _redact_direct_output(str(e), execution_context)
+        print(f"Error executing workflow: {message}", file=sys.stderr)
         return 1
+    finally:
+        if execution_context is not None:
+            from bifrost._context import clear_execution_context
+
+            clear_execution_context()
 
 
 def handle_run(args: list[str]) -> int:
