@@ -215,7 +215,7 @@ class MainReceiptTests(Fixture):
                 patch.dict(os.environ, {"GITHUB_OUTPUT": str(output), "GITHUB_STEP_SUMMARY": str(summary)}):
             self.assertEqual(receipt.main(), 0)
         self.assertFalse(output.exists())
-        self.assertFalse(summary.exists())
+        self.assertIn("Evidence retrieval or validation failed", summary.read_text())
 
     def test_remote_timeout_falls_back_but_local_timeout_remains_visible(self):
         with patch.object(receipt, "command", side_effect=subprocess.TimeoutExpired("gh", 120)), \
@@ -243,6 +243,75 @@ class MainReceiptTests(Fixture):
             receipt.reuse(self.root, self.output)
         self.assertFalse((self.output / "manifest.json").exists())
         self.assertFalse((self.output / "python.xml").exists())
+
+
+    def cli(self, *, action="reuse", summary_path=None):
+        target = self.root / "github-output"
+        summary_path = summary_path or self.root / "summary"
+        console = io.StringIO()
+        with patch.dict(os.environ, {"GITHUB_OUTPUT": str(target), "GITHUB_STEP_SUMMARY": str(summary_path)}), \
+                patch("sys.argv", ["main_receipt.py", action]), \
+                patch.object(receipt.Path, "cwd", return_value=self.root), \
+                patch("sys.stdout", console):
+            status = receipt.main()
+        return status, target, console.getvalue()
+
+    def test_pending_ineligible_and_missing_producers_have_controlled_reasons(self):
+        for status, conclusion in (("queued", None), ("in_progress", None), ("completed", "failure")):
+            with self.subTest(status=status), patch.dict(self.run, status=status, conclusion=conclusion):
+                result, target, console = self.cli()
+                self.assertEqual(result, 0)
+                self.assertFalse(target.exists())
+                self.assertIn("Latest exact-main producer is not complete/successful", console)
+                self.assertIn("collecting fresh evidence", (self.root / "summary").read_text())
+        with patch.object(receipt, "pages", return_value=[]):
+            result, target, console = self.cli()
+        self.assertEqual(result, 0)
+        self.assertIn("No exact-main producer", console)
+        self.assertFalse(target.exists())
+
+    def test_corrupt_archive_reason_is_visible_without_success_output(self):
+        self.artifacts[0]["digest"] = "sha256:" + "0" * 64
+        result, target, console = self.cli()
+        self.assertEqual(result, 0)
+        self.assertFalse(target.exists())
+        self.assertIn("Artifact archive digest/size mismatch", console)
+        self.assertIn("Artifact archive digest/size mismatch", (self.root / "summary").read_text())
+
+    def test_foreign_exception_text_is_redacted_without_changing_fallback(self):
+        secret = "credential=do-not-print; subprocess-output; PRIVATE_ENV=value"
+        for error in (ValueError(secret), OSError(secret), KeyError(secret), TypeError(secret), zipfile.BadZipFile(secret)):
+            with self.subTest(error=type(error).__name__), patch.object(receipt, "reuse", side_effect=error):
+                result, target, console = self.cli()
+                self.assertEqual(result, 0)
+                self.assertFalse(target.exists())
+                self.assertIn("Evidence retrieval or validation failed", console)
+                self.assertNotIn(secret, console + (self.root / "summary").read_text())
+
+    def test_unexpected_exception_is_terminal_redacted_and_not_collection_fallback(self):
+        secret = "unexpected arbitrary exception credential=private"
+        with patch.object(receipt.preflight, "verify", side_effect=RuntimeError(secret)):
+            result, target, console = self.cli()
+        self.assertEqual(result, 1)
+        self.assertFalse(target.exists())
+        self.assertFalse((self.output / "python.xml").exists())
+        self.assertNotIn(secret, console + (self.root / "summary").read_text())
+        self.assertIn("stopped without enabling reuse or fresh collection", console)
+
+    def test_summary_unavailable_cannot_change_success_or_fallback(self):
+        # A directory cannot be opened for append; summary is not a qualification gate.
+        result, target, console = self.cli(summary_path=self.root)
+        self.assertEqual(result, 0)
+        self.assertIn("reused=true", target.read_text())
+        self.assertTrue((self.output / "reuse.json").exists())
+        self.assertIn("Step summary unavailable", console)
+        target.unlink()
+        with patch.object(receipt, "reuse", side_effect=receipt.ReuseRefused("No exact-main producer")):
+            result, target, console = self.cli(summary_path=self.root)
+        self.assertEqual(result, 0)
+        self.assertFalse(target.exists())
+        with patch.dict(os.environ, {}, clear=True):
+            receipt.summary("Missing summary is non-authoritative")
 
 
 if __name__ == "__main__":
