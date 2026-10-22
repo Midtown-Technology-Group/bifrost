@@ -55,7 +55,9 @@ def test_repository_tool_and_fixture_ownership_selects_actual_consumers(
     assert plan.scope == "affected"
     assert plan.repository_tests == tests
     assert set(plan.to_dict()["lanes"].values()) == {"skip"}
-    assert plan.to_dict()["repository"]["workflow_callers"] == [
+    repository = plan.to_dict()["repository"]
+    assert isinstance(repository, dict)
+    assert repository["workflow_callers"] == [
         ".github/workflows/sonar-coverage.yml", ".github/workflows/ci.yml",
     ]
     output, summary = graph_repo / "output", graph_repo / "summary"
