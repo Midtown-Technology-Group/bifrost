@@ -1492,13 +1492,38 @@ async def _execute_workflow_with_trace(
     existing_trace = sys.gettrace()
 
     def chained_trace_func(frame, event, arg):
-        # Call our trace function first
-        trace_func(frame, event, arg)
+        our_local_trace = trace_func(frame, event, arg)
+        existing_local_trace = (
+            existing_trace(frame, event, arg) if existing_trace is not None else None
+        )
+        if (
+            event == 'call'
+            and existing_trace is not None
+            and sys.gettrace() is existing_trace
+        ):
+            # C tracers can reinstall their global hook while handling a call.
+            sys.settrace(chained_trace_func)
 
-        # Then call the existing trace function (e.g., debugpy)
-        if existing_trace:
-            return existing_trace(frame, event, arg)
-        return chained_trace_func
+        if our_local_trace is None and existing_local_trace is None:
+            return None
+
+        def chained_local_trace(local_frame, local_event, local_arg):
+            nonlocal our_local_trace, existing_local_trace
+
+            if our_local_trace is not None:
+                our_local_trace = our_local_trace(
+                    local_frame, local_event, local_arg
+                )
+            if existing_local_trace is not None:
+                existing_local_trace = existing_local_trace(
+                    local_frame, local_event, local_arg
+                )
+
+            if our_local_trace is None and existing_local_trace is None:
+                return None
+            return chained_local_trace
+
+        return chained_local_trace
 
     try:
         # Inspect function signature to determine if it expects context parameter
@@ -1651,8 +1676,11 @@ async def _execute_workflow_with_trace(
                     )
                     raise
         finally:
-            # Clear trace function
-            sys.settrace(None)
+            # Restore the caller's trace hook. Coverage, debuggers, and
+            # profilers can all own this process-wide boundary before workflow
+            # execution starts; clearing it here silently disables them for
+            # the rest of the process.
+            sys.settrace(existing_trace)
             # Clear context
             if BIFROST_CONTEXT_AVAILABLE:
                 clear_execution_context()

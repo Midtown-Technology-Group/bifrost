@@ -8,9 +8,11 @@ Tests that workflow parameters are correctly:
 """
 
 import asyncio
-import pytest
+import sys
 from enum import Enum
 from typing import Literal
+
+import pytest
 
 from src.sdk.context import ExecutionContext, Organization
 from src.sdk.decorators import workflow
@@ -350,6 +352,135 @@ class TestWorkflowVariableCapture:
             await _execute_workflow_with_trace(capture_failure, mock_context, {})
 
         assert exc.value.captured_vars["marker"] == "available on error"
+
+    @pytest.mark.asyncio
+    async def test_failure_restores_preexisting_trace_hook(
+        self,
+        mock_context,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Workflow tracing must not disable a caller-owned tracer on exit."""
+
+        def preexisting_trace(_frame, _event, _arg):
+            return preexisting_trace
+
+        trace_updates = []
+        monkeypatch.setattr(sys, "gettrace", lambda: preexisting_trace)
+        monkeypatch.setattr(sys, "settrace", trace_updates.append)
+
+        @workflow(name="restore_trace", description="Restore trace hook")
+        async def traced_failure():
+            raise ValueError("synthetic failure")
+
+        with pytest.raises(WorkflowExecutionException):
+            await _execute_workflow_with_trace(traced_failure, mock_context, {})
+
+        assert trace_updates[-1] is preexisting_trace
+
+    @pytest.mark.asyncio
+    async def test_success_captures_locals_with_preexisting_local_trace(
+        self,
+        mock_context,
+    ) -> None:
+        """Variable capture and a caller's per-frame tracer must both stay active."""
+        caller_events: list[str] = []
+
+        def caller_local_trace(frame, event, _arg):
+            if frame.f_code.co_name == "traced_success":
+                caller_events.append(event)
+            return caller_local_trace
+
+        def caller_trace(frame, event, _arg):
+            if frame.f_code.co_name != "traced_success":
+                return None
+            caller_events.append(event)
+            return caller_local_trace
+
+        previous_trace = sys.gettrace()
+        sys.settrace(caller_trace)
+        try:
+            @workflow(name="trace_and_capture", description="Trace and capture locals")
+            async def traced_success():
+                captured_marker = "available on success"
+                return captured_marker
+
+            result, captured, _ = await _execute_workflow_with_trace(
+                traced_success, mock_context, {}
+            )
+
+            assert sys.gettrace() is caller_trace
+        finally:
+            sys.settrace(previous_trace)
+
+        assert result == "available on success"
+        assert captured["captured_marker"] == "available on success"
+        assert "return" in caller_events
+
+    @pytest.mark.asyncio
+    async def test_chained_trace_advances_and_stops_each_local_hook(
+        self,
+        mock_context,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Exercise trace composition directly because trace callbacks are not traced."""
+        caller_events: list[str] = []
+
+        def caller_local_trace(_frame, event, _arg):
+            caller_events.append(event)
+            if event == "disable":
+                return None
+            return caller_local_trace
+
+        def caller_trace(_frame, event, _arg):
+            caller_events.append(event)
+            if event == "disable":
+                return None
+            if event == "call":
+                # Simulate a C tracer that reinstalls itself globally on calls.
+                sys.settrace(caller_trace)
+            return caller_local_trace
+
+        trace_updates = []
+        monkeypatch.setattr(sys, "gettrace", lambda: caller_trace)
+        monkeypatch.setattr(sys, "settrace", trace_updates.append)
+
+        @workflow(name="direct_trace_chain", description="Exercise trace composition")
+        async def direct_trace_workflow():
+            return "completed"
+
+        direct_trace_workflow.__name__ = "captured_frame"
+        result, captured, _ = await _execute_workflow_with_trace(
+            direct_trace_workflow, mock_context, {}
+        )
+
+        chained_trace = trace_updates[0]
+        assert trace_updates[-1] is caller_trace
+        unrelated_frame = sys._getframe()
+        assert chained_trace(unrelated_frame, "disable", None) is None
+
+        caller_only_trace = chained_trace(unrelated_frame, "call", None)
+        assert caller_only_trace is not None
+        assert trace_updates[-1] is chained_trace
+        assert caller_only_trace(unrelated_frame, "disable", None) is None
+
+        def captured_frame():
+            direct_marker = "captured by direct trace invocation"
+            return sys._getframe(), direct_marker
+
+        workflow_frame, _ = captured_frame()
+
+        capture_only_trace = chained_trace(workflow_frame, "disable", None)
+        assert capture_only_trace is not None
+        assert capture_only_trace(workflow_frame, "return", None) is not None
+
+        combined_trace = chained_trace(workflow_frame, "call", None)
+        assert combined_trace is not None
+        assert combined_trace(workflow_frame, "return", None) is not None
+
+        assert result == "completed"
+        assert captured["direct_marker"] == "captured by direct trace invocation"
+        assert trace_updates[-1] is chained_trace
+        assert "return" in caller_events
 
 
 class TestContextParameterDetection:
