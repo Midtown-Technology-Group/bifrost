@@ -32,6 +32,7 @@ def mutation_context(monkeypatch):
         AsyncMock(return_value=None),
     )
     monkeypatch.setattr(files, "_require_file_policy", AsyncMock(return_value=None))
+    monkeypatch.setattr(files, "_authorize_file_policy", AsyncMock(return_value=True))
     monkeypatch.setattr(files, "_lock_file_mutation", AsyncMock(return_value=None))
     monkeypatch.setattr(files, "_install_org_id", AsyncMock(return_value=ORG_ID))
     return ctx
@@ -108,7 +109,116 @@ async def test_write_rejects_changed_version_before_write(monkeypatch, mutation_
             location="reports", expected_version="v1"), mutation_context, MagicMock(), AsyncMock())
     assert exc.value.status_code == 409
     assert exc.value.detail["reason"] == "version_conflict"
+    assert exc.value.detail["current_version"] == "v2"
+    assert exc.value.detail["current_updated_by"] == "another-writer"
     backend.write.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("guard", "exists"),
+    [
+        ("create_only", True),
+        ("expected_version", True),
+        ("expected_version", False),
+    ],
+)
+async def test_write_only_conflict_omits_file_metadata(
+    monkeypatch, mutation_context, guard, exists
+):
+    from fastapi import HTTPException
+    from types import SimpleNamespace
+
+    backend = MagicMock(write=AsyncMock())
+    monkeypatch.setattr(files, "get_backend", lambda *_args: backend)
+    monkeypatch.setattr(
+        files,
+        "_authorize_file_policy",
+        AsyncMock(return_value=False),
+    )
+    monkeypatch.setattr(
+        files,
+        "_get_file_stat",
+        AsyncMock(
+            return_value=SimpleNamespace(
+                exists=exists,
+                version="sha256:secret-content-hash",
+                last_modified="private-timestamp",
+                updated_by="private-user@example.test",
+            )
+        ),
+    )
+    with pytest.raises(HTTPException) as exc:
+        await files.write_file(
+            files.FileWriteRequest(
+                path="dropbox/known.txt",
+                content="replacement",
+                location="reports",
+                create_only=guard == "create_only",
+                expected_version=(
+                    None
+                    if guard == "create_only"
+                    else "sha256:attacker-guess"
+                ),
+            ),
+            mutation_context,
+            MagicMock(),
+            AsyncMock(),
+        )
+
+    assert exc.value.status_code == 409
+    assert exc.value.detail == {
+        "reason": "precondition_failed",
+        "message": "File mutation precondition failed.",
+    }
+    backend.write.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_delete_only_conflict_omits_file_metadata(
+    monkeypatch, mutation_context
+):
+    from fastapi import HTTPException
+    from types import SimpleNamespace
+
+    backend = MagicMock(delete=AsyncMock())
+    monkeypatch.setattr(files, "get_backend", lambda *_args: backend)
+    monkeypatch.setattr(
+        files,
+        "_authorize_file_policy",
+        AsyncMock(return_value=False),
+    )
+    monkeypatch.setattr(
+        files,
+        "_get_file_stat",
+        AsyncMock(
+            return_value=SimpleNamespace(
+                exists=True,
+                version="sha256:secret-content-hash",
+                last_modified="private-timestamp",
+                updated_by="private-user@example.test",
+            )
+        ),
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        await files.delete_file(
+            files.FileDeleteRequest(
+                path="dropbox/known.txt",
+                location="reports",
+                expected_version="sha256:attacker-guess",
+            ),
+            mutation_context,
+            MagicMock(),
+            AsyncMock(),
+        )
+
+    assert exc.value.status_code == 409
+    assert exc.value.detail == {
+        "reason": "precondition_failed",
+        "message": "File mutation precondition failed.",
+    }
+    backend.delete.assert_not_awaited()
 
 
 @pytest.mark.asyncio

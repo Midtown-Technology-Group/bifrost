@@ -15,6 +15,7 @@ worker-local calls read the same status/detail.
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, TypeVar, cast
 from uuid import UUID
@@ -195,6 +196,67 @@ async def authorize_file_policy(
         user=user,
         solution_id=resolved_solution_id,
     )
+
+
+async def file_mutation_conflict_detail(
+    caller_or_ctx: Any,
+    authorize: Callable[..., Awaitable[bool]],
+    current_stat: Any,
+    location: str,
+    scope: str | None,
+    path: str,
+    solution_id: UUID | None,
+    *,
+    create_only: bool = False,
+    expected_version: str | None = None,
+) -> dict[str, object] | None:
+    """Build a guarded-mutation conflict without leaking unreadable metadata."""
+    readable_detail: dict[str, object]
+    if create_only and current_stat.exists:
+        readable_detail = {
+            "reason": "file_exists",
+            "path": path,
+            "message": "File already exists; read it before replacing it.",
+            "current_version": current_stat.version,
+            "current_last_modified": current_stat.last_modified,
+            "current_updated_by": current_stat.updated_by,
+        }
+    elif expected_version is not None and not current_stat.exists:
+        readable_detail = {
+            "reason": "file_missing",
+            "path": path,
+            "expected_version": expected_version,
+            "message": "File no longer exists.",
+        }
+    elif (
+        expected_version is not None
+        and current_stat.version != expected_version
+    ):
+        readable_detail = {
+            "reason": "version_conflict",
+            "path": path,
+            "expected_version": expected_version,
+            "current_version": current_stat.version,
+            "message": "File changed after it was read.",
+            "current_last_modified": current_stat.last_modified,
+            "current_updated_by": current_stat.updated_by,
+        }
+    else:
+        return None
+
+    if await authorize(
+        caller_or_ctx,
+        action="read",
+        location=location,
+        scope=scope,
+        path=path,
+        solution_id=solution_id,
+    ):
+        return readable_detail
+    return {
+        "reason": "precondition_failed",
+        "message": "File mutation precondition failed.",
+    }
 
 
 async def deny_file_policy(
