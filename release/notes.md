@@ -1,176 +1,16 @@
-# Bifrost v3.1.0
+# Bifrost v3.2.0
 
 ## Changes
 
-- Isolate concurrent service claim test from the stack worker (#1076)
-- Define the language-neutral runtime v1 document foundation (#1074)
-- Update review expectation guidelines in delivery-lanes.md (#1075)
-- Preserve captured Solution IDs and display metadata during adoption (#1064)
-- Seal parent package initializers in immutable source closure (#1072)
-- Fix strict Solution event admission without weakening argument validation (#1057)
-- Settle delayed authored Source accounting from verified descendants (#1063)
-- Consolidate guarded App publication and original-job readback recovery (#1071)
-- Deliver protected Main Apps with original-job recovery and source accounting (#1077)
-- fix(release): publish verified drafts by release ID (#1079)
-- Integrate upstream through 686cff8d8 on current MTG main (#920)
-- ci: stage fail-closed Sonar coverage and source-scope migration (#1068)
-- Verify Solution App authored source and active compiled runtime before accounting (#1083)
-- Stage Sonar Free-plan CI cutover for main and PR analysis (#1085)
-- ci: stop cancelled-plan diagnostics and gate manual pre-PR on lint (#1086)
-- Deliver complete Solution packages through the reviewed Main pipeline (#1088)
-- Verify Sonar CI migration and retire automatic-analysis configuration (#1089)
-- Merge upstream worker SDK transport and credential security (#1087)
-- docs: adopt maintainer-directed contribution acceptance (#1080)
-- fix: preserve owned-table workflow successor controls (#1090)
-- Complete workflow package publication and preserve resource bindings (#1092)
-- fix: allow guarded Solution runtime file updates (#1094)
-- fix: reconcile mixed registry and legacy package delivery contracts (#1096)
-- fix(ci): read nightly coverage from the exact worktree (#1099)
-- fix: repair Sonar findings and collect complete runtime coverage (#1097)
-- MIDT-205: correct Azure Blob and Redis production guidance (#1098)
-- fix: complete Main Sonar security and coverage remediation (#1101)
-- docs: refactor audit identifying review drag and unsafe boundaries (#1102)
-- docs: record Code Mode compatibility preflight and proof gates (#1110)
-- feat(devices): actionable device_busy and convergent, idempotent cancel (#1121)
-- fix(devices): release claims of dead devices in the job sweep (#1123)
-- fix(promotion): verify solution-managed live registrations in preview handoff (#1124)
-- ci: stop allocating runners for zero-shard sentinel lanes and record occupancy (#1111)
-- Upstream sync slice 1: port R1a operation catalog (metadata-only) (#1128)
-- feat(solutions): verify signed workflow removal evidence (#1129)
-- perf: avoid CRLF replacement scans for LF-only sync content (#1131)
-- fix(security): update vulnerable runtime dependencies (#1134)
-- Spike Pydantic DecisionModel dependency and TypeSafe contract (MIDT-274) (#968)
-- Make client builds type-safe and document native compiler benchmarks (#1103)
-- Prepare MCP image before freezing pre-PR provenance (#1115)
-- Integrate upstream own-run visibility and MCP REST parity (#814–#815) (#1133)
-- Isolate config reconciliation manifest assertion (#1144)
-- fix: reject actor JWTs on user auth paths (#1147)
-- fix: isolate app embeds from form capabilities (#1149)
-- Bind Solution app headers to authorized callers (#1143)
-- security: meter and persist autonomous transport probes (#1158)
-- Record dependency consumers and tested simplification decisions (#1118)
-- fix: enforce HTTP-only MCP client transport (#1146)
-- Release webhook database sessions before agent delivery (#1142)
-- security: prevent duplicate workflow execution retries (#1159)
-- Fence external worker host ownership by durable process generation (#1141)
-- fix: bound public form uploads at storage ingress (#1148)
-- Generate private debug JWT signing keys (#1145)
-- Bound chat attachment reads before storage (#1150)
-- Require chat-run provenance for Teams completion (#1155)
-- Surface privileged agent tool revocations during import (#1230)
-- Restore strict Kubernetes TLS defaults (#1232)
-- fix(migrations): repair delivery started_at upgrades (#1235)
-- fix(workspace): close no-write Git convergence (#1242)
-- Recover broker-confirmed scheduled executions (#1243)
-- Revoke stale WebMCP tool wrappers (#1162)
-- Terminalize accepted agent cancellations (#1163)
-- Require admin before loading draft app bundles (#1164)
-- Require browser-bound OAuth callback state (#1167)
-- security: bound Codex auth cache imports (#1168)
-- security: scrub OAuth secrets from Sentry (#1169)
-- security: charge webhook quota after validation (#1172)
-- security: bound workflow JSON result parsing (#1174)
-- security: stop distributing local Claude permissions (#1177)
-- security: preserve external-only authentication (#1178)
-- security: redact agent configuration for non-managers (#1179)
-- Constrain app file reads to editable source paths (#1192)
-- Bound agent router output tokens (#1203)
-- Redact secrets from persisted execution context (#1204)
-- fix(security): gate flag conversations by verdict (#1214)
-- security: bind verified files into Git closure (#1226)
-- Preserve service worker source generation pins (#1231)
-- fix(devices): gate control key issuance on execute (#1234)
-- fix(ci): reject email CODEOWNERS drift (#1236)
-- fix: propagate queue creation time to workers (#1249)
-- security: evict timed-out RabbitMQ health connection (#1251)
-- Guard malformed MCP result blocks (#1257)
-- Acknowledge buffered changes after commit (#1258)
-- Reset form metadata across edit routes (#1261)
-- Isolate batch mapping failures with savepoints (#1262)
-- Harden data-table new-tab row links (#1268)
-- Reject completed-with-errors workflow mutations (#1269)
-- chore(security): remove expired Authlib exception after Snyk retirement (#1294)
-- Cover Codex Gateway /v1/responses runtime with fake-upstream tests (#1295)
-- chore(release): v3.1.0 (#1078)
-- Report safe invariant reasons for refused Live handoffs (#1296)
-- fix(ci): retry candidate attestation persist after transient API rate limits (#996)
-- Fix post-deploy accountability diagnostics and cover reconciliation (MIDT-166) (#961)
-- Resolve integration context in MCP create_event_source (#1032)
-- MIDT-180: Add PKCE support to third-party integration OAuth flows (#1033)
-- Run native Atheris targets through the maintained fuzz compiler (#1137)
-- security: bound public form attribution names (#1227)
-- perf: eliminate resolver scans and reuse Solution publication transport (#1297)
-- Fix source-app npm peer resolver toolchain (#1299)
-- Reconcile terminal job notifications after isolated runner exit (#1298)
-- Expose bounded managed-worker identity ownership operations (#1160)
-- Authorize finite device peer lighthouse leases through shared jobs (#1073)
-- Isolate accounting convergence tests from automatic maintenance (#1309)
-- fix(security): isolate client tests from optional secrets (#1219)
-- Mark service component props readonly (#1300)
-- Isolate expected form-upload test failures (#1303)
-- Mark platform job panel props readonly (#1305)
-- Mark scheduler replica component props readonly (#1306)
-- Isolate expected Azure blob lifecycle failures (#1302)
-- fix(events): accept canonical global scope (#1239)
-- fix(workspace): preview repairs for invalid Python (#1240)
-- security: refresh WebSocket policy roles (#1171)
-- security: scope execution log identifiers (#1173)
-- Keep password-login tokens out of project env files (#1151)
-- security: enforce workflow tool catalog access (#1176)
-- Revoke browser refresh sessions on logout (#1161)
-- fix(manifest): preserve explicit workflow cache TTL (#1345)
-- Keep local runs detached from workflow IDs (#1259)
-- perf: compile byte-identical delivery baselines once (#1120)
-- Bound MCP agent token overrides (#1256)
-- security: enforce application access on logo reads (#1314)
-- security: bind integration OAuth callback state (#1315)
-- security: restore SDK fetch scan visibility (#1274)
-- Reject targetless manifest event subscriptions (#1264)
-- security: recheck queued app publish authority (#1324)
-- fix: qualify handoff release and retain runtime coverage failures (#1350)
-- fix: scope agent workflow tool grants (#1182)
-- Security: close Sonar new-code analysis boundaries (#1353)
-- security: enforce agent run timeout cap (#1333)
-- fix(ci): retire timed-out native queue attempts safely (#1355)
-- Serve the locked Monaco editor and workers from the application (#1140)
-- feat: add source-grounded platform architecture atlas and maintenance hooks (#1349)
-- security: parse GitHub Action pins as YAML (#1337)
-- fix: validate retained handoff bundles through their preflight receipt (#1360)
-- Make solution package ZIP metadata portable across hosts (#1362)
-- Recover release preparation after a failed unpublished candidate (#1363)
+- docs(release): document incident and prevention plan [skip ci] (#1367)
+- feat(release): reuse identical-tree CI evidence for preparation (#1365)
+- fix(runtime): exclude untouched reservations from deployment drain (#1370)
 
 ## Fixed vulnerabilities
 
 Security-related PR titles below are an inventory, not a verified CVE assessment. The release reviewer should add confirmed identifiers and impact before merging.
 
-- Merge upstream worker SDK transport and credential security (#1087)
-- fix: complete Main Sonar security and coverage remediation (#1101)
-- fix(security): update vulnerable runtime dependencies (#1134)
-- security: meter and persist autonomous transport probes (#1158)
-- security: prevent duplicate workflow execution retries (#1159)
-- security: bound Codex auth cache imports (#1168)
-- security: scrub OAuth secrets from Sentry (#1169)
-- security: charge webhook quota after validation (#1172)
-- security: bound workflow JSON result parsing (#1174)
-- security: stop distributing local Claude permissions (#1177)
-- security: preserve external-only authentication (#1178)
-- security: redact agent configuration for non-managers (#1179)
-- fix(security): gate flag conversations by verdict (#1214)
-- security: bind verified files into Git closure (#1226)
-- security: evict timed-out RabbitMQ health connection (#1251)
-- chore(security): remove expired Authlib exception after Snyk retirement (#1294)
-- security: bound public form attribution names (#1227)
-- fix(security): isolate client tests from optional secrets (#1219)
-- security: refresh WebSocket policy roles (#1171)
-- security: scope execution log identifiers (#1173)
-- security: enforce workflow tool catalog access (#1176)
-- security: enforce application access on logo reads (#1314)
-- security: bind integration OAuth callback state (#1315)
-- security: restore SDK fetch scan visibility (#1274)
-- security: recheck queued app publish authority (#1324)
-- Security: close Sonar new-code analysis boundaries (#1353)
-- security: enforce agent run timeout cap (#1333)
-- security: parse GitHub Action pins as YAML (#1337)
+No PR titles matched the security filter; this does not establish that no vulnerabilities were fixed.
 
 ## Upgrade notes
 
@@ -179,22 +19,16 @@ Before upgrading, back up the database and review the exact release's migration 
 Automatic rollback is not certified. Preserve terminal workflow retirement evidence and admission safeguards during application rollback. Database downgrade past 20261003_workflow_retirement refuses once retirement evidence exists; use a reviewed recovery plan, not an automatic schema downgrade.
 Before enabling terminal Live retirement, review actual production caller/byte evidence. The native read-only census does not prove absence of Python, operational file, App Source/dist, or external callers. Coordinate owners and retain the exact reviewed evidence digest before authorizing retirement.
 Read back retirement inventory to verify retained row/evidence IDs. An uncertain outcome requires readback before any exact retry; do not replay with fresh targets. Keep the forward schema during application-image rollback.
-Follow the [terminal-retirement runbook](https://github.com/Midtown-Technology-Group/bifrost/blob/de34e07d638706506e23cce6f855beebb91532e8/docs/architecture/rapid-workspace-promotion.md#obsolete-registrations-in-the-same-cutover).
+Follow the [terminal-retirement runbook](https://github.com/Midtown-Technology-Group/bifrost/blob/5fcae00cec1f0d8158fee47b58657e74f60cc1ec/docs/architecture/rapid-workspace-promotion.md#obsolete-registrations-in-the-same-cutover).
 Contract comparison requires: no additional bump floor.
 This release uses the MTG fork's independent SemVer; upstream versions are not its baseline.
 
 ## Contributors
 
-@MTG-Thomas, @github-actions[bot]
+@MTG-Thomas
 
 ## Source
 
-Reviewed interval: `v3.0.0..de34e07d638706506e23cce6f855beebb91532e8`.
+Reviewed interval: `v3.1.0..5fcae00cec1f0d8158fee47b58657e74f60cc1ec`.
 
 Publishing packages does not deploy the MTG production runtime.
-
-## Superseded unpublished candidate
-
-Replaces #1078 at `4dce02e6f13b0cb4f0660f5621a36a74a1bf43d8` (v3.1.0); no tag or GitHub Release existed at preparation.
-Original failed main CI: 38600241130. Replacement source main CI: 39506952510.
-The original failure remains recorded. This candidate requires fresh exact-head review, queue checks, main CI and signed stable packaging.
