@@ -1,14 +1,17 @@
 # Single-pass qualification and release handoff
 
-Status: broader design prepared; bounded unmerged implementation candidate below. Environment: CI,
+Status: broader design prepared; bounded tag-reuse source merged, activation unproved. Environment: CI,
 release publication and the read-only infrastructure promotion consumer.
 Source baseline: main de34e07d638706506e23cce6f855beebb91532e8, 2026-10-20.
 Owner: this release/unblock workstream. Separate from PR #1365's preparation-only evidence reuse.
 
 ## October 22 first slice: exact-main evidence on version tags
 
-Implementation candidate only; no merge, deployment or control cutover is
-authorized by this document. Owner: the existing Codex release thread, with
+Source from [#1371](https://github.com/Midtown-Technology-Group/bifrost/pull/1371)
+merged as `65297178502e0540805ab92d937d326bd97d4e11` under Thomas's separately
+recorded exact-PR queue override. Original PR CI was still running at merge;
+pending Sonar coverage/analysis is not a pass. No deployment or further control
+cutover is authorized by this document. Owner: the existing Codex release thread, with
 Eddie coordinating review in [Eddie #13](https://github.com/MTG-Thomas/Eddie/issues/13).
 Delivery lane 3 applies to CI provenance; this does not reopen the broader
 governance/design exercise below.
@@ -64,7 +67,7 @@ Tag analysis job `119649354416` was skipped. The duplicate collector lasted
 55m12s and ended 32m20s after Create Release; do not describe this as a
 55-minute delay in artifact publication. It prolonged whole-run success and
 therefore the existing infra consumer's qualification wait. This is a measured
-historical tail, not a promised speedup for this unmerged candidate.
+historical tail, not a demonstrated speedup for the new implementation.
 
 Non-goals: single-pass producer/shard redesign, PR-to-main tree projection,
 Sonar plan or effective-settings changes, skipping tag tests or image content
@@ -96,7 +99,7 @@ permission, approval or production changes.
 | --- | --- | --- |
 | Implemented | Existing Python/TypeScript dependency planning and surface-specific fallback in [the planner](../../api/scripts/plan_affected_tests.py), shared by CI and `test.sh pre-pr`; obsolete PR runs are cancelled while main/tag runs are retained by [CI concurrency](../../.github/workflows/ci.yml). | Repository tools and workflow callers are not modelled; `.github/` changes still select comprehensive app validation. This is not the desired final selector. |
 | Implemented | Preparation recovery/evidence slices #1363/#1365 and the incident/design record #1367 landed. [Production acceptance](https://github.com/MTG-Thomas/bifrost-infra/issues/177#issuecomment-6336156202) establishes the 3.2.0 deployment finish line. | These do not complete R1–R6/A1–A14. Merges and tags alone establish neither deployment nor a simplified release process. |
-| In progress | [#1371](https://github.com/Midtown-Technology-Group/bifrost/pull/1371), reviewed candidate `99f7073bf6f78bea08fb943f91180cd14d4a85ed`, adds exact-main reports/analysis provenance reuse on tags. VM101 passed 17 focused tests, 153 Sonar contract tests and exact-candidate pre-PR validation; [review response](https://github.com/Midtown-Technology-Group/bifrost/pull/1371#discussion_r4348469452). | Current merge/check state must be read live. Pending analysis is not a pass; first live producer/consumer reuse remains unproved. Thomas's separately recorded exact-PR override is not general policy. Do not cancel its current CI for this plan update. |
+| In progress: qualification | [#1371](https://github.com/Midtown-Technology-Group/bifrost/pull/1371), reviewed candidate `99f7073bf6f78bea08fb943f91180cd14d4a85ed`, is merged as `65297178502e0540805ab92d937d326bd97d4e11`; it adds exact-main reports/analysis provenance reuse on tags. VM101 passed 17 focused tests, 153 Sonar contract tests and exact-candidate pre-PR validation; [review response](https://github.com/Midtown-Technology-Group/bifrost/pull/1371#discussion_r4348469452). | PR CI was still running at merge; current checks must be read live. Pending analysis is not a pass; first live producer/consumer reuse remains unproved. Thomas's separately recorded exact-PR override is not general policy. Do not cancel its current CI for this plan update. |
 | Proposed | Repository-tool ownership, workflow-caller closure, explicit skip accounting, single-pass report production and a publication-free reuse rehearsal, below. | Source review and transition evidence precede activation; existing controls remain. |
 | Deferred | Cache changes, further sharding/overlap, queue-cause hypotheses and upstream capability migration. | Measure a concrete bottleneck first. No claim that these are deployed or that an unknown queue caused the incident. |
 
