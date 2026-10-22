@@ -1,0 +1,92 @@
+name: Workflow Security (Advisory)
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - .github/workflows/**
+      - .github/actions/**
+      - '**/action.yml'
+      - '**/action.yaml'
+      - scripts/workflow_security_report.py
+      - scripts/test_workflow_security_report.py
+      - scripts/workflow-security-scan.sh
+      - scripts/test-workflow-security-scan.sh
+      - docs/security/workflow-scanner-pilot.md
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/**
+      - .github/actions/**
+      - '**/action.yml'
+      - '**/action.yaml'
+      - scripts/workflow_security_report.py
+      - scripts/test_workflow_security_report.py
+      - scripts/workflow-security-scan.sh
+      - scripts/test-workflow-security-scan.sh
+      - docs/security/workflow-scanner-pilot.md
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: workflow-security-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  zizmor:
+    if: github.repository == 'Midtown-Technology-Group/bifrost'
+    name: Zizmor (Advisory)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      ZIZMOR_VERSION: 1.30.1
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+
+      - name: Test report contracts
+        run: python3 -m unittest scripts.test_workflow_security_report
+
+      - name: Install verified Zizmor release
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/zizmor" "$RUNNER_TEMP/workflow-security"
+          curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 \
+            "https://github.com/zizmorcore/zizmor/releases/download/v${ZIZMOR_VERSION}/zizmor-x86_64-unknown-linux-gnu.tar.gz" \
+            --output "$RUNNER_TEMP/zizmor/archive.tar.gz"
+          echo 'e65324f4430c2717591937edcec90ccbefaf14c174f8ec9415e03ca875b46e1a  '"$RUNNER_TEMP/zizmor/archive.tar.gz" | sha256sum --check --strict
+          tar -xzf "$RUNNER_TEMP/zizmor/archive.tar.gz" -C "$RUNNER_TEMP/zizmor"
+          "$RUNNER_TEMP/zizmor/zizmor" --version
+
+      - name: Probe tracked inputs and finding suppression
+        run: |
+          bash scripts/test-workflow-security-scan.sh \
+            "$RUNNER_TEMP/zizmor/zizmor" "$RUNNER_TEMP/workflow-security-regression"
+
+      # SARIF exits successfully for findings; audit/collection errors still fail.
+      - name: Scan workflows and local actions offline
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          bash scripts/workflow-security-scan.sh \
+            "$RUNNER_TEMP/zizmor/zizmor" "$RUNNER_TEMP/workflow-security"
+          python3 scripts/workflow_security_report.py \
+            --sarif "$RUNNER_TEMP/workflow-security/results.sarif" \
+            --head-sha "$SOURCE_SHA" --scanner-version "$ZIZMOR_VERSION" \
+            --output-dir "$RUNNER_TEMP/workflow-security"
+          cat "$RUNNER_TEMP/workflow-security/summary.md" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Retain advisory evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: workflow-security-${{ github.event.pull_request.head.sha || github.sha }}
+          path: ${{ runner.temp }}/workflow-security/
+          if-no-files-found: error
+          retention-days: 14
