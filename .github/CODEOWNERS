@@ -1,8 +1,16 @@
-# CODEOWNERS - MTG fork: intentionally no code owners.
+# CODEOWNERS - MTG fork: ownership is limited to the merge authorization
+# boundary. Ordinary source changes remain review-optional.
 #
 # This fork is owned and operated by MTG. Upstream ownership was removed
 # so fork PRs (including Dependabot) never auto-request review from
 # upstream maintainers.
 #
-# Merges stay gated by branch protection required status checks, not by
-# human review, so having no code owners blocks nothing.
+# The queue gate executes candidate repository content. Main branch protection
+# therefore requires a fresh code-owner approval whenever a PR changes the
+# workflow, policy implementation, tests, ownership rule, or operating plan.
+# The owning team contains only MTG repository administrators.
+/.github/CODEOWNERS @Midtown-Technology-Group/bifrost-main-maintainers
+/.github/workflows/mtg-queue-authorization.yml @Midtown-Technology-Group/bifrost-main-maintainers
+/.github/scripts/authorize-merge-queue.mjs @Midtown-Technology-Group/bifrost-main-maintainers
+/.github/scripts/authorize-merge-queue.test.mjs @Midtown-Technology-Group/bifrost-main-maintainers
+/docs/plans/2026-09-15-mtg-queue-authorization.md @Midtown-Technology-Group/bifrost-main-maintainers
