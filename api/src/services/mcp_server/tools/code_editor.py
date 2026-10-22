@@ -29,21 +29,22 @@ from fastmcp.tools import ToolResult
 from sqlalchemy import select
 
 from src.models import Workflow
-from src.services.mcp_server.tools.db import get_tool_db
 from src.models.orm.file_index import FileIndex
+from src.services.editor.file_filter import validate_workspace_path
 from src.services.file_storage import FileStorageService
-from src.services.repo_storage import RepoStorage
-from src.services.workspace_release_files import (
-    WorkspaceReleaseFileView,
-    active_workspace_release_file_view,
-    reject_release_governed_paths,
-)
 from src.services.mcp_server.tool_result import (
     error_result,
     format_diff,
     format_file_content,
     format_grep_matches,
     success_result,
+)
+from src.services.mcp_server.tools.db import get_tool_db
+from src.services.repo_storage import RepoStorage
+from src.services.workspace_release_files import (
+    WorkspaceReleaseFileView,
+    active_workspace_release_file_view,
+    reject_release_governed_paths,
 )
 
 
@@ -123,6 +124,45 @@ def _require_platform_admin(context: Any) -> ToolResult | None:
     if not getattr(context, "is_platform_admin", False):
         return error_result("Platform administrator privileges are required for code editor tools.")
     return None
+
+
+def _validated_path(
+    path: str,
+    *,
+    allow_empty: bool = False,
+    allow_directory_prefix: bool = False,
+) -> tuple[str | None, ToolResult | None]:
+    try:
+        return (
+            validate_workspace_path(
+                path,
+                allow_empty=allow_empty,
+                allow_directory_prefix=allow_directory_prefix,
+            ),
+            None,
+        )
+    except ValueError as exc:
+        return None, error_result(str(exc))
+
+
+def _is_canonical_workspace_path(path: str) -> bool:
+    try:
+        return validate_workspace_path(path) == path
+    except ValueError:
+        return False
+
+
+async def _list_workspace_repo_paths(_context: Any, path_prefix: str) -> list[str]:
+    """List canonical workspace files from the durable ``_repo/`` store.
+
+    ``FileIndex`` is a bounded search projection: valid persisted files such as
+    JSON, binary, and oversized text may intentionally be absent from it. The
+    storage listing is complete, but every returned key is independently
+    validated before it can cross the MCP boundary so repository metadata and
+    malformed keys remain hidden.
+    """
+    paths = await RepoStorage().list(path_prefix)
+    return [path for path in paths if _is_canonical_workspace_path(path)]
 
 
 def _coerce_uuid(value: Any) -> UUID | None:
@@ -416,17 +456,28 @@ async def list_content(
     _scoped_org_id, denied = _resolve_org_scope(context, organization_id)
     if denied:
         return denied
+    normalized_prefix, denied = _validated_path(
+        path_prefix or "",
+        allow_empty=True,
+        allow_directory_prefix=True,
+    )
+    if denied:
+        return denied
 
     try:
-        repo = RepoStorage()
-        repo_paths = await repo.list(path_prefix or "")
+        repo_paths = await _list_workspace_repo_paths(context, normalized_prefix or "")
         release_view = await _active_workspace_release_view(context, organization_id)
-        release_paths = await release_view.list(path_prefix or "") if release_view else []
-        paths = sorted(set(repo_paths) | set(release_paths))
+        release_paths = await release_view.list(normalized_prefix or "") if release_view else []
+        safe_release_paths: list[str] = []
+        for release_path in release_paths:
+            normalized, path_denied = _validated_path(release_path)
+            if path_denied is None and normalized == release_path:
+                safe_release_paths.append(release_path)
+        paths = sorted(set(repo_paths) | set(safe_release_paths))
         paths, denied = await _filter_paths_for_org_scope(context, paths, organization_id)
         if denied:
             return denied
-        governed = set(release_paths)
+        governed = set(safe_release_paths)
         files = [
             {
                 "path": item,
@@ -477,6 +528,11 @@ async def search_content(
 
     if not pattern:
         return error_result("pattern is required")
+    if path is not None:
+        normalized_path, denied = _validated_path(path)
+        if denied:
+            return denied
+        path = normalized_path
 
     try:
         regex = re.compile(pattern)
@@ -513,6 +569,7 @@ async def search_content(
                 row.path: row.content
                 for row in all_files
                 if row.path not in denied_paths
+                and _is_canonical_workspace_path(row.path)
             }
             if release_view is not None:
                 release_paths = (
@@ -523,7 +580,9 @@ async def search_content(
                 release_paths = [
                     item
                     for item in release_paths
-                    if item not in denied_paths and (path is None or item == path)
+                    if item not in denied_paths
+                    and (path is None or item == path)
+                    and _is_canonical_workspace_path(item)
                 ]
                 if release_paths:
                     immutable = await release_view.read_many(release_paths)
@@ -583,6 +642,10 @@ async def read_content_lines(
 
     if not path:
         return error_result("path is required")
+    normalized_path, denied = _validated_path(path)
+    if denied:
+        return denied
+    path = normalized_path or path
     if denied := await _ensure_workflow_path_in_scope(context, path, organization_id):
         return denied
 
@@ -652,6 +715,10 @@ async def get_content(
 
     if not path:
         return error_result("path is required")
+    normalized_path, denied = _validated_path(path)
+    if denied:
+        return denied
+    path = normalized_path or path
     if denied := await _ensure_workflow_path_in_scope(context, path, organization_id):
         return denied
 
@@ -744,6 +811,10 @@ async def patch_content(
         return error_result("path is required")
     if not old_string:
         return error_result("old_string is required")
+    normalized_path, denied = _validated_path(path)
+    if denied:
+        return denied
+    path = normalized_path or path
     if denied := await _ensure_workflow_path_in_scope(context, path, organization_id):
         return denied
 
@@ -859,6 +930,10 @@ async def replace_content(
         return error_result("path is required")
     if not content:
         return error_result("content is required")
+    normalized_path, denied = _validated_path(path)
+    if denied:
+        return denied
+    path = normalized_path or path
     if denied := await _ensure_workflow_path_in_scope(context, path, organization_id):
         return denied
 
@@ -914,6 +989,10 @@ async def delete_content(
 
     if not path:
         return error_result("path is required")
+    normalized_path, denied = _validated_path(path)
+    if denied:
+        return denied
+    path = normalized_path or path
     if denied := await _ensure_workflow_path_in_scope(context, path, organization_id):
         return denied
 
@@ -924,9 +1003,10 @@ async def delete_content(
                 _coerce_uuid(getattr(context, "org_id", None)),
                 [path],
             )
-            # Verify file exists in S3 before deleting
-            repo = RepoStorage()
-            if not await repo.exists(path):
+            # FileIndex is only a search projection, so valid persisted files
+            # such as JSON may not have a row. The canonical path guard above
+            # keeps repository metadata out of scope before this exact lookup.
+            if not await RepoStorage().exists(path):
                 return error_result(f"File not found: {path}")
 
             # Use FileStorageService.delete_file() for all deletions
