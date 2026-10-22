@@ -92,7 +92,11 @@ export function FleetPage() {
 	const [filterOrgId, setFilterOrgId] = useState<string | null | undefined>(
 		undefined,
 	);
-	const { isPlatformAdmin } = useAuth();
+	const { isPlatformAdmin, hasRole } = useAuth();
+	const canViewInactive =
+		isPlatformAdmin ||
+		hasRole("Platform Admin") ||
+		hasRole("Platform Owner");
 	const terminology = useTerminology();
 
 	const {
@@ -102,7 +106,7 @@ export function FleetPage() {
 		isFetching: agentsFetching,
 		refetch: refetchAgents,
 	} = useAgents(isPlatformAdmin ? filterOrgId : undefined, {
-		includeInactive: showInactive,
+		includeInactive: canViewInactive && showInactive,
 		includeStats: true,
 	});
 	const {
@@ -192,6 +196,7 @@ export function FleetPage() {
 					showInactive={showInactive}
 					view={view}
 					isPlatformAdmin={isPlatformAdmin}
+					canShowInactive={canViewInactive}
 					onQueryChange={setQuery}
 					onOrganizationChange={setFilterOrgId}
 					onInactiveChange={setShowInactive}

@@ -35,8 +35,13 @@ class AgentRepository(OrgScopedRepository[Agent]):
     async def list_agents(
         self,
         active_only: bool = True,
+        include_owned_inactive: bool = False,
     ) -> list[Agent]:
-        """List agents with cascade scoping, role-based access, and user's private agents."""
+        """List agents with cascade scoping, role-based access, and user's private agents.
+
+        ``include_owned_inactive`` keeps an owner's paused private agents
+        manageable while all other inactive agents remain excluded.
+        """
         from sqlalchemy import or_
         from src.models.enums import AgentAccessLevel
 
@@ -67,7 +72,12 @@ class AgentRepository(OrgScopedRepository[Agent]):
             query = query.where(or_(*cascade_conditions))
 
         if active_only:
-            query = query.where(self.model.is_active.is_(True))
+            if include_owned_inactive and private_condition is not None:
+                query = query.where(
+                    or_(self.model.is_active.is_(True), private_condition)
+                )
+            else:
+                query = query.where(self.model.is_active.is_(True))
 
         query = query.order_by(self.model.name)
 

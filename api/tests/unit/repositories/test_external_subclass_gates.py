@@ -59,6 +59,20 @@ class TestAgentListCascade:
         sql = _compiled(session.execute.await_args.args[0])
         assert "organization_id IS NULL" in sql
 
+    async def test_owned_inactive_list_keeps_only_private_owner_exception(
+        self, session
+    ):
+        session.execute.return_value = _list_result([])
+        user_id = uuid4()
+        repo = AgentRepository(session, org_id=uuid4(), user_id=user_id)
+
+        await repo.list_agents(active_only=True, include_owned_inactive=True)
+
+        sql = _compiled(session.execute.await_args.args[0])
+        assert "agents.is_active IS true OR" in sql
+        assert "agents.access_level = 'private'" in sql
+        assert f"agents.owner_user_id = '{user_id.hex}'" in sql
+
 
 class TestAgentByIdCascade:
     async def test_external_get_with_access_check_keeps_global_fallback(self, session):
