@@ -159,6 +159,34 @@ async def test_reviewed_revision_descendant_preserves_the_handoff(handoff, schem
     await handoff.guard.require(handoff.inherited)
 
 
+def _replace_bundle_identity(handoff):
+    # The public deployment/preflight contract accepts a reviewed bundle digest;
+    # it does not require the server candidate builder's digest recipe.
+    manifest = handoff.manifest.model_copy(update={'bundle_hash': sha256_digest(b'reviewed source bundle')})
+    handoff.manifest = manifest
+    handoff.deployment.compiled_manifest = manifest
+    handoff.deployment.compiled_manifest_hash = manifest.content_hash()
+    handoff.deployment.bundle_hash = manifest.bundle_hash
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('schema', [None, readback.SOURCE_MARKER, readback.WORKFLOW_REVISION_MARKER])
+async def test_preflight_bound_bundle_identity_survives_handoff_readback(handoff, schema):
+    _replace_bundle_identity(handoff)
+    handoff.deployment.validation_result['preflight_evidence_id'] = handoff_preflight_evidence_id(
+        handoff.release, handoff.manifest, handoff.resolution, workflow_ids=[handoff.workflow.id])
+    if schema is not None:
+        _reviewed_successor(handoff, schema)
+    await handoff.guard.require(handoff.inherited)
+
+
+@pytest.mark.asyncio
+async def test_changed_bundle_and_manifest_without_new_preflight_evidence_fail_closed(handoff):
+    _replace_bundle_identity(handoff)
+    with pytest.raises(ValueError, match='receipt does not prove'):
+        await handoff.guard.require(handoff.inherited)
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize('change', [
     'missing_owner', 'inactive', 'scope', 'path', 'function', 'name', 'timeout',
@@ -412,3 +440,43 @@ async def test_current_table_contract_uses_its_deployment_owner_scope(handoff, m
         with pytest.raises(shared_table_bindings.SharedTableBindingError, match="organization differs"):
             await handoff.guard._current_contracts(manifest, scope)
         metadata.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_preview_reports_authored_invariant_without_chained_provider_body(handoff, monkeypatch):
+    monkeypatch.setattr('src.services.workspace_promotions.find_workspace_workflow', AsyncMock(return_value=None))
+    monkeypatch.setattr(readback.LiveHandoffReadback, 'require', AsyncMock(side_effect=readback.UnprovenLiveHandoff(
+        'Retained handoff receipt does not prove the current Live binding')))
+    service = WorkspacePromotionPreviewService(handoff.guard.db, uuid4(), repo_storage=SimpleNamespace())
+    with pytest.raises(WorkspacePromotionInvalid, match='invariant: Retained handoff receipt'):
+        await service._current_registration_snapshot(handoff.release)
+
+
+@pytest.mark.asyncio
+async def test_preview_redacts_unknown_error_bodies_and_remains_blocked(handoff, monkeypatch):
+    monkeypatch.setattr('src.services.workspace_promotions.find_workspace_workflow', AsyncMock(return_value=None))
+    for error in (ValueError('private-token customer-body'),
+                  readback.UnprovenLiveHandoff('private-token customer-body')):
+        monkeypatch.setattr(readback.LiveHandoffReadback, 'require', AsyncMock(side_effect=error))
+        service = WorkspacePromotionPreviewService(handoff.guard.db, uuid4(), repo_storage=SimpleNamespace())
+        with pytest.raises(WorkspacePromotionInvalid) as raised:
+            await service._current_registration_snapshot(handoff.release)
+        assert 'invariant: Unclassified handoff verification failure' in str(raised.value)
+        assert 'private-token' not in str(raised.value)
+        assert 'customer-body' not in str(raised.value)
+        assert raised.value.__cause__ is error
+
+
+@pytest.mark.asyncio
+async def test_registration_stage_failure_is_actionable_without_raw_error(handoff, monkeypatch):
+    def fail_registration(*_):
+        raise ValueError('private-token customer-body')
+
+    monkeypatch.setattr(readback, '_require_registration', fail_registration)
+    monkeypatch.setattr('src.services.workspace_promotions.find_workspace_workflow', AsyncMock(return_value=None))
+    service = WorkspacePromotionPreviewService(handoff.guard.db, uuid4(), repo_storage=SimpleNamespace())
+    with pytest.raises(WorkspacePromotionInvalid) as raised:
+        await service._current_registration_snapshot(handoff.release)
+    assert 'invariant: Immutable registration verification failed' in str(raised.value)
+    assert 'private-token' not in str(raised.value)
+    assert str(raised.value.__cause__) == 'private-token customer-body'

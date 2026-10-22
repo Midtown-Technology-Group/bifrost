@@ -140,10 +140,18 @@ async def test_authorize_connection_resolves_url_and_marks_waiting():
     provider = _provider(scopes=["read", "write"])
     repo = _repo(get_by_connection_name=provider, update_status=None)
     ctx = _ctx()
+    user = ctx.user
 
     with (
         patch.object(oauth_connections, "OAuthProviderRepository", return_value=repo),
-        patch.object(oauth_connections.secrets, "token_urlsafe", return_value="state-token"),
+        patch.object(
+            oauth_connections,
+            "encode_connection_state",
+            return_value=("state-token", "nonce-1"),
+        ) as encode_state,
+        patch.object(
+            oauth_connections, "remember_nonce", new=AsyncMock()
+        ) as remember_nonce,
         patch.object(
             oauth_connections,
             "get_url_resolution_defaults",
@@ -158,7 +166,7 @@ async def test_authorize_connection_resolves_url_and_marks_waiting():
         result = await oauth_connections.authorize_connection(
             "halo",
             ctx,
-            MagicMock(),
+            user,
             redirect_uri="https://app.example.test/oauth/callback",
         )
 
@@ -170,6 +178,13 @@ async def test_authorize_connection_resolves_url_and_marks_waiting():
         url=provider.authorization_url,
         defaults={"tenant": "contoso"},
     )
+    encode_state.assert_called_once_with(
+        provider_id=provider.id,
+        user_id=user.user_id,
+        organization_id=ctx.org_id,
+        redirect_uri="https://app.example.test/oauth/callback",
+    )
+    remember_nonce.assert_awaited_once_with("nonce-1")
     repo.update_status.assert_awaited_once_with(
         connection_name="halo",
         status="waiting_callback",
@@ -184,10 +199,16 @@ async def test_authorize_connection_can_omit_scope_parameter():
         provider_metadata={"omit_authorization_scope": True},
     )
     repo = _repo(get_by_connection_name=provider, update_status=None)
+    ctx = _ctx()
 
     with (
         patch.object(oauth_connections, "OAuthProviderRepository", return_value=repo),
-        patch.object(oauth_connections.secrets, "token_urlsafe", return_value="state-token"),
+        patch.object(
+            oauth_connections,
+            "encode_connection_state",
+            return_value=("state-token", "nonce-1"),
+        ),
+        patch.object(oauth_connections, "remember_nonce", new=AsyncMock()),
         patch.object(
             oauth_connections,
             "get_url_resolution_defaults",
@@ -196,8 +217,8 @@ async def test_authorize_connection_can_omit_scope_parameter():
     ):
         result = await oauth_connections.authorize_connection(
             "halo",
-            _ctx(),
-            MagicMock(),
+            ctx,
+            ctx.user,
             redirect_uri="https://app.example.test/oauth/callback",
         )
 

@@ -126,6 +126,8 @@ async function createSourceTable(admin: UserCredentials): Promise<string> {
 }
 
 test("admin creates a Custom Claim from the Tables page", async ({ page }) => {
+	// Editor functionality must not depend on an external Monaco CDN.
+	await page.route("https://cdn.jsdelivr.net/**", (route) => route.abort());
 	const admin = await createOrgSuperuser();
 	const sourceTable = await createSourceTable(admin);
 	const claimName = `allowed_campus_ids_${Date.now()}`;

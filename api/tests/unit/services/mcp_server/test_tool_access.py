@@ -49,6 +49,9 @@ def mock_workflow():
         workflow.description = description
         workflow.tool_description = None
         workflow.category = "automation"
+        workflow.is_active = True
+        workflow.type = "tool"
+        workflow.organization_id = None
         return workflow
     return _create_workflow
 

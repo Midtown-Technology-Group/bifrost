@@ -239,6 +239,7 @@ def build_solution_package_archive(
             if file_modes[path] not in {"100644", "100755"}:
                 raise ValueError("Package source must contain only regular Git files")
             info = zipfile.ZipInfo(path, date_time=(1980, 1, 1, 0, 0, 0))
+            info.create_system = 3
             info.compress_type = zipfile.ZIP_DEFLATED
             info.external_attr = int(file_modes[path], 8) << 16
             archive.writestr(info, raw)

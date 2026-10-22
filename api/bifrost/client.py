@@ -16,6 +16,7 @@ import webbrowser
 from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
+from urllib.parse import urlsplit
 
 import httpx
 
@@ -75,6 +76,7 @@ IDEMPOTENT_METHODS: frozenset[str] = frozenset(
     {"GET", "PUT", "DELETE", "HEAD", "OPTIONS"}
 )
 SDK_RETRY_BACKOFF_SECONDS: tuple[float, ...] = (0.5, 1.5, 4.0, 10.0, 20.0)
+NON_REPLAYABLE_PATH_PREFIXES: tuple[str, ...] = ("/api/endpoints/",)
 
 
 # HTTP reads and explicit retry_transient callers can retry these failures.
@@ -95,6 +97,13 @@ def _is_idempotent(method: str) -> bool:
     return method.upper() in IDEMPOTENT_METHODS
 
 
+def _is_replay_safe_path(path: str) -> bool:
+    pathname = urlsplit(path).path
+    return not any(
+        pathname.startswith(prefix) for prefix in NON_REPLAYABLE_PATH_PREFIXES
+    )
+
+
 def _is_transient_5xx(status_code: int) -> bool:
     return status_code in TRANSIENT_5XX_STATUS_CODES
 
@@ -105,21 +114,31 @@ async def _send_with_retry(
     *,
     retry_safe: bool = False,
     retry_transient: bool = False,
+    retry_allowed: bool = True,
 ) -> httpx.Response:
     """Retry safe requests within one shared six-attempt budget.
 
     Read-only POST callers retain their 5xx and connection-timeout opt-in.
     Broader transport retries apply to HTTP reads or explicit retry_transient
     callers. Ordinary writes retain their existing 5xx policy without gaining
-    replay after an uncertain transport failure.
+    replay after an uncertain transport failure. ``retry_allowed`` is the
+    operation-semantics gate for routes whose nominally idempotent verbs still
+    execute side effects.
     """
-    retry_status = _is_idempotent(method) or retry_safe or retry_transient
-    retry_transport = method.upper() in {"GET", "HEAD", "OPTIONS"} or retry_transient
+    retry_status = retry_allowed and (
+        _is_idempotent(method) or retry_safe or retry_transient
+    )
+    retry_transport = retry_allowed and (
+        method.upper() in {"GET", "HEAD", "OPTIONS"} or retry_transient
+    )
     for attempt in range(len(SDK_RETRY_BACKOFF_SECONDS) + 1):
         try:
             response = await do_send()
         except TRANSIENT_TRANSPORT_EXCEPTIONS as error:
-            allowed = retry_transport or (retry_safe and isinstance(error, httpx.ConnectTimeout))
+            allowed = retry_allowed and (
+                retry_transport
+                or (retry_safe and isinstance(error, httpx.ConnectTimeout))
+            )
             if not allowed or attempt == len(SDK_RETRY_BACKOFF_SECONDS):
                 raise
         else:
@@ -138,9 +157,10 @@ def _send_sync_with_retry(
     do_send: Callable[[], httpx.Response],
     *,
     retry_transient: bool = False,
+    retry_allowed: bool = True,
 ) -> httpx.Response:
     """Sync counterpart of :func:`_send_with_retry`."""
-    retryable = _is_idempotent(method) or retry_transient
+    retryable = retry_allowed and (_is_idempotent(method) or retry_transient)
     backoffs = SDK_RETRY_BACKOFF_SECONDS if retryable else ()
     response: httpx.Response | None = None
     for i in range(len(backoffs) + 1):
@@ -963,7 +983,12 @@ class BifrostClient:
                 response = http.request(method.upper(), path, **kwargs)
             return response
 
-        return _send_sync_with_retry(method, _send, retry_transient=retry_transient)
+        return _send_sync_with_retry(
+            method,
+            _send,
+            retry_transient=retry_transient,
+            retry_allowed=_is_replay_safe_path(path),
+        )
 
     async def _request_with_refresh(
         self, method: str, path: str, *, engine_local: bool = False,
@@ -993,7 +1018,11 @@ class BifrostClient:
             return response
 
         return await _send_with_retry(
-            method, _send, retry_safe=retry_safe, retry_transient=retry_transient
+            method,
+            _send,
+            retry_safe=retry_safe,
+            retry_transient=retry_transient,
+            retry_allowed=_is_replay_safe_path(path),
         )
 
     async def engine_request(
@@ -1078,7 +1107,11 @@ class BifrostClient:
             return response
 
         return await _send_with_retry(
-            method, _send, retry_safe=retry_safe, retry_transient=retry_transient
+            method,
+            _send,
+            retry_safe=retry_safe,
+            retry_transient=retry_transient,
+            retry_allowed=_is_replay_safe_path(path),
         )
 
     def stream(self, method: str, path: str, **kwargs):

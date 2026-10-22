@@ -1,0 +1,132 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:bc48153c5df58dac732ab20773304a9eb48c2fe0d59a53aeafd496e8124098fd",
+  "claims": [
+    {
+      "id": "claim_a88c82d5fbe747b99826b3ab715a279e",
+      "statement": "Knowledge content is split into default 2,000-character chunks with 200-character overlap and can be exactly reassembled when stored/read with matching overlap configuration.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/services/knowledge/chunking.py#L1-L18",
+          "version": "repo-lines-v1:sha256:b708b8e1b10f7df54803d0b8694622e84303a554a877f7445963368aca8a965d:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEzMDNlY2RkNGE0ZDEwZjE5YzczZmQ0MmZkMTI0MzdmZDMzNTRhODI2ODE2MDVkYTUyNTVhOTdhMzkwNjhkYmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIxNDczMDFmYjRlZjUyMWFkOTNkNzFiY2I5ZjlmN2VlZDEzZmZlMDQxODg3MGQ5NjQyN2RjMjMxY2QwOWQyNjYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQyYzA1MDZkYTUxMjVkMDliNTI5NmMwZmJiYTVkYTFlNmMyOWYyYjViMDgxYTk3OGQyYzQ2OWUzYjYwZjJjYjgifQ"
+        },
+        {
+          "resource": "repo://api/src/services/knowledge/chunking.py#L21-L57",
+          "version": "repo-lines-v1:sha256:acd5b2131bd672743880e3c69b57792a8ad7bbfb632820a2446afd1f757a6caa:eyJzZWxlY3RlZExpbmVDb3VudCI6MzcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE4NDM2NThiNzdmZGFkYTNhMDNkM2QyMjg5MmUxMGE5YWZiMzcxZmFmYTdlNmZlOTJlOGMxMWJiNGE1OWMyODciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI2ZmU2MmFjOWFjMzhhOGI1ZDM1ZWZjZjc4YjBmYmNlYWQwOWI2ZTdlYWFlODI4MTA2ZjlkNTU2OTA1NmM0YWMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQ1OGJkMGRiMzkyMzVmNWM1ZjU3YjI2YzZkYzdlY2UwNGU5MzFkZjY2OGE1ZjQ5NzgzYTNkNTQzNTY0ZmEzZGMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgxYTQ0YzJmNmYzZmIwYzQ2ZGUyOWEzYzVlZTI1OTVhY2ZlOWI3NjQ4NDg0YWUzODMzNTA4YzEwNGIxMWE3YmIifQ"
+        },
+        {
+          "resource": "repo://api/src/services/knowledge/chunking.py#L60-L79",
+          "version": "repo-lines-v1:sha256:2e0b2e3c9507b2e0e49fb89b62c34aab4469739ff253441939e6d15eb5b66905:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQzYjc3YWVjMTYwNTFjMDQ2Mjc2ZTgyYzgyMTFhMjNmYjA5MTI0YmNjZmJjOWJjMzRhZTAxMjdhYjQwN2U4MjkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAzZDA5YTVjMzBjMDM4YzMwYmE2NDE1YTA3OGRjMzdlZjE0MWVkZDdmNzE5N2U3YWI3MDI3ZWE0YmVmYWRmMzIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjAyZTYzMDEzMTI4ZjE4ZDkyMGEyOTFiNTczNzI3ODI0NWQ3NWE2MjZjYWFlMGI3NzA5MjczMWIyNmYxN2U0NGEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk5YzE0ZTZkOTM2NzlkNDAwOWFmYWE4MWZkZGY0N2M2OWJhOWY0OTdiMjU5NDEyMjY5MmFhYzBhZGZhMzAwYTgifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_ecb367e433d74527848d8a74b89bf853",
+      "statement": "KnowledgeRepository embeds chunked content, stores per-chunk rows, and preserves keyed upsert identity within namespace and organization scope.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/repositories/knowledge.py#L151-L192",
+          "version": "repo-lines-v1:sha256:6474640152d00d3a21d58c560165eea2d0ba467767d8a0bda692596d5c7ee14c:eyJzZWxlY3RlZExpbmVDb3VudCI6NDIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIxMDk5NWFkY2Y1MTg2ZWEwMmZlMTZkYzc1YjEwYmRlYTgxMzhmZGE1MThlMTI5MTI4ODVjODZkZTRhOTYzYjciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJhYWU4YTBjYTc2Zjk4ZjdiN2RjNzk4NDk1MWQ2M2U1N2RiM2M2NDU1NzljYTUxYmFkNmE1MzlkNjE0ZWRiYmUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijc1N2U2YjVlN2U5ZTAwZWViNzAzNjhiZDdiNjcxZGJkNGQ2YzY0ZTkwYjRiNDBiMTBkYzA2NzQ1OWI0MjcwMzkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM4NDBkNTE0ODU0ODcwMDVlOTBiZGQyYjg4ZTg5ZjFiMWUxZDlmOTg2OGVhNjdkYTY3ZmNhMzIyYmM1MzgwNWQifQ"
+        },
+        {
+          "resource": "repo://api/src/repositories/knowledge.py#L194-L219",
+          "version": "repo-lines-v1:sha256:ce2a93651376dfefe41eae0b636614a4399902bac01068a953e88f9e5eb681fb:eyJzZWxlY3RlZExpbmVDb3VudCI6MjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUyMWM3MzgyZjAzMjA3ZDc4ZDM2NjBiZTkwMWRjMjhmMDhiNWFkYmRmNDRjZDAyNDZhOGM4ZTc3OTExOTM5ZjciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgyY2U3ODA0OTU2MDcwZjY5ODYwYmNlMjczODQxMDQ4OWNjMjM4ZTQ3Mzc0ZWExZmMyMWRlYWZhYzhmZmJkMTgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU2OWI3NmUzYmYxNjAxYTBmZDZlODI5NTM2YmEyODhiZGQ4YjZkZDJmOWUxODI3OTI4MTZjMzJkNmZhNGIzYTMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjcwMmQ1NGFhYzc1ZTdhNGQ1MDZmY2RiMDdjMWJjMDNjM2RmMDllYjY3NDkxMTI0NWZmYmI2ZGYzZmY0ZmFiYTcifQ"
+        },
+        {
+          "resource": "repo://api/src/repositories/knowledge.py#L274-L305",
+          "version": "repo-lines-v1:sha256:063a0faaa24846dc8e361ea80b9f8bb8d9747d3a6ac2586f7c706464e8ce1be7:eyJzZWxlY3RlZExpbmVDb3VudCI6MzIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMyYWExMGQ2NDQ5YjExYWVlODcxZjlhYTQyMWEyZGEzM2EzNTJjYzA4ZmIzOGYwNTU3OTEzM2RhODA3OGMyYTIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdmZWFmN2FiN2VhMGMwZTE4M2M3NWIxMTJiZjY3MWMyZThlNzAwOGZmMjFmMWQ2NGVkMjBjYjdkYWM1YmJmNjEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImFjYzhhOTMwOTg4Yjc1YjBlZGNiOTg5N2JhNDhmODlmNmE5ZWE1NWUxZjQyYTIxNDA0MzQyZDQ0MjI0Y2ZjYzMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE1YzhjMzdiODAwMmMwNzMwNDA2NDcxYTVmYWFjMmFiODI4OTAwZWQ5Yzg3MjZiOGVkNzMyZTc0YzE1MTMzOTkifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_7997337bb3064e919300b293db2ea070",
+      "statement": "Knowledge retrieval uses vector-only search when query text is absent and hybrid vector/full-text candidates with equal-weight RRF when query text is provided.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/repositories/knowledge.py#L22-L25",
+          "version": "repo-lines-v1:sha256:50107cf50e83bb67b850148904b21a3bd4cd4890e08a742a2a9e867893e4b0b5:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYmQ0ZDEwMWQ5OTBkOTEwMTlmNWYxY2ZhNjI0NzM0YmM4MDk0YjhiNzUwYzJlMWFhZDgxNjJkYzY4NWJkYzMzZiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYTliNmRlMzJiOTQwNTljNzg2Y2VjOTE3OWMzMjdlYzhmOTUzYjg2MDBmZDA2NWUxM2VjNmE0OTNkYjBjOTQxOCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYzZhYjdhNDhhZmZmODE5MmRmMTI0YjgzMjM0NWU1NWJiNzZjMGYyMjM0MDk1ZGRmNTFiNmMwNDkzYzEzMzE2ZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiN2I0ZDZhNzk0MWE2MTA4MzE4NDgzYWI4YzQ3ZWFhY2Y4NWI3ZDk1MWM0YmUxNjU3MjJiZDE5M2ViYTFjYmNjMyJ9"
+        },
+        {
+          "resource": "repo://api/src/repositories/knowledge.py#L411-L445",
+          "version": "repo-lines-v1:sha256:004b5acae0e1b4ac2fdb1692dc7a794dca57539a5efc048d7df89658fdf62614:eyJzZWxlY3RlZExpbmVDb3VudCI6MzUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdjYzQ4Njg2MmE4YmZlZTQzNTRlMDRmN2YyZTg5MTA1YzBmNmM1N2YzY2I5YzQ0YjJlNmNjODQ3YjRlMjc2M2MiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUwZGUyNTg3MTk2MTQ5MjYwNzFjOGZiMTlmZDg2NjE1MDU1NWYxYjAxMzU0ZjhjZDE2MDNhMTA5YTdkZGFlNDAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNiZjEzOTMzNzA1ZmNlYmY2ZGQ1OWM4NWNkZGRjMmUyMzJjZjA2ODJhN2M0YTZmMzZhMDFhMmJkYWFiNGUwOTgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQyNmM1ZmIwNDBjOTRjMWJlYTMzODljNzNlYzgxNjRkMTUzYzNmMjVmNjBjNjNhNzkxZTlmYTlkOTMxYWUxNzIifQ"
+        },
+        {
+          "resource": "repo://api/src/repositories/knowledge.py#L457-L540",
+          "version": "repo-lines-v1:sha256:63e22fd2ab8451b18d6ed7cd0dbc79558563835696e1350739d04d1cce7c8e05:eyJzZWxlY3RlZExpbmVDb3VudCI6ODQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk4MmFlNmQyNzA5ZmY1ZGM1Y2Y5MzEyOWNkMGQxNTQ4N2RiMjYwY2IwYzY2NWYxM2E2YTdlMDFiZTdhMTY1ODAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZlZGI2MGRiMTBhNTQ5NTMwM2MxNWJjNWM1N2UyZTEwZjRmMDY3ZjAxNWYzMGE2NzhkY2M5OTY3YWVjMzJkZDUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM2ZmYxZTQ3ZDI4NTM2NjVjODZhMDYzYjk5NjA4ZjJhZjllOTY3ZjFhYzVhMzc2MWQ0YjBjZTBhYjc1NTBkMDkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijc1N2U2YjVlN2U5ZTAwZWViNzAzNjhiZDdiNjcxZGJkNGQ2YzY0ZTkwYjRiNDBiMTBkYzA2NzQ1OWI0MjcwMzkifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_c768d17d9b8c4774b00d6e971e136e21",
+      "statement": "The knowledge-source API explicitly denies direct knowledge-store access to external principals and derives namespaces from knowledge_store; namespace role assignment routes require superuser access.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/routers/knowledge_sources.py#L1-L8",
+          "version": "repo-lines-v1:sha256:03f36b0ae2962c2be76c775da3a602566a3d1c35bab06fc58c85a662446b894c:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYTMwM2VjZGQ0YTRkMTBmMTljNzNmZDQyZmQxMjQzN2ZkMzM1NGE4MjY4MTYwNWRhNTI1NWE5N2EzOTA2OGRiYiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYTMwM2VjZGQ0YTRkMTBmMTljNzNmZDQyZmQxMjQzN2ZkMzM1NGE4MjY4MTYwNWRhNTI1NWE5N2EzOTA2OGRiYiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjAsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNmRkNWJiZWZmZjU4Y2VhZjVlZmQ1ZDZlMDJmOWZiMGEzMmJiNDcxMWNkM2FlNmNmMDc0NjAwODFlNTk4ODU2MCJ9"
+        },
+        {
+          "resource": "repo://api/src/routers/knowledge_sources.py#L106-L132",
+          "version": "repo-lines-v1:sha256:82a983bcb93355b94b5fa06de89ad4bef3a3365d1eab0978c27f4a778fbbe445:eyJzZWxlY3RlZExpbmVDb3VudCI6MjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkzMDNmNTE5ZmQ3ODc4YTkwODNlODVkZTQwMDA5OTk4MWZkMzZmZDdhZGI2NDYyNjliODk5ZWFiNmIxODU1MjkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJjMWU2NmJmZDU4ODIzOTNlYTQ3NmQ0MWIxY2JmZmViMmRkMDY3ZTUwOGJkYmI1N2ZhYjI5NTMyMzIxMDVmODMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImVhOWIyYWI3NzM2ZjI5Y2FiNTdkYjZiMWUzMWVlNmJhMmUxYmNhMmQ0NzlmYjEwODE0NTdlZDE1MWUyNDgxZTciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM5ZjcxYzQ3MDc4MzkzYTcwNTE1Yjc4Njk3MjMyOTk1MDJjOGEzZmE2Y2M1YTIzODA1ZmZjYTY2MjZkOTUzMTMifQ"
+        },
+        {
+          "resource": "repo://api/src/routers/knowledge_sources.py#L43-L55",
+          "version": "repo-lines-v1:sha256:c397eee31190ce850e3f3c085392f5c48e4321103dfa35b93f42f8119c43766e:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM1MzUyOTEyZjczYjBmM2ExMzc1NjE2ODJiMTczMmQ0OTVhOTAxNmQwOTg3YTUyMzgzYWQ2NTI3ODdkMzljODgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU5MDlhNTNhNjE4ZDAyOGUxZDMwMDBjMGE3YWJjZWVjYmU1ZmIzN2Y0ZTUxMWVmZTQ2NjQzZmFkNmU2Njg3MmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYzNGIzYTkyNDczMjM2OGIxMmVmMDA0NGY1M2JhYjRjN2U5ODQ4Yzk2YjRjOWNlNDUwYzY5NTU4OTllMDllNTkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzN2VkNTI0YzMxMzA4ODg1ZTEzODI1MmI5M2Y1ZTVlNTU5ZTU0OGU5MDgzZDdkMWMwYmQ5Mjk4NTdmMjdiNTIifQ"
+        },
+        {
+          "resource": "repo://api/src/routers/knowledge_sources.py#L63-L97",
+          "version": "repo-lines-v1:sha256:a9f6935288afffbb022243d881a6c91e66667ef4a315ac1781c8b759c19d9b72:eyJzZWxlY3RlZExpbmVDb3VudCI6MzUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZlZWNhYjZlN2VlMTI3MzFhZGFkYTEyNjJjOWYwZTg2ZDVlMGRlYzY1MTVkMWEyZjI3ZTlkZjVlMTg3MWE0MjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFkZDI0NDU4MmI2ZmIwM2QyM2I4NDE1YWJlY2QzNDZiMGM5ZjQ2NmI2Zjc1MmIwNjgxODljZTdlOWEyZGMzNTAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImVhOWIyYWI3NzM2ZjI5Y2FiNTdkYjZiMWUzMWVlNmJhMmUxYmNhMmQ0NzlmYjEwODE0NTdlZDE1MWUyNDgxZTciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzN2VkNTI0YzMxMzA4ODg1ZTEzODI1MmI5M2Y1ZTVlNTU5ZTU0OGU5MDgzZDdkMWMwYmQ5Mjk4NTdmMjdiNTIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_b385f1a97ddd4bb39e2a3a644c9ea930",
+      "statement": "Memory effective enablement requires both platform and user settings, and memory save/search use user/org scoped stores and the embedding client.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/services/memory.py#L114-L164",
+          "version": "repo-lines-v1:sha256:72a0d0450cbf01a67273c096017807204a01a7328b238aaa3b9b42b32dcced19:eyJzZWxlY3RlZExpbmVDb3VudCI6NTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxZmUwMjk4ZGQ2ZDU0NzAyMjVjNDk2ODNlNzI2YzBlZTI2ZjdjMTU4OGU4NGJmYjVkNTlhNzcxYzNiYzhlZTYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRmNWEzMWYwZDViZjhiNDBiZmFiMWY1YWE4YTE1MDZlMzUwZjVmZTE3NjI1M2ExYjU0NjA4Y2NkYjg4Y2M3MWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzZWQyOGRjOGQyYTY5NDE5MmJiN2Y4MmFlNmUwODJiODM1ZjU0MDE3NjlhOTYzMjY4YTYzOTRmYTdjZTNmODUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImFlYzUyYzQxYTU3OGMxOTk1NDUzNjM3OTliYWJiMjliYWZjMzE5NDc3N2E5MWIxNzI2MTdhNDM0N2MwZjY3YzgifQ"
+        },
+        {
+          "resource": "repo://api/src/services/memory.py#L174-L190",
+          "version": "repo-lines-v1:sha256:ff674cea1682162d7b8a6b0167db58678b607683122c459935d87cb0a1d2ad34:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk0MjRiNTFmZGE5N2RkZWRmMTIxZWUyODFlYzM5NzdhMmZmMmRjYzQ5NTM3YWU2NmJkMTY1NDQ2ZWFhN2VlNjgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRlNTAyYmEzYTMzZGQyZTEwZDZiNTYxMmZkYWUwMTk2MmVkYjRjMzY2MDUyZGU4MjJiNWE1YWFkYWFkY2RhN2UiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjgxZDJiMzRiNjI5YmI2NzkyMzUwMWZhODhmMGQ1NjIwZGM0NTExNjg0NTY4YTc1Y2YzZWEwZTdkYjI0NmU3NmYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY1MmZlNzE3YWRmYjdkYmQzZjJmNzgwM2IyMzVlOGM3Yjc3NTNlNWNlMTE3Zjc3OWQ3ZTU2OGNlZGEzOTg0MjAifQ"
+        },
+        {
+          "resource": "repo://api/src/services/memory.py#L24-L36",
+          "version": "repo-lines-v1:sha256:929d911ca791ddcf5374b2d87989d5d0b47032051a08b558830ef851b87e81ad:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM5Nzk2NjAwNGYzNzg2MmQ4ZjE5MGY1NGZlMTIzNWFlZDkxOWI5YjRhMGQzMTcxNTI4YTMwNjA0ZTE5YmNiMjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY4OTYyOTIzNjMyYjZjMWIwOWRkNjYwMGM3NzBiODM5NTRhZmYyZmQxNjAwZTBhNTcxNmVkNDFhOTMxZTc0M2MiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY0NjczNGQ2Nzg3NjM0MzNmZTk1ODVjNTM2NTFjMmVlMmYxZTRmNjExOWVjNjZiOTFjYmIyZWQ1MTYzZDBiMjQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImZjYzhjMmQ2YjcwYWEzMDFiMjViMWU5M2VjZTQ3YTM3YzAxY2Y5NzZhYTc5ZDNkMDhiYTJmMmI3Y2M0ZjZhMWUifQ"
+        },
+        {
+          "resource": "repo://api/src/services/memory.py#L77-L101",
+          "version": "repo-lines-v1:sha256:37a2df6a9541a3be5d78ff48bb24736a86d1c10fb5ef2a3687cae4d77d4178f1:eyJzZWxlY3RlZExpbmVDb3VudCI6MjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc5YjllYWM4OWJiNzY5ZGFlMmJhMmZjYTFkMTE2YTI0MjQ4NmI0Yzc5MzM3Nzg0OWM4NWFlYzVlZGVlOTE5NzYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU2YjA0NDkxNDY5NzIyZTgzNjNhOTRlNDA0NDUzOGUwMTNhMmEyMTdlMzZiMWU1NjhiYTYwYWNiN2I0YzhmMmUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjIxZDNkOGIyOWZjZWNmMWQzMDZhM2M4Y2E3ZGE4YjJkNzUwNDcxZDRmY2Y5YmU5MTJmNDlkMDc2ZTQ3YzE3N2IiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM3ZWZmNmEyNGMzMWI1ODczMjVjY2FkMjczODhlNTNhZDZmN2I0MDkyZjhkNjYxZWFjOTBhODFjNGNjZDAwMTYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_f1c35305077849129e73107b1220bd1e",
+      "statement": "Daily knowledge storage reporting groups by organization and namespace and estimates bytes from content, serialized metadata, and 6,144 bytes per stored embedding.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/jobs/schedulers/knowledge_storage_refresh.py#L20-L33",
+          "version": "repo-lines-v1:sha256:78ea6c31c63457ef15bd9833af122188b80d3f8e324314dc1da791ed107e7703:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxNmIxY2JjNjZlMmQ5MjhlZjY0MGRkNGRiNWY3NmYwZWE0MWEyYzdlNDFhZjUwZDI0MmVhNGM3ZThhM2VkODkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRhMmM4MDU2MWE3YjdlZWU1Y2EyZWVkN2ViOTY1NzI0MTU1YTJlYTdjMjNmMjc3YzZmYWUwY2RmZDFjZjM0YzkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjYyMDA5N2U0YWE1MDA2OGJhMTU3ZjlhMjczOWZhZDg2OTk1ZTFlMGNkY2NkYWRjNTg5N2MyMDM0Yzc0ZDNlZmEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY4YzBkZmJhY2Q2ZjI1MGM5MTUxZjZkMTEwYmUzOTMzYjZkNzFlNzk0NTg0ZDI2MDdhMzc0NDc5ZWYzZjAzMzcifQ"
+        },
+        {
+          "resource": "repo://api/src/jobs/schedulers/knowledge_storage_refresh.py#L49-L70",
+          "version": "repo-lines-v1:sha256:98175842456009acf544f9c5111e89444b560c27d35bd2c156a8ab8bd6bbfc1f:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBkMjYwMGVkYTJjM2U4YWMzZWQ2NmJmMDYxZWVmODUzMTYzNTgxYjlhNzRhZjYyMzYxMjM5ZjkxZWY3YjczMTAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY1OGIxMzg0NzI1NjM1ZDhhM2JhN2NkNzhiZTI5MmM2MGY3MzZhMDZiMmMxYmRiMDRiMmJmODZiYWE4OWM3YzEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU4N2JlZTU5MzJlOWU2ZDU3Nzg0MzlkNDZlMjk5ZjkxNzlhZmE3ZWE0OGYxZTIwN2UzM2YyMjRhZWY0ODU3ZTAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZlNWYzNTgxMTFlZTNiNWQ4OTE4MzM4YTUxMzIwMDllNDYwODJhNDI0N2I4ZTdiNmRiMDRhM2FmMTU4NmVlNWYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_af0cc183f87f4367999a4dcac30054ba",
+      "statement": "The knowledge retrieval design specifies bounded retrieval evidence, a repeated-query ceiling, and explicit privacy/control limits for agent context.",
+      "evidence": [
+        {
+          "resource": "repo://docs/architecture/knowledge-retrieval.md#L5-L24",
+          "version": "repo-lines-v1:sha256:1bed34e0793a67f49ff05bfca3f69b35c1264a6d347845e14ca9bcaa43bb8602:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZkMzQwNTc2MjQ2ZGUzMGQ0MTgwMGIxMjY5ZTA0OGZhYzIwMWVlYzNiNGMwNzBlMzBlMjYxMDU0MDc0ZGY2NWQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQwMjUyMDU4ZWY1Yzc5NGQ4ZTQwZGE0YzAzNDg0MWJiODIzMGM5MWNmNDVjZDc5Mjc2NzJlZTdkNGYxNDc3ZjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNiMTU3YTZkMjc2N2ZmN2Y0MTMzZWUyNzY1MTM2N2M2ZmRmZjdhYjRmZDliYTNjYjQyNjJlMmFhNDQ5MGNjYTMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFlODE5YTBiZDQzMjg5NmI3YzM3MWYzNzU2MGQwNTE0YWNmNjhlNjIzYTMxZDVhZjRmYmE4MmY0MzdjYWJiODAifQ"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.7.2",
+    "at": "2026-10-18T02:14:28.318Z"
+  }
+}

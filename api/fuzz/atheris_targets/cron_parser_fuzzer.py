@@ -4,7 +4,8 @@ import sys
 
 import atheris
 
-with atheris.instrument_imports():
+# Instrument application coverage without rewriting every dependency at startup.
+with atheris.instrument_imports(include=["fuzz", "src"]):
     from fuzz.harnesses import fuzz_cron_parser
 
 

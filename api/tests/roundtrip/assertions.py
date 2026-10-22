@@ -148,7 +148,7 @@ def assert_dict_keys_accounted(
 
     The ``Manifest*`` models are NOT a complete description of what every path
     serializes — capture/generate emit transport keys the model never names
-    (e.g. agent ``max_run_timeout``, form ``workflow_path``, app ``logo_b64``).
+    (e.g. form ``workflow_path`` and app ``logo_b64``).
     A field-class-only harness is structurally BLIND to such keys, which is
     exactly where a Bug-C silent drop hides.
 

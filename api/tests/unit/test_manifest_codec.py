@@ -1443,7 +1443,7 @@ def test_agent_from_row_coerces_uuid_junction_ids():
 async def test_agent_install_parity(db_session):
     """INSTALL view of a seeded solution-owned Agent matches the committed golden snapshot.
 
-    Install has max_run_timeout (transport extra) but NOT mcp_connection_ids.
+    Install has validated max_run_timeout content but NOT mcp_connection_ids.
     organization_id must be ABSENT.
     """
     import uuid
@@ -1509,7 +1509,6 @@ async def test_agent_install_parity(db_session):
         ).view(
             Destination.INSTALL,
             extras={
-                "max_run_timeout": agent.max_run_timeout,
                 "role_names": role_names,
             },
         )
@@ -1517,7 +1516,7 @@ async def test_agent_install_parity(db_session):
         # Structural invariants
         assert "organization_id" not in produced, "install view must NOT contain 'organization_id'"
         assert "mcp_connection_ids" not in produced, "install view must NOT contain 'mcp_connection_ids'"
-        assert "max_run_timeout" in produced, "install view must contain 'max_run_timeout' (transport extra)"
+        assert "max_run_timeout" in produced, "install view must contain 'max_run_timeout'"
         assert produced["max_run_timeout"] == 600
 
         assert_golden(
@@ -1539,8 +1538,8 @@ async def test_agent_to_orm_values_partition(db_session):
 
     - indexer_content has id+name+description+system_prompt+non-empty lists+mcp_connection_ids
     - direct == {id, name, system_prompt}
-    - restamp == {access_level, max_iterations, max_token_budget}
-    - max_run_timeout NOT in indexer_content (it's a transport extra, not a model field)
+    - restamp == {access_level, max_iterations, max_token_budget, max_run_timeout}
+    - max_run_timeout is validated model content in indexer_content
     - indexer_content shape locked to committed golden (non-circular oracle)
     """
     import uuid
@@ -1607,17 +1606,14 @@ async def test_agent_to_orm_values_partition(db_session):
 
         # Agent import is INDEXER-ONLY: only indexer_content is emitted. direct and
         # restamp are empty — id/name/system_prompt are resolved on the metadata row
-        # and access_level/max_iterations/max_token_budget (+ max_run_timeout extra)
+        # and access_level/max_iterations/max_token_budget/max_run_timeout
         # are re-stamped by the importer orchestration (_resolve_agent /
         # _index_agents_from_manifest / _upsert_agents) AFTER the indexer, NOT
         # sourced from this method.
         assert parts.direct == {}, f"direct must be empty, got {parts.direct!r}"
         assert parts.restamp == {}, f"restamp must be empty, got {parts.restamp!r}"
 
-        # max_run_timeout NOT in indexer_content (transport extra, not a model field)
-        assert "max_run_timeout" not in parts.indexer_content, (
-            "max_run_timeout must NOT appear in indexer_content"
-        )
+        assert parts.indexer_content["max_run_timeout"] == 120
 
         # Lock the indexer_content shape to a committed golden.
         assert_golden(
@@ -1700,6 +1696,7 @@ def _install_roundtrip_specs():
         endpoint_enabled=True,
         public_endpoint=True,
         timeout_seconds=4242,
+        cache_ttl_seconds=421,
         retry_policy={
             "version": "execution-retry/v1",
             "enabled": True,

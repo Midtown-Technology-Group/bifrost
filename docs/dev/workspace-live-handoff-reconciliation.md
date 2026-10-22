@@ -15,8 +15,11 @@ preview must omit that installation's bindings without reclaiming its workflows.
   dependencies. Reviewed replacements need not keep obsolete origin contracts live.
 - Activated reviewed Source/workflow revision lineage back to the original
   guarded handoff. Missing parents, cycles and unrelated installs fail closed.
-- The original Live row/release identity, source hashes, bundle hash and recomputed
-  preflight evidence digest. The receipt alone is insufficient.
+- The original Live row/release identity, source hashes and recomputed preflight
+  evidence digest, which binds the complete compiled manifest including its
+  bundle hash. The stored deployment and manifest must agree on that hash;
+  readback does not impose the server candidate builder's bundle digest recipe
+  on candidates accepted by guarded preflight. The receipt alone is insufficient.
 
 Two provenance variants keep that proof honest for transitions that no receipt
 can describe (#1122):
@@ -63,3 +66,17 @@ consumer and obligation evidence.
 Rollback the platform image through its reviewed lane if readback fails. Keep
 Solution ownership and Live history intact; do not reassign a Solution workflow or
 manually settle Source debt to make preview pass.
+
+## Failed preview diagnostics
+
+A refused handoff still produces `workspace_promotion_preview_invalid` with
+`retryable: false`. Its message includes `invariant:` followed only by an
+allowlisted, authored reason. Closure, registration, runtime-byte, current Root
+contract and dependency checks annotate their failure stage without changing the
+underlying exception or validation. Unexpected provider or validation bodies are
+not copied into the public receipt; unclassified failures remain redacted.
+
+Read the existing job receipt before choosing a repair. A stage identifies the
+failed proof, not permission to skip it, replace ownership, manufacture a receipt,
+or replay a business workflow. Publish this diagnostic change through normal
+platform source/image gates before refreshing a failed production preview.

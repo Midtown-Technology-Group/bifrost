@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from src.core.log_safety import log_safe
 from src.models.orm import Agent
 from src.repositories.agents import AgentRepository
+from src.services.agent_tool_scope import agent_scope_allows_tool
 from src.services.llm import get_llm_client, LLMMessage
 
 logger = logging.getLogger(__name__)
@@ -25,6 +26,11 @@ logger = logging.getLogger(__name__)
 # Length cap (1..256) prevents pathological backtracking on attacker-supplied
 # chat messages that omit the closing bracket.
 MENTION_PATTERN = re.compile(r"@\[([^\]]{1,256})\]")
+
+# Routing responses contain only an agent name or DIRECT. Leave enough budget
+# for reasoning-model preamble while preventing provider defaults from turning
+# this classification call into an unbounded output-cost path.
+ROUTER_MAX_OUTPUT_TOKENS = 256
 
 
 class AgentRouter:
@@ -94,7 +100,7 @@ class AgentRouter:
         # Get tool names for this agent
         tool_names = []
         for tool in agent.tools:
-            if tool.is_active and tool.type == "tool":
+            if agent_scope_allows_tool(agent, tool):
                 tool_names.append(tool.name)
 
         # Build capability strings
@@ -163,14 +169,14 @@ Your response (agent name or DIRECT):"""
             async with self._db() as session:
                 llm_client = await get_llm_client(session)
 
-            # Use non-streaming for quick routing decision
-            # Don't pass temperature or max_tokens — some models (e.g. OpenAI o-series)
-            # reject temperature, and a low max_tokens can truncate responses with preamble.
+            # Use non-streaming for quick routing. Temperature remains unset for
+            # reasoning-model compatibility; output is explicitly cost-bounded.
             response = await llm_client.complete(
                 messages=[
                     LLMMessage(role="system", content="You are a routing assistant. Respond only with the agent name or DIRECT."),
                     LLMMessage(role="user", content=router_prompt),
                 ],
+                max_tokens=ROUTER_MAX_OUTPUT_TOKENS,
             )
 
             if response.content:

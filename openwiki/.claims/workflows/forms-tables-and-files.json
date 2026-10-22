@@ -1,0 +1,184 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:8beed948b48aea9db82717f104ced80c6df73664d7e02904087159f4671fd4b0",
+  "claims": [
+    {
+      "id": "claim_0a831202ba5e4b609b014b3cee491247",
+      "statement": "Form submission loads an active form, authorizes its runtime publication, limits embedded actions, requires a linked workflow, and rejects unsupported embedded-session cases such as scheduled submissions or missing nonce.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/routers/forms.py#L1185-L1238",
+          "version": "repo-lines-v1:sha256:5afeac6b73220bbfa8537c7a31a8917b77f4084b3824998e164be630f29d0603:eyJzZWxlY3RlZExpbmVDb3VudCI6NTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ1MzI2OTVmZjkxMTMzNTM5M2YyZWMyMjNmYWE0OWMwZTFjNTJjNDU2YzQ3MmU0ZWE0MzkzYmRkMTNmZDgxOTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIxY2UyNmM4NDA5ZDFlZWNkZWY2ZmFlYTc2NjI4YmQxNDRkN2ExY2I3NjNiMDljY2UxYzkzNDA4ZTViMDBiNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQ3MDE0OWUwNjlhZDY3ZWNjZjQ3MzY0NmZmMWM3NTAwNTBkMzI5ZDExMDAxOGRjNTc2Njg3OGVhZmExZDYwN2QiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM3ZjczMjZkNTE0ZWM1NjQ0YmI2ZmUwNDRiNWIwZTY3ZWIzYmVlOWRiMjU5ZTczZTA2NDJhY2UwM2E0M2E2MzgifQ"
+        },
+        {
+          "resource": "repo://api/src/routers/forms.py#L1242-L1260",
+          "version": "repo-lines-v1:sha256:2bb82133f116ca2f7ac4c62b2d81f30f6504345913456594f3110d3fe6e966b7:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgzODdiMjhjYzIyOGI3ZWU2Mzk3NzY2YTc2YTljYjVhYjM4ODQ5ZDU0MmIzNDFlN2Y3OWU2YWE0NGRlMDIwYTAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU5MDlhNTNhNjE4ZDAyOGUxZDMwMDBjMGE3YWJjZWVjYmU1ZmIzN2Y0ZTUxMWVmZTQ2NjQzZmFkNmU2Njg3MmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM3ZjczMjZkNTE0ZWM1NjQ0YmI2ZmUwNDRiNWIwZTY3ZWIzYmVlOWRiMjU5ZTczZTA2NDJhY2UwM2E0M2E2MzgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjBiOWEwZDI1MThhZWFkYmY0OTRlNjZjMWM4YzgzMjUwNjc0ZjMyZDczNzljMzFlMjA1NWQ0MDlkNzAxZDE0YzEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_bb7952b61ee54207a6b8788faa4f7c2a",
+      "statement": "Table creation is a platform-admin operation and Solution-scoped requests must declare tables through their manifest; table creation resolves organization scope and validates policy claim references.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/routers/tables.py#L842-L883",
+          "version": "repo-lines-v1:sha256:486a17c216fda8eb3a4d8dc34de5d2b0ae8f59eb1dda382ab58c46c1dce99a93:eyJzZWxlY3RlZExpbmVDb3VudCI6NDIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ1MzI2OTVmZjkxMTMzNTM5M2YyZWMyMjNmYWE0OWMwZTFjNTJjNDU2YzQ3MmU0ZWE0MzkzYmRkMTNmZDgxOTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk4ODQ1OTIwYTBmODU0MTI4OTg3OTRhNTY3NzRjMTY5MzRkMGIwMjI2NzE1NDc4ZTYyYWMyZjQxMDVhNjRjMWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImVhOWIyYWI3NzM2ZjI5Y2FiNTdkYjZiMWUzMWVlNmJhMmUxYmNhMmQ0NzlmYjEwODE0NTdlZDE1MWUyNDgxZTciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk4NjEyZGZkNGU2ODU0MmE0YzNkZWZhODdjOTY2ZWNlYzJhNjkxMjZkNzU0OTViZGNjNmEyYTJkMWRlZWQ1NjEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_9be20f348f4b46ff8db92574699bf0e5",
+      "statement": "Table document updates can use atomic revision/data preconditions; absent preconditions they merge new JSON fields into the existing document.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/routers/tables.py#L387-L430",
+          "version": "repo-lines-v1:sha256:7349bb8a190207613e8672d1f3aa1b43c8a1c320bad3190222ea1b4786dc45ed:eyJzZWxlY3RlZExpbmVDb3VudCI6NDQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIyYThjYjQzNjliOTNkY2QxODA2NDk4NDE3Zjg5Nzg0NmQwZDRlOWNjYzlhMzNjY2EyNzU0MmFjZjAwNDk0N2MiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjBhNjA0M2M2N2Y1ZDlkZmRhOGZhNjkyNTFkNWFlOTFjMWRiNmMyYjkxNzMxN2Y0NDRhYzUyOTFmOTk0Mzg2YjIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjBkM2ZhZGFjMjRkYjI2OGM1MDUyNTkxZThmM2RlMzAzMTkyNDAzOWNhYTBlZjFlN2Y5NjhkNDg4NzczMWMyMWMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_bd1054d3021c499d91e3f16f7f6cd581",
+      "statement": "Files API supports local/cloud modes, scoped locations, and a signed Solution file-context boundary for Solution engine tokens.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/routers/files.py#L106-L118",
+          "version": "repo-lines-v1:sha256:3e5366cb78fa4b005dadf99726a76f92ee2d80add4e79be210cca001b637f0c0:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY2OTNiZjc3MGM0MDFhNWMzYmU3MzRlMWUxOTg4Mjg4MmIzMjRhNjlhNGQxMzdmMTljYTljMjliNTZiODRkN2EiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZhZmJhMDUyN2MzOTUzYzRiNmUwZTViNTczOWJhODM2MTJmODA1M2JjZGM5NDY2NzMwMTkzY2QxZDU5MGI0MDgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE5M2U5MjcyNWRlODk1ZTg1YTlmN2NmZDNhZDlhNjAzZmVjZWY4NTk3NTZlYTE0YzM0MGFhZjZkZDE0MGJlYTYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjcyMGFiYTk5MjZkZGRkNjczN2I0NDRmYTcxODdmNjMwODcwNjM0OWFhNWI0MDBmYTBlMWVlYmI2NzNmYWNlZDMifQ"
+        },
+        {
+          "resource": "repo://api/src/routers/files.py#L69-L88",
+          "version": "repo-lines-v1:sha256:a80a6fcdc8254104351ba8bbc19f783015957e12a5a276bcb8bd8783b42835d7:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYzYTUzZmQ0OGNkYWU0NDNlMTg3MjIwMjlmYTc4YjQ0M2U4NTZiYTA5YjZkMmQzZDFhZDlhNmRjN2I2NmY3ZTciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZhZmJhMDUyN2MzOTUzYzRiNmUwZTViNTczOWJhODM2MTJmODA1M2JjZGM5NDY2NzMwMTkzY2QxZDU5MGI0MDgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU1YzFjNDYyZTJhMzlkNzQ3NTlmNWUxYjEyNmY3NjgzYTJiNzMwMTE4ZTE4ZjUxMjJiMDhjZWRlZWI2NTBlMjMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjUxNWJmOWFhNjI2ZDYyYWQzN2I2MDA1YmRiNGI2NGQ0MWNjYmJhNjA0MTIzMWNkYjczZTI0YmY0YWM3YmNiNjQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_9e999a3924d84faab7a7f611a7055f3b",
+      "statement": "FileStorageService selects Azure Blob or S3 storage based on configured object-storage provider and composes indexing, diagnostics, entity resolution, and file operation helpers.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/services/file_storage/service.py#L66-L100",
+          "version": "repo-lines-v1:sha256:3df351a3f6c9d1b1567d640ae9c5307f0d49443f2b8f14f45136b1c70ab15a8d:eyJzZWxlY3RlZExpbmVDb3VudCI6MzUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFlNmFhNzZjMzUxZGJkNmU5MWMzZGMwNWIwN2JhYjc5ODY3MGU2NTY2N2JjYjFiNjk5NjM5ZjU1YTYyZWJmMDkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI4MjQ5MGJmZDhjNmMzNGRkZDc1MzNkNDZiODAyMTllY2UwM2UzYTc5OGU3YWNlMGYzZjQ1Y2M0NmJhOTc3OTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjExMjE5ZjUyNDQ5ZGVjNjkzMTgxMWUyODFmYjg0MjVhODQwYTY3OGY4YWNkMzk0OGM3NGJmOTA4NzBiODBhZDAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE1ZTYzYzAwZTM1NjMyOWVkNDQ1NGNmYzIyNTAzODU1MGFlMmRlNTIzMWViZGVlZmQwM2ZjN2QwMGQ3NTU2MTIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_67aed3e7e3f542a98d2a1516c489570b",
+      "statement": "The purpose-specific path module distinguishes workflow temporary and upload paths and states Python modules are loaded from Redis rather than filesystem.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/core/paths.py#L1-L27",
+          "version": "repo-lines-v1:sha256:901a72009b72f56d2e8afe0d071d287c9240bddd498ae9e748074acb460b4581:eyJzZWxlY3RlZExpbmVDb3VudCI6MjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEzMDNlY2RkNGE0ZDEwZjE5YzczZmQ0MmZkMTI0MzdmZDMzNTRhODI2ODE2MDVkYTUyNTVhOTdhMzkwNjhkYmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE2N2NiODZhN2IzMDU0M2Q4OTQzMmM4MDU1YTBmZmY0YjIzMjg2NzI1MDZiOTJmOTU0YTlhMGU5ZWE0Yzk5ZDciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZhM2NmNTE5MjM1NGY3MTYxNWFjNTEwMzRiM2U5N2MyMGVkYTk5NjQzZmNhZjViYmU2ZDQxYWQ1OWJkMTIxNjcifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_2ac90207dc3a4ba294f1770cd1f683d8",
+      "statement": "The document renderer owns Markdown/HTML-to-PDF and health endpoints while runtime topology and Kubernetes resources are owned outside this repository; CI builds the image and runs a PDF smoke test.",
+      "evidence": [
+        {
+          "resource": "repo://doc_renderer_service/README.md#L1-L18",
+          "version": "repo-lines-v1:sha256:50e700f1b787a5d9a7cbd90fef56a5dba9b1d043490d4342c6e6fe08b1683da5:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhiYTMxMTAwZmJhNzg0YmM1MjdmYTFkYTA3MWVhZjhkMDM3MmVkNDRmZDhhMmE2Yjk5OWQ5NTFjYzVhYjY2MDAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRkY2Y2MTk5YTljOTQzNmNmODk4NDNmY2Q5MTA0YTY1YmNkYzkyODA1OWRiYTdiYmZkN2I3NjkzMWRhNjBiYjgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_3917be623b9b42b48964353c07a17702",
+      "statement": "The table inventory UI renders scope-aware rows and switches between navigation and selection callbacks, while table action controls disable edit/delete affordances for Solution-managed tables.",
+      "evidence": [
+        {
+          "resource": "repo://client/src/components/tables/TableRecordList.tsx#L63-L123",
+          "version": "repo-lines-v1:sha256:d502b5d119d2c703655ccac2ea891ad8d596382815704ce5fbb7773a8fbe82bc:eyJzZWxlY3RlZExpbmVDb3VudCI6NjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE4MGRmNGIxZTNjMTA3NzI0ODVlYzQ3YWJjOGM4YmJkZDU1OWQ5OGNlYmJmNTI3Nzg3MGY2ZjAzMDllMjFjN2UiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI5Njc2YzE4M2JiOTA1NmY1YmJlYmNmYWRmYTdjMThmMjk4MTgzNDVjY2M3ZjZjZTc1NzcyYzFhZjUzNGNjZGIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU4MGE0NDE1NzNlZmI5NTBhYzc2ZTg1YzE1OGI5ZWRlY2FmNTlhMThhNmM4NmUzYTMwNzNkNTE5Y2ZmZWUwZDAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJkZTNkZWYzY2MwNTNjNDQ4NThlOTY2NWZkNzBjYzQwMjIzNDA0ZDE1ZGY0Njc0NjIzMWVjYTExMGYxYjczZDUifQ"
+        },
+        {
+          "resource": "repo://client/src/components/tables/TableRecordList.tsx#L9-L22",
+          "version": "repo-lines-v1:sha256:82a1d45007d51f868e8846c9b681eca52bc5a5e11c6455ff1647d77431170a84:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJjZjc3ZjQ4Y2UxYWQwOTljYWRlMjVmZDA3M2E0NzJlM2Q4ZDlmMjM0MzlkZTk4MWYyYzM2YzUwYTRkODkxZjQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIzMjAwMzA3ZjQ1YmM3Mjc2YmE0ZjhkZjBkMmI3ZmIwMTRiMzMzODcyMjM1MDBiM2U3ZmZhYmNkYjI0YzJhM2UiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjUyMmI3MGU4YWQ2MzQxMzRmNDIwYmVkMThjM2E5N2RiMzE1ZTkwZGVkZTZkMzdmZTYzOTZhMzQzYTE0NzExZTAifQ"
+        },
+        {
+          "resource": "repo://client/src/pages/tables/TableActionsMenu.tsx#L6-L34",
+          "version": "repo-lines-v1:sha256:ed6aecf4de2679e7db3d1ad070bf8b6290fbba17fa873da94af4edd35732678d:eyJzZWxlY3RlZExpbmVDb3VudCI6MjksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUwMDczZjlkOTAzZjUwMTQ0ODQ0MTYyN2IyMDUyZjk1NDZmMDdlMmNhNzE2NTk0OThlYTMwY2YzM2YyNjlkOGUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkwMDNiYjlhYzNlYzJhOTI4MDlmZDhlYjdlY2VmOThlOTE3ZmJkMzg0NjIzZmM2NTkwOTZmZGI2MmM0MTdlMjIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjJmNzQ1MmVjN2NkZDFjZDAxM2JmNTAxYzA2Y2E4MDExOWJjYzU0OWFkOWQzZjUxODVhOGUyMzZmMWU5OTkxYjciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoyLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE0Y2MwYjk1NzA5ZTYzNDI4MDM1MTE3ZWE2NjhlNjY2NzY5ODBlYjg5MGM3OWRkZDQ2ZGY0ZDljNDllOWQyODIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_af8e70aac9e4493bb8fd4dc2c68ac239",
+      "statement": "The document query panel converts local field/operator/value conditions into a structured where object for its parent callback; table-detail pagination receives page state and emits page/page-size changes, with a separate retryable collection status component.",
+      "evidence": [
+        {
+          "resource": "repo://client/src/components/tables/DocumentQueryPanel.tsx#L16-L42",
+          "version": "repo-lines-v1:sha256:4b68f922ff3d5d7b8dcf8e7a12226ba4448a00f6c80f6cfc7e8f83f89c040c4a:eyJzZWxlY3RlZExpbmVDb3VudCI6MjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU5MmEwMDJhOTM4NWEwMDJhMmE3ZTI3MzI1YTk0MzQ1N2E4NGVhYTRkOTUxODhiMGU0NWRkNThhYmQ1OGZiM2QiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIwMmQyYzBkNmRjNWU3NGQ5MmZhMTRiOTFkYmVhMjY0MDkwYmViMzVmZGI5MTg4ZDliMzQxMTgxZGNlOWY0Y2UiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjJjNzllZGQ1MDJjMzAxOGU0ODkzZjc2NTE4ZTYyNjFlMGM4NTIyYmE2OTFiNTFjYmNjYzE1Yzk0ODUwMzdkNzYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNiZDZjOTE0ZGIyZDBmZjU4NGM2ZWE2ZGVmNmViYTUzMTkxZjkwOTFkOTBjMTJlYTYxZTZmY2NjZmZlNGVkOTAifQ"
+        },
+        {
+          "resource": "repo://client/src/components/tables/DocumentQueryPanel.tsx#L79-L121",
+          "version": "repo-lines-v1:sha256:c55c9f57e05188fc94a4ff10d198c980b1fd643602ee00c100718f993a5892f2:eyJzZWxlY3RlZExpbmVDb3VudCI6NDMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZiYmEwZGUzMjQyNDJmZDJkMzc2MDljYWEyMDUzN2EzOTZhOWNhZjYwMjU0NTkyZmYwMmVkMjIxOTU1NmU5ODkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNjM2EyMDc3NGQ1YzJiYjRjNzkwYzE4ODkwYTljNDk0Y2NiNTEwZmM4ZThjMDllYzc0NTE5YmMxNjRmYzc4NGIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImMxYjQ3MTlkZmYxM2ExOGI1MGNiM2U5Y2NjNzZkMzkyMDgyNjRmMjNmOTQxNmU0Zjg3NWU2NTc4ZGMyYmQyOTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQ5N2YyZDk2NjczYmZkMGRhNTNiMjExYTY2NjhjMzMzMGJjMmYyNGJlYjQwY2RmYzNhZmUzMjljMjViZmQxYzUifQ"
+        },
+        {
+          "resource": "repo://client/src/pages/table-detail/DocumentCollectionState.tsx#L3-L19",
+          "version": "repo-lines-v1:sha256:750acf15ae8eff2fa1db8595c0ab365103ec4303fe39f2a071283c64cf281dec:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY5Y2NmZmY2ZmVlZmFiYzlmMzEyZDdmOTc0YTlkMzY1ZTE5MWJkM2RjNTBjMmVmMzZlYzc3MzE2ZjMyYThiYTYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZiMTdhYzRjZDU0YjMwNmMxZDc3NjFmZjRiODM4NTE3ZGYwNWU2YmJiZWQzM2RjM2RhNzI2YTk0ZWJkOWE5YzUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjoyLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjFjNzM1NTI3NDUzNGE0ZjdlZjc4MDE0Y2VlODNmODQ3ZjJkMWM4Y2M4OGI3Mzc5MmRmMWIwYWNmOGM4NWNkNDIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQzYjEzZWJhMWQzMjlmYzU3MzcxZWM0MTJkNTE1MjhlZjMzZjhkYjNhYzVhMzNjYjJkNDAzNWYwYmI4MWU2NmUifQ"
+        },
+        {
+          "resource": "repo://client/src/pages/table-detail/DocumentPagination.tsx#L10-L26",
+          "version": "repo-lines-v1:sha256:5bb48b3bfdd50b351f2f34c099bf2d7bd036d5b0b5c9478d7136283ebf29d814:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZjNjM0NmM1ZmM2ZGM1MDcyODBkM2ZhMWRmYWFiMzMyNGZlYTNiMzU0NDdkYjdmZTcwYzRiYmNhZjc1ZGQyODkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBjZjQzOGVhODdiODkxZTEwMWU2Y2I2OWQzNjg5MjM3ZTMyNTE1N2NiZWU0YWI2ZTdiMWE5ODlkYzNiYzJkODciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjkwNDQ4NWE5NmQxYzI2NTdiZjE3NDM0YTMxMDdiZmI0ZjM2Y2IyMDE1OTE4Njc5NTE3NTllYWUzNGE1NDM0MzkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjBhMzI4N2ZkOTA2YzkwNTVlMTY2OGNiNzZmNzQ3NjUwYWNlZmU1NjliM2I2ZTM2MDE3ZGNkMmMyMTI5MDcxNzYifQ"
+        },
+        {
+          "resource": "repo://client/src/pages/table-detail/DocumentPagination.tsx#L27-L77",
+          "version": "repo-lines-v1:sha256:11a95d878481beadf23da74ea3e4fa45e60bfc1041de61768d24fec46dc8d0b4:eyJzZWxlY3RlZExpbmVDb3VudCI6NTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIyNTJmYWQ0MzFiNTUxOWZkNWI5ZTQ3Njg0MjgzMmMzNjkwMzI2MDU5NmZiMmIyNWRhYzA1ZGQ2NGMzYmJjZjIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFmMDFhNTBjYmU5MzIzMWY4ZDdkMjUzMjhmZjE0N2YyYjY5MDQ2YWRhN2QwZjkwODdjNThhMmRjM2UwZWJkNjkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJiOGY0ZGE2ZjRmOWQ0OTQ1YjU3NTRiMGVmMWJiM2JiYzJhMjZhMmNmNzUxMDNlNWRlOWNlNTMwNmVjOTJjMjMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoyLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE0Y2MwYjk1NzA5ZTYzNDI4MDM1MTE3ZWE2NjhlNjY2NzY5ODBlYjg5MGM3OWRkZDQ2ZGY0ZDljNDllOWQyODIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_887cbfacf45d4c99b6ac1f9fc4e6fabc",
+      "statement": "Table create/list API routes require platform-superuser access and Solution contexts cannot create undeclared tables; document insertion evaluates policy before repository writes and document queries compile a read filter before repository access.",
+      "evidence": [
+        {
+          "resource": "repo://api/src/routers/tables.py#L1210-L1277",
+          "version": "repo-lines-v1:sha256:8b031732ac07bb21fbb8b673fad3d777e981a3e84d3d80a281885d94b4c1facb:eyJzZWxlY3RlZExpbmVDb3VudCI6NjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ1MzI2OTVmZjkxMTMzNTM5M2YyZWMyMjNmYWE0OWMwZTFjNTJjNDU2YzQ3MmU0ZWE0MzkzYmRkMTNmZDgxOTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdiNDA5Y2MzMzQ3OWZhNDc0N2E3ZThkZDI3NWU5OTY1MjE1MDcwMzZmNDRkZTkxZjJjNWMwYWNiMzFiYWJkYmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImVhOWIyYWI3NzM2ZjI5Y2FiNTdkYjZiMWUzMWVlNmJhMmUxYmNhMmQ0NzlmYjEwODE0NTdlZDE1MWUyNDgxZTciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImRjNjAwMmVmNDc2NWUyNzE4NzhlMjg4OGM1ODRjYWE2N2U0YjllZDAyMWMwODU4OWFhNWY3MWQ0NTI4ZDI1ZWUifQ"
+        },
+        {
+          "resource": "repo://api/src/routers/tables.py#L1532-L1579",
+          "version": "repo-lines-v1:sha256:cda94dcb71566f839386c6c5bbcf474014dcf895794b2dcd92acf3d9be43c059:eyJzZWxlY3RlZExpbmVDb3VudCI6NDgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ1MzI2OTVmZjkxMTMzNTM5M2YyZWMyMjNmYWE0OWMwZTFjNTJjNDU2YzQ3MmU0ZWE0MzkzYmRkMTNmZDgxOTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM5MDIxYTcyMzBmMzEzM2M2NTFmOTZjMmE4NWVmNWRiNDU4NjZlMDE0YzgwMTJjNTc3ZDUxNDUxZmYyMDRmYmEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIzZGYyYWNmMDZlOGMzZjAzYzcxMzVjNmU4YWM1YTljYTU0MzJhYmUwNmE3NGFjYTBmZGQ5YTUzYTAwOGY5ODciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhjYzRhN2QxY2M3OTZhYmEzZTQ2NzIzMzI3ZjUxN2U5ZjgxMTk4MmQyNTBmMDcwMjk4NmU0YjU3NjRhZDk1ODkifQ"
+        },
+        {
+          "resource": "repo://api/src/routers/tables.py#L842-L920",
+          "version": "repo-lines-v1:sha256:477b814f7e25ad493fc94c7e278f58343a49bfb4a97fdc74d5744b512959fe33:eyJzZWxlY3RlZExpbmVDb3VudCI6NzksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ1MzI2OTVmZjkxMTMzNTM5M2YyZWMyMjNmYWE0OWMwZTFjNTJjNDU2YzQ3MmU0ZWE0MzkzYmRkMTNmZDgxOTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwYzFmMTg4ZjE0MmVkN2E4MjQ2ODBiMjA3MTcyYzU1MTliYzYxNGE0OGZkYTdjZjE2N2VkYjhkZGY3OTk1NmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImVhOWIyYWI3NzM2ZjI5Y2FiNTdkYjZiMWUzMWVlNmJhMmUxYmNhMmQ0NzlmYjEwODE0NTdlZDE1MWUyNDgxZTciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImEwOGYyZjI1NzdhYTFiM2RiZjJiZjljNzRjNmZiNGYxNmYxMzA5MzNkMzllNDBkZDk4NzFlNDZjMzAyNmM2ZGUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_952e77153b674989ace81a99d97d2833",
+      "statement": "When a configured table WebSocket policy is evaluated, its loader refreshes role IDs and names directly from the database before custom-claim pre-resolution; file-subscription role hydration instead uses the cache-backed loader when roles are not already populated.",
+      "evidence": [
+        {
+          "resource": "repo://api/shared/role_cache.py#L118-L138",
+          "version": "repo-lines-v1:sha256:9a145aeae3b9a46278edca0378cb05aea478e956a9daddb375976c546f155554:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVjYjQxOTQzZTlmYWE3YWUxMzUwMDUyNWVhZDc0NWNjODIyZTBlY2I4Mjg0MzRhNDUyNWIxYmIxOGVhNmFlNDIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNjMWY4M2NkNmU2ZDJiMmQ1NjAyMDBmMGE5OTY0YmI0MDYwOWQ0YjczNDE5NGQ2ZDU2NjgzNjNmZmRmYjVjMjIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjYwYTE2N2MyMTM3NjYxMmI3ZThhYjEwNWEyZTdkNmQ3YjFkYWNmOTlkNWU4YTliYjY2MjU0MDQ2ODJhMDk2NGIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImNlYzc1MTg4MzgzM2M3ZThjMmQ3Y2JjOTRkYzVhZTI2OWFmNzlhYThlM2M5YTJkYzQ0ZGFkNzM5NDkyZDI1NGIifQ"
+        },
+        {
+          "resource": "repo://api/shared/role_cache.py#L55-L62",
+          "version": "repo-lines-v1:sha256:f668ab9cea69a5dec5acdad7c0c0ba01a0f794f44f925a1660499c8c0d831296:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMGQwODI2NjRlNmVkYmFhYzBmY2IzZGUyZGQ2ZmZjZTNkOTRjMTYyN2Q5NGViZGIyNWQ3NGJlZjRhNDk3ZDZjYiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMWE0Y2YyYWI3NTFiMGIyNjc2M2U5NzY0OTI1MDcwNjE5Y2ZkNjFiODRhYzAxNWFjNjgxZTI0YjE4MjlmZDE1YiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYjMyZmY0ZGQ3ZjRjM2U5NjRkYTk0ODFmMjI5MmM2ZjE5YmVkMTNiY2MwYmE0OTMwNzQ2NGNkYTM3ZjFiMjc5YSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOGJjNWM5NDAyYTNlYjk2NGMzMmY1ZDcwYzJjZGE0ODI2YTRiODY2OTJlNzI1MTg1MmVjNTdiOTQzZDAwYjI4MSJ9"
+        },
+        {
+          "resource": "repo://api/src/routers/websocket.py#L279-L295",
+          "version": "repo-lines-v1:sha256:f7217b6c63be5443f58faa85cf7a02eaf8ef32843425c6f329e26f5f524ec336:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ1YTczZjQ3ZWE0ZDUzODM1NTY4ZWI4YjE1OWZjZDFkZDhiMWI5ZmVhNmFhNzJiYmNiNTRiZDk2M2MyMzU4NzUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU5MDlhNTNhNjE4ZDAyOGUxZDMwMDBjMGE3YWJjZWVjYmU1ZmIzN2Y0ZTUxMWVmZTQ2NjQzZmFkNmU2Njg3MmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQ1OTVjOGJhZjZjOTZhOTQzNDNlMzMxM2Q4MzEyMGVhYzZjZjUwZWVkZGU3M2ZjYTFjN2UwNDRhNzdjOWI4NDkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM2NmQ2NmMxNDZhNDMyMWI1ODE3ODcyNDllNjAxM2VkMzdhMjBjNzAwZGZiYzZmYzJhNjRjMzg1NjA4MmJiYTgifQ"
+        },
+        {
+          "resource": "repo://api/src/routers/websocket.py#L300-L315",
+          "version": "repo-lines-v1:sha256:2809a87ba3df1e7bb346e1bf448e55041c905c4fa5ef43933838400df4a814c5:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY1NTNiYjIwMTJkYTBhOGVjNThjNmFmNzM0OTg5OTZmMmZjMjcxNGY5YTFhNDJjODE4ODUwYzM2YTNjODQwYmUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUwNWQ4ODVmZDQ0MmU0YTEyOGU1ODc3Nzc4ZDA0MTYyNDA4Zjk4ZGNhOTU3ZjBiOTdlMmY1NmQ5MzUxZTExMDIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE4NDE3ZjQ1ZWJjMTJmMzI4NDk2MjNjN2UwODI4MzFmOWExYjk0ZjM1ZmM3N2YwYjRkNmIwZWNiZGIyYjgxOGYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZlNDcxYjIwMjIyNTYzOGQ2ZDFiNzk5NGEzZDcwNGQzMzJhYmUyMmE2NjlhN2RkZThmNDc3YWQ2ZjY1YjZkNjkifQ"
+        },
+        {
+          "resource": "repo://api/src/routers/websocket.py#L481-L497",
+          "version": "repo-lines-v1:sha256:03ee6d50dbcba64fc66120b99e602bcee09cc92eb4a9889b8fe10a67b7d9ffbf:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAwM2FiZTBmNzc5OTEyNzNhZWNiOGRiN2I1NzcyZWE1MjUwYmQ2NWEwZjg0NzA4ZGVjOGU3ODFhY2EwNzAwYmUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhmZTY0MDc4NTVkMWMyMDJmODBlYTY4OTNlOWFmOWJjNjkwODk0ZjMzZGQ2OWE0ODUzZDBhYzI1NmZkZDdlMmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg1Zjc4ZTdmODJlMDhmYTJmZTAxZGM1YTA5ODViNWJiMmMwY2Y2NGUwNTExNGNmNWNiM2FlMGJhMWFjODFlMDUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjEzNDE5ZjRhYTNiNzg0ZDMxY2Q4YTVjMmQyNDBlNmU3NmQ2YWI2NjAzNDhjNTVmMGMzNmIwZTY4Yjc5YTVmOTAifQ"
+        },
+        {
+          "resource": "repo://api/src/routers/websocket.py#L640-L650",
+          "version": "repo-lines-v1:sha256:8e6065e1503b2925989ed4973678e0f0f43b62ee30e337c9b9d66059d082a2c1:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgzYzdjM2ExY2QzOTc4NDFiNDMwOGMzNjNlM2I5N2E5YTliNWJhNzlhNmMzNGY1NWY4ZDgzN2YzNjUzMzRlMTAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjEzYWE4YWQyMWRhNmU3YjEwYTNmNGY0N2E5YTc3NmFjMWE4MTA1Y2RjNTEyNzQ3YjYxZGE2ZjkzNmJhNGQzNGIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE4MWFiZmNiM2ZhZjU2MWQ0MjU0OGNkOTg5NGY3YmUwZDUzZjJmNDMwN2FiY2Y0YWQyMGVlNGQxMGJjY2E2MzgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImEzYWUwMmY3ZTVjNzk0MTU3YTk3NDdjNDAyODU3ODY5MzE1MmM5NGNmNTJmOGZlMmNhM2JmYTI3YTdmNjI1ZDAifQ"
+        },
+        {
+          "resource": "repo://api/tests/unit/test_role_cache.py#L208-L221",
+          "version": "repo-lines-v1:sha256:ca404bfb77b04e8329bb599996d3bb48c39997e0929c5dc00ebe130035f5dd00:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJkOTk0MmRlYjdkYmFiYzExNGIxYzQ4ZDAyZGE0NjM4NmU5YWNhNTE1YTUyZmI3YjNjNDEyZGM2Mjc5MjFiMDgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE2MTQ3MWU0MDAxNTdiZWY2NWU2Yzg1MDNlZWMyMTBjZWFmZTE0YTAyOWFkOWI4OWM2ODZlYzRjZGQ1MzI5YTciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg4NmFjYTAwYTQxMzNjYzU3ZGEzNzJhNjJhYWE3ODg3NThmMjFlYmVkNGNkYzc0ZGE0NDFjMTc1OGU1MTM5OGIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijg1MjRjOTVmZGZmNTI3ZWJlZThmZmM3YTJkNTM5MDc4OWFjMDYxOTc5MGU2Nzg5NTgzMzAwZjhjMjJlMTcwNzgifQ"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.7.2",
+    "at": "2026-10-18T09:57:17.518Z"
+  }
+}

@@ -39,6 +39,11 @@ const TRANSIENT_5XX = new Set([502, 503, 504]);
 // would create duplicate resources.
 const IDEMPOTENT_METHODS = new Set(["GET", "PUT", "DELETE", "HEAD", "OPTIONS"]);
 
+// Workflow endpoint routes execute work for every accepted HTTP method,
+// including verbs that are normally idempotent. A transient response therefore
+// cannot be replayed safely without server-side idempotency support.
+const NON_REPLAYABLE_PATH_PREFIXES = ["/api/endpoints/"];
+
 // Backoff schedule (ms) between retry attempts. Up to 3 retries on top of
 // the initial attempt, totaling ~3s of additional latency in the worst case.
 const RETRY_BACKOFF_MS = [250, 750, 2000];
@@ -51,10 +56,18 @@ function isIdempotent(method: string): boolean {
 	return IDEMPOTENT_METHODS.has(method.toUpperCase());
 }
 
+function isReplaySafeRequest(method: string, url: string): boolean {
+	if (!isIdempotent(method)) return false;
+	const pathname = new URL(url, "https://bifrost.invalid").pathname;
+	return !NON_REPLAYABLE_PATH_PREFIXES.some((prefix) =>
+		pathname.startsWith(prefix),
+	);
+}
+
 /**
  * Wrap a fetch operation with retry on transient 5xx (502/503/504) for
- * idempotent methods. Non-idempotent requests (POST/PATCH) pass through
- * unchanged.
+ * replay-safe operations. Non-idempotent methods and side-effectful workflow
+ * execution routes pass through unchanged.
  *
  * The `doFetch` callback MUST produce a fresh Request each call — if a
  * Request with a body is reused, its body stream will be consumed after
@@ -62,9 +75,10 @@ function isIdempotent(method: string): boolean {
  */
 async function withTransient5xxRetry(
 	method: string,
+	url: string,
 	doFetch: () => Promise<Response>,
 ): Promise<Response> {
-	if (!isIdempotent(method)) return doFetch();
+	if (!isReplaySafeRequest(method, url)) return doFetch();
 	let response = await doFetch();
 	for (const delay of RETRY_BACKOFF_MS) {
 		if (!isTransient5xx(response.status)) return response;
@@ -86,7 +100,7 @@ async function retryAfterTransient5xx(
 	baseRequest: Request,
 	initialResponse: Response,
 ): Promise<Response> {
-	if (!isIdempotent(method)) return initialResponse;
+	if (!isReplaySafeRequest(method, baseRequest.url)) return initialResponse;
 	let response = initialResponse;
 	for (const delay of RETRY_BACKOFF_MS) {
 		if (!isTransient5xx(response.status)) return response;
@@ -349,7 +363,7 @@ baseClient.use({
 		// Stash a pre-send clone so onResponse can replay this request on
 		// transient 5xx (idempotent methods only — POST/PATCH bodies would
 		// just hold memory we never use).
-		if (isIdempotent(request.method)) {
+		if (isReplaySafeRequest(request.method, request.url)) {
 			_requestClones.set(request, request.clone());
 		}
 
@@ -374,7 +388,10 @@ baseClient.use({
 		// Retry transient 5xx (502/503/504) on idempotent methods. Rides
 		// through brief windows during a rolling API deploy where a pod is
 		// dropping out of the LB.
-		if (isTransient5xx(response.status) && isIdempotent(request.method)) {
+		if (
+			isTransient5xx(response.status) &&
+			isReplaySafeRequest(request.method, request.url)
+		) {
 			const baseRequest = _requestClones.get(request) ?? request;
 			return retryAfterTransient5xx(
 				request.method,
@@ -491,7 +508,7 @@ export function withUserContext(userId: string) {
 
 			// Stash a pre-send clone for transient 5xx replay (idempotent
 			// methods only).
-			if (isIdempotent(request.method)) {
+			if (isReplaySafeRequest(request.method, request.url)) {
 				_requestClones.set(request, request.clone());
 			}
 
@@ -501,7 +518,7 @@ export function withUserContext(userId: string) {
 			const finalResponse = await handleAuthResponse(request, response);
 			if (
 				isTransient5xx(finalResponse.status) &&
-				isIdempotent(request.method)
+				isReplaySafeRequest(request.method, request.url)
 			) {
 				const baseRequest = _requestClones.get(request) ?? request;
 				return retryAfterTransient5xx(
@@ -594,7 +611,7 @@ export async function authFetch(
 
 	// Wrap the fetch + auth-handling in transient-5xx retry. Each attempt
 	// clones the assembled Request so any body stream is fresh.
-	return withTransient5xxRetry(method, async () => {
+	return withTransient5xxRetry(method, request.url, async () => {
 		const response = await fetch(request.clone());
 		return handleAuthResponse(request.clone(), response);
 	});

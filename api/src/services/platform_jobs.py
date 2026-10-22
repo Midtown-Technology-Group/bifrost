@@ -158,7 +158,7 @@ async def publish_platform_job_update(job: PlatformJob) -> None:
     if job.notification_id is not None:
         try:
             description = job.phase or job.status.replace("_", " ").capitalize()
-            await get_notification_service().update_notification(
+            await get_notification_service().update_platform_job_notification(
                 str(job.notification_id),
                 NotificationUpdate(
                     status=_notification_status(job.status),
@@ -171,6 +171,8 @@ async def publish_platform_job_update(job: PlatformJob) -> None:
                         else None
                     ),
                 ),
+                job_id=str(job.id),
+                revision=job.revision,
             )
         except Exception:
             logger.warning(

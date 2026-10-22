@@ -13,6 +13,10 @@ from datetime import datetime, timezone
 from typing import Any, Literal
 from uuid import UUID
 
+from bifrost.agent_limits import (
+    DEFAULT_AGENT_RUN_TIMEOUT_SECONDS,
+    bounded_agent_run_timeout,
+)
 from sqlalchemy import select, text
 from sqlalchemy.orm import selectinload
 
@@ -26,8 +30,8 @@ from src.jobs.execution_policy import broker_execution_policies
 from src.jobs.rabbitmq import BaseConsumer, DuplicateMessage, MalformedMessage
 from src.models.contracts.agents import ChatStreamChunk
 from src.models.enums import MessageRole
-from src.models.orm.agents import Agent, Conversation
 from src.models.orm.agent_runs import AgentRun
+from src.models.orm.agents import Agent, Conversation
 from src.services.execution_attempts import (
     start_execution_attempt,
     transition_execution_attempt,
@@ -41,8 +45,21 @@ logger = logging.getLogger(__name__)
 
 QUEUE_NAME = "agent-runs"
 REDIS_PREFIX = "bifrost:agent_run"
-DEFAULT_RUN_TIMEOUT = 1800  # 30 minutes
+DEFAULT_RUN_TIMEOUT = DEFAULT_AGENT_RUN_TIMEOUT_SECONDS
 CANCEL_CHECK_INTERVAL = 2  # seconds between cancel flag checks
+
+
+def _terminal_status_for_agent_result(
+    current_status: str,
+    result_status: str,
+) -> str | None:
+    """Resolve whether this consumer still owns the run's terminal transition."""
+    if current_status == "running":
+        return result_status
+    if current_status == "cancelling":
+        # Once cancellation is accepted it wins a race with executor completion.
+        return "cancelled"
+    return None
 
 
 async def _publish_sync_result(run_id: str, result: dict) -> None:
@@ -415,7 +432,10 @@ class AgentRunConsumer(BaseConsumer):
             await publish_agent_run_update(agent_run, agent.name if agent else "Unknown")
 
             # Run the agent with timeout (Layer 1: hard safety net)
-            run_timeout = agent.max_run_timeout or DEFAULT_RUN_TIMEOUT
+            run_timeout = bounded_agent_run_timeout(
+                agent.max_run_timeout,
+                default=DEFAULT_RUN_TIMEOUT,
+            )
 
             async with get_redis() as redis_for_executor:
                 # Agent/MCP provider clients are heavyweight and unused until an
@@ -503,8 +523,13 @@ class AgentRunConsumer(BaseConsumer):
                     )
                     await db.commit()
                     return
-                if run_obj.status == "running":
-                    run_obj.status = run_result.get("status", "completed")
+                result_status = run_result.get("status", "completed")
+                persisted_result_status = _terminal_status_for_agent_result(
+                    run_obj.status,
+                    result_status,
+                )
+                if persisted_result_status is not None:
+                    run_obj.status = persisted_result_status
                     run_obj.output = (
                         run_result.get("output")
                         if isinstance(run_result.get("output"), dict)
@@ -538,16 +563,19 @@ class AgentRunConsumer(BaseConsumer):
                 if executor:
                     await executor.flush_to_db(db)
 
+                attempt_result_status = persisted_result_status or result_status
                 attempt_status = {
                     "completed": "succeeded",
                     "cancelled": "cancelled",
-                }.get(run_result.get("status"), "failed")
+                }.get(attempt_result_status, "failed")
                 await transition_execution_attempt(
                     db,
                     attempt_id=attempt_id,
                     status=attempt_status,
                     failure_code=(
-                        None if attempt_status == "succeeded" else run_result.get("status")
+                        None
+                        if attempt_status == "succeeded"
+                        else attempt_result_status
                     ),
                     failure_message=run_result.get("error"),
                 )
@@ -742,9 +770,11 @@ class AgentRunConsumer(BaseConsumer):
         """Claim a published run under the publisher's advisory lock.
 
         Existing queued rows advance to running before the agent can execute.
-        Scheduled rows represent an unconfirmed publication and all later
-        states represent redelivery, so neither may execute. Legacy messages
-        without a pre-created row retain the historical consumer-create path.
+        The broker delivery itself confirms publication, so scheduled rows
+        recover a publisher that died after broker confirmation but before its
+        queued commit. Later states represent redelivery and may not execute.
+        Legacy messages without a pre-created row retain the historical
+        consumer-create path.
         """
         try:
             run_uuid = UUID(run_id)
@@ -762,7 +792,7 @@ class AgentRunConsumer(BaseConsumer):
             agent_run = await db.get(AgentRun, run_uuid, with_for_update={"of": AgentRun})
             await require_delivery_ownership(db)
             if agent_run is not None:
-                if agent_run.status != "queued":
+                if agent_run.status not in {"scheduled", "queued"}:
                     return None
                 agent_run.status = "running"
             attempt = await start_execution_attempt(
@@ -784,9 +814,10 @@ class AgentRunConsumer(BaseConsumer):
         """Fail a published run whose required Redis context disappeared.
 
         The publisher uses the same transaction lock. If it is still between
-        broker confirmation and the queued commit, this waits and observes the
-        committed state. SCHEDULED and terminal rows are left untouched; only
-        a confirmed queued run is failed.
+        broker confirmation and the queued commit, this waits for the
+        transaction. Once this delivery owns the lock, scheduled and queued
+        both represent confirmed work and must be terminalized rather than
+        acknowledged without durable evidence.
         """
         try:
             run_uuid = UUID(run_id)
@@ -805,7 +836,7 @@ class AgentRunConsumer(BaseConsumer):
             await require_delivery_ownership(db)
             if agent_run is None:
                 return None
-            if agent_run.status == "queued":
+            if agent_run.status in {"scheduled", "queued"}:
                 agent_run.status = "failed"
                 agent_run.error = "Agent run context was unavailable before execution"
                 agent_run.completed_at = datetime.now(timezone.utc)
@@ -898,10 +929,9 @@ class AgentRunConsumer(BaseConsumer):
                 )
                 chat_agent = result.scalar_one_or_none()
 
-        run_timeout = (
-            chat_agent.max_run_timeout
-            if chat_agent is not None and chat_agent.max_run_timeout
-            else DEFAULT_RUN_TIMEOUT
+        run_timeout = bounded_agent_run_timeout(
+            chat_agent.max_run_timeout if chat_agent is not None else None,
+            default=DEFAULT_RUN_TIMEOUT,
         )
         from src.services.agent_executor import AgentExecutor
 

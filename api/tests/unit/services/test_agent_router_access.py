@@ -15,7 +15,7 @@ from src.models.orm.agents import Agent, AgentRole, Conversation
 from src.models.orm.organizations import Organization
 from src.models.orm.users import Role, User, UserRole
 from src.services.agent_executor import AgentExecutor
-from src.services.agent_router import AgentRouter
+from src.services.agent_router import AgentRouter, ROUTER_MAX_OUTPUT_TOKENS
 from src.services.llm import LLMResponse
 
 
@@ -176,10 +176,12 @@ def _agent_double(
     description: str | None = None,
     tools: list[object] | None = None,
     knowledge_sources: list[str] | None = None,
+    organization_id: UUID | None = None,
 ):
     return SimpleNamespace(
         name=name,
         description=description,
+        organization_id=organization_id,
         tools=tools or [],
         knowledge_sources=knowledge_sources or [],
     )
@@ -196,15 +198,32 @@ async def test_router_returns_no_agents_without_user_context():
 
 @pytest.mark.asyncio
 async def test_router_describes_agent_tools_and_knowledge_for_llm_prompt():
+    agent_org_id = uuid4()
     agent = _agent_double(
         "Helpdesk",
         description=None,
         tools=[
-            SimpleNamespace(name="reset_password", type="tool", is_active=True),
-            SimpleNamespace(name="draft_reply", type="workflow", is_active=True),
-            SimpleNamespace(name="disabled_tool", type="tool", is_active=False),
+            SimpleNamespace(
+                name="reset_password",
+                type="tool",
+                is_active=True,
+                organization_id=agent_org_id,
+            ),
+            SimpleNamespace(
+                name="draft_reply",
+                type="workflow",
+                is_active=True,
+                organization_id=agent_org_id,
+            ),
+            SimpleNamespace(
+                name="disabled_tool",
+                type="tool",
+                is_active=False,
+                organization_id=agent_org_id,
+            ),
         ],
         knowledge_sources=["halopsa-tickets", "runbooks"],
+        organization_id=agent_org_id,
     )
     router = AgentRouter(lambda: None)  # type: ignore[arg-type]
 
@@ -239,6 +258,9 @@ async def test_route_message_handles_direct_empty_unknown_and_matched_llm_respon
 
         llm_client.complete = AsyncMock(return_value=LLMResponse(content="helpdesk"))
         assert await router.route_message("ticket help", [agent]) is agent  # type: ignore[list-item]
+        assert llm_client.complete.await_args.kwargs["max_tokens"] == (
+            ROUTER_MAX_OUTPUT_TOKENS
+        )
 
 
 @pytest.mark.asyncio
