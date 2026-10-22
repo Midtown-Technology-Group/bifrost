@@ -50,7 +50,21 @@ source/configuration/run/attempt refusal, failed/skipped/missing scan refusal,
 expired or corrupt artifact refusal, unchanged report bytes and task identity,
 rerun-race refusal and fallback without a forged success output. Existing CI
 must qualify the clean candidate; no new required workflow is introduced.
-Historical timing will be bound to live job receipts before PR publication.
+The October 22 live audit binds both runs to exact source
+`4048e4bd33d327e9e77e2a0a559d94a9db0ee9c7`, attempt 1:
+
+| Existing receipt | Started UTC | Completed UTC | Result |
+| --- | --- | --- | --- |
+| [Main coverage 119606494182](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/39712263857/job/119606494182) | 02:37:18 | 03:55:56 | Success |
+| [Main analysis 119629565614](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/39712263857/job/119629565614) | 03:55:59 | 04:02:12 | Actual analysis succeeded |
+| [Tag coverage 119633083348](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/39720162215/job/119633083348) | 04:08:08 | 05:03:20 | Success; repeated collection |
+| [Create Release 119639279438](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/39720162215/job/119639279438) | 04:28:56 | 04:31:00 | Success |
+
+Tag analysis job `119649354416` was skipped. The duplicate collector lasted
+55m12s and ended 32m20s after Create Release; do not describe this as a
+55-minute delay in artifact publication. It prolonged whole-run success and
+therefore the existing infra consumer's qualification wait. This is a measured
+historical tail, not a promised speedup for this unmerged candidate.
 
 Non-goals: single-pass producer/shard redesign, PR-to-main tree projection,
 Sonar plan or effective-settings changes, skipping tag tests or image content
