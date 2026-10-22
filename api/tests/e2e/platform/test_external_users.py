@@ -448,7 +448,21 @@ class TestExternalKnowledgeDenied:
         )
         assert resp.status_code == 403, resp.text
 
-    def test_normal_user_lists_global_doc(
+    def test_external_denied_sdk_knowledge_get(
+        self, e2e_client, external_user, global_kb_doc
+    ):
+        resp = e2e_client.get(
+            "/api/sdk/knowledge/get",
+            headers=external_user.headers,
+            params={
+                "namespace": global_kb_doc["namespace"],
+                "key": "global-secret",
+                "scope": "global",
+            },
+        )
+        assert resp.status_code == 403, resp.text
+
+    def test_normal_user_without_namespace_grant_cannot_list_global_doc(
         self, e2e_client, org1_user, global_kb_doc
     ):
         resp = e2e_client.get(
@@ -457,8 +471,8 @@ class TestExternalKnowledgeDenied:
             params={"namespace": global_kb_doc["namespace"]},
         )
         assert resp.status_code == 200, resp.text
-        assert global_kb_doc["id"] in {d["id"] for d in resp.json()}, (
-            "normal org user must still read the global knowledge document"
+        assert global_kb_doc["id"] not in {d["id"] for d in resp.json()}, (
+            "global document scope must not bypass namespace RBAC"
         )
 
 

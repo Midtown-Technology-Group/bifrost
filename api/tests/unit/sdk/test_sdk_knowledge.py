@@ -601,6 +601,9 @@ class TestHandlerAdapters:
         ), patch(
             "src.services.embeddings.get_embedding_client",
             AsyncMock(return_value=_FakeEmbedder()),
+        ), patch(
+            "src.routers.cli.accessible_knowledge_namespaces",
+            AsyncMock(return_value=None),
         ):
             items = await cli_knowledge_search(
                 CLIKnowledgeSearchRequest(query="q"), user, session
@@ -613,7 +616,14 @@ class TestHandlerAdapters:
     async def test_get_handler_miss_maps_to_404(self):
         from src.routers.cli import cli_knowledge_get
         repo = AsyncMock(get_by_key=AsyncMock(return_value=None))
-        with patch.object(svc.knowledge_repo_module, "KnowledgeRepository", return_value=repo):
+        with patch.object(
+            svc.knowledge_repo_module,
+            "KnowledgeRepository",
+            return_value=repo,
+        ), patch(
+            "src.routers.cli.accessible_knowledge_namespaces",
+            AsyncMock(return_value=None),
+        ):
             with pytest.raises(HTTPException) as exc:
                 await cli_knowledge_get("absent", "ns", None, _user(), _session())
         assert exc.value.status_code == 404

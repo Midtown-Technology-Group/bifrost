@@ -59,6 +59,9 @@ class _User:
         self.organization_id = None
         self.is_superuser = True
         self.is_provider_org = False
+        self.roles = []
+        self.embed = False
+        self.engine_execution_id = None
 
 
 class _FailingEmbedder:
