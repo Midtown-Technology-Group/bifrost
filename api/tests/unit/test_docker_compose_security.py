@@ -43,3 +43,12 @@ def test_seaweedfs_uses_explicit_s3_identity_config() -> None:
     assert "$${AWS_ACCESS_KEY_ID}" in command
     assert "$${AWS_SECRET_ACCESS_KEY}" in command
     assert "-s3.config=/tmp/seaweedfs-s3.json" in command
+
+
+def test_direct_api_cors_defaults_to_an_explicit_origin() -> None:
+    """Production direct-browser access must never default back to wildcard."""
+    api_environment = _load_compose()["services"]["api"]["environment"]
+
+    assert api_environment["BIFROST_CORS_ORIGINS"] == (
+        "${BIFROST_CORS_ORIGINS:-http://localhost:3000}"
+    )
