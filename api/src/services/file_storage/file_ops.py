@@ -282,46 +282,8 @@ class FileOperationsService:
             cached_ast = detection_result.ast_tree
             cached_content_str = detection_result.content_str
 
-        # Write ALL files to S3 under _repo/ prefix — this is the durable store.
-        # Platform entities also go to S3 so the Redis→S3 fallback works for workers.
-        s3_key = f"{REPO_PREFIX}{path}"
-        async with self._s3_client.get_client() as s3:
-            await s3.put_object(
-                Bucket=self.settings.s3_bucket,
-                Key=s3_key,
-                Body=content,
-                ContentType=content_type,
-            )
-
-        now = datetime.now(timezone.utc)
-
-        # Write to file_index (the sole search index)
-        # Binary files (containing null bytes) can't be stored in PostgreSQL text columns,
-        # so we index them with path only (no content) for listing/existence checks.
         content_str = cached_content_str or content.decode("utf-8", errors="replace")
         is_binary = b"\x00" in content
-        fi_stmt = insert(FileIndex).values(
-            path=path,
-            content="" if is_binary else content_str,
-            content_hash=content_hash,
-            updated_at=now,
-            updated_by=updated_by,
-        ).on_conflict_do_update(
-            index_elements=[FileIndex.path],
-            set_={
-                "content": "" if is_binary else content_str,
-                "content_hash": content_hash,
-                "updated_at": now,
-                "updated_by": updated_by,
-            },
-        )
-        await self.db.execute(fi_stmt)
-        await self.db.flush()
-
-        # Update module cache in Redis for immediate availability in virtual imports.
-        # Both workflows and modules need caching — workers load code via Redis→S3.
-        if path.endswith(".py"):
-            await set_module(path, content_str, content_hash)
 
         # Extract metadata for workflows/forms/agents
         # Pass cached AST and content_str to avoid re-parsing large Python files
@@ -355,6 +317,47 @@ class FileOperationsService:
                 pending_deactivations=pending_deactivations,
                 available_replacements=available_replacements,
             )
+
+        # Publish only validated content. Workers load executable source from
+        # Redis with S3 fallback, so either write before this authorization
+        # boundary would make a rejected file executable even though the
+        # surrounding database transaction is rolled back by the caller.
+        s3_key = f"{REPO_PREFIX}{path}"
+        async with self._s3_client.get_client() as s3:
+            await s3.put_object(
+                Bucket=self.settings.s3_bucket,
+                Key=s3_key,
+                Body=content,
+                ContentType=content_type,
+            )
+
+        now = datetime.now(timezone.utc)
+
+        # file_index is the search index and shares the caller's transaction.
+        # Binary files cannot be stored in PostgreSQL text columns, so retain
+        # only their path and hash there.
+        fi_stmt = insert(FileIndex).values(
+            path=path,
+            content="" if is_binary else content_str,
+            content_hash=content_hash,
+            updated_at=now,
+            updated_by=updated_by,
+        ).on_conflict_do_update(
+            index_elements=[FileIndex.path],
+            set_={
+                "content": "" if is_binary else content_str,
+                "content_hash": content_hash,
+                "updated_at": now,
+                "updated_by": updated_by,
+            },
+        )
+        await self.db.execute(fi_stmt)
+        await self.db.flush()
+
+        # Update module cache only after validation so rejected Python cannot
+        # become the worker's immediate execution source.
+        if path.endswith(".py"):
+            await set_module(path, content_str, content_hash)
 
         await _scan_for_sdk_issues(self._diagnostics, path, final_content)
         await _update_diagnostic_notification(self._diagnostics, path, diagnostics)

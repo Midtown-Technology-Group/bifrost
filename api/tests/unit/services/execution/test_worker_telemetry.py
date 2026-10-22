@@ -137,6 +137,75 @@ async def test_run_execution_emits_worker_span(monkeypatch):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("content_hash", "error_fragment"),
+    [
+        (None, "source integrity pin missing"),
+        ("0" * 64, "source integrity mismatch"),
+    ],
+)
+async def test_repo_execution_rejects_untrusted_source(
+    monkeypatch, content_hash, error_fragment
+):
+    """Repo jobs reject a missing or stale pin before module execution."""
+    fake_tracer = _FakeTracer()
+    monkeypatch.setattr(worker, "tracer", fake_tracer)
+    execute = AsyncMock()
+    untrusted_source = 'raise RuntimeError("module sentinel executed")'
+
+    with (
+        patch("bifrost.credentials.is_token_expired", return_value=False),
+        patch("src.core.module_cache_sync.set_solution_context"),
+        patch("src.core.module_cache_sync.clear_solution_context"),
+        patch(
+            "src.services.execution.workspace_modules.clear_workspace_modules",
+            return_value=SimpleNamespace(generation="generation-1", cleared=0, kept=0),
+        ),
+        patch(
+            "src.services.execution.virtual_import.get_virtual_finder",
+            return_value=None,
+        ),
+        patch("src.services.execution.virtual_import.install_virtual_import_hook"),
+        patch("src.services.execution.virtual_import.remove_virtual_import_hook"),
+        patch(
+            "src.core.module_cache_sync.assert_workspace_generation"
+        ),
+        patch(
+            "src.core.module_cache_sync.get_module_sync",
+            return_value={
+                "content": untrusted_source,
+                "path": "workflows/unpinned.py",
+                "hash": "cache-labelled-hash",
+            },
+        ) as get_module,
+        patch("src.services.execution.engine.execute", new=execute),
+    ):
+        payload = await worker._run_execution(
+            "exec-unpinned",
+            {
+                "name": "unpinned",
+                "function_name": "main",
+                "file_path": "workflows/unpinned.py",
+                "runtime_mode": "repo-v1",
+                "content_hash": content_hash,
+                "caller": {
+                    "user_id": "user-1",
+                    "email": "user@example.test",
+                    "name": "User One",
+                },
+                "parameters": {},
+            },
+        )
+
+    assert payload["status"] == ExecutionStatus.FAILED.value
+    assert payload["error_type"] == "RuntimeError"
+    assert error_fragment in payload["error_message"]
+    assert "module sentinel executed" not in payload["error_message"]
+    assert get_module.call_count == (0 if content_hash is None else 1)
+    execute.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_run_execution_clears_contexts_when_workspace_refresh_fails():
     refresh_error = RuntimeError("workspace refresh failed")
     with (

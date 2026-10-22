@@ -73,6 +73,7 @@ def _patch_redis(redis_holder):
 _created_definition_ids: list = []
 _created_workflow_ids: list = []
 _created_org_ids: list = []
+_created_source_paths: list[str] = []
 
 
 @pytest.fixture(autouse=True)
@@ -80,14 +81,20 @@ async def _cleanup_services(async_session_factory):
     _created_definition_ids.clear()
     _created_workflow_ids.clear()
     _created_org_ids.clear()
+    _created_source_paths.clear()
     yield
     from sqlalchemy import delete as sa_delete
 
     from src.models.orm.services import ServiceAttempt, ServiceDefinition
     from src.models.orm.workflows import Workflow
     from src.models.orm.organizations import Organization
+    from src.models.orm.file_index import FileIndex
 
     async with async_session_factory() as session:
+        if _created_source_paths:
+            await session.execute(
+                sa_delete(FileIndex).where(FileIndex.path.in_(_created_source_paths))
+            )
         if _created_definition_ids:
             await session.execute(
                 sa_delete(ServiceAttempt).where(
@@ -134,6 +141,9 @@ async def _ensure_org(db_session):
 
 
 async def _ensure_service(db_session, org=None, **overrides):
+    import hashlib
+
+    from src.models.orm.file_index import FileIndex
     from src.models.orm.workflows import Workflow
 
     org = org or await _ensure_org(db_session)
@@ -148,6 +158,14 @@ async def _ensure_service(db_session, org=None, **overrides):
         is_active=True,
     )
     db_session.add(wf)
+    source = "# Service routing fixture; execution is owned by the fake pool.\n"
+    db_session.add(FileIndex(
+        path=wf.path,
+        content=source,
+        content_hash=hashlib.sha256(source.encode()).hexdigest(),
+        updated_by="tester",
+    ))
+    _created_source_paths.append(wf.path)
     await db_session.flush()
     definition = await service_lifecycle.ensure_definition_for_workflow(
         db_session, wf, created_by="tester"
