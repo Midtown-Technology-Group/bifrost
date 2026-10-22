@@ -836,7 +836,8 @@ jobs:
         run: echo "MCP protocol surfaces are outside the affected closure."
 
   # =============================================================================
-  # E2E Tests - Sharded across 4 parallel runners. Each shard boots its own
+  # E2E Tests - Four shards; comprehensive PRs run at most two at once.
+  # Other events retain four-way concurrency. Each shard boots its own
   # isolated test stack (no xdist, no shared services between shards).
   # scripts/e2e_shard.py balances every file using full-suite JUnit timings.
   # Unknown files receive the measured median weight; no file is excluded.
@@ -861,6 +862,7 @@ jobs:
       packages: read
     strategy:
       fail-fast: false
+      max-parallel: ${{ github.event_name == 'pull_request' && needs.affected-test-plan.outputs.api_e2e_mode == 'comprehensive' && 2 || 4 }}
       matrix: ${{ fromJSON(needs.affected-test-plan.outputs.api_e2e_matrix || '{"include":[{"shard":0,"total":0}]}') }}
     steps:
       - name: Require a valid affected test plan
