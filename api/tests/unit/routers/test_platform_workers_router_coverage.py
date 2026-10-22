@@ -271,3 +271,63 @@ async def test_recycle_process_and_all_publish_commands():
     assert process_command["reason"] == "leak test"
     assert all_command["action"] == "recycle_all"
     assert all_command["reason"] == "operator"
+
+
+_MALFORMED_LEGACY_HEARTBEAT = {
+    "pool_size": 2,
+    "max_workers": "oops",
+    "idle_count": "1",
+    "busy_count": "1",
+    "available_slots": "n/a",
+    "saturation_ratio": "high",
+    "admission": {"rejections": {"timeout": "3"}},
+}
+
+
+def _malformed_redis() -> _FakeRedis:
+    redis = _FakeRedis()
+    redis.scan_results = [(0, ["bifrost:pool:worker-a"])]
+    redis.hashes = {"bifrost:pool:worker-a": {"hostname": "node-a"}}
+    redis.values = {
+        "bifrost:pool:worker-a:heartbeat": json.dumps(_MALFORMED_LEGACY_HEARTBEAT)
+    }
+    redis.exists_values = {"bifrost:pool:worker-a": 1}
+    return redis
+
+
+@pytest.mark.asyncio
+async def test_malformed_legacy_heartbeat_normalizes_across_endpoints():
+    with patch.object(
+        workers, "_get_redis", AsyncMock(return_value=_malformed_redis())
+    ):
+        pools = await workers.list_pools(_admin())
+    pool = pools.pools[0]
+    assert pool.pool_size == 2
+    assert pool.active_process_count == 2
+    assert pool.configured_capacity is None
+    assert pool.max_workers is None
+    assert pool.idle_count == 1
+    assert pool.busy_count == 1
+    assert pool.available_slots is None
+    assert pool.saturation_ratio is None
+
+    with patch.object(
+        workers, "_get_redis", AsyncMock(return_value=_malformed_redis())
+    ):
+        stats = await workers.get_pool_stats(_admin())
+    assert stats.total_processes == 2
+    assert stats.total_configured_capacity is None
+    assert stats.total_idle == 1
+    assert stats.total_busy == 1
+    assert stats.total_available_slots is None
+    assert stats.saturated_workers == 0
+    assert stats.admission_rejections == {"timeout": 3}
+
+    with patch.object(
+        workers, "_get_redis", AsyncMock(return_value=_malformed_redis())
+    ):
+        detail = await workers.get_pool("worker-a", _admin())
+    assert detail.configured_capacity is None
+    assert detail.max_workers is None
+    assert detail.available_slots is None
+    assert detail.saturation_ratio is None
