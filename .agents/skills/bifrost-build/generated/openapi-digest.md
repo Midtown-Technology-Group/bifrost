@@ -718,6 +718,7 @@
 | POST | `/api/workspace-repo-changesets/{changeset_id}/validate` |
 | POST | `/auth/admin/revoke-user` |
 | GET | `/auth/cli/authorize` |
+| POST | `/auth/cli/authorize` |
 | POST | `/auth/cli/start` |
 | POST | `/auth/cli/token` |
 | POST | `/auth/device/authorize` |

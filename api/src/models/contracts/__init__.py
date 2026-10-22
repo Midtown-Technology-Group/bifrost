@@ -579,6 +579,9 @@ if TYPE_CHECKING:
     )
     from src.models.contracts.base import ExecutionRetryFailure, ExecutionRetryPolicy  # noqa: F401
     from src.models.contracts.auth import (  # noqa: F401
+        CliNativeAuthAuthorizeRequest,
+        CliNativeAuthAuthorizeResponse,
+        CliNativeAuthPendingResponse,
         CliNativeAuthStartRequest,
         CliNativeAuthStartResponse,
         CliNativeAuthTokenRequest,

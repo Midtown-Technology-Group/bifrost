@@ -134,6 +134,24 @@ class CliNativeAuthStartResponse(BaseModel):
     expires_in: int = 300
 
 
+class CliNativeAuthPendingResponse(BaseModel):
+    """Pending native CLI request displayed before user consent."""
+    transaction_id: str
+    client_name: str = "Bifrost CLI"
+    redirect_uri: str
+    expires_in: int
+
+
+class CliNativeAuthAuthorizeRequest(BaseModel):
+    """Explicit browser confirmation for a pending native CLI request."""
+    transaction_id: str
+
+
+class CliNativeAuthAuthorizeResponse(BaseModel):
+    """Validated localhost callback URL after explicit user consent."""
+    redirect_url: str
+
+
 class CliNativeAuthTokenRequest(BaseModel):
     """Request to exchange a native CLI OAuth callback code for tokens."""
     transaction_id: str
