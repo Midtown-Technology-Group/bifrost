@@ -66,13 +66,19 @@ class WorkspaceReindexService:
         Returns:
             Number of files indexed
         """
-        if not self.settings.s3_configured:
+        if self.settings.object_storage_provider == "azure_blob":
+            if not self.settings.azure_blob_configured:
+                raise RuntimeError("Azure Blob storage not configured")
+            bucket = self.settings.azure_blob_container or ""
+        elif not self.settings.s3_configured:
             raise RuntimeError("S3 storage not configured")
+        else:
+            bucket = self.settings.s3_bucket
 
         count = 0
         async with self._s3_client.get_client() as s3:
             paginator = s3.get_paginator("list_objects_v2")
-            async for page in paginator.paginate(Bucket=self.settings.s3_bucket):
+            async for page in paginator.paginate(Bucket=bucket):
                 for obj in page.get("Contents", []):
                     key = obj.get("Key")
                     if not key:
@@ -91,7 +97,7 @@ class WorkspaceReindexService:
 
                     # Get content for hash
                     response = await s3.get_object(
-                        Bucket=self.settings.s3_bucket,
+                        Bucket=bucket,
                         Key=key,
                     )
                     content = await response["Body"].read()

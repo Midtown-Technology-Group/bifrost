@@ -146,6 +146,7 @@ async def test_source_artifact_writes_reads_and_deletes_exact_deployment_key(
     await storage.delete_deployment_source(app_id, deployment_id)
     assert memory.deleted == [key]
     assert memory.objects == {}
+    assert await storage.deployment_source_exists(app_id, deployment_id) is False
 
 
 @pytest.mark.asyncio

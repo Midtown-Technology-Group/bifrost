@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import sys
 from collections.abc import AsyncIterator
 from types import ModuleType
@@ -8,9 +9,13 @@ from unittest.mock import AsyncMock
 from urllib.parse import parse_qs, urlparse
 
 import pytest
+from azure.storage.blob.aio._download_async import StorageStreamDownloader
 
 from src.services.file_storage import azure_blob_client as azure_blob_client_module
-from src.services.file_storage.azure_blob_client import AzureBlobStorageClient
+from src.services.file_storage.azure_blob_client import (
+    AzureBlobCopyUnresolved,
+    AzureBlobStorageClient,
+)
 
 
 def _settings(**overrides):
@@ -249,20 +254,22 @@ async def test_list_objects_v2_shapes_contents_prefixes_and_continuation_token()
                     etag='"etag-a"',
                     last_modified="today",
                 )
-                yield SimpleNamespace(
-                    name="forms/nested/b.txt", size=20, etag='"etag-b"'
-                )
+                yield SimpleNamespace(prefix="forms/nested/")
                 self.continuation_token = "next-token"
 
             return page()
 
     class FakeContainer:
-        def list_blobs(self, **kwargs):
+        def walk_blobs(self, **kwargs):
             assert kwargs == {
                 "name_starts_with": "forms/",
+                "delimiter": "/",
                 "results_per_page": 2,
             }
             return FakePager()
+
+        def list_blobs(self, **kwargs):
+            raise AssertionError(kwargs)
 
     client._container_client = FakeContainer()
 
@@ -375,7 +382,14 @@ async def test_get_object_reads_download_stream_into_async_body(monkeypatch) -> 
         properties = SimpleNamespace(etag='"raw-etag"')
 
         async def readall(self):
-            return b"blob-bytes"
+            raise AssertionError("get_object buffered the whole blob")
+
+        async def chunks(self):
+            yield b"blob"
+            yield b"-bytes"
+
+        async def close(self) -> None:
+            return None
 
     class FakeContainer:
         async def download_blob(self, key):
@@ -388,7 +402,7 @@ async def test_get_object_reads_download_stream_into_async_body(monkeypatch) -> 
     response = await client.get_object(Bucket="ignored", Key="docs/readme.txt")
 
     assert await response["Body"].read() == b"blob-bytes"
-    assert response["ETag"] == '"raw-etag"'
+    assert response["ETag"] == "raw-etag"
 
     response = await client.get_object(Bucket="ignored", Key="docs/readme.txt")
     async with response["Body"] as body:
@@ -404,7 +418,13 @@ async def test_get_object_bounds_azure_download_before_buffering(monkeypatch) ->
 
     class Stream:
         async def readall(self):
-            return b"bounded"
+            raise AssertionError("ranged get_object buffered the whole range")
+
+        async def chunks(self):
+            yield b"bounded"
+
+        async def close(self) -> None:
+            return None
 
     class Container:
         async def download_blob(self, key, *, offset, length):
@@ -419,6 +439,125 @@ async def test_get_object_bounds_azure_download_before_buffering(monkeypatch) ->
     for invalid in ["bytes=7-0", "bytes=0-", "bytes=0-7,10-20", "other"]:
         with pytest.raises(ValueError, match="bounded inclusive"):
             await client.get_object(Bucket="ignored", Key="resource.json", Range=invalid)
+
+
+class _PinnedSdkDownloader:
+    """azure-storage-blob 12.29.0 StorageStreamDownloader: chunks/read/readall/readinto, no close."""
+
+    def __init__(self, pieces: list[bytes], *, fail_at: int | None = None):
+        self.properties = SimpleNamespace(etag='"etag-1"')
+        self._pieces = pieces
+        self._fail_at = fail_at
+
+    def chunks(self) -> AsyncIterator[bytes]:
+        pieces = self._pieces
+        fail_at = self._fail_at
+
+        async def iterate() -> AsyncIterator[bytes]:
+            for index, piece in enumerate(pieces):
+                if fail_at is not None and index == fail_at:
+                    raise RuntimeError("chunk failed")
+                yield piece
+
+        return iterate()
+
+    async def read(self, size: int = -1) -> bytes:
+        raise AssertionError("production reads use chunks()")
+
+    async def readall(self) -> bytes:
+        raise AssertionError("production reads use chunks()")
+
+    async def readinto(self, stream: object) -> int:
+        del stream
+        raise AssertionError("production reads use chunks()")
+
+
+def _patch_pinned_download(monkeypatch, downloader: _PinnedSdkDownloader):
+    opened: list[tuple[SimpleNamespace, SimpleNamespace]] = []
+
+    async def ensure(client: AzureBlobStorageClient) -> None:
+        if client._container_client is not None:
+            return
+        service = SimpleNamespace(close=AsyncMock())
+        credential = SimpleNamespace(close=AsyncMock())
+        client._service_client = service
+        client._credential = credential
+        client._container_client = SimpleNamespace(
+            download_blob=AsyncMock(return_value=downloader)
+        )
+        opened.append((service, credential))
+
+    monkeypatch.setattr(AzureBlobStorageClient, "_ensure_client", ensure)
+    return opened
+
+
+def _assert_owner_closed(opened) -> None:
+    assert opened
+    service, credential = opened[0]
+    service.close.assert_awaited_once()
+    credential.close.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_read_all_completes_against_sdk_downloader_without_close(monkeypatch) -> None:
+    downloader = _PinnedSdkDownloader([b"blob", b"-bytes"])
+    assert not hasattr(StorageStreamDownloader, "close")
+    assert not hasattr(downloader, "close")
+    opened = _patch_pinned_download(monkeypatch, downloader)
+
+    response = await AzureBlobStorageClient(_settings()).get_object(
+        Bucket="files", Key="docs/readme.txt"
+    )
+
+    assert await response["Body"].read() == b"blob-bytes"
+    assert response["ETag"] == "etag-1"
+    _assert_owner_closed(opened)
+
+
+@pytest.mark.asyncio
+async def test_bounded_reads_reach_eof_against_sdk_downloader_without_close(monkeypatch) -> None:
+    downloader = _PinnedSdkDownloader([b"blob", b"-bytes"])
+    assert not hasattr(downloader, "close")
+    opened = _patch_pinned_download(monkeypatch, downloader)
+    response = await AzureBlobStorageClient(_settings()).get_object(
+        Bucket="files", Key="docs/readme.txt"
+    )
+
+    body = response["Body"]
+    assert await body.read(4) == b"blob"
+    assert await body.read(4) == b"-byt"
+    assert await body.read(4) == b"es"
+    assert await body.read(4) == b""
+    _assert_owner_closed(opened)
+
+
+@pytest.mark.asyncio
+async def test_partial_close_releases_owner_against_sdk_downloader(monkeypatch) -> None:
+    downloader = _PinnedSdkDownloader([b"blob", b"-bytes"])
+    assert not hasattr(downloader, "close")
+    opened = _patch_pinned_download(monkeypatch, downloader)
+    response = await AzureBlobStorageClient(_settings()).get_object(
+        Bucket="files", Key="docs/readme.txt"
+    )
+
+    body = response["Body"]
+    assert await body.read(4) == b"blob"
+    await body.close()
+    _assert_owner_closed(opened)
+
+
+@pytest.mark.asyncio
+async def test_failed_sdk_chunk_still_closes_owner(monkeypatch) -> None:
+    downloader = _PinnedSdkDownloader([b"blob", b"-bytes"], fail_at=1)
+    assert not hasattr(downloader, "close")
+    opened = _patch_pinned_download(monkeypatch, downloader)
+    response = await AzureBlobStorageClient(_settings()).get_object(
+        Bucket="files", Key="docs/readme.txt"
+    )
+
+    with pytest.raises(RuntimeError, match="chunk failed"):
+        await response["Body"].read()
+    _assert_owner_closed(opened)
 
 
 @pytest.mark.asyncio
@@ -464,13 +603,13 @@ async def test_copy_object_polls_until_success(monkeypatch) -> None:
     class FakeDestBlob:
         def __init__(self):
             self.polls = [
-                SimpleNamespace(copy=SimpleNamespace(status="pending")),
-                SimpleNamespace(copy=SimpleNamespace(status="success")),
+                SimpleNamespace(copy=SimpleNamespace(status="pending", id="copy-1")),
+                SimpleNamespace(copy=SimpleNamespace(status="success", id="copy-1")),
             ]
 
         async def start_copy_from_url(self, source_url):
             assert source_url == "https://source-url"
-            return {"copy_status": "pending"}
+            return {"copy_status": "pending", "copy_id": "copy-1"}
 
         async def get_blob_properties(self):
             return self.polls.pop(0)
@@ -493,7 +632,7 @@ async def test_copy_object_polls_until_success(monkeypatch) -> None:
     )
 
     client.generate_presigned_download_url.assert_awaited_once_with("src.txt")
-    assert sleeps == [0.5]
+    assert sleeps == [0.1]
 
 
 @pytest.mark.asyncio
@@ -534,10 +673,10 @@ async def test_copy_object_raises_on_failed_copy(monkeypatch) -> None:
 
     class FakeDestBlob:
         async def start_copy_from_url(self, source_url):
-            return {"copy_status": "pending"}
+            return {"copy_status": "pending", "copy_id": "copy-1"}
 
         async def get_blob_properties(self):
-            return SimpleNamespace(copy=SimpleNamespace(status="failed"))
+            return SimpleNamespace(copy=SimpleNamespace(status="failed", id="copy-1"))
 
     class FakeContainer:
         def get_blob_client(self, key):
@@ -561,10 +700,10 @@ async def test_copy_object_raises_on_aborted_copy(monkeypatch) -> None:
 
     class FakeDestBlob:
         async def start_copy_from_url(self, source_url):
-            return {"copy_status": "pending"}
+            return {"copy_status": "pending", "copy_id": "copy-1"}
 
         async def get_blob_properties(self):
-            return SimpleNamespace(copy=SimpleNamespace(status="aborted"))
+            return SimpleNamespace(copy=SimpleNamespace(status="aborted", id="copy-1"))
 
     class FakeContainer:
         def get_blob_client(self, key):
@@ -645,6 +784,9 @@ async def test_chunked_object_round_trip_is_streamed_and_hashed(monkeypatch) -> 
         async def chunks(self):
             yield b"abcde"
             yield b"f"
+
+        async def close(self) -> None:
+            return None
 
     class FakeContainer:
         async def upload_blob(self, **kwargs):
@@ -729,34 +871,165 @@ async def test_delete_object_ignores_missing_blob(monkeypatch) -> None:
     await client.delete_object(Bucket="ignored", Key="already-gone.txt")
 
 
-@pytest.mark.asyncio
-async def test_copy_object_times_out_when_copy_never_finishes(monkeypatch) -> None:
-    sleep = AsyncMock()
-    monkeypatch.setattr(azure_blob_client_module.asyncio, "sleep", sleep)
-
+def _copy_blob(reads: list[SimpleNamespace], aborts: list[str] | None = None, *, abort_error: Exception | None = None):
     class FakeDestBlob:
         async def start_copy_from_url(self, source_url):
-            return {"copy_status": "pending"}
+            assert source_url == "https://source-url"
+            return {"copy_status": "pending", "copy_id": "copy-1"}
 
         async def get_blob_properties(self):
-            return SimpleNamespace(copy=SimpleNamespace(status="pending"))
+            if not reads:
+                raise AssertionError("copy properties were read again")
+            return reads.pop(0)
+
+        async def abort_copy(self, copy_id):
+            if aborts is not None:
+                aborts.append(copy_id)
+            if abort_error is not None:
+                raise abort_error
+
+    return FakeDestBlob()
+
+
+def _pending(copy_id: str = "copy-1") -> SimpleNamespace:
+    return SimpleNamespace(copy=SimpleNamespace(status="pending", id=copy_id))
+
+
+def _copy_status(status: str, copy_id: str = "copy-1") -> SimpleNamespace:
+    return SimpleNamespace(copy=SimpleNamespace(status=status, id=copy_id))
+
+
+@pytest.mark.asyncio
+async def test_copy_object_aborts_only_the_original_copy_after_deadline(monkeypatch) -> None:
+    monkeypatch.setattr(azure_blob_client_module.asyncio, "sleep", AsyncMock())
+    aborts: list[str] = []
+    dest = _copy_blob(
+        [_pending(), _pending(), _copy_status("aborted")],
+        aborts,
+    )
 
     class FakeContainer:
         def get_blob_client(self, key):
-            return FakeDestBlob()
+            return dest
 
     client = _owned_client(_settings())
+    client._copy_timeout_seconds = 0
     client._container_client = FakeContainer()
     client.generate_presigned_download_url = AsyncMock(return_value="https://source-url")
 
-    with pytest.raises(TimeoutError, match="did not complete"):
+    with pytest.raises(TimeoutError, match="does not prove the destination object is absent"):
         await client.copy_object(
             Bucket="ignored",
             CopySource={"Bucket": "ignored", "Key": "src.txt"},
             Key="dest.txt",
         )
 
-    assert sleep.await_count == 30
+    assert aborts == ["copy-1"]
+
+
+@pytest.mark.asyncio
+async def test_copy_deadline_keeps_success_that_wins_the_race(monkeypatch) -> None:
+    monkeypatch.setattr(azure_blob_client_module.asyncio, "sleep", AsyncMock())
+    aborts: list[str] = []
+    dest = _copy_blob([_pending(), _copy_status("success")], aborts)
+
+    class FakeContainer:
+        def get_blob_client(self, key):
+            return dest
+
+    client = _owned_client(_settings())
+    client._copy_timeout_seconds = 0
+    client._container_client = FakeContainer()
+    client.generate_presigned_download_url = AsyncMock(return_value="https://source-url")
+
+    await client.copy_object(
+        Bucket="ignored",
+        CopySource={"Bucket": "ignored", "Key": "src.txt"},
+        Key="dest.txt",
+    )
+
+    assert aborts == []
+
+
+@pytest.mark.asyncio
+async def test_copy_abort_failure_after_completion_is_success(monkeypatch) -> None:
+    monkeypatch.setattr(azure_blob_client_module.asyncio, "sleep", AsyncMock())
+    aborts: list[str] = []
+    dest = _copy_blob(
+        [_pending(), _pending(), _copy_status("success")],
+        aborts,
+        abort_error=RuntimeError("CopyCompleted"),
+    )
+
+    class FakeContainer:
+        def get_blob_client(self, key):
+            return dest
+
+    client = _owned_client(_settings())
+    client._copy_timeout_seconds = 0
+    client._container_client = FakeContainer()
+    client.generate_presigned_download_url = AsyncMock(return_value="https://source-url")
+
+    await client.copy_object(
+        Bucket="ignored",
+        CopySource={"Bucket": "ignored", "Key": "src.txt"},
+        Key="dest.txt",
+    )
+
+    assert aborts == ["copy-1"]
+
+
+@pytest.mark.asyncio
+async def test_copy_id_mismatch_after_deadline_is_indeterminate(monkeypatch) -> None:
+    monkeypatch.setattr(azure_blob_client_module.asyncio, "sleep", AsyncMock())
+    dest = _copy_blob(
+        [_pending(), _pending(), _copy_status("success", "copy-2")],
+        [],
+        abort_error=RuntimeError("copy id changed"),
+    )
+
+    class FakeContainer:
+        def get_blob_client(self, key):
+            return dest
+
+    client = _owned_client(_settings())
+    client._copy_timeout_seconds = 0
+    client._container_client = FakeContainer()
+    client.generate_presigned_download_url = AsyncMock(return_value="https://source-url")
+
+    with pytest.raises(AzureBlobCopyUnresolved, match="destination may exist"):
+        await client.copy_object(
+            Bucket="ignored",
+            CopySource={"Bucket": "ignored", "Key": "src.txt"},
+            Key="dest.txt",
+        )
+
+
+@pytest.mark.asyncio
+async def test_copy_cancellation_is_not_retried_or_aborted(monkeypatch) -> None:
+    async def sleep(_seconds: float) -> None:
+        raise asyncio.CancelledError()
+
+    monkeypatch.setattr(azure_blob_client_module.asyncio, "sleep", sleep)
+    aborts: list[str] = []
+    dest = _copy_blob([_pending()], aborts)
+
+    class FakeContainer:
+        def get_blob_client(self, key):
+            return dest
+
+    client = _owned_client(_settings())
+    client._container_client = FakeContainer()
+    client.generate_presigned_download_url = AsyncMock(return_value="https://source-url")
+
+    with pytest.raises(asyncio.CancelledError):
+        await client.copy_object(
+            Bucket="ignored",
+            CopySource={"Bucket": "ignored", "Key": "src.txt"},
+            Key="dest.txt",
+        )
+
+    assert aborts == []
 
 
 @pytest.mark.asyncio
@@ -930,11 +1203,19 @@ async def test_conditional_put_preserves_exact_etag_and_match_condition(monkeypa
     from azure.core import MatchConditions
     client = _owned_client(_settings())
     client._container_client = SimpleNamespace(upload_blob=AsyncMock())
-    await client.put_object(Bucket="ignored", Key="manifest.json", Body=b"manifest", IfMatch='"etag-1"')
-    options = client._container_client.upload_blob.await_args.kwargs
-    assert options["etag"] == '"etag-1"'
-    assert options["match_condition"] == MatchConditions.IfNotModified
-    assert options["overwrite"] is True
+    await client.put_object(
+        Bucket="ignored", Key="manifest.json", Body=b"manifest", IfMatch="etag-1"
+    )
+    quoted = client._container_client.upload_blob.await_args.kwargs
+    assert quoted["etag"] == '"etag-1"'
+    assert quoted["match_condition"] == MatchConditions.IfNotModified
+    client._container_client.upload_blob.reset_mock()
+    await client.put_object(
+        Bucket="ignored", Key="manifest.json", Body=b"manifest", IfMatch='"etag-1"'
+    )
+    already_quoted = client._container_client.upload_blob.await_args.kwargs
+    assert already_quoted["etag"] == '"etag-1"'
+    assert already_quoted["overwrite"] is True
 
 
 @pytest.mark.asyncio

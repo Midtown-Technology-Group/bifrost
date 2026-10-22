@@ -76,6 +76,32 @@ def _client_with_blob_names(names, *, next_token=None):
             return FakePager(self._blobs)
 
     class FakeContainer:
+        def walk_blobs(self, name_starts_with="", delimiter="/", results_per_page=None):
+            del results_per_page
+            prefixes: list[str] = []
+            seen: set[str] = set()
+            direct = []
+            for name in names:
+                if not name.startswith(name_starts_with):
+                    continue
+                remainder = name[len(name_starts_with) :]
+                if delimiter in remainder:
+                    prefix = name_starts_with + remainder.split(delimiter, 1)[0] + delimiter
+                    if prefix not in seen:
+                        seen.add(prefix)
+                        prefixes.append(prefix)
+                else:
+                    direct.append(
+                        SimpleNamespace(
+                            name=name,
+                            size=10,
+                            etag='"etag"',
+                            last_modified=None,
+                        )
+                    )
+            items = [SimpleNamespace(prefix=prefix) for prefix in prefixes] + direct
+            return FakePaged(items)
+
         def list_blobs(self, name_starts_with="", results_per_page=None):
             blobs = [
                 SimpleNamespace(
@@ -158,3 +184,33 @@ async def test_azure_blob_client_exposes_s3_shaped_list_objects_v2_pagination():
             "LastModified": None,
         }
     ]
+
+
+@pytest.mark.parametrize(
+    ("provider", "client_type", "bucket_attr"),
+    [
+        ("azure_blob", AzureBlobStorageClient, "azure-container"),
+        ("s3", S3StorageClient, "s3-bucket"),
+    ],
+)
+def test_remaining_storage_callers_follow_the_configured_provider(provider, client_type, bucket_attr):
+    from uuid import uuid4
+
+    from src.services.application_deploy_storage import ApplicationDeployStorage
+    from src.services.application_source_artifact import ApplicationSourceArtifactStorage
+    from src.services.solutions.workspace_bundle_storage import WorkspaceBundleStorage
+
+    settings = _settings(
+        object_storage_provider=provider,
+        azure_blob_account_url="https://example.blob.core.windows.net",
+        azure_blob_container="azure-container",
+        azure_blob_auth="default_credential",
+        s3_bucket="s3-bucket",
+    )
+    callers = [
+        ApplicationSourceArtifactStorage(settings),
+        ApplicationDeployStorage(uuid4(), settings),
+        WorkspaceBundleStorage(uuid4(), settings),
+    ]
+    assert all(isinstance(caller._storage, client_type) for caller in callers)
+    assert {caller._bucket for caller in callers} == {bucket_attr}

@@ -88,3 +88,31 @@ class TestRegenerateManifest:
         await writer.regenerate_manifest()
 
         writer._file_index.write.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_writes_when_azure_blob_is_the_configured_provider(
+        self, writer, mock_settings
+    ):
+        from bifrost.manifest import Manifest, ManifestWorkflow
+
+        mock_settings.s3_configured = False
+        mock_settings.object_storage_provider = "azure_blob"
+        mock_settings.azure_blob_configured = True
+        mock_manifest = Manifest(
+            workflows={
+                "wf1": ManifestWorkflow(
+                    id="11111111-1111-1111-1111-111111111111",
+                    path="workflows/wf1.py",
+                    function_name="wf1",
+                )
+            }
+        )
+        with patch(
+            "src.services.repo_sync_writer.generate_manifest",
+            new_callable=AsyncMock,
+            return_value=mock_manifest,
+        ):
+            await writer.regenerate_manifest()
+
+        written_paths = [call[0][0] for call in writer._file_index.write.call_args_list]
+        assert ".bifrost/workflows.yaml" in written_paths

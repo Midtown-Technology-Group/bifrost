@@ -1,7 +1,7 @@
 """
 File Index Service — dual-write facade for _repo/ files.
 
-Every write goes to both S3 (_repo/) and the file_index DB table.
+Every write goes to both object storage (_repo/) and the file_index DB table.
 Searches go through the DB; content reads go through get_module() (Redis/S3).
 Binary files are written to S3 only (not indexed).
 """
@@ -20,7 +20,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.orm.file_index import FileIndex
 from src.services.repo_storage import RepoStorage
-from src.services.file_storage.s3_client import S3StorageClient
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +65,7 @@ class FileIndexService:
 
         Returns the content hash.
         """
-        # Always write to S3
+        # Always write through the configured object-storage provider.
         content_hash = await self.repo_storage.write(path, content)
 
         # Only index text files
@@ -116,7 +115,7 @@ class FileIndexService:
                 while chunk := await handle.read(FILE_COPY_CHUNK_SIZE):
                     yield chunk
 
-        storage = S3StorageClient(self.repo_storage._settings)
+        storage = self.repo_storage._storage
         content_hash, size = await storage.put_object_from_chunks(
             self.repo_storage._repo_key(path), chunks()
         )

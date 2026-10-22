@@ -34,22 +34,26 @@ class _FakeS3Body:
 
 
 class _FakeS3Paginator:
+    def __init__(self, bucket: str) -> None:
+        self._bucket = bucket
+
     async def paginate(self, Bucket: str):  # noqa: N803 - boto3 style
-        assert Bucket == "workspace-bucket"
+        assert Bucket == self._bucket
         yield {"Contents": [{"Key": "flows/a.py"}, {"Key": ""}, {}]}
         yield {"Contents": [{"Key": "docs/readme.md"}]}
 
 
 class _FakeS3:
-    def __init__(self) -> None:
+    def __init__(self, bucket: str = "workspace-bucket") -> None:
+        self.bucket = bucket
         self.requested_keys: list[str] = []
 
     def get_paginator(self, name: str) -> _FakeS3Paginator:
         assert name == "list_objects_v2"
-        return _FakeS3Paginator()
+        return _FakeS3Paginator(self.bucket)
 
     async def get_object(self, Bucket: str, Key: str):  # noqa: N803 - boto3 style
-        assert Bucket == "workspace-bucket"
+        assert Bucket == self.bucket
         self.requested_keys.append(Key)
         return {"Body": _FakeS3Body(f"content for {Key}".encode())}
 
@@ -424,3 +428,35 @@ async def test_sync_index_from_s3_requires_configured_storage():
 
     with pytest.raises(RuntimeError, match="S3 storage not configured"):
         await service.sync_index_from_s3()
+
+
+@pytest.mark.asyncio
+async def test_sync_index_from_s3_uses_azure_container_when_blob_is_configured():
+    from src.services.file_storage.reindex import WorkspaceReindexService
+
+    db = AsyncMock()
+    db.execute = AsyncMock()
+    s3 = _FakeS3("azure-container")
+    settings = MagicMock(
+        object_storage_provider="azure_blob",
+        azure_blob_configured=True,
+        azure_blob_container="azure-container",
+        s3_configured=False,
+        s3_bucket="unused-s3-bucket",
+    )
+
+    service = WorkspaceReindexService(
+        db=db,
+        settings=settings,
+        s3_client=_FakeS3Client(s3),
+        entity_resolution=object(),
+        file_hash_fn=lambda content: f"hash:{content.decode()}",
+        content_type_fn=lambda _path: "text/plain",
+        extract_metadata_fn=AsyncMock(),
+        index_python_file_fn=AsyncMock(),
+    )
+
+    count = await service.sync_index_from_s3()
+
+    assert count == 2
+    assert s3.requested_keys == ["flows/a.py", "docs/readme.md"]
