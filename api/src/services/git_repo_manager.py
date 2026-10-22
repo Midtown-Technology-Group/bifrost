@@ -87,7 +87,8 @@ class GitRepoManager:
     @property
     def work_dir(self) -> Path:
         """Return the persistent working directory, creating it if needed."""
-        PERSISTENT_WORK_DIR.mkdir(parents=True, exist_ok=True)
+        PERSISTENT_WORK_DIR.mkdir(parents=True, exist_ok=True, mode=0o700)
+        PERSISTENT_WORK_DIR.chmod(0o700)
         return PERSISTENT_WORK_DIR
 
     @property
