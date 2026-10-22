@@ -2,14 +2,16 @@ from __future__ import annotations
 
 import ast
 import sys
+from datetime import datetime, timezone
 from types import ModuleType
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, call
 from uuid import uuid4
 
 import pytest
 from sqlalchemy import Update
 
+from bifrost.workflow_parameters import WorkflowParameterSchemaError
 from src.services.file_storage.indexers.workflow import WorkflowIndexer
 
 
@@ -291,7 +293,11 @@ def test_annotation_helpers_cover_attributes_and_non_literal_options() -> None:
     assert isinstance(unresolved_function, ast.FunctionDef)
     unresolved_literal = unresolved_function.args.args[0].annotation
     assert unresolved_literal is not None
-    assert indexer._annotation_to_json_schema(unresolved_literal) == {}
+    with pytest.raises(
+        WorkflowParameterSchemaError,
+        match="Literal annotations require statically resolvable members",
+    ):
+        indexer._annotation_to_json_schema(unresolved_literal)
     empty_optional = ast.Subscript(
         value=ast.Name(id="Optional"),
         slice=ast.Tuple(elts=[]),
@@ -490,8 +496,8 @@ def missing_provider():
     )
 
     assert db.execute.call_count == 2
-    for call in db.execute.call_args_list:
-        compiled = call[0][0].compile()
+    for execute_call in db.execute.call_args_list:
+        compiled = execute_call[0][0].compile()
         params = compiled.params
         assert params["path_1"] == "workflows/unregistered.py"
         assert "solution_id IS NULL" in str(compiled)
@@ -613,6 +619,299 @@ async def regions(country: str | None = None):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "invalid_annotation",
+    ["Literal[UNKNOWN_MODE]", 'Literal["safe", UNKNOWN_MODE]'],
+)
+async def test_invalid_workflow_schema_does_not_block_later_declarations(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    invalid_annotation: str,
+) -> None:
+    path = "workflows/literal_contracts.py"
+    invalid = SimpleNamespace(
+        id=uuid4(),
+        retirement_evidence=None,
+        type="workflow",
+        is_active=True,
+        endpoint_enabled=True,
+        name="Invalid workflow",
+        parameters_schema={"type": "object", "additionalProperties": True},
+    )
+    valid = SimpleNamespace(
+        id=uuid4(),
+        retirement_evidence=None,
+        is_active=True,
+        name="Valid workflow",
+        description=None,
+        category="General",
+        tags=[],
+        endpoint_enabled=False,
+        path=path,
+        timeout_seconds=900,
+        time_saved=0,
+        value=0,
+        execution_mode="sync",
+        type="workflow",
+    )
+    deactivated = MagicMock()
+    deactivated.rowcount = 1
+    updated = MagicMock()
+    updated.rowcount = 1
+    refetch = MagicMock()
+    refetch.scalar_one.return_value = valid
+    db = AsyncMock()
+    db.execute.side_effect = [deactivated, updated, refetch]
+    redis_client = AsyncMock()
+    monkeypatch.setattr(
+        "src.core.redis_client.get_redis_client",
+        lambda: redis_client,
+    )
+    indexer = WorkflowIndexer(db)
+    indexer.remove_workflow_endpoint = AsyncMock()
+    indexer.set_prefetch_cache(
+        {
+            (path, "invalid_workflow"): invalid,
+            (path, "valid_workflow"): valid,
+        }
+    )
+
+    with caplog.at_level("WARNING"):
+        await indexer.index_python_file(
+            path,
+            f"""
+from bifrost import workflow
+from typing import Literal
+
+@workflow
+def invalid_workflow(mode: {invalid_annotation}):
+    return mode
+
+@workflow
+def valid_workflow(mode: Literal[\"safe\"]):
+    return mode
+""".encode(),
+        )
+
+    invalidation_stmt = db.execute.call_args_list[0][0][0]
+    invalidation_params = invalidation_stmt.compile().params
+    assert invalidation_params["id_1"] == invalid.id
+    assert invalidation_params["is_active"] is False
+    assert invalidation_params["is_orphaned"] is False
+    assert "parameters_schema" not in invalidation_params
+
+    update_stmt = db.execute.call_args_list[1][0][0]
+    params = update_stmt.compile().params
+    assert params["id_1"] == valid.id
+    assert params["parameters_schema"]["properties"]["mode"]["enum"] == ["safe"]
+    indexer.remove_workflow_endpoint.assert_awaited_once_with(invalid)
+    assert redis_client.invalidate_endpoint_workflow_cache.await_args_list == [
+        call(str(invalid.id)),
+        call(str(valid.id)),
+    ]
+    redis_client.invalidate_workflow_metadata_cache.assert_awaited_once_with(
+        str(invalid.id)
+    )
+    assert (
+        "Skipping declaration invalid_workflow in workflows/literal_contracts.py "
+        "with invalid parameter schema: Literal annotations require statically "
+        "resolvable members"
+    ) in caplog.messages
+
+
+@pytest.mark.asyncio
+async def test_invalid_data_provider_schema_does_not_block_later_declarations(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    path = "providers/literal_contracts.py"
+    invalid = SimpleNamespace(
+        id=uuid4(),
+        retirement_evidence=None,
+        type="data_provider",
+        is_active=True,
+        endpoint_enabled=False,
+        parameters_schema={"type": "object", "additionalProperties": True},
+    )
+    valid = SimpleNamespace(
+        id=uuid4(),
+        retirement_evidence=None,
+        is_active=True,
+        name="Valid provider",
+        description=None,
+        category="General",
+        tags=[],
+    )
+    db = AsyncMock()
+    deactivated = MagicMock()
+    deactivated.rowcount = 1
+    updated = MagicMock()
+    updated.rowcount = 1
+    db.execute.side_effect = [deactivated, updated]
+    redis_client = AsyncMock()
+    monkeypatch.setattr(
+        "src.core.redis_client.get_redis_client",
+        lambda: redis_client,
+    )
+    indexer = WorkflowIndexer(db)
+    indexer.set_prefetch_cache(
+        {
+            (path, "invalid_provider"): invalid,
+            (path, "valid_provider"): valid,
+        }
+    )
+
+    with caplog.at_level("WARNING"):
+        await indexer.index_python_file(
+            path,
+            b"""
+from bifrost import data_provider
+from typing import Literal
+
+@data_provider
+def invalid_provider(mode: Literal[UNKNOWN_MODE]):
+    return []
+
+@data_provider
+def valid_provider(mode: Literal[\"safe\"]):
+    return []
+""",
+        )
+
+    assert db.execute.await_count == 2
+    invalidation_stmt = db.execute.call_args_list[0][0][0]
+    invalidation_params = invalidation_stmt.compile().params
+    assert invalidation_params["id_1"] == invalid.id
+    assert invalidation_params["is_active"] is False
+    assert invalidation_params["is_orphaned"] is False
+
+    update_stmt = db.execute.call_args_list[1][0][0]
+    params = update_stmt.compile().params
+    assert params["id_1"] == valid.id
+    assert params["parameters_schema"]["properties"]["mode"]["enum"] == ["safe"]
+    redis_client.invalidate_endpoint_workflow_cache.assert_awaited_once_with(
+        str(invalid.id)
+    )
+    redis_client.invalidate_workflow_metadata_cache.assert_awaited_once_with(
+        str(invalid.id)
+    )
+    assert (
+        "Skipping declaration invalid_provider in providers/literal_contracts.py "
+        "with invalid parameter schema: Literal annotations require statically "
+        "resolvable members"
+    ) in caplog.messages
+
+
+@pytest.mark.asyncio
+async def test_invalid_service_schema_deactivation_parks_definition(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workflow = SimpleNamespace(
+        id=uuid4(),
+        type="service",
+        endpoint_enabled=False,
+    )
+    deactivated = MagicMock()
+    deactivated.rowcount = 1
+    db = AsyncMock()
+    db.execute.return_value = deactivated
+    redis_client = AsyncMock()
+    park_definitions = AsyncMock()
+    monkeypatch.setattr(
+        "src.core.redis_client.get_redis_client",
+        lambda: redis_client,
+    )
+    monkeypatch.setattr(
+        "src.services.service_lifecycle.park_definitions_for_workflows",
+        park_definitions,
+    )
+    indexer = WorkflowIndexer(db)
+
+    await indexer._deactivate_invalid_schema_declaration(
+        workflow,
+        path="services/invalid.py",
+        function_name="invalid_service",
+        now=datetime.now(timezone.utc),
+    )
+
+    park_definitions.assert_awaited_once_with(
+        db,
+        [workflow.id],
+        reason="invalid parameter schema",
+    )
+
+
+@pytest.mark.asyncio
+async def test_invalid_schema_deactivation_stops_when_registration_was_retired(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workflow = SimpleNamespace(
+        id=uuid4(),
+        type="workflow",
+        endpoint_enabled=True,
+    )
+    deactivated = MagicMock()
+    deactivated.rowcount = 0
+    db = AsyncMock()
+    db.execute.return_value = deactivated
+    redis_client_factory = MagicMock()
+    monkeypatch.setattr(
+        "src.core.redis_client.get_redis_client",
+        redis_client_factory,
+    )
+    indexer = WorkflowIndexer(db)
+    indexer.remove_workflow_endpoint = AsyncMock()
+
+    await indexer._deactivate_invalid_schema_declaration(
+        workflow,
+        path="workflows/retired.py",
+        function_name="retired_workflow",
+        now=datetime.now(timezone.utc),
+    )
+
+    indexer.remove_workflow_endpoint.assert_not_awaited()
+    redis_client_factory.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_invalid_schema_deactivation_logs_cache_failures(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    workflow = SimpleNamespace(
+        id=uuid4(),
+        type="workflow",
+        endpoint_enabled=False,
+    )
+    deactivated = MagicMock()
+    deactivated.rowcount = 1
+    db = AsyncMock()
+    db.execute.return_value = deactivated
+
+    def unavailable_redis():
+        raise RuntimeError("redis unavailable")
+
+    monkeypatch.setattr(
+        "src.core.redis_client.get_redis_client",
+        unavailable_redis,
+    )
+    indexer = WorkflowIndexer(db)
+
+    with caplog.at_level("WARNING"):
+        await indexer._deactivate_invalid_schema_declaration(
+            workflow,
+            path="workflows/invalid.py",
+            function_name="invalid_workflow",
+            now=datetime.now(timezone.utc),
+        )
+
+    assert (
+        "Failed to invalidate caches for declaration invalid_workflow in "
+        "workflows/invalid.py: redis unavailable"
+    ) in caplog.messages
+
+
+@pytest.mark.asyncio
 async def test_refresh_workflow_endpoint_calls_dynamic_endpoint_refresher(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -671,6 +970,56 @@ async def test_refresh_workflow_endpoint_logs_refresher_errors(
     indexer = WorkflowIndexer(db=None)
 
     await indexer.refresh_workflow_endpoint(SimpleNamespace(name="Ticket Sync"))
+
+
+@pytest.mark.asyncio
+async def test_remove_workflow_endpoint_calls_dynamic_endpoint_remover(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = []
+    openapi_module = ModuleType("src.services.openapi_endpoints")
+    main_module = ModuleType("src.main")
+    main_module.app = object()
+
+    def remove_endpoint(app, workflow_name):
+        calls.append((app, workflow_name))
+
+    openapi_module.remove_workflow_endpoint = remove_endpoint
+    monkeypatch.setitem(sys.modules, "src.services.openapi_endpoints", openapi_module)
+    monkeypatch.setitem(sys.modules, "src.main", main_module)
+
+    indexer = WorkflowIndexer(db=None)
+
+    await indexer.remove_workflow_endpoint(SimpleNamespace(name="Invalid workflow"))
+
+    assert calls == [(main_module.app, "Invalid workflow")]
+
+
+@pytest.mark.asyncio
+async def test_remove_workflow_endpoint_logs_remover_errors(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    openapi_module = ModuleType("src.services.openapi_endpoints")
+    main_module = ModuleType("src.main")
+    main_module.app = object()
+
+    def remove_endpoint(_app, _workflow_name):
+        raise RuntimeError("route removal failed")
+
+    openapi_module.remove_workflow_endpoint = remove_endpoint
+    monkeypatch.setitem(sys.modules, "src.services.openapi_endpoints", openapi_module)
+    monkeypatch.setitem(sys.modules, "src.main", main_module)
+    indexer = WorkflowIndexer(db=None)
+
+    with caplog.at_level("WARNING"):
+        await indexer.remove_workflow_endpoint(
+            SimpleNamespace(name="Invalid workflow")
+        )
+
+    assert (
+        "Failed to remove endpoint for Invalid workflow: route removal failed"
+    ) in caplog.messages
 
 
 @pytest.mark.asyncio
