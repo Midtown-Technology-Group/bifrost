@@ -30,11 +30,12 @@ jobs:
     permissions:
       contents: read
       packages: read
+      actions: read # approved: verify/download exact-main producer artifacts
     outputs:
       head: ${{ steps.context.outputs.head }}
-      base: ${{ steps.context.outputs.base }}
+      base: ${{ steps.evidence-output.outputs.base }}
       mode: ${{ steps.context.outputs.mode }}
-      manifest_sha256: ${{ steps.validate.outputs.manifest_sha256 }}
+      manifest_sha256: ${{ steps.evidence-output.outputs.manifest_sha256 }}
       artifact_name: ${{ steps.context.outputs.artifact_name }}
     steps:
       - name: Checkout exact analysis source
@@ -66,7 +67,15 @@ jobs:
           printf 'artifact_name=sonar-evidence-%s-%s\n' "$EXPECTED_HEAD" "$GITHUB_RUN_ATTEMPT" >> "$GITHUB_OUTPUT"
           mkdir -p .sonar-evidence/raw
           git ls-files -z > .sonar-evidence/raw/tracked-files.nul
+      - name: Try original exact-main evidence on version tags
+        id: reuse
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_HEAD: ${{ inputs.head_sha }}
+        run: python3 scripts/sonar/main_receipt.py reuse
       - name: Set up Node
+        if: steps.reuse.outputs.reused != 'true'
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "26"
@@ -75,16 +84,20 @@ jobs:
             client/package-lock.json
             scripts/docs/package-lock.json
       - name: Set up Python for source-aware validation
+        if: steps.reuse.outputs.reused != 'true'
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.14"
       - name: Run preflight fault probes
+        if: steps.reuse.outputs.reused != 'true'
         run: python3 -m unittest discover -s scripts/sonar -p 'test_*.py'
       - name: Install client and repository test dependencies
+        if: steps.reuse.outputs.reused != 'true'
         run: |
           npm ci --prefix client --ignore-scripts
           npm ci --prefix scripts/docs --ignore-scripts
       - name: Collect comprehensive client coverage
+        if: steps.reuse.outputs.reused != 'true'
         env:
           HEAD_SHA: ${{ steps.context.outputs.head }}
           BASE_SHA: ${{ steps.context.outputs.base }}
@@ -94,6 +107,7 @@ jobs:
           cp client/coverage/lcov.info .sonar-evidence/raw/client.lcov
           python3 scripts/sonar/preflight.py stamp --head "$HEAD_SHA" --base "$BASE_SHA" --report .sonar-evidence/raw/client.lcov
       - name: Collect repository Node test coverage
+        if: steps.reuse.outputs.reused != 'true'
         env:
           HEAD_SHA: ${{ steps.context.outputs.head }}
           BASE_SHA: ${{ steps.context.outputs.base }}
@@ -107,6 +121,7 @@ jobs:
             "${tests[@]}"
           python3 scripts/sonar/preflight.py stamp --head "$HEAD_SHA" --base "$BASE_SHA" --report .sonar-evidence/raw/node.lcov
       - name: Prepare exact-source test images
+        if: steps.reuse.outputs.reused != 'true'
         env:
           GHCR_USERNAME: ${{ github.actor }}
           GHCR_TOKEN: ${{ github.token }}
@@ -114,6 +129,7 @@ jobs:
           CLIENT_IMAGE_CHANGED: "true"
         run: bash api/scripts/ci/prepare-test-images.sh api client
       - name: Prepare isolated Sonar test stack
+        if: steps.reuse.outputs.reused != 'true'
         run: |
           set -euo pipefail
           source scripts/lib/test_helpers.sh
@@ -130,6 +146,7 @@ jobs:
           echo "COMPOSE_FILE=$RUNNER_TEMP/sonar-compose.yml" >> "$GITHUB_ENV"
           echo "SONAR_LOG_DIR=$LOG_DIR" >> "$GITHUB_ENV"
       - name: Collect repository Python tool coverage
+        if: steps.reuse.outputs.reused != 'true'
         run: |
           set -euo pipefail
           # Pure repository tools have their own scripts namespace. Run from
@@ -153,6 +170,7 @@ jobs:
             --cov --cov-branch --cov-config=/repo/api/.coveragerc.sonar --cov-report= \
             --junitxml=/tmp/bifrost/sonar-repository-junit.xml
       - name: Collect comprehensive Python coverage
+        if: steps.reuse.outputs.reused != 'true'
         env:
           BIFROST_SKIP_BUILD: "1"
           HEAD_SHA: ${{ steps.context.outputs.head }}
@@ -183,6 +201,7 @@ jobs:
           cp "$SONAR_LOG_DIR/coverage-sonar.xml" .sonar-evidence/raw/python.xml
           python3 scripts/sonar/preflight.py stamp --head "$HEAD_SHA" --base "$BASE_SHA" --report .sonar-evidence/raw/python.xml
       - name: Validate reports and source inventory
+        if: steps.reuse.outputs.reused != 'true'
         id: validate
         env:
           HEAD_SHA: ${{ steps.context.outputs.head }}
@@ -192,6 +211,34 @@ jobs:
             --python .sonar-evidence/raw/python.xml --client .sonar-evidence/raw/client.lcov \
             --node .sonar-evidence/raw/node.lcov --properties sonar-project.properties --output-dir .sonar-evidence
           echo "manifest_sha256=$(sha256sum .sonar-evidence/manifest.json | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+      - name: Retain original producer and toolchain identity
+        if: steps.validate.outcome == 'success' && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        # Optional cache export, not another quality gate. Missing metadata
+        # makes tags run the original collector instead of accepting reuse.
+        continue-on-error: true
+        env:
+          EXPECTED_HEAD: ${{ inputs.head_sha }}
+        run: |
+          set -euo pipefail
+          source scripts/lib/test_helpers.sh
+          export COMPOSE_PROJECT_NAME="$(compute_project_name .)"
+          python3 scripts/sonar/main_receipt.py record
+      - name: Select verified evidence outputs
+        id: evidence-output
+        env:
+          REUSED: ${{ steps.reuse.outputs.reused }}
+          PRODUCER_BASE: ${{ steps.reuse.outputs.base }}
+          PRODUCER_MANIFEST: ${{ steps.reuse.outputs.manifest_sha256 }}
+          COLLECTED_BASE: ${{ steps.context.outputs.base }}
+          COLLECTED_MANIFEST: ${{ steps.validate.outputs.manifest_sha256 }}
+        run: |
+          set -euo pipefail
+          if [ "$REUSED" = true ]; then
+            printf 'base=%s\nmanifest_sha256=%s\n' "$PRODUCER_BASE" "$PRODUCER_MANIFEST" >> "$GITHUB_OUTPUT"
+          else
+            test -n "$COLLECTED_MANIFEST"
+            printf 'base=%s\nmanifest_sha256=%s\n' "$COLLECTED_BASE" "$COLLECTED_MANIFEST" >> "$GITHUB_OUTPUT"
+          fi
       - name: Tear down task-owned stack
         if: always() && env.COMPOSE_FILE != ''
         run: |
