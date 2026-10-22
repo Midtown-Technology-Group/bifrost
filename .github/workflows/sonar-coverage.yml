@@ -134,7 +134,7 @@ jobs:
           set -euo pipefail
           source scripts/lib/test_helpers.sh
           export COMPOSE_PROJECT_NAME="$(compute_project_name .)"
-          export LOG_DIR="/tmp/bifrost-$COMPOSE_PROJECT_NAME"
+          export LOG_DIR="$(compute_test_results_dir .)"
           mkdir -p "$LOG_DIR"
           # Rendering without all profiles drops services that test.sh activates
           # later (worker, scheduler, test-runner). Preserve the complete model.

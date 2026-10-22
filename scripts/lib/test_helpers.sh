@@ -24,6 +24,19 @@ compute_project_name() {
     printf '%s-%s' "${BIFROST_PROJECT_PREFIX:-bifrost-test}" "$hash"
 }
 
+# Return the private, worktree-scoped directory used for container-writable
+# test results. Git owns the parent namespace, so another local user cannot
+# pre-create a predictable shared-/tmp path or redirect writers with a symlink.
+compute_test_results_dir() {
+    local artifacts_dir
+    artifacts_dir="$(git -C "${1:-.}" rev-parse --path-format=absolute --git-path bifrost-test-artifacts 2>/dev/null)"
+    if [ -z "$artifacts_dir" ]; then
+        echo "ERROR: compute_test_results_dir must be called inside a git worktree" >&2
+        return 1
+    fi
+    printf '%s/results' "$artifacts_dir"
+}
+
 # Wait for a compose service to be healthy (or responding on a probe command).
 # Args: <compose-file> <service> <probe-command...>
 # Returns 0 if ready, 1 on timeout.

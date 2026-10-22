@@ -303,8 +303,8 @@ export async function getDataProviders() {
     -   **Expensive backend E2E tests:** Before adding a deploy, install, publish, build, sync, or worker job to a test, follow `.claude/skills/bifrost-testing/authoring-rules.md` → “Expensive backend E2E tests.” Count the jobs and identify the unique cross-process contract each one proves.
     -   **IMPORTANT**: Always use `./test.sh` — it manages the Dockerized test stack (PostgreSQL, Redis, RabbitMQ, SeaweedFS, API, worker). Running pytest directly on the host will FAIL for anything touching DB/queue/cache.
     -   **Stack lifecycle is separate from test execution.** Boot once per worktree, run tests many times. See the Commands section below.
-    -   **Test results**: `./test.sh` writes JUnit XML to `/tmp/bifrost-<project>/test-results.xml` on the host (the project name is printed by `./test.sh stack status`) — parse this for pass/fail details instead of grepping stdout.
-    -   **Logs**: Container logs are exported to `/tmp/bifrost-<project>/*.log` after test runs (per-worktree, so parallel worktrees don't clobber each other).
+    -   **Test results**: `./test.sh` writes JUnit XML to the private worktree results path reported by `./test.sh stack status`; parse its `test-results.xml` for pass/fail details instead of grepping stdout.
+    -   **Logs**: Container logs are exported to that private worktree results path after test runs, so parallel worktrees don't clobber each other.
 -   **Type Checking**: Must pass `pyright` (API) and `npm run tsc` (client)
 -   **Linting**: Must pass `ruff check` (API) and `npm run lint` (client)
 

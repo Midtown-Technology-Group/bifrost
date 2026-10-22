@@ -70,7 +70,11 @@ def test_compose_and_test_runner_use_the_pinned_official_image() -> None:
     conformance_entrypoint = test_script.split("\nmcp_conformance() {", 1)[1].split(
         "\n}\n", 1
     )[0]
-    assert conformance_entrypoint.split() == ["prepare_mcp_conformance_image", "run_mcp_conformance", '"$@"']
+    assert conformance_entrypoint.split() == [
+        "prepare_mcp_conformance_image",
+        "run_mcp_conformance",
+        '"$@"',
+    ]
     conformance_function = test_script.split("\nrun_mcp_conformance() {", 1)[1].split(
         "\n}\n", 1
     )[0]
@@ -115,7 +119,9 @@ def test_ci_job_blocks_and_retains_runner_artifacts() -> None:
     assert artifact["if"] == (
         "always() && needs.affected-test-plan.outputs.mcp_conformance_mode != 'skip'"
     )
-    assert artifact["with"]["path"] == "/tmp/bifrost-*/mcp-conformance/"
+    assert artifact["with"]["path"] == (
+        "${{ env.BIFROST_TEST_RESULTS_DIR }}/mcp-conformance/"
+    )
     assert artifact["with"]["if-no-files-found"] == "error"
     assert "mcp-conformance" in workflow["jobs"]["verify-release-manifest"]["needs"]
     e2e_gate = workflow["jobs"]["test-e2e-gate"]

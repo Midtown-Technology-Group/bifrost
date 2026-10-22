@@ -26,7 +26,7 @@ exec {held_lock}>&-
 if [ "$owns_lock" = 1 ]; then flock -n "$lock_path" true; fi
 echo 'PASS: shared stack lock rejects browser, backend, lifecycle and pre-PR overlap'
 
-# Container-produced files in the shared result directory must not prevent a
+# Container-produced files in the private result directory must not prevent a
 # subsequent host command from opening its lock (the CI cleanup regression).
 (
     scratch_repo="$(mktemp -d)"
@@ -40,8 +40,7 @@ echo 'PASS: shared stack lock rejects browser, backend, lifecycle and pre-PR ove
     mkdir -p "$scratch_repo/scripts/lib"
     cp "$repo_dir/test.sh" "$scratch_repo/test.sh"
     cp "$repo_dir/scripts/lib/test_helpers.sh" "$scratch_repo/scripts/lib/test_helpers.sh"
-    scratch_project="$(compute_project_name "$scratch_repo")"
-    scratch_results="/tmp/bifrost-$scratch_project"
+    scratch_results="$(compute_test_results_dir "$scratch_repo")"
     mkdir -p "$scratch_results"
     chmod 1777 "$scratch_results"
     touch "$scratch_results/test-stack.lock"
