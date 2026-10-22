@@ -335,6 +335,96 @@ async def test_sync_preview_compiled_writes_compiled_and_raw_files(monkeypatch) 
 
 
 @pytest.mark.asyncio
+async def test_sync_preview_compiled_preserves_preview_on_capacity_failure(
+    monkeypatch,
+) -> None:
+    from src.services import app_compiler
+    from src.services.app_storage import RetryablePreviewSyncError
+
+    client = _FakeClient(
+        list_pages=[
+            {
+                "Contents": [{"Key": "_repo/apps/demo/index.tsx"}],
+                "IsTruncated": False,
+            },
+            {
+                "Contents": [{"Key": "_apps/app/preview/index.tsx"}],
+                "IsTruncated": False,
+            },
+        ],
+        objects={
+            "_repo/apps/demo/index.tsx": b"export default function App() {}",
+            "_apps/app/preview/index.tsx": b"last good compiled javascript",
+        },
+    )
+    service = _service(client)
+    invalidated: list[str] = []
+
+    async def invalidate(app_id: str) -> None:
+        invalidated.append(app_id)
+
+    monkeypatch.setattr(
+        app_compiler,
+        "_COMPILER_SLOTS",
+        app_compiler.asyncio.Semaphore(0),
+    )
+    monkeypatch.setattr(app_compiler, "COMPILER_QUEUE_TIMEOUT_SECONDS", 0.001)
+    monkeypatch.setattr(service, "invalidate_render_cache", invalidate)
+
+    with pytest.raises(RetryablePreviewSyncError, match="capacity unavailable"):
+        await service.sync_preview_compiled("app", "apps/demo/")
+
+    assert client.puts == []
+    assert client.deleted == []
+    assert invalidated == []
+
+
+@pytest.mark.asyncio
+async def test_sync_preview_compiled_preserves_preview_on_input_limit(
+    monkeypatch,
+) -> None:
+    from src.services import app_compiler
+    from src.services.app_storage import PreviewSyncError
+
+    client = _FakeClient(
+        list_pages=[
+            {
+                "Contents": [
+                    {"Key": "_repo/apps/demo/a.ts"},
+                    {"Key": "_repo/apps/demo/b.ts"},
+                ],
+                "IsTruncated": False,
+            },
+            {
+                "Contents": [{"Key": "_apps/app/preview/a.ts"}],
+                "IsTruncated": False,
+            },
+        ],
+        objects={
+            "_repo/apps/demo/a.ts": b"export default 1",
+            "_repo/apps/demo/b.ts": b"export default 2",
+            "_apps/app/preview/a.ts": b"last good compiled javascript",
+        },
+    )
+    service = _service(client)
+    invalidated: list[str] = []
+
+    async def invalidate(app_id: str) -> None:
+        invalidated.append(app_id)
+
+    monkeypatch.setattr(app_compiler, "COMPILER_MAX_FILES", 1)
+    monkeypatch.setattr(service, "invalidate_render_cache", invalidate)
+
+    with pytest.raises(PreviewSyncError, match="1-file limit") as error:
+        await service.sync_preview_compiled("app", "apps/demo/")
+
+    assert error.value.retryable is False
+    assert client.puts == []
+    assert client.deleted == []
+    assert invalidated == []
+
+
+@pytest.mark.asyncio
 async def test_render_cache_get_set_and_invalidate_use_expected_redis_keys(monkeypatch):
     redis = _FakeRedis()
 
