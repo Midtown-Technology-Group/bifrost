@@ -32,6 +32,52 @@ def _filter_module():
     return module
 
 
+def test_shadow_combines_real_shard_databases_without_baseline_hits(tmp_path, monkeypatch):
+    # test-runner mounts repository tools at /repo/scripts, independently of
+    # API source at /app. Local checkouts retain the ordinary api/ layout.
+    repository = Path("/repo") if API_ROOT == Path("/app") else API_ROOT.parent
+    spec = importlib.util.spec_from_file_location(
+        "shadow_combine_under_test", repository / "scripts/sonar/shadow.py"
+    )
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    root = tmp_path / "repo"
+    (root / "api").mkdir(parents=True)
+    source = root / "api/example.py"
+    source.write_text(SAMPLE)
+    (root / "api/unimported.py").write_text("answer = 1\n")
+    (root / "api/.coveragerc.sonar-report").write_text(
+        (API_ROOT / ".coveragerc.sonar-report").read_text().replace("/repo", str(root))
+    )
+    bundles = {}
+    expected_arcs = set()
+    for index, lane in enumerate(module.LANES):
+        directory = tmp_path / lane
+        directory.mkdir()
+        data = coverage.CoverageData(basename=str(directory / "python.coverage"))
+        # Baseline-only arc must never contaminate the candidate union.
+        arcs = {(900, 901)} if lane == "baseline" else {(-1, 1), (index, index + 1)}
+        data.add_arcs({str(source): arcs})
+        data.touch_files([str(root / "api/unimported.py")])
+        data.write()
+        if lane != "baseline":
+            expected_arcs |= arcs
+        bundles[lane] = {"directory": directory}
+    output = tmp_path / "output"
+    output.mkdir()
+    monkeypatch.chdir(root)
+    result = module.combine(root, bundles, output)
+    combined = coverage.CoverageData(basename=str(result))
+    combined.read()
+    assert set(combined.measured_files()) == {"api/example.py", "api/unimported.py"}
+    assert set(combined.arcs("api/example.py")) == expected_arcs
+    assert all((bundle["directory"] / "python.coverage").is_file() for bundle in bundles.values())
+    classes = ElementTree.parse(output / "shadow.xml").findall(".//class")
+    assert {node.attrib["filename"] for node in classes} == {"api/example.py", "api/unimported.py"}
+
+
 def test_sonar_collection_and_reporting_keep_the_same_exclusions():
     collect = ConfigParser()
     collect.read(API_ROOT / ".coveragerc.sonar")
