@@ -128,6 +128,101 @@ class TestAutonomousAgentExecutor:
             )
 
     @pytest.mark.asyncio
+    async def test_all_admitted_agents_yield_slots_to_sync_workflow_children(
+        self,
+        mock_session,
+        mock_agent,
+    ):
+        """All default DB slots can hold parents without starving their children."""
+        from src.jobs.rabbitmq import BaseConsumer
+
+        class Consumer(BaseConsumer):
+            async def process_message(self, body):
+                return None
+
+        capacity = 3
+        semaphore = asyncio.Semaphore(capacity)
+        parents = [Consumer(f"agent-{index}") for index in range(capacity)]
+        children = [Consumer(f"workflow-{index}") for index in range(capacity)]
+        for consumer in [*parents, *children]:
+            consumer.set_admission_semaphore(semaphore)
+
+        workflow_id = uuid4()
+        workflow = MagicMock(id=workflow_id, organization_id=mock_agent.organization_id)
+        mock_session._mock_session.get = AsyncMock(return_value=workflow)
+        all_parents_started = asyncio.Event()
+        started_count = 0
+        completed_children: list[int] = []
+
+        async def dispatch_child(**kwargs):
+            index = kwargs["parameters"]["index"]
+
+            async def complete_child(_body):
+                completed_children.append(index)
+
+            children[index].process_message = complete_child
+            await children[index]._process_admitted_message({})
+            return MagicMock(
+                execution_id=str(uuid4()),
+                status=ExecutionStatus.SUCCESS,
+                result={"index": index},
+            )
+
+        def run_parent(index):
+            async def process(_body):
+                nonlocal started_count
+                started_count += 1
+                if started_count == capacity:
+                    all_parents_started.set()
+                await all_parents_started.wait()
+
+                executor = AutonomousAgentExecutor(mock_session)
+                executor._tool_workflow_id_map = {"granted_workflow": workflow_id}
+                result = await executor._execute_tool(
+                    ToolCallRequest(
+                        id=f"tc-{index}",
+                        name="granted_workflow",
+                        arguments={"index": index},
+                    ),
+                    mock_agent,
+                )
+                assert result == json.dumps({"index": index})
+
+            return process
+
+        for index, parent in enumerate(parents):
+            parent.process_message = run_parent(index)
+
+        with (
+            patch(
+                "src.services.execution.autonomous_agent_executor."
+                "agent_workflow_granted",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch(
+                "src.services.execution.autonomous_agent_executor."
+                "caller_can_access_workflow_tool",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch(
+                "src.services.execution.autonomous_agent_executor."
+                "execute_agent_workflow_tool",
+                new_callable=AsyncMock,
+                side_effect=dispatch_child,
+            ),
+        ):
+            await asyncio.wait_for(
+                asyncio.gather(
+                    *(parent._process_admitted_message({}) for parent in parents)
+                ),
+                timeout=1,
+            )
+
+        assert sorted(completed_children) == list(range(capacity))
+
+    @pytest.mark.asyncio
     async def test_delegation_rechecks_reference_access_at_dispatch(
         self, mock_session, mock_agent
     ):
@@ -209,6 +304,62 @@ class TestAutonomousAgentExecutor:
         assert second["count"] == 0
         assert second["omitted_duplicate_evidence"] == 1
         assert repository.search.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_knowledge_embedding_releases_database_lease(
+        self,
+        mock_agent,
+    ):
+        """Slow embedding I/O must run between the config and search leases."""
+        mock_agent.knowledge_sources = ["halo_kb"]
+        open_leases = [0]
+        session = AsyncMock()
+
+        class Lease:
+            async def __aenter__(self):
+                open_leases[0] += 1
+                return session
+
+            async def __aexit__(self, *_args):
+                open_leases[0] -= 1
+
+        factory = MagicMock(side_effect=lambda: Lease())
+        embedding_client = MagicMock()
+
+        async def embed(_query: str) -> list[float]:
+            assert open_leases[0] == 0
+            return [0.1, 0.2]
+
+        embedding_client.embed_single = AsyncMock(side_effect=embed)
+        repository = MagicMock()
+
+        async def search(**_kwargs):
+            assert open_leases[0] == 1
+            return []
+
+        repository.search = AsyncMock(side_effect=search)
+        executor = AutonomousAgentExecutor(factory)
+
+        with patch(
+            "src.services.embeddings.get_embedding_client",
+            new_callable=AsyncMock,
+            return_value=embedding_client,
+        ), patch(
+            "src.repositories.knowledge.KnowledgeRepository",
+            return_value=repository,
+        ):
+            result = await executor._execute_knowledge_search(
+                ToolCallRequest(
+                    id="lease-test",
+                    name="search_knowledge",
+                    arguments={"query": "connection pressure"},
+                ),
+                mock_agent,
+            )
+
+        assert result == "No relevant knowledge found."
+        assert factory.call_count == 2
+        assert open_leases[0] == 0
 
     @pytest.mark.asyncio
     @patch("src.services.agent_runtime.model_factory.create_agent_model")

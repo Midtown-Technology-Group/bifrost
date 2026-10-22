@@ -1,5 +1,6 @@
 """RabbitMQ connection/start/publish helper tests with fake broker objects."""
 
+import asyncio
 import json
 from typing import Any
 from unittest.mock import AsyncMock
@@ -8,7 +9,13 @@ import aio_pika
 import pytest
 
 from src.jobs import rabbitmq as rabbitmq_module
-from src.jobs.rabbitmq import BaseConsumer, BroadcastConsumer, publish_broadcast, publish_to_exchange
+from src.jobs.rabbitmq import (
+    BaseConsumer,
+    BroadcastConsumer,
+    publish_broadcast,
+    publish_to_exchange,
+    suspend_consumer_admission,
+)
 
 
 class _StartedBaseConsumer(BaseConsumer):
@@ -93,6 +100,88 @@ class _FakeProcessedMessage:
 
     async def __aexit__(self, *args: object) -> None:
         self.exited = True
+
+
+@pytest.mark.asyncio
+async def test_consumers_share_process_admission_semaphore() -> None:
+    semaphore = asyncio.Semaphore(1)
+    first = _StartedBaseConsumer("first")
+    second = _StartedBaseConsumer("second")
+    first.set_admission_semaphore(semaphore)
+    second.set_admission_semaphore(semaphore)
+    first_started = asyncio.Event()
+    release_first = asyncio.Event()
+    second_started = asyncio.Event()
+
+    async def hold_first(_body: dict[str, Any]) -> None:
+        first_started.set()
+        await release_first.wait()
+
+    async def run_second(_body: dict[str, Any]) -> None:
+        second_started.set()
+
+    first.process_message = hold_first  # type: ignore[method-assign]
+    second.process_message = run_second  # type: ignore[method-assign]
+
+    first_task = asyncio.create_task(first._process_admitted_message({}))
+    await first_started.wait()
+    second_task = asyncio.create_task(second._process_admitted_message({}))
+    await asyncio.sleep(0)
+
+    assert not second_started.is_set()
+    release_first.set()
+    await asyncio.gather(first_task, second_task)
+    assert second_started.is_set()
+
+
+@pytest.mark.asyncio
+async def test_all_parent_slots_transfer_admission_to_child_workflows() -> None:
+    """Dependent workflow dispatch cannot starve behind all admitted agents."""
+    capacity = 3
+    semaphore = asyncio.Semaphore(capacity)
+    parents = [_StartedBaseConsumer(f"agent-{index}") for index in range(capacity)]
+    children = [_StartedBaseConsumer(f"workflow-{index}") for index in range(capacity)]
+    for consumer in [*parents, *children]:
+        consumer.set_admission_semaphore(semaphore)
+
+    all_parents_started = asyncio.Event()
+    started_count = 0
+    child_completions: list[int] = []
+    parent_completions: list[int] = []
+
+    async def run_child(index: int, _body: dict[str, Any]) -> None:
+        child_completions.append(index)
+
+    def run_parent(index: int):
+        async def process(_body: dict[str, Any]) -> None:
+            nonlocal started_count
+            started_count += 1
+            if started_count == capacity:
+                all_parents_started.set()
+            await all_parents_started.wait()
+            async with suspend_consumer_admission():
+                await children[index]._process_admitted_message({})
+            parent_completions.append(index)
+
+        return process
+
+    for index, child in enumerate(children):
+        child.process_message = (  # type: ignore[method-assign]
+            lambda body, index=index: run_child(index, body)
+        )
+    for index, parent in enumerate(parents):
+        parent.process_message = run_parent(index)  # type: ignore[method-assign]
+
+    await asyncio.wait_for(
+        asyncio.gather(
+            *(parent._process_admitted_message({}) for parent in parents)
+        ),
+        timeout=1,
+    )
+
+    assert sorted(child_completions) == list(range(capacity))
+    assert sorted(parent_completions) == list(range(capacity))
+    assert semaphore._value == capacity
 
 
 @pytest.mark.asyncio
