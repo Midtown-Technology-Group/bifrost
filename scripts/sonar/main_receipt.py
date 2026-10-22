@@ -42,8 +42,16 @@ def command(args: list[str], *, binary: bool = False):
 def api(path: str, *, archive: bool = False):
     if not re.fullmatch(r"[A-Za-z0-9_./?=&%-]+", path) or ".." in path:
         raise ValueError("Invalid repository-scoped API path")
-    data = command(["gh", "api", f"repos/{REPOSITORY}/{path}"], binary=True)
-    return data if archive else json.loads(data)
+    try:
+        data = command(["gh", "api", f"repos/{REPOSITORY}/{path}"], binary=True)
+    except subprocess.TimeoutExpired as exc:
+        raise ValueError("Remote evidence retrieval timed out") from exc
+    if archive:
+        return data
+    result = json.loads(data)
+    if not isinstance(result, dict):
+        raise ValueError("Malformed remote evidence object")
+    return result
 
 
 def pages(path: str, key: str) -> list[dict]:
@@ -51,7 +59,7 @@ def pages(path: str, key: str) -> list[dict]:
     for page in range(1, 101):
         result = api(f"{path}{'&' if '?' in path else '?'}per_page=100&page={page}")
         batch = result[key]
-        if not isinstance(batch, list):
+        if not isinstance(batch, list) or any(not isinstance(row, dict) for row in batch):
             raise ValueError("Malformed paginated evidence")
         rows.extend(batch)
         if len(batch) < 100:
@@ -132,7 +140,10 @@ def archive_files(artifact: dict, required: set[str], job: dict, run_id: int) ->
             if item.file_size > preflight.MAX_REPORT_BYTES or (item.external_attr >> 16) & 0o170000 == 0o120000:
                 raise ValueError("Oversized or symlink evidence")
             # Only fixed basenames are read; nothing is extracted from the zip.
-            result[name] = bundle.read(item)
+            try:
+                result[name] = bundle.read(item)
+            except RuntimeError as exc:
+                raise ValueError("Unreadable remote evidence entry") from exc
         return result
 
 
@@ -227,7 +238,7 @@ def reuse(root: Path, output: Path) -> dict:
                    "tag_analysis": "not_submitted; original successful main analysis retained"}
         (output / "reuse.json").write_bytes(preflight.json_bytes(receipt))
         return producer
-    except (ValueError, OSError, KeyError, TypeError):
+    except Exception:
         for name in (*files, "original-report-task.txt", "reuse.json"):
             (output / name).unlink(missing_ok=True)
         raise

@@ -7,6 +7,7 @@ import io
 import json
 import os
 from pathlib import Path
+import subprocess
 import unittest
 from unittest.mock import patch
 import zipfile
@@ -62,6 +63,7 @@ class MainReceiptTests(Fixture):
         self.env_patch = patch.dict(os.environ, self.environment)
         self.env_patch.start()
         self.addCleanup(self.env_patch.stop)
+        self.remote_api = receipt.api
         self.api_patch = patch.object(receipt, "api", side_effect=self.api)
         self.api_patch.start()
         self.addCleanup(self.api_patch.stop)
@@ -214,6 +216,33 @@ class MainReceiptTests(Fixture):
             self.assertEqual(receipt.main(), 0)
         self.assertFalse(output.exists())
         self.assertFalse(summary.exists())
+
+    def test_remote_timeout_falls_back_but_local_timeout_remains_visible(self):
+        with patch.object(receipt, "command", side_effect=subprocess.TimeoutExpired("gh", 120)), \
+                self.assertRaisesRegex(ValueError, "Remote evidence retrieval timed out"):
+            self.remote_api("actions/runs/123")
+        with patch.object(receipt, "command", side_effect=subprocess.TimeoutExpired("git", 120)), \
+                self.assertRaises(subprocess.TimeoutExpired):
+            receipt.exact_head()
+
+    def test_remote_api_objects_and_pages_reject_malformed_shapes(self):
+        with patch.object(receipt, "command", return_value=b"[]"), self.assertRaises(ValueError):
+            self.remote_api("actions/runs/123")
+        with patch.object(receipt, "api", return_value={"jobs": [None]}), self.assertRaises(ValueError):
+            receipt.pages("actions/runs/123/jobs", "jobs")
+
+    def test_unreadable_zip_entry_is_unavailable(self):
+        with patch.object(zipfile.ZipFile, "read", side_effect=RuntimeError("encrypted entry")), \
+                self.assertRaisesRegex(ValueError, "Unreadable remote evidence entry"):
+            receipt.reuse(self.root, self.output)
+        self.assertFalse((self.output / "reuse.json").exists())
+
+    def test_unexpected_failure_cleans_partial_files_and_remains_visible(self):
+        with patch.object(receipt.preflight, "verify", side_effect=RuntimeError("unexpected failure")), \
+                self.assertRaises(RuntimeError):
+            receipt.reuse(self.root, self.output)
+        self.assertFalse((self.output / "manifest.json").exists())
+        self.assertFalse((self.output / "python.xml").exists())
 
 
 if __name__ == "__main__":
