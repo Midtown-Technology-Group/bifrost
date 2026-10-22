@@ -47,6 +47,7 @@ import {
 	type RunActivityItem,
 } from "./run-activity";
 import { SummaryPlaceholder } from "./SummaryPlaceholder";
+import { formatMetadataValue } from "./metadata";
 
 export type Verdict = "up" | "down" | null;
 
@@ -622,12 +623,14 @@ function asPayloadVariables(value: unknown): Record<string, unknown> {
 }
 
 export interface MetadataChipsProps {
-	metadata: Record<string, string>;
+	metadata: Record<string, unknown>;
 	highlight?: string;
 }
 
 export function MetadataChips({ metadata, highlight }: MetadataChipsProps) {
-	const entries = Object.entries(metadata);
+	const entries = Object.entries(metadata).map(
+		([key, value]) => [key, formatMetadataValue(value)] as const,
+	);
 	if (!entries.length) return null;
 	const q = highlight?.trim().toLowerCase() ?? "";
 	return (

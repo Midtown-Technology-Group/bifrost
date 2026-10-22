@@ -186,7 +186,9 @@ describe("ScheduleControls — validation", () => {
 	});
 
 	it("does not show the past hint for a future scheduled_at", () => {
-		const future = new Date(FIXED_NOW.getTime() + 60 * 60_000).toISOString();
+		const future = new Date(
+			FIXED_NOW.getTime() + 60 * 60_000,
+		).toISOString();
 		renderWithProviders(
 			<ScheduleControls
 				value={{ scheduled_at: future }}
@@ -194,6 +196,34 @@ describe("ScheduleControls — validation", () => {
 			/>,
 		);
 
+		expect(screen.queryByText(/past/i)).not.toBeInTheDocument();
+	});
+
+	it("does not pass an invalid scheduled_at value into the date picker", () => {
+		renderWithProviders(
+			<ScheduleControls
+				value={{ scheduled_at: "not-a-date" }}
+				onChange={() => {}}
+			/>,
+		);
+
+		expect(
+			screen.getByRole("button", { name: /pick date and time/i }),
+		).toHaveTextContent(/pick a date and time/i);
+		expect(screen.queryByText(/past/i)).not.toBeInTheDocument();
+	});
+
+	it("rejects an ISO timestamp with an impossible calendar date", () => {
+		renderWithProviders(
+			<ScheduleControls
+				value={{ scheduled_at: "2026-02-30T09:00:00.000Z" }}
+				onChange={() => {}}
+			/>,
+		);
+
+		expect(
+			screen.getByRole("button", { name: /pick date and time/i }),
+		).toHaveTextContent(/pick a date and time/i);
 		expect(screen.queryByText(/past/i)).not.toBeInTheDocument();
 	});
 });

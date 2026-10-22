@@ -106,7 +106,11 @@ git describe --tags --abbrev=0 2>/dev/null || echo "no-prior-tag"
 Then run:
 ```bash
 LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null)
-git log ${LAST_TAG}..HEAD --oneline 2>/dev/null || git log --oneline origin/main..HEAD
+if [[ -n "$LAST_TAG" ]]; then
+    git log "$LAST_TAG..HEAD" --oneline
+else
+    git log --oneline origin/main..HEAD
+fi
 ```
 
 Present the summary as:
@@ -232,7 +236,8 @@ Before invoking the docs skill, scan the commits since the last tag for **net-ne
 
 ```bash
 LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null)
-git log ${LAST_TAG}..HEAD --pretty=format:'%h %s' | grep -iE '^[a-f0-9]+ feat[(!:]'
+RELEASE_RANGE="${LAST_TAG:+$LAST_TAG..HEAD}"
+git log "${RELEASE_RANGE:-HEAD}" --pretty=format:'%h %s' | grep -iE '^[a-f0-9]+ feat[(!:]'
 ```
 
 For each `feat:` / `feat!:` commit, ask: does the changed code introduce **new client routes, new admin pages, or new user-facing surfaces** that aren't already documented? Quick heuristic — `git show <sha> --stat | grep -E 'client/src/pages/|client/src/components/[a-z]+/[A-Z][A-Za-z]+\.tsx'`. If the diff adds a file there, the docs probably need a new MDX page.
@@ -261,7 +266,8 @@ Let it run. The docs PR is independent of the bifrost tag — you can tag in par
 
 ```bash
 LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null)
-git log ${LAST_TAG}..HEAD --oneline
+RELEASE_RANGE="${LAST_TAG:+$LAST_TAG..HEAD}"
+git log "${RELEASE_RANGE:-HEAD}" --oneline
 ```
 
 Present the summary as:
@@ -283,12 +289,13 @@ Every PR landed in this release must be checked for authorship. Missing a contri
 Use this **two-query cross-check** — get the canonical PR list from git history (which never lies), then query each PR's author directly:
 
 ```bash
-LAST_TAG=$(git describe --tags --abbrev=0)
+LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null)
+RELEASE_RANGE="${LAST_TAG:+$LAST_TAG..HEAD}"
 
 # Step 1: Extract every PR number from squash-merge subjects since LAST_TAG.
 # git log is the source of truth — it captures every PR that actually landed,
 # regardless of merge mechanism (direct merge, merge queue, rebase, squash).
-git log ${LAST_TAG}..HEAD --format='%s' \
+git log "${RELEASE_RANGE:-HEAD}" --format='%s' \
     | grep -oE '\(#[0-9]+\)' | grep -oE '[0-9]+' | sort -u > /tmp/pr-nums.txt
 echo "PRs to check: $(wc -l < /tmp/pr-nums.txt)"
 

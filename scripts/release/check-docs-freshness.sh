@@ -17,6 +17,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BIFROST_REPO="${BIFROST_REPO:-$(cd "$SCRIPT_DIR/../.." && pwd)}"
 DOCS_REPO="${DOCS_REPO:-$HOME/GitHub/gobifrost}"
+BIFROST_REF="${BIFROST_REF:-HEAD}"
 
 repository_from_origin() {
     local origin_url repository
@@ -76,9 +77,9 @@ if ! git -C "$DOCS_REPO" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     exit 2
 fi
 
-BIFROST_LAST=$(git -C "$BIFROST_REPO" log -1 --format=%cI origin/main)
+BIFROST_LAST=$(git -C "$BIFROST_REPO" log -1 --format=%cI "$BIFROST_REF")
 DOCS_LAST=$(git -C "$DOCS_REPO" log -1 --format=%cI origin/main)
-BIFROST_LAST_EPOCH=$(git -C "$BIFROST_REPO" log -1 --format=%ct origin/main)
+BIFROST_LAST_EPOCH=$(git -C "$BIFROST_REPO" log -1 --format=%ct "$BIFROST_REF")
 DOCS_LAST_EPOCH=$(git -C "$DOCS_REPO" log -1 --format=%ct origin/main)
 
 echo "bifrost last main commit:  $BIFROST_LAST"
@@ -97,12 +98,12 @@ SURFACE_RE="${SURFACE_RE%|}"
 
 # List user-facing files touched in commits since DOCS_LAST.
 CHANGED_FILES=$(
-    git -C "$BIFROST_REPO" log --since="$DOCS_LAST" --name-only --pretty=format: origin/main \
+    git -C "$BIFROST_REPO" log --since="$DOCS_LAST" --name-only --pretty=format: "$BIFROST_REF" \
         | grep -E "$SURFACE_RE" \
         | sort -u || true
 )
 
-COMMIT_COUNT=$(git -C "$BIFROST_REPO" log --since="$DOCS_LAST" --oneline origin/main | wc -l | tr -d ' ')
+COMMIT_COUNT=$(git -C "$BIFROST_REPO" log --since="$DOCS_LAST" --oneline "$BIFROST_REF" | wc -l | tr -d ' ')
 
 echo
 if [[ -z "$CHANGED_FILES" ]]; then

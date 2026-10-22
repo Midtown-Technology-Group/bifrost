@@ -1,7 +1,7 @@
 """Agent run contract models."""
 from datetime import datetime
 from decimal import Decimal
-from typing import Literal
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -49,7 +49,7 @@ class AgentRunResponse(BaseModel):
     asked: str | None = None
     did: str | None = None
     answered: str | None = None
-    metadata: dict[str, str] = Field(default_factory=dict)
+    metadata: dict[str, Any] = Field(default_factory=dict)
     confidence: float | None = None
     confidence_reason: str | None = None
     summary_status: str = "pending"

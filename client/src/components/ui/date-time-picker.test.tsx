@@ -91,6 +91,28 @@ describe("DateTimePicker", () => {
 		expect(next.getMinutes()).toBe(15);
 	});
 
+	it("clamps a time edit whose day is outside the configured bounds", async () => {
+		const user = userEvent.setup();
+		const onChange = vi.fn();
+		const minDate = new Date(2026, 3, 20, 15, 0, 0, 0);
+		render(
+			<DateTimePicker
+				value={new Date(2026, 3, 15, 12, 0, 0, 0)}
+				onChange={onChange}
+				minDate={minDate}
+			/>,
+		);
+
+		await user.click(
+			screen.getByRole("button", { name: /pick date and time/i }),
+		);
+		fireEvent.change(await screen.findByLabelText(/^time$/i), {
+			target: { value: "09:15" },
+		});
+
+		expect(onChange).toHaveBeenLastCalledWith(minDate);
+	});
+
 	it("disables the trigger when disabled is true", async () => {
 		const user = userEvent.setup();
 		render(<DateTimePicker value={null} onChange={() => {}} disabled />);

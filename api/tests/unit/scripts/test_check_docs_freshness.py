@@ -14,6 +14,10 @@ REPO_ROOT = (
     else Path(__file__).resolve().parents[4]
 )
 SCRIPT = REPO_ROOT / "scripts/release/check-docs-freshness.sh"
+RELEASE_SKILLS = (
+    REPO_ROOT / ".agents/skills/bifrost-release/SKILL.md",
+    REPO_ROOT / ".claude/skills/bifrost-release/SKILL.md",
+)
 
 
 def _git(repo: Path, *args: str) -> None:
@@ -93,3 +97,20 @@ def test_upstream_still_requires_docs_checkout(tmp_path: Path) -> None:
     assert result.returncode == 2
     assert "docs repo not found" in result.stderr
     assert "upstream documentation check waived" not in result.stdout
+
+
+def test_freshness_queries_the_release_ref_instead_of_origin_main() -> None:
+    source = SCRIPT.read_text(encoding="utf-8")
+
+    assert 'BIFROST_REF="${BIFROST_REF:-HEAD}"' in source
+    assert 'log -1 --format=%cI "$BIFROST_REF"' in source
+    assert '--name-only --pretty=format: "$BIFROST_REF"' in source
+    assert '--oneline "$BIFROST_REF"' in source
+
+
+def test_release_skill_uses_nonempty_ranges_without_prior_tag() -> None:
+    for skill in RELEASE_SKILLS:
+        source = skill.read_text(encoding="utf-8")
+        assert "git log \"${RELEASE_RANGE:-HEAD}\" --pretty=format:'%h %s'" in source
+        assert 'git log "${RELEASE_RANGE:-HEAD}" --oneline' in source
+        assert "git log \"${RELEASE_RANGE:-HEAD}\" --format='%s' \\" in source

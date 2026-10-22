@@ -6,6 +6,7 @@ import asyncio
 import json
 import subprocess
 import sys
+import threading
 import types
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
@@ -507,6 +508,150 @@ async def test_normal_drain_waits_for_newly_forked_execution(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_drain_timeout_does_not_kill_in_flight_execution(monkeypatch):
+    pool = ProcessPoolManager(max_workers=2)
+    pool._started = True
+    pool._template = SimpleNamespace(is_alive=lambda: True)
+    handle = _handle(execution_id="exec-slow")
+    pool.processes[handle.id] = handle
+    pool.restart_template = AsyncMock()
+    pool._terminate_process = AsyncMock()
+
+    await pool.drain_and_restart_template(drain_timeout=0)
+
+    assert pool.processes[handle.id] is handle
+    pool._terminate_process.assert_not_awaited()
+    pool.restart_template.assert_awaited_once_with()
+
+
+@pytest.mark.asyncio
+async def test_restart_retires_template_that_still_owns_children():
+    pool = ProcessPoolManager(max_workers=2)
+    old_template = Mock(pid=100)
+    new_template = Mock(pid=200)
+    pool._template = old_template
+    pool._child_template_by_pid[123] = old_template
+
+    async def start_replacement() -> None:
+        assert pool._template is None
+        pool._template = new_template
+
+    pool._start_template = AsyncMock(side_effect=start_replacement)
+
+    await pool.restart_template()
+
+    old_template.shutdown.assert_not_called()
+    assert old_template in pool._retired_templates
+    assert pool._template is new_template
+
+
+@pytest.mark.asyncio
+async def test_failed_replacement_does_not_reuse_retired_template():
+    pool = ProcessPoolManager(max_workers=2)
+    old_template = Mock(pid=100)
+    pool._template = old_template
+    pool._child_template_by_pid[123] = old_template
+    pool._start_template = AsyncMock(side_effect=RuntimeError("startup failed"))
+
+    with pytest.raises(RuntimeError, match="startup failed"):
+        await pool.restart_template()
+
+    assert pool._template is None
+    assert old_template in pool._retired_templates
+    old_template.shutdown.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_collect_status_reaps_retired_template_after_final_child():
+    pool = ProcessPoolManager(max_workers=2)
+    current_template = Mock(pid=200)
+    current_template.collect_child_exit_statuses.return_value = {}
+    retired_template = Mock(pid=100)
+    retired_template.collect_child_exit_statuses.return_value = {123: 0}
+    handle = _handle(alive=True, exitcode=None)
+    handle.process = process_pool._PidWrapper(123)
+    pool.processes[handle.id] = handle
+    pool._template = current_template
+    pool._retired_templates.add(retired_template)
+    pool._child_template_by_pid[123] = retired_template
+
+    pool._collect_child_exit_statuses()
+    await pool._cleanup_retired_templates()
+
+    assert handle.process.exitcode == 0
+    assert 123 not in pool._child_template_by_pid
+    retired_template.shutdown.assert_called_once_with()
+    assert retired_template not in pool._retired_templates
+
+
+@pytest.mark.asyncio
+async def test_dead_retired_template_releases_only_its_stale_ownership():
+    pool = ProcessPoolManager()
+    dead_template = Mock(pid=100)
+    dead_template.is_alive.return_value = False
+    current_template = Mock(pid=200)
+    pool._retired_templates.add(dead_template)
+    pool._child_template_by_pid = {123: dead_template, 456: current_template}
+
+    await pool._cleanup_retired_templates()
+
+    assert pool._child_template_by_pid == {456: current_template}
+    assert dead_template not in pool._retired_templates
+    dead_template.shutdown.assert_called_once_with()
+
+
+@pytest.mark.asyncio
+async def test_retired_template_shutdown_allows_event_loop_progress():
+    pool = ProcessPoolManager()
+    template = Mock(pid=100)
+    template.is_alive.return_value = True
+    release = threading.Event()
+    loop = asyncio.get_running_loop()
+
+    def shutdown():
+        loop.call_soon_threadsafe(release.set)
+        assert release.wait(timeout=1), "shutdown blocked the event loop"
+
+    template.shutdown.side_effect = shutdown
+    pool._retired_templates.add(template)
+
+    await pool._cleanup_retired_templates()
+
+    assert template not in pool._retired_templates
+
+
+@pytest.mark.asyncio
+async def test_cancelled_retired_cleanup_finishes_the_inflight_shutdown():
+    pool = ProcessPoolManager()
+    template = Mock(pid=100)
+    template.is_alive.return_value = True
+    started = asyncio.Event()
+    release = threading.Event()
+    loop = asyncio.get_running_loop()
+
+    def shutdown():
+        loop.call_soon_threadsafe(started.set)
+        assert release.wait(timeout=2), "test did not release shutdown"
+
+    template.shutdown.side_effect = shutdown
+    pool._retired_templates.add(template)
+    cleanup = asyncio.create_task(pool._cleanup_retired_templates())
+    try:
+        await asyncio.wait_for(started.wait(), timeout=1)
+        cleanup.cancel()
+        await asyncio.sleep(0)
+        assert not cleanup.done()
+        assert template in pool._retired_templates
+    finally:
+        release.set()
+        with pytest.raises(asyncio.CancelledError):
+            await cleanup
+
+    assert template not in pool._retired_templates
+    template.shutdown.assert_called_once_with()
+
+
+@pytest.mark.asyncio
 async def test_route_heals_dead_template_left_by_failed_restart(monkeypatch):
     pool = ProcessPoolManager(max_workers=2)
     pool._started = True
@@ -612,13 +757,16 @@ async def test_route_does_not_restart_pool_stopped_while_waiting(monkeypatch):
 async def test_process_health_skips_template_pipe_during_restart_lock():
     pool = ProcessPoolManager()
     pool._collect_child_exit_statuses = Mock()
+    pool._cleanup_retired_templates = AsyncMock()
 
     async with pool._restart_lock:
         await pool._check_process_health()
     pool._collect_child_exit_statuses.assert_not_called()
+    pool._cleanup_retired_templates.assert_not_awaited()
 
     await pool._check_process_health()
     pool._collect_child_exit_statuses.assert_called_once_with()
+    pool._cleanup_retired_templates.assert_awaited_once_with()
 
 
 @pytest.mark.asyncio

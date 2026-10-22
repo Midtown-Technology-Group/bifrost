@@ -97,30 +97,41 @@ export function MemoryChart({ livePoints, livePools }: MemoryChartProps) {
 			}
 
 			// Sum memory across workers within each group bucket
-			const totalsByGroup = new Map<string, number>();
-			const groupOrder: string[] = [];
+			const totalsByBucket = new Map<
+				string,
+				{ label: string; total: number; hasValidValue: boolean }
+			>();
+			const bucketOrder: string[] = [];
 			let historicalUnknown = false;
 			for (const point of allPoints) {
-				if (!totalsByGroup.has(point.group)) {
-					groupOrder.push(point.group);
+				const bucket =
+					"bucket_start" in point &&
+					typeof point.bucket_start === "string"
+						? point.bucket_start
+						: point.group;
+				if (!totalsByBucket.has(bucket)) {
+					bucketOrder.push(bucket);
+					totalsByBucket.set(bucket, {
+						label: point.group,
+						total: 0,
+						hasValidValue: false,
+					});
 				}
 				if (isFiniteNonNegative(point.memory_current)) {
-					totalsByGroup.set(
-						point.group,
-						(totalsByGroup.get(point.group) ?? 0) +
-							point.memory_current,
-					);
+					const aggregate = totalsByBucket.get(bucket)!;
+					aggregate.total += point.memory_current;
+					aggregate.hasValidValue = true;
 				} else {
 					historicalUnknown = true;
 				}
 			}
 
-			const result: ChartDataPoint[] = groupOrder
-				.filter((group) => totalsByGroup.has(group))
-				.map((g) => ({
-					group: g,
-					total: totalsByGroup.get(g)!,
-				}));
+			const result: ChartDataPoint[] = bucketOrder
+				.filter((bucket) => totalsByBucket.get(bucket)!.hasValidValue)
+				.map((bucket) => {
+					const aggregate = totalsByBucket.get(bucket)!;
+					return { group: aggregate.label, total: aggregate.total };
+				});
 
 			// Compute current totals from latest data points (server returns in order)
 			const latestByWorker = new Map<string, WorkerMetricPoint>();
