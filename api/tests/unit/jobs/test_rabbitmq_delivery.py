@@ -303,6 +303,21 @@ async def test_malformed_json_publishes_poison_then_acks_original() -> None:
 
 
 @pytest.mark.asyncio
+async def test_malformed_json_with_invalid_retry_headers_is_acked() -> None:
+    consumer = UnitConsumer()
+    message = FakeMessage(
+        "{not-json",
+        headers={"x-retry-count": "invalid", "x-replayed-count": object()},
+    )
+
+    await consumer._process_message_with_ack(message)
+
+    assert consumer.poison_payloads
+    message.ack.assert_awaited_once()
+    message.nack.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_non_object_json_body_without_context_rejects_original() -> None:
     consumer = UnitConsumer()
     message = FakeMessage(json.dumps(["not", "an", "object"]))

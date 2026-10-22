@@ -553,6 +553,13 @@ class _AbstractConsumer(ABC):
 
     def _malformed_context(self, message: IncomingMessage) -> DeliveryContext:
         headers = dict(message.headers or {})
+
+        def _safe_count(name: str) -> int:
+            try:
+                return max(0, int(headers.get(name) or 0))
+            except (TypeError, ValueError, OverflowError):
+                return 0
+
         return DeliveryContext(
             queue_name=self.queue_name,
             body={"_malformed_body": message.body.decode(errors="replace")},
@@ -563,8 +570,8 @@ class _AbstractConsumer(ABC):
             delivery_tag=getattr(message, "delivery_tag", None),
             routing_key=getattr(message, "routing_key", None),
             exchange=getattr(message, "exchange", None),
-            retry_count=int(headers.get("x-retry-count") or 0),
-            replay_count=int(headers.get("x-replayed-count") or 0),
+            retry_count=_safe_count("x-retry-count"),
+            replay_count=_safe_count("x-replayed-count"),
             idempotency_key=headers.get("x-idempotency-key") or message.message_id,
             enqueued_at=headers.get("x-enqueued-at"),
         )

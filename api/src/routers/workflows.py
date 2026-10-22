@@ -1573,6 +1573,7 @@ async def register_workflow(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail=f"Invalid role ID: '{rid_str}' (expected a UUID)",
                 )
+        role_uuids = list(dict.fromkeys(role_uuids))
         role_check = await db.execute(
             select(Role.id).where(Role.id.in_(role_uuids))
         )
@@ -1804,6 +1805,7 @@ async def update_workflow(
                         status_code=status.HTTP_400_BAD_REQUEST,
                         detail=f"Invalid role ID: '{rid_str}' (expected a UUID)",
                     )
+            target_role_uuids = list(dict.fromkeys(target_role_uuids))
 
             if target_role_uuids:
                 role_check = await db.execute(

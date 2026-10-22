@@ -330,6 +330,7 @@ async def _replace_form_roles(
     Validates every role exists, then deletes existing FormRole rows for the
     form and inserts the new set. Empty list clears all assignments.
     """
+    role_ids = list(dict.fromkeys(role_ids))
     if role_ids:
         existing = await db.execute(
             select(RoleORM.id).where(RoleORM.id.in_(role_ids))
