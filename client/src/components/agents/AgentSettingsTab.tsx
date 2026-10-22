@@ -1596,7 +1596,7 @@ export function AgentSettingsTab({
 											<FormControl>
 												<Input
 													type="number"
-													placeholder="No limit"
+													placeholder="Platform maximum"
 													value={field.value ?? ""}
 													onChange={(e) =>
 														field.onChange(
@@ -1611,8 +1611,9 @@ export function AgentSettingsTab({
 												/>
 											</FormControl>
 											<FormDescription>
-												Optional LLM request limit
-												(1–200).
+												Optional lower LLM request limit
+												(1–200). Blank uses the platform
+												maximum (200).
 											</FormDescription>
 											<FormMessage />
 										</FormItem>
@@ -1629,7 +1630,7 @@ export function AgentSettingsTab({
 											<FormControl>
 												<Input
 													type="number"
-													placeholder="No limit"
+													placeholder="Platform maximum"
 													value={field.value ?? ""}
 													onChange={(e) =>
 														field.onChange(
@@ -1644,8 +1645,9 @@ export function AgentSettingsTab({
 												/>
 											</FormControl>
 											<FormDescription>
-												Optional cumulative limit (1k–1M
-												tokens).
+												Optional lower cumulative limit
+												(1k–1M tokens). Blank uses the
+												platform maximum (1M).
 											</FormDescription>
 											<FormMessage />
 										</FormItem>
