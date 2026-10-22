@@ -48,6 +48,15 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/endpoints", tags=["Endpoints"])
 
+ENDPOINT_RESULT_WAIT_MAX_SECONDS = 86400
+
+
+def _endpoint_result_wait_timeout(workflow_timeout_seconds: int) -> int:
+    """Translate workflow execution policy into a finite HTTP result wait."""
+    if workflow_timeout_seconds <= 0:
+        return ENDPOINT_RESULT_WAIT_MAX_SECONDS
+    return min(workflow_timeout_seconds, ENDPOINT_RESULT_WAIT_MAX_SECONDS)
+
 
 # =============================================================================
 # Request/Response Models
@@ -329,10 +338,12 @@ async def _execute_sync(
 
     logger.info(f"Queued sync workflow execution: {log_safe(workflow_name)} ({execution_id})")
 
-    # Wait for result from Redis
+    # A workflow timeout of zero disables the execution deadline, but Redis
+    # BLPOP interprets zero as an infinite wait. Keep the HTTP request finite.
+    result_wait_timeout = _endpoint_result_wait_timeout(timeout_seconds)
     result = await redis_client.wait_for_result(
         execution_id=execution_id,
-        timeout_seconds=timeout_seconds,
+        timeout_seconds=result_wait_timeout,
     )
 
     if result is None:
@@ -341,7 +352,7 @@ async def _execute_sync(
         return EndpointExecuteResponse(
             execution_id=execution_id,
             status="Timeout",
-            error=f"Workflow execution timed out after {timeout_seconds} seconds",
+            error=f"Workflow endpoint result wait timed out after {result_wait_timeout} seconds",
         )
 
     # Return result from worker

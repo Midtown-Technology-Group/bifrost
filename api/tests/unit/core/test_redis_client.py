@@ -366,6 +366,18 @@ class TestRedisClient:
 
         assert result is None
 
+    async def test_wait_for_result_rejects_infinite_blpop_timeout(self, mock_redis):
+        """Zero must never reach BLPOP because Redis treats it as unbounded."""
+        from src.core.redis_client import RedisClient
+
+        client = RedisClient()
+        client._redis = mock_redis
+
+        with pytest.raises(ValueError, match="positive timeout"):
+            await client.wait_for_result("exec-unbounded", timeout_seconds=0)
+
+        mock_redis.blpop.assert_not_awaited()
+
     async def test_wait_for_result_errors_are_not_suppressed(self, mock_redis):
         """BLPOP failures should surface because sync callers need a real result."""
         from src.core.redis_client import RedisClient
