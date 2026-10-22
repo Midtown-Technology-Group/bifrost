@@ -306,7 +306,7 @@ def create_agent_model(config: LLMConfig, *, model: str | None = None) -> Model:
                     )
 
                 return await request_with_prompt_cache_fallback(
-                    send, dict(model_settings), config
+                    send, dict(model_settings), config, effective_model=model_name
                 )
 
         client = AsyncAnthropic(

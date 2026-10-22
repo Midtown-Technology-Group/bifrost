@@ -10,6 +10,7 @@ Validates the Task 17 implementation:
 - ``dry_run_consolidated`` calls the per-run dry-run for at most
   ``CONSOLIDATED_DRY_RUN_LIMIT`` runs even when more are flagged.
 """
+import asyncio
 import json
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -24,13 +25,26 @@ from src.models.orm.agent_prompt_history import AgentPromptHistory
 from src.models.orm.agent_run_flag_conversations import AgentRunFlagConversation
 from src.models.orm.agent_runs import AgentRun
 from src.models.orm.ai_usage import AIUsage
+from src.models.orm.ai_models import (
+    AIModelAssignment,
+    AIModelProfile,
+    AIProviderConnection,
+)
 from src.models.orm.organizations import Organization
+from src.services.ai_model_service import AIModelService
+from src.services.agent_runtime.model_factory import anthropic_prompt_cache_settings
+from src.services.anthropic_prompt_cache import (
+    persist_prompt_cache_support,
+    request_with_prompt_cache_fallback,
+)
 from src.services.execution.tuning_service import (
     CONSOLIDATED_DRY_RUN_LIMIT,
     apply_consolidated_tuning,
     dry_run_consolidated,
     propose_consolidated_tuning,
 )
+from src.services.llm import LLMResponse
+from src.services.llm.base import LLMConfig
 
 
 def _build_mock_llm_response(content: str, model: str = "claude-sonnet-4-6"):
@@ -96,22 +110,24 @@ async def seed_agent_with_flagged_runs(db_session, seed_agent):
         db_session.add(run)
         runs.append(run)
     await db_session.commit()
+    run_ids = [run.id for run in runs]
+    agent_id = seed_agent.id
 
     yield seed_agent, runs
 
-    for run in runs:
+    for run_id in run_ids:
         await db_session.execute(
             delete(AgentRunFlagConversation).where(
-                AgentRunFlagConversation.run_id == run.id
+                AgentRunFlagConversation.run_id == run_id
             )
         )
         await db_session.execute(
-            delete(AIUsage).where(AIUsage.agent_run_id == run.id)
+            delete(AIUsage).where(AIUsage.agent_run_id == run_id)
         )
-        await db_session.execute(delete(AgentRun).where(AgentRun.id == run.id))
+        await db_session.execute(delete(AgentRun).where(AgentRun.id == run_id))
     await db_session.execute(
         delete(AgentPromptHistory).where(
-            AgentPromptHistory.agent_id == seed_agent.id
+            AgentPromptHistory.agent_id == agent_id
         )
     )
     await db_session.commit()
@@ -147,6 +163,112 @@ async def test_propose_returns_proposal_with_flagged_runs(
     assert "careful agent" in proposal.proposed_prompt
     assert set(proposal.affected_run_ids) == {r.id for r in runs}
     mock_client.complete.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_first_messages_detection_does_not_deadlock_consolidated_tuning(
+    db_session,
+    seed_agent_with_flagged_runs,
+    seed_user,
+):
+    """Best-effort cache persistence must not wait on its caller's profile lock."""
+    from src.services.execution import model_selection
+    from src.services.execution import tuning_service as mod
+
+    agent, _runs = seed_agent_with_flagged_runs
+    service = AIModelService(db_session)
+    connection = await service.create_connection(
+        name=f"Go contention {uuid4().hex[:8]}",
+        provider="opencode_go",
+        api_key="oc_sk-test",
+        endpoint=None,
+    )
+    profile = await service.create_profile(
+        name=f"Go contention {uuid4().hex[:8]}",
+        connection_id=connection.id,
+        model=f"unmapped-{uuid4().hex}",
+        capabilities=None,
+        enabled_for_chat=True,
+    )
+    await service.set_assignment("tuning", profile.id)
+    await db_session.commit()
+
+    profile_id = profile.id
+    connection_id = connection.id
+    captured_config: LLMConfig | None = None
+    response = LLMResponse(
+        content=(
+            '{"summary":"No lock wait.",'
+            '"proposed_prompt":"Keep the prompt-cache probe nonblocking."}'
+        ),
+        model=profile.model,
+    )
+
+    async def get_contended_tuning_client(db):  # type: ignore[no-untyped-def]
+        nonlocal captured_config
+        resolved_client, resolved_model = await model_selection.get_tuning_client(db)
+        captured_config = resolved_client.config
+
+        async def complete(**_kwargs):  # type: ignore[no-untyped-def]
+            async def send(_settings):  # type: ignore[no-untyped-def]
+                return response
+
+            return await request_with_prompt_cache_fallback(
+                send,
+                anthropic_prompt_cache_settings(),
+                resolved_client.config,
+            )
+
+        client = MagicMock()
+        client.complete = AsyncMock(side_effect=complete)
+        client.provider_name = "anthropic"
+        return client, resolved_model
+
+    try:
+        with (
+            patch(
+                "src.services.opencode_go_detection.detect_opencode_go_wire_api",
+                new=AsyncMock(return_value="messages"),
+            ),
+            patch.object(mod, "get_tuning_client", new=get_contended_tuning_client),
+        ):
+            proposal = await asyncio.wait_for(
+                propose_consolidated_tuning(
+                    agent.id,
+                    db_session,
+                    _superuser_principal(seed_user),
+                ),
+                timeout=2,
+            )
+
+        assert proposal.summary == "No lock wait."
+        assert captured_config is not None
+        assert profile.wire_api == "messages"
+        assert profile.anthropic_prompt_cache_supported is None
+
+        await db_session.commit()
+        await persist_prompt_cache_support(captured_config, True)
+        await db_session.refresh(
+            profile,
+            attribute_names=["anthropic_prompt_cache_supported"],
+        )
+        assert profile.anthropic_prompt_cache_supported is True
+    finally:
+        await db_session.rollback()
+        await db_session.execute(
+            delete(AIModelAssignment).where(
+                AIModelAssignment.profile_id == profile_id
+            )
+        )
+        await db_session.execute(
+            delete(AIModelProfile).where(AIModelProfile.id == profile_id)
+        )
+        await db_session.execute(
+            delete(AIProviderConnection).where(
+                AIProviderConnection.id == connection_id
+            )
+        )
+        await db_session.commit()
 
 
 @pytest.mark.asyncio
