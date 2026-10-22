@@ -143,6 +143,25 @@ class TestOAuthTokenRepositoryCrossTenantIsolation:
         assert result is global_token
         assert session.execute.call_count == 2
 
+    async def test_exact_org_lookup_never_falls_back_to_global(self, session) -> None:
+        """Write-target resolution issues one exact-scope query only."""
+        provider_id = uuid4()
+        session.execute.return_value = _result_returning(None)
+
+        repo = OAuthTokenRepository(session, org_id=ORG_A, is_superuser=True)
+        result = await repo.get_exact_org_level_for_provider(
+            provider_id,
+            for_update=True,
+        )
+
+        assert result is None
+        session.execute.assert_awaited_once()
+        query = session.execute.await_args.args[0]
+        compiled = str(query.compile(compile_kwargs={"literal_binds": True}))
+        assert ORG_A.hex in compiled
+        assert "organization_id IS NULL" not in compiled
+        assert "FOR UPDATE" in str(query)
+
     async def test_org_specific_wins_over_global(self, session) -> None:
         """Cascade override: when both exist, the org-specific row wins."""
         provider_id = uuid4()

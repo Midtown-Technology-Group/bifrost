@@ -156,7 +156,11 @@ async def run_refresh_job(
                     db=db,
                     provider=provider,
                     token=token,
-                    org_id=None,  # scheduler refreshes globally; no org context
+                    # Preserve the token's tenant when resolving templated
+                    # provider URLs. Passing None here used to fall through to
+                    # an integration-wide default and could refresh an
+                    # org-specific token against the wrong tenant.
+                    org_id=token.organization_id,
                 )
                 token_refresh_data.append(td)
 

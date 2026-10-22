@@ -383,7 +383,7 @@ model without classifying it fails CI.
 | KnowledgeStore      | None               | No (SDK only)      | Cascade only, no RBAC                          |
 | IntegrationMapping  | None               | No (SDK only)      | Cascade only, no RBAC                          |
 | OAuthProvider       | None               | Admin-only         | `OAuthProviderRepository` — cascade + OAuth-domain methods (create/update/delete/store_token/to_detail) |
-| OAuthToken          | None               | No (SDK only)      | `OAuthTokenRepository` — cascade + `get_org_level_for_provider` helper. MUST filter by org. |
+| OAuthToken          | None               | No (SDK only)      | `OAuthTokenRepository` — cascade reads plus exact-scope refresh writeback. MUST filter by org. |
 | MCPServer           | None               | No (SDK only)      | Cascade only                                   |
 | MCPConnection       | None               | No (SDK only)      | Cascade only                                   |
 | EventSource         | None               | Admin-only         | Resolved when event arrives to find trigger    |

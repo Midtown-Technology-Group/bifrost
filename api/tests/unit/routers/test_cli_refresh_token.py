@@ -186,6 +186,72 @@ class TestRefreshTokenClientCredentials:
         mock_db.add.assert_not_called()
         assert mock_existing_token.expires_at == expires_at
 
+    @pytest.mark.asyncio
+    async def test_org_refresh_preserves_global_token_and_creates_org_row(self):
+        """Org client credentials never write through the global fallback."""
+        from src.models.contracts.cli import SDKIntegrationsRefreshTokenRequest
+        from src.routers.cli import sdk_integrations_refresh_token
+
+        org_id = uuid4()
+        request = SDKIntegrationsRefreshTokenRequest(connection_name="Pax8")
+        mock_user = MagicMock(
+            user_id=uuid4(),
+            email="org@example.com",
+            organization_id=org_id,
+            is_superuser=False,
+            is_external=False,
+        )
+        provider = MagicMock(
+            id=uuid4(),
+            provider_name="Pax8",
+            oauth_flow_type="client_credentials",
+            integration_id=None,
+            organization_id=None,
+            scopes=["read"],
+            audience=None,
+        )
+        global_token = MagicMock(
+            organization_id=None,
+            encrypted_access_token=b"global-access",
+        )
+        mock_db = AsyncMock()
+        mock_db.execute = AsyncMock(
+            side_effect=[
+                _make_result(provider),
+                _make_result(None),
+                _make_result(global_token),
+            ]
+        )
+        mock_db.add = MagicMock()
+        mock_db.commit = AsyncMock()
+        expires_at = datetime.now(timezone.utc) + timedelta(hours=1)
+
+        with patch(
+            "src.services.oauth_provider.refresh_oauth_token_http",
+            new=AsyncMock(
+                return_value={
+                    "success": True,
+                    "access_token": "org-access",
+                    "encrypted_access_token": b"encrypted-org-access",
+                    "expires_at": expires_at,
+                }
+            ),
+        ):
+            result = await sdk_integrations_refresh_token(
+                request,
+                mock_user,
+                mock_db,
+            )
+
+        assert result.refreshed is True
+        assert mock_db.execute.await_count == 2
+        assert global_token.encrypted_access_token == b"global-access"
+        mock_db.add.assert_called_once()
+        created = mock_db.add.call_args.args[0]
+        assert created.organization_id == org_id
+        assert created.provider_id == provider.id
+        assert created.encrypted_access_token == b"encrypted-org-access"
+
 
 class TestRefreshTokenAuthorizationCode:
     """Test refresh_token endpoint for authorization_code flows."""
@@ -269,6 +335,85 @@ class TestRefreshTokenAuthorizationCode:
         assert "refresh_token" not in response_payload
         assert "client_secret" not in response_payload
         mock_instance.refresh_access_token.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_org_caller_refreshes_selected_global_token_in_global_scope(self):
+        """A selected global token retains the integration-wide entity default."""
+        from src.models.contracts.cli import SDKIntegrationsRefreshTokenRequest
+        from src.routers.cli import sdk_integrations_refresh_token
+
+        org_id = uuid4()
+        request = SDKIntegrationsRefreshTokenRequest(connection_name="Microsoft")
+        mock_user = MagicMock(
+            user_id=uuid4(),
+            email="org@example.com",
+            organization_id=org_id,
+            is_superuser=False,
+            is_external=False,
+        )
+        provider = MagicMock(
+            id=uuid4(),
+            provider_name="Microsoft",
+            client_id="client-id",
+            encrypted_client_secret=b"encrypted-secret",
+            token_url="https://login.example.com/{entity_id}/token",
+            token_url_defaults={},
+            oauth_flow_type="authorization_code",
+            scopes=["openid"],
+            integration_id=uuid4(),
+            organization_id=None,
+            audience=None,
+        )
+        global_token = MagicMock(
+            id=uuid4(),
+            organization_id=None,
+            encrypted_access_token=b"old-access",
+            encrypted_refresh_token=b"encrypted-refresh",
+            oauth_resource=None,
+        )
+        integration = MagicMock(
+            default_entity_id="global-tenant",
+            entity_id="legacy-tenant",
+        )
+        mock_db = AsyncMock()
+        mock_db.execute = AsyncMock(
+            side_effect=[
+                _make_result(provider),
+                _make_result(None),
+                _make_result(global_token),
+                _make_result(None),
+                _make_result(integration),
+            ]
+        )
+        mock_db.add = MagicMock()
+        mock_db.commit = AsyncMock()
+        expires_at = datetime.now(timezone.utc) + timedelta(hours=1)
+        refresh = AsyncMock(
+            return_value={
+                "success": True,
+                "access_token": "fresh-access",
+                "encrypted_access_token": b"encrypted-fresh-access",
+                "expires_at": expires_at,
+            }
+        )
+
+        with patch(
+            "src.services.oauth_provider.refresh_oauth_token_http",
+            new=refresh,
+        ):
+            result = await sdk_integrations_refresh_token(
+                request,
+                mock_user,
+                mock_db,
+            )
+
+        assert result.refreshed is True
+        context = refresh.await_args.args[0]
+        assert context["token_id"] == global_token.id
+        assert context["token_url_defaults"]["entity_id"] == "global-tenant"
+        assert context["context_error"] is None
+        assert global_token.encrypted_access_token == b"encrypted-fresh-access"
+        mock_db.add.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_clears_waiting_callback_status_on_success(self):

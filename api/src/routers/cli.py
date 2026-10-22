@@ -1568,6 +1568,14 @@ async def sdk_integrations_refresh_token(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="Cannot refresh: no refresh_token stored for this connection",
                 )
+        else:
+            # Bind client-credentials persistence before the HTTP exchange.
+            # An org-targeted request must never fall through to and overwrite
+            # the global token selected by the read cascade.
+            stored_token = await token_repo.get_exact_org_level_for_provider(
+                provider.id,
+                for_update=True,
+            )
 
         # Build the context dict and delegate to the shared primitive.
         # build_token_refresh_context handles the {entity_id} fallback chain
@@ -1609,10 +1617,6 @@ async def sdk_integrations_refresh_token(
         # connections router (which requires an existing row) and so persistence
         # remains per-caller.
         token_obj = stored_token
-        if token_obj is None:
-            # client_credentials path — fetch (or later create) the user_id=NULL row.
-            # Cascade: prefer org-scoped token, fall back to global.
-            token_obj = await token_repo.get_org_level_for_provider(provider.id)
 
         if token_obj:
             token_obj.encrypted_access_token = outcome["encrypted_access_token"]
@@ -1622,7 +1626,7 @@ async def sdk_integrations_refresh_token(
                 token_obj.expires_at = expires_at_dt
         else:
             new_token = OAuthToken(
-                organization_id=provider.organization_id,
+                organization_id=org_uuid,
                 provider_id=provider.id,
                 encrypted_access_token=outcome["encrypted_access_token"],
                 encrypted_refresh_token=outcome.get("encrypted_refresh_token"),
