@@ -171,8 +171,9 @@ def _admitted(
     same_repo=True,
     planner="success",
     shard_total=4,
+    api_mode="comprehensive",
 ):
-    """Evaluate the small boolean admission language used by these CI jobs."""
+    """Evaluate the small admission/concurrency expression language used by CI."""
     if shard_total:
         matrix = {
             "include": [
@@ -189,6 +190,7 @@ def _admitted(
         "needs.affected-test-plan.result": planner,
         "needs.publish-ci-test-images.result": publisher,
         "needs.affected-test-plan.outputs.api_e2e_matrix": matrix_json,
+        "needs.affected-test-plan.outputs.api_e2e_mode": api_mode,
         "needs.affected-test-plan.outputs.client_e2e_matrix": matrix_json,
         "github.event_name": event,
         "github.ref": ref,
@@ -350,3 +352,66 @@ def test_required_e2e_gate_fails_when_quality_prevents_test_admission(lint):
     )
     assert result.returncode == 1
     assert "expensive test lanes were not admitted" in result.stdout
+
+
+@pytest.mark.parametrize("event", ["pull_request", "merge_group", "push", "workflow_dispatch"])
+@pytest.mark.parametrize("mode", ["comprehensive", "affected", "skip"])
+def test_api_e2e_concurrency_cap_is_only_for_comprehensive_pull_requests(event, mode):
+    jobs = yaml.safe_load(_repo_file(".github/workflows/ci.yml").read_text())["jobs"]
+    strategy = jobs["test-e2e"]["strategy"]
+    assert strategy["fail-fast"] is False
+    limit = _admitted(strategy["max-parallel"], lint="success", event=event, api_mode=mode)
+    assert limit == (2 if event == "pull_request" and mode == "comprehensive" else 4)
+    assert "max-parallel" not in jobs["test-client-e2e"]["strategy"]
+
+
+@pytest.mark.parametrize("mode,total", [("comprehensive", 4), ("affected", 1), ("skip", 0)])
+def test_api_matrix_preserves_all_four_shards_and_affected_skip_inventory(tmp_path, mode, total):
+    plan = affected.AffectedPlan("affected", "test", (), lane_overrides={"api_e2e": mode})
+    output = tmp_path / "output"
+    affected.write_github_output(output, plan)
+    line = next(line for line in output.read_text().splitlines() if line.startswith("api_e2e_matrix="))
+    matrix = json.loads(line.split("=", 1)[1])["include"]
+    assert matrix == (
+        [{"shard": 0, "total": 0}]
+        if total == 0
+        else [{"shard": shard, "total": total} for shard in range(1, total + 1)]
+    )
+
+
+@pytest.mark.parametrize(
+    "api_result,api_mode,browser_result,browser_mode,expected",
+    [
+        ("success", "comprehensive", "success", "comprehensive", 0),
+        ("failure", "comprehensive", "success", "comprehensive", 1),
+        ("cancelled", "comprehensive", "success", "comprehensive", 1),
+        ("skipped", "comprehensive", "success", "comprehensive", 1),
+        ("skipped", "affected", "success", "comprehensive", 1),
+        ("skipped", "skip", "success", "comprehensive", 0),
+        ("failure", "skip", "success", "comprehensive", 1),
+        ("cancelled", "skip", "success", "comprehensive", 1),
+        ("success", "comprehensive", "failure", "comprehensive", 1),
+        ("success", "comprehensive", "cancelled", "comprehensive", 1),
+        ("success", "comprehensive", "skipped", "comprehensive", 1),
+        ("success", "comprehensive", "skipped", "skip", 0),
+        ("skipped", "skip", "skipped", "skip", 0),
+    ],
+)
+def test_concurrency_does_not_change_required_aggregate_failure_or_skip_semantics(
+    api_result, api_mode, browser_result, browser_mode, expected
+):
+    jobs = yaml.safe_load(_repo_file(".github/workflows/ci.yml").read_text())["jobs"]
+    gate = jobs["test-e2e-gate"]
+    assert gate["name"] == "E2E Tests"
+    assert "always()" in gate["if"]
+    script = gate["steps"][0]["run"]
+    values = {"test-e2e": api_result, "test-client-e2e": browser_result}
+    script = re.sub(
+        r"\$\{\{ needs\.([\w-]+)\.result \}\}",
+        lambda match: values.get(match[1], "success"),
+        script,
+    )
+    script = script.replace("${{ needs.affected-test-plan.outputs.api_e2e_mode }}", api_mode)
+    script = script.replace("${{ needs.affected-test-plan.outputs.client_e2e_mode }}", browser_mode)
+    result = subprocess.run(["bash", "-c", script], capture_output=True, text=True, check=False)
+    assert result.returncode == expected, result.stdout + result.stderr
