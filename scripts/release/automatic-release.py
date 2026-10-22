@@ -588,6 +588,8 @@ def checked_main_ci(source: str, run_id: int) -> None:
 def checked_release(
     source: str, run_id: int, prs: list[dict], *, same_tree_release_pr: int | None = None,
 ) -> dict:
+    if same_tree_release_pr is None:
+        checked_main_ci(source, run_id)
     matches = [
         pr
         for pr in prs
@@ -602,9 +604,7 @@ def checked_release(
     ):
         raise ReleaseError("checked source is not the merged fork release PR")
     pr = matches[0]
-    if same_tree_release_pr is None:
-        checked_main_ci(source, run_id)
-    else:
+    if same_tree_release_pr is not None:
         if type(same_tree_release_pr) is not int or same_tree_release_pr != pr["number"]:
             raise ReleaseError("publication evidence must name this exact merged release PR")
         proof = checked_same_tree_pr_ci(source, run_id, same_tree_release_pr)
