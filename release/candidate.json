@@ -1,31 +1,38 @@
 {
   "schema": 1,
   "repository": "Midtown-Technology-Group/bifrost",
-  "version": "v3.2.0",
-  "base_tag": "v3.1.0",
-  "source_commit": "5fcae00cec1f0d8158fee47b58657e74f60cc1ec",
-  "source_tree": "ae766b569932500e2ea6ee21ed51f1281a1a6f22",
+  "version": "v3.2.1",
+  "base_tag": "v3.2.0",
+  "source_commit": "17cee8cceee9a9530f5b24f5e5b07e2d795e782f",
+  "source_tree": "8e9c8f9dd33d3897cd9b50d38093046d2b55e08f",
   "contract_floor": null,
   "pull_requests": [
     {
-      "number": 1367,
-      "title": "docs(release): document incident and prevention plan [skip ci]",
+      "number": 1371,
+      "title": "ci: reuse exact-main Sonar evidence in tag builds",
       "labels": [],
-      "merge_commit": "528645290850593ba0e98bb361754723a4acd239",
+      "merge_commit": "65297178502e0540805ab92d937d326bd97d4e11",
       "author": "MTG-Thomas"
     },
     {
-      "number": 1365,
-      "title": "feat(release): reuse identical-tree CI evidence for preparation",
+      "number": 1228,
+      "title": "docs: align bounded decisions with Pydantic and freeze synthetic routing cases",
       "labels": [],
-      "merge_commit": "7eb57dce1d5d097461de7e0fe19a82de8ee05b7a",
+      "merge_commit": "695d4aa6f2aead80469050104e52bd417ff97ebd",
       "author": "MTG-Thomas"
     },
     {
-      "number": 1370,
-      "title": "fix(runtime): exclude untouched reservations from deployment drain",
+      "number": 1376,
+      "title": "ci: select owning Sonar tool contracts in the existing planner",
       "labels": [],
-      "merge_commit": "5fcae00cec1f0d8158fee47b58657e74f60cc1ec",
+      "merge_commit": "2d490429de1e3c793501acf07d8c9201dcf92b91",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1377,
+      "title": "ci: explain safe Sonar reuse refusals in existing run summaries",
+      "labels": [],
+      "merge_commit": "17cee8cceee9a9530f5b24f5e5b07e2d795e782f",
       "author": "MTG-Thomas"
     }
   ]
