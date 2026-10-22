@@ -174,3 +174,58 @@ async def test_job_available_hint_reaches_subscribed_device(
         assert hint["type"] == "device_job_available"
         assert hint["device_id"] == device_id
         assert hint["job_id"]
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+@pytest.mark.parametrize("operation", ["rotate-key", "disable"])
+@pytest.mark.parametrize("unsubscribe_first", [False, True])
+async def test_device_authorization_change_closes_existing_connection(
+    e2e_ws_url,
+    e2e_client,
+    platform_admin,
+    org1,
+    operation,
+    unsubscribe_first,
+):
+    device_id, key = _enroll(
+        e2e_client,
+        platform_admin.headers,
+        org1["id"],
+        f"ws-revoke-{operation}",
+    )
+    headers = {"Authorization": f"Bearer {key}"}
+
+    async with connect(
+        f"{e2e_ws_url}/ws/connect",
+        additional_headers=headers,
+    ) as ws:
+        connected = await _recv(ws)
+        assert connected["type"] == "connected"
+
+        if unsubscribe_first:
+            own_channel = f"device:{device_id}"
+            await ws.send(
+                json.dumps({
+                    "type": "unsubscribe",
+                    "channel": own_channel,
+                })
+            )
+            unsubscribed = await _recv(ws)
+            assert unsubscribed == {
+                "type": "unsubscribed",
+                "channel": own_channel,
+            }
+
+        changed = e2e_client.post(
+            f"/api/devices/{device_id}/{operation}",
+            headers=platform_admin.headers,
+        )
+        assert changed.status_code == 200, changed.text
+
+        with pytest.raises(ConnectionClosedError) as exc:
+            await asyncio.wait_for(ws.recv(), timeout=10)
+
+        assert exc.value.rcvd is not None
+        assert exc.value.rcvd.code == 4001
+        assert exc.value.rcvd.reason == "Device authorization revoked"

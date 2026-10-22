@@ -38,6 +38,7 @@ class FakeSocket:
         self.fail = fail
         self.sent: list[str] = []
         self.accepted = False
+        self.closed: list[tuple[int, str]] = []
 
     async def accept(self) -> None:
         self.accepted = True
@@ -46,6 +47,9 @@ class FakeSocket:
         if self.fail:
             raise RuntimeError("closed")
         self.sent.append(message)
+
+    async def close(self, *, code: int, reason: str) -> None:
+        self.closed.append((code, reason))
 
 
 class RedisContext:
@@ -110,7 +114,12 @@ async def test_connection_manager_connect_initializes_redis_only_when_needed(
 
     monkeypatch.setattr(manager, "_init_redis", init_redis)
 
-    await manager.connect(first, ["execution:1", "system"])
+    revocation_channel = f"device:{uuid4()}"
+    await manager.connect(
+        first,
+        ["execution:1", "system"],
+        revocation_channels=(revocation_channel,),
+    )
     await manager.connect(second, ["execution:1"])
 
     assert init_calls == 1
@@ -118,6 +127,7 @@ async def test_connection_manager_connect_initializes_redis_only_when_needed(
     assert second.accepted is True
     assert manager.connections["execution:1"] == {first, second}
     assert manager.connections["system"] == {first}
+    assert manager.revocation_connections[revocation_channel] == {first}
 
 
 @pytest.mark.asyncio
@@ -188,10 +198,14 @@ def test_connection_manager_disconnect_removes_empty_channels() -> None:
         "execution:1": {cast(Any, socket)},
         "system": {cast(Any, socket)},
     }
+    manager.revocation_connections = {
+        f"device:{uuid4()}": {cast(Any, socket)},
+    }
 
     manager.disconnect(cast(Any, socket))
 
     assert manager.connections == {}
+    assert manager.revocation_connections == {}
 
 
 @pytest.mark.asyncio
@@ -221,6 +235,55 @@ async def test_connection_manager_uses_table_and_file_dispatchers() -> None:
     assert file_calls == [("files:workspace:GLOBAL", {"type": "file_change"})]
     assert table_socket.sent == []
     assert file_socket.sent == []
+
+
+@pytest.mark.asyncio
+async def test_device_revocation_closes_and_unsubscribes_local_sockets() -> None:
+    manager = pubsub.ConnectionManager()
+    socket = FakeSocket()
+    channel = f"device:{uuid4()}"
+    manager.revocation_connections[channel] = {socket}
+
+    await manager._send_local(
+        channel,
+        {"type": pubsub.DEVICE_AUTHORIZATION_REVOKED},
+    )
+
+    assert socket.closed == [(4001, "Device authorization revoked")]
+    assert socket.sent == []
+    assert channel not in manager.revocation_connections
+
+
+@pytest.mark.asyncio
+async def test_device_revocation_uses_snapshot_when_sockets_disconnect() -> None:
+    manager = pubsub.ConnectionManager()
+    channel = f"device:{uuid4()}"
+    unrelated_channel = f"device:{uuid4()}"
+
+    class SelfDisconnectingSocket(FakeSocket):
+        async def close(self, *, code: int, reason: str) -> None:
+            await super().close(code=code, reason=reason)
+            manager.disconnect(cast(Any, self))
+
+    first = SelfDisconnectingSocket()
+    second = SelfDisconnectingSocket()
+    unrelated = FakeSocket()
+    manager.connections[channel] = {first, second}
+    manager.revocation_connections[channel] = {first, second}
+    manager.connections[unrelated_channel] = {unrelated}
+    manager.revocation_connections[unrelated_channel] = {unrelated}
+
+    await manager._send_local(
+        channel,
+        {"type": pubsub.DEVICE_AUTHORIZATION_REVOKED},
+    )
+
+    assert first.closed == [(4001, "Device authorization revoked")]
+    assert second.closed == [(4001, "Device authorization revoked")]
+    assert channel not in manager.connections
+    assert channel not in manager.revocation_connections
+    assert manager.connections[unrelated_channel] == {unrelated}
+    assert manager.revocation_connections[unrelated_channel] == {unrelated}
 
 
 @pytest.mark.asyncio

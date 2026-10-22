@@ -37,6 +37,7 @@ from src.core.redis_reconnect import ResilientPubSubListener
 logger = logging.getLogger(__name__)
 
 InternalSubscriber = Callable[[dict[str, Any]], Awaitable[None]]
+DEVICE_AUTHORIZATION_REVOKED = "device_authorization_revoked"
 
 
 def service_channel_for_log(channel: str, data: Any) -> str | None:
@@ -90,6 +91,9 @@ class ConnectionManager:
 
     # Active WebSocket connections per channel
     connections: dict[str, set[WebSocket]] = field(default_factory=dict)
+    # Device sockets that must receive authorization revocations even when the
+    # client unsubscribes from its optional device hint channel.
+    revocation_connections: dict[str, set[WebSocket]] = field(default_factory=dict)
     # Resilient pub/sub listener for receiving messages
     _pubsub_listener: ResilientPubSubListener | None = None
     # Process-local consumers for cross-replica infrastructure events. These
@@ -99,13 +103,20 @@ class ConnectionManager:
         default_factory=dict
     )
 
-    async def connect(self, websocket: WebSocket, channels: list[str]) -> None:
+    async def connect(
+        self,
+        websocket: WebSocket,
+        channels: list[str],
+        *,
+        revocation_channels: tuple[str, ...] = (),
+    ) -> None:
         """
         Accept WebSocket connection and subscribe to channels.
 
         Args:
             websocket: FastAPI WebSocket connection
             channels: List of channels to subscribe to
+            revocation_channels: Non-removable authorization event channels
         """
         await websocket.accept()
 
@@ -121,12 +132,20 @@ class ConnectionManager:
             self.connections[channel].add(websocket)
             logger.debug(f"WebSocket connected to channel: {log_safe(channel)}")
 
+        for channel in revocation_channels:
+            self.revocation_connections.setdefault(channel, set()).add(websocket)
+            logger.debug(
+                "WebSocket registered for revocations on channel: %s",
+                log_safe(channel),
+            )
+
     def disconnect(self, websocket: WebSocket) -> None:
         """Remove WebSocket from all channels."""
-        for channel, sockets in list(self.connections.items()):
-            sockets.discard(websocket)
-            if not sockets:
-                del self.connections[channel]
+        for channel_map in (self.connections, self.revocation_connections):
+            for channel, sockets in list(channel_map.items()):
+                sockets.discard(websocket)
+                if not sockets:
+                    del channel_map[channel]
         logger.debug("WebSocket disconnected")
 
     async def broadcast(self, channel: str, message: dict[str, Any]) -> None:
@@ -176,17 +195,34 @@ class ConnectionManager:
                     log_safe(channel),
                 )
 
-        if channel not in self.connections:
+        is_device_revocation = (
+            channel.startswith("device:")
+            and message.get("type") == DEVICE_AUTHORIZATION_REVOKED
+        )
+        channel_connections = (
+            self.revocation_connections
+            if is_device_revocation
+            else self.connections
+        )
+        sockets = channel_connections.get(channel)
+        if not sockets:
             return
+        recipients = tuple(sockets)
 
         dead_connections = set()
         is_table_channel = channel.startswith("table:")
         is_file_channel = channel.startswith("files:")
         message_json = json.dumps(message) if not (is_table_channel or is_file_channel) else None
 
-        for websocket in self.connections[channel]:
+        for websocket in recipients:
             try:
-                if is_table_channel:
+                if is_device_revocation:
+                    await websocket.close(
+                        code=4001,
+                        reason="Device authorization revoked",
+                    )
+                    dead_connections.add(websocket)
+                elif is_table_channel:
                     dispatcher = getattr(websocket, "_table_dispatcher", None)
                     if dispatcher is None:
                         continue
@@ -281,6 +317,7 @@ class ConnectionManager:
             await self._pubsub_listener.stop()
             self._pubsub_listener = None
         self.internal_subscribers.clear()
+        self.revocation_connections.clear()
 
 
 # Global connection manager instance
