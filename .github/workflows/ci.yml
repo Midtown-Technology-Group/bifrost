@@ -6,6 +6,41 @@ on:
     tags: ["v*"]
   pull_request:
     branches: [main]
+    # Docs/plugin/config-only PRs use ci-noop.yml to report the required
+    # branch-protection contexts without building images or running real tests.
+    # merge_group remains unfiltered so the exact queued candidate still gets
+    # the normal validation path before it can reach main.
+    #
+    # Keep this list byte-identical to ci-noop.yml's pull_request.paths list.
+    # Do not add .github/workflows/**: workflow changes must always run real CI.
+    paths-ignore:
+      - "**/*.md"
+      - "**/*.txt"
+      - "**/*.png"
+      - "**/*.jpg"
+      - "**/*.jpeg"
+      - "**/*.gif"
+      - "**/*.svg"
+      - "**/*.webp"
+      - "**/*.ico"
+      - ".agents/**"
+      - ".claude/**"
+      - ".claude-plugin/**"
+      - ".codex/**"
+      - ".codex-plugin/**"
+      - "plugins/bifrost/**"
+      - "docs/**"
+      - "LICENSE"
+      - ".github/CODEOWNERS"
+      - ".github/ISSUE_TEMPLATE/**"
+      - ".github/dependabot.yml"
+      - ".gitignore"
+      - ".gitattributes"
+      - ".editorconfig"
+      - ".prettierrc*"
+      - ".prettierignore"
+      - ".vscode/**"
+      - ".idea/**"
   merge_group:
     types: [checks_requested]
   workflow_dispatch:
