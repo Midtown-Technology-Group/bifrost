@@ -93,7 +93,7 @@ class BrandingUpdateRequest(BaseModel):
 
 
 class FileUploadRequest(BaseModel):
-    """Request model for generating file upload SAS URL"""
+    """Request model for authorizing a form file upload."""
     file_name: str = Field(..., min_length=1, max_length=255, description="Original file name")
     content_type: str = Field(..., min_length=1, max_length=255, description="MIME type of the file")
     file_size: int = Field(..., ge=0, le=5 * 1024 * 1024 * 1024, description="File size in bytes")
@@ -120,7 +120,7 @@ class UploadedFileMetadata(BaseModel):
 
 
 class FileUploadResponse(BaseModel):
-    """Response model for file upload SAS URL generation"""
+    """Response for bounded server or direct storage form uploads."""
     upload_url: str = Field(..., description="URL for direct upload")
     upload_headers: dict[str, str] = Field(..., description="Headers required for direct upload")
     blob_uri: str = Field(..., description="Final file URI")

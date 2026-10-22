@@ -51,6 +51,48 @@ def regular_user_token():
     )
 
 
+@pytest.fixture
+async def seeded_logs(db_session):
+    """Create deterministic rows so list and filter assertions cannot be vacuous."""
+    execution_id = uuid4()
+    workflow_name = f"security-log-fixture-{uuid4().hex}"
+    message_token = f"needle-error-{uuid4().hex}"
+    timestamp = datetime(2026, 9, 2, 12, tzinfo=timezone.utc)
+    db_session.add(Execution(
+        id=execution_id,
+        workflow_name=workflow_name,
+        executed_by_name="Execution log endpoint fixture",
+    ))
+    await db_session.flush()
+    logs = [
+        ExecutionLog(
+            execution_id=execution_id, level="ERROR",
+            message=f"{message_token} primary", timestamp=timestamp, sequence=1,
+        ),
+        ExecutionLog(
+            execution_id=execution_id, level="INFO",
+            message="deterministic informational entry",
+            timestamp=timestamp + timedelta(seconds=1), sequence=2,
+        ),
+    ]
+    db_session.add_all(logs)
+    await db_session.commit()
+
+    try:
+        yield {
+            "workflow_name": workflow_name,
+            "message_token": message_token,
+            "log_ids": {log.id for log in logs},
+            "error_log_id": logs[0].id,
+        }
+    finally:
+        await db_session.execute(delete(ExecutionLog).where(
+            ExecutionLog.execution_id == execution_id,
+        ))
+        await db_session.execute(delete(Execution).where(Execution.id == execution_id))
+        await db_session.commit()
+
+
 @pytest.mark.e2e
 class TestLogsListEndpoint:
     """Integration tests for GET /api/executions/logs endpoint."""
@@ -71,85 +113,88 @@ class TestLogsListEndpoint:
         detail = response.json().get("detail", "").lower()
         assert "superuser" in detail or "admin" in detail
 
-    def test_list_logs_returns_paginated_results(
+    @pytest.mark.asyncio
+    async def test_list_logs_returns_paginated_results(
         self,
         http_client: httpx.Client,
         admin_token: str,
+        seeded_logs,
     ):
         """Admin can list logs with pagination."""
         response = http_client.get(
             "/api/executions/logs",
             headers=auth_headers(admin_token),
-            params={"limit": 10},
+            params={"limit": 1, "workflow_name": seeded_logs["workflow_name"]},
         )
         assert response.status_code == 200
         data = response.json()
 
-        # Verify response structure
-        assert "logs" in data
-        assert isinstance(data["logs"], list)
-        # continuation_token may be None or a string
-        assert "continuation_token" in data
+        assert len(data["logs"]) == 1
+        assert data["logs"][0]["id"] in seeded_logs["log_ids"]
+        assert data["continuation_token"]
 
-    def test_list_logs_filters_by_level(
+    @pytest.mark.asyncio
+    async def test_list_logs_filters_by_level(
         self,
         http_client: httpx.Client,
         admin_token: str,
+        seeded_logs,
     ):
         """Admin can filter logs by level."""
         response = http_client.get(
             "/api/executions/logs",
             headers=auth_headers(admin_token),
-            params={"levels": "ERROR,WARNING", "limit": 50},
+            params={
+                "levels": "ERROR,WARNING",
+                "workflow_name": seeded_logs["workflow_name"],
+                "limit": 50,
+            },
         )
         assert response.status_code == 200
         data = response.json()
-        assert "logs" in data
-        assert isinstance(data["logs"], list)
+        assert len(data["logs"]) == 1
+        assert data["logs"][0]["level"] == "ERROR"
 
-        # If any logs are returned, verify they have the expected levels
-        for log in data["logs"]:
-            assert log["level"] in ["ERROR", "WARNING"]
-
-    def test_list_logs_filters_by_workflow_name(
+    @pytest.mark.asyncio
+    async def test_list_logs_filters_by_workflow_name(
         self,
         http_client: httpx.Client,
         admin_token: str,
+        seeded_logs,
     ):
         """Admin can filter logs by workflow name (partial match)."""
         response = http_client.get(
             "/api/executions/logs",
             headers=auth_headers(admin_token),
-            params={"workflow_name": "test", "limit": 50},
+            params={"workflow_name": seeded_logs["workflow_name"], "limit": 50},
         )
         assert response.status_code == 200
         data = response.json()
-        assert "logs" in data
-        assert isinstance(data["logs"], list)
+        assert len(data["logs"]) == 2
+        assert {log["id"] for log in data["logs"]} == seeded_logs["log_ids"]
+        assert all(log["workflow_name"] == seeded_logs["workflow_name"] for log in data["logs"])
 
-        # If any logs are returned, verify they contain the search term
-        for log in data["logs"]:
-            assert "test" in log["workflow_name"].lower()
-
-    def test_list_logs_message_search(
+    @pytest.mark.asyncio
+    async def test_list_logs_message_search(
         self,
         http_client: httpx.Client,
         admin_token: str,
+        seeded_logs,
     ):
         """Admin can search in log message content."""
         response = http_client.get(
             "/api/executions/logs",
             headers=auth_headers(admin_token),
-            params={"message_search": "error", "limit": 50},
+            params={
+                "message_search": seeded_logs["message_token"],
+                "workflow_name": seeded_logs["workflow_name"],
+                "limit": 50,
+            },
         )
         assert response.status_code == 200
         data = response.json()
-        assert "logs" in data
-        assert isinstance(data["logs"], list)
-
-        # If any logs are returned, verify they contain the search term
-        for log in data["logs"]:
-            assert "error" in log["message"].lower()
+        assert len(data["logs"]) == 1
+        assert seeded_logs["message_token"] in data["logs"][0]["message"]
 
     @pytest.mark.asyncio
     async def test_list_logs_pagination_with_token(
@@ -221,10 +266,12 @@ class TestLogsListEndpoint:
             await db_session.execute(delete(Execution).where(Execution.id == execution_id))
             await db_session.commit()
 
-    def test_list_logs_date_range_filter(
+    @pytest.mark.asyncio
+    async def test_list_logs_date_range_filter(
         self,
         http_client: httpx.Client,
         admin_token: str,
+        seeded_logs,
     ):
         """Admin can filter logs by date range."""
         response = http_client.get(
@@ -233,38 +280,52 @@ class TestLogsListEndpoint:
             params={
                 "start_date": "2020-01-01T00:00:00Z",
                 "end_date": "2030-12-31T23:59:59Z",
+                "workflow_name": seeded_logs["workflow_name"],
                 "limit": 50,
             },
         )
         assert response.status_code == 200
         data = response.json()
-        assert "logs" in data
-        assert isinstance(data["logs"], list)
+        assert len(data["logs"]) == 2
+        assert {log["id"] for log in data["logs"]} == seeded_logs["log_ids"]
 
-    def test_list_logs_response_structure(
+        bounded_response = http_client.get(
+            "/api/executions/logs",
+            headers=auth_headers(admin_token),
+            params={
+                "start_date": "2020-01-01T00:00:00Z",
+                "end_date": "2026-09-02T12:00:00Z",
+                "workflow_name": seeded_logs["workflow_name"],
+                "limit": 50,
+            },
+        )
+        assert bounded_response.status_code == 200
+        bounded_logs = bounded_response.json()["logs"]
+        assert [log["id"] for log in bounded_logs] == [
+            seeded_logs["error_log_id"]
+        ]
+        assert bounded_logs[0]["level"] == "ERROR"
+
+    @pytest.mark.asyncio
+    async def test_list_logs_response_structure(
         self,
         http_client: httpx.Client,
         admin_token: str,
+        seeded_logs,
     ):
         """Verify log entries have the expected structure."""
         response = http_client.get(
             "/api/executions/logs",
             headers=auth_headers(admin_token),
-            params={"limit": 10},
+            params={"limit": 10, "workflow_name": seeded_logs["workflow_name"]},
         )
         assert response.status_code == 200
         data = response.json()
-        assert "logs" in data
-
-        # If there are any logs, check their structure
-        for log in data["logs"]:
-            assert "id" in log
-            assert "execution_id" in log
-            assert "level" in log
-            assert "message" in log
-            assert "timestamp" in log
-            assert "workflow_name" in log
-            # organization_name may be None for global executions
+        assert len(data["logs"]) == 2
+        log = data["logs"][0]
+        assert {
+            "id", "execution_id", "level", "message", "timestamp", "workflow_name",
+        }.issubset(log)
 
     def test_list_logs_without_auth(
         self,

@@ -280,7 +280,14 @@ class FileOperationsService:
             )
             detection_result = detect_python_entity_type_with_ast(content)
             cached_ast = detection_result.ast_tree
-            cached_content_str = detection_result.content_str
+            # A syntax failure with decorator-like text must take the full
+            # indexing path so it produces diagnostics and never looks like a
+            # decorator-free module whose workflows should be deactivated.
+            cached_content_str = (
+                None
+                if getattr(detection_result, "syntax_error", None) is not None
+                else detection_result.content_str
+            )
 
         # Write ALL files to S3 under _repo/ prefix — this is the durable store.
         # Platform entities also go to S3 so the Redis→S3 fallback works for workers.

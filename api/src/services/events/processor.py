@@ -1210,7 +1210,7 @@ async def _run_delivery_execution_update(
     execution_id: str,
     delivery_status: EventDeliveryStatus,
     error_message: str | None,
-) -> None:
+) -> EventDelivery | None:
     result = await db.execute(
         sa.select(EventDelivery).options(
             joinedload(EventDelivery.event),
@@ -1222,7 +1222,7 @@ async def _run_delivery_execution_update(
     delivery = result.unique().scalar_one_or_none()
 
     if not delivery:
-        return
+        return None
 
     delivery.status = delivery_status
     delivery.completed_at = datetime.now(timezone.utc)
@@ -1248,7 +1248,21 @@ async def _run_delivery_execution_update(
     if delivery_status == EventDeliveryStatus.FAILED:
         await _emit_delivery_retry_exhausted(db, delivery, error_message)
 
-    await _broadcast_event_status_update(db, delivery_repo, delivery)
+    return delivery
+
+
+async def broadcast_delivery_update_after_commit(
+    db: AsyncSession,
+    delivery: EventDelivery | None,
+) -> None:
+    """Broadcast a delivery update only after its transaction is durable."""
+    if delivery is None:
+        return
+    await _broadcast_event_status_update(
+        db,
+        EventDeliveryRepository(db),
+        delivery,
+    )
 
 
 async def update_delivery_from_execution(
@@ -1256,7 +1270,7 @@ async def update_delivery_from_execution(
     status: str,
     error_message: str | None = None,
     session: AsyncSession | None = None,
-) -> None:
+) -> EventDelivery | None:
     """
     Update EventDelivery status based on workflow execution completion.
 
@@ -1273,7 +1287,7 @@ async def update_delivery_from_execution(
     delivery_status = _delivery_status_from_execution(status)
 
     if session is not None:
-        await _run_delivery_execution_update(
+        return await _run_delivery_execution_update(
             session,
             execution_id,
             delivery_status,
@@ -1284,10 +1298,19 @@ async def update_delivery_from_execution(
 
         session_factory = get_session_factory()
         async with session_factory() as db:
-            await _run_delivery_execution_update(
+            delivery = await _run_delivery_execution_update(
                 db,
                 execution_id,
                 delivery_status,
                 error_message,
             )
             await db.commit()
+            try:
+                await broadcast_delivery_update_after_commit(db, delivery)
+            except Exception as exc:
+                logger.warning(
+                    "Failed to broadcast committed event delivery for %s: %s",
+                    execution_id,
+                    exc,
+                )
+            return delivery
