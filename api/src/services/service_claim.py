@@ -164,6 +164,17 @@ class ServiceClaimLoop:
             definition = await db.get(ServiceDefinition, owned.service_id)
             if await self._enforce_startup_grace(db, owned, attempt, definition):
                 continue
+            # A claim may commit between a control request's empty attempt
+            # lookup and its desired-state flush (autoflush is disabled).
+            # Reconcile the durable intent under the heartbeat's existing
+            # attempt lock; do not acquire a definition lock in reverse order.
+            if (
+                definition is not None
+                and (definition.desired_state != "running" or not definition.enabled)
+                and attempt.stop_requested_at is None
+            ):
+                attempt.stop_requested_at = lifecycle._now()
+                await db.flush()
             await self._drain_ready(db, owned)
             await self._mirror_stop(db, owned, attempt)
             await self._report_memory(owned)
@@ -246,10 +257,9 @@ class ServiceClaimLoop:
             )
 
     async def _mirror_stop(self, db, owned: OwnedAttempt, attempt) -> None:
-        """Mirror durable stop_requested to the child exactly once."""
+        """Mirror stop once successfully dispatched; cancellation remains retryable."""
         if attempt.stop_requested_at is None or owned.stop_mirrored:
             return
-        owned.stop_mirrored = True
         try:
             from src.core.cache import get_redis
 
@@ -268,6 +278,8 @@ class ServiceClaimLoop:
                     owned.attempt_id,
                     e,
                 )
+                return
+        owned.stop_mirrored = True
 
     async def _report_memory(self, owned: OwnedAttempt) -> None:
         """Publish one owned attempt's memory into the pool registration hash.
@@ -698,15 +710,18 @@ class ServiceClaimLoop:
         committed = False
         try:
             async with get_db_context() as db:
-                from src.models.orm.services import ServiceAttempt
+                from src.models.orm.services import ServiceDefinition
 
-                attempt = await db.get(ServiceAttempt, attempt_uuid)
-                if attempt is None:
-                    return
-                reason, exit_reason, error = self._completion_for(
-                    envelope, attempt
-                )
                 try:
+                    # Read the latest stop flag after the supervision tick's
+                    # attempt lock is released, before classifying its result.
+                    attempt = await lifecycle._locked_live_attempt(
+                        db, attempt_uuid, lease_token, lifecycle._now()
+                    )
+                    definition = await db.get(ServiceDefinition, attempt.service_id)
+                    reason, exit_reason, error = self._completion_for(
+                        envelope, attempt, definition
+                    )
                     await lifecycle.complete_attempt(
                         db,
                         attempt_id=attempt_uuid,
@@ -786,7 +801,7 @@ class ServiceClaimLoop:
                     pass
 
     @staticmethod
-    def _completion_for(envelope: dict, attempt) -> tuple[str, str | None, str | None]:
+    def _completion_for(envelope: dict, attempt, definition=None) -> tuple[str, str | None, str | None]:
         """Map a child outcome envelope to a complete_attempt decision."""
         if envelope.get("recycled"):
             return (
@@ -794,7 +809,10 @@ class ServiceClaimLoop:
                 envelope.get("recycle_reason") or "recycled",
                 None,
             )
-        if attempt.stop_requested_at is not None:
+        if attempt.stop_requested_at is not None or (
+            definition is not None
+            and (definition.desired_state != "running" or not definition.enabled)
+        ):
             return (
                 "requested",
                 envelope.get("exit_reason") or "stop_requested",
