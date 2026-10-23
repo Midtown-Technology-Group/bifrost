@@ -5,12 +5,17 @@ from uuid import uuid4
 import pytest
 from fastapi import HTTPException, status
 
+from src.models.contracts.artifacts import (
+    ModelCapabilities,
+    ModelCapabilityVerifyRequest,
+)
 from src.models.contracts.llm import (
     EmbeddingConfigRequest,
     EmbeddingReindexResponse,
     EmbeddingTestRequest,
 )
 from src.routers import llm_config
+from src.services.ai_model_service import AIModelService
 
 
 def _user(email: str = "admin@example.com") -> SimpleNamespace:
@@ -23,6 +28,176 @@ def _db() -> AsyncMock:
     db.commit = AsyncMock()
     db.rollback = AsyncMock()
     return db
+
+
+class TestModelCapabilityVerification:
+    @pytest.mark.asyncio
+    async def test_fresh_key_rejects_unsafe_endpoint_before_provider_call(self):
+        request = ModelCapabilityVerifyRequest(
+            provider="openai",
+            model="example-model",
+            endpoint="http://127.0.0.1:8080/v1",
+            api_key="fresh-key",
+        )
+
+        with (
+            patch(
+                "src.services.embeddings.url_safety.validate_embedding_endpoint",
+                side_effect=ValueError("private address"),
+            ),
+            patch(
+                "src.services.model_capabilities.verify_model_capabilities",
+                AsyncMock(),
+            ) as verify,
+            pytest.raises(HTTPException) as exc,
+        ):
+            await llm_config.verify_model_capability_support(
+                request, _db(), _user()
+            )
+
+        assert exc.value.status_code == status.HTTP_400_BAD_REQUEST
+        assert "Provider endpoint rejected" in exc.value.detail
+        verify.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_saved_key_cannot_be_sent_to_endpoint_override(self):
+        db = _db()
+        request = ModelCapabilityVerifyRequest(
+            provider="openai",
+            model="example-model",
+            endpoint="https://attacker.example.test/v1",
+            api_key=None,
+        )
+        saved = SimpleNamespace(
+            provider="openai",
+            endpoint="https://saved.example.test/v1",
+            api_key="saved-secret",
+        )
+        service = MagicMock()
+        service.normalize_endpoint.side_effect = lambda _provider, endpoint: endpoint
+
+        with (
+            patch(
+                "src.services.llm.factory.get_llm_config",
+                AsyncMock(return_value=saved),
+            ) as get_config,
+            patch.object(llm_config, "AIModelService", return_value=service),
+            patch(
+                "src.services.model_capabilities.verify_model_capabilities",
+                AsyncMock(),
+            ) as verify,
+            pytest.raises(HTTPException) as exc,
+        ):
+            await llm_config.verify_model_capability_support(
+                request, db, _user()
+            )
+
+        assert exc.value.status_code == status.HTTP_400_BAD_REQUEST
+        assert exc.value.detail == (
+            "Enter an API key to verify against a different endpoint."
+        )
+        get_config.assert_awaited_once_with(db, detect_transport=False)
+        verify.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_saved_key_inherits_its_saved_endpoint(self):
+        request = ModelCapabilityVerifyRequest(
+            provider="openai",
+            model="example-model",
+            endpoint=None,
+            api_key=None,
+        )
+        saved = SimpleNamespace(
+            provider="openai",
+            endpoint="https://saved.example.test/v1",
+            api_key="saved-secret",
+        )
+        service = MagicMock()
+        service.normalize_endpoint.side_effect = lambda _provider, endpoint: (
+            endpoint or "https://api.openai.com/v1"
+        )
+        capabilities = ModelCapabilities(source="verified")
+
+        with (
+            patch(
+                "src.services.llm.factory.get_llm_config",
+                AsyncMock(return_value=saved),
+            ),
+            patch.object(llm_config, "AIModelService", return_value=service),
+            patch(
+                "src.services.embeddings.url_safety.validate_embedding_endpoint",
+                return_value=saved.endpoint,
+            ),
+            patch(
+                "src.services.model_capabilities.verify_model_capabilities",
+                AsyncMock(return_value=(capabilities, "verified")),
+            ) as verify,
+        ):
+            result = await llm_config.verify_model_capability_support(
+                request, _db(), _user()
+            )
+
+        assert result.capabilities == capabilities
+        verify.assert_awaited_once_with(
+            provider="openai",
+            model="example-model",
+            endpoint=saved.endpoint,
+            api_key="saved-secret",
+        )
+
+    @pytest.mark.asyncio
+    async def test_saved_opencode_key_rejects_denied_endpoint_without_discovery(
+        self,
+        db_session,
+    ):
+        service = AIModelService(db_session)
+        connection = await service.create_connection(
+            name=f"Denied OpenCode {uuid4().hex[:8]}",
+            provider="opencode_go",
+            api_key="saved-secret",
+            endpoint="http://127.0.0.1:8080/v1",
+        )
+        profile = await service.create_profile(
+            name=f"Denied OpenCode model {uuid4().hex[:8]}",
+            connection_id=connection.id,
+            model=f"unknown-{uuid4().hex}",
+            capabilities=None,
+            enabled_for_chat=True,
+        )
+        await service.set_assignment("primary", profile.id)
+        request = ModelCapabilityVerifyRequest(
+            provider="openai",
+            model=profile.model,
+            endpoint=None,
+            api_key=None,
+        )
+        detector = AsyncMock()
+
+        with (
+            patch(
+                "src.services.opencode_go_detection.detect_opencode_go_wire_api",
+                detector,
+            ),
+            patch(
+                "src.services.embeddings.url_safety.validate_embedding_endpoint",
+                side_effect=ValueError("private address"),
+            ),
+            patch(
+                "src.services.model_capabilities.verify_model_capabilities",
+                AsyncMock(),
+            ) as verify,
+            pytest.raises(HTTPException) as exc,
+        ):
+            await llm_config.verify_model_capability_support(
+                request,
+                db_session,
+                _user(),
+            )
+
+        assert exc.value.status_code == status.HTTP_400_BAD_REQUEST
+        assert "Provider endpoint rejected" in exc.value.detail
+        detector.assert_not_awaited()
+        verify.assert_not_awaited()
 
 
 class TestEmbeddingConfigEndpoints:
@@ -159,6 +334,78 @@ class TestEmbeddingConfigEndpoints:
 
         assert result.success is False
         assert result.message == "No API key provided and no saved key found"
+
+    @pytest.mark.asyncio
+    async def test_embedding_test_rejects_saved_key_endpoint_override(self):
+        db = _db()
+        connection = SimpleNamespace(
+            provider="openai",
+            endpoint="https://saved.example.test/v1",
+            encrypted_api_key="ciphertext",
+        )
+        service = MagicMock()
+        service.get_embedding_config_row = AsyncMock(
+            return_value=SimpleNamespace(connection=connection)
+        )
+        service.embedding_client_endpoint.return_value = connection.endpoint
+
+        with (
+            patch.object(llm_config, "AIModelService", return_value=service),
+            patch.object(
+                llm_config, "_list_embedding_models", AsyncMock()
+            ) as list_models,
+        ):
+            result = await llm_config.test_embedding_connection(
+                EmbeddingTestRequest(
+                    api_key=None,
+                    endpoint="https://attacker.example.test/v1",
+                ),
+                db,
+                _user(),
+            )
+
+        assert result.success is False
+        assert (
+            result.message == "Enter an API key to test against a different endpoint."
+        )
+        service.decrypt_api_key.assert_not_called()
+        list_models.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_embedding_test_reuses_saved_key_only_with_saved_endpoint(self):
+        db = _db()
+        connection = SimpleNamespace(
+            provider="openai",
+            endpoint="https://saved.example.test/v1",
+            encrypted_api_key="ciphertext",
+        )
+        service = MagicMock()
+        service.get_embedding_config_row = AsyncMock(
+            return_value=SimpleNamespace(connection=connection)
+        )
+        service.embedding_client_endpoint.return_value = connection.endpoint
+        service.decrypt_api_key.return_value = "saved-secret"
+
+        with (
+            patch.object(llm_config, "AIModelService", return_value=service),
+            patch(
+                "src.services.embeddings.url_safety.validate_embedding_endpoint",
+                return_value=connection.endpoint,
+            ),
+            patch.object(
+                llm_config,
+                "_list_embedding_models",
+                AsyncMock(return_value=["embedding-model"]),
+            ) as list_models,
+        ):
+            result = await llm_config.test_embedding_connection(
+                EmbeddingTestRequest(api_key=None, endpoint=None),
+                db,
+                _user(),
+            )
+
+        assert result.success is True
+        list_models.assert_awaited_once_with("saved-secret", connection.endpoint)
 
     @pytest.mark.asyncio
     async def test_trigger_embedding_reindex_requires_saved_embedding_config(self):

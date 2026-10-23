@@ -193,7 +193,10 @@ class ModelCapabilityVerifyRequest(ModelCapabilityLookupRequest):
 
     api_key: str | None = Field(
         default=None,
-        description="New unsaved API key; omit to use the saved provider key.",
+        description=(
+            "New unsaved API key; omit to use the saved provider key only with "
+            "its saved endpoint."
+        ),
     )
 
 
