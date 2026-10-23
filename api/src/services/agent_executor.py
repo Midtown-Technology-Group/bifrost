@@ -2079,7 +2079,7 @@ class AgentExecutor:
             # Create context from caller/conversation/user
             # session=None: system tools create their own short-lived sessions
             # via get_tool_db() fallback, avoiding long-lived connection holds
-            context = MCPContext(
+            context = MCPContext.for_internal_execution(
                 user_id=str(user.id) if user else "",
                 org_id=(
                     str(user.organization_id)

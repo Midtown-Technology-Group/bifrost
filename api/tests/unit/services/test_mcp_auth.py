@@ -364,6 +364,9 @@ class TestVerifyToken:
             "is_external": True,
             "org_id": "org-1",
             "roles": ["Analyst"],
+            "mcp": True,
+            "scope": "mcp:access",
+            "resource": auth_provider.resource,
         }
 
 
