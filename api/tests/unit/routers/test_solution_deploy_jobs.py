@@ -212,6 +212,53 @@ async def test_run_deploy_job_does_not_start_after_job_is_terminal(
     assert not zip_path.exists()
 
 
+@pytest.mark.asyncio
+async def test_failed_first_repo_deploy_keeps_projection_nonterminal_until_rollback(
+    tmp_path, monkeypatch
+):
+    job = SolutionDeployJob(id=uuid4(), status="queued")
+    solution = Solution(
+        id=uuid4(), slug="new-repo-install", name="New repo install", git_connected=True
+    )
+
+    class FakeDB:
+        async def get(self, model, row_id):  # noqa: ANN001, ANN201
+            if model is SolutionDeployJob:
+                return job
+            if model is Solution:
+                return solution
+            return None
+
+    @asynccontextmanager
+    async def fake_db_context():
+        yield FakeDB()
+
+    @asynccontextmanager
+    async def fake_write_lock(_solution_id):
+        yield
+
+    async def fail_deploy(*_args, **_kwargs):
+        from src.services.solutions.deploy import SolutionDeployConflict
+        raise SolutionDeployConflict("manifest invalid")
+
+    from src.core import database
+    from src.services.solutions import write_lock, zip_install
+
+    monkeypatch.setattr(database, "get_db_context", fake_db_context)
+    monkeypatch.setattr(write_lock, "solution_write_lock", fake_write_lock)
+    monkeypatch.setattr(zip_install, "deploy_zip_to_solution_path", fail_deploy)
+    zip_path = tmp_path / "deploy.zip"
+    zip_path.write_bytes(b"staged")
+
+    await _run_deploy_job(
+        job.id, solution.id, zip_path, force=True, allow_connected_install=True
+    )
+
+    assert job.status == "running"
+    assert job.error == "manifest invalid"
+    assert zip_path.exists() is False
+
+
 _SENSITIVE_ERROR_TEXT = (
     "asyncpg query failed: password='s3cr3t-p@ss' host=db.internal port=5432"
 )
