@@ -13,6 +13,7 @@ from contextlib import closing
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
+from uuid import uuid4
 
 from scripts.sonar import shadow
 
@@ -204,6 +205,68 @@ class DataTests(ShadowFixture):
         path.write_bytes(b"not sqlite")
         with self.assertRaises(sqlite3.DatabaseError):
             shadow.database(path)
+
+    def test_unit_runtime_sidecars_may_be_empty_but_e2e_runtime_may_not(self):
+        parent = self.root / "inputs"
+        parent.mkdir()
+        unit = self.bundle(parent, "unit")
+        api_hosts = {line.split()[1] for line in (unit / "producers.txt").read_text().splitlines()
+                     if line.split()[0] in {"api", "api-replica"}}
+        for path in (unit / "runtime").iterdir():
+            hostname = path.name.removeprefix(".coverage.sonar.").split(".")[0]
+            if hostname in api_hosts:
+                path.unlink()
+                sqlite_data(path, {})
+        runtime = shadow.validate_runtime(unit, "unit")
+        self.assertCountEqual(runtime["empty_reports"], [
+            path.name for path in (unit / "runtime").iterdir()
+            if path.name.removeprefix(".coverage.sonar.").split(".")[0] in api_hosts
+        ])
+
+        e2e = self.bundle(parent, "e2e-1")
+        path = next(path for path in (e2e / "runtime").iterdir()
+                    if path.name.removeprefix(".coverage.sonar.").split(".")[0] in api_hosts)
+        path.unlink()
+        sqlite_data(path, {})
+        with self.assertRaisesRegex(ValueError, "Empty runtime coverage database"):
+            shadow.validate_runtime(e2e, "e2e-1")
+
+    def test_unit_and_supplement_exports_skip_shared_runtime_combiner(self):
+        script = Path(__file__).with_name("shadow.sh")
+        helper = self.root / "scripts/lib/test_helpers.sh"
+        helper.parent.mkdir(parents=True)
+        helper.write_text('compute_project_name() { printf "shadow-test-%s" "$SHADOW_TEST_ID"; }\n')
+        (self.root / ".sonar-evidence").mkdir(exist_ok=True)
+        (self.root / ".sonar-evidence/shadow-context.json").write_text("{}\n")
+        fake_bin = self.root / "bin"
+        fake_bin.mkdir()
+        docker = fake_bin / "docker"
+        docker.write_text(
+            '''#!/bin/bash
+printf '%s\\n' "$*" >> "$DOCKER_TRACE"
+if [[ "$*" == *'ps -a'* ]]; then
+  printf 'api 111111111111\\napi-replica 222222222222\\n'
+fi
+'''
+        )
+        docker.chmod(0o755)
+        local_script = self.root / "scripts/sonar/shadow.sh"
+        local_script.parent.mkdir(parents=True, exist_ok=True)
+        local_script.write_bytes(script.read_bytes())
+        env = {**os.environ, "PATH": str(fake_bin) + os.pathsep + os.environ["PATH"],
+               "DOCKER_TRACE": str(self.root / "docker.trace"), "COMPOSE_FILE": "fixture.yml"}
+        run_id = uuid4().hex
+        for lane in ("unit", "supplement", "e2e-1"):
+            env["SHADOW_TEST_ID"] = f"{run_id}-{lane}"
+            log_dir = Path(f"/tmp/bifrost-shadow-test-{run_id}-{lane}")
+            log_dir.mkdir(parents=True, exist_ok=True)
+            result = subprocess.run(["bash", str(local_script), "export", lane], cwd=self.root,
+                                    env=env, capture_output=True, text=True, check=False)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            commands = (self.root / "docker.trace").read_text()
+            self.assertEqual("combine_sonar_coverage.py" in commands, lane.startswith("e2e-"))
+            (self.root / "docker.trace").unlink()
+            shutil.rmtree(log_dir)
 
     def test_unexpected_source_roots_fail(self):
         for name in ["/app/src/file.py", "../outside.py", "a\\b.py"]:

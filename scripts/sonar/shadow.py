@@ -148,7 +148,7 @@ def snapshot(artifacts: Path, runtime: Path, lane: str, context_raw: bytes) -> N
         raise ValueError("Incomplete snapshot; retained available evidence and diagnostics")
 
 
-def database(path: Path) -> tuple[str, dict[str, set[tuple[int, int]]]]:
+def database(path: Path, *, allow_empty: bool = False) -> tuple[str, dict[str, set[tuple[int, int]]]]:
     """Read actual branch arcs and zero-hit file records from Coverage.py SQLite."""
     read_file(path)
     uri = f"file:{quote(str(path.resolve()))}?mode=ro&immutable=1"
@@ -160,7 +160,7 @@ def database(path: Path) -> tuple[str, dict[str, set[tuple[int, int]]]]:
         arcs = {name: set() for name in files.values()}
         for file_id, start, end in connection.execute("select file_id, fromno, tono from arc"):
             arcs[files[file_id]].add((start, end))
-    if not arcs:
+    if not arcs and not allow_empty:
         raise ValueError("Empty runtime coverage database")
     return meta["version"], arcs
 
@@ -175,19 +175,24 @@ def validate_runtime(directory: Path, lane: str) -> dict:
     files = sorted((directory / "runtime").iterdir())
     if not files:
         raise ValueError("Missing runtime reports")
+    runtime_required = lane == "baseline" or lane.startswith("e2e-")
+    empty_reports = []
     for path in files:
-        version, _ = database(path)
+        version, measured = database(path, allow_empty=not runtime_required)
         versions.add(version)
         hostname = path.name.removeprefix(".coverage.sonar.").split(".")[0]
         if hostname not in producers:
             raise ValueError("Runtime report has no attributable container")
         observed.add(producers[hostname])
+        if not measured:
+            empty_reports.append(path.name)
     required = {"api", "api-replica"}
     if lane == "baseline" or lane.startswith("e2e-"):
         required |= {"worker", "scheduler", "scheduler-fixtures"}
     if not required <= observed or len(versions) != 1:
         raise ValueError("Incomplete or incompatible runtime producer evidence")
-    return {"roles": sorted(observed), "version": versions.pop(), "reports": len(files)}
+    return {"roles": sorted(observed), "version": versions.pop(), "reports": len(files),
+            "empty_reports": empty_reports}
 
 
 def seal(root: Path, artifacts: Path, lane: str) -> None:
