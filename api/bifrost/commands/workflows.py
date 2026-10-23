@@ -51,7 +51,7 @@ from bifrost.client import BifrostClient
 from bifrost.dto_flags import (
     DTO_EXCLUDES,
     DTO_REF_LOOKUPS,
-    assemble_body,
+    assemble_cli_body,
     build_cli_flags,
     load_dict_value,
 )
@@ -423,7 +423,7 @@ async def update_workflow(
     :mod:`bifrost.refs` for resolution rules.
     """
     workflow_uuid = await resolver.resolve("workflow", ref)
-    body = await assemble_body(WorkflowUpdateRequest, fields, resolver=resolver)
+    body = await assemble_cli_body(WorkflowUpdateRequest, fields, resolver=resolver)
     response = await client.patch(
         f"/api/workflows/{workflow_uuid}", json=body
     )

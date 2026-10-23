@@ -18,7 +18,6 @@ live at the top of every ``test_cli_*.py``.
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import pathlib
 import sys
@@ -26,6 +25,7 @@ import uuid
 from typing import Any
 
 import pytest
+import pytest_asyncio
 
 logger = logging.getLogger(__name__)
 
@@ -176,48 +176,29 @@ def invoke_cli():
     return _invoke
 
 
-def _clear_s3_bifrost_sync() -> None:
-    """Delete all .bifrost/ files from S3 repo storage, using a fresh event loop.
-
-    Creates its own loop so this works regardless of whether pytest-asyncio
-    has a loop already running in the current thread.
-    """
-
-    async def _clear() -> None:
-        from src.config import get_settings
-        from src.services.repo_storage import RepoStorage
-
-        settings = get_settings()
-        if not settings.s3_configured:
-            return
-        repo = RepoStorage(settings)
-        paths = await repo.list(".bifrost/")
-        for path in paths:
-            try:
-                await repo.delete(path)
-            except Exception as e:
-                # Per-path delete is best-effort during cleanup
-                logger.debug(f"_clear_s3_bifrost_sync could not delete {path}: {e}")
-
-    loop = asyncio.new_event_loop()
-    try:
-        loop.run_until_complete(_clear())
-    except Exception as e:
-        # S3 not configured / unreachable — fixture is best-effort
-        logger.debug(f"_clear_s3_bifrost_sync skipped: {e}")
-    finally:
-        loop.close()
-
-
-@pytest.fixture(autouse=True)
-def isolate_s3_sync() -> None:
+@pytest_asyncio.fixture(autouse=True)
+async def isolate_s3_sync() -> None:
     """Wipe .bifrost/ from S3 before every test in this package.
 
-    Runs on a fresh event loop to avoid conflicting with pytest-asyncio's
-    managed loop. Covers the sync HTTP-client tests that can't use the
-    async ``isolate_s3`` fixture from tests/conftest.py.
+    Runs on pytest-asyncio's managed loop so cleanup cannot be silently skipped
+    merely because the test thread already owns a running event loop.
     """
-    _clear_s3_bifrost_sync()
+    from src.config import get_settings
+    from src.services.repo_storage import RepoStorage
+
+    settings = get_settings()
+    if not settings.s3_configured:
+        return
+    repo = RepoStorage(settings)
+    paths = await repo.list(".bifrost/")
+    failures: list[str] = []
+    for path in paths:
+        try:
+            await repo.delete(path)
+        except Exception as exc:
+            failures.append(f"{path}: {exc}")
+    if failures:
+        pytest.fail("S3 test isolation failed: " + "; ".join(failures))
 
 
 @pytest.fixture

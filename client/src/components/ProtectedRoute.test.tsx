@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { Route, Routes } from "react-router";
 import { renderWithProviders, screen } from "@/test-utils";
 
 const auth = {
@@ -8,8 +9,12 @@ const auth = {
 	isOrgUser: false,
 	hasRole: vi.fn(() => false),
 };
+const capability = { token: null as string | null };
 
 vi.mock("@/contexts/AuthContext", () => ({ useAuth: () => auth }));
+vi.mock("@/lib/auth-token", () => ({
+	getAppEmbedCapability: () => capability.token,
+}));
 vi.mock("@/components/NoAccess", () => ({ NoAccess: () => <p>No access</p> }));
 
 import { ProtectedRoute } from "./ProtectedRoute";
@@ -20,6 +25,7 @@ beforeEach(() => {
 	auth.isPlatformAdmin = false;
 	auth.isOrgUser = false;
 	auth.hasRole.mockReturnValue(false);
+	capability.token = null;
 });
 
 describe("ProtectedRoute", () => {
@@ -54,6 +60,46 @@ describe("ProtectedRoute", () => {
 		);
 
 		expect(screen.getByText("Private content")).toBeInTheDocument();
+	});
+
+	it("denies an ordinary signed-in session on the app embed route", () => {
+		auth.isOrgUser = true;
+		renderWithProviders(
+			<Routes>
+				<Route
+					path="/embedded/apps/hmac/:applicationId/*"
+					element={
+						<ProtectedRoute requireOrgUser requireAppEmbed>
+							<div>Embedded content</div>
+						</ProtectedRoute>
+					}
+				/>
+			</Routes>,
+			{ initialEntries: ["/embedded/apps/hmac/portal"] },
+		);
+
+		expect(screen.getByText("No access")).toBeInTheDocument();
+		expect(screen.queryByText("Embedded content")).not.toBeInTheDocument();
+	});
+
+	it("allows a route-bound app embed capability", () => {
+		capability.token = "bound-capability";
+		auth.hasRole.mockReturnValue(true);
+		renderWithProviders(
+			<Routes>
+				<Route
+					path="/embedded/apps/hmac/:applicationId/*"
+					element={
+						<ProtectedRoute requireOrgUser requireAppEmbed>
+							<div>Embedded content</div>
+						</ProtectedRoute>
+					}
+				/>
+			</Routes>,
+			{ initialEntries: ["/embedded/apps/hmac/portal"] },
+		);
+
+		expect(screen.getByText("Embedded content")).toBeInTheDocument();
 	});
 
 	it("renders nothing while auth is loading", () => {

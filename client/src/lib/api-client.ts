@@ -17,6 +17,7 @@ import {
 	clearAuthTokens,
 	consumeEmbedTokenFromHash,
 	getActiveToken,
+	isAppEmbedRoute,
 	isEmbedSession,
 } from "./auth-token";
 
@@ -275,6 +276,10 @@ function handleAuthFailure(): void {
  * Proactively refreshes token before it expires
  */
 async function ensureValidToken(): Promise<boolean> {
+	// The framed app route is capability-only. Never borrow or refresh the
+	// browser's ordinary signed-in session when its bound embed token is absent.
+	if (isAppEmbedRoute()) return getActiveToken() !== null;
+
 	// Embed sessions can't refresh — the embed token is minted by the
 	// HMAC handshake at /embed/apps/{slug} and there's no refresh cookie
 	// for it. Just trust whatever's in sessionStorage; expiry surfaces
@@ -360,14 +365,24 @@ baseClient.use({
 			}
 		}
 
+		// Capability-only app documents must not send ordinary session cookies.
+		const authenticatedRequest = isAppEmbedRoute()
+			? new Request(request, { credentials: "omit" })
+			: request;
+
 		// Stash a pre-send clone so onResponse can replay this request on
 		// transient 5xx (idempotent methods only — POST/PATCH bodies would
 		// just hold memory we never use).
-		if (isReplaySafeRequest(request.method, request.url)) {
-			_requestClones.set(request, request.clone());
+		if (
+			isReplaySafeRequest(
+				authenticatedRequest.method,
+				authenticatedRequest.url,
+			)
+		) {
+			_requestClones.set(authenticatedRequest, authenticatedRequest.clone());
 		}
 
-		return request;
+		return authenticatedRequest;
 	},
 	async onResponse({ request, response }) {
 		// Handle 429 Too Many Requests - rate limited
@@ -606,7 +621,7 @@ export async function authFetch(
 	const request = new Request(url, {
 		...options,
 		headers,
-		credentials: "same-origin",
+		credentials: isAppEmbedRoute() ? "omit" : "same-origin",
 	});
 
 	// Wrap the fetch + auth-handling in transient-5xx retry. Each attempt

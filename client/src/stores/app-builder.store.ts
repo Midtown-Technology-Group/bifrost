@@ -50,7 +50,12 @@ interface AppBuilderState {
 	// App context (for navigation URL construction)
 	appSlug: string | null;
 	isPreview: boolean;
-	setAppContext: (slug: string, isPreview: boolean) => void;
+	runtimeBasePath: string | null;
+	setAppContext: (
+		slug: string,
+		isPreview: boolean,
+		runtimeBasePath?: string,
+	) => void;
 	getBasePath: () => string;
 
 	// Variables
@@ -111,6 +116,7 @@ interface AppBuilderState {
 const initialState = {
 	appSlug: null as string | null,
 	isPreview: false,
+	runtimeBasePath: null as string | null,
 	variables: {},
 	dataSources: {},
 	executions: {},
@@ -134,9 +140,11 @@ export const useAppBuilderStore = create<AppBuilderState>()(
 		...initialState,
 
 		// App context management
-		setAppContext: (slug, isPreview) => set({ appSlug: slug, isPreview }),
+		setAppContext: (slug, isPreview, runtimeBasePath) =>
+			set({ appSlug: slug, isPreview, runtimeBasePath: runtimeBasePath ?? null }),
 		getBasePath: () => {
-			const { appSlug, isPreview } = get();
+			const { appSlug, isPreview, runtimeBasePath } = get();
+			if (runtimeBasePath) return runtimeBasePath;
 			if (!appSlug) return "/apps";
 			return isPreview ? `/apps/${appSlug}/preview` : `/apps/${appSlug}`;
 		},

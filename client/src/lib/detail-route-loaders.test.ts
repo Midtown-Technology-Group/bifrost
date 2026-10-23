@@ -13,9 +13,10 @@ vi.mock("@/components/jsx-app/BundledAppShell", () => ({
 }));
 
 vi.mock("@/lib/api-client", async () => {
-	const actual = await vi.importActual<typeof import("@/lib/api-client")>(
-		"@/lib/api-client",
-	);
+	const actual =
+		await vi.importActual<typeof import("@/lib/api-client")>(
+			"@/lib/api-client",
+		);
 	return { ...actual, authFetch };
 });
 
@@ -115,6 +116,27 @@ describe("detail route loaders", () => {
 			isPreview: false,
 			signal: request.signal,
 		});
+	});
+
+	it("rejects an embedded app route before loading data without its bound capability", async () => {
+		const ensure = vi.spyOn(queryClient, "ensureQueryData");
+		const request = new Request(
+			"http://localhost/embedded/apps/hmac/portal/reports",
+		);
+
+		await expect(
+			applicationDetailLoader(
+				false,
+				true,
+			)({
+				params: { applicationId: "portal", "*": "reports" },
+				request,
+				url: new URL(request.url),
+				pattern: "/embedded/apps/hmac/:applicationId/*",
+				context: new RouterContextProvider(),
+			}),
+		).rejects.toMatchObject({ status: 403 });
+		expect(ensure).not.toHaveBeenCalled();
 	});
 });
 

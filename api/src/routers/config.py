@@ -106,7 +106,7 @@ async def set_config(
 
         # Upsert to cache after successful write (dual-write pattern)
         org_id_str = str(target_org_id) if target_org_id else None
-        config_type_str = request.type.value if request.type else "string"
+        config_type_str = result.type.value
         # Note: For secrets, stored_value is already encrypted by the repository
         stored_value = result.value
         await upsert_config(org_id_str, request.key, stored_value, config_type_str)

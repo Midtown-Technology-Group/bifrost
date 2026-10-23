@@ -167,6 +167,20 @@ def test_write_bifrost_package_emits_nothing_when_no_bifrost_imports(
         )
 
 
+def test_write_bifrost_package_namespace_import_emits_platform_exports(
+    bundler: BundlerService, tmp_path: pathlib.Path
+) -> None:
+    pkg = _build_pkg_with_bifrost_imports(
+        bundler,
+        tmp_path,
+        set(),
+        {"pages/namespace.tsx": 'import * as bifrost from "bifrost";\nvoid bifrost.Button;\n'},
+    )
+
+    for name in _PLATFORM_EXPORT_NAMES:
+        assert f"export const {name} =" in pkg
+
+
 def test_write_bifrost_package_proxy_count_matches_imported_subset(
     bundler: BundlerService, tmp_path: pathlib.Path
 ) -> None:

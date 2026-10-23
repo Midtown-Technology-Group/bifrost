@@ -217,6 +217,7 @@ interface StandaloneV2AppProps {
 	appId: string;
 	appSlug: string;
 	isPreview: boolean;
+	runtimeBasePath?: string;
 	entry: string;
 	css: string | null;
 	baseUrl: string;
@@ -243,6 +244,7 @@ export function StandaloneV2App({
 	appId,
 	appSlug,
 	isPreview,
+	runtimeBasePath,
 	entry,
 	css,
 	baseUrl,
@@ -268,6 +270,9 @@ export function StandaloneV2App({
 	const assets = recovery?.sourceKey === sourceKey ? recovery.assets : sourceAssets;
 	const recoveryAttempts = useRef(new Set<string>());
 	const { scope } = useOrgScope();
+	const resolvedRuntimeBasePath =
+		runtimeBasePath ??
+		(isPreview ? `/apps/${appSlug}/preview` : `/apps/${appSlug}`);
 
 	const token = getActiveToken();
 	const isAuthenticated = Boolean(token);
@@ -288,9 +293,7 @@ export function StandaloneV2App({
 
 		setIsBootstrapping(true);
 		setLoadError(null);
-		const basename = isPreview
-			? `/apps/${appSlug}/preview`
-			: `/apps/${appSlug}`;
+		const basename = resolvedRuntimeBasePath;
 		// Visibility/deployment scope is separate from runtime data scope. All
 		// Apps run against the user's currently selected organization.
 		const orgScope = scope.type === "organization" ? scope.orgId : null;
@@ -467,7 +470,16 @@ export function StandaloneV2App({
 			}
 			mountEl.replaceChildren();
 		};
-	}, [appId, appSlug, isPreview, assets, sourceKey, scope, isAuthenticated]);
+	}, [
+		appId,
+		appSlug,
+		isPreview,
+		resolvedRuntimeBasePath,
+		assets,
+		sourceKey,
+		scope,
+		isAuthenticated,
+	]);
 
 	if (!isAuthenticated) {
 		return (

@@ -75,16 +75,11 @@ class TestSetConfigRequest:
         errors = exc_info.value.errors()
         assert any(e["loc"] == ("value",) and e["type"] == "missing" for e in errors)
 
-    def test_missing_required_type(self):
-        """Test that type is required"""
-        with pytest.raises(ValidationError) as exc_info:
-            SetConfigRequest(
-                key="test_key",
-                value="value"
-            )
-
-        errors = exc_info.value.errors()
-        assert any(e["loc"] == ("type",) and e["type"] == "missing" for e in errors)
+    def test_type_may_be_omitted_for_server_side_upsert_resolution(self):
+        """The repository preserves an existing type or defaults new rows."""
+        request = SetConfigRequest(key="test_key", value="value")
+        assert request.type is None
+        assert "type" not in request.model_fields_set
 
     def test_invalid_type_enum(self):
         """Test that invalid type is rejected"""

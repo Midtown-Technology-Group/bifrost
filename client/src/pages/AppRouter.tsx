@@ -9,7 +9,7 @@
  * - /apps/:slug/* - Published mode (uses live files)
  */
 
-import { useParams, useNavigate } from "react-router";
+import { useLocation, useParams, useNavigate } from "react-router";
 import { ArrowLeft, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AppLoadingSkeleton } from "@/components/jsx-app/AppLoadingSkeleton";
@@ -29,11 +29,25 @@ interface AppRouterProps {
 
 export function AppRouter({ preview = false }: AppRouterProps) {
 	const { applicationId: slugParam } = useParams();
+	const location = useLocation();
 	const navigate = useNavigate();
 	const terminology = useTerminology();
 	const applicationName = useApplicationName();
 	const { hasRole } = useAuth();
-	const isEmbed = hasRole("EmbedUser");
+	const embedBasePath = slugParam
+		? `/embedded/apps/hmac/${slugParam}`
+		: null;
+	const isEmbedRoute = Boolean(
+		embedBasePath &&
+			(location.pathname === embedBasePath ||
+				location.pathname.startsWith(`${embedBasePath}/`)),
+	);
+	const isEmbed = isEmbedRoute && hasRole("EmbedUser");
+	const runtimeBasePath = preview
+		? `/apps/${slugParam}/preview`
+		: isEmbedRoute
+			? embedBasePath!
+			: `/apps/${slugParam}`;
 
 	// Fetch application metadata
 	const {
@@ -156,6 +170,7 @@ export function AppRouter({ preview = false }: AppRouterProps) {
 			appName={application.name}
 			appLogo={application.logo}
 			isPreview={preview}
+			runtimeBasePath={runtimeBasePath}
 		/>
 	);
 

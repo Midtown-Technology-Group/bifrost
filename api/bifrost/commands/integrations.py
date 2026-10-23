@@ -50,7 +50,7 @@ from bifrost.client import BifrostClient
 from bifrost.dto_flags import (
     DTO_EXCLUDES,
     DTO_REF_LOOKUPS,
-    assemble_body,
+    assemble_cli_body,
     build_cli_flags,
 )
 from bifrost.refs import RefResolver
@@ -82,11 +82,14 @@ def load_schema_file(raw: str | None) -> list[dict[str, Any]] | None:
 
     if raw is None:
         return None
-    if raw.startswith("@"):
-        text = Path(raw[1:]).read_text(encoding="utf-8")
-        loaded = yaml.safe_load(text)
-    else:
-        loaded = json.loads(raw)
+    try:
+        if raw.startswith("@"):
+            text = Path(raw[1:]).read_text(encoding="utf-8")
+            loaded = yaml.safe_load(text)
+        else:
+            loaded = json.loads(raw)
+    except (OSError, UnicodeError, json.JSONDecodeError, yaml.YAMLError) as exc:
+        raise click.BadParameter(f"could not load config-schema: {exc}") from exc
 
     if isinstance(loaded, list):
         items = loaded
@@ -102,6 +105,8 @@ def load_schema_file(raw: str | None) -> list[dict[str, Any]] | None:
         )
     if not isinstance(items, list):
         raise click.BadParameter("config-schema entries must be a list")
+    if any(not isinstance(item, dict) for item in items):
+        raise click.BadParameter("each config-schema entry must be an object")
     return items
 
 
@@ -111,7 +116,7 @@ def _extract_config_schema(fields: dict[str, Any]) -> list[dict[str, Any]] | Non
     The DTO flag generator surfaces ``list[ConfigSchemaItem]`` as a repeatable
     ``--config-schema`` string flag — the user is expected to pass ``@file``
     once. We pop that raw value here and resolve it to the list payload before
-    :func:`assemble_body` runs, so the field never hits the generic
+    :func:`assemble_cli_body` runs, so the field never hits the generic
     ``_is_list_str`` branch (which would collect strings).
     """
     raw = fields.pop("config_schema", None)
@@ -212,7 +217,7 @@ async def create_integration(
     ``schema`` / ``config_schema`` / ``items`` list.
     """
     schema_items = _extract_config_schema(fields)
-    body = await assemble_body(IntegrationCreate, fields, resolver=resolver)
+    body = await assemble_cli_body(IntegrationCreate, fields, resolver=resolver)
     if schema_items is not None:
         body["config_schema"] = schema_items
     response = await client.post("/api/integrations", json=body)
@@ -280,7 +285,7 @@ async def update_integration(
     """
     integration_uuid = await resolver.resolve("integration", ref)
     schema_items = _extract_config_schema(fields)
-    body = await assemble_body(IntegrationUpdate, fields, resolver=resolver)
+    body = await assemble_cli_body(IntegrationUpdate, fields, resolver=resolver)
 
     if schema_items is not None:
         detail_resp = await client.get(f"/api/integrations/{integration_uuid}")
@@ -346,7 +351,7 @@ async def add_mapping(
     UI-managed OAuth handshake data as a writable CLI field.
     """
     integration_uuid = await resolver.resolve("integration", integration_ref)
-    body = await assemble_body(IntegrationMappingCreate, fields, resolver=resolver)
+    body = await assemble_cli_body(IntegrationMappingCreate, fields, resolver=resolver)
     if oauth_token_id_opt is not None:
         body["oauth_token_id"] = oauth_token_id_opt
     response = await client.post(
@@ -403,7 +408,7 @@ async def update_mapping(
     lookup.raise_for_status()
     mapping_id = str(lookup.json()["id"])
 
-    body = await assemble_body(IntegrationMappingUpdate, fields, resolver=resolver)
+    body = await assemble_cli_body(IntegrationMappingUpdate, fields, resolver=resolver)
     if oauth_token_id_opt is not None:
         body["oauth_token_id"] = oauth_token_id_opt
     response = await client.put(

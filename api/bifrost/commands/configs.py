@@ -13,9 +13,8 @@ Implements Task 5h of the CLI mutation surface plan:
   server-side omit-unset behaviour)
 * ``bifrost configs delete <ref>`` → ``DELETE /api/config/{uuid}`` with a
   ``--confirm`` guard for ``secret``-type configs
-* ``bifrost configs set <key> --value X --organization <ref>`` — upsert
-  wrapper (catalog open question #2 decision): GET the config list, route to
-  PUT if a matching ``(key, organization_id)`` row exists, otherwise POST
+* ``bifrost configs set <key> --value X --organization <ref>`` — atomic
+  server-side upsert in the requested scope via POST
 
 Refs resolve via :class:`RefResolver`: configs use ``key`` (not ``name``) as
 the natural identifier, so ``configs update foo`` resolves against the stored
@@ -121,7 +120,7 @@ async def _build_create_body(
     """Build a POST /api/config body for ``create`` / ``set``.
 
     ``ConfigCreate`` declares ``value: dict`` but the REST endpoint accepts
-    ``SetConfigRequest.value: str``, so ``assemble_body(ConfigCreate, ...)``
+    ``SetConfigRequest.value: str``, so ``assemble_cli_body(ConfigCreate, ...)``
     would mangle the plain-string value. This helper mirrors the wire
     shape directly.
 
@@ -136,8 +135,9 @@ async def _build_create_body(
     body: dict[str, Any] = {
         "key": key,
         "value": value,
-        "type": config_type or ConfigType.STRING.value,
     }
+    if config_type is not None:
+        body["type"] = config_type
     if description is not None:
         body["description"] = description
     target = await resolve_org_target(org, is_global, resolver)
@@ -294,11 +294,8 @@ async def set_config(
 ) -> None:
     """Upsert a configuration value (catalog open question #2: yes).
 
-    Looks up an existing config matching ``(key, organization_id)`` by
-    listing ``/api/config`` client-side — the endpoint does not accept a
-    ``key`` query parameter, so filtering happens in the CLI. PUTs the
-    existing row if found; POSTs otherwise. The result is idempotent from
-    the caller's perspective.
+    POSTs the desired value to the server's atomic upsert endpoint. This keeps
+    scope selection authoritative on the server and avoids a list-and-PUT race.
 
     Org targeting follows the unified ``--org`` standard: HOME (omit) targets
     the caller's org, ``--global`` targets global, ``--org <id|name>`` targets
@@ -306,39 +303,20 @@ async def set_config(
     when one was given (GLOBAL or ORG); HOME falls back to key-only matching.
     """
     target = await resolve_org_target(org, is_global, resolver)
-    # Explicit scope (GLOBAL or ORG) narrows the upsert match by organization_id.
-    # HOME (unset) matches by key alone and lets the server resolve the scope.
-    org_uuid = target.organization_id if target.is_set else None
-
-    list_response = await client.get("/api/config")
-    list_response.raise_for_status()
-    existing = _find_config_by_key(
-        list_response.json(),
-        key,
-        org_uuid,
-        scope_filter=target.is_set,
-    )
-
-    if existing is not None:
-        update_body: dict[str, Any] = {"value": value}
-        if config_type is not None:
-            update_body["type"] = config_type
-        if description is not None:
-            update_body["description"] = description
-        response = await client.put(f"/api/config/{existing['id']}", json=update_body)
-    else:
-        # POST requires ``type`` (SetConfigRequest.type is non-optional);
-        # default to 'string' when the caller did not specify one.
-        create_body: dict[str, Any] = {
-            "key": key,
-            "value": value,
-            "type": config_type or ConfigType.STRING.value,
-        }
-        if description is not None:
-            create_body["description"] = description
-        if target.is_set:
-            create_body["organization_id"] = target.organization_id
-        response = await client.post("/api/config", json=create_body)
+    # POST is already an atomic server-side upsert in the requested scope. It
+    # also lets the server apply the authenticated home org when scope is
+    # omitted, avoiding a list-and-PUT race or a cross-org key match.
+    create_body: dict[str, Any] = {
+        "key": key,
+        "value": value,
+    }
+    if config_type is not None:
+        create_body["type"] = config_type
+    if description is not None:
+        create_body["description"] = description
+    if target.is_set:
+        create_body["organization_id"] = target.organization_id
+    response = await client.post("/api/config", json=create_body)
 
     response.raise_for_status()
     output_result(response.json(), ctx=ctx)
@@ -354,39 +332,6 @@ def _find_config_by_id(
     for item in items:
         if _coerce_uuid(item.get("id")) == target:
             return item
-    return None
-
-
-def _find_config_by_key(
-    items: list[dict[str, Any]],
-    key: str,
-    org_uuid: str | None,
-    *,
-    scope_filter: bool,
-) -> dict[str, Any] | None:
-    """Return the config dict matching ``key`` in the requested scope.
-
-    When ``scope_filter`` is True (user passed ``--organization``), match
-    ``(key, organization_id)`` exactly so ``set`` never accidentally PUTs a
-    global row when the user asked for an org-specific one.
-
-    When ``scope_filter`` is False (no ``--organization`` flag), match by
-    ``key`` alone — the server will resolve the scope the same way on POST
-    (defaults to the caller's org). Multiple matches (same key in global +
-    org, for example) are treated as "no unique target" and return ``None``
-    so the command falls through to POST and surfaces the server-side
-    conflict rather than silently PUTting the wrong row.
-    """
-    target_org = _coerce_uuid(org_uuid) if org_uuid is not None else None
-    candidates = [item for item in items if item.get("key") == key]
-    if scope_filter:
-        for item in candidates:
-            item_org = _coerce_uuid(item.get("org_id"))
-            if item_org == target_org:
-                return item
-        return None
-    if len(candidates) == 1:
-        return candidates[0]
     return None
 
 
