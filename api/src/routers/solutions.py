@@ -2417,6 +2417,9 @@ async def _run_deploy_job(
         UnmetDependency,
         deploy_zip_to_solution_path,
     )
+    from src.services.solutions.deploy_job_lifecycle import (
+        failure_projection_status,
+    )
     from src.services.solutions.write_lock import (
         SolutionWriteLockHeld,
         solution_write_lock,
@@ -2446,7 +2449,9 @@ async def _run_deploy_job(
         # its projection nonterminal until the platform-job handler has removed
         # that row; clients polling /deploy-jobs must not observe failure before
         # rollback is committed.
-        status_value = "running" if allow_connected_install else "failed"
+        status_value = failure_projection_status(
+            allow_connected_install=allow_connected_install
+        )
         await _set_status(status_value, error)
 
     if not await _set_status("running"):

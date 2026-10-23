@@ -103,6 +103,9 @@ async def run_solution_deploy(
     from src.services.solutions.deploy import (
         SolutionDeployInstrumentation, solution_deploy_instrumentation,
     )
+    from src.services.solutions.deploy_job_lifecycle import (
+        failure_projection_status,
+    )
 
     if payload.kind == "deliver_package":
         from src.jobs.platform.solution_package_delivery import run_solution_package_delivery
@@ -185,7 +188,10 @@ async def run_solution_deploy(
                     # The pollable projection is the public terminal status.
                     # Commit this together with the rollback so clients cannot
                     # observe failure while the newly-created install remains.
-                    projection.status = "failed"
+                    projection.status = failure_projection_status(
+                        allow_connected_install=True,
+                        rollback_committed=True,
+                    )
                     projection.error = projection.error or "Solution deploy failed."
                 failure = PlatformJobFailure(
                     "solution_deploy_failed",
