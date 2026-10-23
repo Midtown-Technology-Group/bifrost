@@ -3243,7 +3243,8 @@ async def download_sdk() -> Response:
     image ahead of time.
     """
     from shared.version import get_version
-    from src.services.sdk_package import build_sdk_tarball
+
+    from src.services.sdk_package import build_sdk_tarball, sdk_artifact_filename
 
     version = get_version()
     tarball = await asyncio.to_thread(build_sdk_tarball, version)
@@ -3251,7 +3252,9 @@ async def download_sdk() -> Response:
         content=tarball,
         media_type="application/gzip",
         headers={
-            "Content-Disposition": f"attachment; filename=bifrost-sdk-{version}.tgz",
+            "Content-Disposition": (
+                f"attachment; filename={sdk_artifact_filename(version)}"
+            ),
         },
     )
 

@@ -74,6 +74,11 @@ def sdk_package_version(version: str) -> str:
     return _pep440ish(version)
 
 
+def sdk_artifact_filename(version: str) -> str:
+    """Return a filename containing only the normalized npm package version."""
+    return f"bifrost-sdk-{sdk_package_version(version)}.tgz"
+
+
 def _bundle(workdir: Path) -> bytes:
     """Run esbuild over the SDK source, returning the bundled ESM bytes."""
     out = workdir / "index.mjs"
