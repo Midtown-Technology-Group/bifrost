@@ -43,6 +43,7 @@ from src.models.orm import UserInvite, UserOAuthAccount
 from src.models.orm.external_identities import ExternalIdentity
 from src.models.orm.organizations import Organization
 from shared.models import ExternalIdentityCreateRequest, ExternalIdentityResponse
+from shared.role_cache import invalidate_user as invalidate_user_role_cache
 from src.core.constants import PROVIDER_ORG_ID
 
 logger = logging.getLogger(__name__)
@@ -378,6 +379,13 @@ async def bulk_update_users(
             "failed": len(failed),
         },
     )
+    if request.operation == "replace_roles" and succeeded:
+        # The request-scoped dependency normally commits after this handler
+        # returns. Commit explicitly before invalidation so a concurrent role
+        # lookup cannot repopulate the cache from pre-replacement rows.
+        await db.commit()
+        for user_id in succeeded:
+            await invalidate_user_role_cache(user_id)
     return BulkUserResponse(succeeded=succeeded, failed=failed)
 
 
