@@ -151,7 +151,7 @@ def _eval_op(
     if op in ("lt", "lte", "gt", "gte"):
         a = _eval_node(value[0], row, user, resolvers)
         b = _eval_node(value[1], row, user, resolvers)
-        if a is None or b is None:
+        if not _ordered_types_compatible(a, b):
             return False
         try:
             if op == "lt":
@@ -179,6 +179,27 @@ def _eval_op(
     if op == "is_null":
         return _eval_node(value, row, user, resolvers) is None
     raise ValueError(f"unknown operator {op!r}")
+
+
+def _ordered_types_compatible(a: Any, b: Any) -> bool:
+    """Return whether two values share a supported ordering domain.
+
+    Python treats ``bool`` as a subclass of ``int``. JSON and PostgreSQL do
+    not: booleans and numbers are distinct types, so allowing ``True < 5`` in
+    the evaluator would diverge from the type-safe SQL compiler.
+    """
+    if a is None or b is None:
+        return False
+    if isinstance(a, bool) or isinstance(b, bool):
+        return isinstance(a, bool) and isinstance(b, bool)
+    if isinstance(a, (int, float)) or isinstance(b, (int, float)):
+        return (
+            isinstance(a, (int, float))
+            and not isinstance(a, bool)
+            and isinstance(b, (int, float))
+            and not isinstance(b, bool)
+        )
+    return isinstance(a, str) and isinstance(b, str)
 
 
 def _scalar_eq(a: Any, b: Any) -> bool:
