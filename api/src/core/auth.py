@@ -49,6 +49,27 @@ async def _active_engine_attempt(
     return active_attempt_id is not None
 
 
+async def require_active_engine_attempt(
+    db: AsyncSession, user: UserPrincipal
+) -> None:
+    """Reject an engine principal whose durable attempt lease is no longer active.
+
+    Most authenticated routes receive :class:`ExecutionContext`, which applies
+    this gate automatically. Dual-auth routes may depend on
+    ``get_current_user_optional`` instead, so they must call this helper before
+    authorizing an engine principal as a user.
+    """
+    if not user.is_engine_token or user.engine_execution_id is None:
+        return
+    if user.engine_attempt_token is None or not await _active_engine_attempt(
+        db, user.engine_execution_id, user.engine_attempt_token
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Execution attempt lease is missing or revoked",
+        )
+
+
 async def renew_engine_access_token(db: AsyncSession, token: str) -> str | None:
     """Renew a signed no-timeout token only while its attempt is active."""
     payload = decode_renewable_engine_token(token)
@@ -465,19 +486,7 @@ async def get_execution_context(
     Returns:
         ExecutionContext with user and organization scope
     """
-    if user.is_engine_token and user.engine_execution_id is not None:
-        if user.engine_attempt_token is None:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Execution attempt lease is missing or revoked",
-            )
-        if not await _active_engine_attempt(
-            db, user.engine_execution_id, user.engine_attempt_token
-        ):
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Execution attempt lease is missing or revoked",
-            )
+    await require_active_engine_attempt(db, user)
 
     # Populate role_ids / role_names. The table-policy evaluator's
     # `has_role` function reads these (the JWT claims do not carry the post-
