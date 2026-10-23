@@ -55,6 +55,41 @@ def test_coverage_shadow_is_manual_default_off_and_has_no_admission_authority() 
         assert not any(item.startswith("coverage-shadow-") for item in needs)
 
 
+def test_coverage_shadow_jobs_only_allow_opted_in_non_main_branches() -> None:
+    jobs = _load_workflow(CI_WORKFLOW)["jobs"]
+    job_names = ("coverage-shadow-supplement", "coverage-shadow-compare")
+    cases = (
+        ("workflow_dispatch", True, "refs/heads/experiment", True),
+        ("workflow_dispatch", True, "refs/heads/main", False),
+        ("workflow_dispatch", True, "refs/tags/v1.2.3", False),
+        ("pull_request", True, "refs/heads/experiment", False),
+        ("merge_group", True, "refs/heads/experiment", False),
+        ("workflow_dispatch", False, "refs/heads/experiment", False),
+    )
+
+    for job_name in job_names:
+        condition = " ".join(jobs[job_name]["if"].split())
+        clauses = (
+            "github.event_name == 'workflow_dispatch'",
+            "inputs.coverage_shadow",
+            "startsWith(github.ref, 'refs/heads/')",
+            "github.ref != 'refs/heads/main'",
+        )
+        assert all(clause in condition for clause in clauses)
+        for event, opted_in, ref, expected in cases:
+            actual = (
+                "github.event_name == 'workflow_dispatch'" in condition
+                and event == "workflow_dispatch"
+                and "inputs.coverage_shadow" in condition
+                and opted_in
+                and "startsWith(github.ref, 'refs/heads/')" in condition
+                and ref.startswith("refs/heads/")
+                and "github.ref != 'refs/heads/main'" in condition
+                and ref != "refs/heads/main"
+            )
+            assert actual is expected, (job_name, event, opted_in, ref)
+
+
 def test_shadow_snapshots_precede_cleanup_and_preserve_diagnostics_on_failure() -> None:
     jobs = _load_workflow(CI_WORKFLOW)["jobs"]
     reusable = _load_workflow(REPO_ROOT / ".github/workflows/sonar-coverage.yml")

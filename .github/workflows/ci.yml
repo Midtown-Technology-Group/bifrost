@@ -1171,7 +1171,7 @@ jobs:
   coverage-shadow-supplement:
     name: Coverage Shadow Supplement
     needs: [lint, publish-ci-test-images]
-    if: github.event_name == 'workflow_dispatch' && inputs.coverage_shadow && github.ref != 'refs/heads/main'
+    if: github.event_name == 'workflow_dispatch' && inputs.coverage_shadow && startsWith(github.ref, 'refs/heads/') && github.ref != 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -1231,7 +1231,7 @@ jobs:
   coverage-shadow-compare:
     name: Coverage Shadow Comparison
     needs: [test-unit, test-e2e, test-e2e-gate, mcp-conformance, pre-pr-candidate, coverage-shadow-supplement, sonar-coverage]
-    if: always() && github.event_name == 'workflow_dispatch' && inputs.coverage_shadow && github.ref != 'refs/heads/main'
+    if: always() && github.event_name == 'workflow_dispatch' && inputs.coverage_shadow && startsWith(github.ref, 'refs/heads/') && github.ref != 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       contents: read
