@@ -186,76 +186,137 @@ These are the numbers to repeat or beat.
 - **Latency:** `scripts/kubernetes/sync_latency_bench.py` (sync inline-code runs). Copy it into
   the API container and run it with `python /tmp/e2e.py 200`.
 
-## Next session (decided by Jack, 2026-10-23)
+## Done 2026-10-23 (afternoon)
 
-Work in this order. The authority above still applies (merge through the
-queue once a gate passes; production through GitOps, which needs Jack's
-merge because the auto-mode classifier blocks GitOps merges).
+- **#1041 merged:** the legacy RabbitMQ drain. Each API replica drains the
+  old queues once at start, until they stay empty for two minutes, then
+  disconnects. v1.4.1-era runs get the lineage of the user they recorded
+  (`shared.run_lineage.recorded_user_lineage`, Jack's choice); migration
+  `20261023_legacy_run_lineage` backfills waiting rows. Gate: Docker v1.4.1
+  upgrade with work stranded in RabbitMQ (kit `/tmp/769-drain-rehearsal`).
+- **#1042 merged:** each worktree builds its own test API image
+  (`BIFROST_TEST_IMAGE_TAG`).
+- **#1043 merged:** the broker-era `work_dispatches` columns are dropped.
+- **Stage 6 built** (branch `769-stage6-resource-requests`, pushed, no PR
+  yet). Spec: `docs/plans/2026-10-23-769-stage6-resource-requests.md`.
+  - 6a: dispatches carry a memory request; executors claim work that fits
+    their free budget (no `max_workers`, `max_concurrency`,
+    `pool_worker_slots`); learned per workflow from peak memory growth, reset
+    on a code change, decaying 1/10; the controller sizes Jobs by memory and
+    launches sized Jobs; work too large for any executor fails visibly;
+    forked runs volunteer for the OOM killer; past 95% real memory the pool
+    stops the run that grew most.
+  - 6b: local platform jobs and services draw from the same budget (no
+    platform-job slots, admission ratio or `max_service_workers`);
+    Diagnostics shows platform jobs and memory instead of slots; declared
+    `memory_request_mib` workflow setting (API, CLI, MCP, workflow dialog; not
+    in the manifest, like `run_identity_id`).
+  - Isolation (Jack): a property of a job definition ("runs in its own
+    container"), never of a workflow run; build-class platform jobs are the
+    first such jobs, on the existing build backend. Nothing new built.
 
-1. **Legacy broker drain** (branch `769-legacy-broker-drain`; gate passed
-   2026-10-23, PR to open).
-   - **Behaviour (Jack):** each API replica, when it starts with
-     `BIFROST_RABBITMQ_URL` set, waits for the schema, tries the broker 3
-     times, drains every old queue until empty, disconnects and stops
-     (`api/src/services/legacy_broker_drain.py`, started from the API
-     lifespan). No catalog task, no recurring poll.
-   - **Lineage (Jack, 2026-10-23: "run as recorded user"):** v1.4.1 recorded
-     only the user a run executes as, and the runtime refuses runs without
-     lineage (#996), so every recovered run, and every v1.4.1 run still
-     scheduled at upgrade, failed with an engine-token 401. Rule
-     (`shared.run_lineage.recorded_user_lineage`): a person is the run user
-     and starter; the system account runs as a schedule does (workflow
-     identity, else the org default; inline script: the org default); the run
-     is its own root. Agent runs: their caller, else the org default identity.
-     The drain applies it to messages; migration `20261023_legacy_run_lineage`
-     backfills waiting `Scheduled`/`Pending` rows.
-   - A run cancelled while queued is recorded as Cancelled ("Execution was
-     cancelled before it could start"), as v1.4.1 did.
-   - **Gate evidence:** Docker, v1.4.1 with its unchanged compose file, worker
-     stopped: 5 async runs, 1 inline script, 2 scheduled runs v1.4.1 promoted
-     into RabbitMQ, 1 still scheduled in the database, 1 cancelled while
-     queued, 2 agent runs; scheduler stopped; only the image tag upgraded.
-     All 9 workflow runs succeeded with lineage, the cancelled run is
-     Cancelled, both agent runs ran for their caller (and failed only on the
-     rehearsal's missing LLM profile), both queues 0, no broker connection
-     left. Rehearsal kit: `/tmp/769-drain-rehearsal` (`strand.py`).
-   - **Known limit:** during a Kubernetes rolling upgrade an older API pod can
-     queue work after the new pods drained. The runbook says to check the
-     queues after the rollout and restart the API to drain again.
-   - Earlier finding: `WorkflowExecutionRequest.code` is plain text, though
-     its field description says base64.
-2. **Drop the broker-era dispatch schema now** (no release ever wrote it;
-   only dev builds #1032–#1039 did). Remove `queue`, `status`,
-   `publish_count`, `last_published_at` and `placement` from
-   `work_dispatches`, the reconciler's "re-place a broker dispatch" branch,
-   and the `execution_record_exists` message field; drop their allowlist
-   entries in `test_builder_residue_migration_rehearsal.py`. Production must
-   run the #1040 image (or later) before it takes this change.
-3. **Kind pressure test** before production: a sustained ramp of hundreds of
-   runs mixing sync, async, scheduled, agent, summary and event work;
-   memory-heavy runs that drive the memory gate and hand-back; sync latency
-   percentiles at the warm floor and the Job-count curve; API and executor
-   kills under load. Record results here.
-4. **Production** (each step a GitOps PR Jack merges, then `prod_smoke`; on
-   the first rollout also check DigitalOcean node autoscaling, the GHCR pull
-   and the Flux sync):
-   1. The newest main image with manifests unchanged (with the drain, no
-      stage-4 hop is needed; close gocovi/kubernetes#30).
-   2. The 1+x model: give the API the worker-controller and build Roles;
-      remove the scheduler Deployment (proves the platform runs without
-      it); worker Deployment to 1 replica as the always-warm floor,
-      `BIFROST_POOL_MIN_WORKERS=0`, `MAX=6` (Jack to confirm static floor vs
-      a warm Job).
-   3. Remove RabbitMQ (Deployment, PVC, secret keys) after the drain logs
-      show it empty.
-5. **Small leftovers:** the platform-job phase "Waiting for scheduler memory"
-   should say executor; the Kind build experiment's `--restart-scheduler`
-   restarts the wrong process now that the API runs the build controller.
-6. **Resource requests** (discuss with Jack first; nothing is built): draft
-   `docs/plans/2026-10-23-769-resource-requests-design.md` on local branch
-   `769-resource-requests-design`. Open questions: one claim path or a
-   shared ledger; CPU or memory only; what "isolated" includes; ordering of
-   large requests.
+## Next session
+
+Step 0 is done (2026-10-23): Fable reviewed stage 6 at `3acc36f60`. The
+in-process claim, hold and release accounting is sound; the review found one
+Blocker (B1), five Majors (M1-M5), seven Minors (m1-m7) and six Nits. The
+report is in Claude's project memory
+(`report_fable_769_stage6_review_2026_10_23.md`). Jack approved the plan
+below; it runs autonomously and stops only for merges or a change to these
+rules.
+
+### The admission gate (Jack, 2026-10-23)
+
+1. Each run reserves its typical memory (64 MiB if never measured), or what
+   it is actually using if that is more (refreshed by the 250 ms watchdog).
+2. An executor takes a run only if the reservation fits its free memory (85%
+   of the container minus itself and what its runs reserve) and the
+   container's real memory is under 85%.
+3. Once a few runs are going, an executor pauses about 100 ms between starts
+   so its real-memory check sees what the last run did (Temporal's
+   `rampThrottle`).
+4. At 95% the run that grew most is stopped.
+5. A run killed for memory, or lost with its executor, learns that
+   executor's budget minus 16 MiB, so its next run fits alone.
+
+All five work kinds (workflows, agents, summaries, platform jobs, services)
+reserve memory before claiming from PostgreSQL and release it when nothing
+came back (one contract, Temporal's slot supplier; fixes m1). The one case
+the gate cannot catch, a never-measured burst that allocates within its first
+instant, costs at most one learning kill per new or changed workflow
+(accepted).
+
+### Build order
+
+1. **B1, learning from kills.** The parent attaches memory growth on every
+   terminal path (crash, timeout, memory stop, OOM kill); lost and
+   OOM-killed runs learn rule 5.
+2. **The gate:** live holds (rule 1), the start pause (rule 3), the shared
+   reserve-then-claim contract.
+3. **M2 + M4, lost executors and fencing.** The control plane marks an
+   executor of either form lost after `HEARTBEAT_LOST_AFTER` (30 s) without a
+   heartbeat, but only once it has itself been connected to the database for
+   30 s ("reachable" rule; a database outage does not mark everyone lost).
+   It replaces the hourly static sweep in `maintenance.py` (one constant).
+   Lost runs end with `worker_lost`. Result writes are accepted only from the
+   executor incarnation that holds the run (not a status-only guard, so a
+   future retry's attempt 2 cannot be overwritten by attempt 1). An executor
+   stops its runs when a heartbeat tells it it is lost; no self-fence on
+   failed heartbeats. Heartbeat times use the database clock.
+4. **Watchdog:** 250 ms samples, acts at 95%, includes service children.
+5. **Review fixes:** M1 (a Job launched for a dispatch claims it regardless
+   of fit; the Job baseline learns from every Job), M3 (platform jobs and
+   services that can never fit fail visibly and feed launch demand), M5
+   (sized Jobs always drain when idle, never the warm floor), m7 (waiting is
+   a metric shown in Diagnostics; fail only never-fits or the claim
+   deadline), m2, m3, m5, m6 and the nits (spec decay 1/10, sized limit cap,
+   dead `memory_monitor` helpers, `retire_worker` reserved bytes,
+   `_workflow_runs` double count).
+6. **Runbook:** `singleProcessOOMKill` (Kubernetes 1.32+) for operators who
+   can set it; each Docker executor budgets 85% of the host.
+7. **Proof:** unit tests per fix; a Docker drill killing the worker mid-run;
+   the Kind pressure test (`./test.sh kubernetes pressure-test`) with the
+   understated phase checking recovery (kill visible, executor back, next
+   burst sized), then the mixed ramp and the API and worker kills.
+8. **Stage 6 PR:** full unit suite and `./test.sh e2e`; `./test.sh
+   pr-preflight`; Product Updates disposition (executors size themselves by
+   memory; Diagnostics; the memory setting). Open it and stop for Jack's
+   merge approval.
+
+### Production
+
+The 2026-10-23 04:00 UTC promotion moved prod to `1.4.2-dev.1792699618`
+(pre-#1031; #1031 merged at 04:05) and rolled out cleanly (prod_smoke 0
+fail). The 2026-10-24 04:00 UTC promotion takes `1.4.2-dev.1792777611`
+(#1043) with the drain. Each step below is a GitOps PR Jack merges, then
+`prod_smoke`; on the first rollout also check DigitalOcean node autoscaling,
+the GHCR pull and the Flux sync.
+
+1. After the #1043 rollout: `prod_smoke`, RabbitMQ `workflow-executions`
+   and `agent-runs` empty (restart the API Deployment if not; the `-poison`
+   queues stay by design), close gocovi/kubernetes#30.
+2. The 1+x model: give the API the worker-controller and build Roles; remove
+   the scheduler Deployment; worker Deployment to 1 replica as the warm
+   floor, `BIFROST_POOL_MIN_WORKERS=0`, `MAX=6` (Jack to confirm static floor
+   vs a warm Job).
+3. Remove RabbitMQ (Deployment, PVC, secret keys).
+
+### Leftovers
+
+- The Kind build experiment's `--restart-scheduler` restarts the wrong
+  process now that the API runs the build controller.
+- `ExecutionWorker.slots` and `scheduler_replicas.job_slots` only serve older
+  readers during a rollout and can go next release.
+- `WorkflowExecutionRequest.code` is plain text though its description says
+  base64.
 
 Close #769 after production reaches the 1+x model.
 
+### After #769
+
+Resilient Workflows / Resilient Agents (Jack's design, Codex 2026-10-06):
+system toggles (new installs on, existing installs off), per-entity
+Inherit / Enabled / Disabled, non-interactive triggers only, restart from the
+entry point on the accepted code, authors own replay safety (draft guide in
+worktree `.worktrees/692-idempotency-guide`). Outside issue #692 was closed in
+its favor on 2026-10-23.

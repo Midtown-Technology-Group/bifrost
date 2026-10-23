@@ -20,7 +20,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Awaitable, Callable
 from uuid import UUID, uuid4
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.database import get_db_context
@@ -34,8 +34,6 @@ RECONCILE_BATCH = 100
 # claimed them by the claim deadline.
 POOL_RECHECK_AFTER = timedelta(minutes=2)
 POOL_CLAIM_DEADLINE = timedelta(minutes=30)
-# A worker of either form that has not heartbeated this long holds nothing.
-WORKER_SILENT_AFTER = timedelta(minutes=2)
 
 
 @dataclass(frozen=True)
@@ -83,8 +81,14 @@ def stage_dispatch(
     handler_version: int,
     message: dict[str, Any],
     payload: dict[str, Any],
+    memory_request_bytes: int,
+    queued_at: datetime | None = None,
 ) -> WorkDispatch:
     """Add a dispatch to the caller's transaction; hand off after commit.
+
+    ``memory_request_bytes`` is what the work is expected to add
+    (src.services.memory_requests); executors claim it only when it fits.
+    ``queued_at`` keeps the place in line of work handed back.
 
     Executors claim it from PostgreSQL.
     """
@@ -102,7 +106,10 @@ def stage_dispatch(
             "handler_version": handler_version,
         },
         payload=payload,
+        memory_request_bytes=memory_request_bytes,
     )
+    if queued_at is not None:
+        dispatch.created_at = queued_at
     db.add(dispatch)
     return dispatch
 
@@ -144,6 +151,7 @@ async def _reconcile_one(
     dispatch_id: UUID,
     family_name: str,
     subject_id: UUID,
+    largest: int | None,
 ) -> None:
     """Settle one candidate in its own short transaction."""
     family = families.get(family_name)
@@ -168,33 +176,34 @@ async def _reconcile_one(
             # The run stopped waiting (cancelled) before an executor claimed it.
             await db.delete(row)
             return
-        failure = await _settle_pool_dispatch(db, family, row)
+        failure = await _settle_pool_dispatch(db, family, row, largest)
     if failure is not None:
         await family.report_failed(subject_id, *failure)
 
 
 async def _settle_pool_dispatch(
-    db: AsyncSession, family: DispatchFamily, row: WorkDispatch
+    db: AsyncSession, family: DispatchFamily, row: WorkDispatch, largest: int | None
 ) -> tuple[dict[str, Any], str] | None:
-    """Release work held by a dead worker; fail work no capacity picked up."""
+    """Release work held by a dead worker; fail work no executor can ever
+    hold (``largest``: see ``largest_budget``) or no capacity picked up."""
     from src.models.orm.execution_workers import ExecutionWorker
 
     if row.assigned_worker_id is not None:
-        worker = (
-            await db.execute(
-                select(ExecutionWorker.state, ExecutionWorker.heartbeat_at).where(
-                    ExecutionWorker.id == row.assigned_worker_id
-                )
-            )
-        ).one_or_none()
-        silent = worker is not None and (
-            worker.heartbeat_at is None
-            or worker.heartbeat_at <= datetime.now(timezone.utc) - WORKER_SILENT_AFTER
+        state = await db.scalar(
+            select(ExecutionWorker.state).where(ExecutionWorker.id == row.assigned_worker_id)
         )
-        if worker is None or worker.state in ("lost", "retired") or silent:
+        if state is None or state in ("lost", "retired"):
             # The worker that took it is gone before claiming the run.
             row.assigned_worker_id = None
         return None
+    if largest is not None and row.memory_request_bytes > largest:
+        from src.services.worker_pool.unfit import too_large_message
+
+        reason = too_large_message(row.memory_request_bytes, largest)
+        await family.fail(db, row.subject_id, reason)
+        payload = row.payload
+        await db.delete(row)
+        return payload, reason
     if row.created_at <= datetime.now(timezone.utc) - POOL_CLAIM_DEADLINE:
         reason = "No worker capacity became available for this run."
         await family.fail(db, row.subject_id, reason)
@@ -204,25 +213,53 @@ async def _settle_pool_dispatch(
     return None
 
 
+async def largest_budget(db: AsyncSession) -> int | None:
+    """The most memory any executor can hand to one piece of work: the
+    largest live budget, or what the worker controller can launch. None
+    while no executor has reported (an outage is not too-large work)."""
+    from src.core.cache.redis_client import get_redis
+    from src.models.orm.execution_workers import ExecutionWorker
+    from src.services.memory_requests import LAUNCHABLE_KEY
+
+    # A draining executor will not claim again.
+    live = await db.scalar(
+        select(func.max(ExecutionWorker.memory_budget_bytes)).where(
+            ExecutionWorker.state == "ready"
+        )
+    )
+    async with get_redis() as redis:
+        launchable = await redis.get(LAUNCHABLE_KEY)
+    sizes = [size for size in (live, int(launchable) if launchable else None) if size is not None]
+    return max(sizes) if sizes else None
+
+
 async def reconcile_work_dispatches(*, limit: int = RECONCILE_BATCH) -> None:
     """Settle work nobody holds or claimed.
 
     Safe on every control replica concurrently: each candidate is settled
-    under SKIP LOCKED.
+    under SKIP LOCKED. Work larger than any executor can hold is settled
+    at once, whatever its age, so its caller hears within seconds.
     """
     now = datetime.now(timezone.utc)
     async with get_db_context() as db:
+        largest = await largest_budget(db)
+        due = WorkDispatch.created_at <= now - POOL_RECHECK_AFTER
+        if largest is not None:
+            due = due | (
+                WorkDispatch.assigned_worker_id.is_(None)
+                & (WorkDispatch.memory_request_bytes > largest)
+            )
         candidates = (
             await db.execute(
                 select(WorkDispatch.id, WorkDispatch.family, WorkDispatch.subject_id)
-                .where(WorkDispatch.created_at <= now - POOL_RECHECK_AFTER)
+                .where(due)
                 .order_by(WorkDispatch.created_at.asc())
                 .limit(limit)
             )
         ).all()
     families = _families()
     for dispatch_id, family_name, subject_id in candidates:
-        await _reconcile_one(families, dispatch_id, family_name, subject_id)
+        await _reconcile_one(families, dispatch_id, family_name, subject_id, largest)
 
 
 __all__ = [

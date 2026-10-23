@@ -11,8 +11,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.enums import ExecutionStatus
 from src.models.orm.agent_runs import AgentRun
-from src.models.orm.execution_workers import ExecutionWorkerClaim
+from src.models.orm.execution_workers import ExecutionWorker, ExecutionWorkerClaim
 from src.models.orm.executions import Execution
+from src.services.memory_requests import WORKFLOW_REQUEST_MARGIN_BYTES, record_peak_growth
 from src.services.execution.summary_dispatch import FAMILY as SUMMARY_FAMILY
 from src.services.execution.summary_dispatch import stage_summary
 
@@ -24,12 +25,21 @@ EXECUTOR_LOST = (
 )
 
 
-async def end_runs_of_lost_worker(db: AsyncSession, worker_id: UUID) -> list[UUID]:
+async def end_runs_of_lost_worker(
+    db: AsyncSession, worker_id: UUID, *, out_of_memory: bool = False
+) -> list[UUID]:
     """Fail the lost worker's runs that are still running; return the workflow runs ended.
 
     Runs it finished, or never managed to claim, are left as they are.
     Summaries it was generating are requested again instead: a summary has
     no effect outside its own run, so repeating it is safe.
+
+    When the executor was stopped for memory (``out_of_memory``: Kubernetes
+    reported it OOMKilled), its runs could not report what they used: each
+    ended run's workflow learns the executor's whole budget (less the
+    request margin), so its next run fits an executor alone; smaller runs
+    then bring it back down. Any other loss (a crash, a forced stop, a lost
+    node) teaches nothing.
     """
     claims = (
         await db.execute(
@@ -44,25 +54,30 @@ async def end_runs_of_lost_worker(db: AsyncSession, worker_id: UUID) -> list[UUI
     now = datetime.now(timezone.utc)
     ended: list[UUID] = []
     if workflow_ids:
-        ended = list(
-            (
-                await db.scalars(
-                    update(Execution)
-                    .where(
-                        Execution.id.in_(workflow_ids),
-                        Execution.status.in_(
-                            (ExecutionStatus.RUNNING, ExecutionStatus.CANCELLING)
-                        ),
-                    )
-                    .values(
-                        status=ExecutionStatus.FAILED,
-                        error_message=EXECUTOR_LOST,
-                        completed_at=now,
-                    )
-                    .returning(Execution.id)
+        rows = (
+            await db.execute(
+                update(Execution)
+                .where(
+                    Execution.id.in_(workflow_ids),
+                    Execution.status.in_((ExecutionStatus.RUNNING, ExecutionStatus.CANCELLING)),
                 )
-            ).all()
+                .values(
+                    status=ExecutionStatus.FAILED,
+                    error_message=EXECUTOR_LOST,
+                    completed_at=now,
+                )
+                .returning(Execution.id, Execution.workflow_id)
+            )
+        ).all()
+        ended = [execution_id for execution_id, _ in rows]
+        budget = await db.scalar(
+            select(ExecutionWorker.memory_budget_bytes).where(ExecutionWorker.id == worker_id)
         )
+        if out_of_memory and budget is not None and budget > WORKFLOW_REQUEST_MARGIN_BYTES:
+            for workflow_id in sorted({wf for _, wf in rows if wf is not None}):
+                await record_peak_growth(
+                    db, workflow_id, budget - WORKFLOW_REQUEST_MARGIN_BYTES, None
+                )
     if agent_ids:
         await db.execute(
             update(AgentRun)

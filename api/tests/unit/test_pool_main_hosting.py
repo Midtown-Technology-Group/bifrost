@@ -3,22 +3,39 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
-from uuid import uuid4
+from uuid import UUID, uuid4
 
-from src.jobs.schedulers import platform_jobs
-from src.worker.pool_main import PoolWorker
+from src.services.memory_requests import MIB, MemoryBudget
+from src.worker import pool_main
+from src.worker.admission import Admission
+from src.worker.pool_main import PoolClaim, PoolWorker
+
+GIB = 1024 * MIB
 
 
-def _worker_with_pool(services: int = 0) -> PoolWorker:
+def _worker_with_pool(
+    services: int = 0, running: set[str] | None = None, budget: int = GIB
+) -> PoolWorker:
+    """``running``: execution ids whose children are still alive."""
     worker = PoolWorker()
+    children = running if running is not None else set()
     pool = SimpleNamespace(
         service_processes={f"svc-{i}": object() for i in range(services)},
-        active_execution_count=lambda: 0,
+        active_execution_count=lambda: len(children),
+        active_execution_ids=lambda: set(children),
+        workflow_growth=dict,
         drain_active_executions=AsyncMock(return_value=True),
     )
     worker._workflow_consumer = SimpleNamespace(_pool=pool)  # type: ignore[assignment]
+    worker.admission = Admission(
+        budget_bytes=budget,
+        under_pressure=lambda: False,
+        running_workflow_ids=pool.active_execution_ids,
+        workflow_growth=pool.workflow_growth,
+    )
     return worker
 
 
@@ -36,22 +53,32 @@ def test_services_and_platform_jobs_keep_an_executor_busy_but_free_no_run_slots(
     assert with_job.active_runs() == 0
 
 
-async def test_a_platform_job_is_active_only_while_it_runs(monkeypatch) -> None:  # type: ignore[no-untyped-def]
-    claim = SimpleNamespace(id=uuid4())
-    seen_during_run: list[bool] = []
-    active: set = set()
+async def test_a_platform_job_holds_its_memory_only_while_it_runs(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    worker = _worker_with_pool()
+    claim = SimpleNamespace(id=uuid4(), memory_required_bytes=300 * 2**20)
+    seen: list[tuple[bool, int]] = []
+    fits: list[int] = []
+
+    async def claim_platform_job(*, backend, fits_bytes):  # type: ignore[no-untyped-def]
+        fits.append(fits_bytes)
+        return claim if len(fits) == 1 else None
 
     async def run(claimed) -> bool:  # type: ignore[no-untyped-def]
-        seen_during_run.append(claimed.id in active)
+        seen.append((claimed.id in worker._platform_jobs, worker.admission.held_bytes()))
+        worker._platform_stop.set()
         return True
 
-    monkeypatch.setattr(platform_jobs, "recover_expired_platform_jobs", AsyncMock(return_value=(0, 0)))
-    monkeypatch.setattr(platform_jobs, "claim_platform_job", AsyncMock(return_value=claim))
-    monkeypatch.setattr(platform_jobs, "run_claimed_platform_job", run)
+    monkeypatch.setattr(pool_main, "recover_expired_platform_jobs", AsyncMock(return_value=(0, 0)))
+    monkeypatch.setattr(pool_main, "claim_platform_job", claim_platform_job)
+    monkeypatch.setattr(pool_main, "run_claimed_platform_job", run)
 
-    assert await platform_jobs.process_platform_jobs(active) == (1, 0)
-    assert seen_during_run == [True]
-    assert active == set()
+    await worker._platform_job_loop()
+    await asyncio.sleep(0)
+
+    assert fits[0] == GIB
+    assert seen == [(True, 300 * 2**20)]
+    assert worker._platform_jobs == set()
+    assert worker.admission.held_bytes() == 0
 
 
 async def test_draining_hands_services_over_first_and_waits_for_platform_jobs(monkeypatch) -> None:  # type: ignore[no-untyped-def]
@@ -124,7 +151,10 @@ async def test_the_process_pool_is_ready_before_any_work_is_claimed(monkeypatch)
     order: list[str] = []
 
     class _Workflows:
-        _pool = SimpleNamespace(service_processes={}, active_execution_count=lambda: 0)
+        _pool = SimpleNamespace(
+            service_processes={}, active_execution_count=lambda: 0, active_execution_ids=set,
+            workflow_growth=dict,
+        )
 
         async def start_pool(self) -> None:
             order.append("pool started")
@@ -132,19 +162,23 @@ async def test_the_process_pool_is_ready_before_any_work_is_claimed(monkeypatch)
         async def stop_pool(self) -> None:
             order.append("pool stopped")
 
-    async def claim_next(incarnation_id, handlers):  # type: ignore[no-untyped-def]
+    async def claim_next(incarnation_id, handlers, *, fits_bytes, budget_bytes):  # type: ignore[no-untyped-def]
         order.append("claim")
         worker._stop.set()
 
     for name in ("init_db", "wait_for_schema", "close_db", "begin_drain", "retire_worker",
                  "remove_scheduler_replica", "replica_heartbeat_loop",
-                 "platform_job_worker_loop"):
+                 "recover_expired_platform_jobs", "claim_platform_job"):
         monkeypatch.setattr(pool_main, name, AsyncMock())
     monkeypatch.setattr(pool_main, "get_engine", lambda *args: None)
     monkeypatch.setattr(pool_main, "register_static_worker", AsyncMock(return_value=uuid4()))
     monkeypatch.setattr(pool_main, "current_package_generation", AsyncMock(return_value=0))
     monkeypatch.setattr(pool_main, "start_kubernetes_loops", AsyncMock(return_value=[]))
     monkeypatch.setattr(pool_main, "claim_next", claim_next)
+    monkeypatch.setattr(
+        pool_main, "measure_budget",
+        lambda threshold: MemoryBudget(limit_bytes=GIB, baseline_bytes=0, threshold=threshold),
+    )
     monkeypatch.setattr(workflow_execution, "WorkflowExecutionConsumer", _Workflows)
     monkeypatch.setattr(agent_run, "AgentRunConsumer", object)
     monkeypatch.setattr(package_install, "PackageInstallConsumer", object)
@@ -158,40 +192,73 @@ async def test_the_process_pool_is_ready_before_any_work_is_claimed(monkeypatch)
     assert order == ["pool started", "claim", "pool stopped"]
 
 
-def test_over_the_memory_threshold_an_executor_claims_nothing(monkeypatch) -> None:  # type: ignore[no-untyped-def]
-    from src.worker import pool_main
+QUEUED_AT = datetime(2026, 10, 23, tzinfo=timezone.utc)
 
-    worker = _worker_with_pool()
-    limit = 1000 * 2**20
-    monkeypatch.setattr(pool_main, "get_cgroup_memory", lambda: (int(limit * 0.95), limit))
-    assert worker._claimable() == ()
-    assert worker._memory_pressured, "reported in the next heartbeat"
 
-    monkeypatch.setattr(pool_main, "get_cgroup_memory", lambda: (int(limit * 0.5), limit))
-    assert ("workflow.execute", 1) in worker._claimable()
-    assert not worker._memory_pressured
+def _workflow_claim(execution_id: str, request: int) -> PoolClaim:
+    return PoolClaim(
+        dispatch_id=uuid4(),
+        handler="workflow.execute",
+        message={"execution_id": execution_id},
+        subject_id=UUID(execution_id),
+        memory_request_bytes=request,
+        queued_at=QUEUED_AT,
+        claimed={"execution_id": execution_id, "sync": False},
+    )
+
+
+async def _run_to_routed(worker: PoolWorker, claim: PoolClaim) -> None:
+    worker._start(claim)
+    await asyncio.gather(*worker._tasks["workflow.execute"])
+
+
+async def test_a_workflow_run_is_held_until_its_child_ends() -> None:
+    execution_id = str(uuid4())
+    children = {execution_id}
+    worker = _worker_with_pool(running=children)
+    worker._workflow_consumer.process_message = AsyncMock()  # type: ignore[union-attr]
+    worker._agent_consumer = object()  # type: ignore[assignment]
+
+    await _run_to_routed(worker, _workflow_claim(execution_id, 100 * MIB))
+    assert worker.admission.free_bytes() == GIB - 100 * MIB, "routed, its child still runs"
+    assert worker.active_runs() == 1
+
+    children.clear()
+    assert worker.admission.free_bytes() == GIB
 
 
 async def test_a_refused_fork_hands_the_run_back(monkeypatch) -> None:  # type: ignore[no-untyped-def]
     from src.services.execution import workflow_dispatch
-    from src.worker.pool_main import PoolClaim
 
     worker = _worker_with_pool()
     worker._workflow_consumer.process_message = AsyncMock(side_effect=MemoryError("pressure"))  # type: ignore[union-attr]
     worker._agent_consumer = object()  # type: ignore[assignment]
     release = AsyncMock()
     monkeypatch.setattr(workflow_dispatch, "release_workflow_run", release)
-    claim = PoolClaim(
-        dispatch_id=uuid4(),
-        handler="workflow.execute",
-        message={"execution_id": "e1"},
-        claimed={"execution_id": "e1", "sync": False},
-    )
+    execution_id = str(uuid4())
 
-    await worker._run_claim(claim)
+    await _run_to_routed(worker, _workflow_claim(execution_id, 100 * MIB))
 
     release.assert_awaited_once_with(
         worker_id=worker.incarnation_id,
-        message={"execution_id": "e1"},
-        payload={"execution_id": "e1", "sync": False},
+        message={"execution_id": execution_id},
+        payload={"execution_id": execution_id, "sync": False},
+        memory_request_bytes=100 * MIB,
+        queued_at=QUEUED_AT,
     )
+    assert worker.admission.free_bytes() == GIB, "the hold went back with the run"
+
+
+async def test_an_executor_declared_lost_stops_its_runs_without_a_grace(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    """The control plane already ended its runs; their results are refused."""
+    worker = _worker_with_pool()
+    monkeypatch.setattr(pool_main, "heartbeat_worker", AsyncMock(return_value=None))
+    beating = asyncio.create_task(worker._heartbeat_loop())
+    await asyncio.wait_for(worker._stop.wait(), timeout=1)
+    beating.cancel()
+
+    await worker._drain()
+
+    assert worker._lost
+    pool = worker._workflow_consumer._pool  # type: ignore[union-attr]
+    pool.drain_active_executions.assert_awaited_once_with(0.0)

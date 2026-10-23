@@ -88,7 +88,7 @@ async def wait_or_stop(stop_event: asyncio.Event, seconds: float) -> None:
 async def replica_heartbeat_loop(
     *,
     replica_id: str,
-    job_slots: int,
+    runs_platform_jobs: bool,
     stop_event: asyncio.Event,
 ) -> None:
     """Publish this process to Diagnostics until stopped."""
@@ -99,7 +99,7 @@ async def replica_heartbeat_loop(
                 replica_id=replica_id,
                 hostname=socket.gethostname(),
                 pid=os.getpid(),
-                job_slots=job_slots,
+                runs_platform_jobs=runs_platform_jobs,
                 started_at=started_at,
             )
         except asyncio.CancelledError:
@@ -183,15 +183,24 @@ class ControlPlane:
         )
 
     async def _dispatch_reconcile_loop(self) -> None:
-        """Settle accepted work no executor holds or claimed in time."""
+        """End silent static executors, settle accepted work no executor holds
+        or claimed in time, and fail work no executor can ever hold."""
         from src.services.work_dispatch import reconcile_work_dispatches
+        from src.services.worker_pool.liveness import Reachability, end_silent_static_executors
+        from src.services.worker_pool.unfit import settle_work_that_never_fits
 
+        reachability = Reachability()
         while not self._stop_event.is_set():
             try:
+                if reachability.steady():
+                    await end_silent_static_executors()
                 await reconcile_work_dispatches()
+                await settle_work_that_never_fits()
+                reachability.connected()
             except asyncio.CancelledError:
                 raise
             except Exception:
+                reachability.broken()
                 logger.exception("Work dispatch reconciliation failed")
             await wait_or_stop(self._stop_event, DISPATCH_RECONCILE_SECONDS)
 
