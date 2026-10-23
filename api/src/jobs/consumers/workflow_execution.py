@@ -33,7 +33,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.database import get_db_context
 from src.core.pubsub import publish_execution_update, publish_history_update
-from src.core.redis_client import ActiveExecution, get_redis_client
+from src.core.redis_client import ActiveExecution, PendingExecution, get_redis_client
 from src.jobs.rabbitmq import BaseConsumer
 from src.models.enums import ExecutionStatus
 from src.models.orm import Execution, User
@@ -92,20 +92,26 @@ class WorkflowExecutionConsumer(BaseConsumer):
         the template is still starting, and there would be no valid way to
         create worker processes for incoming messages.
         """
-        await self._pool.start()
-        self._pool_started = True
-        logger.info("Process pool started")
+        await self.start_pool()
 
         # Only now begin accepting messages from RabbitMQ.
         await super().start()
 
-    async def stop(self) -> None:
-        """Stop the consumer and process pool."""
-        # Stop process pool
+    async def start_pool(self) -> None:
+        """Start the process pool without consuming RabbitMQ (pool workers)."""
+        await self._pool.start()
+        self._pool_started = True
+        logger.info("Process pool started")
+
+    async def stop_pool(self) -> None:
         if self._pool_started:
             await self._pool.stop()
             self._pool_started = False
             logger.info("Process pool stopped")
+
+    async def stop(self) -> None:
+        """Stop the consumer and process pool."""
+        await self.stop_pool()
 
         # Call parent stop
         await super().stop()
@@ -685,8 +691,16 @@ class WorkflowExecutionConsumer(BaseConsumer):
             trigger_event=metadata.get("event"),
         )
 
-    async def process_message(self, message_data: dict[str, Any]) -> None:
-        """Process a workflow execution message."""
+    async def process_message(
+        self,
+        message_data: dict[str, Any],
+        claimed: "PendingExecution | None" = None,
+    ) -> None:
+        """Process a workflow execution message.
+
+        ``claimed`` is the context of a run a pool executor already claimed
+        (PENDING -> RUNNING) in its own claim transaction.
+        """
         from src.services.execution.queue_tracker import remove_from_queue
 
         dispatch_started = time.perf_counter()
@@ -712,7 +726,9 @@ class WorkflowExecutionConsumer(BaseConsumer):
         # (PENDING -> RUNNING) and take the context in one transaction; a
         # cancelled run or a duplicate delivery finds nothing to claim.
         dispatch_id = message_data.get("dispatch_id")
-        if dispatch_id is not None:
+        if claimed is not None:
+            pending = claimed
+        elif dispatch_id is not None:
             from src.services.execution.workflow_dispatch import claim_workflow_dispatch
 
             async with get_db_context() as db:
@@ -805,9 +821,9 @@ class WorkflowExecutionConsumer(BaseConsumer):
             from shared.run_cancellation import claim_pending_run_for_dispatch
 
             async with get_db_context() as db:
-                claimed = await claim_pending_run_for_dispatch(db, UUID(execution_id))
+                row_claimed = await claim_pending_run_for_dispatch(db, UUID(execution_id))
                 await db.commit()
-            if not claimed:
+            if not row_claimed:
                 logger.info(
                     "Discarding queued execution whose durable row was not pending",
                     extra={"execution_id": execution_id},
