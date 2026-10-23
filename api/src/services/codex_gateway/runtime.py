@@ -5,11 +5,12 @@ from __future__ import annotations
 from asyncio import TimeoutError as AsyncioTimeoutError
 from asyncio import sleep, wait_for
 from dataclasses import dataclass
+import logging
 from time import perf_counter
 from typing import Any, Protocol, cast
 from uuid import uuid4
 
-from sqlalchemy.exc import MultipleResultsFound
+from sqlalchemy.exc import MultipleResultsFound, SQLAlchemyError
 
 from src.core.security import decrypt_secret
 from src.models.contracts.codex_gateway import (
@@ -28,6 +29,9 @@ from src.repositories.codex_gateway import (
     is_plausible_gateway_key,
 )
 from src.services.codex_gateway.policy import CodexGatewayPolicyEngine
+
+
+logger = logging.getLogger(__name__)
 
 
 CODEX_GATEWAY_KEY_HEADER = "X-Bifrost-Codex-Key"
@@ -100,10 +104,18 @@ class CodexGatewayRuntime:
         )
         self.policy_engine = policy_engine or CodexGatewayPolicyEngine()
 
+    async def _get_active_gateway_key(
+        self, gateway_key: str | None
+    ) -> CodexGatewayKey | None:
+        """Reject malformed credentials before performing an active-key lookup."""
+        if not is_plausible_gateway_key(gateway_key):
+            return None
+        return await self.repository.get_active_gateway_key_by_plaintext(gateway_key)
+
     async def create_response(
         self,
         *,
-        gateway_key: str,
+        gateway_key: str | None,
         payload: dict[str, Any],
         source_ip: str | None = None,
         client_user_agent: str | None = None,
@@ -118,13 +130,17 @@ class CodexGatewayRuntime:
             code="invalid_gateway_key",
             message="The Bifrost Codex Gateway key is invalid or revoked.",
         )
-        if not is_plausible_gateway_key(gateway_key):
-            return invalid_key_response
-
-        key_record = await self.repository.get_active_gateway_key_by_plaintext(
-            gateway_key
-        )
+        key_record = await self._get_active_gateway_key(gateway_key)
         if key_record is None:
+            await self._log_denial(
+                request_id=request_id,
+                endpoint=CODEX_GATEWAY_RESPONSES_ENDPOINT,
+                model=model if isinstance(model, str) else None,
+                status_code=invalid_key_response.status_code,
+                code="invalid_gateway_key",
+                source_ip=source_ip,
+                client_user_agent=client_user_agent,
+            )
             return invalid_key_response
 
         if not isinstance(model, str) or not model:
@@ -364,32 +380,82 @@ class CodexGatewayRuntime:
         source_ip: str | None = None,
         client_user_agent: str | None = None,
     ) -> None:
-        await self.repository.create_request_log(
-            request_id=request_id,
-            user_id=key.user_id if key else None,
-            project_id=key.project_id if key else None,
-            gateway_key_id=key.id if key else None,
-            oauth_account_id=account.id if account else None,
-            endpoint=endpoint,
-            model=model,
-            streaming=False,
-            status_code=status_code,
-            policy_decision="deny",
-            denied_reason=code,
-            source_ip=source_ip,
-            client_user_agent=client_user_agent,
-            request_metadata={
-                "request_id": request_id,
-                "user_id": str(key.user_id) if key else None,
-                "gateway_key_id": str(key.id) if key else None,
-                "project_id": str(key.project_id) if key and key.project_id else None,
-                "oauth_account_id": str(account.id) if account else None,
-                "endpoint": endpoint,
-                "model": model,
-                "policy_decision": "deny",
-                "denied_reason": code,
-            },
-        )
+        # JSON model values are untrusted, including on authentication failures.
+        # PostgreSQL text rejects NUL/surrogates; the model column is varchar(255).
+        if model is not None:
+            model = (
+                model[:255]
+                .encode("utf-8", errors="replace")
+                .decode("utf-8")
+                .replace("\x00", "")
+            )
+
+        async def write_denial() -> None:
+            await self.repository.create_request_log(
+                request_id=request_id,
+                user_id=key.user_id if key else None,
+                project_id=key.project_id if key else None,
+                gateway_key_id=key.id if key else None,
+                oauth_account_id=account.id if account else None,
+                endpoint=endpoint,
+                model=model,
+                streaming=False,
+                status_code=status_code,
+                policy_decision="deny",
+                denied_reason=code,
+                source_ip=source_ip,
+                client_user_agent=client_user_agent,
+                request_metadata=self._denial_metadata(
+                    request_id=request_id,
+                    endpoint=endpoint,
+                    model=model,
+                    code=code,
+                    key=key,
+                    account=account,
+                ),
+            )
+
+        if code != "invalid_gateway_key":
+            await write_denial()
+            return
+
+        try:
+            # A rejected credential must remain rejected if its audit INSERT
+            # fails. Isolate the write so request teardown can still commit.
+            async with self.repository.session.begin_nested():
+                await write_denial()
+        except SQLAlchemyError as exc:
+            # Database exceptions can include SQL parameters. Log only safe
+            # identifiers and the error class, never the exception or traceback.
+            logger.warning(
+                "Codex Gateway denial audit failed: request_id=%s code=%s error_type=%s",
+                request_id,
+                code,
+                type(exc).__name__,
+            )
+
+    @staticmethod
+    def _denial_metadata(
+        *,
+        request_id: str,
+        endpoint: str,
+        model: str | None,
+        code: str,
+        key: CodexGatewayKey | None,
+        account: CodexGatewayUpstreamAccount | None,
+    ) -> dict[str, Any]:
+        """Build denial audit metadata without submitted credentials or prompts."""
+        return {
+            "request_id": request_id,
+            "user_id": str(key.user_id) if key else None,
+            "gateway_key_id": str(key.id) if key else None,
+            "project_id": str(key.project_id) if key and key.project_id else None,
+            "oauth_account_id": str(account.id) if account else None,
+            "endpoint": endpoint,
+            "model": model,
+            "policy_decision": "deny",
+            "denied_reason": code,
+        }
 
     @staticmethod
     def _key_context(key: CodexGatewayKey) -> CodexGatewayKeyContext:
