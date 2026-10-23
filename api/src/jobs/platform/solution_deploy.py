@@ -182,6 +182,11 @@ async def run_solution_deploy(
                     orphan = await db.get(Solution, payload.install_id)
                     if orphan is not None:
                         await db.delete(orphan)
+                    # The pollable projection is the public terminal status.
+                    # Commit this together with the rollback so clients cannot
+                    # observe failure while the newly-created install remains.
+                    projection.status = "failed"
+                    projection.error = projection.error or "Solution deploy failed."
                 failure = PlatformJobFailure(
                     "solution_deploy_failed",
                     projection.error or "Solution deploy failed.",
