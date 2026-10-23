@@ -83,10 +83,10 @@ from src.services.solutions.guard import (
 )
 
 from src.core.auth import Context, CurrentActiveUser, CurrentSuperuser
+from src.core.cache import DataProviderCacheIdentity, get_cached_data_provider
 from src.core.db_deps import DbSession
 from src.core.log_safety import log_safe
 from src.core.pubsub import publish_execution_update, publish_history_update
-from src.core.cache import get_cached_data_provider
 
 logger = logging.getLogger(__name__)
 
@@ -1175,8 +1175,13 @@ async def execute_workflow(
             # execution_id would 404 the history detail page.
             if request.transient and workflow.cache_ttl_seconds > 0:
                 cached_result = await get_cached_data_provider(
-                    str(execution_org_id) if execution_org_id else None,
-                    workflow.name,
+                    DataProviderCacheIdentity(
+                        organization_id=(
+                            str(execution_org_id) if execution_org_id else None
+                        ),
+                        provider_id=str(workflow.id),
+                        principal_id=exec_user_id,
+                    ),
                     request.input_data,
                 )
                 if cached_result:

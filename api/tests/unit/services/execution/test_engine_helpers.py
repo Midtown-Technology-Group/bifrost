@@ -8,7 +8,7 @@ from typing import Optional
 import pytest
 
 from src.models.enums import ExecutionStatus
-from src.sdk.context import ExecutionContext, Organization
+from src.sdk.context import Caller, ExecutionContext, Organization
 from src.services.execution import engine
 
 
@@ -172,6 +172,34 @@ def test_build_cached_result_normalizes_expiry_and_marks_cached():
     assert result.cached is True
     assert result.cache_expires_at == "2026-07-05T12:00:00Z"
     assert result.duration_ms >= 0
+
+
+def test_data_provider_cache_identity_uses_resolved_execution_authority():
+    request = engine.ExecutionRequest(
+        execution_id="exec-1",
+        caller=Caller(user_id="user-1", email="user@example.com", name="User"),
+        organization=Organization(id="org-1", name="Org One"),
+        workflow_id="provider-1",
+    )
+
+    assert engine._data_provider_cache_identity(request) == (
+        engine.DataProviderCacheIdentity(
+            organization_id="org-1",
+            provider_id="provider-1",
+            principal_id="user-1",
+        )
+    )
+
+
+def test_data_provider_cache_identity_fails_closed_without_workflow_id():
+    request = engine.ExecutionRequest(
+        execution_id="exec-1",
+        caller=Caller(user_id="user-1", email="user@example.com", name="User"),
+        organization=None,
+    )
+
+    with pytest.raises(ValueError, match="immutable workflow_id"):
+        engine._data_provider_cache_identity(request)
 
 
 def test_human_size_formats_units():

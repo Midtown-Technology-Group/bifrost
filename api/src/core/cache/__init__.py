@@ -76,6 +76,7 @@ from .invalidation import (
 # Data provider cache
 from .data_provider_cache import (
     TTL_DATA_PROVIDER,
+    DataProviderCacheIdentity,
     cache_result as cache_data_provider_result,
     compute_param_hash,
     data_provider_cache_key,
@@ -131,6 +132,7 @@ __all__ = [
     "upsert_config",
     "upsert_org",
     # Data provider cache
+    "DataProviderCacheIdentity",
     "TTL_DATA_PROVIDER",
     "data_provider_cache_key",
     "compute_param_hash",

@@ -438,6 +438,7 @@ async def _run_execution(execution_id: str, context_data: dict[str, Any]) -> dic
             func=workflow_func,
             code=context_data.get("code"),
             name=context_data.get("name"),
+            workflow_id=context_data.get("workflow_id"),
             tags=context_data.get("tags", []),
             timeout_seconds=context_data.get("timeout_seconds", 1800),
             workflow_deadline=(
