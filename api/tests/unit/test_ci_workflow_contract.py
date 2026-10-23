@@ -82,6 +82,48 @@ def test_mtg_candidate_images_are_promoted_without_rebuild() -> None:
     assert "--main-source-sha" in source
 
 
+def test_dependabot_test_image_skip_preserves_candidate_gate() -> None:
+    jobs = _load_workflow(CI_WORKFLOW)["jobs"]
+    bot_check = "github.event.pull_request.user.login != 'dependabot[bot]'"
+
+    publish_condition = " ".join(jobs["publish-ci-test-images"]["if"].split())
+    assert bot_check in publish_condition
+    assert "github.event_name == 'merge_group'" in publish_condition
+
+    candidate_condition = " ".join(jobs["build-candidate-images"]["if"].split())
+    assert "github.event.pull_request.head.repo.full_name == github.repository" in candidate_condition
+    assert bot_check not in candidate_condition
+
+    candidate_gate = jobs["candidate-images"]
+    gate_source = next(
+        step["run"]
+        for step in candidate_gate["steps"]
+        if step["name"] == "Require exact signed candidates"
+    )
+    assert '"$BUILD_RESULT" != "success"' in gate_source
+    assert "Every MTG platform PR must publish exact signed image candidates" in gate_source
+
+    for job_name in ("test-unit", "mcp-conformance", "test-e2e", "test-client-e2e"):
+        job = jobs[job_name]
+        condition = " ".join(job["if"].split())
+        assert "needs.publish-ci-test-images.result == 'success'" in condition
+        assert "needs.publish-ci-test-images.result == 'skipped'" in condition
+        assert any(
+            "prepare-test-images.sh" in step.get("run", "")
+            for step in job["steps"]
+        )
+
+    e2e_gate = jobs["test-e2e-gate"]
+    assert "always()" in e2e_gate["if"]
+    gate_source = next(
+        step["run"] for step in e2e_gate["steps"]
+        if step["name"] == "Check shard results"
+    )
+    assert '"${{ needs.publish-ci-test-images.result }}" != "skipped"' in gate_source
+    assert '"${{ needs.test-client-unit.result }}" != "success"' in gate_source
+    assert '"${{ needs.mcp-conformance.result }}" != "success"' in gate_source
+
+
 def test_release_tags_pass_skipped_candidate_jobs_through_manifest_gate() -> None:
     jobs = _load_workflow(CI_WORKFLOW)["jobs"]
     verification = jobs["verify-release-manifest"]
