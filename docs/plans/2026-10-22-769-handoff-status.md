@@ -114,8 +114,9 @@ continue directly to 5c and the production rollout.
 | #1033 | **Merged** 2026-10-23. Gate: all four Kind drills pass (unschedulable now starts from an empty pool and asserts the start deadline); checklist passes in Kind pool mode and Docker static-executor mode; latency at parity after the executor connection fix (below). |
 | #1035–#1038 (4a–4d) | **Merged** 2026-10-23 in order. Gates: package generation with a frozen and a late executor; summaries 4/4 and backfills 4/4 in pool mode (a lost backfill-counter update fixed); checklist with both containers as executors and with each alone; event acceptance crash-before-commit tests plus event, scheduling and scenario e2e; a Kind pass of every stage-4 family on Job-form executors. |
 | #1039 (5a) | **Merged** 2026-10-23. Gates: 2320 e2e; Docker upgrade from v1.4.1 with its unchanged compose file and seeded data, checklist green; Docker rollback to stage 4; Kind upgrade from stage-4 defaults (found and fixed: worker Jobs must copy the controller pod's `envFrom`) and rollback. Rollback targets must contain #1034. |
-| 5b | In progress on `769-retire-rabbitmq-stage5b` (design in the convergence doc). A startup check for broker-placed dispatches was not needed: since 5a the reconciler re-places them at once. Also restores memory gating (claim-time gate, controller capacity, hand-back) and the executor's drain of running children. The dispatch table's broker columns are relaxed here and dropped one release later. |
-| Production | Still on an image from before #1031. Roll to a stage-4 image first, then 5a/5b (see the convergence doc). |
+| #1040 (5b) | **Merged** 2026-10-23. RabbitMQ, KEDA and the Redis bridges retired; memory gating restored; executor drain fixed; init skips migrations on a newer database. Includes the 5c proof (below). |
+| 5c proof | Kind with the base manifests' defaults: a 40-run burst scaled worker Jobs 1 → 6 → 1 (never past 6); kill, controller-restart, OOM and unschedulable drills pass. Docker v1.4.1 → 5b with its unchanged compose file passes on two executors. |
+| Production | **Not rolled out.** Still on `1.4.2-dev.1792699618` (before #1031). gocovi/kubernetes#30 (stage-4 pin) is open and superseded by the drain below; close it once the drain ships. The nightly promotion (`bifrost-image-promotion`, midnight America/New_York) promotes the newest main build; Jack decides whether to suspend it until the drain is merged. |
 
 ## Evidence so far
 
@@ -184,3 +185,77 @@ These are the numbers to repeat or beat.
      because `./test.sh` restarts the broker worker.
 - **Latency:** `scripts/kubernetes/sync_latency_bench.py` (sync inline-code runs). Copy it into
   the API container and run it with `python /tmp/e2e.py 200`.
+
+## Next session (decided by Jack, 2026-10-23)
+
+Work in this order. The authority above still applies (merge through the
+queue once a gate passes; production through GitOps, which needs Jack's
+merge because the auto-mode classifier blocks GitOps merges).
+
+1. **Legacy broker drain** (branch `769-legacy-broker-drain`; gate passed
+   2026-10-23, PR to open).
+   - **Behaviour (Jack):** each API replica, when it starts with
+     `BIFROST_RABBITMQ_URL` set, waits for the schema, tries the broker 3
+     times, drains every old queue until empty, disconnects and stops
+     (`api/src/services/legacy_broker_drain.py`, started from the API
+     lifespan). No catalog task, no recurring poll.
+   - **Lineage (Jack, 2026-10-23: "run as recorded user"):** v1.4.1 recorded
+     only the user a run executes as, and the runtime refuses runs without
+     lineage (#996), so every recovered run, and every v1.4.1 run still
+     scheduled at upgrade, failed with an engine-token 401. Rule
+     (`shared.run_lineage.recorded_user_lineage`): a person is the run user
+     and starter; the system account runs as a schedule does (workflow
+     identity, else the org default; inline script: the org default); the run
+     is its own root. Agent runs: their caller, else the org default identity.
+     The drain applies it to messages; migration `20261023_legacy_run_lineage`
+     backfills waiting `Scheduled`/`Pending` rows.
+   - A run cancelled while queued is recorded as Cancelled ("Execution was
+     cancelled before it could start"), as v1.4.1 did.
+   - **Gate evidence:** Docker, v1.4.1 with its unchanged compose file, worker
+     stopped: 5 async runs, 1 inline script, 2 scheduled runs v1.4.1 promoted
+     into RabbitMQ, 1 still scheduled in the database, 1 cancelled while
+     queued, 2 agent runs; scheduler stopped; only the image tag upgraded.
+     All 9 workflow runs succeeded with lineage, the cancelled run is
+     Cancelled, both agent runs ran for their caller (and failed only on the
+     rehearsal's missing LLM profile), both queues 0, no broker connection
+     left. Rehearsal kit: `/tmp/769-drain-rehearsal` (`strand.py`).
+   - **Known limit:** during a Kubernetes rolling upgrade an older API pod can
+     queue work after the new pods drained. The runbook says to check the
+     queues after the rollout and restart the API to drain again.
+   - Earlier finding: `WorkflowExecutionRequest.code` is plain text, though
+     its field description says base64.
+2. **Drop the broker-era dispatch schema now** (no release ever wrote it;
+   only dev builds #1032–#1039 did). Remove `queue`, `status`,
+   `publish_count`, `last_published_at` and `placement` from
+   `work_dispatches`, the reconciler's "re-place a broker dispatch" branch,
+   and the `execution_record_exists` message field; drop their allowlist
+   entries in `test_builder_residue_migration_rehearsal.py`. Production must
+   run the #1040 image (or later) before it takes this change.
+3. **Kind pressure test** before production: a sustained ramp of hundreds of
+   runs mixing sync, async, scheduled, agent, summary and event work;
+   memory-heavy runs that drive the memory gate and hand-back; sync latency
+   percentiles at the warm floor and the Job-count curve; API and executor
+   kills under load. Record results here.
+4. **Production** (each step a GitOps PR Jack merges, then `prod_smoke`; on
+   the first rollout also check DigitalOcean node autoscaling, the GHCR pull
+   and the Flux sync):
+   1. The newest main image with manifests unchanged (with the drain, no
+      stage-4 hop is needed; close gocovi/kubernetes#30).
+   2. The 1+x model: give the API the worker-controller and build Roles;
+      remove the scheduler Deployment (proves the platform runs without
+      it); worker Deployment to 1 replica as the always-warm floor,
+      `BIFROST_POOL_MIN_WORKERS=0`, `MAX=6` (Jack to confirm static floor vs
+      a warm Job).
+   3. Remove RabbitMQ (Deployment, PVC, secret keys) after the drain logs
+      show it empty.
+5. **Small leftovers:** the platform-job phase "Waiting for scheduler memory"
+   should say executor; the Kind build experiment's `--restart-scheduler`
+   restarts the wrong process now that the API runs the build controller.
+6. **Resource requests** (discuss with Jack first; nothing is built): draft
+   `docs/plans/2026-10-23-769-resource-requests-design.md` on local branch
+   `769-resource-requests-design`. Open questions: one claim path or a
+   shared ledger; CPU or memory only; what "isolated" includes; ordering of
+   large requests.
+
+Close #769 after production reaches the 1+x model.
+

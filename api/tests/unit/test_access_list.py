@@ -1011,7 +1011,8 @@ def _inventory(rule, roots: tuple[str, ...] = _SOURCE_ROOTS) -> dict[str, set[st
     return found
 
 
-def _elevated_site_nodes(source: str) -> list[tuple[ast.AST, str]]:
+@functools.cache
+def _elevated_site_nodes(source: str) -> tuple[tuple[ast.AST, str], ...]:
     """``(node, token)`` for every token that makes a function an
     elevated-check site: a read used to decide, widen, or hand the decision
     to a callee. Not a site: a pure echo, where the token is itself a dict
@@ -1021,11 +1022,11 @@ def _elevated_site_nodes(source: str) -> list[tuple[ast.AST, str]]:
     within a dict or f-string still decides something and counts."""
     tree = _parse_source(source)
     parents = {child: node for node in ast.walk(tree) for child in ast.iter_child_nodes(node)}
-    return [
+    return tuple(
         (node, token)
         for node, token in _elevated_token_nodes(tree)
         if token not in _ELEVATED_DEPENDENCY_NAMES and not _is_pure_echo(node, parents.get(node))
-    ]
+    )
 
 
 def _elevated_site_tokens(source: str) -> set[str]:
@@ -2108,6 +2109,9 @@ _REDIS_AUTHORITY_READS: dict[str, tuple[int, str]] = {
     "src.services.app_storage.AppStorageService.get_render_cache": (1, "cutover"),
     "src.services.execution.agent_run_service.wait_for_agent_run_result": (1, "cutover"),
     "src.services.github_sync.GitHubSyncService.load_connect_preview": (1, "cutover"),
+    "src.services.legacy_broker_drain._redis_json": (1, "cutover"),
+    "src.services.legacy_broker_drain.recover_agent_run": (1, "cutover"),
+    "src.services.legacy_broker_drain.recover_workflow_run": (2, "cutover"),
     "src.services.mcp_server.auth.BifrostAuthProvider._callback": (1, "cutover"),
     "src.services.mcp_server.auth.BifrostAuthProvider._token": (1, "cutover"),
     "shared.runtime_io.service_control": (2, "internal_authorized_resource"),
