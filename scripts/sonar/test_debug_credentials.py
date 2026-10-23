@@ -98,6 +98,8 @@ class DebugCredentials(unittest.TestCase):
     def test_symlink_parent_does_not_create_or_chmod_outside_state(self):
         outside = self.root / "outside"
         outside.mkdir(mode=0o755)
+        # Make the fixture precondition independent of the caller's umask.
+        outside.chmod(0o755)
         (self.root / "bifrost").symlink_to(outside, target_is_directory=True)
         result = self.invoke()
         self.assertNotEqual(result.returncode, 0)

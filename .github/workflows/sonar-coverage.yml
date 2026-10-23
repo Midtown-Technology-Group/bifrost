@@ -3,6 +3,10 @@ name: Sonar Coverage
 on:
   workflow_call:
     inputs:
+      coverage_shadow:
+        required: false
+        type: boolean
+        default: false
       head_sha:
         required: true
         type: string
@@ -125,9 +129,13 @@ jobs:
         env:
           GHCR_USERNAME: ${{ github.actor }}
           GHCR_TOKEN: ${{ github.token }}
-          API_IMAGE_CHANGED: "true"
+          API_IMAGE_CHANGED: ${{ inputs.coverage_shadow && 'false' || 'true' }}
           CLIENT_IMAGE_CHANGED: "true"
         run: bash api/scripts/ci/prepare-test-images.sh api client
+      - name: Bind opt-in serial comparison context
+        if: inputs.coverage_shadow
+        run: bash scripts/sonar/shadow.sh baseline-context
+
       - name: Prepare isolated Sonar test stack
         if: steps.reuse.outputs.reused != 'true'
         run: |
@@ -172,6 +180,7 @@ jobs:
       - name: Collect comprehensive Python coverage
         if: steps.reuse.outputs.reused != 'true'
         env:
+          COVERAGE_SHADOW: ${{ inputs.coverage_shadow }}
           BIFROST_SKIP_BUILD: "1"
           HEAD_SHA: ${{ steps.context.outputs.head }}
           BASE_SHA: ${{ steps.context.outputs.base }}
@@ -181,10 +190,17 @@ jobs:
           # Append the API tests to repository-tool coverage. Include slow unit
           # cases; affected-only reports are not this initial full denominator.
           ./test.sh unit -m "" --cov --cov-append --cov-branch --cov-config=/app/.coveragerc.sonar --cov-report=
+          if [ "$COVERAGE_SHADOW" = true ]; then
+            cp "$SONAR_LOG_DIR/test-results.xml" "$SONAR_LOG_DIR/junit-unit.xml"
+            cp "$SONAR_LOG_DIR/sonar-repository-junit.xml" "$SONAR_LOG_DIR/junit-tools.xml"
+          fi
           # Exercise the actual API/worker/scheduler paths, using the same
           # authored-source scope as units. Flush their parallel data before
           # merging; absence or incompatibility of runtime reports is fatal.
           ./test.sh e2e --cov --cov-append --cov-branch --cov-config=/app/.coveragerc.sonar --cov-report=
+          if [ "$COVERAGE_SHADOW" = true ]; then
+            cp "$SONAR_LOG_DIR/test-results.xml" "$SONAR_LOG_DIR/junit-e2e.xml"
+          fi
           source scripts/lib/test_helpers.sh
           export COMPOSE_PROJECT_NAME="$(compute_project_name .)"
           docker compose -f "$COMPOSE_FILE" ps -a --format '{{.Service}} {{.ID}}' \
@@ -239,6 +255,24 @@ jobs:
             test -n "$COLLECTED_MANIFEST"
             printf 'base=%s\nmanifest_sha256=%s\n' "$COLLECTED_BASE" "$COLLECTED_MANIFEST" >> "$GITHUB_OUTPUT"
           fi
+      - name: Export opt-in authoritative comparison evidence
+        if: always() && inputs.coverage_shadow && env.SONAR_LOG_DIR != ''
+        run: bash scripts/sonar/shadow.sh export baseline
+
+      - name: Own opt-in authoritative diagnostics
+        if: always() && inputs.coverage_shadow && env.SONAR_LOG_DIR != ''
+        run: bash scripts/sonar/shadow.sh own baseline
+
+      - name: Retain opt-in authoritative comparison evidence
+        if: always() && inputs.coverage_shadow
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage-shadow-${{ github.run_id }}-${{ github.run_attempt }}-baseline
+          path: ${{ env.SONAR_LOG_DIR }}/coverage-shadow-baseline/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Tear down task-owned stack
         if: always() && env.COMPOSE_FILE != ''
         run: |
