@@ -38,6 +38,20 @@ from src.services.execution.requirements_setup_result import FailedPackage, Requ
 
 logger = logging.getLogger(__name__)
 
+_INSTALLABLE_REQUIREMENT_PREFIXES = (
+    "-e ",
+    "--editable ",
+    "--editable=",
+    "-r ",
+    "--requirement ",
+    "--requirement=",
+)
+_NESTED_REQUIREMENT_PREFIXES = (
+    "-r ",
+    "--requirement ",
+    "--requirement=",
+)
+
 
 def _parse_requirement_lines(content: str) -> list[str]:
     """Return real package specs (non-comment, non-blank, non-option lines)."""
@@ -48,10 +62,10 @@ def _parse_requirement_lines(content: str) -> list[str]:
 def _parse_requirements(content: str) -> tuple[list[str], list[str]]:
     """Split requirements file content into package specs and pip option tokens.
 
-    Lines starting with ``-`` (e.g. ``-i``, ``--index-url``,
-    ``--extra-index-url``, ``-r other.txt``) are pip options, not packages.
-    Their whitespace-split tokens are collected so the per-package fallback can
-    reapply the same index/source configuration to each individual install.
+    Index, constraint, and resolver option lines are collected so the
+    per-package fallback can reapply them to each individual install. Editable
+    requirements (``-e``/``--editable``) and nested requirement sources
+    (``-r``/``--requirement``) are install targets rather than inert options.
     Comment and blank lines are ignored.
     """
     packages: list[str] = []
@@ -60,11 +74,31 @@ def _parse_requirements(content: str) -> tuple[list[str], list[str]]:
         line = raw.strip()
         if not line or line.startswith("#"):
             continue
+        if line.startswith(_INSTALLABLE_REQUIREMENT_PREFIXES):
+            packages.append(line)
+            continue
         if line.startswith("-"):
             options.extend(line.split())
             continue
         packages.append(line)
     return packages, options
+
+
+def _requirement_install_args(requirement: str) -> list[str]:
+    """Return argv tokens for one parsed install target."""
+    for flag in ("-e", "--editable", "-r", "--requirement"):
+        spaced_prefix = f"{flag} "
+        equals_prefix = f"{flag}="
+        if requirement.startswith(spaced_prefix):
+            return [flag, requirement[len(spaced_prefix) :].strip()]
+        if requirement.startswith(equals_prefix):
+            return [flag, requirement[len(equals_prefix) :].strip()]
+    return [requirement]
+
+
+def _is_nested_requirement(requirement: str) -> bool:
+    """Return whether a target can import run-global pip policy."""
+    return requirement.startswith(_NESTED_REQUIREMENT_PREFIXES)
 
 
 def _pip_install(args: list[str]) -> "subprocess.CompletedProcess[str]":
@@ -136,11 +170,26 @@ def install_requirements() -> RequirementsInstallResult:
             except OSError as e:
                 logger.debug(f"[pool] could not remove temp requirements file {temp_path}: {e}")
 
-    # Fallback: install each requirement on its own so one bad package only
-    # fails itself.
+    # A nested file can carry run-global security policy such as
+    # --require-hashes, constraints, indexes, or binary selection. Replaying
+    # its path in a separate pip process would relax that policy for sibling
+    # targets, so a failed batch containing any nested source must fail closed.
+    if any(_is_nested_requirement(pkg) for pkg in packages):
+        error = (
+            "per-package fallback disabled because a nested requirements source "
+            "may contain run-global pip policy"
+        )
+        result.failed.extend(
+            FailedPackage(package=package, error=error) for package in packages
+        )
+        logger.error("[pool] %s", error)
+        return result
+
+    # Fallback: install each independent requirement on its own so one bad
+    # package only fails itself.
     for pkg in packages:
         try:
-            single = _pip_install([*options, pkg])
+            single = _pip_install([*options, *_requirement_install_args(pkg)])
             if single.returncode == 0:
                 result.installed.append(pkg)
             else:

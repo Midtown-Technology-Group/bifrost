@@ -96,12 +96,10 @@ def test_parse_requirements_splits_packages_and_options():
 
     packages, options = simple_worker._parse_requirements(content)
 
-    assert packages == ["requests==2.32.0", "numpy>=2"]
+    assert packages == ["-r shared.txt", "requests==2.32.0", "numpy>=2"]
     assert options == [
         "--index-url",
         "https://packages.example/simple",
-        "-r",
-        "shared.txt",
     ]
     assert simple_worker._parse_requirement_lines(content) == packages
 
@@ -162,6 +160,65 @@ def test_install_requirements_falls_back_and_records_per_package_failures(monkey
         "https://packages.example/simple",
         "okpkg==1",
     ]
+
+
+def test_install_requirements_does_not_skip_editable_only_file(monkeypatch):
+    editable = "-e git+https://example.test/package.git@v1#egg=package"
+    monkeypatch.setattr(
+        "src.core.requirements_cache.get_requirements_sync",
+        lambda: f"{editable}\n",
+    )
+    calls: list[list[str]] = []
+
+    def fake_pip_install(args: list[str]):
+        calls.append(args)
+        return subprocess.CompletedProcess(
+            args,
+            1 if len(calls) == 1 else 0,
+            stdout="",
+            stderr="batch failed" if len(calls) == 1 else "",
+        )
+
+    monkeypatch.setattr(simple_worker, "_pip_install", fake_pip_install)
+
+    result = simple_worker.install_requirements()
+
+    assert result.attempted == [editable]
+    assert result.installed == [editable]
+    assert calls[0][0] == "-r"
+    assert calls[1] == ["-e", "git+https://example.test/package.git@v1#egg=package"]
+
+
+def test_nested_policy_source_disables_relaxed_fallback(monkeypatch, tmp_path):
+    nested = tmp_path / "policy.txt"
+    nested.write_text("--require-hashes\n", encoding="utf-8")
+    nested_target = f"--requirement={nested}"
+    monkeypatch.setattr(
+        "src.core.requirements_cache.get_requirements_sync",
+        lambda: f"{nested_target}\nsample==1\n",
+    )
+    calls: list[list[str]] = []
+
+    def fake_pip_install(args: list[str]):
+        calls.append(args)
+        return subprocess.CompletedProcess(
+            args,
+            1,
+            stdout="",
+            stderr="batch failed",
+        )
+
+    monkeypatch.setattr(simple_worker, "_pip_install", fake_pip_install)
+
+    result = simple_worker.install_requirements()
+
+    assert result.ok is False
+    assert calls == [["-r", calls[0][1]]]
+    assert [failure.package for failure in result.failed] == [
+        nested_target,
+        "sample==1",
+    ]
+    assert all("run-global pip policy" in failure.error for failure in result.failed)
 
 
 @pytest.mark.asyncio
