@@ -6,7 +6,7 @@ from pathlib import Path
 
 
 @pytest.mark.asyncio
-async def test_desktop_commit_regenerates_manifest_before_staging():
+async def test_desktop_commit_regenerates_manifest_before_staging(tmp_path):
     """desktop_commit() should regenerate manifest into working tree before git add."""
     from src.services.github_sync import GitHubSyncService
 
@@ -18,7 +18,7 @@ async def test_desktop_commit_regenerates_manifest_before_staging():
     service.db = mock_db
     service.branch = "main"
 
-    mock_work_dir = MagicMock(spec=Path)
+    mock_work_dir = tmp_path
     mock_repo = MagicMock()
     mock_repo.head.is_valid.return_value = True
     mock_repo.index.diff.return_value = [MagicMock()]  # Has changes
@@ -38,6 +38,8 @@ async def test_desktop_commit_regenerates_manifest_before_staging():
         # Track call order
         async def regen_side_effect(db, work_dir):
             call_order.append("regenerate_manifest")
+            (work_dir / ".bifrost").mkdir()
+            (work_dir / ".bifrost" / "workflows.yaml").write_text("workflows: []\n")
             return []
         mock_regen.side_effect = regen_side_effect
 
@@ -50,7 +52,11 @@ async def test_desktop_commit_regenerates_manifest_before_staging():
         await service.desktop_commit("test commit")
 
         # Manifest must be regenerated BEFORE git add
-        assert call_order == ["regenerate_manifest", "git_add"]
+        assert call_order == ["regenerate_manifest", "git_add", "git_add"]
+        assert mock_repo.git.add.call_args_list[0].kwargs == {"A": True}
+        assert mock_repo.git.add.call_args_list[1].args == (
+            "--force", "--", ".bifrost/workflows.yaml",
+        )
         mock_regen.assert_called_once_with(mock_db, mock_work_dir)
 
 
