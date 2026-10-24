@@ -75,7 +75,10 @@ def matrix_lane_test_if(matrix_output: str) -> str:
         f"{ZERO_SHARD_SENTINEL}).include[0].total != 0 "
         "&& (github.event_name != 'push' || github.ref != 'refs/heads/main') }}"
     )
-EXPECTED_PR_CANCELLATION = "cancel-in-progress: ${{ github.event_name == 'pull_request' }}"
+EXPECTED_PR_CANCELLATION = (
+    "cancel-in-progress: ${{ github.event_name == 'pull_request' "
+    "|| github.event_name == 'workflow_dispatch' }}"
+)
 
 ALLOWED_CODEOWNERS = (
     '@MTG-Thomas',
@@ -142,7 +145,10 @@ def check_ci_workflow(path: Path) -> list[str]:
     if lines[merge_group_index + 1].strip() != "types: [checks_requested]":
         return [f"{path}: merge_group must handle only checks_requested."]
     if not any(line.strip() == EXPECTED_PR_CANCELLATION for line in lines):
-        return [f"{path}: superseded pull-request runs must be cancelled without cancelling push runs."]
+        return [
+            f"{path}: pull_request and workflow_dispatch runs on one branch must "
+            "cancel each other. Push and merge_group runs must not be cancelled."
+        ]
     for job, expected_name in REQUIRED_CI_JOB_NAMES.items():
         parsed = _job_block(lines, job)
         if parsed is None:

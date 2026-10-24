@@ -11,7 +11,6 @@ function matches(patterns, file) {
 test("shared workspace browser fixtures cannot execute concurrently", () => {
 	assert.equal(config.workers, 1);
 	assert.equal(config.fullyParallel, false);
-	assert.equal(config.retries, 0);
 	for (const project of config.projects) {
 		assert.equal(project.workers ?? config.workers, 1, project.name);
 		assert.equal(
@@ -19,7 +18,21 @@ test("shared workspace browser fixtures cannot execute concurrently", () => {
 			false,
 			project.name,
 		);
-		assert.equal(project.retries ?? config.retries, 0, project.name);
+	}
+});
+
+test("CI retries a browser test once and reports the retry", () => {
+	const ciRetries = process.env.CI ? 1 : 0;
+	assert.equal(config.retries, ciRetries);
+	const reporterNames = config.reporter.map((entry) =>
+		Array.isArray(entry) ? entry[0] : entry,
+	);
+	assert.equal(reporterNames.includes("github"), Boolean(process.env.CI));
+	assert.ok(reporterNames.includes("list"));
+	for (const project of config.projects) {
+		const expected =
+			project.name === "setup" || project.name === "docs" ? 0 : ciRetries;
+		assert.equal(project.retries ?? config.retries, expected, project.name);
 	}
 });
 

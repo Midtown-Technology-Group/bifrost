@@ -250,7 +250,10 @@ stack_up() {
     docker compose -f "$COMPOSE_FILE" up -d postgres rabbitmq redis seaweedfs
 
     wait_for_service "$COMPOSE_FILE" postgres pg_isready -U bifrost -d postgres
-    wait_for_service "$COMPOSE_FILE" rabbitmq rabbitmq-diagnostics check_running
+    # rabbitmq-diagnostics stays red while the broker boots. A saturated runner
+    # has failed this probe at the 60-second default ("rabbitmq not ready after
+    # 60 attempts") before the node was actually up.
+    WAIT_MAX_ATTEMPTS=180 wait_for_service "$COMPOSE_FILE" rabbitmq rabbitmq-diagnostics check_running
     wait_for_service "$COMPOSE_FILE" redis redis-cli ping
 
     docker compose -f "$COMPOSE_FILE" up -d pgbouncer

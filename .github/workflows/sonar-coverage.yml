@@ -27,6 +27,8 @@ jobs:
   evidence:
     name: Sonar Coverage Evidence
     runs-on: ubuntu-latest
+    # Unsharded unit+E2E collection. Sampled runs finished in 37-57 minutes.
+    timeout-minutes: 75
     permissions:
       contents: read
       packages: read
@@ -313,6 +315,7 @@ jobs:
     name: Sonar Free scope disposition
     needs: evidence
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     if: needs.evidence.outputs.mode == 'ci'
     steps:
       - name: Record provider scope and activation state
@@ -341,8 +344,11 @@ jobs:
   scan:
     name: Sonar CI Analysis
     needs: evidence
+    # Observed scans finished in about 7 minutes, including the quality gate.
+    timeout-minutes: 20
     # Activation is an operator-controlled cutover after this workflow merges.
-    # Free supports main and PRs targeting main; merge groups retain evidence only.
+    # Free supports main and PRs targeting main. ci.yml does not call this
+    # workflow for merge groups.
     if: >-
       needs.evidence.outputs.mode == 'ci' && vars.SONAR_CI_ENABLED == 'true' &&
       ((github.event_name == 'pull_request' && github.base_ref == 'main' &&

@@ -160,6 +160,81 @@ def test_nightly_owns_full_browser_slow_coverage_and_clean_builds() -> None:
     assert all(step["with"]["no-cache"] == "true" for step in clean_builds)
 
 
+# Caller jobs that `uses:` a reusable workflow cannot set timeout-minutes.
+# The bound lives on the called jobs instead.
+REUSABLE_WORKFLOW_JOBS = ("sonar-readonly-diagnostic", "sonar-coverage")
+CI_JOB_TIMEOUTS = {
+    "pre-pr-candidate": "90",
+    "affected-test-plan": "10",
+    "build-candidate-images": "30",
+    "candidate-images": "10",
+    "publish-ci-test-images": "15",
+    "lint": "15",
+    "test-client-unit": "15",
+    "test-unit": "25",
+    "mcp-conformance": "25",
+    "test-e2e": "30",
+    "test-client-e2e": "30",
+    "test-e2e-gate": "10",
+    "build-dev": "30",
+    "deploy-dry-run": "15",
+    "deploy-dev": "20",
+    "verify-release-manifest": "15",
+    "build-api": "20",
+    "build-client": "20",
+    "build-worker": "30",
+    "create-release": "20",
+}
+
+
+def test_pr_and_dispatch_share_a_branch_group_without_cancelling_the_queue() -> None:
+    workflow = _load_workflow(CI_WORKFLOW)
+    concurrency = workflow["concurrency"]
+    group = concurrency["group"]
+    assert "format('ci-branch-{0}-{1}'" in group
+    assert "github.head_ref" in group
+    assert "github.ref_name" in group
+    assert "github.event.pull_request.head.repo.full_name" in group
+    assert "format('ci-{0}-{1}', github.event_name, github.ref)" in group
+    assert concurrency["cancel-in-progress"] == (
+        "${{ github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' }}"
+    )
+    deploy = workflow["jobs"]["deploy-dev"]["concurrency"]
+    assert deploy["group"] == "deploy-dev"
+    assert deploy["cancel-in-progress"] == "true"
+
+
+def test_sonar_is_outside_the_merge_queue_and_draft_prs() -> None:
+    jobs = _load_workflow(CI_WORKFLOW)["jobs"]
+    for name, job in jobs.items():
+        needs = job.get("needs") or []
+        if isinstance(needs, str):
+            needs = [needs]
+        assert "sonar-coverage" not in needs, name
+    sonar_if = " ".join(jobs["sonar-coverage"]["if"].split())
+    assert "github.event_name != 'merge_group'" in sonar_if
+    assert "github.event.pull_request.draft == false" in sonar_if
+    assert "refs/heads/main" in sonar_if
+    assert "sonar-coverage" not in jobs["test-e2e-gate"]["needs"]
+
+
+def test_every_ci_job_has_a_bounded_timeout() -> None:
+    jobs = _load_workflow(CI_WORKFLOW)["jobs"]
+    assert set(jobs) == set(CI_JOB_TIMEOUTS) | set(REUSABLE_WORKFLOW_JOBS)
+    for name, minutes in CI_JOB_TIMEOUTS.items():
+        assert jobs[name]["timeout-minutes"] == minutes
+        assert "uses" not in jobs[name]
+    for name in REUSABLE_WORKFLOW_JOBS:
+        assert "uses" in jobs[name]
+        assert "timeout-minutes" not in jobs[name]
+    sonar_jobs = _load_workflow(REPO_ROOT / ".github/workflows/sonar-coverage.yml")["jobs"]
+    assert sonar_jobs["evidence"]["timeout-minutes"] == "75"
+    assert sonar_jobs["scan"]["timeout-minutes"] == "20"
+    assert sonar_jobs["free-plan-disposition"]["timeout-minutes"] == "10"
+    diagnostic = _load_workflow(REPO_ROOT / ".github/workflows/sonar-readonly-diagnostic.yml")
+    assert diagnostic["jobs"]["inspect"]["timeout-minutes"] == "5"
+
+
 def test_e2e_failures_export_service_logs_before_runner_cleanup() -> None:
     steps = _load_workflow(CI_WORKFLOW)["jobs"]["test-e2e"]["steps"]
     export = next(step for step in steps if step["name"] == "Export E2E service logs and stop stack")
