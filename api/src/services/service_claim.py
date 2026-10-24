@@ -145,7 +145,9 @@ class ServiceClaimLoop:
         from src.models.orm.services import ServiceDefinition
         from src.services import service_lifecycle as lifecycle
 
-        for attempt_key in list(self._owned):
+        # Beats can complete startup-grace failures in this transaction. Use
+        # the same definition order as bulk park/expiry, including heartbeats.
+        for attempt_key in sorted(self._owned, key=lambda key: str(self._owned[key].service_id)):
             owned = self._owned[attempt_key]
             try:
                 attempt = await lifecycle.heartbeat_attempt(
