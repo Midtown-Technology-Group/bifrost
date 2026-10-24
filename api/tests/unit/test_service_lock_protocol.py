@@ -232,3 +232,41 @@ async def test_renewed_lease_not_expired_from_stale_snapshot(async_session_facto
         assert stale.lease_expires_at > expiry_clock
         assert stale.lease_token == token
         assert stale.service_id == service_id
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("operation", ["heartbeat_attempt", "mark_attempt_ready", "complete_attempt"])
+async def test_owner_expiring_during_parent_wait_is_fenced(
+    async_session_factory, service_row, monkeypatch, operation,
+):
+    service_id, _, _, clock = service_row
+    async with async_session_factory() as setup:
+        attempt_id, token = await _claim(setup, clock)
+        await setup.commit()
+    current_time = [clock + timedelta(seconds=1)]
+    monkeypatch.setattr(lifecycle, "_now", lambda: current_time[0])
+    async with asyncio.timeout(8):
+        async with async_session_factory(autoflush=False) as blocker:
+            owner_pid = await _bound(blocker)
+            await lifecycle._lock_definition(blocker, service_id)
+            async with async_session_factory(autoflush=False) as owner:
+                waiter_pid = await _bound(owner)
+
+                async def invoke():
+                    kwargs = {"attempt_id": attempt_id, "lease_token": token}
+                    if operation == "complete_attempt":
+                        kwargs["reason"] = "clean_return"
+                    with pytest.raises(lifecycle.StaleLeaseError):
+                        await getattr(lifecycle, operation)(owner, **kwargs)
+
+                async with asyncio.TaskGroup() as tasks:
+                    tasks.create_task(invoke())
+                    await _wait_for_blocker(async_session_factory, waiter_pid, owner_pid)
+                    # Advance the injected clock only AFTER observing the real
+                    # PostgreSQL wait. No 60s sleep or lease-duration change.
+                    current_time[0] = clock + timedelta(seconds=61)
+                    await blocker.commit()
+                attempt = await owner.get(ServiceAttempt, attempt_id)
+                assert attempt.state == "starting"
+                assert attempt.lease_expires_at == clock + timedelta(seconds=60)
+                assert attempt.lease_token == token
