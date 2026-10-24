@@ -171,6 +171,70 @@ async def test_stop_marks_live_attempt(db_session):
 
 
 @pytest.mark.asyncio
+async def test_stop_flags_claim_committing_during_stop(async_session_factory, monkeypatch):
+    """Commit an invisible claim at stop's first flush: no sleep-based race.
+
+    Reproduce the READ COMMITTED window with production's autoflush=False.
+    The claim's definition-row lock fences the stop UPDATE; stop must look up
+    the attempt after that fence, never before it.
+    """
+    from datetime import timedelta
+
+    from sqlalchemy import delete
+
+    from src.models.orm.organizations import Organization
+    from src.models.orm.services import ServiceDefinition
+    from src.models.orm.workflows import Workflow
+
+    async with async_session_factory() as setup:
+        definition, workflow = await _ensure(setup)
+        service_id, workflow_id, org_id = definition.id, workflow.id, definition.organization_id
+        claim_time = service_lifecycle._now() + timedelta(days=1)
+        definition.restart_eligible_at = claim_time
+        await setup.commit()
+
+    try:
+        async with async_session_factory(autoflush=False) as stopper:
+            definition = await stopper.get(ServiceDefinition, service_id)
+            async with async_session_factory() as claimant:
+                attempt = await service_lifecycle.claim_eligible_service(
+                    claimant, worker_id="stop-race-test", now=claim_time
+                )
+                assert attempt is not None
+                attempt_id = attempt.id
+                real_flush = stopper.flush
+                committed = False
+
+                async def commit_claim_before_flush(*args, **kwargs):
+                    nonlocal committed
+                    if not committed:
+                        await claimant.commit()
+                        committed = True
+                    await real_flush(*args, **kwargs)
+
+                monkeypatch.setattr(stopper, "flush", commit_claim_before_flush)
+                await service_lifecycle.stop_service(stopper, definition)
+                assert definition.desired_state == "stopped"
+                live = await service_lifecycle.get_live_attempt(stopper, service_id)
+                assert live.id == attempt_id
+                assert live.stop_requested_at is not None
+                assert service_lifecycle.describe_observed_state(definition, live) == "stopping"
+                await stopper.commit()
+
+        async with async_session_factory() as check:
+            assert await service_lifecycle.claim_eligible_service(
+                check, worker_id="replacement-probe", now=claim_time
+            ) is None
+    finally:
+        async with async_session_factory() as cleanup:
+            await cleanup.execute(delete(ServiceAttempt).where(ServiceAttempt.service_id == service_id))
+            await cleanup.execute(delete(ServiceDefinition).where(ServiceDefinition.id == service_id))
+            await cleanup.execute(delete(Workflow).where(Workflow.id == workflow_id))
+            await cleanup.execute(delete(Organization).where(Organization.id == org_id))
+            await cleanup.commit()
+
+
+@pytest.mark.asyncio
 async def test_start_requires_enabled(db_session):
     """Starting a disabled service conflicts; enable+start recovers."""
     definition, _ = await _ensure(db_session)

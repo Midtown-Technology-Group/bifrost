@@ -299,6 +299,10 @@ async def stop_service(db: AsyncSession, definition: ServiceDefinition) -> Servi
     """Request stopped. Durable desire is stored first so the outcome is never
     mistaken for an unexpected exit."""
     definition.desired_state = "stopped"
+    # Autoflush is disabled. Fence claims with the definition-row UPDATE
+    # before looking for the live attempt. An already locked claim commits
+    # before this flush completes and is visible to the following lookup.
+    await db.flush()
     await _request_attempt_stop(db, definition.id)
     definition.updated_at = _now()
     await db.flush()
