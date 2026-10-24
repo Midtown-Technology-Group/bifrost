@@ -38,8 +38,13 @@ shadow_export() {
   # Snapshot every report before validation and before any volume cleanup.
   shadow_python snapshot --lane "$lane"
   if [[ "$lane" != baseline ]]; then
-    docker compose -f "$COMPOSE_FILE" --profile test run --rm --no-deps --workdir /repo \
-      test-runner python /app/scripts/combine_sonar_coverage.py
+    # Unit/tool-only lanes do not guarantee that every live service executes
+    # measured source. Retain their raw sidecars for attribution; require
+    # complete runtime hits from the full E2E shards.
+    if [[ "$lane" == e2e-* ]]; then
+      docker compose -f "$COMPOSE_FILE" --profile test run --rm --no-deps --workdir /repo \
+        test-runner python /app/scripts/combine_sonar_coverage.py
+    fi
     docker compose -f "$COMPOSE_FILE" --profile test run --rm --no-deps --workdir /repo \
       test-runner python /repo/api/scripts/filter_sonar_coverage.py
     docker compose -f "$COMPOSE_FILE" --profile test run --rm --no-deps --workdir /repo \
