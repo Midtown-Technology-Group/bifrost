@@ -269,3 +269,61 @@ async def test_an_executor_declared_lost_stops_its_runs_without_a_grace(monkeypa
     assert worker._lost
     pool = worker._workflow_consumer._pool  # type: ignore[union-attr]
     pool.drain_active_executions.assert_awaited_once_with(0.0)
+
+
+async def test_a_database_error_while_claiming_does_not_end_the_executor(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    """A failover or dropped connection must not crash the executor and fail
+    its runs: the claim loop backs off and looks again."""
+    worker = _worker_with_pool()
+    worker._agent_consumer = object()  # type: ignore[assignment]
+    calls: list[str] = []
+
+    async def claim_next(incarnation_id, handlers, *, fits_bytes, budget_bytes):  # type: ignore[no-untyped-def]
+        calls.append("claim")
+        if len(calls) == 1:
+            raise ConnectionError("database restarting")
+        worker._stop.set()
+
+    monkeypatch.setattr(pool_main, "claim_next", claim_next)
+    monkeypatch.setattr(pool_main, "HEARTBEAT_SECONDS", 0.01)
+    monkeypatch.setattr(pool_main, "begin_drain", AsyncMock())
+
+    release = AsyncMock()
+    monkeypatch.setattr(pool_main, "release_unstarted_claims", release)
+
+    await asyncio.wait_for(worker._claim_loop(), timeout=5)
+
+    assert calls == ["claim", "claim"]
+    pool_main.begin_drain.assert_awaited_once()
+    # Its claim may have committed though the reply was lost.
+    release.assert_awaited_once()
+
+
+async def test_a_hung_heartbeat_does_not_stop_the_next_one(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    worker = _worker_with_pool()
+    attempts: list[int] = []
+
+    async def heartbeat_worker(*args, **kwargs):  # type: ignore[no-untyped-def]
+        attempts.append(1)
+        await asyncio.sleep(60)  # a connection hung on a dead network
+
+    monkeypatch.setattr(pool_main, "heartbeat_worker", heartbeat_worker)
+    monkeypatch.setattr(pool_main, "HEARTBEAT_SECONDS", 0.05)
+    beating = asyncio.create_task(worker._heartbeat_loop())
+    await asyncio.sleep(0.4)
+    beating.cancel()
+
+    assert len(attempts) >= 3
+
+
+async def test_a_lost_executor_cancels_its_agent_work() -> None:
+    worker = _worker_with_pool()
+    worker._lost = True
+    agent = asyncio.create_task(asyncio.sleep(60))
+    worker._tasks["agent.run"].add(agent)
+    agent.add_done_callback(worker._tasks["agent.run"].discard)
+
+    await asyncio.wait_for(worker._drain(), timeout=5)
+    await asyncio.gather(agent, return_exceptions=True)
+
+    assert agent.cancelled()
