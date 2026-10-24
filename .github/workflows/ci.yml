@@ -688,7 +688,7 @@ jobs:
           TEST_MODE: ${{ needs.affected-test-plan.outputs.client_unit_mode }}
           TEST_TARGETS: ${{ needs.affected-test-plan.outputs.client_unit_targets }}
         run: |
-          node --test e2e/support/playwright-projects.test.mjs
+          node --test e2e/support/playwright-projects.test.mjs e2e/support/acceptance-report.test.mjs
           if [ "$TEST_MODE" = "comprehensive" ]; then
             npm test
           else

@@ -1,5 +1,6 @@
 """Static contracts for MTG's serialized delivery lane and nightly coverage."""
 
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -150,6 +151,11 @@ def test_nightly_owns_full_browser_slow_coverage_and_clean_builds() -> None:
         step.get("run") == "npm test" and step.get("working-directory") == "client"
         for step in workflow["jobs"]["client-unit"]["steps"]
     )
+    assert any(
+        "e2e/support/acceptance-report.test.mjs" in step.get("run", "")
+        and "e2e/support/playwright-projects.test.mjs" in step.get("run", "")
+        for step in workflow["jobs"]["client-unit"]["steps"]
+    )
 
     clean_builds = [
         step
@@ -233,6 +239,77 @@ def test_every_ci_job_has_a_bounded_timeout() -> None:
     assert sonar_jobs["free-plan-disposition"]["timeout-minutes"] == "10"
     diagnostic = _load_workflow(REPO_ROOT / ".github/workflows/sonar-readonly-diagnostic.yml")
     assert diagnostic["jobs"]["inspect"]["timeout-minutes"] == "5"
+
+
+def _e2e_gate_exit(**results: str) -> int:
+    """Run the required E2E gate script with concrete job results.
+
+    GitHub expressions are substituted in full. A leftover ``${{`` means the
+    gate gained a condition this regression does not cover.
+    """
+    script = _load_workflow(CI_WORKFLOW)["jobs"]["test-e2e-gate"]["steps"][0]["run"]
+    replacements = {
+        "${{ needs.affected-test-plan.outputs.client_e2e_mode }}": results.get(
+            "client_e2e_mode", "comprehensive"
+        ),
+        "${{ needs.affected-test-plan.outputs.api_e2e_mode }}": results.get(
+            "api_e2e_mode", "comprehensive"
+        ),
+        "${{ needs.publish-ci-test-images.result }}": results.get(
+            "publish-ci-test-images", "success"
+        ),
+        "${{ needs.affected-test-plan.result }}": results.get(
+            "affected-test-plan", "success"
+        ),
+        "${{ needs.test-client-unit.result }}": results.get("test-client-unit", "success"),
+        "${{ needs.test-client-e2e.result }}": results.get("test-client-e2e", "success"),
+        "${{ needs.mcp-conformance.result }}": results.get("mcp-conformance", "success"),
+        "${{ needs.test-e2e.result }}": results.get("test-e2e", "success"),
+        "${{ needs.lint.result }}": results.get("lint", "success"),
+    }
+    rendered = script
+    for expression, value in replacements.items():
+        assert value.replace("_", "").isalnum()
+        rendered = rendered.replace(expression, value)
+    assert "${{" not in rendered
+    completed = subprocess.run(
+        ["bash", "-c", rendered],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    return completed.returncode
+
+
+def test_fail_once_then_pass_still_fails_the_required_e2e_gate() -> None:
+    """A browser job that is red keeps the required E2E Tests check red.
+
+    The wrapper turns a fail-once/pass-on-retry into a nonzero process exit,
+    including tests that are not in the acceptance ledger. This gate fails
+    when that job result is anything other than success, except an explicit
+    affected-plan skip.
+    """
+    jobs = _load_workflow(CI_WORKFLOW)["jobs"]
+    vitest = next(step for step in jobs["test-client-unit"]["steps"] if step["name"] == "Vitest")
+    assert "e2e/support/acceptance-report.test.mjs" in vitest["run"]
+    assert "e2e/support/playwright-projects.test.mjs" in vitest["run"]
+    gate_script = jobs["test-e2e-gate"]["steps"][0]["run"]
+    assert 'needs.test-client-e2e.result' in gate_script
+    assert '!= "success"' in gate_script
+
+    assert _e2e_gate_exit() == 0
+    assert _e2e_gate_exit(**{"test-client-e2e": "failure"}) == 1
+    assert _e2e_gate_exit(**{"test-client-e2e": "cancelled"}) == 1
+    assert (
+        _e2e_gate_exit(**{"test-client-e2e": "skipped", "client_e2e_mode": "skip"})
+        == 0
+    )
+    assert (
+        _e2e_gate_exit(
+            **{"test-client-e2e": "skipped", "client_e2e_mode": "comprehensive"}
+        )
+        == 1
+    )
 
 
 def test_e2e_failures_export_service_logs_before_runner_cleanup() -> None:

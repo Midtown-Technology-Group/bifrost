@@ -22,11 +22,10 @@ export default defineConfig({
 	// ponytail: one shared workspace => one worker; parallelize after fixtures own isolated workspaces.
 	fullyParallel: false,
 	forbidOnly: !!process.env.CI,
-	// One retry in CI for transient transport failures such as
-	// "apiRequestContext.fetch: socket hang up". The list reporter marks the
-	// recovered test flaky, and the github reporter adds an Actions annotation.
-	// Setup and docs stay at zero retries below: they own one-shot state.
-	retries: process.env.CI ? 1 : 0,
+	// A first-attempt assertion failure must keep the required browser gate red.
+	// CI does not retry product tests; run-playwright.mjs also rejects a report
+	// whose failed attempt later passes.
+	retries: 0,
 	workers: 1,
 	timeout: 30000,
 
@@ -34,7 +33,6 @@ export default defineConfig({
 		["list"],
 		["html", { outputFolder: "playwright-results/html", open: "never" }],
 		["json", { outputFile: "playwright-results/results.json" }],
-		...(process.env.CI ? [["github"] as ["github"]] : []),
 	],
 
 	use: {
