@@ -1,6 +1,8 @@
 """Adapter from Bifrost's stored JSON tool contracts to Pydantic AI toolsets."""
 
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Awaitable, Callable, Iterator, Mapping, Sequence
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 from typing import Any, Literal
 
@@ -38,6 +40,36 @@ MAX_MODEL_TOOL_RESULT_CHARS = 32_000
 
 _TOOL_RESULT_HEAD_CHARS = 16_000
 _TOOL_RESULT_TAIL_CHARS = 8_000
+
+
+@dataclass
+class CodeModeToolResultScope:
+    """State shared by one outer CodeMode call and its nested dispatches."""
+
+    cancellation: AgentRunCancelled | None = None
+    outer_tool_call_id: str | None = None
+    business_calls: int = 0
+
+
+_CODE_MODE_TOOL_RESULT_SCOPE: ContextVar[CodeModeToolResultScope | None] = ContextVar(
+    "code_mode_tool_result_scope", default=None
+)
+
+
+def get_code_mode_tool_result_scope() -> CodeModeToolResultScope | None:
+    """Return the current outer CodeMode scope, if this is a nested dispatch."""
+    return _CODE_MODE_TOOL_RESULT_SCOPE.get()
+
+
+@contextmanager
+def unbounded_model_tool_results() -> Iterator[CodeModeToolResultScope]:
+    """Keep nested values intact while an outer CodeMode result remains bounded."""
+    scope = CodeModeToolResultScope()
+    token = _CODE_MODE_TOOL_RESULT_SCOPE.set(scope)
+    try:
+        yield scope
+    finally:
+        _CODE_MODE_TOOL_RESULT_SCOPE.reset(token)
 
 
 def bound_tool_result_for_model(value: Any) -> Any:
@@ -78,11 +110,15 @@ class BifrostToolset(AbstractToolset[object]):
         *,
         event_handler: ToolEventHandler | None = None,
         toolset_id: str = "bifrost",
+        tool_metadata: Mapping[str, dict[str, Any]] | None = None,
     ) -> None:
         self._definitions = tuple(definitions)
         self._executor = executor
         self._event_handler = event_handler
         self._id = toolset_id
+        self._tool_metadata = {
+            name: dict(metadata) for name, metadata in (tool_metadata or {}).items()
+        }
 
     @property
     def id(self) -> str:
@@ -97,7 +133,18 @@ class BifrostToolset(AbstractToolset[object]):
                     name=definition.name,
                     description=definition.description,
                     parameters_json_schema=definition.parameters,
+                    return_schema=definition.return_schema,
+                    include_return_schema=definition.return_schema is not None,
                     sequential=True,
+                    metadata={
+                        **self._tool_metadata.get(definition.name, {}),
+                        "bifrost_result_transport": "json_or_text",
+                        **(
+                            {"bifrost_structured_output_schema": definition.structured_output_schema}
+                            if definition.structured_output_schema is not None
+                            else {}
+                        ),
+                    },
                 ),
                 max_retries=0,
                 args_validator=_ARGS_VALIDATOR,
@@ -114,6 +161,9 @@ class BifrostToolset(AbstractToolset[object]):
     ) -> Any:
         import time
 
+        code_mode_scope = _CODE_MODE_TOOL_RESULT_SCOPE.get()
+        if code_mode_scope and code_mode_scope.cancellation:
+            raise code_mode_scope.cancellation
         started = time.monotonic()
         if self._event_handler:
             await self._event_handler(
@@ -168,6 +218,8 @@ class BifrostToolset(AbstractToolset[object]):
                     )
                 )
             if isinstance(exc, AgentRunCancelled):
+                if code_mode_scope:
+                    code_mode_scope.cancellation = exc
                 raise
             return f"Error: {exc}"
 
@@ -181,4 +233,6 @@ class BifrostToolset(AbstractToolset[object]):
                     duration_ms=int((time.monotonic() - started) * 1_000),
                 )
             )
+        if code_mode_scope:
+            return result
         return bound_tool_result_for_model(result)
