@@ -5,9 +5,9 @@
  * History page:
  *
  * 1. Schedule → Success: a row scheduled with a short delay is listed as
- *    `Scheduled`, the promoter ticks (every 60s), the worker runs it, and the
- *    badge flips to `Completed` (the label the UI uses for Success) after a
- *    manual refresh.
+ *    `Scheduled`, the test-stack promoter ticks (every 2s), the worker runs
+ *    it, and the badge flips to `Completed` (the label the UI uses for
+ *    Success) after a manual refresh of the history list.
  * 2. Cancel from row menu: a long-delayed scheduled row can be cancelled via
  *    the row's icon button → AlertDialog → confirm, and the badge flips to
  *    `Cancelled` (optimistically, then server-backed).
@@ -66,15 +66,18 @@ function rowForWorkflow(
 }
 
 /**
- * Click the toolbar refresh button (icon button wrapping <RefreshCw/>) to
- * force a server refetch. The list page does NOT auto-poll, so tests that
- * wait for server-side state changes must trigger refetches themselves.
+ * Refetch the history list. The page does not auto-poll.
+ *
+ * The header "update available" control is also a RefreshCw icon and calls
+ * `window.location.reload()`. `button:has(svg.lucide-refresh-cw).first()`
+ * hits that control whenever a client/server version mismatch is visible,
+ * which reloads the document out from under the assertion. The history
+ * action has its own accessible name.
  */
 async function clickRefresh(page: Page) {
-	// The refresh button is the only button in the page toolbar whose sole
-	// child is a `.lucide-refresh-cw` icon. Target it via that class to avoid
-	// collision with other ghost/icon buttons on the page.
-	await page.locator("button:has(svg.lucide-refresh-cw)").first().click();
+	await page
+		.getByRole("button", { name: "Refresh execution history" })
+		.click();
 }
 
 test.describe("Scheduled executions", () => {
@@ -124,9 +127,9 @@ test.describe("Scheduled executions", () => {
 	});
 
 	test("cancel a scheduled run from the row menu", async ({ page, api }) => {
-		// Long delay so the promoter (60s interval) can't fire during the
-		// test. This path does NOT require the worker, so it is cheap and
-		// reliable.
+		// Long delay so the promoter (2s in the test stack, 60s by default)
+		// cannot fire during the test. This path does NOT require the worker,
+		// so it is cheap and reliable.
 		const scheduleResp = await api.post("/api/workflows/execute", {
 			data: {
 				workflow_id: workflowId,
@@ -175,11 +178,12 @@ test.describe("Scheduled executions", () => {
 		page,
 		api,
 	}) => {
-		// The promoter runs every 60s. A schedule with delay_seconds=3 means
-		// the row becomes due almost immediately but must wait for the next
-		// promoter tick. Worst case we wait ~60s for the tick + ~5s for the
-		// worker. Give generous headroom for CI.
-		test.setTimeout(180_000);
+		// The test stack runs the promoter every 2s
+		// (BIFROST_DEFERRED_EXECUTION_PROMOTER_INTERVAL_SECONDS). delay_seconds=3
+		// is due on the next tick; the worker then finishes a trivial workflow.
+		// 45s covers that tick plus a busy CI queue without sitting through a
+		// reload loop.
+		test.setTimeout(60_000);
 
 		const scheduleResp = await api.post("/api/workflows/execute", {
 			data: {
@@ -201,26 +205,22 @@ test.describe("Scheduled executions", () => {
 		// test covers the Scheduled badge itself; follow this short-delay run
 		// from All so its locator remains stable through every transition.
 		const rowOnAll = rowForWorkflow(page, WORKFLOW_FUNCTION);
+		const completed = rowOnAll.getByText("Completed", { exact: true });
 
 		// Target the status badge specifically to avoid matching the
 		// "Completed" tab trigger or the "Completed At" column header.
+		// Refetch, then read the badge. Placeholder data keeps the previous
+		// rows mounted, so a completed row stays visible across the next click.
 		await expect
 			.poll(
 				async () => {
 					await clickRefresh(page);
-					// Small settle delay so the badge reflects the refetched
-					// row. 1s is enough for $api.useQuery to paint a new row.
-					await page.waitForTimeout(1000);
-					const badge = rowOnAll.getByText("Completed", {
-						exact: true,
-					});
-					return (await badge.count()) > 0;
+					return await completed.isVisible();
 				},
 				{
-					timeout: 120_000,
-					intervals: [5_000],
-					message:
-						"scheduled row never promoted to Completed within 120s",
+					timeout: 45_000,
+					intervals: [1_000],
+					message: "scheduled row never showed Completed",
 				},
 			)
 			.toBe(true);
