@@ -8,6 +8,8 @@ and transitions, not the absence of attempts.
 """
 
 
+import time
+
 import pytest
 
 from tests.e2e.conftest import write_and_register
@@ -104,6 +106,31 @@ def test_policy_patch_valid_and_invalid(e2e_client, platform_admin, service_work
     assert response.status_code == 200
 
 
+def _wait_for_observed_state(e2e_client, headers, service_id, expected, *, timeout_s=45.0):
+    """Poll until the worker reports a terminal observed state.
+
+    Stop stores desired_state before the claim loop notices. The stop response
+    can still say ``starting`` while that handoff is in flight, so the cycle
+    waits for ``stopped`` instead of asserting the POST body immediately.
+    """
+    deadline = time.monotonic() + timeout_s
+    last = None
+    while True:
+        response = e2e_client.get(f"/api/services/{service_id}", headers=headers)
+        assert response.status_code == 200, response.text
+        last = response.json()
+        if last["observed_state"] in expected:
+            return last
+        if time.monotonic() >= deadline:
+            break
+        time.sleep(0.5)
+    raise AssertionError(
+        f"service {service_id} observed_state {last['observed_state']!r} "
+        f"did not reach {sorted(expected)} within {timeout_s}s "
+        f"(desired_state={last['desired_state']!r})"
+    )
+
+
 def test_stop_start_restart_cycle(e2e_client, platform_admin, service_workflow):
     """Stop stores desire; start clears it; restart keeps running."""
     service_id = _service_id(e2e_client, platform_admin.headers, service_workflow["id"])
@@ -111,8 +138,10 @@ def test_stop_start_restart_cycle(e2e_client, platform_admin, service_workflow):
     response = e2e_client.post(f"/api/services/{service_id}/stop", headers=platform_admin.headers)
     assert response.status_code == 200
     assert response.json()["desired_state"] == "stopped"
-    # A live attempt remains stopping until its worker completes shutdown.
-    assert response.json()["observed_state"] in ("stopping", "stopped")
+    stopped = _wait_for_observed_state(
+        e2e_client, platform_admin.headers, service_id, {"stopped"}
+    )
+    assert stopped["desired_state"] == "stopped"
 
     response = e2e_client.post(f"/api/services/{service_id}/start", headers=platform_admin.headers)
     assert response.status_code == 200

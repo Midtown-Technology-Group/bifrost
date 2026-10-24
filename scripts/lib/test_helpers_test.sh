@@ -16,6 +16,12 @@ name2=$(compute_project_name "$(git rev-parse --show-toplevel)")
 WAIT_MAX_ATTEMPTS=1 result=$(wait_for_service docker-compose.test.yml no-such-service true 2>&1 || true)
 [[ "$result" == *"not ready after 1 attempts"* ]] || { echo "FAIL: wait_for_service timeout message, got: $result"; exit 1; }
 
+# RabbitMQ setup must outlast the generic 60s probe. Busy CI runners have
+# failed stack boot with "rabbitmq not ready after 60 attempts".
+repo_root="$(cd "$(dirname "$0")/../.." && pwd)"
+rabbit_call=$(grep "rabbitmq-diagnostics check_running" "$repo_root/test.sh")
+[[ "$rabbit_call" == *"WAIT_MAX_ATTEMPTS=180 wait_for_service"* ]] || { echo "FAIL: rabbitmq readiness budget, got: $rabbit_call"; exit 1; }
+
 # compute_project_name should yield different hashes for different paths
 hash_a=$(compute_project_name "$(git rev-parse --show-toplevel)")
 # Use a known-different git dir if available; fall back to an init'd temp repo.
