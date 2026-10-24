@@ -730,14 +730,18 @@ async def _locked_live_attempt(
     must not renew, report, or complete. Expiry is enforced here as well as
     in expire_leases so a stale owner can never resurrect its lease.
     """
-    # Resolve immutable parent identity without taking an attempt lock. The
-    # locked read below rechecks terminal state, token and lease after waiting.
-    service_id = await db.scalar(
-        select(ServiceAttempt.service_id).where(ServiceAttempt.id == attempt_id)
+    # Lock the immutable parent through an unlocked attempt lookup. Restrict
+    # FOR UPDATE to the definition: a join must not acquire A before D. A
+    # concurrent parent deletion is still a fenced missing owner, not a 500.
+    parent = await db.execute(
+        select(ServiceDefinition)
+        .join(ServiceAttempt, ServiceAttempt.service_id == ServiceDefinition.id)
+        .where(ServiceAttempt.id == attempt_id)
+        .with_for_update(of=ServiceDefinition)
+        .execution_options(populate_existing=True)
     )
-    if service_id is None:
+    if parent.scalar_one_or_none() is None:
         raise StaleLeaseError(f"Attempt {attempt_id} is not the live owner.")
-    await _lock_definition(db, service_id)
     result = await db.execute(
         select(ServiceAttempt)
         .where(ServiceAttempt.id == attempt_id)
