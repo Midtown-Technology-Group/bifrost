@@ -6,6 +6,10 @@ on:
     tags: ["v*"]
   pull_request:
     branches: [main]
+    # opened, synchronize, and reopened are the default pull_request types.
+    # ready_for_review starts a new pull_request run when a draft is marked
+    # ready without another push, so that run can produce Sonar evidence.
+    types: [opened, synchronize, reopened, ready_for_review]
   merge_group:
     types: [checks_requested]
   workflow_dispatch:
@@ -21,13 +25,14 @@ on:
 
 permissions: read-all
 
-# Pull requests and manual dispatches of the same branch share one group, so a
-# newer push or dispatch supersedes the other instead of occupying a second
-# runner. Merge-queue and push/tag runs keep a per-ref group and are never
-# cancelled here; cancelling them would drop a queue candidate or a main
-# publication. deploy-dev still cancels an older rollout inside that job.
+# A manual dispatch must not cancel a pull_request run. Candidate images and
+# Sonar on that run are the release producer, and a dispatch cannot replace
+# them. A new push cancels only the older pull_request run of that branch. A
+# dispatch cancels only an older dispatch of the same repository, ref, inputs,
+# and commit. Push and merge_group keep a per-ref group and are never
+# cancelled here. deploy-dev still cancels an older rollout inside that job.
 concurrency:
-  group: ${{ (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch') && format('ci-branch-{0}-{1}', github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository, github.event_name == 'pull_request' && github.head_ref || github.ref_name) || format('ci-{0}-{1}', github.event_name, github.ref) }}
+  group: ${{ github.event_name == 'pull_request' && format('ci-pull_request-{0}-{1}', github.event.pull_request.head.repo.full_name, github.head_ref) || github.event_name == 'workflow_dispatch' && format('ci-dispatch-{0}-{1}-{2}-{3}-{4}', github.repository, github.ref, inputs.inspect_sonar, inputs.reviewed_workflow_sha, github.sha) || format('ci-{0}-{1}', github.event_name, github.ref) }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' }}
 
 env:
@@ -56,7 +61,8 @@ jobs:
 
   # Exact-head coverage and analysis. Not a required check: merge-queue runs
   # skip it and the post-merge push to main still produces evidence. Draft
-  # PRs skip it too; the next non-draft push or a manual dispatch runs it.
+  # PRs skip it. ready_for_review starts a non-draft pull_request run, which
+  # produces this evidence. A manual dispatch does not replace that producer.
   # Version tags may reuse the original successful main producer; all
   # artifact qualification remains unchanged. timeout-minutes is not valid
   # on a job that calls a reusable workflow; the called jobs set it.

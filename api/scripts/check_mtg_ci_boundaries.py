@@ -146,8 +146,10 @@ def check_ci_workflow(path: Path) -> list[str]:
         return [f"{path}: merge_group must handle only checks_requested."]
     if not any(line.strip() == EXPECTED_PR_CANCELLATION for line in lines):
         return [
-            f"{path}: pull_request and workflow_dispatch runs on one branch must "
-            "cancel each other. Push and merge_group runs must not be cancelled."
+            f"{path}: a pull_request run may cancel only an older pull_request "
+            "run of the same branch. A workflow_dispatch run may cancel only an "
+            "older dispatch with the same inputs and commit. Push and merge_group "
+            "runs must not be cancelled."
         ]
     for job, expected_name in REQUIRED_CI_JOB_NAMES.items():
         parsed = _job_block(lines, job)

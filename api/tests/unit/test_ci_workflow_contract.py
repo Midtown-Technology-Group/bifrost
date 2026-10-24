@@ -33,6 +33,12 @@ def test_ci_supports_native_merge_groups_during_queue_cutover() -> None:
 
     assert {"merge_group", "pull_request", "push", "workflow_dispatch"} <= triggers.keys()
     assert triggers["merge_group"]["types"] == ["checks_requested"]
+    assert triggers["pull_request"]["types"] == [
+        "opened",
+        "synchronize",
+        "reopened",
+        "ready_for_review",
+    ]
     assert "build-dev-candidate" not in jobs
     assert "test-client-smoke" not in jobs
     assert "verify_merge_candidate.py" not in CI_WORKFLOW.read_text()
@@ -193,14 +199,21 @@ CI_JOB_TIMEOUTS = {
 }
 
 
-def test_pr_and_dispatch_share_a_branch_group_without_cancelling_the_queue() -> None:
+def test_dispatch_cannot_cancel_a_pull_request_producer() -> None:
     workflow = _load_workflow(CI_WORKFLOW)
     concurrency = workflow["concurrency"]
     group = concurrency["group"]
-    assert "format('ci-branch-{0}-{1}'" in group
-    assert "github.head_ref" in group
-    assert "github.ref_name" in group
+    assert "ci-branch-" not in group
+    assert "github.event_name == 'pull_request' && format('ci-pull_request-{0}-{1}'" in group
     assert "github.event.pull_request.head.repo.full_name" in group
+    assert "github.head_ref" in group
+    assert (
+        "github.event_name == 'workflow_dispatch' && "
+        "format('ci-dispatch-{0}-{1}-{2}-{3}-{4}'"
+    ) in group
+    assert "inputs.inspect_sonar" in group
+    assert "inputs.reviewed_workflow_sha" in group
+    assert "github.sha" in group
     assert "format('ci-{0}-{1}', github.event_name, github.ref)" in group
     assert concurrency["cancel-in-progress"] == (
         "${{ github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' }}"

@@ -251,8 +251,10 @@ stack_up() {
 
     wait_for_service "$COMPOSE_FILE" postgres pg_isready -U bifrost -d postgres
     # rabbitmq-diagnostics stays red while the broker boots. A saturated runner
-    # has failed this probe at the 60-second default ("rabbitmq not ready after
-    # 60 attempts") before the node was actually up.
+    # has failed this probe at the default 60 attempts ("rabbitmq not ready
+    # after 60 attempts") before the node was actually up. 180 is an attempt
+    # budget; wait_for_service sleeps one second per attempt, so this is not a
+    # separate wall-clock guarantee.
     WAIT_MAX_ATTEMPTS=180 wait_for_service "$COMPOSE_FILE" rabbitmq rabbitmq-diagnostics check_running
     wait_for_service "$COMPOSE_FILE" redis redis-cli ping
 
