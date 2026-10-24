@@ -682,7 +682,7 @@ async def claim_eligible_service(
             ServiceDefinition.updated_at.asc(),
         )
         .limit(1)
-        .with_for_update(of=ServiceDefinition, skip_locked=True)
+        .with_for_update(skip_locked=True)
     )
     definition = result.scalar_one_or_none()
     if definition is None:

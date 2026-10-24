@@ -198,3 +198,37 @@ async def test_stop_waits_for_terminal_transition(async_session_factory, service
                 assert lifecycle.describe_observed_state(definition, None) == "stopped"
                 assert await lifecycle.claim_eligible_service(control, worker_id="replacement", now=clock) is None
                 await control.commit()
+
+
+@pytest.mark.asyncio
+async def test_missing_attempt_retains_stale_lease_contract(async_session_factory):
+    from uuid import uuid4
+
+    async with async_session_factory(autoflush=False) as db:
+        with pytest.raises(lifecycle.StaleLeaseError):
+            await lifecycle.heartbeat_attempt(db, attempt_id=uuid4(), lease_token="absent")
+
+
+@pytest.mark.asyncio
+async def test_renewed_lease_not_expired_from_stale_snapshot(async_session_factory, service_row):
+    service_id, _, _, clock = service_row
+    async with async_session_factory() as setup:
+        attempt_id, token = await _claim(setup, clock)
+        await setup.commit()
+    expiry_clock = clock + timedelta(seconds=61)
+    async with async_session_factory(autoflush=False) as observer:
+        # Prime an expired-looking ORM identity before a competing heartbeat.
+        stale = await observer.get(ServiceAttempt, attempt_id)
+        assert stale.lease_expires_at <= expiry_clock
+        async with async_session_factory(autoflush=False) as heartbeat:
+            await lifecycle.heartbeat_attempt(
+                heartbeat, attempt_id=attempt_id, lease_token=token,
+                now=clock + timedelta(seconds=59), lease_ttl_seconds=60,
+            )
+            await heartbeat.commit()
+        assert await lifecycle.expire_leases(observer, now=expiry_clock) == 0
+        await observer.refresh(stale)
+        assert stale.state == "starting"
+        assert stale.lease_expires_at > expiry_clock
+        assert stale.lease_token == token
+        assert stale.service_id == service_id
