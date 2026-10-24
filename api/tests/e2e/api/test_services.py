@@ -11,6 +11,7 @@ and transitions, not the absence of attempts.
 import pytest
 
 from tests.e2e.conftest import write_and_register
+from tests.helpers.service_state import wait_for_stopped
 
 
 SERVICE_CONTENT = '''"""E2E Services Test Bridge"""
@@ -113,6 +114,7 @@ def test_stop_start_restart_cycle(e2e_client, platform_admin, service_workflow):
     assert response.json()["desired_state"] == "stopped"
     # A live attempt remains stopping until its worker completes shutdown.
     assert response.json()["observed_state"] in ("stopping", "stopped")
+    wait_for_stopped(e2e_client, platform_admin.headers, service_id)
 
     response = e2e_client.post(f"/api/services/{service_id}/start", headers=platform_admin.headers)
     assert response.status_code == 200

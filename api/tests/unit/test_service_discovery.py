@@ -449,6 +449,7 @@ async def test_indexer_parks_definition_on_type_change():
         side_effect=[
             _result(scalar_one_or_none=row),  # workflow lookup
             _result(scalar_one_or_none=definition),  # definition lookup
+            _result(scalar_one=definition),  # definition locked before attempt
             _result(first=None),  # locked live-attempt lookup: none live
             _result(),  # UPDATE
             _result(scalar_one=row),  # re-fetch

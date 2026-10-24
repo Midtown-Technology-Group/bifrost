@@ -12,6 +12,13 @@ and stop operations present the token and raise StaleLeaseError when the
 attempt is no longer the live owner (reassigned after lease expiry or
 network partition).
 
+Lock order: definition row, then its live attempt. Worker beats can complete
+an attempt in the same transaction, so heartbeat and ready use that order too.
+Owned beats commit per service, so they do not retain one definition while
+waiting for another source-indexed definition. Bulk park visits IDs in order;
+expiry skips busy definitions before taking attempt locks. Source indexers
+retain their existing source-transaction boundaries. The caller owns commit.
+
 Restart accounting uses a rolling window over terminal attempts: a sustained
 healthy run sheds old penalties. Rapid terminal cycling (any outcome that
 schedules a restart) counts toward crash-loop protection.
@@ -151,6 +158,7 @@ async def park_definition(
     """Park a definition whose source is gone or converted: disabled and
     stopped with history retained. The live attempt (if any) is asked to stop
     under lock so a concurrent completion cannot resurrect it."""
+    definition = await _lock_definition(db, definition.id)
     definition.enabled = False
     definition.desired_state = "stopped"
     await _request_attempt_stop(db, definition.id)
@@ -179,7 +187,7 @@ async def park_definitions_for_workflows(
     result = await db.execute(
         select(ServiceDefinition).where(
             ServiceDefinition.workflow_id.in_(workflow_ids)
-        )
+        ).order_by(ServiceDefinition.id)
     )
     parked = 0
     for definition in result.scalars().all():
@@ -262,6 +270,22 @@ async def update_policy(
     return definition
 
 
+async def _lock_definition(db: AsyncSession, service_id: UUID) -> ServiceDefinition:
+    """First lock in every lifecycle transaction: definition, then attempt.
+
+    Refresh before mutation: production sessions disable autoflush and may
+    already contain a definition read before a competing transition committed.
+    Callers must not hold an attempt lock before entering this protocol.
+    """
+    result = await db.execute(
+        select(ServiceDefinition)
+        .where(ServiceDefinition.id == service_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    return result.scalar_one()
+
+
 # ==================== Desired state ====================
 
 
@@ -269,6 +293,7 @@ async def set_enabled(
     db: AsyncSession, definition: ServiceDefinition, enabled: bool
 ) -> ServiceDefinition:
     """Flip the operator switch. Disabling also requests a stop of the live attempt."""
+    definition = await _lock_definition(db, definition.id)
     definition.enabled = enabled
     if not enabled:
         await _request_attempt_stop(db, definition.id)
@@ -283,6 +308,7 @@ async def set_enabled(
 
 async def start_service(db: AsyncSession, definition: ServiceDefinition) -> ServiceDefinition:
     """Request running. Clears launch suppression; the claim loop picks it up."""
+    definition = await _lock_definition(db, definition.id)
     if not definition.enabled:
         raise ServiceConflictError(
             "Service is disabled. Enable it before starting."
@@ -298,6 +324,7 @@ async def start_service(db: AsyncSession, definition: ServiceDefinition) -> Serv
 async def stop_service(db: AsyncSession, definition: ServiceDefinition) -> ServiceDefinition:
     """Request stopped. Durable desire is stored first so the outcome is never
     mistaken for an unexpected exit."""
+    definition = await _lock_definition(db, definition.id)
     definition.desired_state = "stopped"
     await _request_attempt_stop(db, definition.id)
     definition.updated_at = _now()
@@ -308,6 +335,7 @@ async def stop_service(db: AsyncSession, definition: ServiceDefinition) -> Servi
 async def restart_service(db: AsyncSession, definition: ServiceDefinition) -> ServiceDefinition:
     """Rolling restart: stay desired-running, clear suppression, and ask the
     live attempt (if any) to stop. Its completion reschedules promptly."""
+    definition = await _lock_definition(db, definition.id)
     if not definition.enabled:
         raise ServiceConflictError(
             "Service is disabled. Enable it before restarting."
@@ -344,8 +372,9 @@ async def get_live_attempt_for_update(
 ) -> ServiceAttempt | None:
     """Locked variant for control-plane mutations (stop/disable/restart/park).
 
-    Locking prevents mutating an attempt that completes concurrently: the
-    loser of the race sees the terminal state and skips the mutation.
+    Caller must already own the definition lock. Refreshing under the attempt
+    lock prevents mutating an attempt that completed concurrently: the loser
+    sees the terminal state and skips the mutation.
     """
     result = await db.execute(
         select(ServiceAttempt)
@@ -355,6 +384,7 @@ async def get_live_attempt_for_update(
         )
         .order_by(ServiceAttempt.created_at.desc())
         .with_for_update()
+        .execution_options(populate_existing=True)
     )
     return result.scalars().first()
 
@@ -694,7 +724,7 @@ async def claim_eligible_service(
 
 
 async def _locked_live_attempt(
-    db: AsyncSession, attempt_id: UUID, lease_token: str, now: datetime
+    db: AsyncSession, attempt_id: UUID, lease_token: str, now: datetime | None
 ) -> ServiceAttempt:
     """Load a live attempt under lock, enforcing lease ownership and time.
 
@@ -702,12 +732,28 @@ async def _locked_live_attempt(
     must not renew, report, or complete. Expiry is enforced here as well as
     in expire_leases so a stale owner can never resurrect its lease.
     """
+    # Lock the immutable parent through an unlocked attempt lookup. Restrict
+    # FOR UPDATE to the definition: a join must not acquire A before D. A
+    # concurrent parent deletion is still a fenced missing owner, not a 500.
+    parent = await db.execute(
+        select(ServiceDefinition)
+        .join(ServiceAttempt, ServiceAttempt.service_id == ServiceDefinition.id)
+        .where(ServiceAttempt.id == attempt_id)
+        .with_for_update(of=ServiceDefinition)
+        .execution_options(populate_existing=True)
+    )
+    if parent.scalar_one_or_none() is None:
+        raise StaleLeaseError(f"Attempt {attempt_id} is not the live owner.")
     result = await db.execute(
         select(ServiceAttempt)
         .where(ServiceAttempt.id == attempt_id)
         .with_for_update()
+        .execution_options(populate_existing=True)
     )
     attempt = result.scalar_one_or_none()
+    # A valid owner can expire while waiting for either lock. Explicit clocks
+    # remain available for deterministic callers; wall time is sampled here.
+    now = now or _now()
     if (
         attempt is None
         or attempt.state not in _SERVICE_LIVE_STATES
@@ -727,8 +773,8 @@ async def heartbeat_attempt(
     now: datetime | None = None,
 ) -> ServiceAttempt:
     """Renew a live attempt lease. Rejects superseded or terminal attempts."""
-    now = now or _now()
     attempt = await _locked_live_attempt(db, attempt_id, lease_token, now)
+    now = now or _now()
     attempt.heartbeat_at = now
     attempt.lease_expires_at = now + timedelta(seconds=lease_ttl_seconds)
     await db.flush()
@@ -743,8 +789,8 @@ async def mark_attempt_ready(
     now: datetime | None = None,
 ) -> ServiceAttempt:
     """Record service.ready() for a live attempt (starting → running)."""
-    now = now or _now()
     attempt = await _locked_live_attempt(db, attempt_id, lease_token, now)
+    now = now or _now()
     if attempt.state == "starting":
         attempt.state = "running"
     attempt.ready_at = attempt.ready_at or now
@@ -774,8 +820,8 @@ async def complete_attempt(
             f"Invalid completion reason: {reason!r}. "
             "Must be 'requested', 'clean_return', or 'failed'."
         )
-    now = now or _now()
     attempt = await _locked_live_attempt(db, attempt_id, lease_token, now)
+    now = now or _now()
     attempt.state = "stopped" if reason in ("requested", "clean_return") else "failed"
     attempt.stopped_at = now
     attempt.exit_code = exit_code
@@ -861,33 +907,40 @@ async def expire_leases(
     can invoke it directly. Returns the number of expired attempts.
     """
     now = now or _now()
-    result = await db.execute(
-        select(ServiceAttempt)
+    expired_exists = (
+        select(ServiceAttempt.id)
         .where(
+            ServiceAttempt.service_id == ServiceDefinition.id,
             ServiceAttempt.state.in_(_SERVICE_LIVE_STATES),
             ServiceAttempt.lease_expires_at <= now,
         )
-        .order_by(ServiceAttempt.lease_expires_at.asc())
-        .with_for_update(skip_locked=True)
+        .exists()
     )
-    expired = list(result.scalars().all())
-    for attempt in expired:
+    result = await db.execute(
+        select(ServiceDefinition)
+        .where(expired_exists)
+        .order_by(ServiceDefinition.id)
+        .with_for_update(skip_locked=True)
+        .execution_options(populate_existing=True)
+    )
+    expired = 0
+    for definition in result.scalars().all():
+        attempt = await get_live_attempt_for_update(db, definition.id)
+        # A heartbeat/completion may have committed while this sweep selected
+        # its parents. Revalidate the current lease under both row locks.
+        if attempt is None or attempt.lease_expires_at > now:
+            continue
         attempt.state = "failed"
         attempt.stopped_at = now
         attempt.exit_reason = "lease_expired"
         attempt.error = "Owning worker stopped renewing the lease."
-        locked = await db.execute(
-            select(ServiceDefinition)
-            .where(ServiceDefinition.id == attempt.service_id)
-            .with_for_update()
-        )
-        definition = locked.scalar_one()
         await _apply_restart_decision(db, definition, attempt, "failed", now)
         definition.updated_at = now
+        expired += 1
     await db.flush()
     if expired:
-        logger.warning("Expired %d service lease(s)", len(expired))
-    return len(expired)
+        logger.warning("Expired %d service lease(s)", expired)
+    return expired
 
 
 def describe_observed_state(
