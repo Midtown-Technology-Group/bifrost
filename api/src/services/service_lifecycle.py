@@ -14,8 +14,10 @@ network partition).
 
 Lock order: definition row, then its live attempt. Worker beats can complete
 an attempt in the same transaction, so heartbeat and ready use that order too.
-Multi-definition control paths visit definition IDs in ascending order; expiry
-skips busy definitions before taking attempt locks. The caller owns commit.
+Owned beats commit per service, so they do not retain one definition while
+waiting for another source-indexed definition. Bulk park visits IDs in order;
+expiry skips busy definitions before taking attempt locks. Source indexers
+retain their existing source-transaction boundaries. The caller owns commit.
 
 Restart accounting uses a rolling window over terminal attempts: a sustained
 healthy run sheds old penalties. Rapid terminal cycling (any outcome that
