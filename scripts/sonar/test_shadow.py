@@ -206,6 +206,28 @@ class DataTests(ShadowFixture):
         with self.assertRaises(sqlite3.DatabaseError):
             shadow.database(path)
 
+    def test_uninitialized_runtime_database_is_diagnostic_only(self):
+        path = self.root / "uninitialized.coverage"
+        sqlite_data(path, {})
+        with closing(sqlite3.connect(path)) as connection:
+            connection.execute("delete from meta where key = 'has_arcs'")
+            connection.execute("create table line_bits(file_id integer, context_id integer, numbits blob)")
+            connection.commit()
+        self.assertEqual(shadow.database(path, allow_empty=True), ("7.13.5", {}))
+        with self.assertRaises(ValueError):
+            shadow.database(path)
+        with closing(sqlite3.connect(path)) as connection:
+            connection.execute("insert into line_bits values (1, 1, X'01')")
+            connection.commit()
+        with self.assertRaises(ValueError):
+            shadow.database(path, allow_empty=True)
+
+    def test_measured_line_only_data_is_not_an_empty_diagnostic(self):
+        path = self.root / "line-only.coverage"
+        sqlite_data(path, {"/repo/api/src/service.py": set()}, branch=False)
+        with self.assertRaises(ValueError):
+            shadow.database(path, allow_empty=True)
+
     def test_unit_runtime_sidecars_may_be_empty_but_e2e_runtime_may_not(self):
         parent = self.root / "inputs"
         parent.mkdir()

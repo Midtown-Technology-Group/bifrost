@@ -154,9 +154,17 @@ def database(path: Path, *, allow_empty: bool = False) -> tuple[str, dict[str, s
     uri = f"file:{quote(str(path.resolve()))}?mode=ro&immutable=1"
     with closing(sqlite3.connect(uri, uri=True)) as connection:
         meta = dict(connection.execute("select key, value from meta"))
+        files = dict(connection.execute("select id, path from file"))
+        # Coverage.py can initialize a sidecar before its first measurement,
+        # leaving the branch-mode key unset. Retain only genuinely empty data
+        # as unit/tool diagnostics; measured line data never qualifies here.
+        if not files and meta.get("has_arcs") is None:
+            if (allow_empty and not connection.execute("select 1 from arc limit 1").fetchone()
+                    and not connection.execute("select 1 from line_bits limit 1").fetchone()):
+                return meta["version"], {}
+            raise ValueError("Empty or inconsistent runtime coverage database")
         if meta.get("has_arcs") != "1":
             raise ValueError("Line-only coverage is incompatible")
-        files = dict(connection.execute("select id, path from file"))
         arcs = {name: set() for name in files.values()}
         for file_id, start, end in connection.execute("select file_id, fromno, tono from arc"):
             arcs[files[file_id]].add((start, end))
