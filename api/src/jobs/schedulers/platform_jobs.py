@@ -11,11 +11,13 @@ import sys
 import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from typing import Protocol
 from uuid import UUID, uuid4
 
 from sqlalchemy import func, or_, select, text
 
 from src.core.database import get_db_context
+from src.jobs.platform.catalog import get_platform_job_metadata
 from src.models.orm.platform_jobs import PlatformJob
 from src.services.execution.memory_monitor import get_cgroup_memory
 from src.services.platform_job_memory_profiles import (
@@ -52,8 +54,11 @@ def _clear_lease(job: PlatformJob) -> None:
     job.lease_expires_at = None
 
 
-def _memory_exceeds_hard_limit(hard_ratio: float) -> bool:
-    current, limit = get_cgroup_memory()
+def _memory_exceeds_hard_limit(
+    hard_ratio: float,
+    memory_sample: tuple[int, int] | None = None,
+) -> bool:
+    current, limit = memory_sample or get_cgroup_memory()
     return current >= 0 and limit > 0 and current / limit >= hard_ratio
 
 
@@ -125,6 +130,35 @@ class ClaimedPlatformJob:
     job_type: str = ""
 
 
+class PlatformJobProcess(Protocol):
+    """A runner process controlled by a platform-job execution backend."""
+
+    @property
+    def returncode(self) -> int | None:
+        """Return the exit code once the runner has exited."""
+        raise NotImplementedError
+
+    async def wait(self) -> int:
+        """Wait for the physical runner to exit."""
+        raise NotImplementedError
+
+    async def terminate(self) -> None:
+        """Terminate this attempt's physical runner."""
+        raise NotImplementedError
+
+
+class PlatformJobExecutionBackend(Protocol):
+    """Starts and observes one claimed platform-job runner."""
+
+    async def spawn(self, claim: ClaimedPlatformJob) -> PlatformJobProcess:
+        """Start the handler for an already-claimed attempt."""
+        raise NotImplementedError
+
+    def memory(self) -> tuple[int, int]:
+        """Return current container usage and effective memory limit."""
+        raise NotImplementedError
+
+
 def _remote_job_name(job_id: UUID, lease_token: UUID) -> str:
     # Must stay identical to kubernetes_client._job_name: the controller
     # re-renders the manifest from the persisted attempt to verify ownership.
@@ -162,6 +196,7 @@ async def claim_platform_job(
     backend: str = "local",
     fits_bytes: int | None = None,
     isolated: IsolatedPods | None = None,
+    memory_sample: tuple[int, int] | None = None,
 ) -> ClaimedPlatformJob | None:
     """Claim one admissible queued job using row locking and a fenced lease.
 
@@ -180,6 +215,10 @@ async def claim_platform_job(
         raise ValueError("An isolated platform-job claim, and only one, needs its pods")
     updated: list[PlatformJob] = []
     async with get_db_context() as db:
+        from src.worker.remote.fencing import fence_remote_owner
+
+        if not await fence_remote_owner(db):
+            return None
         candidate_ids = (
             (
                 await db.execute(
@@ -212,10 +251,8 @@ async def claim_platform_job(
                 continue
             if backend == "kubernetes" and job.kubernetes_job_name is not None:
                 continue
-            from src.jobs.platform.registry import get_platform_job_definition
-
-            definition = get_platform_job_definition(job.job_type)
-            if definition is None:
+            metadata = get_platform_job_metadata(job.job_type)
+            if metadata is None:
                 job.status = "failed"
                 job.phase = "Failed"
                 job.error_code = "unknown_job_type"
@@ -240,7 +277,7 @@ async def claim_platform_job(
 
             max_concurrency = await KubernetesExecutionService(
                 db
-            ).effective_max_concurrency(definition)
+            ).effective_max_concurrency(metadata)
             if max_concurrency is not None:
                 handler_lock = (
                     await db.execute(
@@ -335,7 +372,7 @@ async def claim_platform_job(
                 job.memory_peak_bytes = None
                 job.memory_request_bytes, job.memory_limit_bytes = pod_memory
             else:
-                current_memory, memory_limit = get_cgroup_memory()
+                current_memory, memory_limit = memory_sample or get_cgroup_memory()
                 job.memory_start_bytes = current_memory if current_memory >= 0 else None
                 job.memory_peak_bytes = current_memory if current_memory >= 0 else None
                 job.memory_limit_bytes = memory_limit if memory_limit > 0 else None
@@ -345,7 +382,7 @@ async def claim_platform_job(
                 id=job.id,
                 lease_token=token,
                 timeout_seconds=job.timeout_seconds,
-                hard_memory_ratio=definition.policy.hard_memory_ratio,
+                hard_memory_ratio=metadata.policy.hard_memory_ratio,
                 memory_required_bytes=job.memory_required_bytes,
                 job_type=job.job_type,
             )
@@ -363,8 +400,13 @@ async def claim_platform_job(
 async def _heartbeat(
     job_id: UUID,
     lease_token: UUID,
+    memory_sample: tuple[int, int] | None = None,
 ) -> str | None:
     async with get_db_context() as db:
+        from src.worker.remote.fencing import fence_remote_owner
+
+        if not await fence_remote_owner(db):
+            return None
         job = (
             await db.execute(
                 select(PlatformJob)
@@ -381,7 +423,7 @@ async def _heartbeat(
         now = _now()
         job.heartbeat_at = now
         job.lease_expires_at = now + LEASE_DURATION
-        current_memory, memory_limit = get_cgroup_memory()
+        current_memory, memory_limit = memory_sample or get_cgroup_memory()
         if current_memory >= 0:
             job.memory_peak_bytes = max(job.memory_peak_bytes or 0, current_memory)
         if memory_limit > 0:
@@ -411,6 +453,41 @@ async def _terminate_runner(process: asyncio.subprocess.Process) -> None:
         await process.wait()
 
 
+class _LocalPlatformJobProcess:
+    """Adapts a local subprocess to the execution-backend process contract."""
+
+    def __init__(self, process: asyncio.subprocess.Process) -> None:
+        self._process = process
+
+    @property
+    def returncode(self) -> int | None:
+        return self._process.returncode
+
+    async def wait(self) -> int:
+        return await self._process.wait()
+
+    async def terminate(self) -> None:
+        await _terminate_runner(self._process)
+
+
+class _LocalPlatformJobExecutionBackend:
+    """The scheduler's existing local subprocess runner behavior."""
+
+    async def spawn(self, claim: ClaimedPlatformJob) -> PlatformJobProcess:
+        process = await asyncio.create_subprocess_exec(
+            sys.executable,
+            "-m",
+            "src.jobs.platform.runner",
+            str(claim.id),
+            str(claim.lease_token),
+            start_new_session=True,
+        )
+        return _LocalPlatformJobProcess(process)
+
+    def memory(self) -> tuple[int, int]:
+        return get_cgroup_memory()
+
+
 async def _handle_runner_loss(
     job_id: UUID,
     lease_token: UUID,
@@ -418,6 +495,7 @@ async def _handle_runner_loss(
     error_code: str,
     error_message: str,
     out_of_memory: bool = False,
+    memory_sample: tuple[int, int] | None = None,
 ) -> bool:
     """Retry or fail an attempt, fenced against a newer scheduler owner.
 
@@ -425,6 +503,10 @@ async def _handle_runner_loss(
     limit, so the job learns it needs more (a retry asks for it).
     """
     async with get_db_context() as db:
+        from src.worker.remote.fencing import fence_remote_owner
+
+        if not await fence_remote_owner(db):
+            return False
         job = (
             await db.execute(
                 select(PlatformJob)
@@ -460,7 +542,12 @@ async def _handle_runner_loss(
             await fail_linked_solution_export(
                 db, job, completed_at=now, failure_message=EXPORT_RUNNER_LOST
             )
-        await record_platform_job_memory_profile(db, job, out_of_memory=out_of_memory)
+        await record_platform_job_memory_profile(
+            db,
+            job,
+            out_of_memory=out_of_memory,
+            memory_sample=memory_sample,
+        )
         _clear_lease(job)
         job.revision += 1
         await db.commit()
@@ -468,16 +555,17 @@ async def _handle_runner_loss(
     return job.status == "queued"
 
 
-async def run_claimed_platform_job(claim: ClaimedPlatformJob) -> bool:
+async def run_claimed_platform_job(
+    claim: ClaimedPlatformJob,
+    backend: PlatformJobExecutionBackend | None = None,
+) -> bool:
     """Run one handler in a killable child process while maintaining its lease."""
-    process = await asyncio.create_subprocess_exec(
-        sys.executable,
-        "-m",
-        "src.jobs.platform.runner",
-        str(claim.id),
-        str(claim.lease_token),
-        start_new_session=True,
+    uses_local_default = backend is None
+    execution_backend = (
+        _LocalPlatformJobExecutionBackend() if backend is None else backend
     )
+    process = await execution_backend.spawn(claim)
+    last_memory_sample: tuple[int, int] | None = None
     try:
         started = _monotonic()
         while process.returncode is None:
@@ -491,21 +579,31 @@ async def run_claimed_platform_job(claim: ClaimedPlatformJob) -> bool:
                 # Expected heartbeat tick while the runner is still active.
                 pass
 
-            status = await _heartbeat(claim.id, claim.lease_token)
+            memory_sample = None if uses_local_default else execution_backend.memory()
+            last_memory_sample = memory_sample
+            if memory_sample is None:
+                status = await _heartbeat(claim.id, claim.lease_token)
+            else:
+                status = await _heartbeat(
+                    claim.id,
+                    claim.lease_token,
+                    memory_sample,
+                )
             if status is None:
-                await _terminate_runner(process)
+                await process.terminate()
                 return True
             if status == "cancel_requested":
-                await _terminate_runner(process)
+                await process.terminate()
                 await _handle_runner_loss(
                     claim.id,
                     claim.lease_token,
                     error_code="cancelled",
                     error_message="Platform job was cancelled.",
+                    memory_sample=memory_sample,
                 )
                 return True
             if _monotonic() - started >= claim.timeout_seconds:
-                await _terminate_runner(process)
+                await process.terminate()
                 await _handle_runner_loss(
                     claim.id,
                     claim.lease_token,
@@ -513,10 +611,18 @@ async def run_claimed_platform_job(claim: ClaimedPlatformJob) -> bool:
                     error_message=(
                         f"Platform job timed out after {claim.timeout_seconds} seconds."
                     ),
+                    memory_sample=memory_sample,
                 )
                 return False
-            if _memory_exceeds_hard_limit(claim.hard_memory_ratio):
-                await _terminate_runner(process)
+            exceeds_hard_limit = (
+                _memory_exceeds_hard_limit(claim.hard_memory_ratio)
+                if memory_sample is None
+                else _memory_exceeds_hard_limit(
+                    claim.hard_memory_ratio, memory_sample
+                )
+            )
+            if exceeds_hard_limit:
+                await process.terminate()
                 await _handle_runner_loss(
                     claim.id,
                     claim.lease_token,
@@ -525,16 +631,18 @@ async def run_claimed_platform_job(claim: ClaimedPlatformJob) -> bool:
                         "Platform job was stopped before the runner container "
                         "exceeded its memory limit."
                     ),
+                    memory_sample=memory_sample,
                 )
                 return False
     except asyncio.CancelledError:
-        await _terminate_runner(process)
+        await process.terminate()
         try:
             await _handle_runner_loss(
                 claim.id,
                 claim.lease_token,
                 error_code="runner_shutdown",
                 error_message="Platform-job runner stopped during scheduler shutdown.",
+                memory_sample=last_memory_sample,
             )
         except Exception:
             logger.exception(
@@ -561,6 +669,7 @@ async def run_claimed_platform_job(claim: ClaimedPlatformJob) -> bool:
             f"Platform-job runner exited with code {process.returncode} "
             "before recording a result."
         ),
+        memory_sample=last_memory_sample,
     )
     return False
 
@@ -568,6 +677,8 @@ async def run_claimed_platform_job(claim: ClaimedPlatformJob) -> bool:
 __all__ = [
     "HEARTBEAT_INTERVAL_SECONDS",
     "LEASE_DURATION",
+    "PlatformJobExecutionBackend",
+    "PlatformJobProcess",
     "claim_platform_job",
     "recover_expired_platform_jobs",
     "run_claimed_platform_job",
