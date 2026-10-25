@@ -1,6 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildReport, markdown, validateLedger } from "./acceptance-report.mjs";
+import { readFileSync } from "node:fs";
+import {
+	browserRunExitCode,
+	buildReport,
+	markdown,
+	validateLedger,
+} from "./acceptance-report.mjs";
 
 const binding = {
 	spec: "form.admin.spec.ts",
@@ -112,6 +118,97 @@ test("whole-run failures remain visible even when all bound cases pass", () => {
 		markdown(report),
 		/1 expected, 1 unexpected, 2 skipped, 0 flaky/,
 	);
+});
+
+test("a fail-once-then-pass outside the ledger still fails the browser run", () => {
+	const outside = {
+		stats: { expected: 0, unexpected: 0, skipped: 0, flaky: 1 },
+		suites: [
+			{
+				specs: [
+					{
+						file: "not-in-ledger.spec.ts",
+						title: "fails once then passes",
+						tests: [
+							{
+								projectName: "chromium",
+								expectedStatus: "passed",
+								status: "flaky",
+								results: [
+									{ status: "failed" },
+									{ status: "passed" },
+								],
+							},
+						],
+					},
+				],
+			},
+		],
+	};
+	assert.equal(browserRunExitCode(0, outside), 1);
+	assert.deepEqual(
+		buildReport(ledger, outside).rows.map((row) => row.status),
+		["not run", "missing automation"],
+	);
+	const clean = structuredClone(outside);
+	clean.stats.flaky = 0;
+	clean.suites[0].specs[0].title = "passes once";
+	clean.suites[0].specs[0].tests[0].status = "expected";
+	clean.suites[0].specs[0].tests[0].results = [{ status: "passed" }];
+	assert.equal(browserRunExitCode(0, clean), 0);
+	assert.equal(browserRunExitCode(1, outside), 1);
+	assert.equal(browserRunExitCode(2, clean), 2);
+	assert.equal(browserRunExitCode(null, clean), 1);
+	assert.equal(
+		browserRunExitCode(0, { stats: { flaky: 1 }, suites: [] }),
+		1,
+	);
+});
+
+test("an earlier failed, timed-out, or interrupted attempt still fails a zero Playwright exit", () => {
+	for (const first of ["failed", "timedOut", "interrupted"]) {
+		assert.equal(
+			browserRunExitCode(
+				0,
+				result({
+					status: "expected",
+					results: [{ status: first }, { status: "passed" }],
+				}),
+			),
+			1,
+			first,
+		);
+	}
+	assert.equal(
+		browserRunExitCode(
+			0,
+			result({ status: "flaky", results: [{ status: "passed" }] }),
+		),
+		1,
+	);
+	assert.equal(
+		browserRunExitCode(
+			1,
+			result({
+				status: "unexpected",
+				results: [{ status: "passed" }, { status: "failed" }],
+			}),
+		),
+		1,
+	);
+});
+
+test("the browser wrapper applies the retried-pass failure to the process exit", () => {
+	const wrapper = readFileSync(
+		new URL("./run-playwright.mjs", import.meta.url),
+		"utf8",
+	);
+	assert.match(wrapper, /const recovered = retriedPasses\(results\)/);
+	assert.match(
+		wrapper,
+		/const browserExit = browserRunExitCode\(exitCode, results\)/,
+	);
+	assert.match(wrapper, /process\.exitCode = browserExit/);
 });
 
 test("rendered evidence distinguishes controlled setup from real platform journeys", () => {
