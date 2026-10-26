@@ -165,26 +165,33 @@ with zipfile.ZipFile(sys.argv[1], 'w') as z:
   });
 }
 
+for (const component of ['api', 'client', 'worker']) {
 for (const wrong of [null, 'org.opencontainers.image.revision', 'org.opencontainers.image.version',
   'org.opencontainers.image.source', 'com.midtowntg.bifrost.source-tree', 'com.midtowntg.bifrost.candidate']) {
-  test(`source-label boundary rejects ${wrong ?? 'nothing for a qualified image'}`, async () => {
+  test(`${component} source-label boundary rejects ${wrong ?? 'nothing for a qualified image'}`, async () => {
     const root = await mkdtemp(join(tmpdir(), 'bifrost-labels-'));
     try {
       const workflow = await readFile(new URL('../workflows/publish-dependabot-candidates.yml', import.meta.url), 'utf8');
       const labels = { 'org.opencontainers.image.source': `https://github.com/${repository}`,
         'org.opencontainers.image.revision': head, 'org.opencontainers.image.version': '3.2.2-dev.1',
         'com.midtowntg.bifrost.source-tree': merge, 'com.midtowntg.bifrost.candidate': 'true' };
-      if (wrong) labels[wrong] = 'untrusted';
-      await writeFile(join(root, 'labels.json'), JSON.stringify({ Labels: labels }));
-      await writeFile(join(root, 'skopeo'), '#!/bin/sh\ncat "$RUNNER_TEMP/labels.json"\n');
+      const invalid = { ...labels };
+      if (wrong) invalid[wrong] = 'untrusted';
+      // Worker failures exist only in ARM64: valid AMD64 must not conceal them.
+      await writeFile(join(root, 'labels-amd64.json'), JSON.stringify({ Labels: component === 'worker' ? labels : invalid }));
+      await writeFile(join(root, 'labels-arm64.json'), JSON.stringify({ Labels: invalid }));
+      await writeFile(join(root, 'skopeo'), '#!/bin/sh\nprintf \'%s\\n\' "$5" >> "$RUNNER_TEMP/inspected"\ncat "$RUNNER_TEMP/labels-$5.json"\n');
       await chmod(join(root, 'skopeo'), 0o700);
       const result = spawnSync('bash', ['-c', runStep(workflow, 'Validate source labels before publication')], {
         env: { ...process.env, RUNNER_TEMP: root, PATH: `${root}:${process.env.PATH}`, GITHUB_REPOSITORY: repository,
-          SOURCE_SHA: head, TREE_SHA: merge, VERSION: '3.2.2-dev.1' }, encoding: 'utf8',
+          SOURCE_SHA: head, TREE_SHA: merge, VERSION: '3.2.2-dev.1', COMPONENT: component }, encoding: 'utf8',
       });
       assert.equal(result.status === 0, wrong === null, result.stderr);
+      assert.equal(await readFile(join(root, 'inspected'), 'utf8'), component === 'worker' ? 'amd64\narm64\n' : 'amd64\n');
     } finally { await rm(root, { recursive: true, force: true }); }
   });
+}
+
 }
 
 for (const scenario of ['success', 'human PR', 'non-PR CI', 'lint failure', 'stale head', 'changed attempt']) {

@@ -108,10 +108,15 @@ jobs:
           VERSION: ${{ steps.identity.outputs.version }}
         run: |
           set -euo pipefail
-          skopeo inspect --override-os linux --override-arch amd64 "oci-archive:$RUNNER_TEMP/candidate.oci.tar" > "$RUNNER_TEMP/image.json"
+          arches=(amd64)
+          if [[ "$COMPONENT" == worker ]]; then arches+=(arm64); fi
+          for arch in "${arches[@]}"; do
+            skopeo inspect --override-os linux --override-arch "$arch" "oci-archive:$RUNNER_TEMP/candidate.oci.tar" > "$RUNNER_TEMP/image-$arch.json"
+          done
           python3 - <<'PY'
           import json, os, pathlib
-          image = json.loads((pathlib.Path(os.environ['RUNNER_TEMP']) / 'image.json').read_text())
+          root = pathlib.Path(os.environ['RUNNER_TEMP'])
+          arches = ['amd64', 'arm64'] if os.environ['COMPONENT'] == 'worker' else ['amd64']
           expected = {
               'org.opencontainers.image.source': 'https://github.com/' + os.environ['GITHUB_REPOSITORY'],
               'org.opencontainers.image.revision': os.environ['SOURCE_SHA'],
@@ -119,8 +124,10 @@ jobs:
               'com.midtowntg.bifrost.source-tree': os.environ['TREE_SHA'],
               'com.midtowntg.bifrost.candidate': 'true',
           }
-          if any(image.get('Labels', {}).get(key) != value for key, value in expected.items()):
-              raise SystemExit('Candidate labels do not match qualified producer')
+          for arch in arches:
+              image = json.loads((root / f'image-{arch}.json').read_text())
+              if any(image.get('Labels', {}).get(key) != value for key, value in expected.items()):
+                  raise SystemExit(f'Candidate {arch} labels do not match qualified producer')
           PY
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
