@@ -391,8 +391,9 @@ test('every workflow_run checkout explicitly binds the authorized repository, in
       if (!line.includes('uses: actions/checkout@')) continue;
       checkouts++;
       assert.equal(lines[index + 1].trim(), 'with:');
-      assert.equal(lines[index + 2].trim(), `repository: ${repository}`);
+      assert.equal(lines[index + 2].trim(), 'repository: ${{ github.repository }}');
     }
     assert.equal(checkouts, 2);
+    assert.ok(workflow.includes(`if: github.repository == '${repository}' && needs.`));
   }
 });

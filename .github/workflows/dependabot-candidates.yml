@@ -62,7 +62,7 @@ jobs:
   build:
     timeout-minutes: 30
     needs: admission
-    if: needs.admission.outputs.eligible == 'true'
+    if: github.repository == 'Midtown-Technology-Group/bifrost' && needs.admission.outputs.eligible == 'true'
     runs-on: ubuntu-latest
     name: Build candidate ${{ matrix.component }} image
     permissions:
@@ -96,7 +96,7 @@ jobs:
       - name: Retain trusted version tooling outside the PR build context
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          repository: Midtown-Technology-Group/bifrost
+          repository: ${{ github.repository }}
           ref: ${{ github.sha }}
           path: .trusted-version
           fetch-depth: 0
@@ -107,7 +107,7 @@ jobs:
       - name: Checkout exact pull-request head
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          repository: Midtown-Technology-Group/bifrost
+          repository: ${{ github.repository }}
           fetch-depth: 0
           persist-credentials: false
           ref: ${{ needs.admission.outputs.source }}

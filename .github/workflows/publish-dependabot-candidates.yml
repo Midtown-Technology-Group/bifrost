@@ -34,7 +34,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          repository: Midtown-Technology-Group/bifrost
+          repository: ${{ github.repository }}
           ref: ${{ github.sha }}
           persist-credentials: false
       - id: qualify
@@ -45,7 +45,7 @@ jobs:
             await publishInputs({ github, context, core });
 
   publish:
-    if: needs.qualify.outputs.eligible == 'true'
+    if: github.repository == 'Midtown-Technology-Group/bifrost' && needs.qualify.outputs.eligible == 'true'
     needs: qualify
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -70,7 +70,7 @@ jobs:
       - name: Checkout trusted publisher only
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          repository: Midtown-Technology-Group/bifrost
+          repository: ${{ github.repository }}
           ref: ${{ github.sha }}
           fetch-depth: 0
           persist-credentials: false
