@@ -1,0 +1,215 @@
+{
+  "cryptographically_verified": false,
+  "indexes": {
+    "ghcr.io/midtown-technology-group/bifrost-api@sha256:1111111111111111111111111111111111111111111111111111111111111111": {
+      "manifests": [
+        {
+          "digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "platform": {
+            "architecture": "amd64",
+            "os": "linux"
+          }
+        },
+        {
+          "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "platform": {
+            "architecture": "unknown",
+            "os": "unknown"
+          }
+        }
+      ]
+    },
+    "ghcr.io/midtown-technology-group/bifrost-client@sha256:2222222222222222222222222222222222222222222222222222222222222222": {
+      "manifests": [
+        {
+          "digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "platform": {
+            "architecture": "amd64",
+            "os": "linux"
+          }
+        },
+        {
+          "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "platform": {
+            "architecture": "unknown",
+            "os": "unknown"
+          }
+        }
+      ]
+    },
+    "ghcr.io/midtown-technology-group/bifrost-worker@sha256:3333333333333333333333333333333333333333333333333333333333333333": {
+      "manifests": [
+        {
+          "digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "platform": {
+            "architecture": "amd64",
+            "os": "linux"
+          }
+        },
+        {
+          "digest": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+          "platform": {
+            "architecture": "arm64",
+            "os": "linux"
+          }
+        },
+        {
+          "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "platform": {
+            "architecture": "unknown",
+            "os": "unknown"
+          }
+        }
+      ]
+    }
+  },
+  "manifest": {
+    "acceptance": {
+      "components": [
+        "api",
+        "client",
+        "worker"
+      ],
+      "kind": "signed-exact-tree-promotion"
+    },
+    "build": {
+      "event": "push",
+      "ref": "refs/heads/main",
+      "run_attempt": 2,
+      "run_id": 12,
+      "workflow": ".github/workflows/ci.yml"
+    },
+    "channel": "protected-main",
+    "compatibility": {
+      "cli_contract": {
+        "current": 13,
+        "previous": 13
+      },
+      "database": {
+        "migration_heads": [
+          "20261003_workflow_retirement"
+        ],
+        "upgrade_required": false
+      },
+      "rollback": {
+        "reason": "Automatic rollback is not certified. Preserve terminal workflow retirement evidence and admission safeguards during application rollback. Database downgrade past 20261003_workflow_retirement refuses once retirement evidence exists; use a reviewed recovery plan, not an automatic schema downgrade.",
+        "supported": false
+      }
+    },
+    "images": {
+      "api": {
+        "digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "platforms": {
+          "linux/amd64": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+        },
+        "repository": "ghcr.io/midtown-technology-group/bifrost-api"
+      },
+      "client": {
+        "digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        "platforms": {
+          "linux/amd64": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+        },
+        "repository": "ghcr.io/midtown-technology-group/bifrost-client"
+      },
+      "worker": {
+        "digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+        "platforms": {
+          "linux/amd64": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "linux/arm64": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+        },
+        "repository": "ghcr.io/midtown-technology-group/bifrost-worker"
+      }
+    },
+    "product": "bifrost",
+    "schema_version": 2,
+    "source": {
+      "candidate_commit": "d06ef459ca7f3dbdc7e3ee2dfddd84da78c6f5d6",
+      "commit": "d06ef459ca7f3dbdc7e3ee2dfddd84da78c6f5d6",
+      "parent": "7239c0bcb607297bbdf85375086916ff9bc4c266",
+      "repository": "Midtown-Technology-Group/bifrost",
+      "tree": "f28e34dc8caa26143288bd7501ccf285b4dfbf3e"
+    },
+    "tag": null,
+    "version": "3.0.1-dev.7"
+  },
+  "promotion_outputs": {
+    "api": {
+      "candidate_source_sha": "d06ef459ca7f3dbdc7e3ee2dfddd84da78c6f5d6",
+      "digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+      "run_attempt": "2",
+      "run_id": "12"
+    },
+    "client": {
+      "candidate_source_sha": "d06ef459ca7f3dbdc7e3ee2dfddd84da78c6f5d6",
+      "digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+      "run_attempt": "2",
+      "run_id": "12"
+    },
+    "worker": {
+      "candidate_source_sha": "d06ef459ca7f3dbdc7e3ee2dfddd84da78c6f5d6",
+      "digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+      "run_attempt": "2",
+      "run_id": "12"
+    }
+  },
+  "promotion_receipts": {
+    "api": {
+      "candidate_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+      "candidate_ref": "ghcr.io/midtown-technology-group/bifrost-api:candidate-tree-f28e34dc8caa26143288bd7501ccf285b4dfbf3e",
+      "candidate_source_sha": "d06ef459ca7f3dbdc7e3ee2dfddd84da78c6f5d6",
+      "component": "api",
+      "promoted_tags": [
+        "3.0.1-dev.7",
+        "dev"
+      ],
+      "protected_main_source_sha": "d06ef459ca7f3dbdc7e3ee2dfddd84da78c6f5d6",
+      "repository": "Midtown-Technology-Group/bifrost",
+      "schema_version": "bifrost.image-promotion/v1",
+      "source_tree_sha": "f28e34dc8caa26143288bd7501ccf285b4dfbf3e",
+      "version": "3.0.1-dev.7"
+    },
+    "client": {
+      "candidate_digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+      "candidate_ref": "ghcr.io/midtown-technology-group/bifrost-client:candidate-tree-f28e34dc8caa26143288bd7501ccf285b4dfbf3e",
+      "candidate_source_sha": "d06ef459ca7f3dbdc7e3ee2dfddd84da78c6f5d6",
+      "component": "client",
+      "promoted_tags": [
+        "3.0.1-dev.7",
+        "dev"
+      ],
+      "protected_main_source_sha": "d06ef459ca7f3dbdc7e3ee2dfddd84da78c6f5d6",
+      "repository": "Midtown-Technology-Group/bifrost",
+      "schema_version": "bifrost.image-promotion/v1",
+      "source_tree_sha": "f28e34dc8caa26143288bd7501ccf285b4dfbf3e",
+      "version": "3.0.1-dev.7"
+    },
+    "worker": {
+      "candidate_digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+      "candidate_ref": "ghcr.io/midtown-technology-group/bifrost-worker:candidate-tree-f28e34dc8caa26143288bd7501ccf285b4dfbf3e",
+      "candidate_source_sha": "d06ef459ca7f3dbdc7e3ee2dfddd84da78c6f5d6",
+      "component": "worker",
+      "promoted_tags": [
+        "3.0.1-dev.7",
+        "dev"
+      ],
+      "protected_main_source_sha": "d06ef459ca7f3dbdc7e3ee2dfddd84da78c6f5d6",
+      "repository": "Midtown-Technology-Group/bifrost",
+      "schema_version": "bifrost.image-promotion/v1",
+      "source_tree_sha": "f28e34dc8caa26143288bd7501ccf285b4dfbf3e",
+      "version": "3.0.1-dev.7"
+    }
+  },
+  "synthetic": true,
+  "verification_context": {
+    "artifact_http_status": 200,
+    "current_attempt": 2,
+    "issuer": "https://token.actions.githubusercontent.com",
+    "registry_predicate": "available",
+    "required_checks": "synthetic-success",
+    "retained_bundle": true,
+    "run_conclusion": "success",
+    "run_status": "completed",
+    "signer": "https://github.com/Midtown-Technology-Group/bifrost/.github/workflows/ci.yml@refs/heads/main",
+    "sonar": "synthetic-success"
+  }
+}

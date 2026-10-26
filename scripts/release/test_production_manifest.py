@@ -285,5 +285,78 @@ class ProductionManifestTests(ManifestFixture):
                     self.build(**{field: value})
 
 
+
+
+    # Independent acceptance additions exercise the existing producer fixture.
+
+    def test_portable_producer_mutations_refuse(self):
+        corpus = json.loads((Path(__file__).resolve().parent /
+                             'fixtures/protected-main/cases.json').read_text())
+        for case in corpus['cases']:
+            if case['stage'] != 'producer':
+                continue
+            outputs, receipts = copy.deepcopy(self.outputs), copy.deepcopy(self.receipts)
+            for key, value in case['changes'].items():
+                if key == 'delete':
+                    del outputs[value.split('.')[1]]
+                else:
+                    kind, component, field = key.split('.')
+                    (outputs if kind == 'output' else receipts)[component][field] = value
+            with self.subTest(case=case['id']), self.assertRaises(ValueError):
+                self.build(outputs=outputs, receipts=receipts)
+
+    def test_parent_baseline_does_not_certify_installed_database_or_rollback(self):
+        result = self.build()
+        self.assertEqual(result['source']['parent'], self.parent)
+        self.assertFalse(result['compatibility']['database']['upgrade_required'])
+        self.assertFalse(result['compatibility']['rollback']['supported'])
+        self.assertIn('retirement evidence', result['compatibility']['rollback']['reason'])
+        # This fixture's parent already contains retirement, whereas v2.0.0 does not.
+        # A consumer installed on v2.0.0 still needs migration evaluation.
+        self.assertNotEqual(manifest.compatibility(self.source, 'v2.0.0'),
+                            result['compatibility'])
+
+    def test_signed_candidate_with_false_source_labels_must_be_rejected(self):
+        """Preserved rejection assertion, aligned to the new assembly boundary."""
+        manifest.git('commit', '--allow-empty', '-qm', 'unrelated actual build invocation')
+        wrong = manifest.git('rev-parse', 'HEAD')
+        manifest.git('checkout', '--detach', self.source)
+        patch.stopall()
+        commands = []
+
+        def transport(argv):
+            commands.append(argv)
+            if argv[:2] == ['cosign', 'verify']:
+                return 'synthetic successful same-repo signature verification'
+            if argv[:4] == ['docker', 'buildx', 'imagetools', 'inspect']:
+                ref = argv[4]
+                name = next(name for name in manifest.COMPONENTS if f'bifrost-{name}' in ref)
+                if argv[-1] == '{{json .Manifest}}':
+                    return json.dumps({'digest': self.digests[name]})
+                if argv[-1] == '{{json .Image.Config.Labels}}':
+                    return json.dumps({
+                        'org.opencontainers.image.source': f'https://github.com/{manifest.REPOSITORY}',
+                        'org.opencontainers.image.revision': self.source,
+                        'org.opencontainers.image.version': self.version,
+                        'com.midtowntg.bifrost.source-tree': self.tree,
+                        'com.midtowntg.bifrost.candidate': 'true',
+                    })
+            raise AssertionError(f'unexpected offline command: {argv}')
+
+        real_git = manifest.git
+        def local_git(*args):
+            return '' if args[0] == 'fetch' else real_git(*args)
+
+        with patch.object(manifest.candidate, '_run', side_effect=transport), \
+             patch.object(manifest.candidate_provenance, 'git', side_effect=local_git), \
+             patch.object(manifest.candidate_provenance, 'verified_results',
+                          side_effect=lambda image, digest: [self.slsa_result(image, digest, wrong)]):
+            # Both real label verification and real SLSA policy execute. A signed
+            # unrelated invocation cannot be laundered through matching labels.
+            with self.assertRaisesRegex(ValueError, 'source-bound'):
+                self.build()
+        self.assertTrue(any(argv[:2] == ['cosign', 'verify'] for argv in commands))
+
+
 if __name__ == '__main__':
     unittest.main()

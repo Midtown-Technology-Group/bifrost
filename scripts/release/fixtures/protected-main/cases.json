@@ -1,0 +1,164 @@
+{
+  "fixture_version": 1,
+  "synthetic": true,
+  "producer_commit": "3c92d51ef34d6fd46b4608dd163886b7789f7a12",
+  "cases": [
+    {
+      "id": "valid-main-tuple",
+      "expected": "admit",
+      "stage": "consumer",
+      "changes": {}
+    },
+    {
+      "id": "foreign-signer",
+      "expected": "reject",
+      "stage": "consumer",
+      "changes": {
+        "signer": "https://github.com/attacker/bifrost/.github/workflows/ci.yml@refs/heads/main"
+      }
+    },
+    {
+      "id": "pr-signer",
+      "expected": "reject",
+      "stage": "consumer",
+      "changes": {
+        "signer": "https://github.com/Midtown-Technology-Group/bifrost/.github/workflows/ci.yml@refs/pull/7/merge"
+      }
+    },
+    {
+      "id": "foreign-producer",
+      "expected": "reject",
+      "stage": "producer",
+      "changes": {
+        "receipt.api.repository": "attacker/bifrost"
+      }
+    },
+    {
+      "id": "mixed-attempt",
+      "expected": "reject",
+      "stage": "producer",
+      "changes": {
+        "output.worker.run_attempt": "1"
+      }
+    },
+    {
+      "id": "mixed-run",
+      "expected": "reject",
+      "stage": "producer",
+      "changes": {
+        "output.worker.run_id": "13"
+      }
+    },
+    {
+      "id": "mixed-digest",
+      "expected": "reject",
+      "stage": "producer",
+      "changes": {
+        "receipt.worker.candidate_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+      }
+    },
+    {
+      "id": "stable-relabel",
+      "expected": "reject",
+      "stage": "producer",
+      "changes": {
+        "receipt.api.version": "3.0.1"
+      }
+    },
+    {
+      "id": "partial-tuple",
+      "expected": "reject",
+      "stage": "producer",
+      "changes": {
+        "delete": "output.worker"
+      }
+    },
+    {
+      "id": "expired-download-retained-registry",
+      "expected": "admit-only-after-verification",
+      "stage": "consumer",
+      "changes": {
+        "artifact_http_status": 410,
+        "registry_predicate": "available"
+      }
+    },
+    {
+      "id": "expired-all-evidence",
+      "expected": "reject",
+      "stage": "consumer",
+      "changes": {
+        "artifact_http_status": 410,
+        "registry_predicate": "missing",
+        "retained_bundle": false
+      }
+    },
+    {
+      "id": "unknown-run",
+      "expected": "reject",
+      "stage": "consumer",
+      "changes": {
+        "run_status": "unknown"
+      }
+    },
+    {
+      "id": "interrupted-run",
+      "expected": "reject",
+      "stage": "consumer",
+      "changes": {
+        "run_status": "cancelled"
+      }
+    },
+    {
+      "id": "superseded-attempt",
+      "expected": "reject",
+      "stage": "consumer",
+      "changes": {
+        "current_attempt": 3
+      }
+    },
+    {
+      "id": "schema-v3",
+      "expected": "reject",
+      "stage": "consumer",
+      "changes": {
+        "manifest.schema_version": 3
+      }
+    },
+    {
+      "id": "extra-field",
+      "expected": "reject",
+      "stage": "consumer",
+      "changes": {
+        "manifest.unrecognized": true
+      }
+    },
+    {
+      "id": "v1-stable",
+      "expected": "route-to-v1",
+      "stage": "consumer",
+      "changes": {
+        "manifest.schema_version": 1,
+        "manifest.version": "3.0.1",
+        "manifest.tag": "v3.0.1"
+      }
+    },
+    {
+      "id": "retained-work-interruption",
+      "expected": "retain-and-stop",
+      "stage": "consumer",
+      "changes": {
+        "deployment_status": "interrupted",
+        "retained_work": true
+      }
+    },
+    {
+      "id": "rollback-retirement",
+      "expected": "reject-automatic-downgrade",
+      "stage": "consumer",
+      "changes": {
+        "installed_retirement_evidence": true,
+        "requested_database_downgrade": true
+      }
+    }
+  ]
+}
