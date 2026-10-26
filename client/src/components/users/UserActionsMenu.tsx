@@ -106,15 +106,17 @@ export function UserActionsMenu({
 					<Power className="h-4 w-4" />
 					{isActive ? "Disable" : "Enable"}
 				</DropdownMenuItem>
-				<DropdownMenuItem
-					variant="destructive"
-					onClick={onDelete}
-					disabled={isSelf}
-					className="min-h-11 lg:min-h-9"
-				>
-					<Trash2 className="h-4 w-4" />
-					Delete
-				</DropdownMenuItem>
+				{!isActive && (
+					<DropdownMenuItem
+						variant="destructive"
+						onClick={onDelete}
+						disabled={isSelf}
+						className="min-h-11 lg:min-h-9"
+					>
+						<Trash2 className="h-4 w-4" />
+						Delete
+					</DropdownMenuItem>
+				)}
 			</DropdownMenuContent>
 		</DropdownMenu>
 	);

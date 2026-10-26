@@ -22,7 +22,7 @@ function makeProps(
 }
 
 describe("UserActionsMenu", () => {
-	it("active user shows Disable + Delete but no invite actions", async () => {
+	it("active user shows Disable but withholds permanent Delete", async () => {
 		const user = userEvent.setup();
 		render(<UserActionsMenu {...makeProps()} />);
 		await user.click(screen.getByRole("button", { name: /user actions/i }));
@@ -34,8 +34,8 @@ describe("UserActionsMenu", () => {
 			screen.getByRole("menuitem", { name: "Disable" }),
 		).toBeInTheDocument();
 		expect(
-			screen.getByRole("menuitem", { name: "Delete" }),
-		).toBeInTheDocument();
+			screen.queryByRole("menuitem", { name: "Delete" }),
+		).not.toBeInTheDocument();
 		expect(screen.queryByText(/resend invite/i)).not.toBeInTheDocument();
 		expect(screen.queryByText(/send invite/i)).not.toBeInTheDocument();
 		expect(screen.queryByText(/revoke invite/i)).not.toBeInTheDocument();
@@ -71,15 +71,29 @@ describe("UserActionsMenu", () => {
 		expect(
 			screen.queryByRole("menuitem", { name: "Disable" }),
 		).not.toBeInTheDocument();
+		expect(
+			screen.getByRole("menuitem", { name: "Delete" }),
+		).toBeInTheDocument();
 	});
 
-	it("isSelf marks Disable and Delete as disabled", async () => {
+	it("isSelf marks Disable as disabled and withholds Delete", async () => {
 		const user = userEvent.setup();
 		render(<UserActionsMenu {...makeProps({ isSelf: true })} />);
 		await user.click(screen.getByRole("button", { name: /user actions/i }));
 		expect(
 			screen.getByText(/^disable$/i).closest('[role="menuitem"]'),
 		).toHaveAttribute("data-disabled");
+		expect(screen.queryByText(/^delete$/i)).not.toBeInTheDocument();
+	});
+
+	it("inactive self cannot invoke permanent Delete", async () => {
+		const user = userEvent.setup();
+		render(
+			<UserActionsMenu
+				{...makeProps({ isActive: false, isSelf: true })}
+			/>,
+		);
+		await user.click(screen.getByRole("button", { name: /user actions/i }));
 		expect(
 			screen.getByText(/^delete$/i).closest('[role="menuitem"]'),
 		).toHaveAttribute("data-disabled");

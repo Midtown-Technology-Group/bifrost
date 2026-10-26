@@ -7,7 +7,7 @@
  * Mirrors: api/tests/e2e/api/test_users.py
  */
 
-import { test, expect } from "./fixtures/api-fixture";
+import { disableAndDeleteUser, test, expect } from "./fixtures/api-fixture";
 
 test.describe("User Listing", () => {
 	test("should display users page", async ({ page }) => {
@@ -292,8 +292,7 @@ test.describe("User Invitation", () => {
 				is_active: true,
 			});
 		} finally {
-			const removed = await api.delete(`/api/users/${userId}`);
-			expect(removed.ok()).toBe(true);
+			await disableAndDeleteUser(api, userId);
 		}
 	});
 });
