@@ -239,6 +239,71 @@ async def test_concurrent_refreshes_for_same_stale_token_are_coalesced(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("process_url_present", [True, False])
+async def test_concurrent_cwd_refresh_preserves_resolved_lineage(
+    isolated_credentials, monkeypatch, tmp_path, process_url_present
+) -> None:
+    from bifrost import client as client_mod
+
+    api_url = "https://api.example.com"
+    monkeypatch.chdir(tmp_path)
+    if process_url_present:
+        monkeypatch.setenv("BIFROST_API_URL", api_url)
+    (tmp_path / ".env").write_text(
+        "BIFROST_API_URL=https://api.example.com\n"
+        "BIFROST_ACCESS_TOKEN=stale-access-token\n"
+        "BIFROST_REFRESH_TOKEN=rotating-refresh-token\n"
+    )
+    refresh_calls = 0
+
+    class FakeAsyncClient:
+        def __init__(self, *, base_url, timeout, trust_env):
+            assert base_url == api_url
+            assert timeout == 30.0
+            assert trust_env is False
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def post(self, path, *, json):
+            nonlocal refresh_calls
+            assert path == "/auth/refresh"
+            assert json == {"refresh_token": "rotating-refresh-token"}
+            refresh_calls += 1
+            await asyncio.sleep(0.01)
+            return httpx.Response(
+                200,
+                json={
+                    "access_token": "fresh-access-token",
+                    "refresh_token": "fresh-refresh-token",
+                    "expires_in": 1800,
+                },
+                request=httpx.Request("POST", f"{api_url}/auth/refresh"),
+            )
+
+    monkeypatch.setattr(client_mod.httpx, "AsyncClient", FakeAsyncClient)
+
+    first, second = await asyncio.gather(
+        client_mod.refresh_connection_access_token(api_url, "stale-access-token"),
+        client_mod.refresh_connection_access_token(api_url, "stale-access-token"),
+    )
+
+    assert first == second == "fresh-access-token"
+    assert refresh_calls == 1
+    assert os.environ["BIFROST_ACCESS_TOKEN"] == "fresh-access-token"
+    assert os.environ["BIFROST_REFRESH_TOKEN"] == "fresh-refresh-token"
+    env_text = (tmp_path / ".env").read_text()
+    assert "BIFROST_ACCESS_TOKEN=fresh-access-token" in env_text
+    assert "BIFROST_REFRESH_TOKEN=fresh-refresh-token" in env_text
+    resolved = isolated_credentials.resolve_credentials(api_url)
+    assert resolved is not None
+    assert resolved.source == ("process" if process_url_present else "cwd_dotenv")
+
+
+@pytest.mark.asyncio
 async def test_cancelled_refresh_lock_waiter_does_not_leak_lock() -> None:
     from bifrost import client as client_mod
 
@@ -257,7 +322,7 @@ async def test_cancelled_refresh_lock_waiter_does_not_leak_lock() -> None:
 
 
 @pytest.mark.asyncio
-async def test_refresh_reuses_credentials_replaced_by_another_caller(
+async def test_refresh_rejects_unproven_credentials_replaced_by_another_caller(
     isolated_credentials, monkeypatch
 ) -> None:
     from bifrost import client as client_mod
@@ -280,7 +345,143 @@ async def test_refresh_reuses_credentials_replaced_by_another_caller(
         api_url, "stale-access-token"
     )
 
-    assert token == "fresh-access-token"
+    assert token is None
+
+
+@pytest.mark.asyncio
+async def test_cached_refresh_is_not_adopted_after_same_url_principal_switch(
+    isolated_credentials, monkeypatch
+) -> None:
+    from bifrost import client as client_mod
+
+    api_url = "https://api.example.com"
+    isolated_credentials.save_credentials(
+        api_url,
+        "user-a-access",
+        "user-a-refresh",
+        (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat(),
+    )
+    refresh_calls: list[str] = []
+
+    class FakeAsyncClient:
+        def __init__(self, *, base_url, timeout, trust_env):
+            assert base_url == api_url
+            assert timeout == 30.0
+            assert trust_env is False
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def post(self, path, *, json):
+            assert path == "/auth/refresh"
+            refresh_calls.append(json["refresh_token"])
+            return httpx.Response(
+                200,
+                json={
+                    "access_token": "user-a-fresh-access",
+                    "refresh_token": "user-a-fresh-refresh",
+                    "expires_in": 1800,
+                },
+                request=httpx.Request("POST", f"{api_url}/auth/refresh"),
+            )
+
+    monkeypatch.setattr(client_mod.httpx, "AsyncClient", FakeAsyncClient)
+
+    client = client_mod.BifrostClient(api_url, "user-a-access")
+    try:
+        first = await client.refresh_access_token("user-a-access")
+        assert first == "user-a-fresh-access"
+        assert client._access_token == "user-a-fresh-access"
+
+        isolated_credentials.save_credentials(
+            api_url,
+            "user-b-access",
+            "user-b-refresh",
+            (datetime.now(timezone.utc) + timedelta(minutes=30)).isoformat(),
+        )
+        stale_user_a = await client.refresh_access_token(
+            "user-a-fresh-access"
+        )
+
+        assert stale_user_a is None
+        assert client._access_token == "user-a-fresh-access"
+        assert refresh_calls == ["user-a-refresh"]
+        current = isolated_credentials.get_credentials(api_url)
+        assert current["access_token"] == "user-b-access"
+        assert current["refresh_token"] == "user-b-refresh"
+    finally:
+        client._sync_http.close()
+
+
+@pytest.mark.asyncio
+async def test_refresh_writeback_does_not_overwrite_switched_principal(
+    isolated_credentials, monkeypatch, caplog
+) -> None:
+    from bifrost import client as client_mod
+
+    api_url = "https://api.example.com"
+    isolated_credentials.save_credentials(
+        api_url,
+        "user-a-access",
+        "user-a-refresh",
+        (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat(),
+    )
+
+    class FakeAsyncClient:
+        def __init__(self, *, base_url, timeout, trust_env):
+            assert base_url == api_url
+            assert timeout == 30.0
+            assert trust_env is False
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def post(self, path, *, json):
+            assert path == "/auth/refresh"
+            assert json == {"refresh_token": "user-a-refresh"}
+            isolated_credentials.save_credentials(
+                api_url,
+                "user-b-access",
+                "user-b-refresh",
+                (datetime.now(timezone.utc) + timedelta(minutes=30)).isoformat(),
+            )
+            return httpx.Response(
+                200,
+                json={
+                    "access_token": "user-a-fresh-access",
+                    "refresh_token": "user-a-fresh-refresh",
+                    "expires_in": 1800,
+                },
+                request=httpx.Request("POST", f"{api_url}/auth/refresh"),
+            )
+
+    monkeypatch.setattr(client_mod.httpx, "AsyncClient", FakeAsyncClient)
+    caplog.set_level("WARNING", logger="bifrost.client")
+
+    result = await client_mod.refresh_connection_access_token(
+        api_url, "user-a-access"
+    )
+
+    assert result is None
+    current = isolated_credentials.get_credentials(api_url)
+    assert current["access_token"] == "user-b-access"
+    assert current["refresh_token"] == "user-b-refresh"
+    warning = caplog.records[-1].getMessage()
+    for secret in (
+        "user-a-access",
+        "user-a-refresh",
+        "user-a-fresh-access",
+        "user-a-fresh-refresh",
+        "user-b-access",
+        "user-b-refresh",
+    ):
+        assert secret not in warning
 
 
 @pytest.mark.asyncio
