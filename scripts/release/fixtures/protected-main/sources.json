@@ -1,14 +1,4 @@
 {
-  "consumer": {
-    "archive": "consumer-ecea7f7f.tar.gz",
-    "commit": "ecea7f7f07a0c79041cb9d7bb12987862b47ecf4",
-    "files": {
-      "scripts/platform_release.py": "4ee188dde201c53b0c22cd4d4b204db752935be0662b5524c7f1d35810ec5081",
-      "scripts/promote-platform-images.py": "bc237d22183711862e0dec2bf4fbbfdb54b5382a14523e766a04ce44791d58aa"
-    },
-    "repository": "MTG-Thomas/bifrost-infra",
-    "sha256": "8afc3c09eb473fd71cb5f4b3bd36c01996108ae0a5175441289691b5707cd23b"
-  },
   "producer": {
     "archive": "producer-723e767a.tar.gz",
     "commit": "723e767a7ac3c21a1b2645f7b1e033a6a12c6a22",

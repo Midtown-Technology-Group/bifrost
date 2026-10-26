@@ -18,18 +18,24 @@ contains tests, fixtures and this acceptance record only.
 python3 scripts/release/test_production_manifest.py
 python3 scripts/release/test_release_manifest.py
 BIFROST_INFRA_CONTRACT_ROOT=/path/to/exact/consumer-checkout \
-  python3 scripts/release/test_consumer_contract.py
+  python3 scripts/release/accept_consumer_contract.py
 BIFROST_PRODUCER_CONTRACT_ROOT=/path/to/exact/producer-checkout \
   python3 scripts/release/test_revised_producer_contract.py
 ```
 
-With explicit checkout variables, both cross-repository suites verify checkout
-HEAD and imported source-file hashes against their pinned commits. Without those
-variables, normal comprehensive discovery executes every acceptance case using
-checked-in byte-for-byte source archives from those same commits. The source
-index records repository, commit, archive SHA256 and every included file SHA256.
-Extraction verifies those hashes and the exact file set before import. No network,
-new credentials, skip or coverage exclusion is needed for normal collection. They use the existing unittest framework and
+The consumer acceptance runner requires `BIFROST_INFRA_CONTRACT_ROOT`, pointing
+to an already-authorized external checkout at the exact consumer commit. It checks
+HEAD and each imported file against that checkout's Git objects. Private consumer
+source is not bundled, fetched or exported by public CI. Normal public collection
+therefore does **not** execute or prove consumer admission. This limitation is
+explicit, not an unconditional skip or a synthetic replacement validator.
+
+The public producer suite can use its pinned public-source fixture when no
+producer checkout variable is supplied; its archive and included file hashes are
+verified before import. Both suites retain their real owner policy functions in
+explicit configured runs.
+
+They use the existing unittest framework and
 owner test seams. No promoter/deployer CLI main executes. Docker/cosign/GitHub
 transports are bounded simulations; unexpected commands fail closed. Revised
 producer Git comparisons are real, with network fetch suppressed.
@@ -76,7 +82,7 @@ No VM, live stack, service or container was created.
 
 | Source / command | Actual result |
 | --- | --- |
-| Current `test_consumer_contract.py`, consumer `ecea7f7f` | 18 passed |
+| Explicit `accept_consumer_contract.py`, consumer `ecea7f7f` | 18 passed |
 | Current producer suite, including preserved rejection assertion | 23 passed |
 | `test_revised_producer_contract.py`, exact producer `723e767a7` | 3 passed |
 | Existing stable `test_release_manifest.py` | 54 passed |
@@ -99,49 +105,40 @@ emitted by the exact revised producer using its existing verified-results seam,
 with a synthetic gh wrapper and inner bundle. Changing that unsigned fixture shape
 is not a cryptographic fix or an owner implementation change.
 
-## CI collection correction and draft status
+## Publication correction and current limitation
 
 [Draft #1401](https://github.com/Midtown-Technology-Group/bifrost/pull/1401) remains
 stacked on producer #1400, unmerged, with no deployment authority. Commit
 `756310d05` and its earlier red/green evidence remain in branch history.
 
+The fixture correction in `4ca33e571` improperly bundled private consumer source
+in this public repository. This normal corrective commit removes that archive
+and its consumer index entry from the current tree. It does not remove prior
+Git objects, caches, clones or historical access; no history rewrite, visibility
+change or permission change is authorized here. Those decisions remain with
+Thomas. No claims about readership or downstream copies have been established.
+
 The original exact-head CI run 40415661642 passed Pre-PR Candidate and lint but
-failed Sonar's `Collect repository Python tool coverage`: normal discovery ran
-both cross-repository unittest classes without their checkout environment
-variables, and class setup raised `KeyError`. That was an introduced fixture
-boundary defect, not a failing provenance assertion.
+failed Sonar's repository-tool coverage because consumer class setup required
+an absent external checkout. The private-source archive is not an acceptable fix.
+The consumer suite is now the explicitly invoked `accept_consumer_contract.py`
+runner and fails clearly without `BIFROST_INFRA_CONTRACT_ROOT`; ordinary public
+collection retains the producer and public fixture-integrity tests. It does not
+claim to run external consumer acceptance. No checks, coverage exclusions,
+credentials/grants or workflow selectors changed.
 
-The correction supplies pinned source archives as normal test fixtures. The
-same tests and assertions run in both modes, with real consumer functions and
-producer policy; only external signing/network transports remain simulated.
-Producer fixture imports are isolated from pytest's already-loaded local script
-modules and restore `sys.path`/`sys.modules`, preventing collection-order source
-substitution. Explicit checkout settings still fail closed on wrong HEAD or file
-drift instead of silently using the archive. The explicit integration run against
-actual owner checkouts remains supported and independently validated.
+An explicitly configured authorized local consumer checkout still executes all
+18 independent cases with real consumer functions and simulated transports.
+The producer fixture remains sourced solely from the public platform commit.
+Its archive provenance is recorded in `sources.json`; reproduce that public
+archive using the listed sorted file paths and commit with `git archive`, then
+Python 3.13 `gzip.compress(tar_bytes, mtime=0)`. Never add the private consumer
+repository to the source-fixture index or publish its source to repair CI.
 
-Archive provenance is in `scripts/release/fixtures/protected-main/sources.json`.
-To reproduce each archive with an already-authorized owner checkout, read its
-listed file paths and commit, use `git archive --format=tar <commit> <paths...>`
-with sorted paths, then Python `gzip.compress(tar_bytes, mtime=0)` on Python 3.13.
-Per-file hashes come from `git show <commit>:<path>`. These are source snapshots,
-not Sigstore bundles or evidence of a real signed transfer. Existing CI needs no
-private-repository fetch or additional permissions to run normal discovery.
-No credentials/grants, selectors, coverage exclusions or workflow layers changed.
-
-Correction validation on this host: normal tracked-script discovery, with both
-checkout variables absent and coverage enabled, passed **368 tests and 445
-subtests**. The explicit exact-owner-checkout run passed **21 tests and 41
-subtests**. Five source-loader tests cover corrupt archive, wrong pin, wrong
-explicit HEAD, file drift and fixture lifetime. The initial local interpreter
-lacked httpx; a disposable tools venv with the repository's existing dev test
-dependencies supplied it. No repository dependency or CI configuration changed.
-
-A new exact-head CI result is still required. Existing-account GitHub REST calls
-returned HTTP 403, core rate limit remaining 0, resetting at
-`2026-10-26T23:39:52+00:00`. No alternate account/token or permission change is
-used to work around that boundary. The earlier 756310d05 CI failure remains
-historical evidence, not validation of this correction.
+The earlier 368-test bundled-source run is historical evidence for the removed
+approach, not current public consumer-admission evidence. Fresh CI remains
+unverified for this correction. The existing GitHub API quota limitation has not
+been worked around using another account or token.
 
 Detached read-only checkouts `/tmp/bifrost-infra-contract-ecea7f7` and
 `/tmp/bifrost-producer-contract-723e767` are retained for reproduction; the earlier

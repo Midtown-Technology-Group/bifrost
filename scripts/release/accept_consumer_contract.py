@@ -2,7 +2,8 @@
 """Offline cross-repo acceptance at pinned source; no CLI main or live operations.
 
 An explicit BIFROST_INFRA_CONTRACT_ROOT selects an exact owner checkout;
-normal discovery executes the same tests against pinned source fixtures.
+private consumer source is never bundled in the public repository.
+Run this acceptance suite explicitly; ordinary public CI does not prove consumer admission.
 Run with Python's existing unittest runner. External processes are fail-closed
 simulations, not signed integration proof.
 """

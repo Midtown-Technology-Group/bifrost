@@ -1,6 +1,6 @@
-"""Load reviewed source fixtures or explicitly supplied exact Git checkouts.
+"""Load public source fixtures or explicitly supplied exact Git checkouts.
 
-Snapshots are test inputs copied byte-for-byte from the pinned owner commits.
+Only public producer source is bundled. Private consumers require an external checkout.
 They are never an application runtime or a substitute for signed transfer proof.
 """
 from __future__ import annotations
@@ -23,18 +23,27 @@ FIXTURES = Path(__file__).resolve().parent / 'fixtures/protected-main'
 
 @contextmanager
 def sources(kind, expected_commit, variable):
-    index = json.loads((FIXTURES / 'sources.json').read_text())[kind]
-    if index['commit'] != expected_commit:
-        raise ValueError(f'{kind} source fixture does not match pinned commit')
     configured = os.environ.get(variable)
+    if kind == 'consumer':
+        if not configured:
+            raise ValueError(f'{variable} is required: private consumer source is not bundled')
+        names = ('scripts/platform_release.py', 'scripts/promote-platform-images.py')
+        index = None
+    else:
+        index = json.loads((FIXTURES / 'sources.json').read_text())[kind]
+        if index['commit'] != expected_commit:
+            raise ValueError(f'{kind} source fixture does not match pinned commit')
+        names = tuple(index['files'])
     if configured:
         root = Path(configured).resolve()
         head = subprocess.run(['git', '-C', str(root), 'rev-parse', 'HEAD'],
                               check=True, capture_output=True, text=True).stdout.strip()
         if head != expected_commit:
             raise ValueError(f'{kind} must be exactly {expected_commit}, got {head}')
-        for name, digest in index['files'].items():
-            if hashlib.sha256((root / name).read_bytes()).hexdigest() != digest:
+        for name in names:
+            expected = subprocess.run(['git', '-C', str(root), 'show', f'{expected_commit}:{name}'],
+                                      check=True, capture_output=True).stdout
+            if (root / name).read_bytes() != expected:
                 raise ValueError(f'{kind} source differs from pinned commit: {name}')
         yield root
         return
