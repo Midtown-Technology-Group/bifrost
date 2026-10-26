@@ -23,6 +23,20 @@ their source is unchanged. On Windows use `python`.
 when this guide or a selected reference directs you there. Shared routing comes
 from `mtg-engineering-flow` without overriding repository gates.
 
+## Cursor cloud agents
+
+Cursor cloud agents install the compact profile from
+[mtg-codex-skills](https://github.com/Midtown-Technology-Group/mtg-codex-skills)
+at the reviewed pin in `.cursor/install-mtg-skills.sh`.
+`.cursor/environment.json` runs that script during environment build, and its
+`repositoryDependencies` entry grants the agent token read access to that
+private repository. The catalog stays in the skills repo; this repo does not
+vendor it. The active skills are `mtg-engineering-flow`, `mtg-skill-router`,
+and `github-pr-stewardship`.
+
+Codex, T3 Code, Windows, and local-machine skills in that library do not apply
+in Cursor cloud.
+
 ## Critical boundaries
 
 - Preserve existing work. Keep handlers thin, Pydantic contracts canonical, and MCP tools thin REST wrappers. Do not introduce unrequested fallbacks.

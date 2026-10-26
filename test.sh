@@ -749,6 +749,7 @@ repository_ci_checks() {
     # It also enforces the public plugin skill-name namespace contract.
     python3 scripts/check_skill_mirrors.py
     python3 -m unittest scripts.test_skill_mirrors
+    bash scripts/lib/install_mtg_skills_test.sh
 }
 
 generated_api_checks() {

@@ -1,0 +1,6 @@
+{
+  "repositoryDependencies": [
+    "github.com/Midtown-Technology-Group/mtg-codex-skills"
+  ],
+  "install": "bash .cursor/install-mtg-skills.sh"
+}
