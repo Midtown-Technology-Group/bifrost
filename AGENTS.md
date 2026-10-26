@@ -37,6 +37,8 @@ from `mtg-engineering-flow` without overriding repository gates.
 
 Use the Linux Docker lane on the dedicated Bifrost test VMs at `pve-t340.netbird.cloud`, or CI. Do not substitute legacy `pve`, host pytest, or Windows host services. Retrieve access from Keeper at use time; report unavailable access rather than changing targets. Report VM/worktree identity.
 
+Before coding, follow the short [author contract trace](docs/dev/author-verification.md#trace-the-boundary-first). Use `./test.sh author --plan` and focused author checks during iteration; their receipts supplement the existing pre-PR and CI gates.
+
 For platform behavior or UI changes, develop against the worktree's running application before treating automated tests as proof:
 
 1. Record the exact host, worktree, Compose project and whether its stack/volumes predate this task. Inspect `./debug.sh status`; if this worktree has no running stack, boot it with `./debug.sh` (default `up`). Use the printed worktree URL and credentials, never fixed historical login values.

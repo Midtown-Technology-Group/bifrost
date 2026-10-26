@@ -19,6 +19,10 @@
 # Local Kubernetes spike (isolated Kind cluster):
 #   ./test.sh kubernetes up|status|down|collect|kubectl
 #
+# Author feedback (does not replace pre-pr/CI):
+#   ./test.sh author --plan             Inspect focused selection, including dirty work.
+#   ./test.sh author --risk sdk         Run focused checks and write a receipt.
+#
 # Quality checks:
 #   ./test.sh quality api               Run API pyright + ruff inside Docker.
 #   ./test.sh quality repo              Run local repository CI hygiene checks.
@@ -61,6 +65,13 @@ export COMPOSE_PROJECT_NAME
 COMPOSE_PROJECT_NAME="$(compute_project_name .)"
 
 LOG_DIR="/tmp/bifrost-$COMPOSE_PROJECT_NAME"
+# Pass the runner's actual report directory, independent of Python's TMPDIR.
+# Each child test.sh invocation still owns its normal lane lock.
+if [[ "${1:-}" == "author" ]]; then
+    shift
+    export BIFROST_AUTHOR_REPORT_DIR="$LOG_DIR"
+    exec python3 "$SCRIPT_DIR/api/scripts/author_verify.py" "$@"
+fi
 mkdir -p "$LOG_DIR"
 # Pre-create the fixture subdir the api container bind-mounts (install/preview-repo
 # e2e tests stage file:// git repos here). Creating it host-side first means Docker
@@ -758,6 +769,19 @@ generated_api_checks() {
         python scripts/skill-truth/generate.py --check
 }
 
+# Read-only freshness checks for the author loop. Generate into container-local
+# /tmp and compare, so a stale committed client contract fails without repair.
+author_generated_checks() {
+    docker compose -f "$COMPOSE_FILE" --profile test build test-runner
+    generated_api_checks
+    docker compose -f "$COMPOSE_FILE" --profile client-check build client-check-runner
+    docker compose -f "$COMPOSE_FILE" --profile test run --rm --no-deps -T test-runner \
+        python -c 'import json; from src.main import app; print(json.dumps(app.openapi()))' | \
+        docker compose -f "$COMPOSE_FILE" --profile client-check run --rm --no-deps -T \
+            client-check-runner sh -ec 'cat > /tmp/author-openapi.json; npx --no-install openapi-typescript /tmp/author-openapi.json -o /tmp/author-v1.d.ts; diff -u src/lib/v1.d.ts /tmp/author-v1.d.ts'
+    python3 scripts/check_skill_mirrors.py
+}
+
 build_local_api_candidate() {
     local head_sha version image_tag
     head_sha="$(git rev-parse --short=12 HEAD)"
@@ -1207,6 +1231,7 @@ case "$1" in
     mcp) shift; cmd_mcp "$@" ;;
     pr-preflight) shift; cmd_pr_preflight "$@" ;;
     pre-pr) shift; cmd_pre_pr "$@" ;;
+    author-generated) author_generated_checks ;;
     ci) cmd_ci ;;
     -h|--help|help)
         sed -n '2,35p' "$0"

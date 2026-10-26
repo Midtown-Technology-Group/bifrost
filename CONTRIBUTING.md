@@ -96,6 +96,15 @@ Git can add this automatically: `git commit -s`. Squash merges should retain DCO
 sign-off in the final commit message or PR description when GitHub DCO probot is
 enabled.
 
+## Author feedback while editing
+
+Trace the changed contract and its callers before coding, then run
+`./test.sh author --plan` and the focused author checks. The short
+[author verification guide](docs/dev/author-verification.md) includes the five-line
+checklist, faithful SDK/database/security test patterns, isolated behavioral
+red/green proof and a verification receipt. This loop supplements the existing
+pre-PR and CI gates.
+
 ## Before you open a PR
 
 Pick the delivery lane first: [docs/dev/delivery-lanes.md](./docs/dev/delivery-lanes.md).
