@@ -10,7 +10,7 @@ This module is the single source of truth for what files should be
 excluded from the workspace.
 """
 
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 # Directories to exclude from workspace operations
 EXCLUDED_DIRECTORIES = frozenset({
@@ -103,6 +103,21 @@ def is_allowed_path(path: str | Path) -> bool:
         True if the path is allowed, False if it should be excluded
     """
     return not is_excluded_path(path)
+
+
+def is_allowed_python_module_path(path: str | Path) -> bool:
+    """Return whether a relative Python source path may enter the import graph."""
+    raw_path = str(path)
+    candidate = Path(path)
+    windows_candidate = PureWindowsPath(raw_path)
+    return (
+        "\\" not in raw_path
+        and not candidate.is_absolute()
+        and not windows_candidate.drive
+        and ".." not in candidate.parts
+        and candidate.suffix == ".py"
+        and is_allowed_path(candidate)
+    )
 
 
 # Export constants for use in other modules (e.g., frontend type generation)

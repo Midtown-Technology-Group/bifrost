@@ -4,7 +4,6 @@ from uuid import uuid4
 
 import pytest
 from fastapi import HTTPException
-
 from shared.sdk_modules import ModuleSourceScope
 from src.core.constants import SYSTEM_USER_UUID
 from src.core.principal import UserPrincipal
@@ -501,7 +500,11 @@ async def test_resolve_module_does_not_fallback_to_repo_when_global_access_off()
         patch(f"{SERVICE}.get_module_resolution_cache", new_callable=AsyncMock, return_value=None),
         patch(f"{SERVICE}.set_module_resolution_cache", new_callable=AsyncMock),
         patch(f"{SERVICE}.get_module", new_callable=AsyncMock, return_value=None) as mock_get,
-        patch(f"{SERVICE}._prefix_exists", new_callable=AsyncMock, return_value=False),
+        patch(
+            f"{SERVICE}._prefix_has_allowed_python_descendant",
+            new_callable=AsyncMock,
+            return_value=False,
+        ),
     ):
         result = await resolve_module_name(
             "modules.helpers",
@@ -543,6 +546,79 @@ async def test_resolve_module_uses_workspace_without_solution_context():
     mock_get.assert_awaited_once_with("modules/helpers.py")
 
 
+async def test_workspace_namespace_requires_allowed_python_descendant():
+    from shared.sdk_modules import _prefix_has_allowed_python_descendant
+
+    storage = MagicMock()
+    storage.list = AsyncMock(
+        side_effect=[
+            ["modules/node_modules/blocked.py", "modules/readme.md"],
+            ["modules/node_modules/blocked.py", "modules/allowed.py"],
+        ]
+    )
+    with patch(f"{SERVICE}.RepoStorage", return_value=storage):
+        assert not await _prefix_has_allowed_python_descendant("modules/")
+        assert await _prefix_has_allowed_python_descendant("modules/")
+
+    assert [awaited.args for awaited in storage.list.await_args_list] == [
+        ("modules/",),
+        ("modules/",),
+    ]
+
+
+async def test_solution_namespace_requires_allowed_python_descendant():
+    from shared.sdk_modules import _prefix_has_allowed_python_descendant
+
+    storage = MagicMock()
+    storage.list = AsyncMock(
+        return_value=["modules/node_modules/blocked.py", "modules/readme.md"]
+    )
+    with patch(f"{SERVICE}.SolutionStorage", return_value=storage) as storage_type:
+        result = await _prefix_has_allowed_python_descendant(
+            f"_solutions/{SOLUTION_A}/modules/"
+        )
+
+    assert not result
+    storage_type.assert_called_once_with(SOLUTION_A)
+    storage.list.assert_awaited_once_with("modules/")
+
+
+async def test_resolve_module_refuses_excluded_module_and_namespace_paths():
+    from shared.sdk_modules import resolve_module_name
+
+    with (
+        patch(
+            f"{SERVICE}.get_module_resolution_cache",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+        patch(f"{SERVICE}.set_module_resolution_cache", new_callable=AsyncMock),
+        patch(f"{SERVICE}.get_module", new_callable=AsyncMock) as mock_get,
+        patch(
+            f"{SERVICE}._prefix_has_allowed_python_descendant",
+            new_callable=AsyncMock,
+        ) as mock_prefix,
+    ):
+        result = await resolve_module_name(
+            "venv.hidden",
+            scope=ModuleSourceScope(solution_id=None, global_repo_access=False),
+        )
+
+    assert result == {"kind": "not_found", "path": "venv/hidden"}
+    mock_get.assert_not_awaited()
+    mock_prefix.assert_not_awaited()
+
+
+async def test_fetch_module_source_rejects_excluded_path_before_storage():
+    from shared.sdk_modules import ModuleSourceError, fetch_module_source
+
+    with patch(f"{SERVICE}.get_module", new_callable=AsyncMock) as mock_get:
+        with pytest.raises(ModuleSourceError, match="Excluded module path"):
+            await fetch_module_source("__pycache__/stale.py")
+
+    mock_get.assert_not_awaited()
+
+
 async def test_resolve_module_falls_back_to_workspace_when_global_access_on():
     from shared.sdk_modules import resolve_module_name
 
@@ -559,7 +635,11 @@ async def test_resolve_module_falls_back_to_workspace_when_global_access_on():
         patch(f"{SERVICE}.get_module_resolution_cache", new_callable=AsyncMock, return_value=None),
         patch(f"{SERVICE}.set_module_resolution_cache", new_callable=AsyncMock),
         patch(f"{SERVICE}.get_module", side_effect=fake_get_module) as mock_get,
-        patch(f"{SERVICE}._prefix_exists", new_callable=AsyncMock, return_value=False),
+        patch(
+            f"{SERVICE}._prefix_has_allowed_python_descendant",
+            new_callable=AsyncMock,
+            return_value=False,
+        ),
     ):
         result = await resolve_module_name(
             "modules.helpers",
@@ -580,14 +660,18 @@ async def test_resolve_module_falls_back_to_workspace_when_global_access_on():
     ]
 
 
-async def test_resolve_module_uses_bounded_prefix_check_for_namespace():
+async def test_resolve_module_checks_allowed_descendant_for_namespace():
     from shared.sdk_modules import resolve_module_name
 
     with (
         patch(f"{SERVICE}.get_module_resolution_cache", new_callable=AsyncMock, return_value=None),
         patch(f"{SERVICE}.set_module_resolution_cache", new_callable=AsyncMock),
         patch(f"{SERVICE}.get_module", new_callable=AsyncMock, return_value=None),
-        patch(f"{SERVICE}._prefix_exists", new_callable=AsyncMock, return_value=True) as mock_prefix,
+        patch(
+            f"{SERVICE}._prefix_has_allowed_python_descendant",
+            new_callable=AsyncMock,
+            return_value=True,
+        ) as mock_prefix,
     ):
         result = await resolve_module_name("modules", scope=ModuleSourceScope(solution_id=None, global_repo_access=False))
 
@@ -610,7 +694,11 @@ async def test_resolve_module_uses_cached_not_found_before_storage():
         patch(f"{SERVICE}.get_module_resolution_cache", side_effect=fake_get_cache),
         patch(f"{SERVICE}.set_module_resolution_cache", side_effect=fake_set_cache),
         patch(f"{SERVICE}.get_module", new_callable=AsyncMock, return_value=None) as mock_get,
-        patch(f"{SERVICE}._prefix_exists", new_callable=AsyncMock, return_value=False) as mock_prefix,
+        patch(
+            f"{SERVICE}._prefix_has_allowed_python_descendant",
+            new_callable=AsyncMock,
+            return_value=False,
+        ) as mock_prefix,
     ):
         first = await resolve_module_name("modules.missing", scope=ModuleSourceScope(solution_id=None, global_repo_access=False))
         second = await resolve_module_name("modules.missing", scope=ModuleSourceScope(solution_id=None, global_repo_access=False))
@@ -640,7 +728,11 @@ async def test_concurrent_cold_misses_share_one_storage_probe():
         patch(f"{SERVICE}.get_module_resolution_cache", side_effect=fake_get_cache),
         patch(f"{SERVICE}.set_module_resolution_cache", side_effect=fake_set_cache),
         patch(f"{SERVICE}.get_module", side_effect=fake_get_module) as mock_get,
-        patch(f"{SERVICE}._prefix_exists", new_callable=AsyncMock, return_value=False) as mock_prefix,
+        patch(
+            f"{SERVICE}._prefix_has_allowed_python_descendant",
+            new_callable=AsyncMock,
+            return_value=False,
+        ) as mock_prefix,
     ):
         first, second = await asyncio.gather(
             resolve_module_name("modules.concurrent_missing", scope=ModuleSourceScope(solution_id=None, global_repo_access=False)),
@@ -663,14 +755,17 @@ async def test_solution_namespace_precedes_global_concrete_module():
             return {"content": "GLOBAL = True", "path": path, "hash": "global"}
         return None
 
-    async def fake_prefix_exists(prefix: str):
+    async def fake_prefix_has_allowed_python_descendant(prefix: str):
         return prefix == f"_solutions/{SOLUTION_A}/modules/"
 
     with (
         patch(f"{SERVICE}.get_module_resolution_cache", new_callable=AsyncMock, return_value=None),
         patch(f"{SERVICE}.set_module_resolution_cache", new_callable=AsyncMock),
         patch(f"{SERVICE}.get_module", side_effect=fake_get_module) as mock_get,
-        patch(f"{SERVICE}._prefix_exists", side_effect=fake_prefix_exists),
+        patch(
+            f"{SERVICE}._prefix_has_allowed_python_descendant",
+            side_effect=fake_prefix_has_allowed_python_descendant,
+        ),
     ):
         result = await resolve_module_name(
             "modules",
@@ -699,7 +794,10 @@ async def test_resolve_module_rehydrates_cached_module_metadata_from_module_cach
             new_callable=AsyncMock,
             return_value={"content": "VALUE = 1", "path": "modules/helpers.py", "hash": "fresh"},
         ) as mock_get,
-        patch(f"{SERVICE}._prefix_exists", new_callable=AsyncMock) as mock_prefix,
+        patch(
+            f"{SERVICE}._prefix_has_allowed_python_descendant",
+            new_callable=AsyncMock,
+        ) as mock_prefix,
     ):
         result = await resolve_module_name("modules.helpers", scope=ModuleSourceScope(solution_id=None, global_repo_access=False))
 

@@ -694,6 +694,16 @@ class FileOperationsService:
     async def move_file(self, old_path: str, new_path: str) -> None:
         """Move a file behind the Python workspace generation barrier."""
         from src.core.module_cache import workspace_source_update
+        from src.services.editor.file_filter import (
+            is_allowed_python_module_path,
+            is_excluded_path,
+        )
+
+        if is_excluded_path(new_path) or (
+            new_path.endswith(".py")
+            and not is_allowed_python_module_path(new_path)
+        ):
+            raise ValueError(f"Path is excluded from workspace: {new_path}")
 
         async with workspace_source_update(
             reason="python_file_move",
@@ -746,8 +756,16 @@ class FileOperationsService:
 
             # Update module cache
             await invalidate_module(old_path)
-            if old_record.content:
-                await set_module(new_path, old_record.content, old_record.content_hash or "")
+            # A Python source renamed to a non-Python file leaves the import
+            # graph instead of publishing an invalid destination cache entry.
+            from src.services.editor.file_filter import is_allowed_python_module_path
+
+            if old_record.content and is_allowed_python_module_path(new_path):
+                await set_module(
+                    new_path,
+                    old_record.content,
+                    old_record.content_hash or "",
+                )
 
         # Move file in S3 _repo/ prefix for all file types
         old_s3_key = f"{REPO_PREFIX}{old_path}"
