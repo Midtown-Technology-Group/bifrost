@@ -11,6 +11,7 @@ from uuid import UUID, uuid4
 
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
+from sqlalchemy.ext.mutable import MutableList
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.models.orm.base import Base
@@ -29,7 +30,7 @@ class AgentRunFlagConversation(Base):
         unique=True,
     )
     messages: Mapped[list[dict]] = mapped_column(
-        postgresql.JSONB,
+        MutableList.as_mutable(postgresql.JSONB),
         nullable=False,
         default=list,
         server_default=sa.text("'[]'::jsonb"),

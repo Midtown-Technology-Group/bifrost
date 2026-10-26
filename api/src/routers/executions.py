@@ -262,6 +262,15 @@ class ExecutionRepository:
         if not user.is_superuser:
             query = query.where(ExecutionModel.executed_by == user.user_id)
 
+        # Use one timeline anchor for filtering, sorting, and pagination. In
+        # particular, Scheduled rows have no started_at until promotion.
+        timeline_at = func.coalesce(
+            ExecutionModel.started_at,
+            ExecutionModel.scheduled_at,
+            ExecutionModel.completed_at,
+            ExecutionModel.created_at,
+        )
+
         # Filters
         if workflow_id:
             query = query.where(
@@ -285,10 +294,10 @@ class ExecutionRepository:
         if start_date:
             try:
                 start_dt = datetime.fromisoformat(start_date.replace("Z", "+00:00"))
-                # Strip timezone for naive datetime comparison (DB stores UTC without tz)
+                # Compare UTC instants against the database's naive UTC values.
                 if start_dt.tzinfo is not None:
-                    start_dt = start_dt.replace(tzinfo=None)
-                query = query.where(ExecutionModel.started_at >= start_dt)
+                    start_dt = start_dt.astimezone(timezone.utc).replace(tzinfo=None)
+                query = query.where(timeline_at >= start_dt)
             except ValueError as e:
                 # Caller passed an invalid ISO date — silently ignore the filter
                 logger.debug(f"invalid start_date {log_safe(start_date)!r}, ignoring filter: {log_safe(e)}")
@@ -296,10 +305,10 @@ class ExecutionRepository:
         if end_date:
             try:
                 end_dt = datetime.fromisoformat(end_date.replace("Z", "+00:00"))
-                # Strip timezone for naive datetime comparison (DB stores UTC without tz)
+                # Compare UTC instants against the database's naive UTC values.
                 if end_dt.tzinfo is not None:
-                    end_dt = end_dt.replace(tzinfo=None)
-                query = query.where(ExecutionModel.started_at <= end_dt)
+                    end_dt = end_dt.astimezone(timezone.utc).replace(tzinfo=None)
+                query = query.where(timeline_at <= end_dt)
             except ValueError as e:
                 # Caller passed an invalid ISO date — silently ignore the filter
                 logger.debug(f"invalid end_date {log_safe(end_date)!r}, ignoring filter: {log_safe(e)}")
@@ -308,16 +317,8 @@ class ExecutionRepository:
         if exclude_local:
             query = query.where(ExecutionModel.is_local_execution == False)  # noqa: E712
 
-        # Use the same timeline anchor as the History UI. This keeps old
-        # cancelled Scheduled rows from jumping onto page one merely because
-        # they never received a started_at timestamp. created_at is non-null
-        # and anchors Pending rows that have not started or been scheduled.
-        timeline_at = func.coalesce(
-            ExecutionModel.started_at,
-            ExecutionModel.scheduled_at,
-            ExecutionModel.completed_at,
-            ExecutionModel.created_at,
-        )
+        # The same timeline anchor keeps filtering, sorting, and pagination
+        # consistent for Pending and Scheduled rows.
         query = query.order_by(
             desc(timeline_at),
             desc(ExecutionModel.id),

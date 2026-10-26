@@ -10,7 +10,7 @@ TemplateProcess via os.fork) use to run an execution:
   code changes are picked up from Redis.
 - _execute_sync() / _execute_async(): run a single execution using context
   assembled by the parent consumer and delivered over a private pipe.
-- _get_process_rss() / _get_pss_bytes() / _capture_resource_metrics():
+- _get_process_rss() / _capture_resource_metrics():
   per-process memory/resource reporting used by the pool for recycling
   bloated children.
 
@@ -219,8 +219,6 @@ async def _execute_async(
     """
     start_time = datetime.now(timezone.utc)
 
-    baseline_pss = _get_pss_bytes()
-
     # Cold module-index/import checks may use the injected worker socket.
     # Install the parent-owned token before those checks create an SDK client,
     # while no Solution namespace hook is active.
@@ -306,12 +304,6 @@ async def _execute_async(
         execution_context = dict(result.get("execution_context") or {})
         execution_context["workspace_generation"] = workspace_refresh.generation
 
-        # Overwrite peak_memory_bytes with PSS delta — the memory uniquely
-        # attributable to this execution, excluding shared parent pages.
-        end_pss = _get_pss_bytes()
-        if baseline_pss > 0 and end_pss > 0:
-            metrics["peak_memory_bytes"] = max(0, end_pss - baseline_pss)
-
         envelope: dict[str, Any] = {
             "execution_id": execution_id,
             "success": success,
@@ -346,30 +338,10 @@ async def _execute_async(
             "error_type": type(e).__name__,
             "duration_ms": duration_ms,
             "worker_id": worker_id,
-            # A failure snapshot, not a peak: PSS growth from before the
-            # execution started to the failure point. Absent (None) values
-            # mean "unknown", never zero usage.
-            "metrics": _capture_failure_metrics(baseline_pss),
+            # The one-shot worker's process high-water RSS is the execution
+            # peak even on the exception path.
+            "metrics": _capture_failure_metrics(),
         }
-
-
-def _get_pss_bytes() -> int:
-    """Get current PSS (Proportional Set Size) in bytes.
-
-    PSS divides shared pages proportionally among all processes sharing them
-    and counts private pages fully — giving the true unique memory footprint.
-    Reads from /proc/self/smaps_rollup on Linux/Docker.
-    Falls back to 0 if unavailable.
-    """
-    try:
-        with open("/proc/self/smaps_rollup") as f:
-            for line in f:
-                if line.startswith("Pss:"):
-                    return int(line.split()[1]) * 1024  # kB to bytes
-    except (OSError, ValueError) as e:
-        # /proc not available (macOS) or unexpected line format — caller treats 0 as unknown
-        logger.debug(f"could not read smaps_rollup PSS: {e}")
-    return 0
 
 
 def _get_process_rss() -> int:
@@ -389,25 +361,19 @@ def _get_process_rss() -> int:
     return 0
 
 
-def _capture_failure_metrics(baseline_pss: int) -> dict[str, Any]:
+def _capture_failure_metrics() -> dict[str, Any]:
     """Capture a best-effort resource snapshot for a failed execution.
 
-    Returns PSS growth since ``baseline_pss`` when both readings are
-    available, plus cumulative CPU time. Uses ``None`` (not ``0``) for
-    unknown memory so downstream aggregation can distinguish "no sample"
-    from "no usage".
+    Returns the process high-water RSS plus cumulative CPU time. The worker is
+    one-shot, so its process high-water mark is the execution peak rather than
+    an end-of-run snapshot.
     """
     usage = resource.getrusage(resource.RUSAGE_SELF)
-    end_pss = _get_pss_bytes()
-    if baseline_pss > 0 and end_pss > 0:
-        peak_memory_bytes: int | None = max(0, end_pss - baseline_pss)
-    else:
-        peak_memory_bytes = None
     peak_process_rss_bytes = (
         usage.ru_maxrss if sys.platform == 'darwin' else usage.ru_maxrss * 1024
     )
     return {
-        "peak_memory_bytes": peak_memory_bytes,
+        "peak_memory_bytes": peak_process_rss_bytes,
         "peak_process_rss_bytes": peak_process_rss_bytes,
         "cpu_user_seconds": round(usage.ru_utime, 4),
         "cpu_system_seconds": round(usage.ru_stime, 4),

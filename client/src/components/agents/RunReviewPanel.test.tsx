@@ -16,7 +16,7 @@ vi.mock("@/services/agentRuns", () => ({
 	}),
 }));
 
-import { RunPayloads, RunReviewPanel } from "./RunReviewPanel";
+import { MetadataChips, RunPayloads, RunReviewPanel } from "./RunReviewPanel";
 
 type AgentRunDetail = components["schemas"]["AgentRunDetailResponse"];
 
@@ -43,6 +43,30 @@ const baseRun: AgentRunDetail = {
 };
 
 describe("RunReviewPanel", () => {
+	it("renders JSON metadata values and highlights their displayed text", () => {
+		renderWithProviders(
+			<MetadataChips
+				metadata={{
+					label: "ticket",
+					count: 0,
+					ok: false,
+					empty: null,
+					details: ["needle", { id: 1 }],
+				}}
+				highlight="needle"
+			/>,
+		);
+
+		expect(screen.getByText("ticket")).toBeInTheDocument();
+		expect(screen.getByText("0")).toBeInTheDocument();
+		expect(screen.getByText("false")).toBeInTheDocument();
+		expect(screen.getByText("null")).toBeInTheDocument();
+		expect(screen.getByText('["needle",{"id":1}]')).toBeInTheDocument();
+		expect(screen.getByTitle('details=["needle",{"id":1}]')).toHaveClass(
+			"bg-yellow-500/15",
+		);
+	});
+
 	it("renders the asked text", () => {
 		renderWithProviders(
 			<RunReviewPanel

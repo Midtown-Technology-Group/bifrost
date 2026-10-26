@@ -14263,7 +14263,7 @@ export interface components {
             answered?: string | null;
             /** Metadata */
             metadata?: {
-                [key: string]: string;
+                [key: string]: unknown;
             };
             /** Confidence */
             confidence?: number | null;
@@ -14410,7 +14410,7 @@ export interface components {
             answered?: string | null;
             /** Metadata */
             metadata?: {
-                [key: string]: string;
+                [key: string]: unknown;
             };
             /** Confidence */
             confidence?: number | null;
@@ -33375,6 +33375,12 @@ export interface components {
              * @description Formatted time bucket label
              */
             group: string;
+            /**
+             * Bucket Start
+             * Format: date-time
+             * @description Exact UTC bucket start
+             */
+            bucket_start: string;
             /**
              * Worker Id
              * @description Container/pool identifier

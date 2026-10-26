@@ -78,6 +78,19 @@ def test_run_to_response_handles_missing_agent_and_metadata() -> None:
     assert response.metadata == {}
 
 
+def test_run_to_response_accepts_structured_json_metadata() -> None:
+    metadata = {
+        "attempt": 2,
+        "cached": False,
+        "labels": ["reviewed"],
+        "provider": {"name": "example"},
+    }
+
+    response = agent_runs._run_to_response(_run(run_metadata=metadata))
+
+    assert response.metadata == metadata
+
+
 @pytest.mark.asyncio
 async def test_sync_agent_wait_releases_request_db_connection(monkeypatch) -> None:
     db = SimpleNamespace(rollback=AsyncMock())

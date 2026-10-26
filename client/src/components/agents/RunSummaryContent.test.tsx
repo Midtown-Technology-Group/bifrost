@@ -26,6 +26,28 @@ const run: AgentRun = {
 };
 
 describe("RunSummaryContent", () => {
+	it("renders and ranks structured metadata without string-only operations", () => {
+		renderWithProviders(
+			<RunSummaryContent
+				run={{
+					...run,
+					metadata: {
+						count: 0,
+						ok: false,
+						empty: null,
+						details: { queue: ["needle"] },
+					},
+				}}
+				highlight="needle"
+			/>,
+		);
+
+		expect(screen.getByText('{"queue":["needle"]}')).toBeInTheDocument();
+		expect(screen.getByText("0")).toBeInTheDocument();
+		expect(screen.getByText("false")).toBeInTheDocument();
+		expect(screen.getByText("+1")).toBeInTheDocument();
+	});
+
 	it("uses a subtle, accessible status indicator and consistent run hierarchy", () => {
 		renderWithProviders(<RunSummaryContent run={run} />);
 

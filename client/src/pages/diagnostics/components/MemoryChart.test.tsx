@@ -11,7 +11,20 @@ vi.mock("recharts", () => {
 		<div>{children}</div>
 	);
 	return {
-		AreaChart: Chart,
+		AreaChart: ({
+			children,
+			data,
+		}: {
+			children?: ReactNode;
+			data?: unknown[];
+		}) => (
+			<div
+				data-testid="memory-area-chart"
+				data-points={data?.length ?? 0}
+			>
+				{children}
+			</div>
+		),
 		Area: () => null,
 		XAxis: () => null,
 		YAxis: () => null,
@@ -93,6 +106,29 @@ it("treats null and non-finite memory values as unknown", () => {
 	expect(
 		screen.queryByText(/NaN|Infinity|no memory limit reported/i),
 	).not.toBeInTheDocument();
+	expect(screen.queryByTestId("memory-area-chart")).not.toBeInTheDocument();
+	expect(
+		screen.getByText("No metrics data available yet"),
+	).toBeInTheDocument();
+});
+
+it("retains a valid zero-memory bucket", () => {
+	renderWithProviders(
+		<MemoryChart
+			livePoints={[
+				{
+					group: "now",
+					worker_id: "worker-one",
+					memory_current: 0,
+					memory_max: 100,
+				} as never,
+			]}
+		/>,
+	);
+	expect(screen.getByTestId("memory-area-chart")).toHaveAttribute(
+		"data-points",
+		"1",
+	);
 });
 
 it("keeps historical invalid memory unknown after a valid latest sample", () => {
@@ -121,4 +157,37 @@ it("keeps historical invalid memory unknown after a valid latest sample", () => 
 			"Memory telemetry unavailable for one or more workers",
 		),
 	).toBeInTheDocument();
+});
+
+it("keeps distinct buckets that share the same display label", () => {
+	useWorkerMetrics.mockReturnValue({
+		data: {
+			points: [
+				{
+					group: "Oct 13",
+					bucket_start: "2026-10-13T01:00:00Z",
+					worker_id: "worker-one",
+					memory_current: 10,
+					memory_max: 100,
+				},
+				{
+					group: "Oct 13",
+					bucket_start: "2026-10-13T01:30:00Z",
+					worker_id: "worker-one",
+					memory_current: 20,
+					memory_max: 100,
+				},
+			],
+		},
+		isLoading: false,
+		isError: false,
+		isFetching: false,
+		refetch: vi.fn(),
+	});
+
+	renderWithProviders(<MemoryChart />);
+	expect(screen.getByTestId("memory-area-chart")).toHaveAttribute(
+		"data-points",
+		"2",
+	);
 });
