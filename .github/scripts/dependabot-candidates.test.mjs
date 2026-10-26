@@ -381,3 +381,18 @@ test('both artifact producers name every component with their own exact run atte
   assert.ok(builder.includes('name: dependabot-candidate-${{ matrix.component }}-attempt-${{ github.run_attempt }}'));
   assert.ok(publisher.includes('name: dependabot-publication-${{ matrix.artifact.component }}-attempt-${{ github.run_attempt }}'));
 });
+
+test('every workflow_run checkout explicitly binds the authorized repository, including trusted tooling', async () => {
+  for (const file of ['dependabot-candidates.yml', 'publish-dependabot-candidates.yml']) {
+    const workflow = await readFile(new URL(`../workflows/${file}`, import.meta.url), 'utf8');
+    const lines = workflow.split('\n');
+    let checkouts = 0;
+    for (const [index, line] of lines.entries()) {
+      if (!line.includes('uses: actions/checkout@')) continue;
+      checkouts++;
+      assert.equal(lines[index + 1].trim(), 'with:');
+      assert.equal(lines[index + 2].trim(), `repository: ${repository}`);
+    }
+    assert.equal(checkouts, 2);
+  }
+});
