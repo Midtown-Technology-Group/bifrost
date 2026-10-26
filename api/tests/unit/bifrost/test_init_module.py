@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from unittest.mock import Mock
-
 import pytest
 
 import bifrost
@@ -9,33 +7,33 @@ import bifrost
 
 def test_compute_version_prefers_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("BIFROST_VERSION", "2026.7.5")
-    check_output = Mock()
-    monkeypatch.setattr(bifrost._subprocess, "check_output", check_output)
+    monkeypatch.setattr(
+        bifrost._importlib_metadata,
+        "version",
+        lambda _name: pytest.fail("metadata lookup should not run"),
+    )
 
     assert bifrost._compute_version() == "2026.7.5"
-    check_output.assert_not_called()
 
 
-def test_compute_version_uses_git_describe(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_compute_version_uses_package_metadata(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("BIFROST_VERSION", raising=False)
-    check_output = Mock(return_value="v1.2.3-dirty\n")
-    monkeypatch.setattr(bifrost._subprocess, "check_output", check_output)
-
-    assert bifrost._compute_version() == "v1.2.3-dirty"
-    check_output.assert_called_once_with(
-        ["git", "describe", "--tags", "--always", "--dirty"],
-        text=True,
-        stderr=bifrost._subprocess.DEVNULL,
+    monkeypatch.setattr(
+        bifrost._importlib_metadata,
+        "version",
+        lambda name: "1.2.3" if name == "bifrost" else "unexpected",
     )
+
+    assert bifrost._compute_version() == "1.2.3"
 
 
 def test_compute_version_falls_back_to_unknown(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("BIFROST_VERSION", raising=False)
-    monkeypatch.setattr(
-        bifrost._subprocess,
-        "check_output",
-        Mock(side_effect=OSError("git unavailable")),
-    )
+
+    def missing_package(_name: str) -> str:
+        raise bifrost._importlib_metadata.PackageNotFoundError
+
+    monkeypatch.setattr(bifrost._importlib_metadata, "version", missing_package)
 
     assert bifrost._compute_version() == "unknown"
 
