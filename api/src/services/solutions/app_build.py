@@ -22,10 +22,9 @@ import tempfile
 from pathlib import Path
 from uuid import UUID
 
-from aiobotocore.session import get_session
-
 from shared.subprocess_env import package_tool_env
 from src.config import Settings, get_settings
+from src.core.s3_transport import S3Transport
 
 logger = logging.getLogger(__name__)
 
@@ -60,13 +59,11 @@ class SolutionAppBuilder:
         return f"{base}{rel.lstrip('/')}" if rel else base
 
     def _client(self):
-        session = get_session()
-        return session.create_client(
-            "s3",
+        return S3Transport(
             endpoint_url=self._settings.s3_endpoint_url,
-            aws_access_key_id=self._settings.s3_access_key,
-            aws_secret_access_key=self._settings.s3_secret_key,
-            region_name=self._settings.s3_region,
+            access_key_id=self._settings.s3_access_key,
+            secret_access_key=self._settings.s3_secret_key,
+            region=self._settings.s3_region,
         )
 
     def compile_dist(

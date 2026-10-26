@@ -18,10 +18,13 @@ and ``tests/e2e/mcp/test_mcp_parity.py`` (live REST round-trip), not here.
 """
 
 from datetime import datetime, timezone
+from typing import Annotated, Any
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID, uuid4
 
 import pytest
+from mcp.server.fastmcp import FastMCP
+from pydantic import Field
 
 from src.core.principal import UserPrincipal
 from src.services.authorization.context import AuthorizationContext
@@ -248,6 +251,89 @@ class TestBifrostMCPServer:
 
         server = BifrostMCPServer(org_user_context)
         assert server.context == org_user_context
+
+
+@pytest.mark.asyncio
+async def test_sdk_generator_keeps_json_alias_in_schema_and_calls_python_parameter():
+    """The SDK passes aliases to wrappers, while handlers use Python names."""
+    from src.services.mcp_server.generators.fastmcp_generator import (
+        register_tool_with_context,
+    )
+    from src.services.mcp_server.tool_result import direct_result
+
+    seen: dict[str, Any] = {}
+
+    async def aliased_tool(
+        context: Any,
+        async_: Annotated[bool | None, Field(alias="async")] = None,
+    ):
+        seen["context"] = context
+        seen["async_"] = async_
+        return direct_result({"ok": True})
+
+    mcp = FastMCP("test")
+    context = object()
+    register_tool_with_context(
+        mcp,
+        aliased_tool,
+        "aliased_tool",
+        "Test alias forwarding.",
+        lambda: context,
+    )
+
+    tool = mcp._tool_manager.get_tool("aliased_tool")
+    assert tool is not None
+    assert "async" in tool.parameters["properties"]
+    assert "async_" not in tool.parameters["properties"]
+
+    await tool.run({"async": True}, convert_result=True)
+
+    assert seen == {"context": context, "async_": True}
+
+@pytest.mark.asyncio
+async def test_sdk_refresh_rebinds_a_reused_workflow_tool_name(monkeypatch, org_user_context):
+    """A name reassigned during refresh must call its current workflow."""
+    from contextlib import asynccontextmanager
+    from types import SimpleNamespace
+    from uuid import uuid4
+
+    from src.services.mcp_server import server
+
+    @asynccontextmanager
+    async def database():
+        yield object()
+
+    old_id, current_id = uuid4(), uuid4()
+    workflows = [SimpleNamespace(
+        id=old_id, name="Reused Tool", description="Old description",
+        parameters_schema=[],
+    )]
+    current = SimpleNamespace(
+        id=current_id, name="Reused Tool", description="Current description",
+        parameters_schema=[],
+    )
+    registry = AsyncMock(side_effect=lambda: workflows)
+    execute = AsyncMock(return_value={"ok": True})
+    monkeypatch.setattr("src.core.database.get_db_context", database)
+    monkeypatch.setattr("src.services.tool_registry.ToolRegistry.get_all_tools", registry)
+    monkeypatch.setattr(server, "_fastmcp_instance", None)
+    monkeypatch.setattr(server, "_WORKFLOW_ID_TO_TOOL_NAME", {})
+    monkeypatch.setattr(server, "_get_context_from_token", lambda: org_user_context)
+    monkeypatch.setattr(server, "_execute_workflow_tool_impl", execute)
+    mcp = FastMCP("refresh-test")
+
+    assert await server._register_workflow_tools(mcp) == 1
+    workflows[:] = [current]
+    assert await server.refresh_workflow_tools() == 1
+    tool = mcp._tool_manager.get_tool("reused_tool")
+    assert tool is not None
+    await tool.run({})
+
+    execute.assert_awaited_once_with(
+        org_user_context, str(current_id), current.name,
+    )
+    assert tool.description == current.description
+
 
 # ==================== get_system_tool_ids Tests ====================
 

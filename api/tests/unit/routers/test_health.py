@@ -78,15 +78,9 @@ class FakeS3ClientContext:
         return None
 
 
-class FakeS3Session:
+class FakeS3Transport(FakeS3ClientContext):
     def __init__(self, head_bucket_error: Exception | None = None):
-        self.client = FakeS3Client(head_bucket_error)
-        self.context = FakeS3ClientContext(self.client)
-        self.create_client_count = 0
-
-    def create_client(self, *args, **kwargs):
-        self.create_client_count += 1
-        return self.context
+        super().__init__(FakeS3Client(head_bucket_error))
 
 
 @pytest.mark.asyncio
@@ -203,14 +197,14 @@ async def test_redis_check_reuses_cached_client(monkeypatch):
 @pytest.mark.asyncio
 async def test_s3_check_reuses_cached_client(monkeypatch):
     await health.close_health_check_clients()
-    sessions: list[FakeS3Session] = []
+    clients: list[FakeS3Transport] = []
 
-    def get_session():
-        session = FakeS3Session()
-        sessions.append(session)
-        return session
+    def create_transport(*args, **kwargs):
+        client = FakeS3Transport()
+        clients.append(client)
+        return client
 
-    monkeypatch.setattr(health, "get_session", get_session)
+    monkeypatch.setattr(health, "S3Transport", create_transport)
 
     try:
         first_name, first_component = await health.check_s3(_settings())
@@ -222,24 +216,23 @@ async def test_s3_check_reuses_cached_client(monkeypatch):
     assert second_name == "s3"
     assert first_component == {"status": "healthy", "type": "s3"}
     assert second_component == {"status": "healthy", "type": "s3"}
-    assert len(sessions) == 1
-    assert sessions[0].create_client_count == 1
-    assert sessions[0].context.enter_count == 1
-    assert sessions[0].client.head_bucket_count == 2
-    assert sessions[0].context.exit_count == 1
+    assert len(clients) == 1
+    assert clients[0].enter_count == 1
+    assert clients[0].client.head_bucket_count == 2
+    assert clients[0].exit_count == 1
 
 
 @pytest.mark.asyncio
 async def test_s3_check_closes_cached_client_when_settings_change(monkeypatch):
     await health.close_health_check_clients()
-    sessions: list[FakeS3Session] = []
+    clients: list[FakeS3Transport] = []
 
-    def get_session():
-        session = FakeS3Session()
-        sessions.append(session)
-        return session
+    def create_transport(*args, **kwargs):
+        client = FakeS3Transport()
+        clients.append(client)
+        return client
 
-    monkeypatch.setattr(health, "get_session", get_session)
+    monkeypatch.setattr(health, "S3Transport", create_transport)
 
     try:
         await health.check_s3(_settings())
@@ -249,10 +242,9 @@ async def test_s3_check_closes_cached_client_when_settings_change(monkeypatch):
     finally:
         await health.close_health_check_clients()
 
-    assert len(sessions) == 2
-    assert [session.create_client_count for session in sessions] == [1, 1]
-    assert sessions[0].context.exit_count == 1
-    assert sessions[1].context.exit_count == 1
+    assert len(clients) == 2
+    assert [client.enter_count for client in clients] == [1, 1]
+    assert [client.exit_count for client in clients] == [1, 1]
 
 
 @pytest.mark.asyncio
