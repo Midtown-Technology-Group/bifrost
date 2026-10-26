@@ -59,7 +59,9 @@ class EmbeddingTestRequest(BaseModel):
 
     api_key: str | None = Field(
         None,
-        description="API key to test. Omit to use the saved key.",
+        description=(
+            "API key to test. Omit to use the saved key only with its saved endpoint."
+        ),
     )
     model: str = Field(
         "text-embedding-3-small",

@@ -37,6 +37,7 @@ async def get_llm_config(
     profile_id: UUID | None = None,
     profile_name: str | None = None,
     assignment_key: AIModelAssignmentKey = "primary",
+    detect_transport: bool = True,
 ) -> LLMConfig:
     """
     Resolve LLM configuration from a model profile or assignment.
@@ -52,6 +53,7 @@ async def get_llm_config(
             profile_id=profile_id,
             profile_name=profile_name,
             assignment_key=assignment_key,
+            detect_transport=detect_transport,
         )
     except (UsageLimitExceeded, ValueError):
         raise
