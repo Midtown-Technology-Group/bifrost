@@ -11,7 +11,7 @@ def test_version_notice_is_deduped_by_url_and_server_version(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(_version_notice.tempfile, "gettempdir", lambda: str(tmp_path))
+    monkeypatch.setattr(_version_notice, "user_cache_path", lambda _app: tmp_path)
 
     api_url = "https://dev.bifrost.example.com/"
 
@@ -24,10 +24,36 @@ def test_version_notice_is_deduped_by_url_and_server_version(
     assert len(list(tmp_path.glob("bifrost-vnotice-*"))) == 1
 
 
+def test_version_notice_replaces_symlink_without_clobbering_target(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(_version_notice, "user_cache_path", lambda _app: tmp_path)
+
+    api_url = "https://dev.bifrost.example.com"
+    target = tmp_path / "victim"
+    target.write_text("preserve me", encoding="utf-8")
+    marker = _version_notice._marker_path(api_url)
+    marker.symlink_to(target)
+
+    _version_notice.mark_notified(api_url, "2026.7.5")
+
+    assert target.read_text(encoding="utf-8") == "preserve me"
+    assert marker.is_symlink() is False
+    assert marker.read_text(encoding="utf-8") == "2026.7.5"
+
+
 def test_version_notice_read_and_write_failures_are_best_effort(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     class BrokenMarker:
+        @property
+        def parent(self):
+            return self
+
+        def mkdir(self, *args, **kwargs) -> None:
+            raise OSError("cannot create marker directory")
+
         def exists(self) -> bool:
             return True
 
