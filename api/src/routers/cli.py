@@ -63,6 +63,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.services.operation_catalog import operation_route
 from src.core.auth import Context, CurrentEngineOrBypassUser, CurrentUser
+from src.core.runtime_sdk_ingress import SDKGetPrincipal, SDKMappingPrincipal
 from src.core.principal import UserPrincipal
 from src.core.database import get_db
 from src.core.log_safety import log_safe
@@ -840,7 +841,7 @@ async def _connection_is_declared(
 )
 async def sdk_integrations_get(
     request: SDKIntegrationsGetRequest,
-    current_user: CurrentEngineOrBypassUser,
+    current_user: SDKGetPrincipal,
     db: AsyncSession = Depends(get_db),
 ) -> SDKIntegrationsGetResponse | None:
     """Get integration mapping data for an organization via SDK.
@@ -1243,7 +1244,7 @@ async def sdk_integrations_list_mappings(
 )
 async def sdk_integrations_get_mapping(
     request: SDKIntegrationsGetMappingRequest,
-    current_user: CurrentEngineOrBypassUser,
+    current_user: SDKMappingPrincipal,
     db: AsyncSession = Depends(get_db),
 ) -> SDKIntegrationsMappingItem | None:
     """Get a specific integration mapping by org_id or entity_id via SDK."""
