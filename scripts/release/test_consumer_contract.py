@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Offline cross-repo acceptance at pinned source; no CLI main or live operations.
 
-BIFROST_INFRA_CONTRACT_ROOT must name an unmodified checkout of CONSUMER_SHA.
+An explicit BIFROST_INFRA_CONTRACT_ROOT selects an exact owner checkout;
+normal discovery executes the same tests against pinned source fixtures.
 Run with Python's existing unittest runner. External processes are fail-closed
 simulations, not signed integration proof.
 """
@@ -12,11 +13,12 @@ import copy
 import hashlib
 import importlib.util
 import json
-import os
 from pathlib import Path
 import subprocess
 import tempfile
 import unittest
+
+from contract_sources import sources
 from unittest.mock import patch
 
 CONSUMER_SHA = 'ecea7f7f07a0c79041cb9d7bb12987862b47ecf4'
@@ -26,18 +28,9 @@ FIXTURES = Path(__file__).resolve().parent / 'fixtures/protected-main'
 class ConsumerContractAcceptance(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.root = Path(os.environ['BIFROST_INFRA_CONTRACT_ROOT']).resolve()
-        head = subprocess.run(['git', '-C', str(cls.root), 'rev-parse', 'HEAD'],
-                              check=True, capture_output=True, text=True).stdout.strip()
-        if head != CONSUMER_SHA:
-            raise ValueError(f'consumer must be exactly {CONSUMER_SHA}, got {head}')
-        for name in ('platform_release.py', 'promote-platform-images.py'):
-            path = cls.root / 'scripts' / name
-            committed = subprocess.run(['git', '-C', str(cls.root), 'show',
-                                        f'{CONSUMER_SHA}:scripts/{name}'],
-                                       check=True, capture_output=True).stdout
-            if path.read_bytes() != committed:
-                raise ValueError(f'consumer source differs from pinned commit: {name}')
+        context = sources('consumer', CONSUMER_SHA, 'BIFROST_INFRA_CONTRACT_ROOT')
+        cls.root = context.__enter__()
+        cls.addClassCleanup(context.__exit__, None, None, None)
         spec = importlib.util.spec_from_file_location(
             'independent_consumer', cls.root / 'scripts/promote-platform-images.py')
         cls.promote = importlib.util.module_from_spec(spec)

@@ -23,8 +23,13 @@ BIFROST_PRODUCER_CONTRACT_ROOT=/path/to/exact/producer-checkout \
   python3 scripts/release/test_revised_producer_contract.py
 ```
 
-Both cross-repository suites verify the supplied checkout HEAD and imported source
-files against their pinned commits. They use the existing unittest framework and
+With explicit checkout variables, both cross-repository suites verify checkout
+HEAD and imported source-file hashes against their pinned commits. Without those
+variables, normal comprehensive discovery executes every acceptance case using
+checked-in byte-for-byte source archives from those same commits. The source
+index records repository, commit, archive SHA256 and every included file SHA256.
+Extraction verifies those hashes and the exact file set before import. No network,
+new credentials, skip or coverage exclusion is needed for normal collection. They use the existing unittest framework and
 owner test seams. No promoter/deployer CLI main executes. Docker/cosign/GitHub
 transports are bounded simulations; unexpected commands fail closed. Revised
 producer Git comparisons are real, with network fetch suppressed.
@@ -94,21 +99,49 @@ emitted by the exact revised producer using its existing verified-results seam,
 with a synthetic gh wrapper and inner bundle. Changing that unsigned fixture shape
 is not a cryptographic fix or an owner implementation change.
 
-## Draft readiness and next step
+## CI collection correction and draft status
 
-The branch includes current fetched `origin/main` (`f5b2b2c00`) and exact producer
-`723e767a7`. A draft should target `feat/protected-main-production-receipt` to keep
-its review diff test-only. No draft, push, merge or deployment has occurred.
+[Draft #1401](https://github.com/Midtown-Technology-Group/bifrost/pull/1401) remains
+stacked on producer #1400, unmerged, with no deployment authority. Commit
+`756310d05` and its earlier red/green evidence remain in branch history.
 
-The normal affected planner selects comprehensive lanes because the candidate
-contains producer `.github/workflows/ci.yml` changes relative to main. In addition
-to CI-deferred broad suites, `./test.sh pre-pr` runs Docker-backed API quality and
-generated checks locally. It was **not run** on this host: the repository requires
-the dedicated pve-t340 Linux Docker test lane or CI, and this task excludes new
-credentials and expensive shared-VM changes. No selector, gate or permission was
-changed to obtain a pass. The smallest next step is the supported pre-PR gate for
-the committed candidate; only after it passes may the prepared test-only draft be
-published. Fresh consumer-owner CI is not a substitute for this candidate's gate.
+The original exact-head CI run 40415661642 passed Pre-PR Candidate and lint but
+failed Sonar's `Collect repository Python tool coverage`: normal discovery ran
+both cross-repository unittest classes without their checkout environment
+variables, and class setup raised `KeyError`. That was an introduced fixture
+boundary defect, not a failing provenance assertion.
+
+The correction supplies pinned source archives as normal test fixtures. The
+same tests and assertions run in both modes, with real consumer functions and
+producer policy; only external signing/network transports remain simulated.
+Producer fixture imports are isolated from pytest's already-loaded local script
+modules and restore `sys.path`/`sys.modules`, preventing collection-order source
+substitution. Explicit checkout settings still fail closed on wrong HEAD or file
+drift instead of silently using the archive. The explicit integration run against
+actual owner checkouts remains supported and independently validated.
+
+Archive provenance is in `scripts/release/fixtures/protected-main/sources.json`.
+To reproduce each archive with an already-authorized owner checkout, read its
+listed file paths and commit, use `git archive --format=tar <commit> <paths...>`
+with sorted paths, then Python `gzip.compress(tar_bytes, mtime=0)` on Python 3.13.
+Per-file hashes come from `git show <commit>:<path>`. These are source snapshots,
+not Sigstore bundles or evidence of a real signed transfer. Existing CI needs no
+private-repository fetch or additional permissions to run normal discovery.
+No credentials/grants, selectors, coverage exclusions or workflow layers changed.
+
+Correction validation on this host: normal tracked-script discovery, with both
+checkout variables absent and coverage enabled, passed **368 tests and 445
+subtests**. The explicit exact-owner-checkout run passed **21 tests and 41
+subtests**. Five source-loader tests cover corrupt archive, wrong pin, wrong
+explicit HEAD, file drift and fixture lifetime. The initial local interpreter
+lacked httpx; a disposable tools venv with the repository's existing dev test
+dependencies supplied it. No repository dependency or CI configuration changed.
+
+A new exact-head CI result is still required. Existing-account GitHub REST calls
+returned HTTP 403, core rate limit remaining 0, resetting at
+`2026-10-26T23:39:52+00:00`. No alternate account/token or permission change is
+used to work around that boundary. The earlier 756310d05 CI failure remains
+historical evidence, not validation of this correction.
 
 Detached read-only checkouts `/tmp/bifrost-infra-contract-ecea7f7` and
 `/tmp/bifrost-producer-contract-723e767` are retained for reproduction; the earlier

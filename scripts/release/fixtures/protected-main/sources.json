@@ -1,0 +1,27 @@
+{
+  "consumer": {
+    "archive": "consumer-ecea7f7f.tar.gz",
+    "commit": "ecea7f7f07a0c79041cb9d7bb12987862b47ecf4",
+    "files": {
+      "scripts/platform_release.py": "4ee188dde201c53b0c22cd4d4b204db752935be0662b5524c7f1d35810ec5081",
+      "scripts/promote-platform-images.py": "bc237d22183711862e0dec2bf4fbbfdb54b5382a14523e766a04ce44791d58aa"
+    },
+    "repository": "MTG-Thomas/bifrost-infra",
+    "sha256": "8afc3c09eb473fd71cb5f4b3bd36c01996108ae0a5175441289691b5707cd23b"
+  },
+  "producer": {
+    "archive": "producer-723e767a.tar.gz",
+    "commit": "723e767a7ac3c21a1b2645f7b1e033a6a12c6a22",
+    "files": {
+      "api/scripts/ci/candidate_image.py": "c2550154263428b060c440ae6732419c1fa103247adaef6314cb1bdc7be1993b",
+      "scripts/release/accept_release_images.py": "04b83c07903172412a1e34d0d75c00125d6ef98a60d0c653dc2fa7039dd7be0d",
+      "scripts/release/candidate_provenance.py": "c0d1e2ed4ae4c4f21b2c78fa406c58c1747d25904ef4da1a133a451b79ea96af",
+      "scripts/release/production_manifest.py": "eb829127410ec3082c78eab2cc037b325c3b03dd42b846680c94267ca183279d",
+      "scripts/release/release_manifest.py": "7275879ef5ebe68f19923c58bdc927a31b60d32eba9ba793f590e6f434b32797",
+      "scripts/release/test_production_manifest.py": "7ce46679966734d064e5c5cf1f0e3eed83d36ede56c7f2f2f87a20de8ccf36ba",
+      "scripts/release/test_release_manifest.py": "988c37f141734c1c199759781d019dda3b54af28a9de7e69228fa8919ec13709"
+    },
+    "repository": "Midtown-Technology-Group/bifrost",
+    "sha256": "44250efd37e929ad71b47778f800aa3c348866ae0f0da9a49b2f54dd2a29b38a"
+  }
+}

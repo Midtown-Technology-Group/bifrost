@@ -7,12 +7,9 @@ new assembly provenance boundary with synthetic verified SLSA v1 results.
 from __future__ import annotations
 
 import copy
-import importlib.util
-import os
-from pathlib import Path
-import subprocess
-import sys
 import unittest
+
+from contract_sources import producer_fixture, sources
 
 PRODUCER_SHA = '723e767a7ac3c21a1b2645f7b1e033a6a12c6a22'
 
@@ -20,22 +17,10 @@ PRODUCER_SHA = '723e767a7ac3c21a1b2645f7b1e033a6a12c6a22'
 class RevisedProducerAcceptance(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.root = Path(os.environ['BIFROST_PRODUCER_CONTRACT_ROOT']).resolve()
-        head = subprocess.run(['git', '-C', str(cls.root), 'rev-parse', 'HEAD'],
-                              check=True, capture_output=True, text=True).stdout.strip()
-        if head != PRODUCER_SHA:
-            raise ValueError(f'producer must be exactly {PRODUCER_SHA}, got {head}')
-        for name in ('production_manifest.py', 'candidate_provenance.py', 'test_production_manifest.py'):
-            expected = subprocess.run(['git', '-C', str(cls.root), 'show',
-                                       f'{PRODUCER_SHA}:scripts/release/{name}'],
-                                      check=True, capture_output=True).stdout
-            if (cls.root / 'scripts/release' / name).read_bytes() != expected:
-                raise ValueError(f'producer source differs from pinned commit: {name}')
-        sys.path.insert(0, str(cls.root / 'scripts/release'))
-        spec = importlib.util.spec_from_file_location('revised_fixture',
-            cls.root / 'scripts/release/test_production_manifest.py')
-        cls.owner_fixture = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(cls.owner_fixture)
+        context = sources('producer', PRODUCER_SHA, 'BIFROST_PRODUCER_CONTRACT_ROOT')
+        cls.root = context.__enter__()
+        cls.addClassCleanup(context.__exit__, None, None, None)
+        cls.owner_fixture = producer_fixture(cls.root)
 
     def setUp(self):
         self.fixture = self.owner_fixture.ProductionManifestTests(
