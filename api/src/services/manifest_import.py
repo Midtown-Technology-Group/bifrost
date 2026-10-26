@@ -713,7 +713,15 @@ async def _resolve_role_names(
     if not names:
         return []
     result = await db.execute(select(Role.id, Role.name).where(Role.name.in_(list(set(names)))))
-    by_name: dict[str, str] = {row[1]: str(row[0]) for row in result.all()}
+    by_name: dict[str, str] = {}
+    for role_id, role_name in result.all():
+        resolved_id = str(role_id)
+        existing_id = by_name.get(role_name)
+        if existing_id is not None and existing_id != resolved_id:
+            raise ValueError(
+                f"ambiguous role name: {role_name} — rename duplicate roles before import."
+            )
+        by_name[role_name] = resolved_id
     resolved: list[str] = []
     for name in names:
         role_id = by_name.get(name)
@@ -819,13 +827,21 @@ class ManifestResolver:
             cache["org_ids"].add(row[0])
             cache["org_by_name"][row[1]] = row[0]
 
-        # Roles: {id} set + {name: id} dict
+        # Roles: {id} set + unambiguous {name: id} dict + ambiguous names.
+        # Duplicate names are schema-valid, so record them without blocking
+        # unrelated imports or an ID-first import that repairs the duplicate.
         role_result = await self.db.execute(select(Role.id, Role.name))
         cache["role_ids"] = set()
         cache["role_by_name"] = {}
+        cache["ambiguous_role_names"] = set()
         for row in role_result.all():
             cache["role_ids"].add(row[0])
-            cache["role_by_name"][row[1]] = row[0]
+            existing_id = cache["role_by_name"].get(row[1])
+            if existing_id is not None and existing_id != row[0]:
+                cache["ambiguous_role_names"].add(row[1])
+                cache["role_by_name"].pop(row[1], None)
+            elif row[1] not in cache["ambiguous_role_names"]:
+                cache["role_by_name"][row[1]] = row[0]
 
         # Workflows: {(path, function_name): id} + {id} set
         workflow_query = select(Workflow.id, Workflow.path, Workflow.function_name)
@@ -1569,6 +1585,10 @@ class ManifestResolver:
             )]
 
         # 2. Try by name (cross-env ID sync)
+        if mrole.name in cache.get("ambiguous_role_names", set()):
+            raise ValueError(
+                f"ambiguous role name: {mrole.name} — rename duplicate roles before import."
+            )
         existing_by_name = cache["role_by_name"].get(mrole.name)
         if existing_by_name is not None:
             return [Upsert(
