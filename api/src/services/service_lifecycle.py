@@ -32,10 +32,10 @@ import secrets
 from datetime import datetime, timedelta, timezone
 from uuid import UUID, uuid4
 
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import and_, func, or_, select, true
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import aliased, joinedload
 
 from src.models.orm.services import _SERVICE_LIVE_STATES, ServiceAttempt, ServiceDefinition, ServiceLog
 from src.models.orm.workflows import Workflow
@@ -406,23 +406,30 @@ async def list_attempts(
     limit: int = 100,
     offset: int = 0,
 ) -> tuple[list[ServiceAttempt], int]:
-    """Attempts newest-first with a total count."""
-    total = (
-        await db.scalar(
-            select(func.count(ServiceAttempt.id)).where(
-                ServiceAttempt.service_id == service_id
-            )
-        )
-        or 0
+    """Attempts newest-first with a snapshot-consistent total count."""
+    total_query = (
+        select(func.count(ServiceAttempt.id).label("total"))
+        .where(ServiceAttempt.service_id == service_id)
+        .cte("service_attempt_total")
     )
-    result = await db.execute(
+    page_query = (
         select(ServiceAttempt)
         .where(ServiceAttempt.service_id == service_id)
         .order_by(ServiceAttempt.created_at.desc(), ServiceAttempt.id.desc())
         .limit(limit)
         .offset(offset)
+        .cte("service_attempt_page")
     )
-    return list(result.scalars().all()), total
+    page_attempt = aliased(ServiceAttempt, page_query)
+    result = await db.execute(
+        select(page_attempt, total_query.c.total)
+        .select_from(total_query.outerjoin(page_query, true()))
+        .order_by(page_query.c.created_at.desc(), page_query.c.id.desc())
+    )
+    rows = result.all()
+    total = int(rows[0].total)
+    attempts = [row[0] for row in rows if row[0] is not None]
+    return attempts, total
 
 
 async def get_last_terminal_attempt(
