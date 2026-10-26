@@ -633,9 +633,31 @@ async def render_app(
             code_files[rel_path] = content
 
     # 3. Generate Tailwind CSS from class candidates in compiled code
-    from src.services.app_compiler import AppTailwindService
+    from src.services.app_compiler import (
+        AppTailwindService,
+        TailwindGenerationError,
+    )
 
-    tailwind_css = await AppTailwindService.generate_css(list(code_files.values()))
+    try:
+        tailwind_css = await AppTailwindService.generate_css(list(code_files.values()))
+    except TailwindGenerationError as error:
+        logger.warning(
+            "Tailwind render generation failed for app %s: %s",
+            log_safe(app_id_str),
+            error,
+        )
+        raise HTTPException(
+            status_code=(
+                status.HTTP_503_SERVICE_UNAVAILABLE
+                if error.retryable
+                else status.HTTP_422_UNPROCESSABLE_ENTITY
+            ),
+            detail=(
+                "Tailwind CSS generation is temporarily unavailable"
+                if error.retryable
+                else "Tailwind CSS generation failed"
+            ),
+        ) from error
     if tailwind_css:
         css_files["_tailwind.css"] = tailwind_css
 

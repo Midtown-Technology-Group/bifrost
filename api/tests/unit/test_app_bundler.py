@@ -439,6 +439,107 @@ async def test_build_surfaces_esbuild_failure_and_preserves_last_good_bundle(
     write.assert_not_called()
 
 
+@pytest.mark.asyncio
+async def test_build_tailwind_capacity_failure_preserves_last_good_bundle(
+    bundler: BundlerService,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from src.services import app_compiler
+
+    async def materialize(src_dir: pathlib.Path, _repo_prefix: str) -> list[str]:
+        (src_dir / "_layout.tsx").write_text(
+            'export default () => <div className="bg-[color:var(--brand)]" />;\n',
+            encoding="utf-8",
+        )
+        return ["_layout.tsx"]
+
+    monkeypatch.setattr(
+        app_compiler,
+        "_COMPILER_SLOTS",
+        app_compiler.asyncio.Semaphore(0),
+    )
+    monkeypatch.setattr(app_compiler, "COMPILER_QUEUE_TIMEOUT_SECONDS", 0.001)
+    run_esbuild = AsyncMock(side_effect=AssertionError("esbuild must not run"))
+    write = AsyncMock()
+    with patch.object(bundler, "_materialize_source", new=materialize), \
+         patch.object(bundler, "_run_esbuild", new=run_esbuild), \
+         patch.object(bundler._app_storage, "write_preview_file", new=write):
+        result = await bundler.build(
+            app_id="app-id",
+            repo_prefix="apps/capacity",
+            mode="preview",
+            dependencies={},
+        )
+
+    assert result.success is False
+    assert result.errors and "capacity unavailable" in result.errors[0].text
+    run_esbuild.assert_not_awaited()
+    write.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_build_tailwind_timeout_reaps_node_and_preserves_last_good_bundle(
+    bundler: BundlerService,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from src.services import app_compiler
+
+    class HangingProcess:
+        returncode = None
+
+        def __init__(self) -> None:
+            self.killed = False
+            self.waited = False
+
+        async def communicate(self, input=None):
+            del input
+            await app_compiler.asyncio.Event().wait()
+
+        def kill(self) -> None:
+            self.killed = True
+
+        async def wait(self) -> None:
+            self.waited = True
+
+    async def materialize(src_dir: pathlib.Path, _repo_prefix: str) -> list[str]:
+        (src_dir / "_layout.tsx").write_text(
+            'export default () => <div className="flex" />;\n',
+            encoding="utf-8",
+        )
+        return ["_layout.tsx"]
+
+    process = HangingProcess()
+    monkeypatch.setattr(
+        app_compiler,
+        "_COMPILER_SLOTS",
+        app_compiler.asyncio.Semaphore(1),
+    )
+    monkeypatch.setattr(app_compiler, "COMPILER_TIMEOUT_SECONDS", 0.001)
+    monkeypatch.setattr(
+        app_compiler.asyncio,
+        "create_subprocess_exec",
+        AsyncMock(return_value=process),
+    )
+    run_esbuild = AsyncMock(side_effect=AssertionError("esbuild must not run"))
+    write = AsyncMock()
+    with patch.object(bundler, "_materialize_source", new=materialize), \
+         patch.object(bundler, "_run_esbuild", new=run_esbuild), \
+         patch.object(bundler._app_storage, "write_preview_file", new=write):
+        result = await bundler.build(
+            app_id="app-id",
+            repo_prefix="apps/timeout",
+            mode="preview",
+            dependencies={},
+        )
+
+    assert result.success is False
+    assert result.errors and "exceeded" in result.errors[0].text
+    assert process.killed is True
+    assert process.waited is True
+    run_esbuild.assert_not_awaited()
+    write.assert_not_awaited()
+
+
 async def test_build_uploads_live_outputs_and_manifest(
     bundler: BundlerService,
 ) -> None:

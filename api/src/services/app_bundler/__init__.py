@@ -231,9 +231,23 @@ class BundlerService:
             #    `sources` because they're now inlined into the unified
             #    __bifrost_tailwind.css; re-importing them through esbuild
             #    would duplicate (or, if they contain @apply, fail).
-            tailwind_added, consumed_css = await self._generate_app_tailwind(
-                src_dir, sources
-            )
+            from src.services.app_compiler import TailwindGenerationError
+
+            try:
+                tailwind_added, consumed_css = await self._generate_app_tailwind(
+                    src_dir, sources
+                )
+            except TailwindGenerationError as error:
+                logger.warning(
+                    "Bundler: Tailwind generation failed app=%s mode=%s: %s",
+                    log_safe(app_id),
+                    log_safe(mode),
+                    error,
+                )
+                return BundleResult(
+                    success=False,
+                    errors=[BundleMessage(text=str(error))],
+                )
             if tailwind_added:
                 sources = [s for s in sources if s not in consumed_css]
                 sources.append(TAILWIND_OUTPUT_CSS)
