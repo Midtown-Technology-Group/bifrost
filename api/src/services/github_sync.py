@@ -511,9 +511,30 @@ class GitHubSyncService:
             writer.set_value("user", "name", "Bifrost")
             writer.set_value("user", "email", "bifrost@localhost")
 
+    @staticmethod
+    def _stage_workspace_tree(work_dir: Path, repo: GitRepo) -> None:
+        """Stage the tree plus recognized manifests even when locally ignored.
+
+        Workspace manifests are generated platform state that Git sync must
+        version for round-trip identity and access-control fidelity. Force-add
+        only the declared YAML filenames (including the legacy manifest), never
+        arbitrary `.bifrost/` content such as encrypted secret payloads.
+        """
+        from bifrost.manifest import MANIFEST_FILES, MANIFEST_LEGACY_FILE
+
+        repo.git.add(A=True)
+        manifest_names = {*MANIFEST_FILES.values(), MANIFEST_LEGACY_FILE}
+        manifest_paths = [
+            (Path(".bifrost") / name).as_posix()
+            for name in sorted(manifest_names)
+            if (work_dir / ".bifrost" / name).is_file()
+        ]
+        if manifest_paths:
+            repo.git.add("--force", "--", *manifest_paths)
+
     async def _commit_connect_tree(self, work_dir: Path, repo: GitRepo) -> None:
         """Commit reviewed files without regenerating a manifest from old DB state."""
-        repo.git.add(A=True)
+        self._stage_workspace_tree(work_dir, repo)
         if repo.head.is_valid() and not repo.index.diff("HEAD") and not repo.untracked_files:
             return
         preflight = await self._run_preflight(work_dir)
@@ -830,7 +851,7 @@ class GitHubSyncService:
 
         # Regenerate manifest from DB so the commit captures current platform state
         await self._regenerate_manifest_to_dir(self.db, work_dir)
-        repo.git.add(A=True)
+        self._stage_workspace_tree(work_dir, repo)
 
         # Check if there are changes to commit
         if repo.head.is_valid() and not repo.index.diff("HEAD") and not repo.untracked_files:
