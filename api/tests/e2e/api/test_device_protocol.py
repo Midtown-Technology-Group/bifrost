@@ -11,6 +11,9 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
+from sqlalchemy import select
+
+from src.models.orm.device_job_logs import DeviceJobLog
 from src.models.orm.device_jobs import DeviceJob
 
 
@@ -45,7 +48,9 @@ def _enroll(client, headers, org_id, name) -> tuple[str, str]:
     return device_id, enrolled.json()["device_key"]
 
 
-async def _insert_job(db_session, org_id: UUID, device_id: UUID, **overrides) -> DeviceJob:
+async def _insert_job(
+    db_session, org_id: UUID, device_id: UUID, **overrides
+) -> DeviceJob:
     job = DeviceJob(
         organization_id=org_id,
         device_id=device_id,
@@ -54,7 +59,7 @@ async def _insert_job(db_session, org_id: UUID, device_id: UUID, **overrides) ->
         script_content=overrides.pop("script_content", "Write-Output hi"),
         params={},
         timeout_seconds=60,
-        max_output_bytes=1024 * 1024,
+        max_output_bytes=overrides.pop("max_output_bytes", 1024 * 1024),
         log_sequence=0,
         **overrides,
     )
@@ -186,6 +191,62 @@ async def test_full_agent_lifecycle(e2e_client, platform_admin, org1, db_session
     )
     assert late_logs.status_code == 409
     assert late_logs.json()["error"]["code"] == "job_terminal"
+
+
+async def test_log_output_cap_is_cumulative_utf8_bytes(
+    e2e_client, platform_admin, org1, db_session
+):
+    device_id, key = _enroll(
+        e2e_client, platform_admin.headers, org1["id"], "proto-output-cap"
+    )
+    job = await _insert_job(
+        db_session,
+        UUID(org1["id"]),
+        UUID(device_id),
+        max_output_bytes=1024,
+    )
+    headers = _key_headers(key)
+    claim = e2e_client.post(
+        "/api/device/jobs/claim",
+        headers=headers,
+        json={"agent_session_id": str(uuid4())},
+    )
+    assert claim.status_code == 200, claim.text
+    claim_token = claim.json()["claim_token"]
+
+    exact_cap = {
+        "claim_token": claim_token,
+        "entries": [{"seq": 1, "stream": "stdout", "text": "é" * 512}],
+    }
+    accepted = e2e_client.post(
+        f"/api/device/jobs/{job.id}/logs", headers=headers, json=exact_cap
+    )
+    assert accepted.status_code == 204, accepted.text
+
+    replay = e2e_client.post(
+        f"/api/device/jobs/{job.id}/logs", headers=headers, json=exact_cap
+    )
+    assert replay.status_code == 204, replay.text
+
+    over_cap = e2e_client.post(
+        f"/api/device/jobs/{job.id}/logs",
+        headers=headers,
+        json={
+            "claim_token": claim_token,
+            "entries": [{"seq": 2, "stream": "stderr", "text": "x"}],
+        },
+    )
+    assert over_cap.status_code == 413, over_cap.text
+    assert over_cap.json()["error"]["code"] == "payload_too_large"
+
+    stored = (
+        await db_session.execute(
+            select(DeviceJobLog)
+            .where(DeviceJobLog.job_id == job.id)
+            .order_by(DeviceJobLog.seq)
+        )
+    ).scalars().all()
+    assert [(row.seq, row.text) for row in stored] == [(1, "é" * 512)]
 
 
 async def test_auth_failures_and_cross_device_scoping(
