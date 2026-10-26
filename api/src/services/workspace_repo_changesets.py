@@ -79,6 +79,21 @@ COMMIT_WRITER_NOT_CONFIGURED = "verified GitHub App commit writer is not configu
 SNAPSHOT_READ_CONCURRENCY = 32
 
 
+async def _mark_unclosed_activation_dirty() -> None:
+    """Keep legacy repo status conservative when verified Git closure is absent."""
+    from src.core.repo_dirty import mark_repo_dirty
+
+    try:
+        await mark_repo_dirty()
+    except asyncio.CancelledError:
+        logger.warning("Repo dirty marking was cancelled after incomplete Git closure")
+        raise
+    except Exception:
+        # The durable changeset remains the recovery source of truth. A Redis
+        # outage must not obscure the Git-closure outcome or undo activation.
+        logger.exception("Failed to mark repo dirty after incomplete Git closure")
+
+
 @dataclass
 class _GitConvergencePlan:
     response: WorkspaceRepoGitConvergenceResponse
@@ -1402,6 +1417,7 @@ class WorkspaceRepoChangesetService:
             )
             or request.protected_main_source_sha,
         }
+        candidate_commit_sha = prior_failure.get("commit_sha")
         if self.commit_writer is None:
             row.error = COMMIT_WRITER_NOT_CONFIGURED
             row.failure_detail = {
@@ -1410,13 +1426,15 @@ class WorkspaceRepoChangesetService:
                 "activation_preserved": True,
                 "provenance": provenance,
             }
+            if candidate_commit_sha:
+                row.failure_detail["commit_sha"] = str(candidate_commit_sha)
             await self.db.flush()
             await self.db.commit()
+            await _mark_unclosed_activation_dirty()
             return self._response(row)
 
         # Leave a durable pending marker before Git. If persisting the outcome
         # later fails, the active workspace is still explicit and reconcilable.
-        candidate_commit_sha = prior_failure.get("commit_sha")
         row.failure_detail = {
             "phase": "git_closure",
             "state": "pending",
@@ -1428,6 +1446,7 @@ class WorkspaceRepoChangesetService:
         await self.db.flush()
         await self.db.commit()
         history_evidence: dict[str, object] | None = None
+        closure_stage = "inspect"
         try:
             closure_mutations = tuple(row.mutations)
             paths = tuple(sorted(str(item["path"]) for item in closure_mutations))
@@ -1542,6 +1561,7 @@ class WorkspaceRepoChangesetService:
                 await self.db.commit()
                 return self._response(row)
 
+            closure_stage = "write"
             result = await self.commit_writer.write(
                 PlatformCommitRequest(
                     commit_message=provenance["commit_message"],
@@ -1558,6 +1578,28 @@ class WorkspaceRepoChangesetService:
                     expected_head_sha=history.commit_sha,
                 )
             )
+        except asyncio.CancelledError:
+            await self.db.rollback()
+            row = await self._required(changeset_id, for_update=True)
+            message = f"Git closure cancelled during {closure_stage}"
+            row.error = message
+            row.failure_detail = {
+                "phase": "git_closure",
+                "state": "failed",
+                "message": message,
+                "cancelled": True,
+                "cancelled_during": closure_stage,
+                "activation_preserved": True,
+                "provenance": provenance,
+            }
+            if history_evidence is not None:
+                row.failure_detail["history"] = history_evidence
+            if candidate_commit_sha:
+                row.failure_detail["commit_sha"] = str(candidate_commit_sha)
+            await self.db.flush()
+            await self.db.commit()
+            await _mark_unclosed_activation_dirty()
+            raise
         except Exception as exc:
             await self.db.rollback()
             row = await self._required(changeset_id, for_update=True)
@@ -1571,14 +1613,17 @@ class WorkspaceRepoChangesetService:
             }
             if history_evidence is not None:
                 row.failure_detail["history"] = history_evidence
-            commit_sha = (
+            recorded_commit_sha = (
                 exc.commit_sha if isinstance(exc, PlatformCommitError) else None
             )
-            if commit_sha:
-                row.commit_sha = commit_sha
-                row.failure_detail["commit_sha"] = commit_sha
+            if recorded_commit_sha:
+                row.commit_sha = recorded_commit_sha
+            preserved_commit_sha = recorded_commit_sha or candidate_commit_sha
+            if preserved_commit_sha:
+                row.failure_detail["commit_sha"] = str(preserved_commit_sha)
             await self.db.flush()
             await self.db.commit()
+            await _mark_unclosed_activation_dirty()
             return self._response(row)
 
         row = await self._required(changeset_id, for_update=True)
