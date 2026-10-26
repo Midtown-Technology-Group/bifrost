@@ -266,7 +266,12 @@ def _check_cli_version() -> None:
     # bifrost.gocovi.com) 403 the default `Python-urllib/X.Y` UA; httpx's UA
     # gets through and matches every other SDK request.
     try:
-        resp = httpx.get(f"{api_url}/api/version", timeout=3, trust_env=False)
+        resp = httpx.get(
+            f"{api_url}/api/version",
+            timeout=3,
+            trust_env=False,
+            follow_redirects=True,
+        )
         resp.raise_for_status()
         data = resp.json()
         if not isinstance(data, dict):
