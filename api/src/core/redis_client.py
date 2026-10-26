@@ -428,11 +428,14 @@ class RedisClient:
 
         Args:
             execution_id: Execution ID
-            timeout_seconds: Max time to wait (default: 300s)
+            timeout_seconds: Positive maximum time to wait (default: 300s)
 
         Returns:
             Result dict or None if timeout
         """
+        if timeout_seconds <= 0:
+            raise ValueError("Redis result waits require a positive timeout")
+
         redis_client = await self._get_redis()
         key = f"{RESULT_KEY_PREFIX}{execution_id}"
 
