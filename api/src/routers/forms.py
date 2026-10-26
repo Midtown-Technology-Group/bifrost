@@ -1641,7 +1641,8 @@ async def execute_startup_workflow(
     # Resolve the launch workflow ref with the form's install scope. Like the
     # main workflow, launch_workflow_id may be a portable path::function ref for
     # solution-managed forms; scope to form.solution_id so the install reaches
-    # its own launch workflow (own-first, then bare _repo/).
+    # its own launch workflow first and only reaches bare _repo/ when the
+    # install explicitly permits shared resources.
     #
     # Resolve on the FORM's behalf (is_superuser=True): the form access gate
     # above is authoritative, so we must not apply the workflow's RBAC filter
@@ -1651,9 +1652,17 @@ async def execute_startup_workflow(
     launch_anchor_org_id = (
         form.organization_id if form.organization_id is not None else ctx.org_id
     )
+    from src.services.solution_scope import solution_allows_global
+
     _launch_repo = WorkflowRepository(db, org_id=launch_anchor_org_id, is_superuser=True)
+    allow_shared_workflow = (
+        form.solution_id is None
+        or await solution_allows_global(db, form.solution_id)
+    )
     _resolved_launch = await _launch_repo.resolve(
-        form.launch_workflow_id, solution_scope=form.solution_id
+        form.launch_workflow_id,
+        solution_scope=form.solution_id,
+        allow_shared_fallback=allow_shared_workflow,
     )
     if _resolved_launch is None:
         raise HTTPException(
