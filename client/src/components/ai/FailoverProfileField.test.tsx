@@ -15,7 +15,6 @@ function profile(overrides: Partial<AIModelProfile>): AIModelProfile {
 			name: "Conn A",
 			provider: "openrouter",
 			endpoint: null,
-			anthropic_prompt_cache_supported: null,
 		},
 		assignment_keys: [],
 		referenced_agent_count: 0,

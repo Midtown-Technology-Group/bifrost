@@ -469,8 +469,10 @@ class AIModelService:
             api_key=api_key,
             endpoint=endpoint,
             openai_transport=openai_transport,
+            model_profile_id=profile.id,
             provider_connection_id=connection.id,
-            anthropic_prompt_cache_supported=connection.anthropic_prompt_cache_supported,
+            provider_connection_updated_at=connection.updated_at,
+            anthropic_prompt_cache_supported=profile.anthropic_prompt_cache_supported,
             default_max_tokens=profile.default_max_tokens,
         )
 
@@ -648,11 +650,14 @@ class AIModelService:
         if api_key is not None:
             connection.encrypted_api_key = self.encrypt_api_key(api_key)
         if transport_may_change:
-            connection.anthropic_prompt_cache_supported = None
             await self.session.execute(
                 update(AIModelProfile)
                 .where(AIModelProfile.connection_id == connection.id)
-                .values(openai_transport=None, wire_api=None)
+                .values(
+                    openai_transport=None,
+                    wire_api=None,
+                    anthropic_prompt_cache_supported=None,
+                )
             )
         connection.updated_at = datetime.now(timezone.utc)
         await self.session.flush()
@@ -802,6 +807,7 @@ class AIModelService:
             profile.connection_id = connection_id
             profile.openai_transport = None
             profile.wire_api = None
+            profile.anthropic_prompt_cache_supported = None
         if model is not None:
             trimmed_model = model.strip()
             if not trimmed_model:
@@ -809,6 +815,7 @@ class AIModelService:
             profile.model = trimmed_model
             profile.openai_transport = None
             profile.wire_api = None
+            profile.anthropic_prompt_cache_supported = None
         if capabilities_provided:
             profile.capabilities = (
                 capabilities.model_dump(mode="json") if capabilities else None
