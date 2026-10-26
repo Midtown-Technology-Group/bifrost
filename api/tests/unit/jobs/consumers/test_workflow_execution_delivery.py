@@ -837,6 +837,93 @@ async def test_workspace_release_routes_with_verified_immutable_duration_bound()
 
 
 @pytest.mark.asyncio
+async def test_repo_execution_routes_only_durable_pinned_source() -> None:
+    from src.services.solutions.deployment_manifest import canonical_json, sha256_digest
+
+    consumer = make_consumer()
+    consumer._pool = AsyncMock()
+    execution_id = str(uuid4())
+    workflow_id = str(uuid4())
+    runtime_evidence = {
+        "schema_version": "bifrost.repo-workflow-runtime/v1",
+        "workflow_id": workflow_id,
+        "workflow_name": "Pinned repo workflow",
+        "workflow_function_name": "run",
+        "workflow_path": "workflows/pinned.py",
+        "workflow_source_hash": "c" * 64,
+        "workspace_generation": "generation-1",
+    }
+    pending = pending_context()
+    pending.update(
+        {
+            "runtime_mode": "repo-v1",
+            "runtime_evidence": runtime_evidence,
+        }
+    )
+    consumer._redis_client.get_pending_execution.return_value = pending
+
+    durable_execution = SimpleNamespace(
+        runtime_mode="repo-v1",
+        runtime_evidence=runtime_evidence,
+        runtime_evidence_hash=sha256_digest(canonical_json(runtime_evidence)),
+    )
+    db = AsyncMock()
+    db.get.return_value = durable_execution
+
+    @asynccontextmanager
+    async def db_context():
+        yield db
+
+    workflow_data = {
+        "name": "Pinned repo workflow",
+        "function_name": "run",
+        "path": "workflows/pinned.py",
+        "type": "workflow",
+        "cache_ttl_seconds": 0,
+        "timeout_seconds": 30,
+        "time_saved": 0,
+        "value": 0,
+        "content_hash": "c" * 64,
+        "organization_id": None,
+        "solution_id": None,
+        "can_access_global_repo": False,
+    }
+
+    with (
+        patch(
+            "src.services.execution.queue_tracker.remove_from_queue",
+            new_callable=AsyncMock,
+        ),
+        patch.object(workflow_execution, "get_db_context", side_effect=db_context),
+        patch(
+            "src.services.execution.service.get_workflow_for_execution",
+            new=AsyncMock(return_value=workflow_data),
+        ),
+        patch.object(workflow_execution, "create_execution", new_callable=AsyncMock),
+        patch.object(workflow_execution, "update_execution", new_callable=AsyncMock),
+        patch(
+            "src.jobs.consumers.workflow_execution.publish_execution_update",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "src.jobs.consumers.workflow_execution.publish_history_update",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "src.core.security.mint_engine_token",
+            return_value=("engine-token", "2099-01-01T00:00:00Z"),
+        ),
+    ):
+        await consumer.process_message(
+            {"execution_id": execution_id, "workflow_id": workflow_id}
+        )
+
+    routed_context = consumer._pool.route_execution.await_args.kwargs["context"]
+    assert routed_context["content_hash"] == "c" * 64
+    assert routed_context["workspace_generation"] == "generation-1"
+
+
+@pytest.mark.asyncio
 async def test_live_handoff_deployment_routes_with_pinned_runtime_bounds() -> None:
     consumer = make_consumer()
     consumer._pool = AsyncMock()

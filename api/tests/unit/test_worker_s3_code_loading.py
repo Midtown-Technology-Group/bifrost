@@ -280,6 +280,7 @@ class TestWorkerCodeLoadingBranches:
                     file_path="workflows/test.py",
                     function_name="run",
                     workspace_generation="generation-1",
+                    expected_content_hash="a" * 64,
                 )
 
         validate.assert_called_once_with("generation-1")
@@ -313,10 +314,69 @@ class TestWorkerCodeLoadingBranches:
                     file_path="workflows/test.py",
                     function_name="run",
                     workspace_generation="generation-1",
+                    expected_content_hash=hashlib.sha256(
+                        b"x = 1"
+                    ).hexdigest(),
                 )
 
         assert validate.call_count == 2
         load_workflow.assert_called_once()
+
+    def test_content_hash_is_validated_before_entry_source_execution(self):
+        from src.services.execution.worker import _load_workspace_workflow
+
+        with (
+            patch(
+                "src.core.module_cache_sync.assert_workspace_generation"
+            ),
+            patch(
+                "src.core.module_cache_sync.get_module_sync",
+                return_value={
+                    "content": "dangerous()",
+                    "path": "workflows/test.py",
+                    "hash": hashlib.sha256(b"dangerous()").hexdigest(),
+                },
+            ),
+            patch(
+                "src.services.execution.module_loader.load_workflow_from_db"
+            ) as load_workflow,
+        ):
+            with pytest.raises(RuntimeError, match="source integrity mismatch"):
+                _load_workspace_workflow(
+                    file_path="workflows/test.py",
+                    function_name="run",
+                    workspace_generation="generation-1",
+                    expected_content_hash=hashlib.sha256(b"safe()").hexdigest(),
+                )
+
+        load_workflow.assert_not_called()
+
+    def test_missing_content_hash_fails_before_entry_source_execution(self):
+        from src.services.execution.worker import _load_workspace_workflow
+
+        with (
+            patch("src.core.module_cache_sync.assert_workspace_generation"),
+            patch(
+                "src.core.module_cache_sync.get_module_sync",
+                return_value={
+                    "content": "dangerous()",
+                    "path": "workflows/test.py",
+                    "hash": hashlib.sha256(b"dangerous()").hexdigest(),
+                },
+            ),
+            patch(
+                "src.services.execution.module_loader.load_workflow_from_db"
+            ) as load_workflow,
+        ):
+            with pytest.raises(RuntimeError, match="integrity hash is missing"):
+                _load_workspace_workflow(
+                    file_path="workflows/test.py",
+                    function_name="run",
+                    workspace_generation="generation-1",
+                    expected_content_hash=None,
+                )
+
+        load_workflow.assert_not_called()
 
     @patch("src.core.module_cache_sync.get_module_sync")
     def test_cache_exception_sets_load_error(self, mock_cache):

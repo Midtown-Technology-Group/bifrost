@@ -19,6 +19,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import contextlib
+import hashlib
 import os
 import time
 from uuid import uuid4
@@ -79,10 +80,20 @@ class TestForkedWorkflowMutationsSocket:
 
         from src.models.enums import ExecutionStatus
         from src.models.orm.executions import Execution as ExecutionModel
+        from src.models.orm.file_index import FileIndex
         from src.models.orm.workflows import Workflow as WorkflowModel
         from src.models.orm.users import User as UserModel
 
-        wf_name = f"fork-wf-{uuid4().hex[:8]}"
+        tag = uuid4().hex[:8]
+        wf_name = f"fork-wf-{tag}"
+        wf_function = f"fork_wf_{tag}_fn"
+        wf_path = f"workflows/{wf_name}.py"
+        workflow_source = (
+            "from bifrost import workflow\n\n"
+            f'@workflow(name="{wf_name}")\n'
+            f"def {wf_function}(ticket_id: int):\n"
+            "    return {'ticket_id': ticket_id}\n"
+        )
         async with async_session_factory() as session:
             caller = UserModel(
                 email=f"{wf_name}@example.com", name="Fork caller",
@@ -92,14 +103,24 @@ class TestForkedWorkflowMutationsSocket:
             await session.flush()
             wf = WorkflowModel(
                 name=wf_name,
-                function_name=f"{wf_name}_fn",
-                path=f"workflows/{wf_name}.py",
+                function_name=wf_function,
+                path=wf_path,
                 type="workflow",
                 is_active=True,
                 access_level="authenticated",
                 cache_ttl_seconds=0,
             )
-            session.add(wf)
+            session.add_all([
+                wf,
+                FileIndex(
+                    path=wf_path,
+                    content=workflow_source,
+                    content_hash=hashlib.sha256(
+                        workflow_source.encode("utf-8")
+                    ).hexdigest(),
+                    updated_by="fork-socket-test",
+                ),
+            ])
             await session.commit()
             wf_id = wf.id
 
@@ -203,6 +224,9 @@ class TestForkedWorkflowMutationsSocket:
                 )
                 await session.execute(
                     delete(WorkflowModel).where(WorkflowModel.id == wf_id)
+                )
+                await session.execute(
+                    delete(FileIndex).where(FileIndex.path == wf_path)
                 )
                 await session.execute(delete(UserModel).where(UserModel.id == caller.id))
                 await session.commit()

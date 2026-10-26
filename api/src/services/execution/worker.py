@@ -145,8 +145,11 @@ def _load_workspace_workflow(
     file_path: str,
     function_name: str,
     workspace_generation: str | None,
+    expected_content_hash: str | None,
 ) -> tuple[Any, Any, str | None, str | None]:
-    """Load one entry workflow only while its pinned generation remains current."""
+    """Verify pinned source before compiling or executing an entry workflow."""
+    import hashlib
+
     from src.core.module_cache_sync import (
         assert_workspace_generation,
         get_module_sync,
@@ -159,6 +162,13 @@ def _load_workspace_workflow(
         return None, None, None, None
 
     loaded_code = cached["content"]
+    if not expected_content_hash:
+        raise RuntimeError(
+            f"workflow source integrity hash is missing for {file_path}"
+        )
+    actual_hash = hashlib.sha256(loaded_code.encode("utf-8")).hexdigest()
+    if actual_hash != str(expected_content_hash).removeprefix("sha256:"):
+        raise RuntimeError(f"workflow source integrity mismatch for {file_path}")
     workflow_func, metadata, load_error = load_workflow_from_db(
         code=loaded_code,
         path=file_path,
@@ -363,6 +373,7 @@ async def _run_execution(execution_id: str, context_data: dict[str, Any]) -> dic
                         workspace_generation=context_data.get(
                             "workspace_generation"
                         ),
+                        expected_content_hash=context_data.get("content_hash"),
                     )
                     if loaded_code:
                         logger.info(
@@ -735,6 +746,7 @@ async def run_service(
                     file_path=file_path,
                     function_name=function_name,
                     workspace_generation=expected_workspace_generation,
+                    expected_content_hash=context_data.get("content_hash"),
                 )
                 if not loaded_code:
                     load_error = (

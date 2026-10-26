@@ -6,17 +6,20 @@ behalf (is_superuser=True), so a form user with no role on a ``role_based``
 workflow must still reach it — the form's own access gate is authoritative.
 """
 import contextlib
+import hashlib
 from uuid import UUID, uuid4
 
 import pytest
 from sqlalchemy import select
 
 from src.models.orm.executions import Execution
+from src.models.orm.file_index import FileIndex
 from src.models.orm.organizations import Organization
 from src.models.orm.solutions import Solution
 from src.models.orm.forms import Form
 from src.models.orm.workflows import Workflow
 from src.repositories.workflows import WorkflowRepository
+from src.services.solutions.storage import SolutionStorage
 
 
 async def _org(db):
@@ -251,6 +254,8 @@ class TestCrossOrgFormExecuteAnchor:
         await db.flush()
 
         path = f"workflows/xorg_anchor_{uuid4().hex[:8]}.py"
+        decoy_source = "async def main():\n    return {'scope': 'root'}\n"
+        install_source = b"async def main():\n    return {'scope': 'solution'}\n"
         # The decoy: a global _repo/ workflow at the SAME path::fn. The buggy
         # caller-anchored cascade (admin home org is not B) only sees
         # (caller org OR global) rows, so it silently resolves this one.
@@ -262,7 +267,20 @@ class TestCrossOrgFormExecuteAnchor:
             id=uuid4(), name="own", function_name="main", path=path,
             type="workflow", is_active=True, organization_id=org_b, solution_id=sol.id,
         )
-        db.add_all([decoy_wf, own_wf])
+        db.add_all(
+            [
+                decoy_wf,
+                own_wf,
+                FileIndex(
+                    path=path,
+                    content=decoy_source,
+                    content_hash=hashlib.sha256(
+                        decoy_source.encode("utf-8")
+                    ).hexdigest(),
+                    updated_by="cross-org-form-test",
+                ),
+            ]
+        )
         await db.flush()
         form = Form(
             id=uuid4(), name="xorg-anchor-form", organization_id=org_b,
@@ -274,6 +292,7 @@ class TestCrossOrgFormExecuteAnchor:
         # allows deleting them) and uniquely named, so leftovers are inert;
         # the test stack resets state before each run.
         await db.commit()
+        await SolutionStorage(sol.id).write(path, install_source)
 
         # Scheduled execute: the SCHEDULED row is inserted synchronously by the
         # handler itself (no worker round-trip), so both the resolution anchor
@@ -316,6 +335,15 @@ class TestCrossOrgFormExecuteAnchor:
             f"execution stamped with caller org {exec_row.organization_id}, "
             f"expected the form's org {org_b}"
         )
+        assert exec_row.runtime_mode == "repo-v1"
+        assert exec_row.runtime_evidence is not None
+        assert exec_row.runtime_evidence["solution_id"] == str(sol.id)
+        assert exec_row.runtime_evidence["workflow_source_hash"] == hashlib.sha256(
+            install_source
+        ).hexdigest()
+        assert exec_row.runtime_evidence["workflow_source_hash"] != hashlib.sha256(
+            decoy_source.encode("utf-8")
+        ).hexdigest()
 
     async def test_admin_cross_org_startup_resolves_install_launch_workflow(
         self, db_session, e2e_client, platform_admin
