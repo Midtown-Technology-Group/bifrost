@@ -57,6 +57,29 @@ def test_merge_group_trigger_is_required(tmp_path: Path):
     assert any("merge_group trigger" in item for item in check_ci_workflow(mutated))
 
 
+def test_dispatch_cancellation_is_required_and_queue_runs_stay_uncancelled(tmp_path: Path):
+    workflow = _repo_root() / ".github/workflows/ci.yml"
+    mutated = tmp_path / "ci.yml"
+    original = workflow.read_text(encoding="utf-8")
+    replacement = (
+        "cancel-in-progress: ${{ github.event_name == 'pull_request' "
+        "|| github.event_name == 'workflow_dispatch' }}"
+    )
+    assert replacement in original
+    mutated.write_text(
+        original.replace(
+            replacement,
+            "cancel-in-progress: ${{ github.event_name == 'pull_request' }}",
+            1,
+        ),
+        encoding="utf-8",
+    )
+
+    violations = check_ci_workflow(mutated)
+    assert any("workflow_dispatch" in item for item in violations)
+    assert any("merge_group" in item for item in violations)
+
+
 def test_merge_group_trigger_rejects_other_activity_types(tmp_path: Path):
     workflow = _repo_root() / ".github/workflows/ci.yml"
     mutated = tmp_path / "ci.yml"

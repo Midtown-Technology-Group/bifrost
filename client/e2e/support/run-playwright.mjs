@@ -2,7 +2,13 @@ import http from "node:http";
 import net from "node:net";
 import { spawn, spawnSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
-import { buildReport, markdown, validateLedger } from "./acceptance-report.mjs";
+import {
+	browserRunExitCode,
+	buildReport,
+	markdown,
+	retriedPasses,
+	validateLedger,
+} from "./acceptance-report.mjs";
 import {
 	createMonacoAssetHandler,
 	defaultMonacoAssetRoot,
@@ -145,6 +151,19 @@ try {
 		"playwright-results/acceptance.md",
 		markdown(buildReport(ledger, results)),
 	);
+	const recovered = retriedPasses(results);
+	for (const item of recovered) {
+		console.error(
+			`Fail-once/pass-on-retry fails the build: ${item.projectName} ${item.file} :: ${item.title}`,
+		);
+	}
+	const browserExit = browserRunExitCode(exitCode, results);
+	if (browserExit !== 0 && exitCode === 0 && recovered.length === 0) {
+		console.error(
+			`Fail-once/pass-on-retry fails the build: Playwright counted ${results.stats?.flaky ?? 0} flaky tests.`,
+		);
+	}
+	process.exitCode = browserExit;
 } catch (error) {
 	console.error("Could not produce acceptance report:", error);
 	process.exitCode = 1;

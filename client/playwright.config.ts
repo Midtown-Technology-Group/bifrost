@@ -22,6 +22,9 @@ export default defineConfig({
 	// ponytail: one shared workspace => one worker; parallelize after fixtures own isolated workspaces.
 	fullyParallel: false,
 	forbidOnly: !!process.env.CI,
+	// A first-attempt assertion failure must keep the required browser gate red.
+	// CI does not retry product tests; run-playwright.mjs also rejects a report
+	// whose failed attempt later passes.
 	retries: 0,
 	workers: 1,
 	timeout: 30000,
