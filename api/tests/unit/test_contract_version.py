@@ -299,7 +299,11 @@ EXPECTED_CONTRACT_FINGERPRINT = (
     # existing clients ignore the placement detail.
     # ServicePolicyUpdate is a new CLI contract for supervised services.
     # PlatformJobStatus.requires_action breaks older CLI job pollers; contract 13.
-    "3db82b5ac581f8f38bbe504d934637546749565e2c9bcc52670484c0f979e630"
+    # FormCreate/FormUpdate now expose the actual FormSchema contract instead
+    # of an unrestricted dict alternative (2026-10-13). This rejects only
+    # payloads the form indexer could not safely persist, so the runtime version
+    # remains unchanged while generated clients become more accurate.
+    "779e8c67a5af6a989800ec3f69cfbc6a359c3a39226efa85bb9c47034cb17c30"
 )
 
 

@@ -64,6 +64,15 @@ class TestFormConfirmationContract:
         with pytest.raises(ValidationError):
             FormUpdate(confirmation_markdown="x" * 20_001)
 
+    @pytest.mark.parametrize("request_model", [FormCreate, FormUpdate])
+    def test_request_rejects_malformed_schema_fields(self, request_model):
+        kwargs = {"form_schema": {"fields": ["not-a-field"]}}
+        if request_model is FormCreate:
+            kwargs["name"] = "Test"
+
+        with pytest.raises(ValidationError):
+            request_model(**kwargs)
+
 
 class TestFormSchema:
     """Test validation for FormSchema model"""
