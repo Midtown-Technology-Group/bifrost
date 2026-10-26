@@ -32,6 +32,8 @@ from pydantic_ai.tools import ToolDefinition as PydanticToolDefinition
 from pydantic_ai.usage import RequestUsage, RunUsage
 
 from src.services.agent_runtime import (
+    PLATFORM_MAX_AGENT_REQUESTS,
+    PLATFORM_MAX_AGENT_TOTAL_TOKENS,
     AgentRunBudget,
     BifrostToolset,
     ObservedModel,
@@ -610,23 +612,51 @@ def test_budget_is_enforced_before_requests_and_warns_before_hard_stop() -> None
     assert warner.warning_threshold == 0.7
 
 
-def test_unconfigured_budget_disables_run_limits_but_keeps_context_governance() -> None:
+def test_unconfigured_budget_uses_platform_hard_limits_and_context_governance() -> None:
     budget = AgentRunBudget()
 
     limits = budget.usage_limits()
     capabilities = build_runtime_capabilities(budget)
 
-    assert limits.request_limit is None
-    assert limits.total_tokens_limit is None
-    assert limits.count_tokens_before_request is False
-    assert not budget.should_wind_down(
-        RunUsage(requests=1_000, input_tokens=1_000_000)
+    assert limits.request_limit == PLATFORM_MAX_AGENT_REQUESTS
+    assert limits.total_tokens_limit == PLATFORM_MAX_AGENT_TOTAL_TOKENS
+    assert limits.count_tokens_before_request is True
+    assert budget.should_wind_down(
+        RunUsage(requests=PLATFORM_MAX_AGENT_REQUESTS)
     )
     assert any(isinstance(item, TieredCompaction) for item in capabilities)
     warner = next(item for item in capabilities if isinstance(item, WarnNearLimits))
-    assert warner.max_iterations is None
-    assert warner.max_total_tokens is None
+    assert warner.max_iterations == PLATFORM_MAX_AGENT_REQUESTS
+    assert warner.max_total_tokens == PLATFORM_MAX_AGENT_TOTAL_TOKENS
     assert warner.max_context_tokens == budget.context_target_tokens
+
+
+def test_agent_preferences_cannot_raise_platform_hard_limits() -> None:
+    budget = AgentRunBudget(
+        max_requests=PLATFORM_MAX_AGENT_REQUESTS + 1,
+        max_total_tokens=PLATFORM_MAX_AGENT_TOTAL_TOKENS + 1,
+    )
+
+    assert budget.max_requests == PLATFORM_MAX_AGENT_REQUESTS
+    assert budget.max_total_tokens == PLATFORM_MAX_AGENT_TOTAL_TOKENS
+
+
+@pytest.mark.asyncio
+async def test_unconfigured_budget_rejects_request_at_platform_ceiling() -> None:
+    model = GuardedTestModel(custom_output_text="must not be called")
+    runtime = PydanticAgent(model)
+    budget = AgentRunBudget(max_requests=None, max_total_tokens=None)
+    usage = RunUsage(requests=PLATFORM_MAX_AGENT_REQUESTS)
+    limits = budget.usage_limits()
+
+    with pytest.raises(UsageLimitExceeded):
+        await runtime.run(
+            "one more request",
+            usage=usage,
+            usage_limits=limits,
+        )
+
+    assert model.provider_requests == 0
 
 
 @pytest.mark.asyncio
@@ -686,15 +716,15 @@ def test_delegated_subtree_shares_parent_ledger_and_keeps_local_cap() -> None:
     assert constrained_child.max_total_tokens == 100_000
 
 
-def test_delegated_subtree_preserves_optional_parent_and_child_limits() -> None:
-    unbounded_parent = AgentRunBudget()
-    unbounded_child = unbounded_parent.child_subtree(
+def test_delegated_subtree_preserves_platform_parent_and_optional_child_limits() -> None:
+    platform_bounded_parent = AgentRunBudget()
+    platform_bounded_child = platform_bounded_parent.child_subtree(
         current_requests=7,
         current_total_tokens=60_000,
         child_max_requests=None,
         child_max_total_tokens=None,
     )
-    locally_bounded_child = unbounded_parent.child_subtree(
+    locally_bounded_child = platform_bounded_parent.child_subtree(
         current_requests=7,
         current_total_tokens=60_000,
         child_max_requests=5,
@@ -710,8 +740,11 @@ def test_delegated_subtree_preserves_optional_parent_and_child_limits() -> None:
         child_max_total_tokens=None,
     )
 
-    assert unbounded_child.max_requests is None
-    assert unbounded_child.max_total_tokens is None
+    assert platform_bounded_child.max_requests == PLATFORM_MAX_AGENT_REQUESTS
+    assert (
+        platform_bounded_child.max_total_tokens
+        == PLATFORM_MAX_AGENT_TOTAL_TOKENS
+    )
     assert locally_bounded_child.max_requests == 12
     assert locally_bounded_child.max_total_tokens == 85_000
     assert bounded_parent_child.max_requests == 20

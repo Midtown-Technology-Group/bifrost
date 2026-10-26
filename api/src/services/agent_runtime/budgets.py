@@ -33,10 +33,21 @@ FINAL_RESPONSE_RESERVE_TOKENS = 4_000
 MIN_WIND_DOWN_FRACTION = 0.4
 """Never force wind-down before this fraction of the configured local allowance."""
 
+PLATFORM_MAX_AGENT_REQUESTS = 200
+"""Maximum model requests any root run or delegated subtree may consume."""
+
+PLATFORM_MAX_AGENT_TOTAL_TOKENS = 1_000_000
+"""Maximum cumulative provider tokens any agent execution may consume."""
+
 
 @dataclass(frozen=True)
 class AgentRunBudget:
-    """One shared budget expressed in the units Pydantic AI actually enforces."""
+    """One shared budget expressed in the units Pydantic AI actually enforces.
+
+    ``None`` means the agent has no lower preference; it never disables the
+    platform ceilings. Normalizing here protects chat, autonomous execution,
+    transport probes, and delegated subtrees through the same runtime seam.
+    """
 
     max_requests: int | None = None
     max_total_tokens: int | None = None
@@ -44,6 +55,30 @@ class AgentRunBudget:
     warning_threshold: float = 0.7
     initial_requests: int = 0
     initial_total_tokens: int = 0
+
+    def __post_init__(self) -> None:
+        """Apply non-optional platform ceilings to every constructed budget."""
+
+        object.__setattr__(
+            self,
+            "max_requests",
+            min(
+                self.max_requests
+                if self.max_requests is not None
+                else PLATFORM_MAX_AGENT_REQUESTS,
+                PLATFORM_MAX_AGENT_REQUESTS,
+            ),
+        )
+        object.__setattr__(
+            self,
+            "max_total_tokens",
+            min(
+                self.max_total_tokens
+                if self.max_total_tokens is not None
+                else PLATFORM_MAX_AGENT_TOTAL_TOKENS,
+                PLATFORM_MAX_AGENT_TOTAL_TOKENS,
+            ),
+        )
 
     @property
     def wind_down_total_tokens(self) -> int | None:
