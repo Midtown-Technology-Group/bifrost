@@ -1191,7 +1191,8 @@ async def _import_oauth_provider(
         op.token_url_defaults = oauth_item.token_url_defaults
         op.redirect_uri = oauth_item.redirect_uri
         op.scopes = oauth_item.scopes
-        op.provider_metadata = oauth_item.provider_metadata or {}
+        if "provider_metadata" in oauth_item.model_fields_set:
+            op.provider_metadata = oauth_item.provider_metadata or {}
     else:
         # Create new
         db.add(OAuthProvider(
