@@ -308,7 +308,14 @@ async def _run_execution(execution_id: str, context_data: dict[str, Any]) -> dic
     if queue_wait_ms is not None:
         span_attributes["bifrost.queue.wait_ms"] = queue_wait_ms
 
-    span_context = tracer.start_as_current_span("bifrost.worker.execute", attributes=span_attributes)
+    span_context = tracer.start_as_current_span(
+        "bifrost.worker.execute",
+        attributes=span_attributes,
+        # Unhandled worker exceptions can contain workflow-controlled details.
+        # _annotate_worker_span emits only bounded status and error-type fields.
+        record_exception=False,
+        set_status_on_exception=False,
+    )
     span = span_context.__enter__()
 
     def _finish(result: dict[str, Any]) -> dict[str, Any]:
