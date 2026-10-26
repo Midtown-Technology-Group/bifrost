@@ -2,23 +2,34 @@
 # Install the compact profile of mtg-codex-skills for Cursor cloud agents.
 #
 # Pin: reviewed bootstrap commit from mtg-codex-skills docs/agent-bootstrap.md
-# (PR #36). Do not float this to main. When those docs name a newer reviewed
-# pin, replace PIN with that commit. The package installer, not a raw copy,
-# writes references/package-location.json and the release search index.
+# (PR #36), full id a4e8f7d9d30424579e19e0c9f39a6ae6fa8f11cf. Do not float this
+# to main. When those docs name a newer reviewed pin, replace PIN with that
+# commit. The package installer, not a raw copy, writes
+# references/package-location.json and the release search index.
 #
 # Fail-soft: clone, Python, installer, or verify problems are logged and this
 # script still exits 0 so an environment build is not blocked. Idempotent.
 # A non-git path already at ~/mtg-codex-skills is left alone. Existing
 # non-symlink entries under ~/.cursor/skills are left alone.
+# The compact profile is installed into its own Codex home. Publication links
+# only that profile's three skills, so unrelated skills already under ~/.codex
+# stay there and are not added to Cursor discovery.
 
 set -u
 set -o pipefail
 
-PIN="a4e8f7d9"
+PIN="a4e8f7d9d30424579e19e0c9f39a6ae6fa8f11cf"
 REPO_URL="https://github.com/Midtown-Technology-Group/mtg-codex-skills.git"
 DEST="${HOME}/mtg-codex-skills"
-CODEX_HOME="${HOME}/.codex"
+# Isolated from ~/.codex so a home that already has other harness skills is not
+# the install root and cannot be published by scanning that shared directory.
+CODEX_HOME="${HOME}/.mtg-codex-compact"
 CURSOR_SKILLS="${HOME}/.cursor/skills"
+COMPACT_SKILL_IDS=(
+  mtg-engineering-flow
+  mtg-skill-router
+  github-pr-stewardship
+)
 
 warn() {
   printf 'WARNING: mtg-codex-skills: %s\n' "$*" >&2
@@ -108,23 +119,52 @@ install_profile() {
   )
 }
 
-publish_skills() {
-  local skills_root="${CODEX_HOME}/skills"
-  local dir name target linked
-  if [[ ! -d "$skills_root" ]]; then
-    warn "installer did not create ${skills_root}"
+compact_skill_dir() {
+  local skills_root="$1"
+  local name="$2"
+  local dir resolved
+  case "$name" in
+    ""|*/*|.*)
+      warn "refusing compact skill id ${name}"
+      return 1
+      ;;
+  esac
+  dir="${skills_root}/${name}"
+  if [[ ! -d "$dir" || ! -f "$dir/SKILL.md" ]]; then
+    warn "compact skill ${name} is missing from ${skills_root}"
     return 1
   fi
+  resolved=$(readlink -f "$dir") || return 1
+  case "$resolved" in
+    "$skills_root"/*) ;;
+    *)
+      warn "compact skill ${name} is outside the managed install"
+      return 1
+      ;;
+  esac
+  if [[ ! -f "${resolved}/SKILL.md" ]]; then
+    warn "compact skill ${name} has no SKILL.md"
+    return 1
+  fi
+  printf '%s\n' "$resolved"
+}
+
+publish_skills() {
+  local skills_root name dir target linked
+  declare -A resolved_skills=()
+  if [[ ! -d "${CODEX_HOME}/skills" ]]; then
+    warn "installer did not create ${CODEX_HOME}/skills"
+    return 1
+  fi
+  skills_root=$(cd "${CODEX_HOME}/skills" && pwd -P) || return 1
+  for name in "${COMPACT_SKILL_IDS[@]}"; do
+    dir=$(compact_skill_dir "$skills_root" "$name") || return 1
+    resolved_skills["$name"]="$dir"
+  done
   mkdir -p "$CURSOR_SKILLS"
   linked=0
-  for dir in "$skills_root"/*; do
-    if [[ ! -d "$dir" ]]; then
-      continue
-    fi
-    name=$(basename "$dir")
-    if [[ "$name" == .* || ! -f "$dir/SKILL.md" ]]; then
-      continue
-    fi
+  for name in "${COMPACT_SKILL_IDS[@]}"; do
+    dir="${resolved_skills[$name]}"
     target="${CURSOR_SKILLS}/${name}"
     if [[ -L "$target" ]]; then
       ln -sfn "$dir" "$target" || return $?
@@ -138,7 +178,7 @@ publish_skills() {
     echo "mtg-codex-skills: linked ${name} into ${CURSOR_SKILLS}"
   done
   if [[ "$linked" -eq 0 ]]; then
-    warn "no installed skills with SKILL.md were found under ${skills_root}"
+    warn "no compact skills were linked into ${CURSOR_SKILLS}"
     return 1
   fi
 }

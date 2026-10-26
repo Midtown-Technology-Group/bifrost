@@ -39,7 +39,9 @@ exits 0 and the skills stay uninstalled.
 
 The catalog stays in the skills repo; this repo does not vendor it. The active
 skills are `mtg-engineering-flow`, `mtg-skill-router`, and
-`github-pr-stewardship`.
+`github-pr-stewardship`. The installer uses its own Codex home and publishes
+only those three skills. Other skills already under `~/.codex` stay there and
+are not added to Cursor discovery.
 
 Codex, T3 Code, Windows, and local-machine skills in that library do not apply
 in Cursor cloud.

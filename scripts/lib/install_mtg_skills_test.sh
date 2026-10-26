@@ -118,7 +118,7 @@ if "--codex-home" not in args or "--profile" not in args or "compact" not in arg
 codex = Path(args[args.index("--codex-home") + 1])
 if args[0] == "verify":
     sys.exit(1 if os.environ.get("MTG_SKILLS_TEST_FIXTURE") == "verify-fail" else 0)
-for name in ("mtg-engineering-flow", "mtg-skill-router", "github-pr-stewardship"):
+for name in ("mtg-engineering-flow", "mtg-skill-router", "github-pr-stewardship", "local-machine-only"):
     skill = codex / "skills" / name
     skill.mkdir(parents=True, exist_ok=True)
     (skill / "SKILL.md").write_text(f"---\nname: {name}\n---\nbody\n")
@@ -245,7 +245,7 @@ test_success_links_without_clobber() {
   if ! grep -q "install finished" "$log"; then
     fail "success run did not finish: $(cat "$log")"
   fi
-  if ! grep -q "checked out a4e8f7d9aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa (pin a4e8f7d9)" "$log"; then
+  if ! grep -q "checked out a4e8f7d9aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa (pin a4e8f7d9d30424579e19e0c9f39a6ae6fa8f11cf)" "$log"; then
     fail "pin was not reported: $(cat "$log")"
   fi
   assert_eq "$(cat "${home}/.cursor/skills/mtg-engineering-flow/marker")" "preserve" "existing skill dir"
@@ -262,6 +262,9 @@ test_success_links_without_clobber() {
   if ! grep -q "leaving existing" "$log"; then
     fail "missing leave-existing warning: $(cat "$log")"
   fi
+  if [[ -e "${home}/.cursor/skills/local-machine-only" ]]; then
+    fail "managed-home extra skill was published"
+  fi
 
   # A second run stays successful and still does not replace the real directory.
   : >"$log"
@@ -276,6 +279,45 @@ test_success_links_without_clobber() {
     fail "second run did not finish: $(cat "$log")"
   fi
   assert_eq "$(cat "${home}/.cursor/skills/mtg-engineering-flow/marker")" "preserve" "existing skill dir after rerun"
+  rm -rf "$home" "$bin" "$log"
+}
+
+test_unrelated_codex_skill_stays_unlinked() {
+  local home log bin package git_log shared
+  home=$(new_home)
+  log=$(mktemp)
+  bin=$(mktemp -d)
+  package="${home}/skill_package.py"
+  git_log="${home}/git.log"
+  : >"$git_log"
+  shared="${home}/.codex/skills/local-machine-only"
+  mkdir -p "$shared" "${home}/py-stub"
+  printf 'keep-local\n' > "${shared}/SKILL.md"
+  printf '%s\n' '__version__ = "test"' > "${home}/py-stub/yaml.py"
+  write_fake_package "$package"
+  write_fake_git "$bin" ok
+  run_installer "$home" "${bin}:$(real_path)" "$log" \
+    GIT_FAKE_LOG="$git_log" \
+    GIT_FAKE_MODE=ok \
+    GIT_FAKE_PACKAGE="$package" \
+    GIT_FAKE_SHA=a4e8f7d9aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
+    PYTHONPATH="${home}/py-stub" \
+    MTG_SKILLS_TEST_FIXTURE=ok
+  if ! grep -q "install finished" "$log"; then
+    fail "unrelated-skill run did not finish: $(cat "$log")"
+  fi
+  assert_eq "$(cat "${shared}/SKILL.md")" "keep-local" "pre-existing shared skill"
+  if [[ -e "${home}/.cursor/skills/local-machine-only" || -L "${home}/.cursor/skills/local-machine-only" ]]; then
+    fail "pre-existing ~/.codex skill was exposed to Cursor"
+  fi
+  if [[ -e "${home}/.codex/skills/mtg-skill-router" ]]; then
+    fail "compact install wrote into the shared ~/.codex home"
+  fi
+  for name in mtg-engineering-flow mtg-skill-router github-pr-stewardship; do
+    if [[ ! -L "${home}/.cursor/skills/${name}" ]]; then
+      fail "${name} was not published from the managed install"
+    fi
+  done
   rm -rf "$home" "$bin" "$log"
 }
 
@@ -330,6 +372,7 @@ test_executable
 test_refuses_non_git_dest
 test_clone_failure_redacts_token
 test_success_links_without_clobber
+test_unrelated_codex_skill_stays_unlinked
 test_verify_failure_does_not_publish
 test_missing_python_is_fail_soft
 
