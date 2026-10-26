@@ -96,7 +96,7 @@ def test_failed_list_aborts_without_pushing(monkeypatch, capsys, tmp_path, statu
     client = _FailingListClient(status_code, {"detail": "Forbidden"})
 
     rc = asyncio.run(
-        cli._sync_files(str(tmp_path), repo_prefix="app", client=client, one_way=True)
+        cli._sync_files(str(tmp_path), repo_prefix="app", client=client, direction="push")
     )
 
     assert rc == 1, "a failed listing must abort with a non-zero exit code"
@@ -124,7 +124,7 @@ def test_list_network_error_aborts(monkeypatch, capsys, tmp_path):
 
     client = _BoomClient()
     rc = asyncio.run(
-        cli._sync_files(str(tmp_path), repo_prefix="app", client=client, one_way=True)
+        cli._sync_files(str(tmp_path), repo_prefix="app", client=client, direction="push")
     )
 
     assert rc == 1
@@ -132,7 +132,7 @@ def test_list_network_error_aborts(monkeypatch, capsys, tmp_path):
     assert "Aborting" in capsys.readouterr().err
 
 
-def test_one_way_sync_pushes_new_files_with_line_progress(monkeypatch, capsys, tmp_path):
+def test_push_direction_pushes_new_files_with_line_progress(monkeypatch, capsys, tmp_path):
     monkeypatch.setattr(cli, "_is_tty", False)
     local_file = tmp_path / "main.py"
     local_file.write_text("print('ok')\n", encoding="utf-8")
@@ -143,7 +143,7 @@ def test_one_way_sync_pushes_new_files_with_line_progress(monkeypatch, capsys, t
             str(tmp_path),
             repo_prefix="apps/app",
             client=client,
-            one_way=True,
+            direction="push",
             validate=True,
         )
     )
@@ -177,7 +177,9 @@ def test_bidirectional_sync_pulls_server_only_file(monkeypatch, capsys, tmp_path
     )
 
     rc = asyncio.run(
-        cli._sync_files(str(tmp_path), repo_prefix="apps/app", client=client)
+        cli._sync_files(
+            str(tmp_path), repo_prefix="apps/app", force=True, client=client
+        )
     )
 
     assert rc == 0
@@ -220,7 +222,9 @@ def test_sync_reports_read_errors(monkeypatch, capsys, tmp_path):
     )
 
     rc = asyncio.run(
-        cli._sync_files(str(tmp_path), repo_prefix="apps/app", client=client)
+        cli._sync_files(
+            str(tmp_path), repo_prefix="apps/app", force=True, client=client
+        )
     )
 
     assert rc == 1
@@ -254,7 +258,9 @@ def test_sync_rejects_unsafe_server_path(monkeypatch, capsys, tmp_path):
     )
 
     rc = asyncio.run(
-        cli._sync_files(str(tmp_path), repo_prefix="apps/app", client=client)
+        cli._sync_files(
+            str(tmp_path), repo_prefix="apps/app", force=True, client=client
+        )
     )
 
     assert rc == 1
@@ -278,7 +284,9 @@ def test_sync_reports_already_up_to_date(monkeypatch, capsys, tmp_path):
     )
 
     assert asyncio.run(
-        cli._sync_files(str(tmp_path), repo_prefix="apps/app", client=client)
+        cli._sync_files(
+            str(tmp_path), repo_prefix="apps/app", force=True, client=client
+        )
     ) == 0
     assert "Already up to date" in capsys.readouterr().out
 
@@ -391,7 +399,7 @@ def test_sync_validation_reports_lookup_and_validate_failures(monkeypatch, capsy
             str(tmp_path),
             repo_prefix="apps/app",
             client=MissingAppClient(),
-            one_way=True,
+            direction="push",
             validate=True,
         )
     )
@@ -410,7 +418,7 @@ def test_sync_validation_reports_lookup_and_validate_failures(monkeypatch, capsy
             str(tmp_path),
             repo_prefix="apps/app",
             client=ValidateFailClient(),
-            one_way=True,
+            direction="push",
             validate=True,
         )
     )
@@ -426,7 +434,7 @@ def test_sync_validation_reports_lookup_and_validate_failures(monkeypatch, capsy
             str(tmp_path),
             repo_prefix="apps/app",
             client=ValidateBoomClient(),
-            one_way=True,
+            direction="push",
             validate=True,
         )
     )
