@@ -6,14 +6,20 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from src.models.enums import ExecutionStatus
 from src.services.execution import async_executor
 from src.services.execution.async_executor import (
     _dispatch_request_identity,
     _pending_dispatch_envelope,
     _persist_execution_pin,
+    _publish_scheduled_once,
     _publish_pending,
     _validated_pending_dispatch,
     enqueue_workflow_execution_once,
+)
+from src.services.execution.submission_recovery import (
+    EmbedExecutionRecoveryDeniedError,
+    embed_session_binding,
 )
 from src.services.solutions.deployment_manifest import canonical_json, sha256_digest
 
@@ -71,6 +77,123 @@ async def test_retry_reuses_execution_without_republishing():
     assert execution_id == "22222222-2222-2222-2222-222222222222"
     assert reused is True
     publish.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_embed_capability_is_bound_to_canonical_id_before_publish():
+    context = AsyncMock()
+    context.solution_deployment_id = None
+    context.event = None
+    canonical_id = "22222222-2222-2222-2222-222222222222"
+    order: list[str] = []
+
+    async def bind(*_args):
+        order.append("bind")
+
+    async def publish(**_kwargs):
+        order.append("publish")
+        return True
+
+    with (
+        patch(
+            "src.services.execution.async_executor._persist_execution_pin",
+            new=AsyncMock(return_value=({"execution_id": canonical_id}, False)),
+        ) as persist,
+        patch(
+            "src.services.execution.submission_recovery.issue_execution_embed_capability",
+            new=AsyncMock(side_effect=bind),
+        ) as issue_capability,
+        patch(
+            "src.services.execution.async_executor._publish_scheduled_once",
+            new=AsyncMock(side_effect=publish),
+        ) as publish_execution,
+    ):
+        execution_id, reused = await enqueue_workflow_execution_once(
+            context=context,
+            workflow_id="11111111-1111-1111-1111-111111111111",
+            parameters={"ticket_id": 42},
+            execution_id="33333333-3333-3333-3333-333333333333",
+            embed_session_jti="session-a",
+        )
+
+    assert execution_id == canonical_id
+    assert reused is True
+    assert order == ["bind", "publish"]
+    assert persist.await_args.kwargs["embed_session_binding"] == embed_session_binding(
+        "session-a"
+    )
+    issue_capability.assert_awaited_once_with("session-a", canonical_id)
+    publish_execution.assert_awaited_once_with(
+        execution_id=canonical_id,
+        publish_kwargs={"execution_id": canonical_id},
+    )
+
+
+@pytest.mark.asyncio
+async def test_embed_capability_failure_leaves_execution_unpublished():
+    context = AsyncMock()
+    context.solution_deployment_id = None
+    context.event = None
+    canonical_id = "22222222-2222-2222-2222-222222222222"
+
+    with (
+        patch(
+            "src.services.execution.async_executor._persist_execution_pin",
+            new=AsyncMock(return_value=({"execution_id": canonical_id}, True)),
+        ),
+        patch(
+            "src.services.execution.submission_recovery.issue_execution_embed_capability",
+            new=AsyncMock(side_effect=RuntimeError("synthetic Redis failure")),
+        ),
+        patch(
+            "src.services.execution.async_executor._publish_scheduled_once",
+            new_callable=AsyncMock,
+        ) as publish_execution,
+        pytest.raises(RuntimeError, match="synthetic Redis failure"),
+    ):
+        await enqueue_workflow_execution_once(
+            context=context,
+            workflow_id="11111111-1111-1111-1111-111111111111",
+            parameters={},
+            execution_id=canonical_id,
+            embed_session_jti="session-a",
+        )
+
+    publish_execution.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_canonical_publisher_rejects_unissued_embed_execution(monkeypatch):
+    execution_id = "22222222-2222-2222-2222-222222222222"
+    execution = SimpleNamespace(
+        id=UUID(execution_id),
+        status=ExecutionStatus.SCHEDULED,
+        scheduled_at=None,
+        embed_session_binding=embed_session_binding("session-a"),
+        embed_capability_issued=False,
+    )
+    db = SimpleNamespace(
+        execute=AsyncMock(),
+        get=AsyncMock(return_value=execution),
+        commit=AsyncMock(),
+    )
+
+    @asynccontextmanager
+    async def db_context():
+        yield db
+
+    publish = AsyncMock()
+    monkeypatch.setattr("src.core.database.get_db_context", db_context)
+    monkeypatch.setattr(async_executor, "_publish_pending", publish)
+
+    published = await _publish_scheduled_once(
+        execution_id=execution_id,
+        publish_kwargs={"execution_id": execution_id},
+    )
+
+    assert published is False
+    publish.assert_not_awaited()
+    db.commit.assert_not_awaited()
 
 
 def _context() -> SimpleNamespace:
@@ -199,6 +322,7 @@ async def test_existing_execution_is_rehydrated_before_current_runtime_is_pinned
     execution.dispatch_evidence_hash = sha256_digest(
         canonical_json(execution.dispatch_evidence)
     )
+    execution.embed_session_binding = embed_session_binding("session-a")
 
     class Database:
         async def execute(self, _statement, _parameters=None):
@@ -238,12 +362,27 @@ async def test_existing_execution_is_rehydrated_before_current_runtime_is_pinned
         sync=False,
         api_key_id=None,
         file_path=None,
+        embed_session_binding=embed_session_binding("session-a"),
     )
 
     assert created is False
     assert publish["runtime_evidence"] == runtime
     deployment_pin.assert_not_awaited()
     workspace_pin.assert_not_awaited()
+
+    with pytest.raises(EmbedExecutionRecoveryDeniedError, match="Access denied"):
+        await _persist_execution_pin(
+            context,
+            execution_id,
+            workflow_id,
+            {"ticket_id": 42},
+            None,
+            form_id=None,
+            sync=False,
+            api_key_id=None,
+            file_path=None,
+            embed_session_binding=embed_session_binding("session-b"),
+        )
 
 
 @pytest.mark.asyncio

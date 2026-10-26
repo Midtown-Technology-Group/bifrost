@@ -325,8 +325,81 @@ async def test_insert_scheduled_execution_persists_expected_execution_fields():
     assert execution.executed_by == executed_by
     assert execution.executed_by_name == "Ada"
     assert execution.form_id == form_id
+    assert execution.embed_session_binding is None
+    assert execution.embed_capability_issued is False
     assert execution.execution_context == {
         "is_platform_admin": True,
         "is_provider_org": False,
         "is_external": False,
     }
+
+
+@pytest.mark.asyncio
+async def test_scheduled_execution_reuse_validates_durable_embed_owner():
+    from src.services.execution.submission_recovery import (
+        EmbedExecutionRecoveryDeniedError,
+        embed_session_binding,
+    )
+
+    execution_id = uuid4()
+    workflow_id = uuid4()
+    org_id = uuid4()
+    executed_by = uuid4()
+    scheduled_at = datetime.now(UTC)
+    existing = SimpleNamespace(
+        id=execution_id,
+        workflow_id=workflow_id,
+        parameters={"ticket": "123"},
+        executed_by=executed_by,
+        organization_id=org_id,
+        form_id=None,
+        embed_session_binding=embed_session_binding("session-a"),
+    )
+    db = AsyncMock()
+    db.get.return_value = existing
+
+    with (
+        patch(
+            "src.services.workspace_release_projection.acquire_runtime_admission_lock",
+            AsyncMock(),
+        ),
+        patch(
+            "src.services.execution.submission_recovery.issue_execution_embed_capability",
+            AsyncMock(),
+        ) as issue_capability,
+    ):
+        reused = await workflows._insert_scheduled_execution(
+            db=db,
+            workflow_id=workflow_id,
+            workflow_name="sync_records",
+            parameters={"ticket": "123"},
+            scheduled_at=scheduled_at,
+            organization_id=org_id,
+            executed_by=executed_by,
+            executed_by_name="Ada",
+            form_id=None,
+            is_platform_admin=False,
+            execution_id=execution_id,
+            embed_session_jti="session-a",
+        )
+
+        assert reused == execution_id
+        issue_capability.assert_awaited_once_with("session-a", execution_id)
+
+        with pytest.raises(EmbedExecutionRecoveryDeniedError, match="Access denied"):
+            await workflows._insert_scheduled_execution(
+                db=db,
+                workflow_id=workflow_id,
+                workflow_name="sync_records",
+                parameters={"ticket": "123"},
+                scheduled_at=scheduled_at,
+                organization_id=org_id,
+                executed_by=executed_by,
+                executed_by_name="Ada",
+                form_id=None,
+                is_platform_admin=False,
+                execution_id=execution_id,
+                embed_session_jti="session-b",
+            )
+
+    db.commit.assert_awaited_once()
