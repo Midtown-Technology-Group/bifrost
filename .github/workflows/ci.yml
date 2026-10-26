@@ -554,7 +554,9 @@ jobs:
         run: bash scripts/lib/install_mtg_skills_test.sh
 
       - name: Release manifest regression checks
-        run: python3 scripts/release/test_release_manifest.py
+        run: |
+          python3 scripts/release/test_release_manifest.py
+          python3 scripts/release/test_production_manifest.py
 
       - name: Local stage evidence regression checks
         run: |
@@ -1481,6 +1483,59 @@ jobs:
           predicate-type: https://bifrost.midtowntg.com/attestations/image-promotion/v1
           predicate-path: ${{ steps.promote-client.outputs.predicate_path }}
           push-to-registry: true
+
+
+      # Ordinary production identity preserves the promoted binaries' dev version.
+      # Consumers must qualify this exact successful main CI run/attempt as well
+      # as its signature; a partial/in-progress run is never deployment authority.
+      - name: Assemble protected-main component tuple
+        if: github.repository == 'Midtown-Technology-Group/bifrost'
+        env:
+          API_PROMOTION: ${{ toJSON(steps.promote-api.outputs) }}
+          CLIENT_PROMOTION: ${{ toJSON(steps.promote-client.outputs) }}
+          WORKER_PROMOTION: ${{ toJSON(steps.promote-worker.outputs) }}
+        run: |
+          python3 scripts/release/production_manifest.py --output production-manifest.json
+          sha256sum production-manifest.json > production-manifest.json.sha256
+
+      - name: Durably attest the atomic tuple on every component digest
+        if: github.repository == 'Midtown-Technology-Group/bifrost'
+        run: |
+          set -euo pipefail
+          for component in api client worker; do
+            image="$(jq -er --arg component "$component" '.images[$component] | .repository + "@" + .digest' production-manifest.json)"
+            cosign attest --yes --type https://bifrost.midtowntg.com/attestations/production-manifest/v2 \
+              --predicate production-manifest.json "$image"
+          done
+
+      - name: Attest protected-main manifest bytes
+        if: github.repository == 'Midtown-Technology-Group/bifrost'
+        id: production-manifest-attestation
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: production-manifest.json
+
+      - name: Retain protected-main verification bundle
+        if: github.repository == 'Midtown-Technology-Group/bifrost'
+        env:
+          BUNDLE_PATH: ${{ steps.production-manifest-attestation.outputs.bundle-path }}
+        run: |
+          set -euo pipefail
+          test -s "$BUNDLE_PATH"
+          cp "$BUNDLE_PATH" production-manifest.json.sigstore.json
+          sha256sum --check production-manifest.json.sha256
+
+      - name: Export protected-main manifest
+        if: github.repository == 'Midtown-Technology-Group/bifrost'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: production-manifest-${{ github.sha }}-attempt-${{ github.run_attempt }}
+          path: |
+            production-manifest.json
+            production-manifest.json.sha256
+            production-manifest.json.sigstore.json
+          if-no-files-found: error
+          retention-days: 90
 
 
   # =============================================================================

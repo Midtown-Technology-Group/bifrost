@@ -220,6 +220,8 @@ def test_promote_retags_exact_digest_and_writes_main_attestation(
     fake = FakeCommands()
     monkeypatch.setattr(candidate_image.subprocess, "run", fake)
     monkeypatch.setenv("RUNNER_TEMP", str(tmp_path))
+    monkeypatch.setenv("GITHUB_RUN_ID", "123")
+    monkeypatch.setenv("GITHUB_RUN_ATTEMPT", "2")
     output = tmp_path / "github-output"
 
     candidate_image.promote_candidate(
@@ -256,6 +258,8 @@ def test_promote_retags_exact_digest_and_writes_main_attestation(
         "version": VERSION,
     }
     assert f"digest={DIGEST}" in output.read_text(encoding="utf-8")
+    assert "run_id=123\n" in output.read_text(encoding="utf-8")
+    assert "run_attempt=2\n" in output.read_text(encoding="utf-8")
 
 
 def test_promote_fails_when_a_stable_tag_does_not_keep_the_candidate_digest(

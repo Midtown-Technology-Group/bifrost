@@ -1,0 +1,292 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Bifrost protected-main production manifest v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "product",
+    "version",
+    "tag",
+    "source",
+    "images",
+    "compatibility",
+    "build",
+    "acceptance",
+    "channel"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 2
+    },
+    "product": {
+      "const": "bifrost"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+-dev\\.\\d+$"
+    },
+    "tag": {
+      "type": "null"
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repository",
+        "commit",
+        "tree",
+        "parent",
+        "candidate_commit"
+      ],
+      "properties": {
+        "repository": {
+          "const": "Midtown-Technology-Group/bifrost"
+        },
+        "commit": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "tree": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "parent": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "candidate_commit": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        }
+      }
+    },
+    "images": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "api",
+        "client",
+        "worker"
+      ],
+      "properties": {
+        "api": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "repository",
+            "digest",
+            "platforms"
+          ],
+          "properties": {
+            "repository": {
+              "const": "ghcr.io/midtown-technology-group/bifrost-api"
+            },
+            "digest": {
+              "type": "string",
+              "pattern": "^sha256:[0-9a-f]{64}$"
+            },
+            "platforms": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "linux/amd64"
+              ],
+              "properties": {
+                "linux/amd64": {
+                  "type": "string",
+                  "pattern": "^sha256:[0-9a-f]{64}$"
+                }
+              }
+            }
+          }
+        },
+        "client": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "repository",
+            "digest",
+            "platforms"
+          ],
+          "properties": {
+            "repository": {
+              "const": "ghcr.io/midtown-technology-group/bifrost-client"
+            },
+            "digest": {
+              "type": "string",
+              "pattern": "^sha256:[0-9a-f]{64}$"
+            },
+            "platforms": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "linux/amd64"
+              ],
+              "properties": {
+                "linux/amd64": {
+                  "type": "string",
+                  "pattern": "^sha256:[0-9a-f]{64}$"
+                }
+              }
+            }
+          }
+        },
+        "worker": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "repository",
+            "digest",
+            "platforms"
+          ],
+          "properties": {
+            "repository": {
+              "const": "ghcr.io/midtown-technology-group/bifrost-worker"
+            },
+            "digest": {
+              "type": "string",
+              "pattern": "^sha256:[0-9a-f]{64}$"
+            },
+            "platforms": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "linux/amd64",
+                "linux/arm64"
+              ],
+              "properties": {
+                "linux/amd64": {
+                  "type": "string",
+                  "pattern": "^sha256:[0-9a-f]{64}$"
+                },
+                "linux/arm64": {
+                  "type": "string",
+                  "pattern": "^sha256:[0-9a-f]{64}$"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "compatibility": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "cli_contract",
+        "database",
+        "rollback"
+      ],
+      "properties": {
+        "cli_contract": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "current",
+            "previous"
+          ],
+          "properties": {
+            "current": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "previous": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          }
+        },
+        "database": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "migration_heads",
+            "upgrade_required"
+          ],
+          "properties": {
+            "migration_heads": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_]+$"
+              }
+            },
+            "upgrade_required": {
+              "type": "boolean"
+            }
+          }
+        },
+        "rollback": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "supported",
+            "reason"
+          ],
+          "properties": {
+            "supported": {
+              "const": false
+            },
+            "reason": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      }
+    },
+    "build": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "workflow",
+        "run_id",
+        "run_attempt",
+        "event",
+        "ref"
+      ],
+      "properties": {
+        "workflow": {
+          "const": ".github/workflows/ci.yml"
+        },
+        "run_id": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "run_attempt": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "event": {
+          "const": "push"
+        },
+        "ref": {
+          "const": "refs/heads/main"
+        }
+      }
+    },
+    "acceptance": {
+      "const": {
+        "kind": "signed-exact-tree-promotion",
+        "components": [
+          "api",
+          "client",
+          "worker"
+        ]
+      }
+    },
+    "channel": {
+      "const": "protected-main"
+    }
+  }
+}
