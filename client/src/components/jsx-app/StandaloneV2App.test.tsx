@@ -355,6 +355,22 @@ describe("StandaloneV2App", () => {
 		expect(mount.mock.calls[0][1].basename).toBe("/apps/dash/preview");
 	});
 
+	it("uses the runtime embed basename for deep and internal routes", async () => {
+		localStorage.setItem("bifrost_access_token", "tok-1");
+		const mount = vi.fn<StandaloneV2Module["mount"]>(() => vi.fn());
+		render(
+			<StandaloneV2App
+				{...props("embedded")}
+				runtimeBasePath="/embedded/apps/hmac/dash"
+			/>,
+		);
+		await finishModuleLoad("embedded", mount);
+		await waitFor(() => expect(mount).toHaveBeenCalled());
+		expect(mount.mock.calls[0][1].basename).toBe(
+			"/embedded/apps/hmac/dash",
+		);
+	});
+
 	it("does not load or mount while unauthenticated", async () => {
 		render(<StandaloneV2App {...props("unauthenticated")} />);
 		expect(

@@ -87,7 +87,7 @@ function CategorySection({
 							{categories.map((cat) => (
 								<button
 									key={cat.name}
- aria-pressed={selectedCategory === cat.name}
+									aria-pressed={selectedCategory === cat.name}
 									onClick={() =>
 										onSelect(
 											selectedCategory === cat.name
@@ -159,7 +159,11 @@ function EntitySection({
 					<span className="font-medium text-sm">{title}</span>
 				</div>
 				<Badge variant="secondary" className="text-xs">
-					{isLoading ? "..." : hasLoadError && entities.length === 0 ? "—" : entities.length}
+					{isLoading
+						? "..."
+						: hasLoadError && entities.length === 0
+							? "—"
+							: entities.length}
 				</Badge>
 			</button>
 
@@ -171,7 +175,8 @@ function EntitySection({
 								<Skeleton key={i} className="h-8 w-full" />
 							))}
 						</div>
-					) : hasLoadError && entities.length === 0 ? null : entities.length === 0 ? (
+					) : hasLoadError &&
+					  entities.length === 0 ? null : entities.length === 0 ? (
 						<div className="px-6 py-2 text-xs text-muted-foreground italic">
 							No {title.toLowerCase()} found
 						</div>
@@ -180,7 +185,7 @@ function EntitySection({
 							{entities.map((entity) => (
 								<button
 									key={entity.id}
- aria-pressed={selectedId === entity.id}
+									aria-pressed={selectedId === entity.id}
 									onClick={() =>
 										onSelect(
 											selectedId === entity.id
@@ -358,7 +363,7 @@ export function WorkflowSidebar({
 						<Button
 							variant="ghost"
 							size="sm"
- className="min-h-11"
+							className="min-h-11"
 							onClick={clearFilters}
 						>
 							<X />
@@ -415,7 +420,11 @@ export function WorkflowSidebar({
 				<div className="border-b space-y-0.5 px-2 pb-2">
 					<button
 						aria-pressed={endpointFilter}
- onClick={() => onEndpointFilterChange(!endpointFilter)}
+						onClick={() => {
+							const enabled = !endpointFilter;
+							onEndpointFilterChange(enabled);
+							if (enabled) onOrphanedFilterChange(false);
+						}}
 						className={cn(
 							"flex min-h-11 items-center w-full rounded-[var(--bf-radius-control)] px-4 py-2 text-sm transition-colors",
 							endpointFilter
@@ -430,7 +439,11 @@ export function WorkflowSidebar({
 					</button>
 					<button
 						aria-pressed={orphanedFilter}
- onClick={() => onOrphanedFilterChange(!orphanedFilter)}
+						onClick={() => {
+							const enabled = !orphanedFilter;
+							onOrphanedFilterChange(enabled);
+							if (enabled) onEndpointFilterChange(false);
+						}}
 						className={cn(
 							"flex min-h-11 items-center w-full rounded-[var(--bf-radius-control)] px-4 py-2 text-sm transition-colors",
 							orphanedFilter
@@ -451,7 +464,22 @@ export function WorkflowSidebar({
 						By Usage
 					</span>
 				</div>
-				{isError && <div role="alert" className="mx-3 mb-3 space-y-2 rounded-[var(--bf-radius-surface)] border border-destructive/30 p-3 text-sm"><p>Could not load workflow usage filters.</p><Button variant="outline" className="min-h-11" disabled={isFetching} onClick={() => void refetch()}>Retry usage filters</Button></div>}
+				{isError && (
+					<div
+						role="alert"
+						className="mx-3 mb-3 space-y-2 rounded-[var(--bf-radius-surface)] border border-destructive/30 p-3 text-sm"
+					>
+						<p>Could not load workflow usage filters.</p>
+						<Button
+							variant="outline"
+							className="min-h-11"
+							disabled={isFetching}
+							onClick={() => void refetch()}
+						>
+							Retry usage filters
+						</Button>
+					</div>
+				)}
 				<EntitySection
 					title={term(terminology, "form", "plural")}
 					icon={
@@ -467,7 +495,7 @@ export function WorkflowSidebar({
 						}
 					}}
 					isLoading={isLoading}
- hasLoadError={isError}
+					hasLoadError={isError}
 				/>
 				<EntitySection
 					title={term(terminology, "app", "plural")}
@@ -484,7 +512,7 @@ export function WorkflowSidebar({
 						}
 					}}
 					isLoading={isLoading}
- hasLoadError={isError}
+					hasLoadError={isError}
 				/>
 				<EntitySection
 					title={term(terminology, "agent", "plural")}
@@ -499,7 +527,7 @@ export function WorkflowSidebar({
 						}
 					}}
 					isLoading={isLoading}
- hasLoadError={isError}
+					hasLoadError={isError}
 				/>
 			</div>
 		</div>

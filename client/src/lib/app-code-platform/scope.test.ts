@@ -64,4 +64,15 @@ describe("createPlatformScope useLocation", () => {
 
 		expect(result.current.pathname).toBe("/reports/margins");
 	});
+
+	it("uses the dedicated embed base for app-relative paths", () => {
+		useAppBuilderStore
+			.getState()
+			.setAppContext("demo-app", false, "/embedded/apps/hmac/demo-app");
+		setRouterPath("/embedded/apps/hmac/demo-app/reports/margins");
+
+		const { result } = renderScopedLocation();
+
+		expect(result.current.pathname).toBe("/reports/margins");
+	});
 });

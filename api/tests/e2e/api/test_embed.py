@@ -51,10 +51,14 @@ class TestEmbedEntryPoint:
             params={**params, "hmac": hmac_val},
             follow_redirects=False,
         )
-        # Should redirect to /apps/{slug}#embed_token=<jwt>
+        # The final SPA document uses a dedicated framing-enabled route.
         assert r.status_code == 302, r.text
         location = r.headers.get("location", "")
-        assert f"/apps/{app['slug']}#embed_token=" in location
+        assert f"/embedded/apps/hmac/{app['slug']}#embed_token=" in location
+        token = location.split("#embed_token=", 1)[1]
+        claims = jwt.decode(token, options={"verify_signature": False})
+        assert claims["app_id"] == app["id"]
+        assert claims["app_slug"] == app["slug"]
 
     def test_invalid_hmac_rejected(self, e2e_client, test_app_with_secret):
         app = test_app_with_secret["app"]

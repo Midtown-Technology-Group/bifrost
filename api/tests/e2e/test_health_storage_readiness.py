@@ -5,7 +5,6 @@ from types import SimpleNamespace
 import pytest
 from fastapi import Response
 
-
 pytestmark = pytest.mark.e2e
 
 _HEALTH_PATH = Path(__file__).parents[2] / "src" / "routers" / "health.py"
@@ -13,6 +12,11 @@ _SPEC = importlib.util.spec_from_file_location("health_router_for_e2e", _HEALTH_
 health = importlib.util.module_from_spec(_SPEC)
 assert _SPEC.loader is not None
 _SPEC.loader.exec_module(health)
+
+
+@pytest.fixture(autouse=True)
+def _reset_readiness_cache():
+    health._readiness_cache = None
 
 
 class DummyDB:

@@ -13,7 +13,7 @@ parity follow-up:
   :class:`EventSourceCreate`)
 * ``bifrost events update-source <ref>`` → ``PATCH /api/events/sources/{uuid}``
   (body from :class:`EventSourceUpdate`; unset flags omitted by
-  :func:`assemble_body`)
+  :func:`assemble_cli_body`)
 * ``bifrost events subscribe <source-ref>`` →
   ``POST /api/events/sources/{source_uuid}/subscriptions``
   (body from :class:`EventSubscriptionCreate`)
@@ -67,7 +67,7 @@ from bifrost.client import BifrostClient
 from bifrost.dto_flags import (
     DTO_EXCLUDES,
     DTO_REF_LOOKUPS,
-    assemble_body,
+    assemble_cli_body,
     build_cli_flags,
     load_dict_value,
 )
@@ -388,7 +388,7 @@ async def create_source(
     cron, tz, enabled = _pop_schedule_fields(fields)
     adapter, integration_ref, webhook_config_raw = _pop_webhook_fields(fields)
 
-    body = await assemble_body(EventSourceCreate, fields, resolver=resolver)
+    body = await assemble_cli_body(EventSourceCreate, fields, resolver=resolver)
     target = await resolve_org_target(org, is_global, resolver)
     if target.is_set:
         body["organization_id"] = target.organization_id
@@ -444,7 +444,7 @@ async def update_source(
     cron, tz, enabled = _pop_schedule_fields(fields)
     adapter, integration_ref, webhook_config_raw = _pop_webhook_fields(fields)
 
-    body = await assemble_body(EventSourceUpdate, fields, resolver=resolver)
+    body = await assemble_cli_body(EventSourceUpdate, fields, resolver=resolver)
     target = await resolve_org_target(org, is_global, resolver)
     if target.is_set:
         body["organization_id"] = target.organization_id
@@ -622,7 +622,7 @@ async def subscribe(
         fields["target_type"] = "workflow"
 
     source_uuid = await resolver.resolve("event_source", source_ref)
-    body = await assemble_body(EventSubscriptionCreate, fields, resolver=resolver)
+    body = await assemble_cli_body(EventSubscriptionCreate, fields, resolver=resolver)
 
     response = await client.post(
         f"/api/events/sources/{source_uuid}/subscriptions", json=body
@@ -694,7 +694,7 @@ async def update_subscription(
         )
 
     source_uuid = await resolver.resolve("event_source", source_ref)
-    body = await assemble_body(EventSubscriptionUpdate, fields, resolver=resolver)
+    body = await assemble_cli_body(EventSubscriptionUpdate, fields, resolver=resolver)
 
     response = await client.patch(
         f"/api/events/sources/{source_uuid}/subscriptions/{subscription_id}",

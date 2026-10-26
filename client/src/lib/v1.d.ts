@@ -30075,7 +30075,8 @@ export interface components {
              * @description Config value. For SECRET type, this will be encrypted before storage.
              */
             value: string;
-            type: components["schemas"]["ConfigType"];
+            /** @description Config type. Omit on upsert to preserve an existing type; new configs default to string. */
+            type?: components["schemas"]["ConfigType"] | null;
             /**
              * Description
              * @description Optional description of this config entry

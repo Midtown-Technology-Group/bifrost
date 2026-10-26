@@ -11,7 +11,7 @@ parity follow-up:
   :class:`ApplicationCreate`) with optional ``--deps @package.json`` triggering
   a follow-up ``PUT /api/applications/{id}/dependencies``.
 * ``bifrost apps update <ref>`` → ``PATCH /api/applications/{uuid}`` (body from
-  :class:`ApplicationUpdate`; unset flags omitted by :func:`assemble_body`).
+  :class:`ApplicationUpdate`; unset flags omitted by :func:`assemble_cli_body`).
   This is patch-without-draft per the audit — metadata is applied to the
   live application without a staging step.
 * ``bifrost apps set-deps <ref>`` → ``PUT /api/applications/{uuid}/dependencies``
@@ -30,16 +30,18 @@ no :data:`DTO_FIELD_ALIASES` entry is required.
 
 Two-call orchestration for ``apps create --deps``:
 
-1. ``POST /api/applications`` with the :class:`ApplicationCreate` body.
-2. If ``--deps`` was passed, ``PUT /api/applications/{id}/dependencies``
+1. Parse and validate ``--deps`` locally before any remote mutation.
+2. ``POST /api/applications`` with the :class:`ApplicationCreate` body.
+3. If ``--deps`` was passed, ``PUT /api/applications/{id}/dependencies``
    with the parsed dependency dict.
-3. On deps failure after create succeeded: print both the created app and
+4. On a remote deps failure after create succeeded: print both the created app and
    the deps error, exit non-zero, and leave the app created (no rollback).
 """
 
 from __future__ import annotations
 
 import os
+import re
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -53,7 +55,7 @@ from bifrost.client import BifrostClient
 from bifrost.dto_flags import (
     DTO_EXCLUDES,
     DTO_REF_LOOKUPS,
-    assemble_body,
+    assemble_cli_body,
     build_cli_flags,
     load_dict_value,
 )
@@ -81,6 +83,11 @@ _UPDATE_FLAGS = build_cli_flags(
     exclude=DTO_EXCLUDES.get("ApplicationUpdate", set()),
     verb_ref_lookups=DTO_REF_LOOKUPS.get("ApplicationUpdate", {}),
 )
+
+
+def _is_safe_slug_ref(ref: str) -> bool:
+    """Return whether ``ref`` can safely occupy one URL path segment."""
+    return re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]*", ref) is not None
 
 
 def _parse_deps(raw: str) -> dict[str, str]:
@@ -192,7 +199,7 @@ async def get_app(
             output_result(own, ctx=ctx)
             return
 
-    if not is_uuid:
+    if not is_uuid and _is_safe_slug_ref(ref):
         # Try the slug endpoint first — it's a single round-trip and works
         # for the majority case where the user pastes a slug.
         slug_response = await client.get(f"/api/applications/{ref}")
@@ -248,13 +255,15 @@ async def create_app(
     repeated values or a comma-separated list; entries may be role names
     or UUIDs.
 
-    When ``--deps`` is passed this runs as a two-call orchestration: the
-    app is created first, then a ``PUT /dependencies`` applies the parsed
-    dependency dict. If the deps call fails after the create succeeded,
+    When ``--deps`` is passed, local input is validated first, then this runs
+    as a two-call orchestration: the app is created and a ``PUT /dependencies``
+    applies the parsed dependency dict. If the remote deps call fails,
     the command prints both the created app and the deps error, exits
     non-zero, and leaves the app in place — there is no rollback.
     """
-    body = await assemble_body(ApplicationCreate, fields, resolver=resolver)
+    # Validate every local input before creating persistent server state.
+    deps = _parse_deps(deps_raw) if deps_raw is not None else None
+    body = await assemble_cli_body(ApplicationCreate, fields, resolver=resolver)
     response = await client.post("/api/applications", json=body)
     response.raise_for_status()
     created = response.json()
@@ -263,7 +272,7 @@ async def create_app(
         output_result(created, ctx=ctx)
         return
 
-    deps = _parse_deps(deps_raw)
+    assert deps is not None
     app_id = created["id"]
     deps_response = await client.put(
         f"/api/applications/{app_id}/dependencies", json=deps
@@ -336,7 +345,7 @@ async def update_app(
     no rollback.
     """
     app_uuid = await resolver.resolve("app", ref)
-    body = await assemble_body(ApplicationUpdate, fields, resolver=resolver)
+    body = await assemble_cli_body(ApplicationUpdate, fields, resolver=resolver)
     response = await client.patch(f"/api/applications/{app_uuid}", json=body)
     response.raise_for_status()
     updated = response.json()
