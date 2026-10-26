@@ -2433,6 +2433,16 @@ async def _run_deploy_job(
                 return False
             if job.status in ("succeeded", "failed"):
                 return False
+            if status_value == "failed" and allow_connected_install:
+                # A from-repo install is not terminally failed until its new
+                # install row is gone. Keep the projection transition and
+                # cleanup in one transaction so pollers cannot observe a
+                # failed job while the orphan is still externally visible.
+                job.install_id = None
+                await db.flush()
+                orphan = await db.get(SolutionORM, solution_id)
+                if orphan is not None:
+                    await db.delete(orphan)
             job.status = status_value
             job.error = error
             job.result = result

@@ -1,6 +1,8 @@
 """Public entity models expose solution_id so the UI badge can link to the owner."""
 import asyncio
 from datetime import datetime, timezone
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
@@ -127,6 +129,147 @@ def test_application_to_public_populates_solution_id(sol_id) -> None:
     )
     assert app.solution_id == sol_id
     assert app.is_solution_managed is (sol_id is not None)
+    assert app.repo_path is None
+
+
+def test_application_to_public_exposes_repo_path_only_when_requested() -> None:
+    from src.routers.applications import application_to_public
+    from src.services.application_sdk_status import CurrentApplicationSdkMetadata
+
+    app = asyncio.run(
+        application_to_public(
+            _FakeAppRow(None),
+            _FakeAppRepo(),
+            current_sdk=CurrentApplicationSdkMetadata(
+                package_version="1.0.1",
+                fingerprint="current-fp",
+                contract_version=1,
+            ),
+            include_repo_path=True,
+        )
+    )
+
+    assert app.repo_path == "apps/my-app"
+
+
+@pytest.mark.parametrize(
+    ("is_platform_admin", "is_provider_org", "expected"),
+    [(False, False, False), (True, False, True), (False, True, True)],
+)
+def test_application_repo_path_visibility_matches_control_plane_roles(
+    is_platform_admin, is_provider_org, expected
+) -> None:
+    from src.routers.applications import _can_view_repo_path
+
+    user = SimpleNamespace(
+        is_platform_admin=is_platform_admin,
+        is_provider_org=is_provider_org,
+    )
+
+    assert _can_view_repo_path(user) is expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("is_platform_admin", "is_provider_org", "expected_repo_path"),
+    [
+        (False, False, None),
+        (True, False, "apps/private"),
+        (False, True, "apps/private"),
+    ],
+)
+async def test_export_application_applies_repo_path_visibility(
+    is_platform_admin, is_provider_org, expected_repo_path
+) -> None:
+    from src.routers import applications
+
+    app_id = uuid4()
+    user = SimpleNamespace(
+        user_id=uuid4(),
+        is_platform_admin=is_platform_admin,
+        is_provider_org=is_provider_org,
+        is_external=False,
+    )
+    ctx = SimpleNamespace(db=MagicMock(), org_id=uuid4())
+    repo = MagicMock()
+    exported = {"id": app_id, "repo_path": "apps/private"}
+    repo.export_application = AsyncMock(return_value=exported)
+    public = object()
+
+    with (
+        patch.object(applications, "ApplicationRepository", return_value=repo),
+        patch.object(
+            applications,
+            "get_application_by_id_or_404",
+            new=AsyncMock(return_value=object()),
+        ),
+        patch.object(
+            applications.ApplicationPublic,
+            "model_validate",
+            return_value=public,
+        ) as validate,
+    ):
+        result = await applications.export_application(app_id, ctx, user, None)
+
+    assert result is public
+    validated = validate.call_args.args[0]
+    assert validated.get("repo_path") == expected_repo_path
+
+
+@pytest.mark.asyncio
+async def test_rollback_application_keeps_repo_path_redacted_for_ordinary_user() -> None:
+    from src.models.contracts.applications import ApplicationRollbackRequest
+    from src.routers import applications
+
+    app_id = uuid4()
+    version_id = uuid4()
+    user = SimpleNamespace(
+        user_id=uuid4(),
+        is_platform_admin=False,
+        is_provider_org=False,
+        is_external=False,
+    )
+    db = MagicMock()
+    db.flush = AsyncMock()
+    db.refresh = AsyncMock()
+    ctx = SimpleNamespace(db=db, org_id=uuid4())
+    application = MagicMock()
+    repo = MagicMock()
+    repo.rollback_to_version = AsyncMock()
+    public = object()
+
+    with (
+        patch.object(applications, "ApplicationRepository", return_value=repo),
+        patch.object(
+            applications,
+            "assert_entity_id_not_solution_managed",
+            new=AsyncMock(),
+        ),
+        patch.object(
+            applications,
+            "get_application_by_id_or_404",
+            new=AsyncMock(return_value=application),
+        ),
+        patch.object(
+            applications,
+            "load_current_sdk_metadata",
+            new=AsyncMock(return_value=MagicMock()),
+        ),
+        patch.object(
+            applications,
+            "application_to_public",
+            new=AsyncMock(return_value=public),
+        ) as to_public,
+    ):
+        result = await applications.rollback_application(
+            app_id,
+            ApplicationRollbackRequest(version_id=version_id),
+            ctx,
+            user,
+        )
+
+    assert result is public
+    assert to_public.await_args.kwargs["include_repo_path"] is False
 
 
 def test_application_to_public_populates_sdk_fields(monkeypatch) -> None:
