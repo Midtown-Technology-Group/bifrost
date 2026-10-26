@@ -8,6 +8,7 @@ import pytest
 from fastapi import HTTPException, status
 from sqlalchemy.exc import IntegrityError
 
+from src.core.cache import DataProviderCacheIdentity
 from src.models.contracts.workflows import (
     RegisterWorkflowRequest,
     WorkflowUpdateRequest,
@@ -806,7 +807,14 @@ async def test_execute_workflow_returns_cached_transient_data_provider_result() 
     assert result.status == ExecutionStatus.SUCCESS
     assert result.result == [{"label": "One", "value": "1"}]
     assert result.is_transient is True
-    cached.assert_awaited_once()
+    cached.assert_awaited_once_with(
+        DataProviderCacheIdentity(
+            organization_id=str(user.organization_id),
+            provider_id=str(workflow.id),
+            principal_id=str(user.user_id),
+        ),
+        {"q": "o"},
+    )
     run_workflow.assert_not_awaited()
 
 

@@ -42,6 +42,7 @@ from shared.sdk_workflow_execution import (
     is_uuid_workflow_ref,
     should_publish_request_execution_update,
 )
+from src.core.cache import DataProviderCacheIdentity
 from src.core.principal import UserPrincipal
 from src.models.enums import ExecutionStatus
 
@@ -578,6 +579,14 @@ class TestExecuteDispatch:
         assert result.status == ExecutionStatus.SUCCESS
         assert result.result == [{"id": 1}]
         assert result.is_transient is True
+        cached.assert_awaited_once_with(
+            DataProviderCacheIdentity(
+                organization_id=str(org.id),
+                provider_id=str(wf.id),
+                principal_id=str(principal.user_id),
+            ),
+            {},
+        )
         run_workflow.assert_not_awaited()
 
     async def test_data_provider_non_transient_dispatches(self, db_session):
