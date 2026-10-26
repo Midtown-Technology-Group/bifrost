@@ -75,8 +75,12 @@ def _attempt_failure_phase(attempt_status: str, failure_code: str | None) -> str
 
 
 def workflow_prefetch_count(settings: Any) -> int:
-    """Cap workflow prefetch at local process admission capacity."""
-    return max(1, min(settings.max_concurrency, settings.max_workers))
+    """Cap workflow prefetch at process and database admission capacity."""
+    database_capacity = settings.database_pool_size + settings.database_max_overflow
+    return max(
+        1,
+        min(settings.max_concurrency, settings.max_workers, database_capacity),
+    )
 
 
 def _resolve_execution_org_id(

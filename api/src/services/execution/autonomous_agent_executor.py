@@ -747,7 +747,7 @@ class AutonomousAgentExecutor:
             ):
                 raise ToolError(f"Unknown tool: {tool_call.name}")
 
-        response = await execute_agent_workflow_tool(
+        workflow_result = execute_agent_workflow_tool(
             workflow_id=workflow_id,
             workflow_name=tool_call.name,
             parameters=tool_call.arguments or {},
@@ -786,6 +786,14 @@ class AutonomousAgentExecutor:
                 else self._current_run_id or None
             ),
         )
+
+        # The synchronous result is delivered by another consumer behind the
+        # same gate. Transfer this handler's slot so a full set of parent agents
+        # cannot starve their own child workflows.
+        from src.jobs.rabbitmq import suspend_consumer_admission
+
+        async with suspend_consumer_admission():
+            response = await workflow_result
         self._last_workflow_execution_id = response.execution_id
         self._last_workflow_execution_is_error = response.status.value != "Success"
 
@@ -966,11 +974,15 @@ class AutonomousAgentExecutor:
             if not decision.allowed:
                 return json.dumps(knowledge_search_rejection_payload(decision))
 
-            # Brief DB session for embedding client config + knowledge search
+            # Resolve credentials in a brief lease, then release it before the
+            # remote embedding request. A second brief lease owns only the
+            # database search; slow provider I/O must never consume a pool slot.
             async with self._session_factory() as db:
                 embedding_client = await get_embedding_client(db)
-                query_embedding = await embedding_client.embed_single(query)
 
+            query_embedding = await embedding_client.embed_single(query)
+
+            async with self._session_factory() as db:
                 repo = KnowledgeRepository(
                     db, org_id=agent.organization_id, is_superuser=True
                 )

@@ -152,6 +152,11 @@ class Worker:
 
     def __init__(self):
         self.settings = get_settings()
+        database_capacity = max(
+            1,
+            self.settings.database_pool_size + self.settings.database_max_overflow,
+        )
+        self._execution_admission = asyncio.Semaphore(database_capacity)
         self.running = False
         self._shutdown_event = asyncio.Event()
         self._consumers: list = []
@@ -269,7 +274,11 @@ class Worker:
                 )
             # The process pool already polls durable commands for this worker.
             names = [name for name in names if name != "package-install"]
-        self._consumers = [factories[name]() for name in names]
+        self._consumers = []
+        for name in names:
+            consumer = factories[name]()
+            consumer.set_admission_semaphore(self._execution_admission)
+            self._consumers.append(consumer)
 
         # Start each consumer
         for consumer in self._consumers:

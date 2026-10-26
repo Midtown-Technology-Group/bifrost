@@ -62,6 +62,12 @@ def _terminal_status_for_agent_result(
     return None
 
 
+def agent_prefetch_count(settings: Any) -> int:
+    """Cap agent prefetch at the worker's database admission capacity."""
+    database_capacity = settings.database_pool_size + settings.database_max_overflow
+    return max(1, min(settings.max_concurrency, database_capacity))
+
+
 async def _publish_sync_result(run_id: str, result: dict) -> None:
     """Release a synchronous caller waiting on this run."""
     result_key = f"{REDIS_PREFIX}:{run_id}:result"
@@ -160,7 +166,7 @@ class AgentRunConsumer(BaseConsumer):
         settings = get_settings()
         super().__init__(
             queue_name=QUEUE_NAME,
-            prefetch_count=settings.max_concurrency,
+            prefetch_count=agent_prefetch_count(settings),
             operations_policy=broker_execution_policies()[QUEUE_NAME],
         )
         self._session_factory = get_session_factory()
