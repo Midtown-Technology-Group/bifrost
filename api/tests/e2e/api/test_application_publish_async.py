@@ -282,6 +282,7 @@ async def test_captured_repository_publication_serves_exact_build_and_preserves_
     from src.models import User
     from src.models.contracts.applications import ApplicationGitPublicationInput
     from src.models.orm.applications import Application
+    from src.repositories.applications import ApplicationRepository
     from src.services.application_publication import publication_controls_hash
     from src.services.application_publication_evidence import read_app_publication_runtime_pin
     from src.services.application_source_accountability import PreparedAppAccounting, verify_app_accounting
@@ -349,7 +350,10 @@ async def test_captured_repository_publication_serves_exact_build_and_preserves_
     # user has no human App role/admin grant; the previous direct repository
     # bypass and mocked provider/access checks hid this boundary.
     actor = await db_session.get(User, SYSTEM_USER_UUID)
-    assert actor is not None and actor.is_active and not actor.is_superuser and actor.organization_id is None
+    assert actor is not None and actor.is_active and not actor.is_superuser
+    human_access = ApplicationRepository(db_session, installed.organization_id,
+        user_id=actor.id, is_superuser=actor.is_superuser)
+    assert await human_access.get(id=app_id) is None
 
     async def guard():
         await jobs._authorize_application_publish(db_session, context, installed, payload)
