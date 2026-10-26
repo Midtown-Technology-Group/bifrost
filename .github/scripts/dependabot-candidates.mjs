@@ -48,16 +48,21 @@ export async function publishInputs({ github, context, core }) {
 export async function waitForPublication({ github, ciRunId, ciAttempt, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), maxPolls = 130 }) {
   if (![ciRunId, ciAttempt].every(value => Number.isSafeInteger(value) && value > 0)) throw new Error('Invalid CI identity');
   const scope = { owner: 'Midtown-Technology-Group', repo: 'bifrost' };
+  const { data: ci } = await github.rest.actions.getWorkflowRun({ ...scope, run_id: ciRunId });
+  if (ci.id !== ciRunId || ci.run_attempt !== ciAttempt || !Number.isFinite(Date.parse(ci.created_at))) {
+    throw new Error('CI publication identity changed');
+  }
+  const created = `>=${ci.created_at}`;
   for (let poll = 0; poll < maxPolls; poll++) {
-    const { data: builds } = await github.rest.actions.listWorkflowRuns({ ...scope,
-      workflow_id: 'dependabot-candidates.yml', event: 'workflow_run', per_page: 100 });
-    const producer = builds.workflow_runs.find(run => run.display_title === `Dependabot candidate build ${ciRunId}:${ciAttempt}`);
+    const builds = await github.paginate(github.rest.actions.listWorkflowRuns, { ...scope,
+      workflow_id: 'dependabot-candidates.yml', event: 'workflow_run', created, per_page: 100 });
+    const producer = builds.find(run => run.display_title === `Dependabot candidate build ${ciRunId}:${ciAttempt}`);
     if (producer?.status === 'completed') {
       if (producer.conclusion !== 'success') throw new Error('Candidate build failed');
       const title = `Dependabot candidates ${producer.id}:${producer.run_attempt}`;
-      const { data: publications } = await github.rest.actions.listWorkflowRuns({ ...scope,
-        workflow_id: 'publish-dependabot-candidates.yml', event: 'workflow_run', per_page: 100 });
-      const publisher = publications.workflow_runs.find(run => run.display_title === title);
+      const publications = await github.paginate(github.rest.actions.listWorkflowRuns, { ...scope,
+        workflow_id: 'publish-dependabot-candidates.yml', event: 'workflow_run', created, per_page: 100 });
+      const publisher = publications.find(run => run.display_title === title);
       if (publisher?.status === 'completed') {
         if (publisher.conclusion !== 'success') throw new Error('Trusted candidate publication failed');
         return { producer: producer.id, publisher: publisher.id };

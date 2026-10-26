@@ -69,11 +69,15 @@ for (const [name, mutate] of [
 
 function waiting({ buildStatus = 'completed', buildConclusion = 'success', publications = [] } = {}) {
   const calls = [];
-  return { calls, github: { rest: { actions: { async listWorkflowRuns(args) {
+  const github = { rest: { actions: {
+    async getWorkflowRun() { return { data: { id: 50, run_attempt: 1, created_at: '2026-10-26T00:00:00Z' } }; },
+    async listWorkflowRuns(args) {
     calls.push(args);
     return { data: { workflow_runs: args.workflow_id === 'dependabot-candidates.yml' ?
       [{ id: 101, run_attempt: 2, display_title: 'Dependabot candidate build 50:1', status: buildStatus, conclusion: buildConclusion }] : publications } };
-  } } } } };
+  } } } };
+  github.paginate = async (method, args) => (await method(args)).data.workflow_runs;
+  return { calls, github };
 }
 const publication = { id: 202, display_title: 'Dependabot candidates 101:2', status: 'completed', conclusion: 'success' };
 
@@ -210,3 +214,54 @@ for (const scenario of ['success', 'human PR', 'non-PR CI', 'lint failure', 'sta
     }
   });
 }
+
+for (const [login, userId, allowed] of [
+  ['MTG-Thomas', 87775189, true], ['Other-Principal', 123, true],
+  ['owner\ninjected=evil', 1, false], ['owner', 0, false], ['owner', true, false],
+]) {
+  test(`credential principal readback validates output: ${JSON.stringify(login)} / ${userId}`, async () => {
+    const root = await mkdtemp(join(tmpdir(), 'bifrost-principal-'));
+    try {
+      const workflow = await readFile(new URL('../workflows/publish-dependabot-candidates.yml', import.meta.url), 'utf8');
+      const sentinel = 'private-sentinel-do-not-log';
+      await writeFile(join(root, 'profile.json'), JSON.stringify({ login, id: userId }));
+      await writeFile(join(root, 'sitecustomize.py'), `import io, os, pathlib, urllib.request
+def response(request, timeout):
+    assert request.full_url == 'https://api.github.com/user'
+    assert request.get_method() == 'GET'
+    assert request.get_header('Authorization') == 'Bearer ' + os.environ['GHCR_TOKEN']
+    assert timeout == 30
+    return io.StringIO(pathlib.Path(os.environ['PROFILE']).read_text())
+urllib.request.urlopen = response
+`);
+      const output = join(root, 'output');
+      const result = spawnSync('bash', ['-c', runStep(workflow, 'Read existing credential principal')], {
+        env: { ...process.env, PYTHONPATH: root, PROFILE: join(root, 'profile.json'),
+          GHCR_TOKEN: sentinel, GITHUB_OUTPUT: output }, encoding: 'utf8',
+      });
+      assert.equal(result.status === 0, allowed, result.stderr);
+      assert.ok(!`${result.stdout}${result.stderr}`.includes(sentinel));
+      if (allowed) assert.equal(await readFile(output, 'utf8'), `login=${login}\n`);
+      else await assert.rejects(readFile(output));
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
+}
+
+test('publication lookup paginates both workflow histories within the exact CI time window', async () => {
+  const f = waiting({ publications: [publication] });
+  let pages = 0;
+  f.github.paginate = async (method, args) => {
+    pages++;
+    assert.equal(args.created, '>=2026-10-26T00:00:00Z');
+    const first = Array.from({ length: 100 }, () => ({ display_title: 'unrelated', status: 'completed' }));
+    return [...first, ...(await method(args)).data.workflow_runs];
+  };
+  assert.deepEqual(await waitForPublication({ github: f.github, ciRunId: 50, ciAttempt: 1 }), { producer: 101, publisher: 202 });
+  assert.equal(pages, 2);
+});
+
+test('publication lookup rejects a superseded CI attempt', async () => {
+  const f = waiting();
+  f.github.rest.actions.getWorkflowRun = async () => ({ data: { id: 50, run_attempt: 2, created_at: '2026-10-26T00:00:00Z' } });
+  await assert.rejects(waitForPublication({ github: f.github, ciRunId: 50, ciAttempt: 1 }), /identity changed/);
+});
