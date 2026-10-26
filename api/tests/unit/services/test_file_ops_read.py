@@ -1,11 +1,10 @@
 """Unit tests for pure FileOperationsService branches."""
 
 from contextlib import asynccontextmanager
-
-import pytest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
 from src.services.file_storage.file_ops import compute_git_blob_sha
 
 
@@ -338,18 +337,56 @@ class TestWriteFileBehavior:
 
 
 class TestDeleteFilePureBranches:
-    """Verify delete side effects are best-effort and path-aware."""
+    """Verify delete authority fails closed while presentation cleanup does not."""
 
     @pytest.mark.asyncio
-    async def test_delete_file_continues_when_side_effect_fails(self):
+    async def test_delete_file_rejects_git_metadata_before_storage(self):
+        """Retain the shared canonical path guard from the code-editor repair."""
         from src.services.file_storage.file_ops import FileOperationsService
 
         service = _service()
         service._delete_from_s3 = AsyncMock()
-        service._remove_from_search_index = AsyncMock(side_effect=RuntimeError("index down"))
-        service._handle_app_file_cleanup = AsyncMock()
-        service._remove_metadata = AsyncMock()
-        service._invalidate_module_cache_if_python = AsyncMock()
+        service._delete_file_impl = FileOperationsService._delete_file_impl.__get__(
+            service
+        )
+
+        with pytest.raises(ValueError, match="excluded"):
+            await service._delete_file_impl(".git/objects/aa/bb")
+
+        service._delete_from_s3.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_delete_file_orders_critical_retirement_before_best_effort_cleanup(self):
+        from src.services.file_storage.file_ops import FileOperationsService
+
+        events = []
+
+        async def record(name, *, error=None):
+            events.append(name)
+            if error is not None:
+                raise error
+
+        async def cache(_path):
+            await record("cache")
+
+        async def delete_source(_path):
+            await record("s3")
+
+        async def retire_metadata(_path):
+            await record("metadata")
+
+        async def remove_index(_path):
+            await record("index")
+
+        async def clean_preview(_path):
+            await record("preview", error=RuntimeError("preview down"))
+
+        service = _service()
+        service._delete_from_s3 = AsyncMock(side_effect=delete_source)
+        service._remove_from_search_index = AsyncMock(side_effect=remove_index)
+        service._handle_app_file_cleanup = AsyncMock(side_effect=clean_preview)
+        service._remove_metadata = AsyncMock(side_effect=retire_metadata)
+        service._invalidate_module_cache_if_python = AsyncMock(side_effect=cache)
         service.delete_file = FileOperationsService.delete_file.__get__(service)
         service._delete_file_impl = FileOperationsService._delete_file_impl.__get__(service)
 
@@ -362,7 +399,8 @@ class TestDeleteFilePureBranches:
         service._remove_from_search_index.assert_awaited_once_with("workflows/remove.py")
         service._handle_app_file_cleanup.assert_awaited_once_with("workflows/remove.py")
         service._remove_metadata.assert_awaited_once_with("workflows/remove.py")
-        service._invalidate_module_cache_if_python.assert_awaited_once_with("workflows/remove.py")
+        assert service._invalidate_module_cache_if_python.await_count == 2
+        assert events == ["cache", "s3", "cache", "metadata", "index", "preview"]
         publish.assert_awaited_once_with(
             user_id="system",
             user_name="system",
@@ -370,6 +408,49 @@ class TestDeleteFilePureBranches:
             paths=["workflows/remove.py"],
             session_id="session-1",
         )
+
+    @pytest.mark.asyncio
+    async def test_delete_file_stops_before_source_removal_when_cache_fails(self):
+        from src.services.file_storage.file_ops import FileOperationsService
+
+        service = _service()
+        service._invalidate_module_cache_if_python = AsyncMock(
+            side_effect=RuntimeError("redis unavailable")
+        )
+        service._delete_from_s3 = AsyncMock()
+        service._remove_metadata = AsyncMock()
+        service._remove_from_search_index = AsyncMock()
+        service._handle_app_file_cleanup = AsyncMock()
+        service._delete_file_impl = FileOperationsService._delete_file_impl.__get__(service)
+
+        with pytest.raises(RuntimeError, match="redis unavailable"):
+            await service._delete_file_impl("workflows/remove.py")
+
+        service._delete_from_s3.assert_not_awaited()
+        service._remove_metadata.assert_not_awaited()
+        service._remove_from_search_index.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_delete_file_propagates_authority_retirement_failure(self):
+        from src.services.file_storage.file_ops import FileOperationsService
+
+        service = _service()
+        service._invalidate_module_cache_if_python = AsyncMock()
+        service._delete_from_s3 = AsyncMock()
+        service._remove_metadata = AsyncMock(
+            side_effect=RuntimeError("database unavailable")
+        )
+        service._remove_from_search_index = AsyncMock()
+        service._handle_app_file_cleanup = AsyncMock()
+        service._delete_file_impl = FileOperationsService._delete_file_impl.__get__(service)
+
+        with pytest.raises(RuntimeError, match="database unavailable"):
+            await service._delete_file_impl("workflows/remove.py")
+
+        assert service._invalidate_module_cache_if_python.await_count == 2
+        service._delete_from_s3.assert_awaited_once()
+        service._remove_from_search_index.assert_not_awaited()
+        service._handle_app_file_cleanup.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_delete_from_s3_uses_repo_prefix(self):

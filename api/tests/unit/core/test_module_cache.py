@@ -763,6 +763,159 @@ class TestModuleCacheAsync:
             generation="second",
         )
 
+    async def test_delete_clears_cold_refill_after_workspace_lease_loss(
+        self, mock_redis_client
+    ):
+        """A lost delete lease must not preserve source refilled before S3 removal."""
+        from src.core import module_cache
+        from src.core import module_cache_sync
+        from src.services.file_storage.file_ops import FileOperationsService
+
+        path = "workflows/remove.py"
+        source = b"VALUE = 'stale'\n"
+        durable = {path: source}
+        cached: dict[str, str] = {}
+        refills: list[object] = []
+        mock_client, mock_redis = mock_redis_client
+
+        async def get_cached(key: str) -> str | None:
+            return cached.get(key)
+
+        async def set_cached(key: str, _ttl: int, value: str) -> None:
+            cached[key] = value
+
+        async def delete_cached(key: str) -> None:
+            cached.pop(key, None)
+
+        async def read_storage(item: str) -> bytes:
+            try:
+                return durable[item]
+            except KeyError as exc:
+                raise FileNotFoundError(item) from exc
+
+        async def delete_source(item: str) -> None:
+            # Simulate Redis restarting after pre-invalidation: the old writer
+            # no longer owns its lease/marker and a legitimate cold read can
+            # refill the still-present durable source under a fresh generation.
+            refills.append(await module_cache.get_module(item))
+            del durable[item]
+
+        mock_client.get = AsyncMock(side_effect=get_cached)
+        mock_client.setex = AsyncMock(side_effect=set_cached)
+        mock_client.delete = AsyncMock(side_effect=delete_cached)
+
+        lock = AsyncMock()
+        lock.acquire.return_value = True
+        lock.reacquire.return_value = False
+        mock_redis.lock = MagicMock(return_value=lock)
+
+        service = MagicMock(spec=FileOperationsService)
+        service.delete_file = FileOperationsService.delete_file.__get__(service)
+        service._delete_file_impl = FileOperationsService._delete_file_impl.__get__(
+            service
+        )
+        service._invalidate_module_cache_if_python = (
+            FileOperationsService._invalidate_module_cache_if_python.__get__(service)
+        )
+        service._delete_from_s3 = AsyncMock(side_effect=delete_source)
+        service._remove_metadata = AsyncMock()
+        service._remove_from_search_index = AsyncMock()
+        service._handle_app_file_cleanup = AsyncMock()
+        rollback = AsyncMock()
+
+        with (
+            patch("src.core.module_cache.get_redis_client", return_value=mock_client),
+            patch(
+                "src.core.module_cache.wait_for_workspace_generation",
+                new=AsyncMock(return_value="ready-after-restart"),
+            ),
+            patch(
+                "src.core.module_cache._read_module_from_storage",
+                new=AsyncMock(side_effect=read_storage),
+            ) as storage_read,
+            patch(
+                "src.core.module_cache.mark_workspace_generation_updating",
+                new=AsyncMock(return_value="updating:delete"),
+            ),
+            patch(
+                "src.core.module_cache._renew_workspace_update_lease",
+                new=AsyncMock(return_value=None),
+            ),
+            patch(
+                "src.core.module_cache.rotate_workspace_generation",
+                new=AsyncMock(),
+            ) as rotate,
+            patch(
+                "src.core.module_cache.reconcile_module_coherence",
+                new=AsyncMock(),
+            ) as reconcile,
+            patch("src.core.pubsub.publish_file_activity", new=AsyncMock()),
+            patch("src.core.request_context.get_request_user", return_value=None),
+            patch(
+                "src.core.request_context.get_request_session_id",
+                return_value="delete-session",
+            ),
+        ):
+            with pytest.raises(RuntimeError, match="lease was lost"):
+                await service.delete_file(path)
+
+            # Request teardown rolls back the authority updates made in the
+            # body, but durable source deletion and both cache invalidations
+            # remain outside that database transaction.
+            await rollback()
+            subsequent_load = await module_cache.get_module(path)
+
+            sync_redis = MagicMock()
+
+            def get_sync_cached(key: str) -> str | None:
+                if key == module_cache_sync.WORKSPACE_GENERATION_KEY:
+                    return "ready-after-restart"
+                return cached.get(key)
+
+            sync_redis.get.side_effect = get_sync_cached
+            with (
+                patch.object(
+                    module_cache_sync,
+                    "_get_sync_redis",
+                    return_value=sync_redis,
+                ),
+                patch.object(
+                    module_cache_sync,
+                    "_get_engine_client",
+                    return_value=None,
+                ),
+                patch.object(
+                    module_cache_sync,
+                    "_fetch_module_from_api",
+                    return_value=None,
+                ),
+                patch.object(
+                    module_cache_sync,
+                    "_get_s3_module",
+                    return_value=None,
+                ),
+            ):
+                worker_load = module_cache_sync.get_module_sync(path)
+
+        assert refills == [
+            {
+                "content": source.decode(),
+                "path": path,
+                "hash": hashlib.sha256(source).hexdigest(),
+                "generation": "ready-after-restart",
+            }
+        ]
+        assert subsequent_load is None
+        assert worker_load is None
+        assert cached == {}
+        assert mock_client.delete.await_count == 2
+        assert storage_read.await_count == 2
+        service._remove_metadata.assert_awaited_once_with(path)
+        service._remove_from_search_index.assert_awaited_once_with(path)
+        rollback.assert_awaited_once()
+        rotate.assert_not_awaited()
+        reconcile.assert_not_awaited()
+
     async def test_workspace_update_renewal_keeps_lock_and_barrier_alive(
         self, mock_redis_client
     ):
