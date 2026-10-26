@@ -44,6 +44,22 @@ jobs:
       manifest_sha256: ${{ steps.evidence-output.outputs.manifest_sha256 }}
       artifact_name: ${{ steps.context.outputs.artifact_name }}
     steps:
+      # Pull fixed cache references while only trusted workflow text is present,
+      # then remove the package credential before pull-request source is checked out.
+      - name: Pull CI image caches before checkout
+        env:
+          GHCR_USERNAME: ${{ github.actor }}
+          GHCR_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          [[ "$CI_TEST_IMAGE_TAG" =~ ^sha-[0-9a-f]{40}$ ]]
+          trap 'docker logout "$REGISTRY" >/dev/null 2>&1 || true' EXIT
+          printf '%s' "$GHCR_TOKEN" | docker login "$REGISTRY" --username "$GHCR_USERNAME" --password-stdin
+          for image in "$CI_API_TEST_IMAGE" "$CI_CLIENT_TEST_IMAGE"; do
+            ref="$REGISTRY/$image:$CI_TEST_IMAGE_TAG"
+            docker pull "$ref" || echo "::warning::Unable to pull $ref; reviewed source will build without it."
+          done
+
       - name: Checkout exact analysis source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -143,8 +159,6 @@ jobs:
       - name: Prepare exact-source test images
         if: steps.reuse.outputs.reused != 'true'
         env:
-          GHCR_USERNAME: ${{ github.actor }}
-          GHCR_TOKEN: ${{ github.token }}
           API_IMAGE_CHANGED: "true"
           CLIENT_IMAGE_CHANGED: "true"
         run: bash api/scripts/ci/prepare-test-images.sh api client
