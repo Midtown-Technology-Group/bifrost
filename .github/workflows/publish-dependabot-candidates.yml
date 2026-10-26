@@ -15,7 +15,7 @@ jobs:
     if: >-
       github.repository == 'Midtown-Technology-Group/bifrost' &&
       github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.event == 'pull_request'
+      github.event.workflow_run.event == 'workflow_run'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -28,6 +28,9 @@ jobs:
       run: ${{ steps.qualify.outputs.run }}
       attempt: ${{ steps.qualify.outputs.attempt }}
       artifacts: ${{ steps.qualify.outputs.artifacts }}
+      eligible: ${{ steps.qualify.outputs.eligible }}
+      ci: ${{ steps.qualify.outputs.ci }}
+      ciAttempt: ${{ steps.qualify.outputs.ciAttempt }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -41,6 +44,7 @@ jobs:
             await publishInputs({ github, context, core });
 
   publish:
+    if: needs.qualify.outputs.eligible == 'true'
     needs: qualify
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -135,6 +139,8 @@ jobs:
           TREE_SHA: ${{ steps.identity.outputs.tree_sha }}
           PRODUCER_RUN: ${{ needs.qualify.outputs.run }}
           PRODUCER_ATTEMPT: ${{ needs.qualify.outputs.attempt }}
+          CI_RUN: ${{ needs.qualify.outputs.ci }}
+          CI_ATTEMPT: ${{ needs.qualify.outputs.ciAttempt }}
         run: |
           set -euo pipefail
           skopeo copy --all --preserve-digests --digestfile "$RUNNER_TEMP/digest" \
@@ -143,7 +149,7 @@ jobs:
           cosign sign --yes "${IMAGE}@${digest}"
           python3 - <<'PY'
           import json, os, pathlib
-          evidence = {key: os.environ[key] for key in ('SOURCE_SHA', 'BASE_SHA', 'TREE_SHA', 'ARTIFACT_ID', 'ARTIFACT_DIGEST', 'PRODUCER_RUN', 'PRODUCER_ATTEMPT')}
+          evidence = {key: os.environ[key] for key in ('SOURCE_SHA', 'BASE_SHA', 'TREE_SHA', 'ARTIFACT_ID', 'ARTIFACT_DIGEST', 'PRODUCER_RUN', 'PRODUCER_ATTEMPT', 'CI_RUN', 'CI_ATTEMPT')}
           (pathlib.Path(os.environ['RUNNER_TEMP']) / 'producer.json').write_text(json.dumps(evidence))
           PY
           cosign attest --yes --type 'https://bifrost.midtowntg.com/candidate-build/v1' \

@@ -1,54 +1,68 @@
 # No registry credential, OIDC token, or repository write token enters this build.
 name: Build Dependabot Candidates
+run-name: Dependabot candidate build ${{ github.event.workflow_run.id }}:${{ github.event.workflow_run.run_attempt }}
 on:
-  pull_request:
-    branches: [main]
-    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_run:
+    workflows: [CI]
+    types: [in_progress]
 permissions: {}
 concurrency:
-  group: dependabot-candidates-${{ github.event.pull_request.number }}
+  group: dependabot-candidates-${{ github.event.workflow_run.id }}
   cancel-in-progress: true
 jobs:
   admission:
     if: >-
       github.repository == 'Midtown-Technology-Group/bifrost' &&
-      github.event.pull_request.user.login == 'dependabot[bot]' &&
-      github.event.pull_request.head.repo.full_name == github.repository
+      github.event.workflow_run.event == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
       actions: read
+      pull-requests: read
+    outputs:
+      eligible: ${{ steps.admit.outputs.eligible }}
+      source: ${{ steps.admit.outputs.source }}
+      base: ${{ steps.admit.outputs.base }}
+      pr: ${{ steps.admit.outputs.pr }}
     steps:
       - name: Require this head's CI lint before expensive builds
+        id: admit
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
-        env:
-          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
         with:
           script: |
+            const source = context.payload.workflow_run;
+            if (source.path !== '.github/workflows/ci.yml' || source.repository.full_name !== context.payload.repository.full_name ||
+                source.pull_requests.length !== 1 || !/^[a-f0-9]{40}$/.test(source.head_sha)) {
+              throw new Error('Unexpected CI producer');
+            }
+            const { data: pr } = await github.rest.pulls.get({ ...context.repo, pull_number: source.pull_requests[0].number });
+            if (pr.user.login !== 'dependabot[bot]') { core.setOutput('eligible', 'false'); return; }
+            if (pr.state !== 'open' || pr.head.repo.full_name !== context.payload.repository.full_name ||
+                pr.head.sha !== source.head_sha || pr.base.ref !== 'main' || pr.base.sha !== source.pull_requests[0].base.sha) {
+              throw new Error('Stale or foreign Dependabot source');
+            }
             for (let poll = 0; poll < 36; poll++) {
-              const { data } = await github.rest.actions.listWorkflowRuns({ ...context.repo,
-                workflow_id: 'ci.yml', head_sha: process.env.SOURCE_SHA, event: 'pull_request', per_page: 10 });
-              const run = data.workflow_runs[0];
-              if (run) {
-                const jobs = await github.paginate(github.rest.actions.listJobsForWorkflowRun,
-                  { ...context.repo, run_id: run.id, filter: 'latest' });
-                const lint = jobs.find(job => job.name === 'Lint & Type Check');
-                if (lint?.status === 'completed') {
-                  if (lint.conclusion !== 'success') throw new Error('Candidate CI lint failed');
-                  return;
-                }
-                if (run.status === 'completed') throw new Error('Candidate CI ended without successful lint');
+              const { data: current } = await github.rest.actions.getWorkflowRun({ ...context.repo, run_id: source.id });
+              if (current.run_attempt !== source.run_attempt) throw new Error('CI attempt changed');
+              const jobs = await github.paginate(github.rest.actions.listJobsForWorkflowRun,
+                { ...context.repo, run_id: source.id, filter: 'latest' });
+              const lint = jobs.find(job => job.name === 'Lint & Type Check');
+              if (lint?.status === 'completed') {
+                if (lint.conclusion !== 'success') throw new Error('Candidate CI lint failed');
+                core.setOutput('eligible', 'true');
+                core.setOutput('source', source.head_sha);
+                core.setOutput('base', pr.base.sha);
+                core.setOutput('pr', pr.number);
+                return;
               }
+              if (current.status === 'completed') throw new Error('Candidate CI ended without successful lint');
               await new Promise(resolve => setTimeout(resolve, 30000));
             }
             throw new Error('Candidate CI lint did not complete');
   build:
     timeout-minutes: 30
     needs: admission
-    if: >-
-      github.repository == 'Midtown-Technology-Group/bifrost' &&
-      github.event.pull_request.user.login == 'dependabot[bot]' &&
-      github.event.pull_request.head.repo.full_name == github.repository
+    if: needs.admission.outputs.eligible == 'true'
     runs-on: ubuntu-latest
     name: Build candidate ${{ matrix.component }} image
     permissions:
@@ -84,14 +98,14 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ needs.admission.outputs.source }}
 
       - name: Compute immutable candidate identity
         id: identity
         env:
-          BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
-          HEAD_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
+          BASE_SHA: ${{ needs.admission.outputs.base }}
+          HEAD_SHA: ${{ needs.admission.outputs.source }}
+          PR_NUMBER: ${{ needs.admission.outputs.pr }}
         run: |
           set -euo pipefail
           if [ "$(git rev-parse HEAD)" != "$HEAD_SHA" ]; then
@@ -127,7 +141,7 @@ jobs:
             ${{ matrix.version_arg }}=${{ steps.identity.outputs.version }}
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
-            org.opencontainers.image.revision=${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+            org.opencontainers.image.revision=${{ needs.admission.outputs.source }}
             org.opencontainers.image.version=${{ steps.identity.outputs.version }}
             com.midtowntg.bifrost.source-tree=${{ steps.identity.outputs.tree_sha }}
             com.midtowntg.bifrost.candidate=true

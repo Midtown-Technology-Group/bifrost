@@ -10,56 +10,53 @@ import { qualify, waitForPublication, repository, buildPath } from './dependabot
 const head = 'a'.repeat(40);
 const base = 'b'.repeat(40);
 const merge = 'c'.repeat(40);
-const trustedWorkflow = 'trusted build instructions';
 
 function fixture() {
-  const run = { id: 101, run_attempt: 2, repository: { full_name: repository }, event: 'pull_request',
-    path: buildPath, actor: { login: 'dependabot[bot]' }, status: 'completed', conclusion: 'success',
-    head_sha: head, pull_requests: [{ number: 42, base: { sha: base } }] };
+  const run = { id: 101, run_attempt: 2, repository: { full_name: repository }, event: 'workflow_run',
+    path: buildPath, status: 'completed', conclusion: 'success', display_title: 'Dependabot candidate build 50:1' };
+  const ci = { id: 50, run_attempt: 1, repository: { full_name: repository }, event: 'pull_request',
+    path: '.github/workflows/ci.yml', head_sha: head, pull_requests: [{ number: 42, base: { sha: base } }] };
   const pr = { number: 42, state: 'open', user: { login: 'dependabot[bot]' },
-    head: { repo: { full_name: repository }, sha: head }, base: { ref: 'main', sha: base }, merge_commit_sha: merge };
-  const commit = { parents: [{ sha: base }, { sha: head }] };
-  const workflow = { type: 'file', encoding: 'base64', content: Buffer.from(trustedWorkflow).toString('base64') };
+    head: { repo: { full_name: repository }, sha: head }, base: { ref: 'main', sha: base } };
   const artifacts = ['api', 'worker', 'client'].map((component, i) => ({ id: i + 1,
     name: `dependabot-candidate-${component}`, expired: false, digest: `sha256:${'d'.repeat(64)}` }));
   const calls = [];
   const respond = data => async args => { calls.push(args); return { data }; };
   const github = { rest: {
-    actions: { getWorkflowRun: respond(run), listWorkflowRunArtifacts: () => {} },
-    pulls: { get: respond(pr) }, repos: { getContent: respond(workflow), getCommit: respond(commit) },
+    actions: { getWorkflowRun: async args => { calls.push(args); return { data: args.run_id === 101 ? run : ci }; }, listWorkflowRunArtifacts: () => {} },
+    pulls: { get: respond(pr) },
   }, paginate: async () => artifacts };
-  return { github, run, pr, commit, workflow, artifacts, calls };
+  return { github, run, ci, pr, artifacts, calls };
 }
 
-const invoke = f => qualify({ github: f.github, runId: 101, expectedAttempt: 2, trustedWorkflow });
+const invoke = f => qualify({ github: f.github, runId: 101, expectedAttempt: 2 });
 
 test('qualifies the exact successful same-repository bot build and immutable artifacts', async () => {
   const f = fixture();
   const result = await invoke(f);
-  assert.deepEqual(result, { source: head, base, run: 101, attempt: 2,
+  assert.deepEqual(result, { source: head, base, ci: 50, ciAttempt: 1, run: 101, attempt: 2,
     artifacts: f.artifacts.map(({ id, digest }, i) => ({ component: ['api', 'worker', 'client'][i], id, digest })) });
-  assert.equal(f.calls.at(-1).ref, merge);
+  assert.equal(f.calls[1].run_id, 50);
 });
 
 for (const [name, mutate] of [
   ['foreign repository', f => { f.run.repository.full_name = 'attacker/bifrost'; }],
   ['replayed producer attempt', f => { f.run.run_attempt = 3; }],
   ['foreign PR head', f => { f.pr.head.repo.full_name = 'attacker/bifrost'; }],
-  ['human producer', f => { f.run.actor.login = 'human'; }],
-  ['human author', f => { f.pr.user.login = 'human'; }],
   ['failed build', f => { f.run.conclusion = 'failure'; }],
   ['incomplete build', f => { f.run.status = 'in_progress'; }],
   ['wrong event', f => { f.run.event = 'pull_request_target'; }],
   ['wrong workflow', f => { f.run.path = '.github/workflows/evil.yml'; }],
-  ['ambiguous PR', f => { f.run.pull_requests.push(f.run.pull_requests[0]); }],
+  ['ambiguous PR', f => { f.ci.pull_requests.push(f.ci.pull_requests[0]); }],
   ['closed PR', f => { f.pr.state = 'closed'; }],
   ['stale head', f => { f.pr.head.sha = 'e'.repeat(40); }],
   ['stale base', f => { f.pr.base.sha = 'e'.repeat(40); }],
   ['non-main base', f => { f.pr.base.ref = 'other'; }],
-  ['invalid source', f => { f.run.head_sha = '--upload-pack=evil'; }],
-  ['missing merge', f => { f.pr.merge_commit_sha = null; }],
-  ['wrong merge parents', f => { f.commit.parents.reverse(); }],
-  ['modified build workflow', f => { f.workflow.content = Buffer.from('malicious code').toString('base64'); }],
+  ['invalid source', f => { f.ci.head_sha = '--upload-pack=evil'; }],
+  ['missing original CI identity', f => { f.run.display_title = 'untrusted'; }],
+  ['wrong original CI workflow', f => { f.ci.path = '.github/workflows/evil.yml'; }],
+  ['replayed CI attempt', f => { f.ci.run_attempt = 2; }],
+  ['foreign original CI repository', f => { f.ci.repository.full_name = 'attacker/bifrost'; }],
   ['missing artifact', f => { f.artifacts.pop(); }],
   ['ambiguous artifact', f => { f.artifacts.push(f.artifacts[0]); }],
   ['expired artifact', f => { f.artifacts[0].expired = true; }],
@@ -75,31 +72,31 @@ function waiting({ buildStatus = 'completed', buildConclusion = 'success', publi
   return { calls, github: { rest: { actions: { async listWorkflowRuns(args) {
     calls.push(args);
     return { data: { workflow_runs: args.workflow_id === 'dependabot-candidates.yml' ?
-      [{ id: 101, run_attempt: 2, status: buildStatus, conclusion: buildConclusion }] : publications } };
+      [{ id: 101, run_attempt: 2, display_title: 'Dependabot candidate build 50:1', status: buildStatus, conclusion: buildConclusion }] : publications } };
   } } } } };
 }
 const publication = { id: 202, display_title: 'Dependabot candidates 101:2', status: 'completed', conclusion: 'success' };
 
 test('waits for the exact producer attempt, never an older successful publication', async () => {
   const f = waiting({ publications: [{ ...publication, display_title: 'Dependabot candidates 101:1' }] });
-  await assert.rejects(waitForPublication({ github: f.github, source: head, maxPolls: 1, sleep: async () => {} }), /did not complete/);
+  await assert.rejects(waitForPublication({ github: f.github, ciRunId: 50, ciAttempt: 1, maxPolls: 1, sleep: async () => {} }), /did not complete/);
 });
 test('returns the exact completed producer and publisher receipts', async () => {
   const f = waiting({ publications: [publication] });
-  assert.deepEqual(await waitForPublication({ github: f.github, source: head }), { producer: 101, publisher: 202 });
-  assert.equal(f.calls[0].head_sha, head);
+  assert.deepEqual(await waitForPublication({ github: f.github, ciRunId: 50, ciAttempt: 1 }), { producer: 101, publisher: 202 });
+  assert.equal(f.calls[0].event, 'workflow_run');
 });
 test('fails closed on producer failure', async () => {
   const f = waiting({ buildConclusion: 'failure' });
-  await assert.rejects(waitForPublication({ github: f.github, source: head }), /build failed/);
+  await assert.rejects(waitForPublication({ github: f.github, ciRunId: 50, ciAttempt: 1 }), /build failed/);
 });
 test('fails closed on publisher failure', async () => {
   const f = waiting({ publications: [{ ...publication, conclusion: 'failure' }] });
-  await assert.rejects(waitForPublication({ github: f.github, source: head }), /publication failed/);
+  await assert.rejects(waitForPublication({ github: f.github, ciRunId: 50, ciAttempt: 1 }), /publication failed/);
 });
 test('waits only within a bounded window', async () => {
   const f = waiting({ buildStatus: 'in_progress' }); let sleeps = 0;
-  await assert.rejects(waitForPublication({ github: f.github, source: head, maxPolls: 2,
+  await assert.rejects(waitForPublication({ github: f.github, ciRunId: 50, ciAttempt: 1, maxPolls: 2,
     sleep: async ms => { assert.equal(ms, 30000); sleeps++; } }), /did not complete/);
   assert.equal(sleeps, 2);
 });
@@ -178,5 +175,38 @@ for (const wrong of [null, 'org.opencontainers.image.revision', 'org.opencontain
       });
       assert.equal(result.status === 0, wrong === null, result.stderr);
     } finally { await rm(root, { recursive: true, force: true }); }
+  });
+}
+
+for (const scenario of ['success', 'human PR', 'non-PR CI', 'lint failure', 'stale head', 'changed attempt']) {
+  test(`default-branch build admission: ${scenario}`, async () => {
+    const f = fixture();
+    if (scenario === 'human PR') f.pr.user.login = 'human';
+    if (scenario === 'non-PR CI') f.ci.event = 'workflow_dispatch';
+    if (scenario === 'stale head') f.pr.head.sha = 'e'.repeat(40);
+    if (scenario === 'changed attempt') f.ci.run_attempt = 2;
+    if (scenario === 'non-PR CI') { assert.equal(await invoke(f), null); return; }
+    const workflow = await readFile(new URL('../workflows/dependabot-candidates.yml', import.meta.url), 'utf8');
+    const body = workflow.split('          script: |\n')[1].split('  build:')[0];
+    const script = body.split('\n').map(line => line.slice(12)).join('\n');
+    const outputs = {};
+    const source = { ...f.ci, run_attempt: 1 };
+    f.github.paginate = async () => [{ name: 'Lint & Type Check', status: 'completed',
+      conclusion: scenario === 'lint failure' ? 'failure' : 'success' }];
+    const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
+    const invokeAdmission = () => new AsyncFunction('github', 'context', 'core', script)(f.github,
+      { payload: { workflow_run: source, repository: { full_name: repository } },
+        repo: { owner: 'Midtown-Technology-Group', repo: 'bifrost' } },
+      { setOutput: (name, value) => { outputs[name] = value; } });
+    if (['lint failure', 'stale head', 'changed attempt'].includes(scenario)) {
+      await assert.rejects(invokeAdmission());
+      assert.equal(outputs.eligible, undefined);
+    } else {
+      await invokeAdmission();
+      if (scenario === 'human PR') {
+        assert.deepEqual(outputs, { eligible: 'false' });
+        assert.equal(await invoke(f), null);
+      } else assert.deepEqual(outputs, { eligible: 'true', source: head, base, pr: 42 });
+    }
   });
 }
