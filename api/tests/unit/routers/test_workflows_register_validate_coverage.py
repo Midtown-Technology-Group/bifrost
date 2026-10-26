@@ -491,6 +491,7 @@ async def test_register_workflow_reactivation_preserves_omitted_retry_policy() -
         "max_attempts": 2,
         "retry_on": ["worker_lost"],
     }
+    existing_org_id = uuid4()
     existing = SimpleNamespace(
         id=uuid4(),
         name="run",
@@ -498,7 +499,7 @@ async def test_register_workflow_reactivation_preserves_omitted_retry_policy() -
         path="workflows/run.py",
         type="workflow",
         description=None,
-        organization_id=None,
+        organization_id=existing_org_id,
         access_level="role_based",
         is_active=False,
         is_orphaned=True,
@@ -531,11 +532,66 @@ async def test_register_workflow_reactivation_preserves_omitted_retry_policy() -
         result = await workflows.register_workflow(
             RegisterWorkflowRequest(path="workflows/run.py", function_name="run"),
             _Db(existing, existing),
-            _admin(),
+            _admin(organization_id=None),
         )
 
     assert existing.retry_policy == policy
+    assert existing.organization_id == existing_org_id
     assert result.retry_policy.model_dump(mode="json") == policy
+
+
+@pytest.mark.asyncio
+async def test_register_workflow_reactivation_honors_explicit_global_scope() -> None:
+    """Explicit null remains an intentional scope change during reactivation."""
+    existing = SimpleNamespace(
+        id=uuid4(),
+        name="run",
+        function_name="run",
+        path="workflows/run.py",
+        type="workflow",
+        description=None,
+        organization_id=uuid4(),
+        access_level="role_based",
+        is_active=False,
+        is_orphaned=True,
+        retry_policy=None,
+    )
+    service = SimpleNamespace(
+        read_file=AsyncMock(
+            return_value=(b"from bifrost import workflow\n@workflow\ndef run(): pass\n", None)
+        )
+    )
+    indexer = SimpleNamespace(index_python_file=AsyncMock())
+
+    with (
+        patch("src.services.file_storage.FileStorageService", return_value=service),
+        patch(
+            "src.services.file_storage.indexers.workflow.WorkflowIndexer",
+            return_value=indexer,
+        ),
+        patch.object(
+            workflows,
+            "_guard_workflow_registration_mutation",
+            new=AsyncMock(),
+        ),
+        patch("src.services.mcp_server.server.refresh_workflow_tools", AsyncMock()),
+        patch(
+            "src.services.service_lifecycle.sync_definition_for_registration",
+            new_callable=AsyncMock,
+        ),
+    ):
+        result = await workflows.register_workflow(
+            RegisterWorkflowRequest(
+                path="workflows/run.py",
+                function_name="run",
+                organization_id=None,
+            ),
+            _Db(existing, existing),
+            _admin(),
+        )
+
+    assert existing.organization_id is None
+    assert result.organization_id is None
 
 
 @pytest.mark.asyncio
