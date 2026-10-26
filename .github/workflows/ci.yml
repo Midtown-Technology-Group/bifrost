@@ -603,6 +603,9 @@ jobs:
           python3 scripts/check_skill_mirrors.py
           python3 -m unittest scripts.test_skill_mirrors
 
+      - name: Cursor cloud skill install is fail-soft
+        run: bash scripts/lib/install_mtg_skills_test.sh
+
       - name: Release manifest regression checks
         run: python3 scripts/release/test_release_manifest.py
 
