@@ -232,6 +232,36 @@ async def test_new_local_file_without_cache_entry_pushes(tmp_path: pathlib.Path)
 
 
 @pytest.mark.asyncio
+async def test_watch_push_preserves_binary_crlf_beyond_classifier_window(
+    tmp_path: pathlib.Path,
+) -> None:
+    """Watch must upload exact bytes even when the first NUL is after 8 KiB."""
+    repo_path = "artifacts/document.pdf"
+    content = b"%PDF-byte-exact\r\n" + b"A" * 9000 + b"\x00tail\r\n"
+
+    state = _WatchState(tmp_path)
+    client: Any = _RecordingClient(server_files={})
+    abs_path = tmp_path / repo_path
+    abs_path.parent.mkdir(parents=True)
+    abs_path.write_bytes(content)
+
+    await _process_watch_batch(
+        client,
+        changes={str(abs_path)},
+        deletes=set(),
+        base_path=tmp_path,
+        repo_prefix="",
+        state=state,
+    )
+
+    writes = _writes(client)
+    assert len(writes) == 1
+    assert base64.b64decode(writes[0]["content"]) == content
+    assert client.server_files[repo_path] == content
+    assert state.get_known_hash(repo_path) == _hash_for_cache(content)
+
+
+@pytest.mark.asyncio
 async def test_seeded_cache_drops_identical_local_file_push(tmp_path: pathlib.Path) -> None:
     """If /api/files/list seeded the cache with a hash that already matches
     the local file, the first observer event (e.g. editor touch on open)
