@@ -14,7 +14,7 @@ import {
 	defaultMonacoAssetRoot,
 } from "./monaco-assets.mjs";
 
-import { connectionHeaders } from "./connection-headers.mjs";
+import { connectionHeaders, responseConnectionHeaders } from "./connection-headers.mjs";
 
 const target = { host: process.env.TEST_CLIENT_HOST || "client", port: 80 };
 const localOrigins = [3000, 3001, 3002];
@@ -40,7 +40,7 @@ function createLocalOrigin(port) {
 			(upstreamResponse) => {
 				response.writeHead(
 					upstreamResponse.statusCode ?? 502,
-					connectionHeaders(upstreamResponse.headers),
+					responseConnectionHeaders(upstreamResponse.headers),
 				);
 				upstreamResponse.pipe(response);
 			},

@@ -11,3 +11,10 @@ export function connectionHeaders(headers) {
  return Object.fromEntries(Object.entries(headers).filter(([name]) =>
   !excluded.has(name.toLowerCase())));
 }
+
+// APIRequestContext can retain a socket across browser navigation. Explicitly
+// close completed HTTP responses rather than racing the local server idle close.
+// WebSocket upgrades use their own tunnel and do not pass through this function.
+export function responseConnectionHeaders(headers) {
+ return {...connectionHeaders(headers), connection: "close"};
+}
