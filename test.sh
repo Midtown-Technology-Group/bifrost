@@ -737,7 +737,7 @@ repository_ci_checks() {
     python3 scripts/lib/pre_pr_stage_evidence_test.py
     bash scripts/lib/pre_pr_lanes_test.sh
     node --test .github/scripts/authorize-merge-queue.test.mjs .github/scripts/retire-merge-group.test.mjs
-    node --test .github/scripts/openwiki-refresh.test.mjs
+    node --test .github/scripts/openwiki-refresh.test.mjs .github/scripts/dependabot-candidates.test.mjs
     python3 -m unittest scripts.test_codeql_changed_lines
     echo "Checking GitHub Action pins..."
     candidate_action_pin_checks

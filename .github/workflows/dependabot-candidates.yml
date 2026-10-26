@@ -1,0 +1,145 @@
+# No registry credential, OIDC token, or repository write token enters this build.
+name: Build Dependabot Candidates
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+permissions: {}
+concurrency:
+  group: dependabot-candidates-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  admission:
+    if: >-
+      github.repository == 'Midtown-Technology-Group/bifrost' &&
+      github.event.pull_request.user.login == 'dependabot[bot]' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      actions: read
+    steps:
+      - name: Require this head's CI lint before expensive builds
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+        with:
+          script: |
+            for (let poll = 0; poll < 36; poll++) {
+              const { data } = await github.rest.actions.listWorkflowRuns({ ...context.repo,
+                workflow_id: 'ci.yml', head_sha: process.env.SOURCE_SHA, event: 'pull_request', per_page: 10 });
+              const run = data.workflow_runs[0];
+              if (run) {
+                const jobs = await github.paginate(github.rest.actions.listJobsForWorkflowRun,
+                  { ...context.repo, run_id: run.id, filter: 'latest' });
+                const lint = jobs.find(job => job.name === 'Lint & Type Check');
+                if (lint?.status === 'completed') {
+                  if (lint.conclusion !== 'success') throw new Error('Candidate CI lint failed');
+                  return;
+                }
+                if (run.status === 'completed') throw new Error('Candidate CI ended without successful lint');
+              }
+              await new Promise(resolve => setTimeout(resolve, 30000));
+            }
+            throw new Error('Candidate CI lint did not complete');
+  build:
+    timeout-minutes: 30
+    needs: admission
+    if: >-
+      github.repository == 'Midtown-Technology-Group/bifrost' &&
+      github.event.pull_request.user.login == 'dependabot[bot]' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    name: Build candidate ${{ matrix.component }} image
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - component: api
+            image: midtown-technology-group/bifrost-api
+            platforms: linux/amd64
+            context: .
+            dockerfile: ./api/Dockerfile
+            target: runtime
+            version_arg: BIFROST_VERSION
+          - component: worker
+            image: midtown-technology-group/bifrost-worker
+            platforms: linux/amd64,linux/arm64
+            context: .
+            dockerfile: ./api/Dockerfile
+            target: runtime
+            version_arg: BIFROST_VERSION
+          - component: client
+            image: midtown-technology-group/bifrost-client
+            platforms: linux/amd64
+            context: ./client
+            dockerfile: ./client/Dockerfile
+            target: production
+            version_arg: VITE_BIFROST_VERSION
+    steps:
+      - name: Checkout exact pull-request head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+
+      - name: Compute immutable candidate identity
+        id: identity
+        env:
+          BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+          HEAD_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          if [ "$(git rev-parse HEAD)" != "$HEAD_SHA" ]; then
+            echo "Candidate checkout does not match the pull-request head." >&2
+            exit 1
+          fi
+          tree_sha="$(git rev-parse "${HEAD_SHA}^{tree}")"
+          version="$(./scripts/compute-dev-version.sh --next-after "$BASE_SHA")"
+          echo "tree_sha=$tree_sha" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "cache_tag=buildcache-pr-${PR_NUMBER}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up ARM64 emulation for worker candidate
+        if: matrix.component == 'worker'
+        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+
+      - name: Build immutable candidate
+        id: build
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          target: ${{ matrix.target }}
+          platforms: ${{ matrix.platforms }}
+          push: false
+          outputs: type=oci,dest=${{ runner.temp }}/candidate.oci.tar
+          tags: >-
+            ghcr.io/${{ matrix.image }}:candidate-tree-${{ steps.identity.outputs.tree_sha }}
+          build-args: |
+            ${{ matrix.version_arg }}=${{ steps.identity.outputs.version }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+            org.opencontainers.image.version=${{ steps.identity.outputs.version }}
+            com.midtowntg.bifrost.source-tree=${{ steps.identity.outputs.tree_sha }}
+            com.midtowntg.bifrost.candidate=true
+          # Public caches are read-only; this unprivileged build never exports them.
+          cache-from: |
+            type=registry,ref=ghcr.io/${{ matrix.image }}:buildcache-queue
+            type=registry,ref=ghcr.io/${{ matrix.image }}:${{ steps.identity.outputs.cache_tag }}
+
+      - name: Retain exact candidate without registry credentials
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: dependabot-candidate-${{ matrix.component }}
+          path: ${{ runner.temp }}/candidate.oci.tar
+          if-no-files-found: error
+          retention-days: 3

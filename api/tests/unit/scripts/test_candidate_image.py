@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 from pathlib import Path
 
@@ -19,6 +20,18 @@ TRANSFER_REPOSITORIES = (
     "MTG-Thomas/bifrost",
     "Midtown-Technology-Group/bifrost",
 )
+
+
+@pytest.mark.parametrize("ref,allowed", [
+    ("publish-dependabot-candidates.yml@refs/heads/main", True),
+    ("publish-dependabot-candidates.yml@refs/heads/evil", False),
+    ("publish-dependabot-candidates.yml@refs/pull/1/merge", False),
+    ("evil.yml@refs/heads/main", False),
+    ("ci.yml@refs/pull/1/merge", True),
+])
+def test_candidate_signature_trusts_only_default_branch_isolated_publisher(ref, allowed) -> None:
+    identity = f"https://github.com/Midtown-Technology-Group/bifrost/.github/workflows/{ref}"
+    assert bool(re.fullmatch(candidate_image.WORKFLOW_IDENTITY_RE, identity)) is allowed
 
 
 def _labels(*, tree_sha: str = TREE_SHA) -> dict[str, str]:

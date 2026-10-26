@@ -22,7 +22,7 @@ TAG_RE = re.compile(r"^\w[\w.-]{0,127}$", re.ASCII)
 REPOSITORIES = ("MTG-Thomas/bifrost", "Midtown-Technology-Group/bifrost")
 WORKFLOW_IDENTITY_RE = (
     r"^https://github\.com/(?:MTG-Thomas|Midtown-Technology-Group)/bifrost/"
-    r"\.github/workflows/ci\.yml@refs/.*$"
+    r"\.github/workflows/(?:ci\.yml@refs/.*|publish-dependabot-candidates\.yml@refs/heads/main)$"
 )
 OIDC_ISSUER = "https://token.actions.githubusercontent.com"
 ALLOWED_EXECUTABLES = frozenset({"cosign", "docker"})
