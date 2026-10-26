@@ -557,6 +557,7 @@ jobs:
         run: |
           python3 scripts/release/test_release_manifest.py
           python3 scripts/release/test_production_manifest.py
+          gh attestation verify --help > /dev/null
 
       - name: Local stage evidence regression checks
         run: |
@@ -1494,6 +1495,7 @@ jobs:
           API_PROMOTION: ${{ toJSON(steps.promote-api.outputs) }}
           CLIENT_PROMOTION: ${{ toJSON(steps.promote-client.outputs) }}
           WORKER_PROMOTION: ${{ toJSON(steps.promote-worker.outputs) }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           python3 scripts/release/production_manifest.py --output production-manifest.json
           sha256sum production-manifest.json > production-manifest.json.sha256
@@ -1534,6 +1536,7 @@ jobs:
             production-manifest.json
             production-manifest.json.sha256
             production-manifest.json.sigstore.json
+            candidate-provenance.json
           if-no-files-found: error
           retention-days: 90
 

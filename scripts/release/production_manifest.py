@@ -16,6 +16,7 @@ from release_manifest import COMPONENTS, DIGEST, REPOSITORY, SHA, WORKFLOW, comp
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "api/scripts/ci"))
 import candidate_image as candidate  # noqa: E402
+import candidate_provenance  # noqa: E402
 
 PREDICATE_TYPE = "https://bifrost.midtowntg.com/attestations/production-manifest/v2"
 PLATFORMS = {"api": ("amd64",), "client": ("amd64",), "worker": ("amd64", "arm64")}
@@ -39,7 +40,8 @@ def platforms(image: str, digest: str) -> dict[str, str]:
     return result
 
 
-def build(source: str, run_id: int, attempt: int, outputs: dict, receipts: dict) -> dict:
+def build(source: str, run_id: int, attempt: int, outputs: dict, receipts: dict,
+          provenance_bundles: dict | None = None) -> dict:
     """Fail closed on substitution and mixed source/component/attempt receipts."""
     if not SHA.fullmatch(source) or git("rev-parse", "HEAD") != source:
         raise ValueError("checkout must equal the exact protected-main source")
@@ -50,7 +52,7 @@ def build(source: str, run_id: int, attempt: int, outputs: dict, receipts: dict)
     tree = git("rev-parse", f"{source}^{{tree}}")
     parent = git("rev-parse", f"{source}^1")
     images = {}
-    versions, candidate_sources = set(), set()
+    versions, candidate_sources, invocations = set(), set(), set()
     for component in COMPONENTS:
         output, receipt = outputs[component], receipts[component]
         image = f"ghcr.io/{REPOSITORY.lower()}-{component}"
@@ -78,13 +80,18 @@ def build(source: str, run_id: int, attempt: int, outputs: dict, receipts: dict)
                                               source_sha=candidate_source, expected_digest=digest)
         if verified.repository != REPOSITORY:
             raise ValueError("foreign candidate producer")
+        provenance, bundle = candidate_provenance.verify(image, digest, candidate_source, tree, source)
+        if provenance_bundles is not None:
+            provenance_bundles[component] = bundle
         inventory = platforms(image, digest)
         if set(inventory) != {f"linux/{arch}" for arch in PLATFORMS[component]}:
             raise ValueError("component architecture set differs from supported contract")
-        images[component] = {"repository": image, "digest": digest, "platforms": inventory}
+        images[component] = {"repository": image, "digest": digest, "platforms": inventory,
+                             "candidate_provenance": provenance}
+        invocations.add((provenance["run_id"], provenance["run_attempt"], provenance["invocation_commit"]))
         versions.add(version)
         candidate_sources.add(candidate_source)
-    if len(versions) != 1 or len(candidate_sources) != 1:
+    if len(versions) != 1 or len(candidate_sources) != 1 or len(invocations) != 1:
         raise ValueError("component tuple mixes candidate source or baked version")
     return {
         "schema_version": 2, "product": "bifrost", "channel": "protected-main",
@@ -110,8 +117,10 @@ def main() -> None:
         raise ValueError("only the protected-main push producer may publish this receipt")
     outputs = {name: json.loads(os.environ[name.upper() + "_PROMOTION"]) for name in COMPONENTS}
     receipts = {name: json.loads(Path(outputs[name]["predicate_path"]).read_text()) for name in COMPONENTS}
+    bundles = {}
     document = build(os.environ["GITHUB_SHA"], int(os.environ["GITHUB_RUN_ID"]),
-                     int(os.environ["GITHUB_RUN_ATTEMPT"]), outputs, receipts)
+                     int(os.environ["GITHUB_RUN_ATTEMPT"]), outputs, receipts, bundles)
+    args.output.with_name("candidate-provenance.json").write_text(json.dumps(bundles, indent=2, sort_keys=True) + "\n")
     args.output.write_text(json.dumps(document, indent=2, sort_keys=True) + "\n")
 
 

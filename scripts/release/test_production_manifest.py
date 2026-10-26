@@ -11,6 +11,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import production_manifest as manifest
+REAL_PROVENANCE_VERIFY = manifest.candidate_provenance.verify
 from test_release_manifest import ManifestFixture
 
 
@@ -19,6 +20,7 @@ class ProductionManifestTests(ManifestFixture):
     def setUp(self):
         super().setUp()
         self.parent = self.source
+        self.write('.github/workflows/ci.yml', 'reviewed workflow fixture\n')
         self.write('source.txt', 'ordinary merge')
         self.source = self.commit()
         self.tree = manifest.git('rev-parse', 'HEAD^{tree}')
@@ -52,6 +54,8 @@ class ProductionManifestTests(ManifestFixture):
                 self.tree, kwargs['source_sha'], self.version, manifest.REPOSITORY)
         self.verify = patch.object(manifest.candidate, 'verify_candidate', side_effect=verify).start()
         self.addCleanup(patch.stopall)
+        self.provenance = patch.object(manifest.candidate_provenance, 'verify', return_value=(
+            {'run_id': 10, 'run_attempt': 1, 'invocation_commit': self.source}, {})).start()
         patch.object(manifest.candidate, '_inspect_json', side_effect=lambda ref, _: self.indexes[ref]).start()
 
     def build(self, **changes):
@@ -164,6 +168,115 @@ class ProductionManifestTests(ManifestFixture):
                 with self.assertRaisesRegex(ValueError, 'protected-main'):
                     manifest.main()
                 self.assertFalse(Path('receipt.json').exists())
+
+    def slsa_result(self, image, digest, invocation=None, ref='refs/heads/gh-readonly-queue/main/test'):
+        p = manifest.candidate_provenance
+        invocation = invocation or self.source
+        uri = p.ROOT + '/actions/runs/10/attempts/1'
+        identity = p.ROOT + '/' + p.WORKFLOW + '@' + ref
+        return {'attestation': {'verified-bundle': 'fixture'}, 'verificationResult': {
+            'signature': {'certificate': {
+                'issuer': 'https://token.actions.githubusercontent.com',
+                'sourceRepositoryURI': p.ROOT, 'sourceRepositoryDigest': invocation,
+                'sourceRepositoryRef': ref, 'subjectAlternativeName': identity,
+                'buildSignerURI': identity, 'buildSignerDigest': invocation, 'runInvocationURI': uri,
+            }}, 'statement': {'predicateType': p.SLSA,
+                'subject': [{'name': image, 'digest': {'sha256': digest[7:]}}],
+                'predicate': {'buildDefinition': {
+                    'buildType': 'https://actions.github.io/buildtypes/workflow/v1',
+                    'externalParameters': {'workflow': {'repository': p.ROOT, 'path': p.WORKFLOW, 'ref': ref}},
+                    'internalParameters': {'github': {'event_name': 'pull_request' if ref.startswith('refs/pull/') else 'merge_group'}},
+                    'resolvedDependencies': [{'uri': 'git+' + p.ROOT + '@' + ref, 'digest': {'gitCommit': invocation}}],
+                }, 'runDetails': {'builder': {'id': identity}, 'metadata': {'invocationId': uri}}}}}}
+
+    def real_provenance(self, results):
+        # Exercise the real policy/verifier orchestration with already-verified
+        # cryptographic results. Keep Git object/source comparisons real.
+        self.provenance.side_effect = REAL_PROVENANCE_VERIFY
+        original_git = manifest.git
+        def local_git(*args):
+            return '' if args[0] == 'fetch' else original_git(*args)
+        patch.object(manifest.candidate_provenance, 'git', side_effect=local_git).start()
+        patch.object(manifest.candidate_provenance, 'verified_results', side_effect=results).start()
+
+    def test_correct_labels_and_allowed_signer_cannot_hide_wrong_source_invocation(self):
+        manifest.git('commit', '--allow-empty', '-qm', 'wrong source invocation')
+        wrong = manifest.git('rev-parse', 'HEAD')
+        manifest.git('checkout', '--detach', self.source)
+        self.real_provenance(lambda image, digest: [self.slsa_result(image, digest, wrong)])
+        with self.assertRaisesRegex(ValueError, 'source-bound'):
+            self.build()
+
+    def test_verified_queue_provenance_is_retained(self):
+        self.real_provenance(lambda image, digest: [self.slsa_result(image, digest)])
+        bundles = {}
+        result = self.build(provenance_bundles=bundles)
+        self.assertEqual(set(bundles), set(manifest.COMPONENTS))
+        for image in result['images'].values():
+            self.assertEqual(image['candidate_provenance']['run_id'], 10)
+            self.assertEqual(image['candidate_provenance']['run_attempt'], 1)
+            self.assertEqual(image['candidate_provenance']['checkout_tree'], self.tree)
+
+    def test_verified_pr_merge_invocation_binds_checked_out_second_parent(self):
+        head = self.source
+        manifest.git('checkout', '--detach', self.parent)
+        self.write('base-only.txt', 'merge side')
+        self.commit()
+        manifest.git('merge', '--no-ff', '-qm', 'synthetic PR merge', head)
+        merge = manifest.git('rev-parse', 'HEAD')
+        manifest.git('checkout', '--detach', head)
+        self.real_provenance(lambda image, digest: [self.slsa_result(image, digest, merge, 'refs/pull/7/merge')])
+        result = self.build()
+        self.assertEqual(result['images']['api']['candidate_provenance']['invocation_commit'], merge)
+        self.assertEqual(result['images']['api']['candidate_provenance']['checkout_commit'], head)
+
+    def test_candidate_provenance_subject_certificate_and_invocation_substitutions_refuse(self):
+        for field in ['subject', 'sourceRepositoryURI', 'buildSignerDigest', 'invocationId', 'workflow']:
+            def results(image, digest):
+                r = self.slsa_result(image, digest)
+                v = r['verificationResult']
+                if field == 'subject': v['statement']['subject'][0]['digest']['sha256'] = '0'*64
+                elif field == 'invocationId': v['statement']['predicate']['runDetails']['metadata']['invocationId'] += '0'
+                elif field == 'workflow': v['statement']['predicate']['buildDefinition']['externalParameters']['workflow']['path'] = '.github/workflows/other.yml'
+                else: v['signature']['certificate'][field] = 'foreign'
+                return [r]
+            self.real_provenance(results)
+            with self.subTest(field=field), self.assertRaisesRegex(ValueError, 'source-bound'):
+                self.build()
+
+    def test_attestation_retry_accepts_equivalent_proofs_without_mixing_invocations(self):
+        def results(image, digest):
+            first = self.slsa_result(image, digest)
+            second = copy.deepcopy(first)
+            second['attestation'] = {'verified-bundle': 'retry fixture'}
+            return [first, second]
+        self.real_provenance(results)
+        self.build()
+
+    def test_verified_candidate_attempts_cannot_be_mixed_across_components(self):
+        def results(image, digest):
+            r = self.slsa_result(image, digest)
+            if image.endswith('-worker'):
+                uri = manifest.candidate_provenance.ROOT + '/actions/runs/10/attempts/2'
+                r['verificationResult']['signature']['certificate']['runInvocationURI'] = uri
+                r['verificationResult']['statement']['predicate']['runDetails']['metadata']['invocationId'] = uri
+            return [r]
+        self.real_provenance(results)
+        with self.assertRaisesRegex(ValueError, 'mixes'):
+            self.build()
+
+    def test_other_workflow_revision_refuses_even_for_equal_checkout_tree(self):
+        head = self.source
+        manifest.git('checkout', '--detach', self.parent)
+        self.write('.github/workflows/ci.yml', 'unreviewed workflow revision')
+        self.commit()
+        # Merge takes this workflow edit, while the candidate checkout is head.
+        manifest.git('merge', '--no-ff', '-X', 'ours', '-qm', 'PR invocation with other workflow', head)
+        merge = manifest.git('rev-parse', 'HEAD')
+        manifest.git('checkout', '--detach', head)
+        self.real_provenance(lambda image, digest: [self.slsa_result(image, digest, merge, 'refs/pull/7/merge')])
+        with self.assertRaisesRegex(ValueError, 'source-bound'):
+            self.build()
 
     def test_invalid_run_identifiers_refuse(self):
         for field in ('run_id', 'attempt'):

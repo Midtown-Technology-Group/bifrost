@@ -76,7 +76,8 @@
           "required": [
             "repository",
             "digest",
-            "platforms"
+            "platforms",
+            "candidate_provenance"
           ],
           "properties": {
             "repository": {
@@ -98,6 +99,9 @@
                   "pattern": "^sha256:[0-9a-f]{64}$"
                 }
               }
+            },
+            "candidate_provenance": {
+              "$ref": "#/$defs/candidate_provenance"
             }
           }
         },
@@ -107,7 +111,8 @@
           "required": [
             "repository",
             "digest",
-            "platforms"
+            "platforms",
+            "candidate_provenance"
           ],
           "properties": {
             "repository": {
@@ -129,6 +134,9 @@
                   "pattern": "^sha256:[0-9a-f]{64}$"
                 }
               }
+            },
+            "candidate_provenance": {
+              "$ref": "#/$defs/candidate_provenance"
             }
           }
         },
@@ -138,7 +146,8 @@
           "required": [
             "repository",
             "digest",
-            "platforms"
+            "platforms",
+            "candidate_provenance"
           ],
           "properties": {
             "repository": {
@@ -165,6 +174,9 @@
                   "pattern": "^sha256:[0-9a-f]{64}$"
                 }
               }
+            },
+            "candidate_provenance": {
+              "$ref": "#/$defs/candidate_provenance"
             }
           }
         }
@@ -287,6 +299,65 @@
     },
     "channel": {
       "const": "protected-main"
+    }
+  },
+  "$defs": {
+    "candidate_provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "predicate_type",
+        "invocation_uri",
+        "run_id",
+        "run_attempt",
+        "invocation_commit",
+        "workflow_commit",
+        "workflow_ref",
+        "checkout_commit",
+        "checkout_tree",
+        "bundle_sha256"
+      ],
+      "properties": {
+        "predicate_type": {
+          "const": "https://slsa.dev/provenance/v1"
+        },
+        "invocation_uri": {
+          "type": "string",
+          "pattern": "^https://github\\.com/Midtown-Technology-Group/bifrost/actions/runs/[1-9][0-9]*/attempts/[1-9][0-9]*$"
+        },
+        "run_id": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "run_attempt": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "workflow_ref": {
+          "type": "string",
+          "pattern": "^(refs/pull/[1-9][0-9]*/merge|refs/heads/gh-readonly-queue/main/.+)$"
+        },
+        "bundle_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "invocation_commit": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "workflow_commit": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "checkout_commit": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "checkout_tree": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        }
+      }
     }
   }
 }
