@@ -36,7 +36,7 @@ jobs:
     permissions:
       contents: read
       packages: read
-      actions: read # approved: verify/download exact-main producer artifacts
+      actions: read # verify/download immutable exact-source producer artifacts
     outputs:
       head: ${{ steps.context.outputs.head }}
       base: ${{ steps.evidence-output.outputs.base }}
@@ -102,6 +102,14 @@ jobs:
         run: |
           npm ci --prefix client --ignore-scripts
           npm ci --prefix scripts/docs --ignore-scripts
+      - name: Try original comprehensive Python evidence
+        id: python-reuse
+        if: steps.reuse.outputs.reused != 'true' && (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_HEAD: ${{ inputs.head_sha }}
+          EXPECTED_BASE: ${{ steps.context.outputs.base }}
+        run: python3 scripts/sonar/python_receipt.py reuse
       - name: Consume this run's complete client coverage
         id: client-reuse
         if: steps.reuse.outputs.reused != 'true' && inputs.client_artifact_id != ''
@@ -141,7 +149,7 @@ jobs:
             "${tests[@]}"
           python3 scripts/sonar/preflight.py stamp --head "$HEAD_SHA" --base "$BASE_SHA" --report .sonar-evidence/raw/node.lcov
       - name: Prepare exact-source test images
-        if: steps.reuse.outputs.reused != 'true'
+        if: steps.reuse.outputs.reused != 'true' && steps.python-reuse.outputs.reused != 'true'
         env:
           GHCR_USERNAME: ${{ github.actor }}
           GHCR_TOKEN: ${{ github.token }}
@@ -149,7 +157,7 @@ jobs:
           CLIENT_IMAGE_CHANGED: "true"
         run: bash api/scripts/ci/prepare-test-images.sh api client
       - name: Prepare isolated Sonar test stack
-        if: steps.reuse.outputs.reused != 'true'
+        if: steps.reuse.outputs.reused != 'true' && steps.python-reuse.outputs.reused != 'true'
         run: |
           set -euo pipefail
           source scripts/lib/test_helpers.sh
@@ -166,7 +174,7 @@ jobs:
           echo "COMPOSE_FILE=$RUNNER_TEMP/sonar-compose.yml" >> "$GITHUB_ENV"
           echo "SONAR_LOG_DIR=$LOG_DIR" >> "$GITHUB_ENV"
       - name: Collect repository Python tool coverage
-        if: steps.reuse.outputs.reused != 'true'
+        if: steps.reuse.outputs.reused != 'true' && steps.python-reuse.outputs.reused != 'true'
         run: |
           set -euo pipefail
           # Pure repository tools have their own scripts namespace. Run from
@@ -190,7 +198,7 @@ jobs:
             --cov --cov-branch --cov-config=/repo/api/.coveragerc.sonar --cov-report= \
             --junitxml=/tmp/bifrost/sonar-repository-junit.xml
       - name: Collect comprehensive Python coverage
-        if: steps.reuse.outputs.reused != 'true'
+        if: steps.reuse.outputs.reused != 'true' && steps.python-reuse.outputs.reused != 'true'
         env:
           BIFROST_SKIP_BUILD: "1"
           HEAD_SHA: ${{ steps.context.outputs.head }}
@@ -232,9 +240,9 @@ jobs:
             --node .sonar-evidence/raw/node.lcov --properties sonar-project.properties --output-dir .sonar-evidence
           echo "manifest_sha256=$(sha256sum .sonar-evidence/manifest.json | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
       - name: Retain original producer and toolchain identity
-        if: steps.validate.outcome == 'success' && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: steps.validate.outcome == 'success' && steps.python-reuse.outputs.reused != 'true' && github.repository == 'Midtown-Technology-Group/bifrost' && ((github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch')
         # Optional cache export, not another quality gate. Missing metadata
-        # makes tags run the original collector instead of accepting reuse.
+        # makes consumers run the original collector instead of accepting reuse.
         continue-on-error: true
         env:
           EXPECTED_HEAD: ${{ inputs.head_sha }}
@@ -242,7 +250,7 @@ jobs:
           set -euo pipefail
           source scripts/lib/test_helpers.sh
           export COMPOSE_PROJECT_NAME="$(compute_project_name .)"
-          python3 scripts/sonar/main_receipt.py record
+          python3 scripts/sonar/python_receipt.py record
       - name: Select verified evidence outputs
         id: evidence-output
         env:
