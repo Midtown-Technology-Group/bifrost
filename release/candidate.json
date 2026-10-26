@@ -1,31 +1,80 @@
 {
   "schema": 1,
   "repository": "Midtown-Technology-Group/bifrost",
-  "version": "v3.2.0",
-  "base_tag": "v3.1.0",
-  "source_commit": "5fcae00cec1f0d8158fee47b58657e74f60cc1ec",
-  "source_tree": "ae766b569932500e2ea6ee21ed51f1281a1a6f22",
+  "version": "v3.2.1",
+  "base_tag": "v3.2.0",
+  "source_commit": "e8acedbc59c8d6bf0667f59261105c6baaa88585",
+  "source_tree": "50a258b4bd3b95ef0208c6211a2956e3eb42ea26",
   "contract_floor": null,
   "pull_requests": [
     {
-      "number": 1367,
-      "title": "docs(release): document incident and prevention plan [skip ci]",
+      "number": 1371,
+      "title": "ci: reuse exact-main Sonar evidence in tag builds",
       "labels": [],
-      "merge_commit": "528645290850593ba0e98bb361754723a4acd239",
+      "merge_commit": "65297178502e0540805ab92d937d326bd97d4e11",
       "author": "MTG-Thomas"
     },
     {
-      "number": 1365,
-      "title": "feat(release): reuse identical-tree CI evidence for preparation",
+      "number": 1228,
+      "title": "docs: align bounded decisions with Pydantic and freeze synthetic routing cases",
       "labels": [],
-      "merge_commit": "7eb57dce1d5d097461de7e0fe19a82de8ee05b7a",
+      "merge_commit": "695d4aa6f2aead80469050104e52bd417ff97ebd",
       "author": "MTG-Thomas"
     },
     {
-      "number": 1370,
-      "title": "fix(runtime): exclude untouched reservations from deployment drain",
+      "number": 1376,
+      "title": "ci: select owning Sonar tool contracts in the existing planner",
       "labels": [],
-      "merge_commit": "5fcae00cec1f0d8158fee47b58657e74f60cc1ec",
+      "merge_commit": "2d490429de1e3c793501acf07d8c9201dcf92b91",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1377,
+      "title": "ci: explain safe Sonar reuse refusals in existing run summaries",
+      "labels": [],
+      "merge_commit": "17cee8cceee9a9530f5b24f5e5b07e2d795e782f",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1387,
+      "title": "fix(e2e): stop scheduled history refresh from reloading the page",
+      "labels": [],
+      "merge_commit": "f415d79cd6f2726e5729cd9312304b59ed23c945",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1385,
+      "title": "Speed up CI by skipping queue Sonar and cancelling duplicate runs",
+      "labels": [],
+      "merge_commit": "7a596f8b90f787845ca15c9cc43e7f4ecfcf4265",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1379,
+      "title": "ci: reuse comprehensive client unit coverage within the same run",
+      "labels": [],
+      "merge_commit": "8c887601a404ff7995edd77cf6c018204b9349db",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1386,
+      "title": "fix: serialize service lifecycle locks and fence expired owners",
+      "labels": [],
+      "merge_commit": "5dceb3382b707299fd730b23c942ce978efc5562",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1394,
+      "title": "Install pinned MTG Codex skills for Cursor cloud agents",
+      "labels": [],
+      "merge_commit": "596775d1a13b7294cb6321b4acb26867c53608ea",
+      "author": "MTG-Thomas"
+    },
+    {
+      "number": 1383,
+      "title": "fix(solutions): publish install failure after rollback",
+      "labels": [],
+      "merge_commit": "e8acedbc59c8d6bf0667f59261105c6baaa88585",
       "author": "MTG-Thomas"
     }
   ]

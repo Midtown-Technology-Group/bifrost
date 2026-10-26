@@ -1,10 +1,17 @@
-# Bifrost v3.2.0
+# Bifrost v3.2.1
 
 ## Changes
 
-- docs(release): document incident and prevention plan [skip ci] (#1367)
-- feat(release): reuse identical-tree CI evidence for preparation (#1365)
-- fix(runtime): exclude untouched reservations from deployment drain (#1370)
+- ci: reuse exact-main Sonar evidence in tag builds (#1371)
+- docs: align bounded decisions with Pydantic and freeze synthetic routing cases (#1228)
+- ci: select owning Sonar tool contracts in the existing planner (#1376)
+- ci: explain safe Sonar reuse refusals in existing run summaries (#1377)
+- fix(e2e): stop scheduled history refresh from reloading the page (#1387)
+- Speed up CI by skipping queue Sonar and cancelling duplicate runs (#1385)
+- ci: reuse comprehensive client unit coverage within the same run (#1379)
+- fix: serialize service lifecycle locks and fence expired owners (#1386)
+- Install pinned MTG Codex skills for Cursor cloud agents (#1394)
+- fix(solutions): publish install failure after rollback (#1383)
 
 ## Fixed vulnerabilities
 
@@ -19,7 +26,7 @@ Before upgrading, back up the database and review the exact release's migration 
 Automatic rollback is not certified. Preserve terminal workflow retirement evidence and admission safeguards during application rollback. Database downgrade past 20261003_workflow_retirement refuses once retirement evidence exists; use a reviewed recovery plan, not an automatic schema downgrade.
 Before enabling terminal Live retirement, review actual production caller/byte evidence. The native read-only census does not prove absence of Python, operational file, App Source/dist, or external callers. Coordinate owners and retain the exact reviewed evidence digest before authorizing retirement.
 Read back retirement inventory to verify retained row/evidence IDs. An uncertain outcome requires readback before any exact retry; do not replay with fresh targets. Keep the forward schema during application-image rollback.
-Follow the [terminal-retirement runbook](https://github.com/Midtown-Technology-Group/bifrost/blob/5fcae00cec1f0d8158fee47b58657e74f60cc1ec/docs/architecture/rapid-workspace-promotion.md#obsolete-registrations-in-the-same-cutover).
+Follow the [terminal-retirement runbook](https://github.com/Midtown-Technology-Group/bifrost/blob/e8acedbc59c8d6bf0667f59261105c6baaa88585/docs/architecture/rapid-workspace-promotion.md#obsolete-registrations-in-the-same-cutover).
 Contract comparison requires: no additional bump floor.
 This release uses the MTG fork's independent SemVer; upstream versions are not its baseline.
 
@@ -29,6 +36,6 @@ This release uses the MTG fork's independent SemVer; upstream versions are not i
 
 ## Source
 
-Reviewed interval: `v3.1.0..5fcae00cec1f0d8158fee47b58657e74f60cc1ec`.
+Reviewed interval: `v3.2.0..e8acedbc59c8d6bf0667f59261105c6baaa88585`.
 
 Publishing packages does not deploy the MTG production runtime.
