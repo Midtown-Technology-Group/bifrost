@@ -13,6 +13,7 @@ jobs:
   admission:
     if: >-
       github.repository == 'Midtown-Technology-Group/bifrost' &&
+      github.event.workflow_run.head_repository.full_name == github.repository &&
       github.event.workflow_run.event == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -62,7 +63,9 @@ jobs:
   build:
     timeout-minutes: 30
     needs: admission
-    if: github.repository == 'Midtown-Technology-Group/bifrost' && needs.admission.outputs.eligible == 'true'
+    if: >-
+      github.repository == 'Midtown-Technology-Group/bifrost' &&
+      github.event.workflow_run.head_repository.full_name == github.repository && needs.admission.outputs.eligible == 'true'
     runs-on: ubuntu-latest
     name: Build candidate ${{ matrix.component }} image
     permissions:

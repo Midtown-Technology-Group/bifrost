@@ -401,6 +401,27 @@ test('every workflow_run checkout explicitly binds the authorized repository, in
       assert.equal(lines[index + 2].trim(), 'repository: ${{ github.repository }}');
     }
     assert.equal(checkouts, 2);
-    assert.ok(workflow.includes(`if: github.repository == '${repository}' && needs.`));
+    assert.equal(workflow.split('github.event.workflow_run.head_repository.full_name == github.repository').length - 1, 2);
+  }
+});
+
+// Exercise the actual job conditions, before any checkout or privileged step.
+test('all workflow-run jobs reject foreign head repositories before checkout', async () => {
+  for (const file of ['dependabot-candidates.yml', 'publish-dependabot-candidates.yml']) {
+    const workflow = await readFile(new URL(`../workflows/${file}`, import.meta.url), 'utf8');
+    const conditions = [...workflow.matchAll(/^    if: >-\n((?:      .+\n)+)/gm)].map(m => m[1].trim());
+    assert.equal(conditions.length, 2);
+    for (const condition of conditions) {
+      const evaluate = new Function('github', 'needs', `return (${condition});`);
+      const github = { repository, event: { workflow_run: {
+        head_repository: { full_name: repository }, event: file.startsWith('publish-') ? 'workflow_run' : 'pull_request', conclusion: 'success',
+      } } };
+      const needs = { admission: { outputs: { eligible: 'true' } }, qualify: { outputs: { eligible: 'true' } } };
+      assert.equal(evaluate(github, needs), true);
+      github.event.workflow_run.head_repository.full_name = 'attacker/bifrost';
+      assert.equal(evaluate(github, needs), false);
+      github.repository = 'attacker/bifrost';
+      assert.equal(evaluate(github, needs), false);
+    }
   }
 });

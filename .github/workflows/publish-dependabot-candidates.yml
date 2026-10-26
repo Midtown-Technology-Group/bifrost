@@ -14,6 +14,7 @@ jobs:
   qualify:
     if: >-
       github.repository == 'Midtown-Technology-Group/bifrost' &&
+      github.event.workflow_run.head_repository.full_name == github.repository &&
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.event == 'workflow_run'
     runs-on: ubuntu-latest
@@ -45,7 +46,9 @@ jobs:
             await publishInputs({ github, context, core });
 
   publish:
-    if: github.repository == 'Midtown-Technology-Group/bifrost' && needs.qualify.outputs.eligible == 'true'
+    if: >-
+      github.repository == 'Midtown-Technology-Group/bifrost' &&
+      github.event.workflow_run.head_repository.full_name == github.repository && needs.qualify.outputs.eligible == 'true'
     needs: qualify
     runs-on: ubuntu-latest
     timeout-minutes: 30
