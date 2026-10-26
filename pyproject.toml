@@ -143,7 +143,7 @@ dependencies = [
     # execution boundary for every Bifrost agent surface. The `typesafe` extra
     # (TypeSafe Jev `DecisionModel`) is for the MIDT-274 spike; no live calls.
     "pydantic-ai-slim[openai,anthropic,google,retries,typesafe]==2.53.0",
-    "pydantic-ai-harness==0.36.0",
+    "pydantic-ai-harness==0.59.0",
 
     # =========================================================================
     # MCP (Model Context Protocol)
