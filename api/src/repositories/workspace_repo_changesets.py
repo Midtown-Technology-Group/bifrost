@@ -1,5 +1,6 @@
 """Persistence boundary for workspace _repo changesets."""
 
+from datetime import timedelta
 from uuid import UUID
 
 from sqlalchemy import and_, func, or_, select
@@ -7,7 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.orm.workspace_repo_changesets import WorkspaceRepoChangeset
 
-RETRYABLE_GIT_FAILURE_STATES = ("failed", "not_configured", "pending")
+RETRYABLE_GIT_FAILURE_STATES = ("failed", "not_configured")
+GIT_CLOSURE_PENDING_STALE_AFTER = timedelta(minutes=15)
 
 
 class WorkspaceRepoChangesetRepository:
@@ -27,7 +29,11 @@ class WorkspaceRepoChangesetRepository:
             WorkspaceRepoChangeset.organization_id == organization_id,
         )
         if for_update:
-            stmt = stmt.with_for_update()
+            # ``expire_on_commit=False`` keeps this row in the session identity map
+            # across the external Git operation. Re-populate it while acquiring the
+            # lock so a later transaction cannot replace the durable operation owner
+            # and then be overwritten by this stale instance.
+            stmt = stmt.with_for_update().execution_options(populate_existing=True)
         return (await self.db.execute(stmt)).scalar_one_or_none()
 
     async def count_open(self, scope: str, organization_id: UUID) -> int:
@@ -52,7 +58,14 @@ class WorkspaceRepoChangesetRepository:
             select(WorkspaceRepoChangeset)
             .where(
                 WorkspaceRepoChangeset.organization_id == organization_id,
-                failure_state.in_(RETRYABLE_GIT_FAILURE_STATES),
+                or_(
+                    failure_state.in_(RETRYABLE_GIT_FAILURE_STATES),
+                    and_(
+                        failure_state == "pending",
+                        WorkspaceRepoChangeset.updated_at
+                        <= func.now() - GIT_CLOSURE_PENDING_STALE_AFTER,
+                    ),
+                ),
                 or_(
                     and_(
                         WorkspaceRepoChangeset.status == "activated",
