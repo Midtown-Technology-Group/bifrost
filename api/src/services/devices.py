@@ -18,6 +18,7 @@ from starlette.responses import JSONResponse
 
 from src.core.org_filter import org_filter_clause, resolve_org_filter
 from src.core.principal import UserPrincipal
+from src.core.pubsub import DEVICE_AUTHORIZATION_REVOKED, manager
 from src.models.contracts.devices import DeviceCreate
 from src.models.orm.devices import (
     DEVICE_STATUS_ACTIVE,
@@ -326,6 +327,10 @@ async def rotate_device_key_route(
     raw_key = rotate_device_key(device)
     await db.commit()
     await db.refresh(device)
+    await manager.broadcast(
+        f"device:{device.id}",
+        {"type": DEVICE_AUTHORIZATION_REVOKED},
+    )
     return device, raw_key
 
 
@@ -361,4 +366,9 @@ async def set_device_enabled(
         device.api_key_enabled = False
     await db.commit()
     await db.refresh(device)
+    if not enabled:
+        await manager.broadcast(
+            f"device:{device.id}",
+            {"type": DEVICE_AUTHORIZATION_REVOKED},
+        )
     return device

@@ -1246,7 +1246,12 @@ async def websocket_connect(
     websocket.state.file_subscriptions = {}
 
     try:
-        await manager.connect(websocket, allowed_channels)
+        revocation_channels = (f"device:{device.id}",) if device is not None else ()
+        await manager.connect(
+            websocket,
+            allowed_channels,
+            revocation_channels=revocation_channels,
+        )
         if user is not None:
             logger.info(
                 f"WebSocket connected for user {user.user_id}, "

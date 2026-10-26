@@ -14,6 +14,7 @@ from uuid import uuid4
 import pytest
 from fastapi import status
 
+from src.core.principal import UserPrincipal
 from src.models.contracts.devices import DeviceCreate, DevicePublic
 from src.models.orm.devices import (
     DEVICE_STATUS_ACTIVE,
@@ -21,6 +22,7 @@ from src.models.orm.devices import (
     DEVICE_STATUS_PENDING_ENROLLED,
     Device,
 )
+from src.services import devices as device_service
 from src.services.device_keys import (
     ENROLLMENT_TOKEN_PREFIX,
     generate_device_key,
@@ -37,7 +39,6 @@ from src.services.devices import (
     set_device_enabled,
     user_can_manage_devices,
 )
-from src.core.principal import UserPrincipal
 
 
 def make_user(
@@ -298,8 +299,10 @@ class TestLifecycle:
         assert exc.value.code == "device_not_active"
         assert exc.value.status_code == 409
 
-    async def test_rotate_replaces_hash_and_returns_raw_once(self):
+    async def test_rotate_replaces_hash_and_returns_raw_once(self, monkeypatch):
         session = mock_session()
+        broadcast = AsyncMock()
+        monkeypatch.setattr(device_service.manager, "broadcast", broadcast)
         user = make_user(org_id=uuid4())
         old_raw, old_hash = generate_device_key(uuid4())
         active = make_device(
@@ -315,9 +318,15 @@ class TestLifecycle:
         device, raw_key = await rotate_device_key_route(session, user, active.id)
         assert raw_key != old_raw
         assert device.api_key_hash != old_hash
+        broadcast.assert_awaited_once_with(
+            f"device:{active.id}",
+            {"type": device_service.DEVICE_AUTHORIZATION_REVOKED},
+        )
 
-    async def test_disable_and_enable_transition(self):
+    async def test_disable_and_enable_transition(self, monkeypatch):
         session = mock_session()
+        broadcast = AsyncMock()
+        monkeypatch.setattr(device_service.manager, "broadcast", broadcast)
         user = make_user(org_id=uuid4())
         active = make_device(
             organization_id=user.organization_id,
@@ -332,11 +341,16 @@ class TestLifecycle:
         disabled = await set_device_enabled(session, user, active.id, False)
         assert disabled.status == DEVICE_STATUS_DISABLED
         assert disabled.api_key_enabled is False
+        broadcast.assert_awaited_once_with(
+            f"device:{active.id}",
+            {"type": device_service.DEVICE_AUTHORIZATION_REVOKED},
+        )
 
         enabled = await set_device_enabled(session, user, active.id, True)
         assert enabled.status == DEVICE_STATUS_ACTIVE
         # Re-enable restores the key flag cleared by disable.
         assert enabled.api_key_enabled is True
+        assert broadcast.await_count == 1
 
         with pytest.raises(DeviceOperationError) as exc:
             await set_device_enabled(session, user, active.id, True)
