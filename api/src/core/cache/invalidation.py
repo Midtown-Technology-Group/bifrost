@@ -356,7 +356,12 @@ async def invalidate_all_orgs() -> None:
 # =============================================================================
 
 
-async def cleanup_execution_cache(execution_id: str, *, preserve_logs: bool = False) -> None:
+async def cleanup_execution_cache(
+    execution_id: str,
+    *,
+    preserve_logs: bool = False,
+    preserve_pending_changes: bool = False,
+) -> None:
     """
     Clean up all execution-scoped cache entries.
 
@@ -367,10 +372,16 @@ async def cleanup_execution_cache(execution_id: str, *, preserve_logs: bool = Fa
 
     Args:
         execution_id: Execution ID to clean up
+        preserve_logs: Retain persisted log buffers for later readers.
+        preserve_pending_changes: Retain fields that were not removed by the
+            post-commit snapshot acknowledgement. Their existing TTL bounds
+            retention and prevents a concurrent write from being discarded.
     """
     try:
         r = await get_shared_redis()
-        keys = [pending_changes_key(execution_id)]
+        keys = []
+        if not preserve_pending_changes:
+            keys.append(pending_changes_key(execution_id))
         if not preserve_logs:
             keys.append(execution_logs_stream_key(execution_id))
         keys.append(active_execution_key(execution_id))

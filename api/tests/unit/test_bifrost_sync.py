@@ -6,7 +6,6 @@ from typing import Any
 from uuid import uuid4
 
 import pytest
-
 from bifrost import _sync
 
 
@@ -14,6 +13,7 @@ class FakeRedis:
     def __init__(self, pending: dict[str, str] | None = None) -> None:
         self.pending = pending or {}
         self.deleted: list[str] = []
+        self.eval_calls: list[tuple[str, int, tuple[str, ...]]] = []
 
     async def hgetall(self, key: str) -> dict[str, str]:
         self.last_hgetall_key = key
@@ -22,13 +22,27 @@ class FakeRedis:
     async def delete(self, key: str) -> None:
         self.deleted.append(key)
 
+    async def eval(self, script: str, key_count: int, key: str, *args: str) -> int:
+        self.eval_calls.append((script, key_count, (key, *args)))
+        removed = 0
+        for index in range(0, len(args), 2):
+            field, expected = args[index : index + 2]
+            if self.pending.get(field) == expected:
+                self.pending.pop(field)
+                removed += 1
+        return removed
+
 
 class FakeSession:
     def __init__(self) -> None:
         self.commits = 0
+        self.rollbacks = 0
 
     async def commit(self) -> None:
         self.commits += 1
+
+    async def rollback(self) -> None:
+        self.rollbacks += 1
 
 
 class FakeScalarResult:
@@ -79,14 +93,16 @@ async def test_flush_pending_changes_returns_zero_when_redis_empty(
 ) -> None:
     redis = FakeRedis()
     monkeypatch.setattr(_sync, "get_shared_redis", _redis_provider(redis))
-    monkeypatch.setattr(_sync, "pending_changes_key", lambda execution_id: f"pending:{execution_id}")
+    monkeypatch.setattr(
+        _sync, "pending_changes_key", lambda execution_id: f"pending:{execution_id}"
+    )
 
     assert await _sync.flush_pending_changes("exec-1", session=FakeSession()) == 0
     assert redis.deleted == []
 
 
 @pytest.mark.asyncio
-async def test_shared_session_flush_waits_for_commit_before_acknowledgement(
+async def test_caller_transaction_defers_ack_and_preserves_concurrent_overwrite(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     redis = FakeRedis(
@@ -98,8 +114,11 @@ async def test_shared_session_flush_waits_for_commit_before_acknowledgement(
     )
     applied: list[str] = []
     session = FakeSession()
+    pending_acknowledgements: list[tuple[str, dict[str, str]]] = []
     monkeypatch.setattr(_sync, "get_shared_redis", _redis_provider(redis))
-    monkeypatch.setattr(_sync, "pending_changes_key", lambda execution_id: f"pending:{execution_id}")
+    monkeypatch.setattr(
+        _sync, "pending_changes_key", lambda execution_id: f"pending:{execution_id}"
+    )
 
     async def apply_change(db, change):
         assert db is session
@@ -107,13 +126,35 @@ async def test_shared_session_flush_waits_for_commit_before_acknowledgement(
 
     monkeypatch.setattr(_sync, "_apply_change", apply_change)
 
-    assert await _sync.flush_pending_changes("exec-1", session=session) == 2
+    assert (
+        await _sync.flush_pending_changes(
+            "exec-1",
+            session=session,
+            pending_acknowledgements=pending_acknowledgements,
+        )
+        == 2
+    )
     assert applied == ["config", "role"]
-    assert redis.deleted == []
+    assert set(redis.pending) == {"a", "b", "c"}
+    assert redis.eval_calls == []
     assert session.commits == 0
 
-    await _sync.acknowledge_pending_changes("exec-1")
-    assert redis.deleted == ["pending:exec-1"]
+    await session.rollback()
+    assert session.rollbacks == 1
+    assert set(redis.pending) == {"a", "b", "c"}
+
+    # If a later writer replaces a field before a successful retry is acknowledged,
+    # compare-and-delete must preserve that newer value.
+    newer_value = json.dumps({"sequence": 3, "entity_type": "role"})
+    redis.pending["a"] = newer_value
+    redis.pending["d"] = json.dumps({"sequence": 4, "entity_type": "config"})
+    await _sync.acknowledge_persisted_changes(pending_acknowledgements)
+
+    assert redis.pending == {
+        "a": newer_value,
+        "d": json.dumps({"sequence": 4, "entity_type": "config"}),
+    }
+    assert len(redis.eval_calls) == 1
 
 
 @pytest.mark.asyncio
@@ -122,7 +163,9 @@ async def test_flush_pending_changes_retries_and_raises_sync_error(
 ) -> None:
     redis = FakeRedis({"a": json.dumps({"sequence": 1, "entity_type": "config"})})
     monkeypatch.setattr(_sync, "get_shared_redis", _redis_provider(redis))
-    monkeypatch.setattr(_sync, "pending_changes_key", lambda execution_id: f"pending:{execution_id}")
+    monkeypatch.setattr(
+        _sync, "pending_changes_key", lambda execution_id: f"pending:{execution_id}"
+    )
 
     async def fail_apply(db, change):
         raise RuntimeError("db down")
@@ -142,7 +185,9 @@ async def test_flush_pending_changes_creates_session_when_none(
     redis = FakeRedis({"a": json.dumps({"sequence": 1, "entity_type": "config"})})
     session = FakeSession()
     monkeypatch.setattr(_sync, "get_shared_redis", _redis_provider(redis))
-    monkeypatch.setattr(_sync, "pending_changes_key", lambda execution_id: f"pending:{execution_id}")
+    monkeypatch.setattr(
+        _sync, "pending_changes_key", lambda execution_id: f"pending:{execution_id}"
+    )
 
     async def apply_change(db, change):
         assert db is session
@@ -162,7 +207,9 @@ async def test_flush_pending_changes_creates_session_when_none(
 
     assert await _sync.flush_pending_changes("exec-1") == 1
     assert session.commits == 1
-    assert redis.deleted == ["pending:exec-1"]
+    assert redis.pending == {}
+    assert len(redis.eval_calls) == 1
+    assert redis.deleted == []
 
 
 @pytest.mark.asyncio
@@ -335,7 +382,9 @@ async def test_apply_org_change_create_update_delete() -> None:
     assert existing.is_active is False
 
     delete_session = FakeEntitySession(existing)
-    await _sync._apply_org_change(delete_session, {"entity_id": org_id, "operation": "delete"})
+    await _sync._apply_org_change(
+        delete_session, {"entity_id": org_id, "operation": "delete"}
+    )
     assert existing.is_active is False
 
 
