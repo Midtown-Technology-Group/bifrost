@@ -100,8 +100,8 @@ class integrations:
             async with asyncio.timeout(remaining_wait):
                 if reserve_http_calls is not None:
                     reserve_http_calls(3)
-                response = await client.post(
-                    "/api/sdk/integrations/request-slot/acquire", json=body, retry_safe=False,
+                response = await client.engine_request(
+                    "POST", "/api/sdk/integrations/request-slot/acquire", json=body, retry_safe=False,
                 )
             raise_for_status_with_detail(response)
             result = response.json()
@@ -124,8 +124,8 @@ class integrations:
             async with asyncio.timeout(5):
                 if reserve_http_calls is not None:
                     reserve_http_calls(3)
-                released = await client.post(
-                    "/api/sdk/integrations/request-slot/release", json=body, retry_safe=False,
+                released = await client.engine_request(
+                    "POST", "/api/sdk/integrations/request-slot/release", json=body, retry_safe=False,
                 )
                 raise_for_status_with_detail(released)
         except Exception:

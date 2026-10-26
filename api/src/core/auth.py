@@ -264,7 +264,14 @@ async def get_current_user_optional(
             if payload.get("engine_attempt_token")
             else None
         )
+        engine_legacy_execution_id = (
+            UUID(payload["engine_legacy_execution_id"])
+            if payload.get("engine_legacy_execution_id")
+            else None
+        )
     except (TypeError, ValueError):
+        return None
+    if engine_legacy_execution_id is not None and payload.get("engine") is not True:
         return None
 
     return UserPrincipal(
@@ -288,6 +295,7 @@ async def get_current_user_optional(
         is_engine_token=payload.get("engine", False) is True,
         engine_execution_id=engine_execution_id,
         engine_attempt_token=engine_attempt_token,
+        engine_legacy_execution_id=engine_legacy_execution_id,
         delegated_user_id=delegated_user_id,
         delegated_email=payload.get("delegated_email", ""),
         delegated_name=payload.get("delegated_name", ""),
@@ -393,14 +401,17 @@ async def get_current_engine_or_bypass_user(
 ) -> UserPrincipal:
     """Admit execution credentials and scope-bypass principals only.
 
-    Execution credentials are the signed engine and service tokens: they
-    carry ``engine_execution_id`` and never an embed claim. Bypass is
+    Execution credentials are signed engine and service tokens. Durable
+    attempts carry ``engine_execution_id``; legacy direct-engine callers carry
+    ``engine_legacy_execution_id``. Neither may be an embed claim. Bypass is
     platform admin OR provider-org member. Every other principal, including
     an ordinary user's own session token, is refused.
     """
     from shared.scope_resolver import has_scope_bypass
 
-    if user.engine_execution_id and not user.embed:
+    if (
+        user.engine_execution_id or user.engine_legacy_execution_id
+    ) and not user.embed:
         return user
     if has_scope_bypass(
         is_platform_admin=user.is_platform_admin,

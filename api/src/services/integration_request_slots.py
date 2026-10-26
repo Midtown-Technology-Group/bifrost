@@ -16,13 +16,20 @@ MAX_REQUEST_SECONDS = 30
 SETTING = "request_concurrency_limit"
 
 # Use Redis time, and never extend an existing token on HTTP retry. The owner
-# token is scoped to the authenticated principal by the router.
+# token is prefixed by the authenticated execution or bypass principal.
 _ACQUIRE = """
 local now_parts = redis.call('TIME')
 local now = tonumber(now_parts[1]) * 1000 + tonumber(now_parts[2]) / 1000
 redis.call('ZREMRANGEBYSCORE', KEYS[1], '-inf', now)
 local existing = redis.call('ZSCORE', KEYS[1], ARGV[1])
 if existing then return {1, math.floor(tonumber(existing) - now)} end
+local prefix = ARGV[4] .. ':'
+local leases = redis.call('ZRANGE', KEYS[1], 0, -1, 'WITHSCORES')
+for index = 1, #leases, 2 do
+    if string.sub(leases[index], 1, string.len(prefix)) == prefix then
+        return {0, math.floor(tonumber(leases[index + 1]) - now)}
+    end
+end
 if redis.call('ZCARD', KEYS[1]) >= tonumber(ARGV[2]) then return {0, 0} end
 redis.call('ZADD', KEYS[1], now + tonumber(ARGV[3]), ARGV[1])
 redis.call('PEXPIRE', KEYS[1], tonumber(ARGV[3]))
@@ -40,10 +47,28 @@ def validate_limit(value: object) -> int | None:
     return value
 
 
-async def acquire(integration_id: UUID, owner: str, limit: int) -> tuple[bool, float]:
+async def acquire(
+    integration_id: UUID,
+    owner: str,
+    principal: str,
+    limit: int,
+) -> tuple[bool, float]:
+    if not principal or not owner.startswith(f"{principal}:"):
+        raise ValueError("owner must be scoped to the authenticated principal")
     key = f"bifrost:integration-request-slots:{integration_id}"
     redis = await get_shared_redis()
-    result = await cast(Awaitable[Any], redis.eval(_ACQUIRE, 1, key, owner, limit, LEASE_SECONDS * 1000))
+    result = await cast(
+        Awaitable[Any],
+        redis.eval(
+            _ACQUIRE,
+            1,
+            key,
+            owner,
+            limit,
+            LEASE_SECONDS * 1000,
+            principal,
+        ),
+    )
     return bool(result[0]), float(result[1]) / 1000
 
 

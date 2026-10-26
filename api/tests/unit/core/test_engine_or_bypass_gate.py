@@ -28,6 +28,18 @@ async def test_engine_token_is_admitted():
 
 
 @pytest.mark.asyncio
+async def test_legacy_engine_token_is_admitted():
+    engine = _principal(
+        user_id=SYSTEM_USER_UUID,
+        organization_id=None,
+        is_superuser=False,
+        is_engine_token=True,
+        engine_legacy_execution_id=uuid4(),
+    )
+    assert await get_current_engine_or_bypass_user(engine) is engine
+
+
+@pytest.mark.asyncio
 async def test_service_token_is_admitted():
     service = _principal(
         user_id=SYSTEM_USER_UUID,
