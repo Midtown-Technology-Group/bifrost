@@ -343,10 +343,15 @@ async def test_recovery_pin_failure_preserves_intent_without_publication_or_comm
 
 
 @pytest.mark.asyncio
-async def test_protected_git_job_builds_captured_bytes_and_rechecks_source_controls_and_lease(monkeypatch, setup):
+@pytest.mark.parametrize("provider_member", [False, True])
+async def test_protected_git_job_builds_captured_bytes_and_rechecks_source_controls_and_lease(monkeypatch, setup, provider_member):
     app, db, storage, publisher, intent = setup
     payload = protected_setup(monkeypatch, app)
     context = protected_admission(db, payload)
+    jobs.resolve_provider_org_claim.return_value = provider_member
+    # Production's system actor belongs to the provider org but has no role on
+    # this role-based App. Human access is not protected Git admission authority.
+    db.application_repo.get.return_value = None
     config = SimpleNamespace(token="stored-credential-in-memory", repo_url="https://github.com/MTG-Thomas/bifrost-workspace",
         branch="production-live")
     monkeypatch.setattr(jobs, "get_github_config", AsyncMock(return_value=config))
@@ -378,6 +383,7 @@ async def test_protected_git_job_builds_captured_bytes_and_rechecks_source_contr
     jobs.read_app_publication_runtime_pin.assert_awaited_once()
     assert jobs.read_app_publication_runtime_pin.await_args.kwargs["intent"] == intent
     assert reader.verify_ci.await_count == report.await_count == 2
+    db.application_repo.get.assert_not_awaited()
     save.assert_awaited_once()
     assert config.branch == "production-live"
     source_read.assert_awaited_once()

@@ -112,7 +112,7 @@ async def _authorize_application_publish(
 
     if payload.protected_git is not None:
         # OIDC admission owns this narrowly enrolled publication. The system
-        # identity is deliberately not a human provider/admin; its UUID alone
+        # identity need not hold a human App role or admin grant; its UUID alone
         # must never authorize publication of arbitrary App/editor source.
         job = await db.get(PlatformJob, context.job_id, populate_existing=True)
         policy = get_settings().inline_app_git_delivery_policy

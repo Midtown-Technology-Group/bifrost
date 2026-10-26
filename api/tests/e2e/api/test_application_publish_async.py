@@ -291,6 +291,9 @@ async def test_captured_repository_publication_serves_exact_build_and_preserves_
     from bifrost.workspace_release import canonical_digest
 
     app = app_factory(platform_admin.headers, f"captured-publish-{uuid.uuid4().hex[:8]}")
+    restricted = e2e_client.patch(f"/api/applications/{app['id']}", headers=platform_admin.headers,
+        json={"access_level": "role_based", "role_ids": []})
+    assert restricted.status_code == 200, restricted.text
     storage = AppStorageService()
     old = _captured_bundle("before-capture")
     await storage.publish(app["id"], bundle_files=old)
@@ -343,7 +346,8 @@ async def test_captured_repository_publication_serves_exact_build_and_preserves_
         organization_id=installed.organization_id, requested_by_user_id=str(SYSTEM_USER_UUID),
         requested_by_email=original.requested_by_email, requested_by_name=original.requested_by_name)
     # Exercise the worker's real DB authorization boundary. The migrated system
-    # user has no human admin/provider grant; a fake provider actor hid this bug.
+    # user has no human App role/admin grant; the previous direct repository
+    # bypass and mocked provider/access checks hid this boundary.
     actor = await db_session.get(User, SYSTEM_USER_UUID)
     assert actor is not None and actor.is_active and not actor.is_superuser and actor.organization_id is None
 
