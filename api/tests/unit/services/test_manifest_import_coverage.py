@@ -1224,6 +1224,14 @@ class _ScalarRowsResult:
         return _ScalarsResult(self._values)
 
 
+class _ScalarOneResult:
+    def __init__(self, value):
+        self._value = value
+
+    def scalar_one_or_none(self):
+        return self._value
+
+
 class _SequenceDb:
     def __init__(self, *results):
         self._results = list(results)
@@ -1714,8 +1722,7 @@ async def test_resolve_integration_rekeys_dependent_cache_and_syncs_children(mon
         _RowsResult([]),
         _RowsResult([]),
         _ScalarRowsResult([existing_schema]),
-        _RowsResult([]),
-        _RowsResult([]),
+        _ScalarOneResult(uuid4()),
         _RowsResult([]),
         _RowsResult([]),
     )
