@@ -2239,32 +2239,29 @@ async def recreate_workflow_file(
     try:
         orphan_service = WorkflowOrphanService(db)
 
-        # Get the workflow and mark as not orphaned
-        workflow = await orphan_service.recreate_file(workflow_id)
-
-        # Load code via Redis→S3 cache chain
-        from src.core.module_cache import get_module
-        cached = await get_module(workflow.path)
-        code_content = cached["content"] if cached else None
-
-        if not code_content:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Workflow has no stored code to recreate",
-            )
+        # Select and stage one immutable source binding under the workspace
+        # transaction fence. Persist before committing so a concurrent repoint
+        # cannot pair old bytes with a refreshed destination path.
+        recreation = await orphan_service.recreate_file(workflow_id)
         file_storage = FileStorageService(db)
         await file_storage.write_file(
-            path=workflow.path,
-            content=code_content.encode("utf-8"),
+            path=recreation.path,
+            content=recreation.code.encode("utf-8"),
             updated_by=user.email,
         )
+        await db.commit()
 
-        logger.info(f"Recreated file for workflow {log_safe(workflow_id)} at {log_safe(workflow.path)}")
+        logger.info(
+            "Recreated file for workflow %s at %s with source hash %s",
+            log_safe(workflow_id),
+            log_safe(recreation.path),
+            log_safe(recreation.content_hash),
+        )
 
         return RecreateFileResponse(
             success=True,
-            workflow_id=str(workflow.id),
-            path=workflow.path,
+            workflow_id=str(recreation.workflow_id),
+            path=recreation.path,
         )
 
     except WorkspaceReleaseRegistrationGoverned as e:

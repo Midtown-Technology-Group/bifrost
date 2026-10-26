@@ -208,6 +208,104 @@ async def test_replace_workflow_translates_service_value_errors():
 
 
 @pytest.mark.asyncio
+async def test_recreate_workflow_writes_integrity_checked_service_source():
+    workflow_id = uuid4()
+    bound_path = "workflows/recreated.py"
+    durable_code = "def durable():\n    return 'stored'\n"
+    service = SimpleNamespace(
+        recreate_file=AsyncMock(
+            return_value=SimpleNamespace(
+                workflow_id=workflow_id,
+                path=bound_path,
+                content_hash="a" * 64,
+                code=durable_code,
+            )
+        )
+    )
+    file_storage = SimpleNamespace(write_file=AsyncMock())
+    db = SimpleNamespace(commit=AsyncMock())
+
+    with (
+        patch.object(
+            workflows,
+            "assert_entity_id_not_solution_managed",
+            new=AsyncMock(),
+        ) as guard,
+        patch(
+            "src.services.workflow_orphan.WorkflowOrphanService",
+            return_value=service,
+        ),
+        patch(
+            "src.services.file_storage.FileStorageService",
+            return_value=file_storage,
+        ),
+    ):
+        result = await workflows.recreate_workflow_file(
+            workflow_id,
+            ctx=None,
+            user=SimpleNamespace(email="admin@example.com"),
+            db=db,
+        )
+
+    guard.assert_awaited_once()
+    service.recreate_file.assert_awaited_once_with(workflow_id)
+    file_storage.write_file.assert_awaited_once_with(
+        path=bound_path,
+        content=durable_code.encode("utf-8"),
+        updated_by="admin@example.com",
+    )
+    db.commit.assert_awaited_once()
+    assert result.success is True
+    assert result.workflow_id == str(workflow_id)
+    assert result.path == bound_path
+
+
+@pytest.mark.asyncio
+async def test_recreate_workflow_does_not_commit_before_file_persistence():
+    workflow_id = uuid4()
+    service = SimpleNamespace(
+        recreate_file=AsyncMock(
+            return_value=SimpleNamespace(
+                workflow_id=workflow_id,
+                path="workflows/recreated.py",
+                content_hash="b" * 64,
+                code="def durable(): pass\n",
+            )
+        )
+    )
+    file_storage = SimpleNamespace(
+        write_file=AsyncMock(side_effect=RuntimeError("storage unavailable"))
+    )
+    db = SimpleNamespace(commit=AsyncMock())
+
+    with (
+        patch.object(
+            workflows,
+            "assert_entity_id_not_solution_managed",
+            new=AsyncMock(),
+        ),
+        patch(
+            "src.services.workflow_orphan.WorkflowOrphanService",
+            return_value=service,
+        ),
+        patch(
+            "src.services.file_storage.FileStorageService",
+            return_value=file_storage,
+        ),
+    ):
+        with pytest.raises(HTTPException) as exc:
+            await workflows.recreate_workflow_file(
+                workflow_id,
+                ctx=None,
+                user=SimpleNamespace(email="admin@example.com"),
+                db=db,
+            )
+
+    assert exc.value.status_code == 500
+    db.commit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_deactivate_workflow_includes_plural_reference_warning():
     workflow_id = uuid4()
     service = SimpleNamespace(
