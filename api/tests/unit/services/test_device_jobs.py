@@ -14,6 +14,7 @@ from uuid import uuid4
 
 import pytest
 from fastapi import status
+from sqlalchemy.dialects import postgresql
 from sqlalchemy.exc import IntegrityError
 
 from src.models.orm.devices import DEVICE_STATUS_ACTIVE, DEVICE_STATUS_DISABLED, Device
@@ -30,6 +31,7 @@ from src.models.orm.device_jobs import (
     DeviceJob,
 )
 from src.services.device_jobs import (
+    DEVICE_JOB_WATCHDOG_BATCH_SIZE,
     append_logs,
     broadcast_job_available,
     broadcast_job_logs,
@@ -478,6 +480,28 @@ class TestFinish:
 
 
 class TestSweepWatchdog:
+    async def test_running_query_is_stale_only_bounded_and_payload_free(self):
+        session = _session()
+        session.execute.side_effect = [_result(rows=[]), _result(rows=[])]
+
+        await sweep_device_jobs(session, now=NOW)
+
+        statement = session.execute.await_args_list[0].args[0]
+        sql = str(
+            statement.compile(
+                dialect=postgresql.dialect(),
+                compile_kwargs={"literal_binds": True},
+            )
+        )
+        selected_columns = sql.split("FROM device_jobs", maxsplit=1)[0]
+        assert "script_content" not in selected_columns
+        assert "params" not in selected_columns
+        assert "result" not in selected_columns
+        assert "device_jobs.last_agent_activity_at IS NULL" in sql
+        assert "EXTRACT(epoch" in sql
+        assert f"LIMIT {DEVICE_JOB_WATCHDOG_BATCH_SIZE}" in sql
+        assert "FOR UPDATE SKIP LOCKED" in sql
+
     async def test_silent_running_becomes_lost(self):
         session = _session()
         silent = _job(
