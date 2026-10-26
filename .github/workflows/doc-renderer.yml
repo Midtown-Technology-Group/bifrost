@@ -45,6 +45,24 @@ jobs:
           cache-from: type=gha,scope=doc-renderer
           cache-to: type=gha,mode=max,scope=doc-renderer
 
+      - name: Verify installed renderer dependency
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker image inspect bifrost-doc-renderer:test --format '{{.Id}}'
+          docker run --rm --network none --read-only --entrypoint python \
+            bifrost-doc-renderer:test -c '
+          import brotli, hashlib, json, sys
+          from importlib.metadata import version
+          from pathlib import Path
+          lock = Path("/app/requirements.lock").read_bytes()
+          pins = [line.split("==", 1)[1].split()[0] for line in lock.decode().splitlines() if line.startswith("brotli==")]
+          installed = version("brotli")
+          assert pins == [installed] and brotli.__version__ == installed
+          sample = b"renderer Brotli compatibility"
+          assert brotli.decompress(brotli.compress(sample)) == sample
+          print(json.dumps({"python": sys.version.split()[0], "brotli": installed, "lock_sha256": hashlib.sha256(lock).hexdigest()}))'
+
       - name: Smoke test renderer
         shell: bash
         run: |
