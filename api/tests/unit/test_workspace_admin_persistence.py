@@ -47,7 +47,15 @@ async def test_oauth_reconciliation_and_diagnostics_never_cross_token_org(
         encrypted_refresh_token=b"org-refresh",
         expires_at=now + timedelta(days=1),
     )
-    db_session.add_all([global_token, scoped_token])
+    user_token = OAuthToken(
+        provider_id=provider.id,
+        organization_id=org.id,
+        user_id=seed_user.id,
+        encrypted_access_token=b"user-access",
+        encrypted_refresh_token=b"user-refresh",
+        expires_at=now + timedelta(days=3),
+    )
+    db_session.add_all([global_token, scoped_token, user_token])
     await db_session.flush()
     admin = UserPrincipal(seed_user.id, seed_user.email, None, is_superuser=True)
     result = await service.inspect_oauth(db_session, admin, name, org.id)
@@ -56,8 +64,10 @@ async def test_oauth_reconciliation_and_diagnostics_never_cross_token_org(
     assert result.token_rows_updated == 1
     assert result.provider_rows_updated == 0
     await db_session.refresh(global_token)
+    await db_session.refresh(user_token)
     await db_session.refresh(provider)
     assert global_token.encrypted_refresh_token == b"global-refresh"
+    assert user_token.encrypted_refresh_token == b"user-refresh"
     assert provider.status == "not_connected"
     assert scoped_token.encrypted_refresh_token == b"org-refresh"
 

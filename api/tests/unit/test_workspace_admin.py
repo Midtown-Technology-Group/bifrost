@@ -322,6 +322,7 @@ async def test_real_queries_pin_provider_token_and_execution_scope(monkeypatch):
     statement = str(db.execute.await_args.args[0])
     assert "oauth_tokens.organization_id =" in statement
     assert "oauth_tokens.provider_id =" in statement
+    assert "oauth_tokens.user_id IS NULL" in statement
     monkeypatch.setattr(service, "audit_admin", AsyncMock())
     db.execute.return_value.scalar_one_or_none.return_value = None
     with pytest.raises(service.AdminOperationError):
