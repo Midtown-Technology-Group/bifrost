@@ -3,6 +3,10 @@ name: Sonar Coverage
 on:
   workflow_call:
     inputs:
+      client_artifact_id:
+        required: false
+        type: string
+        default: ""
       head_sha:
         required: true
         type: string
@@ -27,6 +31,8 @@ jobs:
   evidence:
     name: Sonar Coverage Evidence
     runs-on: ubuntu-latest
+    # Unsharded unit+E2E collection. Sampled runs finished in 37-57 minutes.
+    timeout-minutes: 75
     permissions:
       contents: read
       packages: read
@@ -96,8 +102,16 @@ jobs:
         run: |
           npm ci --prefix client --ignore-scripts
           npm ci --prefix scripts/docs --ignore-scripts
+      - name: Consume this run's complete client coverage
+        id: client-reuse
+        if: steps.reuse.outputs.reused != 'true' && inputs.client_artifact_id != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CLIENT_ARTIFACT_ID: ${{ inputs.client_artifact_id }}
+          EXPECTED_HEAD: ${{ inputs.head_sha }}
+        run: python3 scripts/sonar/client_receipt.py reuse
       - name: Collect comprehensive client coverage
-        if: steps.reuse.outputs.reused != 'true'
+        if: steps.reuse.outputs.reused != 'true' && steps.client-reuse.outputs.reused != 'true'
         env:
           HEAD_SHA: ${{ steps.context.outputs.head }}
           BASE_SHA: ${{ steps.context.outputs.base }}
@@ -106,6 +120,12 @@ jobs:
           (cd client && npm run test:coverage)
           cp client/coverage/lcov.info .sonar-evidence/raw/client.lcov
           python3 scripts/sonar/preflight.py stamp --head "$HEAD_SHA" --base "$BASE_SHA" --report .sonar-evidence/raw/client.lcov
+      - name: Bind consumed client report to analysis context
+        if: steps.client-reuse.outputs.reused == 'true'
+        env:
+          HEAD_SHA: ${{ steps.context.outputs.head }}
+          BASE_SHA: ${{ steps.context.outputs.base }}
+        run: python3 scripts/sonar/preflight.py stamp --head "$HEAD_SHA" --base "$BASE_SHA" --report .sonar-evidence/raw/client.lcov
       - name: Collect repository Node test coverage
         if: steps.reuse.outputs.reused != 'true'
         env:
@@ -313,6 +333,7 @@ jobs:
     name: Sonar Free scope disposition
     needs: evidence
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     if: needs.evidence.outputs.mode == 'ci'
     steps:
       - name: Record provider scope and activation state
@@ -341,8 +362,11 @@ jobs:
   scan:
     name: Sonar CI Analysis
     needs: evidence
+    # Observed scans finished in about 7 minutes, including the quality gate.
+    timeout-minutes: 20
     # Activation is an operator-controlled cutover after this workflow merges.
-    # Free supports main and PRs targeting main; merge groups retain evidence only.
+    # Free supports main and PRs targeting main. ci.yml does not call this
+    # workflow for merge groups.
     if: >-
       needs.evidence.outputs.mode == 'ci' && vars.SONAR_CI_ENABLED == 'true' &&
       ((github.event_name == 'pull_request' && github.base_ref == 'main' &&

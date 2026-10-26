@@ -350,3 +350,27 @@ def test_required_e2e_gate_fails_when_quality_prevents_test_admission(lint):
     )
     assert result.returncode == 1
     assert "expensive test lanes were not admitted" in result.stdout
+
+
+def test_single_pass_client_coverage_preserves_test_and_consumer_boundaries():
+    jobs = yaml.safe_load(_repo_file(".github/workflows/ci.yml").read_text())["jobs"]
+    unit = jobs["test-client-unit"]
+    vitest = next(step for step in unit["steps"] if step["name"] == "Vitest")
+    assert 'npm run test:coverage' in vitest["run"]
+    assert 'npm test -- "${targets[@]}"' in vitest["run"]
+    assert 'node --test e2e/support/playwright-projects.test.mjs' in vitest["run"]
+    assert "test-client-unit" in jobs["sonar-coverage"]["needs"]
+    assert jobs["sonar-coverage"]["with"]["client_artifact_id"] == "${{ needs.test-client-unit.outputs.coverage_artifact_id }}"
+    assert "permissions" not in unit  # no token expansion
+    for name in ("Bind complete client coverage", "Retain complete client coverage"):
+        step = next(s for s in unit["steps"] if s["name"] == name)
+        assert step["if"] == "needs.affected-test-plan.outputs.client_unit_mode == 'comprehensive'"
+        assert step["continue-on-error"] is True  # transport failure falls back; tests stay required
+    sonar = yaml.safe_load(_repo_file(".github/workflows/sonar-coverage.yml").read_text())["jobs"]
+    steps = sonar["evidence"]["steps"]
+    collect = next(s for s in steps if s["name"] == "Collect comprehensive client coverage")
+    assert "steps.client-reuse.outputs.reused != 'true'" in collect["if"]
+    assert "npm run test:coverage" in collect["run"]
+    stamp = next(s for s in steps if s["name"] == "Bind consumed client report to analysis context")
+    assert "preflight.py stamp" in stamp["run"]
+    assert stamp["if"] == "steps.client-reuse.outputs.reused == 'true'"

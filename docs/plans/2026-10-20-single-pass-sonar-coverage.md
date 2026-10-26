@@ -269,3 +269,35 @@ Measure runnable/queued time, occupied runner-minutes, suite execution counts an
 Accept when each required suite executes once per qualified producer set; aggregation starts after producers finish, completes without a test stack, and no orphan collector remains after merge/cancellation. Overall critical path should be the longest required producer plus bounded aggregation and scanning, rather than client plus unit plus unsharded E2E collection. Set numeric budgets from the first measured candidate, not invented estimates.
 
 Rollback is a reviewed revert of the collector cutover, with fresh applicable evidence on the reverted candidate. Preserve original artifacts and failure receipts. Do not activate automatic analysis concurrently as a workaround. The active release/main CI runs remain unaffected while this design is prepared.
+
+
+## October 22 staged client producer/consumer candidate
+
+Status: in progress, source-only; no merge or activation authorization. Owner:
+the existing implementation thread. This slice instruments comprehensive client
+units with the existing `test:coverage` command, then passes the immutable artifact
+ID to the existing Sonar collector. The same Vitest config, source denominator
+(including unimported files), test inventory and two-worker limit apply. Affected
+and skip lanes are unchanged and cannot supply comprehensive coverage.
+
+Consumption requires the same repository/event/ref/workflow/run/attempt, a
+successful Client Unit Tests job and actual test/export steps, archive digest,
+report hash, exact source tree, test inventory and observed Node/npm versions.
+A PR synthetic-merge checkout can supply the head analysis only when its whole
+tree is identical; differing commit identities remain recorded separately. The
+original receipt is retained; existing preflight stamps and validates the report
+in the actual analysis context before scanning. No analysis result is transferred.
+
+Missing, failed, incompatible or unavailable export keeps original client
+collection enabled. Unexpected implementation errors stop rather than claim
+reuse. Export is optional; test failures, aggregate outcomes and final report
+validation are mandatory. Python/runtime and repository-Node collection remain
+unchanged. Main still has no normal client-unit producer and uses its collector;
+this slice does not choose a new main/release qualification policy.
+
+Acceptance: same-run archive/attempt/tree refusal contracts, real preflight over
+transported bytes, unchanged workflow/test/permission contracts and exact remote
+pre-PR. Actual successful live transport and runtime savings remain pending CI;
+no full-suite savings claim follows from unit fixtures. Rollback: normally
+reviewed revert of this slice restores client execution inside the collector;
+retain producer artifacts and all failure receipts.

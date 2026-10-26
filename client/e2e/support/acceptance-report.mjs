@@ -38,6 +38,40 @@ function collectTests(suites) {
 	]);
 }
 
+const FAILED_ATTEMPT = new Set(["failed", "timedOut", "interrupted"]);
+
+// A later pass does not erase an earlier failure. Playwright exits 0 for that
+// shape when retries are enabled; the wrapper must still fail the build.
+export function retriedPasses(result) {
+	return collectTests(result?.suites).flatMap((test) => {
+		const attempts = test.results ?? [];
+		const passedAt = attempts.findIndex(
+			(attempt) => attempt?.status === "passed",
+		);
+		const failedEarlier =
+			passedAt > 0 &&
+			attempts
+				.slice(0, passedAt)
+				.some((attempt) => FAILED_ATTEMPT.has(attempt?.status));
+		if (test.status !== "flaky" && !failedEarlier) return [];
+		return [
+			{
+				file: test.file,
+				title: test.title,
+				projectName: test.projectName,
+			},
+		];
+	});
+}
+
+export function browserRunExitCode(playwrightExitCode, result) {
+	if (!Number.isInteger(playwrightExitCode)) return 1;
+	if (playwrightExitCode !== 0) return playwrightExitCode;
+	if (retriedPasses(result).length > 0) return 1;
+	if ((result?.stats?.flaky ?? 0) > 0) return 1;
+	return 0;
+}
+
 export function buildReport(ledger, result) {
 	const tests = collectTests(result?.suites);
 	const rows = ledger.journeys.map((journey) => {
