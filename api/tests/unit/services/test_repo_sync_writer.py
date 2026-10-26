@@ -63,6 +63,34 @@ class TestRegenerateManifest:
         assert ".bifrost/metadata.yaml" not in written_paths
 
     @pytest.mark.asyncio
+    async def test_passes_organization_scope_to_generator(
+        self, mock_db, mock_settings
+    ):
+        from bifrost.manifest import Manifest
+
+        organization_id = "00000000-0000-0000-0000-000000000001"
+        with (
+            patch(
+                "src.services.repo_sync_writer.get_settings",
+                return_value=mock_settings,
+            ),
+            patch("src.services.repo_sync_writer.RepoStorage"),
+            patch(
+                "src.services.repo_sync_writer.generate_manifest",
+                new_callable=AsyncMock,
+                return_value=Manifest(),
+            ) as generate,
+        ):
+            writer = RepoSyncWriter(mock_db, organization_id=organization_id)
+            writer._file_index = AsyncMock()
+            await writer.regenerate_manifest()
+
+        generate.assert_awaited_once_with(
+            mock_db,
+            organization_id=organization_id,
+        )
+
+    @pytest.mark.asyncio
     async def test_empty_manifest_cleans_legacy(self, writer):
         from bifrost.manifest import Manifest
 

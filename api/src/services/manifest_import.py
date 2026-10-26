@@ -973,6 +973,7 @@ class ManifestResolver:
         sidecar_content: Any = None,
         install_id: "UUID | None" = None,
         sync_app_previews: bool = True,
+        organization_id: UUID | str | None = None,
     ) -> "list[SyncOp]":
         """Build and execute SyncOps for importing a manifest (entities only).
 
@@ -1113,7 +1114,12 @@ class ManifestResolver:
             if changed_ids is not None and minteg.id not in changed_ids:
                 continue
             await _prog(f"Importing integration: {minteg.name or key}")
-            integ_ops = await self._resolve_integration(minteg.name or key, minteg, cache)
+            integ_ops = await self._resolve_integration(
+                minteg.name or key,
+                minteg,
+                cache,
+                organization_id=organization_id,
+            )
             await self._apply_ops(integ_ops, all_ops, dry_run=dry_run, existing_ids=cache.get("integ_ids", set()))
 
         # 3. Resolve configs
@@ -1292,6 +1298,7 @@ class ManifestResolver:
             ops = await self.plan_import(
                 rewritten, work_dir=work_dir, progress_fn=progress_fn,
                 changed_ids=changed_ids, install_id=None,
+                organization_id=organization_id,
             )
         finally:
             self._skip_role_sync = False
@@ -1791,6 +1798,7 @@ class ManifestResolver:
         repo: "RepoStorage | None" = None,
         dry_run: bool = False,
         removed_entity_ids: dict[str, set[str]] | None = None,
+        organization_id: UUID | str | None = None,
         removed_paths: set[str] | None = None,
         approved_deletes: set[tuple[str, str]] | None = None,
         lock_rows: bool = False,
@@ -1840,6 +1848,10 @@ class ManifestResolver:
                 manifest = read_manifest_from_dir(work_dir / ".bifrost")
             else:
                 raise ValueError("Either manifest or work_dir must be provided")
+
+        deletion_organization_id = (
+            UUID(str(organization_id)) if organization_id is not None else None
+        )
 
         # Build existence-check helpers based on repo or work_dir
         if repo:
@@ -1943,6 +1955,43 @@ class ManifestResolver:
                 return q.where(model.solution_id.is_(None))  # type: ignore[attr-defined]
             return q
 
+        def _scope_deletion_query(
+            model: type,
+            q,
+            explicit_ids: list[UUID] | None,
+        ):
+            """Restrict a tenant repository's deletion candidates to its owner.
+
+            Global workspace syncs intentionally retain the legacy full-workspace
+            sweep. Tenant repositories, however, may only sweep rows owned by the
+            selected organization. Entity types without an ownership column fail
+            closed for implicit absence-based sweeps; explicitly reviewed IDs keep
+            their existing partial-import behavior.
+            """
+            if deletion_organization_id is None:
+                return q
+            if model is EventSubscription:
+                return q.where(
+                    EventSubscription.event_source_id.in_(
+                        select(EventSource.id).where(
+                            EventSource.organization_id == deletion_organization_id
+                        )
+                    )
+                )
+            if model is Organization:
+                return q.where(Organization.id == deletion_organization_id)
+            if "organization_id" in model.__table__.columns:  # type: ignore[attr-defined]
+                return q.where(  # type: ignore[attr-defined]
+                    model.organization_id == deletion_organization_id
+                )
+            if explicit_ids is None:
+                logger.debug(
+                    "Skipping implicit %s deletion sweep: no organization ownership column",
+                    model.__tablename__,  # type: ignore[attr-defined]
+                )
+                return None
+            return q
+
         # Helper: query stale IDs (+ names when available) and bulk-delete
         async def _bulk_delete(
             model: type,
@@ -1960,6 +2009,9 @@ class ManifestResolver:
             else:
                 q = select(model.id).where(*base_filter)  # type: ignore[attr-defined]
             q = _spare_solution_managed(model, q)
+            q = _scope_deletion_query(model, q, explicit_ids)
+            if q is None:
+                return 0
             if explicit_ids is not None:
                 q = q.where(model.id.in_(explicit_ids))  # type: ignore[attr-defined]
             elif present:
@@ -2006,6 +2058,9 @@ class ManifestResolver:
             else:
                 q = select(model.id).where(*base_filter)  # type: ignore[attr-defined]
             q = _spare_solution_managed(model, q)
+            q = _scope_deletion_query(model, q, explicit_ids)
+            if q is None:
+                return 0
             if explicit_ids is not None:
                 q = q.where(model.id.in_(explicit_ids))  # type: ignore[attr-defined]
             elif present:
@@ -2072,6 +2127,10 @@ class ManifestResolver:
         cfg_q = select(
             Config.id, Config.integration_id, Config.organization_id, Config.key
         ).where(Config.config_schema_id.is_(None))
+        if deletion_organization_id is not None:
+            cfg_q = cfg_q.where(
+                Config.organization_id == deletion_organization_id
+            )
         explicit_config_ids = _explicit_ids("configs")
         if explicit_config_ids == []:
             stale_cfg_rows = []
@@ -2117,6 +2176,10 @@ class ManifestResolver:
 
         # Tables not in manifest (data preserved — report as "keep")
         table_q = select(Table.id, Table.name)
+        if deletion_organization_id is not None:
+            table_q = table_q.where(
+                Table.organization_id == deletion_organization_id
+            )
         if present_table_uuids:
             table_q = table_q.where(Table.id.notin_(present_table_uuids))
         table_result = await self.db.execute(table_q)
@@ -2192,6 +2255,14 @@ class ManifestResolver:
             tool_q = select(MCPConnectionTool.id, MCPConnectionTool.tool_name, MCPConnectionTool.connection_id).where(
                 MCPConnectionTool.connection_id.in_(present_mcp_connection_uuids)
             )
+            if deletion_organization_id is not None:
+                tool_q = tool_q.where(
+                    MCPConnectionTool.connection_id.in_(
+                        select(MCPConnection.id).where(
+                            MCPConnection.organization_id == deletion_organization_id
+                        )
+                    )
+                )
             if lock_rows:
                 tool_q = tool_q.with_for_update()
             tool_rows = (await self.db.execute(tool_q)).all()
@@ -2260,7 +2331,13 @@ class ManifestResolver:
 
         return entity_changes
 
-    async def _resolve_integration(self, integ_name: str, minteg, cache: dict | None = None) -> "list[SyncOp]":
+    async def _resolve_integration(
+        self,
+        integ_name: str,
+        minteg,
+        cache: dict | None = None,
+        organization_id: UUID | str | None = None,
+    ) -> "list[SyncOp]":
         """Resolve an integration from manifest into SyncOps.
 
         Upserts the integration and directly executes config schema, oauth
@@ -2268,28 +2345,14 @@ class ManifestResolver:
         syncs without their own resolution pattern).
         Uses prefetch cache for lookups when available.
         """
-        from uuid import UUID
-
-        from sqlalchemy.dialects.postgresql import insert
-
-        from src.models.orm.integrations import Integration, IntegrationConfigSchema, IntegrationMapping
-        from src.models.orm.oauth import OAuthProvider
+        from src.models.orm.integrations import Integration
         from src.services.sync_ops import SyncOp, Upsert  # noqa: F401
 
         from bifrost.manifest_codec import Destination
 
         integ_id = UUID(minteg.id)
         fields = minteg.to_orm_values(Destination.GIT_SYNC).direct
-
-        # Check by natural key (name) — use cache if available
-        if cache is not None:
-            existing_by_name = cache["integ_by_name"].get(integ_name)
-        else:
-            by_name = await self.db.execute(
-                select(Integration.id).where(Integration.name == integ_name)
-            )
-            existing_by_name = by_name.scalar_one_or_none()
-
+        existing_by_name = await self._existing_integration_id(integ_name, cache)
         integ_values: dict = {
             "name": integ_name,
             "description": fields.get("description"),
@@ -2304,21 +2367,18 @@ class ManifestResolver:
         }
 
         # Upsert integration row FIRST (must exist before config schema / mapping FKs)
-        id_was_rewritten = existing_by_name is not None and existing_by_name != integ_id
-        if existing_by_name is not None:
-            upsert_op = Upsert(
-                model=Integration,
-                id=existing_by_name,
-                values={"id": integ_id, **integ_values},
-                match_on="id",
-            )
-        else:
-            upsert_op = Upsert(
-                model=Integration,
-                id=integ_id,
-                values=integ_values,
-                match_on="id",
-            )
+        existing_id = existing_by_name if existing_by_name is not None else integ_id
+        values = (
+            {"id": integ_id, **integ_values}
+            if existing_by_name is not None
+            else integ_values
+        )
+        upsert_op = Upsert(
+            model=Integration,
+            id=existing_id,
+            values=values,
+            match_on="id",
+        )
         await upsert_op.execute(self.db)
 
         # If the upsert rewrote the integration's PK (cross-env id sync), the
@@ -2328,73 +2388,129 @@ class ManifestResolver:
         # refresh dependent caches before we read them — otherwise the
         # upsert-by-natural-key path below misses the (now-migrated) rows and
         # tries to INSERT, hitting unique-index violations.
-        if id_was_rewritten and cache is not None:
-            cs_refresh = await self.db.execute(
-                select(IntegrationConfigSchema).where(
-                    IntegrationConfigSchema.integration_id == integ_id
-                )
+        if (
+            existing_by_name is not None
+            and existing_by_name != integ_id
+            and cache is not None
+        ):
+            await self._refresh_rewritten_integration_cache(
+                integ_id, existing_by_name, cache
             )
-            cache["integ_cs"][integ_id] = {
-                cs.key: cs for cs in cs_refresh.scalars().all()
-            }
-            cache["integ_cs"].pop(existing_by_name, None)
 
-            m_refresh = await self.db.execute(
-                select(IntegrationMapping).where(
-                    IntegrationMapping.integration_id == integ_id
-                )
-            )
-            cache["integ_mappings"][integ_id] = {
-                str(m.organization_id) if m.organization_id else None: m
-                for m in m_refresh.scalars().all()
-            }
-            cache["integ_mappings"].pop(existing_by_name, None)
+        await self._sync_integration_config_schema(
+            integ_id, minteg.config_schema, cache
+        )
+        await self._sync_integration_oauth_provider(
+            integ_id, minteg.oauth_provider
+        )
+        await self._sync_integration_mappings(
+            integ_id,
+            minteg.mappings,
+            cache,
+            organization_id=organization_id,
+        )
 
-            # _resolve_config runs later and reads cache["config_by_natural"]
-            # keyed on (key, integ_id, org_id). After CASCADE the underlying
-            # rows live under integ_id; rewrite cache keys to match so the
-            # update path is taken instead of an insert that would collide.
-            cfg_natural = cache.get("config_by_natural")
-            if cfg_natural:
-                stale_keys = [k for k in cfg_natural if k[1] == existing_by_name]
-                for old_key in stale_keys:
-                    cfg_natural[(old_key[0], integ_id, old_key[2])] = cfg_natural.pop(old_key)
+        # Return empty list — all operations executed directly above
+        return []
 
-        # Sync config schema items: upsert by (integration_id, key) to preserve IDs
-        # (Config rows reference schema IDs via FK — deleting schema cascades to configs)
-        from sqlalchemy import delete as sa_delete
+    async def _existing_integration_id(
+        self, integ_name: str, cache: dict | None
+    ) -> UUID | None:
+        """Resolve an integration's existing natural-key identity."""
+        from src.models.orm.integrations import Integration
+
         if cache is not None:
-            existing_cs_by_key = dict(cache["integ_cs"].get(integ_id, {}))
+            return cache["integ_by_name"].get(integ_name)
+        by_name = await self.db.execute(
+            select(Integration.id).where(Integration.name == integ_name)
+        )
+        return by_name.scalar_one_or_none()
+
+    async def _refresh_rewritten_integration_cache(
+        self, integ_id: UUID, previous_id: UUID, cache: dict
+    ) -> None:
+        """Re-key dependent caches after an integration primary-key rewrite."""
+        from src.models.orm.integrations import (
+            IntegrationConfigSchema,
+            IntegrationMapping,
+        )
+
+        cs_refresh = await self.db.execute(
+            select(IntegrationConfigSchema).where(
+                IntegrationConfigSchema.integration_id == integ_id
+            )
+        )
+        cache["integ_cs"][integ_id] = {
+            cs.key: cs for cs in cs_refresh.scalars().all()
+        }
+        cache["integ_cs"].pop(previous_id, None)
+
+        mapping_refresh = await self.db.execute(
+            select(IntegrationMapping).where(
+                IntegrationMapping.integration_id == integ_id
+            )
+        )
+        cache["integ_mappings"][integ_id] = {
+            str(mapping.organization_id) if mapping.organization_id else None: mapping
+            for mapping in mapping_refresh.scalars().all()
+        }
+        cache["integ_mappings"].pop(previous_id, None)
+
+        # _resolve_config runs later and reads cache["config_by_natural"]
+        # keyed on (key, integ_id, org_id). Re-key the CASCADE-migrated rows so
+        # the update path is taken instead of a colliding insert.
+        config_by_natural = cache.get("config_by_natural")
+        if not config_by_natural:
+            return
+        stale_keys = [key for key in config_by_natural if key[1] == previous_id]
+        for old_key in stale_keys:
+            new_key = (old_key[0], integ_id, old_key[2])
+            config_by_natural[new_key] = config_by_natural.pop(old_key)
+
+    async def _sync_integration_config_schema(
+        self, integ_id: UUID, manifest_schema: list[Any], cache: dict | None
+    ) -> None:
+        """Synchronize one integration's config schema while preserving IDs."""
+        from sqlalchemy import delete as sa_delete
+        from sqlalchemy.dialects.postgresql import insert
+
+        from src.models.orm.integrations import IntegrationConfigSchema
+
+        if cache is not None:
+            existing_by_key = dict(cache["integ_cs"].get(integ_id, {}))
         else:
-            existing_cs_result = await self.db.execute(
+            existing_result = await self.db.execute(
                 select(IntegrationConfigSchema).where(
                     IntegrationConfigSchema.integration_id == integ_id
                 )
             )
-            existing_cs_by_key = {cs.key: cs for cs in existing_cs_result.scalars().all()}
-        manifest_cs_keys = {cs.key for cs in minteg.config_schema}
+            existing_by_key = {
+                schema.key: schema for schema in existing_result.scalars().all()
+            }
 
-        for cs in minteg.config_schema:
-            if cs.key in existing_cs_by_key:
-                existing_cs = existing_cs_by_key[cs.key]
-                existing_cs.type = cs.type
-                existing_cs.required = cs.required
-                existing_cs.description = cs.description
-                existing_cs.options = cs.options
-                existing_cs.position = cs.position
-            else:
-                cs_stmt = insert(IntegrationConfigSchema).values(
+        manifest_keys = {schema.key for schema in manifest_schema}
+        for schema in manifest_schema:
+            existing = existing_by_key.get(schema.key)
+            if existing is not None:
+                existing.type = schema.type
+                existing.required = schema.required
+                existing.description = schema.description
+                existing.options = schema.options
+                existing.position = schema.position
+                continue
+            await self.db.execute(
+                insert(IntegrationConfigSchema).values(
                     integration_id=integ_id,
-                    key=cs.key,
-                    type=cs.type,
-                    required=cs.required,
-                    description=cs.description,
-                    options=cs.options,
-                    position=cs.position,
+                    key=schema.key,
+                    type=schema.type,
+                    required=schema.required,
+                    description=schema.description,
+                    options=schema.options,
+                    position=schema.position,
                 )
-                await self.db.execute(cs_stmt)
+            )
 
-        removed_keys = set(existing_cs_by_key.keys()) - manifest_cs_keys
+        removed_keys = set(existing_by_key) - manifest_keys
         if removed_keys:
             await self.db.execute(
                 sa_delete(IntegrationConfigSchema).where(
@@ -2404,92 +2520,134 @@ class ManifestResolver:
             )
 
         if cache is not None:
-            cs_refresh = await self.db.execute(
+            refreshed = await self.db.execute(
                 select(IntegrationConfigSchema).where(
                     IntegrationConfigSchema.integration_id == integ_id
                 )
             )
             cache["integ_cs"][integ_id] = {
-                cs.key: cs for cs in cs_refresh.scalars().all()
+                schema.key: schema for schema in refreshed.scalars().all()
             }
 
-        # Sync OAuth provider (structure only — client_secret never imported)
-        if minteg.oauth_provider:
-            op_data = minteg.oauth_provider
-            op_stmt = insert(OAuthProvider).values(
-                provider_name=op_data.provider_name,
-                display_name=op_data.display_name,
-                oauth_flow_type=op_data.oauth_flow_type,
-                client_id=op_data.client_id,
-                encrypted_client_secret=b"",  # placeholder — needs manual setup
-                authorization_url=op_data.authorization_url,
-                token_url=op_data.token_url,
-                token_url_defaults=op_data.token_url_defaults or {},
-                scopes=op_data.scopes or [],
-                provider_metadata=op_data.provider_metadata or {},
-                redirect_uri=op_data.redirect_uri,
-                integration_id=integ_id,
-            ).on_conflict_do_update(
-                constraint="uq_oauth_providers_integration_id",
-                set_={
-                    "display_name": op_data.display_name,
-                    "oauth_flow_type": op_data.oauth_flow_type,
-                    **(
-                        {"client_id": op_data.client_id}
-                        if op_data.client_id and op_data.client_id != "__NEEDS_SETUP__"
-                        else {}
-                    ),
-                    "authorization_url": op_data.authorization_url,
-                    "token_url": op_data.token_url,
-                    "token_url_defaults": op_data.token_url_defaults or {},
-                    "scopes": op_data.scopes or [],
-                    "provider_metadata": op_data.provider_metadata or {},
-                    "redirect_uri": op_data.redirect_uri,
-                    "updated_at": datetime.now(timezone.utc),
-                },
-            )
-            await self.db.execute(op_stmt)
+    async def _sync_integration_oauth_provider(
+        self, integ_id: UUID, provider: Any | None
+    ) -> None:
+        """Synchronize non-secret OAuth provider structure for an integration."""
+        if provider is None:
+            return
 
-        # Sync mappings: upsert by (integration_id, organization_id) to preserve oauth_token_id
+        from sqlalchemy.dialects.postgresql import insert
+
+        from src.models.orm.oauth import OAuthProvider
+
+        update_client_id = (
+            {"client_id": provider.client_id}
+            if provider.client_id and provider.client_id != "__NEEDS_SETUP__"
+            else {}
+        )
+        statement = insert(OAuthProvider).values(
+            provider_name=provider.provider_name,
+            display_name=provider.display_name,
+            oauth_flow_type=provider.oauth_flow_type,
+            client_id=provider.client_id,
+            encrypted_client_secret=b"",  # placeholder — needs manual setup
+            authorization_url=provider.authorization_url,
+            token_url=provider.token_url,
+            token_url_defaults=provider.token_url_defaults or {},
+            scopes=provider.scopes or [],
+            provider_metadata=provider.provider_metadata or {},
+            redirect_uri=provider.redirect_uri,
+            integration_id=integ_id,
+        ).on_conflict_do_update(
+            constraint="uq_oauth_providers_integration_id",
+            set_={
+                "display_name": provider.display_name,
+                "oauth_flow_type": provider.oauth_flow_type,
+                **update_client_id,
+                "authorization_url": provider.authorization_url,
+                "token_url": provider.token_url,
+                "token_url_defaults": provider.token_url_defaults or {},
+                "scopes": provider.scopes or [],
+                "provider_metadata": provider.provider_metadata or {},
+                "redirect_uri": provider.redirect_uri,
+                "updated_at": datetime.now(timezone.utc),
+            },
+        )
+        await self.db.execute(statement)
+
+    async def _load_existing_integration_mappings(
+        self, integ_id: UUID, cache: dict | None
+    ) -> dict[str | None, Any]:
+        """Load mappings keyed by their organization identity."""
+        from src.models.orm.integrations import IntegrationMapping
+
         if cache is not None:
-            existing_m_by_org: dict[str | None, IntegrationMapping] = dict(cache["integ_mappings"].get(integ_id, {}))
-        else:
-            existing_m_result = await self.db.execute(
-                select(IntegrationMapping).where(
-                    IntegrationMapping.integration_id == integ_id
-                )
-            )
-            existing_m_by_org = {
-                str(m.organization_id) if m.organization_id else None: m
-                for m in existing_m_result.scalars().all()
-            }
-        manifest_org_ids = {mapping.organization_id for mapping in minteg.mappings}
+            return dict(cache["integ_mappings"].get(integ_id, {}))
 
-        for mapping in minteg.mappings:
-            org_key = mapping.organization_id  # str or None
-            if org_key in existing_m_by_org:
-                existing_m = existing_m_by_org[org_key]
-                existing_m.entity_id = mapping.entity_id
-                existing_m.entity_name = mapping.entity_name
-            else:
-                m_stmt = insert(IntegrationMapping).values(
+        existing_result = await self.db.execute(
+            select(IntegrationMapping).where(
+                IntegrationMapping.integration_id == integ_id
+            )
+        )
+        return {
+            str(mapping.organization_id) if mapping.organization_id else None: mapping
+            for mapping in existing_result.scalars().all()
+        }
+
+    async def _sync_integration_mappings(
+        self,
+        integ_id: UUID,
+        manifest_mappings: list[Any],
+        cache: dict | None,
+        *,
+        organization_id: UUID | str | None,
+    ) -> None:
+        """Synchronize mappings without pruning another organization's binding."""
+        from sqlalchemy import delete as sa_delete
+        from sqlalchemy.dialects.postgresql import insert
+
+        from src.models.orm.integrations import IntegrationMapping
+
+        existing_by_org = await self._load_existing_integration_mappings(
+            integ_id, cache
+        )
+
+        manifest_org_ids = {mapping.organization_id for mapping in manifest_mappings}
+        for mapping in manifest_mappings:
+            existing = existing_by_org.get(mapping.organization_id)
+            if existing is not None:
+                existing.entity_id = mapping.entity_id
+                existing.entity_name = mapping.entity_name
+                continue
+            await self.db.execute(
+                insert(IntegrationMapping).values(
                     integration_id=integ_id,
-                    organization_id=UUID(mapping.organization_id) if mapping.organization_id else None,
+                    organization_id=(
+                        UUID(mapping.organization_id)
+                        if mapping.organization_id
+                        else None
+                    ),
                     entity_id=mapping.entity_id,
                     entity_name=mapping.entity_name,
                 )
-                await self.db.execute(m_stmt)
+            )
 
-        for org_key, existing_m in existing_m_by_org.items():
-            if org_key not in manifest_org_ids:
-                await self.db.execute(
-                    sa_delete(IntegrationMapping).where(
-                        IntegrationMapping.id == existing_m.id
-                    )
+        scoped_organization_id = (
+            UUID(str(organization_id)) if organization_id is not None else None
+        )
+        for org_key, existing in existing_by_org.items():
+            if org_key in manifest_org_ids:
+                continue
+            if (
+                scoped_organization_id is not None
+                and existing.organization_id != scoped_organization_id
+            ):
+                continue
+            await self.db.execute(
+                sa_delete(IntegrationMapping).where(
+                    IntegrationMapping.id == existing.id
                 )
-
-        # Return empty list — all operations executed directly above
-        return []
+            )
 
     def _resolve_config(self, mcfg, cache: dict) -> "list[SyncOp]":
         """Resolve a config entry from manifest into SyncOps.

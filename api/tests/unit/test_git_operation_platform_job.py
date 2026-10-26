@@ -21,6 +21,11 @@ async def test_git_job_calls_sync_service_directly(
 ) -> None:
     """Workspace Git work runs in the durable job, not through Scheduler."""
     sync = AsyncMock(return_value=SyncResult(success=True))
+    service_kwargs = {}
+
+    def service_factory(**kwargs):
+        service_kwargs.update(kwargs)
+        return SimpleNamespace(desktop_sync=sync)
 
     @asynccontextmanager
     async def db_context():
@@ -39,7 +44,7 @@ async def test_git_job_calls_sync_service_directly(
     )
     monkeypatch.setattr(
         "src.jobs.platform.git_operation.GitHubSyncService",
-        lambda **_kwargs: SimpleNamespace(desktop_sync=sync),
+        service_factory,
     )
     monkeypatch.setattr("src.core.repo_dirty.clear_repo_dirty", AsyncMock())
 
@@ -52,6 +57,7 @@ async def test_git_job_calls_sync_service_directly(
 
     assert result["success"] is True
     sync.assert_awaited_once()
+    assert service_kwargs["organization_id"] == context.organization_id
 
 
 @pytest.mark.asyncio

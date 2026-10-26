@@ -31,6 +31,7 @@ async def run_workspace_reimport(
             db=db,
             repo_url="unused://reimport-only",
             settings=get_settings(),
+            organization_id=context.organization_id,
         )
         count = await service.reimport_from_repo()
     await context.report("Workspace reimport complete", percent=100)

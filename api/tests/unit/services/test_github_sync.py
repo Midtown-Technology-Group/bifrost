@@ -502,6 +502,7 @@ class TestGitHubSyncCommit:
 
         service = object.__new__(GitHubSyncService)
         service.db = object()
+        service.organization_id = "00000000-0000-0000-0000-000000000001"
         service._regenerate_manifest_to_dir = AsyncMock()
         service._run_preflight = AsyncMock()
 
@@ -509,7 +510,11 @@ class TestGitHubSyncCommit:
 
         assert result.success is True
         assert result.files_committed == 0
-        service._regenerate_manifest_to_dir.assert_awaited_once_with(service.db, tmp_path)
+        service._regenerate_manifest_to_dir.assert_awaited_once_with(
+            service.db,
+            tmp_path,
+            organization_id=service.organization_id,
+        )
         service._run_preflight.assert_not_called()
         assert Repo.git.added == [{"A": True}]
 
