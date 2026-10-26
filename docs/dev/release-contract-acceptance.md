@@ -1,159 +1,117 @@
 # Offline release contract acceptance
 
-Independent test lane based on producer `3c92d51ef34d6fd46b4608dd163886b7789f7a12`
-and consumer `52df6e8287db1ec399469b4c66c5a01392f881d5`
-([infra draft PR 2119](https://github.com/MTG-Thomas/bifrost-infra/pull/2119)).
-No producer or consumer implementation is changed. Fixtures are synthetic,
-unsigned data; mocked signature success does not establish cryptographic trust,
-CI qualification, production readiness, or deployment authorization.
+Current exact pair:
 
-Run existing suites:
+- Producer: `723e767a7ac3c21a1b2645f7b1e033a6a12c6a22`.
+- Consumer: `ecea7f7f07a0c79041cb9d7bb12987862b47ecf4`,
+  [infra draft PR 2119](https://github.com/MTG-Thomas/bifrost-infra/pull/2119).
+
+All fixtures are unsigned synthetic data. Simulated successful signature
+verification is not real signing, CI/Sonar qualification, deployment authorization
+or production proof. Owner implementations remain unchanged. The isolated test
+branch incorporates the exact producer revision; its diff against that revision
+contains tests, fixtures and this acceptance record only.
+
+## Reproduce
 
 ```sh
 python3 scripts/release/test_production_manifest.py
 python3 scripts/release/test_release_manifest.py
 BIFROST_INFRA_CONTRACT_ROOT=/path/to/exact/consumer-checkout \
   python3 scripts/release/test_consumer_contract.py
-BIFROST_PRODUCER_CONTRACT_ROOT=/path/to/revised/producer-checkout \
+BIFROST_PRODUCER_CONTRACT_ROOT=/path/to/exact/producer-checkout \
   python3 scripts/release/test_revised_producer_contract.py
 ```
 
-`scripts/release/fixtures/protected-main/baseline.json` contains a complete
-producer-generated tuple, promotion inputs, architecture inventories and a
-synthetic verification context. Git identities belong to a disposable fixture
-repository, not remote main. `revised-producer.json` contains actual revised producer assembly output and
-retained synthetic verification results at `723e767a7ac3c21a1b2645f7b1e033a6a12c6a22`.
-`cases.json` supplies portable mutations and expected
-consumer decisions. Apply dotted `manifest.*` changes to the manifest and other
-consumer changes to the verification context. Producer mutations use `output`
-and `receipt` component maps. These cases are inputs, not an alternative admission
-implementation. The consumer integration suite exercises the actual supported
-functions against the producer baseline; remaining corpus scenarios are not
-automatically claimed executed. The expired-registry case describes a future
-retrieval capability: this pinned consumer deliberately rejects expired Actions
-artifacts even when registry evidence is available.
+Both cross-repository suites verify the supplied checkout HEAD and imported source
+files against their pinned commits. They use the existing unittest framework and
+owner test seams. No promoter/deployer CLI main executes. Docker/cosign/GitHub
+transports are bounded simulations; unexpected commands fail closed. Revised
+producer Git comparisons are real, with network fetch suppressed.
 
-| Acceptance boundary | Offline evidence / disposition |
+The consumer's real manifest validator, qualifier, registry decoder, runnable
+image/inventory checks, retained-record loader and candidate-proof policy execute.
+For each component, the actual retained `attestation.bundle` is passed to a fresh
+simulated `gh attestation verify` invocation. The simulation checks inner-bundle
+content and subject/source/signer constraints; real consumer policy reads its fresh
+output. Cached `verificationResult` fields cannot qualify the result.
+
+## Acceptance matrix
+
+| Boundary | Current offline result |
 | --- | --- |
-| Complete API/client/worker tuple, dev version and real architecture inventory | Existing producer tests pass with mocked candidate verification. Real consumer admission functions pass with simulated external transports; no real signatures verified. |
-| Foreign producer, mixed digest/run/attempt, incomplete tuple, stable relabel | Portable mutations run through real producer assembly and reject. |
-| Foreign or PR signer; issuer, subject and source binding | Real registry verifier command construction tested against simulated foreign/PR signer and wrong issuer refusals; main bundle source binding tested. |
-| Same-repo valid signer, false source labels, contradictory actual candidate SLSA material | Original inherited-verifier regression remains red at `3c92d51ef`. Revised assembly at `723e767a7` rejects through its new SLSA v1 policy; 3 independent revised tests pass. |
-| Actual candidate build versus main promotion identity | Candidate material must bind actual candidate commit/tree; promotion binds main commit and run. Same-tree promotion does not rewrite build origin. |
-| Bare missing candidate run fields | Not evidence by itself of false-source acceptance; no claim that promotion/v1 must gain run fields. Qualify actual existing build evidence independently. |
-| Rapid merges and revert restoring equal tree | Existing producer tests pin checkout/source; equal tree does not transfer source receipts. Consumer qualification accepts explicit older main and rejects old receipt reuse for equal-tree revert. Approval/runtime pinning remains unverified. |
-| Expired download with verified retained/registry evidence | Pinned consumer rejects expired/absent initial artifact before download, including when registry evidence exists. Registry-only recovery is a documented capability gap, not a new defect. |
-| Unknown, interrupted or superseded run/attempt | Real consumer admission rejects unknown, in-progress, cancelled, missing conclusion, superseded attempt and wrong source. Sonar is not independently proven by these fixtures. |
-| Schema v2 strictness, unknown version/extra fields and stable v1 isolation | Original tuple passes; consumer rejects invalid cases. **Revised v2 tuple is incompatible:** required `candidate_provenance` is an unknown image field to pinned consumer. |
-| Installed schema differs from source parent | Executed test proves parent-relative `upgrade_required: false` cannot certify installed DB compatibility. |
-| Interrupted deployment and retained work | Real retained lock/bundle loading preserves bytes on verification refusal. Five existing retained-work/receipt tests pass, including refusal to reopen after unknown stop intent. No deployment transaction executed. |
-| Rollback and terminal retirement | Producer warning preserved and tested. Consumer rejects rollback-supported relabel. Installed retirement/downgrade safety remains unverified; no database or production transaction used. |
+| Complete immutable tuple and real baked dev version | Pass through real consumer admission; no tag resolution or stable relabel. |
+| Required proof fields and coherent original invocation | All ten fields required; coherent per-component but mixed attempts rejected. |
+| Foreign producer, mixed promotion digest/run/attempt, partial tuple | Producer/consumer negative cases reject. |
+| Foreign or PR main signer; wrong issuer | Actual verifier command constraints exercised against simulated refusals. |
+| Same-repo signer and correct labels masking false build source | Preserved producer rejection test passes at revised assembly boundary with real inherited label verification and real SLSA v1 policy. |
+| False fresh candidate source/material/signature | Consumer rejects despite matching manifest and plausible cached results. |
+| Cached verificationResult and inner bundle | Contradictory cached claims cannot control admission; substituted inner bundle fails signed hash. All three inner bundles are reverified. |
+| Candidate build identity versus main promotion | Candidate invocation/run/attempt retained separately from main build; wrong candidate tree rejects. |
+| Rapid merge and equal-tree revert | Explicit selected source stays pinned; old receipt cannot be relabeled as a revert. |
+| Expired or unknown initial artifact | Rejects before download; registry-only recovery remains deliberately unsupported. |
+| Unknown, in-progress, cancelled or superseded main attempt | Rejects. These fixtures do not independently prove applicable Sonar evidence. |
+| Schema v2 and stable v1 separation | Revised wire case passes; stripped proof, v1/v3, unknown fields, invalid compatibility and stable relabel reject. |
+| Parent-relative versus installed schema | Test proves parent `upgrade_required: false` does not certify installed DB compatibility. |
+| Retained receipt and interrupted work | Lock/bundle/proof loading passes; verification refusal preserves bytes. Existing unknown-stop test refuses automatic reopen. No deployment transaction executed. |
+| Rollback/retirement | Unsupported automatic rollback warning retained; rollback-supported relabel rejects. Installed DB downgrade safety remains unverified. |
 
-The false-source regression supplies an existing BuildKit SLSA v0.2-shaped
-material identifying a different commit while all expected labels and the image
-subject digest match. External Docker/cosign calls are simulated, while the real
-verifier runs. At this producer revision it requests only metadata and
-`cosign verify`, never actual candidate provenance. The failure is
-`CandidateImageError not raised`, not a missing-field assertion. The revised producer adds actual SLSA source/digest/build identity validation at
-the assembly boundary rather than changing this inherited helper. This test lane
-leaves both implementations unchanged and tests the new boundary separately.
+Bare missing run fields were never treated as proof of false-source acceptance.
+The original defect was acceptance without reading actual build provenance. The
+revised producer adds a separate assembly policy that checks existing SLSA v1
+source, invocation, digest, signer and workflow evidence; the inherited helper
+alone remains insufficient. The preserved rejection test now exercises that real
+assembly boundary rather than demanding that the helper itself implement it.
 
-## Consumer integration evidence
+## Results and history
 
-`test_consumer_contract.py` checks checkout HEAD and both imported consumer source
-files against the exact commit before running. It imports the existing promoter
-and calls only these supported functions: `validate_production_manifest`,
-`validate_manifest`, `qualify_production_manifest`, `verify_attestation`,
-`verify_registry_tuple`, `verified_production_manifest`, and `load_release_record`.
-It does not call the promoter/deployer CLI main. All Docker/cosign/GitHub process
-and HTTP seams are replaced with bounded simulations that reject unknown commands.
-The actual validator, qualifier, bundle verifier command construction, registry
-predicate decoder, runnable-image validation and inventory comparison execute.
+Host: `codex-remote-02`. Test worktree:
+`/home/thomas/.t3/worktrees/bifrost-platform/release-contract-acceptance`.
+No VM, live stack, service or container was created.
 
-Results on this host (offline, no VM):
-
-| Command / source | Actual result |
+| Source / command | Actual result |
 | --- | --- |
-| `BIFROST_INFRA_CONTRACT_ROOT=/tmp/bifrost-infra-contract-52df6e8 python3 scripts/release/test_consumer_contract.py` | 13 passed, 1 blocking revised-wire failure |
-| `BIFROST_PRODUCER_CONTRACT_ROOT=/tmp/bifrost-producer-contract-723e767 python3 scripts/release/test_revised_producer_contract.py` | 3 passed |
-| `python3 /tmp/bifrost-producer-contract-723e767/scripts/release/test_production_manifest.py` | 20 passed |
-| Consumer checkout: `/home/thomas/.cache/venvs/ws/bin/python -m pytest -q tests/test_platform_release.py tests/test_promote_platform_images.py tests/test_promotion_trust_gate.py` | 176 passed |
-| Consumer checkout: same pytest command on `tests/test_appservice_runtime_deploy.py -k 'retained_production_pins_require_exact_live_tuple or preserved_pin_schema_gate_uses_same_reviewed_lock or pre_stop_finalizer_will_not_reopen_after_unknown_stop_intent or deployment_receipt_is_bounded_source_and_runtime_evidence'` | 5 passed, 159 deselected |
-| Producer rejection regression, selected by full unittest method name below | 1 failure, `CandidateImageError not raised` |
-| Existing producer/stable suite evidence from initial fixture commit | 15 pass + 1 blocking failure / 54 pass respectively |
+| Current `test_consumer_contract.py`, consumer `ecea7f7f` | 18 passed |
+| Current producer suite, including preserved rejection assertion | 23 passed |
+| `test_revised_producer_contract.py`, exact producer `723e767a7` | 3 passed |
+| Existing stable `test_release_manifest.py` | 54 passed |
+| Consumer checkout: `/home/thomas/.cache/venvs/ws/bin/python -m pytest -q tests/test_platform_release.py tests/test_promote_platform_images.py tests/test_promotion_trust_gate.py` | 200 passed |
+| Same pytest runner on `tests/test_appservice_runtime_deploy.py -k 'retained_production_pins_require_exact_live_tuple or preserved_pin_schema_gate_uses_same_reviewed_lock or pre_stop_finalizer_will_not_reopen_after_unknown_stop_intent or deployment_receipt_is_bounded_source_and_runtime_evidence'` | 5 passed, 159 deselected |
+| Original producer `3c92d51ef`, acceptance commit `fa090f0c8` | 15 passed, 1 false-source rejection failure (`CandidateImageError not raised`) |
+| Producer `723e767a7` / consumer `52df6e8`, acceptance commit `55d3b0c30` | 13 passed, 1 wire failure: `Production manifest has invalid api identity/platforms` |
+| Same preserved wire test / consumer `ecea7f7f` | Pass; consumer now requires and validates candidate_provenance. |
 
-Original producer `3c92d51ef` cases pass at consumer `52df6e8`. The new revised-wire
-failure and its minimal source difference are recorded below. The consumer owner's reported broader 959 tests and 3 signing tests (with 2 Azure CLI
-Bicep skips) were not rerun or adopted as independent evidence here. No new skip,
-retry, timeout extension or skip-to-green was added.
+No remaining mismatch was observed in the executed current-pair cases. The
+consumer owner's reported 983 tests and two Azure CLI skips are separate evidence;
+that broader suite was not independently rerun. No skip, retry or timeout increase
+was added. No live signed publication, installed schema, production rollback,
+CI/Sonar evidence or interrupted-deployment transaction is claimed verified.
 
-Minimal known blocking source example at producer `3c92d51ef`: candidate labels
-assert the selected source/tree/version; simulated successful same-repository
-signature verification binds its index digest; available SLSA material points to
-`source.parent`, a different commit. Real `verify_candidate` accepts because it
-never reads that material. Reproduce with:
+Historical fixtures remain intact: `baseline.json` is original producer output;
+`revised-producer.json` preserves the original revised-wire reproduction;
+`cases.json` preserves portable scenarios. `aligned-producer.json` is freshly
+emitted by the exact revised producer using its existing verified-results seam,
+with a synthetic gh wrapper and inner bundle. Changing that unsigned fixture shape
+is not a cryptographic fix or an owner implementation change.
 
-```sh
-python3 scripts/release/test_production_manifest.py \
-  ProductionManifestTests.test_signed_candidate_with_false_source_labels_must_be_rejected
-```
+## Draft readiness and next step
 
-## Revised producer versus pinned consumer: blocking wire mismatch
+The branch includes current fetched `origin/main` (`f5b2b2c00`) and exact producer
+`723e767a7`. A draft should target `feat/protected-main-production-receipt` to keep
+its review diff test-only. No draft, push, merge or deployment has occurred.
 
-Revised producer `723e767a7ac3c21a1b2645f7b1e033a6a12c6a22` became locally available
-during acceptance. Its `production_manifest.build()` now validates real candidate
-SLSA v1 via `candidate_provenance.verify()` and requires
-`images.<component>.candidate_provenance`. The independent revised-producer suite
-reuses its existing disposable Git fixture and `verified_results` test seam. Real
-source/tree/workflow/invocation policy executes; signature verification transport
-and Git fetch are simulated. Correct-label/allowed-signer evidence with a different
-actual queue invocation is rejected, and mixed original candidate attempts reject.
-The original inherited-helper test remains unchanged and red at its original SHA;
-the new production assembly boundary passes the corresponding rejection test.
+The normal affected planner selects comprehensive lanes because the candidate
+contains producer `.github/workflows/ci.yml` changes relative to main. In addition
+to CI-deferred broad suites, `./test.sh pre-pr` runs Docker-backed API quality and
+generated checks locally. It was **not run** on this host: the repository requires
+the dedicated pve-t340 Linux Docker test lane or CI, and this task excludes new
+credentials and expensive shared-VM changes. No selector, gate or permission was
+changed to obtain a pass. The smallest next step is the supported pre-PR gate for
+the committed candidate; only after it passes may the prepared test-only draft be
+published. Fresh consumer-owner CI is not a substitute for this candidate's gate.
 
-Consumer `52df6e8287db1ec399469b4c66c5a01392f881d5`,
-`scripts/platform_release.py:45`, requires exactly these image keys:
-
-```python
-keys(record, "repository digest platforms")
-```
-
-The revised producer requires this additional key on API, client and worker:
-
-```text
-images.api.candidate_provenance
-images.client.candidate_provenance
-images.worker.candidate_provenance
-```
-
-Passing the unmodified actual revised assembly output to the real pinned
-consumer raises `ValueError: Production manifest has invalid api identity/platforms`
-at line 54. The regression asserts admission and remains red. A diagnostic control
-removing only those three fields passes, proving the mismatch's narrow cause;
-stripping provenance is **not** an admission workaround. The full minimal source
-input is `scripts/release/fixtures/protected-main/revised-producer.json`.
-
-```sh
-BIFROST_INFRA_CONTRACT_ROOT=/tmp/bifrost-infra-contract-52df6e8 \
-  python3 scripts/release/test_consumer_contract.py \
-  ConsumerContractAcceptance.test_revised_producer_tuple_must_pass_consumer_wire_contract
-```
-
-This is a draft-contract reconciliation dependency, not a request to relax the
-consumer's strictness. The consumer owner must publish a revised immutable ref
-supporting the required nested proof, its retained bundle hashes and original
-candidate qualification. Eddie owns that handoff. No direct owner contact occurred.
-The consumer's source currently documents its lack of original candidate
-qualification; fixtures do not prove CI/Sonar evidence for that invocation.
-
-The detached consumer checkout `/tmp/bifrost-infra-contract-52df6e8` is retained
-for reproducing these read-only tests. The revised producer checkout
-`/tmp/bifrost-producer-contract-723e767` is likewise retained, without services. Owner files/worktrees remain untouched; no
-services or containers were created. The test branch remains isolated from the
-producer branch and has not been updated to a moving producer ref.
-
-No PR is eligible while the cross-repo contract remains red. Pre-PR gates and
-current origin/main integration remain required after the consumer reconciliation.
-No draft PR, push, merge, replay or production change was performed.
-No live stack, shared VM, credential, deployment, replay or production operation
-was used. All evidence here is offline source/fixture evidence.
+Detached read-only checkouts `/tmp/bifrost-infra-contract-ecea7f7` and
+`/tmp/bifrost-producer-contract-723e767` are retained for reproduction; the earlier
+`/tmp/bifrost-infra-contract-52df6e8` checkout retains old-pair evidence. Owner
+worktrees remain untouched. Skills used: `mtg-engineering-flow` and
+`github-pr-stewardship`, version `2026-10-26.1`, plus repository testing guidance.
