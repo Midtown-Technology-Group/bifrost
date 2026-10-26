@@ -44,6 +44,14 @@ export default function Layout() {
 const STYLES_CSS = `.route-style-sentinel {
 	padding: 37px;
 	background-color: rgb(12 34 56);
+}
+:host {
+	position: fixed !important;
+	inset: 0 !important;
+	z-index: 2147483647 !important;
+	width: 100vw !important;
+	height: 100vh !important;
+	contain: none !important;
 }`;
 
 const indexTsx = (heading: string) => `import { Link } from "bifrost";
@@ -160,6 +168,44 @@ test.describe("Apps Preview", () => {
 				"padding-top",
 				"37px",
 			);
+			expect(
+				await page.evaluate(() => {
+					const header = document.querySelector("header");
+					const containment = document.querySelector<HTMLElement>(
+						'[data-bifrost-app-containment-boundary="true"]',
+					);
+					const host = document.querySelector<HTMLElement>(
+						'[data-bifrost-app-style-boundary="true"]',
+					);
+					if (!header || !containment || !host) {
+						throw new Error(
+							"Isolated app containment was not mounted",
+						);
+					}
+					const headerBounds = header.getBoundingClientRect();
+					const containmentBounds =
+						containment.getBoundingClientRect();
+					const headerHit = document.elementFromPoint(
+						headerBounds.left + headerBounds.width / 2,
+						headerBounds.top + headerBounds.height / 2,
+					);
+					return {
+						hostPosition: getComputedStyle(host).position,
+						containment: getComputedStyle(containment).contain,
+						clipped:
+							getComputedStyle(containment).overflow === "hidden",
+						startsBelowHeader:
+							containmentBounds.top >= headerBounds.bottom - 1,
+						headerOwnsHitTarget: header.contains(headerHit),
+					};
+				}),
+			).toEqual({
+				hostPosition: "fixed",
+				containment: "strict",
+				clipped: true,
+				startsBelowHeader: true,
+				headerOwnsHitTarget: true,
+			});
 
 			// --- Step 2: push V2, preview updates WITHOUT reload ---
 			const writeResp = await api.post("/api/files/write", {
@@ -183,15 +229,18 @@ test.describe("Apps Preview", () => {
 				.getByTestId("app-layout")
 				.getAttribute("data-instance-id");
 			await page.evaluate(() => {
-				const stylesheet = document.querySelector<HTMLLinkElement>(
-					'link[data-bifrost-bundle="true"]',
+				const shadowRoot = document.querySelector(
+					'[data-bifrost-app-style-boundary="true"]',
+				)?.shadowRoot;
+				const stylesheet = shadowRoot?.querySelector<HTMLLinkElement>(
+					'link[data-bifrost-app-stylesheet="true"]',
 				);
 				if (!stylesheet)
 					throw new Error("V1 bundle stylesheet was not mounted");
 				const continuity = { stylesheet, removed: false };
 				new MutationObserver(() => {
 					if (!stylesheet.isConnected) continuity.removed = true;
-				}).observe(document.head, { childList: true });
+				}).observe(shadowRoot!, { childList: true });
 				(
 					window as typeof window & {
 						__v1CssContinuity?: typeof continuity;
@@ -230,9 +279,13 @@ test.describe("Apps Preview", () => {
 					return {
 						removed: continuity?.removed,
 						sameStylesheet:
-							document.querySelector(
-								'link[data-bifrost-bundle="true"]',
-							) === continuity?.stylesheet,
+							document
+								.querySelector(
+									'[data-bifrost-app-style-boundary="true"]',
+								)
+								?.shadowRoot?.querySelector(
+									'link[data-bifrost-app-stylesheet="true"]',
+								) === continuity?.stylesheet,
 					};
 				}),
 			).toEqual({ removed: false, sameStylesheet: true });
