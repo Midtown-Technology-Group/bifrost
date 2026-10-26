@@ -41,7 +41,7 @@ def test_mtg_pr_images_build_in_parallel_and_main_promotes_exact_digests() -> No
     assert candidate_build["needs"] == "lint"
     assert "needs.lint.result == 'success'" in candidate_build["if"]
     assert candidate_gate["name"] == "Candidate Images"
-    assert candidate_gate["needs"] == "build-candidate-images"
+    assert candidate_gate["needs"] == ["build-candidate-images", "verify-dependabot-candidates"]
     assert set(candidate_build["strategy"]["matrix"]["include"][0]) >= {
         "component",
         "image",

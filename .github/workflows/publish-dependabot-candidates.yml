@@ -1,0 +1,224 @@
+# This workflow runs only from the default branch. It never checks out or runs
+# PR source, Dockerfiles, hooks, or scripts with the publication credential.
+name: Publish Dependabot Candidates
+run-name: Dependabot candidates ${{ github.event.workflow_run.id }}:${{ github.event.workflow_run.run_attempt }}
+on:
+  workflow_run:
+    workflows: [Build Dependabot Candidates]
+    types: [completed]
+permissions: {}
+concurrency:
+  group: publish-dependabot-${{ github.event.workflow_run.id }}
+  cancel-in-progress: false
+jobs:
+  qualify:
+    if: >-
+      github.repository == 'Midtown-Technology-Group/bifrost' &&
+      github.event.workflow_run.head_repository.full_name == github.repository &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'workflow_run'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+    outputs:
+      source: ${{ steps.qualify.outputs.source }}
+      base: ${{ steps.qualify.outputs.base }}
+      run: ${{ steps.qualify.outputs.run }}
+      attempt: ${{ steps.qualify.outputs.attempt }}
+      artifacts: ${{ steps.qualify.outputs.artifacts }}
+      eligible: ${{ steps.qualify.outputs.eligible }}
+      ci: ${{ steps.qualify.outputs.ci }}
+      ciAttempt: ${{ steps.qualify.outputs.ciAttempt }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ github.repository }}
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - id: qualify
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const { publishInputs } = await import(`${process.env.GITHUB_WORKSPACE}/.github/scripts/dependabot-candidates.mjs`);
+            await publishInputs({ github, context, core });
+
+  publish:
+    if: >-
+      github.repository == 'Midtown-Technology-Group/bifrost' &&
+      github.event.workflow_run.head_repository.full_name == github.repository && needs.qualify.outputs.eligible == 'true'
+    needs: qualify
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      actions: read
+      packages: write
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    strategy:
+      fail-fast: false
+      matrix:
+        artifact: ${{ fromJSON(needs.qualify.outputs.artifacts) }}
+    env:
+      SOURCE_SHA: ${{ needs.qualify.outputs.source }}
+      BASE_SHA: ${{ needs.qualify.outputs.base }}
+      COMPONENT: ${{ matrix.artifact.component }}
+      ARTIFACT_ID: ${{ matrix.artifact.id }}
+      ARTIFACT_DIGEST: ${{ matrix.artifact.digest }}
+    steps:
+      - name: Checkout trusted publisher only
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ github.repository }}
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install registry copy tool
+        run: sudo apt-get update && sudo apt-get install --yes skopeo
+      - name: Fetch source objects without executing source
+        id: identity
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "$SOURCE_SHA" "$BASE_SHA"
+          tree_sha="$(git rev-parse "${SOURCE_SHA}^{tree}")"
+          version="$(./scripts/compute-dev-version.sh --next-after "$BASE_SHA")"
+          echo "tree_sha=$tree_sha" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "image=ghcr.io/midtown-technology-group/bifrost-${COMPONENT}" >> "$GITHUB_OUTPUT"
+      - name: Download and verify exact artifact bytes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip" > "$RUNNER_TEMP/candidate.zip"
+          printf '%s  %s\n' "${ARTIFACT_DIGEST#sha256:}" "$RUNNER_TEMP/candidate.zip" | sha256sum --check --status
+          python3 - <<'PY'
+          import os, pathlib, shutil, zipfile
+          root = pathlib.Path(os.environ['RUNNER_TEMP'])
+          with zipfile.ZipFile(root / 'candidate.zip') as archive:
+              if archive.namelist() != ['candidate.oci.tar']:
+                  raise SystemExit('Candidate artifact must contain exactly one OCI archive')
+              with archive.open('candidate.oci.tar') as source, (root / 'candidate.oci.tar').open('wb') as target:
+                  shutil.copyfileobj(source, target)
+          PY
+      - name: Validate source labels before publication
+        env:
+          TREE_SHA: ${{ steps.identity.outputs.tree_sha }}
+          VERSION: ${{ steps.identity.outputs.version }}
+        run: |
+          set -euo pipefail
+          arches=(amd64)
+          if [[ "$COMPONENT" == worker ]]; then arches+=(arm64); fi
+          for arch in "${arches[@]}"; do
+            skopeo inspect --override-os linux --override-arch "$arch" "oci-archive:$RUNNER_TEMP/candidate.oci.tar" > "$RUNNER_TEMP/image-$arch.json"
+          done
+          python3 - <<'PY'
+          import json, os, pathlib
+          root = pathlib.Path(os.environ['RUNNER_TEMP'])
+          arches = ['amd64', 'arm64'] if os.environ['COMPONENT'] == 'worker' else ['amd64']
+          expected = {
+              'org.opencontainers.image.source': 'https://github.com/' + os.environ['GITHUB_REPOSITORY'],
+              'org.opencontainers.image.revision': os.environ['SOURCE_SHA'],
+              'org.opencontainers.image.version': os.environ['VERSION'],
+              'com.midtowntg.bifrost.source-tree': os.environ['TREE_SHA'],
+              'com.midtowntg.bifrost.candidate': 'true',
+          }
+          for arch in arches:
+              image = json.loads((root / f'image-{arch}.json').read_text())
+              if any(image.get('Labels', {}).get(key) != value for key, value in expected.items()):
+                  raise SystemExit(f'Candidate {arch} labels do not match qualified producer')
+          PY
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+      - name: Read existing credential principal
+        id: principal
+        env:
+          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+        run: |
+          python3 - <<'PYCODE'
+          import json, os, re, urllib.request
+          token = os.environ['GHCR_TOKEN']
+          if not token:
+              raise SystemExit('Existing GHCR_TOKEN is unavailable; publication remains blocked.')
+          request = urllib.request.Request('https://api.github.com/user', headers={
+              'Authorization': 'Bearer ' + token,
+              'Accept': 'application/vnd.github+json',
+              'X-GitHub-Api-Version': '2022-11-28',
+          })
+          with urllib.request.urlopen(request, timeout=30) as response:
+              principal = json.load(response)
+          login, user_id = principal.get('login'), principal.get('id')
+          if not isinstance(login, str) or not re.fullmatch(r'[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?', login):
+              raise SystemExit('Invalid publication principal login')
+          if type(user_id) is not int or user_id <= 0:
+              raise SystemExit('Invalid publication principal ID')
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write('login=' + login + '\n')
+          print(f'Publication credential principal: {login} (GitHub user {user_id})')
+          PYCODE
+      - name: Authenticate existing publication principal
+        env:
+          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+          GHCR_USERNAME: ${{ steps.principal.outputs.login }}
+        run: |
+          set -euo pipefail
+          test -n "$GHCR_TOKEN" || { echo 'Existing GHCR_TOKEN is unavailable; publication remains blocked.' >&2; exit 1; }
+          printf '%s' "$GHCR_TOKEN" | skopeo login ghcr.io --username "$GHCR_USERNAME" --password-stdin
+          printf '%s' "$GHCR_TOKEN" | docker login ghcr.io --username "$GHCR_USERNAME" --password-stdin
+      - name: Copy and sign exact candidate without running it
+        id: copy
+        env:
+          IMAGE: ${{ steps.identity.outputs.image }}
+          TREE_SHA: ${{ steps.identity.outputs.tree_sha }}
+          PRODUCER_RUN: ${{ needs.qualify.outputs.run }}
+          PRODUCER_ATTEMPT: ${{ needs.qualify.outputs.attempt }}
+          CI_RUN: ${{ needs.qualify.outputs.ci }}
+          CI_ATTEMPT: ${{ needs.qualify.outputs.ciAttempt }}
+          PUBLICATION_PRINCIPAL: ${{ steps.principal.outputs.login }}
+        run: |
+          set -euo pipefail
+          skopeo copy --all --preserve-digests --digestfile "$RUNNER_TEMP/digest" \
+            "oci-archive:$RUNNER_TEMP/candidate.oci.tar" "docker://${IMAGE}:candidate-tree-${TREE_SHA}"
+          digest="$(cat "$RUNNER_TEMP/digest")"
+          cosign sign --yes "${IMAGE}@${digest}"
+          python3 - <<'PY'
+          import json, os, pathlib
+          evidence = {key: os.environ[key] for key in ('SOURCE_SHA', 'BASE_SHA', 'TREE_SHA', 'ARTIFACT_ID', 'ARTIFACT_DIGEST', 'PRODUCER_RUN', 'PRODUCER_ATTEMPT', 'CI_RUN', 'CI_ATTEMPT', 'PUBLICATION_PRINCIPAL')}
+          (pathlib.Path(os.environ['RUNNER_TEMP']) / 'producer.json').write_text(json.dumps(evidence))
+          PY
+          cosign attest --yes --type 'https://bifrost.midtowntg.com/candidate-build/v1' \
+            --predicate "$RUNNER_TEMP/producer.json" "${IMAGE}@${digest}"
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+      - name: Attest publication provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ${{ steps.identity.outputs.image }}
+          subject-digest: ${{ steps.copy.outputs.digest }}
+          push-to-registry: true
+      - name: Verify signed exact candidate
+        env:
+          IMAGE: ${{ steps.identity.outputs.image }}
+          TREE_SHA: ${{ steps.identity.outputs.tree_sha }}
+          VERSION: ${{ steps.identity.outputs.version }}
+          DIGEST: ${{ steps.copy.outputs.digest }}
+        run: |
+          python3 api/scripts/ci/candidate_image.py verify --image "$IMAGE" \
+            --tree-sha "$TREE_SHA" --version "$VERSION" --source-sha "$SOURCE_SHA" --expected-digest "$DIGEST"
+      - name: Retain the verified publication digest
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: dependabot-publication-${{ matrix.artifact.component }}-attempt-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/digest
+          if-no-files-found: error
+          retention-days: 3
+      - name: Remove registry sessions
+        if: always()
+        run: |
+          docker logout ghcr.io || true
+          skopeo logout ghcr.io || true

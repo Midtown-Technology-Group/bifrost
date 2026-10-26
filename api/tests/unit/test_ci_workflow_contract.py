@@ -179,6 +179,7 @@ CI_JOB_TIMEOUTS = {
     "pre-pr-candidate": "90",
     "affected-test-plan": "10",
     "build-candidate-images": "30",
+    "verify-dependabot-candidates": "70",
     "candidate-images": "10",
     "publish-ci-test-images": "15",
     "lint": "15",
@@ -197,6 +198,34 @@ CI_JOB_TIMEOUTS = {
     "build-worker": "30",
     "create-release": "20",
 }
+
+
+def test_dependabot_requires_trusted_publication_and_exact_signatures() -> None:
+    """The local test-image fallback must never waive signed candidates."""
+    jobs = _load_workflow(CI_WORKFLOW)["jobs"]
+    for publisher in ("build-candidate-images", "publish-ci-test-images"):
+        assert "github.event.pull_request.user.login != 'dependabot[bot]'" in jobs[publisher]["if"]
+        assert "github.event_name == 'merge_group'" in jobs[publisher]["if"]
+    verifier = jobs["verify-dependabot-candidates"]
+    assert verifier["permissions"] == {"contents": "read", "actions": "read", "packages": "read"}
+    assert "candidate_image.py verify" in verifier["steps"][-1]["run"]
+    assert "--source-sha" in verifier["steps"][-1]["run"]
+    assert '--expected-digest "$digest"' in verifier["steps"][-1]["run"]
+    assert verifier["steps"][-1]["env"]["API_DIGEST"] == "${{ steps.digests.outputs.api_digest }}"
+    gate = jobs["candidate-images"]
+    assert set(gate["needs"]) == {"build-candidate-images", "verify-dependabot-candidates"}
+    step = gate["steps"][0]
+    for is_bot in ("true", "false"):
+        for build in ("success", "failure", "skipped", "cancelled"):
+            for published in ("success", "failure", "skipped", "cancelled"):
+                result = subprocess.run(
+                    ["bash", "-c", step["run"]],
+                    env={"IS_DEPENDABOT": is_bot, "BUILD_RESULT": build, "DEPENDABOT_RESULT": published},
+                    capture_output=True,
+                    check=False,
+                )
+                expected = published if is_bot == "true" else build
+                assert (result.returncode == 0) == (expected == "success")
 
 
 def test_dispatch_cannot_cancel_a_pull_request_producer() -> None:

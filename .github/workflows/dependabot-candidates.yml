@@ -1,0 +1,175 @@
+# No registry credential, OIDC token, or repository write token enters this build.
+name: Build Dependabot Candidates
+run-name: Dependabot candidate build ${{ github.event.workflow_run.id }}:${{ github.event.workflow_run.run_attempt }}
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [in_progress]
+permissions: {}
+concurrency:
+  group: dependabot-candidates-${{ github.event.workflow_run.id }}
+  cancel-in-progress: true
+jobs:
+  admission:
+    if: >-
+      github.repository == 'Midtown-Technology-Group/bifrost' &&
+      github.event.workflow_run.head_repository.full_name == github.repository &&
+      github.event.workflow_run.event == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      actions: read
+      pull-requests: read
+    outputs:
+      eligible: ${{ steps.admit.outputs.eligible }}
+      source: ${{ steps.admit.outputs.source }}
+      base: ${{ steps.admit.outputs.base }}
+      pr: ${{ steps.admit.outputs.pr }}
+    steps:
+      - name: Require this head's CI lint before expensive builds
+        id: admit
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const source = context.payload.workflow_run;
+            if (source.path !== '.github/workflows/ci.yml' || source.repository.full_name !== context.payload.repository.full_name ||
+                source.pull_requests.length !== 1 || !/^[a-f0-9]{40}$/.test(source.head_sha)) {
+              throw new Error('Unexpected CI producer');
+            }
+            const { data: pr } = await github.rest.pulls.get({ ...context.repo, pull_number: source.pull_requests[0].number });
+            if (pr.user.login !== 'dependabot[bot]') { core.setOutput('eligible', 'false'); return; }
+            if (pr.state !== 'open' || pr.head.repo.full_name !== context.payload.repository.full_name ||
+                pr.head.sha !== source.head_sha || pr.base.ref !== 'main' || pr.base.sha !== source.pull_requests[0].base.sha) {
+              throw new Error('Stale or foreign Dependabot source');
+            }
+            for (let poll = 0; poll < 36; poll++) {
+              const { data: current } = await github.rest.actions.getWorkflowRun({ ...context.repo, run_id: source.id });
+              if (current.run_attempt !== source.run_attempt) throw new Error('CI attempt changed');
+              const jobs = await github.paginate(github.rest.actions.listJobsForWorkflowRun,
+                { ...context.repo, run_id: source.id, filter: 'latest' });
+              const lint = jobs.find(job => job.name === 'Lint & Type Check');
+              if (lint?.status === 'completed') {
+                if (lint.conclusion !== 'success') throw new Error('Candidate CI lint failed');
+                core.setOutput('eligible', 'true');
+                core.setOutput('source', source.head_sha);
+                core.setOutput('base', pr.base.sha);
+                core.setOutput('pr', pr.number);
+                return;
+              }
+              if (current.status === 'completed') throw new Error('Candidate CI ended without successful lint');
+              await new Promise(resolve => setTimeout(resolve, 30000));
+            }
+            throw new Error('Candidate CI lint did not complete');
+  build:
+    timeout-minutes: 30
+    needs: admission
+    if: >-
+      github.repository == 'Midtown-Technology-Group/bifrost' &&
+      github.event.workflow_run.head_repository.full_name == github.repository && needs.admission.outputs.eligible == 'true'
+    runs-on: ubuntu-latest
+    name: Build candidate ${{ matrix.component }} image
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - component: api
+            image: midtown-technology-group/bifrost-api
+            platforms: linux/amd64
+            context: .
+            dockerfile: ./api/Dockerfile
+            target: runtime
+            version_arg: BIFROST_VERSION
+          - component: worker
+            image: midtown-technology-group/bifrost-worker
+            platforms: linux/amd64,linux/arm64
+            context: .
+            dockerfile: ./api/Dockerfile
+            target: runtime
+            version_arg: BIFROST_VERSION
+          - component: client
+            image: midtown-technology-group/bifrost-client
+            platforms: linux/amd64
+            context: ./client
+            dockerfile: ./client/Dockerfile
+            target: production
+            version_arg: VITE_BIFROST_VERSION
+    steps:
+      - name: Retain trusted version tooling outside the PR build context
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ github.repository }}
+          ref: ${{ github.sha }}
+          path: .trusted-version
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Isolate trusted tooling from candidate source
+        run: mv .trusted-version "$RUNNER_TEMP/trusted-version"
+
+      - name: Checkout exact pull-request head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ github.repository }}
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ needs.admission.outputs.source }}
+
+      - name: Compute immutable candidate identity
+        id: identity
+        env:
+          BASE_SHA: ${{ needs.admission.outputs.base }}
+          HEAD_SHA: ${{ needs.admission.outputs.source }}
+          PR_NUMBER: ${{ needs.admission.outputs.pr }}
+        run: |
+          set -euo pipefail
+          if [ "$(git rev-parse HEAD)" != "$HEAD_SHA" ]; then
+            echo "Candidate checkout does not match the pull-request head." >&2
+            exit 1
+          fi
+          tree_sha="$(git rev-parse "${HEAD_SHA}^{tree}")"
+          git -C "$RUNNER_TEMP/trusted-version" fetch --no-tags origin "$BASE_SHA"
+          version="$(cd "$RUNNER_TEMP/trusted-version" && ./scripts/compute-dev-version.sh --next-after "$BASE_SHA")"
+          echo "tree_sha=$tree_sha" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "cache_tag=buildcache-pr-${PR_NUMBER}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up ARM64 emulation for worker candidate
+        if: matrix.component == 'worker'
+        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+
+      - name: Build immutable candidate
+        id: build
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          target: ${{ matrix.target }}
+          platforms: ${{ matrix.platforms }}
+          push: false
+          outputs: type=oci,dest=${{ runner.temp }}/candidate.oci.tar
+          tags: >-
+            ghcr.io/${{ matrix.image }}:candidate-tree-${{ steps.identity.outputs.tree_sha }}
+          build-args: |
+            ${{ matrix.version_arg }}=${{ steps.identity.outputs.version }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ needs.admission.outputs.source }}
+            org.opencontainers.image.version=${{ steps.identity.outputs.version }}
+            com.midtowntg.bifrost.source-tree=${{ steps.identity.outputs.tree_sha }}
+            com.midtowntg.bifrost.candidate=true
+          # Public caches are read-only; this unprivileged build never exports them.
+          cache-from: |
+            type=registry,ref=ghcr.io/${{ matrix.image }}:buildcache-queue
+            type=registry,ref=ghcr.io/${{ matrix.image }}:${{ steps.identity.outputs.cache_tag }}
+
+      - name: Retain exact candidate without registry credentials
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: dependabot-candidate-${{ matrix.component }}-attempt-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/candidate.oci.tar
+          if-no-files-found: error
+          retention-days: 3

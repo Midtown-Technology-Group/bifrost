@@ -219,7 +219,7 @@ jobs:
       ${{ !cancelled() && needs.lint.result == 'success' &&
       (github.repository == 'MTG-Thomas/bifrost' || github.repository == 'Midtown-Technology-Group/bifrost') &&
       (github.event_name == 'merge_group' ||
-       (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)) }}
+       (github.event_name == 'pull_request' && (github.repository != 'Midtown-Technology-Group/bifrost' || github.event.pull_request.user.login != 'dependabot[bot]') && github.event.pull_request.head.repo.full_name == github.repository)) }}
     runs-on: ubuntu-latest
     name: Build candidate ${{ matrix.component }} image
     permissions:
@@ -384,21 +384,119 @@ jobs:
             --source-sha "$HEAD_SHA" \
             --expected-digest "$EXPECTED_DIGEST"
 
+  verify-dependabot-candidates:
+    timeout-minutes: 70
+    needs: lint
+    if: >-
+      !cancelled() && needs.lint.result == 'success' &&
+      github.repository == 'Midtown-Technology-Group/bifrost' &&
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.user.login == 'dependabot[bot]' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    name: Verify published Dependabot candidates
+    permissions:
+      contents: read
+      actions: read
+      packages: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.base.sha }}
+      - id: publication
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          CI_RUN_ID: ${{ github.run_id }}
+          CI_ATTEMPT: ${{ github.run_attempt }}
+        with:
+          script: |
+            const { waitForPublication } = await import(`${process.env.GITHUB_WORKSPACE}/.github/scripts/dependabot-candidates.mjs`);
+            const receipt = await waitForPublication({ github, ciRunId: Number(process.env.CI_RUN_ID), ciAttempt: Number(process.env.CI_ATTEMPT) });
+            core.setOutput('artifacts', JSON.stringify(receipt.artifacts));
+            core.setOutput('publisher_attempt', receipt.publisherAttempt);
+            core.info(`Qualified producer run ${receipt.producer}; publisher run ${receipt.publisher}`);
+      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+      - name: Read exact publication digests
+        id: digests
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PUBLICATION_ARTIFACTS: ${{ steps.publication.outputs.artifacts }}
+          PUBLICATION_ATTEMPT: ${{ steps.publication.outputs.publisher_attempt }}
+        run: |
+          python3 - <<'PYCODE'
+          import hashlib, io, json, os, re, subprocess, zipfile
+          artifacts = json.loads(os.environ['PUBLICATION_ARTIFACTS'])
+          attempt = int(os.environ['PUBLICATION_ATTEMPT'])
+          if attempt < 1 or any(a.get('attempt') != attempt for a in artifacts):
+              raise SystemExit('Publication receipts must share the exact publisher attempt')
+          if sorted(a['component'] for a in artifacts) != ['api', 'client', 'worker']:
+              raise SystemExit('Exactly three component publication receipts are required')
+          outputs = []
+          for artifact in artifacts:
+              if type(artifact['id']) is not int or artifact['id'] <= 0 or not re.fullmatch(r'sha256:[a-f0-9]{64}', artifact['digest']):
+                  raise SystemExit('Invalid publication artifact identity')
+              url = f"repos/{os.environ['GITHUB_REPOSITORY']}/actions/artifacts/{artifact['id']}/zip"
+              archive_bytes = subprocess.run(['gh', 'api', url], check=True, capture_output=True).stdout
+              if 'sha256:' + hashlib.sha256(archive_bytes).hexdigest() != artifact['digest']:
+                  raise SystemExit('Publication artifact digest mismatch')
+              with zipfile.ZipFile(io.BytesIO(archive_bytes)) as archive:
+                  if archive.namelist() != ['digest']:
+                      raise SystemExit('Publication receipt must contain exactly one digest')
+                  digest = archive.read('digest').decode('ascii').strip()
+              if not re.fullmatch(r'sha256:[a-f0-9]{64}', digest):
+                  raise SystemExit('Invalid published image digest')
+              outputs.append(artifact['component'] + '_digest=' + digest + '\n')
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.writelines(outputs)
+          PYCODE
+      - name: Verify all three exact signed candidates
+        env:
+          API_DIGEST: ${{ steps.digests.outputs.api_digest }}
+          WORKER_DIGEST: ${{ steps.digests.outputs.worker_digest }}
+          CLIENT_DIGEST: ${{ steps.digests.outputs.client_digest }}
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "$SOURCE_SHA"
+          tree_sha="$(git rev-parse "${SOURCE_SHA}^{tree}")"
+          version="$(./scripts/compute-dev-version.sh --next-after "$BASE_SHA")"
+          for component in api worker client; do
+            case "$component" in
+              api) digest="$API_DIGEST" ;;
+              worker) digest="$WORKER_DIGEST" ;;
+              client) digest="$CLIENT_DIGEST" ;;
+            esac
+            python3 api/scripts/ci/candidate_image.py verify \
+              --image "ghcr.io/midtown-technology-group/bifrost-${component}" \
+              --tree-sha "$tree_sha" --version "$version" --source-sha "$SOURCE_SHA" --expected-digest "$digest"
+          done
+
   candidate-images:
     timeout-minutes: 10
     if: >-
       always() &&
       (github.repository == 'MTG-Thomas/bifrost' || github.repository == 'Midtown-Technology-Group/bifrost') &&
       (github.event_name == 'pull_request' || github.event_name == 'merge_group')
-    needs: build-candidate-images
+    needs: [build-candidate-images, verify-dependabot-candidates]
     runs-on: ubuntu-latest
     name: Candidate Images
     steps:
       - name: Require exact signed candidates
         env:
           BUILD_RESULT: ${{ needs.build-candidate-images.result }}
+          DEPENDABOT_RESULT: ${{ needs.verify-dependabot-candidates.result }}
+          IS_DEPENDABOT: ${{ github.repository == 'Midtown-Technology-Group/bifrost' && github.event_name == 'pull_request' && github.event.pull_request.user.login == 'dependabot[bot]' }}
         run: |
-          if [ "$BUILD_RESULT" != "success" ]; then
+          if [ "$IS_DEPENDABOT" = "true" ]; then
+            result="$DEPENDABOT_RESULT"
+          else
+            result="$BUILD_RESULT"
+          fi
+          if [ "$result" != "success" ]; then
             echo "Every MTG platform PR must publish exact signed image candidates before merge." >&2
             echo "Fork pull requests must move to a reviewed branch in the MTG Bifrost fork." >&2
             exit 1
@@ -419,7 +517,7 @@ jobs:
       (github.event_name == 'workflow_dispatch' ||
       github.event_name == 'merge_group' ||
       (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
-      (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)) }}
+      (github.event_name == 'pull_request' && (github.repository != 'Midtown-Technology-Group/bifrost' || github.event.pull_request.user.login != 'dependabot[bot]') && github.event.pull_request.head.repo.full_name == github.repository)) }}
     runs-on: ubuntu-latest
     name: Publish CI Test Images
     permissions:
@@ -510,8 +608,8 @@ jobs:
           cache: npm
           cache-dependency-path: client/package-lock.json
 
-      - name: OpenWiki notifier regression
-        run: node --test .github/scripts/openwiki-refresh.test.mjs
+      - name: Repository workflow regressions
+        run: node --test .github/scripts/openwiki-refresh.test.mjs .github/scripts/dependabot-candidates.test.mjs
 
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
