@@ -15,6 +15,14 @@ assert _SPEC.loader is not None
 _SPEC.loader.exec_module(health)
 
 
+@pytest.fixture(autouse=True)
+def isolate_readiness_snapshot():
+    """Mocked configurations must not inherit a previous case's cached result."""
+    health.clear_readiness_cache()
+    yield
+    health.clear_readiness_cache()
+
+
 class DummyDB:
     async def execute(self, statement):
         return None

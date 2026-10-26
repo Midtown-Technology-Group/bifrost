@@ -6,7 +6,9 @@ Provides endpoints for monitoring application health.
 
 import asyncio
 from collections.abc import Awaitable, Hashable
+from dataclasses import dataclass
 from datetime import datetime, timezone
+from time import monotonic
 from typing import Any, cast
 
 import aio_pika
@@ -26,6 +28,7 @@ from src.services.file_storage.azure_blob_client import AzureBlobStorageClient
 router = APIRouter(prefix="/health", tags=["health"])
 
 CHECK_TIMEOUT_SECONDS = 2.0
+READINESS_CACHE_SECONDS = 5.0
 ComponentStatus = dict[str, str]
 
 
@@ -180,6 +183,15 @@ class S3HealthClient:
 _rabbitmq_health_connection = RabbitMQHealthConnection()
 _redis_health_connection = RedisHealthConnection()
 _s3_health_client = S3HealthClient()
+_readiness_cache_lock = asyncio.Lock()
+
+
+@dataclass(slots=True)
+class _ReadinessCacheState:
+    snapshot: tuple[float, dict[str, ComponentStatus]] | None = None
+
+
+_readiness_cache = _ReadinessCacheState()
 
 
 class HealthCheck(BaseModel):
@@ -262,6 +274,7 @@ async def check_redis(settings: Settings) -> tuple[str, ComponentStatus]:
 
 
 async def close_health_check_clients() -> None:
+    clear_readiness_cache()
     await _rabbitmq_health_connection.close()
     await _redis_health_connection.close()
     await _s3_health_client.close()
@@ -349,6 +362,42 @@ async def build_health_components(
     return components
 
 
+def clear_readiness_cache() -> None:
+    """Discard the process-local readiness snapshot."""
+    _readiness_cache.snapshot = None
+
+
+def _copy_components(
+    components: dict[str, ComponentStatus],
+) -> dict[str, ComponentStatus]:
+    return {name: component.copy() for name, component in components.items()}
+
+
+async def get_cached_health_components(
+    db: AsyncSession,
+    settings: Settings,
+) -> dict[str, ComponentStatus]:
+    """Single-flight dependency checks and reuse their short-lived result."""
+    cache = _readiness_cache.snapshot
+    now = monotonic()
+    if cache is not None and now < cache[0]:
+        return _copy_components(cache[1])
+
+    async with _readiness_cache_lock:
+        cache = _readiness_cache.snapshot
+        now = monotonic()
+        if cache is not None and now < cache[0]:
+            return _copy_components(cache[1])
+
+        components = await build_health_components(db, settings)
+        snapshot = _copy_components(components)
+        _readiness_cache.snapshot = (
+            monotonic() + READINESS_CACHE_SECONDS,
+            snapshot,
+        )
+        return _copy_components(snapshot)
+
+
 def _overall_status(components: dict[str, ComponentStatus]) -> str:
     if any(component.get("status") == "unhealthy" for component in components.values()):
         return "unhealthy"
@@ -360,7 +409,7 @@ async def _readiness_response(
     db: AsyncSession,
 ) -> DetailedHealthCheck:
     settings = get_settings()
-    components = await build_health_components(db, settings)
+    components = await get_cached_health_components(db, settings)
     overall_status = _overall_status(components)
     if overall_status == "unhealthy":
         response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
