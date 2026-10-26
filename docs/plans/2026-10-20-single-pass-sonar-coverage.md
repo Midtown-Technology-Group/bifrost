@@ -1,14 +1,17 @@
 # Single-pass qualification and release handoff
 
-Status: broader design prepared; bounded unmerged implementation candidate below. Environment: CI,
+Status: broader design prepared; bounded tag-reuse source merged, activation unproved. Environment: CI,
 release publication and the read-only infrastructure promotion consumer.
 Source baseline: main de34e07d638706506e23cce6f855beebb91532e8, 2026-10-20.
 Owner: this release/unblock workstream. Separate from PR #1365's preparation-only evidence reuse.
 
 ## October 22 first slice: exact-main evidence on version tags
 
-Implementation candidate only; no merge, deployment or control cutover is
-authorized by this document. Owner: the existing Codex release thread, with
+Source from [#1371](https://github.com/Midtown-Technology-Group/bifrost/pull/1371)
+merged as `65297178502e0540805ab92d937d326bd97d4e11` under Thomas's separately
+recorded exact-PR queue override. Original PR CI was still running at merge;
+pending Sonar coverage/analysis is not a pass. No deployment or further control
+cutover is authorized by this document. Owner: the existing Codex release thread, with
 Eddie coordinating review in [Eddie #13](https://github.com/MTG-Thomas/Eddie/issues/13).
 Delivery lane 3 applies to CI provenance; this does not reopen the broader
 governance/design exercise below.
@@ -64,7 +67,7 @@ Tag analysis job `119649354416` was skipped. The duplicate collector lasted
 55m12s and ended 32m20s after Create Release; do not describe this as a
 55-minute delay in artifact publication. It prolonged whole-run success and
 therefore the existing infra consumer's qualification wait. This is a measured
-historical tail, not a promised speedup for this unmerged candidate.
+historical tail, not a demonstrated speedup for the new implementation.
 
 Non-goals: single-pass producer/shard redesign, PR-to-main tree projection,
 Sonar plan or effective-settings changes, skipping tag tests or image content
@@ -81,6 +84,72 @@ records the complete wall-clock history, root causes, owned corrective slices
 R1–R6 and end-to-end acceptance cases A1–A14. This design must satisfy that
 contract; optimizing the coverage collector alone does not close the incident.
 
+## October 22 SDLC integration: relevant tests and explainable delivery
+
+This section updates this plan; [Eddie #13](https://github.com/MTG-Thomas/Eddie/issues/13)
+remains its coordination record. The October 20 baseline above is historical.
+The goal is low manual intervention and verified delivery that an operator can
+explain from the existing receipts. No new framework, status store or required
+check is proposed. Environment: docs-only; nothing here activates CI, release,
+permission, approval or production changes.
+
+### State of the work
+
+| Status | Scope and evidence | Remaining limit |
+| --- | --- | --- |
+| Implemented | Existing Python/TypeScript dependency planning and surface-specific fallback in [the planner](../../api/scripts/plan_affected_tests.py), shared by CI and `test.sh pre-pr`; obsolete PR runs are cancelled by [CI concurrency](../../.github/workflows/ci.yml). [#1376](https://github.com/Midtown-Technology-Group/bifrost/pull/1376) added bounded Sonar-tool/fixture ownership and workflow-caller checks, merged as `2d490429de1e3c793501acf07d8c9201dcf92b91`. | Unknown tools, workflow or dependency changes remain comprehensive. Main running-work cancellation is disabled, but pending commits can still be replaced; this does not yet satisfy the every-main target below. |
+| Implemented | Preparation recovery/evidence slices #1363/#1365 and the incident/design record #1367 landed. [Production acceptance](https://github.com/MTG-Thomas/bifrost-infra/issues/177#issuecomment-6336156202) establishes the 3.2.0 deployment finish line. | These do not complete R1–R6/A1–A14. Merges and tags alone establish neither deployment nor a simplified release process. |
+| Implemented; live tag qualification incomplete | [#1371](https://github.com/Midtown-Technology-Group/bifrost/pull/1371) merged as `65297178502e0540805ab92d937d326bd97d4e11`. Main producer [39785798549](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/39785798549), attempt 1, and branch-only publication-free rehearsal [39796751277](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/39796751277) established positive artifact transport with original provenance. [#1377](https://github.com/Midtown-Technology-Group/bifrost/pull/1377) added permanent refusal diagnostics, merged as `17cee8cceee9a9530f5b24f5e5b07e2d795e782f`. | The rehearsal was not a real tag consumer and [#1375](https://github.com/Midtown-Technology-Group/bifrost/pull/1375)'s optional rehearsal surface must not merge. No new release or production run is authorized to prove it. |
+| In progress; reviewable implementation | [#1379](https://github.com/Midtown-Technology-Group/bifrost/pull/1379), `503a19522e5450f51b7abe39e4f8ddef3d490f0a`, produces comprehensive client LCOV in the existing client-unit job and transports same-run/attempt evidence to the collector, retaining fallback. Nine focused probes, 167 Sonar contracts, 51 workflow contracts and exact VM101 pre-PR passed. | Live reuse/completeness and net savings remain pending. Python/runtime and repository-Node collection remain; this is not removal of the dominant Python tail. |
+| Proposed; policy resolved, implementation staged | Every accepted main commit produces its own immutable qualified release/artifact record, below. | Main pending retention and joined artifact/qualification/recovery records are not implemented by the client coverage slice. Existing stable-publication and human/security controls remain. |
+| Deferred or unproven | Cache changes, broad sharding/overlap and upstream capability migration. [#1378](https://github.com/Midtown-Technology-Group/bifrost/pull/1378) demonstrated two concurrent API shards but required checks took 28m17s versus an earlier 20m57s; it remains unmerged. | No system-throughput win or globally reserved freed slots proved. No further expansion of that experiment. |
+
+### Lessons adopted from T3 Code
+
+Public source was inspected at immutable snapshot
+[`f054d1b8018721bd997d99cbb918a7b17bf098a4`](https://github.com/pingdotgg/t3code/tree/f054d1b8018721bd997d99cbb918a7b17bf098a4).
+These are design inputs, not authority to copy T3's repository settings.
+
+| Source lesson | BiFrost application and status |
+| --- | --- |
+| [Selection](https://github.com/pingdotgg/t3code/blob/f054d1b8018721bd997d99cbb918a7b17bf098a4/.github/scripts/ci-changes.cjs) follows package dependents and explicit test-only/hidden dependencies; unknown paths broaden. [CI](https://github.com/pingdotgg/t3code/blob/f054d1b8018721bd997d99cbb918a7b17bf098a4/.github/workflows/ci.yml) retains a full Linux main backstop. | Implemented in bounded form by #1376: existing graph ownership for declared Sonar tools, owning tests/fixtures and reusable workflow callers. Unknown tools/callers remain conservative. Do not infer that all `.github` changes are cheap: T3's unknown workflow paths also broaden. Distinguish a deliberate main backstop from accidental repetition across every release stage. |
+| T3's same [CI source](https://github.com/pingdotgg/t3code/blob/f054d1b8018721bd997d99cbb918a7b17bf098a4/.github/workflows/ci.yml#L473-L517) has a stable `Check` result that accepts skips only when the selector requested them. PR supersession preserves main. | Existing aggregate contract to preserve: selected jobs must succeed; missing evidence, cancellation and unexplained skips refuse. Reuse existing summaries and qualification results before considering any additional gate. PR cancellation already exists here; preserve publication/deployment operations. Measure queue, setup and execution separately before changing sharding or overlap. |
+| [Dependency setup](https://github.com/pingdotgg/t3code/blob/f054d1b8018721bd997d99cbb918a7b17bf098a4/.github/actions/setup-ci-deps/action.yml) binds cache keys to runtime/package-manager/platform/lock inputs and documents a slower cross-filesystem sticky-disk experiment. | Deferred: measure end-to-end restore/install cost and real toolchain identity before adding cache machinery. A cache hit is not correctness evidence. Do not transplant T3's runner, cache or dependency versions. |
+| [Release operations](https://github.com/pingdotgg/t3code/blob/f054d1b8018721bd997d99cbb918a7b17bf098a4/docs/operations/release.md) separates manual preview from updater feeds. Manual stable normally builds the published nightly's SHA; stable still rebuilds, and tag-triggered releases differ. | Bounded branch-only rehearsal completed (receipt above); first real tag-consumer proof remains pending. Do not describe T3 as promoting identical binaries or use a customer stable release merely to test CI transport. |
+| [Release workflow](https://github.com/pingdotgg/t3code/blob/f054d1b8018721bd997d99cbb918a7b17bf098a4/.github/workflows/release.yml) orders publication after its checks/backing artifacts and retains running publishers. | Preserve BiFrost's immutable image subjects, signatures, migration compatibility, tenant isolation, retained-work and independent runtime receipts. Desktop packaging/smoke evidence cannot substitute for those. Customer activation remains separate from code admission and artifact qualification. |
+| [Contribution guidance](https://github.com/pingdotgg/t3code/blob/f054d1b8018721bd997d99cbb918a7b17bf098a4/CONTRIBUTING.md#L51-L119) asks for one underlying problem, relevant cross-layer changes, reproduction/environment, exact verification and untested limits. It distinguishes intended triage from deployed automation. | Adopt this work-packet discipline now; do not add a template bureaucracy. Do not copy unrelated approval/ruleset settings or treat described automation as active enforcement. Thomas owns control decisions. |
+
+The agreed Anthropic/Delta lessons travel with the same task in Eddie #13:
+outcome, context, source identity and acceptance evidence accompany the work;
+implementer and reviewer communicate directly, with a referee constraining
+speculative complexity. Review findings are evidence, not authority. Keep code
+admission, artifact qualification and environment activation separate. Test the
+actual transitions, not just isolated helpers. Existing run receipts should
+explain state, blocker and next action without a competing status database;
+summary failures must not change runtime/admission outcomes. No new service,
+mandatory acknowledgement or security/approval exception follows from this.
+
+### Practical sequence and acceptance
+
+Owner for these bounded slices: this existing implementation workstream;
+Eddie #13 coordinates review, and Thomas retains control/activation decisions.
+Use [delivery-lanes.md](../dev/delivery-lanes.md), not another process hierarchy.
+
+The initial sequence's bounded selector, branch rehearsal and permanent diagnostic
+slices are now recorded above; do not recreate them. The current ordered work is
+[the every-main sequence below](#small-implementation-sequence-and-acceptance).
+Retain first-real-tag-consumer qualification as a future authorized release's
+acceptance, not a new customer release merely to test transport. Broader Python
+coverage production is still proposed; cache/overlap work remains deferred.
+
+Non-goals: copying T3's approval rules or queue settings, relaxing a failed check,
+turning partial coverage into a comprehensive denominator, a new release train,
+production work, credential changes or duplicating this plan in another tracker.
+Not checked: live T3 operational performance, first real tag-consumer reuse,
+#1379 live report transport or every-main qualification/recovery. The implemented
+selector and branch rehearsal receipts above are bounded evidence, not completion
+of the broader design.
+
 ## Decision
 
 Run each required test selection once for a qualified candidate. Instrument those existing executions for coverage. Sonar validates and combines their immutable reports, then submits analysis; it does not start an application stack or run unit/E2E/client suites.
@@ -89,11 +158,101 @@ Reuse a completed compatible producer set across PR, merge-group and main when i
 
 This is an extension of the existing CI workflow, coverage tools and evidence manifest. No new service, credential, scheduler, runner pool or status-check bypass is needed.
 
-Most merged product changes should produce releases. Documentation/test-only
-changes normally should not; shipped content, dependencies and packaging need
-explicit product-impact classification. This is the agreed direction for a
-reviewed policy implementation, not an already-active bypass of current
-release approval, merge, quality or production controls.
+Thomas resolved the target on October 22: **every accepted main commit**, including
+documentation/test-only commits, must produce an immutable, retrievable qualified
+release/artifact record. Release completion stays off the merge critical path.
+Deployment may select the newest qualified and authorized record without deploying
+intermediate commits. This supersedes the earlier "most product changes" proposal;
+it does not activate a release or bypass approval, quality or production controls.
+
+## Every-main qualification and recovery target
+
+Status: resolved policy; staged implementation, not active. Owner: this existing
+SDLC workstream; [Eddie #13](https://github.com/MTG-Thomas/Eddie/issues/13) links
+source, validation and remaining decisions. No new orchestrator or status service.
+
+Use the existing main CI, immutable candidate-image promotion/attestation and
+release-manifest primitives. Current
+[`build-dev` at main `17cee8cc`](https://github.com/Midtown-Technology-Group/bifrost/blob/17cee8cceee9a9530f5b24f5e5b07e2d795e782f/.github/workflows/ci.yml)
+already promotes the reviewed API/worker/client candidate digests and attests their
+protected-main source. Moving tags (`dev`, `sha-<short>`) are lookup conveniences,
+not the immutable record. Do not rebuild the same compatible artifact merely to
+create another receipt, or relabel a development artifact as a stable customer
+release. Exact-head human stable-publication approval remains required; changing
+that control would need a separately stated Thomas decision.
+
+The record must bind the exact commit and tree, configuration/test-plan/toolchain
+identity, immutable image/manifest digests and attestations, producer jobs/run and
+actual attempts, compatible schema heads and migration bounds, and the applicable
+retained-work/recovery proof. Keep code admission, artifact qualification and
+environment activation distinct. Record what recovery has actually been tested;
+missing environment-specific proof is unknown, not an invented rollback guarantee.
+A tag, application downgrade, or additive-migration claim alone does not establish
+database rollback safety. No automatic down-migration, replay or history deletion.
+
+Each attempt's receipt is immutable and retrievable with its referenced payloads;
+record retention/lifecycle together so an expired Actions artifact cannot be sold
+as a durable rollback point. A retry appends a linked attempt, preserving the
+original failure. Failed, cancelled, missing or incomplete qualification remains
+visibly unqualified and retryable for that exact commit. A newer main commit or
+successful deployment must not mark an older failed obligation released. Latest
+qualified deployment selection is independent of oldest outstanding qualification.
+
+### Pending main work is not protected today
+
+Verified read-only: [39813365760](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/39813365760)
+for `2d490429de1e3c793501acf07d8c9201dcf92b91` was cancelled with zero jobs;
+[39816370417](https://github.com/Midtown-Technology-Group/bifrost/actions/runs/39816370417)
+for `17cee8cceee9a9530f5b24f5e5b07e2d795e782f` succeeded. Both use the shared
+`ci-push-refs/heads/main` concurrency group. `cancel-in-progress: false` protects
+running work, not all pending commits. Pending replacement fits these observations;
+the run metadata does not attest its cancellation actor or exact cause.
+
+[Current GitHub concurrency documentation](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency)
+defines default `queue: single` as one pending run, replaced by a newer arrival.
+`queue: max` permits up to 100 pending runs; overflow is cancelled, and it cannot
+combine with `cancel-in-progress: true`. It is bounded admission, not an unlimited
+durable work queue or proof of throughput. Do not blindly add it to the shared
+mixed-event configuration and break PR supersession. The staged admission patch
+must preserve every accepted main obligation, keep overflow/cancellation visible
+and retryable, and preserve PR/merge-group/tag semantics. No live workflow,
+merge-queue/ruleset or protection setting changes are part of this document.
+
+### Small implementation sequence and acceptance
+
+1. **Finish within-run client reuse (#1379).** Prove actual same-run transport,
+   byte/report completeness, exact head-versus-tested-tree identity and one-owner
+   fallback in its normal PR CI. No main retention policy change is needed for
+   this slice. Roll back producer and consumer wiring together by reviewed revert.
+2. **Preserve accepted main obligations.** Prepare the smallest existing-workflow
+   admission patch with event/rapid-arrival fixtures and visible exact-commit
+   failure/retry evidence, including docs/test-only accepted commits and any
+   native skip directive that prevents normal CI from running. Separately prove
+   PR supersession unchanged; do not claim
+   arbitrary pending capacity or improved merge throughput. Source review and
+   activation remain separate; no settings mutation or dispatch under this grant.
+3. **Join the existing per-commit artifact and qualification receipts.** Extend
+   current promotion/manifest outputs, not a new publisher/service. Prove complete
+   API/client/worker tuple and config/schema/recovery bindings (including proven
+   build-input reuse when shipped content is unchanged), altered/missing
+   evidence refusal, immutable linked retry records and retrieval of two rapid
+   successive accepted commits after main has advanced. Preserve existing human
+   stable-publication controls. State any additional storage/retention/permission
+   change exactly for approval before activation; none is granted here.
+4. **Remove the dominant compatible Python reruns.** Instrument existing unit,
+   repository-tool and API/worker/scheduler producers with branch-mode raw data,
+   including slow units and graceful runtime flush, then combine using existing
+   audited helpers. Existing badge XML is not equivalent. Prove shard/inventory
+   union and runtime completeness before replacing collector executions. Within-run
+   union is distinct from cross-event tree/config/version/attempt reuse.
+
+Release production remains asynchronous to merge admission; sharing the 20-job
+organization capacity can still delay merges indirectly. Measure that interference,
+transfer cost, collection and scan separately; no faster-release or rollback-safety
+claim follows from this plan. Reverts restore the reviewed prior producer/consumer
+or admission wiring without deleting artifacts/failure history. This staged work
+authorizes no merge, release/tag/production dispatch, deployment, credential,
+permission, protection or live queue change.
 
 ## What the current source actually does
 
