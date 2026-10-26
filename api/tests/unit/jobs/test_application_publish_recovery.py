@@ -1,5 +1,6 @@
 """An uncertain App publication resumes by readback, never effect replay."""
 from contextlib import asynccontextmanager
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 from uuid import uuid4
@@ -202,7 +203,6 @@ async def test_lost_response_after_intent_retains_evidence(monkeypatch, setup):
 
 
 def protected_setup(monkeypatch, app):
-    from datetime import datetime, timezone
     app.repo_path = "apps/fixture"
     app.published_snapshot = {"old.js": ""}
     app.published_at = datetime.now(timezone.utc)
@@ -228,6 +228,7 @@ def protected_admission(db, payload):
         organization_id=context.organization_id, resource_type="application",
         resource_id=str(payload.application_id), payload=payload.model_dump(mode="json"),
         status="running", lease_token=context.lease_token,
+        lease_expires_at=datetime.now(timezone.utc) + timedelta(minutes=5),
     )
     return context
 
@@ -235,7 +236,8 @@ def protected_admission(db, payload):
 @pytest.mark.asyncio
 @pytest.mark.parametrize("fault", [None, "manual", "requester", "missing_job", "job_type",
     "job_requester", "organization", "resource_type", "resource_id", "payload", "lease", "status",
-    "missing_actor", "inactive_actor", "policy", "scope", "subpath", "unpublished", "controls"])
+    "missing_actor", "inactive_actor", "policy", "scope", "subpath", "unpublished", "controls",
+    "missing_expiry", "expired"])
 async def test_protected_authority_requires_current_scoped_admission_without_human_admin_role(monkeypatch, setup, fault):
     from dataclasses import replace
     from src.jobs.platform.base import PlatformJobFailure
@@ -249,6 +251,8 @@ async def test_protected_authority_requires_current_scoped_admission_without_hum
         context = replace(context, requested_by_user_id=str(uuid4()))
     elif fault == "missing_job":
         db.job = None
+    elif fault in {"missing_expiry", "expired"}:
+        db.job.lease_expires_at = None if fault == "missing_expiry" else datetime(2000, 1, 1, tzinfo=timezone.utc)
     elif fault in {"job_type", "job_requester", "organization", "resource_type", "resource_id", "payload", "lease", "status"}:
         field = {"job_requester": "requested_by_user_id", "organization": "organization_id", "lease": "lease_token"}.get(fault, fault)
         setattr(db.job, field, {} if fault == "payload" else "changed")
@@ -278,7 +282,7 @@ async def test_protected_authority_requires_current_scoped_admission_without_hum
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("revocation", ["actor", "lease", "scope", "controls", "policy"])
+@pytest.mark.parametrize("revocation", ["actor", "lease", "scope", "controls", "policy", "missing_expiry", "expired"])
 async def test_protected_publication_rechecks_admission_at_effect_boundary(monkeypatch, setup, revocation):
     from src.jobs.platform.base import PlatformJobFailure
 
@@ -290,6 +294,8 @@ async def test_protected_publication_rechecks_admission_at_effect_boundary(monke
         db.actor.is_active = False
     elif revocation == "lease":
         db.job.lease_token = uuid4()
+    elif revocation in {"missing_expiry", "expired"}:
+        db.job.lease_expires_at = None if revocation == "missing_expiry" else datetime(2000, 1, 1, tzinfo=timezone.utc)
     elif revocation == "scope":
         app.organization_id = uuid4()
     elif revocation == "controls":
@@ -405,6 +411,45 @@ async def test_protected_git_job_fails_before_build_when_existing_credential_rou
     with pytest.raises(PlatformJobFailure, match="credential/repository is unavailable"):
         await jobs.run_application_publish(context, payload)
     publisher.assert_not_awaited()
+    storage.verify_publication.assert_not_awaited()
+    db.commit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("expiry_during", ["source", "progress"])
+async def test_protected_git_guard_rechecks_expiry_after_async_verification(monkeypatch, setup, expiry_during):
+    from src.jobs.platform.base import PlatformJobFailure
+
+    app, db, storage, publisher, _intent = setup
+    payload = protected_setup(monkeypatch, app)
+    context = protected_admission(db, payload)
+    config = SimpleNamespace(token="stored-in-memory", repo_url="https://github.com/MTG-Thomas/bifrost-workspace")
+    monkeypatch.setattr(jobs, "get_github_config", AsyncMock(return_value=config))
+    source = VerifiedInlineAppSource("a" * 40, "b" * 40, "c" * 40, "apps/fixture",
+        InlineAppSourceSnapshot({"app.yaml": b"scope: global", "pages/index.tsx": b"captured"}),
+        {"app.yaml": "100644", "pages/index.tsx": "100644"})
+    monkeypatch.setattr(jobs, "read_app_git_source", AsyncMock(return_value=source))
+
+    async def expire(*_args, **_kwargs):
+        db.job.lease_expires_at = datetime(2000, 1, 1, tzinfo=timezone.utc)
+
+    reader = SimpleNamespace(verify_ci=AsyncMock(side_effect=expire if expiry_during == "source" else None))
+    report = AsyncMock(side_effect=expire if expiry_during == "progress" else None)
+    save = AsyncMock()
+    monkeypatch.setattr(jobs, "ProtectedGitReader", lambda *_args: reader)
+    monkeypatch.setattr(PlatformJobContext, "report", report)
+    monkeypatch.setattr(PlatformJobContext, "save_checkpoint", save)
+
+    async def before_effect(*_args, **kwargs):
+        await kwargs["before_publication"]()
+        pytest.fail("Expired protected authority must stop publication")
+
+    publisher.side_effect = before_effect
+    with pytest.raises(PlatformJobFailure, match="permission was revoked"):
+        await jobs.run_application_publish(context, payload)
+    reader.verify_ci.assert_awaited_once()
+    report.assert_awaited_once()
+    save.assert_not_awaited()
     storage.verify_publication.assert_not_awaited()
     db.commit.assert_not_awaited()
 

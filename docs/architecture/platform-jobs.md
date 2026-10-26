@@ -278,7 +278,11 @@ Captured repository publication carries that Git evidence in the compiled
 manifest, captures the Live storage revision before building, and rejects a
 changed revision before writing any outputs. A caller-provided authority check
 runs after compilation and again after output writes immediately before the
-conditional manifest switch. Normal manual publication retains its existing
+conditional manifest switch. Protected Git authority requires a matching running
+job/token with a non-null, unexpired lease, checked before building and again
+after asynchronous source/progress verification at each publication boundary.
+Progress reporting alone does not establish protected publication authority.
+Normal manual publication retains its existing
 behavior.
 
 `POST /api/applications/{id}/github-source` admits enrolled, already published

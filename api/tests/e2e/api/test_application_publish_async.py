@@ -274,11 +274,11 @@ async def test_captured_source_build_preserves_real_editor_live_storage_and_app_
 async def test_captured_repository_publication_serves_exact_build_and_preserves_editor_controls(
     e2e_client, platform_admin, app_factory, db_session, monkeypatch,
 ):
-    from datetime import datetime, timezone
+    from datetime import datetime, timedelta, timezone
     from types import SimpleNamespace
     from src.core.application_delivery_policy import InlineAppGitDeliveryPolicy
     from src.jobs.platform import application_publish as jobs
-    from src.jobs.platform.base import PlatformJobContext
+    from src.jobs.platform.base import PlatformJobContext, PlatformJobFailure
     from src.models import User
     from src.models.contracts.applications import ApplicationGitPublicationInput
     from src.models.orm.applications import Application
@@ -325,7 +325,8 @@ async def test_captured_repository_publication_serves_exact_build_and_preserves_
     payload = jobs.ApplicationPublishPayload(application_id=app_id,
         protected_git=ApplicationGitPublicationInput(**protected))
     original = PlatformJob(id=original_job_id, job_type="application.publish", status="running",
-        lease_token=lease, requested_by_user_id=str(SYSTEM_USER_UUID),
+        lease_token=lease, lease_expires_at=datetime.now(timezone.utc) + timedelta(minutes=5),
+        requested_by_user_id=str(SYSTEM_USER_UUID),
         requested_by_email="ci@bifrost.internal", requested_by_name="CI fixture",
         resource_type="application", resource_id=app["id"],
         organization_id=uuid.UUID(app["organization_id"]) if app.get("organization_id") else None,
@@ -364,6 +365,15 @@ async def test_captured_repository_publication_serves_exact_build_and_preserves_
         assert await storage.read_file(app["id"], "live", "manifest.json") == old["manifest.json"]
         saved.append(intent)
 
+    # Refusal cases exercise the real persisted job/authorization boundary
+    # without dispatching another job or paying for another build.
+    for expiry in (None, datetime(2000, 1, 1, tzinfo=timezone.utc)):
+        original.lease_expires_at = expiry
+        await db_session.flush()
+        with pytest.raises(PlatformJobFailure, match="permission was revoked"):
+            await jobs._authorize_application_publish(db_session, context, installed, payload)
+    original.lease_expires_at = datetime.now(timezone.utc) + timedelta(minutes=5)
+    await db_session.flush()
     repository = await jobs._authorize_application_publish(db_session, context, installed, payload)
     published = await repository.publish(app_id, "CI capture fixture", source_snapshot=captured,
         source_provenance=source_proof, before_publication=guard, checkpoint_callback=checkpoint)

@@ -122,7 +122,9 @@ async def _authorize_application_publish(
                 or job.organization_id != context.organization_id
                 or job.resource_type != "application" or job.resource_id != str(application.id)
                 or job.payload != payload.model_dump(mode="json")
-                or job.status != "running" or job.lease_token != context.lease_token):
+                or job.status != "running" or job.lease_token != context.lease_token
+                or job.lease_expires_at is None
+                or job.lease_expires_at <= datetime.now(timezone.utc)):
             raise _publish_permission_revoked()
         enrollment = policy.enrollment_for(application.id)
         if (enrollment.organization_id != current_application.organization_id
@@ -299,7 +301,6 @@ async def run_application_publish(
                             "producer_run_attempt": protected_git.producer_run_attempt}
 
                         async def guard_source() -> None:
-                            await guard_authority()
                             await reader.verify_ci(protected_git.source_commit_sha,
                                 protected_git.ci_run_id, protected_git.ci_run_attempt)
                             if await publication_controls_hash(db, application.id, lock=True) != controls:
@@ -307,6 +308,10 @@ async def run_application_publish(
                             # Recheck the original attempt's lease before any
                             # manifest switch, including after output writes.
                             await context.report("Protected source reverified", percent=95)
+                            # Source verification/progress may await external
+                            # services. Require fresh protected authority last;
+                            # a progress update alone does not prove expiry.
+                            await guard_authority()
 
                         published = await repo.publish(
                             application.id, context.requested_by_email, payload.message,
