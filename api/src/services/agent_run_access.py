@@ -119,3 +119,33 @@ async def load_agent_run_for_user(
     query = apply_agent_run_access(query, user)
     result = await db.execute(query)
     return result.scalar_one_or_none()
+
+
+async def load_agent_run_result_for_user(
+    db: AsyncSession,
+    run_id: UUID,
+    user: UserPrincipal,
+) -> AgentRun | None:
+    """Load a run whose terminal result the caller may retrieve.
+
+    Role-granted platform administrators may retrieve another caller's result,
+    but retain the ordinary organization and agent visibility boundaries.
+    Token superusers retain their existing global access.
+    """
+    query = (
+        select(AgentRun)
+        .join(Agent, AgentRun.agent_id == Agent.id)
+        .where(AgentRun.id == run_id)
+    )
+    if not _is_global_principal(user):
+        if user.organization_id is None:
+            query = query.where(false())
+        else:
+            query = query.where(
+                AgentRun.org_id == user.organization_id,
+                *agent_access_conditions(user),
+            )
+            if not user.has_platform_admin_grant():
+                query = query.where(*agent_run_visibility_conditions(user))
+    result = await db.execute(query)
+    return result.scalar_one_or_none()

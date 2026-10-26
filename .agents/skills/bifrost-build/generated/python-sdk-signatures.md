@@ -9,6 +9,9 @@ Agent execution operations.
 **`agents.enqueue(agent_name: str, input: dict[str, Any] | None = None, output_schema: dict[str, Any] | None = None) -> AgentRunHandle`**
   Queue an agent and return as soon as the run is accepted.
 
+**`agents.get_result(run_id: str) -> dict[str, Any] | None`**
+  Fetch terminal output through the initiating-caller contract.
+
 **`agents.get_run(run_id: str) -> AgentRun`**
   Get the current status and result for an agent run.
 

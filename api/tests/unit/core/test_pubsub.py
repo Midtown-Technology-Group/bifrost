@@ -195,13 +195,15 @@ def test_connection_manager_disconnect_removes_empty_channels() -> None:
 
 
 @pytest.mark.asyncio
-async def test_connection_manager_uses_table_and_file_dispatchers() -> None:
+async def test_connection_manager_uses_recipient_dispatchers() -> None:
     manager = pubsub.ConnectionManager()
     table_calls: list[tuple[str, dict[str, Any]]] = []
     file_calls: list[tuple[str, dict[str, Any]]] = []
+    agent_run_calls: list[tuple[str, dict[str, Any]]] = []
 
     table_socket = FakeSocket()
     file_socket = FakeSocket()
+    agent_run_socket = FakeSocket()
 
     async def table_dispatcher(channel: str, message: dict[str, Any]) -> None:
         table_calls.append((channel, message))
@@ -209,18 +211,26 @@ async def test_connection_manager_uses_table_and_file_dispatchers() -> None:
     async def file_dispatcher(channel: str, message: dict[str, Any]) -> None:
         file_calls.append((channel, message))
 
+    async def agent_run_dispatcher(channel: str, message: dict[str, Any]) -> None:
+        agent_run_calls.append((channel, message))
+
     cast(Any, table_socket)._table_dispatcher = table_dispatcher
     cast(Any, file_socket)._file_dispatcher = file_dispatcher
+    cast(Any, agent_run_socket)._agent_run_dispatcher = agent_run_dispatcher
     manager.connections["table:t1"] = {table_socket}
     manager.connections["files:workspace:GLOBAL"] = {file_socket}
+    manager.connections["agent-run:r1"] = {agent_run_socket}
 
     await manager._send_local("table:t1", {"type": "document_change"})
     await manager._send_local("files:workspace:GLOBAL", {"type": "file_change"})
+    await manager._send_local("agent-run:r1", {"type": "agent_run_step"})
 
     assert table_calls == [("table:t1", {"type": "document_change"})]
     assert file_calls == [("files:workspace:GLOBAL", {"type": "file_change"})]
+    assert agent_run_calls == [("agent-run:r1", {"type": "agent_run_step"})]
     assert table_socket.sent == []
     assert file_socket.sent == []
+    assert agent_run_socket.sent == []
 
 
 @pytest.mark.asyncio

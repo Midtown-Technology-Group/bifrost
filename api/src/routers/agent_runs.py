@@ -25,6 +25,7 @@ from src.services.agent_run_access import (
     apply_agent_run_access,
     load_agent_for_user,
     load_agent_run_for_user,
+    load_agent_run_result_for_user,
 )
 from src.models.contracts.agent_run_flag_conversations import (
     FlagConversationResponse,
@@ -37,6 +38,7 @@ from src.models.contracts.agent_runs import (
     AgentRunEnqueueRequest,
     AgentRunEnqueueResponse,
     AgentRunListResponse,
+    AgentRunResultResponse,
     AgentRunRerunResponse,
     AgentRunResponse,
     AgentRunStepResponse,
@@ -57,7 +59,7 @@ from src.models.contracts.executions import AIUsagePublicSimple, AIUsageTotalsSi
 from src.models.orm.agent_run_verdict_history import AgentRunVerdictHistory
 from src.models.enums import AgentAccessLevel
 from src.models.orm.agents import Agent
-from src.models.orm.agent_runs import AgentRun
+from src.models.orm.agent_runs import AgentRun, AgentRunStep
 from src.models.orm.ai_usage import AIUsage
 from src.models.orm.summary_backfill_job import SummaryBackfillJob
 from src.core.redis_client import get_redis_client
@@ -119,7 +121,11 @@ def _require_flagged_completed_run(run: AgentRun) -> None:
         )
 
 
-def _run_to_response(run: AgentRun) -> AgentRunResponse:
+def _run_to_response(
+    run: AgentRun,
+    *,
+    include_sensitive: bool = False,
+) -> AgentRunResponse:
     """Convert AgentRun ORM to AgentRunResponse."""
     return AgentRunResponse(
         id=run.id,
@@ -129,8 +135,8 @@ def _run_to_response(run: AgentRun) -> AgentRunResponse:
         trigger_source=run.trigger_source,
         conversation_id=run.conversation_id,
         event_delivery_id=run.event_delivery_id,
-        input=run.input,
-        output=run.output,
+        input=run.input if include_sensitive else None,
+        output=run.output if include_sensitive else None,
         status=run.status,
         error=run.error,
         org_id=run.org_id,
@@ -150,7 +156,7 @@ def _run_to_response(run: AgentRun) -> AgentRunResponse:
         confidence=run.confidence,
         confidence_reason=run.confidence_reason,
         summary_status=run.summary_status,
-        summary_error=run.summary_error,
+        summary_error=run.summary_error if include_sensitive else None,
         verdict=run.verdict,
         verdict_note=run.verdict_note,
         verdict_set_at=run.verdict_set_at,
@@ -159,6 +165,24 @@ def _run_to_response(run: AgentRun) -> AgentRunResponse:
         started_at=run.started_at,
         completed_at=run.completed_at,
         parent_run_id=run.parent_run_id,
+    )
+
+
+def _step_to_response(
+    step: AgentRunStep,
+    *,
+    include_sensitive: bool,
+) -> AgentRunStepResponse:
+    """Project one stored run step through the raw-data grant."""
+    return AgentRunStepResponse(
+        id=step.id,
+        run_id=step.run_id,
+        step_number=step.step_number,
+        type=step.type,
+        content=step.content if include_sensitive else None,
+        tokens_used=step.tokens_used,
+        duration_ms=step.duration_ms,
+        created_at=step.created_at,
     )
 
 
@@ -319,7 +343,13 @@ async def list_agent_runs(
     next_cursor = str(page_offset + len(runs)) if has_more else None
 
     return AgentRunListResponse(
-        items=[_run_to_response(run) for run in runs],
+        items=[
+            _run_to_response(
+                run,
+                include_sensitive=user.has_platform_admin_grant(),
+            )
+            for run in runs
+        ],
         total=total,
         next_cursor=next_cursor,
     )
@@ -531,6 +561,8 @@ async def get_agent_run(
             detail=f"Agent run {run_id} not found",
         )
 
+    include_sensitive = user.has_platform_admin_grant()
+
     # Fetch AI usage records for this run
     ai_usage_result = await db.execute(
         select(AIUsage)
@@ -624,7 +656,9 @@ async def get_agent_run(
         try:
             async with get_redis() as r:
                 stream_key = agent_run_steps_stream_key(str(run_id))
-                entries = await r.xrange(stream_key, min="-", max="+")  # type: ignore[misc]
+                entries = (
+                    await r.xrange(stream_key, min="-", max="+")  # type: ignore[misc]
+                ) or []
                 for _entry_id, data in entries:
                     content_raw = data.get("content", "{}")
                     content = json.loads(content_raw) if content_raw else None
@@ -635,7 +669,7 @@ async def get_agent_run(
                         run_id=UUID(data["run_id"]),
                         step_number=int(data["step_number"]),
                         type=data["type"],
-                        content=content,
+                        content=content if include_sensitive else None,
                         tokens_used=int(tokens_str) if tokens_str else None,
                         duration_ms=int(duration_str) if duration_str else None,
                         created_at=datetime.fromisoformat(data["created_at"]),
@@ -644,21 +678,13 @@ async def get_agent_run(
             logger.warning(f"Failed to read steps from Redis for run {log_safe(run_id)}, falling back to DB")
             # Fall back to DB steps (may be empty if uncommitted)
             steps_response = [
-                AgentRunStepResponse(
-                    id=step.id, run_id=step.run_id, step_number=step.step_number,
-                    type=step.type, content=step.content, tokens_used=step.tokens_used,
-                    duration_ms=step.duration_ms, created_at=step.created_at,
-                )
+                _step_to_response(step, include_sensitive=include_sensitive)
                 for step in run.steps
             ]
     else:
         # Completed — read from DB (steps are committed)
         steps_response = [
-            AgentRunStepResponse(
-                id=step.id, run_id=step.run_id, step_number=step.step_number,
-                type=step.type, content=step.content, tokens_used=step.tokens_used,
-                duration_ms=step.duration_ms, created_at=step.created_at,
-            )
+            _step_to_response(step, include_sensitive=include_sensitive)
             for step in run.steps
         ]
 
@@ -670,8 +696,8 @@ async def get_agent_run(
         trigger_source=run.trigger_source,
         conversation_id=run.conversation_id,
         event_delivery_id=run.event_delivery_id,
-        input=run.input,
-        output=run.output,
+        input=run.input if include_sensitive else None,
+        output=run.output if include_sensitive else None,
         status=run.status,
         error=run.error,
         org_id=run.org_id,
@@ -691,7 +717,7 @@ async def get_agent_run(
         confidence=run.confidence,
         confidence_reason=run.confidence_reason,
         summary_status=run.summary_status,
-        summary_error=run.summary_error,
+        summary_error=run.summary_error if include_sensitive else None,
         verdict=run.verdict,
         verdict_note=run.verdict_note,
         verdict_set_at=run.verdict_set_at,
@@ -706,6 +732,30 @@ async def get_agent_run(
         ai_usage=ai_usage_list,
         ai_totals=ai_totals_response,
     )
+
+
+@router.get("/{run_id}/result")
+async def get_agent_run_result(
+    run_id: UUID,
+    db: DbSession,
+    user: CurrentActiveUser,
+) -> AgentRunResultResponse:
+    """Return terminal output to its initiating caller without raw trace data."""
+    run = await load_agent_run_result_for_user(db, run_id, user)
+    is_original_caller = run is not None and run.caller_user_id == str(user.user_id)
+    if run is None or not (
+        is_original_caller or user.has_platform_admin_grant()
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Agent run {run_id} not found",
+        )
+    if run.status not in {"completed", "budget_exceeded"}:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Agent run {run_id} has no terminal result",
+        )
+    return AgentRunResultResponse(run_id=run.id, output=run.output)
 
 
 @router.post("/{run_id}/rerun")

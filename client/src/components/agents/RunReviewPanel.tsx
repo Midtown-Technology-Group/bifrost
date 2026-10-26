@@ -32,11 +32,12 @@ import { Input } from "@/components/ui/input";
 import { VariablesTreeView } from "@/components/ui/variables-tree-view";
 import { cn } from "@/lib/utils";
 import { formatDuration } from "@/lib/utils";
+import { useAuth } from "@/contexts/AuthContext";
 import {
 	createAgentRunNavigationState,
 	type AgentRunNavigationOrigin,
 } from "@/lib/agent-run-navigation";
-import { useAuth } from "@/contexts/AuthContext";
+import { usePlatformAdminGrant } from "@/hooks/usePlatformAdminGrant";
 import { SummaryRegenerationControl } from "./SummaryRegenerationControl";
 import type { components } from "@/lib/v1";
 
@@ -179,6 +180,7 @@ export function RunReviewPanel({
 	const visibleActions = fallbackActions.slice(0, maxActions);
 	const overflow = fallbackActions.length - visibleActions.length;
 	const { isPlatformAdmin } = useAuth();
+	const canViewRaw = usePlatformAdminGrant();
 	const summaryStatus = run.summary_status;
 	const needsRegen = summaryStatus && summaryStatus !== "completed";
 
@@ -402,7 +404,9 @@ export function RunReviewPanel({
 					</Section>
 				) : null}
 
-				{run.summary_status === "failed" && run.summary_error ? (
+				{canViewRaw &&
+				run.summary_status === "failed" &&
+				run.summary_error ? (
 					<Section label="Summary error" compact={compact} plain>
 						<div
 							className={cn(

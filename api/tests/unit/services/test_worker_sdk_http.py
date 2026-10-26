@@ -630,10 +630,11 @@ class TestRouteReuse:
         assert set(WORKFLOW_ROUTE_METHODS).isdisjoint(SDK_ROUTE_PATHS)
 
     def test_agent_run_route_selection_is_exact(self):
-        """Gate C5b mounts only the enqueue POST and the detail GET."""
+        """Gate C5b mounts enqueue plus the SDK status/result reads."""
         assert AGENT_RUN_ROUTE_METHODS == {
             "/api/agent-runs/enqueue": frozenset({"POST"}),
             "/api/agent-runs/{run_id}": frozenset({"GET"}),
+            "/api/agent-runs/{run_id}/result": frozenset({"GET"}),
         }
         assert set(AGENT_RUN_ROUTE_METHODS).isdisjoint(
             SDK_ROUTE_PATHS
@@ -2256,6 +2257,7 @@ class TestSocketAgentRuns:
                 agent_id=agent.id,
                 trigger_type="api",
                 status="completed",
+                output={"text": "socket result"},
             )
             session.add(run)
             await session.commit()
@@ -2269,11 +2271,20 @@ class TestSocketAgentRuns:
                     f"/api/agent-runs/{run_id}",
                     headers={"Authorization": f"Bearer {_engine_token()}"},
                 )
+                result_response = await client.get(
+                    f"/api/agent-runs/{run_id}/result",
+                    headers={"Authorization": f"Bearer {_engine_token()}"},
+                )
             assert response.status_code == 200, response.text
             payload = response.json()
             assert payload["id"] == str(run_id)
             assert payload["agent_name"] == agent_name
             assert payload["status"] == "completed"
+            assert result_response.status_code == 200, result_response.text
+            assert result_response.json() == {
+                "run_id": str(run_id),
+                "output": {"text": "socket result"},
+            }
 
             # The row is durable and visible to an independent session.
             async with async_session_factory() as check:
@@ -2438,6 +2449,8 @@ class TestEngineLocalAgentsFallback:
             await agents_mod.agents.enqueue("A")
         with pytest.raises(httpx.ConnectError):
             await agents_mod.agents.get_run(str(uuid4()))
+        with pytest.raises(httpx.ConnectError):
+            await agents_mod.agents.get_result(str(uuid4()))
 
 
 class TestSocketEventsForms:

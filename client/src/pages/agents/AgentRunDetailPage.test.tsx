@@ -65,7 +65,7 @@ vi.mock("@/hooks/useAgentRunUpdates", () => ({
 
 const mockAuth = vi.fn();
 vi.mock("@/contexts/AuthContext", () => ({
-	useAuth: () => mockAuth(),
+	useAuth: () => ({ hasRole: () => false, ...mockAuth() }),
 }));
 
 // Stub heavy children
@@ -357,6 +357,7 @@ describe("AgentRunDetailPage — header + summary", () => {
 	});
 
 	it("keeps grouped work units in Advanced and nests the raw executor trace", async () => {
+		mockAuth.mockReturnValue({ isPlatformAdmin: true });
 		mockUseAgentRun.mockReturnValue({
 			data: makeRun({
 				steps: [
@@ -552,6 +553,7 @@ describe("AgentRunDetailPage — verdict actions", () => {
 
 describe("AgentRunDetailPage — sidebar metadata", () => {
 	it("keeps Activity free of the old metadata sidebar and exposes run ID copy in the header", async () => {
+		mockAuth.mockReturnValue({ isPlatformAdmin: true });
 		const { user } = await renderPage();
 		expect(
 			screen.getByRole("button", { name: "Copy run ID" }),
@@ -666,6 +668,7 @@ describe("AgentRunDetailPage — flag conversation", () => {
 
 describe("AgentRunDetailPage — AI usage card", () => {
 	it("renders the AI usage card when usage data is present", async () => {
+		mockAuth.mockReturnValue({ isPlatformAdmin: true });
 		mockUseAgentRun.mockReturnValue({
 			data: makeRun({
 				ai_usage: [
@@ -764,25 +767,34 @@ it("retains the execution when refreshing its run fails", async () => {
 	);
 });
 
-it.each(["run-1", "__proto__", "constructor"])("loads and edits the stored note for run key %s", async (runId) => {
-	mockUseAgentRun.mockReturnValue({
-		data: makeRun({ id: runId, verdict_note: "Stored review", verdict: "down" }),
-		isLoading: false,
-	});
-	const { user } = await renderPage(`/agents/agent-1/runs/${runId}`);
-	const input = screen.getByRole("textbox", { name: "Review note" });
-	expect(input).toHaveValue("Stored review");
-	await user.clear(input);
-	await user.type(input, "Check renewal");
-	await user.click(screen.getByRole("button", { name: "Save review note" }));
-	expect(mockSetVerdict).toHaveBeenCalledWith(
-		expect.objectContaining({
-			body: { verdict: "down", note: "Check renewal" },
-		}),
-		expect.any(Object),
-	);
-	expect(input).toBeDisabled();
-});
+it.each(["run-1", "__proto__", "constructor"])(
+	"loads and edits the stored note for run key %s",
+	async (runId) => {
+		mockUseAgentRun.mockReturnValue({
+			data: makeRun({
+				id: runId,
+				verdict_note: "Stored review",
+				verdict: "down",
+			}),
+			isLoading: false,
+		});
+		const { user } = await renderPage(`/agents/agent-1/runs/${runId}`);
+		const input = screen.getByRole("textbox", { name: "Review note" });
+		expect(input).toHaveValue("Stored review");
+		await user.clear(input);
+		await user.type(input, "Check renewal");
+		await user.click(
+			screen.getByRole("button", { name: "Save review note" }),
+		);
+		expect(mockSetVerdict).toHaveBeenCalledWith(
+			expect.objectContaining({
+				body: { verdict: "down", note: "Check renewal" },
+			}),
+			expect.any(Object),
+		);
+		expect(input).toBeDisabled();
+	},
+);
 
 it("retains the run and retries failed agent information", async () => {
 	const refetch = vi.fn();
