@@ -283,6 +283,8 @@ def promote_candidate(
             "candidate_ref": candidate.ref,
             "candidate_source_sha": candidate.source_sha,
             "predicate_path": str(predicate_path),
+            "run_id": os.environ.get("GITHUB_RUN_ID", ""),
+            "run_attempt": os.environ.get("GITHUB_RUN_ATTEMPT", ""),
         },
     )
     return candidate

@@ -16,7 +16,7 @@ import accept_release_images as acceptance
 import release_manifest as manifest
 
 
-class ReleaseManifestTests(unittest.TestCase):
+class ManifestFixture(unittest.TestCase):
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory()
         self.addCleanup(self.directory.cleanup)
@@ -55,6 +55,8 @@ class ReleaseManifestTests(unittest.TestCase):
         manifest.git("commit", "-qm", "fixture")
         return manifest.git("rev-parse", "HEAD")
 
+
+class ReleaseManifestTests(ManifestFixture):
     def build(self, **changes):
         args = dict(tag="v3.0.0", source=self.source, run_id=12, run_attempt=1, digests=self.digests)
         args.update(changes)

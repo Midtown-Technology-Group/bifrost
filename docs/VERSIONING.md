@@ -195,3 +195,9 @@ gate with read-only repository permissions. This supplies the required Docker
 lane when a local test VM is unavailable. It retains exact-candidate stage/plan
 logs and cleanup evidence; tags never run that preparation job. Required CI,
 human exact-head approval and administrator queue admission remain mandatory.
+
+## Proposed ordinary production identity
+
+The additive [protected-main producer contract](dev/protected-main-production-manifest.md)
+exports already-promoted dev digests as one signed tuple. It preserves their baked
+dev identity and does not change the formal stable manifest or activate deployment.
