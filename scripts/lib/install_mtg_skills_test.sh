@@ -36,9 +36,12 @@ run_installer() {
   local home="$1"
   local path="$2"
   local log="$3"
+  local status=0
   shift 3
-  env HOME="$home" PATH="$path" "$@" /usr/bin/bash "$INSTALLER" >"$log" 2>&1 || true
-  # The installer is fail-soft and must not propagate a caller status.
+  env HOME="$home" PATH="$path" "$@" /usr/bin/bash "$INSTALLER" >"$log" 2>&1 || status=$?
+  if [[ "$status" -ne 0 ]]; then
+    fail "installer exited ${status}: $(cat "$log")"
+  fi
   return 0
 }
 

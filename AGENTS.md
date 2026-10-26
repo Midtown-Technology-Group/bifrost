@@ -25,14 +25,21 @@ from `mtg-engineering-flow` without overriding repository gates.
 
 ## Cursor cloud agents
 
-Cursor cloud agents install the compact profile from
+The compact profile from
 [mtg-codex-skills](https://github.com/Midtown-Technology-Group/mtg-codex-skills)
-at the reviewed pin in `.cursor/install-mtg-skills.sh`.
-`.cursor/environment.json` runs that script during environment build, and its
-`repositoryDependencies` entry grants the agent token read access to that
-private repository. The catalog stays in the skills repo; this repo does not
-vendor it. The active skills are `mtg-engineering-flow`, `mtg-skill-router`,
-and `github-pr-stewardship`.
+is installed at the reviewed pin in `.cursor/install-mtg-skills.sh`.
+`.cursor/environment.json` declares that install and lists the skills
+repository in `repositoryDependencies`. Cursor uses a saved personal or team
+environment first and reads this file only when the active environment points
+at it. `repositoryDependencies` adds that repository to the generated token
+when the connected GitHub App already has access to it. After this file is on
+the default branch, confirm the active environment records it and that a new
+build can clone `mtg-codex-skills`. Until that clone succeeds, the installer
+exits 0 and the skills stay uninstalled.
+
+The catalog stays in the skills repo; this repo does not vendor it. The active
+skills are `mtg-engineering-flow`, `mtg-skill-router`, and
+`github-pr-stewardship`.
 
 Codex, T3 Code, Windows, and local-machine skills in that library do not apply
 in Cursor cloud.
