@@ -69,8 +69,12 @@ MTG_REST_OPERATIONS: tuple[OperationDefinition, ...] = (
         OperationTargetKind.PLATFORM, "src.routers.platform.app_service.app_service_metrics",
     ),
     _rest_only(
-        "auth.authorize_cli_native_auth", "GET", "/auth/cli/authorize",
+        "auth.authorize_cli_native_auth", "POST", "/auth/cli/authorize",
         OperationTargetKind.COLLECTION, "src.routers.auth.authorize_cli_native_auth",
+    ),
+    _rest_only(
+        "auth.inspect_cli_native_auth", "GET", "/auth/cli/authorize",
+        OperationTargetKind.COLLECTION, "src.routers.auth.inspect_cli_native_auth",
     ),
     _rest_only(
         "auth.exchange_cli_native_auth_token", "POST", "/auth/cli/token",

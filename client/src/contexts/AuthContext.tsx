@@ -464,6 +464,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
 			"/accept-invite",
 			"/auth/callback",
 			"/mfa-setup",
+			"/cli/authorize",
 		];
 		const isPublicRoute = publicRoutes.some((route) =>
 			location.pathname.startsWith(route),
