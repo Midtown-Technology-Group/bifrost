@@ -19,7 +19,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-CONSUMER_SHA = '52df6e8287db1ec399469b4c66c5a01392f881d5'
+CONSUMER_SHA = 'ecea7f7f07a0c79041cb9d7bb12987862b47ecf4'
 FIXTURES = Path(__file__).resolve().parent / 'fixtures/protected-main'
 
 
@@ -45,8 +45,11 @@ class ConsumerContractAcceptance(unittest.TestCase):
         cls.release = cls.promote.release
 
     def setUp(self):
-        self.fixture = json.loads((FIXTURES / 'baseline.json').read_text())
+        self.fixture = json.loads((FIXTURES / 'aligned-producer.json').read_text())
         self.value = self.fixture['manifest']
+        self.retained = copy.deepcopy(self.fixture['candidate_provenance'])
+        self.fresh = copy.deepcopy(self.retained)
+        self.candidate_damage = None
         source, build = self.value['source'], self.value['build']
         self.run_info = {'headSha': source['commit'], 'databaseId': build['run_id'],
                          'runAttempt': build['run_attempt']}
@@ -95,8 +98,27 @@ class ConsumerContractAcceptance(unittest.TestCase):
             directory = Path(command[command.index('--dir') + 1])
             (directory / 'production-manifest.json').write_bytes(self.raw)
             (directory / 'production-manifest.json.sigstore.json').write_text('{}')
+            (directory / self.release.CANDIDATE_PROVENANCE_NAME).write_text(json.dumps(self.retained))
             checksum = '0' * 64 if self.checksum_failure else hashlib.sha256(self.raw).hexdigest()
             (directory / 'production-manifest.json.sha256').write_text(checksum + '  production-manifest.json\n')
+        elif command[:3] == ['gh', 'attestation', 'verify'] and command[3].startswith('oci://'):
+            role = next(role for role, record in self.value['images'].items()
+                        if command[3] == 'oci://' + record['repository'] + '@' + record['digest'])
+            proof = self.value['images'][role]['candidate_provenance']
+            self.assertEqual(json.loads(Path(command[command.index('--bundle') + 1]).read_text()),
+                             self.retained[role]['attestation']['bundle'])
+            self.assertEqual(command[command.index('--source-digest') + 1], proof['invocation_commit'])
+            self.assertEqual(command[command.index('--signer-digest') + 1], proof['workflow_commit'])
+            self.assertIn('--deny-self-hosted-runners', command)
+            result = copy.deepcopy(self.fresh[role])
+            fresh = result['verificationResult']
+            if self.candidate_damage == 'invocation':
+                fresh['signature']['certificate']['sourceRepositoryDigest'] = '0' * 40
+            elif self.candidate_damage == 'material':
+                fresh['statement']['predicate']['buildDefinition']['resolvedDependencies'][0]['digest']['gitCommit'] = '0' * 40
+            elif self.candidate_damage == 'signature':
+                raise subprocess.CalledProcessError(1, command)
+            output = json.dumps([result])
         elif command[:3] == ['gh', 'attestation', 'verify']:
             self.assertEqual(command[command.index('--source-ref') + 1], 'refs/heads/main')
             self.assertEqual(command[command.index('--source-digest') + 1], self.value['source']['commit'])
@@ -155,9 +177,11 @@ class ConsumerContractAcceptance(unittest.TestCase):
             run_attempt=self.run_info['runAttempt'])
 
     def test_producer_tuple_through_real_consumer_admission(self):
-        raw, bundle, images = self.promote.verified_production_manifest(self.run_info)
+        raw, bundle, images, retained = self.promote.verified_production_manifest(self.run_info)
         self.assertEqual(raw, self.raw)
         self.assertEqual(bundle, b'{}')
+        self.assertEqual(json.loads(retained), self.retained)
+        self.assertEqual(len([c for c in self.commands if c[:3] == ['gh', 'attestation', 'verify'] and c[3].startswith('oci://')]), 3)
         self.assertEqual(json.loads(raw)['version'], '3.0.1-dev.7')
         self.assertIsNone(json.loads(raw)['tag'])
         self.assertEqual(len([c for c in self.commands if c[:2] == ['cosign', 'verify-attestation']]), 3)
@@ -174,8 +198,8 @@ class ConsumerContractAcceptance(unittest.TestCase):
         control = copy.deepcopy(value)
         for image in control['images'].values():
             image.pop('candidate_provenance')
-        self.assertIs(self.release.validate_production_manifest(control,
-            source_sha=control['source']['commit']), control)
+        with self.assertRaises(ValueError):
+            self.release.validate_production_manifest(control, source_sha=control['source']['commit'])
         try:
             self.release.validate_production_manifest(value,
                 source_sha=value['source']['commit'], run_id=value['build']['run_id'],
@@ -255,7 +279,7 @@ class ConsumerContractAcceptance(unittest.TestCase):
         original = copy.deepcopy(self.value)
         self.release.qualify_production_manifest(self.value)
         self.assertEqual(self.value, original)
-        raw, _, _ = self.promote.verified_production_manifest(self.run_info)
+        raw, _, _, _ = self.promote.verified_production_manifest(self.run_info)
         self.assertEqual(json.loads(raw)['source']['commit'], original['source']['commit'])
 
     def test_equal_tree_revert_cannot_reuse_prior_source_receipt(self):
@@ -264,19 +288,26 @@ class ConsumerContractAcceptance(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.validate(value)
 
-    def test_actual_candidate_and_main_promotion_keep_distinct_commit_identity(self):
-        old_candidate = self.value['source']['candidate_commit']
-        candidate = 'c' * 40
-        self.value['source']['candidate_commit'] = candidate
-        self.metadata[f'git/commits/{candidate}'] = {
-            'sha': candidate, 'tree': {'sha': self.value['source']['tree']}}
-        self.raw = (json.dumps(self.value, sort_keys=True) + '\n').encode()
-        raw, _, _ = self.promote.verified_production_manifest(self.run_info)
-        result = json.loads(raw)
-        self.assertEqual(result['source']['candidate_commit'], candidate)
-        self.assertEqual(result['source']['commit'], old_candidate)
+    def test_actual_candidate_tree_cannot_differ_from_selected_tree(self):
+        candidate = self.value['source']['candidate_commit']
         self.metadata[f'git/commits/{candidate}']['tree']['sha'] = '0' * 40
         with self.assertRaisesRegex(ValueError, 'candidate tree'):
+            self.promote.verified_production_manifest(self.run_info)
+
+    def test_false_cached_source_cannot_override_fresh_candidate_verification(self):
+        for damage in ('invocation', 'material', 'signature'):
+            self.candidate_damage = damage
+            with self.subTest(damage=damage), self.assertRaises((ValueError, subprocess.CalledProcessError)):
+                self.promote.verified_production_manifest(self.run_info)
+
+    def test_cached_verification_result_is_not_trusted(self):
+        for record in self.retained.values():
+            record['verificationResult'] = {'untrusted': 'contradictory cached claim'}
+        self.promote.verified_production_manifest(self.run_info)
+
+    def test_inner_bundle_substitution_is_rejected_before_reverification(self):
+        self.retained['worker']['attestation']['bundle']['substitution'] = True
+        with self.assertRaisesRegex(ValueError, 'signed hash'):
             self.promote.verified_production_manifest(self.run_info)
 
     def test_retained_manifest_and_bundle_load_with_exact_lock(self):
@@ -297,6 +328,7 @@ class ConsumerContractAcceptance(unittest.TestCase):
             lock.write_text('\n'.join(lines) + '\n')
             (root / self.release.MANIFEST_NAME).write_bytes(self.raw)
             (root / self.release.BUNDLE_NAME).write_text('{}')
+            (root / self.release.CANDIDATE_PROVENANCE_NAME).write_text(json.dumps(self.retained))
             result = self.release.load_release_record(lock, required=True, verify=True)
             self.assertEqual(result['manifest'], self.value)
             retained = {p.name: p.read_bytes() for p in root.iterdir()}

@@ -1,0 +1,316 @@
+{
+  "candidate_provenance": {
+    "api": {
+      "attestation": {
+        "bundle": {
+          "synthetic_unsigned_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+          "synthetic_unsigned_subject": "ghcr.io/midtown-technology-group/bifrost-api"
+        },
+        "bundle_url": "",
+        "initiator": ""
+      },
+      "verificationResult": {
+        "signature": {
+          "certificate": {
+            "buildSignerDigest": "4843b93ff7db969741e7570a8aa346efbbb8d163",
+            "buildSignerURI": "https://github.com/Midtown-Technology-Group/bifrost/.github/workflows/ci.yml@refs/heads/gh-readonly-queue/main/test",
+            "issuer": "https://token.actions.githubusercontent.com",
+            "runInvocationURI": "https://github.com/Midtown-Technology-Group/bifrost/actions/runs/10/attempts/1",
+            "sourceRepositoryDigest": "4843b93ff7db969741e7570a8aa346efbbb8d163",
+            "sourceRepositoryRef": "refs/heads/gh-readonly-queue/main/test",
+            "sourceRepositoryURI": "https://github.com/Midtown-Technology-Group/bifrost",
+            "subjectAlternativeName": "https://github.com/Midtown-Technology-Group/bifrost/.github/workflows/ci.yml@refs/heads/gh-readonly-queue/main/test"
+          }
+        },
+        "statement": {
+          "predicate": {
+            "buildDefinition": {
+              "buildType": "https://actions.github.io/buildtypes/workflow/v1",
+              "externalParameters": {
+                "workflow": {
+                  "path": ".github/workflows/ci.yml",
+                  "ref": "refs/heads/gh-readonly-queue/main/test",
+                  "repository": "https://github.com/Midtown-Technology-Group/bifrost"
+                }
+              },
+              "internalParameters": {
+                "github": {
+                  "event_name": "merge_group"
+                }
+              },
+              "resolvedDependencies": [
+                {
+                  "digest": {
+                    "gitCommit": "4843b93ff7db969741e7570a8aa346efbbb8d163"
+                  },
+                  "uri": "git+https://github.com/Midtown-Technology-Group/bifrost@refs/heads/gh-readonly-queue/main/test"
+                }
+              ]
+            },
+            "runDetails": {
+              "builder": {
+                "id": "https://github.com/Midtown-Technology-Group/bifrost/.github/workflows/ci.yml@refs/heads/gh-readonly-queue/main/test"
+              },
+              "metadata": {
+                "invocationId": "https://github.com/Midtown-Technology-Group/bifrost/actions/runs/10/attempts/1"
+              }
+            }
+          },
+          "predicateType": "https://slsa.dev/provenance/v1",
+          "subject": [
+            {
+              "digest": {
+                "sha256": "1111111111111111111111111111111111111111111111111111111111111111"
+              },
+              "name": "ghcr.io/midtown-technology-group/bifrost-api"
+            }
+          ]
+        }
+      }
+    },
+    "client": {
+      "attestation": {
+        "bundle": {
+          "synthetic_unsigned_digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+          "synthetic_unsigned_subject": "ghcr.io/midtown-technology-group/bifrost-client"
+        },
+        "bundle_url": "",
+        "initiator": ""
+      },
+      "verificationResult": {
+        "signature": {
+          "certificate": {
+            "buildSignerDigest": "4843b93ff7db969741e7570a8aa346efbbb8d163",
+            "buildSignerURI": "https://github.com/Midtown-Technology-Group/bifrost/.github/workflows/ci.yml@refs/heads/gh-readonly-queue/main/test",
+            "issuer": "https://token.actions.githubusercontent.com",
+            "runInvocationURI": "https://github.com/Midtown-Technology-Group/bifrost/actions/runs/10/attempts/1",
+            "sourceRepositoryDigest": "4843b93ff7db969741e7570a8aa346efbbb8d163",
+            "sourceRepositoryRef": "refs/heads/gh-readonly-queue/main/test",
+            "sourceRepositoryURI": "https://github.com/Midtown-Technology-Group/bifrost",
+            "subjectAlternativeName": "https://github.com/Midtown-Technology-Group/bifrost/.github/workflows/ci.yml@refs/heads/gh-readonly-queue/main/test"
+          }
+        },
+        "statement": {
+          "predicate": {
+            "buildDefinition": {
+              "buildType": "https://actions.github.io/buildtypes/workflow/v1",
+              "externalParameters": {
+                "workflow": {
+                  "path": ".github/workflows/ci.yml",
+                  "ref": "refs/heads/gh-readonly-queue/main/test",
+                  "repository": "https://github.com/Midtown-Technology-Group/bifrost"
+                }
+              },
+              "internalParameters": {
+                "github": {
+                  "event_name": "merge_group"
+                }
+              },
+              "resolvedDependencies": [
+                {
+                  "digest": {
+                    "gitCommit": "4843b93ff7db969741e7570a8aa346efbbb8d163"
+                  },
+                  "uri": "git+https://github.com/Midtown-Technology-Group/bifrost@refs/heads/gh-readonly-queue/main/test"
+                }
+              ]
+            },
+            "runDetails": {
+              "builder": {
+                "id": "https://github.com/Midtown-Technology-Group/bifrost/.github/workflows/ci.yml@refs/heads/gh-readonly-queue/main/test"
+              },
+              "metadata": {
+                "invocationId": "https://github.com/Midtown-Technology-Group/bifrost/actions/runs/10/attempts/1"
+              }
+            }
+          },
+          "predicateType": "https://slsa.dev/provenance/v1",
+          "subject": [
+            {
+              "digest": {
+                "sha256": "2222222222222222222222222222222222222222222222222222222222222222"
+              },
+              "name": "ghcr.io/midtown-technology-group/bifrost-client"
+            }
+          ]
+        }
+      }
+    },
+    "worker": {
+      "attestation": {
+        "bundle": {
+          "synthetic_unsigned_digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+          "synthetic_unsigned_subject": "ghcr.io/midtown-technology-group/bifrost-worker"
+        },
+        "bundle_url": "",
+        "initiator": ""
+      },
+      "verificationResult": {
+        "signature": {
+          "certificate": {
+            "buildSignerDigest": "4843b93ff7db969741e7570a8aa346efbbb8d163",
+            "buildSignerURI": "https://github.com/Midtown-Technology-Group/bifrost/.github/workflows/ci.yml@refs/heads/gh-readonly-queue/main/test",
+            "issuer": "https://token.actions.githubusercontent.com",
+            "runInvocationURI": "https://github.com/Midtown-Technology-Group/bifrost/actions/runs/10/attempts/1",
+            "sourceRepositoryDigest": "4843b93ff7db969741e7570a8aa346efbbb8d163",
+            "sourceRepositoryRef": "refs/heads/gh-readonly-queue/main/test",
+            "sourceRepositoryURI": "https://github.com/Midtown-Technology-Group/bifrost",
+            "subjectAlternativeName": "https://github.com/Midtown-Technology-Group/bifrost/.github/workflows/ci.yml@refs/heads/gh-readonly-queue/main/test"
+          }
+        },
+        "statement": {
+          "predicate": {
+            "buildDefinition": {
+              "buildType": "https://actions.github.io/buildtypes/workflow/v1",
+              "externalParameters": {
+                "workflow": {
+                  "path": ".github/workflows/ci.yml",
+                  "ref": "refs/heads/gh-readonly-queue/main/test",
+                  "repository": "https://github.com/Midtown-Technology-Group/bifrost"
+                }
+              },
+              "internalParameters": {
+                "github": {
+                  "event_name": "merge_group"
+                }
+              },
+              "resolvedDependencies": [
+                {
+                  "digest": {
+                    "gitCommit": "4843b93ff7db969741e7570a8aa346efbbb8d163"
+                  },
+                  "uri": "git+https://github.com/Midtown-Technology-Group/bifrost@refs/heads/gh-readonly-queue/main/test"
+                }
+              ]
+            },
+            "runDetails": {
+              "builder": {
+                "id": "https://github.com/Midtown-Technology-Group/bifrost/.github/workflows/ci.yml@refs/heads/gh-readonly-queue/main/test"
+              },
+              "metadata": {
+                "invocationId": "https://github.com/Midtown-Technology-Group/bifrost/actions/runs/10/attempts/1"
+              }
+            }
+          },
+          "predicateType": "https://slsa.dev/provenance/v1",
+          "subject": [
+            {
+              "digest": {
+                "sha256": "3333333333333333333333333333333333333333333333333333333333333333"
+              },
+              "name": "ghcr.io/midtown-technology-group/bifrost-worker"
+            }
+          ]
+        }
+      }
+    }
+  },
+  "cryptographically_verified": false,
+  "manifest": {
+    "acceptance": {
+      "components": [
+        "api",
+        "client",
+        "worker"
+      ],
+      "kind": "signed-exact-tree-promotion"
+    },
+    "build": {
+      "event": "push",
+      "ref": "refs/heads/main",
+      "run_attempt": 2,
+      "run_id": 12,
+      "workflow": ".github/workflows/ci.yml"
+    },
+    "channel": "protected-main",
+    "compatibility": {
+      "cli_contract": {
+        "current": 13,
+        "previous": 13
+      },
+      "database": {
+        "migration_heads": [
+          "20261003_workflow_retirement"
+        ],
+        "upgrade_required": false
+      },
+      "rollback": {
+        "reason": "Automatic rollback is not certified. Preserve terminal workflow retirement evidence and admission safeguards during application rollback. Database downgrade past 20261003_workflow_retirement refuses once retirement evidence exists; use a reviewed recovery plan, not an automatic schema downgrade.",
+        "supported": false
+      }
+    },
+    "images": {
+      "api": {
+        "candidate_provenance": {
+          "bundle_sha256": "e1f84e9b771235a566629fe56c0fac1e3ff323487b29f13cfeb0ee6869d8ce41",
+          "checkout_commit": "4843b93ff7db969741e7570a8aa346efbbb8d163",
+          "checkout_tree": "5165f31412c66a8b717cf2528516788735d6a5f0",
+          "invocation_commit": "4843b93ff7db969741e7570a8aa346efbbb8d163",
+          "invocation_uri": "https://github.com/Midtown-Technology-Group/bifrost/actions/runs/10/attempts/1",
+          "predicate_type": "https://slsa.dev/provenance/v1",
+          "run_attempt": 1,
+          "run_id": 10,
+          "workflow_commit": "4843b93ff7db969741e7570a8aa346efbbb8d163",
+          "workflow_ref": "refs/heads/gh-readonly-queue/main/test"
+        },
+        "digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "platforms": {
+          "linux/amd64": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+        },
+        "repository": "ghcr.io/midtown-technology-group/bifrost-api"
+      },
+      "client": {
+        "candidate_provenance": {
+          "bundle_sha256": "e93a24ff82d050374efb6693b23a7cbe1f981f01933104bc7fde0b74f5d75762",
+          "checkout_commit": "4843b93ff7db969741e7570a8aa346efbbb8d163",
+          "checkout_tree": "5165f31412c66a8b717cf2528516788735d6a5f0",
+          "invocation_commit": "4843b93ff7db969741e7570a8aa346efbbb8d163",
+          "invocation_uri": "https://github.com/Midtown-Technology-Group/bifrost/actions/runs/10/attempts/1",
+          "predicate_type": "https://slsa.dev/provenance/v1",
+          "run_attempt": 1,
+          "run_id": 10,
+          "workflow_commit": "4843b93ff7db969741e7570a8aa346efbbb8d163",
+          "workflow_ref": "refs/heads/gh-readonly-queue/main/test"
+        },
+        "digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        "platforms": {
+          "linux/amd64": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+        },
+        "repository": "ghcr.io/midtown-technology-group/bifrost-client"
+      },
+      "worker": {
+        "candidate_provenance": {
+          "bundle_sha256": "f91c9e95d78694ff14621448566b7b977948af65de8ce48e49475b92f1b83120",
+          "checkout_commit": "4843b93ff7db969741e7570a8aa346efbbb8d163",
+          "checkout_tree": "5165f31412c66a8b717cf2528516788735d6a5f0",
+          "invocation_commit": "4843b93ff7db969741e7570a8aa346efbbb8d163",
+          "invocation_uri": "https://github.com/Midtown-Technology-Group/bifrost/actions/runs/10/attempts/1",
+          "predicate_type": "https://slsa.dev/provenance/v1",
+          "run_attempt": 1,
+          "run_id": 10,
+          "workflow_commit": "4843b93ff7db969741e7570a8aa346efbbb8d163",
+          "workflow_ref": "refs/heads/gh-readonly-queue/main/test"
+        },
+        "digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+        "platforms": {
+          "linux/amd64": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "linux/arm64": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+        },
+        "repository": "ghcr.io/midtown-technology-group/bifrost-worker"
+      }
+    },
+    "product": "bifrost",
+    "schema_version": 2,
+    "source": {
+      "candidate_commit": "4843b93ff7db969741e7570a8aa346efbbb8d163",
+      "commit": "4843b93ff7db969741e7570a8aa346efbbb8d163",
+      "parent": "52669d4ab7fcd92f56a851dee727256061d4e8ab",
+      "repository": "Midtown-Technology-Group/bifrost",
+      "tree": "5165f31412c66a8b717cf2528516788735d6a5f0"
+    },
+    "tag": null,
+    "version": "3.0.1-dev.7"
+  },
+  "producer_commit": "723e767a7ac3c21a1b2645f7b1e033a6a12c6a22",
+  "synthetic": true
+}

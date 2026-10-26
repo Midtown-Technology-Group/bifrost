@@ -44,7 +44,16 @@ class RevisedProducerAcceptance(unittest.TestCase):
         self.fixture.setUp()
         # Existing owner seam: run real provenance orchestration/Git comparisons;
         # substitute verified-results transport and suppress git fetch only.
-        self.fixture.real_provenance(lambda image, digest: [self.fixture.slsa_result(image, digest)])
+        self.fixture.real_provenance(lambda image, digest: [self.slsa_result(image, digest)])
+
+    def slsa_result(self, image, digest):
+        result = self.fixture.slsa_result(image, digest)
+        # Preserve gh's attestation wrapper and inner-bundle boundary. These
+        # objects remain unsigned synthetic transport fixtures.
+        result['attestation'] = {'bundle': {'synthetic_unsigned_subject': image,
+                                           'synthetic_unsigned_digest': digest},
+                                 'bundle_url': '', 'initiator': ''}
+        return result
 
     def test_valid_queue_provenance_is_retained_with_original_build_identity(self):
         bundles = {}
