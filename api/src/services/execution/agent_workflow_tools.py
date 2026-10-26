@@ -18,6 +18,8 @@ class AgentWorkflowCaller:
     is_platform_admin: bool = False
     agent_id: UUID | None = None
     agent_run_id: UUID | None = None
+    is_provider_org: bool = False
+    is_external: bool = False
 
 
 async def execute_agent_workflow_tool(
@@ -105,6 +107,8 @@ async def execute_agent_workflow_tool(
         user_name=caller.name,
         org_id=str(caller.organization_id) if caller.organization_id else None,
         is_platform_admin=caller.is_platform_admin,
+        is_provider_org=caller.is_provider_org,
+        is_external=caller.is_external,
         is_agent=True,
         execution_id=execution_id,
         artifact_workspace_id=artifact_workspace_id,
