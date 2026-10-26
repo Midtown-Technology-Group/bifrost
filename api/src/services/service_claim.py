@@ -68,7 +68,7 @@ class ServiceClaimLoop:
     _task: asyncio.Task[None] | None = None
     _last_beat: float = 0.0
     # Staged flush cursors (attempt_id -> last stream ID), written to Redis
-    # only after the tick's commit — never before (see service_log_flush).
+    # only after that service beat commits — never before (see service_log_flush).
     _pending_cursors: dict[str, str] = field(default_factory=dict)
     # Attempt IDs whose cursors the completion path has taken over (pop +
     # clear). A store in flight for a taken-over attempt must drop its
@@ -142,33 +142,54 @@ class ServiceClaimLoop:
             return
         self._last_beat = now
 
+        # Each beat commits before the next service. Source indexing can
+        # update multiple definitions in AST order, so sorting this loop alone
+        # cannot provide transaction-wide ordering against that writer.
+        for owned in sorted(self._owned.values(), key=lambda item: str(item.service_id)):
+            attempt_key = str(owned.attempt_id)
+            if self._owned.get(attempt_key) is not owned:
+                continue
+            previous_cursor = self._pending_cursors.get(attempt_key)
+            try:
+                await self._beat_one(db, owned)
+                await db.commit()
+            except BaseException:
+                # Only this beat's staged cursor lacks a committed row batch.
+                # Preserve earlier committed beats and prior Redis retries.
+                if previous_cursor is None or attempt_key in self._completed_cursors:
+                    self._pending_cursors.pop(attempt_key, None)
+                else:
+                    self._pending_cursors[attempt_key] = previous_cursor
+                await db.rollback()
+                raise
+
+    async def _beat_one(self, db, owned: OwnedAttempt) -> None:
+        """One service's supervision; caller commits before another service."""
         from src.models.orm.services import ServiceDefinition
         from src.services import service_lifecycle as lifecycle
 
-        for attempt_key in list(self._owned):
-            owned = self._owned[attempt_key]
-            try:
-                attempt = await lifecycle.heartbeat_attempt(
-                    db,
-                    attempt_id=owned.attempt_id,
-                    lease_token=owned.lease_token,
-                    lease_ttl_seconds=self.lease_ttl_seconds,
-                )
-            except lifecycle.StaleLeaseError:
-                logger.warning(
-                    "lost ownership of attempt %s; dropping", attempt_key[:8]
-                )
-                await self._drop_ownership(owned)
-                continue
+        try:
+            attempt = await lifecycle.heartbeat_attempt(
+                db,
+                attempt_id=owned.attempt_id,
+                lease_token=owned.lease_token,
+                lease_ttl_seconds=self.lease_ttl_seconds,
+            )
+        except lifecycle.StaleLeaseError:
+            logger.warning(
+                "lost ownership of attempt %s; dropping", str(owned.attempt_id)[:8]
+            )
+            await self._drop_ownership(owned)
+            return
 
-            definition = await db.get(ServiceDefinition, owned.service_id)
-            if await self._enforce_startup_grace(db, owned, attempt, definition):
-                continue
-            await self._drain_ready(db, owned)
-            await self._mirror_stop(db, owned, attempt)
-            await self._report_memory(owned)
-            await self._rotate_token(db, owned, definition)
-            await self._flush_logs(db, owned)
+        definition = await db.get(ServiceDefinition, owned.service_id)
+        if await self._enforce_startup_grace(db, owned, attempt, definition):
+            return
+        await self._drain_ready(db, owned)
+        await self._mirror_stop(db, owned, attempt)
+        await self._report_memory(owned)
+        await self._rotate_token(db, owned, definition)
+        await self._flush_logs(db, owned)
 
     async def _enforce_startup_grace(self, db, owned, attempt, definition) -> bool:
         """Fail attempts that never report ready within their grace.
@@ -313,9 +334,9 @@ class ServiceClaimLoop:
     async def _flush_logs(self, db, owned: OwnedAttempt) -> None:
         """Drain one owned attempt's stream tail (staging the cursor).
 
-        Rows join the tick's transaction; the cursor is staged in
+        Rows join one service beat's transaction; the cursor is staged in
         ``_pending_cursors`` and written by ``_store_cursors`` only after
-        the tick commits — a failed tick replays cleanly with no
+        that beat commits — a failed beat replays cleanly with no
         duplicates and no gaps.
         """
         from src.services import service_log_flush
@@ -334,7 +355,7 @@ class ServiceClaimLoop:
             )
 
     async def _store_cursors(self) -> None:
-        """Persist staged flush cursors after the tick committed."""
+        """Persist staged cursors only from committed service beats."""
         if not self._pending_cursors:
             return
         from src.services import service_log_flush
