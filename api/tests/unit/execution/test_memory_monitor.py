@@ -2,7 +2,7 @@
 Unit tests for memory_monitor module.
 """
 
-from unittest.mock import patch, mock_open
+from unittest.mock import mock_open, patch
 
 from src.services.execution.memory_monitor import (
     get_available_memory_mb,
@@ -125,24 +125,28 @@ class TestGetCgroupMemory:
         "anon 400000000\n"
         "file 500000000\n"
         "kernel_stack 1048576\n"
+        "pagetables 10000000\n"
+        "sock 10000000\n"
+        "slab 30000000\n"
         "active_anon 0\n"
         "inactive_anon 400000000\n"
         "active_file 100000000\n"
         "inactive_file 400000000\n"
     )
 
-    def test_returns_anon_plus_active_file_as_working_set(self):
-        """Should sum anon + active_file (kubelet working-set), excluding inactive_file."""
+    def test_returns_current_minus_inactive_file_as_working_set(self):
+        """Working set retains all charged memory except inactive file cache."""
         with patch("builtins.open", side_effect=[
+            mock_open(read_data="950000000\n")(),  # memory.current
             mock_open(read_data=self.STAT_DATA)(),
             mock_open(read_data="1073741824\n")(),   # memory.max = 1GB
-        ]):
-            with patch("pathlib.Path.exists", return_value=True):
-                current, limit = get_cgroup_memory()
-                # 400MB anon + 100MB active_file = 500MB working set,
-                # NOT 900MB (which would include the 400MB inactive_file cache).
-                assert current == 500_000_000
-                assert limit == 1073741824
+        ]), patch("pathlib.Path.exists", return_value=True):
+            current, limit = get_cgroup_memory()
+            # 950MB total - 400MB inactive file = 550MB working set.
+            # anon + active_file would undercount this as 500MB by omitting
+            # the other 50MB of charged kernel/socket/page-table memory.
+            assert current == 550_000_000
+            assert limit == 1073741824
 
     def test_returns_negative_when_cgroup_files_missing(self):
         """Should return (-1, -1) when cgroup files don't exist."""
@@ -154,13 +158,13 @@ class TestGetCgroupMemory:
     def test_returns_current_with_negative_limit_when_memory_max_is_max(self):
         """Should return (working_set, -1) when memory.max is 'max' (no limit set)."""
         with patch("builtins.open", side_effect=[
+            mock_open(read_data="950000000\n")(),
             mock_open(read_data=self.STAT_DATA)(),
             mock_open(read_data="max\n")(),
-        ]):
-            with patch("pathlib.Path.exists", return_value=True):
-                current, limit = get_cgroup_memory()
-                assert current == 500_000_000
-                assert limit == -1
+        ]), patch("pathlib.Path.exists", return_value=True):
+            current, limit = get_cgroup_memory()
+            assert current == 550_000_000
+            assert limit == -1
 
     def test_handles_read_error_gracefully(self):
         """Should return (-1, -1) on read failure."""
@@ -171,18 +175,49 @@ class TestGetCgroupMemory:
                 assert limit == -1
 
     def test_returns_negative_when_stat_missing_required_keys(self):
-        """Should return (-1, -1) when memory.stat lacks anon or active_file."""
-        # Only `anon`, no `active_file` — pre-v2-style stat or oddball runtime.
+        """Should return (-1, -1) when memory.stat lacks inactive_file."""
         bad_stat = "anon 400000000\nfile 500000000\n"
-        with patch("builtins.open", mock_open(read_data=bad_stat)):
-            with patch("pathlib.Path.exists", return_value=True):
-                current, limit = get_cgroup_memory()
-                assert current == -1
-                assert limit == -1
+        with patch("builtins.open", side_effect=[
+            mock_open(read_data="950000000\n")(),
+            mock_open(read_data=bad_stat)(),
+        ]), patch("pathlib.Path.exists", return_value=True):
+            current, limit = get_cgroup_memory()
+            assert current == -1
+            assert limit == -1
+
+    def test_clamps_working_set_when_counters_race(self):
+        """A racy inactive-file sample cannot produce negative admission usage."""
+        stat_data = "inactive_file 200\n"
+        with patch("builtins.open", side_effect=[
+            mock_open(read_data="100\n")(),
+            mock_open(read_data=stat_data)(),
+            mock_open(read_data="1000\n")(),
+        ]), patch("pathlib.Path.exists", return_value=True):
+            current, limit = get_cgroup_memory()
+            assert current == 0
+            assert limit == 1000
 
 
 class TestHasSufficientMemoryCgroup:
     """Tests for cgroup-aware memory pressure check."""
+
+    def test_rejects_when_nonreclaimable_charges_cross_threshold(self):
+        """Kernel and other charged memory must contribute to admission."""
+        stat_data = (
+            "anon 700000000\n"
+            "active_file 100000000\n"
+            "inactive_file 20000000\n"
+            "slab 50000000\n"
+            "sock 30000000\n"
+        )
+        with patch("builtins.open", side_effect=[
+            mock_open(read_data="900000000\n")(),
+            mock_open(read_data=stat_data)(),
+            mock_open(read_data="1000000000\n")(),
+        ]), patch("pathlib.Path.exists", return_value=True):
+            # 900MB current - 20MB inactive file = 880MB, above the 85% cap.
+            # The old anon + active_file approximation reported only 800MB.
+            assert has_sufficient_memory_cgroup(threshold=0.85) is False
 
     def test_returns_true_when_below_threshold(self):
         """Should allow fork when memory usage is below threshold."""
