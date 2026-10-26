@@ -275,6 +275,74 @@ async def test_new_execution_validates_arguments_against_the_pinned_registration
 
 
 @pytest.mark.asyncio
+async def test_legacy_informational_schema_does_not_reject_execution(monkeypatch):
+    created = []
+
+    class Database:
+        async def execute(self, *_):
+            return None
+        async def get(self, *_):
+            return None
+        def add(self, value):
+            created.append(value)
+        async def flush(self):
+            return None
+        async def commit(self):
+            return None
+
+    @asynccontextmanager
+    async def db_context():
+        yield Database()
+
+    deployment_id = uuid4()
+    legacy_schema = {
+        "type": "object",
+        "properties": {"ticket_id": {"type": "integer"}},
+        "required": ["ticket_id"],
+        "additionalProperties": False,
+    }
+    runtime = SimpleNamespace(
+        name="Legacy workflow",
+        deployment_id=deployment_id,
+        runtime_mode="deployment-v1",
+        parameters_schema=None,
+        legacy_parameters_schema=legacy_schema,
+        queue_evidence=lambda: {
+            "solution_deployment_id": str(deployment_id),
+            "workflow_parameters_schema": legacy_schema,
+        },
+    )
+    monkeypatch.setattr("src.core.database.get_db_context", db_context)
+    monkeypatch.setattr(
+        "src.services.solutions.deployment_runtime.pin_workflow_runtime",
+        AsyncMock(return_value=runtime),
+    )
+    monkeypatch.setattr(
+        "src.services.execution.retry_policy.workflow_retry_policy_snapshot",
+        AsyncMock(return_value={}),
+    )
+    monkeypatch.setattr(
+        "src.services.execution.attempts.ensure_dispatch_attempt", AsyncMock()
+    )
+
+    publish, was_created = await _persist_execution_pin(
+        _context(),
+        "22222222-2222-2222-2222-222222222222",
+        "11111111-1111-1111-1111-111111111111",
+        {"accepted_by_legacy_runtime": True},
+        None,
+        form_id=None,
+        sync=False,
+        api_key_id=None,
+        file_path=None,
+    )
+
+    assert was_created is True
+    assert publish["parameters"] == {"accepted_by_legacy_runtime": True}
+    assert created[0].runtime_evidence["workflow_parameters_schema"] == legacy_schema
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("mapping,event_type,event_required,accepted", [
     ({"payload": "{{ payload }}", "apply": True}, None, False, True),
     ({"payload": "{{ payload }}", "apply": True, "unexpected": 1}, None, False, False),
