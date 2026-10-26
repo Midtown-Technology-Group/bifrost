@@ -80,3 +80,31 @@ infra owner. Whether to disable automatic formal release-PR preparation is a
 separate owner decision; this producer does not change release automation or
 human approvals. A later formal SemVer milestone uses its existing stable build
 path; promoting dev bytes does not make their baked version stable.
+
+## Candidate provenance reconciliation (wire addition)
+
+Each `images.<component>.candidate_provenance` is now required. It records the
+verified original candidate invocation URI/run/attempt, workflow commit/ref,
+invocation commit, actual checked-out commit/tree, predicate type and SHA256 of
+the canonical verified attestation object. The producer verifies the existing
+GitHub SLSA v1 attestation with `gh attestation verify` for the exact OCI digest
+and authorized CI signer before applying source policy. It retains all three
+verification results/bundles in `candidate-provenance.json` alongside the manifest.
+The original SLSA registry attestations remain attached to the candidate digests;
+the signed production tuple retains their verified identities and bundle hashes.
+
+OIDC certificate repository, workflow signer/revision, source ref/digest and run
+invocation URI must agree with the SLSA statement. A PR invocation may identify
+the synthetic merge commit: only that merge's exact second parent is accepted as
+the checked-out PR source. A queue invocation must equal the checked-out source.
+The actual checkout tree must match, and the invoked CI workflow blob must equal
+the selected protected-main workflow blob. Label agreement and an allowed signer
+alone do not satisfy these checks. Components must share one verified candidate
+invocation commit/run/attempt; a mixed candidate attempt set fails closed.
+
+This extends the unactivated v2 draft, not stable v1 or image-promotion/v1. Infra
+must add the required nested field and retain/verify the bundle hashes when
+implementing this draft contract. No new source attestation, approval, credential,
+permission or state store is introduced. Receipt production will refuse when
+original provenance is unavailable, contradictory or from a workflow revision
+that differs from protected main; it does not fall back to label-only acceptance.

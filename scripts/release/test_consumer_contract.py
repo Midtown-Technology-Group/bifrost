@@ -226,6 +226,19 @@ class ConsumerContractAcceptance(unittest.TestCase):
             with self.subTest(path=path, replacement=replacement), self.assertRaises(ValueError):
                 self.validate(value)
 
+    def test_all_ten_proof_fields_required_and_candidate_attempts_coherent(self):
+        for field in self.value['images']['api']['candidate_provenance']:
+            value = copy.deepcopy(self.value)
+            del value['images']['api']['candidate_provenance'][field]
+            with self.subTest(missing=field), self.assertRaises(ValueError):
+                self.validate(value)
+        value = copy.deepcopy(self.value)
+        proof = value['images']['worker']['candidate_provenance']
+        proof['run_attempt'] += 1
+        proof['invocation_uri'] = proof['invocation_uri'].rsplit('/', 1)[0] + '/' + str(proof['run_attempt'])
+        with self.assertRaisesRegex(ValueError, 'mixes candidate'):
+            self.validate(value)
+
     def test_legacy_stable_validator_rejects_v2_dev_tuple(self):
         with self.assertRaises(ValueError):
             self.release.validate_manifest(self.value, tag='v3.0.1', source_sha=self.run_info['headSha'])
