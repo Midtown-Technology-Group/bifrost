@@ -293,6 +293,14 @@ without a new Git read, compilation or effect replay. A reused job proves its
 original source, so the producer must compare its result to the requested commit
 before claiming delivery. The additive enqueue contract reuses
 `PlatformJobAccepted`; existing clients and manual publication remain compatible.
+
+Protected publication uses the active system identity and its durable, currently
+leased admission instead of requiring a human provider/admin role. Before building
+and at each publication boundary, the worker matches the exact job payload, App,
+scope and lease, and rechecks current enrollment, installed ownership and control
+hashes. The system UUID alone cannot publish editor source; manual publication
+retains its human authorization checks. No account receives a new role or grant.
+
 Admission IDs are deterministic for the App/source/producer attempt, so a lost
 terminal response cannot enqueue the same completed operation again. Scoped OIDC
 `POST /api/applications/{id}/github-source/{job_id}/inspect` reads original job

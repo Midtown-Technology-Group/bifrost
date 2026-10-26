@@ -10,6 +10,8 @@ from src.jobs.platform import application_publish as jobs
 from src.jobs.platform.base import PlatformJobContext, PlatformJobRequiresAction
 from src.models import User
 from src.models.orm.applications import Application
+from src.models.orm.platform_jobs import PlatformJob
+from src.core.constants import SYSTEM_USER_UUID
 from src.models.contracts.applications import ApplicationGitPublicationInput
 from src.core.application_delivery_policy import InlineAppGitDeliveryPolicy
 from src.services.inline_app_source import InlineAppSourceSnapshot
@@ -29,6 +31,8 @@ def setup(monkeypatch):
         if model is User:
             assert kwargs == {"populate_existing": True}
             return db.actor
+        if model is PlatformJob:
+            return db.job
         assert model is Application
         return app
 
@@ -212,6 +216,92 @@ def protected_setup(monkeypatch, app):
     return jobs.ApplicationPublishPayload(application_id=app.id, protected_git=protected)
 
 
+def protected_admission(db, payload):
+    from dataclasses import replace
+
+    context = replace(_context(), requested_by_user_id=str(SYSTEM_USER_UUID))
+    db.actor.id = SYSTEM_USER_UUID
+    db.actor.organization_id = None
+    jobs.resolve_provider_org_claim.return_value = False
+    db.job = SimpleNamespace(
+        job_type="application.publish", requested_by_user_id=str(SYSTEM_USER_UUID),
+        organization_id=context.organization_id, resource_type="application",
+        resource_id=str(payload.application_id), payload=payload.model_dump(mode="json"),
+        status="running", lease_token=context.lease_token,
+    )
+    return context
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("fault", [None, "manual", "requester", "missing_job", "job_type",
+    "job_requester", "organization", "resource_type", "resource_id", "payload", "lease", "status",
+    "missing_actor", "inactive_actor", "policy", "scope", "subpath", "unpublished", "controls"])
+async def test_protected_authority_requires_current_scoped_admission_without_human_admin_role(monkeypatch, setup, fault):
+    from dataclasses import replace
+    from src.jobs.platform.base import PlatformJobFailure
+
+    app, db, storage, publisher, _intent = setup
+    payload = protected_setup(monkeypatch, app)
+    context = protected_admission(db, payload)
+    if fault == "manual":
+        payload = jobs.ApplicationPublishPayload(application_id=app.id)
+    elif fault == "requester":
+        context = replace(context, requested_by_user_id=str(uuid4()))
+    elif fault == "missing_job":
+        db.job = None
+    elif fault in {"job_type", "job_requester", "organization", "resource_type", "resource_id", "payload", "lease", "status"}:
+        field = {"job_requester": "requested_by_user_id", "organization": "organization_id", "lease": "lease_token"}.get(fault, fault)
+        setattr(db.job, field, {} if fault == "payload" else "changed")
+    elif fault == "missing_actor":
+        db.actor = None
+    elif fault == "inactive_actor":
+        db.actor.is_active = False
+    elif fault == "policy":
+        monkeypatch.setattr(jobs, "get_settings", lambda: SimpleNamespace(inline_app_git_delivery_policy=None))
+    elif fault == "scope":
+        app.organization_id = uuid4()
+    elif fault == "subpath":
+        app.repo_path = "apps/other"
+    elif fault == "unpublished":
+        app.published_at = None
+    elif fault == "controls":
+        jobs.publication_controls_hash.return_value = "changed"
+
+    if fault is None:
+        assert await jobs._authorize_application_publish(db, context, app, payload) is db.application_repo
+        jobs.resolve_provider_org_claim.assert_not_awaited()
+    else:
+        with pytest.raises(PlatformJobFailure, match="permission was revoked"):
+            await jobs._authorize_application_publish(db, context, app, payload)
+    publisher.assert_not_awaited()
+    storage.verify_publication.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("revocation", ["actor", "lease", "scope", "controls", "policy"])
+async def test_protected_publication_rechecks_admission_at_effect_boundary(monkeypatch, setup, revocation):
+    from src.jobs.platform.base import PlatformJobFailure
+
+    app, db, storage, publisher, _intent = setup
+    payload = protected_setup(monkeypatch, app)
+    context = protected_admission(db, payload)
+    await jobs._authorize_application_publish(db, context, app, payload)
+    if revocation == "actor":
+        db.actor.is_active = False
+    elif revocation == "lease":
+        db.job.lease_token = uuid4()
+    elif revocation == "scope":
+        app.organization_id = uuid4()
+    elif revocation == "controls":
+        jobs.publication_controls_hash.return_value = "changed"
+    else:
+        monkeypatch.setattr(jobs, "get_settings", lambda: SimpleNamespace(inline_app_git_delivery_policy=None))
+    with pytest.raises(PlatformJobFailure, match="permission was revoked"):
+        await jobs._authorize_application_publish(db, context, app, payload)
+    publisher.assert_not_awaited()
+    storage.verify_publication.assert_not_awaited()
+
+
 @pytest.mark.asyncio
 async def test_protected_git_recovery_reads_original_intent_without_git_read_build_or_effect_replay(monkeypatch, setup):
     app, db, storage, publisher, intent = setup
@@ -256,6 +346,7 @@ async def test_recovery_pin_failure_preserves_intent_without_publication_or_comm
 async def test_protected_git_job_builds_captured_bytes_and_rechecks_source_controls_and_lease(monkeypatch, setup):
     app, db, storage, publisher, intent = setup
     payload = protected_setup(monkeypatch, app)
+    context = protected_admission(db, payload)
     config = SimpleNamespace(token="stored-credential-in-memory", repo_url="https://github.com/MTG-Thomas/bifrost-workspace",
         branch="production-live")
     monkeypatch.setattr(jobs, "get_github_config", AsyncMock(return_value=config))
@@ -279,7 +370,7 @@ async def test_protected_git_job_builds_captured_bytes_and_rechecks_source_contr
         return app
 
     publisher.side_effect = captured_publish
-    result = await jobs.run_application_publish(_context(), payload)
+    result = await jobs.run_application_publish(context, payload)
     assert result["publication_verified"] and not result["recovered_from_intent"]
     runtime_pin = result["runtime_pin"]
     assert isinstance(runtime_pin, dict)
@@ -297,6 +388,7 @@ async def test_protected_git_job_builds_captured_bytes_and_rechecks_source_contr
 async def test_protected_git_job_fails_before_build_when_existing_credential_route_is_invalid(monkeypatch, setup, fault):
     app, db, storage, publisher, intent = setup
     payload = protected_setup(monkeypatch, app)
+    context = protected_admission(db, payload)
     config = SimpleNamespace(token="stored-in-memory", repo_url="https://github.com/MTG-Thomas/bifrost-workspace")
     if fault == "token":
         config.token = None
@@ -305,7 +397,7 @@ async def test_protected_git_job_fails_before_build_when_existing_credential_rou
     monkeypatch.setattr(jobs, "get_github_config", AsyncMock(return_value=None if fault == "absent" else config))
     from src.jobs.platform.base import PlatformJobFailure
     with pytest.raises(PlatformJobFailure, match="credential/repository is unavailable"):
-        await jobs.run_application_publish(_context(), payload)
+        await jobs.run_application_publish(context, payload)
     publisher.assert_not_awaited()
     storage.verify_publication.assert_not_awaited()
     db.commit.assert_not_awaited()
