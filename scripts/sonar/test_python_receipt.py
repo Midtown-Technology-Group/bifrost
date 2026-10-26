@@ -134,6 +134,38 @@ class PythonReceiptTests(Fixture):
         self.assertEqual(calls[1], ["git", "fetch", "--no-tags", "--depth=1",
                                    "https://github.com/" + receipt.transport.REPOSITORY + ".git", self.head])
 
+    def test_synthetic_workflow_fetch_timeout_refuses_reuse_and_keeps_collection_enabled(self):
+        original = self.command
+        def timed_out_fetch(args, **kwargs):
+            if args == ["git", "rev-parse", self.head + "^{tree}"]:
+                raise receipt.transport.ReuseRefused("Object unavailable")
+            if args[:2] == ["git", "fetch"]:
+                raise subprocess.TimeoutExpired(args, 120, stderr=b"private transport detail")
+            return original(args, **kwargs)
+        target, summary = self.root / "github-output", self.root / "summary"
+        with patch.object(receipt.transport, "command", side_effect=timed_out_fetch), \
+                patch("sys.argv", ["python_receipt.py", "reuse"]), \
+                patch.object(receipt.Path, "cwd", return_value=self.root), \
+                patch.dict(os.environ, {"GITHUB_OUTPUT": str(target), "GITHUB_STEP_SUMMARY": str(summary)}):
+            self.assertEqual(receipt.main(), 0)
+        self.assertFalse(target.exists())
+        self.assertFalse((self.output / "raw/python.xml").exists())
+        self.assertFalse((self.output / "python-origin").exists())
+        self.assertIn("Workflow object fetch timed out", summary.read_text())
+        self.assertIn("comprehensive collection remains enabled", summary.read_text())
+        self.assertNotIn("private transport detail", summary.read_text())
+
+    def test_local_timeout_and_unexpected_validation_failure_remain_terminal(self):
+        target = self.root / "github-output"
+        for failure in (subprocess.TimeoutExpired(["git", "rev-parse"], 120), RuntimeError("unexpected validation failure")):
+            with self.subTest(failure=type(failure).__name__), \
+                    patch.object(receipt.transport, "command", side_effect=failure), \
+                    patch("sys.argv", ["python_receipt.py", "reuse"]), \
+                    patch.object(receipt.Path, "cwd", return_value=self.root), \
+                    patch.dict(os.environ, {"GITHUB_OUTPUT": str(target)}):
+                self.assertEqual(receipt.main(), 1)
+            self.assertFalse(target.exists())
+
     def test_foreign_tag_wrong_base_workflow_and_current_run_refuse(self):
         for change in ({"GITHUB_REPOSITORY": "foreign/repo"}, {"GITHUB_REF": "refs/tags/v1"},
                        {"EXPECTED_BASE": "f" * 40}, {"GITHUB_WORKFLOW_SHA": "f" * 40}, {"GITHUB_RUN_ID": "123"}):

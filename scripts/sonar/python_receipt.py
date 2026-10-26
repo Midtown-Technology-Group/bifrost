@@ -13,6 +13,7 @@ import json
 import os
 from pathlib import Path
 import re
+import subprocess
 import zipfile
 
 SPEC = importlib.util.spec_from_file_location("main_receipt", Path(__file__).with_name("main_receipt.py"))
@@ -44,8 +45,11 @@ def workflow_tree(sha: str) -> str:
         # Exact-head checkouts need not contain GitHub's synthetic PR workflow
         # commit. Fetch that one immutable object from the configured public
         # repository, never a receipt-supplied URL or mutable ref.
-        transport.command(["git", "fetch", "--no-tags", "--depth=1",
-                           "https://github.com/" + transport.REPOSITORY + ".git", sha])
+        try:
+            transport.command(["git", "fetch", "--no-tags", "--depth=1",
+                               "https://github.com/" + transport.REPOSITORY + ".git", sha])
+        except subprocess.TimeoutExpired as exc:
+            raise transport.ReuseRefused("Workflow object fetch timed out") from exc
         return transport.command(["git", "rev-parse", sha + "^{tree}"])
 
 
