@@ -14,6 +14,7 @@ import type { components } from "@/lib/v1";
 import { refreshAccessToken } from "@/lib/api-client";
 import { getActiveToken } from "@/lib/auth-token";
 import type { ChatStreamEnvelope } from "@/lib/chat-runtime";
+import { requestWebSocketTicket } from "@/lib/app-sdk/websocket-auth";
 import { useNotificationStore } from "@/stores/notificationStore";
 import type { Notification } from "@/stores/notificationStore";
 
@@ -492,6 +493,7 @@ class WebSocketService {
 	private reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
 	private pingInterval: ReturnType<typeof setInterval> | null = null;
 	private userId: string | null = null;
+	private connectionGeneration = 0;
 
 	// Subscribers for different event types
 	private executionUpdateCallbacks = new Map<
@@ -583,7 +585,46 @@ class WebSocketService {
 		}
 	}
 
+	private scheduleTicketRetry(
+		channels: string[],
+		connectionGeneration: number,
+	): void {
+		if (this.retryCount >= this.maxRetries || this.reconnectTimeout) return;
+
+		this.retryCount++;
+		const delay = Math.min(1000 * Math.pow(2, this.retryCount), 30000);
+		this.reconnectTimeout = setTimeout(() => {
+			this.reconnectTimeout = null;
+			if (connectionGeneration !== this.connectionGeneration) return;
+			void this.connect(channels).catch(() => {
+				// _connect logs the failure and schedules any remaining retry.
+			});
+		}, delay);
+	}
+
+	private async addEmbedTicket(
+		params: URLSearchParams,
+		channels: string[],
+		connectionGeneration: number,
+	): Promise<boolean> {
+		const embedToken = getActiveToken();
+		if (!embedToken || !isEmbedToken(embedToken)) return true;
+
+		try {
+			const ticket = await requestWebSocketTicket(embedToken);
+			if (connectionGeneration !== this.connectionGeneration) return false;
+			params.set("ticket", ticket);
+			return true;
+		} catch (error) {
+			if (connectionGeneration !== this.connectionGeneration) return false;
+			// No socket exists yet, so onclose cannot schedule recovery.
+			this.scheduleTicketRetry(channels, connectionGeneration);
+			throw error;
+		}
+	}
+
 	private async _connect(channels: string[]): Promise<void> {
+		const connectionGeneration = this.connectionGeneration;
 		try {
 			// Build WebSocket URL with channels
 			const protocol =
@@ -594,12 +635,19 @@ class WebSocketService {
 			const params = new URLSearchParams();
 			channels.forEach((ch) => params.append("channels", ch));
 
-			// For embed tokens, pass as query param since browser WebSocket
-			// API can't set custom headers. getActiveToken() prefers the
-			// per-tab embed token (sessionStorage) over the user token.
-			const embedToken = getActiveToken();
-			if (embedToken && isEmbedToken(embedToken)) {
-				params.set("token", embedToken);
+			// Browser WebSockets cannot set Authorization headers. Embed sessions
+			// exchange their bearer token over HTTPS for an opaque, single-use
+			// ticket so the long-lived JWT never enters a URL or access log.
+			const shouldConnect = await this.addEmbedTicket(
+				params,
+				channels,
+				connectionGeneration,
+			);
+			if (
+				!shouldConnect ||
+				connectionGeneration !== this.connectionGeneration
+			) {
+				return;
 			}
 
 			const wsUrl = `${protocol}//${host}/ws/connect?${params.toString()}`;
@@ -610,6 +658,7 @@ class WebSocketService {
 
 			// Set up WebSocket handlers
 			this.ws.onopen = () => {
+				if (connectionGeneration !== this.connectionGeneration) return;
 				this.retryCount = 0;
 				this.startPingInterval();
 				this.connectionStatusCallbacks.forEach((cb) => cb(true));
@@ -631,6 +680,7 @@ class WebSocketService {
 			};
 
 			this.ws.onclose = (event) => {
+				if (connectionGeneration !== this.connectionGeneration) return;
 				this.ws = null;
 				this.stopPingInterval();
 				this.connectionStatusCallbacks.forEach((cb) => cb(false));
@@ -643,6 +693,8 @@ class WebSocketService {
 						30000,
 					);
 					this.reconnectTimeout = setTimeout(async () => {
+						this.reconnectTimeout = null;
+						if (connectionGeneration !== this.connectionGeneration) return;
 						// If unauthorized (4001), refresh token before reconnecting
 						// Browser will send fresh cookie on next WebSocket handshake
 						if (event.code === 4001) {
@@ -651,7 +703,9 @@ class WebSocketService {
 							);
 							await refreshAccessToken();
 						}
-						this.connect(Array.from(this.subscribedChannels));
+						void this.connect(Array.from(this.subscribedChannels)).catch(() => {
+							// _connect already reports failures; avoid a detached rejection.
+						});
 					}, delay);
 				}
 			};
@@ -682,6 +736,7 @@ class WebSocketService {
 				}
 			});
 		} catch (error) {
+			if (connectionGeneration !== this.connectionGeneration) return;
 			console.error(
 				`[WebSocket] Failed to connect: ${sanitizeLogText(error)}`,
 			);
@@ -1179,10 +1234,7 @@ class WebSocketService {
 	/**
 	 * Subscribe to live log lines for a specific service
 	 */
-	onServiceLog(
-		serviceId: string,
-		callback: ServiceLogCallback,
-	): () => void {
+	onServiceLog(serviceId: string, callback: ServiceLogCallback): () => void {
 		if (!this.serviceLogCallbacks.has(serviceId)) {
 			this.serviceLogCallbacks.set(serviceId, new Set());
 		}
@@ -1516,6 +1568,7 @@ class WebSocketService {
 	 * Disconnect from WebSocket
 	 */
 	async disconnect(): Promise<void> {
+		this.connectionGeneration++;
 		if (this.reconnectTimeout) {
 			clearTimeout(this.reconnectTimeout);
 			this.reconnectTimeout = null;

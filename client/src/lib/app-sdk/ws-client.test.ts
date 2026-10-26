@@ -156,6 +156,41 @@ describe("subscribeToTable", () => {
     expect(MockWebSocket.instances).toHaveLength(1);
     unsubscribe();
   });
+
+  it("exchanges the live bearer for a fresh ticket before opening", async () => {
+    const ticket = "a".repeat(43);
+    const fetchImpl = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ ticket }),
+    });
+    const restore = setBifrostTransport({
+      baseUrl: "https://remote.example",
+      getToken: () => "live-bearer",
+      fetchImpl,
+    });
+
+    const unsubscribe = subscribeToTable("table-1", null, () => {});
+    try {
+      for (let turn = 0; turn < 5; turn += 1) await Promise.resolve();
+
+      expect(fetchImpl).toHaveBeenCalledWith(
+        "https://remote.example/ws/ticket",
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            Authorization: "Bearer live-bearer",
+          }),
+        }),
+      );
+      expect(MockWebSocket.instances).toHaveLength(1);
+      const url = new URL(MockWebSocket.instances[0].url);
+      expect(url.searchParams.get("ticket")).toBe(ticket);
+      expect(url.searchParams.has("token")).toBe(false);
+    } finally {
+      unsubscribe();
+      restore();
+    }
+  });
 });
 
 describe("buildWsUrl", () => {
@@ -166,12 +201,19 @@ describe("buildWsUrl", () => {
     restore = null;
   });
 
-  it("targets the transport baseUrl with token auth (npm-dev / solution start)", () => {
+  it("never derives a query credential from the transport bearer token", () => {
     restore = setBifrostTransport({
       baseUrl: "https://remote.example",
       token: "tok",
     });
-    expect(buildWsUrl()).toBe("wss://remote.example/ws/connect?token=tok");
+    expect(buildWsUrl()).toBe("wss://remote.example/ws/connect");
+  });
+
+  it("places only an opaque single-use ticket in the connection URL", () => {
+    restore = setBifrostTransport({ baseUrl: "https://remote.example" });
+    const url = new URL(buildWsUrl("a".repeat(43)));
+    expect(url.searchParams.get("ticket")).toBe("a".repeat(43));
+    expect(url.searchParams.has("token")).toBe(false);
   });
 
   it("defaults to the window origin with NO token param (v1 inline, cookie auth)", () => {
@@ -190,23 +232,21 @@ describe("buildWsUrl", () => {
       baseUrl: "http://localhost:8000",
       token: "t2",
     });
-    expect(buildWsUrl()).toBe("ws://localhost:8000/ws/connect?token=t2");
+    expect(buildWsUrl()).toBe("ws://localhost:8000/ws/connect");
   });
 
-	it("reads the live token each time a websocket reconnect URL is built", () => {
+	it("does not call the live token reader while building a URL", () => {
 		let token = "t-old";
+		const getToken = vi.fn(() => token);
 		restore = setBifrostTransport({
 			baseUrl: "https://remote.example",
 			token: "bootstrap-token",
-			getToken: () => token,
+			getToken,
 		});
 
-		expect(buildWsUrl()).toBe(
-			"wss://remote.example/ws/connect?token=t-old",
-		);
+		expect(buildWsUrl()).toBe("wss://remote.example/ws/connect");
 		token = "t-new";
-		expect(buildWsUrl()).toBe(
-			"wss://remote.example/ws/connect?token=t-new",
-		);
+		expect(buildWsUrl()).toBe("wss://remote.example/ws/connect");
+		expect(getToken).not.toHaveBeenCalled();
 	});
 });

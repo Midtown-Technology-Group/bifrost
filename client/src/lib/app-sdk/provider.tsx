@@ -302,8 +302,8 @@ export function BifrostProvider({
     pendingRestoreRef.current = null;
     const restoreTransport = setBifrostTransport({
       baseUrl: baseUrl.replace(/\/$/, ""),
-      // Raw token for the ws client (query-param auth — WebSocket can't send
-      // an Authorization header). HTTP calls use the header below.
+      // The WebSocket client exchanges this token over HTTPS for a short-lived,
+      // single-use ticket; it never puts the bearer token in the socket URL.
       token,
 			getToken: () => {
 				const auth = platformAuth();

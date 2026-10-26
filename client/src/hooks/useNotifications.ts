@@ -62,7 +62,9 @@ export function useNotifications() {
 
 		// Connect to notification channel
 		const notificationChannel = `notification:${user.id}`;
-		webSocketService.connect([notificationChannel]);
+		void webSocketService.connect([notificationChannel]).catch(() => {
+			// The service logs connection failures and owns bounded recovery.
+		});
 
 		// Also subscribe to admin notifications if user is superuser
 		if (user.isSuperuser) {

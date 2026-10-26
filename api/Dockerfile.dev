@@ -100,6 +100,7 @@ COPY client/src/lib/app-sdk/provider.tsx \
      client/src/lib/app-sdk/use-table.ts \
      client/src/lib/app-sdk/use-infinite-table.ts \
      client/src/lib/app-sdk/ws-client.ts \
+     client/src/lib/app-sdk/websocket-auth.ts \
      client/src/lib/app-sdk/execution-stream.ts \
      client/src/lib/app-sdk/use-workflow.ts \
      client/src/lib/app-sdk/use-workflow-hooks.ts \

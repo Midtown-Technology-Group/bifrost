@@ -20,6 +20,7 @@ _COMMON_RULES = {
 }
 
 _APP_RULES: tuple[tuple[str, re.Pattern[str]], ...] = (
+    ("POST", re.compile(r"^/ws/ticket$")),
     ("GET", re.compile(r"^/api/applications/[^/]+$")),
     ("GET", re.compile(r"^/api/applications/[^/]+/logo$")),
     ("GET", re.compile(r"^/api/applications/[^/]+/render$")),
