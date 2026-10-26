@@ -51,8 +51,8 @@ class RateLimiter:
             endpoint: Endpoint name for rate limit key
             identifier: IP address or user ID
             force: If True, bypass the is_testing early-return so the limiter
-                   can be exercised from unit tests. Should only be passed by
-                   the webhook ingress path.
+                   can protect security-sensitive public ingress paths and be
+                   exercised from unit tests.
 
         Raises:
             HTTPException: If rate limit exceeded (429)

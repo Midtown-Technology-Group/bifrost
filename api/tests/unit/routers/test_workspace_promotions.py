@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
-from fastapi import HTTPException, Response
+from fastapi import HTTPException, Request, Response
 from fastapi.security import HTTPAuthorizationCredentials
 
 from src.core.auth import get_current_superuser
@@ -28,6 +28,36 @@ from src.services.workspace_release_retirement import (
 
 def _ctx():
     return SimpleNamespace(org_id=uuid4())
+
+
+def _request(
+    client_host: str = "203.0.113.10",
+    *,
+    forwarded_for: str | None = None,
+) -> Request:
+    headers = (
+        [(b"x-forwarded-for", forwarded_for.encode())] if forwarded_for else []
+    )
+    return Request(
+        {
+            "type": "http",
+            "method": "POST",
+            "path": "/api/workspace-promotions/source-releases/github",
+            "headers": headers,
+            "client": (client_host, 443),
+        }
+    )
+
+
+@pytest.fixture
+def source_release_limiter(monkeypatch) -> AsyncMock:
+    check = AsyncMock()
+    monkeypatch.setattr(
+        workspace_promotions._github_source_release_limiter,
+        "check",
+        check,
+    )
+    return check
 
 
 def _user():
@@ -352,17 +382,39 @@ def _source_declaration(commit_sha: str) -> WorkspaceSourceReleaseDeclareRequest
 
 
 @pytest.mark.asyncio
-async def test_github_source_release_dependency_rejects_missing_bearer() -> None:
+async def test_github_source_release_dependency_rejects_missing_bearer(
+    source_release_limiter,
+) -> None:
     with pytest.raises(HTTPException) as exc_info:
-        await workspace_promotions._github_source_release_producer(None)
+        await workspace_promotions._github_source_release_producer(_request(), None)
 
     assert exc_info.value.status_code == 401
     assert "bearer token is required" in exc_info.value.detail
+    source_release_limiter.assert_awaited_once_with(
+        "github_source_release", "203.0.113.10", force=True
+    )
+
+
+@pytest.mark.asyncio
+async def test_github_source_release_limiter_ignores_forwarded_client_address(
+    source_release_limiter,
+) -> None:
+    request = _request(
+        client_host="203.0.113.10",
+        forwarded_for="198.51.100.99, 10.0.0.1",
+    )
+
+    with pytest.raises(HTTPException):
+        await workspace_promotions._github_source_release_producer(request, None)
+
+    source_release_limiter.assert_awaited_once_with(
+        "github_source_release", "203.0.113.10", force=True
+    )
 
 
 @pytest.mark.asyncio
 async def test_github_source_release_dependency_rejects_partial_configuration(
-    monkeypatch,
+    monkeypatch, source_release_limiter,
 ) -> None:
     monkeypatch.setattr(
         workspace_promotions,
@@ -374,6 +426,7 @@ async def test_github_source_release_dependency_rejects_partial_configuration(
 
     with pytest.raises(HTTPException) as exc_info:
         await workspace_promotions._github_source_release_producer(
+            _request(),
             HTTPAuthorizationCredentials(scheme="Bearer", credentials="token")
         )
 
@@ -383,7 +436,7 @@ async def test_github_source_release_dependency_rejects_partial_configuration(
 
 @pytest.mark.asyncio
 async def test_github_source_release_dependency_rejects_invalid_oidc_token(
-    monkeypatch,
+    monkeypatch, source_release_limiter,
 ) -> None:
     settings = SimpleNamespace(
         workspace_source_release_oidc_repository="MTG-Thomas/bifrost-workspace",
@@ -407,6 +460,7 @@ async def test_github_source_release_dependency_rejects_invalid_oidc_token(
 
     with pytest.raises(HTTPException) as exc_info:
         await workspace_promotions._github_source_release_producer(
+            _request(),
             HTTPAuthorizationCredentials(scheme="Bearer", credentials="token")
         )
 
