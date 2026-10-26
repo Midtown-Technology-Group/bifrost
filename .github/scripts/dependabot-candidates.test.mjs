@@ -19,7 +19,7 @@ function fixture() {
   const pr = { number: 42, state: 'open', user: { login: 'dependabot[bot]' },
     head: { repo: { full_name: repository }, sha: head }, base: { ref: 'main', sha: base } };
   const artifacts = ['api', 'worker', 'client'].map((component, i) => ({ id: i + 1,
-    name: `dependabot-candidate-${component}`, expired: false, digest: `sha256:${'d'.repeat(64)}` }));
+    name: `dependabot-candidate-${component}-attempt-2`, expired: false, digest: `sha256:${'d'.repeat(64)}` }));
   const calls = [];
   const respond = data => async args => { calls.push(args); return { data }; };
   const github = { rest: {
@@ -35,7 +35,7 @@ test('qualifies the exact successful same-repository bot build and immutable art
   const f = fixture();
   const result = await invoke(f);
   assert.deepEqual(result, { source: head, base, ci: 50, ciAttempt: 1, run: 101, attempt: 2,
-    artifacts: f.artifacts.map(({ id, digest }, i) => ({ component: ['api', 'worker', 'client'][i], id, digest })) });
+    artifacts: f.artifacts.map(({ id, digest }, i) => ({ component: ['api', 'worker', 'client'][i], id, digest, attempt: 2 })) });
   assert.equal(f.calls[1].run_id, 50);
 });
 
@@ -81,10 +81,10 @@ function waiting({ buildStatus = 'completed', buildConclusion = 'success', publi
   return { calls, github };
 }
 const publicationArtifacts = ['api', 'worker', 'client'].map((component, i) => ({
-  name: `dependabot-publication-${component}`, id: i + 10, expired: false, digest: `sha256:${'e'.repeat(64)}`,
+  name: `dependabot-publication-${component}-attempt-1`, id: i + 10, expired: false, digest: `sha256:${'e'.repeat(64)}`,
 }));
-const publicationReceipts = publicationArtifacts.map(({ id, digest }, i) => ({ component: ['api', 'worker', 'client'][i], id, digest }));
-const publication = { id: 202, display_title: 'Dependabot candidates 101:2', status: 'completed', conclusion: 'success' };
+const publicationReceipts = publicationArtifacts.map(({ id, digest }, i) => ({ component: ['api', 'worker', 'client'][i], id, digest, attempt: 1 }));
+const publication = { id: 202, run_attempt: 1, display_title: 'Dependabot candidates 101:2', status: 'completed', conclusion: 'success' };
 
 test('waits for the exact producer attempt, never an older successful publication', async () => {
   const f = waiting({ publications: [{ ...publication, display_title: 'Dependabot candidates 101:1' }] });
@@ -92,7 +92,7 @@ test('waits for the exact producer attempt, never an older successful publicatio
 });
 test('returns the exact completed producer and publisher receipts', async () => {
   const f = waiting({ publications: [publication] });
-  assert.deepEqual(await waitForPublication({ github: f.github, ciRunId: 50, ciAttempt: 1 }), { producer: 101, publisher: 202, artifacts: publicationReceipts });
+  assert.deepEqual(await waitForPublication({ github: f.github, ciRunId: 50, ciAttempt: 1 }), { producer: 101, publisher: 202, publisherAttempt: 1, artifacts: publicationReceipts });
   assert.equal(f.calls[0].event, 'workflow_run');
 });
 test('fails closed on producer failure', async () => {
@@ -262,7 +262,7 @@ test('publication lookup paginates both workflow histories within the exact CI t
     const { data } = await method(args);
     return [...first, ...(data.workflow_runs ?? data.artifacts)];
   };
-  assert.deepEqual(await waitForPublication({ github: f.github, ciRunId: 50, ciAttempt: 1 }), { producer: 101, publisher: 202, artifacts: publicationReceipts });
+  assert.deepEqual(await waitForPublication({ github: f.github, ciRunId: 50, ciAttempt: 1 }), { producer: 101, publisher: 202, publisherAttempt: 1, artifacts: publicationReceipts });
   assert.equal(pages, 3);
 });
 
@@ -279,11 +279,11 @@ for (const scenario of ['missing', 'duplicate', 'expired', 'invalid hash']) {
     if (scenario === 'duplicate') artifacts.push(artifacts[0]);
     if (scenario === 'expired') artifacts[0].expired = true;
     if (scenario === 'invalid hash') artifacts[0].digest = 'untrusted';
-    assert.throws(() => selectArtifacts(artifacts, 'dependabot-publication'));
+    assert.throws(() => selectArtifacts(artifacts, 'dependabot-publication', 1));
   });
 }
 
-for (const scenario of ['valid', 'wrong archive hash', 'wrong image digest', 'extra member', 'missing component']) {
+for (const scenario of ['valid', 'wrong archive hash', 'wrong image digest', 'extra member', 'missing component', 'mixed attempt']) {
   test(`CI consumes exact publisher digest receipts: ${scenario}`, async () => {
     const root = await mkdtemp(join(tmpdir(), 'bifrost-digests-'));
     try {
@@ -298,16 +298,17 @@ with zipfile.ZipFile(sys.argv[1], 'w') as z:
     if sys.argv[3] == 'extra member': z.writestr('../other', 'evil')
 `, zip, scenario === 'wrong image digest' ? 'untrusted' : imageDigest, scenario]);
         assert.equal(created.status, 0);
-        artifacts.push({ component, id: i + 1, digest: `sha256:${createHash('sha256').update(await readFile(zip)).digest('hex')}` });
+        artifacts.push({ component, attempt: 1, id: i + 1, digest: `sha256:${createHash('sha256').update(await readFile(zip)).digest('hex')}` });
       }
       if (scenario === 'wrong archive hash') artifacts[0].digest = `sha256:${'0'.repeat(64)}`;
       if (scenario === 'missing component') artifacts.pop();
+      if (scenario === 'mixed attempt') artifacts[0].attempt = 2;
       await writeFile(join(root, 'gh'), '#!/bin/sh\nartifact="${2%/zip}"\nartifact="${artifact##*/}"\ncat "$FIXTURE_ROOT/$artifact.zip"\n');
       await chmod(join(root, 'gh'), 0o700);
       const output = join(root, 'outputs');
       const result = spawnSync('bash', ['-c', runStep(workflow, 'Read exact publication digests')], {
         env: { ...process.env, FIXTURE_ROOT: root, PATH: `${root}:${process.env.PATH}`, GITHUB_OUTPUT: output,
-          GITHUB_REPOSITORY: repository, PUBLICATION_ARTIFACTS: JSON.stringify(artifacts) }, encoding: 'utf8',
+          GITHUB_REPOSITORY: repository, PUBLICATION_ARTIFACTS: JSON.stringify(artifacts), PUBLICATION_ATTEMPT: '1' }, encoding: 'utf8',
       });
       assert.equal(result.status === 0, scenario === 'valid', result.stderr);
       if (scenario === 'valid') assert.equal(await readFile(output, 'utf8'), ['api', 'worker', 'client'].map(c => `${c}_digest=${imageDigest}\n`).join(''));
@@ -341,4 +342,42 @@ if [ "$2" = 'HEAD' ]; then printf '${head}\\n'; else printf '${merge}\\n'; fi
     await assert.rejects(readFile(join(root, 'pr-script-executed')));
     assert.match(await readFile(join(root, 'output'), 'utf8'), /version=3.2.2-dev.1/);
   } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+for (const prefix of ['dependabot-candidate', 'dependabot-publication']) {
+  const artifactsFor = (attempt, offset) => ['api', 'worker', 'client'].map((component, i) => ({
+    name: `${prefix}-${component}-attempt-${attempt}`, id: offset + i, expired: false, digest: `sha256:${'d'.repeat(64)}`,
+  }));
+  test(`${prefix}: rerun-all selects a coherent fresh set and ignores earlier-attempt duplicates`, () => {
+    const old = artifactsFor(1, 10);
+    const current = artifactsFor(2, 20);
+    const selected = selectArtifacts([...old, ...current], prefix, 2);
+    assert.deepEqual(selected.map(a => [a.id, a.attempt]), [[20, 2], [21, 2], [22, 2]]);
+  });
+  test(`${prefix}: failed-legs-only rerun cannot mix earlier successful legs with current artifacts`, () => {
+    const old = artifactsFor(1, 10);
+    const current = artifactsFor(2, 20);
+    assert.throws(() => selectArtifacts([old[0], old[1], current[2]], prefix, 2), /Missing/);
+  });
+}
+
+test('qualification rejects a successful partial rerun whose component artifacts mix attempts', async () => {
+  const f = fixture();
+  f.artifacts[0].name = 'dependabot-candidate-api-attempt-1';
+  await assert.rejects(invoke(f), /Missing/);
+});
+
+test('publication lookup rejects mixed-attempt receipts even when the latest publisher run succeeded', async () => {
+  const f = waiting({ publications: [{ ...publication, run_attempt: 2 }] });
+  const artifacts = structuredClone(publicationArtifacts);
+  artifacts[2].name = 'dependabot-publication-client-attempt-2';
+  f.github.rest.actions.listWorkflowRunArtifacts = async () => ({ data: { artifacts } });
+  await assert.rejects(waitForPublication({ github: f.github, ciRunId: 50, ciAttempt: 1 }), /Missing/);
+});
+
+test('both artifact producers name every component with their own exact run attempt', async () => {
+  const builder = await readFile(new URL('../workflows/dependabot-candidates.yml', import.meta.url), 'utf8');
+  const publisher = await readFile(new URL('../workflows/publish-dependabot-candidates.yml', import.meta.url), 'utf8');
+  assert.ok(builder.includes('name: dependabot-candidate-${{ matrix.component }}-attempt-${{ github.run_attempt }}'));
+  assert.ok(publisher.includes('name: dependabot-publication-${{ matrix.artifact.component }}-attempt-${{ github.run_attempt }}'));
 });

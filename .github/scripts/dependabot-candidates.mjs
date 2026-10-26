@@ -3,12 +3,13 @@ export const buildPath = '.github/workflows/dependabot-candidates.yml';
 const sha = /^[a-f0-9]{40}$/;
 const components = ['api', 'worker', 'client'];
 
-export function selectArtifacts(artifacts, prefix) {
+export function selectArtifacts(artifacts, prefix, attempt) {
+  if (!Number.isSafeInteger(attempt) || attempt < 1) throw new Error('Invalid artifact attempt');
   return components.map(component => {
-    const matches = artifacts.filter(a => a.name === `${prefix}-${component}`);
+    const matches = artifacts.filter(a => a.name === `${prefix}-${component}-attempt-${attempt}`);
     if (matches.length !== 1 || matches[0].expired || !/^sha256:[a-f0-9]{64}$/.test(matches[0].digest) ||
         !Number.isSafeInteger(matches[0].id) || matches[0].id < 1) throw new Error('Missing, ambiguous, or expired candidate artifact');
-    return { component, id: matches[0].id, digest: matches[0].digest };
+    return { component, id: matches[0].id, digest: matches[0].digest, attempt };
   });
 }
 
@@ -35,7 +36,7 @@ export async function qualify({ github, runId, expectedAttempt }) {
     throw new Error('Stale or foreign candidate source');
   }
   const artifacts = await github.paginate(github.rest.actions.listWorkflowRunArtifacts, { ...scope, run_id: run.id });
-  const selected = selectArtifacts(artifacts, 'dependabot-candidate');
+  const selected = selectArtifacts(artifacts, 'dependabot-candidate', run.run_attempt);
   return { source: ci.head_sha, base: pr.base.sha, ci: ci.id, ciAttempt: ci.run_attempt,
     run: run.id, attempt: run.run_attempt, artifacts: selected };
 }
@@ -70,7 +71,8 @@ export async function waitForPublication({ github, ciRunId, ciAttempt, sleep = m
       if (publisher?.status === 'completed') {
         if (publisher.conclusion !== 'success') throw new Error('Trusted candidate publication failed');
         const artifacts = await github.paginate(github.rest.actions.listWorkflowRunArtifacts, { ...scope, run_id: publisher.id });
-        return { producer: producer.id, publisher: publisher.id, artifacts: selectArtifacts(artifacts, 'dependabot-publication') };
+        return { producer: producer.id, publisher: publisher.id, publisherAttempt: publisher.run_attempt,
+          artifacts: selectArtifacts(artifacts, 'dependabot-publication', publisher.run_attempt) };
       }
     }
     await sleep(30000);
