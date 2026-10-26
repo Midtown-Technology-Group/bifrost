@@ -8,6 +8,10 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
+class WorkflowParameterSchemaError(ValueError):
+    """A source annotation cannot be compiled without weakening its contract."""
+
+
 class WorkflowParameterCompiler:
     def extract_parameters_from_source(
         self, source: str | bytes, function_name: str, *, path: str = "<workflow>"
@@ -270,8 +274,10 @@ class WorkflowParameterCompiler:
         for item in slice_items:
             try:
                 values.append(ast.literal_eval(item))
-            except (ValueError, TypeError):
-                continue
+            except (ValueError, TypeError) as exc:
+                raise WorkflowParameterSchemaError(
+                    "Literal annotations require statically resolvable members"
+                ) from exc
         if not values:
             return {}
 
