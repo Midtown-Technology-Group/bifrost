@@ -14,6 +14,7 @@ Requires EMBEDDINGS_AI_TEST_KEY environment variable.
 
 import logging
 import os
+from uuid import uuid4
 
 import pytest
 
@@ -372,23 +373,12 @@ class TestKnowledgeStoreIsolation:
     def test_org1_cannot_see_org2_documents(
         self,
         e2e_client,
-        platform_admin,
-        org1,
-        org2,
-        org1_user,
-        org2_user,
         org1_service_headers,
         org2_service_headers,
         embedding_config_setup,
         knowledge_cleanup,
     ):
-        """Test that org1 users cannot access org2's knowledge documents.
-
-        ``knowledge/store`` is gated to execution credentials and bypass
-        principals, so the writes go through org-scoped service tokens; the
-        isolation assertion itself is exercised over ``knowledge/search``
-        (unaffected by the gate) with each org's own login token.
-        """
+        """Org-scoped executions cannot cross the knowledge tenant boundary."""
         # Org1 stores a document (via an org1-scoped service token)
         response = e2e_client.post(
             "/api/sdk/knowledge/store",
@@ -415,10 +405,10 @@ class TestKnowledgeStoreIsolation:
         )
         assert response.status_code == 200, f"Org2 store failed: {response.text}"
 
-        # Org1 searches - should only find org1's document
+        # An authorized org1 execution searches only org1's document.
         search_response = e2e_client.post(
             "/api/sdk/knowledge/search",
-            headers=org1_user.headers,
+            headers=org1_service_headers,
             json={
                 "query": "secret knowledge systems processes",
                 "namespace": ["e2e-isolation"],
@@ -431,10 +421,10 @@ class TestKnowledgeStoreIsolation:
         assert "org1-secret" in keys
         assert "org2-secret" not in keys
 
-        # Org2 searches - should only find org2's document
+        # An authorized org2 execution searches only org2's document.
         search_response = e2e_client.post(
             "/api/sdk/knowledge/search",
-            headers=org2_user.headers,
+            headers=org2_service_headers,
             json={
                 "query": "secret knowledge systems processes",
                 "namespace": ["e2e-isolation"],
@@ -450,17 +440,16 @@ class TestKnowledgeStoreIsolation:
     def test_org1_cannot_get_org2_document_by_key(
         self,
         e2e_client,
-        org1_user,
-        org2_user,
+        org1_service_headers,
         org2_service_headers,
         embedding_config_setup,
         knowledge_cleanup,
     ):
         """Test that org1 cannot retrieve org2's document by key.
 
-        Store is gated, so it goes through org2's service token; the
-        cross-org get (unaffected by the gate) is exercised with org1_user's
-        own login token.
+        Both calls use org-scoped service credentials so the namespace gate is
+        bypassed only by an authorized execution and organization isolation is
+        the boundary under test.
         """
         # Org2 stores a document
         response = e2e_client.post(
@@ -477,7 +466,7 @@ class TestKnowledgeStoreIsolation:
         # Org1 tries to get it - should fail
         get_response = e2e_client.get(
             "/api/sdk/knowledge/get",
-            headers=org1_user.headers,
+            headers=org1_service_headers,
             params={"namespace": "e2e-isolation", "key": "org2-only"},
         )
         assert get_response.status_code == 404
@@ -485,8 +474,6 @@ class TestKnowledgeStoreIsolation:
     def test_org1_cannot_delete_org2_document(
         self,
         e2e_client,
-        org1_user,
-        org2_user,
         org1_service_headers,
         org2_service_headers,
         embedding_config_setup,
@@ -494,9 +481,8 @@ class TestKnowledgeStoreIsolation:
     ):
         """Test that org1 cannot delete org2's document.
 
-        Store and delete are gated, so both go through org-scoped service
-        tokens; the follow-up get (unaffected by the gate) is exercised with
-        org2_user's own login token.
+        Store delete and verification use org-scoped service credentials so
+        organization isolation remains the boundary under test.
         """
         # Org2 stores a document
         response = e2e_client.post(
@@ -522,7 +508,7 @@ class TestKnowledgeStoreIsolation:
         # Verify org2's document still exists
         get_response = e2e_client.get(
             "/api/sdk/knowledge/get",
-            headers=org2_user.headers,
+            headers=org2_service_headers,
             params={"namespace": "e2e-isolation", "key": "org2-protected"},
         )
         assert get_response.status_code == 200
@@ -560,16 +546,16 @@ class TestKnowledgeStoreGlobalScope:
         doc = get_response.json()
         assert doc["organization_id"] is None  # Global = no org
 
-    def test_global_documents_visible_to_all_orgs(
+    def test_global_documents_visible_to_authorized_org_executions(
         self,
         e2e_client,
         platform_admin,
-        org1_user,
-        org2_user,
+        org1_service_headers,
+        org2_service_headers,
         embedding_config_setup,
         knowledge_cleanup,
     ):
-        """Test that global documents are visible via search fallback."""
+        """Authorized org executions retain global search fallback."""
         # Store a global document
         response = e2e_client.post(
             "/api/sdk/knowledge/store",
@@ -583,10 +569,10 @@ class TestKnowledgeStoreGlobalScope:
         )
         assert response.status_code == 200, f"Store failed: {response.text}"
 
-        # Org1 can find it via search (fallback=True by default)
+        # An authorized org1 execution can find it via global fallback.
         search_response = e2e_client.post(
             "/api/sdk/knowledge/search",
-            headers=org1_user.headers,
+            headers=org1_service_headers,
             json={
                 "query": "How do I reset my password?",
                 "namespace": ["e2e-global"],
@@ -598,10 +584,10 @@ class TestKnowledgeStoreGlobalScope:
         keys = [r["key"] for r in results]
         assert "password-faq" in keys
 
-        # Org2 can also find it
+        # An authorized org2 execution can also find it.
         search_response = e2e_client.post(
             "/api/sdk/knowledge/search",
-            headers=org2_user.headers,
+            headers=org2_service_headers,
             json={
                 "query": "How do I reset my password?",
                 "namespace": ["e2e-global"],
@@ -970,10 +956,48 @@ class TestKnowledgeDocumentByIdOrgScope:
         assert create.status_code == 201, create.text
         doc_id = create.json()["id"]
         path = f"/api/knowledge-sources/e2e-test/documents/{doc_id}"
+        role_id = None
 
-        other_org = e2e_client.get(path, headers=org1_user.headers)
-        assert other_org.status_code == 404, other_org.text
+        try:
+            role = e2e_client.post(
+                "/api/roles",
+                headers=platform_admin.headers,
+                json={"name": f"Org2 knowledge reader {uuid4().hex[:8]}"},
+            )
+            assert role.status_code == 201, role.text
+            role_id = role.json()["id"]
+            assigned_user = e2e_client.post(
+                f"/api/roles/{role_id}/users",
+                headers=platform_admin.headers,
+                json={"user_ids": [str(org2_user.user_id)]},
+            )
+            assert assigned_user.status_code in (200, 201, 204), (
+                assigned_user.text
+            )
+            assigned_namespace = e2e_client.post(
+                f"/api/roles/{role_id}/knowledge",
+                headers=platform_admin.headers,
+                json={
+                    "entries": [
+                        {
+                            "namespace": "e2e-test",
+                            "organization_id": org2["id"],
+                        }
+                    ]
+                },
+            )
+            assert assigned_namespace.status_code == 204, (
+                assigned_namespace.text
+            )
 
-        own_org = e2e_client.get(path, headers=org2_user.headers)
-        assert own_org.status_code == 200, own_org.text
-        assert own_org.json()["content"] == "org2 only"
+            other_org = e2e_client.get(path, headers=org1_user.headers)
+            assert other_org.status_code == 404, other_org.text
+
+            own_org = e2e_client.get(path, headers=org2_user.headers)
+            assert own_org.status_code == 200, own_org.text
+            assert own_org.json()["content"] == "org2 only"
+        finally:
+            if role_id is not None:
+                e2e_client.delete(
+                    f"/api/roles/{role_id}", headers=platform_admin.headers
+                )

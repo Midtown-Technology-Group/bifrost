@@ -61,6 +61,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared.knowledge_access import accessible_knowledge_namespaces
 from src.services.operation_catalog import operation_route
 from src.core.auth import Context, CurrentEngineOrBypassUser, CurrentUser
 from src.core.principal import UserPrincipal
@@ -2909,18 +2910,27 @@ async def cli_knowledge_search(
         org_id = await _resolve_sdk_org_id(current_user, request.scope, db)
         org_uuid = UUID(org_id) if org_id else None
 
+        allowed_namespaces = await accessible_knowledge_namespaces(db, current_user)
+        search_namespaces = request.namespace
+        if allowed_namespaces is not None:
+            search_namespaces = [
+                namespace
+                for namespace in request.namespace
+                if namespace in allowed_namespaces
+            ]
+            if not search_namespaces:
+                return []
+
         # Generate query embedding
         embedding_client = await get_embedding_client(db)
         query_embedding = await embedding_client.embed_single(request.query)
 
-        # Search
-        # Externals were 403'd at the top of this endpoint
-        # (_deny_external_knowledge); every caller past the gate gets the
-        # SDK trust this surface has always extended.
+        # Search only the intersection of requested and role-granted namespaces;
+        # the repository independently preserves organization scope.
         repo = KnowledgeRepository(db, org_id=org_uuid)
         results = await repo.search(
             query_embedding=query_embedding,
-            namespace=request.namespace,
+            namespace=search_namespaces,
             query_text=request.query,
             limit=request.limit,
             min_score=request.min_score,
@@ -2978,9 +2988,7 @@ async def cli_knowledge_delete(
         org_id = await _resolve_sdk_org_id(current_user, request.scope, db)
         org_uuid = UUID(org_id) if org_id else None
 
-        # Externals were 403'd at the top of this endpoint
-        # (_deny_external_knowledge); every caller past the gate gets the
-        # SDK trust this surface has always extended.
+        # Mutations admit only execution credentials or scope-bypass principals.
         repo = KnowledgeRepository(db, org_id=org_uuid)
         deleted = await repo.delete_by_key(
             key=request.key,
@@ -3028,9 +3036,7 @@ async def cli_knowledge_delete_namespace(
         org_id = await _resolve_sdk_org_id(current_user, scope, db)
         org_uuid = UUID(org_id) if org_id else None
 
-        # Externals were 403'd at the top of this endpoint
-        # (_deny_external_knowledge); every caller past the gate gets the
-        # SDK trust this surface has always extended.
+        # Mutations admit only execution credentials or scope-bypass principals.
         repo = KnowledgeRepository(db, org_id=org_uuid)
         deleted_count = await repo.delete_namespace(
             namespace=namespace,
@@ -3077,14 +3083,19 @@ async def cli_knowledge_list_namespaces(
             )
         org_id = await _resolve_sdk_org_id(current_user, scope, db)
         org_uuid = UUID(org_id) if org_id else None
+        allowed_namespaces = await accessible_knowledge_namespaces(db, current_user)
 
-        # Externals were 403'd at the top of this endpoint
-        # (_deny_external_knowledge); every caller past the gate gets the
-        # SDK trust this surface has always extended.
+        # Organization scope and namespace-role access are independent gates.
         repo = KnowledgeRepository(db, org_id=org_uuid)
         results = await repo.list_namespaces(
             include_global=include_global,
         )
+        if allowed_namespaces is not None:
+            results = [
+                result
+                for result in results
+                if result.namespace in allowed_namespaces
+            ]
 
         return [
             CLIKnowledgeNamespaceInfo(
@@ -3123,10 +3134,14 @@ async def cli_knowledge_get(
     try:
         org_id = await _resolve_sdk_org_id(current_user, scope, db)
         org_uuid = UUID(org_id) if org_id else None
+        allowed_namespaces = await accessible_knowledge_namespaces(db, current_user)
+        if allowed_namespaces is not None and namespace not in allowed_namespaces:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Document not found",
+            )
 
-        # Externals were 403'd at the top of this endpoint
-        # (_deny_external_knowledge); every caller past the gate gets the
-        # SDK trust this surface has always extended.
+        # Organization scope and namespace-role access are independent gates.
         repo = KnowledgeRepository(db, org_id=org_uuid)
         result = await repo.get_by_key(
             key=key,
