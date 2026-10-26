@@ -11,11 +11,15 @@ binary is present in both containers.
 """
 from __future__ import annotations
 
+import asyncio
 import shutil
 import subprocess
 import time
 import uuid
+import zipfile
+from contextlib import asynccontextmanager
 from pathlib import Path
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -274,3 +278,103 @@ async def test_install_from_repo_rolls_back_on_deploy_failure(e2e_client, platfo
     listing = e2e_client.get("/api/solutions", headers=platform_admin.headers)
     assert listing.status_code == 200, listing.text
     assert not [s for s in listing.json()["solutions"] if s["slug"] == slug]
+
+
+async def test_failed_install_is_not_terminal_until_rollback_commits(
+    e2e_client, platform_admin, org1, org2, async_session_factory, monkeypatch
+):
+    """Exercise the real handler, PostgreSQL visibility and public polling seam.
+
+    Only staged-input storage and scheduler telemetry are replaced. No scheduler
+    job is enqueued: the existing full-path test above covers that transport.
+    """
+    from sqlalchemy import delete
+
+    from src.core.database import get_db_context
+    from src.jobs.platform.base import PlatformJobFailure
+    from src.jobs.platform.solution_deploy import SolutionDeployPayload, run_solution_deploy
+    from src.models.orm.solution_deploy_jobs import SolutionDeployJob
+    from src.models.orm.solutions import Solution
+
+    slug = f"rollback-boundary-{uuid.uuid4().hex[:8]}"
+    install_id, sibling_id, replacement_id, job_id = (uuid.uuid4() for _ in range(4))
+    first_org, other_org = uuid.UUID(org1["id"]), uuid.UUID(org2["id"])
+    source = Path(_make_fixture_repo(slug=slug, broken_manifest=True).removeprefix("file://"))
+    cleanup_staged, allow_commit = asyncio.Event(), asyncio.Event()
+
+    async def copy_input(_storage, destination, **_kwargs):
+        with zipfile.ZipFile(destination, "w") as bundle:
+            for name in ("bifrost.solution.yaml", ".bifrost/tables.yaml"):
+                bundle.write(source / name, name)
+
+    @asynccontextmanager
+    async def pause_cleanup_commit():
+        async with get_db_context() as session:
+            yield session
+            await session.flush()
+            cleanup_staged.set()
+            await allow_commit.wait()
+
+    monkeypatch.setattr(
+        "src.jobs.platform.solution_deploy.SolutionDeployJobStorage.copy_to_path", copy_input
+    )
+    monkeypatch.setattr(
+        "src.jobs.platform.solution_deploy.SolutionDeployJobStorage.delete", AsyncMock()
+    )
+    monkeypatch.setattr(
+        "src.jobs.platform.solution_deploy.get_db_context", pause_cleanup_commit
+    )
+    context = AsyncMock()
+    context.job_id = job_id
+    async with async_session_factory() as session:
+        session.add_all([
+            Solution(id=install_id, slug=slug, name="Failed install", organization_id=first_org,
+                     git_connected=True),
+            Solution(id=sibling_id, slug=slug, name="Other organization", organization_id=other_org),
+        ])
+        await session.flush()
+        session.add(SolutionDeployJob(id=job_id, install_id=install_id, status="queued"))
+        await session.commit()
+
+    task = asyncio.create_task(run_solution_deploy(context, SolutionDeployPayload(
+        deploy_job_id=job_id, kind="install_from_repo", install_id=install_id,
+        input_sha256="a" * 64, options={},
+    )))
+    try:
+        # An event controls the interleaving; no timing sleep or polling retry
+        # can hide a terminal projection becoming visible before the delete.
+        await asyncio.wait_for(cleanup_staged.wait(), timeout=10)
+        pending = e2e_client.get(f"/api/solutions/deploy-jobs/{job_id}",
+                                 headers=platform_admin.headers)
+        assert pending.status_code == 200, pending.text
+        assert pending.json()["status"] == "running", pending.text
+        assert "manifest invalid" in pending.json()["error"]
+        async with async_session_factory() as observer:
+            assert await observer.get(Solution, install_id) is not None
+            assert await observer.get(Solution, sibling_id) is not None
+
+        allow_commit.set()
+        with pytest.raises(PlatformJobFailure, match="manifest invalid"):
+            await asyncio.wait_for(task, timeout=10)
+        terminal = e2e_client.get(f"/api/solutions/deploy-jobs/{job_id}",
+                                  headers=platform_admin.headers)
+        assert terminal.status_code == 200, terminal.text
+        assert terminal.json()["status"] == "failed", terminal.text
+        assert terminal.json()["install_id"] is None
+        async with async_session_factory() as observer:
+            assert await observer.get(Solution, install_id) is None
+            assert await observer.get(Solution, sibling_id) is not None
+            # The failed row no longer blocks a retry in its original scope.
+            observer.add(Solution(id=replacement_id, slug=slug, name="Retry",
+                                  organization_id=first_org))
+            await observer.commit()
+    finally:
+        allow_commit.set()
+        if not task.done():
+            await asyncio.wait_for(asyncio.gather(task, return_exceptions=True), timeout=10)
+        async with async_session_factory() as session:
+            await session.execute(delete(SolutionDeployJob).where(SolutionDeployJob.id == job_id))
+            await session.execute(delete(Solution).where(
+                Solution.id.in_([install_id, sibling_id, replacement_id])
+            ))
+            await session.commit()

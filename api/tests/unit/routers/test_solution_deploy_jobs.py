@@ -8,15 +8,12 @@ from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
+from bifrost.solution_jobs import DEPLOY_JOB_TIMEOUT_ERROR
 from fastapi import HTTPException
 from src.models.contracts.solutions import SolutionRepoPreviewRequest
 from src.models.orm.platform_jobs import PlatformJob
 from src.models.orm.solution_deploy_jobs import SolutionDeployJob
 from src.models.orm.solutions import Solution
-from src.services.solutions.guard import (
-    SOLUTION_MANAGED_MESSAGE,
-    SolutionManagedWriteError,
-)
 from src.routers.solutions import (
     _enqueue_solution_deploy_job,
     _run_deploy_job,
@@ -24,7 +21,15 @@ from src.routers.solutions import (
     _source_accountability_organization_id,
     install_from_repo,
 )
-
+from src.services.solutions.deploy import (
+    SolutionDeployConflict,
+    SolutionFinalizeIncomplete,
+)
+from src.services.solutions.guard import (
+    SOLUTION_MANAGED_MESSAGE,
+    SolutionManagedWriteError,
+)
+from src.services.solutions.write_lock import SolutionWriteLockHeld
 
 def test_solution_candidate_id_hashes_exact_staged_bytes(tmp_path):
     path = tmp_path / "candidate.zip"
@@ -210,6 +215,76 @@ async def test_run_deploy_job_does_not_start_after_job_is_terminal(
 
     deploy.assert_not_awaited()
     assert not zip_path.exists()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("connected_install", [True, False], ids=["first-repo-install", "ordinary-deploy"])
+@pytest.mark.parametrize(
+    ("failure", "expected_error"),
+    [
+        pytest.param(SolutionDeployConflict("manifest invalid"), "manifest invalid", id="conflict"),
+        pytest.param(TimeoutError(), DEPLOY_JOB_TIMEOUT_ERROR, id="timeout"),
+        pytest.param(
+            SolutionWriteLockHeld(),
+            "A deploy is already in progress for this install; retry shortly.",
+            id="write-lock-held",
+        ),
+        pytest.param(
+            SolutionFinalizeIncomplete("source unavailable"),
+            "Deploy committed but storage was unavailable after retries. "
+            "Re-run the deploy to complete it (it is idempotent).",
+            id="finalization-failed",
+        ),
+        pytest.param(
+            RuntimeError("private operational detail"),
+            "Deploy failed unexpectedly; see server logs.",
+            id="unexpected-error-redacted",
+        ),
+    ],
+)
+async def test_deploy_failure_projection_respects_rollback_boundary(
+    tmp_path, monkeypatch, connected_install, failure, expected_error
+):
+    job = SolutionDeployJob(id=uuid4(), status="queued")
+    solution = Solution(
+        id=uuid4(), slug="new-repo-install", name="New repo install", git_connected=connected_install
+    )
+
+    class FakeDB:
+        async def get(self, model, row_id):  # noqa: ANN001, ANN201
+            if model is SolutionDeployJob:
+                return job
+            if model is Solution:
+                return solution
+            return None
+
+    @asynccontextmanager
+    async def fake_db_context():
+        yield FakeDB()
+
+    @asynccontextmanager
+    async def fake_write_lock(_solution_id):
+        yield
+
+    async def fail_deploy(*_args, **_kwargs):
+        raise failure
+
+    from src.core import database
+    from src.services.solutions import write_lock, zip_install
+
+    monkeypatch.setattr(database, "get_db_context", fake_db_context)
+    monkeypatch.setattr(write_lock, "solution_write_lock", fake_write_lock)
+    monkeypatch.setattr(zip_install, "deploy_zip_to_solution_path", fail_deploy)
+    zip_path = tmp_path / "deploy.zip"
+    zip_path.write_bytes(b"staged")
+
+    await _run_deploy_job(
+        job.id, solution.id, zip_path, force=True, allow_connected_install=connected_install
+    )
+
+    assert job.status == ("running" if connected_install else "failed")
+    assert job.error == expected_error
+    assert zip_path.exists() is False
 
 
 _SENSITIVE_ERROR_TEXT = (
