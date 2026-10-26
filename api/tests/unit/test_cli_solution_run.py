@@ -10,6 +10,7 @@ job and is covered by the table SDK tests; here we prove the import root.
 from __future__ import annotations
 
 import asyncio
+import json
 import pathlib
 import sys
 from types import SimpleNamespace
@@ -21,13 +22,37 @@ from bifrost.cli import handle_run
 
 
 @pytest.fixture
-def _restore_sys_path():
+def _restore_sys_path(tmp_path: pathlib.Path):
     before = list(sys.path)
     before_mods = set(sys.modules)
     yield
     sys.path[:] = before
+    root = tmp_path.resolve()
     for name in set(sys.modules) - before_mods:
-        sys.modules.pop(name, None)
+        module = sys.modules.get(name)
+        module_paths: list[str | pathlib.Path] = []
+        module_file = getattr(module, "__file__", None)
+        if module_file is not None:
+            module_paths.append(module_file)
+
+        # PEP 420 namespace packages have no __file__. Their search locations
+        # are the only durable evidence that the import came from this Solution.
+        module_paths.extend(getattr(module, "__path__", ()) or ())
+        spec = getattr(module, "__spec__", None)
+        module_paths.extend(
+            getattr(spec, "submodule_search_locations", ()) or ()
+        )
+
+        is_solution_module = False
+        for module_path in module_paths:
+            try:
+                if pathlib.Path(module_path).resolve().is_relative_to(root):
+                    is_solution_module = True
+                    break
+            except (OSError, TypeError, ValueError):
+                continue
+        if is_solution_module:
+            sys.modules.pop(name, None)
 
 
 def test_bifrost_run_resolves_solution_local_import(
@@ -151,6 +176,124 @@ def test_run_direct_executes_workflow_and_reports_errors(monkeypatch, capsys):
 
     assert cli._run_direct("boom", {"boom": boom}, {}) == 1
     assert "bad workflow" in capsys.readouterr().err
+
+
+def test_run_direct_redacts_registered_secrets_from_results_and_errors(
+    monkeypatch, capsys
+):
+    from bifrost._context import get_execution_context, register_secret
+
+    escaped_secret = 'päss"word\\line\nvalue'
+    error_secret = "standalone\nerror-secret"
+    offline_secret = "offline\nsecret-value"
+    collision_secret_1 = "collision-secret-alpha"
+    collision_secret_2 = "collision-secret-beta"
+
+    class Client:
+        user = {"id": "user-1", "email": "dev@example.test", "name": "Dev"}
+        organization = None
+
+    class ClientFactory:
+        @staticmethod
+        def get_instance(require_auth=True):
+            return Client()
+
+    class StringableResult:
+        def __str__(self):
+            return f"wrapped:{escaped_secret}"
+
+    async def returns_secret():
+        register_secret(escaped_secret)
+        register_secret("1234")
+        register_secret("true")
+        register_secret(collision_secret_1)
+        register_secret(collision_secret_2)
+        return {
+            f"key:{escaped_secret}": escaped_secret,
+            "custom": StringableResult(),
+            "json_encoded": json.dumps(escaped_secret),
+            "json_unicode": json.dumps(escaped_secret, ensure_ascii=False),
+            "repr_encoded": repr(escaped_secret),
+            "count": 1234,
+            "enabled": True,
+            "numeric_text": "1234",
+            "boolean_text": "true",
+            "collision:[REDACTED]": "literal",
+            f"collision:{collision_secret_1}": "first",
+            f"collision:{collision_secret_2}": "second",
+        }
+
+    async def raises_secret():
+        register_secret(error_secret)
+        raise KeyError(error_secret)
+
+    async def returns_offline_secret():
+        register_secret(offline_secret)
+        return {"token": json.dumps(offline_secret)}
+
+    async def raises_offline_secret():
+        register_secret(offline_secret)
+        raise KeyError(offline_secret)
+
+    monkeypatch.setattr(cli, "BifrostClient", ClientFactory)
+
+    assert cli._run_direct("result", {"result": returns_secret}, {}) == 0
+    result_output = capsys.readouterr().out
+    parsed = json.loads(result_output)
+    assert parsed == {
+        "key:[REDACTED]": "[REDACTED]",
+        "custom": "wrapped:[REDACTED]",
+        "json_encoded": "[REDACTED]",
+        "json_unicode": "[REDACTED]",
+        "repr_encoded": "[REDACTED]",
+        "count": 1234,
+        "enabled": True,
+        "numeric_text": "[REDACTED]",
+        "boolean_text": "[REDACTED]",
+        "collision:[REDACTED]": "literal",
+        "collision:[REDACTED] (2)": "first",
+        "collision:[REDACTED] (3)": "second",
+    }
+    assert escaped_secret not in json.dumps(parsed, ensure_ascii=False)
+    assert collision_secret_1 not in result_output
+    assert collision_secret_2 not in result_output
+
+    with pytest.raises(RuntimeError, match="No execution context found"):
+        get_execution_context()
+
+    assert cli._run_direct("error", {"error": raises_secret}, {}) == 1
+    error_output = capsys.readouterr().err
+    assert error_secret not in error_output
+    assert repr(error_secret) not in error_output
+    assert json.dumps(error_secret)[1:-1] not in error_output
+    assert "[REDACTED]" in error_output
+
+    class OfflineClientFactory:
+        @staticmethod
+        def get_instance(require_auth=True):
+            raise RuntimeError("offline")
+
+    monkeypatch.setattr(cli, "BifrostClient", OfflineClientFactory)
+
+    assert cli._run_direct(
+        "offline-result", {"offline-result": returns_offline_secret}, {}
+    ) == 0
+    offline_result = capsys.readouterr().out
+    assert json.loads(offline_result) == {"token": "[REDACTED]"}
+    assert offline_secret not in offline_result
+    assert json.dumps(offline_secret)[1:-1] not in offline_result
+
+    with pytest.raises(RuntimeError, match="No execution context found"):
+        get_execution_context()
+
+    assert cli._run_direct(
+        "offline-error", {"offline-error": raises_offline_secret}, {}
+    ) == 1
+    offline_error = capsys.readouterr().err
+    assert offline_secret not in offline_error
+    assert repr(offline_secret) not in offline_error
+    assert json.dumps(offline_secret)[1:-1] not in offline_error
+    assert "[REDACTED]" in offline_error
 
 
 def test_run_direct_fetches_org_context_and_sets_solution_context(monkeypatch, capsys, tmp_path):
