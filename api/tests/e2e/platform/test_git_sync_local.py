@@ -433,18 +433,20 @@ async def cleanup_test_data(db_session: AsyncSession):
     from src.models.orm.organizations import Organization
     from src.models.orm.users import Role
 
-    # Executions FK into organizations (RESTRICT): other suites legitimately
-    # create executions inside their created_by="test" orgs (e.g. the form
-    # anchor tests stamp the execution with the FORM's org), and a single
-    # surviving row makes this org sweep raise ForeignKeyViolationError —
-    # which cascades as a teardown error into EVERY later test in this file.
+    # Limit the sweep to organizations owned by this module. Other suites and
+    # the shared E2E seed also use created_by="test"; deleting those rows here
+    # either violates their child FKs or removes the domain used by registration.
     cohort_orgs = select(Organization.id).where(
-        Organization.created_by.in_(["git-sync", "test"])
+        Organization.created_by.in_(["git-sync", "git-sync-test"])
     )
     await db_session.execute(
         delete(Execution).where(Execution.organization_id.in_(cohort_orgs))
     )
-    await db_session.execute(delete(Organization).where(Organization.created_by.in_(["git-sync", "test"])))
+    await db_session.execute(
+        delete(Organization).where(
+            Organization.created_by.in_(["git-sync", "git-sync-test"])
+        )
+    )
     await db_session.execute(delete(Role).where(Role.created_by == "git-sync"))
     await db_session.commit()
 
@@ -989,6 +991,7 @@ roles: []
             name="agent_tool_workflow",
             path="workflows/agent_tool.py",
             function_name="agent_tool_workflow",
+            type="tool",
             is_active=True,
         ))
         await db_session.flush()
@@ -998,7 +1001,11 @@ roles: []
         # Write workflow file + manifest with inline agent content
         wf_dir = work_dir / "workflows"
         wf_dir.mkdir(exist_ok=True)
-        (wf_dir / "agent_tool.py").write_text(SAMPLE_WORKFLOW_PY)
+        (wf_dir / "agent_tool.py").write_text(
+            "from bifrost import tool\n\n"
+            "@tool\nasync def agent_tool_workflow() -> dict:\n"
+            "    return {}\n"
+        )
 
         manifest_dir = work_dir / ".bifrost"
         manifest_dir.mkdir(exist_ok=True)
@@ -1017,6 +1024,7 @@ roles: []
 workflows:
   agent_tool_workflow:
     id: "{wf_id}"
+    type: tool
     path: workflows/agent_tool.py
     function_name: agent_tool_workflow
 forms: {{}}
@@ -2732,7 +2740,11 @@ class TestSplitManifestFormat:
 
         # Create org in DB (needed for FK)
         from uuid import UUID as UUIDType
-        org = Organization(id=UUIDType(org_id), name="EventSourceOrgTest", created_by="test")
+        org = Organization(
+            id=UUIDType(org_id),
+            name="EventSourceOrgTest",
+            created_by="git-sync-test",
+        )
         db_session.add(org)
         await db_session.commit()
 
@@ -2981,7 +2993,11 @@ class TestSplitManifestFormat:
         org_id = str(uuid4())
 
         # Create org in DB (needed for FK)
-        org = Organization(id=UUIDType(org_id), name="MappingTestOrg", created_by="test")
+        org = Organization(
+            id=UUIDType(org_id),
+            name="MappingTestOrg",
+            created_by="git-sync-test",
+        )
         db_session.add(org)
         await db_session.commit()
 
@@ -3530,7 +3546,13 @@ class TestPullUpsertNaturalKeys:
         from src.models.orm.organizations import Organization
 
         org_id = uuid4()
-        db_session.add(Organization(id=org_id, name="MappingCascadeOrg", created_by="test"))
+        db_session.add(
+            Organization(
+                id=org_id,
+                name="MappingCascadeOrg",
+                created_by="git-sync-test",
+            )
+        )
 
         id_a = uuid4()
         db_session.add(Integration(id=id_a, name="CascadeMappingInteg", is_deleted=False))
@@ -6105,7 +6127,10 @@ class TestSolutionFilesManifestRoundTrip:
         from src.services.solutions.secrets_blob import SolutionContent
 
         # 1. Create org + Solution install
-        org = Organization(name=f"test-org-{_uuid4().hex[:6]}", created_by="test")
+        org = Organization(
+            name=f"test-org-{_uuid4().hex[:6]}",
+            created_by="git-sync-test",
+        )
         db_session.add(org)
         await db_session.flush()
 
@@ -6200,7 +6225,10 @@ class TestSolutionFilesManifestRoundTrip:
         from src.services.solution_files import enumerate_solution_files
         from src.services.solutions.secrets_blob import SolutionContent
 
-        org = Organization(name=f"test-fail-org-{_uuid4().hex[:6]}", created_by="test")
+        org = Organization(
+            name=f"test-fail-org-{_uuid4().hex[:6]}",
+            created_by="git-sync-test",
+        )
         db_session.add(org)
         await db_session.flush()
 
@@ -6251,7 +6279,10 @@ class TestSolutionFilesManifestRoundTrip:
         from src.models.orm.solutions import Solution
         from src.services.manifest_generator import generate_manifest
 
-        org = Organization(name=f"test-fp-org-{_uuid4().hex[:6]}", created_by="test")
+        org = Organization(
+            name=f"test-fp-org-{_uuid4().hex[:6]}",
+            created_by="git-sync-test",
+        )
         db_session.add(org)
         await db_session.flush()
 
@@ -6312,7 +6343,10 @@ class TestSolutionFilesManifestRoundTrip:
         from src.models.orm.solutions import Solution
         from src.services.manifest_import import ManifestResolver
 
-        org = Organization(name=f"test-fp-key-{_uuid4().hex[:6]}", created_by="test")
+        org = Organization(
+            name=f"test-fp-key-{_uuid4().hex[:6]}",
+            created_by="git-sync-test",
+        )
         db_session.add(org)
         await db_session.flush()
 

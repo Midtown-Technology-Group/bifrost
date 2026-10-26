@@ -22,6 +22,7 @@ def _mock_workflow(name="test_wf", org_id=None):
     wf.access_level = "role_based"
     wf.endpoint_enabled = False
     wf.timeout_seconds = 1800
+    wf.cache_ttl_seconds = 300
     wf.public_endpoint = False
     wf.category = "General"
     wf.description = None
@@ -67,7 +68,22 @@ def _mock_agent(name="test_agent", org_id=None, access_level=None):
     agent.llm_max_tokens = None
     agent.max_iterations = None
     agent.max_token_budget = None
+    agent.max_run_timeout = None
     return agent
+
+
+@pytest.mark.parametrize("legacy_timeout", [0, -1, 10_000])
+def test_serialize_agent_normalizes_legacy_run_timeout(legacy_timeout):
+    """Git manifest export keeps pre-validation rows readable and bounded."""
+    from bifrost.agent_limits import MAX_AGENT_RUN_TIMEOUT_SECONDS
+    from src.services.manifest_generator import serialize_agent
+
+    agent = _mock_agent()
+    agent.max_run_timeout = legacy_timeout
+
+    manifest_agent = serialize_agent(agent)
+
+    assert manifest_agent.max_run_timeout == MAX_AGENT_RUN_TIMEOUT_SECONDS
 
 
 def _mock_app(name="test_app", slug=None, org_id=None, access_level="authenticated"):

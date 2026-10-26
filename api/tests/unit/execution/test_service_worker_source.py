@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from src.core import module_cache_sync
 from src.services.execution import engine, virtual_import, worker, workspace_modules
 
 
@@ -17,6 +18,12 @@ async def test_service_rejects_changed_source_before_execution(monkeypatch):
         return SimpleNamespace(generation="current-generation")
 
     monkeypatch.setattr(workspace_modules, "clear_workspace_modules", clear_modules)
+    asserted_generations = []
+    monkeypatch.setattr(
+        module_cache_sync,
+        "assert_workspace_generation",
+        lambda generation: asserted_generations.append(generation) or generation,
+    )
     monkeypatch.setattr(virtual_import, "get_virtual_finder", lambda: None)
     monkeypatch.setattr(virtual_import, "install_virtual_import_hook", lambda: None)
     removed = []
@@ -43,6 +50,7 @@ async def test_service_rejects_changed_source_before_execution(monkeypatch):
             "function_name": "main",
             "file_path": "workflows/service.py",
             "content_hash": "wrong-revision",
+            "workspace_generation": "current-generation",
             "caller": {
                 "user_id": "00000000-0000-0000-0000-000000000001",
                 "email": "service@bifrost.internal",
@@ -52,11 +60,67 @@ async def test_service_rejects_changed_source_before_execution(monkeypatch):
     )
 
     assert loaded[0]["workspace_generation"] == "current-generation"
+    assert asserted_generations == ["current-generation"]
     assert result["status"] == "Failed"
     assert result["error_type"] == "RuntimeError"
     assert "source integrity mismatch" in result["error_message"]
     execute.assert_not_awaited()
     assert removed == [True]
+
+
+@pytest.mark.asyncio
+async def test_service_rejects_generation_change_before_loading(monkeypatch):
+    monkeypatch.setattr(
+        "bifrost._service_runtime.install_service_credentials",
+        lambda _token: True,
+    )
+    monkeypatch.setattr(
+        workspace_modules,
+        "clear_workspace_modules",
+        lambda: SimpleNamespace(generation="new-generation"),
+    )
+    pinned_contexts = []
+    monkeypatch.setattr(
+        module_cache_sync,
+        "set_workspace_generation_context",
+        pinned_contexts.append,
+    )
+
+    monkeypatch.setattr(
+        module_cache_sync,
+        "get_workspace_generation_sync",
+        lambda: "new-generation",
+    )
+    loaded = []
+    monkeypatch.setattr(
+        worker,
+        "_load_workspace_workflow",
+        lambda **kwargs: loaded.append(kwargs),
+    )
+    execute = AsyncMock()
+    monkeypatch.setattr(engine, "execute", execute)
+
+    result = await worker.run_service(
+        {"attempt_id": "attempt-1", "token": "token"},
+        {
+            "execution_id": "attempt-1",
+            "function_name": "main",
+            "file_path": "workflows/service.py",
+            "workspace_generation": "fork-generation",
+            "caller": {
+                "user_id": "00000000-0000-0000-0000-000000000001",
+                "email": "service@bifrost.internal",
+                "name": "Service",
+            },
+        },
+    )
+
+    assert pinned_contexts[0] == "fork-generation"
+    assert result["status"] == "Failed"
+    assert result["error_type"] == "WorkspaceGenerationChangedError"
+    assert "generation changed" in result["error_message"]
+    assert loaded == []
+    execute.assert_not_awaited()
 
 
 def test_early_credential_handoff_uses_service_token(monkeypatch):

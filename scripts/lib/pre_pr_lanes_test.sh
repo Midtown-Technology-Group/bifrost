@@ -72,9 +72,70 @@ echo 'PASS: MCP conformance reconciles backend authority after browser lanes'
 # Unchanged action inputs need structural SHA checks locally; changed inputs
 # still resolve readable versions. An unknown comparison fails closed.
 (
+    scanner_state="$(mktemp -d)"
+    trap 'rm -rf "$scanner_state"' EXIT
+    TEST_LOCK_DIR="$scanner_state"
+    bootstrap_log="$scanner_state/bootstrap.log"
+    python3() {
+        [[ "$1" == -m && "$2" == venv && "$#" == 3 ]]
+        mkdir -p "$3/bin"
+        printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >> %q\n' \
+            "$bootstrap_log" > "$3/bin/python"
+        chmod +x "$3/bin/python"
+    }
+
+    scanner_python="$(action_pin_scanner_python)"
+    [[ "$scanner_python" == "$TEST_LOCK_DIR"/action-pin-scanner-*/bin/python ]]
+    [[ -f "${scanner_python%/bin/python}/.ready" ]]
+    grep -F -- \
+        '-m pip install --quiet --disable-pip-version-check --no-deps --only-binary :all: --require-hashes -r .github/requirements/action-pin-scanner.lock' \
+        "$bootstrap_log"
+    grep -F -- '-c import yaml; assert yaml.__version__ == "6.0.3"' "$bootstrap_log"
+)
+echo 'PASS: Action pin scanner bootstraps a wheel-only hash-locked clean-host environment'
+
+for failed_step in venv install validate marker; do
+    (
+        scanner_state="$(mktemp -d)"
+        trap 'rm -rf "$scanner_state"' EXIT
+        TEST_LOCK_DIR="$scanner_state"
+        export ACTION_PIN_TEST_FAILURE="$failed_step"
+        python3() {
+            if [[ "$ACTION_PIN_TEST_FAILURE" == venv ]]; then
+                return 41
+            fi
+            mkdir -p "$3/bin"
+            cat > "$3/bin/python" <<'EOF'
+#!/usr/bin/env bash
+if [[ "$ACTION_PIN_TEST_FAILURE" == install && "$1" == -m ]]; then
+    exit 42
+fi
+if [[ "$ACTION_PIN_TEST_FAILURE" == validate && "$1" == -c ]]; then
+    exit 43
+fi
+EOF
+            chmod +x "$3/bin/python"
+        }
+        touch() {
+            if [[ "$ACTION_PIN_TEST_FAILURE" == marker ]]; then
+                return 44
+            fi
+            command touch "$@"
+        }
+
+        if action_pin_scanner_python >/dev/null; then
+            exit 1
+        fi
+        ! compgen -G "$TEST_LOCK_DIR/action-pin-scanner-*/.ready" >/dev/null
+    )
+done
+echo 'PASS: Action pin scanner bootstrap failures never create a ready marker'
+
+(
     pin_calls=()
     pin_diff_status=0
     pin_python_status=0
+    action_pin_scanner_python() { printf '%s\n' python3; }
     git() {
         [[ "$*" == 'diff --quiet origin/main HEAD -- .github/workflows .github/actions api/scripts/check_github_action_pins.py' ]] || exit 99
         return "$pin_diff_status"
@@ -138,3 +199,51 @@ echo 'PASS: failed MCP preparation blocks conformance evidence'
     mcp_conformance --filter "tools list" "*.json"
 )
 echo 'PASS: MCP wrapper preserves caller argument boundaries and preparation order'
+
+# Repository ownership uses the same explicit-target executor locally and in CI.
+(
+    stages=()
+    pre_pr_plan_lane() {
+        case "$1" in repository_tools) echo affected ;; *) echo skip ;; esac
+    }
+    pre_pr_plan_targets() { echo scripts/sonar/test_main_receipt.py; }
+    run_pre_pr_stage() { stages+=("$*"); }
+    run_scoped_pre_pr
+    [[ "${stages[*]}" == 'repository-tools repository_tool_tests scripts/sonar/test_main_receipt.py' ]]
+    run_pre_pr_stage() { return 41; }
+    if run_scoped_pre_pr; then
+        echo 'FAIL: failed repository tests accepted' >&2
+        exit 1
+    else
+        [[ "$?" == 41 ]]
+    fi
+    pre_pr_plan_targets() { :; }
+    if run_scoped_pre_pr; then
+        echo 'FAIL: empty repository targets accepted' >&2
+        exit 1
+    fi
+    pre_pr_plan_lane() { echo invalid; }
+    if run_scoped_pre_pr; then
+        echo 'FAIL: invalid repository mode accepted' >&2
+        exit 1
+    fi
+)
+(
+    calls=0
+    python3() { calls=$((calls + 1)); }
+    repository_tool_tests scripts/sonar/test_main_receipt.py
+    [[ "$calls" == 1 ]]
+    if repository_tool_tests || repository_tool_tests ../outside.py || repository_tool_tests ''; then
+        echo 'FAIL: invalid repository target accepted' >&2
+        exit 1
+    fi
+    [[ "$calls" == 1 ]]
+    python3() { return 42; }
+    if repository_tool_tests scripts/sonar/test_main_receipt.py; then
+        echo 'FAIL: repository executor hid a test failure' >&2
+        exit 1
+    else
+        [[ "$?" == 42 ]]
+    fi
+)
+echo 'PASS: repository tests have explicit targets, no stack stage and preserved failures'

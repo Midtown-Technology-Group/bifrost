@@ -19,6 +19,100 @@ def graph_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     return tmp_path
 
 
+def _repository_contract(root: Path) -> None:
+    for path in (
+        "scripts/sonar/main_receipt.py", "scripts/sonar/preflight.py",
+        "scripts/sonar/test_main_receipt.py", "scripts/sonar/test_operator_inputs.py",
+        "scripts/sonar/test_preflight.py",
+    ):
+        _write(root, path, "VALUE = 1\n")
+    _write(root, ".github/workflows/sonar-coverage.yml",
+           "run: python3 scripts/sonar/main_receipt.py reuse\n"
+           "run: python3 scripts/sonar/preflight.py verify\n"
+           "run: python3 -m unittest discover -s scripts/sonar -p 'test_*.py'\n")
+    _write(root, ".github/workflows/ci.yml", "uses: ./.github/workflows/sonar-coverage.yml\n")
+
+
+@pytest.mark.parametrize(
+    "path,tests",
+    [
+        ("scripts/sonar/main_receipt.py", ("scripts/sonar/test_main_receipt.py",)),
+        ("scripts/sonar/preflight.py", (
+            "scripts/sonar/test_main_receipt.py", "scripts/sonar/test_operator_inputs.py",
+            "scripts/sonar/test_preflight.py",
+        )),
+        ("scripts/sonar/test_preflight.py", (
+            "scripts/sonar/test_main_receipt.py", "scripts/sonar/test_preflight.py",
+        )),
+        ("scripts/sonar/test_operator_inputs.py", ("scripts/sonar/test_operator_inputs.py",)),
+    ],
+)
+def test_repository_tool_and_fixture_ownership_selects_actual_consumers(
+    graph_repo: Path, path: str, tests: tuple[str, ...]
+) -> None:
+    _repository_contract(graph_repo)
+    plan = affected.plan_changes([affected.GitChange("M", path)])
+    assert plan.scope == "affected"
+    assert plan.repository_tests == tests
+    assert set(plan.to_dict()["lanes"].values()) == {"skip"}
+    repository = plan.to_dict()["repository"]
+    assert isinstance(repository, dict)
+    assert repository["workflow_callers"] == [
+        ".github/workflows/sonar-coverage.yml", ".github/workflows/ci.yml",
+    ]
+    output, summary = graph_repo / "output", graph_repo / "summary"
+    affected.write_github_output(output, plan)
+    affected.write_summary(summary, plan)
+    assert "repository_tools_mode=affected" in output.read_text()
+    for target in tests:
+        assert target in output.read_text()
+    assert "sonar-coverage.yml" in summary.read_text()
+
+
+@pytest.mark.parametrize("boundary", ["missing_test", "missing_caller", "commented_caller", "unknown_tool", "workflow_edit"])
+def test_repository_tool_unknown_ownership_and_workflow_edits_stay_conservative(
+    graph_repo: Path, boundary: str
+) -> None:
+    _repository_contract(graph_repo)
+    path = "scripts/sonar/main_receipt.py"
+    if boundary == "missing_test":
+        (graph_repo / "scripts/sonar/test_main_receipt.py").unlink()
+    elif boundary == "missing_caller":
+        (graph_repo / ".github/workflows/ci.yml").unlink()
+    elif boundary == "commented_caller":
+        _write(graph_repo, ".github/workflows/ci.yml", "# uses: ./.github/workflows/sonar-coverage.yml\n")
+    elif boundary == "unknown_tool":
+        path = "scripts/sonar/unowned.py"
+        _write(graph_repo, path, "VALUE = 1\n")
+    else:
+        path = ".github/workflows/sonar-coverage.yml"
+    plan = affected.plan_changes([affected.GitChange("M", path)])
+    assert plan.scope == "comprehensive"
+
+
+def test_repository_and_app_diffs_preserve_both_test_sets(graph_repo: Path) -> None:
+    _repository_contract(graph_repo)
+    _write(graph_repo, "api/src/services/helper.py", "VALUE = 1\n")
+    _write(graph_repo, "api/tests/unit/test_helper.py", "from src.services.helper import VALUE\n")
+    plan = affected.plan_changes([
+        affected.GitChange("M", "scripts/sonar/main_receipt.py"),
+        affected.GitChange("M", "api/src/services/helper.py"),
+    ])
+    assert plan.repository_tests == ("scripts/sonar/test_main_receipt.py",)
+    assert plan.python.unit_tests == ("tests/unit/test_helper.py",)
+    assert plan.lane("api_unit") == "affected"
+    assert plan.lane("client_unit") == "skip"
+
+
+def test_linked_repository_test_cannot_certify_ownership(graph_repo: Path) -> None:
+    _repository_contract(graph_repo)
+    target = graph_repo / "scripts/sonar/test_main_receipt.py"
+    target.unlink()
+    target.symlink_to(graph_repo / "scripts/sonar/test_preflight.py")
+    plan = affected.plan_changes([affected.GitChange("M", "scripts/sonar/main_receipt.py")])
+    assert plan.scope == "comprehensive"
+
+
 def test_backend_helper_selects_reverse_importers_and_route_e2e(
     graph_repo: Path,
 ) -> None:
@@ -206,6 +300,83 @@ def test_uncertain_changes_fail_closed(
 
     assert plan.scope == "comprehensive"
     assert reason in plan.reason
+
+
+def test_generated_openwiki_artifacts_are_documentation_only() -> None:
+    plan = affected.plan_changes(
+        [
+            affected.GitChange("M", "openwiki/architecture/index.md"),
+            affected.GitChange("M", "openwiki/.claims/architecture/platform.json"),
+            affected.GitChange("M", "openwiki/.page-manifest.json"),
+            affected.GitChange("M", "openwiki/.last-update.json"),
+            affected.GitChange("M", "openwiki/INSTRUCTIONS.md"),
+        ]
+    )
+
+    assert plan.scope == "docs-only"
+    assert set(plan.to_dict()["lanes"].values()) == {"skip"}
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        ".openwikiignore",
+        "openwiki/.run.json",
+        "openwiki/scripts/refresh.py",
+        "openwiki/config/maintenance.json",
+        "openwiki/notes.txt",
+        "openwiki/other.json",
+        "openwiki/.claims/architecture/platform.yaml",
+        "openwiki/.claims/architecture/platform.json.bak",
+    ],
+)
+def test_openwiki_policy_and_unmodeled_files_remain_comprehensive(path: str) -> None:
+    plan = affected.plan_changes([affected.GitChange("M", path)])
+
+    assert plan.scope == "comprehensive"
+
+
+def test_deleted_openwiki_claim_remains_comprehensive() -> None:
+    plan = affected.plan_changes(
+        [affected.GitChange("D", "openwiki/.claims/architecture/platform.json")]
+    )
+
+    assert plan.scope == "comprehensive"
+    assert "deletions" in plan.reason
+
+
+def test_generated_openwiki_file_does_not_broaden_a_runtime_change(
+    graph_repo: Path,
+) -> None:
+    _write(graph_repo, "api/src/services/helper.py", "VALUE = 1\n")
+    _write(
+        graph_repo,
+        "api/tests/unit/services/test_helper.py",
+        "from src.services.helper import VALUE\n\n"
+        "def test_value():\n    assert VALUE == 1\n",
+    )
+
+    plan = affected.plan_changes(
+        [
+            affected.GitChange("M", "api/src/services/helper.py"),
+            affected.GitChange("M", "openwiki/architecture/index.md"),
+        ]
+    )
+
+    assert plan.scope == "affected"
+    assert plan.python.unit_tests == ("tests/unit/services/test_helper.py",)
+
+
+def test_generated_openwiki_file_does_not_narrow_a_ci_change() -> None:
+    plan = affected.plan_changes(
+        [
+            affected.GitChange("M", ".github/workflows/ci.yml"),
+            affected.GitChange("M", "openwiki/architecture/index.md"),
+        ]
+    )
+
+    assert plan.scope == "comprehensive"
+    assert "high-risk" in plan.reason
 
 
 def test_normalization_preserves_dotfile_paths() -> None:

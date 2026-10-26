@@ -2,6 +2,7 @@
 
 from enum import Enum
 from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock
 from uuid import UUID
 
 import pytest
@@ -37,6 +38,43 @@ def test_drop_none_preserves_falsey_non_none_values():
         "empty": "",
         "items": [],
     }
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("legacy_timeout", [0, -1, 10_000])
+async def test_agent_entries_normalize_legacy_run_timeout(legacy_timeout):
+    """Solution capture exports the safe effective value for legacy rows."""
+    from bifrost.agent_limits import MAX_AGENT_RUN_TIMEOUT_SECONDS
+    from src.models.enums import AgentAccessLevel
+
+    agent = SimpleNamespace(
+        id=PROVIDER_ID,
+        name="legacy-agent",
+        organization_id=None,
+        access_level=AgentAccessLevel.ROLE_BASED,
+        description=None,
+        system_prompt=None,
+        channels=[],
+        knowledge_sources=[],
+        system_tools=[],
+        llm_profile=None,
+        llm_max_tokens=None,
+        max_iterations=None,
+        max_token_budget=None,
+        max_run_timeout=legacy_timeout,
+    )
+    rows = MagicMock()
+    rows.scalars.return_value.all.return_value = [agent]
+    db = AsyncMock()
+    db.execute.return_value = rows
+    service = capture.SolutionCaptureService(db=db)
+    service._role_ids = AsyncMock(return_value=[])
+    service._junction_ids = AsyncMock(return_value=[])
+    service._role_names = AsyncMock(return_value=[])
+
+    entries = await service._agent_entries(PROVIDER_ID)
+
+    assert entries[0]["max_run_timeout"] == MAX_AGENT_RUN_TIMEOUT_SECONDS
 
 
 def test_ignore_spec_matches_cli_secret_cache_and_build_outputs():

@@ -34,6 +34,7 @@ from src.models.contracts.external_mcp import (
     MCPServerPublic,
     MCPServerSummary,
     MCPServerUpdate,
+    StreamableHttpUrl,
 )
 from src.models.orm.external_mcp import MCPConnection, MCPServer
 from src.models.orm.oauth import OAuthProvider
@@ -53,7 +54,7 @@ router = APIRouter(prefix="/api/mcp-servers", tags=["MCP Servers"])
 class MCPServerDiscoverRequest(BaseModel):
     """Request body for the discovery endpoint."""
 
-    server_url: str = Field(..., min_length=1, max_length=2048)
+    server_url: StreamableHttpUrl = Field(..., min_length=1, max_length=2048)
 
 
 class MCPServerDiscoverResponse(BaseModel):

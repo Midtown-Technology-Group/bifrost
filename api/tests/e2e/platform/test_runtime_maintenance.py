@@ -1,12 +1,15 @@
 """Durable runtime-maintenance fencing against real PostgreSQL."""
 
 import asyncio
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import pytest
 import pytest_asyncio
-from sqlalchemy import delete, select, text
+from sqlalchemy import delete, func, select, text
 from src.models.orm.config import SystemConfig
+from src.models.enums import ExecutionStatus
+from src.models.orm.executions import Execution, WorkflowExecutionAttempt
 from src.models.orm.work_deliveries import WorkDelivery
 from src.services.runtime_maintenance import (
     MAINTENANCE_CATEGORY,
@@ -18,6 +21,7 @@ from src.services.runtime_maintenance import (
     enter_runtime_maintenance,
     exit_runtime_maintenance,
     read_runtime_maintenance_state,
+    runtime_drain_counts,
     seal_runtime_maintenance,
 )
 from src.services.scheduler_diagnostics import start_scheduler_run
@@ -165,6 +169,171 @@ async def test_queued_delivery_prevents_sealing(db_session) -> None:
     assert observed.phase == "draining"
     assert counts.work_deliveries >= 1
     assert counts.drained is False
+
+
+@pytest_asyncio.fixture
+async def isolated_drain_session(db_session):
+    # Other E2E files deliberately retain durable jobs/leases. Shadow only this
+    # connection's drain tables with empty, constraint-preserving tables instead
+    # of deleting shared data or allowing unrelated work through the real gate.
+    # db_session retains one transaction; rollback removes these temporary tables.
+    for table in (
+        "system_configs", "work_deliveries", "workflow_execution_attempts",
+        "executions", "execution_attempts", "agent_runs", "platform_jobs",
+        "scheduler_task_runs", "scheduler_leases",
+    ):
+        await db_session.execute(text(
+            f"CREATE TEMP TABLE {table} (LIKE public.{table} INCLUDING ALL) ON COMMIT DROP"
+        ))
+    return db_session
+
+
+async def test_ordinary_deploy_can_seal_twice_without_consuming_reservations(isolated_drain_session):
+    db_session = isolated_drain_session
+    now = datetime.now(UTC)
+    executions = [
+        Execution(
+            id=uuid4(), workflow_name="maintenance-reservation", executed_by_name="test",
+            status=status, scheduled_at=now + timedelta(days=1),
+            completed_at=now if status == ExecutionStatus.CANCELLED else None,
+        )
+        for status in (ExecutionStatus.SCHEDULED, ExecutionStatus.CANCELLED)
+    ]
+    db_session.add_all(executions)
+    await db_session.flush()
+    attempts = [
+        WorkflowExecutionAttempt(
+            id=uuid4(), execution_id=execution.id, attempt_number=1,
+            status="dispatching", phase="dispatch",
+        )
+        for execution in executions
+    ]
+    db_session.add_all(attempts)
+    await db_session.flush()
+    before = [(row.id, row.status, row.phase, row.completed_at) for row in attempts]
+    # This is the old ordinary-deploy predicate: both untouched reservations
+    # falsely count as active and prevent a seal forever.
+    assert await db_session.scalar(select(func.count()).select_from(
+        WorkflowExecutionAttempt
+    ).where(WorkflowExecutionAttempt.completed_at.is_(None))) == 2
+
+    # The recovery release must leave the NEXT ordinary release usable too.
+    for _ in range(2):
+        state = await enter_runtime_maintenance(
+            db_session, requested_by="release@example.com", reason="ordinary deploy"
+        )
+        assert state.generation is not None
+        sealed, counts = await seal_runtime_maintenance(
+            db_session, generation=state.generation
+        )
+        assert counts.workflow_attempts == 0
+        assert counts.drained is True
+        assert sealed.phase == "sealed"
+        with pytest.raises(RuntimeMaintenanceSealed):
+            await enqueue_delivery(
+                db_session, queue_name="workflow-executions",
+                message_id=str(uuid4()), envelope={},
+            )
+        await exit_runtime_maintenance(db_session, generation=state.generation)
+        for attempt in attempts:
+            await db_session.refresh(attempt)
+        assert [(row.id, row.status, row.phase, row.completed_at) for row in attempts] == before
+        for execution in executions:
+            await db_session.refresh(execution)
+        assert [row.status for row in executions] == [
+            ExecutionStatus.SCHEDULED, ExecutionStatus.CANCELLED
+        ]
+
+    delivery_id = await enqueue_delivery(
+        db_session, queue_name="maintenance-interrupted", message_id=str(uuid4()), envelope={}
+    )
+    delivery = await db_session.get(WorkDelivery, delivery_id)
+    assert delivery is not None
+    delivery.status = "interrupted"
+    await db_session.flush()
+    state = await enter_runtime_maintenance(
+        db_session, requested_by="release@example.com", reason="interrupted work refusal"
+    )
+    assert state.generation is not None
+    observed, counts = await seal_runtime_maintenance(db_session, generation=state.generation)
+    assert counts.workflow_attempts == 0
+    assert counts.work_deliveries == 1
+    assert observed.phase == "draining"
+    assert counts.drained is False
+    claims = await claim_deliveries(
+        db_session, queue_name="maintenance-interrupted", owner="test-recovery"
+    )
+    assert claims == []
+    await db_session.refresh(delivery)
+    assert delivery.id == delivery_id and delivery.status == "interrupted"
+    assert delivery.lease_token is None and delivery.claim_count == 0
+
+    # Time crossing the due boundary must make the same reservation block again.
+    executions[0].scheduled_at = now - timedelta(seconds=1)
+    await db_session.flush()
+    assert (await runtime_drain_counts(db_session)).workflow_attempts == 1
+
+
+@pytest.mark.parametrize("evidence", [
+    "due", "missing_schedule", "pending", "running", "cancelled_without_completion",
+    "published", "claimed", "started", "worker_id", "worker_incarnation_id",
+    "process_id", "heartbeat_at", "failure_code", "failure_phase", "phase",
+])
+async def test_active_or_ambiguous_attempt_still_prevents_sealing(isolated_drain_session, evidence):
+    db_session = isolated_drain_session
+    now = datetime.now(UTC)
+    execution = Execution(
+        id=uuid4(), workflow_name="maintenance-active", executed_by_name="test",
+        status=ExecutionStatus.SCHEDULED, scheduled_at=now + timedelta(days=1),
+    )
+    if evidence == "due":
+        execution.scheduled_at = now - timedelta(seconds=1)
+    elif evidence == "missing_schedule":
+        execution.scheduled_at = None
+    elif evidence in {"pending", "running", "cancelled_without_completion"}:
+        execution.status = {
+            "pending": ExecutionStatus.PENDING,
+            "running": ExecutionStatus.RUNNING,
+            "cancelled_without_completion": ExecutionStatus.CANCELLED,
+        }[evidence]
+    db_session.add(execution)
+    await db_session.flush()
+    attempt = WorkflowExecutionAttempt(
+        id=uuid4(), execution_id=execution.id, attempt_number=1,
+        status="dispatching", phase="dispatch",
+    )
+    if evidence in {"published", "claimed", "started"}:
+        attempt.status = "published"
+        attempt.phase = "queue"
+        attempt.published_at = now
+        if evidence in {"claimed", "started"}:
+            attempt.status = "claimed" if evidence == "claimed" else "running"
+            attempt.phase = "claim" if evidence == "claimed" else "execution"
+            attempt.claim_token = uuid4()
+            attempt.claimed_at = now
+        if evidence == "started":
+            attempt.started_at = now
+    elif evidence in {"worker_id", "process_id", "failure_code"}:
+        setattr(attempt, evidence, "retained-evidence")
+    elif evidence == "worker_incarnation_id":
+        attempt.worker_incarnation_id = uuid4()
+    elif evidence == "heartbeat_at":
+        attempt.heartbeat_at = now
+    elif evidence == "failure_phase":
+        attempt.failure_phase = "dispatch"
+    elif evidence == "phase":
+        attempt.phase = "queue"
+    db_session.add(attempt)
+    await db_session.flush()
+    state = await enter_runtime_maintenance(
+        db_session, requested_by="release@example.com", reason="active work refusal"
+    )
+    assert state.generation is not None
+    observed, counts = await seal_runtime_maintenance(db_session, generation=state.generation)
+    assert counts.workflow_attempts == 1
+    assert counts.drained is False
+    assert observed.phase == "draining"
+    assert (await runtime_drain_counts(db_session)).workflow_attempts == 1
 
 
 async def test_persisted_seal_fences_publication_and_claims_until_exit(db_session) -> None:

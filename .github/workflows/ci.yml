@@ -6,6 +6,10 @@ on:
     tags: ["v*"]
   pull_request:
     branches: [main]
+    # opened, synchronize, and reopened are the default pull_request types.
+    # ready_for_review starts a new pull_request run when a draft is marked
+    # ready without another push, so that run can produce Sonar evidence.
+    types: [opened, synchronize, reopened, ready_for_review]
   merge_group:
     types: [checks_requested]
   workflow_dispatch:
@@ -21,10 +25,15 @@ on:
 
 permissions: read-all
 
-# A new PR head supersedes its prior run. Merge-group, push, and tag runs must finish.
+# A manual dispatch must not cancel a pull_request run. Candidate images and
+# Sonar on that run are the release producer, and a dispatch cannot replace
+# them. A new push cancels only the older pull_request run of that branch. A
+# dispatch cancels only an older dispatch of the same repository, ref, inputs,
+# and commit. Push and merge_group keep a per-ref group and are never
+# cancelled here. deploy-dev still cancels an older rollout inside that job.
 concurrency:
-  group: ci-${{ github.event_name }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: ${{ github.event_name == 'pull_request' && format('ci-pull_request-{0}-{1}', github.event.pull_request.head.repo.full_name, github.head_ref) || github.event_name == 'workflow_dispatch' && format('ci-dispatch-{0}-{1}-{2}-{3}-{4}', github.repository, github.ref, inputs.inspect_sonar, inputs.reviewed_workflow_sha, github.sha) || format('ci-{0}-{1}', github.event_name, github.ref) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' }}
 
 env:
   REGISTRY: ghcr.io
@@ -50,13 +59,19 @@ jobs:
     secrets:
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
-  # Separate exact-head coverage collection. Report-only until the reviewed
-  # Sonar migration is activated; existing checks and approvals stay intact.
+  # Exact-head coverage and analysis. Not a required check: merge-queue runs
+  # skip it and the post-merge push to main still produces evidence. Draft
+  # PRs skip it. ready_for_review starts a non-draft pull_request run, which
+  # produces this evidence. A manual dispatch does not replace that producer.
+  # Version tags may reuse the original successful main producer; all
+  # artifact qualification remains unchanged. timeout-minutes is not valid
+  # on a job that calls a reusable workflow; the called jobs set it.
   sonar-coverage:
-    needs: [lint, publish-ci-test-images]
-    if: ${{ !cancelled() && (needs.lint.result == 'success' || (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.lint.result == 'skipped')) && (needs.publish-ci-test-images.result == 'success' || needs.publish-ci-test-images.result == 'skipped') }}
+    needs: [lint, publish-ci-test-images, test-client-unit]
+    if: ${{ !cancelled() && github.event_name != 'merge_group' && (github.event_name != 'pull_request' || github.event.pull_request.draft == false) && (needs.lint.result == 'success' || (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.lint.result == 'skipped')) && (needs.publish-ci-test-images.result == 'success' || needs.publish-ci-test-images.result == 'skipped') }}
     uses: ./.github/workflows/sonar-coverage.yml
     with:
+      client_artifact_id: ${{ needs.test-client-unit.outputs.coverage_artifact_id }}
       head_sha: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
       base_sha: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event_name == 'merge_group' && github.event.merge_group.base_sha || github.event.before || '' }}
     secrets:
@@ -65,6 +80,7 @@ jobs:
   # Manual branch runs provide the exact clean-candidate gate when no local
   # Docker test VM is available. Tags cannot enter this preparation-only job.
   pre-pr-candidate:
+    timeout-minutes: 90
     needs: lint
     if: ${{ !cancelled() && needs.lint.result == 'success' && github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/heads/') }}
     runs-on: ubuntu-latest
@@ -109,6 +125,7 @@ jobs:
   # Change-aware plan - one exact, inspectable plan shared by every test lane.
   # =============================================================================
   affected-test-plan:
+    timeout-minutes: 10
     runs-on: ubuntu-latest
     name: Plan Affected Tests
     permissions:
@@ -116,6 +133,8 @@ jobs:
       actions: read # occupancy report reads this repository's run/job intervals
     outputs:
       scope: ${{ steps.plan.outputs.scope }}
+      repository_tools_mode: ${{ steps.plan.outputs.repository_tools_mode }}
+      repository_tool_targets: ${{ steps.plan.outputs.repository_tool_targets }}
       api_quality_mode: ${{ steps.plan.outputs.api_quality_mode }}
       api_quality_targets: ${{ steps.plan.outputs.api_quality_targets }}
       api_unit_mode: ${{ steps.plan.outputs.api_unit_mode }}
@@ -194,6 +213,7 @@ jobs:
   # immutable inputs for the post-merge publisher and never select a runtime.
   # =============================================================================
   build-candidate-images:
+    timeout-minutes: 30
     needs: lint
     if: >-
       ${{ !cancelled() && needs.lint.result == 'success' &&
@@ -322,6 +342,26 @@ jobs:
           cosign sign --yes "${IMAGE}@${IMAGE_DIGEST}"
 
       - name: Attest candidate build provenance
+        id: attest
+        continue-on-error: true
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ghcr.io/${{ matrix.image }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+
+      # The attestation storage-record write can hit transient GitHub API rate
+      # limits during merge-group bursts after build, sign, and push already
+      # succeeded. Back off once and retry before failing the gate; a second
+      # failure still blocks the merge. The action exposes only its outcome,
+      # so this retries any attestation failure, not just classified rate limits.
+      # The fixed delay does not interpret Retry-After or rate-limit reset headers.
+      - name: Back off before attestation retry
+        if: steps.attest.outcome == 'failure'
+        run: sleep 180
+
+      - name: Retry candidate build provenance attestation
+        if: steps.attest.outcome == 'failure'
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-name: ghcr.io/${{ matrix.image }}
@@ -345,6 +385,7 @@ jobs:
             --expected-digest "$EXPECTED_DIGEST"
 
   candidate-images:
+    timeout-minutes: 10
     if: >-
       always() &&
       (github.repository == 'MTG-Thomas/bifrost' || github.repository == 'Midtown-Technology-Group/bifrost') &&
@@ -369,6 +410,7 @@ jobs:
   # Source code is still mounted from each PR checkout by docker-compose.test.yml.
   # =============================================================================
   publish-ci-test-images:
+    timeout-minutes: 15
     needs: lint
     if: >-
       ${{ !cancelled() &&
@@ -441,6 +483,7 @@ jobs:
   # A failed agent iteration must not launch image builds or full test stacks.
   # =============================================================================
   lint:
+    timeout-minutes: 15
     needs: affected-test-plan
     # Failed planning must remain red; cancelled snapshots need no diagnostics.
     # Skip the redundant push:main rerun; the merge queue already produced this
@@ -460,10 +503,42 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "26"
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+
+      - name: OpenWiki notifier regression
+        run: node --test .github/scripts/openwiki-refresh.test.mjs
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Run selected repository-tool tests
+        if: needs.affected-test-plan.outputs.repository_tools_mode != 'skip'
+        env:
+          TEST_MODE: ${{ needs.affected-test-plan.outputs.repository_tools_mode }}
+          TEST_TARGETS: ${{ needs.affected-test-plan.outputs.repository_tool_targets }}
+        run: |
+          set -euo pipefail
+          test "$TEST_MODE" = affected
+          mapfile -t targets <<< "$TEST_TARGETS"
+          ./test.sh tools "${targets[@]}"
+
+      - name: Install action pin scanner dependency
+        run: >-
+          python -m pip install --disable-pip-version-check --no-deps
+          --only-binary :all: --require-hashes
+          -r .github/requirements/action-pin-scanner.lock
+
       - name: Check GitHub Action pins
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: python3 api/scripts/check_github_action_pins.py --verify-versions
+        run: python api/scripts/check_github_action_pins.py --verify-versions
 
       - name: Check MTG CI boundaries
         run: python3 api/scripts/check_mtg_ci_boundaries.py
@@ -491,12 +566,6 @@ jobs:
           python3 scripts/ci/test_occupancy_report.py
           python3 scripts/ci/test_enforce_closure.py
           python3 scripts/ci/enforce_closure.py --mode report
-
-      - name: Set up Python
-        if: needs.affected-test-plan.outputs.api_quality_mode != 'skip'
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          python-version: "3.12"
 
       # Create .venv at the repo root so pyrightconfig.json's
       # `venvPath: ..` + `venv: .venv` resolves the same way locally and in CI.
@@ -555,14 +624,6 @@ jobs:
             ../.venv/bin/pyright "${targets[@]}"
           fi
 
-      - name: Set up Node
-        if: needs.affected-test-plan.outputs.client_quality_mode != 'skip'
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: "26"
-          cache: npm
-          cache-dependency-path: client/package-lock.json
-
       - name: Install client deps
         if: needs.affected-test-plan.outputs.client_quality_mode != 'skip'
         working-directory: client
@@ -596,12 +657,15 @@ jobs:
   # Parallel to Unit Tests; does NOT become the critical path.
   # =============================================================================
   test-client-unit:
+    timeout-minutes: 15
     needs: affected-test-plan
     # Skip the redundant push:main rerun; the merge queue already produced this
     # required check for the exact reviewed commit.
     if: ${{ !cancelled() && (github.event_name != 'push' || github.ref != 'refs/heads/main') }}
     runs-on: ubuntu-latest
     name: Client Unit Tests
+    outputs:
+      coverage_artifact_id: ${{ steps.client-coverage-upload.outputs.artifact-id }}
     steps:
       - name: Require a valid affected test plan
         if: needs.affected-test-plan.result != 'success'
@@ -633,9 +697,9 @@ jobs:
           TEST_MODE: ${{ needs.affected-test-plan.outputs.client_unit_mode }}
           TEST_TARGETS: ${{ needs.affected-test-plan.outputs.client_unit_targets }}
         run: |
-          node --test e2e/support/playwright-projects.test.mjs
+          node --test e2e/support/playwright-projects.test.mjs e2e/support/acceptance-report.test.mjs
           if [ "$TEST_MODE" = "comprehensive" ]; then
-            npm test
+            npm run test:coverage
           else
             mapfile -t targets <<< "$TEST_TARGETS"
             if (( ${#targets[@]} == 0 )); then
@@ -645,6 +709,25 @@ jobs:
             npm test -- "${targets[@]}"
           fi
 
+      - name: Bind complete client coverage
+        continue-on-error: true
+        if: needs.affected-test-plan.outputs.client_unit_mode == 'comprehensive'
+        run: python3 scripts/sonar/client_receipt.py record
+
+      - name: Retain complete client coverage
+        continue-on-error: true
+        if: needs.affected-test-plan.outputs.client_unit_mode == 'comprehensive'
+        id: client-coverage-upload
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: client-coverage-${{ github.run_id }}-${{ github.run_attempt }}
+          include-hidden-files: true
+          retention-days: 14
+          path: |
+            .client-coverage/client.lcov
+            .client-coverage/producer.json
+          if-no-files-found: error
+
       - name: Report skipped client unit lane
         if: needs.affected-test-plan.outputs.client_unit_mode == 'skip'
         run: echo "Client unit tests are outside the affected closure."
@@ -653,6 +736,7 @@ jobs:
   # Unit Tests - Fast, gates all builds
   # =============================================================================
   test-unit:
+    timeout-minutes: 25
     needs: [affected-test-plan, lint, publish-ci-test-images]
     if: ${{ !cancelled() && needs.lint.result == 'success' && (needs.publish-ci-test-images.result == 'success' || needs.publish-ci-test-images.result == 'skipped') && (github.event_name != 'push' || github.ref != 'refs/heads/main') }}
     runs-on: ubuntu-latest
@@ -734,6 +818,7 @@ jobs:
   # stateless checks remain visible in the uploaded advisory artifact.
   # =============================================================================
   mcp-conformance:
+    timeout-minutes: 25
     needs: [affected-test-plan, lint, publish-ci-test-images]
     if: ${{ !cancelled() && needs.lint.result == 'success' && (needs.publish-ci-test-images.result == 'success' || needs.publish-ci-test-images.result == 'skipped') && (github.event_name != 'push' || github.ref != 'refs/heads/main') }}
     runs-on: ubuntu-latest
@@ -807,6 +892,7 @@ jobs:
   # no ruleset edits needed.
   # =============================================================================
   test-e2e:
+    timeout-minutes: 30
     needs: [affected-test-plan, lint, publish-ci-test-images]
     # The zero-shard sentinel ({shard:0,total:0}) marks a lane outside the
     # affected closure. The shard job must not allocate a runner for it: skip the
@@ -936,6 +1022,7 @@ jobs:
   # persistent BuildKit caches when their baked inputs change.
   # =============================================================================
   test-client-e2e:
+    timeout-minutes: 30
     needs: [affected-test-plan, lint, publish-ci-test-images]
     # Same zero-shard sentinel rule as test-e2e: no runner for an out-of-scope
     # browser lane; the gate decides whether skipped is acceptable.
@@ -1040,6 +1127,7 @@ jobs:
   # Fails if any backend or browser shard failed or was cancelled.
   # (if: always()) so branch protection always sees a conclusive result.
   test-e2e-gate:
+    timeout-minutes: 10
     if: always() && (github.event_name != 'push' || github.ref != 'refs/heads/main')
     needs: [affected-test-plan, lint, publish-ci-test-images, test-e2e, test-client-e2e, test-client-unit, mcp-conformance]
     runs-on: ubuntu-latest
@@ -1095,6 +1183,7 @@ jobs:
   # proves tree equality. Upstream keeps its existing main-push build.
   # =============================================================================
   build-dev:
+    timeout-minutes: 30
     # Only fires on push: main after the native queue gates the exact candidate tree.
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
@@ -1398,6 +1487,7 @@ jobs:
   # confirm the deploy job will succeed when it fires for real.
   # =============================================================================
   deploy-dry-run:
+    timeout-minutes: 15
     if: github.repository == 'gobifrost/bifrost' && github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     name: Deploy Dry Run
@@ -1459,6 +1549,7 @@ jobs:
   # GitHub's built-in workflow-failure email (no extra wiring).
   # =============================================================================
   deploy-dev:
+    timeout-minutes: 20
     # Fires only after build-dev lands a new image on push: main.
     if: github.repository == 'gobifrost/bifrost' && github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: [build-dev]
@@ -1526,6 +1617,7 @@ jobs:
   # Release Manifest Check - Fail before any tag image is published
   # =============================================================================
   verify-release-manifest:
+    timeout-minutes: 15
     # `always()` is required because the tag test jobs have an intentionally
     # skipped CI-image publication ancestor. Explicit result checks preserve
     # the fail-closed release gate without inheriting that transitive skip.
@@ -1599,6 +1691,7 @@ jobs:
   # Build API Image - Only on version tags, after tests pass
   # =============================================================================
   build-api:
+    timeout-minutes: 20
     if: >-
       always() &&
       startsWith(github.ref, 'refs/tags/v') &&
@@ -1691,6 +1784,7 @@ jobs:
   # Build Client Image - Only on version tags, after tests pass
   # =============================================================================
   build-client:
+    timeout-minutes: 20
     if: >-
       always() &&
       startsWith(github.ref, 'refs/tags/v') &&
@@ -1784,6 +1878,7 @@ jobs:
   # Build Worker Image - Only on version tags, after tests pass
   # =============================================================================
   build-worker:
+    timeout-minutes: 30
     if: >-
       always() &&
       startsWith(github.ref, 'refs/tags/v') &&
@@ -1878,6 +1973,7 @@ jobs:
   # action. Both feed Scorecard's Signed-Releases check.
   # =============================================================================
   create-release:
+    timeout-minutes: 20
     if: >-
       always() &&
       startsWith(github.ref, 'refs/tags/v') &&

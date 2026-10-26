@@ -248,17 +248,17 @@ class TestGetSdkForm:
             await get_sdk_form(db_session, unbound, form.id)
         assert exc_info.value.status_code == 404
 
-    async def test_app_embed_token_scoped_to_own_org(self, db_session) -> None:
+    async def test_app_embed_token_is_not_a_form_capability(self, db_session) -> None:
         org1 = await _seed_org(db_session)
         org2 = await _seed_org(db_session)
         own = await _seed_form(db_session, "own-form", org_id=org1.id)
         other = await _seed_form(db_session, "other-form", org_id=org2.id)
         token = _principal(org1.id, embed=True, app_id="app-1")
 
-        assert (await get_sdk_form(db_session, token, own.id)).name == "own-form"
-        with pytest.raises(SdkFormError) as exc_info:
-            await get_sdk_form(db_session, token, other.id)
-        assert exc_info.value.status_code == 404
+        for form in (own, other):
+            with pytest.raises(SdkFormError) as exc_info:
+                await get_sdk_form(db_session, token, form.id)
+            assert exc_info.value.status_code == 404
 
 
 class TestGetSdkContext:

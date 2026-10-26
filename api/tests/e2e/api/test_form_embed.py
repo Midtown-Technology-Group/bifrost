@@ -356,10 +356,10 @@ class TestEmbedFormCrossTenantBinding:
     in get_form / execute_form / execute_startup_workflow / generate_upload_url
     skipped access control for ANY embed token with no binding between the
     token's form_id/app_id and the path form. An embed token minted for one
-    resource in org H could READ and EXECUTE any form in any other org — a
-    workflow run as sentinel in the victim's org, output returned to the
-    attacker. The fix binds every embed short-circuit to the path form
-    (form_id match, or app-embed → same-org only).
+    resource in org H could READ and EXECUTE protected forms — a workflow run
+    as sentinel in the victim's org, output returned to the attacker. The fix
+    binds form embeds to their exact form and denies app embeds because there
+    is no persisted app-to-form capability grant.
 
     These tests exercise all four sites with both attack vectors (form-embed
     token and app-embed token) and confirm the legitimate paths still work.
@@ -532,10 +532,9 @@ class TestEmbedFormCrossTenantBinding:
                 f"/api/forms/{form['id']}", headers=platform_admin.headers
             )
 
-    def test_app_embed_can_read_same_org_form(
+    def test_app_embed_cannot_use_same_org_protected_form(
         self, e2e_client, platform_admin, org1
     ):
-        # An app-embed token in org1 CAN read a form in org1 (same-org binding).
         _app, token = _mint_app_embed_token(
             e2e_client, platform_admin, organization_id=org1["id"]
         )
@@ -546,17 +545,44 @@ class TestEmbedFormCrossTenantBinding:
                 "name": f"same-org-{uuid.uuid4().hex[:6]}",
                 "form_schema": {"fields": []},
                 "organization_id": org1["id"],
+                "access_level": "role_based",
             },
         )
         assert r.status_code == 201, r.text
         form = r.json()
         try:
             headers = {"Authorization": f"Bearer {token}"}
-            r = e2e_client.get(f"/api/forms/{form['id']}/runtime", headers=headers)
-            assert r.status_code == 200, (
-                f"app-embed token (org1) must read an org1 form: "
-                f"{r.status_code} {r.text}"
+            requests = (
+                ("GET", f"/api/forms/{form['id']}/runtime", None),
+                ("POST", f"/api/forms/{form['id']}/startup", {}),
+                (
+                    "POST",
+                    f"/api/forms/{form['id']}/upload",
+                    {
+                        "file_name": "report.pdf",
+                        "content_type": "application/pdf",
+                        "file_size": 1,
+                        "field_name": "attachment",
+                    },
+                ),
+                ("POST", f"/api/forms/{form['id']}/submissions", {"form_data": {}}),
+                (
+                    "POST",
+                    f"/api/forms/{form['id']}/fields/customer/options",
+                    {"inputs": {}},
+                ),
             )
+            for method, path, body in requests:
+                response = e2e_client.request(
+                    method,
+                    path,
+                    headers=headers,
+                    json=body,
+                )
+                assert response.status_code in (403, 404), (
+                    f"app-embed token must not use protected form runtime: "
+                    f"{method} {path} -> {response.status_code} {response.text}"
+                )
         finally:
             e2e_client.delete(
                 f"/api/forms/{form['id']}", headers=platform_admin.headers

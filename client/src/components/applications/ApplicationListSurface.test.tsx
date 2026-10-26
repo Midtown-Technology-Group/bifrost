@@ -366,7 +366,11 @@ describe("ApplicationListSurface SDK update affordances", () => {
 		fireEvent.click(screen.getAllByText("Dispatch queue")[0], {
 			ctrlKey: true,
 		});
-		expect(open).toHaveBeenCalledWith("/apps/dispatch-board", "_blank");
+		expect(open).toHaveBeenCalledWith(
+			"/apps/dispatch-board",
+			"_blank",
+			"noopener,noreferrer",
+		);
 		expect(onLaunch).not.toHaveBeenCalled();
 		expect(screen.queryByTitle("Preview draft")).not.toBeInTheDocument();
 		expect(screen.queryByTitle("Open application")).not.toBeInTheDocument();

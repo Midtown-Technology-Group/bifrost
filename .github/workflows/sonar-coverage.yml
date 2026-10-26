@@ -3,6 +3,10 @@ name: Sonar Coverage
 on:
   workflow_call:
     inputs:
+      client_artifact_id:
+        required: false
+        type: string
+        default: ""
       head_sha:
         required: true
         type: string
@@ -27,14 +31,17 @@ jobs:
   evidence:
     name: Sonar Coverage Evidence
     runs-on: ubuntu-latest
+    # Unsharded unit+E2E collection. Sampled runs finished in 37-57 minutes.
+    timeout-minutes: 75
     permissions:
       contents: read
       packages: read
+      actions: read # approved: verify/download exact-main producer artifacts
     outputs:
       head: ${{ steps.context.outputs.head }}
-      base: ${{ steps.context.outputs.base }}
+      base: ${{ steps.evidence-output.outputs.base }}
       mode: ${{ steps.context.outputs.mode }}
-      manifest_sha256: ${{ steps.validate.outputs.manifest_sha256 }}
+      manifest_sha256: ${{ steps.evidence-output.outputs.manifest_sha256 }}
       artifact_name: ${{ steps.context.outputs.artifact_name }}
     steps:
       - name: Checkout exact analysis source
@@ -66,7 +73,15 @@ jobs:
           printf 'artifact_name=sonar-evidence-%s-%s\n' "$EXPECTED_HEAD" "$GITHUB_RUN_ATTEMPT" >> "$GITHUB_OUTPUT"
           mkdir -p .sonar-evidence/raw
           git ls-files -z > .sonar-evidence/raw/tracked-files.nul
+      - name: Try original exact-main evidence on version tags
+        id: reuse
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_HEAD: ${{ inputs.head_sha }}
+        run: python3 scripts/sonar/main_receipt.py reuse
       - name: Set up Node
+        if: steps.reuse.outputs.reused != 'true'
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "26"
@@ -75,16 +90,28 @@ jobs:
             client/package-lock.json
             scripts/docs/package-lock.json
       - name: Set up Python for source-aware validation
+        if: steps.reuse.outputs.reused != 'true'
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.14"
       - name: Run preflight fault probes
+        if: steps.reuse.outputs.reused != 'true'
         run: python3 -m unittest discover -s scripts/sonar -p 'test_*.py'
       - name: Install client and repository test dependencies
+        if: steps.reuse.outputs.reused != 'true'
         run: |
           npm ci --prefix client --ignore-scripts
           npm ci --prefix scripts/docs --ignore-scripts
+      - name: Consume this run's complete client coverage
+        id: client-reuse
+        if: steps.reuse.outputs.reused != 'true' && inputs.client_artifact_id != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CLIENT_ARTIFACT_ID: ${{ inputs.client_artifact_id }}
+          EXPECTED_HEAD: ${{ inputs.head_sha }}
+        run: python3 scripts/sonar/client_receipt.py reuse
       - name: Collect comprehensive client coverage
+        if: steps.reuse.outputs.reused != 'true' && steps.client-reuse.outputs.reused != 'true'
         env:
           HEAD_SHA: ${{ steps.context.outputs.head }}
           BASE_SHA: ${{ steps.context.outputs.base }}
@@ -93,7 +120,14 @@ jobs:
           (cd client && npm run test:coverage)
           cp client/coverage/lcov.info .sonar-evidence/raw/client.lcov
           python3 scripts/sonar/preflight.py stamp --head "$HEAD_SHA" --base "$BASE_SHA" --report .sonar-evidence/raw/client.lcov
+      - name: Bind consumed client report to analysis context
+        if: steps.client-reuse.outputs.reused == 'true'
+        env:
+          HEAD_SHA: ${{ steps.context.outputs.head }}
+          BASE_SHA: ${{ steps.context.outputs.base }}
+        run: python3 scripts/sonar/preflight.py stamp --head "$HEAD_SHA" --base "$BASE_SHA" --report .sonar-evidence/raw/client.lcov
       - name: Collect repository Node test coverage
+        if: steps.reuse.outputs.reused != 'true'
         env:
           HEAD_SHA: ${{ steps.context.outputs.head }}
           BASE_SHA: ${{ steps.context.outputs.base }}
@@ -107,6 +141,7 @@ jobs:
             "${tests[@]}"
           python3 scripts/sonar/preflight.py stamp --head "$HEAD_SHA" --base "$BASE_SHA" --report .sonar-evidence/raw/node.lcov
       - name: Prepare exact-source test images
+        if: steps.reuse.outputs.reused != 'true'
         env:
           GHCR_USERNAME: ${{ github.actor }}
           GHCR_TOKEN: ${{ github.token }}
@@ -114,6 +149,7 @@ jobs:
           CLIENT_IMAGE_CHANGED: "true"
         run: bash api/scripts/ci/prepare-test-images.sh api client
       - name: Prepare isolated Sonar test stack
+        if: steps.reuse.outputs.reused != 'true'
         run: |
           set -euo pipefail
           source scripts/lib/test_helpers.sh
@@ -130,6 +166,7 @@ jobs:
           echo "COMPOSE_FILE=$RUNNER_TEMP/sonar-compose.yml" >> "$GITHUB_ENV"
           echo "SONAR_LOG_DIR=$LOG_DIR" >> "$GITHUB_ENV"
       - name: Collect repository Python tool coverage
+        if: steps.reuse.outputs.reused != 'true'
         run: |
           set -euo pipefail
           # Pure repository tools have their own scripts namespace. Run from
@@ -153,6 +190,7 @@ jobs:
             --cov --cov-branch --cov-config=/repo/api/.coveragerc.sonar --cov-report= \
             --junitxml=/tmp/bifrost/sonar-repository-junit.xml
       - name: Collect comprehensive Python coverage
+        if: steps.reuse.outputs.reused != 'true'
         env:
           BIFROST_SKIP_BUILD: "1"
           HEAD_SHA: ${{ steps.context.outputs.head }}
@@ -169,6 +207,8 @@ jobs:
           ./test.sh e2e --cov --cov-append --cov-branch --cov-config=/app/.coveragerc.sonar --cov-report=
           source scripts/lib/test_helpers.sh
           export COMPOSE_PROJECT_NAME="$(compute_project_name .)"
+          docker compose -f "$COMPOSE_FILE" ps -a --format '{{.Service}} {{.ID}}' \
+            | tee "$SONAR_LOG_DIR/sonar-runtime-producers.txt"
           docker compose -f "$COMPOSE_FILE" stop api api-replica worker scheduler scheduler-fixtures
           docker compose -f "$COMPOSE_FILE" --profile test run --rm --no-deps --workdir /repo test-runner \
             python /app/scripts/combine_sonar_coverage.py
@@ -181,6 +221,7 @@ jobs:
           cp "$SONAR_LOG_DIR/coverage-sonar.xml" .sonar-evidence/raw/python.xml
           python3 scripts/sonar/preflight.py stamp --head "$HEAD_SHA" --base "$BASE_SHA" --report .sonar-evidence/raw/python.xml
       - name: Validate reports and source inventory
+        if: steps.reuse.outputs.reused != 'true'
         id: validate
         env:
           HEAD_SHA: ${{ steps.context.outputs.head }}
@@ -190,6 +231,34 @@ jobs:
             --python .sonar-evidence/raw/python.xml --client .sonar-evidence/raw/client.lcov \
             --node .sonar-evidence/raw/node.lcov --properties sonar-project.properties --output-dir .sonar-evidence
           echo "manifest_sha256=$(sha256sum .sonar-evidence/manifest.json | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+      - name: Retain original producer and toolchain identity
+        if: steps.validate.outcome == 'success' && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        # Optional cache export, not another quality gate. Missing metadata
+        # makes tags run the original collector instead of accepting reuse.
+        continue-on-error: true
+        env:
+          EXPECTED_HEAD: ${{ inputs.head_sha }}
+        run: |
+          set -euo pipefail
+          source scripts/lib/test_helpers.sh
+          export COMPOSE_PROJECT_NAME="$(compute_project_name .)"
+          python3 scripts/sonar/main_receipt.py record
+      - name: Select verified evidence outputs
+        id: evidence-output
+        env:
+          REUSED: ${{ steps.reuse.outputs.reused }}
+          PRODUCER_BASE: ${{ steps.reuse.outputs.base }}
+          PRODUCER_MANIFEST: ${{ steps.reuse.outputs.manifest_sha256 }}
+          COLLECTED_BASE: ${{ steps.context.outputs.base }}
+          COLLECTED_MANIFEST: ${{ steps.validate.outputs.manifest_sha256 }}
+        run: |
+          set -euo pipefail
+          if [ "$REUSED" = true ]; then
+            printf 'base=%s\nmanifest_sha256=%s\n' "$PRODUCER_BASE" "$PRODUCER_MANIFEST" >> "$GITHUB_OUTPUT"
+          else
+            test -n "$COLLECTED_MANIFEST"
+            printf 'base=%s\nmanifest_sha256=%s\n' "$COLLECTED_BASE" "$COLLECTED_MANIFEST" >> "$GITHUB_OUTPUT"
+          fi
       - name: Tear down task-owned stack
         if: always() && env.COMPOSE_FILE != ''
         run: |
@@ -230,7 +299,7 @@ jobs:
           fi
           # Keep the filtering audit on every run; larger raw databases are
           # needed only when export or report validation fails.
-          files=(sonar-runtime-coverage.json)
+          files=(sonar-runtime-coverage.json sonar-runtime-reports.json sonar-runtime-producers.txt)
           if [ "$REPORT_STATUS" != success ]; then
             files+=(.coverage.sonar .coverage.sonar-tracked coverage-sonar.xml)
           fi
@@ -239,6 +308,9 @@ jobs:
               cp "$SONAR_LOG_DIR/$file" .sonar-evidence/diagnostics/
             fi
           done
+          if [ "$REPORT_STATUS" != success ] && [ -d "$SONAR_LOG_DIR/sonar-runtime-data" ]; then
+            cp -R "$SONAR_LOG_DIR/sonar-runtime-data" .sonar-evidence/diagnostics/
+          fi
           # These are isolated test-stack logs exported by stack down, not live
           # application credentials or a valid replacement for missing reports.
           find "$SONAR_LOG_DIR" -maxdepth 1 -name '*.log' -type f -exec cp {} .sonar-evidence/diagnostics/ \;
@@ -261,6 +333,7 @@ jobs:
     name: Sonar Free scope disposition
     needs: evidence
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     if: needs.evidence.outputs.mode == 'ci'
     steps:
       - name: Record provider scope and activation state
@@ -289,8 +362,11 @@ jobs:
   scan:
     name: Sonar CI Analysis
     needs: evidence
+    # Observed scans finished in about 7 minutes, including the quality gate.
+    timeout-minutes: 20
     # Activation is an operator-controlled cutover after this workflow merges.
-    # Free supports main and PRs targeting main; merge groups retain evidence only.
+    # Free supports main and PRs targeting main. ci.yml does not call this
+    # workflow for merge groups.
     if: >-
       needs.evidence.outputs.mode == 'ci' && vars.SONAR_CI_ENABLED == 'true' &&
       ((github.event_name == 'pull_request' && github.base_ref == 'main' &&

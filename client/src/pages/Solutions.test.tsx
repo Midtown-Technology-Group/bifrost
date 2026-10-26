@@ -620,7 +620,11 @@ describe("Solutions — bulk SDK updates", () => {
 
 		fireEvent.click(within(row).getByText("dispatch"), { ctrlKey: true });
 
-		expect(open).toHaveBeenCalledWith("/solutions/sol-1", "_blank");
+		expect(open).toHaveBeenCalledWith(
+			"/solutions/sol-1",
+			"_blank",
+			"noopener,noreferrer",
+		);
 		expect(mockNavigate).not.toHaveBeenCalled();
 	});
 

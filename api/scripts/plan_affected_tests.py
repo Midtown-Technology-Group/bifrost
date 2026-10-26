@@ -48,6 +48,10 @@ DOC_FILES = frozenset(
         "LICENSE",
     }
 )
+OPENWIKI_CLAIMS_PREFIX = "openwiki/.claims/"
+OPENWIKI_METADATA_FILES = frozenset(
+    {"openwiki/.last-update.json", "openwiki/.page-manifest.json"}
+)
 
 # These surfaces can alter generated contracts, storage, dependency resolution,
 # release behavior, or the planner itself.  A partial graph is not credible.
@@ -128,6 +132,29 @@ DYNAMIC_IMPORT_CALL_RE = re.compile(r"\bimport\s*\(")
 ROUTE_PARAM_RE = re.compile(r"\{[^/]+\}")
 FULL_GIT_SHA_RE = re.compile(r"[0-9a-fA-F]{40}")
 
+# These tools load each other and their fixture by file path, outside the API
+# import graph. Unregistered tools and workflow edits remain comprehensive.
+REPOSITORY_TEST_OWNERS = {
+    "scripts/sonar/main_receipt.py": ("scripts/sonar/test_main_receipt.py",),
+    "scripts/sonar/preflight.py": (
+        "scripts/sonar/test_main_receipt.py",
+        "scripts/sonar/test_operator_inputs.py",
+        "scripts/sonar/test_preflight.py",
+    ),
+    "scripts/sonar/test_preflight.py": (
+        "scripts/sonar/test_main_receipt.py",
+        "scripts/sonar/test_preflight.py",
+    ),
+}
+REPOSITORY_TEST_PATH = re.compile(r"scripts/sonar/test_[a-zA-Z0-9_]+\.py")
+REPOSITORY_WORKFLOW_CALLERS = {
+    ".github/workflows/sonar-coverage.yml": (
+        "scripts/sonar/main_receipt.py", "scripts/sonar/preflight.py",
+        "unittest discover -s scripts/sonar",
+    ),
+    ".github/workflows/ci.yml": ("uses: ./.github/workflows/sonar-coverage.yml",),
+}
+
 
 class PlanError(RuntimeError):
     """The dependency model could not safely represent the change."""
@@ -168,6 +195,7 @@ class AffectedPlan:
     client: SurfacePlan = field(default_factory=SurfacePlan)
     lane_overrides: dict[str, str] = field(default_factory=dict)
     lane_reasons: dict[str, str] = field(default_factory=dict)
+    repository_tests: tuple[str, ...] = ()
 
     def lane(self, name: str) -> str:
         if self.scope == "comprehensive":
@@ -236,6 +264,11 @@ class AffectedPlan:
             "client": vars(self.client),
             "lanes": lanes,
             "lane_reasons": self.lane_reasons,
+            "repository": {
+                "mode": "affected" if self.repository_tests else "skip",
+                "unit_tests": list(self.repository_tests),
+                "workflow_callers": list(REPOSITORY_WORKFLOW_CALLERS) if self.repository_tests else [],
+            },
         }
 
 
@@ -245,7 +278,20 @@ def _normalize(path: str) -> str:
 
 
 def _is_docs(path: str) -> bool:
-    return path in DOC_FILES or path.startswith(DOC_ROOTS)
+    return (
+        path in DOC_FILES
+        or path.startswith(DOC_ROOTS)
+        or _is_openwiki_documentation(path)
+    )
+
+
+def _is_openwiki_documentation(path: str) -> bool:
+    """Recognize authored wiki prose and the native generated OpenWiki index."""
+    if not path.startswith("openwiki/"):
+        return False
+    if path.lower().endswith(".md") or path in OPENWIKI_METADATA_FILES:
+        return True
+    return path.startswith(OPENWIKI_CLAIMS_PREFIX) and path.lower().endswith(".json")
 
 
 def _is_python_source(path: str) -> bool:
@@ -283,6 +329,31 @@ def _is_comprehensive_path(path: str) -> bool:
         or path.startswith(COMPREHENSIVE_PREFIXES)
         or PurePosixPath(path).name in COMPREHENSIVE_BASENAMES
     )
+
+
+def _is_repository_tool(path: str) -> bool:
+    return path in REPOSITORY_TEST_OWNERS or bool(REPOSITORY_TEST_PATH.fullmatch(path))
+
+
+def _repository_tests(paths: Sequence[str]) -> tuple[str, ...]:
+    tests: set[str] = set()
+    for path in paths:
+        tests.update(REPOSITORY_TEST_OWNERS.get(path, (path,)))
+    for path in (*paths, *tests):
+        source = REPO_ROOT / path
+        if not source.is_file() or source.is_symlink() or not source.resolve().is_relative_to(REPO_ROOT.resolve()):
+            raise PlanError(f"missing or unsafe repository test ownership: {path}")
+    for caller, commands in REPOSITORY_WORKFLOW_CALLERS.items():
+        try:
+            source = REPO_ROOT / caller
+            if source.is_symlink() or not source.resolve().is_relative_to(REPO_ROOT.resolve()):
+                raise PlanError(f"unsafe repository workflow caller: {caller}")
+            lines = source.read_text(encoding="utf-8").splitlines()
+        except (OSError, UnicodeDecodeError) as exc:
+            raise PlanError(f"unavailable repository workflow caller: {caller}") from exc
+        if any(not any(command in line and not line.lstrip().startswith("#") for line in lines) for command in commands):
+            raise PlanError(f"unmodelled repository workflow caller: {caller}")
+    return tuple(sorted(tests))
 
 
 def _is_mcp_path(path: str) -> bool:
@@ -764,6 +835,7 @@ def plan_changes(changes: Sequence[GitChange]) -> AffectedPlan:
             or _is_client_source(path)
             or _is_client_unit(path)
             or _is_client_e2e(path)
+            or _is_repository_tool(path)
         )
 
     if unknown := sorted(
@@ -789,7 +861,12 @@ def plan_changes(changes: Sequence[GitChange]) -> AffectedPlan:
             if _is_client_unit(change.path) or _is_client_e2e(change.path)
         )
     )
-    if not (*python_source, *python_tests, *client_source, *client_tests):
+    repository_paths = tuple(change.path for change in changes if _is_repository_tool(change.path))
+    try:
+        repository_tests = _repository_tests(repository_paths) if repository_paths else ()
+    except PlanError as exc:
+        return _comprehensive(changes, str(exc))
+    if not (*python_source, *python_tests, *client_source, *client_tests, *repository_tests):
         return AffectedPlan(
             "docs-only",
             "documentation and agent guidance only",
@@ -799,6 +876,7 @@ def plan_changes(changes: Sequence[GitChange]) -> AffectedPlan:
         scope="affected",
         reason="independent surface dependency analysis",
         changed_paths=tuple(sorted(change.path for change in changes)),
+        repository_tests=repository_tests,
     )
 
     def broaden(lanes: Sequence[str], reason: str) -> None:
@@ -872,6 +950,8 @@ def plan_changes(changes: Sequence[GitChange]) -> AffectedPlan:
         plan.reason = "surface-scoped fallback; see lane_reasons"
     else:
         plan.reason = "complete reverse dependency closure has graph-owned tests"
+        if repository_tests:
+            plan.reason += "; declared repository-tool tests and workflow callers"
     return plan
 
 
@@ -890,6 +970,8 @@ def write_github_output(path: Path, plan: AffectedPlan) -> None:
         matrix = [{"shard": 0, "total": 0}]
     with path.open("a", encoding="utf-8") as output:
         output.write(f"scope={plan.scope}\n")
+        output.write(f"repository_tools_mode={'affected' if plan.repository_tests else 'skip'}\n")
+        _write_multiline(output, "repository_tool_targets", plan.repository_tests)
         for lane in (
             "api_quality",
             "api_unit",
@@ -965,6 +1047,9 @@ def write_summary(path: Path, plan: AffectedPlan) -> None:
             f"- Client impacted/tests: {len(plan.client.impacted)}/{len(plan.client.unit_tests) + len(plan.client.e2e_tests)}\n"
         )
         summary.write(f"- Python runtime route edges: {plan.python.runtime_edges}\n")
+        if plan.repository_tests:
+            summary.write(f"- Repository tests: {', '.join(plan.repository_tests)}\n")
+            summary.write(f"- Repository workflow callers: {', '.join(REPOSITORY_WORKFLOW_CALLERS)}\n")
 
 
 def parse_args() -> argparse.Namespace:

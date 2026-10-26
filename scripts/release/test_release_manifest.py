@@ -418,6 +418,313 @@ else:
         self.assertNotIn("make_latest=true", calls[1])
 
 
+class UnpublishedCandidateRecoveryTests(unittest.TestCase):
+    """Recovery must not replace tagged releases or transfer stale CI evidence."""
+
+    def setUp(self):
+        spec = importlib.util.spec_from_file_location(
+            "automatic_release_recovery", Path(__file__).with_name("automatic-release.py")
+        )
+        self.release = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(self.release)
+        self.source, self.previous = "a" * 40, "b" * 40
+        self.candidate = {"version": "v3.1.0"}
+        self.prs = [{"number": 1078, "merged_at": "2026-10-10T00:00:00Z",
+                     "head": {"ref": self.release.BRANCH}, "base": {"ref": "main"},
+                     "merge_commit_sha": self.previous}]
+        self.good = {
+            "head_sha": self.source, "head_branch": "main", "event": "push",
+            "conclusion": "success", "status": "completed",
+            "path": ".github/workflows/ci.yml",
+            "head_repository": {"full_name": self.release.REPOSITORY},
+        }
+        self.failed = dict(self.good, id=90, head_sha=self.previous, conclusion="failure")
+        self.refs, self.releases, self.runs = [], [], [self.failed]
+        patches = [
+            patch.object(self.release, "api", side_effect=lambda _: self.good),
+            patch.object(self.release, "git", side_effect=self.git),
+            patch.object(self.release, "blob", return_value=self.candidate),
+            patch.object(self.release, "array_pages", side_effect=self.pages),
+        ]
+        for item in patches:
+            item.start()
+            self.addCleanup(item.stop)
+
+    def git(self, *args):
+        if args[0] == "rev-list":
+            return self.source + "\n" + self.previous
+        if args == ("rev-parse", "HEAD"):
+            return self.source
+        return ""
+
+    def pages(self, path, *args):
+        if path.startswith("git/matching-refs/"):
+            return self.refs
+        if path.startswith("releases?"):
+            return self.releases
+        return self.runs
+
+    def recover(self):
+        return self.release.supersede_unpublished(self.source, self.prs, 1078, 100)
+
+    def publication_prs(self):
+        old = dict(self.prs[0], head={"ref": self.release.BRANCH,
+                                   "repo": {"full_name": self.release.REPOSITORY}})
+        new = dict(old, number=1200, merge_commit_sha=self.source)
+        return [old, new]
+
+    def test_old_successful_ci_rerun_cannot_create_tag_or_dispatch_packaging(self):
+        with patch.object(self.release, "checked_release", return_value=self.candidate), \
+             patch.object(self.release, "merged_prs", return_value=self.publication_prs()), \
+             patch.object(self.release, "api") as api:
+            with self.assertRaisesRegex(self.release.ReleaseError, "superseded"):
+                self.release.publish(self.previous, 101, self.prs)
+            api.assert_not_called()
+
+    def test_current_candidate_rerun_survives_ordinary_main_merges(self):
+        # The source mock's first-parent history includes an ordinary newer main
+        # merge, but the latest release PR is still the original candidate.
+        with patch.object(self.release, "merged_prs", return_value=self.publication_prs()[:1]):
+            self.release.reject_superseded_source(self.previous)
+
+    def test_fresh_main_read_failure_cannot_create_tag_or_dispatch(self):
+        with patch.object(self.release, "checked_release", return_value=self.candidate), \
+             patch.object(self.release, "git", side_effect=self.release.ReleaseError("fetch failed")), \
+             patch.object(self.release, "api") as api:
+            with self.assertRaisesRegex(self.release.ReleaseError, "fetch failed"):
+                self.release.publish(self.previous, 101, self.prs)
+            api.assert_not_called()
+
+    def test_replacement_candidate_can_publish_after_supersession(self):
+        with patch.object(self.release, "merged_prs", return_value=self.publication_prs()):
+            self.release.reject_superseded_source(self.source)
+
+    def test_missing_release_inventory_and_changed_main_candidate_fail_closed(self):
+        with patch.object(self.release, "merged_prs", return_value=[]), \
+             self.assertRaisesRegex(self.release.ReleaseError, "cannot establish"):
+            self.release.reject_superseded_source(self.previous)
+        with patch.object(self.release, "merged_prs", return_value=self.publication_prs()), \
+             patch.object(self.release, "blob", side_effect=[{"version": "v3.2.0"}, self.candidate]), \
+             self.assertRaisesRegex(self.release.ReleaseError, "differs"):
+            self.release.reject_superseded_source(self.source)
+
+    def same_tree_fixture(self):
+        pr = {"merged": True, "merge_commit_sha": self.source,
+              "base": {"ref": "main", "sha": "c" * 40},
+              "head": {"sha": self.previous, "ref": "reviewed-fix",
+                       "repo": {"full_name": self.release.REPOSITORY}}}
+        run = dict(self.good, head_sha=self.previous, head_branch="reviewed-fix",
+                   event="pull_request", run_attempt=1,
+                   created_at="2026-10-20T10:00:00Z", updated_at="2026-10-20T11:00:00Z")
+        names = ("Plan Affected Tests", "Lint & Type Check", "Unit Tests", "Client Unit Tests",
+                 "E2E Tests", "MCP Conformance", "Candidate Images",
+                 "sonar-coverage / Sonar Coverage Evidence", "sonar-coverage / Sonar CI Analysis")
+        jobs = [{"name": name, "conclusion": "success"} for name in names]
+        sonar = {"id": 77, "name": "SonarCloud Code Analysis", "app": {"id": 12526},
+                 "head_sha": self.previous, "status": "completed", "conclusion": "success",
+                 "details_url": "https://sonarcloud.io/dashboard?id=Midtown-Technology-Group_bifrost&pullRequest=1363",
+                 "started_at": "2026-10-20T10:30:00Z", "completed_at": "2026-10-20T10:31:00Z"}
+        return pr, run, jobs, sonar
+
+    def certify_same_tree(self, pr, run, jobs, sonar):
+        def read(path):
+            return pr if path == "pulls/1363" else run
+
+        def pages(path, key):
+            return jobs if key == "jobs" else [sonar]
+
+        with patch.object(self.release, "api", side_effect=read), \
+             patch.object(self.release, "array_pages", side_effect=pages), \
+             patch.object(self.release, "git", return_value="d" * 40):
+            return self.release.checked_same_tree_pr_ci(self.source, 100, 1363)
+
+    def test_same_tree_evidence_retains_exact_pr_run_attempt_and_sonar(self):
+        proof = self.certify_same_tree(*self.same_tree_fixture())
+        self.assertEqual(proof, {"pr": 1363, "head": self.previous, "tree": "d" * 40,
+                                 "run": 100, "attempt": 1, "sonar_check": 77})
+
+    def test_same_tree_rejects_wrong_pr_merge_repo_or_base(self):
+        invalid = {"merged": False, "merge_commit_sha": self.previous,
+                   "base": {"ref": "other"},
+                   "head": {"sha": self.previous, "repo": {"full_name": "gobifrost/bifrost"}}}
+        for key, value in invalid.items():
+            pr, run, jobs, sonar = self.same_tree_fixture()
+            pr[key] = value
+            with self.subTest(field=key), self.assertRaises(self.release.ReleaseError):
+                self.certify_same_tree(pr, run, jobs, sonar)
+
+    def test_same_tree_rejects_incomplete_untrusted_or_other_ci(self):
+        invalid = {"head_sha": self.source, "event": "workflow_dispatch",
+                   "head_branch": "other", "status": "in_progress", "conclusion": "failure",
+                   "path": ".github/workflows/other.yml", "run_attempt": None,
+                   "head_repository": {"full_name": "gobifrost/bifrost"}}
+        for key, value in invalid.items():
+            pr, run, jobs, sonar = self.same_tree_fixture()
+            run[key] = value
+            with self.subTest(field=key), self.assertRaises(self.release.ReleaseError):
+                self.certify_same_tree(pr, run, jobs, sonar)
+
+    def test_same_tree_refuses_missing_skipped_failed_or_duplicate_jobs(self):
+        for mode in ("missing", "skipped", "failure", "duplicate"):
+            pr, run, jobs, sonar = self.same_tree_fixture()
+            if mode == "missing":
+                jobs.pop()
+            elif mode == "duplicate":
+                jobs.append(dict(jobs[0]))
+            else:
+                jobs[0]["conclusion"] = mode
+            with self.subTest(mode=mode), self.assertRaises(self.release.ReleaseError):
+                self.certify_same_tree(pr, run, jobs, sonar)
+
+    def test_same_tree_rejects_stale_untrusted_pending_or_wrong_project_sonar(self):
+        invalid = {"head_sha": self.source, "app": {"id": 1}, "status": "in_progress",
+                   "conclusion": "failure", "details_url": "https://sonarcloud.io/dashboard?id=other",
+                   "started_at": "2026-10-19T10:00:00Z", "completed_at": None}
+        for key, value in invalid.items():
+            pr, run, jobs, sonar = self.same_tree_fixture()
+            sonar[key] = value
+            with self.subTest(field=key), self.assertRaises(self.release.ReleaseError):
+                self.certify_same_tree(pr, run, jobs, sonar)
+
+    def test_changed_tree_cannot_reuse_pr_evidence(self):
+        pr, run, _, _ = self.same_tree_fixture()
+        with patch.object(self.release, "api", side_effect=[pr, run]), \
+             patch.object(self.release, "git", side_effect=["", "", "d" * 40, "e" * 40]), \
+             self.assertRaisesRegex(self.release.ReleaseError, "tree differs"):
+            self.release.checked_same_tree_pr_ci(self.source, 100, 1363)
+
+    def test_same_tree_mode_requires_explicit_supersession(self):
+        with self.assertRaisesRegex(self.release.ReleaseError, "explicit supersession"):
+            self.release.prepare(self.source, self.prs, same_tree_pr=1363)
+
+    def test_publication_still_requires_exact_main_push_even_with_green_pr_ci(self):
+        with patch.object(self.release, "api", return_value=dict(self.good, event="pull_request")), \
+             self.assertRaisesRegex(self.release.ReleaseError, "exact trusted main push"):
+            self.release.checked_release(self.source, 100, self.prs)
+
+    def test_explicit_recovery_retains_same_tree_receipt_without_using_main_ci(self):
+        receipt = {"pr": 1363, "head": self.previous, "tree": "d" * 40,
+                   "run": 100, "attempt": 1, "sonar_check": 77}
+        with patch.object(self.release, "checked_same_tree_pr_ci", return_value=receipt), \
+             patch.object(self.release, "checked_main_ci") as main_ci:
+            proof = self.release.supersede_unpublished(
+                self.source, self.prs, 1078, 100, same_tree_pr=1363
+            )
+        main_ci.assert_not_called()
+        self.assertEqual(proof["same_tree_ci"], receipt)
+        self.assertIn('"sonar_check": 77', "\n".join(self.release.same_tree_notes(proof)))
+        self.assertEqual(self.release.preparation_ci_note(proof), "Replacement same-tree PR CI: 100.")
+
+    def test_retains_old_failure_and_new_exact_ci_receipts(self):
+        proof = self.recover()
+        self.assertEqual(proof, {"pr": 1078, "source": self.previous,
+                                "version": "v3.1.0", "failed_ci": 90,
+                                "replacement_ci": 100})
+
+    def test_automatic_preparation_still_preserves_pending_candidate(self):
+        with patch.object(self.release, "pending_release", return_value=True), \
+             patch.object(self.release, "calculate") as calculate:
+            self.assertIsNone(self.release.prepare(self.source, self.prs))
+            calculate.assert_not_called()
+
+    def test_supersession_inputs_must_be_paired_before_preparation(self):
+        for inputs in ({"supersede_pr": 1078}, {"source_ci_run": 100}):
+            with self.subTest(inputs=inputs), self.assertRaises(self.release.ReleaseError):
+                self.release.prepare(self.source, self.prs, **inputs)
+
+    def test_malformed_retained_candidate_refuses_before_publication_lookup(self):
+        for candidate in (None, [], "v3.1.0", {}, {"version": 31}, {"version": "dev.819"}):
+            with self.subTest(candidate=candidate), \
+                 patch.object(self.release, "blob", return_value=candidate), \
+                 self.assertRaisesRegex(self.release.ReleaseError, "invalid retained"):
+                self.recover()
+
+    def test_existing_exact_tag_refuses_supersession(self):
+        self.refs = [{"ref": "refs/tags/v3.1.0"}]
+        with self.assertRaisesRegex(self.release.ReleaseError, "tagged"):
+            self.recover()
+
+    def test_existing_release_including_draft_refuses_supersession(self):
+        for draft in (False, True):
+            self.releases = [{"tag_name": "v3.1.0", "draft": draft}]
+            with self.subTest(draft=draft), self.assertRaises(self.release.ReleaseError):
+                self.recover()
+
+    def test_wrong_release_pr_cannot_replace_latest_candidate(self):
+        self.prs[0]["number"] = 1079
+        with self.assertRaisesRegex(self.release.ReleaseError, "latest"):
+            self.recover()
+
+    def test_changed_retained_candidate_is_not_silently_replaced(self):
+        with patch.object(self.release, "blob", side_effect=[self.candidate, {"version": "v3.0.1"}]), \
+             self.assertRaisesRegex(self.release.ReleaseError, "differs"):
+            self.recover()
+
+    def test_inflight_cancelled_or_successful_original_ci_requires_existing_recovery(self):
+        for status, conclusion in (("in_progress", None), ("completed", "cancelled"),
+                                   ("completed", "success")):
+            self.failed.update(status=status, conclusion=conclusion)
+            with self.subTest(status=status, conclusion=conclusion), \
+                 self.assertRaises(self.release.ReleaseError):
+                self.recover()
+
+    def test_latest_original_run_is_authoritative(self):
+        self.runs.append(dict(self.failed, id=91, status="in_progress", conclusion=None))
+        with self.assertRaises(self.release.ReleaseError):
+            self.recover()
+
+    def test_replacement_ci_cannot_transfer_from_other_source_or_event(self):
+        invalid = {"head_sha": self.previous, "head_branch": "feature",
+                   "event": "workflow_dispatch", "conclusion": "failure",
+                   "status": "in_progress", "path": ".github/workflows/other.yml",
+                   "head_repository": {"full_name": "gobifrost/bifrost"}}
+        for key, value in invalid.items():
+            with self.subTest(field=key), patch.object(
+                self.release, "api", return_value=dict(self.good, **{key: value})
+            ), self.assertRaises(self.release.ReleaseError):
+                self.recover()
+
+    def test_untrusted_or_absent_original_ci_is_not_failure_evidence(self):
+        self.failed["head_repository"] = {"full_name": "gobifrost/bifrost"}
+        with self.assertRaisesRegex(self.release.ReleaseError, "no exact main CI"):
+            self.recover()
+
+    def test_replacement_preparation_retains_full_interval_and_failure_history(self):
+        replacement = {"version": "v3.1.0", "pull_requests": [],
+                       "base_tag": "v3.0.0", "contract_floor": None,
+                       "source_commit": self.source}
+        previous_cwd = Path.cwd()
+        with tempfile.TemporaryDirectory() as directory:
+            try:
+                os.chdir(directory)
+                for name in self.release.MANIFESTS:
+                    target = Path(name)
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    target.write_text(json.dumps({"version": "3.0.0", "name": "preserved"}))
+                with patch.object(self.release, "pending_release", return_value=True), \
+                     patch.object(self.release, "calculate", return_value=replacement), \
+                     patch.object(self.release.release_manifest, "upgrade_notes", return_value=[]):
+                    actual = self.release.prepare(
+                        self.source, self.prs, supersede_pr=1078, source_ci_run=100
+                    )
+                self.assertEqual(actual, replacement)
+                self.assertEqual(json.loads(Path(self.release.CANDIDATE).read_text()), replacement)
+                for name in self.release.MANIFESTS:
+                    self.assertEqual(json.loads(Path(name).read_text()),
+                                     {"version": "3.1.0", "name": "preserved"})
+                notes = Path(self.release.NOTES).read_text()
+                self.assertIn("Replaces #1078", notes)
+                self.assertIn("Original failed main CI: 90", notes)
+                self.assertIn("Replacement source main CI: 100", notes)
+            finally:
+                os.chdir(previous_cwd)
+
+    def test_explicit_recovery_refuses_when_no_candidate_is_pending(self):
+        with patch.object(self.release, "pending_release", return_value=False), \
+             self.assertRaisesRegex(self.release.ReleaseError, "unpublished pending"):
+            self.release.prepare(self.source, self.prs, supersede_pr=1078, source_ci_run=100)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
 

@@ -197,7 +197,7 @@ jobs:
         working-directory: client
       - run: npm test
         working-directory: client
-      - run: node --test e2e/support/playwright-projects.test.mjs
+      - run: node --test e2e/support/playwright-projects.test.mjs e2e/support/acceptance-report.test.mjs
         working-directory: client
 
   clean-production-build:

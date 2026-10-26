@@ -22,9 +22,10 @@
 # Quality checks:
 #   ./test.sh quality api               Run API pyright + ruff inside Docker.
 #   ./test.sh quality repo              Run local repository CI hygiene checks.
+#   ./test.sh tools scripts/sonar/test_main_receipt.py   Selected repository tests, without a stack.
 #
 # Client tests:
-#   ./test.sh client unit               Vitest on the host (no stack).
+#   ./test.sh client unit               Vitest in the isolated client-check container.
 #   ./test.sh client e2e                Playwright in the stack's client container.
 #   ./test.sh client smoke              Critical zero-retry Playwright merge gate.
 #   ./test.sh client nightly            Full product Playwright (docs capture excluded).
@@ -79,9 +80,9 @@ PRE_PR_EVIDENCE_HELPER="$SCRIPT_DIR/scripts/lib/pre_pr_stage_evidence.py"
 PRE_PR_PLAN_FILE="$TEST_LOCK_DIR/pre-pr-affected-plan.json"
 PRE_PR_CONTEXT=""
 
-# Load .env.test for optional secrets (GitHub PAT, LLM keys, etc.). Since the
-# file is intentionally ignored, linked worktrees do not receive it from Git;
-# fall back to the primary checkout's copy when the worktree has none.
+# Give Docker Compose access to optional test secrets without exporting them
+# into this host shell. Since .env.test is intentionally ignored, linked
+# worktrees fall back to the primary checkout's copy when they have none.
 BIFROST_TEST_ENV_FILE="$SCRIPT_DIR/.env.test"
 if [ ! -f "$BIFROST_TEST_ENV_FILE" ]; then
     BIFROST_COMMON_GIT_DIR="$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
@@ -93,10 +94,12 @@ if [ ! -f "$BIFROST_TEST_ENV_FILE" ]; then
     fi
 fi
 if [ -f "$BIFROST_TEST_ENV_FILE" ]; then
-    set -a
-    # shellcheck disable=SC1091
-    source "$BIFROST_TEST_ENV_FILE"
-    set +a
+    if [ -n "${COMPOSE_ENV_FILES:-}" ]; then
+        COMPOSE_ENV_FILES="$COMPOSE_ENV_FILES,$BIFROST_TEST_ENV_FILE"
+    else
+        COMPOSE_ENV_FILES="$BIFROST_TEST_ENV_FILE"
+    fi
+    export COMPOSE_ENV_FILES
 fi
 
 # =============================================================================
@@ -247,7 +250,12 @@ stack_up() {
     docker compose -f "$COMPOSE_FILE" up -d postgres rabbitmq redis seaweedfs
 
     wait_for_service "$COMPOSE_FILE" postgres pg_isready -U bifrost -d postgres
-    wait_for_service "$COMPOSE_FILE" rabbitmq rabbitmq-diagnostics check_running
+    # rabbitmq-diagnostics stays red while the broker boots. A saturated runner
+    # has failed this probe at the default 60 attempts ("rabbitmq not ready
+    # after 60 attempts") before the node was actually up. 180 is an attempt
+    # budget; wait_for_service sleeps one second per attempt, so this is not a
+    # separate wall-clock guarantee.
+    WAIT_MAX_ATTEMPTS=180 wait_for_service "$COMPOSE_FILE" rabbitmq rabbitmq-diagnostics check_running
     wait_for_service "$COMPOSE_FILE" redis redis-cli ping
 
     docker compose -f "$COMPOSE_FILE" up -d pgbouncer
@@ -651,8 +659,10 @@ run_mcp_conformance() {
 }
 
 client_unit() {
-    echo "Running vitest on host..."
-    (cd client && npm test "$@")
+    echo "Running vitest in the isolated client-check container..."
+    docker compose -f "$COMPOSE_FILE" --profile client-check build client-check-runner
+    docker compose -f "$COMPOSE_FILE" --profile client-check run --rm --no-deps \
+        client-check-runner npm test -- "$@"
 }
 
 client_ci_checks() {
@@ -674,25 +684,60 @@ client_unit_targets() {
         client-check-runner npm test -- "$@"
 }
 
+action_pin_scanner_python() {
+    local lock_file=".github/requirements/action-pin-scanner.lock"
+    local lock_hash
+    local scanner_venv
+    local scanner_python
+
+    lock_hash="$(git hash-object "$lock_file")" || return 1
+    scanner_venv="$TEST_LOCK_DIR/action-pin-scanner-$lock_hash"
+    scanner_python="$scanner_venv/bin/python"
+    if [ ! -f "$scanner_venv/.ready" ]; then
+        python3 -m venv "$scanner_venv" || return 1
+        "$scanner_python" -m pip install --quiet --disable-pip-version-check \
+            --no-deps --only-binary :all: --require-hashes -r "$lock_file" || return 1
+        "$scanner_python" -c 'import yaml; assert yaml.__version__ == "6.0.3"' || return 1
+        touch "$scanner_venv/.ready" || return 1
+    fi
+    printf '%s\n' "$scanner_python"
+}
+
 candidate_action_pin_checks() {
     local diff_status=0
+    local scanner_python
+    scanner_python="$(action_pin_scanner_python)"
     git diff --quiet origin/main HEAD -- .github/workflows .github/actions \
         api/scripts/check_github_action_pins.py || diff_status=$?
     case "$diff_status" in
         0)
             echo "Action inputs unchanged: checking full SHA pins locally; CI verifies version comments."
-            python3 api/scripts/check_github_action_pins.py
+            "$scanner_python" api/scripts/check_github_action_pins.py
             ;;
-        1) python3 api/scripts/check_github_action_pins.py --verify-versions ;;
+        1) "$scanner_python" api/scripts/check_github_action_pins.py --verify-versions ;;
         *) echo "ERROR: cannot establish Action input changes." >&2; return "$diff_status" ;;
     esac
 }
 
+repository_tool_tests() {
+    [ "$#" -gt 0 ] || { echo "ERROR: repository tests require explicit targets" >&2; return 1; }
+    local target
+    for target in "$@"; do
+        if ! [[ "$target" =~ ^scripts/sonar/test_[a-zA-Z0-9_]+\.py$ ]] || [ ! -f "$target" ] || [ -L "$target" ]; then
+            echo "ERROR: invalid repository test target" >&2
+            return 1
+        fi
+    done
+    PYTHONPATH="$SCRIPT_DIR/scripts/sonar${PYTHONPATH:+:$PYTHONPATH}" python3 -m unittest "$@"
+}
+
 repository_ci_checks() {
+    python3 scripts/lib/test_secret_env_isolation.py
     bash scripts/lib/test_stack_lock_test.sh
     python3 scripts/lib/pre_pr_stage_evidence_test.py
     bash scripts/lib/pre_pr_lanes_test.sh
-    node --test .github/scripts/authorize-merge-queue.test.mjs
+    node --test .github/scripts/authorize-merge-queue.test.mjs .github/scripts/retire-merge-group.test.mjs
+    node --test .github/scripts/openwiki-refresh.test.mjs
     python3 -m unittest scripts.test_codeql_changed_lines
     echo "Checking GitHub Action pins..."
     candidate_action_pin_checks
@@ -775,7 +820,7 @@ pre_pr_plan_lane() {
 import json
 import sys
 plan = json.loads(open(sys.argv[1], encoding="utf-8").read())
-print(plan["lanes"].get(sys.argv[2], "skip"))
+print(plan.get("repository", {}).get("mode", "skip") if sys.argv[2] == "repository_tools" else plan["lanes"].get(sys.argv[2], "skip"))
 PY
 }
 
@@ -793,8 +838,9 @@ pre_pr_plan_targets() {
 import json
 import sys
 plan = json.loads(open(sys.argv[1], encoding="utf-8").read())
-values = plan.get("python" if sys.argv[3] == "api" else "client", {}).get(sys.argv[2], [])
-prefix = "api/" if sys.argv[3] == "api" else "client/"
+section = {"api": "python", "client": "client", "repository": "repository"}[sys.argv[3]]
+values = plan.get(section, {}).get(sys.argv[2], [])
+prefix = {"api": "api/", "client": "client/", "repository": ""}[sys.argv[3]]
 for value in values:
     print(value.removeprefix(prefix))
 PY
@@ -941,6 +987,15 @@ cmd_ci() {
 }
 
 run_scoped_pre_pr() {
+    case "$(pre_pr_plan_lane repository_tools)" in
+        affected)
+            mapfile -t repository_targets < <(pre_pr_plan_targets unit_tests repository)
+            [ "${#repository_targets[@]}" -gt 0 ] || { echo "ERROR: affected repository lane has no targets" >&2; return 1; }
+            run_pre_pr_stage repository-tools repository_tool_tests "${repository_targets[@]}" || return $?
+            ;;
+        skip) ;;
+        *) echo "ERROR: invalid repository test mode" >&2; return 1 ;;
+    esac
     # A broad lane must not force unrelated lanes broad, or accidentally
     # invoke a full local suite with an empty list of selected targets.
     for lane in api_unit api_e2e client_unit client_e2e mcp_conformance; do
@@ -1121,7 +1176,7 @@ cmd_pr_preflight() {
 # resets. Pytest's inner runner lock alone cannot prevent a browser run resetting
 # its database, or two browser runs replacing each other's API containers.
 case "${1:-}:${2:-}" in
-    help:*|-h:*|--help:*|stack:status|client:unit) ;;
+    help:*|-h:*|--help:*|stack:status|client:unit|tools:*) ;;
     *)
         exec {test_command_lock_fd}>"$TEST_LOCK_DIR/test-stack.lock"
         if ! flock -n "$test_command_lock_fd"; then
@@ -1147,6 +1202,7 @@ case "$1" in
     all) shift; cmd_all "$@" ;;
     reliability) shift; cmd_reliability "$@" ;;
     quality) shift; cmd_quality "$@" ;;
+    tools) shift; repository_tool_tests "$@" ;;
     client) shift; cmd_client "$@" ;;
     mcp) shift; cmd_mcp "$@" ;;
     pr-preflight) shift; cmd_pr_preflight "$@" ;;

@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+from collections.abc import Iterator
+from contextlib import contextmanager
 from typing import Any
 from uuid import UUID
 
@@ -39,6 +41,54 @@ SOURCE_MARKER = "bifrost.solution-source-revision/v1"
 
 class UnprovenLiveHandoff(ValueError):
     """A missing loose registration has no verified replacement runtime."""
+
+
+# Only authored invariant messages may enter public promotion failure receipts.
+# Provider, storage, validation and customer-controlled exception bodies stay private.
+_PUBLIC_HANDOFF_FAILURE_REASONS = frozenset({
+    'Active runtime source bytes differ from the immutable archive',
+    'Deployment is not an activated immutable revision',
+    'Deployment is outside the owner scope',
+    'Deployment storage identity differs from its immutable closure',
+    'Handoff has no immutable exposure baseline',
+    'Handoff origin differs from the inherited Live binding',
+    'Immutable dependency cycle',
+    'Immutable source archive or object identity changed',
+    'Inherited workflow has no exact Solution owner',
+    'Inherited workflow is absent from the active runtime',
+    'Retained handoff receipt does not prove the current Live binding',
+    'Reviewed handoff lineage cycle',
+    'Solution has no active immutable runtime',
+    'Solution pointer is not active',
+    'Solution registration exposure differs from its reviewed baseline',
+    'Solution registration is outside its owner scope',
+    'Solution registration set differs from its active closure',
+    'Solution revision has no reviewed handoff lineage',
+    'Solution workflow owner changed during readback',
+    'Active deployment closure verification failed',
+    'Immutable registration verification failed',
+    'Immutable runtime byte verification failed',
+    'Current Root contract verification failed',
+    'Immutable dependency verification failed',
+})
+
+
+def safe_handoff_failure_reason(exc: Exception) -> str:
+    if isinstance(exc, UnprovenLiveHandoff) and str(exc) in _PUBLIC_HANDOFF_FAILURE_REASONS:
+        return str(exc)
+    for note in getattr(exc, "__notes__", ()):
+        if note in _PUBLIC_HANDOFF_FAILURE_REASONS:
+            return note
+    return "Unclassified handoff verification failure"
+
+
+@contextmanager
+def _handoff_stage(message: str) -> Iterator[None]:
+    try:
+        yield
+    except (ValueError, KeyError, OSError, RuntimeError) as exc:
+        exc.add_note(message)
+        raise
 
 
 class LiveHandoffReadback:
@@ -182,7 +232,8 @@ class LiveHandoffReadback:
         if (solution is None or solution.status != "active" or solution.execution_runtime_mode != "deployment-v1"
                 or solution.active_deployment_id is None):
             raise UnprovenLiveHandoff("Solution has no active immutable runtime")
-        active, active_manifest, active_resolution = await self._deployment(solution.active_deployment_id, solution_id, scope)
+        with _handoff_stage("Active deployment closure verification failed"):
+            active, active_manifest, active_resolution = await self._deployment(solution.active_deployment_id, solution_id, scope)
         if active.state != "active":
             raise UnprovenLiveHandoff("Solution pointer is not active")
         rows = (await self.db.scalars(
@@ -195,10 +246,14 @@ class LiveHandoffReadback:
         for row in rows:
             if row.organization_id != scope:
                 raise UnprovenLiveHandoff("Solution registration is outside its owner scope")
-            _require_registration(row, active_resolution.resolve_workflow_id(row.id))
-        await self._runtime_bytes(active, active_manifest, active_resolution)
-        await self._current_contracts(active_manifest, scope)
-        await self._dependencies(active, set(), set())
+            with _handoff_stage("Immutable registration verification failed"):
+                _require_registration(row, active_resolution.resolve_workflow_id(row.id))
+        with _handoff_stage("Immutable runtime byte verification failed"):
+            await self._runtime_bytes(active, active_manifest, active_resolution)
+        with _handoff_stage("Current Root contract verification failed"):
+            await self._current_contracts(active_manifest, scope)
+        with _handoff_stage("Immutable dependency verification failed"):
+            await self._dependencies(active, set(), set())
         visited: set[UUID] = set()
         origin, manifest, resolution = active, active_manifest, active_resolution
         certified_handoff = False
@@ -240,12 +295,11 @@ class LiveHandoffReadback:
                     {row.id: row for row in rows}, False)
         source_paths = sorted(resolution.sources)
         workflow_ids = sorted((item.resolved_id for item in resolution.workflows.values()), key=str)
-        expected_bundle = sha256_digest(canonical_json({
-            "release_id": self.release.release_id,
-            "workflow_ids": [str(item) for item in workflow_ids],
-            "shared_tables": {name: binding.model_dump(mode="json") for name, binding in manifest.shared_tables.items()},
-            "source_hashes": {path: source.content_hash for path, source in resolution.sources.items()},
-        }))
+        # Guarded preflight accepts a reviewed bundle identity, including a
+        # source archive digest supplied through the public deployment API.
+        # The receipt binds manifest.content_hash() (and therefore bundle_hash);
+        # _deployment also requires the stored row and manifest to agree. Do not
+        # reinterpret that accepted identity using the candidate builder's recipe.
         # The receipt must bind to exactly one Live identity: either the
         # current release (full recompute) or coherently to a predecessor
         # release whose governed bytes still match the current release.
@@ -263,8 +317,7 @@ class LiveHandoffReadback:
                 or marker.get("workflow_ids") != [str(item) for item in workflow_ids]
                 or marker.get("verified_source_paths") != source_paths
                 or (current_binding and (
-                    manifest.bundle_hash != expected_bundle
-                    or manifest.git.commit_sha != self.release.source_commit_sha
+                    manifest.git.commit_sha != self.release.source_commit_sha
                     or marker.get("preflight_evidence_id") != handoff_preflight_evidence_id(
                         self.release, manifest, resolution, workflow_ids=workflow_ids)))):
             raise UnprovenLiveHandoff("Retained handoff receipt does not prove the current Live binding")

@@ -1,5 +1,83 @@
 # Workspace source release accountability
 
+## Proposed legacy archive binding (source decision pending)
+
+Target: source-only preparation for the protected complete-package accounting
+adapter. This proposal does not authorize its compatibility implementation,
+deployment, ledger changes or publication replay. The repository's
+[no-unrequested-fallback rule](../dev/agent-platform-rules.md#no-dead-code-no-unrequested-fallbacks)
+requires an explicit decision before adding a compatibility path.
+
+The October 20 [read-only investigation](https://github.com/MTG-Thomas/Eddie/issues/4#issuecomment-6296171711)
+reproduced both recorded archive SHA-256 values from the same six reviewed file
+names and bytes at Workspace commit `45a0b956a02eff41622870c5065c991f76dc61d1`:
+
+| Container convention | Reproduced SHA-256 |
+| --- | --- |
+| Legacy Windows ZIP (`create_system=0`, default permissions) | `d5ae70a17144998bd61c929d866de5d617c0cde68e0269057b4c905313f620e2` |
+| Unix ZIP (`create_system=3`, explicit Git modes) | `0b8df4cd0ef88c3b4d67955941659d817d788562c6985b27bbf0026313a06967` |
+
+The first equals released obligation `5934d459-0005-4347-8616-df87428a1d5c`'s
+artifact; its canonical evidence hash and solution/job bindings independently
+passed. The second equals successful jobs `fd0bd7ef-5451-5a39-a154-bb255b1c43bc`
+and `3009f573-f474-5e83-85c4-adf6d1b454f5`. The latter's protected status reports
+`accounting_evidence_differs`. This experiment proves the specific metadata
+difference; it is not a replacement accounting receipt or a general rule that
+different archives are equivalent.
+
+Propose extending only the existing read-only `read_package_accounting` path,
+after the original source-scoped job and fresh runtime inspection have passed.
+Keep the existing exact-archive success case unchanged. A different archive
+must continue to fail unless every additional legacy-transport predicate passes:
+
+1. Require the same organization, installation, reviewed source content ID and
+   complete source-file inventory already selected by protected admission.
+   Validate historical evidence integrity and independently check its own
+   solution/job/source/tenant/archive bindings, not its hash alone. Preserve
+   the original released record and job result unchanged.
+2. Load only that original job's retained input through the existing storage
+   adapter with its expected SHA-256. Verify its raw digest against the payload
+   and completion result. Denied, missing, corrupt or uncertain input is failure;
+   never use new credentials, another job, current Git HEAD or a replacement
+   publication to make the check pass.
+3. Require exact reviewed paths, file bytes, sizes and regular Git modes. Bound
+   the compatibility proof to 1,000 files and 10 MiB for both archive input and
+   expanded content. Reject duplicate names, directories, links, traversal,
+   encrypted entries, unexpected files and executable modes. Derived App
+   overlays or any authored-file modification remain unsupported here.
+4. Reconstruct both fixed transport representations from those verified bytes:
+   the current Unix/Git-mode archive must exactly reproduce the original job's
+   archive digest; the legacy Windows/default-permission archive must exactly
+   reproduce the historical released artifact digest. Both use the fixed ZIP
+   epoch, sorted names and the existing DEFLATE convention. This is two exact
+   digest bindings, not arbitrary ZIP normalization or a set of alternate hashes.
+5. Return positive read-only qualification only with explicit legacy-transport
+   evidence identifying both hashes and the exact reviewed file-manifest binding.
+   Otherwise retain the existing failure state. Do not update historical
+   evidence, mark a job succeeded, declare a release, enqueue recovery or replay
+   publication from an inspection request.
+
+Separately, the protected package archive constructor should explicitly select
+Unix ZIP metadata, retaining regular Git modes, so Windows and Linux producers
+calculate the same proof. This deterministic construction fixes a producer
+portability defect; it does not settle an existing accounting obligation.
+
+Before source acceptance, prove the current failure with synthetic legacy/current
+archives, then test exact positive binding plus mutations of file bytes, paths,
+modes, archive metadata, payload hash, historical hash/evidence, organization,
+solution and original job. Missing storage and oversized/malformed/duplicate
+archives must remain negative. Exercise forged advertised sizes, actual expanded
+byte limits, CRC failures, local/central ZIP metadata mismatch and canonical-path
+aliases. Verify inspection leaves both original job and
+released ledger evidence unchanged, and retain existing exact-archive tests.
+Use the repository's Linux Docker/debug and clean-candidate pre-PR lanes; no
+host pytest, live production experiment or check relaxation substitutes for them.
+
+Implementation needs the explicit source-only compatibility decision first.
+Any later deployment still needs its normal reviewed image, CI, schema,
+canary, production authorization and runtime readback gates. The existing
+production schema/retained-work/callback and historical quality holds remain.
+
 ## Problem
 
 A protected Workspace merge and a production activation are separate events.

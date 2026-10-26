@@ -24,13 +24,15 @@ and are added in their sub-plans.
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
 import hashlib
 import logging
 from pathlib import Path
+from time import perf_counter
 from typing import TYPE_CHECKING, Any
 from uuid import UUID, uuid4, uuid5
 
@@ -39,6 +41,7 @@ from sqlalchemy import delete, insert, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from src.jobs.platform.base import PlatformJobCancelled
 from src.models.contracts.events import EventCriteria
 from src.models.orm.agents import Agent, AgentRole
 from src.models.orm.events import (
@@ -66,6 +69,49 @@ logger = logging.getLogger(__name__)
 if TYPE_CHECKING:
     from src.services.application_sdk_status import CurrentApplicationSdkMetadata
     from src.services.solutions.package_git_source import VerifiedSolutionPackageSource
+
+SolutionDeployProgressCallback = Callable[[str, float], Awaitable[None]]
+SolutionDeployTimingCallback = Callable[[str, int], Awaitable[None]]
+
+
+@dataclass(frozen=True)
+class SolutionDeployInstrumentation:
+    """Optional bounded observation hooks for one deploy execution.
+
+    The deployer uses this only to surface coarse progress and aggregate,
+    operator-safe timings. It never changes deploy control flow or persistence.
+    """
+
+    progress_callback: SolutionDeployProgressCallback | None = None
+    timing_callback: SolutionDeployTimingCallback | None = None
+
+    async def report(self, phase: str, percent: float) -> None:
+        if self.progress_callback is not None:
+            await self.progress_callback(phase, percent)
+
+    async def record_timing(self, category: str, elapsed_seconds: float) -> None:
+        if self.timing_callback is not None:
+            elapsed_ms = round(elapsed_seconds * 1000)
+            await self.timing_callback(category, elapsed_ms)
+
+
+_deploy_instrumentation: ContextVar[SolutionDeployInstrumentation | None] = ContextVar(
+    "solution_deploy_instrumentation", default=None
+)
+
+
+@contextmanager
+def solution_deploy_instrumentation(
+    instrumentation: SolutionDeployInstrumentation,
+):
+    """Scope optional observation hooks to one Solution deploy call chain."""
+
+    token = _deploy_instrumentation.set(instrumentation)
+    try:
+        yield
+    finally:
+        _deploy_instrumentation.reset(token)
+
 
 def _decode_logo(
     label: str, b64: str | None, content_type: str | None
@@ -185,7 +231,8 @@ async def _retry_idempotent(
 
     Raises :class:`SolutionFinalizeIncomplete` only if every attempt fails — a
     genuine storage outage, which a later deploy/sync still heals (the writes are
-    full-replace). Logs each retry so the blip is observable.
+    full-replace). Logs each retry so the blip is observable. Cancellation and
+    lease rejection propagate immediately without retry.
     """
     import asyncio
 
@@ -194,7 +241,10 @@ async def _retry_idempotent(
         try:
             await op()
             return
-        except Exception as exc:  # noqa: BLE001 - storage is the only failure here
+        except PlatformJobCancelled:
+            # Lease rejection/cancellation must never become another writer attempt.
+            raise
+        except Exception as exc:  # noqa: BLE001 - retry ordinary finalize failures
             last = exc
             if attempt < _FINALIZE_RETRIES:
                 logger.warning(
@@ -345,6 +395,7 @@ class SolutionDeployer:
 
     def __init__(self, db: AsyncSession):
         self.db = db
+        self._instrumentation = _deploy_instrumentation.get()
         # Accumulates role names auto-created during this deploy (see
         # _resolve_roles). Surfaced on DeployResult.roles_created.
         self._created_roles: set[str] = set()
@@ -709,6 +760,7 @@ class SolutionDeployer:
         #    raises here and rolls back the whole deploy, no S3 touched. ───────
         from src.services.solutions.app_runtime import source_archive_sha256
 
+        await self._report_phase("Compiling Solution applications", 50)
         compiled = await self._compile_app_dists(
             builds,
             source_sha256=source_archive_sha256(source_artifact) if builds else "",
@@ -722,21 +774,41 @@ class SolutionDeployer:
         # install runnable. Only an outage that survives all retries raises
         # SolutionFinalizeIncomplete — and even then a later deploy/sync heals it.
         async def _finalize_s3() -> None:
-            await _retry_idempotent(
-                "store source artifact", sid,
-                lambda: self._write_source_artifact(sid, source_artifact),
+            await self._report_phase("Storing Solution source archive", 67)
+            await self._timed(
+                "store_source_artifact",
+                lambda: _retry_idempotent(
+                    "store source artifact",
+                    sid,
+                    lambda: self._write_source_artifact(sid, source_artifact),
+                ),
             )
-            await _retry_idempotent(
-                "write python source", sid,
-                lambda: self._write_python(sid, rb.python_files),
+            await self._report_phase("Publishing Solution Python source", 70)
+            await self._timed(
+                "write_python_source",
+                lambda: _retry_idempotent(
+                    "write python source",
+                    sid,
+                    lambda: self._write_python(sid, rb.python_files),
+                ),
             )
-            await _retry_idempotent(
-                "upload app dists", sid,
-                lambda: self._upload_compiled_dists(compiled),
+            await self._report_phase("Uploading Solution applications", 90)
+            await self._timed(
+                "upload_app_dists",
+                lambda: _retry_idempotent(
+                    "upload app dists",
+                    sid,
+                    lambda: self._upload_compiled_dists(compiled),
+                ),
             )
-            await _retry_idempotent(
-                "sweep stale dist", sid,
-                lambda: self._delete_stale_app_dist(stale_app_dist),
+            await self._report_phase("Cleaning obsolete Solution artifacts", 97)
+            await self._timed(
+                "sweep_stale_dist",
+                lambda: _retry_idempotent(
+                    "sweep stale dist",
+                    sid,
+                    lambda: self._delete_stale_app_dist(stale_app_dist),
+                ),
             )
             # ── Bundle file sidecars (O1: no mirror-delete) ───────────────────
             # Write each sidecar that carries content_bytes.  Files absent from
@@ -746,7 +818,8 @@ class SolutionDeployer:
             # file (user may have modified it).
             if bundle.solution_files:
                 await _retry_idempotent(
-                    "write bundle file sidecars", sid,
+                    "write bundle file sidecars",
+                    sid,
                     lambda: self._write_bundle_files(
                         sid, bundle.solution_files, file_mode
                     ),
@@ -774,6 +847,24 @@ class SolutionDeployer:
             ),
             finalize_s3=_finalize_s3,
         )
+
+    async def _report_phase(self, phase: str, percent: float) -> None:
+        if self._instrumentation is not None:
+            await self._instrumentation.report(phase, percent)
+
+    async def _timed(
+        self,
+        category: str,
+        operation: Callable[[], Awaitable[None]],
+    ) -> None:
+        started_at = perf_counter()
+        try:
+            await operation()
+        finally:
+            if self._instrumentation is not None:
+                await self._instrumentation.record_timing(
+                    category, perf_counter() - started_at
+                )
 
     @staticmethod
     def _apply_readme(solution: Solution, bundle: Any) -> None:
@@ -1037,36 +1128,51 @@ class SolutionDeployer:
             await storage.write(source_zip)
 
     async def _write_python(self, sid: UUID, python_files: dict[str, str]) -> None:
-        """Full-replace this install's Python source and keep the module cache
-        consistent.
-
-        get_module_sync reads Redis (keyed by the _solutions/{id}/ storage path)
-        BEFORE S3, so a plain S3 write would leave stale bytes cached for the
-        24h TTL and removed files would still resolve. So: write-through each
-        bundle file to Redis with fresh content, and delete (S3 + Redis) any
-        prior solution file absent from the new bundle (Codex P1).
-        """
+        """Full-replace source and cache using one operation-owned transport."""
         from src.core.module_cache import invalidate_module, set_module
 
-        storage = SolutionStorage(sid)
+        timings = {"runtime_source_storage": 0.0, "redis_module_cache": 0.0}
 
-        # Prior state: every file currently under this install's prefix.
-        prior = set(await storage.list(""))
-        new_rel = set(python_files.keys())
+        async def measure(
+            category: str, operation: Callable[[], Awaitable[Any]]
+        ) -> Any:
+            started_at = perf_counter()
+            try:
+                return await operation()
+            finally:
+                timings[category] += perf_counter() - started_at
 
-        for rel_path, content in python_files.items():
-            content_hash = await storage.write(rel_path, content.encode("utf-8"))
-            storage_key = storage._key(rel_path)  # _solutions/{id}/<rel>
-            # Write-through so the next execution reads the new bytes, not the
-            # 24h-TTL cache. Only .py files are import-cached.
-            if rel_path.endswith(".py"):
-                await set_module(storage_key, content, content_hash)
-
-        # Remove files dropped from the bundle (full replace of source).
-        for rel_path in prior - new_rel:
-            await storage.delete(rel_path)
-            if rel_path.endswith(".py"):
-                await invalidate_module(storage._key(rel_path))
+        try:
+            async with SolutionStorage(sid).operation() as storage:
+                prior = set(
+                    await measure("runtime_source_storage", lambda: storage.list(""))
+                )
+                new_rel = set(python_files)
+                for rel_path, content in python_files.items():
+                    content_hash = await measure(
+                        "runtime_source_storage",
+                        lambda: storage.write(rel_path, content.encode("utf-8")),
+                    )
+                    if rel_path.endswith(".py"):
+                        await measure(
+                            "redis_module_cache",
+                            lambda: set_module(
+                                storage._key(rel_path), content, content_hash
+                            ),
+                        )
+                for rel_path in prior - new_rel:
+                    await measure(
+                        "runtime_source_storage", lambda: storage.delete(rel_path)
+                    )
+                    if rel_path.endswith(".py"):
+                        await measure(
+                            "redis_module_cache",
+                            lambda: invalidate_module(storage._key(rel_path)),
+                        )
+        finally:
+            if self._instrumentation is not None:
+                for category, elapsed_seconds in timings.items():
+                    await self._instrumentation.record_timing(category, elapsed_seconds)
 
     # ── 2. Entity upserts (stamp solution_id + inherited scope) ──────────────
     async def _upsert_workflows(
@@ -1592,7 +1698,10 @@ class SolutionDeployer:
                     )
             raise
         try:
-            await self._activate_compiled_dists(compiled)
+            await self._report_phase("Activating Solution applications", 95)
+            await self._timed(
+                "app_activation_db", lambda: self._activate_compiled_dists(compiled)
+            )
         except Exception:
             # The transaction may have committed before its acknowledgement was
             # lost. Deleting these immutable outputs could remove the now-active
@@ -1832,7 +1941,11 @@ class SolutionDeployer:
             ma = ManifestAgent.model_validate({**magent, "id": str(agent_id)})
             content = _agent_content_from_manifest(ma)
             try:
-                await indexer.index_agent(f"agents/{agent_id}.agent.yaml", content)
+                await indexer.index_agent(
+                    f"agents/{agent_id}.agent.yaml",
+                    content,
+                    organization_id=solution.organization_id,
+                )
             except ValueError as exc:
                 raise SolutionDeployConflict(
                     f"agent {agent_id}: {exc}"
@@ -1859,12 +1972,11 @@ class SolutionDeployer:
                 agent_values["max_iterations"] = magent["max_iterations"]
             if magent.get("max_token_budget") is not None:
                 agent_values["max_token_budget"] = magent["max_token_budget"]
-            # max_run_timeout is captured (capture.py:610) but, like the two
-            # limits above, the AgentIndexer does NOT persist it — without
-            # stamping it here a redeploy silently drops the manifest's value
-            # back to the column default. Apply when present.
-            if magent.get("max_run_timeout") is not None:
-                agent_values["max_run_timeout"] = magent["max_run_timeout"]
+            # Persist only the validated model value. Reading this field from the
+            # raw transport dict would let a malformed package bypass the
+            # ManifestAgent safety bound.
+            if ma.max_run_timeout is not None:
+                agent_values["max_run_timeout"] = ma.max_run_timeout
             await self.db.execute(
                 update(Agent).where(Agent.id == agent_id).values(**agent_values)
             )
