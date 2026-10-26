@@ -64,8 +64,8 @@ from src.models.contracts.notifications import NotificationCategory, Notificatio
 from src.services.execution.cpu_sampler import CPUSampler, get_clock_ticks
 from src.services.execution.memory_monitor import get_cgroup_memory, has_sufficient_memory_cgroup
 from src.services.execution.requirements_setup_result import RequirementsInstallResult
-from src.services.notification_service import get_notification_service
 from src.services.execution.template_process import TemplateProcess
+from src.services.notification_service import get_notification_service
 
 if TYPE_CHECKING:
     from src.services.execution.worker_sdk_http import WorkerSdkHttpServer
@@ -193,11 +193,13 @@ class ProcessState(Enum):
     """
     State of a worker process in the pool.
 
-    Workers are one-shot — they only ever exist in BUSY (running their
-    single execution) or KILLED (terminating).
+    Workers are one-shot. BUSY means user code still owns the execution
+    deadline; CLEANING means its terminal result is durably recorded while the
+    child retains its capacity slot for bounded cleanup; KILLED is terminating.
     """
 
     BUSY = "busy"
+    CLEANING = "cleaning"
     KILLED = "killed"
 
 
@@ -1970,6 +1972,12 @@ class ProcessPoolManager:
                 and process_id not in self.service_processes
             ):
                 continue
+            if not handle.is_alive and handle.state == ProcessState.CLEANING:
+                # Terminal delivery already owns the workflow outcome. Child
+                # exit proves cleanup and teardown are over.
+                if handle.result_reported:
+                    to_remove.append(process_id)
+                continue
             if not handle.is_alive and handle.state != ProcessState.KILLED:
                 owns_result = (
                     handle.current_execution is not None
@@ -1983,6 +1991,14 @@ class ProcessPoolManager:
 
                     if isinstance(result, dict):
                         await self._handle_result(handle, result)
+                        # This sweep already proved the child has exited. If
+                        # terminal delivery succeeded, cleanup is complete and
+                        # the retained capacity can be released immediately.
+                        if (
+                            handle.state == ProcessState.CLEANING
+                            and handle.result_reported
+                        ):
+                            to_remove.append(process_id)
                         continue
 
                     if handle.process.exitcode == 0:
@@ -2282,20 +2298,24 @@ class ProcessPoolManager:
         """
         Handle a result from a worker process.
 
-        One-shot workflow children have already exited (or are about to);
-        their handle is removed, freeing a max_workers slot. Service
-        children report terminal attempt outcomes through on_service_result
-        and free a service slot instead.
+        A one-shot workflow result ends deadline accounting immediately but
+        keeps the handle under max_workers until health observes child exit.
+        Service children use their established terminal attempt path and free
+        a service slot directly.
         """
-        exec_info = handle.current_execution
         self._unregister_result_reader(handle)
         if handle.service is not None:
             await self._handle_service_result(handle, result)
             return
 
+        exec_info = handle.current_execution
         if exec_info is None:
             logger.error("Result received without an active execution on %s", handle.id)
             return
+        # Reading the child result is the terminal execution boundary. Stop
+        # timeout accounting now, before the durable callback can overlap the
+        # deadline, while retaining this handle as capacity during cleanup.
+        handle.state = ProcessState.CLEANING
         callback_already_owned = handle.result_reported
         if exec_info is not None:
             # Child output is untrusted. Bind it to this handle's durable
@@ -2328,11 +2348,8 @@ class ProcessPoolManager:
         handle.current_execution = None
         handle.executions_completed += 1
 
-        # Remove the handle (frees a slot under max_workers) and wake any
-        # waiters in route_execution that were blocked on a free slot.
-        # pop() not check-then-del: race-safe against concurrent cleaners.
-        self.processes.pop(handle.id, None)
-        await self._notify_slot_free()
+        # Child exit follows telemetry flush and teardown. Until health
+        # observes that exit, len(self.processes) retains this capacity slot.
 
     def _service_envelope(
         self, handle: ProcessHandle, result: dict[str, Any]
@@ -2643,7 +2660,11 @@ class ProcessPoolManager:
         # One-shot handles are never idle; retain the field for the heartbeat
         # contract consumed by the worker dashboard.
         idle_count = 0
-        busy_count = len([p for p in self.processes.values() if p.state == ProcessState.BUSY])
+        busy_count = len([
+            p
+            for p in self.processes.values()
+            if p.state in (ProcessState.BUSY, ProcessState.CLEANING)
+        ])
         max_workers = getattr(self, "max_workers", len(self.processes))
         available_slots = max(0, max_workers - busy_count)
 

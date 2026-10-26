@@ -54,6 +54,7 @@ class TestProcessState:
     def test_all_states_defined(self):
         """Should have all required states."""
         assert ProcessState.BUSY.value == "busy"
+        assert ProcessState.CLEANING.value == "cleaning"
         assert ProcessState.KILLED.value == "killed"
 
     def test_states_are_distinct(self):
@@ -897,8 +898,8 @@ class TestProcessPoolManagerResultHandling:
         handler.assert_awaited_once_with(handle, result)
 
     @pytest.mark.asyncio
-    async def test_handle_result_removes_handle(self):
-        """Should remove the handle (one-shot worker) after result."""
+    async def test_handle_result_retains_slot_until_child_exit(self):
+        """A terminal result ends timing but child exit frees capacity."""
         pool = ProcessPoolManager(on_result=AsyncMock())
 
         mock_process = MagicMock()
@@ -930,14 +931,20 @@ class TestProcessPoolManagerResultHandling:
 
         await pool._handle_result(handle, result_data)
 
-        assert "process-1" not in pool.processes
+        assert pool.processes["process-1"] is handle
+        assert handle.state == ProcessState.CLEANING
         assert handle.current_execution is None
         assert handle.executions_completed == 1
         assert handle.result_reported is True
 
+        mock_process.is_alive.return_value = False
+        await pool._check_process_health()
+
+        assert "process-1" not in pool.processes
+
     @pytest.mark.asyncio
-    async def test_handle_result_notifies_slot_waiters(self):
-        """Removing a handle should wake any tasks waiting on a slot."""
+    async def test_slow_cleanup_crossing_deadline_preserves_result_and_slot(self):
+        """A finished result wins its deadline while cleanup retains capacity."""
         pool = ProcessPoolManager(max_workers=1, on_result=AsyncMock())
 
         mock_process = MagicMock()
@@ -953,8 +960,8 @@ class TestProcessPoolManagerResultHandling:
             started_at=datetime.now(timezone.utc),
             current_execution=ExecutionInfo(
                 execution_id="exec-123",
-                started_at=datetime.now(timezone.utc),
-                timeout_seconds=300,
+                started_at=datetime.now(timezone.utc) - timedelta(seconds=2),
+                timeout_seconds=1,
                 active_execution=_active_execution("exec-123"),
             ),
         )
@@ -965,10 +972,53 @@ class TestProcessPoolManagerResultHandling:
         await asyncio.sleep(0.1)
         assert not waiter.done(), "waiter should be parked"
 
-        # Result handling deletes the handle and notifies — waiter should wake.
-        await pool._handle_result(handle, {"success": True})
+        with (
+            patch.object(pool, "_kill_process", new_callable=AsyncMock) as kill,
+            patch.object(pool, "_report_timeout", new_callable=AsyncMock) as timeout,
+        ):
+            await pool._handle_result(handle, {"success": True})
+            await pool._check_timeouts()
+
+        pool.on_result.assert_awaited_once()
+        assert pool.on_result.await_args.args[0]["success"] is True
+        kill.assert_not_awaited()
+        timeout.assert_not_awaited()
+        assert handle.state == ProcessState.CLEANING
+        assert handle.id in pool.processes
+        heartbeat = pool._build_heartbeat()
+        assert heartbeat["busy_count"] == 1
+        assert heartbeat["available_slots"] == 0
+        await asyncio.sleep(0)
+        assert not waiter.done(), "cleanup must retain the saturated slot"
+
+        mock_process.is_alive.return_value = False
+        await pool._check_process_health()
         got_slot = await asyncio.wait_for(waiter, timeout=1.0)
         assert got_slot is True
+
+    @pytest.mark.asyncio
+    async def test_clean_child_exit_releases_retained_cleanup_slot(self):
+        pool = ProcessPoolManager(on_result=AsyncMock())
+        process = MagicMock()
+        process.is_alive.return_value = False
+        handle = ProcessHandle(
+            id="process-1",
+            process=process,
+            pid=12345,
+            state=ProcessState.CLEANING,
+            work_queue=MagicMock(),
+            result_queue=MagicMock(),
+            started_at=datetime.now(timezone.utc),
+            current_execution=None,
+            result_reported=True,
+        )
+        pool.processes[handle.id] = handle
+
+        with patch.object(pool, "_notify_slot_free", new_callable=AsyncMock) as notify:
+            await pool._check_process_health()
+
+        assert handle.id not in pool.processes
+        notify.assert_awaited_once_with()
 
     @pytest.mark.asyncio
     async def test_handle_result_calls_callback(self):
@@ -1065,9 +1115,14 @@ class TestProcessPoolManagerResultHandling:
         assert len(results) == 1
         assert handle.result_reported is True
         assert results[0]["error_type"] == "WorkerShutdown"
-        assert handle.id not in pool.processes
+        assert handle.id in pool.processes
+        assert handle.state == ProcessState.CLEANING
         assert handle.current_execution is None
         assert handle.executions_completed == 1
+
+        mock_process.is_alive.return_value = False
+        await pool._check_process_health()
+        assert handle.id not in pool.processes
 
 
 class TestResultTransportMetadata:
@@ -1206,9 +1261,15 @@ class TestProcessPoolManagerIntegration:
 
         await pool._handle_result(handle, result_data)
 
-        # One-shot worker: handle is removed after completion.
-        assert "process-1" not in pool.processes
+        # One-shot worker: the terminal result stops deadline accounting, but
+        # observed child exit is what releases the capacity slot.
+        assert pool.processes["process-1"] is handle
+        assert handle.state == ProcessState.CLEANING
         callback.assert_called_once_with({**result_data, "sync": False})
+
+        handle.process.is_alive.return_value = False
+        await pool._check_process_health()
+        assert "process-1" not in pool.processes
 
 
 class TestAdmissionControl:

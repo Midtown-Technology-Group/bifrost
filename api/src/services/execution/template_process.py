@@ -431,14 +431,33 @@ def _handle_fork_request(
             # Already closed in parent post-fork — ignore
             logger.debug(f"child: pipe.close ignored: {e}")
 
+        # Publish the terminal execution result before cleanup so parent-side
+        # deadline accounting cannot replace already-finished work with a
+        # timeout. The parent retains the process-pool slot until this one-shot
+        # child finishes bounded telemetry cleanup and exits.
+        telemetry_flushed = False
+
+        def finish_child_cleanup() -> None:
+            nonlocal telemetry_flushed
+            _flush_child_telemetry()
+            telemetry_flushed = True
+
         # Run the worker function (this blocks until the child exits)
         try:
             _run_forked_child(
-                work_recv, result_send, worker_id, persistent,
+                work_recv,
+                result_send,
+                worker_id,
+                persistent,
                 sdk_socket_path=sdk_socket_path,
+                after_result=(finish_child_cleanup if not persistent else None),
             )
         finally:
-            _flush_child_telemetry()
+            # Preserve a final best-effort flush for exits that never publish
+            # a result (for example, a closed work pipe or initialization
+            # failure). A reported one-shot result already ran full cleanup.
+            if not telemetry_flushed:
+                _flush_child_telemetry()
         os._exit(0)
 
 
@@ -457,6 +476,7 @@ def _run_forked_child(
     worker_id: str,
     persistent: bool,
     sdk_socket_path: str | None = None,
+    after_result: Callable[[], None] | None = None,
 ) -> None:
     """
     Entry point for a forked child process.
@@ -484,6 +504,8 @@ def _run_forked_child(
         sdk_socket_path: Worker-local Unix socket for engine SDK HTTP calls,
             injected only by the worker parent. When present the child sends
             the ordinary HTTP request over it instead of the network API.
+        after_result: One-shot hook that performs bounded child cleanup after
+            the terminal result is published. Persistent children omit it.
     """
     # Reconfigure logging for this child
     logging.basicConfig(
@@ -514,6 +536,7 @@ def _run_forked_child(
     logger.info(f"Forked worker {worker_id} started (PID={os.getpid()}, persistent={persistent})")
 
     execution_id: str | None = None
+    result_published = False
 
     while not shutdown_requested:
         try:
@@ -571,6 +594,7 @@ def _run_forked_child(
                 logger.debug(f"could not record RSS for execution {execution_id}: {e}")
 
             result_send.send(result)
+            result_published = True
 
             logger.info(
                 f"Worker {worker_id} completed execution: {execution_id[:8]}... "
@@ -602,6 +626,7 @@ def _run_forked_child(
                         "duration_ms": 0,
                         "worker_id": worker_id,
                     })
+                    result_published = True
                 except OSError as send_err:
                     # Result pipe closed (consumer gone) — child is about to exit anyway
                     logger.debug(f"could not send error result for {execution_id}: {send_err}")
@@ -616,6 +641,9 @@ def _run_forked_child(
     _clear_engine_socket()
 
     logger.info(f"Worker {worker_id} exiting")
+
+    if result_published and after_result is not None:
+        after_result()
 
 
 class TemplateProcess:
