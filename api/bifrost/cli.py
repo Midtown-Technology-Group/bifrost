@@ -122,6 +122,16 @@ def _print_sync_summary(summary: str) -> None:
     print(f"  {_check_glyph()} {summary}")
 
 
+def _terminal_safe_text(value: str) -> str:
+    """Render untrusted text without emitting terminal control characters."""
+    return "".join(
+        character
+        if character.isprintable()
+        else character.encode("unicode_escape").decode("ascii")
+        for character in value
+    )
+
+
 # Module-level TTY override. ``None`` means "detect from the real stdio";
 # tests set this to ``True``/``False`` to exercise the interactive vs
 # line-oriented (non-TTY) progress paths deterministically.
@@ -2996,7 +3006,12 @@ async def _process_watch_deletes(
                     state.forget_known_hash(repo_path)
                 else:
                     ts = datetime.now().strftime('%H:%M:%S')
-                    print(f"  [{ts}] Delete error for {rel}: {del_err}", flush=True)
+                    safe_rel = _terminal_safe_text(rel)
+                    safe_error = _terminal_safe_text(str(del_err))
+                    print(
+                        f"  [{ts}] Delete error for {safe_rel}: {safe_error}",
+                        flush=True,
+                    )
 
     return deleted_count, deleted_rels
 
@@ -3047,13 +3062,16 @@ async def _process_watch_batch(
         for repo_path in sorted(push_files):
             print(f"  [{ts}] File changed: {repo_path}", flush=True)
         for rel_path in sorted(deleted_rels):
-            print(f"  [{ts}] File deleted: {rel_path}", flush=True)
+            print(
+                f"  [{ts}] File deleted: {_terminal_safe_text(rel_path)}",
+                flush=True,
+            )
 
     # Log deletes that already completed (one row per file)
     if deleted_rels:
         for rel_path in sorted(deleted_rels):
             if watch_app:
-                watch_app.log_delete(rel_path)
+                watch_app.log_delete(_terminal_safe_text(rel_path))
             else:
                 if not push_files:
                     # Already printed above for non-TUI
