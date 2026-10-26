@@ -18,16 +18,27 @@ use **Midtown-Technology-Group/bifrost tags only** — see [VERSIONING.md](../VE
 Before the first stable MTG release (`v1.0.0`), the script bootstraps to
 `1.0.0-dev.<commit-count>`.
 
+The `v3.0.0` development cycle includes a one-time migration offset of 1000.
+Earlier `3.0.1-dev.N` images were published from an all-parent count, so moving
+directly to the smaller first-parent position would make the version sequence
+go backward and could reuse an immutable tag. The first-parent counter remains
+strictly monotonic inside the reserved range; the offset disappears
+automatically when the next stable tag begins a new development cycle.
+
 ## Where it's computed
 
 - `scripts/compute-dev-version.sh --next-after <parent>` computes the candidate
-  and main-publication version from commits since the stable tag plus one.
+  and main-publication version from first-parent commits since the stable tag
+  plus the one pending merge commit.
   Both image paths use this mode so the tested candidate and published images
   carry the same version.
-- Invoking the script without arguments instead uses the exact HEAD committer
-  timestamp as its dev sequence; this standalone mode is not the current
-  candidate/main publication sequence. No stable tag bootstraps to
-  `1.0.0-dev.<commit-count>`; malformed stable tags fail.
+- Invoking the script without arguments computes the same first-parent
+  sequence for HEAD. The stable release commit is position 0 and each mainline
+  commit advances exactly once, including commits created in the same second.
+  During the `v3.0.0` cycle, the one-time migration offset is added to that
+  position.
+  No stable tag bootstraps to `1.0.0-dev.<commit-count>`; malformed stable tags
+  fail.
 - `.github/workflows/ci.yml` candidate identity and "Compute candidate-compatible
   version" steps call the script and feed the output into
   `BIFROST_VERSION` and `VITE_BIFROST_VERSION` build args.
@@ -88,8 +99,9 @@ extend the regex in `scripts/compute-dev-version.sh`.
 
 **Symptom: dev count seems wrong**
 
-`git rev-list v<latest>..HEAD --count` is the source of truth. Run it
-locally on the same SHA the CI built.
+`git rev-list --first-parent v<latest>..HEAD --count` is the source of truth.
+Run it locally on the same SHA the CI built; add the documented migration
+offset when the latest stable tag is `v3.0.0`.
 
 **Symptom: Flux picks an old image after re-enable**
 
