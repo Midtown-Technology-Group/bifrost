@@ -250,6 +250,53 @@ def validate_candidate(source: str, prs: list[dict]) -> dict:
     return candidate
 
 
+def report_blocked_candidate(
+    source: str, candidate: dict, release_prs: list[dict], merged: str
+) -> None:
+    """Report the held candidate from local values only.
+
+    Identity and links only: no CI state is read or classified, and no
+    dispatch is printed with an unknown run id. Reporting is best effort, so a
+    failed log or step-summary write never changes preparation or admission.
+    """
+    version = candidate.get("version", "")
+    pr = next(
+        (item for item in release_prs if item.get("merge_commit_sha") == merged), {}
+    )
+    number = pr.get("number")
+    lines = [f"Release candidate {version} is held: it is merged and unpublished."]
+    if number:
+        lines.append(f"Release PR: #{number} (https://github.com/{REPOSITORY}/pull/{number})")
+    lines.append(f"Candidate source: {merged} (main HEAD {source})")
+    lines.append(
+        "CI and status for this commit: "
+        f"https://github.com/{REPOSITORY}/commit/{merged}/checks"
+    )
+    lines.append(
+        "Recovery options: "
+        f"https://github.com/{REPOSITORY}/blob/main/docs/VERSIONING.md#recovery"
+    )
+    lines.append(
+        "Release tag workflow (retry surface): "
+        f"https://github.com/{REPOSITORY}/actions/workflows/release-tag.yml"
+    )
+    text = "\n".join(lines)
+    try:
+        print(text, file=sys.stderr)
+    except (OSError, ValueError):
+        # An unwritable log must not change the preparation outcome.
+        pass
+    summary = os.environ.get("GITHUB_STEP_SUMMARY")
+    if not summary:
+        return
+    try:
+        with Path(summary).open("a", encoding="utf-8") as stream:
+            stream.write(text + "\n")
+    except (OSError, ValueError):
+        # An unwritable step summary must not change the preparation outcome.
+        pass
+
+
 def pending_release(source: str, prs: list[dict]) -> bool:
     # Do not recursively draft a patch from the release PR itself or overwrite
     # its candidate while its exact main CI/tag publication is still pending.
@@ -277,10 +324,7 @@ def pending_release(source: str, prs: list[dict]) -> bool:
     ]
     tag = candidate["version"]
     if tag not in git("tag", "--list", tag).splitlines():
-        print(
-            f"Release {tag} at {merged} is awaiting publication; rerun Release tag after fixing its reported blocker.",
-            file=sys.stderr,
-        )
+        report_blocked_candidate(source, candidate, release_prs, merged)
         return True
     if git("rev-parse", f"{tag}^{{commit}}") != merged:
         raise ReleaseError(

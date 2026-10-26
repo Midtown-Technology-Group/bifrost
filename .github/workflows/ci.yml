@@ -556,6 +556,9 @@ jobs:
       - name: Release manifest regression checks
         run: python3 scripts/release/test_release_manifest.py
 
+      - name: Blocked candidate diagnostic regression checks
+        run: python3 scripts/release/test_release_blocked_candidate.py
+
       - name: Local stage evidence regression checks
         run: |
           python3 scripts/lib/pre_pr_stage_evidence_test.py
