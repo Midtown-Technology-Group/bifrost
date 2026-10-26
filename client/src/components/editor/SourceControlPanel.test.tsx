@@ -134,11 +134,18 @@ describe("source-control orchestration", () => {
 		expect(mock.sync.mock.calls[1]).toEqual(["fixture-job", { confirm_deletes: false, retry_job_id: "fixture-job" }]);
 	});
 	it("uses the cached comparison without submitting another durable diff job", async () => {
+		let complete!: (value: unknown) => void;
+		mock.results.diff = new Promise(resolve => { complete = resolve; });
 		await ready();
-		// The mocked editor writes outside React. Observing its field with
-		// waitFor does not guarantee that pending React effects have settled.
+		// Keep job completion in its own React turn, after initial file-list
+		// effects settle. An immediate result can race initial cache invalidation.
 		await act(async () => {
 			fireEvent.click(screen.getByRole("button", { name: "View changes for workflow.py" }));
+		});
+		expect(mock.diff).toHaveBeenCalledExactlyOnceWith("workflow.py", "fixture-job");
+		expect(mock.editor.diffPreview?.isLoading).toBe(true);
+		await act(async () => {
+			complete({ working_content: "local", head_content: "remote" });
 		});
 		expect(mock.editor.diffPreview?.localContent).toBe("local");
 		fireEvent.click(screen.getByRole("button", { name: "View changes for workflow.py" }));
