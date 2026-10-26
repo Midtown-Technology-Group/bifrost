@@ -172,5 +172,81 @@ class ProductionManifestTests(ManifestFixture):
                     self.build(**{field: value})
 
 
+
+
+    # Independent acceptance additions exercise the existing producer fixture.
+
+    def test_portable_producer_mutations_refuse(self):
+        corpus = json.loads((Path(__file__).resolve().parent /
+                             'fixtures/protected-main/cases.json').read_text())
+        for case in corpus['cases']:
+            if case['stage'] != 'producer':
+                continue
+            outputs, receipts = copy.deepcopy(self.outputs), copy.deepcopy(self.receipts)
+            for key, value in case['changes'].items():
+                if key == 'delete':
+                    del outputs[value.split('.')[1]]
+                else:
+                    kind, component, field = key.split('.')
+                    (outputs if kind == 'output' else receipts)[component][field] = value
+            with self.subTest(case=case['id']), self.assertRaises(ValueError):
+                self.build(outputs=outputs, receipts=receipts)
+
+    def test_parent_baseline_does_not_certify_installed_database_or_rollback(self):
+        result = self.build()
+        self.assertEqual(result['source']['parent'], self.parent)
+        self.assertFalse(result['compatibility']['database']['upgrade_required'])
+        self.assertFalse(result['compatibility']['rollback']['supported'])
+        self.assertIn('retirement evidence', result['compatibility']['rollback']['reason'])
+        # This fixture's parent already contains retirement, whereas v2.0.0 does not.
+        # A consumer installed on v2.0.0 still needs migration evaluation.
+        self.assertNotEqual(manifest.compatibility(self.source, 'v2.0.0'),
+                            result['compatibility'])
+
+    def test_signed_candidate_with_false_source_labels_must_be_rejected(self):
+        """Blocking regression: valid signature is not actual build provenance."""
+        # Exercise the REAL inherited verifier, replacing external transports only.
+        patch.stopall()
+        image = f'ghcr.io/{manifest.REPOSITORY.lower()}-api'
+        digest = self.digests['api']
+        labels = {
+            'org.opencontainers.image.source': f'https://github.com/{manifest.REPOSITORY}',
+            'org.opencontainers.image.revision': self.source,
+            'org.opencontainers.image.version': self.version,
+            'com.midtowntg.bifrost.source-tree': self.tree,
+            'com.midtowntg.bifrost.candidate': 'true',
+        }
+        # Existing BuildKit SLSA v0.2 shape: source material contradicts labels.
+        provenance = {'predicateType': 'https://slsa.dev/provenance/v0.2',
+                      'subject': [{'name': image, 'digest': {'sha256': digest[7:]}}],
+                      'predicate': {'materials': [{
+                          'uri': f'git+https://github.com/{manifest.REPOSITORY}.git',
+                          'digest': {'sha1': self.parent}}]}}
+        commands = []
+
+        def transport(argv):
+            commands.append(argv)
+            if argv[:2] == ['cosign', 'verify']:
+                # Synthetic successful same-repo signature verification.
+                return json.dumps([{'critical': {'identity': {'docker-reference': image},
+                                                 'image': {'docker-manifest-digest': digest}}}])
+            if argv[:4] == ['docker', 'buildx', 'imagetools', 'inspect']:
+                if argv[-1] == '{{json .Manifest}}':
+                    return json.dumps({'digest': digest})
+                if argv[-1] == '{{json .Image.Config.Labels}}':
+                    return json.dumps(labels)
+                return json.dumps(provenance)
+            if argv[:2] == ['cosign', 'verify-attestation']:
+                return json.dumps(provenance)
+            raise AssertionError(f'unexpected offline command: {argv}')
+
+        with patch.object(manifest.candidate, '_run', side_effect=transport):
+            with self.assertRaises(manifest.candidate.CandidateImageError):
+                manifest.candidate.verify_candidate(
+                    image=image, tree_sha=self.tree, version=self.version,
+                    source_sha=self.source, expected_digest=digest)
+        self.assertTrue(any(argv[:2] == ['cosign', 'verify'] for argv in commands))
+
+
 if __name__ == '__main__':
     unittest.main()
