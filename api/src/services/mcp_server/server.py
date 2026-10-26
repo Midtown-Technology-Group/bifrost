@@ -127,6 +127,7 @@ _WORKFLOW_CATALOG_DIGEST = hashlib.sha256(b"[]").hexdigest()
 _WORKFLOW_CATALOG_REVISION = -1
 _WORKFLOW_CATALOG_REFRESH_LOCK = asyncio.Lock()
 _WORKFLOW_CATALOG_REFRESH_ATTEMPTS = 3
+_INTERNAL_REST_BRIDGE_AUTH = object()
 
 # Stored references for refresh_workflow_tools()
 _fastmcp_instance: "FastMCP | None" = None
@@ -199,6 +200,11 @@ class MCPContext:
 
     # Database session from executor context (None when running via MCP server)
     session: Any = None
+    _rest_bridge_auth: object | None = field(
+        default=None,
+        repr=False,
+        compare=False,
+    )
 
     def __post_init__(self) -> None:
         # JWT claims arrive as strings; downstream comparisons (e.g. against
@@ -208,6 +214,16 @@ class MCPContext:
             self.user_id = UUID(self.user_id)
         if isinstance(self.org_id, str) and self.org_id:
             self.org_id = UUID(self.org_id)
+
+    @classmethod
+    def for_internal_execution(cls, **kwargs: Any) -> "MCPContext":
+        """Create context authorized to bridge a verified internal caller."""
+        return cls(**kwargs, _rest_bridge_auth=_INTERNAL_REST_BRIDGE_AUTH)
+
+    @property
+    def can_mint_rest_bridge_token(self) -> bool:
+        """Whether this context carries the internal bridge capability."""
+        return self._rest_bridge_auth is _INTERNAL_REST_BRIDGE_AUTH
 
     @property
     def has_scope_bypass(self) -> bool:

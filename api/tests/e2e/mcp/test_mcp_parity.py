@@ -89,8 +89,14 @@ async def mcp_bridge_env(e2e_api_url) -> AsyncIterator[str]:
 
 
 @pytest.fixture
-def admin_context(platform_admin, mcp_bridge_env) -> MockMCPContext:
+def admin_context(platform_admin, mcp_bridge_env, monkeypatch) -> MockMCPContext:
     """``MCPContext`` populated from the seeded platform admin."""
+    from types import SimpleNamespace
+
+    monkeypatch.setattr(
+        "fastmcp.server.dependencies.get_access_token",
+        lambda: SimpleNamespace(token=platform_admin.access_token),
+    )
     return MockMCPContext(
         user_id=str(platform_admin.user_id) if platform_admin.user_id else "",
         user_email=platform_admin.email,

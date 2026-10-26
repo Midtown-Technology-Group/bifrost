@@ -1550,7 +1550,7 @@ class MCPAgentGatewayService:
                 retryable=True,
             )
 
-        context = MCPContext(
+        context = MCPContext.for_internal_execution(
             user_id=self.context.user_id,
             org_id=self.context.org_id,
             is_platform_admin=self.context.is_platform_admin,

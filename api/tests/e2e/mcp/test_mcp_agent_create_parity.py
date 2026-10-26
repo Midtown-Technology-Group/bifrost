@@ -15,6 +15,12 @@ async def test_regular_mcp_caller_creates_an_owned_private_agent(
 ):
     """Keep regular-user MCP agent creation aligned with REST's private ownership contract."""
     monkeypatch.setenv("BIFROST_MCP_HTTP_BRIDGE_URL", str(e2e_client.base_url))
+    from types import SimpleNamespace
+
+    monkeypatch.setattr(
+        "fastmcp.server.dependencies.get_access_token",
+        lambda: SimpleNamespace(token=org1_user.access_token),
+    )
     context = MCPContext(
         user_id=org1_user.user_id,
         org_id=org1_user.organization_id,
