@@ -1,10 +1,12 @@
 """Durable at-most-once receipts with bounded, expiring replay payloads.
 
 The receipt row is a permanent irreversible tombstone: expiry clears replay
-payloads and durable handles, never the hashed uniqueness key. Raw caller
-operation IDs and unhashed caller/tenant scope are never persisted. Terminal
-payloads are retained for seven days, redacted by key, bounded structurally,
-and capped at 64 KiB before they are written.
+payloads and durable handles, never the hashed uniqueness key. Quota-enabled
+callers also persist only a hashed admission scope, allowing exact lifetime row
+bounds without weakening an admitted operation's at-most-once guarantee. Raw
+caller operation IDs and unhashed caller/tenant scope are never persisted.
+Terminal payloads are retained for seven days, redacted by key, bounded
+structurally, and capped at 64 KiB before they are written.
 """
 
 from __future__ import annotations
@@ -19,7 +21,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 import pydantic_core
-from sqlalchemy import null, select, update
+from sqlalchemy import func, null, select, text, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -74,6 +76,14 @@ class OperationReceiptOwnershipError(RuntimeError):
     """Raised when a stale or incorrect owner attempts a terminal write."""
 
 
+class OperationReceiptCapacityError(RuntimeError):
+    """Raised when a hashed admission scope has reached its lifetime bound."""
+
+    def __init__(self, *, limit: int) -> None:
+        super().__init__("Operation receipt admission capacity is exhausted")
+        self.limit = limit
+
+
 def canonical_request_fingerprint(value: Any) -> str:
     """Return a stable SHA-256 fingerprint for a JSON-compatible request."""
     normalized = pydantic_core.to_jsonable_python(value, fallback=str)
@@ -89,6 +99,24 @@ def canonical_request_fingerprint(value: Any) -> str:
 def canonical_operation_scope_key(value: Any) -> str:
     """Hash a caller operation scope without retaining its raw identifiers."""
     return canonical_request_fingerprint(value)
+
+
+def _validate_admission_bound(
+    admission_key: str | None,
+    max_receipts_per_admission_key: int | None,
+) -> None:
+    if (admission_key is None) != (max_receipts_per_admission_key is None):
+        raise ValueError(
+            "admission_key and max_receipts_per_admission_key must be provided together"
+        )
+    if admission_key is None:
+        return
+    if len(admission_key) != 64 or any(
+        character not in "0123456789abcdef" for character in admission_key
+    ):
+        raise ValueError("admission_key must be a SHA-256 hex digest")
+    if max_receipts_per_admission_key is None or max_receipts_per_admission_key < 1:
+        raise ValueError("max_receipts_per_admission_key must be positive")
 
 
 def _sensitive_key(key: object) -> bool:
@@ -198,16 +226,64 @@ async def claim_operation_receipt(
     namespace: str,
     scope_key: str,
     request_fingerprint: str,
+    admission_key: str | None = None,
+    max_receipts_per_admission_key: int | None = None,
 ) -> OperationReceiptClaim:
     """Create one permanent operation owner or return its existing state.
 
     The new row is committed before this function returns ownership. An
     abandoned ``started`` row is deliberately never reclaimed: its effect may
-    have happened immediately before a process or network failure.
+    have happened immediately before a process or network failure. When an
+    admission bound is supplied, a transaction-scoped advisory lock makes the
+    permanent tombstone quota exact while allowing existing operations to
+    replay after the quota is full.
     """
+    _validate_admission_bound(admission_key, max_receipts_per_admission_key)
     receipt_id = uuid4()
     owner_token = uuid4()
     async with get_db_context() as db:
+        if admission_key is not None:
+            assert max_receipts_per_admission_key is not None
+            await db.execute(
+                text(
+                    "SELECT pg_advisory_xact_lock("
+                    "hashtextextended(:lock_key, 0))"
+                ),
+                {
+                    "lock_key": (
+                        f"bifrost:operation-receipt:{namespace}:{admission_key}"
+                    )
+                },
+            )
+            existing = (
+                await db.execute(
+                    select(OperationReceipt).where(
+                        OperationReceipt.namespace == namespace,
+                        OperationReceipt.scope_key == scope_key,
+                    )
+                )
+            ).scalar_one_or_none()
+            if existing is not None:
+                return _claim_from_receipt(
+                    existing,
+                    request_fingerprint=request_fingerprint,
+                )
+
+            receipt_count = (
+                await db.execute(
+                    select(func.count())
+                    .select_from(OperationReceipt)
+                    .where(
+                        OperationReceipt.namespace == namespace,
+                        OperationReceipt.admission_key == admission_key,
+                    )
+                )
+            ).scalar_one()
+            if receipt_count >= max_receipts_per_admission_key:
+                raise OperationReceiptCapacityError(
+                    limit=max_receipts_per_admission_key
+                )
+
         inserted_id = (
             await db.execute(
                 insert(OperationReceipt)
@@ -215,6 +291,7 @@ async def claim_operation_receipt(
                     id=receipt_id,
                     namespace=namespace,
                     scope_key=scope_key,
+                    admission_key=admission_key,
                     request_fingerprint=request_fingerprint,
                     status="started",
                     owner_token=owner_token,
@@ -247,6 +324,30 @@ async def claim_operation_receipt(
         ).scalar_one()
         return _claim_from_receipt(
             existing,
+            request_fingerprint=request_fingerprint,
+        )
+
+
+async def read_operation_receipt_by_scope(
+    *,
+    namespace: str,
+    scope_key: str,
+    request_fingerprint: str,
+) -> OperationReceiptClaim | None:
+    """Read an existing scope without allocating a permanent tombstone."""
+    async with get_db_context() as db:
+        receipt = (
+            await db.execute(
+                select(OperationReceipt).where(
+                    OperationReceipt.namespace == namespace,
+                    OperationReceipt.scope_key == scope_key,
+                )
+            )
+        ).scalar_one_or_none()
+        if receipt is None:
+            return None
+        return _claim_from_receipt(
+            receipt,
             request_fingerprint=request_fingerprint,
         )
 
@@ -560,6 +661,7 @@ async def cleanup_expired_operation_receipt_payloads(batch_limit: int = 500) -> 
 
 __all__ = [
     "OperationReceiptClaim",
+    "OperationReceiptCapacityError",
     "OperationReceiptDisposition",
     "OperationReceiptOwnershipError",
     "MAX_RECEIPT_PAYLOAD_BYTES",
@@ -573,6 +675,7 @@ __all__ = [
     "complete_operation_receipt_success",
     "record_operation_receipt_handle",
     "read_operation_receipt",
+    "read_operation_receipt_by_scope",
     "read_operation_response_for_handle",
     "reconcile_operation_receipt_error",
     "reconcile_operation_receipt_success",

@@ -40,6 +40,7 @@ from src.services.mcp_client.errors import (
 )
 from src.services.mcp_server.config_service import MCPConfig, MCPConfigService
 from src.services.operation_receipts import (
+    OperationReceiptCapacityError,
     OperationReceiptClaim,
     OperationReceiptDisposition,
     bounded_replay_envelope,
@@ -48,6 +49,7 @@ from src.services.operation_receipts import (
     claim_operation_receipt,
     complete_operation_receipt_error,
     complete_operation_receipt_success,
+    read_operation_receipt_by_scope,
     reconcile_operation_receipt_error,
     reconcile_operation_receipt_success,
     record_operation_receipt_handle,
@@ -63,6 +65,10 @@ logger = logging.getLogger(__name__)
 GATEWAY_TOOL_NAMESPACE = UUID("bcf3f4d7-b95e-53cc-9b7f-35e7081d0d84")
 GATEWAY_OPERATION_NAMESPACE = UUID("fdb6cc27-6fa9-53a3-a3e8-88d356822ba1")
 GATEWAY_OPERATION_RECEIPT_NAMESPACE = "mcp.gateway.execute.v1"
+# Exact at-most-once tombstones cannot be retired without making an old ID safe
+# to dispatch again. A lifetime caller cap bounds storage while preserving every
+# admitted operation's permanent replay/rejection guarantee.
+MAX_GATEWAY_OPERATION_RECEIPTS_PER_CALLER = 100_000
 MAX_AGENT_RESULTS = 20
 MCP_TASK_PLATFORM_JOB_TOOLS = frozenset({"publish_app"})
 MAX_CAPABILITY_RESULTS = 20
@@ -639,11 +645,49 @@ class MCPAgentGatewayService:
                 "task_requested": task_requested,
             }
         )
-        claim = await claim_operation_receipt(
-            namespace=GATEWAY_OPERATION_RECEIPT_NAMESPACE,
-            scope_key=scope_key,
-            request_fingerprint=request_fingerprint,
-        )
+        admission_key = canonical_operation_scope_key({
+            "version": 1,
+            "caller_user_id": str(self.context.user_id),
+            "organization_id": str(self.context.org_id or "GLOBAL"),
+        })
+        try:
+            self.validate_execution_request(tool, arguments, task_requested)
+        except GatewayError as exc:
+            # Contract drift must not invalidate a durable replay. Only look up
+            # a receipt after preflight rejects; a genuinely new bad request
+            # never allocates a permanent tombstone.
+            existing = await read_operation_receipt_by_scope(
+                namespace=GATEWAY_OPERATION_RECEIPT_NAMESPACE,
+                scope_key=scope_key,
+                request_fingerprint=request_fingerprint,
+            )
+            if existing is None:
+                self._annotate_execution_error(exc, snapshot, tool)
+                raise
+            claim = existing
+        else:
+            try:
+                claim = await claim_operation_receipt(
+                    namespace=GATEWAY_OPERATION_RECEIPT_NAMESPACE,
+                    scope_key=scope_key,
+                    request_fingerprint=request_fingerprint,
+                    admission_key=admission_key,
+                    max_receipts_per_admission_key=(
+                        MAX_GATEWAY_OPERATION_RECEIPTS_PER_CALLER
+                    ),
+                )
+            except OperationReceiptCapacityError as exc:
+                capacity_error = GatewayError(
+                    "OPERATION_RECEIPT_CAPACITY_EXCEEDED",
+                    (
+                        "This caller has reached the permanent operation receipt "
+                        "limit. Recorded operation IDs remain replayable, but new "
+                        "operations require administrator review."
+                    ),
+                    details={"receipt_limit": exc.limit},
+                )
+                self._annotate_execution_error(capacity_error, snapshot, tool)
+                raise capacity_error from exc
         if claim.disposition == OperationReceiptDisposition.STARTED:
             claim = await wait_for_operation_receipt(
                 claim.receipt_id,
@@ -1331,6 +1375,24 @@ class MCPAgentGatewayService:
             },
         )
 
+    @classmethod
+    def validate_execution_request(
+        cls,
+        tool: ResolvedGatewayTool,
+        arguments: dict[str, Any],
+        task_requested: bool,
+    ) -> None:
+        """Reject non-dispatchable requests before durable receipt admission."""
+        cls.validate_arguments(tool, arguments)
+        if task_requested and not cls._supports_tasks(tool):
+            raise GatewayError(
+                "TASKS_UNSUPPORTED",
+                (
+                    f"Tool '{tool.definition.name}' does not return a durable "
+                    "Bifrost execution or platform-job handle."
+                ),
+            )
+
     async def execute_tool(
         self,
         snapshot: AgentToolSnapshot,
@@ -1344,15 +1406,7 @@ class MCPAgentGatewayService:
         resolved_async = tool.source == "delegation"
 
         try:
-            self.validate_arguments(tool, arguments)
-            if task_requested and not self._supports_tasks(tool):
-                raise GatewayError(
-                    "TASKS_UNSUPPORTED",
-                    (
-                        f"Tool '{tool.definition.name}' does not return a durable "
-                        "Bifrost execution or platform-job handle."
-                    ),
-                )
+            self.validate_execution_request(tool, arguments, task_requested)
             result = await self._dispatch(
                 snapshot.agent,
                 tool,
@@ -1363,10 +1417,7 @@ class MCPAgentGatewayService:
             )
         except GatewayError as exc:
             duration_ms = int((time.monotonic() - started) * 1000)
-            exc.details.setdefault("agent_id", str(snapshot.agent.id))
-            exc.details.setdefault("tool_ref", tool.tool_ref)
-            exc.details.setdefault("tool_name", tool.definition.name)
-            exc.details.setdefault("source", tool.source)
+            self._annotate_execution_error(exc, snapshot, tool)
             logger.warning(
                 "MCP gateway execution rejected: caller=%s agent=%s tool=%s "
                 "source=%s code=%s duration_ms=%s",
@@ -1431,6 +1482,18 @@ class MCPAgentGatewayService:
             "result": result,
             "durable_handle": durable_handle,
         }
+
+    @staticmethod
+    def _annotate_execution_error(
+        error: GatewayError,
+        snapshot: AgentToolSnapshot,
+        tool: ResolvedGatewayTool,
+    ) -> None:
+        """Preserve public execution-error context across admission paths."""
+        error.details.setdefault("agent_id", str(snapshot.agent.id))
+        error.details.setdefault("tool_ref", tool.tool_ref)
+        error.details.setdefault("tool_name", tool.definition.name)
+        error.details.setdefault("source", tool.source)
 
     @staticmethod
     def _supports_tasks(tool: ResolvedGatewayTool) -> bool:

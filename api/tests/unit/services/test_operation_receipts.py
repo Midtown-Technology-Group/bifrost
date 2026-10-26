@@ -9,6 +9,7 @@ import pytest
 
 from src.services import operation_receipts as receipt_service
 from src.services.operation_receipts import (
+    OperationReceiptCapacityError,
     OperationReceiptDisposition,
     OperationReceiptOwnershipError,
     bounded_replay_envelope,
@@ -19,6 +20,7 @@ from src.services.operation_receipts import (
     complete_operation_receipt_error,
     complete_operation_receipt_success,
     record_operation_receipt_handle,
+    read_operation_receipt_by_scope,
     read_operation_response_for_handle,
     reconcile_operation_receipt_success,
     resolve_ambiguous_operation_receipt,
@@ -104,6 +106,30 @@ def test_replay_envelope_redacts_and_bounds_sensitive_values() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("admission_key", "limit"),
+    [
+        ("raw-caller-identity", 2),
+        (canonical_operation_scope_key({"caller": "test"}), None),
+        (None, 2),
+        (canonical_operation_scope_key({"caller": "test"}), 0),
+    ],
+)
+async def test_admission_bound_requires_hashed_complete_configuration(
+    admission_key: str | None,
+    limit: int | None,
+) -> None:
+    with pytest.raises(ValueError):
+        await claim_operation_receipt(
+            namespace="test.operation.invalid-quota.v1",
+            scope_key=canonical_operation_scope_key({"operation_id": "invalid"}),
+            request_fingerprint=canonical_request_fingerprint({"arguments": {}}),
+            admission_key=admission_key,
+            max_receipts_per_admission_key=limit,
+        )
+
+
+@pytest.mark.asyncio
 async def test_concurrent_claims_have_exactly_one_owner() -> None:
     kwargs = _claim_kwargs()
 
@@ -120,6 +146,135 @@ async def test_concurrent_claims_have_exactly_one_owner() -> None:
         if claim.disposition != OperationReceiptDisposition.OWNER
     } == {OperationReceiptDisposition.STARTED}
     assert len({claim.receipt_id for claim in claims}) == 1
+
+
+@pytest.mark.asyncio
+async def test_scope_read_never_allocates_and_finds_an_existing_receipt() -> None:
+    kwargs = _claim_kwargs()
+
+    assert await read_operation_receipt_by_scope(**kwargs) is None
+    owner = await claim_operation_receipt(**kwargs)
+    existing = await read_operation_receipt_by_scope(**kwargs)
+
+    assert existing is not None
+    assert existing.receipt_id == owner.receipt_id
+    assert existing.disposition == OperationReceiptDisposition.STARTED
+
+
+@pytest.mark.asyncio
+async def test_admission_quota_bounds_new_tombstones_but_preserves_retries(
+    async_session_factory,
+) -> None:
+    from src.models.orm.operation_receipts import OperationReceipt
+
+    admission_key = canonical_operation_scope_key({"caller": str(uuid4())})
+
+    def quota_kwargs(operation_id: str) -> dict:
+        return {
+            "namespace": "test.operation.quota.v1",
+            "scope_key": canonical_operation_scope_key({
+                "caller": admission_key,
+                "operation_id": operation_id,
+            }),
+            "request_fingerprint": canonical_request_fingerprint({
+                "operation_id": operation_id,
+            }),
+            "admission_key": admission_key,
+            "max_receipts_per_admission_key": 2,
+        }
+
+    first_kwargs = quota_kwargs("first")
+    first = await claim_operation_receipt(**first_kwargs)
+    await claim_operation_receipt(**quota_kwargs("second"))
+
+    with pytest.raises(OperationReceiptCapacityError) as exc_info:
+        await claim_operation_receipt(**quota_kwargs("third"))
+
+    assert exc_info.value.limit == 2
+    other_admission_key = canonical_operation_scope_key({"caller": str(uuid4())})
+    other_caller = await claim_operation_receipt(
+        namespace="test.operation.quota.v1",
+        scope_key=canonical_operation_scope_key({
+            "caller": other_admission_key,
+            "operation_id": "third",
+        }),
+        request_fingerprint=canonical_request_fingerprint({
+            "operation_id": "third",
+        }),
+        admission_key=other_admission_key,
+        max_receipts_per_admission_key=2,
+    )
+    assert other_caller.disposition == OperationReceiptDisposition.OWNER
+    retry = await claim_operation_receipt(**first_kwargs)
+    assert retry.disposition == OperationReceiptDisposition.STARTED
+    assert retry.receipt_id == first.receipt_id
+    async with async_session_factory() as db:
+        stored = await db.get(OperationReceipt, first.receipt_id)
+        assert stored is not None
+        assert stored.admission_key == admission_key
+
+
+@pytest.mark.asyncio
+async def test_admission_quota_is_exact_under_concurrent_new_scopes() -> None:
+    admission_key = canonical_operation_scope_key({"caller": str(uuid4())})
+
+    async def claim(operation_id: str):
+        return await claim_operation_receipt(
+            namespace="test.operation.concurrent-quota.v1",
+            scope_key=canonical_operation_scope_key({
+                "caller": admission_key,
+                "operation_id": operation_id,
+            }),
+            request_fingerprint=canonical_request_fingerprint({
+                "operation_id": operation_id,
+            }),
+            admission_key=admission_key,
+            max_receipts_per_admission_key=1,
+        )
+
+    results = await asyncio.gather(
+        claim("first"),
+        claim("second"),
+        return_exceptions=True,
+    )
+
+    assert sum(
+        getattr(result, "disposition", None) == OperationReceiptDisposition.OWNER
+        for result in results
+    ) == 1
+    assert sum(isinstance(result, OperationReceiptCapacityError) for result in results) == 1
+
+
+@pytest.mark.asyncio
+async def test_legacy_tombstone_replays_after_new_admission_quota_is_full() -> None:
+    namespace = "test.operation.legacy-quota.v1"
+    admission_key = canonical_operation_scope_key({"caller": str(uuid4())})
+    legacy_kwargs = {
+        "namespace": namespace,
+        "scope_key": canonical_operation_scope_key({"operation_id": "legacy"}),
+        "request_fingerprint": canonical_request_fingerprint({
+            "operation_id": "legacy",
+        }),
+    }
+    legacy = await claim_operation_receipt(**legacy_kwargs)
+    await claim_operation_receipt(
+        namespace=namespace,
+        scope_key=canonical_operation_scope_key({"operation_id": "bounded"}),
+        request_fingerprint=canonical_request_fingerprint({
+            "operation_id": "bounded",
+        }),
+        admission_key=admission_key,
+        max_receipts_per_admission_key=1,
+    )
+
+    replay = await claim_operation_receipt(
+        **legacy_kwargs,
+        admission_key=admission_key,
+        max_receipts_per_admission_key=1,
+    )
+
+    assert replay.receipt_id == legacy.receipt_id
+    assert replay.disposition == OperationReceiptDisposition.STARTED
 
 
 @pytest.mark.asyncio

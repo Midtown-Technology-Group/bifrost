@@ -35,6 +35,19 @@ def test_operation_receipt_conflicts_map_to_http_409(code: str) -> None:
     assert exc_info.value.detail == error.as_dict()
 
 
+def test_operation_receipt_capacity_maps_to_http_429() -> None:
+    error = GatewayError(
+        "OPERATION_RECEIPT_CAPACITY_EXCEEDED",
+        "Operation receipt limit reached",
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        _raise_gateway_http_error(error)
+
+    assert exc_info.value.status_code == 429
+    assert exc_info.value.detail == error.as_dict()
+
+
 @pytest.mark.asyncio
 async def test_admin_ambiguous_resolution_is_fail_closed_and_audited() -> None:
     receipt_id = uuid4()
