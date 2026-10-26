@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import test from 'node:test';
-import { qualify, waitForPublication, repository, buildPath } from './dependabot-candidates.mjs';
+import { qualify, waitForPublication, repository, buildPath, selectArtifacts } from './dependabot-candidates.mjs';
 
 const head = 'a'.repeat(40);
 const base = 'b'.repeat(40);
@@ -71,14 +71,19 @@ function waiting({ buildStatus = 'completed', buildConclusion = 'success', publi
   const calls = [];
   const github = { rest: { actions: {
     async getWorkflowRun() { return { data: { id: 50, run_attempt: 1, created_at: '2026-10-26T00:00:00Z' } }; },
+    async listWorkflowRunArtifacts() { return { data: { artifacts: publicationArtifacts } }; },
     async listWorkflowRuns(args) {
     calls.push(args);
     return { data: { workflow_runs: args.workflow_id === 'dependabot-candidates.yml' ?
       [{ id: 101, run_attempt: 2, display_title: 'Dependabot candidate build 50:1', status: buildStatus, conclusion: buildConclusion }] : publications } };
   } } } };
-  github.paginate = async (method, args) => (await method(args)).data.workflow_runs;
+  github.paginate = async (method, args) => { const { data } = await method(args); return data.workflow_runs ?? data.artifacts; };
   return { calls, github };
 }
+const publicationArtifacts = ['api', 'worker', 'client'].map((component, i) => ({
+  name: `dependabot-publication-${component}`, id: i + 10, expired: false, digest: `sha256:${'e'.repeat(64)}`,
+}));
+const publicationReceipts = publicationArtifacts.map(({ id, digest }, i) => ({ component: ['api', 'worker', 'client'][i], id, digest }));
 const publication = { id: 202, display_title: 'Dependabot candidates 101:2', status: 'completed', conclusion: 'success' };
 
 test('waits for the exact producer attempt, never an older successful publication', async () => {
@@ -87,7 +92,7 @@ test('waits for the exact producer attempt, never an older successful publicatio
 });
 test('returns the exact completed producer and publisher receipts', async () => {
   const f = waiting({ publications: [publication] });
-  assert.deepEqual(await waitForPublication({ github: f.github, ciRunId: 50, ciAttempt: 1 }), { producer: 101, publisher: 202 });
+  assert.deepEqual(await waitForPublication({ github: f.github, ciRunId: 50, ciAttempt: 1 }), { producer: 101, publisher: 202, artifacts: publicationReceipts });
   assert.equal(f.calls[0].event, 'workflow_run');
 });
 test('fails closed on producer failure', async () => {
@@ -252,16 +257,88 @@ test('publication lookup paginates both workflow histories within the exact CI t
   let pages = 0;
   f.github.paginate = async (method, args) => {
     pages++;
-    assert.equal(args.created, '>=2026-10-26T00:00:00Z');
+    if (args.workflow_id) assert.equal(args.created, '>=2026-10-26T00:00:00Z');
     const first = Array.from({ length: 100 }, () => ({ display_title: 'unrelated', status: 'completed' }));
-    return [...first, ...(await method(args)).data.workflow_runs];
+    const { data } = await method(args);
+    return [...first, ...(data.workflow_runs ?? data.artifacts)];
   };
-  assert.deepEqual(await waitForPublication({ github: f.github, ciRunId: 50, ciAttempt: 1 }), { producer: 101, publisher: 202 });
-  assert.equal(pages, 2);
+  assert.deepEqual(await waitForPublication({ github: f.github, ciRunId: 50, ciAttempt: 1 }), { producer: 101, publisher: 202, artifacts: publicationReceipts });
+  assert.equal(pages, 3);
 });
 
 test('publication lookup rejects a superseded CI attempt', async () => {
   const f = waiting();
   f.github.rest.actions.getWorkflowRun = async () => ({ data: { id: 50, run_attempt: 2, created_at: '2026-10-26T00:00:00Z' } });
   await assert.rejects(waitForPublication({ github: f.github, ciRunId: 50, ciAttempt: 1 }), /identity changed/);
+});
+
+for (const scenario of ['missing', 'duplicate', 'expired', 'invalid hash']) {
+  test(`publication receipts reject ${scenario}`, () => {
+    const artifacts = structuredClone(publicationArtifacts);
+    if (scenario === 'missing') artifacts.pop();
+    if (scenario === 'duplicate') artifacts.push(artifacts[0]);
+    if (scenario === 'expired') artifacts[0].expired = true;
+    if (scenario === 'invalid hash') artifacts[0].digest = 'untrusted';
+    assert.throws(() => selectArtifacts(artifacts, 'dependabot-publication'));
+  });
+}
+
+for (const scenario of ['valid', 'wrong archive hash', 'wrong image digest', 'extra member', 'missing component']) {
+  test(`CI consumes exact publisher digest receipts: ${scenario}`, async () => {
+    const root = await mkdtemp(join(tmpdir(), 'bifrost-digests-'));
+    try {
+      const workflow = await readFile(new URL('../workflows/ci.yml', import.meta.url), 'utf8');
+      const imageDigest = `sha256:${'f'.repeat(64)}`;
+      const artifacts = [];
+      for (const [i, component] of ['api', 'worker', 'client'].entries()) {
+        const zip = join(root, `${i + 1}.zip`);
+        const created = spawnSync('python3', ['-c', `import sys, zipfile
+with zipfile.ZipFile(sys.argv[1], 'w') as z:
+    z.writestr('digest', sys.argv[2])
+    if sys.argv[3] == 'extra member': z.writestr('../other', 'evil')
+`, zip, scenario === 'wrong image digest' ? 'untrusted' : imageDigest, scenario]);
+        assert.equal(created.status, 0);
+        artifacts.push({ component, id: i + 1, digest: `sha256:${createHash('sha256').update(await readFile(zip)).digest('hex')}` });
+      }
+      if (scenario === 'wrong archive hash') artifacts[0].digest = `sha256:${'0'.repeat(64)}`;
+      if (scenario === 'missing component') artifacts.pop();
+      await writeFile(join(root, 'gh'), '#!/bin/sh\nartifact="${2%/zip}"\nartifact="${artifact##*/}"\ncat "$FIXTURE_ROOT/$artifact.zip"\n');
+      await chmod(join(root, 'gh'), 0o700);
+      const output = join(root, 'outputs');
+      const result = spawnSync('bash', ['-c', runStep(workflow, 'Read exact publication digests')], {
+        env: { ...process.env, FIXTURE_ROOT: root, PATH: `${root}:${process.env.PATH}`, GITHUB_OUTPUT: output,
+          GITHUB_REPOSITORY: repository, PUBLICATION_ARTIFACTS: JSON.stringify(artifacts) }, encoding: 'utf8',
+      });
+      assert.equal(result.status === 0, scenario === 'valid', result.stderr);
+      if (scenario === 'valid') assert.equal(await readFile(output, 'utf8'), ['api', 'worker', 'client'].map(c => `${c}_digest=${imageDigest}\n`).join(''));
+      else await assert.rejects(readFile(output));
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
+}
+
+test('builder executes only the retained trusted version script, outside PR context', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'bifrost-version-'));
+  try {
+    const { mkdir } = await import('node:fs/promises');
+    await mkdir(join(root, 'trusted-version/scripts'), { recursive: true });
+    await mkdir(join(root, 'scripts'));
+    await writeFile(join(root, 'trusted-version/scripts/compute-dev-version.sh'), '#!/bin/sh\nprintf "3.2.2-dev.1\\n"\n');
+    await chmod(join(root, 'trusted-version/scripts/compute-dev-version.sh'), 0o700);
+    await writeFile(join(root, 'scripts/compute-dev-version.sh'), '#!/bin/sh\ntouch "$RUNNER_TEMP/pr-script-executed"\nexit 1\n');
+    await chmod(join(root, 'scripts/compute-dev-version.sh'), 0o700);
+    await writeFile(join(root, 'git'), `#!/bin/sh
+if [ "$1" = '-C' ]; then exit 0; fi
+if [ "$2" = 'HEAD' ]; then printf '${head}\\n'; else printf '${merge}\\n'; fi
+`);
+    await chmod(join(root, 'git'), 0o700);
+    const workflow = await readFile(new URL('../workflows/dependabot-candidates.yml', import.meta.url), 'utf8');
+    assert.ok(workflow.indexOf('Retain trusted version tooling') < workflow.indexOf('Checkout exact pull-request head'));
+    const result = spawnSync('bash', ['-c', runStep(workflow, 'Compute immutable candidate identity')], {
+      cwd: root, env: { ...process.env, RUNNER_TEMP: root, PATH: `${root}:${process.env.PATH}`, HEAD_SHA: head,
+        BASE_SHA: base, PR_NUMBER: '42', GITHUB_OUTPUT: join(root, 'output') }, encoding: 'utf8',
+    });
+    assert.equal(result.status, 0, result.stderr);
+    await assert.rejects(readFile(join(root, 'pr-script-executed')));
+    assert.match(await readFile(join(root, 'output'), 'utf8'), /version=3.2.2-dev.1/);
+  } finally { await rm(root, { recursive: true, force: true }); }
 });

@@ -210,6 +210,8 @@ def test_dependabot_requires_trusted_publication_and_exact_signatures() -> None:
     assert verifier["permissions"] == {"contents": "read", "actions": "read", "packages": "read"}
     assert "candidate_image.py verify" in verifier["steps"][-1]["run"]
     assert "--source-sha" in verifier["steps"][-1]["run"]
+    assert '--expected-digest "$digest"' in verifier["steps"][-1]["run"]
+    assert verifier["steps"][-1]["env"]["API_DIGEST"] == "${{ steps.digests.outputs.api_digest }}"
     gate = jobs["candidate-images"]
     assert set(gate["needs"]) == {"build-candidate-images", "verify-dependabot-candidates"}
     step = gate["steps"][0]

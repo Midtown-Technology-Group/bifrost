@@ -93,6 +93,16 @@ jobs:
             target: production
             version_arg: VITE_BIFROST_VERSION
     steps:
+      - name: Retain trusted version tooling outside the PR build context
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          path: .trusted-version
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Isolate trusted tooling from candidate source
+        run: mv .trusted-version "$RUNNER_TEMP/trusted-version"
+
       - name: Checkout exact pull-request head
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -113,7 +123,8 @@ jobs:
             exit 1
           fi
           tree_sha="$(git rev-parse "${HEAD_SHA}^{tree}")"
-          version="$(./scripts/compute-dev-version.sh --next-after "$BASE_SHA")"
+          git -C "$RUNNER_TEMP/trusted-version" fetch --no-tags origin "$BASE_SHA"
+          version="$(cd "$RUNNER_TEMP/trusted-version" && ./scripts/compute-dev-version.sh --next-after "$BASE_SHA")"
           echo "tree_sha=$tree_sha" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "cache_tag=buildcache-pr-${PR_NUMBER}" >> "$GITHUB_OUTPUT"

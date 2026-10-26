@@ -35,7 +35,7 @@ def test_retry_preserves_the_attested_subject_and_required_gate():
     }
     assert backoff["run"] == "sleep 180"
     assert steps.index(first) < steps.index(backoff) < steps.index(retry) < steps.index(verify)
-    assert gate["needs"] == "build-candidate-images"
+    assert gate["needs"] == ["build-candidate-images", "verify-dependabot-candidates"]
     require = next(s for s in gate["steps"] if s["name"] == "Require exact signed candidates")
     assert require["env"]["BUILD_RESULT"] == "${{ needs.build-candidate-images.result }}"
 
@@ -74,7 +74,7 @@ def test_injected_attestation_outcomes_fail_closed(
     require = next(s for s in gate["steps"] if s["name"] == "Require exact signed candidates")
     result = subprocess.run(
         ["bash", "-eu", "-c", require["run"]],
-        env={"BUILD_RESULT": retry_outcome or first_outcome},
+        env={"BUILD_RESULT": retry_outcome or first_outcome, "IS_DEPENDABOT": "false", "DEPENDABOT_RESULT": "skipped"},
         capture_output=True,
         text=True,
         check=False,

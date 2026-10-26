@@ -3,6 +3,15 @@ export const buildPath = '.github/workflows/dependabot-candidates.yml';
 const sha = /^[a-f0-9]{40}$/;
 const components = ['api', 'worker', 'client'];
 
+export function selectArtifacts(artifacts, prefix) {
+  return components.map(component => {
+    const matches = artifacts.filter(a => a.name === `${prefix}-${component}`);
+    if (matches.length !== 1 || matches[0].expired || !/^sha256:[a-f0-9]{64}$/.test(matches[0].digest) ||
+        !Number.isSafeInteger(matches[0].id) || matches[0].id < 1) throw new Error('Missing, ambiguous, or expired candidate artifact');
+    return { component, id: matches[0].id, digest: matches[0].digest };
+  });
+}
+
 // Both workflow_run producers execute default-branch code. PR artifacts stay data.
 export async function qualify({ github, runId, expectedAttempt }) {
   const scope = { owner: 'Midtown-Technology-Group', repo: 'bifrost' };
@@ -26,12 +35,7 @@ export async function qualify({ github, runId, expectedAttempt }) {
     throw new Error('Stale or foreign candidate source');
   }
   const artifacts = await github.paginate(github.rest.actions.listWorkflowRunArtifacts, { ...scope, run_id: run.id });
-  const selected = components.map(component => {
-    const matches = artifacts.filter(a => a.name === `dependabot-candidate-${component}`);
-    if (matches.length !== 1 || matches[0].expired || !/^sha256:[a-f0-9]{64}$/.test(matches[0].digest) ||
-        !Number.isSafeInteger(matches[0].id) || matches[0].id < 1) throw new Error('Missing, ambiguous, or expired candidate artifact');
-    return { component, id: matches[0].id, digest: matches[0].digest };
-  });
+  const selected = selectArtifacts(artifacts, 'dependabot-candidate');
   return { source: ci.head_sha, base: pr.base.sha, ci: ci.id, ciAttempt: ci.run_attempt,
     run: run.id, attempt: run.run_attempt, artifacts: selected };
 }
@@ -65,7 +69,8 @@ export async function waitForPublication({ github, ciRunId, ciAttempt, sleep = m
       const publisher = publications.find(run => run.display_title === title);
       if (publisher?.status === 'completed') {
         if (publisher.conclusion !== 'success') throw new Error('Trusted candidate publication failed');
-        return { producer: producer.id, publisher: publisher.id };
+        const artifacts = await github.paginate(github.rest.actions.listWorkflowRunArtifacts, { ...scope, run_id: publisher.id });
+        return { producer: producer.id, publisher: publisher.id, artifacts: selectArtifacts(artifacts, 'dependabot-publication') };
       }
     }
     await sleep(30000);
