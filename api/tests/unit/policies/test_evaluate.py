@@ -93,6 +93,21 @@ def test_lt_lte_gt_gte_numbers():
     assert evaluate(_e({"gte": [2, 2]}), row={}, user=user) is True
 
 
+@pytest.mark.parametrize("op", ["lt", "lte", "gt", "gte"])
+@pytest.mark.parametrize(
+    ("row_value", "literal"),
+    [
+        ("5", 10),
+        (5, "10"),
+        (True, 10),
+        (5, False),
+    ],
+)
+def test_ordering_mixed_json_scalar_types_fail_closed(op, row_value, literal):
+    expr = _e({op: [{"row": "value"}, literal]})
+    assert evaluate(expr, row={"value": row_value}, user=FakeUser()) is False
+
+
 def test_neq():
     assert evaluate(_e({"neq": [1, 2]}), row={}, user=FakeUser()) is True
     assert evaluate(_e({"neq": [1, 1]}), row={}, user=FakeUser()) is False

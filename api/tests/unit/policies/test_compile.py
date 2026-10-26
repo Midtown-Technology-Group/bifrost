@@ -201,6 +201,29 @@ def test_lt_row_jsonb_int():
     assert not _is_jsonb_text_extract(sql, "count")
     assert _is_jsonb_extract(sql, "count")
     assert "jsonb" in sql.lower()
+    assert "jsonb_typeof" in sql.lower()
+    assert "'number'" in sql.lower()
+
+
+def test_gt_int_row_jsonb_has_reverse_type_guard():
+    sql = _compile({"gt": [10, {"row": "count"}]})
+    assert _is_jsonb_extract(sql, "count")
+    assert "jsonb_typeof" in sql.lower()
+    assert "'number'" in sql.lower()
+
+
+def test_ordered_row_jsonb_bool_has_boolean_type_guard():
+    sql = _compile({"lt": [{"row": "finalized"}, True]})
+    assert _is_jsonb_extract(sql, "finalized")
+    assert "jsonb_typeof" in sql.lower()
+    assert "'boolean'" in sql.lower()
+
+
+def test_ordered_row_jsonb_string_has_string_type_guard():
+    sql = _compile({"lt": [{"row": "status"}, "review"]})
+    assert _is_jsonb_text_extract(sql, "status")
+    assert "jsonb_typeof" in sql.lower()
+    assert "'string'" in sql.lower()
 
 
 def test_eq_row_column_mapped_field_unchanged():
