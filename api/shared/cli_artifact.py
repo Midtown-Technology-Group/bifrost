@@ -18,6 +18,19 @@ _RUNTIME_DATA_FILES = {"lucide_icon_names.json"}
 _ROOT_MODULES = {"_bifrost_workspace_effects.py"}
 
 
+def _normalize_release_tag(value: str) -> str | None:
+    """Return a supported release tag as PEP 440, or reject it."""
+    if re.fullmatch(r"\d+(\.\d+)*", value):
+        return value
+
+    prerelease = re.fullmatch(r"(\d+(?:\.\d+)*)-(dev|rc)\.(\d+)", value)
+    if prerelease:
+        base, kind, number = prerelease.groups()
+        return f"{base}.{kind}{number}" if kind == "dev" else f"{base}rc{number}"
+
+    return None
+
+
 def to_pep440(version: str) -> str:
     """Coerce a Bifrost build version to a PEP 440 package version."""
     if not version or version == "unknown":
@@ -28,20 +41,18 @@ def to_pep440(version: str) -> str:
     if dirty:
         value = value[: -len("-dirty")]
 
-    dev_release = re.fullmatch(r"(\d+(?:\.\d+)*)-dev\.(\d+)", value)
-    if dev_release:
-        base, number = dev_release.groups()
-        normalized = f"{base}.dev{number}"
+    normalized_release = _normalize_release_tag(value)
+    if normalized_release:
+        normalized = normalized_release
         return f"{normalized}+dirty" if dirty else normalized
 
     described = re.fullmatch(r"(.+)-(\d+)-(g[0-9a-f]+)", value)
     if described:
         tag, count, sha = described.groups()
-        local = f"{sha}.dirty" if dirty else sha
-        return f"{tag}.post{count}+{local}"
-
-    if re.fullmatch(r"\d+(\.\d+)*", value):
-        return f"{value}+dirty" if dirty else value
+        normalized_tag = _normalize_release_tag(tag)
+        if normalized_tag:
+            local = f"{sha}.dirty" if dirty else sha
+            return f"{normalized_tag}.post{count}+{local}"
 
     # ``git describe --always`` normally yields a hexadecimal SHA here. Keep
     # the fallback valid and filename-safe even when a development build
@@ -111,7 +122,9 @@ def build_cli_artifact(source_dir: Path, output_dir: Path, version: str) -> Path
                             )
                         data = module_path.read_bytes()
                         archive.addfile(
-                            _tar_info(module_name, data, module_path.stat().st_mode & 0o777),
+                            _tar_info(
+                                module_name, data, module_path.stat().st_mode & 0o777
+                            ),
                             io.BytesIO(data),
                         )
 
@@ -132,18 +145,25 @@ def build_cli_artifact(source_dir: Path, output_dir: Path, version: str) -> Path
 
                         data = file_path.read_bytes()
                         if file_path == source_dir / "__init__.py":
+                            version_assignment = (
+                                f"__version__ = {pep440_version!r}".encode()
+                            )
                             stamped = re.subn(
                                 rb"^__version__\s*=\s*_compute_version\(\)",
-                                f'__version__ = "{version}"'.encode(),
+                                lambda _match, replacement=version_assignment: (
+                                    replacement
+                                ),
                                 data,
                                 count=1,
                                 flags=re.MULTILINE,
                             )
                             data, replacements = stamped
                             if replacements != 1:
-                                raise ValueError(
-                                    f"CLI __version__ assignment not found in {file_path}"
+                                message = (
+                                    "CLI __version__ assignment not found in "
+                                    f"{file_path}"
                                 )
+                                raise ValueError(message)
 
                         archive_name = f"bifrost/{file_path.relative_to(source_dir)}"
                         mode = file_path.stat().st_mode & 0o777
