@@ -2,10 +2,12 @@
 
 import sys
 import types
+from contextlib import nullcontext
 from pathlib import Path
 from unittest.mock import AsyncMock
 
 import pytest
+from git import Repo as GitRepo
 from src.services.github_sync import GitHubSyncService
 
 
@@ -152,8 +154,8 @@ async def test_desktop_resolve_commits_merge_and_reports_ahead_behind(tmp_path):
         def checkout(self, *args):
             self.calls.append(("checkout", args))
 
-        def add(self, path):
-            self.calls.append(("add", path))
+        def add(self, *args):
+            self.calls.append(("add", args))
 
         def commit(self, *args):
             self.calls.append(("commit", args))
@@ -164,6 +166,10 @@ async def test_desktop_resolve_commits_merge_and_reports_ahead_behind(tmp_path):
             if args[-1] == "HEAD..origin/main":
                 return "1"
             raise AssertionError(args)
+
+        def custom_environment(self, **environment):
+            assert environment == {"GIT_LITERAL_PATHSPECS": "1"}
+            return nullcontext()
 
     class Index:
         def unmerged_blobs(self):
@@ -181,8 +187,8 @@ async def test_desktop_resolve_commits_merge_and_reports_ahead_behind(tmp_path):
     assert result.commits_ahead == 3
     assert result.commits_behind == 1
     assert Repo.git.calls == [
-        ("checkout", ("--ours", "workflows/conflict.py")),
-        ("add", "workflows/conflict.py"),
+        ("checkout", ("--ours", "--", "workflows/conflict.py")),
+        ("add", ("--", "workflows/conflict.py")),
         ("commit", ("-m", "Merge with conflict resolution")),
     ]
 
@@ -197,15 +203,19 @@ async def test_desktop_resolve_handles_stash_conflict_without_merge_head(tmp_pat
             self.calls.append(("checkout", args))
             raise RuntimeError("deleted on one side")
 
-        def rm(self, path):
-            self.calls.append(("rm", path))
+        def rm(self, *args):
+            self.calls.append(("rm", args))
             raise RuntimeError("already gone")
 
-        def add(self, path):
-            self.calls.append(("add", path))
+        def add(self, *args):
+            self.calls.append(("add", args))
 
         def rev_list(self, *args):
             raise RuntimeError("no origin ref")
+
+        def custom_environment(self, **environment):
+            assert environment == {"GIT_LITERAL_PATHSPECS": "1"}
+            return nullcontext()
 
     class Index:
         def __init__(self):
@@ -229,9 +239,9 @@ async def test_desktop_resolve_handles_stash_conflict_without_merge_head(tmp_pat
     assert result.commits_ahead == 0
     assert result.commits_behind == 0
     assert Repo.git.calls == [
-        ("checkout", ("--theirs", "workflows/conflict.py")),
-        ("rm", "workflows/conflict.py"),
-        ("add", "workflows/conflict.py"),
+        ("checkout", ("--theirs", "--", "workflows/conflict.py")),
+        ("rm", ("--", "workflows/conflict.py")),
+        ("add", ("--", "workflows/conflict.py")),
     ]
     assert Repo.index.commits == ["Apply stashed changes with conflict resolution"]
 
@@ -249,6 +259,23 @@ async def test_desktop_resolve_returns_error_result_when_checkout_open_fails(tmp
 
     assert result.success is False
     assert result.error == "storage offline"
+
+
+@pytest.mark.asyncio
+async def test_desktop_resolve_rejects_unsafe_path_before_git_mutation(tmp_path):
+    class Git:
+        def checkout(self, *args):
+            raise AssertionError(f"unsafe checkout: {args}")
+
+    class Repo:
+        git = Git()
+
+    result = await _service(tmp_path, Repo()).desktop_resolve(
+        {".git/config": "ours"}
+    )
+
+    assert result.success is False
+    assert "Git internals" in result.error
 
 
 @pytest.mark.asyncio
@@ -326,6 +353,100 @@ async def test_desktop_diff_returns_head_and_replacement_decoded_content(tmp_pat
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("path", ["../secret.txt", "/etc/passwd", ".git/config"])
+async def test_desktop_diff_rejects_paths_outside_worktree(tmp_path, path):
+    secret = tmp_path.parent / "secret.txt"
+    secret.write_text("must not leak")
+
+    class Git:
+        def show(self, ref):
+            raise AssertionError(f"unsafe Git object read: {ref}")
+
+    class Repo:
+        head = _Head(valid=True)
+        git = Git()
+
+    result = await _service(tmp_path, Repo()).desktop_diff(path)
+
+    assert result.path == path
+    assert result.head_content is None
+    assert result.working_content is None
+
+
+@pytest.mark.asyncio
+async def test_desktop_diff_rejects_symlink_escape(tmp_path):
+    secret = tmp_path.parent / "outside-secret.txt"
+    secret.write_text("must not leak")
+    (tmp_path / "linked-secret.txt").symlink_to(secret)
+
+    class Git:
+        def show(self, ref):
+            raise AssertionError(f"unsafe Git object read: {ref}")
+
+    class Repo:
+        head = _Head(valid=True)
+        git = Git()
+
+    result = await _service(tmp_path, Repo()).desktop_diff("linked-secret.txt")
+
+    assert result.head_content is None
+    assert result.working_content is None
+
+
+@pytest.mark.asyncio
+async def test_desktop_sync_retains_conflicted_checkout_but_diff_rejects_git_alias(
+    tmp_path,
+):
+    remote_path = tmp_path / "remote.git"
+    seed_path = tmp_path / "seed"
+    upstream_path = tmp_path / "upstream"
+    workspace_path = tmp_path / "workspace"
+
+    remote = GitRepo.init(remote_path, bare=True)
+    seed = GitRepo.init(seed_path, initial_branch="main")
+    seed.git.config("user.name", "Test")
+    seed.git.config("user.email", "test@example.com")
+    (seed_path / "conflict.txt").write_text("base\n")
+    seed.index.add(["conflict.txt"])
+    seed.index.commit("base")
+    seed.create_remote("origin", remote_path.as_uri()).push("main:main")
+    remote.git.symbolic_ref("HEAD", "refs/heads/main")
+
+    workspace = GitRepo.clone_from(
+        remote_path.as_uri(), workspace_path, branch="main"
+    )
+    workspace.git.config("user.name", "Test")
+    workspace.git.config("user.email", "test@example.com")
+    upstream = GitRepo.clone_from(remote_path.as_uri(), upstream_path, branch="main")
+    upstream.git.config("user.name", "Test")
+    upstream.git.config("user.email", "test@example.com")
+
+    (upstream_path / "conflict.txt").write_text("remote\n")
+    (upstream_path / "metadata-link").symlink_to(".git/fixture")
+    upstream.index.add(["conflict.txt", "metadata-link"])
+    upstream.index.commit("remote conflict and metadata alias")
+    upstream.remotes.origin.push("main:main")
+
+    (workspace_path / "conflict.txt").write_text("local\n")
+    workspace.index.add(["conflict.txt"])
+    workspace.index.commit("local conflict")
+    (workspace_path / ".git" / "fixture").write_text("harmless metadata fixture")
+
+    service = _service(workspace_path, workspace)
+    sync_result = await service.desktop_sync()
+
+    assert sync_result.success is False
+    assert sync_result.pull_success is False
+    assert sync_result.conflicts
+    assert (workspace_path / "metadata-link").is_symlink()
+
+    diff_result = await service.desktop_diff("metadata-link")
+
+    assert diff_result.head_content is None
+    assert diff_result.working_content is None
+
+
+@pytest.mark.asyncio
 async def test_desktop_discard_restores_tracked_and_deletes_untracked_paths(
     tmp_path, monkeypatch
 ):
@@ -347,6 +468,10 @@ async def test_desktop_discard_restores_tracked_and_deletes_untracked_paths(
             if args[-1] in {"workflows/new.py", "workflows/missing.py"}:
                 raise RuntimeError("not tracked")
 
+        def custom_environment(self, **environment):
+            assert environment == {"GIT_LITERAL_PATHSPECS": "1"}
+            return nullcontext()
+
     class Repo:
         head = _Head(valid=True)
         git = Git()
@@ -362,3 +487,58 @@ async def test_desktop_discard_restores_tracked_and_deletes_untracked_paths(
     assert not (tmp_path / "workflows" / "new.py").exists()
     assert service.repo_manager.synced_up is True
     refresh.assert_awaited_once_with(tmp_path)
+
+
+@pytest.mark.asyncio
+async def test_desktop_discard_treats_metacharacter_filename_as_literal(
+    tmp_path, monkeypatch
+):
+    refresh = AsyncMock()
+    monkeypatch.setitem(
+        sys.modules,
+        "src.core.module_cache",
+        types.SimpleNamespace(refresh_modules_from_directory=refresh),
+    )
+    repo = GitRepo.init(tmp_path, initial_branch="main")
+    repo.git.config("user.name", "Test")
+    repo.git.config("user.email", "test@example.com")
+    selected = tmp_path / "*.txt"
+    other = tmp_path / "other.txt"
+    selected.write_text("selected baseline\n")
+    other.write_text("other baseline\n")
+    repo.git.add("--all")
+    repo.index.commit("baseline")
+    selected.write_text("selected dirty\n")
+    other.write_text("other dirty\n")
+
+    result = await _service(tmp_path, repo).desktop_discard(["*.txt"])
+
+    assert result.success is True
+    assert result.discarded == ["*.txt"]
+    assert selected.read_text() == "selected baseline\n"
+    assert other.read_text() == "other dirty\n"
+    refresh.assert_awaited_once_with(tmp_path)
+
+
+@pytest.mark.asyncio
+async def test_desktop_discard_rejects_unsafe_batch_before_mutation(tmp_path):
+    outside = tmp_path.parent / "outside.txt"
+    outside.write_text("keep")
+    inside = tmp_path / "inside.txt"
+    inside.write_text("keep")
+
+    class Git:
+        def checkout(self, *args):
+            raise AssertionError(f"unsafe checkout: {args}")
+
+    class Repo:
+        head = _Head(valid=True)
+        git = Git()
+
+    service = _service(tmp_path, Repo())
+    result = await service.desktop_discard(["inside.txt", "../outside.txt"])
+
+    assert result.success is False
+    assert outside.read_text() == "keep"
+    assert inside.read_text() == "keep"
+    assert service.repo_manager.synced_up is False
