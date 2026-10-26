@@ -339,8 +339,10 @@ class TestRolesRouterBoundary:
             "shared.sdk_roles.create_role",
             new=AsyncMock(side_effect=RoleServiceError(404, "Role not found")),
         ):
+            user = _stub_user()
+            db = AsyncMock()
             with pytest.raises(HTTPException) as exc_info:
-                await create_role(request, _stub_user(), AsyncMock())
+                await create_role(request, user, db)
         assert exc_info.value.status_code == 404
         assert exc_info.value.detail == "Role not found"
 
@@ -359,8 +361,10 @@ class TestRolesRouterBoundary:
             "shared.sdk_roles.get_role",
             new=AsyncMock(side_effect=RoleServiceError(404, "Role not found")),
         ):
+            user = _stub_user()
+            db = AsyncMock()
             with pytest.raises(HTTPException) as exc_info:
-                await get_role(role_id, _stub_user(), AsyncMock())
+                await get_role(role_id, user, db)
         assert exc_info.value.status_code == 404
 
     async def test_update_delegates_partial_fields(self):
@@ -392,8 +396,10 @@ class TestRolesRouterBoundary:
             "shared.sdk_roles.delete_role",
             new=AsyncMock(side_effect=RoleServiceError(404, "Role not found")),
         ):
+            user = _stub_user()
+            db = AsyncMock()
             with pytest.raises(HTTPException) as exc_info:
-                await delete_role(role_id, _stub_user(), AsyncMock())
+                await delete_role(role_id, user, db)
         assert exc_info.value.status_code == 404
 
         guard_409 = HTTPException(status_code=409, detail="locked")
@@ -401,8 +407,10 @@ class TestRolesRouterBoundary:
             "shared.sdk_roles.delete_role",
             new=AsyncMock(side_effect=guard_409),
         ):
+            user = _stub_user()
+            db = AsyncMock()
             with pytest.raises(HTTPException) as exc_info:
-                await delete_role(role_id, _stub_user(), AsyncMock())
+                await delete_role(role_id, user, db)
         assert exc_info.value.status_code == 409
 
     async def test_assign_users_delegates(self):
@@ -458,8 +466,10 @@ class TestRolesRouterBoundary:
             "shared.sdk_roles.assign_forms_to_role",
             new=AsyncMock(side_effect=RoleServiceError(404, "missing")),
         ):
+            user = _stub_user()
+            db = AsyncMock()
             with pytest.raises(HTTPException) as exc_info:
-                await assign_forms_to_role(role_id, request, _stub_user(), AsyncMock())
+                await assign_forms_to_role(role_id, request, user, db)
         assert exc_info.value.status_code == 404
 
     async def test_list_forms_delegates(self):
