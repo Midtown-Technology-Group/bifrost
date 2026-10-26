@@ -12,6 +12,14 @@ name2=$(compute_project_name "$(git rev-parse --show-toplevel)")
 [[ "$name1" == "$name2" ]] || { echo "FAIL: hash not deterministic: $name1 vs $name2"; exit 1; }
 [[ "$name1" =~ ^bifrost-test-[a-f0-9]{8}$ ]] || { echo "FAIL: bad format: $name1"; exit 1; }
 
+# Test results stay under this worktree's private Git metadata rather than a
+# predictable shared-/tmp path.
+repo_root="$(git rev-parse --show-toplevel)"
+results_dir=$(compute_test_results_dir "$repo_root")
+expected_results_dir="$(git -C "$repo_root" rev-parse --path-format=absolute --git-path bifrost-test-artifacts)/results"
+[[ "$results_dir" == "$expected_results_dir" ]] || { echo "FAIL: unexpected results dir: $results_dir"; exit 1; }
+[[ "$results_dir" != /tmp/bifrost-* ]] || { echo "FAIL: results dir remains in shared /tmp: $results_dir"; exit 1; }
+
 # wait_for_service should time out promptly against a non-existent service
 WAIT_MAX_ATTEMPTS=1 result=$(wait_for_service docker-compose.test.yml no-such-service true 2>&1 || true)
 [[ "$result" == *"not ready after 1 attempts"* ]] || { echo "FAIL: wait_for_service timeout message, got: $result"; exit 1; }

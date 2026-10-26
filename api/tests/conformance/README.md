@@ -9,9 +9,9 @@ Bifrost's Python MCP SDK. Run it through the Docker test environment:
 ```
 
 The blocking JSON checks, advisory checks, command logs, OAuth preflight, and
-`conformance-junit.xml` are written under the worktree-specific
-`/tmp/bifrost-*/mcp-conformance/` directory. CI uploads that directory even
-when the gate fails.
+`conformance-junit.xml` are written under the worktree-specific private test
+results directory reported by `./test.sh stack status`. CI uploads its
+`mcp-conformance/` child even when the gate fails.
 
 ## Authentication boundary
 

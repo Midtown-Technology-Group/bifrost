@@ -46,7 +46,7 @@ jobs:
         with:
           name: execution-reliability-gauntlet-${{ github.run_id }}
           path: |
-            /tmp/bifrost-*/execution-reliability-gauntlet.json
+            ${{ env.BIFROST_TEST_RESULTS_DIR }}/execution-reliability-gauntlet.json
             /tmp/execution-reliability-gauntlet.log
           if-no-files-found: warn
           retention-days: 14

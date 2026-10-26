@@ -1,19 +1,43 @@
 """Repeated local test commands must replace container-owned runner logs."""
 
 import os
-from pathlib import Path
 import subprocess
+from pathlib import Path
+
+
+def _test_script() -> str:
+    candidates = (Path("/app/test.sh"), Path(__file__).resolve().parents[3] / "test.sh")
+    return next(path for path in candidates if path.exists()).read_text()
+
+
+def _repository_file(path: str) -> Path:
+    candidates = (Path("/repo") / path, Path(__file__).resolve().parents[3] / path)
+    return next(candidate for candidate in candidates if candidate.exists())
+
+
+def test_container_writable_results_are_beneath_private_git_metadata():
+    script = _test_script()
+    initialization = script.split("# Host command locks", 1)[0]
+    helpers = _repository_file("scripts/lib/test_helpers.sh").read_text()
+
+    assert 'LOG_DIR="$(compute_test_results_dir .)"' in initialization
+    assert "git -C" in helpers
+    assert "--git-path bifrost-test-artifacts" in helpers
+    assert 'chmod 700 "$TEST_ARTIFACTS_DIR"' in initialization
+    assert '[ -L "$TEST_ARTIFACTS_DIR" ]' in initialization
+    assert '[ -L "$LOG_DIR" ]' in initialization
+    assert "/tmp/bifrost-$COMPOSE_PROJECT_NAME" not in initialization
 
 
 def test_pytest_runner_replaces_non_writable_previous_log(tmp_path):
-    candidates = (Path("/app/test.sh"), Path(__file__).resolve().parents[3] / "test.sh")
-    script = next(path for path in candidates if path.exists()).read_text()
+    script = _test_script()
     start = script.index("run_pytest() {")
     end = script.index("\n# `unit`", start)
     log = tmp_path / "test-runner.log"
     log.write_text("previous run\n")
     log.chmod(0o444)
-    shell = """set -euo pipefail
+    shell = (
+        """set -euo pipefail
 require_stack_up() { :; }
 prepare_test_state() { :; }
 docker() {
@@ -23,7 +47,10 @@ docker() {
         rm) return 0 ;;
     esac
 }
-""" + script[start:end] + "\nrun_pytest tests/unit/example.py\n"
+"""
+        + script[start:end]
+        + "\nrun_pytest tests/unit/example.py\n"
+    )
     result = subprocess.run(
         ["bash", "-c", shell],
         env={

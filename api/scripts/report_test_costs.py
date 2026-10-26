@@ -1,6 +1,6 @@
 """Rank pytest JUnit case time by file without a maintained test map.
 
-Usage: python3 api/scripts/report_test_costs.py /tmp/bifrost-<project>/test-results.xml
+Usage: python3 api/scripts/report_test_costs.py <results-dir>/test-results.xml
 Case times are summed work, not suite or shard wall time.
 """
 
@@ -20,7 +20,9 @@ def _module(classname: str) -> str:
     return classname
 
 
-def summarize(path: Path) -> tuple[list[tuple[str, float, str]], list[tuple[str, float, int]]]:
+def summarize(
+    path: Path,
+) -> tuple[list[tuple[str, float, str]], list[tuple[str, float, int]]]:
     """Return case times and module totals from one JUnit result file."""
     cases: list[tuple[str, float, str]] = []
     modules: dict[str, list[float]] = defaultdict(list)
@@ -42,12 +44,18 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("junit", type=Path, help="pytest --junitxml output")
     parser.add_argument("--top", type=int, default=15, help="rows per ranking")
-    parser.add_argument("--slow", type=float, default=2.0, help="review threshold in seconds")
+    parser.add_argument(
+        "--slow", type=float, default=2.0, help="review threshold in seconds"
+    )
     args = parser.parse_args()
     cases, modules = summarize(args.junit)
     slow = [case for case in cases if case[1] >= args.slow]
-    print(f"Cases: {len(cases)}; summed case time: {sum(case[1] for case in cases):.1f}s")
-    print(f"Cases >= {args.slow:g}s: {len(slow)}; summed time: {sum(case[1] for case in slow):.1f}s")
+    print(
+        f"Cases: {len(cases)}; summed case time: {sum(case[1] for case in cases):.1f}s"
+    )
+    print(
+        f"Cases >= {args.slow:g}s: {len(slow)}; summed time: {sum(case[1] for case in slow):.1f}s"
+    )
     print("\nTop files (summed case time):")
     for module, seconds, count in modules[: args.top]:
         print(f"{seconds:7.1f}s  {count:4d}  {module}")
